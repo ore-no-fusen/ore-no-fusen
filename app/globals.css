@@ -208,9 +208,46 @@
   font-weight: 700;
 }
 
-/* Final override for sticky title to ensure tightness */
+/* =========================================
+   Final Tuning: High Density & Paper Look
+   ========================================= */
+.sticky-root {
+  background-color: #f3ecd9;
+  /* 画面全体の背景 */
+  min-height: 100vh;
+}
+
+.sticky-paper {
+  padding: 14px 18px !important;
+  max-width: 880px !important;
+  width: calc(100% - 18px) !important;
+  /* background: #faf6ee (Existing) */
+}
+
+.sticky-markdown {
+  font-size: 15.5px !important;
+  /* 具体的な指定あり */
+  line-height: 1.38 !important;
+  font-family: "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro", "BIZ UDPGothic", "Meiryo", sans-serif !important;
+}
+
+.sticky-markdown p {
+  margin: 0.25em 0 !important;
+}
+
+.sticky-markdown ul,
+.sticky-markdown ol {
+  margin: 0.25em 0 0.4em !important;
+}
+
+.sticky-markdown li {
+  margin-bottom: 0.1em !important;
+}
+
 .sticky-title {
-  margin-top: 0.5em !important;
+  display: block;
+  margin-top: 0.7em !important;
+  margin-bottom: 0.2em !important;
   line-height: 1.35 !important;
   color: #333 !important;
 }
