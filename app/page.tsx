@@ -12,6 +12,56 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const stickyMode = searchParams.get('sticky') === '1';
 
+  const [stickyDismissed, setStickyDismissed] = useState(false);
+  const [ctxOpen, setCtxOpen] = useState(false);
+  const [ctxPos, setCtxPos] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (stickyMode) {
+      const dismissed = localStorage.getItem('stickyDismissed') === '1';
+      if (dismissed) setStickyDismissed(true);
+    }
+  }, [stickyMode]);
+
+  // コンテキストメニュー制御
+  useEffect(() => {
+    if (!ctxOpen) return;
+    const handleClick = () => setCtxOpen(false);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCtxOpen(false);
+    };
+    window.addEventListener('mousedown', handleClick); // clickだとcontextmenuと競合することがあるのでmousedown推奨
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handleClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [ctxOpen]);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setCtxPos({ x: e.clientX, y: e.clientY });
+    setCtxOpen(true);
+  };
+
+  const handleDismiss = () => {
+    if (confirm('この付箋をはがしますか？\n（次回から表示されなくなりますが、URLを開けば再表示できます）')) {
+      localStorage.setItem('stickyDismissed', '1');
+      setStickyDismissed(true);
+      setCtxOpen(false);
+      try {
+        window.close();
+      } catch (e) {
+        console.log('window.close() failed', e);
+      }
+    }
+  };
+
+  const handleRestore = () => {
+    localStorage.removeItem('stickyDismissed');
+    setStickyDismissed(false);
+  };
+
   const mdPlugins = [remarkGfm, remarkBreaks];
 
   const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
@@ -102,8 +152,35 @@ function HomeContent() {
 
   // 付箋モード：メモ表示のみ（ただしフォルダ選択だけはできるようにする）
   if (stickyMode) {
+    if (stickyDismissed) {
+      return (
+        <div className="sticky-root sticky-restore-view">
+          <p>付箋ははがされました</p>
+          <button onClick={handleRestore} className="sticky-restore-btn">
+            もう一度表示する
+          </button>
+        </div>
+      );
+    }
+
     return (
-      <div className="sticky-root">
+      <div className="sticky-root" onContextMenu={handleContextMenu}>
+        {/* コンテキストメニュー */}
+        {ctxOpen && (
+          <div
+            className="sticky-context"
+            style={{ top: ctxPos.y, left: ctxPos.x }}
+            onMouseDown={(e) => e.stopPropagation()} // メニュー内クリックで閉じないように
+          >
+            <button onClick={handleDismiss} className="danger">
+              🗑 はがす（非表示にする）
+            </button>
+            <button onClick={() => setCtxOpen(false)}>
+              キャンセル
+            </button>
+          </div>
+        )}
+
         {/* 付箋用の最小バー（邪魔にならない） */}
         <div className="sticky-mini-bar">
           <button onClick={selectDirectory} className="sticky-mini-btn">
