@@ -1,15 +1,216 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* ===== 付箋：Markdown表示の「点」と「太字見出し行」を直す ===== */
 
-body {
-  margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Tailwind preflightで消える「点」を復活 */
+.sticky-markdown ul {
+  list-style: disc;
+  list-style-position: outside;
+  padding-left: 1.6rem;
+  /* 点の分の左余白 */
+}
+
+.sticky-markdown ol {
+  list-style: decimal;
+  list-style-position: outside;
+  padding-left: 1.6rem;
+}
+
+/* 1個目の項目が左に詰まって見えるのを防ぐ */
+.sticky-markdown li {
+  padding-left: 0.2rem;
+  /* 点と文字の間 */
+}
+
+/* 太字だけの行（**xxx**）を「見出しっぽく」扱う（Obsidan風） */
+.sticky-markdown p>strong:only-child {
+  display: block;
+  margin-top: 0.35rem;
+  margin-bottom: 0.15rem;
+  font-size: 1.05em;
+}
+
+/* 太字だけの行の直後のリストを少しだけ詰める */
+.sticky-section+ul,
+.sticky-section+ol {
+  margin-top: 0.15rem;
+  padding-left: 1.2rem;
+  /* 通常より少し詰める */
+}
+
+.sticky-markdown ul {
+  list-style: disc;
+}
+
+.sticky-markdown ol {
+  list-style: decimal;
+}
+
+.sticky-markdown li {
+  list-style-position: outside;
+}
+
+/* 見出しのスタイルを追加 (Tailwind reset対策) */
+/* 
+   Obsidanのプレビューや、ユーザーの意図に合わせて
+   H1, H2なども「太字のこじつけ見出し」と同じような見た目にする
+*/
+.sticky-markdown h1,
+.sticky-markdown h2,
+.sticky-markdown h3,
+.sticky-markdown h4 {
+  font-size: 1.05em;
+  /* p > strong:only-child と同じ */
+  font-weight: 700;
+  /* bold */
+  margin-top: 0.35rem;
+  /* p > strong:only-child と同じ */
+  margin-bottom: 0.15rem;
+  /* p > strong:only-child と同じ */
+  border-bottom: none;
+  padding-bottom: 0;
+  line-height: 1.5;
+  /* 本文に合わせる */
 }
 
 
+/* sticky 最小バー */
+.sticky-mini-bar {
+  position: fixed;
+  top: 8px;
+  right: 10px;
+  z-index: 50;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sticky-mini-btn {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sticky-mini-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sticky-mini-info {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 6px 10px;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 普段は完全に隠す */
+.sticky-mini-bar {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* 画面右上にマウスを持っていった時だけ出す */
+.sticky-root:hover .sticky-mini-bar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 付箋：タイトル（見出し相当行） */
+.sticky-title {
+  display: block;
+  margin-top: 0.35rem;
+  margin-bottom: 0.15rem;
+  font-size: 1.05em;
+  font-weight: 700;
+  line-height: 1.5;
+  background: transparent !important;
+}
+
+.sticky-title strong {
+  background: transparent !important;
+}
+
+/* =========================
+   付箋モード 見た目セット Final
+   ========================= */
+
+/* 全体（紙） */
+.sticky-paper {
+  max-width: 980px;
+  margin: 24px auto;
+  padding: 24px 28px;
+
+  background: #faf6ee;
+  /* 紙っぽい薄いベージュ */
+  border-radius: 14px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, .05),
+    0 8px 16px rgba(0, 0, 0, .06);
+}
+
+.sticky-markdown {
+  /* フォント（Windowsで読みやすい順に） */
+  font-family: "Meiryo", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+
+  /* 画面幅に合わせて文字サイズ変更 (密度高め) */
+  font-size: clamp(11px, 1.9vw, 18px);
+
+  /* 行間を詰める */
+  line-height: 1.4;
+
+  letter-spacing: .01em;
+  color: #222;
+}
+
+/* 段落 */
+.sticky-markdown p {
+  margin: 0.25em 0;
+}
+
+/* リスト（点・間隔・インデント） */
+.sticky-markdown ul,
+.sticky-markdown ol {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.3em;
+  list-style-position: outside;
+}
+
+.sticky-markdown ul {
+  list-style: disc;
+}
+
+.sticky-markdown ol {
+  list-style: decimal;
+}
+
+.sticky-markdown li {
+  margin: 0.1em 0;
+  /* リストアイテム間も詰める */
+  padding-left: 0.1em;
+}
+
+/* 重要っぽい数値を少し目立たせる（任意） */
+.sticky-markdown strong {
+  font-weight: 900;
+}
+
+/* 右上ミニバーの視認性アップ（邪魔しない） */
+.sticky-mini-btn {
+  font-family: inherit;
+  font-weight: 700;
+}
+
+/* Final override for sticky title to ensure tightness */
+.sticky-title {
+  margin-top: 0.5em !important;
+  line-height: 1.35 !important;
+  color: #333 !important;
+}

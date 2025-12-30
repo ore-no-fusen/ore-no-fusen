@@ -1,30 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 
 // File System Access API の型は types/filesystem.d.ts で定義
 
-export default function Home() {
+function HomeContent() {
+  const searchParams = useSearchParams();
+  const stickyMode = searchParams.get('sticky') === '1';
+
+  const mdPlugins = [remarkGfm, remarkBreaks];
+
   const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [files, setFiles] = useState<FileSystemFileHandle[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileSystemFileHandle | null>(null);
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
-  // localStorageから最後に選択したファイル名を復元
-  useEffect(() => {
-    const savedFileName = localStorage.getItem('lastSelectedFile');
-    if (savedFileName && directoryHandle) {
-      // ディレクトリハンドルが設定されたら、保存されたファイル名でファイルを探す
-      findFileByName(savedFileName);
-    }
-  }, [directoryHandle]);
-
-  const findFileByName = async (fileName: string) => {
+  const findFileByName = useCallback(async (fileName: string) => {
     if (!directoryHandle) return;
-    
+
     try {
       const fileHandles: FileSystemFileHandle[] = [];
       for await (const entry of directoryHandle.values()) {
@@ -39,14 +37,23 @@ export default function Home() {
     } catch (error) {
       console.error('ファイル検索エラー:', error);
     }
-  };
+  }, [directoryHandle]);
+
+  // localStorageから最後に選択したファイル名を復元
+  useEffect(() => {
+    const savedFileName = localStorage.getItem('lastSelectedFile');
+    if (savedFileName && directoryHandle) {
+      // ディレクトリハンドルが設定されたら、保存されたファイル名でファイルを探す
+      findFileByName(savedFileName);
+    }
+  }, [directoryHandle, findFileByName]);
 
   const selectDirectory = async () => {
     try {
       // File System Access APIでディレクトリを選択
       const handle = await window.showDirectoryPicker();
       setDirectoryHandle(handle);
-      
+
       // .mdファイルを取得
       const fileHandles: FileSystemFileHandle[] = [];
       for await (const entry of handle.values()) {
@@ -54,7 +61,7 @@ export default function Home() {
           fileHandles.push(entry as FileSystemFileHandle);
         }
       }
-      
+
       setFiles(fileHandles.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
@@ -70,7 +77,7 @@ export default function Home() {
       const file = await fileHandle.getFile();
       const text = await file.text();
       setContent(text);
-      
+
       // localStorageに保存
       localStorage.setItem('lastSelectedFile', fileHandle.name);
     } catch (error) {
@@ -93,6 +100,67 @@ export default function Home() {
     }
   };
 
+  // 付箋モード：メモ表示のみ（ただしフォルダ選択だけはできるようにする）
+  if (stickyMode) {
+    return (
+      <div className="sticky-root">
+        {/* 付箋用の最小バー（邪魔にならない） */}
+        <div className="sticky-mini-bar">
+          <button onClick={selectDirectory} className="sticky-mini-btn">
+            📁 フォルダ選択
+          </button>
+          <button
+            onClick={handleReload}
+            className="sticky-mini-btn"
+            disabled={!selectedFile || loading}
+            title={!selectedFile ? "先にファイルを選んでね" : "再読み込み"}
+          >
+            ↻
+          </button>
+          <span className="sticky-mini-info">
+            {selectedFile ? selectedFile.name : "未選択"}
+          </span>
+        </div>
+
+        <div className="sticky-paper">
+          {loading ? (
+            <div className="sticky-empty">読み込み中...</div>
+          ) : content ? (
+            <article className="sticky-markdown">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkBreaks]}
+                components={{
+                  h1: ({ children }) => <div className="sticky-title"><strong>{children}</strong></div>,
+                  h2: ({ children }) => <div className="sticky-title"><strong>{children}</strong></div>,
+                  h3: ({ children }) => <div className="sticky-title"><strong>{children}</strong></div>,
+                  h4: ({ children }) => <div className="sticky-title"><strong>{children}</strong></div>,
+                  p: ({ children }) => {
+                    const arr = Array.isArray(children) ? children : [children];
+                    const onlyStrong =
+                      arr.length === 1 &&
+                      typeof arr[0] === "object" &&
+                      (arr[0] as any)?.type === "strong";
+                    if (onlyStrong) return <div className="sticky-title">{children}</div>;
+                    return <p>{children}</p>;
+                  },
+                }}
+              >
+                {content}
+              </ReactMarkdown>
+            </article>
+
+          ) : (
+            <div className="sticky-empty">
+              付箋に表示するメモがない。上の「📁 フォルダ選択」→ファイル選択してね。
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+
+  // 通常モード：既存レイアウト
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* ヘッダー */}
@@ -131,11 +199,10 @@ export default function Home() {
                 <li key={index}>
                   <button
                     onClick={() => handleFileSelect(file)}
-                    className={`w-full text-left px-3 py-2 rounded-lg mb-1 transition-colors ${
-                      selectedFile?.name === file.name
-                        ? 'bg-blue-100 text-blue-700 font-medium'
-                        : 'hover:bg-gray-100 text-gray-700'
-                    }`}
+                    className={`w-full text-left px-3 py-2 rounded-lg mb-1 transition-colors ${selectedFile?.name === file.name
+                      ? 'bg-blue-100 text-blue-700 font-medium'
+                      : 'hover:bg-gray-100 text-gray-700'
+                      }`}
                   >
                     {file.name}
                   </button>
@@ -153,7 +220,7 @@ export default function Home() {
             <div className="max-w-4xl mx-auto">
               <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
                 <article className="prose prose-slate max-w-none prose-headings:mt-6 prose-headings:mb-4 prose-p:my-4 prose-ul:my-4 prose-ol:my-4 prose-li:my-1">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={mdPlugins}>
                     {content}
                   </ReactMarkdown>
                 </article>
@@ -167,6 +234,14 @@ export default function Home() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="h-screen flex items-center justify-center">読み込み中...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
 
