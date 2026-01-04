@@ -23,17 +23,17 @@
 /* 太字だけの行（**xxx**）を「見出しっぽく」扱う（Obsidan風） */
 .sticky-markdown p>strong:only-child {
   display: block;
-  margin-top: 0.35rem;
-  margin-bottom: 0.15rem;
+  margin-top: 0.85em;
+  margin-bottom: 0.25em;
   font-size: 1.05em;
+  font-weight: 600;
 }
 
 /* 太字だけの行の直後のリストを少しだけ詰める */
 .sticky-section+ul,
 .sticky-section+ol {
-  margin-top: 0.15rem;
+  margin-top: 0.15em;
   padding-left: 1.2rem;
-  /* 通常より少し詰める */
 }
 
 .sticky-markdown ul {
@@ -48,29 +48,33 @@
   list-style-position: outside;
 }
 
-/* 見出しのスタイルを追加 (Tailwind reset対策) */
-/* 
-   Obsidanのプレビューや、ユーザーの意図に合わせて
-   H1, H2なども「太字のこじつけ見出し」と同じような見た目にする
-*/
-.sticky-markdown h1,
+/* 見出しのスタイルを追加 */
+.sticky-markdown h1 {
+  font-size: 1.05em;
+  font-weight: 600;
+  margin-top: 0.85em;
+  margin-bottom: 0.25em;
+  border-bottom: none;
+  padding-bottom: 0;
+  line-height: 1.4;
+}
+
 .sticky-markdown h2,
 .sticky-markdown h3,
 .sticky-markdown h4 {
-  font-size: 1.05em;
-  /* p > strong:only-child と同じ */
-  font-weight: 700;
-  /* bold */
-  margin-top: 0.35rem;
-  /* p > strong:only-child と同じ */
-  margin-bottom: 0.15rem;
-  /* p > strong:only-child と同じ */
+  font-size: 1.0em;
+  font-weight: 600;
+  margin-top: 0.85em;
+  margin-bottom: 0.25em;
   border-bottom: none;
   padding-bottom: 0;
-  line-height: 1.5;
-  /* 本文に合わせる */
+  line-height: 1.4;
 }
 
+/* 罫線は表示しない */
+.sticky-markdown hr {
+  display: none;
+}
 
 /* sticky 最小バー */
 .sticky-mini-bar {
@@ -172,7 +176,7 @@
 
 /* 段落 */
 .sticky-markdown p {
-  margin: 0.25em 0;
+  margin-bottom: 0.35em;
 }
 
 /* リスト（点・間隔・インデント） */
@@ -193,7 +197,6 @@
 
 .sticky-markdown li {
   margin: 0.1em 0;
-  /* リストアイテム間も詰める */
   padding-left: 0.1em;
 }
 
@@ -212,8 +215,8 @@
    Final Tuning: High Density & Paper Look
    ========================================= */
 .sticky-root {
-  background-color: #f3ecd9;
-  /* 画面全体の背景 */
+  background-color: transparent;
+  /* 画面全体の背景を透明化 */
   min-height: 100vh;
 }
 
@@ -225,7 +228,7 @@
 }
 
 .sticky-markdown {
-  font-size: 15.5px !important;
+  font-size: 18px !important;
   /* 具体的な指定あり */
   line-height: 1.38 !important;
   font-family: "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro", "BIZ UDPGothic", "Meiryo", sans-serif !important;
@@ -244,9 +247,260 @@
   margin-bottom: 0.1em !important;
 }
 
+/* =========================================
+   Sticky Note Paper Design
+   ========================================= */
+/* 背景（紙が浮く土台） */
+body {
+  background: transparent;
+}
+
+/* 付箋（紙） */
+.sticky-paper {
+  background: #fff3c0;
+  border-radius: 16px;
+  padding: 18px 18px;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.12),
+    0 1px 0 rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+
+  /* うっすら紙ノイズ（画像なし） */
+  background-image:
+    linear-gradient(0deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.25)),
+    repeating-linear-gradient(0deg,
+      rgba(0, 0, 0, 0.015) 0px,
+      rgba(0, 0, 0, 0.015) 1px,
+      rgba(0, 0, 0, 0) 3px,
+      rgba(0, 0, 0, 0) 6px);
+
+  line-height: 1.4;
+  color: #111 !important;
+  /* 全体は常に黒 */
+  min-height: calc(100vh - 24px);
+  margin: 12px;
+  box-sizing: border-box;
+  font-family: "BIZ UDGothic", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif !important;
+}
+
+span.hl,
+span.point,
+mark.point {
+  background: transparent;
+  /* 背景塗りつぶしなし */
+  color: #c00 !important;
+  /* 赤字（ポイント） */
+  font-weight: 700;
+  display: inline;
+  /* インライン保証 */
+  white-space: inherit;
+  /* 改行させない */
+}
+
+mark {
+  background: none;
+  color: #c62828 !important;
+  /* 赤字（強調） */
+  font-weight: 700;
+}
+
+/* ノートシェルの基本構造 */
+.noteShell {
+  position: relative;
+  height: 100%;
+  /* fit-contentから変更してウィンドウいっぱいに */
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: #f7e9b0;
+  /* 背景が透けないようにシェルにも設定 */
+}
+
+/* ホバー操作バー (Extreme Compact Icons) */
+/* ホバー操作バー (Extreme Compact Icons) */
+.hoverBar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 3px 5px;
+  backdrop-filter: blur(6px);
+  z-index: 100;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.hoverBar button {
+  width: 24px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  transition: all 0.15s;
+  color: #333;
+}
+
+.hoverBar button:hover {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.hoverBar .file-name {
+  font-size: 9px;
+  color: #888;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 2px;
+  padding-right: 6px;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+}
+
+.sticky-paper-editor {
+  width: 100%;
+  /* height/min-height is handled by JS but set min baseline */
+  min-height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0.5rem 0.2rem;
+  /* 少し余白を持たせる */
+  margin: 0;
+  display: block;
+  resize: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit !important;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow: hidden;
+  /* Hide scrollbar if possible or match viewer */
+  /* テキスト入力優先 */
+}
+
+.sticky-paper-editor::placeholder {
+  color: rgba(0, 0, 0, 0.2);
+}
+
+/* 超高密度メモ用の強制スタイル */
+.notePaper {
+  font-family: "BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important;
+  font-size: 10.5px !important;
+  /* 要求仕様準拠: A6密度実現 */
+  line-height: 1.4 !important;
+  letter-spacing: 0.01em;
+  background: #f7e9b0 !important;
+  /* 付箋の黄色 */
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
+  min-height: fit-content !important;
+  padding-bottom: 8px !important;
+  cursor: default !important;
+  transition: all 0.2s ease-out;
+}
+
+.notePaper p {
+  margin: 0 0 0.1em 0 !important;
+  width: fit-content !important;
+  cursor: text !important;
+}
+
+.notePaper h1,
+.notePaper h2,
+.notePaper h3 {
+  font-size: 11px !important;
+  /* 見出しは本文より少し大きく */
+  font-weight: 700 !important;
+  margin: 0.3em 0 0.1em 0 !important;
+  line-height: 1.2 !important;
+  width: fit-content !important;
+  cursor: text !important;
+}
+
+.notePaper ul,
+.notePaper ol {
+  margin: 0;
+  padding-left: 0.6em;
+  /* さらに左へ寄せる */
+  list-style-type: "・";
+  width: fit-content !important;
+}
+
+.notePaper li {
+  margin: 0.1em 0;
+  padding-left: 0.2em;
+  /* 記号と文字の間隔を微調整 */
+  width: fit-content !important;
+  cursor: text !important;
+}
+
+.status-indicator {
+  font-family: "BIZ UDPGothic", "Meiryo", sans-serif !important;
+  font-size: 9px !important;
+  /* ステータス表示は小さめに */
+  font-weight: 700 !important;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.notePaper>*:last-child,
+.notePaper article>*:last-child,
+.notePaper .prose>*:last-child {
+  margin-bottom: 0 !important;
+}
+
+.notePaper li::marker {
+  font-size: 0.9em !important;
+}
+
+/* エディタ側も同期 */
+.sticky-paper-editor.notePaper {
+  padding: 0 !important;
+  min-height: 40px !important;
+}
+
+/* 線は薄く */
+.notePaper hr {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  margin: 0.6em 0;
+}
+
 .sticky-title {
   display: block;
-  margin-top: 0.7em !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.2em !important;
+  line-height: 1.35 !important;
+  color: #333 !important;
+}
+
+/* =========================================
+   Layout & Typography Fixes
+   ========================================= */
+.sticky-markdown> :first-child,
+.prose> :first-child {
+  margin-top: 0 !important;
+}
+
+.sticky-markdown {
+  padding: 0;
+}
+
+.sticky-title {
+  display: block;
+  margin-top: 0 !important;
   margin-bottom: 0.2em !important;
   line-height: 1.35 !important;
   color: #333 !important;
@@ -305,24 +559,53 @@
   background: #ffebee;
 }
 
-/* はがした後の「再表示」UI */
+/* はがした後の「再表示」UI (透明・極小化) */
 .sticky-restore-view {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  color: #666;
-  text-align: center;
+  align-items: flex-start;
+  justify-content: flex-start;
+  background: transparent;
+  pointer-events: none;
+  /* 下の要素（デスクトップ等）を邪魔しないが、ボタンは自力で有効化 */
 }
 
 .sticky-restore-btn {
-  margin-top: 16px;
-  padding: 10px 20px;
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+  pointer-events: auto;
+  margin: 10px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
   cursor: pointer;
-  font-weight: bold;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  transition: all 0.2s;
+}
+
+.sticky-restore-btn:hover {
+  background: rgba(255, 255, 255, 0.8);
+  color: #333;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.sticky-restore-view p {
+  display: none;
+  /* メッセージは不要 */
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  /* bodyでのフォント指定は最低限にする（mainで上書きするため） */
+  font-family: system-ui, sans-serif;
 }

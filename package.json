@@ -3,21 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3002",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.9.1",
+    "@tauri-apps/plugin-shell": "^2.3.3",
     "next": "^14.2.5",
     "next-pwa": "^5.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
+    "rehype-raw": "^7.0.0",
     "remark-breaks": "^4.0.0",
-    "remark-gfm": "^4.0.0"
+    "remark-directive": "^4.0.0",
+    "remark-gfm": "^4.0.0",
+    "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.9.6",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

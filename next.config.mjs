@@ -1,16 +1,19 @@
-import withPWAInit from "next-pwa";
+import withPWA from 'next-pwa';
 
-const withPWA = withPWAInit({
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  // Tauri用設定
+  output: 'export',
+  images: {
+    unoptimized: true,
+  },
+};
+
+// 設定をエクスポート（ここが最後です）
+export default withPWA({
   dest: "public",
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === "development" // 開発中はSW無効（混乱防止）
-});
-
-const nextConfig = {
-  reactStrictMode: true
-};
-
-export default withPWA(nextConfig);
-
+})(nextConfig);
 
