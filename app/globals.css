@@ -312,8 +312,7 @@ mark {
   min-height: 100vh;
   width: 100%;
   overflow: hidden;
-  background: #f7e9b0;
-  /* 背景が透けないようにシェルにも設定 */
+  /* 背景色はインラインスタイルで動的に設定 */
 }
 
 /* ホバー操作バー (Extreme Compact Icons) */
@@ -401,18 +400,30 @@ mark {
   /* 要求仕様準拠: A6密度実現 */
   line-height: 1.4 !important;
   letter-spacing: 0.01em;
-  background: #f7e9b0 !important;
+  background: transparent !important;
   /* 付箋の黄色 */
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
   min-height: fit-content !important;
-  padding-bottom: 8px !important;
   cursor: default !important;
   transition: all 0.2s ease-out;
+  padding: 8px !important;
+  /* コンテナとしての共通パディング */
+}
+
+/* 内部要素のマージンを徹底的に排除 */
+.notePaper p,
+.notePaper h1,
+.notePaper h2,
+.notePaper h3,
+.notePaper ul,
+.notePaper ol,
+.notePaper li {
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .notePaper p {
-  margin: 0 0 0.1em 0 !important;
   width: fit-content !important;
   cursor: text !important;
 }
@@ -423,7 +434,6 @@ mark {
   font-size: 11px !important;
   /* 見出しは本文より少し大きく */
   font-weight: 700 !important;
-  margin: 0.3em 0 0.1em 0 !important;
   line-height: 1.2 !important;
   width: fit-content !important;
   cursor: text !important;
@@ -431,19 +441,35 @@ mark {
 
 .notePaper ul,
 .notePaper ol {
-  margin: 0;
-  padding-left: 0.6em;
-  /* さらに左へ寄せる */
+  padding-left: 0.6em !important;
+  /* 記号分だけ少しパディング */
   list-style-type: "・";
   width: fit-content !important;
 }
 
 .notePaper li {
-  margin: 0.1em 0;
-  padding-left: 0.2em;
-  /* 記号と文字の間隔を微調整 */
+  margin: 0 !important;
+  padding-left: 0.2em !important;
   width: fit-content !important;
   cursor: text !important;
+}
+
+/* エディタ専用調整：スクロールバー隠蔽やフォーカス */
+.notePaper textarea {
+  width: 100% !important;
+  height: auto;
+  resize: none;
+  outline: none;
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .status-indicator {
@@ -455,27 +481,15 @@ mark {
   white-space: nowrap;
 }
 
-.notePaper>*:last-child,
-.notePaper article>*:last-child,
-.notePaper .prose>*:last-child {
-  margin-bottom: 0 !important;
-}
-
 .notePaper li::marker {
   font-size: 0.9em !important;
-}
-
-/* エディタ側も同期 */
-.sticky-paper-editor.notePaper {
-  padding: 0 !important;
-  min-height: 40px !important;
 }
 
 /* 線は薄く */
 .notePaper hr {
   border: none;
   border-top: 1px solid rgba(0, 0, 0, 0.12);
-  margin: 0.6em 0;
+  margin: 0.4em 0 !important;
 }
 
 .sticky-title {

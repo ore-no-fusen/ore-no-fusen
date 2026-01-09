@@ -1,0 +1,72 @@
+    Checking app v0.1.0 (D:\Users\uck\Documents\curry-project\ore-no-fusen\src-tauri)
+error[E0603]: function `update_frontmatter_value` is private
+   --> src\lib.rs:285:44
+    |
+285 |                     let new_front = logic::update_frontmatter_value(&note.frontmatter, "backgroundColor", color.to_string());
+    |                                            ^^^^^^^^^^^^^^^^^^^^^^^^ private function
+    |
+note: the function `update_frontmatter_value` is defined here
+   --> src\logic.rs:202:1
+    |
+202 | fn update_frontmatter_value(content: &str, key: &str, value: String) -> String {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PathBuf`
+ --> src\lib.rs:2:23
+  |
+2 | use std::path::{Path, PathBuf};
+  |                       ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Position`
+ --> src\lib.rs:4:49
+  |
+4 | use tauri::{State, Manager, AppHandle, Emitter, Position}; // Add Manager for app.state, Emitter for app.emit
+  |                                                 ^^^^^^^^
+
+error[E0599]: no method named `popup_at` found for struct `tauri::menu::Menu<R>` in the current scope
+   --> src\lib.rs:262:10
+    |
+262 |     menu.popup_at(window, None::<tauri::Position>).map_err(|e| e.to_string())?;
+    |          ^^^^^^^^
+    |
+   ::: C:\Users\uck\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-2.9.5\src\menu\mod.rs:751:6
+    |
+751 |   fn popup_at<R: crate::Runtime, P: Into<crate::Position>>(
+    |      -------- the method is available for `tauri::menu::Menu<tauri_runtime_wry::Wry<EventLoopMessage>>` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: there is a method `popup` with a similar name, but with different arguments
+   --> C:\Users\uck\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-2.9.5\src\menu\mod.rs:746:3
+    |
+746 |   fn popup<R: crate::Runtime>(&self, window: crate::Window<R>) -> crate::Result<()>;
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: trait `ContextMenu` which provides `popup_at` is implemented but not in scope; perhaps you want to import it
+    |
+  2 + use tauri::menu::ContextMenu;
+    |
+
+error[E0282]: type annotations needed
+   --> src\lib.rs:262:61
+    |
+262 |     menu.popup_at(window, None::<tauri::Position>).map_err(|e| e.to_string())?;
+    |                                                             ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+262 |     menu.popup_at(window, None::<tauri::Position>).map_err(|e: /* Type */| e.to_string())?;
+    |                                                              ++++++++++++
+
+warning: unused variable: `p`
+   --> src\lib.rs:291:108
+    |
+291 |                      let _ = logic::handle_save_note(&mut state, &path, &note.body, &new_front).and_then(|(p, effect)| {
+    |                                                                                                            ^ help: if this is intentional, prefix it with an underscore: `_p`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0282, E0599, E0603.
+For more information about an error, try `rustc --explain E0282`.
+warning: `app` (lib) generated 3 warnings
+error: could not compile `app` (lib) due to 3 previous errors; 3 warnings emitted
