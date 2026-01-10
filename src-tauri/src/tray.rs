@@ -28,17 +28,16 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             match event.id().as_ref() {
                 "hide_all" => {
                     for win in app.webview_windows().values() {
-                        if win.label().starts_with("note-") {
+                        // mainウィンドウ以外のすべてのウィンドウを隠す
+                        if win.label() != "main" {
                             let _ = win.hide();
                         }
                     }
                 },
                 "show_all" => {
                     for win in app.webview_windows().values() {
-                        // Main window might be needed too? User said "label starts with note-"
-                        // Usually "Boss key" implies hiding everything except maybe tray.
-                        // But show_all should probably show notes.
-                        if win.label().starts_with("note-") {
+                        // mainウィンドウ以外のすべてのウィンドウを表示
+                        if win.label() != "main" {
                             let _ = win.show();
                             let _ = win.set_focus();
                         }
