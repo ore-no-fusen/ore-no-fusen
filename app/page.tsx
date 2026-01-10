@@ -403,16 +403,19 @@ function OrchestratorContent() {
     }
   }, []);
 
-  // URL パラメータで分岐
-  if (urlPath) {
-    return <StickyNote />;
+  // パラメータチェック
+  if (searchParams.get('path')) {
+    return null; // 付箋ウィンドウとして開かれている（StickyNoteコンポーネントで処理）
   }
 
-  // UC-01: セットアップ画面
+  // セットアップチェック中はローディング表示（静的HTML対策）
   if (isCheckingSetup) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center">
-        <div className="text-gray-500">読み込み中...</div>
+      <div className="h-screen w-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-900 mb-4">俺の付箋</div>
+          <div className="text-gray-400">起動中...</div>
+        </div>
       </div>
     );
   }
