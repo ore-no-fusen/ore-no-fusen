@@ -70,11 +70,8 @@ export default function StickyNote() {
 
     // Frontmatter更新ヘルパー
     const updateFrontmatterValue = (front: string, key: string, value: string | number) => {
-        let pattern = key;
-        if (key === 'width') pattern = '(?:width|w)';
-        else if (key === 'height') pattern = '(?:height|h)';
-
-        const regex = new RegExp(`(${pattern}:\\s*)(.*)`);
+        // Use exact field names only - no aliases to prevent mismatches
+        const regex = new RegExp(`(${key}:\\s*)(.*)`, 'm');
         if (regex.test(front)) {
             return front.replace(regex, `$1${value}`);
         } else {
@@ -149,6 +146,7 @@ export default function StickyNote() {
         if (!selectedFile || !savePending) return;
         const timer = setTimeout(async () => {
             try {
+                console.log('[AUTO_SAVE] Saving note:', selectedFile.path);
                 await saveNote(selectedFile.path, editBody, rawFrontmatter);
                 setContent(editBody);
                 setSavePending(false);
@@ -157,7 +155,7 @@ export default function StickyNote() {
             }
         }, 800);
         return () => clearTimeout(timer);
-    }, [editBody, selectedFile, rawFrontmatter, saveNote, savePending]);
+    }, [selectedFile, rawFrontmatter, editBody, saveNote, savePending]);
 
     // コンテンツ読み込み
     const loadFileContent = async (noteMeta: NoteMeta) => {
@@ -399,22 +397,73 @@ export default function StickyNote() {
 
             try {
                 // Import menu classes
-                const { Menu, MenuItem, Submenu } = await import('@tauri-apps/api/menu');
+                const { Menu, MenuItem, Submenu, PredefinedMenuItem } = await import('@tauri-apps/api/menu');
                 const { getCurrentWindow } = await import('@tauri-apps/api/window');
+
+                // Filename display item (non-clickable)
+                const filenameItem = await MenuItem.new({
+                    id: 'ctx_filename',
+                    text: `📄 ${getFileName(selectedFile.path)}`,
+                    enabled: false
+                });
+
+                const separator1 = await PredefinedMenuItem.new({ item: 'Separator' });
+
+                // Open folder item
+                const openFolderItem = await MenuItem.new({
+                    id: 'ctx_open_folder',
+                    text: '📁 フォルダを開く',
+                    action: async () => {
+                        try {
+                            await invoke('fusen_open_containing_folder', { path: selectedFile.path });
+                        } catch (err) {
+                            console.error('Failed to open folder', err);
+                        }
+                    }
+                });
+
+                const separator2 = await PredefinedMenuItem.new({ item: 'Separator' });
 
                 // Build menu items
                 const newNoteItem = await MenuItem.new({
                     id: 'ctx_new_note',
-                    text: '新規メモ',
-                    action: () => {
-                        console.log('New note clicked');
-                        // TODO: Implement new note logic
+                    text: '📝 新規メモ',
+                    action: async () => {
+                        try {
+                            // Get current folder from selected file path
+                            const normalizedPath = selectedFile.path.replace(/\\/g, '/');
+                            const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+
+                            // Create new note
+                            const note = await invoke<Note>('fusen_create_note', {
+                                folderPath,
+                                context: ''
+                            });
+
+                            // Open new note window directly (no emit to avoid duplicates)
+                            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                            const sanitizedPath = note.meta.path.replace(/[^a-zA-Z0-9]/g, '_');
+                            const label = `note_${sanitizedPath}`;
+
+                            new WebviewWindow(label, {
+                                url: `/?path=${encodeURIComponent(note.meta.path)}`,
+                                title: 'Sticky Note',
+                                width: 400,
+                                height: 300,
+                                decorations: false,
+                                transparent: true,
+                                alwaysOnTop: false,
+                                skipTaskbar: false
+                            });
+                        } catch (e) {
+                            console.error('New note creation failed', e);
+                        }
                     }
                 });
 
                 const colorBlueItem = await MenuItem.new({
                     id: 'ctx_color_blue',
-                    text: 'Blue',
+                    text: '🔵 Blue',
                     action: () => {
                         const newColor = '#80d8ff';
                         setNoteBackgroundColor(newColor);
@@ -428,7 +477,7 @@ export default function StickyNote() {
 
                 const colorPinkItem = await MenuItem.new({
                     id: 'ctx_color_pink',
-                    text: 'Pink',
+                    text: '🌸 Pink',
                     action: () => {
                         const newColor = '#ffcdd2';
                         setNoteBackgroundColor(newColor);
@@ -442,9 +491,9 @@ export default function StickyNote() {
 
                 const colorYellowItem = await MenuItem.new({
                     id: 'ctx_color_yellow',
-                    text: 'Yellow',
+                    text: '💛 Yellow',
                     action: () => {
-                        const newColor = '#fff740';
+                        const newColor = '#f7e9b0';  // Default gentle yellow
                         setNoteBackgroundColor(newColor);
                         setRawFrontmatter(prev => updateFrontmatterValue(prev, 'backgroundColor', newColor));
                         setSavePending(true);
@@ -456,24 +505,38 @@ export default function StickyNote() {
 
                 const colorSubmenu = await Submenu.new({
                     id: 'ctx_color_submenu',
-                    text: '色変更',
+                    text: '🎨 色変更',
                     items: [colorBlueItem, colorPinkItem, colorYellowItem]
                 });
 
+                const separator3 = await PredefinedMenuItem.new({ item: 'Separator' });
+
                 const deleteItem = await MenuItem.new({
                     id: 'ctx_delete',
-                    text: '削除',
+                    text: '🗑️ 削除',
                     action: async () => {
-                        setSavePending(false);
-                        await invoke('fusen_move_to_trash', { path: selectedFile.path });
-                        await getCurrentWindow().close();
+                        try {
+                            // Backend will close window after successful delete
+                            await invoke('fusen_move_to_trash', { path: selectedFile.path });
+                        } catch (err) {
+                            console.error('[DELETE] Error:', err);
+                        }
                     }
                 });
 
                 // Build and show menu
                 const menu = await Menu.new({
                     id: 'context_menu',
-                    items: [newNoteItem, colorSubmenu, deleteItem]
+                    items: [
+                        filenameItem,
+                        separator1,
+                        openFolderItem,
+                        separator2,
+                        newNoteItem,
+                        colorSubmenu,
+                        separator3,
+                        deleteItem
+                    ]
                 });
 
                 await menu.popup();

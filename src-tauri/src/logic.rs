@@ -36,9 +36,14 @@ pub fn generate_frontmatter(seq: i32, context: &str, created: &str, updated: &st
     let color_line = if let Some(c) = background_color {
         format!("\nbackgroundColor: {}", c)
     } else {
-        String::new()
+        "\nbackgroundColor: #f7e9b0".to_string()
     };
-    format!("---\ntype: sticky\nseq: {}\ncontext: {}\ncreated: {}\nupdated: {}{}---\n", seq, context, created, updated, color_line)
+    
+    // Δ0.7: Complete frontmatter with all fields including geometry defaults
+    format!(
+        "---\ntype: sticky\nseq: {}\ncontext: {}\ncreated: {}\nupdated: {}{}\nx: 100\ny: 100\nwidth: 400\nheight: 300\nfontFamily: BIZ UDGothic\nfontSize: 8\nlineHeight: 1.0\n---\n",
+        seq, context, created, updated, color_line
+    )
 }
 
 pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>) {
@@ -149,7 +154,7 @@ pub fn build_create_note_data(folder_path: &str, context: &str, next_seq: i32, t
     let path = std::path::Path::new(folder_path).join(&filename);
     let path_str = path.to_string_lossy().to_string();
     
-    let frontmatter = generate_frontmatter(next_seq, context, today, today, None);
+    let frontmatter = generate_frontmatter(next_seq, context, today, today, Some("#f7e9b0"));
     let body = "ここにコンテキストを書く！".to_string();
     let content = format!("{}\n\n{}", frontmatter, body);
     

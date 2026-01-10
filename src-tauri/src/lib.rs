@@ -1,7 +1,8 @@
 
-use std::path::{Path, PathBuf};
+
+use std::path::Path;
 use std::sync::Mutex;
-use tauri::{State, Manager, AppHandle, Emitter, Position}; // Add Manager for app.state, Emitter for app.emit
+use tauri::{State, Manager, AppHandle, Emitter};
 // use tauri::menu::{Menu, MenuItem, CheckMenuItem, Submenu, PredefinedMenuItem, MenuEvent};
 
 mod state;
@@ -102,7 +103,11 @@ fn fusen_save_note(state: State<'_, Mutex<AppState>>, path: String, body: String
 }
 
 #[tauri::command]
-fn fusen_move_to_trash(state: State<'_, Mutex<AppState>>, path: String) -> Result<String, String> {
+fn fusen_move_to_trash(
+    window: tauri::Window,
+    state: State<'_, Mutex<AppState>>,
+    path: String
+) -> Result<String, String> {
     let current_path = Path::new(&path);
     let parent = current_path.parent().ok_or("no parent")?;
     
@@ -115,6 +120,9 @@ fn fusen_move_to_trash(state: State<'_, Mutex<AppState>>, path: String) -> Resul
     storage::rename_note(&path, &new_path_str)?;
     
     logic::apply_remove_note(&mut *state.lock().unwrap(), &path);
+    
+    // Close the window after successful trash move
+    let _ = window.close();
     
     Ok(new_path_str)
 }

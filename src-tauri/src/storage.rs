@@ -45,6 +45,7 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
 pub fn read_note(path: &str) -> Result<Note, String> {
     let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
     
+    // TEMP: Return full content as body - frontend will split
     Ok(Note {
         body: content,
         frontmatter: String::new(),
@@ -85,27 +86,20 @@ pub fn open_in_explorer(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        // explorer /select,"<path>"
-        // Using args carefully to match specific explorer syntax if needed.
-        // Usually explorer /select,<path> works.
-        // Command::new("explorer").args(["/select,", path]) often results in quoting issues if path has spaces: explorer "/select," "path" -> explorer might fail.
-        // Safest on Windows is to construct the whole string if possible, or assume simple path handling.
-        // But std::process::Command quotes args.
-        // Workaround: Use "explorer" with single arg "/select,<path>"?
-        // Let's try separate args first as it's cleaner.
-        // If path has spaces, Command will quote "path". explorer /select,"path with space" works.
-        // But "/select," shouldn't be quoted? It is weird.
-        // Actually, Command::new("explorer").arg(format!("/select,{}", path)) works best if one arg.
+        // Convert forward slashes to backslashes for Windows
+        let windows_path = path.replace('/', "\\");
+        
+        // Use explorer /select to open and highlight the file
         Command::new("explorer")
-            .arg(format!("/select,{}", path))
+            .arg("/select,")
+            .arg(&windows_path)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     #[cfg(not(target_os = "windows"))]
     {
-        // Fallback for non-windows (though user is on windows)
-        // Just open the parent dir
-        // ...
+        // Fallback for non-windows
+        return Err("Not implemented for this platform".to_string());
     }
     Ok(())
 }
