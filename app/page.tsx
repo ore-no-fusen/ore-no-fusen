@@ -39,7 +39,8 @@ function OrchestratorContent() {
 
   const [folderPath, setFolderPath] = useState<string>('');
   const [files, setFiles] = useState<NoteMeta[]>([]);
-  const [setupRequired, setSetupRequired] = useState(false);
+  // プロダクションビルド対応：初期値をtrueにして、チェック完了後にfalseに更新
+  const [setupRequired, setSetupRequired] = useState(true);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
 
   // State同期 (Single Source of Truth)
@@ -298,6 +299,7 @@ function OrchestratorContent() {
           console.log('[Setup Check] Window focused');
         } else {
           console.log('[Setup Check] Setup not required, base path exists');
+          setSetupRequired(false);  // セットアップ不要の場合はfalseに設定
         }
       } catch (e) {
         console.error('Failed to check base_path:', e);
