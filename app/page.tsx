@@ -312,15 +312,16 @@ function OrchestratorContent() {
       }
     }
 
-    // mainウィンドウでのみチェック
+    // デバッグ：起動時ウィンドウ情報
     const win = getCurrentWindow();
-    console.log('[Setup Check] Current window label:', win.label);
-    console.log('[Setup Check] Has path param:', !!searchParams.get('path'));
-    if (win.label === 'main' && !searchParams.get('path')) {
+    console.log('[BOOT] label=', win.label, 'pathParam=', !!searchParams.get('path'));
+
+    // pathパラメータが無い場合（管理画面/初回起動ルート）は必ずcheckSetupを実行
+    if (!searchParams.get('path')) {
       console.log('[Setup Check] Executing check...');
       checkSetup();
     } else {
-      console.log('[Setup Check] Skipping check');
+      console.log('[Setup Check] Skipping check (sticky note window)');
       setIsCheckingSetup(false);
     }
   }, [searchParams]);
