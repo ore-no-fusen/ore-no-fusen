@@ -1,5 +1,4 @@
 
-
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::{State, Manager, AppHandle, Emitter};
@@ -9,6 +8,7 @@ mod state;
 mod logic;
 mod storage;
 mod tray;
+mod logger;  // ログシステム
 
 use state::{AppState, Note, NoteMeta};
 
@@ -209,7 +209,11 @@ fn fusen_open_containing_folder(path: String) -> Result<(), String> {
 // UC-01: ベースパスの取得
 #[tauri::command]
 fn get_base_path(state: State<'_, Mutex<AppState>>) -> Option<String> {
-    state.lock().unwrap().base_path.clone()
+    let result = state.lock().unwrap().base_path.clone();
+    logger::log_debug("get_base_path called");
+    logger::log_debug(&format!("Returning: {:?}", result));
+    logger::log_debug(&format!("Type: {}", if result.is_none() { "None" } else { "Some" }));
+    result
 }
 
 // UC-01, UC-02, UC-03: セットアップ統合コマンド
@@ -222,31 +226,60 @@ fn setup_first_launch(
 ) -> Result<String, String> {
     use std::path::PathBuf;
     
+    logger::log_action("Setup: User initiated first launch setup");
+    
     // 1. ベースパスを決定
     let base_path = if use_default {
         // 推奨パス: Documents/OreNoFusen
         let docs = std::env::var("USERPROFILE")
-            .map_err(|_| "USERPROFILE not found".to_string())?;
+            .map_err(|_| {
+                logger::log_error("USERPROFILE environment variable not found");
+                "USERPROFILE not found".to_string()
+            })?;
         PathBuf::from(docs).join("Documents").join("OreNoFusen")
             .to_string_lossy().to_string()
     } else {
-        custom_path.ok_or("Custom path required".to_string())?
+        custom_path.ok_or_else(|| {
+            logger::log_error("Custom path required but not provided");
+            "Custom path required".to_string()
+        })?
     };
     
+    logger::log_action(&format!("Setup: Vault folder selected - {}", 
+        if use_default { "Default" } else { "Custom" }));
+    logger::log_debug(&format!("Vault folder: {}", logger::sanitize_path(&base_path)));
+    
     // 2. UC-03: フォルダ作成 + trashフォルダ作成
-    storage::ensure_directory(&base_path)?;
-    storage::ensure_trash_dir(&PathBuf::from(&base_path))?;
+    storage::ensure_directory(&base_path)
+        .map_err(|e| {
+            logger::log_error(&format!("Failed to create vault directory: {}", e));
+            e
+        })?;
+    storage::ensure_trash_dir(&PathBuf::from(&base_path))
+        .map_err(|e| {
+            logger::log_error(&format!("Failed to create trash directory: {}", e));
+            e
+        })?;
     
     // 3. UC-02: インポート（オプション）
     if let Some(import_from) = import_path {
-        storage::import_files(&import_from, &base_path)?;
+        logger::log_action("Setup: Importing notes from existing folder");
+        storage::import_files(&import_from, &base_path)
+            .map_err(|e| {
+                logger::log_error(&format!("Failed to import files: {}", e));
+                e
+            })?;
     }
     
     // 4. 設定保存
     let settings = storage::Settings {
         base_path: Some(base_path.clone()),
     };
-    storage::save_settings(&settings)?;
+    storage::save_settings(&settings)
+        .map_err(|e| {
+            logger::log_error(&format!("Failed to save settings: {}", e));
+            e
+        })?;
     
     // 5. AppState更新
     {
@@ -255,11 +288,9 @@ fn setup_first_launch(
         app_state.folder_path = Some(base_path.clone());
     }
     
+    logger::log_info("Setup completed successfully");
     Ok(base_path)
 }
-
-
-
 
 #[tauri::command]
 fn show_context_menu(
@@ -307,18 +338,39 @@ pub fn run() {
              // handle_menu_event(app, &event);
         }) */
         .setup(|app| {
+            // アプリケーション起動ログ
+            logger::log_app_start();
+            
             // UC-01: 設定ファイルからbase_pathを読み込み、AppStateに反映
-            if let Ok(settings) = storage::load_settings() {
-                let state: State<Mutex<AppState>> = app.state();
-                let mut app_state = state.lock().unwrap();
-                app_state.base_path = settings.base_path.clone();
-                app_state.folder_path = settings.base_path;
+            logger::log_info("Loading settings...");
+            match storage::load_settings() {
+                Ok(settings) => {
+                    logger::log_info("Settings loaded successfully");
+                    logger::log_debug(&format!("base_path: {:?}", settings.base_path));
+                    
+                    let state: State<Mutex<AppState>> = app.state();
+                    let mut app_state = state.lock().unwrap();
+                    app_state.base_path = settings.base_path.clone();
+                    app_state.folder_path = settings.base_path.clone();
+                    
+                    if settings.base_path.is_some() {
+                        logger::log_info("Vault folder configured");
+                    } else {
+                        logger::log_info("No vault folder - Setup required");
+                    }
+                },
+                Err(e) => {
+                    logger::log_warn(&format!("Settings file not found or invalid: {}", e));
+                    logger::log_info("First launch or clean install detected");
+                }
             }
             
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().build())?;
             }
+            
             tray::create_tray(app.handle())?;
+            logger::log_info("App initialization completed");
             Ok(())
         })
         .run(tauri::generate_context!())

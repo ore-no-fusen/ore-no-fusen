@@ -286,8 +286,12 @@ function OrchestratorContent() {
       console.log('[Setup Check] Starting...');
       try {
         const basePath = await invoke<string | null>('get_base_path');
-        console.log('[Setup Check] basePath:', basePath);
-        if (!basePath) {
+        console.log('[Setup Check] basePath:', basePath, 'type:', typeof basePath, 'length:', basePath?.length);
+
+        // より厳密なチェック: null, undefined, 空文字列のいずれもセットアップ必要
+        const needsSetup = !basePath || basePath.trim() === '';
+
+        if (needsSetup) {
           // セットアップが必要な場合のみウィンドウを表示
           console.log('[Setup Check] Setup required, showing window...');
           setSetupRequired(true);
@@ -298,8 +302,21 @@ function OrchestratorContent() {
           await win.setFocus();
           console.log('[Setup Check] Window focused');
         } else {
-          console.log('[Setup Check] Setup not required, base path exists');
+          console.log('[Setup Check] Setup not required, base path exists:', basePath);
           setSetupRequired(false);  // セットアップ不要の場合はfalseに設定
+          // セットアップ不要の場合、mainウィンドウを非表示にする（付箋復元時用）
+          const win = getCurrentWindow();
+          if (win.label === 'main') {
+            // 少し待ってから非表示（付箋復元処理に委ねる）
+            setTimeout(async () => {
+              try {
+                await win.hide();
+                console.log('[Setup Check] Main window hidden (setup not required)');
+              } catch (e) {
+                console.error('[Setup Check] Failed to hide window:', e);
+              }
+            }, 500);
+          }
         }
       } catch (e) {
         console.error('Failed to check base_path:', e);
@@ -325,6 +342,7 @@ function OrchestratorContent() {
       setIsCheckingSetup(false);
     }
   }, [searchParams]);
+
 
   // 起動時復元
   useEffect(() => {
@@ -406,7 +424,7 @@ function OrchestratorContent() {
 
   // パラメータチェック
   if (searchParams.get('path')) {
-    return null; // 付箋ウィンドウとして開かれている（StickyNoteコンポーネントで処理）
+    return <StickyNote />; // 付箋ウィンドウとして開かれている
   }
 
   // セットアップチェック中はローディング表示（静的HTML対策）
@@ -422,10 +440,18 @@ function OrchestratorContent() {
   }
 
   if (setupRequired) {
-    return <SetupScreen onComplete={() => {
+    return <SetupScreen onComplete={async () => {
       setSetupRequired(false);
       // セットアップ完了後、State再取得
-      syncState();
+      await syncState();
+      // メインウィンドウを表示
+      try {
+        const win = getCurrentWindow();
+        await win.show();
+        await win.setFocus();
+      } catch (e) {
+        console.error('Failed to show main window:', e);
+      }
     }} />;
   }
 
@@ -467,7 +493,14 @@ function OrchestratorContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={
+      <div className="h-screen w-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-900 mb-4">俺の付箋</div>
+          <div className="text-gray-400">読み込み中...</div>
+        </div>
+      </div>
+    }>
       <OrchestratorContent />
     </Suspense>
   );
