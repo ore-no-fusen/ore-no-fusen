@@ -26,8 +26,15 @@ pub struct Note {
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct AppState {
+    pub base_path: Option<String>,  // NEW: UC-01 - サンドボックスベースフォルダ
     pub folder_path: Option<String>,
     pub notes: Vec<NoteMeta>,
     pub selected_path: Option<String>,
     pub active_context_menu_path: Option<String>,
+}
+
+// NEW: UC-01 - 設定ファイル用の構造体
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+pub struct Settings {
+    pub base_path: Option<String>,
 }

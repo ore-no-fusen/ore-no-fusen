@@ -7,6 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
 import StickyNote from './components/StickyNote';
+import SetupScreen from './components/SetupScreen';
 
 // 型定義
 type NoteMeta = {
@@ -38,6 +39,8 @@ function OrchestratorContent() {
 
   const [folderPath, setFolderPath] = useState<string>('');
   const [files, setFiles] = useState<NoteMeta[]>([]);
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
 
   // State同期 (Single Source of Truth)
   const syncState = useCallback(async () => {
@@ -276,6 +279,50 @@ function OrchestratorContent() {
     };
   }, []);
 
+  // UC-01: セットアップチェック
+  useEffect(() => {
+    async function checkSetup() {
+      console.log('[Setup Check] Starting...');
+      try {
+        const basePath = await invoke<string | null>('get_base_path');
+        console.log('[Setup Check] basePath:', basePath);
+        if (!basePath) {
+          // セットアップが必要な場合のみウィンドウを表示
+          console.log('[Setup Check] Setup required, showing window...');
+          setSetupRequired(true);
+          const win = getCurrentWindow();
+          console.log('[Setup Check] Window label:', win.label);
+          await win.show();
+          console.log('[Setup Check] Window shown');
+          await win.setFocus();
+          console.log('[Setup Check] Window focused');
+        } else {
+          console.log('[Setup Check] Setup not required, base path exists');
+        }
+      } catch (e) {
+        console.error('Failed to check base_path:', e);
+        setSetupRequired(true);
+        const win = getCurrentWindow();
+        await win.show();
+        await win.setFocus();
+      } finally {
+        setIsCheckingSetup(false);
+      }
+    }
+
+    // mainウィンドウでのみチェック
+    const win = getCurrentWindow();
+    console.log('[Setup Check] Current window label:', win.label);
+    console.log('[Setup Check] Has path param:', !!searchParams.get('path'));
+    if (win.label === 'main' && !searchParams.get('path')) {
+      console.log('[Setup Check] Executing check...');
+      checkSetup();
+    } else {
+      console.log('[Setup Check] Skipping check');
+      setIsCheckingSetup(false);
+    }
+  }, [searchParams]);
+
   // 起動時復元
   useEffect(() => {
     if (isInitialized()) return;
@@ -287,22 +334,19 @@ function OrchestratorContent() {
     setInitialized();
 
     if (!searchParams.get('path')) {
-      const savedFolder = localStorage.getItem('lastFolder');
+      // UC-01: セットアップが完了していなければ復元をスキップ
+      const checkAndRestore = async () => {
+        const basePath = await invoke<string | null>('get_base_path');
 
-      if (!savedFolder || savedFolder.trim() === '') {
-        setTimeout(async () => {
-          try {
-            const win = getCurrentWindow();
-            await win.show();
-            await win.setFocus();
-          } catch (e) {
-            console.error('Failed to show window:', e);
-          }
-        }, 500);
-        return;
-      }
+        // base_pathが未設定の場合は復元しない（セットアップ画面へ）
+        if (!basePath) {
+          // セットアップが必要な場合は既にウィンドウ表示済み
+          return;
+        }
 
-      if (savedFolder && savedFolder.trim() !== '') {
+        // base_pathが設定されている場合のみ復元処理を実行
+        const savedFolder = basePath;
+
         setTimeout(async () => {
           try {
             // Rust側のStateを初期化するために一度リスト取得を呼ぶ必要がある
@@ -326,19 +370,57 @@ function OrchestratorContent() {
                   height: note.height
                 });
               }
-            }
 
+              // 付箋をすべて開いたら、mainウィンドウを非表示にする
+              setTimeout(async () => {
+                try {
+                  console.log('[Restore] Attempting to hide main window...');
+                  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                  const mainWindow = await WebviewWindow.getByLabel('main');
+                  if (mainWindow) {
+                    console.log('[Restore] Main window found, calling hide()...');
+                    await mainWindow.hide();
+                    console.log('[Restore] Main window hidden successfully');
+                  } else {
+                    console.error('[Restore] Main window not found');
+                  }
+                } catch (e) {
+                  console.error('[Restore] Failed to hide main window:', e);
+                }
+              }, 1000);
+            }
           } catch (e) {
             console.error('Failed during restoration:', e);
           }
         }, 800);
-      }
+      };
+
+      checkAndRestore().catch(e => {
+        console.error('Failed to check setup:', e);
+      });
     }
   }, []);
 
   // URL パラメータで分岐
   if (urlPath) {
     return <StickyNote />;
+  }
+
+  // UC-01: セットアップ画面
+  if (isCheckingSetup) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center">
+        <div className="text-gray-500">読み込み中...</div>
+      </div>
+    );
+  }
+
+  if (setupRequired) {
+    return <SetupScreen onComplete={() => {
+      setSetupRequired(false);
+      // セットアップ完了後、State再取得
+      syncState();
+    }} />;
   }
 
   // 管理画面

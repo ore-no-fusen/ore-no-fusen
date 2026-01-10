@@ -206,6 +206,58 @@ fn fusen_open_containing_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// UC-01: ベースパスの取得
+#[tauri::command]
+fn get_base_path(state: State<'_, Mutex<AppState>>) -> Option<String> {
+    state.lock().unwrap().base_path.clone()
+}
+
+// UC-01, UC-02, UC-03: セットアップ統合コマンド
+#[tauri::command]
+fn setup_first_launch(
+    state: State<'_, Mutex<AppState>>,
+    use_default: bool,
+    custom_path: Option<String>,
+    import_path: Option<String>
+) -> Result<String, String> {
+    use std::path::PathBuf;
+    
+    // 1. ベースパスを決定
+    let base_path = if use_default {
+        // 推奨パス: Documents/OreNoFusen
+        let docs = std::env::var("USERPROFILE")
+            .map_err(|_| "USERPROFILE not found".to_string())?;
+        PathBuf::from(docs).join("Documents").join("OreNoFusen")
+            .to_string_lossy().to_string()
+    } else {
+        custom_path.ok_or("Custom path required".to_string())?
+    };
+    
+    // 2. UC-03: フォルダ作成 + trashフォルダ作成
+    storage::ensure_directory(&base_path)?;
+    storage::ensure_trash_dir(&PathBuf::from(&base_path))?;
+    
+    // 3. UC-02: インポート（オプション）
+    if let Some(import_from) = import_path {
+        storage::import_files(&import_from, &base_path)?;
+    }
+    
+    // 4. 設定保存
+    let settings = storage::Settings {
+        base_path: Some(base_path.clone()),
+    };
+    storage::save_settings(&settings)?;
+    
+    // 5. AppState更新
+    {
+        let mut app_state = state.lock().unwrap();
+        app_state.base_path = Some(base_path.clone());
+        app_state.folder_path = Some(base_path.clone());
+    }
+    
+    Ok(base_path)
+}
+
 
 
 
@@ -247,12 +299,22 @@ pub fn run() {
             fusen_update_geometry,
             fusen_toggle_always_on_top,
             fusen_open_containing_folder,
-            show_context_menu
+            show_context_menu,
+            get_base_path,
+            setup_first_launch
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);
         }) */
         .setup(|app| {
+            // UC-01: 設定ファイルからbase_pathを読み込み、AppStateに反映
+            if let Ok(settings) = storage::load_settings() {
+                let state: State<Mutex<AppState>> = app.state();
+                let mut app_state = state.lock().unwrap();
+                app_state.base_path = settings.base_path.clone();
+                app_state.folder_path = settings.base_path;
+            }
+            
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().build())?;
             }
