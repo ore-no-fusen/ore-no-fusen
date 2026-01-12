@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 
 // 型定義
 type NoteMeta = {
@@ -60,6 +61,10 @@ export default function StickyNote() {
     const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
     // リネームによる更新かどうかを判定するフラグ
     const isRenamingRef = useRef(false);
+
+    // [New] ドラッグ開始制限用のタイマー
+    const lastEditEndedAt = useRef<number>(0);
+    const editorRef = useRef<RichTextEditorRef>(null);
 
     // ホバー管理
     const [isHover, setIsHover] = useState(false);
@@ -249,15 +254,44 @@ export default function StickyNote() {
         }
     }, [noteBackgroundColor]);
 
+    // チェックボックスのトグル処理
+    const handleToggleCheckbox = (lineIndex: number) => {
+        const lines = (editBody || content).split('\n');
+        if (lineIndex < 0 || lineIndex >= lines.length) return;
+
+        const line = lines[lineIndex];
+        const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
+
+        if (taskMatch) {
+            const isChecked = taskMatch[2].toLowerCase() === 'x';
+            const newChar = isChecked ? ' ' : 'x';
+            lines[lineIndex] = `${taskMatch[1]}${newChar}${taskMatch[3]}`;
+
+            const newText = lines.join('\n');
+            setEditBody(newText);
+            setSavePending(true);
+        }
+    };
+
     // 編集モード開始
-    const handleEditStart = (offset?: number) => {
+    const handleEditStart = (cursorPos?: number) => {
+        if (isEditing) return;
         setIsEditing(true);
-        setCursorPosition(offset ?? null);
+        setEditBody(content); // 最新の状態をセット
+        setCursorPosition(cursorPos ?? null);
     };
 
     // 編集モード終了
-    const handleEditBlur = () => {
+    const handleEditBlur = (currentBody?: string) => {
+        if (!isEditing) return;
         setIsEditing(false);
+        lastEditEndedAt.current = Date.now(); // 終了時刻を記録
+
+        // 最後に渡された値があれば反映
+        if (currentBody !== undefined && currentBody !== editBody) {
+            setEditBody(currentBody);
+            setSavePending(true);
+        }
     };
 
     // 編集内容変更
@@ -286,42 +320,55 @@ export default function StickyNote() {
 
     // ドラッグ開始
     const handleDragStart = useCallback(async (e: React.PointerEvent) => {
-        // 左クリック(0)以外はドラッグ処理しない（右クリックメニューを表示させるため）
-        if (e.button !== 0) {
+        // 左クリック(0)以外はドラッグ処理しない
+        if (e.button !== 0) return;
+
+        // 編集モード中、または終了直後(500ms)はガード
+        if (isEditing || Date.now() - lastEditEndedAt.current < 500) {
             return;
         }
 
         const target = e.target as HTMLElement;
 
-        // タイトルバー（.file-name）のクリックは常にドラッグ許可
-        // ただし、もし .file-name 内にボタン等があれば除外する必要があるが、現状はテキストのみ
-        if (
-            target.classList.contains('file-name')
-        ) {
-            // pass
-        } else {
-            // インタラクティブ要素上ではドラッグしない
-            if (
-                target.tagName === 'BUTTON' ||
-                target.tagName === 'A' ||
-                target.tagName === 'TEXTAREA' ||
-                target.tagName === 'INPUT' ||
-                target.closest('button')
-            ) {
-                return;
-            }
-            // 記事本文（テキスト部分）をクリックした場合はドラッグしない
-            if (target.closest('article') || target.closest('p, h1, h2, h3, li, span, strong, em, code, pre')) {
+        // 特定要素（ボタン、エディタ、本文）上では開始しない
+        if (target.closest('button') || target.closest('.editorHost') || target.closest('article')) {
+            // タイトルバー（.file-name）だけは特別に許可
+            if (!target.classList.contains('file-name')) {
                 return;
             }
         }
 
-        try {
-            await getCurrentWindow().startDragging();
-        } catch (err) {
-            console.error('startDragging failed', err);
-        }
-    }, []);
+        // トリプルジップロック：距離(10px)・時間(150ms)・ボタン状態(押下中)
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startTime = Date.now();
+
+        const onPointerMove = (moveEvent: PointerEvent) => {
+            const dx = moveEvent.clientX - startX;
+            const dy = moveEvent.clientY - startY;
+            const elapsed = Date.now() - startTime;
+
+            if ((Math.abs(dx) > 10 || Math.abs(dy) > 10) && elapsed > 150 && moveEvent.buttons === 1) {
+                cleanup();
+                try {
+                    getCurrentWindow().startDragging();
+                } catch (err) {
+                    console.error('startDragging failed', err);
+                }
+            }
+        };
+
+        const onPointerUp = () => cleanup();
+        const cleanup = () => {
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+        };
+
+        e.preventDefault();
+        e.stopPropagation();
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+    }, [isEditing]);
 
 
 
@@ -697,12 +744,58 @@ export default function StickyNote() {
             {isEditing ? (
                 <>
                     <button
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertMarkdown('**')}
-                        className="font-bold text-red-600 hover:bg-gray-100 px-1 rounded text-sm"
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onClick={() => editorRef.current?.insertBold()}
+                        className="font-bold text-red-600 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
                         title="太字 (赤)"
                     >
                         B
+                    </button>
+                    <button
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onClick={() => editorRef.current?.insertHeading1()}
+                        className="font-bold text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
+                        title="見出し1"
+                    >
+                        <span style={{ fontSize: '14px', position: 'relative', top: '-1px' }}>H<sub style={{ bottom: '0', fontSize: '10px' }}>1</sub></span>
+                    </button>
+                    <button
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onClick={() => editorRef.current?.insertList()}
+                        className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
+                        title="箇条書き"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="9" y1="6" x2="20" y2="6"></line>
+                            <line x1="9" y1="12" x2="20" y2="12"></line>
+                            <line x1="9" y1="18" x2="20" y2="18"></line>
+                            <circle cx="5" cy="6" r="1.5" fill="currentColor"></circle>
+                            <circle cx="5" cy="12" r="1.5" fill="currentColor"></circle>
+                            <circle cx="5" cy="18" r="1.5" fill="currentColor"></circle>
+                        </svg>
+                    </button>
+                    <button
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onClick={() => editorRef.current?.insertCheckbox()}
+                        className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
+                        title="チェックボックス"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <polyline points="9 11 12 14 22 4"></polyline>
+                        </svg>
                     </button>
                 </>
             ) : (
@@ -732,76 +825,196 @@ export default function StickyNote() {
             onPointerDown={handleDragStart}
             style={{ backgroundColor: noteBackgroundColor }}
         >
-            <HoverBar show={isHover} />
-
             <main
-                className="flex-1 overflow-y-auto h-full w-full notePaper"
-                style={{ backgroundColor: noteBackgroundColor }}
+                className="flex-1 overflow-y-auto h-full w-full notePaper noteMain pb-10"
+                style={{
+                    backgroundColor: noteBackgroundColor,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    padding: '12px', // パディングを固定してズレを防止
+                    boxSizing: 'border-box',
+                    position: 'relative' // HoverBarのsticky基準にする
+                }}
             >
+                {/* ツールバーをスクロールに追従させるためのstickyコンテナ */}
+                <div style={{
+                    position: 'sticky',
+                    top: '-4px',
+                    zIndex: 100,
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    pointerEvents: 'none',
+                    height: 0,
+                    marginBottom: '10px'
+                }}>
+                    <HoverBar show={isHover} />
+                </div>
                 {loading ? (
                     <div className="text-center text-gray-300 py-8 text-xs font-mono opacity-30">Loading...</div>
                 ) : isEditing ? (
-                    <textarea
-                        className="sticky-paper-editor notePaper block w-full resize-none overflow-hidden"
-                        value={editBody}
-                        onChange={handleEditChange}
-                        onKeyDown={handleKeyDown}
-                        onBlur={handleEditBlur}
-                        placeholder="内容を入力..."
-                        style={{ backgroundColor: noteBackgroundColor }}
-                        ref={(el) => {
-                            // @ts-ignore
-                            textareaRef.current = el;
-                            if (el) {
-                                requestAnimationFrame(() => {
-                                    el.style.height = 'auto';
-                                    el.style.height = el.scrollHeight + 'px';
-                                });
-                            }
-                        }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                    />
+                    <div className="editorHost notePaper">
+                        <RichTextEditor
+                            ref={editorRef}
+                            value={editBody}
+                            onChange={(newValue) => {
+                                setEditBody(newValue);
+                                setSavePending(true);
+                            }}
+                            onBlur={handleEditBlur}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape') handleEditBlur();
+                            }}
+                            backgroundColor={noteBackgroundColor}
+                        />
+                    </div>
                 ) : (
                     <article
                         className="notePaper max-w-none"
-                        style={{ backgroundColor: noteBackgroundColor, whiteSpace: 'pre-wrap', cursor: 'text' }}
+                        style={{
+                            backgroundColor: noteBackgroundColor,
+                            whiteSpace: 'pre-wrap',
+                            cursor: 'text',
+                            padding: 0, // 親のmainでパディングしているので0にする
+                            fontSize: '10.5px', // 明示的に指定
+                            lineHeight: '1.4',
+                            letterSpacing: '0.01em'
+                        }}
                         onClick={(e) => {
-                            e.stopPropagation();
+                            // テキストのどこをクリックしたかによって、編集モードの初期カーソル位置を決めたい（将来用）
+                            const selection = window.getSelection();
+                            let offset = 0;
+                            if (selection && selection.rangeCount > 0) {
+                                // 簡易的なオフセット取得（完全ではない）
+                                // handleEditStart(offset);
+                            }
                             handleEditStart();
                         }}
                     >
                         {content ? (
                             <div style={{ whiteSpace: 'pre-wrap' }}>
                                 {content.split('\n').map((line, i) => {
+                                    // 1行の共通スタイル
+                                    const lineStyle: React.CSSProperties = {
+                                        margin: 0,
+                                        padding: 0,
+                                        lineHeight: '1.4',
+                                        minHeight: '1.4em', // 14.7px相当。エディタの1行と確実に一致させる
+                                        display: 'flex',
+                                        alignItems: 'flex-start'
+                                    };
+
                                     if (line.trim() === '') {
-                                        return <div key={i} style={{ margin: 0 }}>&nbsp;</div>;
+                                        return <div key={i} data-line-index={i} style={lineStyle}>&nbsp;</div>;
                                     }
 
                                     if (line.startsWith('# ')) {
-                                        return <div key={i} style={{ fontWeight: 700, fontSize: '11px', margin: 0 }}>{line.substring(2)}</div>;
-                                    } else if (line.startsWith('## ')) {
-                                        return <div key={i} style={{ fontWeight: 700, fontSize: '11px', margin: 0 }}>{line.substring(3)}</div>;
-                                    } else if (line.startsWith('### ')) {
-                                        return <div key={i} style={{ fontWeight: 700, fontSize: '11px', margin: 0 }}>{line.substring(4)}</div>;
+                                        return (
+                                            <div key={i} data-line-index={i} style={{ ...lineStyle, fontWeight: 700 }}>
+                                                {line.substring(2)}
+                                            </div>
+                                        );
+                                    }
+
+                                    // チェックボックス (タスクリスト)
+                                    const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
+                                    if (taskMatch) {
+                                        const isChecked = taskMatch[2].toLowerCase() === 'x';
+                                        return (
+                                            <div key={i} data-line-index={i} style={lineStyle}>
+                                                <span
+                                                    onClick={(e) => {
+                                                        e.stopPropagation(); // 編集モード移行を防ぐ
+                                                        handleToggleCheckbox(i);
+                                                    }}
+                                                    style={{
+                                                        marginRight: '6px',
+                                                        color: isChecked ? '#4caf50' : '#888',
+                                                        flexShrink: 0,
+                                                        display: 'inline-block',
+                                                        width: '1em',
+                                                        textAlign: 'center',
+                                                        cursor: 'pointer', // 押せることが分かるように
+                                                        userSelect: 'none'
+                                                    }}
+                                                    title={isChecked ? '未完了にする' : '完了にする'}
+                                                >
+                                                    {isChecked ? '☑' : '☐'}
+                                                </span>
+                                                <span style={{ textDecoration: isChecked ? 'line-through' : 'none', opacity: isChecked ? 0.6 : 1 }}>
+                                                    {taskMatch[3].substring(2)}
+                                                </span>
+                                            </div>
+                                        );
+                                    }
+
+                                    // 箇条書き (リスト)
+                                    const listMatch = line.match(/^[\-\*\+]\s+(.*)$/);
+                                    if (listMatch) {
+                                        return (
+                                            <div key={i} data-line-index={i} style={lineStyle}>
+                                                <span style={{
+                                                    marginRight: '8px',
+                                                    color: '#ff8c00',
+                                                    flexShrink: 0,
+                                                    display: 'inline-block',
+                                                    width: '1em',
+                                                    textAlign: 'center'
+                                                }}>•</span>
+                                                <span>{listMatch[1]}</span>
+                                            </div>
+                                        );
                                     }
 
                                     const parts = line.split(/(\*\*[^*]+\*\*)/g);
                                     const rendered = parts.map((part, j) => {
                                         if (part.startsWith('**') && part.endsWith('**')) {
-                                            return <strong key={j} style={{ color: 'red', fontWeight: 'bold' }}>{part.slice(2, -2)}</strong>;
+                                            return (
+                                                <strong key={j} style={{ color: 'red', fontWeight: 'bold' }}>
+                                                    {part.slice(2, -2)}
+                                                </strong>
+                                            );
                                         }
                                         return part;
                                     });
 
-                                    return <div key={i} style={{ margin: 0 }}>{rendered}</div>;
+                                    return (
+                                        <div key={i} data-line-index={i} style={lineStyle}>
+                                            {rendered}
+                                        </div>
+                                    );
                                 })}
-
                             </div>
                         ) : (
-                            <div className="text-xs opacity-20">No content (click to edit)</div>
+                            <div className="text-gray-400 italic opacity-50 text-xs">クリックして入力...</div>
                         )}
                     </article>
                 )}
+
+                {/* 
+                  【フッタードラッグ領域】
+                   閲覧モード：ドラッグ可能領域、クリックで編集
+                   編集モード：クリックで保存して閲覧モードへ戻る
+                */}
+                <div
+                    className="note-footer"
+                    style={{
+                        flexGrow: 1,
+                        minHeight: '100px',
+                        cursor: 'grab',
+                    }}
+                    onPointerDown={(e) => {
+                        // 【完全独立型ドラッグ管理】
+                        // 親要素(noteShell)へのイベント伝播を常に遮断し、競合を物理的に排除する
+                        e.stopPropagation();
+
+                        // 閲覧モードかつクールダウン期間外の場合のみ、ここからドラッグを開始する
+                        if (!isEditing && (Date.now() - lastEditEndedAt.current >= 500)) {
+                            handleDragStart(e);
+                        }
+                    }}
+                    onClick={() => isEditing && handleEditBlur(editBody)}
+                    title="ドラッグで移動 / クリックで保存"
+                />
             </main>
         </div>
     );

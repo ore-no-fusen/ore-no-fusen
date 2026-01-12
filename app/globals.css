@@ -623,3 +623,137 @@ body {
   /* bodyでのフォント指定は最低限にする（mainで上書きするため） */
   font-family: system-ui, sans-serif;
 }
+
+/* =========================================
+   RichTextEditor Styles
+   ========================================= */
+
+/* エディタラッパー */
+.editor-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* プレビューレイヤー */
+.editor-preview {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+/* プレビュー内の各行（基本） */
+.preview-line {
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.4 !important;
+}
+
+/* 見出し1（編集モード） */
+.editor-preview .preview-h1 {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin-top: 2px !important;
+  margin-bottom: 4px !important;
+}
+
+/* Markdownマーカー（# や **を薄く） */
+.editor-preview .preview-marker {
+  opacity: 0.25 !important;
+  color: #999 !important;
+  font-weight: normal !important;
+}
+
+/* 強調（太字+赤） */
+.editor-preview .preview-bold {
+  font-weight: bold !important;
+  color: red !important;
+}
+
+/* textarea（透明化）*/
+.editor-textarea {
+  background: transparent !important;
+  color: transparent !important;
+  caret-color: #333 !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+}
+
+/* textarea選択範囲 */
+.editor-textarea::selection {
+  background-color: rgba(0, 122, 255, 0.3) !important;
+  color: rgba(0, 0, 0, 0.5) !important;
+}
+
+/* textareaプレースホルダー */
+.editor-textarea::placeholder {
+  color: rgba(0, 0, 0, 0.2) !important;
+  -webkit-text-fill-color: rgba(0, 0, 0, 0.2) !important;
+}
+/* =========================================
+   Editor Layout Fix
+   ========================================= */
+
+/* main(notePaper) �̒��ŃG�f�B�^��L�΂����߂̔� */
+.editorHost {
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+/* main��flex���� */
+.noteMain {
+  height: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+/* =========================================
+   RichTextEditor Preview Styles
+   ========================================= */
+
+/* マーカー文字（# や ** など）を薄く表示 */
+.preview-marker {
+  opacity: 0.25;
+  color: #666;
+}
+
+/* 見出しテキストを太字で強調 */
+.preview-h1-text {
+  font-weight: 900;
+  color: #000;
+}
+
+/* 強調テキストを赤い太字で表示 */
+.preview-bold {
+  font-weight: bold;
+  color: #d32f2f;
+}
+
+/* プレビュー行のスタイル */
+.preview-line {
+  margin: 0;
+  padding: 0;
+}
+
+/* =========================================
+   CodeMirror Markdown Decoration Styles
+   ========================================= */
+
+/* マーカー文字（# や ** など）を薄く表示 */
+.cm-md-marker {
+  opacity: 0.3;
+  color: #777;
+}
+
+/* 見出しテキスト */
+.cm-md-h1 {
+  font-size: 1.1em;
+  font-weight: 700;
+}
+
+/* 強調テキスト（赤太字） */
+.cm-md-bold {
+  color: #c00;
+  font-weight: 800;
+}
