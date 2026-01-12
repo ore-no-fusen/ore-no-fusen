@@ -195,3 +195,190 @@ pub fn open_in_explorer(path: &str) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    // === write_note と read_note のテスト ===
+    // ファイルI/O操作の基本
+    
+    #[test]
+    fn test_write_and_read_note() {
+        // 一時ディレクトリを作成（テスト終了時に自動削除される）
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_note.md");
+        let file_path_str = file_path.to_string_lossy().to_string();
+        
+        // テストデータ
+        let content = "---\nseq: 1\n---\n\nテスト本文";
+        
+        // 1. 書き込み
+        let write_result = write_note(&file_path_str, content);
+        assert!(write_result.is_ok(), "書き込みが成功すること");
+        
+        // 2. ファイルが存在することを確認
+        assert!(file_path.exists(), "ファイルが作成されていること");
+        
+        // 3. 読み込み
+        let read_result = read_note(&file_path_str);
+        assert!(read_result.is_ok(), "読み込みが成功すること");
+        
+        // 4. 内容が一致することを確認
+        let note = read_result.unwrap();
+        assert_eq!(note.body, content, "書き込んだ内容と読み込んだ内容が一致すること");
+    }
+
+    #[test]
+    fn test_write_note_creates_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("new_file.md");
+        let file_path_str = file_path.to_string_lossy().to_string();
+        
+        // ファイルがまだ存在しない
+        assert!(!file_path.exists());
+        
+        // 書き込み
+        write_note(&file_path_str, "新しいファイル").unwrap();
+        
+        // ファイルが作成された
+        assert!(file_path.exists());
+    }
+
+    #[test]
+    fn test_write_note_overwrites_existing() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("overwrite.md");
+        let file_path_str = file_path.to_string_lossy().to_string();
+        
+        // 最初の書き込み
+        write_note(&file_path_str, "最初の内容").unwrap();
+        
+        // 上書き
+        write_note(&file_path_str, "上書きされた内容").unwrap();
+        
+        // 読み込んで確認
+        let note = read_note(&file_path_str).unwrap();
+        assert_eq!(note.body, "上書きされた内容");
+    }
+
+    // === rename_note のテスト ===
+    
+    #[test]
+    fn test_rename_note() {
+        let dir = tempdir().unwrap();
+        let old_path = dir.path().join("old_name.md");
+        let new_path = dir.path().join("new_name.md");
+        
+        let old_path_str = old_path.to_string_lossy().to_string();
+        let new_path_str = new_path.to_string_lossy().to_string();
+        
+        // ファイルを作成
+        write_note(&old_path_str, "リネームテスト").unwrap();
+        assert!(old_path.exists());
+        
+        // リネーム実行
+        let rename_result = rename_note(&old_path_str, &new_path_str);
+        assert!(rename_result.is_ok(), "リネームが成功すること");
+        
+        // 古いファイルが存在しない
+        assert!(!old_path.exists(), "古いファイルが削除されていること");
+        
+        // 新しいファイルが存在する
+        assert!(new_path.exists(), "新しいファイルが作成されていること");
+        
+        // 内容が保持されている
+        let note = read_note(&new_path_str).unwrap();
+        assert_eq!(note.body, "リネームテスト", "内容が保持されていること");
+    }
+
+    #[test]
+    fn test_rename_note_nonexistent_file_fails() {
+        let dir = tempdir().unwrap();
+        let old_path = dir.path().join("nonexistent.md");
+        let new_path = dir.path().join("new.md");
+        
+        // 存在しないファイルをリネームしようとする
+        let result = rename_note(
+            &old_path.to_string_lossy(),
+            &new_path.to_string_lossy()
+        );
+        
+        // エラーが返されること
+        assert!(result.is_err(), "存在しないファイルのリネームは失敗すること");
+    }
+
+    // === list_notes のテスト ===
+    
+    #[test]
+    fn test_list_notes_empty_folder() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+        
+        // 空のフォルダ
+        let notes = list_notes(&dir_path);
+        assert_eq!(notes.len(), 0, "空のフォルダではリストも空");
+    }
+
+    #[test]
+    fn test_list_notes_finds_md_files() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+        
+        // .mdファイルを2つ作成
+        write_note(
+            &dir.path().join("0001_2026-01-12_Note1.md").to_string_lossy(),
+            "---\nseq: 1\n---\n\nNote1"
+        ).unwrap();
+        
+        write_note(
+            &dir.path().join("0002_2026-01-12_Note2.md").to_string_lossy(),
+            "---\nseq: 2\n---\n\nNote2"
+        ).unwrap();
+        
+        // .txtファイルも作成（これは無視されるべき）
+        std::fs::write(dir.path().join("ignore.txt"), "ignore").unwrap();
+        
+        // list_notes実行
+        let notes = list_notes(&dir_path);
+        
+        // .mdファイルのみ取得されること
+        assert_eq!(notes.len(), 2, ".mdファイルのみがリストされること");
+        assert_eq!(notes[0].seq, 1);
+        assert_eq!(notes[1].seq, 2);
+    }
+
+    // === get_next_seq のテスト ===
+    
+    #[test]
+    fn test_get_next_seq_empty_folder() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+        
+        // 空のフォルダでは1が返される
+        let next_seq = get_next_seq(&dir_path);
+        assert_eq!(next_seq, 1);
+    }
+
+    #[test]
+    fn test_get_next_seq_with_existing_files() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+        
+        // シーケンス番号のファイルを作成
+        write_note(
+            &dir.path().join("0001_2026-01-12_Test.md").to_string_lossy(),
+            "test"
+        ).unwrap();
+        
+        write_note(
+            &dir.path().join("0005_2026-01-12_Test.md").to_string_lossy(),
+            "test"
+        ).unwrap();
+        
+        // 最大値(5) + 1 = 6 が返される
+        let next_seq = get_next_seq(&dir_path);
+        assert_eq!(next_seq, 6);
+    }
+}
