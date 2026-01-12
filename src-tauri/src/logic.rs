@@ -271,3 +271,155 @@ pub fn handle_toggle_always_on_top(
     
     Ok(Effect::WriteNote { path: path.to_string(), content: new_content })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_basic() {
+        let out = sanitize_context("foo/bar");
+        assert!(!out.contains("/"));
+    }
+
+    #[test]
+    fn sanitize_removes_all_forbidden_chars() {
+        // 全ての禁則文字が除去されることを確認
+        // Windows禁則文字: \ / : * ? " < > |
+        let input = "test/file\\name:with*forbidden?chars\"<>|end";
+        let output = sanitize_context(input);
+        
+        // 禁則文字が1つも含まれていないことを確認
+        assert!(!output.contains('/'));
+        assert!(!output.contains('\\'));
+        assert!(!output.contains(':'));
+        assert!(!output.contains('*'));
+        assert!(!output.contains('?'));
+        assert!(!output.contains('"'));
+        assert!(!output.contains('<'));
+        assert!(!output.contains('>'));
+        assert!(!output.contains('|'));
+    }
+
+    #[test]
+    fn sanitize_preserves_japanese() {
+        // 日本語（ひらがな、カタカナ、漢字）が保持されることを確認
+        let input = "日本語のメモ";
+        let output = sanitize_context(input);
+        assert_eq!(output, "日本語のメモ");
+    }
+
+    #[test]
+    fn sanitize_preserves_alphanumeric() {
+        // 英数字が保持されることを確認
+        let input = "Test123ABC";
+        let output = sanitize_context(input);
+        assert_eq!(output, "Test123ABC");
+    }
+
+    #[test]
+    fn sanitize_trims_whitespace() {
+        // 前後の空白が削除されることを確認
+        let input = "  space around  ";
+        let output = sanitize_context(input);
+        assert_eq!(output, "space around");
+    }
+
+    #[test]
+    fn sanitize_empty_string() {
+        // 空文字列の処理
+        let output = sanitize_context("");
+        assert_eq!(output, "");
+    }
+
+    #[test]
+    fn sanitize_real_world_example() {
+        // 実際のユースケース: Windowsパスをファイル名に
+        let input = "C:\\Users\\test\\Documents";
+        let output = sanitize_context(input);
+        
+        // バックスラッシュがスペースに置換されている
+        assert_eq!(output, "C  Users test Documents");
+    }
+
+    // === parse_filename のテスト ===
+    // ファイル名から seq, date, context を抽出する
+    
+    #[test]
+    fn parse_filename_standard_format() {
+        // 標準的なファイル名: "0001_2026-01-12_メモタイトル.md"
+        let (seq, date, context) = parse_filename("0001_2026-01-12_メモタイトル.md");
+        
+        assert_eq!(seq, 1);
+        assert_eq!(date, "2026-01-12");
+        assert_eq!(context, "メモタイトル");
+    }
+
+    #[test]
+    fn parse_filename_large_seq_number() {
+        // 大きなシーケンス番号
+        let (seq, date, context) = parse_filename("9999_2026-01-12_テスト.md");
+        assert_eq!(seq, 9999);
+    }
+
+    #[test]
+    fn parse_filename_multi_word_context() {
+        // コンテキストに複数のアンダースコアが含まれる場合
+        let (seq, date, context) = parse_filename("0042_2026-01-12_これは_複数語の_タイトル.md");
+        
+        assert_eq!(seq, 42);
+        assert_eq!(context, "これは_複数語の_タイトル");
+    }
+
+    #[test]
+    fn parse_filename_invalid_format() {
+        // 不正なフォーマット（アンダースコアが足りない）
+        let (seq, date, context) = parse_filename("invalid.md");
+        
+        // デフォルト値が返される
+        assert_eq!(seq, 0);
+        assert_eq!(date, "unknown");
+        assert_eq!(context, "invalid.md");
+    }
+
+    // === generate_filename のテスト ===
+    // seq, date, context からファイル名を生成する
+    
+    #[test]
+    fn generate_filename_standard() {
+        let filename = generate_filename(1, "2026-01-12", "テストメモ");
+        assert_eq!(filename, "0001_2026-01-12_テストメモ.md");
+    }
+
+    #[test]
+    fn generate_filename_zero_padding() {
+        // シーケンス番号が4桁でゼロパディングされることを確認
+        let filename = generate_filename(42, "2026-01-12", "メモ");
+        assert_eq!(filename, "0042_2026-01-12_メモ.md");
+    }
+
+    #[test]
+    fn generate_filename_large_number() {
+        let filename = generate_filename(9999, "2026-01-12", "最後のメモ");
+        assert_eq!(filename, "9999_2026-01-12_最後のメモ.md");
+    }
+
+    // === parse と generate の往復テスト ===
+    // generate したファイル名を parse して、元の値に戻ることを確認
+    
+    #[test]
+    fn roundtrip_parse_and_generate() {
+        let original_seq = 123;
+        let original_date = "2026-01-12";
+        let original_context = "往復テスト";
+        
+        // generate → parse → 同じ値に戻る
+        let filename = generate_filename(original_seq, original_date, original_context);
+        let (parsed_seq, parsed_date, parsed_context) = parse_filename(&filename);
+        
+        assert_eq!(parsed_seq, original_seq);
+        assert_eq!(parsed_date, original_date);
+        assert_eq!(parsed_context, original_context);
+    }
+
+}
