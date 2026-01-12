@@ -625,4 +625,214 @@ backgroundColor: #f7e9b0
         assert!(result.contains("backgroundColor: #f7e9b0"));
     }
 
+    // === build_create_note_data のテスト ===
+    
+    #[test]
+    fn test_build_create_note_data() {
+        let data = build_create_note_data("/test/folder", "テストメモ", 42, "2026-01-12");
+        
+        // ファイル名が正しく生成される
+        assert_eq!(data.filename, "0042_2026-01-12_テストメモ.md");
+        
+        // パスが正しい
+        assert!(data.path_str.contains("0042_2026-01-12_テストメモ.md"));
+        
+        // メタデータが設定されている
+        assert_eq!(data.meta.seq, 42);
+        assert_eq!(data.meta.context, "テストメモ");
+        assert_eq!(data.meta.updated, "2026-01-12");
+        
+        // コンテンツにフロントマターと本文が含まれる
+        assert!(data.content.contains("---"));
+        assert!(data.content.contains("seq: 42"));
+        assert!(data.content.contains("ここにコンテキストを書く！"));
+    }
+
+    // === AppState ヘルパー関数のテスト ===
+    
+    #[test]
+    fn test_apply_set_folder() {
+        let mut state = AppState::default();
+        let notes = vec![
+            NoteMeta { seq: 1, context: "Note1".to_string(), ..Default::default() },
+            NoteMeta { seq: 2, context: "Note2".to_string(), ..Default::default() },
+        ];
+        
+        apply_set_folder(&mut state, "/test/folder".to_string(), notes);
+        
+        assert_eq!(state.folder_path, Some("/test/folder".to_string()));
+        assert_eq!(state.notes.len(), 2);
+    }
+
+    #[test]
+    fn test_apply_add_note() {
+        let mut state = AppState::default();
+        let note = NoteMeta { 
+            path: "/test/note.md".to_string(),
+            seq: 1, 
+            context: "Test".to_string(), 
+            ..Default::default() 
+        };
+        
+        apply_add_note(&mut state, note);
+        
+        assert_eq!(state.notes.len(), 1);
+        assert_eq!(state.notes[0].seq, 1);
+    }
+
+    #[test]
+    fn test_apply_add_note_sorts_by_path() {
+        let mut state = AppState::default();
+        
+        // 逆順で追加
+        apply_add_note(&mut state, NoteMeta { 
+            path: "/z.md".to_string(),
+            ..Default::default() 
+        });
+        apply_add_note(&mut state, NoteMeta { 
+            path: "/a.md".to_string(),
+            ..Default::default() 
+        });
+        
+        // パスでソートされている
+        assert_eq!(state.notes[0].path, "/a.md");
+        assert_eq!(state.notes[1].path, "/z.md");
+    }
+
+    #[test]
+    fn test_apply_update_note() {
+        let mut state = AppState::default();
+        
+        // 既存のノートを追加
+        apply_add_note(&mut state, NoteMeta { 
+            path: "/test.md".to_string(),
+            context: "Old".to_string(),
+            ..Default::default() 
+        });
+        
+        // 更新
+        apply_update_note(&mut state, "/test.md", NoteMeta { 
+            path: "/test_new.md".to_string(),
+            context: "New".to_string(),
+            ..Default::default() 
+        });
+        
+        // 更新されている
+        assert_eq!(state.notes.len(), 1);
+        assert_eq!(state.notes[0].context, "New");
+        assert_eq!(state.notes[0].path, "/test_new.md");
+    }
+
+    #[test]
+    fn test_apply_remove_note() {
+        let mut state = AppState::default();
+        
+        apply_add_note(&mut state, NoteMeta { 
+            path: "/test1.md".to_string(),
+            ..Default::default() 
+        });
+        apply_add_note(&mut state, NoteMeta { 
+            path: "/test2.md".to_string(),
+            ..Default::default() 
+        });
+        
+        assert_eq!(state.notes.len(), 2);
+        
+        // 削除
+        apply_remove_note(&mut state, "/test1.md");
+        
+        assert_eq!(state.notes.len(), 1);
+        assert_eq!(state.notes[0].path, "/test2.md");
+    }
+
+    // === handle_update_geometry のテスト ===
+    
+    #[test]
+    fn test_handle_update_geometry() {
+        let mut state = AppState::default();
+        
+        // ノートを追加
+        apply_add_note(&mut state, NoteMeta { 
+            path: "/test.md".to_string(),
+            x: Some(100.0),
+            y: Some(200.0),
+            ..Default::default() 
+        });
+        
+        let content = "---\nseq: 1\nx: 100\ny: 200\n---\n\n本文";
+        
+        // 座標を更新
+        let result = handle_update_geometry(&mut state, "/test.md", content, 150.0, 250.0, 400.0, 300.0);
+        
+        assert!(result.is_ok());
+        
+        // Effectが返される
+        match result.unwrap() {
+            Effect::WriteNote { path, content } => {
+                assert_eq!(path, "/test.md");
+                assert!(content.contains("x: 150"));
+                assert!(content.contains("y: 250"));
+                assert!(content.contains("width: 400"));
+                assert!(content.contains("height: 300"));
+            },
+            _ => panic!("Expected WriteNote effect"),
+        }
+        
+        // Stateが更新されている
+        assert_eq!(state.notes[0].x, Some(150.0));
+        assert_eq!(state.notes[0].y, Some(250.0));
+        assert_eq!(state.notes[0].width, Some(400.0));
+        assert_eq!(state.notes[0].height, Some(300.0));
+    }
+
+    // === handle_toggle_always_on_top のテスト ===
+    
+    #[test]
+    fn test_handle_toggle_always_on_top_enable() {
+        let mut state = AppState::default();
+        
+        apply_add_note(&mut state, NoteMeta { 
+            path: "/test.md".to_string(),
+            always_on_top: Some(false),
+            ..Default::default() 
+        });
+        
+        let content = "---\nseq: 1\nalwaysOnTop: false\n---\n\n本文";
+        
+        // 有効化
+        let result = handle_toggle_always_on_top(&mut state, "/test.md", content, true);
+        
+        assert!(result.is_ok());
+        
+        // Effectが返される
+        match result.unwrap() {
+            Effect::WriteNote { content, .. } => {
+                assert!(content.contains("alwaysOnTop: true"));
+            },
+            _ => panic!("Expected WriteNote effect"),
+        }
+        
+        // Stateが更新されている
+        assert_eq!(state.notes[0].always_on_top, Some(true));
+    }
+
+    #[test]
+    fn test_handle_toggle_always_on_top_disable() {
+        let mut state = AppState::default();
+        
+        apply_add_note(&mut state, NoteMeta { 
+            path: "/test.md".to_string(),
+            always_on_top: Some(true),
+            ..Default::default() 
+        });
+        
+        let content = "---\nalwaysOnTop: true\n---\n";
+        
+        // 無効化
+        let result = handle_toggle_always_on_top(&mut state, "/test.md", content, false);
+        
+        assert!(result.is_ok());
+        assert_eq!(state.notes[0].always_on_top, Some(false));
+    }
+
 }
