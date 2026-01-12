@@ -545,4 +545,84 @@ backgroundColor: #f7e9b0
         assert_eq!(y, Some(678.9));
     }
 
+    // === update_updated_field のテスト ===
+    // フロントマター内の "updated" フィールドを更新する
+    
+    #[test]
+    fn update_updated_field_replaces_date() {
+        // 既存の日付を新しい日付に置き換える
+        let frontmatter = "---\ncreated: 2026-01-10\nupdated: 2026-01-10\n---\n";
+        let result = update_updated_field(frontmatter, "2026-01-12");
+        
+        assert!(result.contains("updated: 2026-01-12"));
+        assert!(!result.contains("updated: 2026-01-10"));
+    }
+
+    #[test]
+    fn update_updated_field_preserves_other_fields() {
+        // 他のフィールドは変更されないことを確認
+        let frontmatter = "---\nseq: 1\ncreated: 2026-01-10\nupdated: 2026-01-10\ncontext: test\n---\n";
+        let result = update_updated_field(frontmatter, "2026-01-12");
+        
+        assert!(result.contains("seq: 1"));
+        assert!(result.contains("created: 2026-01-10")); // createdは変わらない
+        assert!(result.contains("context: test"));
+        assert!(result.contains("updated: 2026-01-12")); // updatedだけ変わる
+    }
+
+    // === update_frontmatter_value のテスト ===
+    // フロントマターの任意のフィールドを更新する汎用関数
+    
+    #[test]
+    fn update_frontmatter_value_updates_existing_field() {
+        // 既存フィールドの値を更新
+        let content = "---\nx: 100\ny: 200\n---\n\n本文";
+        let result = update_frontmatter_value(content, "x", "150".to_string());
+        
+        assert!(result.contains("x: 150"));
+        assert!(!result.contains("x: 100"));
+        assert!(result.contains("本文")); // 本文は保持
+    }
+
+    #[test]
+    fn update_frontmatter_value_adds_new_field() {
+        // 存在しないフィールドを追加
+        let content = "---\nx: 100\n---\n\n本文";
+        let result = update_frontmatter_value(content, "y", "200".to_string());
+        
+        assert!(result.contains("x: 100")); // 既存フィールドは保持
+        assert!(result.contains("y: 200")); // 新しいフィールドが追加
+        assert!(result.contains("本文"));
+    }
+
+    #[test]
+    fn update_frontmatter_value_creates_frontmatter_if_missing() {
+        // フロントマターが存在しない場合、新規作成
+        let content = "ただの本文";
+        let result = update_frontmatter_value(content, "x", "100".to_string());
+        
+        assert!(result.contains("---"));
+        assert!(result.contains("x: 100"));
+        assert!(result.contains("ただの本文"));
+    }
+
+    #[test]
+    fn update_frontmatter_value_handles_multiline_body() {
+        // 複数行の本文が正しく保持されるか
+        let content = "---\nseq: 1\n---\n\n行1\n行2\n行3";
+        let result = update_frontmatter_value(content, "x", "100".to_string());
+        
+        assert!(result.contains("x: 100"));
+        assert!(result.contains("行1\n行2\n行3"));
+    }
+
+    #[test]
+    fn update_frontmatter_value_with_special_chars_in_key() {
+        // キーに特殊文字が含まれる場合（regex::escape でエスケープされる）
+        let content = "---\ntest: 1\n---\n\n本文";
+        let result = update_frontmatter_value(content, "backgroundColor", "#f7e9b0".to_string());
+        
+        assert!(result.contains("backgroundColor: #f7e9b0"));
+    }
+
 }
