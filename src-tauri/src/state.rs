@@ -15,6 +15,8 @@ pub struct NoteMeta {
     pub background_color: Option<String>,
     #[serde(rename = "alwaysOnTop")]
     pub always_on_top: Option<bool>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -31,6 +33,8 @@ pub struct AppState {
     pub notes: Vec<NoteMeta>,
     pub selected_path: Option<String>,
     pub active_context_menu_path: Option<String>,
+    pub active_world: Option<String>, // NEW: 世界切替（集中モード）
+    pub active_tags: Vec<String>,     // NEW: 選択中のタグ（複数選択用）
 }
 
 // NEW: UC-01 - 設定ファイル用の構造体

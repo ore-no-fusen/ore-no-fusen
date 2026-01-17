@@ -20,10 +20,207 @@ type NoteMeta = {
   width?: number;
   height?: number;
   backgroundColor?: string;
+  tags?: string[];
 };
 
 function getFileName(path: string) {
   return path.split(/[\\/]/).pop() || path;
+}
+
+function TagInputPopup({ target }: { target: string }) {
+  const [tagValue, setTagValue] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleClose = async () => {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      // まずclose()を試す
+      await win.close();
+    } catch (e) {
+      console.error("Window close failed", e);
+    }
+  };
+
+  const submit = async () => {
+    const trimmed = tagValue.trim();
+    if (!trimmed || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      console.log('[TagPopup] Adding tag:', trimmed, 'to:', target);
+      await invoke('fusen_add_tag', { path: target, tag: trimmed });
+      console.log('[TagPopup] Tag added successfully, closing window...');
+      // タグ追加成功後、即座にウィンドウを閉じる
+      handleClose();
+    } catch (err) {
+      console.error("[TagPopup] Failed to add tag:", err);
+      setIsSubmitting(false);
+      alert("タグの保存に失敗しました: " + String(err));
+    }
+  };
+
+  return (
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 overflow-hidden select-none p-6">
+      <div
+        className="w-full h-full bg-white rounded-[2rem] shadow-2xl flex flex-col border border-gray-100"
+        style={{ WebkitAppRegion: 'drag' } as any}
+      >
+        <div className="flex-1 p-8 flex flex-col justify-center">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center shadow-xl shadow-blue-500/30 mx-auto mb-4">
+              <span className="text-3xl">🏷️</span>
+            </div>
+            <h3 className="text-2xl font-black text-gray-900 tracking-tight">
+              タグを新規作成
+            </h3>
+          </div>
+
+          <div className="w-full mb-8" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <input
+              autoFocus
+              type="text"
+              value={tagValue}
+              onChange={(e) => setTagValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit();
+                if (e.key === 'Escape') handleClose();
+              }}
+              placeholder="新しいタグ名を入力..."
+              className="w-full px-6 py-5 bg-gray-50 border-2 border-transparent focus:border-blue-600 focus:bg-white rounded-2xl text-xl font-bold text-gray-800 placeholder:text-gray-300 focus:outline-none transition-all"
+            />
+          </div>
+
+          <div className="flex gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <button
+              onClick={handleClose}
+              disabled={isSubmitting}
+              className="flex-1 py-5 text-sm font-black text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submit}
+              disabled={isSubmitting || !tagValue.trim()}
+              className="flex-[2] py-5 text-sm font-black text-white bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-xl shadow-blue-500/40 transition-all active:scale-95 disabled:bg-gray-100 disabled:text-gray-300 disabled:shadow-none"
+            >
+              {isSubmitting ? "ADDING..." : "ADD TAG"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TagSelector() {
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadTags = async () => {
+      try {
+        const tags = await invoke<string[]>('fusen_get_all_tags');
+        const activeTags = await invoke<string[]>('fusen_get_active_tags');
+        setAllTags(tags);
+        setSelectedTags(activeTags);
+      } catch (e) {
+        console.error('Failed to load tags:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadTags();
+  }, []);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev =>
+      prev.includes(tag)
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    );
+  };
+
+  const handleApply = async () => {
+    try {
+      await invoke('fusen_set_active_tags', { tags: selectedTags });
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      await win.close();
+    } catch (e) {
+      console.error('Failed to apply tag filter:', e);
+    }
+  };
+
+  const handleClose = async () => {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      await win.close();
+    } catch (e) {
+      console.error("Window close failed", e);
+    }
+  };
+
+  return (
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 overflow-hidden select-none p-6">
+      <div
+        className="w-full h-full bg-white rounded-[2rem] shadow-2xl flex flex-col border border-gray-100"
+        style={{ WebkitAppRegion: 'drag' } as any}
+      >
+        <div className="flex-1 p-8 flex flex-col">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-purple-600 rounded-3xl flex items-center justify-center shadow-xl shadow-purple-500/30 mx-auto mb-4">
+              <span className="text-3xl">🌍</span>
+            </div>
+            <h3 className="text-2xl font-black text-gray-900 tracking-tight">
+              タグを選択
+            </h3>
+            <p className="text-sm text-gray-500 mt-2">選択したタグを持つ付箋のみを表示</p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto mb-6" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            {isLoading ? (
+              <div className="text-center text-gray-400">読み込み中...</div>
+            ) : allTags.length === 0 ? (
+              <div className="text-center text-gray-400">タグがありません</div>
+            ) : (
+              <div className="space-y-2">
+                {allTags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => toggleTag(tag)}
+                    className="w-full px-6 py-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all text-left flex items-center gap-4"
+                  >
+                    <div className="text-2xl">
+                      {selectedTags.includes(tag) ? '☑' : '☐'}
+                    </div>
+                    <span className="text-lg font-bold text-gray-800">{tag}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <button
+              onClick={handleClose}
+              className="flex-1 py-5 text-sm font-black text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApply}
+              className="flex-[2] py-5 text-sm font-black text-white bg-purple-600 hover:bg-purple-700 rounded-2xl shadow-xl shadow-purple-500/40 transition-all active:scale-95"
+            >
+              Apply ({selectedTags.length} selected)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function OrchestratorContent() {
@@ -150,7 +347,7 @@ function OrchestratorContent() {
   };
 
   // ウィンドウ生成
-  const openNoteWindow = async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number }) => {
+  const openNoteWindow = async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number }, isNew?: boolean) => {
     const label = getWindowLabel(path);
 
     await enqueueWindowCreation(async () => {
@@ -184,12 +381,14 @@ function OrchestratorContent() {
         try {
           const safePath = path.replace(/\\/g, '/');
           const pathParam = encodeURIComponent(safePath);
-          const url = `/?path=${pathParam}`;
+          const url = isNew ? `/?path=${pathParam}&isNew=1` : `/?path=${pathParam}`;
 
           const width = meta?.width || 320;
           const height = meta?.height || 220;
           const x = meta?.x;
           const y = meta?.y;
+
+          console.log(`[openNoteWindow] Creating window: url=${url}, isNew=${isNew}, width=${width}, height=${height}`);
 
           await new WebviewWindow(label, {
             url,
@@ -241,7 +440,7 @@ function OrchestratorContent() {
       await syncState();
 
       // 作成されたノートを開く
-      await openNoteWindow(newNote.meta.path);
+      await openNoteWindow(newNote.meta.path, undefined, true);
     } catch (e) {
       console.error('create_note failed', e);
     }
@@ -271,12 +470,202 @@ function OrchestratorContent() {
 
   // イベントリスナー設定 (他ウィンドウからの依頼受取)
   useEffect(() => {
-    const unlistenPromise = listen<{ path: string }>('fusen:open_note', (event) => {
-      openNoteWindow(event.payload.path);
+    const unlistenPromise = listen<{ path: string; isNew?: boolean }>('fusen:open_note', (event) => {
+      openNoteWindow(event.payload.path, undefined, event.payload.isNew);
     });
 
     return () => {
-      unlistenPromise.then(unlisten => unlisten());
+      unlistenPromise.then(async (unlisten) => {
+        try {
+          await unlisten();
+        } catch (e) {
+          console.warn('Failed to unlisten fusen:open_note', e);
+        }
+      });
+    };
+  }, []);
+
+  // タグフィルター: switch_world イベントリスナー（旧・単一選択）
+  useEffect(() => {
+    const unlistenPromise = listen<string | null>('fusen:switch_world', async (event) => {
+      const selectedTag = event.payload;
+      console.log('[switch_world] Received:', selectedTag);
+
+      try {
+        // State同期して最新のノート一覧を取得
+        await syncState();
+        const state = await invoke<AppState>('fusen_get_state');
+        const allNotes = state.notes;
+
+        // フィルタリング
+        const filteredNotes = selectedTag
+          ? allNotes.filter(n => n.tags && n.tags.includes(selectedTag))
+          : allNotes;
+
+        console.log('[switch_world] All notes:', allNotes.length, 'Filtered:', filteredNotes.length);
+
+        // 現在開いているウィンドウを取得
+        const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+        const allWindows = await getAllWebviewWindows();
+
+        // フィルタ対象のパスをセットにする
+        const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
+
+        // 既存ウィンドウの処理
+        for (const win of allWindows) {
+          if (win.label === 'main') continue; // 管理画面は除外
+
+          const shouldShow = filteredPaths.has(win.label);
+          try {
+            if (shouldShow) {
+              await win.show();
+              await win.unminimize();
+            } else {
+              await win.hide();
+            }
+          } catch (e) {
+            console.error('[switch_world] Failed to show/hide window:', win.label, e);
+          }
+        }
+
+        // フィルタ対象で開いていないウィンドウを開く
+        const openedLabels = new Set(allWindows.map(w => w.label));
+        for (const note of filteredNotes) {
+          const label = getWindowLabel(note.path);
+          if (!openedLabels.has(label)) {
+            await openNoteWindow(note.path, {
+              x: note.x,
+              y: note.y,
+              width: note.width,
+              height: note.height
+            });
+            // 連続で開きすぎないように少し待機
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+        }
+      } catch (e) {
+        console.error('[switch_world] Error:', e);
+      }
+    });
+
+    return () => {
+      unlistenPromise.then(async (unlisten) => {
+        try {
+          await unlisten();
+        } catch (e) {
+          console.warn('Failed to unlisten fusen:switch_world', e);
+        }
+      });
+    };
+  }, []);
+
+  // タグセレクター開くイベントリスナー
+  useEffect(() => {
+    const unlistenPromise = listen('fusen:open_tag_selector', async () => {
+      try {
+        const existing = await WebviewWindow.getByLabel('tag-selector');
+        if (existing) {
+          await existing.unminimize();
+          await existing.setFocus();
+          return;
+        }
+
+        await new WebviewWindow('tag-selector', {
+          url: '/?tagSelector=1',
+          title: '世界を選ぶ',
+          width: 350,
+          height: 500,
+          alwaysOnTop: true,
+          decorations: true,
+          resizable: false,
+        });
+      } catch (e) {
+        console.error('[open_tag_selector] Error:', e);
+      }
+    });
+
+    return () => {
+      unlistenPromise.then(async (unlisten) => {
+        try {
+          await unlisten();
+        } catch (e) {
+          console.warn('Failed to unlisten fusen:open_tag_selector', e);
+        }
+      });
+    };
+  }, []);
+
+  // タグフィルター適用イベントリスナー（複数選択）
+  useEffect(() => {
+    const unlistenPromise = listen<string[]>('fusen:apply_tag_filter', async (event) => {
+      const selectedTags = event.payload;
+      console.log('[apply_tag_filter] Selected tags:', selectedTags);
+
+      try {
+        // State同期して最新のノート一覧を取得
+        await syncState();
+        const state = await invoke<AppState>('fusen_get_state');
+        const allNotes = state.notes;
+
+        // 複数タグフィルタリング（OR条件）
+        const filteredNotes = selectedTags.length > 0
+          ? allNotes.filter(n => n.tags && n.tags.some(tag => selectedTags.includes(tag)))
+          : allNotes;
+
+        console.log('[apply_tag_filter] All notes:', allNotes.length, 'Filtered:', filteredNotes.length);
+
+        // 現在開いているウィンドウを取得
+        const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+        const allWindows = await getAllWebviewWindows();
+
+        // フィルタ対象のパスをセットにする
+        const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
+
+        // 既存ウィンドウの処理
+        for (const win of allWindows) {
+          if (win.label === 'main' || win.label === 'tag-selector') continue; // 管理画面とタグセレクターは除外
+
+          const shouldShow = filteredPaths.has(win.label);
+          try {
+            if (shouldShow) {
+              await win.show();
+              await win.unminimize();
+            } else {
+              await win.hide();
+            }
+          } catch (e) {
+            console.error('[apply_tag_filter] Failed to show/hide window:', win.label, e);
+          }
+        }
+
+        // フィルタ対象で開いていないウィンドウを開く
+        const openedLabels = new Set(allWindows.map(w => w.label));
+        for (const note of filteredNotes) {
+          const label = getWindowLabel(note.path);
+          if (!openedLabels.has(label)) {
+            await openNoteWindow(note.path, {
+              x: note.x,
+              y: note.y,
+              width: note.width,
+              height: note.height
+            });
+            // 連続で開きすぎないように少し待機
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+        }
+      } catch (e) {
+        console.error('[apply_tag_filter] Error:', e);
+      }
+    });
+
+    return () => {
+      unlistenPromise.then(async (unlisten) => {
+        try {
+          await unlisten();
+        } catch (e) {
+          console.warn('Failed to unlisten fusen:apply_tag_filter', e);
+        }
+      });
     };
   }, []);
 
@@ -423,6 +812,14 @@ function OrchestratorContent() {
   }, []);
 
   // パラメータチェック
+  if (searchParams.get('tagSelector') === '1') {
+    return <TagSelector />;
+  }
+
+  if (searchParams.get('tagInput') === '1') {
+    return <TagInputPopup target={searchParams.get('target') || ''} />;
+  }
+
   if (searchParams.get('path')) {
     return <StickyNote />; // 付箋ウィンドウとして開かれている
   }

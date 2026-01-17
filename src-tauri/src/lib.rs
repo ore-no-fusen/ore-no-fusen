@@ -206,6 +206,76 @@ fn fusen_open_containing_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn fusen_add_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, app: tauri::AppHandle) -> Result<(), String> {
+    let mut app_state = state.lock().unwrap();
+    
+    // Read current content
+    let content = storage::read_note(&path)
+        .map_err(|e| format!("Failed to read note: {}", e))?;
+    
+    // Add tag
+    let effect = logic::handle_add_tag(&mut *app_state, &path, &content.body, &tag)?;
+    
+    // Execute effect
+    if let logic::Effect::WriteNote { path, content } = effect {
+        storage::write_note(&path, &content)
+            .map_err(|e| format!("Failed to write note: {}", e))?;
+    }
+    
+    // Update tray menu
+    drop(app_state);
+    let _ = crate::tray::refresh_tray_menu(&app);
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn fusen_remove_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, app: tauri::AppHandle) -> Result<(), String> {
+    let mut app_state = state.lock().unwrap();
+    
+    // Read current content
+    let content = storage::read_note(&path)
+        .map_err(|e| format!("Failed to read note: {}", e))?;
+    
+    // Remove tag
+    let effect = logic::handle_remove_tag(&mut *app_state, &path, &content.body, &tag)?;
+    
+    // Execute effect
+    if let logic::Effect::WriteNote { path, content } = effect {
+        storage::write_note(&path, &content)
+            .map_err(|e| format!("Failed to write note: {}", e))?;
+    }
+    
+    // Update tray menu
+    drop(app_state); // Release lock before calling refresh_tray_menu
+    let _ = crate::tray::refresh_tray_menu(&app);
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn fusen_get_all_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
+    let app_state = state.lock().unwrap();
+    logic::get_all_unique_tags(&*app_state)
+}
+
+#[tauri::command]
+fn fusen_get_active_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
+    state.lock().unwrap().active_tags.clone()
+}
+
+#[tauri::command]
+fn fusen_set_active_tags(state: State<'_, Mutex<AppState>>, tags: Vec<String>, app: tauri::AppHandle) -> Result<(), String> {
+    let mut app_state = state.lock().unwrap();
+    app_state.active_tags = tags.clone();
+    drop(app_state);
+    
+    // Emit event to update filtered notes
+    let _ = app.emit("fusen:apply_tag_filter", tags);
+    Ok(())
+}
+
 // UC-01: ベースパスの取得
 #[tauri::command]
 fn get_base_path(state: State<'_, Mutex<AppState>>) -> Option<String> {
@@ -330,6 +400,11 @@ pub fn run() {
             fusen_update_geometry,
             fusen_toggle_always_on_top,
             fusen_open_containing_folder,
+            fusen_add_tag,
+            fusen_remove_tag,
+            fusen_get_all_tags,
+            fusen_get_active_tags,
+            fusen_set_active_tags,
             show_context_menu,
             get_base_path,
             setup_first_launch

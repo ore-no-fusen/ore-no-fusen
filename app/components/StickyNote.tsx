@@ -71,6 +71,10 @@ export default function StickyNote() {
     const [isDraggableArea, setIsDraggableArea] = useState(false);
     const [isEditableArea, setIsEditableArea] = useState(false);
     const [isCornerArea, setIsCornerArea] = useState(false);
+    const [showTagModal, setShowTagModal] = useState(false);
+    const [tagInputValue, setTagInputValue] = useState('');
+    const [allTags, setAllTags] = useState<string[]>([]);
+    const [currentTags, setCurrentTags] = useState<string[]>([]);
     const shellRef = useRef<HTMLDivElement>(null);
 
     // Frontmatter更新ヘルパー
@@ -508,6 +512,94 @@ export default function StickyNote() {
                     }
                 });
 
+                // タグサブメニュー
+                const tagNewItem = await MenuItem.new({
+                    id: 'ctx_tag_new',
+                    text: '➕ 新規追加',
+                    action: async () => {
+                        try {
+                            // 全タグを取得
+                            const tags = await invoke<string[]>('fusen_get_all_tags');
+                            setAllTags(tags);
+
+                            // 現在のノートのタグを取得
+                            if (selectedFile) {
+                                const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
+                                const { front } = splitFrontMatter(note.body);
+                                const tagsMatch = front.match(/tags:\s*\[([^\]]*)\]/);
+                                if (tagsMatch) {
+                                    const noteTags = tagsMatch[1].split(',').map(t => t.trim()).filter(t => t);
+                                    setCurrentTags(noteTags);
+                                } else {
+                                    setCurrentTags([]);
+                                }
+                            }
+
+                            setShowTagModal(true);
+                            setTagInputValue('');
+                        } catch (e) {
+                            console.error('Failed to load tags:', e);
+                        }
+                    }
+                });
+
+                // 全タグを取得
+                let tagItems: any[] = [tagNewItem];
+                try {
+                    const tags = await invoke<string[]>('fusen_get_all_tags');
+
+                    // 現在のノートのタグを取得
+                    let currentNoteTags: string[] = [];
+                    if (selectedFile) {
+                        const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
+                        const { front } = splitFrontMatter(note.body);
+                        const tagsMatch = front.match(/tags:\s*\[([^\]]*)\]/);
+                        if (tagsMatch) {
+                            currentNoteTags = tagsMatch[1].split(',').map(t => t.trim()).filter(t => t);
+                        }
+                    }
+
+                    if (tags.length > 0) {
+                        const separator = await PredefinedMenuItem.new({ item: 'Separator' });
+                        tagItems.push(separator);
+
+                        for (const tag of tags) {
+                            const isChecked = currentNoteTags.includes(tag);
+                            const checkItem = await MenuItem.new({
+                                id: `ctx_tag_${tag}`,
+                                text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
+                                action: async () => {
+                                    if (!selectedFile) return;
+                                    try {
+                                        if (isChecked) {
+                                            await invoke('fusen_remove_tag', { path: selectedFile.path, tag });
+                                        } else {
+                                            await invoke('fusen_add_tag', { path: selectedFile.path, tag });
+                                        }
+                                        // メニューを閉じた後、ノートを再読み込み
+                                        const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
+                                        const { front, body } = splitFrontMatter(note.body);
+                                        setRawFrontmatter(front);
+                                        setContent(body);
+                                        setEditBody(body);
+                                    } catch (e) {
+                                        console.error('Failed to toggle tag:', e);
+                                    }
+                                }
+                            });
+                            tagItems.push(checkItem);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load tags:', e);
+                }
+
+                const tagSubmenu = await Submenu.new({
+                    id: 'ctx_tags_submenu',
+                    text: '🏷️ タグ',
+                    items: tagItems
+                });
+
                 const colorBlueItem = await MenuItem.new({
                     id: 'ctx_color_blue',
                     text: '🔵 Blue',
@@ -581,6 +673,7 @@ export default function StickyNote() {
                         separator2,
                         newNoteItem,
                         colorSubmenu,
+                        tagSubmenu,
                         separator3,
                         deleteItem
                     ]
@@ -701,8 +794,45 @@ export default function StickyNote() {
         return () => {
             unlisten.then(f => f());
         };
-    }, [selectedFile, handleDuplicate, loadFileContent, handleToggleAlwaysOnTop]);
+    }, [selectedFile, noteBackgroundColor, savePending, rawFrontmatter, editBody, content]);
 
+    // タグ追加ハンドラー
+    const handleAddTag = async () => {
+        if (!selectedFile || !tagInputValue.trim()) return;
+
+        try {
+            await invoke('fusen_add_tag', {
+                path: selectedFile.path,
+                tag: tagInputValue.trim()
+            });
+
+            // モーダルを閉じる
+            setShowTagModal(false);
+            setTagInputValue('');
+
+            // 全タグを再取得
+            const tags = await invoke<string[]>('fusen_get_all_tags');
+            setAllTags(tags);
+
+            // ノートを再読み込みして現在のタグも更新
+            const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
+            const { front, body } = splitFrontMatter(note.body);
+            setRawFrontmatter(front);
+            setContent(body);
+            setEditBody(body);
+
+            // 現在のタグを更新
+            const tagsMatch = front.match(/tags:\s*\[([^\]]*)\]/);
+            if (tagsMatch) {
+                const noteTags = tagsMatch[1].split(',').map(t => t.trim()).filter(t => t);
+                setCurrentTags(noteTags);
+            }
+        } catch (e) {
+            console.error('Failed to add tag:', e);
+        }
+    };
+
+    if (loading) return <div>Loading...</div>;
     // Markdown挿入ヘルパー
     const insertMarkdown = (marker: string) => {
         if (!textareaRef.current) return;
@@ -1016,6 +1146,94 @@ export default function StickyNote() {
                     title="ドラッグで移動 / クリックで保存"
                 />
             </main>
+
+            {/* カスタムモーダルダイアログ - 新規タグ追加 */}
+            {showTagModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10000
+                }}>
+                    <div style={{
+                        backgroundColor: '#fff',
+                        padding: '24px',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        minWidth: '320px',
+                        maxWidth: '400px'
+                    }}>
+                        <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 'bold' }}>新規タグを追加</h3>
+
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                            <input
+                                type="text"
+                                value={tagInputValue}
+                                onChange={(e) => setTagInputValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && tagInputValue.trim()) {
+                                        e.preventDefault();
+                                        handleAddTag();
+                                    } else if (e.key === 'Escape') {
+                                        setShowTagModal(false);
+                                        setTagInputValue('');
+                                    }
+                                }}
+                                placeholder="タグ名を入力"
+                                autoFocus
+                                style={{
+                                    flex: 1,
+                                    padding: '8px 12px',
+                                    border: '1px solid #ddd',
+                                    borderRadius: '4px',
+                                    fontSize: '14px'
+                                }}
+                            />
+                            <button
+                                onClick={handleAddTag}
+                                disabled={!tagInputValue.trim()}
+                                style={{
+                                    padding: '8px 16px',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    backgroundColor: tagInputValue.trim() ? '#28a745' : '#ccc',
+                                    color: '#fff',
+                                    cursor: tagInputValue.trim() ? 'pointer' : 'not-allowed',
+                                    fontSize: '14px',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                追加
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => {
+                                    setShowTagModal(false);
+                                    setTagInputValue('');
+                                }}
+                                style={{
+                                    padding: '6px 12px',
+                                    border: '1px solid #ddd',
+                                    borderRadius: '4px',
+                                    backgroundColor: '#fff',
+                                    cursor: 'pointer',
+                                    fontSize: '13px'
+                                }}
+                            >
+                                キャンセル
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

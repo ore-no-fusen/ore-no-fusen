@@ -1,11 +1,11 @@
-/* ===== 付箋：Markdown表示の「点」と「太字見出し行」を直す ===== */
+﻿/* ===== 莉倡ｮ具ｼ哺arkdown陦ｨ遉ｺ縺ｮ縲檎せ縲阪→縲悟､ｪ蟄苓ｦ句・縺苓｡後阪ｒ逶ｴ縺・===== */
 
-/* Tailwind preflightで消える「点」を復活 */
+/* Tailwind preflight縺ｧ豸医∴繧九檎せ縲阪ｒ蠕ｩ豢ｻ */
 .sticky-markdown ul {
   list-style: disc;
   list-style-position: outside;
   padding-left: 1.6rem;
-  /* 点の分の左余白 */
+  /* 轤ｹ縺ｮ蛻・・蟾ｦ菴咏區 */
 }
 
 .sticky-markdown ol {
@@ -14,13 +14,13 @@
   padding-left: 1.6rem;
 }
 
-/* 1個目の項目が左に詰まって見えるのを防ぐ */
+/* 1蛟狗岼縺ｮ鬆・岼縺悟ｷｦ縺ｫ隧ｰ縺ｾ縺｣縺ｦ隕九∴繧九・繧帝亟縺・*/
 .sticky-markdown li {
   padding-left: 0.2rem;
-  /* 点と文字の間 */
+  /* 轤ｹ縺ｨ譁・ｭ励・髢・*/
 }
 
-/* 太字だけの行（**xxx**）を「見出しっぽく」扱う（Obsidan風） */
+/* 螟ｪ蟄励□縺代・陦鯉ｼ・*xxx**・峨ｒ縲瑚ｦ句・縺励▲縺ｽ縺上肴桶縺・ｼ・bsidan鬚ｨ・・*/
 .sticky-markdown p>strong:only-child {
   display: block;
   margin-top: 0.85em;
@@ -29,7 +29,7 @@
   font-weight: 600;
 }
 
-/* 太字だけの行の直後のリストを少しだけ詰める */
+/* 螟ｪ蟄励□縺代・陦後・逶ｴ蠕後・繝ｪ繧ｹ繝医ｒ蟆代＠縺縺題ｩｰ繧√ｋ */
 .sticky-section+ul,
 .sticky-section+ol {
   margin-top: 0.15em;
@@ -48,7 +48,7 @@
   list-style-position: outside;
 }
 
-/* 見出しのスタイルを追加 */
+/* 隕句・縺励・繧ｹ繧ｿ繧､繝ｫ繧定ｿｽ蜉 */
 .sticky-markdown h1 {
   font-size: 1.05em;
   font-weight: 600;
@@ -71,12 +71,12 @@
   line-height: 1.4;
 }
 
-/* 罫線は表示しない */
+/* 鄂ｫ邱壹・陦ｨ遉ｺ縺励↑縺・*/
 .sticky-markdown hr {
   display: none;
 }
 
-/* sticky 最小バー */
+/* sticky 譛蟆上ヰ繝ｼ */
 .sticky-mini-bar {
   position: fixed;
   top: 8px;
@@ -114,20 +114,20 @@
   text-overflow: ellipsis;
 }
 
-/* 普段は完全に隠す */
+/* 譎ｮ谿ｵ縺ｯ螳悟・縺ｫ髫縺・*/
 .sticky-mini-bar {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
 }
 
-/* 画面右上にマウスを持っていった時だけ出す */
+/* 逕ｻ髱｢蜿ｳ荳翫↓繝槭え繧ｹ繧呈戟縺｣縺ｦ縺・▲縺滓凾縺縺大・縺・*/
 .sticky-root:hover .sticky-mini-bar {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* 付箋：タイトル（見出し相当行） */
+/* 莉倡ｮ具ｼ壹ち繧､繝医Ν・郁ｦ句・縺礼嶌蠖楢｡鯉ｼ・*/
 .sticky-title {
   display: block;
   margin-top: 0.35rem;
@@ -143,17 +143,17 @@
 }
 
 /* =========================
-   付箋モード 見た目セット Final
+   莉倡ｮ九Δ繝ｼ繝・隕九◆逶ｮ繧ｻ繝・ヨ Final
    ========================= */
 
-/* 全体（紙） */
+/* 蜈ｨ菴難ｼ育ｴ呻ｼ・*/
 .sticky-paper {
   max-width: 980px;
   margin: 24px auto;
   padding: 24px 28px;
 
   background: #faf6ee;
-  /* 紙っぽい薄いベージュ */
+  /* 邏吶▲縺ｽ縺・埋縺・・繝ｼ繧ｸ繝･ */
   border-radius: 14px;
   box-shadow:
     0 1px 2px rgba(0, 0, 0, .05),
@@ -161,25 +161,25 @@
 }
 
 .sticky-markdown {
-  /* フォント（Windowsで読みやすい順に） */
+  /* 繝輔か繝ｳ繝茨ｼ・indows縺ｧ隱ｭ縺ｿ繧・☆縺・・↓・・*/
   font-family: "Meiryo", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
 
-  /* 画面幅に合わせて文字サイズ変更 (密度高め) */
+  /* 逕ｻ髱｢蟷・↓蜷医ｏ縺帙※譁・ｭ励し繧､繧ｺ螟画峩 (蟇・ｺｦ鬮倥ａ) */
   font-size: clamp(11px, 1.9vw, 18px);
 
-  /* 行間を詰める */
+  /* 陦碁俣繧定ｩｰ繧√ｋ */
   line-height: 1.4;
 
   letter-spacing: .01em;
   color: #222;
 }
 
-/* 段落 */
+/* 谿ｵ關ｽ */
 .sticky-markdown p {
   margin-bottom: 0.35em;
 }
 
-/* リスト（点・間隔・インデント） */
+/* 繝ｪ繧ｹ繝茨ｼ育せ繝ｻ髢馴囈繝ｻ繧､繝ｳ繝・Φ繝茨ｼ・*/
 .sticky-markdown ul,
 .sticky-markdown ol {
   margin: 0.25em 0 0.5em;
@@ -200,12 +200,12 @@
   padding-left: 0.1em;
 }
 
-/* 重要っぽい数値を少し目立たせる（任意） */
+/* 驥崎ｦ√▲縺ｽ縺・焚蛟､繧貞ｰ代＠逶ｮ遶九◆縺帙ｋ・井ｻｻ諢擾ｼ・*/
 .sticky-markdown strong {
   font-weight: 900;
 }
 
-/* 右上ミニバーの視認性アップ（邪魔しない） */
+/* 蜿ｳ荳翫Α繝九ヰ繝ｼ縺ｮ隕冶ｪ肴ｧ繧｢繝・・・磯が鬲斐＠縺ｪ縺・ｼ・*/
 .sticky-mini-btn {
   font-family: inherit;
   font-weight: 700;
@@ -216,7 +216,7 @@
    ========================================= */
 .sticky-root {
   background-color: transparent;
-  /* 画面全体の背景を透明化 */
+  /* 逕ｻ髱｢蜈ｨ菴薙・閭梧勹繧帝乗・蛹・*/
   min-height: 100vh;
 }
 
@@ -229,7 +229,7 @@
 
 .sticky-markdown {
   font-size: 18px !important;
-  /* 具体的な指定あり */
+  /* 蜈ｷ菴鍋噪縺ｪ謖・ｮ壹≠繧・*/
   line-height: 1.38 !important;
   font-family: "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro", "BIZ UDPGothic", "Meiryo", sans-serif !important;
 }
@@ -250,12 +250,12 @@
 /* =========================================
    Sticky Note Paper Design
    ========================================= */
-/* 背景（紙が浮く土台） */
+/* 閭梧勹・育ｴ吶′豬ｮ縺丞悄蜿ｰ・・*/
 body {
   background: transparent;
 }
 
-/* 付箋（紙） */
+/* 莉倡ｮ具ｼ育ｴ呻ｼ・*/
 .sticky-paper {
   background: #fff3c0;
   border-radius: 16px;
@@ -265,7 +265,7 @@ body {
     0 1px 0 rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(0, 0, 0, 0.06);
 
-  /* うっすら紙ノイズ（画像なし） */
+  /* 縺・▲縺吶ｉ邏吶ヮ繧､繧ｺ・育判蜒上↑縺暦ｼ・*/
   background-image:
     linear-gradient(0deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.25)),
     repeating-linear-gradient(0deg,
@@ -276,7 +276,7 @@ body {
 
   line-height: 1.4;
   color: #111 !important;
-  /* 全体は常に黒 */
+  /* 蜈ｨ菴薙・蟶ｸ縺ｫ鮟・*/
   min-height: calc(100vh - 24px);
   margin: 12px;
   box-sizing: border-box;
@@ -287,36 +287,36 @@ span.hl,
 span.point,
 mark.point {
   background: transparent;
-  /* 背景塗りつぶしなし */
+  /* 閭梧勹蝪励ｊ縺､縺ｶ縺励↑縺・*/
   color: #c00 !important;
-  /* 赤字（ポイント） */
+  /* 襍､蟄暦ｼ医・繧､繝ｳ繝茨ｼ・*/
   font-weight: 700;
   display: inline;
-  /* インライン保証 */
+  /* 繧､繝ｳ繝ｩ繧､繝ｳ菫晁ｨｼ */
   white-space: inherit;
-  /* 改行させない */
+  /* 謾ｹ陦後＆縺帙↑縺・*/
 }
 
 mark {
   background: none;
   color: #c62828 !important;
-  /* 赤字（強調） */
+  /* 襍､蟄暦ｼ亥ｼｷ隱ｿ・・*/
   font-weight: 700;
 }
 
-/* ノートシェルの基本構造 */
+/* 繝弱・繝医す繧ｧ繝ｫ縺ｮ蝓ｺ譛ｬ讒矩 */
 .noteShell {
   position: relative;
   height: 100%;
-  /* fit-contentから変更してウィンドウいっぱいに */
+  /* fit-content縺九ｉ螟画峩縺励※繧ｦ繧｣繝ｳ繝峨え縺・▲縺ｱ縺・↓ */
   min-height: 100vh;
   width: 100%;
   overflow: hidden;
-  /* 背景色はインラインスタイルで動的に設定 */
+  /* 閭梧勹濶ｲ縺ｯ繧､繝ｳ繝ｩ繧､繝ｳ繧ｹ繧ｿ繧､繝ｫ縺ｧ蜍慕噪縺ｫ險ｭ螳・*/
 }
 
-/* ホバー操作バー (Extreme Compact Icons) */
-/* ホバー操作バー (Extreme Compact Icons) */
+/* 繝帙ヰ繝ｼ謫堺ｽ懊ヰ繝ｼ (Extreme Compact Icons) */
+/* 繝帙ヰ繝ｼ謫堺ｽ懊ヰ繝ｼ (Extreme Compact Icons) */
 .hoverBar {
   position: absolute;
   top: 6px;
@@ -373,7 +373,7 @@ mark {
   border: none;
   outline: none;
   padding: 0.5rem 0.2rem;
-  /* 少し余白を持たせる */
+  /* 蟆代＠菴咏區繧呈戟縺溘○繧・*/
   margin: 0;
   display: block;
   resize: none;
@@ -386,32 +386,32 @@ mark {
   word-break: break-all;
   overflow: hidden;
   /* Hide scrollbar if possible or match viewer */
-  /* テキスト入力優先 */
+  /* 繝・く繧ｹ繝亥・蜉帛━蜈・*/
 }
 
 .sticky-paper-editor::placeholder {
   color: rgba(0, 0, 0, 0.2);
 }
 
-/* 超高密度メモ用の強制スタイル */
+/* 雜・ｫ伜ｯ・ｺｦ繝｡繝｢逕ｨ縺ｮ蠑ｷ蛻ｶ繧ｹ繧ｿ繧､繝ｫ */
 .notePaper {
   font-family: "BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important;
   font-size: 10.5px !important;
-  /* 要求仕様準拠: A6密度実現 */
+  /* 隕∵ｱゆｻ墓ｧ俶ｺ匁侠: A6蟇・ｺｦ螳溽樟 */
   line-height: 1.4 !important;
   letter-spacing: 0.01em;
   background: transparent !important;
-  /* 付箋の黄色 */
+  /* 莉倡ｮ九・鮟・牡 */
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
   min-height: fit-content !important;
   cursor: default !important;
   transition: all 0.2s ease-out;
   padding: 8px !important;
-  /* コンテナとしての共通パディング */
+  /* 繧ｳ繝ｳ繝・リ縺ｨ縺励※縺ｮ蜈ｱ騾壹ヱ繝・ぅ繝ｳ繧ｰ */
 }
 
-/* 内部要素のマージンを徹底的に排除 */
+/* 蜀・Κ隕∫ｴ縺ｮ繝槭・繧ｸ繝ｳ繧貞ｾｹ蠎慕噪縺ｫ謗帝勁 */
 .notePaper p,
 .notePaper h1,
 .notePaper h2,
@@ -432,7 +432,7 @@ mark {
 .notePaper h2,
 .notePaper h3 {
   font-size: 11px !important;
-  /* 見出しは本文より少し大きく */
+  /* 隕句・縺励・譛ｬ譁・ｈ繧雁ｰ代＠螟ｧ縺阪￥ */
   font-weight: 700 !important;
   line-height: 1.2 !important;
   width: fit-content !important;
@@ -442,8 +442,8 @@ mark {
 .notePaper ul,
 .notePaper ol {
   padding-left: 0.6em !important;
-  /* 記号分だけ少しパディング */
-  list-style-type: "・";
+  /* 險伜捷蛻・□縺大ｰ代＠繝代ョ繧｣繝ｳ繧ｰ */
+  list-style-type: "繝ｻ";
   width: fit-content !important;
 }
 
@@ -454,7 +454,7 @@ mark {
   cursor: text !important;
 }
 
-/* エディタ専用調整：スクロールバー隠蔽やフォーカス */
+/* 繧ｨ繝・ぅ繧ｿ蟆ら畑隱ｿ謨ｴ・壹せ繧ｯ繝ｭ繝ｼ繝ｫ繝舌・髫阡ｽ繧・ヵ繧ｩ繝ｼ繧ｫ繧ｹ */
 .notePaper textarea {
   width: 100% !important;
   height: auto;
@@ -475,7 +475,7 @@ mark {
 .status-indicator {
   font-family: "BIZ UDPGothic", "Meiryo", sans-serif !important;
   font-size: 9px !important;
-  /* ステータス表示は小さめに */
+  /* 繧ｹ繝・・繧ｿ繧ｹ陦ｨ遉ｺ縺ｯ蟆上＆繧√↓ */
   font-weight: 700 !important;
   padding: 0 8px;
   white-space: nowrap;
@@ -485,7 +485,7 @@ mark {
   font-size: 0.9em !important;
 }
 
-/* 線は薄く */
+/* 邱壹・阮・￥ */
 .notePaper hr {
   border: none;
   border-top: 1px solid rgba(0, 0, 0, 0.12);
@@ -573,7 +573,7 @@ mark {
   background: #ffebee;
 }
 
-/* はがした後の「再表示」UI (透明・極小化) */
+/* 縺ｯ縺後＠縺溷ｾ後・縲悟・陦ｨ遉ｺ縲攻I (騾乗・繝ｻ讌ｵ蟆丞喧) */
 .sticky-restore-view {
   position: absolute;
   top: 0;
@@ -585,7 +585,7 @@ mark {
   justify-content: flex-start;
   background: transparent;
   pointer-events: none;
-  /* 下の要素（デスクトップ等）を邪魔しないが、ボタンは自力で有効化 */
+  /* 荳九・隕∫ｴ・医ョ繧ｹ繧ｯ繝医ャ繝礼ｭ会ｼ峨ｒ驍ｪ鬲斐＠縺ｪ縺・′縲√・繧ｿ繝ｳ縺ｯ閾ｪ蜉帙〒譛牙柑蛹・*/
 }
 
 .sticky-restore-btn {
@@ -610,7 +610,7 @@ mark {
 
 .sticky-restore-view p {
   display: none;
-  /* メッセージは不要 */
+  /* 繝｡繝・そ繝ｼ繧ｸ縺ｯ荳崎ｦ・*/
 }
 
 html,
@@ -620,7 +620,7 @@ body {
   margin: 0;
   padding: 0;
   background: transparent !important;
-  /* bodyでのフォント指定は最低限にする（mainで上書きするため） */
+  /* body縺ｧ縺ｮ繝輔か繝ｳ繝域欠螳壹・譛菴朱剞縺ｫ縺吶ｋ・・ain縺ｧ荳頑嶌縺阪☆繧九◆繧・ｼ・*/
   font-family: system-ui, sans-serif;
 }
 
@@ -628,27 +628,27 @@ body {
    RichTextEditor Styles
    ========================================= */
 
-/* エディタラッパー */
+/* 繧ｨ繝・ぅ繧ｿ繝ｩ繝・ヱ繝ｼ */
 .editor-wrapper {
   position: relative;
   width: 100%;
   height: 100%;
 }
 
-/* プレビューレイヤー */
+/* 繝励Ξ繝薙Η繝ｼ繝ｬ繧､繝､繝ｼ */
 .editor-preview {
   pointer-events: none !important;
   user-select: none !important;
 }
 
-/* プレビュー内の各行（基本） */
+/* 繝励Ξ繝薙Η繝ｼ蜀・・蜷・｡鯉ｼ亥渕譛ｬ・・*/
 .preview-line {
   margin: 0 !important;
   padding: 0 !important;
   line-height: 1.4 !important;
 }
 
-/* 見出し1（編集モード） */
+/* 隕句・縺・・育ｷｨ髮・Δ繝ｼ繝会ｼ・*/
 .editor-preview .preview-h1 {
   font-size: 14px !important;
   font-weight: 600 !important;
@@ -657,20 +657,20 @@ body {
   margin-bottom: 4px !important;
 }
 
-/* Markdownマーカー（# や **を薄く） */
+/* Markdown繝槭・繧ｫ繝ｼ・・ 繧・**繧定埋縺擾ｼ・*/
 .editor-preview .preview-marker {
   opacity: 0.25 !important;
   color: #999 !important;
   font-weight: normal !important;
 }
 
-/* 強調（太字+赤） */
+/* 蠑ｷ隱ｿ・亥､ｪ蟄・襍､・・*/
 .editor-preview .preview-bold {
   font-weight: bold !important;
   color: red !important;
 }
 
-/* textarea（透明化）*/
+/* textarea・磯乗・蛹厄ｼ・/
 .editor-textarea {
   background: transparent !important;
   color: transparent !important;
@@ -679,13 +679,13 @@ body {
   text-shadow: none !important;
 }
 
-/* textarea選択範囲 */
+/* textarea驕ｸ謚樒ｯ・峇 */
 .editor-textarea::selection {
   background-color: rgba(0, 122, 255, 0.3) !important;
   color: rgba(0, 0, 0, 0.5) !important;
 }
 
-/* textareaプレースホルダー */
+/* textarea繝励Ξ繝ｼ繧ｹ繝帙Ν繝繝ｼ */
 .editor-textarea::placeholder {
   color: rgba(0, 0, 0, 0.2) !important;
   -webkit-text-fill-color: rgba(0, 0, 0, 0.2) !important;
@@ -694,14 +694,14 @@ body {
    Editor Layout Fix
    ========================================= */
 
-/* main(notePaper) �̒��ŃG�f�B�^��L�΂����߂̔� */
+/* main(notePaper) の中でエディタを伸ばすための箱 */
 .editorHost {
   height: 100%;
   flex: 1;
   min-height: 0;
 }
 
-/* main��flex���� */
+/* mainをflex箱に */
 .noteMain {
   height: 100%;
   min-height: 100vh;
@@ -712,25 +712,25 @@ body {
    RichTextEditor Preview Styles
    ========================================= */
 
-/* マーカー文字（# や ** など）を薄く表示 */
+/* 繝槭・繧ｫ繝ｼ譁・ｭ暦ｼ・ 繧・** 縺ｪ縺ｩ・峨ｒ阮・￥陦ｨ遉ｺ */
 .preview-marker {
   opacity: 0.25;
   color: #666;
 }
 
-/* 見出しテキストを太字で強調 */
+/* 隕句・縺励ユ繧ｭ繧ｹ繝医ｒ螟ｪ蟄励〒蠑ｷ隱ｿ */
 .preview-h1-text {
   font-weight: 900;
   color: #000;
 }
 
-/* 強調テキストを赤い太字で表示 */
+/* 蠑ｷ隱ｿ繝・く繧ｹ繝医ｒ襍､縺・､ｪ蟄励〒陦ｨ遉ｺ */
 .preview-bold {
   font-weight: bold;
   color: #d32f2f;
 }
 
-/* プレビュー行のスタイル */
+/* 繝励Ξ繝薙Η繝ｼ陦後・繧ｹ繧ｿ繧､繝ｫ */
 .preview-line {
   margin: 0;
   padding: 0;
@@ -740,19 +740,19 @@ body {
    CodeMirror Markdown Decoration Styles
    ========================================= */
 
-/* マーカー文字（# や ** など）を薄く表示 */
+/* 繝槭・繧ｫ繝ｼ譁・ｭ暦ｼ・ 繧・** 縺ｪ縺ｩ・峨ｒ阮・￥陦ｨ遉ｺ */
 .cm-md-marker {
   opacity: 0.3;
   color: #777;
 }
 
-/* 見出しテキスト */
+/* 隕句・縺励ユ繧ｭ繧ｹ繝・*/
 .cm-md-h1 {
   font-size: 1.1em;
   font-weight: 700;
 }
 
-/* 強調テキスト（赤太字） */
+/* 蠑ｷ隱ｿ繝・く繧ｹ繝茨ｼ郁ｵ､螟ｪ蟄暦ｼ・*/
 .cm-md-bold {
   color: #c00;
   font-weight: 800;

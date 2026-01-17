@@ -1,0 +1,20 @@
+﻿
+/* =========================================
+   新規作成時エフェクト (Holy Flash) - 修正版
+   ========================================= */
+.is-newly-created {
+  animation: holyFlash 0.6s ease-out forwards !important;
+}
+
+@keyframes holyFlash {
+  0% {
+    box-shadow: 0 0 30px 12px rgba(255, 215, 0, 0.8) !important;
+    filter: brightness(1.2) !important;
+    transform: scale(1.03);
+  }
+  100% {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
+    filter: brightness(1.0) !important;
+    transform: scale(1.0);
+  }
+}

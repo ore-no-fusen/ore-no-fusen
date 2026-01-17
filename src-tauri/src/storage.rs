@@ -68,7 +68,8 @@ pub fn import_files(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
                     &context, 
                     &today,  // created
                     &today,  // updated
-                    Some("#f7e9b0")
+                    Some("#f7e9b0"),
+                    &[]
                 );
                 
                 // 6. 新しい内容を作成して保存
@@ -114,10 +115,12 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
                 let mut height = None;
                 let mut background_color = None;
                 let mut always_on_top = None;
+                let mut tags = Vec::new();
 
                 if let Ok(content) = fs::read_to_string(path) {
-                     let (lx, ly, lw, lh, lc, laot) = logic::extract_meta_from_content(&content);
+                     let (lx, ly, lw, lh, lc, laot, ltags) = logic::extract_meta_from_content(&content);
                      x = lx; y = ly; width = lw; height = lh; background_color = lc; always_on_top = laot;
+                     tags = ltags;
                 }
 
                 notes.push(NoteMeta {
@@ -125,7 +128,8 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
                     seq,
                     context,
                     updated,
-                    x, y, width, height, background_color, always_on_top
+                    x, y, width, height, background_color, always_on_top,
+                    tags
                 });
             }
         }

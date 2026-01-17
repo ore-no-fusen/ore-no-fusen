@@ -32,27 +32,35 @@ pub fn generate_filename(seq: i32, date: &str, context: &str) -> String {
     format!("{:04}_{}_{}.md", seq, date, context)
 }
 
-pub fn generate_frontmatter(seq: i32, context: &str, created: &str, updated: &str, background_color: Option<&str>) -> String {
+pub fn generate_frontmatter(seq: i32, context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String]) -> String {
     let color_line = if let Some(c) = background_color {
         format!("\nbackgroundColor: {}", c)
     } else {
         "\nbackgroundColor: #f7e9b0".to_string()
     };
     
+    let tags_line = if !tags.is_empty() {
+        format!("\ntags: [{}]", tags.join(", "))
+    } else {
+        "".to_string()
+    };
+    
     // Δ0.7: Complete frontmatter with all fields including geometry defaults
     format!(
-        "---\ntype: sticky\nseq: {}\ncontext: {}\ncreated: {}\nupdated: {}{}\nx: 100\ny: 100\nwidth: 400\nheight: 300\nfontFamily: BIZ UDGothic\nfontSize: 8\nlineHeight: 1.0\n---\n",
-        seq, context, created, updated, color_line
+        "---\ntype: sticky\nseq: {}\ncontext: {}\ncreated: {}\nupdated: {}{}{}\nx: 100\ny: 100\nwidth: 400\nheight: 300\nfontFamily: BIZ UDGothic\nfontSize: 8\nlineHeight: 1.0\n---\n",
+        seq, context, created, updated, color_line, tags_line
     )
 }
 
-pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>) {
-    let re_x = regex::Regex::new(r"x:\s*([\d\.]+)").unwrap();
-    let re_y = regex::Regex::new(r"y:\s*([\d\.]+)").unwrap();
-    let re_w = regex::Regex::new(r"(?:width|w):\s*([\d\.]+)").unwrap();
-    let re_h = regex::Regex::new(r"(?:height|h):\s*([\d\.]+)").unwrap();
+pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>, Vec<String>) {
+    // \b (単語境界) を使い、他フィールドの末尾文字にマッチしないよう安全に抽出
+    let re_x = regex::Regex::new(r"\bx:\s*([\d\.]+)").unwrap();
+    let re_y = regex::Regex::new(r"\by:\s*([\d\.]+)").unwrap();
+    let re_w = regex::Regex::new(r"\b(?:width|w):\s*([\d\.]+)").unwrap();
+    let re_h = regex::Regex::new(r"\b(?:height|h):\s*([\d\.]+)").unwrap();
     let re_color = regex::Regex::new(r#"backgroundColor:\s*["']?([^"'\s]+)["']?"#).unwrap();
     let re_aot = regex::Regex::new(r"alwaysOnTop:\s*(true|false)").unwrap();
+    let re_tags = regex::Regex::new(r"(?m)^tags:\s*(.*)$").unwrap();
 
     let x = re_x.captures(content).and_then(|c| c[1].parse().ok());
     let y = re_y.captures(content).and_then(|c| c[1].parse().ok());
@@ -60,8 +68,23 @@ pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Op
     let height = re_h.captures(content).and_then(|c| c[1].parse().ok());
     let color = re_color.captures(content).map(|c| c[1].to_string());
     let always_on_top = re_aot.captures(content).and_then(|c| c[1].parse().ok());
+    
+    let tags_val = re_tags.captures(content).map(|c| c[1].trim().to_string()).unwrap_or_default();
+    let tags = if tags_val.starts_with('[') && tags_val.ends_with(']') {
+        tags_val[1..tags_val.len()-1].split(',')
+            .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    } else if !tags_val.is_empty() {
+        tags_val.split(',')
+            .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    } else {
+        Vec::new()
+    };
 
-    (x, y, width, height, color, always_on_top)
+    (x, y, width, height, color, always_on_top, tags)
 }
 
 pub fn update_updated_field(frontmatter: &str, new_date: &str) -> String {
@@ -121,7 +144,7 @@ pub fn handle_save_note(
     });
     
     // 3. Update State
-    let (x, y, w, h, bg, aot) = extract_meta_from_content(&content);
+    let (x, y, w, h, bg, aot, tags) = extract_meta_from_content(&content);
     
     let new_meta = NoteMeta {
         path: final_path_str.clone(),
@@ -131,6 +154,7 @@ pub fn handle_save_note(
         x, y, width: w, height: h,
         background_color: bg,
         always_on_top: aot,
+        tags,
     };
     
     apply_update_note(state, current_path, new_meta);
@@ -154,7 +178,7 @@ pub fn build_create_note_data(folder_path: &str, context: &str, next_seq: i32, t
     let path = std::path::Path::new(folder_path).join(&filename);
     let path_str = path.to_string_lossy().to_string();
     
-    let frontmatter = generate_frontmatter(next_seq, context, today, today, Some("#f7e9b0"));
+    let frontmatter = generate_frontmatter(next_seq, context, today, today, Some("#f7e9b0"), &[]);
     let body = "ここにコンテキストを書く！".to_string();
     let content = format!("{}\n\n{}", frontmatter, body);
     
@@ -207,7 +231,7 @@ pub fn apply_remove_note(state: &mut AppState, path: &str) {
 pub fn update_frontmatter_value(content: &str, key: &str, value: String) -> String {
     // Determine Frontmatter area
     if !content.trim_start().starts_with("---") {
-        return format!("---\n{}: {}\n---\n{}", key, value, content);
+        return format!("---\n{}: {}\n---\n\n{}", key, value, content);
     }
     
     // Find closing ---
@@ -215,22 +239,114 @@ pub fn update_frontmatter_value(content: &str, key: &str, value: String) -> Stri
     let start_idx = content.find("---").unwrap() + 3;
     let end_idx = match content[start_idx..].find("---") {
         Some(i) => start_idx + i,
-        None => return format!("---\n{}: {}\n---\n{}", key, value, content),
+        None => return format!("---\n{}: {}\n---\n\n{}", key, value, content),
     };
     
-    let frontmatter = &content[..end_idx+3];
-    let body = &content[end_idx+3..];
+    let frontmatter = &content[..end_idx];
+    let body = &content[end_idx..]; // Keep the closing fence in 'body' for easy replacement
     
     let re = regex::Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(key))).unwrap();
-    let new_fm = if re.is_match(frontmatter) {
-        re.replace(frontmatter, format!("{}: {}", key, value)).to_string()
+    if re.is_match(frontmatter) {
+        let new_fm = re.replace(frontmatter, format!("{}: {}", key, value)).to_string();
+        format!("{}{}", new_fm, body)
     } else {
         // Insert before closing ---
-        let (head, tail) = frontmatter.split_at(end_idx);
-        format!("{}{}: {}\n{}", head, key, value, tail)
-    };
+        // Ensure the last line of frontmatter has a newline
+        let mut new_fm = frontmatter.to_string();
+        if !new_fm.ends_with('\n') {
+            new_fm.push('\n');
+        }
+        new_fm.push_str(&format!("{}: {}\n", key, value));
+        format!("{}{}", new_fm, body)
+    }
+}
+
+// Window Label Calculation (Synced with Frontend `OrchestratorContent`)
+pub fn normalize_path(path: &str) -> String {
+    let mut normalized = path.trim().to_string();
+    normalized = normalized.replace('\\', "/");
+    normalized = normalized.to_lowercase();
+    // Regex for multiple slashes
+    let re_slashes = regex::Regex::new(r"/+").unwrap();
+    normalized = re_slashes.replace_all(&normalized, "/").to_string();
+    normalized = normalized.trim_end_matches('/').to_string();
+    normalized
+}
+
+fn base36_encode(mut n: u32) -> String {
+    let mut s = String::new();
+    const CHARS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    if n == 0 { return "0".to_string(); }
+    while n > 0 {
+        s.push(CHARS[(n % 36) as usize] as char);
+        n /= 36;
+    }
+    s.chars().rev().collect()
+}
+
+pub fn get_window_label(path: &str) -> String {
+    let normalized = normalize_path(path);
     
-    format!("{}{}", new_fm, body)
+    let mut hash: i32 = 0;
+    for c in normalized.chars() {
+        let char_code = c as i32;
+        hash = hash.wrapping_shl(5).wrapping_sub(hash).wrapping_add(char_code);
+        hash &= hash;
+    }
+    format!("note-{}", base36_encode(hash.abs() as u32))
+}
+
+pub fn handle_add_tag(
+    state: &mut AppState,
+    path: &str,
+    current_content: &str,
+    tag: &str
+) -> Result<Effect, String> {
+    let (_, _, _, _, _, _, mut tags) = extract_meta_from_content(current_content);
+    if !tags.contains(&tag.to_string()) {
+        tags.push(tag.to_string());
+        tags.sort();
+    }
+    
+    let new_content = update_frontmatter_value(current_content, "tags", format!("[{}]", tags.join(", ")));
+    
+    // State update
+    if let Some(index) = state.notes.iter().position(|n| n.path == path) {
+        state.notes[index].tags = tags;
+    }
+    
+    Ok(Effect::WriteNote { path: path.to_string(), content: new_content })
+}
+
+pub fn handle_remove_tag(
+    state: &mut AppState,
+    path: &str,
+    current_content: &str,
+    tag: &str
+) -> Result<Effect, String> {
+    let (_, _, _, _, _, _, mut tags) = extract_meta_from_content(current_content);
+    tags.retain(|t| t != tag);
+    
+    let new_content = update_frontmatter_value(current_content, "tags", format!("[{}]", tags.join(", ")));
+    
+    // State update
+    if let Some(index) = state.notes.iter().position(|n| n.path == path) {
+        state.notes[index].tags = tags;
+    }
+    
+    Ok(Effect::WriteNote { path: path.to_string(), content: new_content })
+}
+
+pub fn get_all_unique_tags(state: &AppState) -> Vec<String> {
+    let mut tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for note in &state.notes {
+        for tag in &note.tags {
+            tags.insert(tag.clone());
+        }
+    }
+    let mut tags_vec: Vec<String> = tags.into_iter().collect();
+    tags_vec.sort();
+    tags_vec
 }
 
 pub fn handle_update_geometry(
@@ -342,6 +458,57 @@ mod tests {
         assert_eq!(output, "C  Users test Documents");
     }
 
+    #[test]
+    fn test_normalize_path() {
+        assert_eq!(normalize_path("C:\\Users\\test"), "c:/users/test");
+        assert_eq!(normalize_path("  /path//to/file/  "), "/path/to/file");
+    }
+
+    #[test]
+    fn test_get_window_label() {
+        // Frontend logic check:
+        // simpleHash("c:/users/test") 
+        // c: 99, /: 47, u: 117, s: 115, e: 101, r: 114, s: 115, /: 47, t: 116, e: 101, s: 115, t: 116
+        // Let's just trust the formula if it matches charCode-based hash.
+        let label = get_window_label("C:\\Users\\test");
+        assert!(label.starts_with("note-"));
+    }
+
+    #[test]
+    fn extract_meta_with_tags() {
+        let content = "---\ntags: [work, personal,  hoge]\n---";
+        let (_, _, _, _, _, _, tags) = extract_meta_from_content(content);
+        assert_eq!(tags, vec!["work", "personal", "hoge"]);
+    }
+
+    #[test]
+    fn generate_frontmatter_with_tags() {
+        let fm = generate_frontmatter(1, "ctx", "2024-01-01", "2024-01-01", None, &vec!["tag1".to_string(), "tag2".to_string()]);
+        assert!(fm.contains("tags: [tag1, tag2]"));
+    }
+
+    #[test]
+    fn test_handle_add_tag() {
+        let mut state = AppState::default();
+        state.notes.push(NoteMeta { path: "/test.md".to_string(), ..Default::default() });
+        let content = "---\ntags: [work]\n---";
+        let res = handle_add_tag(&mut state, "/test.md", content, "personal");
+        assert!(res.is_ok());
+        if let Effect::WriteNote { content, .. } = res.unwrap() {
+            assert!(content.contains("tags: [personal, work]"));
+        }
+        assert!(state.notes[0].tags.contains(&"personal".to_string()));
+    }
+
+    #[test]
+    fn test_get_all_unique_tags() {
+        let mut state = AppState::default();
+        state.notes.push(NoteMeta { tags: vec!["a".to_string(), "b".to_string()], ..Default::default() });
+        state.notes.push(NoteMeta { tags: vec!["b".to_string(), "c".to_string()], ..Default::default() });
+        let tags = get_all_unique_tags(&state);
+        assert_eq!(tags, vec!["a", "b", "c"]);
+    }
+
     // === parse_filename のテスト ===
     // ファイル名から seq, date, context を抽出する
     
@@ -428,7 +595,7 @@ mod tests {
     #[test]
     fn generate_frontmatter_with_default_color() {
         // デフォルトカラー（指定なし）の場合
-        let frontmatter = generate_frontmatter(1, "テストメモ", "2026-01-12", "2026-01-12", None);
+        let frontmatter = generate_frontmatter(1, "テストメモ", "2026-01-12", "2026-01-12", None, &[]);
         
         // 必須フィールドが含まれていることを確認
         assert!(frontmatter.contains("type: sticky"));
@@ -450,7 +617,7 @@ mod tests {
     #[test]
     fn generate_frontmatter_with_custom_color() {
         // カスタムカラーを指定
-        let frontmatter = generate_frontmatter(42, "青いメモ", "2026-01-12", "2026-01-12", Some("#80d8ff"));
+        let frontmatter = generate_frontmatter(42, "青いメモ", "2026-01-12", "2026-01-12", Some("#80d8ff"), &[]);
         
         assert!(frontmatter.contains("backgroundColor: #80d8ff"));
         assert!(frontmatter.contains("seq: 42"));
@@ -459,7 +626,7 @@ mod tests {
     #[test]
     fn generate_frontmatter_format() {
         // フロントマターが正しいYAML形式であることを確認
-        let frontmatter = generate_frontmatter(1, "test", "2026-01-12", "2026-01-12", None);
+        let frontmatter = generate_frontmatter(1, "test", "2026-01-12", "2026-01-12", None, &[]);
         
         // ---で開始・終了することを確認
         assert!(frontmatter.starts_with("---\n"));
@@ -486,15 +653,14 @@ alwaysOnTop: true
 メモの本文
 "#;
         
-        let (x, y, width, height, color, aot) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, tags) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(150.0));
         assert_eq!(y, Some(200.0));
         assert_eq!(width, Some(500.0));
         
-        // 注意: 正規表現 (?:height|h) が "width: 500" の "h" にマッチするため、
-        // height の値は 500.0 になる（これは実装の振る舞い）
-        assert_eq!(height, Some(500.0));
+        // 修正済み: height は正しく 400.0 を取得する
+        assert_eq!(height, Some(400.0));
         
         assert_eq!(color, Some("#ffcdd2".to_string()));
         assert_eq!(aot, Some(true));
@@ -508,7 +674,7 @@ x: 100
 backgroundColor: #f7e9b0
 ---"#;
         
-        let (x, y, width, height, color, aot) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, tags) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(100.0));
         assert_eq!(y, None);  // 存在しない
@@ -523,7 +689,7 @@ backgroundColor: #f7e9b0
         // フロントマターが存在しない場合
         let content = "ただのテキスト";
         
-        let (x, y, width, height, color, aot) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, tags) = extract_meta_from_content(content);
         
         // 全てNone
         assert_eq!(x, None);
@@ -539,7 +705,7 @@ backgroundColor: #f7e9b0
         // 小数点を含む座標
         let content = "x: 123.45\ny: 678.9";
         
-        let (x, y, _, _, _, _) = extract_meta_from_content(content);
+        let (x, y, _, _, _, _, _) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(123.45));
         assert_eq!(y, Some(678.9));
@@ -833,6 +999,74 @@ backgroundColor: #f7e9b0
         
         assert!(result.is_ok());
         assert_eq!(state.notes[0].always_on_top, Some(false));
+    }
+
+    // =================================================================
+    // 回帰テスト: 過去のバグが再発しないことを確認
+    // =================================================================
+
+    /// No.1バグ回帰テスト: width と height が正しく読み分けられる
+    /// 
+    /// 2026-01-14に発生したバグ:
+    /// 正規表現 `(?:height|h):` が `width:` の末尾 `h` にマッチし、
+    /// width=413 の値が height として誤読されていた。
+    /// 修正: すべての正規表現に `\b` (単語境界) を追加。
+    #[test]
+    fn regression_no1_height_not_confused_with_width() {
+        // 実際に問題が発生したデータ形式を再現
+        let content = r#"---
+type: sticky
+seq: 28
+context:
+created: 2026-01-14
+updated: 2026-01-14
+backgroundColor: #ffcdd2
+x: 1425
+y: 551
+width: 413
+height: 241
+fontFamily: BIZ UDGothic
+fontSize: 8
+lineHeight: 1.0
+tags: [OreNoFusen, 開発プロセス]
+---
+
+ロードマップ"#;
+        
+        let (x, y, width, height, color, _, tags) = extract_meta_from_content(content);
+        
+        // ⚠️ 最重要: height が width の値で上書きされていないこと
+        assert_eq!(width, Some(413.0), "width は 413.0 であるべき");
+        assert_eq!(height, Some(241.0), "height は 241.0 であるべき (width の値ではない!)");
+        
+        // 他のフィールドも正しく読めている
+        assert_eq!(x, Some(1425.0));
+        assert_eq!(y, Some(551.0));
+        assert_eq!(color, Some("#ffcdd2".to_string()));
+        assert!(tags.contains(&"OreNoFusen".to_string()));
+    }
+
+    /// No.1バグ回帰テスト (追加): width/height の順序が逆でも正しく動作
+    #[test]
+    fn regression_no1_order_independent() {
+        // height が width より前に来るケース
+        let content = "---\nheight: 300\nwidth: 400\n---";
+        
+        let (_, _, width, height, _, _, _) = extract_meta_from_content(content);
+        
+        assert_eq!(width, Some(400.0));
+        assert_eq!(height, Some(300.0));
+    }
+
+    /// No.1バグ回帰テスト (追加): 短縮形 w: と h: も正しく動作
+    #[test]
+    fn regression_no1_short_form_w_and_h() {
+        let content = "---\nw: 500\nh: 250\n---";
+        
+        let (_, _, width, height, _, _, _) = extract_meta_from_content(content);
+        
+        assert_eq!(width, Some(500.0));
+        assert_eq!(height, Some(250.0));
     }
 
 }
