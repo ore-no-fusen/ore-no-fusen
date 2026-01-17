@@ -399,11 +399,48 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
 
         viewRef.current = view;
 
+        // 初期カーソル位置が指定されている場合は適用＆フォーカス
+        if (cursorPosition !== undefined && cursorPosition !== null) {
+            // ドキュメントの長さを超えないようにガード
+            const safePos = Math.min(cursorPosition, value.length);
+            view.dispatch({
+                selection: { anchor: safePos, head: safePos }
+            });
+            // 即座にフォーカス (setTimeoutなしで試みる)
+            view.focus();
+
+            // 安全策：少し遅延してもフォーカス
+            setTimeout(() => {
+                if (viewRef.current && !viewRef.current.hasFocus) {
+                    viewRef.current.focus();
+                }
+            }, 10);
+        }
+
         return () => {
             view.destroy();
             viewRef.current = null;
         };
-    }, [backgroundColor]); // backgroundColorが変わったら再作成
+    }, []); // backgroundColorが変わっても再作成しない (Fix B)
+
+    // [New] cursorPosition change handler
+    useEffect(() => {
+        if (cursorPosition === undefined || cursorPosition === null) return;
+        if (!viewRef.current) return;
+
+        const view = viewRef.current;
+        const docLength = view.state.doc.length;
+        const safePos = Math.min(Math.max(0, cursorPosition), docLength);
+
+        // 描画/初回ロードのズレに勝つため2フレームで確実にfocus
+        requestAnimationFrame(() => {
+            view.dispatch({ selection: { anchor: safePos, head: safePos } });
+            view.focus();
+            requestAnimationFrame(() => {
+                view.focus();
+            });
+        });
+    }, [cursorPosition]);
 
     // value が外部から変更された場合の同期
     useEffect(() => {

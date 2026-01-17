@@ -2,6 +2,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::{State, Manager, AppHandle, Emitter};
+use raw_window_handle::HasWindowHandle;
 // use tauri::menu::{Menu, MenuItem, CheckMenuItem, Submenu, PredefinedMenuItem, MenuEvent};
 
 mod state;
@@ -69,6 +70,88 @@ fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Not
     logic::apply_update_note(&mut *state.lock().unwrap(), &path, meta.clone());
 
     Ok(meta)
+}
+
+
+
+#[tauri::command]
+async fn fusen_warp_cursor(window: tauri::Window) -> Result<(), String> {
+    // Get window position and size (Physical)
+    let pos = window.outer_position().map_err(|e| e.to_string())?;
+    let size = window.inner_size().map_err(|e| e.to_string())?;
+    
+    // Calculate center-top position (top title bar area)
+    let x = pos.x + (size.width as i32 / 2);
+    let y = pos.y + 40; // Title bar area
+
+    println!("[WARP] Window Outer Pos: ({}, {}), Size: {}x{}", pos.x, pos.y, size.width, size.height);
+    println!("[WARP] Target Cursor Pos: ({}, {})", x, y);
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{SetCursorPos, SetForegroundWindow};
+        use windows::Win32::Foundation::HWND;
+        use raw_window_handle::RawWindowHandle;
+        
+        unsafe {
+            // 1. Move Cursor
+            let result_cursor = SetCursorPos(x, y);
+            println!("[WARP] SetCursorPos result: {:?}", result_cursor);
+
+            // 2. Force Foreground
+            if let Ok(handle) = window.window_handle() {
+                 let raw = handle.as_raw();
+                 if let RawWindowHandle::Win32(win32_handle) = raw {
+                     let hwnd_val = HWND(win32_handle.hwnd.get());
+                     let result_fg = SetForegroundWindow(hwnd_val);
+                     println!("[WARP] SetForegroundWindow result: {:?}", result_fg);
+                 }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn fusen_force_focus(window: tauri::Window) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetForegroundWindow, BringWindowToTop, 
+            ShowWindow, SW_RESTORE, SW_SHOW
+        };
+        use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
+        use windows::Win32::Foundation::{HWND, BOOL};
+        use raw_window_handle::RawWindowHandle;
+
+        unsafe {
+            if let Ok(handle) = window.window_handle() {
+                 let raw = handle.as_raw();
+                 if let RawWindowHandle::Win32(win32_handle) = raw {
+                     let hwnd = HWND(win32_handle.hwnd.get());
+                     
+                     // 1. Ensure window is visible/restored
+                     ShowWindow(hwnd, SW_SHOW);
+                     if window.is_minimized().unwrap_or(false) {
+                        ShowWindow(hwnd, SW_RESTORE);
+                     }
+
+                     // 2. Simply force foreground and top (Skip AttachThreadInput for now)
+                     BringWindowToTop(hwnd);
+                     SetForegroundWindow(hwnd);
+                     SetFocus(hwnd);
+                 }
+            }
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -467,6 +550,8 @@ pub fn run() {
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .invoke_handler(tauri::generate_handler![
             fusen_get_note,
+            fusen_warp_cursor,
+            fusen_force_focus,
             fusen_select_folder,
             fusen_select_file,
             fusen_list_notes,

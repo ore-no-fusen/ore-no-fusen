@@ -49,6 +49,7 @@ const showSaveError = () => {
 const StickyNote = memo(function StickyNote() {
     const searchParams = useSearchParams();
     const urlPath = searchParams.get('path');
+    const isNew = searchParams.get('isNew') === '1'; // Fix 2: Define isNew outside useEffect
 
     const [selectedFile, setSelectedFile] = useState<NoteMeta | null>(null);
     const [content, setContent] = useState<string>('');
@@ -65,6 +66,8 @@ const StickyNote = memo(function StickyNote() {
 
     // [New] ドラッグ開始制限用のタイマー
     const lastEditEndedAt = useRef<number>(0);
+    // [New] 初期ロードやフォーカス揺れによる誤Blurを防ぐタイマー
+    const ignoreBlurUntilRef = useRef<number>(0);
     const editorRef = useRef<RichTextEditorRef>(null);
 
     // ホバー管理
@@ -215,8 +218,28 @@ const StickyNote = memo(function StickyNote() {
             updated: '',
         };
         setSelectedFile(myNote);
-        loadFileContent(myNote);
-    }, [urlPath]);
+
+        // 読み込みと初期フォーカス設定
+        loadFileContent(myNote).then(async () => {
+            // Fix 2: Use captured isNew
+            if (isNew) {
+                console.log('[STICKY_LOAD] New note detected. Enabling edit mode.');
+                // 3) 新規作成時はしばらく Blur を無視する
+                ignoreBlurUntilRef.current = Date.now() + 800;
+                setIsEditing(true);
+                setCursorPosition(0);
+
+                // Fix 5 (Revert): Editor focus alone was insufficient.
+                // Re-enable explicit window focus, but slightly delayed to ensure it happens 
+                // AFTER the window is created and ready, supporting the editor focus loop.
+                setTimeout(async () => {
+                    const win = getCurrentWindow();
+                    await win.setFocus();
+                    invoke('fusen_force_focus').catch(e => console.error('[STICKY_LOAD] Backend force focus failed:', e));
+                }, 100);
+            }
+        });
+    }, [urlPath, isNew]); // Fix 2: Add isNew to dependency array
 
     // イベントリスナー設定
     useEffect(() => {
@@ -284,6 +307,8 @@ const StickyNote = memo(function StickyNote() {
     // 編集モード開始
     const handleEditStart = (cursorPos?: number) => {
         if (isEditing) return;
+        // 2) 編集開始直後もしばらく Blur を無視する
+        ignoreBlurUntilRef.current = Date.now() + 800;
         setIsEditing(true);
         setEditBody(content); // 最新の状態をセット
         setCursorPosition(cursorPos ?? null);
@@ -291,6 +316,12 @@ const StickyNote = memo(function StickyNote() {
 
     // 編集モード終了
     const handleEditBlur = (currentBody?: string) => {
+        // 4) 無視期間内なら即 return
+        if (Date.now() < ignoreBlurUntilRef.current) {
+            console.log('[BLUR] ignored (initial settling)');
+            return;
+        }
+
         if (!isEditing) return;
         setIsEditing(false);
         lastEditEndedAt.current = Date.now(); // 終了時刻を記録
@@ -317,14 +348,15 @@ const StickyNote = memo(function StickyNote() {
 
     // カーソル位置設定
     useEffect(() => {
-        if (isEditing && textareaRef.current && cursorPosition !== null) {
-            textareaRef.current.focus();
-            textareaRef.current.setSelectionRange(cursorPosition, cursorPosition);
-            setCursorPosition(null);
-        } else if (isEditing && textareaRef.current) {
-            textareaRef.current.focus();
-        }
-    }, [isEditing, cursorPosition]);
+        if (!isEditing || !editorRef.current) return;
+
+        // Fix 4: Simply request focus on edit start.
+        // Actual cursor placement is handled by RichTextEditor's useEffect([cursorPosition])
+        requestAnimationFrame(() => {
+            editorRef.current?.focus();
+        });
+
+    }, [isEditing]); // Remove cursorPosition from dependency since RTE handles it
 
     // ドラッグ開始
     const handleDragStart = useCallback(async (e: React.PointerEvent) => {
@@ -485,7 +517,7 @@ const StickyNote = memo(function StickyNote() {
                         const sanitizedPath = note.meta.path.replace(/[^a-zA-Z0-9]/g, '_');
                         const label = `note_${sanitizedPath}`;
                         new WebviewWindow(label, {
-                            url: `/?path=${encodeURIComponent(note.meta.path)}`,
+                            url: `/?path=${encodeURIComponent(note.meta.path)}&isNew=1`, // Fix 1: Add isNew=1
                             title: 'Sticky Note',
                             width: 400,
                             height: 300,
@@ -1015,6 +1047,7 @@ const StickyNote = memo(function StickyNote() {
                                 if (e.key === 'Escape') handleEditBlur();
                             }}
                             backgroundColor={noteBackgroundColor}
+                            cursorPosition={cursorPosition}
                         />
                     </div>
                 ) : (

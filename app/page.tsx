@@ -7,6 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
 import StickyNote from './components/StickyNote';
+import LoadingScreen from './components/LoadingScreen';
 import SetupScreen from './components/SetupScreen';
 
 // Global AppState type definition
@@ -260,6 +261,64 @@ function OrchestratorContent() {
     }
   }, []);
 
+  // [Splash Screen Logic] resize window
+  useEffect(() => {
+    const handleResize = async () => {
+      // Setup check logic (splash screen mode)
+      if (isCheckingSetup && !setupRequired) { // "Loading..." phase
+        try {
+          const { getCurrentWindow, currentMonitor } = await import('@tauri-apps/api/window');
+          const { LogicalPosition, LogicalSize } = await import('@tauri-apps/api/dpi');
+          const win = getCurrentWindow();
+
+          // Only resize/move main window (management screen)
+          if (win.label === 'main') {
+            // 1. Set Size (Small)
+            const splashWidth = 240;
+            const splashHeight = 300;
+            await win.setSize(new LogicalSize(splashWidth, splashHeight));
+
+            // 2. Calculate Top-Right Position
+            const monitor = await currentMonitor();
+            if (monitor) {
+              const screenWidth = monitor.size.width / monitor.scaleFactor; // Convert to Logical
+              // const screenHeight = monitor.size.height / monitor.scaleFactor;
+
+              // Position: Top-Right with 20px padding
+              const x = screenWidth - splashWidth - 20;
+              const y = 20;
+              await win.setPosition(new LogicalPosition(x, y));
+            }
+
+            // 3. Show Window (it was hidden safely)
+            await win.show();
+            await win.setFocus();
+          }
+        } catch (e) {
+          console.error('Failed to init splash', e);
+          // Error recovery: show window anyway
+          try {
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+            await getCurrentWindow().show();
+          } catch { }
+        }
+      } else if (!isCheckingSetup && folderPath) {
+        // Dashboard mode (Setup done, folder selected)
+        // Resize back to Dashboard Size (Large)
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const win = getCurrentWindow();
+          if (win.label === 'main') {
+            await win.setSize(new (await import('@tauri-apps/api/dpi')).LogicalSize(800, 600));
+            await win.center();
+            await win.show(); // Ensure visible
+          }
+        } catch (e) { console.error('Failed to resize dashboard', e); }
+      }
+    };
+    handleResize();
+  }, [isCheckingSetup, folderPath, setupRequired]);
+
   // パス正規化
   const normalizePath = (path: string): string => {
     let normalized = path.trim();
@@ -403,7 +462,7 @@ function OrchestratorContent() {
 
           console.log(`[openNoteWindow] Creating window: url=${url}, isNew=${isNew}, width=${width}, height=${height}`);
 
-          await new WebviewWindow(label, {
+          const win = new WebviewWindow(label, {
             url,
             transparent: true,
             decorations: false,
@@ -414,7 +473,17 @@ function OrchestratorContent() {
             x,
             y,
             skipTaskbar: false,
+            focus: true, // Explicitly request focus in config
           });
+
+          // Force focus immediately after creation hook
+          win.once('tauri://created', async () => {
+            console.log(`[openNoteWindow] Window created: ${label}. Forcing focus.`);
+            await win.setFocus();
+          });
+
+          // Also try immediately just in case
+          await win.setFocus();
 
           await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -899,16 +968,9 @@ function OrchestratorContent() {
     return <StickyNote />; // 付箋ウィンドウとして開かれている
   }
 
-  // セットアップチェック中はローディング表示（静的HTML対策）
+  // セットアップチェック中はローディング表示
   if (isCheckingSetup) {
-    return (
-      <div className="h-screen w-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-gray-900 mb-4">俺の付箋</div>
-          <div className="text-gray-400">起動中...</div>
-        </div>
-      </div>
-    );
+    return <LoadingScreen message="STARTING..." />;
   }
 
   if (setupRequired) {
@@ -965,14 +1027,7 @@ function OrchestratorContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={
-      <div className="h-screen w-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-gray-900 mb-4">俺の付箋</div>
-          <div className="text-gray-400">読み込み中...</div>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<LoadingScreen />}>
       <OrchestratorContent />
     </Suspense>
   );
