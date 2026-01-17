@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
@@ -46,7 +46,7 @@ const showSaveError = () => {
     console.error('Save failed');
 };
 
-export default function StickyNote() {
+const StickyNote = memo(function StickyNote() {
     const searchParams = useSearchParams();
     const urlPath = searchParams.get('path');
 
@@ -1267,4 +1267,6 @@ export default function StickyNote() {
             />
         </div>
     );
-}
+});
+
+export default StickyNote;

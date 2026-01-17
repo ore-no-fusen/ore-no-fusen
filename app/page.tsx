@@ -9,6 +9,15 @@ import { listen } from '@tauri-apps/api/event';
 import StickyNote from './components/StickyNote';
 import SetupScreen from './components/SetupScreen';
 
+// Global AppState type definition
+type AppState = {
+  folder_path: string | null;
+  notes: NoteMeta[];
+  selected_path: string | null;
+};
+
+
+
 // 型定義
 type NoteMeta = {
   path: string;
@@ -227,18 +236,14 @@ function OrchestratorContent() {
   const searchParams = useSearchParams();
   const urlPath = searchParams.get('path');
 
-  // AppState型定義
-  type AppState = {
-    folder_path: string | null;
-    notes: NoteMeta[];
-    selected_path: string | null;
-  };
+
 
   const [folderPath, setFolderPath] = useState<string>('');
   const [files, setFiles] = useState<NoteMeta[]>([]);
   // プロダクションビルド対応：初期値をtrueにして、チェック完了後にfalseに更新
   const [setupRequired, setSetupRequired] = useState(true);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
 
   // State同期 (Single Source of Truth)
   const syncState = useCallback(async () => {
@@ -440,19 +445,53 @@ function OrchestratorContent() {
   // 新規ノート作成
   const handleCreateNote = async () => {
     const context = 'NewNote';
+    if (!folderPath) return; // Guard
+
+    // 1️⃣ 仮ノートをローカルで生成（folderPath 配下に temp_<timestamp>.md）
+    const timestamp = Date.now();
+    const tempPath = `${folderPath}/temp_${timestamp}.md`;
+    const today = new Date().toISOString().slice(0, 10);
+    const tempMeta: NoteMeta = {
+      path: tempPath,
+      seq: timestamp,
+      context,
+      updated: today,
+      x: 100,
+      y: 100,
+      width: 400,
+      height: 300,
+      backgroundColor: undefined,
+      tags: [],
+    };
+
+    // UI に即表示し、スピナーを表示
+    setFiles(prev => [...prev, tempMeta]);
+    setIsCreating(true);
+
     try {
-      if (!folderPath) return; // Guard
-      const newNote = await invoke<any>('fusen_create_note', { folderPath: folderPath, context });
+      // 2️⃣ バックエンドで正式ノート作成
+      const newNote = await invoke<any>('fusen_create_note', {
+        folderPath: folderPath,
+        context,
+      });
 
-      // State再取得
-      await syncState();
+      // 3️⃣ 仮ノートを正式ノートに置換
+      setFiles(prev =>
+        prev.map((n: NoteMeta) => (n.path === tempPath ? newNote.meta : n))
+      );
 
-      // 作成されたノートを開く
+      // 4️⃣ 作成されたノートを開く
       await openNoteWindow(newNote.meta.path, undefined, true);
     } catch (e) {
+      // 失敗したら仮ノートを削除
+      setFiles(prev => prev.filter((n: NoteMeta) => n.path !== tempPath));
       console.error('create_note failed', e);
+    } finally {
+      setIsCreating(false);
     }
   };
+
+
 
   // ファイル選択
   const handleFileSelect = async (file: NoteMeta) => {

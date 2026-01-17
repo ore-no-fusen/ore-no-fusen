@@ -39,6 +39,39 @@ fn fusen_select_file(default_path: Option<String>) -> Option<String> {
 }
 
 #[tauri::command]
+fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<NoteMeta, String> {
+    // 1. Read note content
+    let note = storage::read_note(&path)?;
+    
+    // 2. Parse Filename for basic meta
+    let path_obj = Path::new(&path);
+    let filename = path_obj.file_name()
+        .ok_or("Invalid path")?
+        .to_string_lossy()
+        .to_string();
+    let (seq, updated, context) = logic::parse_filename(&filename);
+
+    // 3. Parse Content for extended meta
+    let (x, y, w, h, bg, aot, tags) = logic::extract_meta_from_content(&note.body);
+
+    let meta = NoteMeta {
+        path: path.clone(),
+        seq,
+        context,
+        updated,
+        x, y, width: w, height: h,
+        background_color: bg,
+        always_on_top: aot,
+        tags,
+    };
+
+    // 4. Update AppState
+    logic::apply_update_note(&mut *state.lock().unwrap(), &path, meta.clone());
+
+    Ok(meta)
+}
+
+#[tauri::command]
 fn fusen_list_notes(state: State<'_, Mutex<AppState>>, folder_path: String) -> Vec<NoteMeta> {
     let notes = storage::list_notes(&folder_path);
     
@@ -433,6 +466,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .invoke_handler(tauri::generate_handler![
+            fusen_get_note,
             fusen_select_folder,
             fusen_select_file,
             fusen_list_notes,
