@@ -255,6 +255,51 @@ fn fusen_remove_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String
 }
 
 #[tauri::command]
+fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app: tauri::AppHandle) -> Result<usize, String> {
+    let mut app_state = state.lock().unwrap();
+    let mut modified_count = 0;
+    
+    // Create a list of paths to process to avoid borrowing issues
+    eprintln!("Global Delete Request for tag: '{}'", tag);
+    let paths: Vec<String> = app_state.notes.iter().map(|n| n.path.clone()).collect();
+    
+    // Iterate through all notes
+    for path in paths {
+        // Read note content
+        if let Ok(note) = storage::read_note(&path) {
+            let (_, _, _, _, _, _, tags) = logic::extract_meta_from_content(&note.body);
+            // println!("Checking note: {} tags: {:?}", path, tags); 
+
+            // Check if tag exists
+            if tags.contains(&tag) {
+                eprintln!("Found tag '{}' in {}, attempting to remove...", tag, path);
+                // Remove tag
+                if let Ok(effect) = logic::handle_remove_tag(&mut *app_state, &path, &note.body, &tag) {
+                    if let logic::Effect::WriteNote { path, content } = effect {
+                        match storage::write_note(&path, &content) {
+                            Ok(_) => {
+                                eprintln!("Successfully wrote modified note: {}", path);
+                                modified_count += 1;
+                            },
+                            Err(e) => eprintln!("Failed to write note: {} error: {}", path, e),
+                        }
+                    }
+                } else {
+                    eprintln!("handle_remove_tag returned error for {}", path);
+                }
+            }
+        }
+    }
+    
+    // Update tray menu
+    drop(app_state);
+    let _ = crate::tray::refresh_tray_menu(&app);
+    
+    eprintln!("Global Delete Finished. Modified {} notes.", modified_count);
+    Ok(modified_count)
+}
+
+#[tauri::command]
 fn fusen_get_all_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
     let app_state = state.lock().unwrap();
     logic::get_all_unique_tags(&*app_state)
@@ -402,6 +447,7 @@ pub fn run() {
             fusen_open_containing_folder,
             fusen_add_tag,
             fusen_remove_tag,
+            fusen_delete_tag_globally,
             fusen_get_all_tags,
             fusen_get_active_tags,
             fusen_set_active_tags,
@@ -452,8 +498,4 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-#[derive(Clone, serde::Serialize)]
-struct ActionPayload {
-  path: String,
-  action: String,
-}
+

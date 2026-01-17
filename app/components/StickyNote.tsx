@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
+import ConfirmDialog from './ConfirmDialog';
 
 // 型定義
 type NoteMeta = {
@@ -75,7 +76,10 @@ export default function StickyNote() {
     const [tagInputValue, setTagInputValue] = useState('');
     const [allTags, setAllTags] = useState<string[]>([]);
     const [currentTags, setCurrentTags] = useState<string[]>([]);
+    const [isTagDeleteMode, setIsTagDeleteMode] = useState(false);
+    const [tagToDelete, setTagToDelete] = useState<string | null>(null);
     const shellRef = useRef<HTMLDivElement>(null);
+    const menuRef = useRef<any>(null); // Keep menu alive to prevent GC of callbacks
 
     // Frontmatter更新ヘルパー
     const updateFrontmatterValue = (front: string, key: string, value: string | number) => {
@@ -440,257 +444,248 @@ export default function StickyNote() {
 
 
 
-    // Global Context Menu Listener (Right Click) with Native Menu
-    useEffect(() => {
-        const handleContextMenu = async (e: MouseEvent) => {
-            e.preventDefault();
-            if (!selectedFile) return;
+    // Context Menu Logic
+    const lastContextMenuPos = useRef<{ x: number, y: number } | null>(null);
+    const shouldReopenMenu = useRef(false);
 
-            try {
-                // Import menu classes
-                const { Menu, MenuItem, Submenu, PredefinedMenuItem } = await import('@tauri-apps/api/menu');
-                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const showContextMenu = useCallback(async (x?: number, y?: number) => {
+        if (!selectedFile) return;
 
-                // Filename display item (non-clickable)
-                const filenameItem = await MenuItem.new({
-                    id: 'ctx_filename',
-                    text: `📄 ${getFileName(selectedFile.path)}`,
-                    enabled: false
-                });
+        try {
+            // Import menu classes
+            const { Menu, MenuItem, Submenu, PredefinedMenuItem } = await import('@tauri-apps/api/menu');
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
 
-                const separator1 = await PredefinedMenuItem.new({ item: 'Separator' });
+            // Filename display            // Common Items
+            const filenameItem = await MenuItem.new({
+                id: 'ctx_filename',
+                text: selectedFile.context || getFileName(selectedFile.path),
+                enabled: false,
+            });
 
-                // Open folder item
-                const openFolderItem = await MenuItem.new({
-                    id: 'ctx_open_folder',
-                    text: '📁 フォルダを開く',
-                    action: async () => {
-                        try {
-                            await invoke('fusen_open_containing_folder', { path: selectedFile.path });
-                        } catch (err) {
-                            console.error('Failed to open folder', err);
-                        }
+            const separator1 = await PredefinedMenuItem.new({ item: 'Separator' });
+
+            const openFolderItem = await MenuItem.new({
+                id: 'ctx_open_folder',
+                text: '📂 フォルダを開く',
+                action: async () => {
+                    await invoke('fusen_open_containing_folder', { path: selectedFile.path });
+                }
+            });
+
+            const newNoteItem = await MenuItem.new({
+                id: 'ctx_new_note',
+                text: '📝 新規メモ',
+                action: async () => { /* ... existing logic ... */
+                    try {
+                        const normalizedPath = selectedFile.path.replace(/\\/g, '/');
+                        const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+                        const note = await invoke<Note>('fusen_create_note', { folderPath, context: '' });
+                        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                        const sanitizedPath = note.meta.path.replace(/[^a-zA-Z0-9]/g, '_');
+                        const label = `note_${sanitizedPath}`;
+                        new WebviewWindow(label, {
+                            url: `/?path=${encodeURIComponent(note.meta.path)}`,
+                            title: 'Sticky Note',
+                            width: 400,
+                            height: 300,
+                            decorations: false,
+                            transparent: true
+                        });
+                    } catch (e) {
+                        console.error('New note error', e);
                     }
-                });
+                }
+            });
 
-                const separator2 = await PredefinedMenuItem.new({ item: 'Separator' });
+            // Color Items
+            const colorItems = [
+                await MenuItem.new({ id: 'ctx_color_blue', text: '🔵 Blue', action: () => handleColorChange('#80d8ff') }),
+                await MenuItem.new({ id: 'ctx_color_pink', text: '🌸 Pink', action: () => handleColorChange('#ffcdd2') }),
+                await MenuItem.new({ id: 'ctx_color_yellow', text: '💛 Yellow', action: () => handleColorChange('#f7e9b0') })
+            ];
+            const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: '🎨 色変更', items: colorItems });
 
-                // Build menu items
-                const newNoteItem = await MenuItem.new({
-                    id: 'ctx_new_note',
-                    text: '📝 新規メモ',
-                    action: async () => {
-                        try {
-                            // Get current folder from selected file path
-                            const normalizedPath = selectedFile.path.replace(/\\/g, '/');
-                            const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+            const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
 
-                            // Create new note
-                            const note = await invoke<Note>('fusen_create_note', {
-                                folderPath,
-                                context: ''
-                            });
+            // --- Dynamic Part ---
+            let menuItems: any[] = [
+                filenameItem,
+                separator1,
+                openFolderItem,
+                await PredefinedMenuItem.new({ item: 'Separator' }), // Sep before New Note
+                newNoteItem,
+                colorSubmenu,
+                separatorCommon
+            ];
 
-                            // Open new note window directly (no emit to avoid duplicates)
-                            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-                            const sanitizedPath = note.meta.path.replace(/[^a-zA-Z0-9]/g, '_');
-                            const label = `note_${sanitizedPath}`;
+            if (isTagDeleteMode) {
+                console.log('[ShowContextMenu] Building menu in DELETE MODE.');
+                // DELETE MODE: Flattened Tags
+                menuItems.push(await MenuItem.new({ id: 'header_del', text: '⚠️ 削除モード (タグを選択して削除)', enabled: false }));
 
-                            new WebviewWindow(label, {
-                                url: `/?path=${encodeURIComponent(note.meta.path)}`,
-                                title: 'Sticky Note',
-                                width: 400,
-                                height: 300,
-                                decorations: false,
-                                transparent: true,
-                                alwaysOnTop: false,
-                                skipTaskbar: false
-                            });
-                        } catch (e) {
-                            console.error('New note creation failed', e);
+                try {
+                    const tags = await invoke<string[]>('fusen_get_all_tags');
+                    console.log('[ShowContextMenu] Fetched tags for delete mode:', tags);
+                    if (tags.length > 0) {
+                        for (const tag of tags) {
+                            menuItems.push(await MenuItem.new({
+                                id: `ctx_del_tag_${tag}`,
+                                text: `🗑️ ${tag}`,
+                                action: async () => {
+                                    console.log('Requesting delete for:', tag);
+                                    setTagToDelete(tag);
+                                }
+                            }));
                         }
+                    } else {
+                        menuItems.push(await MenuItem.new({ id: 'ctx_no_tags', text: '(タグなし)', enabled: false }));
                     }
-                });
+                } catch (e) { console.error('Failed to load tags in delete mode:', e); }
 
-                // タグサブメニュー
+                menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                menuItems.push(await MenuItem.new({
+                    id: 'ctx_exit_mode',
+                    text: '⬅️ 通常モードに戻る',
+                    action: () => {
+                        shouldReopenMenu.current = true;
+                        setIsTagDeleteMode(false);
+                    }
+                }));
+
+            } else {
+                console.log('[ShowContextMenu] Building menu in NORMAL MODE.');
+                // NORMAL MODE: Tag Submenu
                 const tagNewItem = await MenuItem.new({
                     id: 'ctx_tag_new',
                     text: '➕ 新規追加',
                     action: async () => {
+                        /* Reuse logic to fetch tags and show modal */
                         try {
-                            // 全タグを取得
                             const tags = await invoke<string[]>('fusen_get_all_tags');
                             setAllTags(tags);
-
-                            // 現在のノートのタグを取得
                             if (selectedFile) {
                                 const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
                                 const { front } = splitFrontMatter(note.body);
                                 const tagsMatch = front.match(/tags:\s*\[([^\]]*)\]/);
-                                if (tagsMatch) {
-                                    const noteTags = tagsMatch[1].split(',').map(t => t.trim()).filter(t => t);
-                                    setCurrentTags(noteTags);
-                                } else {
-                                    setCurrentTags([]);
-                                }
+                                if (tagsMatch) setCurrentTags(tagsMatch[1].split(',').map(t => t.trim()).filter(t => t));
+                                else setCurrentTags([]);
                             }
-
                             setShowTagModal(true);
                             setTagInputValue('');
-                        } catch (e) {
-                            console.error('Failed to load tags:', e);
-                        }
+                        } catch (e) { console.error('Failed to load tags for new tag modal:', e); }
                     }
                 });
 
-                // 全タグを取得
-                let tagItems: any[] = [tagNewItem];
+                let tagSubItems: any[] = [tagNewItem];
                 try {
                     const tags = await invoke<string[]>('fusen_get_all_tags');
-
-                    // 現在のノートのタグを取得
+                    console.log('[ShowContextMenu] Fetched tags for normal mode:', tags);
+                    // Fetch current file tags logic
                     let currentNoteTags: string[] = [];
                     if (selectedFile) {
                         const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
                         const { front } = splitFrontMatter(note.body);
                         const tagsMatch = front.match(/tags:\s*\[([^\]]*)\]/);
-                        if (tagsMatch) {
-                            currentNoteTags = tagsMatch[1].split(',').map(t => t.trim()).filter(t => t);
-                        }
+                        if (tagsMatch) currentNoteTags = tagsMatch[1].split(',').map(t => t.trim()).filter(t => t);
                     }
 
                     if (tags.length > 0) {
-                        const separator = await PredefinedMenuItem.new({ item: 'Separator' });
-                        tagItems.push(separator);
-
+                        tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                         for (const tag of tags) {
                             const isChecked = currentNoteTags.includes(tag);
-                            const checkItem = await MenuItem.new({
+                            tagSubItems.push(await MenuItem.new({
                                 id: `ctx_tag_${tag}`,
                                 text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
                                 action: async () => {
-                                    if (!selectedFile) return;
                                     try {
-                                        if (isChecked) {
-                                            await invoke('fusen_remove_tag', { path: selectedFile.path, tag });
-                                        } else {
-                                            await invoke('fusen_add_tag', { path: selectedFile.path, tag });
-                                        }
-                                        // メニューを閉じた後、ノートを再読み込み
+                                        if (!selectedFile) return;
+                                        if (isChecked) await invoke('fusen_remove_tag', { path: selectedFile.path, tag });
+                                        else await invoke('fusen_add_tag', { path: selectedFile.path, tag });
+                                        shouldReopenMenu.current = true;
+                                        // Refresh local
                                         const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
                                         const { front, body } = splitFrontMatter(note.body);
                                         setRawFrontmatter(front);
                                         setContent(body);
                                         setEditBody(body);
-                                    } catch (e) {
-                                        console.error('Failed to toggle tag:', e);
-                                    }
+                                    } catch (e) { console.error('Failed to toggle tag:', e); }
                                 }
-                            });
-                            tagItems.push(checkItem);
+                            }));
                         }
+                        tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                        tagSubItems.push(await MenuItem.new({
+                            id: 'ctx_enter_del_mode',
+                            text: '🔧 削除モードにする',
+                            action: () => {
+                                shouldReopenMenu.current = true;
+                                setIsTagDeleteMode(true);
+                            }
+                        }));
+                    } else {
+                        tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                        tagSubItems.push(await MenuItem.new({
+                            id: 'ctx_no_tags_normal',
+                            text: '(タグがありません)',
+                            enabled: false
+                        }));
                     }
-                } catch (e) {
-                    console.error('Failed to load tags:', e);
-                }
+                } catch (e) { console.error('Failed to load tags for submenu:', e); }
 
-                const tagSubmenu = await Submenu.new({
-                    id: 'ctx_tags_submenu',
-                    text: '🏷️ タグ',
-                    items: tagItems
-                });
-
-                const colorBlueItem = await MenuItem.new({
-                    id: 'ctx_color_blue',
-                    text: '🔵 Blue',
-                    action: () => {
-                        const newColor = '#80d8ff';
-                        setNoteBackgroundColor(newColor);
-                        setRawFrontmatter(prev => updateFrontmatterValue(prev, 'backgroundColor', newColor));
-                        setSavePending(true);
-                        if (shellRef.current) {
-                            shellRef.current.style.setProperty('background-color', newColor, 'important');
-                        }
-                    }
-                });
-
-                const colorPinkItem = await MenuItem.new({
-                    id: 'ctx_color_pink',
-                    text: '🌸 Pink',
-                    action: () => {
-                        const newColor = '#ffcdd2';
-                        setNoteBackgroundColor(newColor);
-                        setRawFrontmatter(prev => updateFrontmatterValue(prev, 'backgroundColor', newColor));
-                        setSavePending(true);
-                        if (shellRef.current) {
-                            shellRef.current.style.setProperty('background-color', newColor, 'important');
-                        }
-                    }
-                });
-
-                const colorYellowItem = await MenuItem.new({
-                    id: 'ctx_color_yellow',
-                    text: '💛 Yellow',
-                    action: () => {
-                        const newColor = '#f7e9b0';  // Default gentle yellow
-                        setNoteBackgroundColor(newColor);
-                        setRawFrontmatter(prev => updateFrontmatterValue(prev, 'backgroundColor', newColor));
-                        setSavePending(true);
-                        if (shellRef.current) {
-                            shellRef.current.style.setProperty('background-color', newColor, 'important');
-                        }
-                    }
-                });
-
-                const colorSubmenu = await Submenu.new({
-                    id: 'ctx_color_submenu',
-                    text: '🎨 色変更',
-                    items: [colorBlueItem, colorPinkItem, colorYellowItem]
-                });
-
-                const separator3 = await PredefinedMenuItem.new({ item: 'Separator' });
-
-                const deleteItem = await MenuItem.new({
-                    id: 'ctx_delete',
-                    text: '🗑️ 削除',
-                    action: async () => {
-                        try {
-                            // Backend will close window after successful delete
-                            await invoke('fusen_move_to_trash', { path: selectedFile.path });
-                        } catch (err) {
-                            console.error('[DELETE] Error:', err);
-                        }
-                    }
-                });
-
-                // Build and show menu
-                const menu = await Menu.new({
-                    id: 'context_menu',
-                    items: [
-                        filenameItem,
-                        separator1,
-                        openFolderItem,
-                        separator2,
-                        newNoteItem,
-                        colorSubmenu,
-                        tagSubmenu,
-                        separator3,
-                        deleteItem
-                    ]
-                });
-
-                await menu.popup();
-
-            } catch (err) {
-                console.error('Failed to show context menu', err);
+                const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: '🏷️ タグ', items: tagSubItems });
+                menuItems.push(tagSubmenu);
             }
+
+            // Delete Note Item (Always available at bottom)
+            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            menuItems.push(await MenuItem.new({
+                id: 'ctx_delete',
+                text: '🗑️ このメモを削除',
+                action: async () => {
+                    await invoke('fusen_move_to_trash', { path: selectedFile.path });
+                }
+            }));
+
+            menuRef.current = await Menu.new({ id: 'context_menu', items: menuItems });
+
+
+            // Use provided coordinates OR last known position OR cursor
+            if (x !== undefined && y !== undefined) {
+                const { LogicalPosition } = await import('@tauri-apps/api/dpi');
+                await menuRef.current.popup(new LogicalPosition(x, y));
+            } else {
+                await menuRef.current.popup();
+            }
+
+        } catch (err) {
+            console.error('Failed to show context menu', err);
+        }
+    }, [selectedFile, isTagDeleteMode, loadFileContent, noteBackgroundColor, rawFrontmatter, setEditBody, setSavePending]);
+
+    // Handle initial right click
+    useEffect(() => {
+        const handleContextMenu = (e: MouseEvent) => {
+            e.preventDefault();
+            lastContextMenuPos.current = { x: e.clientX, y: e.clientY };
+            showContextMenu(e.clientX, e.clientY);
         };
 
         window.addEventListener('contextmenu', handleContextMenu);
         return () => {
             window.removeEventListener('contextmenu', handleContextMenu);
         };
-    }, [selectedFile]);
+    }, [showContextMenu]);
+
+    // Handle auto-reopen on mode switch
+    useEffect(() => {
+        if (shouldReopenMenu.current && lastContextMenuPos.current) {
+            shouldReopenMenu.current = false;
+            // Short delay to ensure previous menu is fully closed/state updated
+            setTimeout(() => {
+                showContextMenu(lastContextMenuPos.current?.x, lastContextMenuPos.current?.y);
+            }, 50);
+        }
+    }, [isTagDeleteMode, showContextMenu]);
 
     // コンテキストメニューアクション
     const handleToggleAlwaysOnTop = async (enabled: boolean) => {
@@ -748,6 +743,33 @@ export default function StickyNote() {
         }
     };
 
+    // Global Tag Delete Handler
+    const executeTagDelete = async () => {
+        if (!tagToDelete) return;
+
+        console.log('[Frontend] Executing global delete for:', tagToDelete);
+        try {
+            const count = await invoke<number>('fusen_delete_tag_globally', { tag: tagToDelete });
+            console.log(`[Frontend] Deleted tag ${tagToDelete} from ${count} notes.`);
+            if (count === 0) {
+                console.warn('[Frontend] Backend reported 0 notes modified. Is the tag matching correct?');
+            }
+
+            // Wait a bit for backend state/file IO to settle (mitigate race condition)
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // STAY in Delete Mode and reopen menu to show updated list
+            shouldReopenMenu.current = true;
+
+            if (selectedFile) loadFileContent(selectedFile);
+        } catch (e) {
+            console.error('Failed to delete tag globally:', e);
+            alert(`タグの削除に失敗しました。\nエラー: ${e}`);
+        } finally {
+            setTagToDelete(null);
+        }
+    };
+
     // Native Context Menu Action Listener
     useEffect(() => {
         if (!selectedFile) return;
@@ -765,9 +787,7 @@ export default function StickyNote() {
                     // Rust side handles this mostly, but we can double check or do nothing
                 } else if (action.startsWith('ctx_color_')) {
                     const color = action.replace('ctx_color_', '');
-                    // Rust updated the file. We should update validation State or Reload
-                    // Simple refresh:
-                    loadFileContent(selectedFile);
+                    handleColorChange(color);
                 } else if (action === 'ctx_toggle_top') {
                     // Toggle current state
                     handleToggleAlwaysOnTop(!selectedFile.alwaysOnTop);
@@ -1234,6 +1254,17 @@ export default function StickyNote() {
                     </div>
                 </div>
             )}
+            {/* Confirmation Dialog for Global Tag Deletion */}
+            <ConfirmDialog
+                isOpen={!!tagToDelete}
+                title="タグの削除"
+                message={`タグ「${tagToDelete}」をすべてのメモから削除しますか？\nこの操作は元に戻せません。`}
+                onConfirm={executeTagDelete}
+                onCancel={() => {
+                    setTagToDelete(null);
+                    shouldReopenMenu.current = true;
+                }}
+            />
         </div>
     );
 }

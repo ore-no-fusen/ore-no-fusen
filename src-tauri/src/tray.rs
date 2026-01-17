@@ -17,11 +17,8 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let hide_i = MenuItem::with_id(app, "hide_all", "全部隠す (Hide All)", true, None::<&str>)?;
     let show_i = MenuItem::with_id(app, "show_all", "全部戻す (Show All)", true, None::<&str>)?;
     
-    // Choose World Submenu
-    let world_menu = tauri::menu::Submenu::with_id(app, "choose_world", "世界を選ぶ (Choose World)", true)?;
-    let all_worlds = MenuItem::with_id(app, "world_all", "(すべて) / All", true, None::<&str>)?;
-    world_menu.append(&all_worlds)?;
-    world_menu.append(&tauri::menu::PredefinedMenuItem::separator(app)?)?;
+    // Generate Tag Filter Submenu
+    let world_menu = tauri::menu::Submenu::with_id(app, "choose_world", "タグで絞り込む (Filter by Tags)", true)?;
     
     // Get tags from state
     let state = app.state::<Mutex<AppState>>();
@@ -83,19 +80,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                             }
                         }
                     },
-                    "world_all" => {
-                        // Clear all selections
-                        let state = app.state::<Mutex<AppState>>();
-                        let mut app_state = state.lock().unwrap();
-                        app_state.active_tags.clear();
-                        drop(app_state);
-                        
-                        // Refresh menu
-                        let _ = refresh_tray_menu(app);
-                        
-                        // Show all notes
-                        let _ = app.emit("fusen:apply_tag_filter", Vec::<String>::new());
-                    },
+
                     id if id.starts_with("world_") => {
                         let tag = id.replace("world_", "");
                         
@@ -110,6 +95,9 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                         let active_tags = app_state.active_tags.clone();
                         drop(app_state);
                         
+                        // DEBUG LOG
+                        eprintln!("[Tray] Toggled tag '{}'. Current Active Tags: {:?}", tag, active_tags);
+
                         // Refresh menu to update checkboxes
                         let _ = refresh_tray_menu(app);
                         

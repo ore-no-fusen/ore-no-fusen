@@ -258,6 +258,8 @@ function OrchestratorContent() {
   // パス正規化
   const normalizePath = (path: string): string => {
     let normalized = path.trim();
+    // Unicode正規化 (NFC) を追加して、濁点などの表記揺れを防ぐ
+    normalized = normalized.normalize('NFC');
     normalized = normalized.replace(/\\/g, '/');
     normalized = normalized.toLowerCase();
     normalized = normalized.replace(/\/+/g, '/');
@@ -317,17 +319,23 @@ function OrchestratorContent() {
 
     queue.processing = true;
 
-    while (queue.queue.length > 0) {
-      const task = queue.queue.shift();
-      if (task) {
-        await task();
-        if (queue.queue.length > 0) {
-          await new Promise(resolve => setTimeout(resolve, 300));
+    try {
+      while (queue.queue.length > 0) {
+        const task = queue.queue.shift();
+        if (task) {
+          try {
+            await task();
+          } catch (e) {
+            console.error('[processQueue] Task failed:', e);
+          }
+          if (queue.queue.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
         }
       }
+    } finally {
+      queue.processing = false;
     }
-
-    queue.processing = false;
   };
 
   // ウィンドウ作成中チェック
@@ -598,8 +606,17 @@ function OrchestratorContent() {
   // タグフィルター適用イベントリスナー（複数選択）
   useEffect(() => {
     const unlistenPromise = listen<string[]>('fusen:apply_tag_filter', async (event) => {
+      // ONLY Main window (hidden manager) should handle global filtering
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const currentWin = getCurrentWindow();
+
+      // Ensure only the hidden main window handles orchestration
+      if (currentWin.label !== 'main') {
+        return;
+      }
+
       const selectedTags = event.payload;
-      console.log('[apply_tag_filter] Selected tags:', selectedTags);
+      console.error('[JS_DEBUG] Received Tags:', JSON.stringify(selectedTags));
 
       try {
         // State同期して最新のノート一覧を取得
@@ -626,6 +643,20 @@ function OrchestratorContent() {
           if (win.label === 'main' || win.label === 'tag-selector') continue; // 管理画面とタグセレクターは除外
 
           const shouldShow = filteredPaths.has(win.label);
+
+          // Debug Mismatch
+          if (!shouldShow) {
+            console.error(`[JS_DEBUG] Window '${win.label}' is hiding. Check if this is correct.`);
+            const matchedNote = filteredNotes.find(n => getWindowLabel(n.path) === win.label);
+            if (matchedNote) {
+              console.error(`[JS_DEBUG] CRITICAL: Window '${win.label}' matches note '${matchedNote.path}' but set to hide? Wait, shouldShow is false.`);
+            } else {
+              console.error(`[JS_DEBUG] Window '${win.label}' does NOT match any filtered note labels. Labels in set:`, Array.from(filteredPaths));
+            }
+          } else {
+            console.error(`[JS_DEBUG] Showing Window '${win.label}'`);
+          }
+
           try {
             if (shouldShow) {
               await win.show();
@@ -641,16 +672,21 @@ function OrchestratorContent() {
         // フィルタ対象で開いていないウィンドウを開く
         const openedLabels = new Set(allWindows.map(w => w.label));
         for (const note of filteredNotes) {
-          const label = getWindowLabel(note.path);
-          if (!openedLabels.has(label)) {
-            await openNoteWindow(note.path, {
-              x: note.x,
-              y: note.y,
-              width: note.width,
-              height: note.height
-            });
-            // 連続で開きすぎないように少し待機
-            await new Promise(resolve => setTimeout(resolve, 150));
+          try {
+            const label = getWindowLabel(note.path);
+            if (!openedLabels.has(label)) {
+              console.log(`[JS_DEBUG] Force opening Note: ${note.path}`);
+              await openNoteWindow(note.path, {
+                x: note.x,
+                y: note.y,
+                width: note.width,
+                height: note.height
+              });
+              // 連続で開きすぎないように少し待機
+              await new Promise(resolve => setTimeout(resolve, 150));
+            }
+          } catch (e) {
+            console.error(`[JS_DEBUG] Failed to force open note: ${note.path}`, e);
           }
         }
       } catch (e) {
