@@ -122,7 +122,7 @@ async fn fusen_force_focus(window: tauri::Window) -> Result<(), String> {
             ShowWindow, SW_RESTORE, SW_SHOW
         };
         use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
-        use windows::Win32::Foundation::{HWND, BOOL};
+        use windows::Win32::Foundation::HWND;
         use raw_window_handle::RawWindowHandle;
 
         unsafe {
@@ -138,9 +138,9 @@ async fn fusen_force_focus(window: tauri::Window) -> Result<(), String> {
                      }
 
                      // 2. Simply force foreground and top (Skip AttachThreadInput for now)
-                     BringWindowToTop(hwnd);
-                     SetForegroundWindow(hwnd);
-                     SetFocus(hwnd);
+                     let _ = BringWindowToTop(hwnd);
+                     let _ = SetForegroundWindow(hwnd);
+                     let _ = SetFocus(hwnd);
                  }
             }
         }
@@ -193,11 +193,23 @@ fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, con
 }
 
 #[tauri::command]
-fn fusen_save_note(state: State<'_, Mutex<AppState>>, path: String, body: String, frontmatter_raw: String) -> Result<String, String> {
+fn fusen_save_note(
+    state: State<'_, Mutex<AppState>>, 
+    path: String, 
+    body: String, 
+    frontmatter_raw: String,
+    allow_rename: bool
+) -> Result<String, String> {
     let mut app_state = state.lock().unwrap();
     
     // Logicに全て任せる
-    let (new_path, effect) = logic::handle_save_note(&mut app_state, &path, &body, &frontmatter_raw)?;
+    let (new_path, effect) = logic::handle_save_note(
+        &mut app_state, 
+        &path, 
+        &body, 
+        &frontmatter_raw, 
+        allow_rename
+    )?;
     
     // CommandはI/Oを実行するだけ
     match effect {
@@ -208,11 +220,10 @@ fn fusen_save_note(state: State<'_, Mutex<AppState>>, path: String, body: String
                 match e {
                     logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
                     logic::Effect::RenameNote { old_path, new_path } => storage::rename_note(&old_path, &new_path)?,
-                    _ => {}
+                    logic::Effect::Batch(_) => {} // Nested batch not supported
                 }
             }
         },
-        _ => {}
     }
     
     Ok(new_path)

@@ -236,6 +236,48 @@ test.describe('付箋アプリ基本動作', () => {
     });
 
     /**
+     * ヘッダー（ドラッグハンドル）クリックで編集モードが終了すること
+     */
+    test('ヘッダーをクリックすると編集モードが終了する', async ({ page }) => {
+        const editor = page.locator('.cm-content');
+        await expect(editor).toBeVisible();
+        await editor.click();
+        await expect(editor).toBeFocused();
+        await editor.type('Header exit test');
+
+        // ヘッダー（ファイル名表示部）をクリック
+        const header = page.locator('.file-name');
+        await header.click();
+
+        // 編集モードが終了していること（.cm-content が消えている）
+        await expect(page.locator('.cm-content')).not.toBeVisible();
+        // 閲覧モードの要素が見えているか確認
+        const article = page.locator('article.notePaper');
+        await expect(article).toBeVisible();
+        await expect(article).toContainText('Header exit test');
+    });
+
+    /**
+     * Escapeキーで編集モードが終了すること
+     */
+    test('Escapeキーを押すと編集モードが終了する', async ({ page }) => {
+        const editor = page.locator('.cm-content');
+        await expect(editor).toBeVisible();
+        await editor.click();
+        await expect(editor).toBeFocused();
+        await editor.type('Escape exit test');
+
+        // Escapeキーを押す
+        await editor.press('Escape');
+
+        // 編集モードが終了していること
+        await expect(page.locator('.cm-content')).not.toBeVisible();
+        const article = page.locator('article.notePaper');
+        await expect(article).toBeVisible();
+        await expect(article).toContainText('Escape exit test');
+    });
+
+    /**
      * 回帰テスト: ウィンドウフォーカス喪失時（外側クリック時）の編集終了確認
      */
     test('ウィンドウのフォーカスが外れると編集モードが終了する', async ({ page }) => {

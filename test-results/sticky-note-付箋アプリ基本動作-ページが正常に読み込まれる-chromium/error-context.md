@@ -22,10 +22,10 @@
     - generic [ref=e26]:
       - heading "Source" [level=2] [ref=e27]
       - generic [ref=e28]:
-        - link "app\\page.tsx (797:33) @ getCurrentWindow" [ref=e30] [cursor=pointer]:
-          - generic [ref=e31]: app\page.tsx (797:33) @ getCurrentWindow
+        - link "app\\page.tsx (866:33) @ getCurrentWindow" [ref=e30] [cursor=pointer]:
+          - generic [ref=e31]: app\page.tsx (866:33) @ getCurrentWindow
           - img [ref=e32]
-        - generic [ref=e36]: 795 | 796 | // デバッグ：起動時ウィンドウ情報 > 797 | const win = getCurrentWindow(); | ^ 798 | console.log('[BOOT] label=', win.label, 'pathParam=', !!searchParams.get('path')); 799 | 800 | // pathパラメータが無い場合（管理画面/初回起動ルート）は必ずcheckSetupを実行
+        - generic [ref=e36]: 864 | 865 | // デバッグ：起動時ウィンドウ情報 > 866 | const win = getCurrentWindow(); | ^ 867 | console.log('[BOOT] label=', win.label, 'pathParam=', !!searchParams.get('path')); 868 | 869 | // pathパラメータが無い場合（管理画面/初回起動ルート）は必ずcheckSetupを実行
       - heading "Call Stack" [level=2] [ref=e37]
       - button "Show collapsed frames" [ref=e38] [cursor=pointer]
 ```

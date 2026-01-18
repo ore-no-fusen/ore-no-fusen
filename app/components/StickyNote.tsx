@@ -63,6 +63,8 @@ const StickyNote = memo(function StickyNote() {
     const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
     // リネームによる更新かどうかを判定するフラグ
     const isRenamingRef = useRef(false);
+    // [Strict Rename] コミット（編集終了）処理中ガード
+    const isCommittingRef = useRef(false);
 
     // [New] ドラッグ開始制限用のタイマー
     const lastEditEndedAt = useRef<number>(0);
@@ -71,6 +73,11 @@ const StickyNote = memo(function StickyNote() {
     const editorRef = useRef<RichTextEditorRef>(null);
     const editorHostRef = useRef<HTMLDivElement>(null); // [New boundary ref]
     const editBodyRef = useRef(editBody); // [New] Stale closure fix
+
+    // Sync ref with state for event handlers
+    useEffect(() => {
+        editBodyRef.current = editBody;
+    }, [editBody]);
 
     // ホバー管理
     const [isHover, setIsHover] = useState(false);
@@ -143,13 +150,26 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [selectedFile]);
     // ノート保存
-    const saveNote = useCallback(async (path: string, body: string, frontmatter: string) => {
+    const saveNote = useCallback(async (path: string, body: string, frontmatter: string, allowRename: boolean) => {
+        // [Strict Log]
+        console.log('[SAVE]', { allowRename, firstLine: body.split('\n')[0], path });
+        console.log('[DEBUG] saveNote called:', { path, bodyLength: body.length, allowRename });
         try {
-            const newPath = await invoke<string>('fusen_save_note', { path, body, frontmatterRaw: frontmatter });
+            const newPath = await invoke<string>('fusen_save_note', {
+                path,
+                body,
+                frontmatterRaw: frontmatter,
+                allowRename
+            });
+            console.log('[DEBUG] saveNote result:', { old: path, new: newPath, renamed: newPath !== path });
             if (newPath !== path) {
                 console.log('File renamed during save:', path, '->', newPath);
                 isRenamingRef.current = true; // リネームフラグを立てる
-                setSelectedFile(prev => prev ? { ...prev, path: newPath } : null);
+
+                // [Fix] Update Context and Path in State so UI reflects new title immediately
+                const newContext = body.split('\n')[0].trim();
+                setSelectedFile(prev => prev ? { ...prev, path: newPath, context: newContext } : null);
+
                 const url = new URL(window.location.href);
                 url.searchParams.set('path', newPath);
                 window.history.replaceState({}, '', url.toString());
@@ -165,7 +185,8 @@ const StickyNote = memo(function StickyNote() {
         const timer = setTimeout(async () => {
             try {
                 console.log('[AUTO_SAVE] Saving note:', selectedFile.path);
-                await saveNote(selectedFile.path, editBody, rawFrontmatter);
+                // allowRename: false for auto-save
+                await saveNote(selectedFile.path, editBody, rawFrontmatter, false);
                 setContent(editBody);
                 setSavePending(false);
             } catch (e) {
@@ -328,7 +349,7 @@ const StickyNote = memo(function StickyNote() {
     // キーボードイベント
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Escape') {
-            handleEditBlur(editBody);
+            handleEditBlur();
         }
     };
 
@@ -359,12 +380,12 @@ const StickyNote = memo(function StickyNote() {
 
             // Click Outside: Trigger blur
             console.log('[Boundary] Click outside detected. Ending edit.');
-            handleEditBlur(editBody);
+            handleEditBlur();
         };
 
         window.addEventListener('pointerdown', onPointerDownCapture, true);
         return () => window.removeEventListener('pointerdown', onPointerDownCapture, true);
-    }, [isEditing, editBody]);
+    }, [isEditing]);
 
     // [New] Explicit Exit Conditions (Window Inactive)
     useEffect(() => {
@@ -373,20 +394,28 @@ const StickyNote = memo(function StickyNote() {
         const onWindowBlur = () => {
             // If debugging devtools, this might be annoying, but per spec:
             console.log('[Boundary] Window inactive. Ending edit.');
-            handleEditBlur(editBody);
+            handleEditBlur();
         };
 
         window.addEventListener('blur', onWindowBlur);
         return () => window.removeEventListener('blur', onWindowBlur);
-    }, [isEditing, editBody]);
+    }, [isEditing]);
 
     // ドラッグ開始
     const handleDragStart = useCallback(async (e: React.PointerEvent) => {
         // 左クリック(0)以外はドラッグ処理しない
         if (e.button !== 0) return;
 
-        // 編集モード中、または終了直後(500ms)はガード
-        if (isEditing || Date.now() - lastEditEndedAt.current < 500) {
+        // 編集モード中なら、ドラッグさせずに編集終了処理を行う
+        if (isEditing) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleEditBlur();
+            return;
+        }
+
+        // 編集終了直後(500ms)はガード（再編集入り防止）
+        if (Date.now() - lastEditEndedAt.current < 500) {
             return;
         }
 
@@ -523,7 +552,7 @@ const StickyNote = memo(function StickyNote() {
             // Filename display            // Common Items
             const filenameItem = await MenuItem.new({
                 id: 'ctx_filename',
-                text: selectedFile.context || getFileName(selectedFile.path),
+                text: getFileName(selectedFile.path),
                 enabled: false,
             });
 
@@ -732,7 +761,7 @@ const StickyNote = memo(function StickyNote() {
             e.preventDefault();
 
             // [New] Commit before menu opens
-            if (isEditing) handleEditBlur(editBodyRef.current);
+            if (isEditing) handleEditBlur();
 
             lastContextMenuPos.current = { x: e.clientX, y: e.clientY };
             showContextMenu(e.clientX, e.clientY);
@@ -769,68 +798,39 @@ const StickyNote = memo(function StickyNote() {
         }
     };
 
-    const handleEditBlur = async (newContent: string) => {
+    const handleEditBlur = async () => { // Parameterless
         if (!selectedFile) return;
+        if (isCommittingRef.current) return; // Prevent double commit
+
+        isCommittingRef.current = true;
+        setSavePending(false); // Cancel pending auto-save NOW
+
+        console.log('[DEBUG] handleEditBlur (Commit) triggered.');
+
+        // [Strict] Get fresh content directly from editor to avoid state lag
+        let currentBody = editBodyRef.current;
+        if (editorRef.current?.getContent) {
+            // Note: editorRef might be null if called after unmount, but usually we are here because of blur/escape
+            currentBody = editorRef.current.getContent();
+            // Sync state immediately to avoid ghosts
+            setEditBody(currentBody);
+            editBodyRef.current = currentBody;
+        }
+
         setIsEditing(false);
         lastEditEndedAt.current = Date.now();
 
-        // 保存処理
-        const savePromise = invoke('fusen_save_note', {
-            path: selectedFile.path,
-            body: newContent, // Use 'body' as per fusen_save_note signature
-            frontmatterRaw: rawFrontmatter // Pass raw frontmatter
-        });
-
-        // [New] Rename Logic based on First Line
-        // "なるべく軽く" -> Only check if content changed and first line is different from current context
+        // 統一された保存処理を使用 (リネーム判定も含む)
         try {
-            const firstLine = newContent.split('\n')[0].trim();
-            // Current context might be empty or different.
-            // We need to decide if we rename.
-            // Only rename if the first line is valid and different from current context.
-            // Also avoid renaming if it's just a small edit that didn't change the first line.
-
-            // Note: selectedFile.context might be just the name without extension or frontmatter context.
-            // Let's assume we want the filename to match the first line (sanitized).
-
-            if (firstLine && firstLine !== selectedFile.context) {
-                // Check if actually changed (optimization)
-                // Trigger rename (which handles sanitization on backend)
-                // We don't wait for this to finish to avoid blocking UI,
-                // but we need to handle the path update.
-                // Actually, fusen_rename_note returns the new note meta.
-
-                // However, we are inside handleEditBlur.
-                // Let's do it via a separate effect or just fire and forget,
-                // but better to allow the backend to handle it.
-                // For now, let's invoke it.
-
-                invoke<string>('fusen_rename_note', {
-                    path: selectedFile.path,
-                    newContext: firstLine
-                }).then(async (newPath) => {
-                    console.log('Renamed to:', newPath, 'from', selectedFile.path);
-                    // Fetch the full note object for the new path to get updated metadata
-                    try {
-                        const newNote = await invoke<Note>('fusen_read_note', { path: newPath });
-                        setSelectedFile(newNote.meta);
-                    } catch (readErr) {
-                        console.error('Failed to read renamed note', readErr);
-                    }
-                }).catch(e => console.error('Rename failed', e));
-            }
+            // Commit -> allowRename = true
+            await saveNote(selectedFile.path, currentBody, rawFrontmatter, true);
         } catch (e) {
-            console.error('Rename check failed', e);
+            console.error('Save failed in blur', e);
+        } finally {
+            isCommittingRef.current = false;
         }
-
-        savePromise.then(() => {
-            setSavePending(false);
-            console.log('Saved');
-        }).catch((e) => {
-            console.error(e);
-            setSavePending(false); // エラーでもペディング解除しないと永久に保存できない恐れがあるが、とりあえず
-        });
     };
+
 
     // [New] Edit Mode Boundaries (Explicit Exit) - Moved here to avoid "used before declaration"
     useEffect(() => {
@@ -838,7 +838,7 @@ const StickyNote = memo(function StickyNote() {
 
         const onWindowBlur = () => {
             console.log('[Boundary] Window Blur. Committing.');
-            handleEditBlur(editBodyRef.current);
+            handleEditBlur(); // No args
         };
 
         window.addEventListener('blur', onWindowBlur);
@@ -864,7 +864,8 @@ const StickyNote = memo(function StickyNote() {
             await invoke('fusen_save_note', {
                 path: newNote.meta.path,
                 body: editBody,
-                frontmatterRaw: rawFrontmatter
+                frontmatterRaw: rawFrontmatter,
+                allowRename: false // Initial save for duplicate, no rename needed
             });
 
             // 新しいウィンドウを開く
@@ -1145,7 +1146,7 @@ const StickyNote = memo(function StickyNote() {
                     <span className="file-icon">
                         {/* Icon based on file type if needed */}
                     </span>
-                    {selectedFile?.context || getFileName(selectedFile?.path || '')}
+                    {getFileName(selectedFile?.path || '')}
 
                     {/* UI Indicators */}
                     {isEditing && (
@@ -1195,9 +1196,9 @@ const StickyNote = memo(function StickyNote() {
                                 setEditBody(newValue);
                                 setSavePending(true);
                             }}
-                            onBlur={() => handleEditBlur(editBody)}
+                            onBlur={() => handleEditBlur()}
                             onKeyDown={(e) => {
-                                if (e.key === 'Escape') handleEditBlur(editBody);
+                                if (e.key === 'Escape') handleEditBlur();
                             }}
                             backgroundColor={noteBackgroundColor}
                             cursorPosition={cursorPosition}

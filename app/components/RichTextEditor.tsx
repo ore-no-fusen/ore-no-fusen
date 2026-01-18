@@ -25,6 +25,7 @@ export interface RichTextEditorRef {
     focus: () => void; // カーソル位置を変えずにフォーカスだけ当てる
     setCursorToEnd: () => void; // カーソルを末尾に配置
     setCursor: (offset: number) => void; // カーソルを指定位置に配置
+    getContent: () => string; // [New] 最新の内容を同期的に取得
 }
 
 // Decoration用のプラグイン（見出しと強調のみ）
@@ -142,6 +143,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
+        getContent: () => {
+            return viewRef.current?.state.doc.toString() ?? '';
+        },
         insertHeading1: () => {
             if (!viewRef.current) return;
             const view = viewRef.current;

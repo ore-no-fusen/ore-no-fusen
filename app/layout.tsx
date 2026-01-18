@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import RegisterPWA from "./RegisterPWA";
 
@@ -6,16 +6,17 @@ export const metadata: Metadata = {
   title: "俺の付箋",
   description: "Obsidian VaultのMarkdownを付箋UIで表示",
   manifest: "/manifest.webmanifest",
-  themeColor: "#faf6ee",
   icons: {
     icon: "/icons/icon-192.png",
     apple: "/icons/icon-192.png",
   },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#faf6ee",
 };
 
 export default function RootLayout({

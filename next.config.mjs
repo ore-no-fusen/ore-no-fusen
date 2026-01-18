@@ -15,5 +15,6 @@ export default withPWA({
   dest: "public",
   register: true,
   skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development', // 開発時は警告を抑制
 })(nextConfig);
 

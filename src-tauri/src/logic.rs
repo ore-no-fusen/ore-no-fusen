@@ -3,7 +3,7 @@ use crate::state::{AppState, NoteMeta};
 // ロジック層: 副作用なし、純粋関数のみ
 
 pub enum Effect {
-    None,
+
     WriteNote { path: String, content: String },
     RenameNote { old_path: String, new_path: String },
     Batch(Vec<Effect>), 
@@ -98,7 +98,8 @@ pub fn handle_save_note(
     state: &mut AppState, 
     current_path: &str, 
     body: &str, 
-    frontmatter_raw: &str
+    frontmatter_raw: &str,
+    allow_rename: bool
 ) -> Result<(String, Effect), String> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     
@@ -107,30 +108,68 @@ pub fn handle_save_note(
     let parent = current_path_obj.parent().ok_or("No parent")?;
     let filename = current_path_obj.file_name().ok_or("Invalid path")?.to_string_lossy().to_string();
     
-    let (seq, _, old_context) = parse_filename(&filename);
-    
+    // Parse current filename to get fixed params (seq, created)
+    let (seq, created_date, old_context) = parse_filename(&filename);
     let first_line = body.lines().next().unwrap_or("").trim();
-    let safe_context = sanitize_context(first_line);
-    let new_context = if safe_context.is_empty() { old_context } else { safe_context };
-    
-    let new_filename = generate_filename(seq, &today, &new_context);
-    let should_rename = new_filename != filename;
-    
-    let final_path = if should_rename {
-        parent.join(&new_filename)
-    } else {
-        current_path_obj.to_path_buf()
-    };
-    let final_path_str = final_path.to_string_lossy().to_string();
-    
-    let mut final_frontmatter = frontmatter_raw.to_string();
-    if should_rename {
-        final_frontmatter = update_updated_field(frontmatter_raw, &today);
+
+    // Rule A: If allow_rename is false, skip ALL rename logic
+    if !allow_rename {
+        println!("[DEBUG logic] allowRename=false. Skipping rename check. Path={}", current_path);
+        
+        let final_frontmatter = update_updated_field(frontmatter_raw, &today);
+        let content = format!("{}\n\n{}", final_frontmatter, body);
+        
+        // WriteNote ONLY
+        let effect = Effect::WriteNote {
+            path: current_path.to_string(),
+            content: content.clone(),
+        };
+        
+        // Update State (Metadata)
+        let (x, y, w, h, bg, aot, tags) = extract_meta_from_content(&content);
+        let new_meta = NoteMeta {
+            path: current_path.to_string(),
+            seq,
+            context: old_context, // Use old context
+            updated: today,
+            x, y, width: w, height: h,
+            background_color: bg,
+            always_on_top: aot,
+            tags,
+        };
+        apply_update_note(state, current_path, new_meta);
+        
+        return Ok((current_path.to_string(), effect));
     }
+
+    // Rule B: allow_rename is true
+    let mut should_rename = false;
+    let mut new_context = old_context.clone();
+    let safe_context = sanitize_context(first_line);
+
+    // strictly check first line
+    if !first_line.is_empty() {
+         if !safe_context.is_empty() && safe_context != old_context {
+             new_context = safe_context.clone();
+             should_rename = true;
+         }
+    }
+
+    println!("[DEBUG logic] allowRename=true. first_line='{}', old_ctx='{}', new_ctx='{}', should_rename={}", 
+             first_line, old_context, new_context, should_rename);
+
+    let final_path_str = if should_rename {
+        // Rule C: Use created_date from filename (FIXED)
+        let new_filename = generate_filename(seq, &created_date, &new_context);
+        parent.join(&new_filename).to_string_lossy().to_string()
+    } else {
+        current_path.to_string()
+    };
     
+    let final_frontmatter = update_updated_field(frontmatter_raw, &today);
     let content = format!("{}\n\n{}", final_frontmatter, body);
     
-    // 2. Prepare Effect
+    // Prepare Effect
     let mut effects = Vec::new();
     if should_rename {
         effects.push(Effect::RenameNote {
@@ -143,9 +182,8 @@ pub fn handle_save_note(
         content: content.clone(),
     });
     
-    // 3. Update State
+    // Update State
     let (x, y, w, h, bg, aot, tags) = extract_meta_from_content(&content);
-    
     let new_meta = NoteMeta {
         path: final_path_str.clone(),
         seq,
@@ -165,6 +203,7 @@ pub fn handle_save_note(
 // --- Builders (Deprecated/Legacy for other commands if needed, but updated for fields) ---
 
 pub struct CreateNoteData {
+    #[allow(dead_code)]
     pub filename: String,
     pub content: String,
     pub frontmatter: String,
@@ -261,40 +300,7 @@ pub fn update_frontmatter_value(content: &str, key: &str, value: String) -> Stri
     }
 }
 
-// Window Label Calculation (Synced with Frontend `OrchestratorContent`)
-pub fn normalize_path(path: &str) -> String {
-    let mut normalized = path.trim().to_string();
-    normalized = normalized.replace('\\', "/");
-    normalized = normalized.to_lowercase();
-    // Regex for multiple slashes
-    let re_slashes = regex::Regex::new(r"/+").unwrap();
-    normalized = re_slashes.replace_all(&normalized, "/").to_string();
-    normalized = normalized.trim_end_matches('/').to_string();
-    normalized
-}
 
-fn base36_encode(mut n: u32) -> String {
-    let mut s = String::new();
-    const CHARS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
-    if n == 0 { return "0".to_string(); }
-    while n > 0 {
-        s.push(CHARS[(n % 36) as usize] as char);
-        n /= 36;
-    }
-    s.chars().rev().collect()
-}
-
-pub fn get_window_label(path: &str) -> String {
-    let normalized = normalize_path(path);
-    
-    let mut hash: i32 = 0;
-    for c in normalized.chars() {
-        let char_code = c as i32;
-        hash = hash.wrapping_shl(5).wrapping_sub(hash).wrapping_add(char_code);
-        hash &= hash;
-    }
-    format!("note-{}", base36_encode(hash.abs() as u32))
-}
 
 pub fn handle_add_tag(
     state: &mut AppState,
@@ -458,21 +464,21 @@ mod tests {
         assert_eq!(output, "C  Users test Documents");
     }
 
-    #[test]
-    fn test_normalize_path() {
-        assert_eq!(normalize_path("C:\\Users\\test"), "c:/users/test");
-        assert_eq!(normalize_path("  /path//to/file/  "), "/path/to/file");
-    }
+    // #[test]
+    // fn test_normalize_path() {
+    //     assert_eq!(normalize_path("C:\\Users\\test"), "c:/users/test");
+    //     assert_eq!(normalize_path("  /path//to/file/  "), "/path/to/file");
+    // }
 
-    #[test]
-    fn test_get_window_label() {
-        // Frontend logic check:
-        // simpleHash("c:/users/test") 
-        // c: 99, /: 47, u: 117, s: 115, e: 101, r: 114, s: 115, /: 47, t: 116, e: 101, s: 115, t: 116
-        // Let's just trust the formula if it matches charCode-based hash.
-        let label = get_window_label("C:\\Users\\test");
-        assert!(label.starts_with("note-"));
-    }
+    // #[test]
+    // fn test_get_window_label() {
+    //     // Frontend logic check:
+    //     // simpleHash("c:/users/test") 
+    //     // c: 99, /: 47, u: 117, s: 115, e: 101, r: 114, s: 115, /: 47, t: 116, e: 101, s: 115, t: 116
+    //     // Let's just trust the formula if it matches charCode-based hash.
+    //     // let label = get_window_label("C:\\Users\\test");
+    //     // assert!(label.starts_with("note-"));
+    // }
 
     #[test]
     fn extract_meta_with_tags() {
@@ -532,7 +538,7 @@ mod tests {
     #[test]
     fn parse_filename_multi_word_context() {
         // コンテキストに複数のアンダースコアが含まれる場合
-        let (seq, date, context) = parse_filename("0042_2026-01-12_これは_複数語の_タイトル.md");
+        let (seq, _date, context) = parse_filename("0042_2026-01-12_これは_複数語の_タイトル.md");
         
         assert_eq!(seq, 42);
         assert_eq!(context, "これは_複数語の_タイトル");
@@ -1119,5 +1125,5 @@ tags: [OreNoFusen, 開発プロセス]
         assert!(!all_tags.contains(&"delete_me".to_string()));
         assert!(all_tags.contains(&"keep_me".to_string()));
     }
-
 }
+
