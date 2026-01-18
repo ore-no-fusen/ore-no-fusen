@@ -1,0 +1,89 @@
+
+Running 2 tests using 1 worker
+
+[Browser] info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[Browser] log: [STICKY_LOAD] Detected path parameter: C:/test/note.md
+[Browser] log: [BOOT] label= Proxy(Function) pathParam= true
+[Browser] log: [Setup Check] Skipping check (sticky note window)
+[Browser] log: [STICKY_LOAD] Detected path parameter: C:/test/note.md
+[Browser] log: [BOOT] label= Proxy(Function) pathParam= true
+[Browser] log: [Setup Check] Skipping check (sticky note window)
+[Browser] warning: Failed to unlisten fusen:open_note TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:50:45)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:88:28)
+    at eval (webpack-internal:///(app-pages-browser)/./app/page.tsx:706:27)
+[Browser] warning: Failed to unlisten fusen:switch_world TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:50:45)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:88:28)
+    at eval (webpack-internal:///(app-pages-browser)/./app/page.tsx:768:27)
+[Browser] warning: Failed to unlisten fusen:open_tag_selector TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:50:45)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:88:28)
+    at eval (webpack-internal:///(app-pages-browser)/./app/page.tsx:801:27)
+[Browser] warning: Failed to unlisten fusen:apply_tag_filter TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:50:45)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:88:28)
+    at eval (webpack-internal:///(app-pages-browser)/./app/page.tsx:887:27)
+[Browser] log: Service Worker registered (scope: http://localhost:3002/)
+[Browser] log: Service Worker registered (scope: http://localhost:3002/)
+[Browser] log: [Pointer] Selection detected: ne 2
+[Browser] log: [EditStart] Restoring selection: 9-13
+[Browser] log: [RichTextEditor] Blur ignored (managed by parent)
+Result content: Line 1
+Line 2
+Line 3
+  ✘  1 [chromium] › e2e\sticky-note_range.spec.ts:70:9 › 範囲選択と編集モード › ドラッグ選択で編集モードに入り、選択範囲が維持される (2.0s)
+[Browser] info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[Browser] log: [STICKY_LOAD] Detected path parameter: C:/test/note.md
+[Browser] log: [BOOT] label= Proxy(Function) pathParam= true
+[Browser] log: [Setup Check] Skipping check (sticky note window)
+[Browser] log: [STICKY_LOAD] Detected path parameter: C:/test/note.md
+[Browser] log: [BOOT] label= Proxy(Function) pathParam= true
+[Browser] log: [Setup Check] Skipping check (sticky note window)
+[Browser] warning: Failed to unlisten fusen:open_note TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:50:45)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:88:28)
+    at eval (webpack-internal:///(app-pages-browser)/./app/page.tsx:706:27)
+[Browser] warning: Failed to unlisten fusen:switch_world TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:50:45)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:88:28)
+    at eval (webpack-internal:///(app-pages-browser)/./app/page.tsx:768:27)
+[Browser] warning: Failed to unlisten fusen:open_tag_selector TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:50:45)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:88:28)
+    at eval (webpack-internal:///(app-pages-browser)/./app/page.tsx:801:27)
+[Browser] warning: Failed to unlisten fusen:apply_tag_filter TypeError: Cannot read properties of undefined (reading 'unregisterListener')
+    at _unlisten (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:50:45)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@tauri-apps/api/event.js:88:28)
+    at eval (webpack-internal:///(app-pages-browser)/./app/page.tsx:887:27)
+[Browser] log: Service Worker registered (scope: http://localhost:3002/)
+[Browser] log: Service Worker registered (scope: http://localhost:3002/)
+[Browser] log: [Pointer] Selection detected: ine 1
+[Browser] log: [EditStart] Restoring selection: 1-6
+[Browser] log: [RichTextEditor] Blur ignored (managed by parent)
+  ✓  2 [chromium] › e2e\sticky-note_range.spec.ts:115:9 › 範囲選択と編集モード › 選択状態で太字ボタンを押すと適用される (2.1s)
+
+
+  1) [chromium] › e2e\sticky-note_range.spec.ts:70:9 › 範囲選択と編集モード › ドラッグ選択で編集モードに入り、選択範囲が維持される ─────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoContain[2m([22m[32mexpected[39m[2m) // indexOf[22m
+
+    Expected substring: [32m"REPLACED"[39m
+    Received string:    [31m"Line 1[39m
+    [31mLine 2[39m
+    [31mLine 3"[39m
+
+      109 |
+      110 |         // Expect "Line 2" to become "LREPLACED" or "LiREPLACED" depending on exact pixels
+    > 111 |         expect(content).toContain('REPLACED');
+          |                         ^
+      112 |         expect(content).not.toContain('Line 2'); // Should have replaced part of it
+      113 |     });
+      114 |
+        at D:\Users\uck\Documents\curry-project\ore-no-fusen\e2e\sticky-note_range.spec.ts:111:25
+
+    Error Context: test-results\sticky-note_range-範囲選択と編集モード-ドラッグ選択で編集モードに入り、選択範囲が維持される-chromium\error-context.md
+
+  1 failed
+    [chromium] › e2e\sticky-note_range.spec.ts:70:9 › 範囲選択と編集モード › ドラッグ選択で編集モードに入り、選択範囲が維持される ──────
+  1 passed (8.7s)

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
+import React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
@@ -265,6 +266,11 @@ const StickyNote = memo(function StickyNote() {
                 ignoreBlurUntilRef.current = Date.now() + 800;
                 setIsEditing(true);
                 setCursorPosition(0);
+
+                // [Fix] Remove isNew from URL to prevent infinite loop on reload/remount
+                const url = new URL(window.location.href);
+                url.searchParams.delete('isNew');
+                window.history.replaceState({}, '', url.toString());
 
                 // Fix 5 (Revert): Editor focus alone was insufficient.
                 // Re-enable explicit window focus, but slightly delayed to ensure it happens 
@@ -808,6 +814,11 @@ const StickyNote = memo(function StickyNote() {
                                 action: async () => {
                                     try {
                                         if (!selectedFile) return;
+
+                                        // [Fix] Resolve conflict: save current state first to avoid overwriting tags later
+                                        await saveNote(selectedFile.path, editBody, rawFrontmatter, false);
+                                        setSavePending(false);
+
                                         if (isChecked) await invoke('fusen_remove_tag', { path: selectedFile.path, tag });
                                         else await invoke('fusen_add_tag', { path: selectedFile.path, tag });
                                         shouldReopenMenu.current = true;
@@ -870,23 +881,57 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [selectedFile, isTagDeleteMode, loadFileContent, noteBackgroundColor, rawFrontmatter, setEditBody, setSavePending]);
 
-    // Handle initial right click
+    const handleEditBlur = useCallback(async () => { // Parameterless
+        // [Ref Stability Check]
+        // This function is now stable. It captures Refs (stable) and State (needs deps).
+        // Since we use Refs for 'editBody' and 'isCommitting', we only really need 'selectedFile' and 'saveNote'.
+
+        if (!selectedFile) return;
+        if (isCommittingRef.current) {
+            console.log('[DEBUG] handleEditBlur skipped: Already committing.');
+            return;
+        }
+
+        isCommittingRef.current = true;
+        setSavePending(false); // Cancel pending auto-save NOW
+
+        console.log('[DEBUG] handleEditBlur (Commit) triggered. Ref Body:', editBodyRef.current?.length);
+
+        // [Strict] Get fresh content directly from editor to avoid state lag
+        let currentBody = editBodyRef.current;
+        if (editorRef.current?.getContent) {
+            currentBody = editorRef.current.getContent();
+            // Sync state immediately
+            setEditBody(currentBody);
+            editBodyRef.current = currentBody;
+        }
+
+        setIsEditing(false);
+        lastEditEndedAt.current = Date.now();
+
+        // 統一された保存処理を使用
+        try {
+            await saveNote(selectedFile.path, currentBody, rawFrontmatter, true);
+        } catch (e) {
+            console.error('Save failed in blur', e);
+        } finally {
+            isCommittingRef.current = false;
+        }
+    }, [selectedFile, rawFrontmatter, saveNote]); // Minimal dependencies
+
+    // Handle initial right click (Dependencies updated)
     useEffect(() => {
-        const handleContextMenu = (e: MouseEvent) => {
+        const handleContextMenu = async (e: MouseEvent) => {
             e.preventDefault();
-
-            // [New] Commit before menu opens
-            if (isEditing) handleEditBlur();
-
+            if (isEditing) {
+                await handleEditBlur();
+            }
             lastContextMenuPos.current = { x: e.clientX, y: e.clientY };
             showContextMenu(e.clientX, e.clientY);
         };
-
         window.addEventListener('contextmenu', handleContextMenu);
-        return () => {
-            window.removeEventListener('contextmenu', handleContextMenu);
-        };
-    }, [showContextMenu]);
+        return () => window.removeEventListener('contextmenu', handleContextMenu);
+    }, [showContextMenu, isEditing, handleEditBlur]); // handleEditBlur is now stable(ish)
 
     // Handle auto-reopen on mode switch
     useEffect(() => {
@@ -898,6 +943,22 @@ const StickyNote = memo(function StickyNote() {
             }, 50);
         }
     }, [isTagDeleteMode, showContextMenu]);
+
+    // [New] Edit Mode Boundaries (Explicit Exit)
+    useEffect(() => {
+        if (!isEditing) return;
+
+        const onWindowBlur = () => {
+            console.log('[Boundary] Window Blur Detected. Committing.');
+            handleEditBlur();
+        };
+
+        window.addEventListener('blur', onWindowBlur);
+        return () => {
+            console.log('[Boundary] Cleanup blur listener');
+            window.removeEventListener('blur', onWindowBlur);
+        };
+    }, [isEditing, handleEditBlur]);
 
     // コンテキストメニューアクション
     const handleToggleAlwaysOnTop = async (enabled: boolean) => {
@@ -913,38 +974,7 @@ const StickyNote = memo(function StickyNote() {
         }
     };
 
-    const handleEditBlur = async () => { // Parameterless
-        if (!selectedFile) return;
-        if (isCommittingRef.current) return; // Prevent double commit
 
-        isCommittingRef.current = true;
-        setSavePending(false); // Cancel pending auto-save NOW
-
-        console.log('[DEBUG] handleEditBlur (Commit) triggered.');
-
-        // [Strict] Get fresh content directly from editor to avoid state lag
-        let currentBody = editBodyRef.current;
-        if (editorRef.current?.getContent) {
-            // Note: editorRef might be null if called after unmount, but usually we are here because of blur/escape
-            currentBody = editorRef.current.getContent();
-            // Sync state immediately to avoid ghosts
-            setEditBody(currentBody);
-            editBodyRef.current = currentBody;
-        }
-
-        setIsEditing(false);
-        lastEditEndedAt.current = Date.now();
-
-        // 統一された保存処理を使用 (リネーム判定も含む)
-        try {
-            // Commit -> allowRename = true
-            await saveNote(selectedFile.path, currentBody, rawFrontmatter, true);
-        } catch (e) {
-            console.error('Save failed in blur', e);
-        } finally {
-            isCommittingRef.current = false;
-        }
-    };
 
 
     // [New] Edit Mode Boundaries (Explicit Exit) - Moved here to avoid "used before declaration"

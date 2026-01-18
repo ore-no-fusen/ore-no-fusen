@@ -331,4 +331,61 @@ test.describe('フロントマター処理（ユニットテストで主にカ�
         // E2Eでは、保存・読み込みの統合動作を確認します。
         expect(true).toBe(true);
     });
+    test.describe('編集モード移行時のカーソル位置', () => {
+        test('太字内のテキストをクリックして正しい位置で編集開始できる', async ({ page }) => {
+            const editor = page.locator('.cm-content');
+            if (!await editor.isVisible()) {
+                await page.locator('article.notePaper').click();
+            }
+            await editor.clear();
+            await editor.type('Line 1\n**Bold** Text');
+            await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+
+            const strong = page.locator('strong').first();
+            await expect(strong).toBeVisible();
+
+            await strong.click();
+            await page.keyboard.type('INSERT');
+
+            const content = await editor.innerText();
+            expect(content).toMatch(/\*\*.*INSERT.*\*\*/);
+        });
+
+        test('チェックボックスのテキストをクリック', async ({ page }) => {
+            const editor = page.locator('.cm-content');
+            if (!await editor.isVisible()) {
+                await page.locator('article.notePaper').click();
+            }
+            await editor.clear();
+            await editor.type('- [ ] TaskItem');
+            await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+
+            const taskText = page.getByText('TaskItem', { exact: true });
+            await taskText.click();
+
+            await page.keyboard.type('INSERT');
+
+            const content = await editor.innerText();
+            expect(content).toContain('TaskINSERT');
+            expect(content).toContain('- [ ] ');
+        });
+
+        test('見出しをクリック', async ({ page }) => {
+            const editor = page.locator('.cm-content');
+            if (!await editor.isVisible()) {
+                await page.locator('article.notePaper').click();
+            }
+            await editor.clear();
+            await editor.type('# Heading');
+            await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+
+            const headingText = page.getByText('Heading', { exact: true });
+            await headingText.click();
+
+            await page.keyboard.type('INSERT');
+
+            const content = await editor.innerText();
+            expect(content).toMatch(/^# .*INSERT.*/);
+        });
+    });
 });
