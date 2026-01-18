@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, memo } from 'react';
+import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
@@ -53,6 +53,16 @@ const StickyNote = memo(function StickyNote() {
 
     const [selectedFile, setSelectedFile] = useState<NoteMeta | null>(null);
     const [content, setContent] = useState<string>('');
+
+    // [New] Line Offset Calculation for precise cursor positioning
+    const lineOffsets = useMemo(() => {
+        let offset = 0;
+        return (content || '').split('\n').map(line => {
+            const current = offset;
+            offset += line.length + 1; // +1 for newline character
+            return current;
+        });
+    }, [content]);
     const [loading, setLoading] = useState<boolean>(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editBody, setEditBody] = useState('');
@@ -66,10 +76,14 @@ const StickyNote = memo(function StickyNote() {
     // [Strict Rename] コミット（編集終了）処理中ガード
     const isCommittingRef = useRef(false);
 
-    // [New] ドラッグ開始制限用のタイマー
+    // [New] Selection & Pointer Refs
+    const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
+    const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+
     const lastEditEndedAt = useRef<number>(0);
     // [New] 初期ロードやフォーカス揺れによる誤Blurを防ぐタイマー
     const ignoreBlurUntilRef = useRef<number>(0);
+
     const editorRef = useRef<RichTextEditorRef>(null);
     const editorHostRef = useRef<HTMLDivElement>(null); // [New boundary ref]
     const editBodyRef = useRef(editBody); // [New] Stale closure fix
@@ -327,6 +341,8 @@ const StickyNote = memo(function StickyNote() {
         }
     };
 
+
+
     // 編集モード開始
     const handleEditStart = (cursorPos?: number) => {
         if (isEditing) return;
@@ -353,17 +369,124 @@ const StickyNote = memo(function StickyNote() {
         }
     };
 
-    // カーソル位置設定
+    // カーソル位置設定 & 範囲選択復元
     useEffect(() => {
-        if (!isEditing || !editorRef.current) return;
+        if (!isEditing) return;
 
-        // Fix 4: Simply request focus on edit start.
-        // Actual cursor placement is handled by RichTextEditor's useEffect([cursorPosition])
-        requestAnimationFrame(() => {
-            editorRef.current?.focus();
-        });
+        const attemptFocus = (count = 0) => {
+            if (count > 20) { // Timeout after ~300ms
+                return;
+            }
+            if (editorRef.current) {
+                // 範囲選択がある場合はそれを復元 (cursorPositionより優先)
+                if (pendingSelectionRef.current) {
+                    const { start, end } = pendingSelectionRef.current;
+                    // ブラウザ側の選択解除を先に行う
+                    window.getSelection()?.removeAllRanges();
 
+                    editorRef.current.focus();
+                    editorRef.current.setSelection(start, end);
+                    pendingSelectionRef.current = null;
+                } else {
+                    // Fix 4: Simply request focus on edit start.
+                    editorRef.current.focus();
+                }
+            } else {
+                requestAnimationFrame(() => attemptFocus(count + 1));
+            }
+        };
+
+        attemptFocus();
     }, [isEditing]); // Remove cursorPosition from dependency since RTE handles it
+
+    // [New] Helper to calc offset based on data-src-start
+    const calcOffsetFromDomPoint = (node: Node, offset: number): number | null => {
+        const el = (node.nodeType === Node.TEXT_NODE
+            ? (node.parentElement as HTMLElement | null)
+            : (node as HTMLElement | null))?.closest?.("[data-src-start]") as HTMLElement | null;
+
+        if (!el) return null;
+        const startStr = el.getAttribute("data-src-start");
+        if (!startStr) return null;
+
+        const base = parseInt(startStr, 10);
+        if (!Number.isFinite(base)) return null;
+
+        // 最小実装：TextNode内のoffsetを足す
+        // Note: For non-text nodes (e.g. clicking the element itself), offset might mean child index.
+        // But getSelection often returns text nodes. If it returns element, offset is index.
+        // For simplicity and safety per user request "minimal implementation":
+        // just add max(0, offset) if it makes sense, or treat as base if naive.
+        // If node is text node, offset is character offset.
+        if (node.nodeType === Node.TEXT_NODE) {
+            return base + Math.max(0, offset);
+        }
+        // If element, usually we want base.
+        return base;
+    };
+
+    const normalizeRange = (a: number, b: number) => {
+        return a <= b ? { start: a, end: b } : { start: b, end: a };
+    };
+
+    const onArticlePointerDown = (e: React.PointerEvent) => {
+
+        pointerDownRef.current = { x: e.clientX, y: e.clientY };
+        // handleDragStart might also listen to this, but here we track for click/edit logic.
+        // handleDragStart uses its own logic.
+    };
+
+    const onArticlePointerUp = (e: React.PointerEvent) => {
+        // [Refactor] Use setTimeout(0) to wait for selection to settle.
+        // Capture coordinates for single click fallback
+        const clientX = e.clientX;
+        const clientY = e.clientY;
+
+        pointerDownRef.current = null;
+
+        setTimeout(() => {
+            // 1. Check for valid selection (Double click or Drag)
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0 && sel.toString().length > 0) {
+                console.log('[Pointer] Selection detected:', sel.toString());
+                const range = sel.getRangeAt(0);
+                const start = calcOffsetFromDomPoint(range.startContainer, range.startOffset);
+                const end = calcOffsetFromDomPoint(range.endContainer, range.endOffset);
+
+                if (start !== null && end !== null) {
+                    pendingSelectionRef.current = normalizeRange(start, end);
+                    handleEditStart(); // Selection will be applied by useEffect
+                    return;
+                }
+            }
+
+            // 2. No selection -> Single Click (Cursor positioning)
+            // Use caretRangeFromPoint for precise offset
+            // (Avoids jumping to line start caused by unstable window.getSelection() on click)
+            console.log('[Pointer] No selection, calculating caret position from point.');
+
+            let clickOffset = 0;
+            // @ts-ignore - caretRangeFromPoint is widely supported but might be missing in TS lib
+            if (document.caretRangeFromPoint) {
+                // @ts-ignore
+                const range = document.caretRangeFromPoint(clientX, clientY);
+                if (range) {
+                    const offset = calcOffsetFromDomPoint(range.startContainer, range.startOffset);
+                    if (offset !== null) {
+                        clickOffset = offset;
+                        console.log('[Pointer] Calculated offset from point:', clickOffset);
+                    }
+                }
+            }
+
+            handleEditStart(clickOffset);
+        }, 0);
+    };
+
+
+
+
+
 
     // [New] Explicit Exit Conditions (Click Outside)
     useEffect(() => {
@@ -1119,7 +1242,6 @@ const StickyNote = memo(function StickyNote() {
         <div
             ref={shellRef}
             className="noteShell"
-            onPointerDown={handleDragStart}
             style={{ backgroundColor: noteBackgroundColor }}
         >
             <main
@@ -1216,16 +1338,8 @@ const StickyNote = memo(function StickyNote() {
                             lineHeight: '1.4',
                             letterSpacing: '0.01em'
                         }}
-                        onClick={(e) => {
-                            // テキストのどこをクリックしたかによって、編集モードの初期カーソル位置を決めたい（将来用）
-                            const selection = window.getSelection();
-                            let offset = 0;
-                            if (selection && selection.rangeCount > 0) {
-                                // 簡易的なオフセット取得（完全ではない）
-                                // handleEditStart(offset);
-                            }
-                            handleEditStart();
-                        }}
+                        onPointerDown={onArticlePointerDown}
+                        onPointerUp={onArticlePointerUp}
                     >
                         {content ? (
                             <div style={{ whiteSpace: 'pre-wrap' }}>
@@ -1240,14 +1354,23 @@ const StickyNote = memo(function StickyNote() {
                                         alignItems: 'flex-start'
                                     };
 
+                                    const baseOffset = lineOffsets[i] || 0;
+
                                     if (line.trim() === '') {
-                                        return <div key={i} data-line-index={i} style={lineStyle}>&nbsp;</div>;
+                                        return <div key={i} data-line-index={i} style={lineStyle} data-src-start={baseOffset}>&nbsp;</div>;
                                     }
 
                                     if (line.startsWith('# ')) {
+                                        // Heading: start text after "# " (length 2)
                                         return (
                                             <div key={i} data-line-index={i} style={{ ...lineStyle, fontWeight: 700 }}>
-                                                {line.substring(2)}
+                                                <span
+                                                    style={{ color: '#ff8c00', marginRight: '4px', userSelect: 'none' }}
+                                                    data-src-start={baseOffset}
+                                                ># </span>
+                                                <span data-src-start={baseOffset + 2}>
+                                                    {line.substring(2)}
+                                                </span>
                                             </div>
                                         );
                                     }
@@ -1256,6 +1379,15 @@ const StickyNote = memo(function StickyNote() {
                                     const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
                                     if (taskMatch) {
                                         const isChecked = taskMatch[2].toLowerCase() === 'x';
+
+                                        // Calculate offset for the text part
+                                        // Structure: [Marker] [Checkbox] [Text]
+                                        // "- [ ] " is length 6 if marker is "-".
+                                        // Robust calc: 
+                                        // line.length - text.length
+                                        const text = taskMatch[3].substring(2);
+                                        const textStart = baseOffset + (line.length - text.length);
+
                                         return (
                                             <div key={i} data-line-index={i} style={lineStyle}>
                                                 <span
@@ -1274,11 +1406,15 @@ const StickyNote = memo(function StickyNote() {
                                                         userSelect: 'none'
                                                     }}
                                                     title={isChecked ? '未完了にする' : '完了にする'}
+                                                    data-src-start={baseOffset} // Icon click -> start of line
                                                 >
                                                     {isChecked ? '☑' : '☐'}
                                                 </span>
-                                                <span style={{ textDecoration: isChecked ? 'line-through' : 'none', opacity: isChecked ? 0.6 : 1 }}>
-                                                    {taskMatch[3].substring(2)}
+                                                <span
+                                                    style={{ textDecoration: isChecked ? 'line-through' : 'none', opacity: isChecked ? 0.6 : 1 }}
+                                                    data-src-start={textStart}
+                                                >
+                                                    {text}
                                                 </span>
                                             </div>
                                         );
@@ -1287,6 +1423,8 @@ const StickyNote = memo(function StickyNote() {
                                     // 箇条書き (リスト)
                                     const listMatch = line.match(/^[\-\*\+]\s+(.*)$/);
                                     if (listMatch) {
+                                        const text = listMatch[1];
+                                        const textStart = baseOffset + (line.length - text.length);
                                         return (
                                             <div key={i} data-line-index={i} style={lineStyle}>
                                                 <span style={{
@@ -1296,22 +1434,47 @@ const StickyNote = memo(function StickyNote() {
                                                     display: 'inline-block',
                                                     width: '1em',
                                                     textAlign: 'center'
-                                                }}>•</span>
-                                                <span>{listMatch[1]}</span>
+                                                }} data-src-start={baseOffset}>•</span>
+                                                <span data-src-start={textStart}>{text}</span>
                                             </div>
                                         );
                                     }
 
+                                    // Normal / Bold
+                                    // Split by **bold**
                                     const parts = line.split(/(\*\*[^*]+\*\*)/g);
+                                    let currentLineCharIdx = 0;
+
                                     const rendered = parts.map((part, j) => {
+                                        if (part === '') return null;
+
+                                        const partStart = baseOffset + currentLineCharIdx;
+                                        const partLength = part.length;
+
                                         if (part.startsWith('**') && part.endsWith('**')) {
+                                            const innerText = part.slice(2, -2);
+                                            // Update index for next part
+                                            currentLineCharIdx += partLength;
+
                                             return (
-                                                <strong key={j} style={{ color: 'red', fontWeight: 'bold' }}>
-                                                    {part.slice(2, -2)}
+                                                <strong
+                                                    key={j}
+                                                    style={{ color: 'red', fontWeight: 'bold' }}
+                                                    data-src-start={partStart + 2} // Click inside bold -> start of inner text
+                                                >
+                                                    {innerText}
                                                 </strong>
                                             );
                                         }
-                                        return part;
+
+                                        // Update index for next part
+                                        currentLineCharIdx += partLength;
+
+                                        return (
+                                            <span key={j} data-src-start={partStart}>
+                                                {part}
+                                            </span>
+                                        );
                                     });
 
                                     return (

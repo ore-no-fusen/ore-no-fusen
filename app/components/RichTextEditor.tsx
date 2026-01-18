@@ -25,6 +25,7 @@ export interface RichTextEditorRef {
     focus: () => void; // カーソル位置を変えずにフォーカスだけ当てる
     setCursorToEnd: () => void; // カーソルを末尾に配置
     setCursor: (offset: number) => void; // カーソルを指定位置に配置
+    setSelection: (start: number, end: number) => void; // [New] 範囲選択を設定
     getContent: () => string; // [New] 最新の内容を同期的に取得
 }
 
@@ -313,6 +314,22 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                 selection: { anchor: safeOffset, head: safeOffset }
             });
             viewRef.current.focus();
+        },
+        setSelection: (start: number, end: number) => {
+            if (!viewRef.current) return;
+            const view = viewRef.current;
+            const docLength = view.state.doc.length;
+
+            const a = Math.min(Math.max(0, start), docLength);
+            const b = Math.min(Math.max(0, end), docLength);
+            const anchor = Math.min(a, b);
+            const head = Math.max(a, b);
+
+            view.dispatch({
+                selection: { anchor, head },
+                scrollIntoView: true,
+            });
+            view.focus();
         }
     }));
 
