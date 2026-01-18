@@ -589,6 +589,25 @@ const StickyNote = memo(function StickyNote() {
         editBodyRef.current = editBody;
     }, [editBody]);
 
+    // [New] Sync currentTags with rawFrontmatter
+    useEffect(() => {
+        if (!rawFrontmatter) {
+            setCurrentTags([]);
+            return;
+        }
+        // Minimal RegEx parser for "tags: [a, b, c]"
+        const tagsMatch = rawFrontmatter.match(/tags:\s*\[([^\]]*)\]/);
+        if (tagsMatch) {
+            const parsed = tagsMatch[1]
+                .split(',')
+                .map(t => t.trim())
+                .filter(t => t.length > 0);
+            setCurrentTags(parsed);
+        } else {
+            setCurrentTags([]);
+        }
+    }, [rawFrontmatter]);
+
     // ホバー管理
     useEffect(() => {
         const handleGlobalPointer = (e: PointerEvent) => {
@@ -1277,6 +1296,8 @@ const StickyNote = memo(function StickyNote() {
                     position: 'relative' // HoverBarのsticky基準にする
                 }}
             >
+
+
                 {/* Header / Drag Handle */}
                 <div
                     className="file-name"
@@ -1284,27 +1305,51 @@ const StickyNote = memo(function StickyNote() {
                     style={{
                         cursor: isDraggableArea || isEditableArea ? 'move' : 'default',
                         userSelect: 'none',
-                        touchAction: 'none'
+                        touchAction: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        overflow: 'hidden' // Ensure content doesn't overflow container
                     }}
                 >
                     <span className="file-icon">
                         {/* Icon based on file type if needed */}
                     </span>
-                    {getFileName(selectedFile?.path || '')}
+                    <span style={{ marginRight: '8px', flexShrink: 0 }}>
+                        {getFileName(selectedFile?.path || '')}
+                    </span>
+
+                    {/* Tag Chips Display */}
+                    <div style={{ display: 'flex', gap: '4px', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        {currentTags.length > 0 && (() => {
+                            const MAX_DISPLAY = 3;
+                            const displayTags = currentTags.slice(0, MAX_DISPLAY).map(tag =>
+                                tag.length > 4 ? tag.substring(0, 4) + '…' : tag
+                            );
+                            if (currentTags.length > MAX_DISPLAY) {
+                                displayTags.push(`+${currentTags.length - MAX_DISPLAY}`);
+                            }
+
+                            return displayTags.map((tag, i) => (
+                                <span key={i} style={{
+                                    backgroundColor: 'rgba(0,0,0,0.1)',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    color: '#555',
+                                    flexShrink: 0,
+                                    cursor: 'default'
+                                }}>
+                                    {tag}
+                                </span>
+                            ));
+                        })()}
+                    </div>
 
                     {/* UI Indicators */}
                     {isEditing && (
-                        <span className="ml-2 text-red-600 font-bold text-lg leading-none" title="編集中">●</span>
+                        <span className="ml-2 text-red-600 font-bold text-lg leading-none flex-shrink-0" title="編集中">●</span>
                     )}
-                    {!isEditing && isDirty && <span className="ml-1 text-xs">●</span>}
-                    {/* isDirty dot is redundant if we have the red editing dot?
-                    User asked for "Red dot for editing" AND "●".
-                    "編集中を示す●だけ出してほしい" -> "I want only the dot that indicates *editing*".
-                    So let's show ONE red dot if isEditing.
-                    If !isEditing but isDirty (unsaved), maybe show a different dot?
-                    User said "赤丸がいいな" (Red dot is good).
-                    Let's just use one red dot for "Editing Mode".
-                */}
+                    {!isEditing && isDirty && <span className="ml-1 text-xs flex-shrink-0">●</span>}
                 </div>
 
                 {/* ツールバーをスクロールに追従させるためのstickyコンテナ */}
@@ -1320,200 +1365,202 @@ const StickyNote = memo(function StickyNote() {
                 }}>
                     <HoverBar show={isHover} />
                 </div>
-                {loading ? (
-                    <div className="text-center text-gray-300 py-8 text-xs font-mono opacity-30">Loading...</div>
-                ) : isEditing ? (
-                    <div
-                        className="editorHost notePaper"
-                        ref={editorHostRef} // [New Ref]
-                        style={{
-                            flex: 1,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            cursor: isEditing ? 'text' : 'default' // Add visual cue
-                        }}
-                    >
-                        <RichTextEditor
-                            ref={editorRef}
-                            value={editBody}
-                            onChange={(newValue) => {
-                                setEditBody(newValue);
-                                setSavePending(true);
+                {
+                    loading ? (
+                        <div className="text-center text-gray-300 py-8 text-xs font-mono opacity-30">Loading...</div>
+                    ) : isEditing ? (
+                        <div
+                            className="editorHost notePaper"
+                            ref={editorHostRef} // [New Ref]
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                cursor: isEditing ? 'text' : 'default' // Add visual cue
                             }}
+                        >
+                            <RichTextEditor
+                                ref={editorRef}
+                                value={editBody}
+                                onChange={(newValue) => {
+                                    setEditBody(newValue);
+                                    setSavePending(true);
+                                }}
 
-                            onKeyDown={(e) => {
-                                if (e.key === 'Escape') handleEditBlur();
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Escape') handleEditBlur();
+                                }}
+                                backgroundColor={noteBackgroundColor}
+                                cursorPosition={cursorPosition}
+                            />
+                        </div>
+                    ) : (
+                        <article
+                            className="notePaper max-w-none"
+                            style={{
+                                backgroundColor: noteBackgroundColor,
+                                whiteSpace: 'pre-wrap',
+                                cursor: 'text',
+                                padding: 0, // 親のmainでパディングしているので0にする
+                                fontSize: '10.5px', // 明示的に指定
+                                lineHeight: '1.4',
+                                letterSpacing: '0.01em'
                             }}
-                            backgroundColor={noteBackgroundColor}
-                            cursorPosition={cursorPosition}
-                        />
-                    </div>
-                ) : (
-                    <article
-                        className="notePaper max-w-none"
-                        style={{
-                            backgroundColor: noteBackgroundColor,
-                            whiteSpace: 'pre-wrap',
-                            cursor: 'text',
-                            padding: 0, // 親のmainでパディングしているので0にする
-                            fontSize: '10.5px', // 明示的に指定
-                            lineHeight: '1.4',
-                            letterSpacing: '0.01em'
-                        }}
-                        onPointerDown={onArticlePointerDown}
-                        onPointerUp={onArticlePointerUp}
-                    >
-                        {content ? (
-                            <div style={{ whiteSpace: 'pre-wrap' }}>
-                                {content.split('\n').map((line, i) => {
-                                    // 1行の共通スタイル
-                                    const lineStyle: React.CSSProperties = {
-                                        margin: 0,
-                                        padding: 0,
-                                        lineHeight: '1.4',
-                                        minHeight: '1.4em', // 14.7px相当。エディタの1行と確実に一致させる
-                                        display: 'flex',
-                                        alignItems: 'flex-start'
-                                    };
+                            onPointerDown={onArticlePointerDown}
+                            onPointerUp={onArticlePointerUp}
+                        >
+                            {content ? (
+                                <div style={{ whiteSpace: 'pre-wrap' }}>
+                                    {content.split('\n').map((line, i) => {
+                                        // 1行の共通スタイル
+                                        const lineStyle: React.CSSProperties = {
+                                            margin: 0,
+                                            padding: 0,
+                                            lineHeight: '1.4',
+                                            minHeight: '1.4em', // 14.7px相当。エディタの1行と確実に一致させる
+                                            display: 'flex',
+                                            alignItems: 'flex-start'
+                                        };
 
-                                    const baseOffset = lineOffsets[i] || 0;
+                                        const baseOffset = lineOffsets[i] || 0;
 
-                                    if (line.trim() === '') {
-                                        return <div key={i} data-line-index={i} style={lineStyle} data-src-start={baseOffset}>&nbsp;</div>;
-                                    }
+                                        if (line.trim() === '') {
+                                            return <div key={i} data-line-index={i} style={lineStyle} data-src-start={baseOffset}>&nbsp;</div>;
+                                        }
 
-                                    if (line.startsWith('# ')) {
-                                        // Heading: start text after "# " (length 2)
-                                        return (
-                                            <div key={i} data-line-index={i} style={{ ...lineStyle, fontWeight: 700 }}>
-                                                <span
-                                                    style={{ color: '#ff8c00', marginRight: '4px', userSelect: 'none' }}
-                                                    data-src-start={baseOffset}
-                                                ># </span>
-                                                <span data-src-start={baseOffset + 2}>
-                                                    {line.substring(2)}
-                                                </span>
-                                            </div>
-                                        );
-                                    }
+                                        if (line.startsWith('# ')) {
+                                            // Heading: start text after "# " (length 2)
+                                            return (
+                                                <div key={i} data-line-index={i} style={{ ...lineStyle, fontWeight: 700 }}>
+                                                    <span
+                                                        style={{ color: '#ff8c00', marginRight: '4px', userSelect: 'none' }}
+                                                        data-src-start={baseOffset}
+                                                    ># </span>
+                                                    <span data-src-start={baseOffset + 2}>
+                                                        {line.substring(2)}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }
 
-                                    // チェックボックス (タスクリスト)
-                                    const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
-                                    if (taskMatch) {
-                                        const isChecked = taskMatch[2].toLowerCase() === 'x';
+                                        // チェックボックス (タスクリスト)
+                                        const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
+                                        if (taskMatch) {
+                                            const isChecked = taskMatch[2].toLowerCase() === 'x';
 
-                                        // Calculate offset for the text part
-                                        // Structure: [Marker] [Checkbox] [Text]
-                                        // "- [ ] " is length 6 if marker is "-".
-                                        // Robust calc: 
-                                        // line.length - text.length
-                                        const text = taskMatch[3].substring(2);
-                                        const textStart = baseOffset + (line.length - text.length);
+                                            // Calculate offset for the text part
+                                            // Structure: [Marker] [Checkbox] [Text]
+                                            // "- [ ] " is length 6 if marker is "-".
+                                            // Robust calc: 
+                                            // line.length - text.length
+                                            const text = taskMatch[3].substring(2);
+                                            const textStart = baseOffset + (line.length - text.length);
 
-                                        return (
-                                            <div key={i} data-line-index={i} style={lineStyle}>
-                                                <span
-                                                    onClick={(e) => {
-                                                        e.stopPropagation(); // 編集モード移行を防ぐ
-                                                        handleToggleCheckbox(i);
-                                                    }}
-                                                    data-interactable="true"
-                                                    style={{
-                                                        marginRight: '6px',
-                                                        color: isChecked ? '#4caf50' : '#888',
+                                            return (
+                                                <div key={i} data-line-index={i} style={lineStyle}>
+                                                    <span
+                                                        onClick={(e) => {
+                                                            e.stopPropagation(); // 編集モード移行を防ぐ
+                                                            handleToggleCheckbox(i);
+                                                        }}
+                                                        data-interactable="true"
+                                                        style={{
+                                                            marginRight: '6px',
+                                                            color: isChecked ? '#4caf50' : '#888',
+                                                            flexShrink: 0,
+                                                            display: 'inline-block',
+                                                            width: '1em',
+                                                            textAlign: 'center',
+                                                            cursor: 'pointer', // 押せることが分かるように
+                                                            userSelect: 'none'
+                                                        }}
+                                                        title={isChecked ? '未完了にする' : '完了にする'}
+                                                        data-src-start={baseOffset} // Icon click -> start of line
+                                                    >
+                                                        {isChecked ? '☑' : '☐'}
+                                                    </span>
+                                                    <span
+                                                        style={{ textDecoration: isChecked ? 'line-through' : 'none', opacity: isChecked ? 0.6 : 1 }}
+                                                        data-src-start={textStart}
+                                                    >
+                                                        {text}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }
+
+                                        // 箇条書き (リスト)
+                                        const listMatch = line.match(/^[\-\*\+]\s+(.*)$/);
+                                        if (listMatch) {
+                                            const text = listMatch[1];
+                                            const textStart = baseOffset + (line.length - text.length);
+                                            return (
+                                                <div key={i} data-line-index={i} style={lineStyle}>
+                                                    <span style={{
+                                                        marginRight: '8px',
+                                                        color: '#ff8c00',
                                                         flexShrink: 0,
                                                         display: 'inline-block',
                                                         width: '1em',
-                                                        textAlign: 'center',
-                                                        cursor: 'pointer', // 押せることが分かるように
-                                                        userSelect: 'none'
-                                                    }}
-                                                    title={isChecked ? '未完了にする' : '完了にする'}
-                                                    data-src-start={baseOffset} // Icon click -> start of line
-                                                >
-                                                    {isChecked ? '☑' : '☐'}
-                                                </span>
-                                                <span
-                                                    style={{ textDecoration: isChecked ? 'line-through' : 'none', opacity: isChecked ? 0.6 : 1 }}
-                                                    data-src-start={textStart}
-                                                >
-                                                    {text}
-                                                </span>
-                                            </div>
-                                        );
-                                    }
+                                                        textAlign: 'center'
+                                                    }} data-src-start={baseOffset}>•</span>
+                                                    <span data-src-start={textStart}>{text}</span>
+                                                </div>
+                                            );
+                                        }
 
-                                    // 箇条書き (リスト)
-                                    const listMatch = line.match(/^[\-\*\+]\s+(.*)$/);
-                                    if (listMatch) {
-                                        const text = listMatch[1];
-                                        const textStart = baseOffset + (line.length - text.length);
-                                        return (
-                                            <div key={i} data-line-index={i} style={lineStyle}>
-                                                <span style={{
-                                                    marginRight: '8px',
-                                                    color: '#ff8c00',
-                                                    flexShrink: 0,
-                                                    display: 'inline-block',
-                                                    width: '1em',
-                                                    textAlign: 'center'
-                                                }} data-src-start={baseOffset}>•</span>
-                                                <span data-src-start={textStart}>{text}</span>
-                                            </div>
-                                        );
-                                    }
+                                        // Normal / Bold
+                                        // Split by **bold**
+                                        const parts = line.split(/(\*\*[^*]+\*\*)/g);
+                                        let currentLineCharIdx = 0;
 
-                                    // Normal / Bold
-                                    // Split by **bold**
-                                    const parts = line.split(/(\*\*[^*]+\*\*)/g);
-                                    let currentLineCharIdx = 0;
+                                        const rendered = parts.map((part, j) => {
+                                            if (part === '') return null;
 
-                                    const rendered = parts.map((part, j) => {
-                                        if (part === '') return null;
+                                            const partStart = baseOffset + currentLineCharIdx;
+                                            const partLength = part.length;
 
-                                        const partStart = baseOffset + currentLineCharIdx;
-                                        const partLength = part.length;
+                                            if (part.startsWith('**') && part.endsWith('**')) {
+                                                const innerText = part.slice(2, -2);
+                                                // Update index for next part
+                                                currentLineCharIdx += partLength;
 
-                                        if (part.startsWith('**') && part.endsWith('**')) {
-                                            const innerText = part.slice(2, -2);
+                                                return (
+                                                    <strong
+                                                        key={j}
+                                                        style={{ color: 'red', fontWeight: 'bold' }}
+                                                        data-src-start={partStart + 2} // Click inside bold -> start of inner text
+                                                    >
+                                                        {innerText}
+                                                    </strong>
+                                                );
+                                            }
+
                                             // Update index for next part
                                             currentLineCharIdx += partLength;
 
                                             return (
-                                                <strong
-                                                    key={j}
-                                                    style={{ color: 'red', fontWeight: 'bold' }}
-                                                    data-src-start={partStart + 2} // Click inside bold -> start of inner text
-                                                >
-                                                    {innerText}
-                                                </strong>
+                                                <span key={j} data-src-start={partStart}>
+                                                    {part}
+                                                </span>
                                             );
-                                        }
-
-                                        // Update index for next part
-                                        currentLineCharIdx += partLength;
+                                        });
 
                                         return (
-                                            <span key={j} data-src-start={partStart}>
-                                                {part}
-                                            </span>
+                                            <div key={i} data-line-index={i} style={lineStyle}>
+                                                {rendered}
+                                            </div>
                                         );
-                                    });
-
-                                    return (
-                                        <div key={i} data-line-index={i} style={lineStyle}>
-                                            {rendered}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div className="text-gray-400 text-center py-8 text-xs font-mono opacity-50">
-                                クリックして編集を開始
-                            </div>
-                        )}
-                    </article>
-                )}
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="text-gray-400 text-center py-8 text-xs font-mono opacity-50">
+                                    クリックして編集を開始
+                                </div>
+                            )}
+                        </article>
+                    )
+                }
 
                 {/* 
                   【フッタードラッグ領域】
@@ -1540,95 +1587,97 @@ const StickyNote = memo(function StickyNote() {
                     onClick={() => isEditing && handleEditBlur()}
                     title="ドラッグで移動 / クリックで保存"
                 />
-            </main>
+            </main >
 
             {/* カスタムモーダルダイアログ - 新規タグ追加 */}
-            {showTagModal && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 10000
-                }}>
+            {
+                showTagModal && (
                     <div style={{
-                        backgroundColor: '#fff',
-                        padding: '24px',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                        minWidth: '320px',
-                        maxWidth: '400px'
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000
                     }}>
-                        <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 'bold' }}>新規タグを追加</h3>
+                        <div style={{
+                            backgroundColor: '#fff',
+                            padding: '24px',
+                            borderRadius: '8px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                            minWidth: '320px',
+                            maxWidth: '400px'
+                        }}>
+                            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 'bold' }}>新規タグを追加</h3>
 
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                            <input
-                                type="text"
-                                value={tagInputValue}
-                                onChange={(e) => setTagInputValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && tagInputValue.trim()) {
-                                        e.preventDefault();
-                                        handleAddTag();
-                                    } else if (e.key === 'Escape') {
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                                <input
+                                    type="text"
+                                    value={tagInputValue}
+                                    onChange={(e) => setTagInputValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && tagInputValue.trim()) {
+                                            e.preventDefault();
+                                            handleAddTag();
+                                        } else if (e.key === 'Escape') {
+                                            setShowTagModal(false);
+                                            setTagInputValue('');
+                                        }
+                                    }}
+                                    placeholder="タグ名を入力"
+                                    autoFocus
+                                    style={{
+                                        flex: 1,
+                                        padding: '8px 12px',
+                                        border: '1px solid #ddd',
+                                        borderRadius: '4px',
+                                        fontSize: '14px'
+                                    }}
+                                />
+                                <button
+                                    onClick={handleAddTag}
+                                    disabled={!tagInputValue.trim()}
+                                    style={{
+                                        padding: '8px 16px',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        backgroundColor: tagInputValue.trim() ? '#28a745' : '#ccc',
+                                        color: '#fff',
+                                        cursor: tagInputValue.trim() ? 'pointer' : 'not-allowed',
+                                        fontSize: '14px',
+                                        whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    追加
+                                </button>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                <button
+                                    onClick={() => {
                                         setShowTagModal(false);
                                         setTagInputValue('');
-                                    }
-                                }}
-                                placeholder="タグ名を入力"
-                                autoFocus
-                                style={{
-                                    flex: 1,
-                                    padding: '8px 12px',
-                                    border: '1px solid #ddd',
-                                    borderRadius: '4px',
-                                    fontSize: '14px'
-                                }}
-                            />
-                            <button
-                                onClick={handleAddTag}
-                                disabled={!tagInputValue.trim()}
-                                style={{
-                                    padding: '8px 16px',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    backgroundColor: tagInputValue.trim() ? '#28a745' : '#ccc',
-                                    color: '#fff',
-                                    cursor: tagInputValue.trim() ? 'pointer' : 'not-allowed',
-                                    fontSize: '14px',
-                                    whiteSpace: 'nowrap'
-                                }}
-                            >
-                                追加
-                            </button>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <button
-                                onClick={() => {
-                                    setShowTagModal(false);
-                                    setTagInputValue('');
-                                }}
-                                style={{
-                                    padding: '6px 12px',
-                                    border: '1px solid #ddd',
-                                    borderRadius: '4px',
-                                    backgroundColor: '#fff',
-                                    cursor: 'pointer',
-                                    fontSize: '13px'
-                                }}
-                            >
-                                キャンセル
-                            </button>
+                                    }}
+                                    style={{
+                                        padding: '6px 12px',
+                                        border: '1px solid #ddd',
+                                        borderRadius: '4px',
+                                        backgroundColor: '#fff',
+                                        cursor: 'pointer',
+                                        fontSize: '13px'
+                                    }}
+                                >
+                                    キャンセル
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
             {/* Confirmation Dialog for Global Tag Deletion */}
             <ConfirmDialog
                 isOpen={!!tagToDelete}
@@ -1640,7 +1689,7 @@ const StickyNote = memo(function StickyNote() {
                     shouldReopenMenu.current = true;
                 }}
             />
-        </div>
+        </div >
     );
 });
 
