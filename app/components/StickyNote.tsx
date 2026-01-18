@@ -441,6 +441,10 @@ const StickyNote = memo(function StickyNote() {
         // Capture coordinates for single click fallback
         const clientX = e.clientX;
         const clientY = e.clientY;
+        const target = e.target as HTMLElement;
+
+        // Check if interactive element
+        if (target.closest('[data-interactable]')) return;
 
         pointerDownRef.current = null;
 
@@ -510,19 +514,7 @@ const StickyNote = memo(function StickyNote() {
         return () => window.removeEventListener('pointerdown', onPointerDownCapture, true);
     }, [isEditing]);
 
-    // [New] Explicit Exit Conditions (Window Inactive)
-    useEffect(() => {
-        if (!isEditing) return;
 
-        const onWindowBlur = () => {
-            // If debugging devtools, this might be annoying, but per spec:
-            console.log('[Boundary] Window inactive. Ending edit.');
-            handleEditBlur();
-        };
-
-        window.addEventListener('blur', onWindowBlur);
-        return () => window.removeEventListener('blur', onWindowBlur);
-    }, [isEditing]);
 
     // ドラッグ開始
     const handleDragStart = useCallback(async (e: React.PointerEvent) => {
@@ -1318,7 +1310,7 @@ const StickyNote = memo(function StickyNote() {
                                 setEditBody(newValue);
                                 setSavePending(true);
                             }}
-                            onBlur={() => handleEditBlur()}
+
                             onKeyDown={(e) => {
                                 if (e.key === 'Escape') handleEditBlur();
                             }}
@@ -1395,6 +1387,7 @@ const StickyNote = memo(function StickyNote() {
                                                         e.stopPropagation(); // 編集モード移行を防ぐ
                                                         handleToggleCheckbox(i);
                                                     }}
+                                                    data-interactable="true"
                                                     style={{
                                                         marginRight: '6px',
                                                         color: isChecked ? '#4caf50' : '#888',
@@ -1514,7 +1507,7 @@ const StickyNote = memo(function StickyNote() {
                             handleDragStart(e);
                         }
                     }}
-                    onClick={() => isEditing && handleEditBlur(editBody)}
+                    onClick={() => isEditing && handleEditBlur()}
                     title="ドラッグで移動 / クリックで保存"
                 />
             </main>

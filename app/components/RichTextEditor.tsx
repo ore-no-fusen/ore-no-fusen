@@ -8,7 +8,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 interface RichTextEditorProps {
     value: string;
     onChange: (value: string) => void;
-    onBlur: (currentValue: string) => void; // 現在の値を渡す
+
     onKeyDown?: (e: React.KeyboardEvent) => void;
     backgroundColor: string;
     cursorPosition?: number | null; // 初期カーソル位置（文字オフセット）
@@ -134,7 +134,7 @@ function buildDecorations(state: EditorState): DecorationSet {
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
     value,
     onChange,
-    onBlur,
+
     onKeyDown,
     backgroundColor,
     cursorPosition
