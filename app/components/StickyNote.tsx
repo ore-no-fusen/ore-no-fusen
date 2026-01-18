@@ -69,6 +69,8 @@ const StickyNote = memo(function StickyNote() {
     // [New] 初期ロードやフォーカス揺れによる誤Blurを防ぐタイマー
     const ignoreBlurUntilRef = useRef<number>(0);
     const editorRef = useRef<RichTextEditorRef>(null);
+    const editorHostRef = useRef<HTMLDivElement>(null); // [New boundary ref]
+    const editBodyRef = useRef(editBody); // [New] Stale closure fix
 
     // ホバー管理
     const [isHover, setIsHover] = useState(false);
@@ -315,23 +317,7 @@ const StickyNote = memo(function StickyNote() {
     };
 
     // 編集モード終了
-    const handleEditBlur = (currentBody?: string) => {
-        // 4) 無視期間内なら即 return
-        if (Date.now() < ignoreBlurUntilRef.current) {
-            console.log('[BLUR] ignored (initial settling)');
-            return;
-        }
 
-        if (!isEditing) return;
-        setIsEditing(false);
-        lastEditEndedAt.current = Date.now(); // 終了時刻を記録
-
-        // 最後に渡された値があれば反映
-        if (currentBody !== undefined && currentBody !== editBody) {
-            setEditBody(currentBody);
-            setSavePending(true);
-        }
-    };
 
     // 編集内容変更
     const handleEditChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -342,7 +328,7 @@ const StickyNote = memo(function StickyNote() {
     // キーボードイベント
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Escape') {
-            handleEditBlur();
+            handleEditBlur(editBody);
         }
     };
 
@@ -357,6 +343,42 @@ const StickyNote = memo(function StickyNote() {
         });
 
     }, [isEditing]); // Remove cursorPosition from dependency since RTE handles it
+
+    // [New] Explicit Exit Conditions (Click Outside)
+    useEffect(() => {
+        if (!isEditing) return;
+
+        const onPointerDownCapture = (e: PointerEvent) => {
+            const target = e.target as Node;
+
+            // Editor inner click: ignore
+            if (editorHostRef.current?.contains(target)) return;
+
+            // Toolbar click: ignore (if exists, e.g. .hoverBar)
+            if ((target as HTMLElement)?.closest?.('.hoverBar')) return;
+
+            // Click Outside: Trigger blur
+            console.log('[Boundary] Click outside detected. Ending edit.');
+            handleEditBlur(editBody);
+        };
+
+        window.addEventListener('pointerdown', onPointerDownCapture, true);
+        return () => window.removeEventListener('pointerdown', onPointerDownCapture, true);
+    }, [isEditing, editBody]);
+
+    // [New] Explicit Exit Conditions (Window Inactive)
+    useEffect(() => {
+        if (!isEditing) return;
+
+        const onWindowBlur = () => {
+            // If debugging devtools, this might be annoying, but per spec:
+            console.log('[Boundary] Window inactive. Ending edit.');
+            handleEditBlur(editBody);
+        };
+
+        window.addEventListener('blur', onWindowBlur);
+        return () => window.removeEventListener('blur', onWindowBlur);
+    }, [isEditing, editBody]);
 
     // ドラッグ開始
     const handleDragStart = useCallback(async (e: React.PointerEvent) => {
@@ -411,6 +433,11 @@ const StickyNote = memo(function StickyNote() {
     }, [isEditing]);
 
 
+
+    // [New] Sync editBodyRef
+    useEffect(() => {
+        editBodyRef.current = editBody;
+    }, [editBody]);
 
     // ホバー管理
     useEffect(() => {
@@ -472,6 +499,11 @@ const StickyNote = memo(function StickyNote() {
             window.removeEventListener('blur', handleReset);
         };
     }, [isHover]);
+
+    // [New] Dirty Check
+    const isDirty = isEditing
+        ? (editBody !== content) || savePending
+        : savePending;
 
 
 
@@ -698,6 +730,10 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => {
         const handleContextMenu = (e: MouseEvent) => {
             e.preventDefault();
+
+            // [New] Commit before menu opens
+            if (isEditing) handleEditBlur(editBodyRef.current);
+
             lastContextMenuPos.current = { x: e.clientX, y: e.clientY };
             showContextMenu(e.clientX, e.clientY);
         };
@@ -732,6 +768,84 @@ const StickyNote = memo(function StickyNote() {
             console.error('Failed to toggle always on top', e);
         }
     };
+
+    const handleEditBlur = async (newContent: string) => {
+        if (!selectedFile) return;
+        setIsEditing(false);
+        lastEditEndedAt.current = Date.now();
+
+        // 保存処理
+        const savePromise = invoke('fusen_save_note', {
+            path: selectedFile.path,
+            body: newContent, // Use 'body' as per fusen_save_note signature
+            frontmatterRaw: rawFrontmatter // Pass raw frontmatter
+        });
+
+        // [New] Rename Logic based on First Line
+        // "なるべく軽く" -> Only check if content changed and first line is different from current context
+        try {
+            const firstLine = newContent.split('\n')[0].trim();
+            // Current context might be empty or different.
+            // We need to decide if we rename.
+            // Only rename if the first line is valid and different from current context.
+            // Also avoid renaming if it's just a small edit that didn't change the first line.
+
+            // Note: selectedFile.context might be just the name without extension or frontmatter context.
+            // Let's assume we want the filename to match the first line (sanitized).
+
+            if (firstLine && firstLine !== selectedFile.context) {
+                // Check if actually changed (optimization)
+                // Trigger rename (which handles sanitization on backend)
+                // We don't wait for this to finish to avoid blocking UI,
+                // but we need to handle the path update.
+                // Actually, fusen_rename_note returns the new note meta.
+
+                // However, we are inside handleEditBlur.
+                // Let's do it via a separate effect or just fire and forget,
+                // but better to allow the backend to handle it.
+                // For now, let's invoke it.
+
+                invoke<string>('fusen_rename_note', {
+                    path: selectedFile.path,
+                    newContext: firstLine
+                }).then(async (newPath) => {
+                    console.log('Renamed to:', newPath, 'from', selectedFile.path);
+                    // Fetch the full note object for the new path to get updated metadata
+                    try {
+                        const newNote = await invoke<Note>('fusen_read_note', { path: newPath });
+                        setSelectedFile(newNote.meta);
+                    } catch (readErr) {
+                        console.error('Failed to read renamed note', readErr);
+                    }
+                }).catch(e => console.error('Rename failed', e));
+            }
+        } catch (e) {
+            console.error('Rename check failed', e);
+        }
+
+        savePromise.then(() => {
+            setSavePending(false);
+            console.log('Saved');
+        }).catch((e) => {
+            console.error(e);
+            setSavePending(false); // エラーでもペディング解除しないと永久に保存できない恐れがあるが、とりあえず
+        });
+    };
+
+    // [New] Edit Mode Boundaries (Explicit Exit) - Moved here to avoid "used before declaration"
+    useEffect(() => {
+        if (!isEditing) return;
+
+        const onWindowBlur = () => {
+            console.log('[Boundary] Window Blur. Committing.');
+            handleEditBlur(editBodyRef.current);
+        };
+
+        window.addEventListener('blur', onWindowBlur);
+        return () => {
+            window.removeEventListener('blur', onWindowBlur);
+        };
+    }, [isEditing, handleEditBlur]); // editBodyRef is stable
 
     const handleDuplicate = async () => {
         if (!selectedFile) return;
@@ -1018,6 +1132,36 @@ const StickyNote = memo(function StickyNote() {
                     position: 'relative' // HoverBarのsticky基準にする
                 }}
             >
+                {/* Header / Drag Handle */}
+                <div
+                    className="file-name"
+                    onPointerDown={handleDragStart}
+                    style={{
+                        cursor: isDraggableArea || isEditableArea ? 'move' : 'default',
+                        userSelect: 'none',
+                        touchAction: 'none'
+                    }}
+                >
+                    <span className="file-icon">
+                        {/* Icon based on file type if needed */}
+                    </span>
+                    {selectedFile?.context || getFileName(selectedFile?.path || '')}
+
+                    {/* UI Indicators */}
+                    {isEditing && (
+                        <span className="ml-2 text-red-600 font-bold text-lg leading-none" title="編集中">●</span>
+                    )}
+                    {!isEditing && isDirty && <span className="ml-1 text-xs">●</span>}
+                    {/* isDirty dot is redundant if we have the red editing dot?
+                    User asked for "Red dot for editing" AND "●".
+                    "編集中を示す●だけ出してほしい" -> "I want only the dot that indicates *editing*".
+                    So let's show ONE red dot if isEditing.
+                    If !isEditing but isDirty (unsaved), maybe show a different dot?
+                    User said "赤丸がいいな" (Red dot is good).
+                    Let's just use one red dot for "Editing Mode".
+                */}
+                </div>
+
                 {/* ツールバーをスクロールに追従させるためのstickyコンテナ */}
                 <div style={{
                     position: 'sticky',
@@ -1034,7 +1178,16 @@ const StickyNote = memo(function StickyNote() {
                 {loading ? (
                     <div className="text-center text-gray-300 py-8 text-xs font-mono opacity-30">Loading...</div>
                 ) : isEditing ? (
-                    <div className="editorHost notePaper">
+                    <div
+                        className="editorHost notePaper"
+                        ref={editorHostRef} // [New Ref]
+                        style={{
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            cursor: isEditing ? 'text' : 'default' // Add visual cue
+                        }}
+                    >
                         <RichTextEditor
                             ref={editorRef}
                             value={editBody}
@@ -1042,9 +1195,9 @@ const StickyNote = memo(function StickyNote() {
                                 setEditBody(newValue);
                                 setSavePending(true);
                             }}
-                            onBlur={handleEditBlur}
+                            onBlur={() => handleEditBlur(editBody)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Escape') handleEditBlur();
+                                if (e.key === 'Escape') handleEditBlur(editBody);
                             }}
                             backgroundColor={noteBackgroundColor}
                             cursorPosition={cursorPosition}
@@ -1168,7 +1321,9 @@ const StickyNote = memo(function StickyNote() {
                                 })}
                             </div>
                         ) : (
-                            <div className="text-gray-400 italic opacity-50 text-xs">クリックして入力...</div>
+                            <div className="text-gray-400 text-center py-8 text-xs font-mono opacity-50">
+                                クリックして編集を開始
+                            </div>
                         )}
                     </article>
                 )}

@@ -339,10 +339,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     // イベントハンドラ
                     EditorView.domEventHandlers({
                         blur: (e, view) => {
-                            // 初期フォーカス時の誤ったblurを防ぐため、少し遅延
-                            setTimeout(() => {
-                                onBlur(view.state.doc.toString());
-                            }, 150);
+                            // Fix: Blur does not trigger edit end.
+                            // Boundaries are managed by StickyNote (click-outside, etc.)
+                            console.log('[RichTextEditor] Blur ignored (managed by parent)');
                         },
                         keydown: (e) => {
                             if (e.key === 'Escape' && onKeyDown) {

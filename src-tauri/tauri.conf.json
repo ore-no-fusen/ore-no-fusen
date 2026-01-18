@@ -13,13 +13,13 @@
     "windows": [
       {
         "title": "俺の付箋",
-        "width": 800,
-        "height": 600,
+        "width": 240,
+        "height": 300,
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
-        "visible": true
+        "visible": false
       }
     ],
     "security": {
