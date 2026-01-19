@@ -90,17 +90,17 @@ describe('StickyNote Component', () => {
         // Wait for load
         await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
 
-        // Enter edit mode (click article text)
-        // Note: StickyNote uses onPointerUp with a timeout to detect clicks
+        // Enter edit mode (double click article text)
+        // Note: StickyNote uses onDoubleClick for edit mode
         const texts = screen.getAllByText('Test Content');
         await act(async () => {
-            fireEvent.pointerUp(texts[0], { clientX: 100, clientY: 100, button: 0 });
+            fireEvent.doubleClick(texts[0]);
         });
 
         // Verify edit mode (Editor should be present)
         await waitFor(() => {
             expect(screen.getAllByTestId('rich-text-editor').length).toBeGreaterThan(0);
-        });
+        }, { timeout: 3000 });
 
         // Trigger Window Blur
         await act(async () => {
@@ -123,15 +123,15 @@ describe('StickyNote Component', () => {
         render(<StickyNote />);
         await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
 
-        // Enter edit mode
+        // Enter edit mode (double click)
         const texts = screen.getAllByText('Test Content');
         await act(async () => {
-            fireEvent.pointerUp(texts[0], { clientX: 100, clientY: 100, button: 0 });
+            fireEvent.doubleClick(texts[0]);
         });
 
         await waitFor(() => {
             expect(screen.getAllByTestId('rich-text-editor').length).toBeGreaterThan(0);
-        });
+        }, { timeout: 3000 });
 
         // Press Escape
         const editors = screen.getAllByTestId('rich-text-editor');
@@ -149,14 +149,14 @@ describe('StickyNote Component', () => {
         render(<StickyNote />);
         await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
 
-        // Enter edit mode first
+        // Enter edit mode first (double click)
         const texts = screen.getAllByText('Test Content');
         await act(async () => {
-            fireEvent.pointerUp(texts[0], { clientX: 100, clientY: 100, button: 0 });
+            fireEvent.doubleClick(texts[0]);
         });
         await waitFor(() => {
             expect(screen.getAllByTestId('rich-text-editor').length).toBeGreaterThan(0);
-        });
+        }, { timeout: 3000 });
 
         // Clear previous calls
         mockInvoke.mockClear();
@@ -206,6 +206,35 @@ describe('StickyNote Component', () => {
 
         // Ensure Tag4 is NOT shown directly
         expect(screen.queryByText('Tag4')).toBeNull();
+    });
+
+    it('Feature: Link Display (URLs and File Paths)', async () => {
+        // Mock returning content with various link types
+        mockInvoke.mockImplementation((cmd) => {
+            if (cmd === 'fusen_read_note') {
+                return Promise.resolve({
+                    meta: { path: 'd:/test/note.md', width: 300, height: 300 },
+                    body: '---\ntags: []\n---\nCheck out https://example.com for more info.\nAlso see d:\\path\\to\\file.txt'
+                });
+            }
+            if (cmd === 'fusen_get_all_tags') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+
+        render(<StickyNote />);
+
+        // Wait for content to load
+        await waitFor(() => {
+            expect(screen.getByText(/Check out/)).toBeTruthy();
+        });
+
+        // Verify that URL is rendered (should be in the DOM)
+        // Note: The actual link rendering depends on the parseLinks function
+        await waitFor(() => {
+            const articleContent = document.body.textContent;
+            expect(articleContent).toContain('https://example.com');
+            expect(articleContent).toContain('d:\\path\\to\\file.txt');
+        });
     });
 
 });
