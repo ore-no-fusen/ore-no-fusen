@@ -437,14 +437,109 @@ fn fusen_get_active_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
     state.lock().unwrap().active_tags.clone()
 }
 
+/// タグフィルタリングを直接Rust側で実行する関数
+pub fn apply_tag_filter_windows<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_, Mutex<AppState>>, active_tags: &[String]) -> Result<(), String> {
+    // 最新のノート一覧を取得（タグ情報を含む）
+    let app_state = state.lock().unwrap();
+    let base_path = app_state.base_path.clone()
+        .or(app_state.folder_path.clone())
+        .ok_or("base_path is not set")?;
+    drop(app_state);
+    
+    // タグ付きノート一覧を取得
+    let mut all_notes = storage::list_notes(&base_path);
+    for n in all_notes.iter_mut() {
+        if let Ok(note) = storage::read_note(&n.path) {
+            let (_, _, _, _, _, _, tags) = logic::extract_meta_from_content(&note.body);
+            n.tags = tags;
+        }
+    }
+    
+    // フィルタリング（OR条件）
+    let selected: Vec<String> = active_tags.iter().map(|t| t.trim().to_string()).collect();
+    let filtered_notes = if selected.is_empty() {
+        all_notes.clone()
+    } else {
+        all_notes.iter()
+            .filter(|n| n.tags.iter().any(|tag| selected.contains(&tag.trim().to_string())))
+            .cloned()
+            .collect()
+    };
+    
+    eprintln!("[Rust] Applying tag filter. Active tags: {:?}, Filtered notes: {}", selected, filtered_notes.len());
+    
+    // ウィンドウラベル生成関数（JS側と同じロジック）
+    fn get_window_label(path: &str) -> String {
+        let normalized = path.trim()
+            .replace('\\', "/")
+            .to_lowercase()
+            .replace("//", "/")
+            .trim_end_matches('/').to_string();
+        
+        // JavaScript同等のハッシュ計算: ((hash << 5) - hash) + char
+        let mut hash: i32 = 0;
+        for ch in normalized.chars() {
+            hash = ((hash << 5).wrapping_sub(hash)).wrapping_add(ch as i32);
+            hash = hash & hash; // JS: hash = hash & hash (no-op, but for exactness)
+        }
+        
+        // toString(36)を再現: 36進数変換
+        fn to_base36(mut num: u32) -> String {
+            const CHARS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+            if num == 0 { return "0".to_string(); }
+            
+            let mut result = Vec::new();
+            while num > 0 {
+                result.push(CHARS[(num % 36) as usize] as char);
+                num /= 36;
+            }
+            result.reverse();
+            result.into_iter().collect()
+        }
+        
+        format!("note-{}", to_base36(hash.abs() as u32))
+    }
+    
+    // フィルタ対象のラベルをセットにする
+    let filtered_labels: std::collections::HashSet<String> = filtered_notes.iter()
+        .map(|n| get_window_label(&n.path))
+        .collect();
+    
+    // 全ウィンドウを取得
+    let all_windows = app.webview_windows();
+    
+    // 既存ウィンドウの処理: 非表示/表示
+    for (label, win) in all_windows.iter() {
+        if label == "main" || label == "tag-selector" {
+            continue;
+        }
+        
+        if filtered_labels.contains(label) {
+            eprintln!("[Rust] Showing window: {}", label);
+            let _ = win.show();
+            let _ = win.unminimize();
+        } else {
+            eprintln!("[Rust] Hiding window: {}", label);
+            let _ = win.hide();
+        }
+    }
+    
+    // TODO: 新規ウィンドウを開く処理は、Rust側では複雑になるため、
+    // まずは既存ウィンドウの表示/非表示のみを実装
+    // （フロントエンド側で新規ウィンドウを開く処理は別途必要）
+    
+    Ok(())
+}
+
 #[tauri::command]
 fn fusen_set_active_tags(state: State<'_, Mutex<AppState>>, tags: Vec<String>, app: tauri::AppHandle) -> Result<(), String> {
     let mut app_state = state.lock().unwrap();
     app_state.active_tags = tags.clone();
     drop(app_state);
     
-    // Emit event to update filtered notes
-    let _ = app.emit("fusen:apply_tag_filter", tags);
+    // Rust側で直接ウィンドウフィルタリングを実行
+    apply_tag_filter_windows(&app, state, &tags)?;
+    
     Ok(())
 }
 
@@ -553,6 +648,33 @@ fn show_context_menu(
 
 
 
+#[tauri::command]
+fn fusen_refresh_notes_with_tags(state: State<'_, Mutex<AppState>>) -> Result<Vec<NoteMeta>, String> {
+    let mut app_state = state.lock().unwrap();
+
+    let base_path = app_state
+        .base_path
+        .clone()
+        .or(app_state.folder_path.clone())
+        .ok_or("base_path is not set")?;
+
+    // まず一覧（パス）を取る
+    let mut notes = storage::list_notes(&base_path);
+
+    // 各ノートを読んで tags を確実に詰める
+    for n in notes.iter_mut() {
+        if let Ok(note) = storage::read_note(&n.path) {
+            let (_x, _y, _w, _h, _bg, _aot, tags) = logic::extract_meta_from_content(&note.body);
+            n.tags = tags;
+        }
+    }
+
+    // stateにも反映
+    app_state.notes = notes.clone();
+    Ok(notes)
+}
+
+
 // --- Entry Point ---
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -581,6 +703,7 @@ pub fn run() {
             fusen_get_all_tags,
             fusen_get_active_tags,
             fusen_set_active_tags,
+            fusen_refresh_notes_with_tags,
             show_context_menu,
             get_base_path,
             setup_first_launch
