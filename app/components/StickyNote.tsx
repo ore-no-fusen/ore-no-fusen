@@ -321,6 +321,61 @@ const StickyNote = memo(function StickyNote() {
         };
     }, [selectedFile, saveWindowState]);
 
+    // Listen for reload events from global tag deletion
+    useEffect(() => {
+        console.log('[DEBUG] useEffect for reload listener triggered. selectedFile:', selectedFile?.path);
+
+        if (!selectedFile) {
+            console.log('[DEBUG] selectedFile is null, skipping listener setup');
+            return;
+        }
+
+        const setupReloadListener = async () => {
+            const { listen } = await import('@tauri-apps/api/event');
+            const unlisten = await listen<string>('fusen:reload_note', async (event) => {
+                const modifiedPath = event.payload;
+
+                // Normalize paths for comparison (Windows uses backslash, Unix uses forward slash)
+                const normalizedModifiedPath = modifiedPath.replace(/\\/g, '/').toLowerCase();
+                const normalizedCurrentPath = selectedFile.path.replace(/\\/g, '/').toLowerCase();
+                const pathsMatch = normalizedModifiedPath === normalizedCurrentPath;
+
+                console.log('[RELOAD] Normalized modified path:', normalizedModifiedPath);
+                console.log('[RELOAD] Normalized current path:', normalizedCurrentPath);
+                console.log('[RELOAD] Paths match?', pathsMatch);
+
+                // Only reload if this is the matching window
+                if (pathsMatch) {
+                    // Directly reload without calling loadFileContent to avoid dependency issues
+                    try {
+                        const { invoke } = await import('@tauri-apps/api/core');
+                        const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
+                        const { front, body } = splitFrontMatter(note.body);
+                        setRawFrontmatter(front);
+                        setContent(body);
+                        setEditBody(body);
+
+                        const colorMatch = front.match(/backgroundColor:\s*["']?([^"'\s]+)["']?/);
+                        if (colorMatch) {
+                            setNoteBackgroundColor(colorMatch[1]);
+                        }
+                    } catch (error) {
+                        console.error('[RELOAD] Failed to reload note:', error);
+                    }
+                }
+            });
+
+            return unlisten;
+        };
+
+        const cleanupPromise = setupReloadListener();
+
+        return () => {
+            cleanupPromise.then(unlisten => unlisten());
+        };
+    }, [selectedFile]);
+
+
     // 背景色変更を確実に反映させるためのuseEffect
     useEffect(() => {
         if (shellRef.current) {
@@ -713,7 +768,8 @@ const StickyNote = memo(function StickyNote() {
                     try {
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                         const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
-                        const note = await invoke<Note>('fusen_create_note', { folderPath, context: '' });
+                        // Use default context "memo" for new notes instead of inheriting
+                        const note = await invoke<Note>('fusen_create_note', { folderPath, context: 'memo' });
                         const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                         const sanitizedPath = note.meta.path.replace(/[^a-zA-Z0-9]/g, '_');
                         const label = `note_${sanitizedPath}`;

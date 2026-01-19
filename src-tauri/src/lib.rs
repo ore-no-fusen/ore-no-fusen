@@ -383,11 +383,23 @@ fn fusen_remove_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String
 
 #[tauri::command]
 fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app: tauri::AppHandle) -> Result<usize, String> {
+    eprintln!("[Global Delete] Request for tag: '{}'", tag);
+    
+    // CRITICAL FIX: Refresh notes list before processing to ensure we have the latest state
     let mut app_state = state.lock().unwrap();
+    let base_path = app_state.base_path.clone()
+        .or(app_state.folder_path.clone())
+        .ok_or("base_path is not set")?;
+    
+    // Reload all notes to get the most up-to-date list
+    eprintln!("[Global Delete] Reloading notes from: {}", base_path);
+    app_state.notes = storage::list_notes(&base_path);
+    eprintln!("[Global Delete] Found {} notes in total", app_state.notes.len());
+    
     let mut modified_count = 0;
+    let mut modified_paths: Vec<String> = Vec::new(); // Track modified paths
     
     // Create a list of paths to process to avoid borrowing issues
-    eprintln!("Global Delete Request for tag: '{}'", tag);
     let paths: Vec<String> = app_state.notes.iter().map(|n| n.path.clone()).collect();
     
     // Iterate through all notes
@@ -395,24 +407,26 @@ fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app
         // Read note content
         if let Ok(note) = storage::read_note(&path) {
             let (_, _, _, _, _, _, tags) = logic::extract_meta_from_content(&note.body);
-            // println!("Checking note: {} tags: {:?}", path, tags); 
+            eprintln!("[Global Delete] Checking note: {} - tags: {:?}", path, tags);
 
-            // Check if tag exists
-            if tags.contains(&tag) {
-                eprintln!("Found tag '{}' in {}, attempting to remove...", tag, path);
+            // Check if tag exists (trim both sides for safety)
+            let tag_trimmed = tag.trim();
+            if tags.iter().any(|t| t.trim() == tag_trimmed) {
+                eprintln!("[Global Delete] Found tag '{}' in {}, attempting to remove...", tag, path);
                 // Remove tag
-                if let Ok(effect) = logic::handle_remove_tag(&mut *app_state, &path, &note.body, &tag) {
-                    if let logic::Effect::WriteNote { path, content } = effect {
-                        match storage::write_note(&path, &content) {
+                if let Ok(effect) = logic::handle_remove_tag(&mut *app_state, &path, &note.body, tag_trimmed) {
+                    if let logic::Effect::WriteNote { path: write_path, content } = effect {
+                        match storage::write_note(&write_path, &content) {
                             Ok(_) => {
-                                eprintln!("Successfully wrote modified note: {}", path);
+                                eprintln!("[Global Delete] Successfully wrote modified note: {}", write_path);
                                 modified_count += 1;
+                                modified_paths.push(write_path);
                             },
-                            Err(e) => eprintln!("Failed to write note: {} error: {}", path, e),
+                            Err(e) => eprintln!("[Global Delete] Failed to write note: {} error: {}", write_path, e),
                         }
                     }
                 } else {
-                    eprintln!("handle_remove_tag returned error for {}", path);
+                    eprintln!("[Global Delete] handle_remove_tag returned error for {}", path);
                 }
             }
         }
@@ -422,7 +436,13 @@ fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app
     drop(app_state);
     let _ = crate::tray::refresh_tray_menu(&app);
     
-    eprintln!("Global Delete Finished. Modified {} notes.", modified_count);
+    // [NEW] Notify each modified window to reload
+    for path in modified_paths {
+        eprintln!("[Global Delete] Sending reload event for: {}", path);
+        let _ = app.emit("fusen:reload_note", path);
+    }
+    
+    eprintln!("[Global Delete] Finished. Modified {} notes.", modified_count);
     Ok(modified_count)
 }
 

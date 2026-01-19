@@ -422,13 +422,31 @@ function OrchestratorContent() {
   const openNoteWindow = async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number }, isNew?: boolean) => {
     const label = getWindowLabel(path);
 
+    // Fast-path: 既存ウィンドウがあれば即表示（キューに入れない）
+    try {
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      const existing = await WebviewWindow.getByLabel(label);
+      if (existing) {
+        console.log(`[openNoteWindow] Showing existing window: ${label}`);
+        await existing.show(); // ★Hide All後に戻すには show() が必須
+        await existing.unminimize();
+        await existing.setFocus();
+        return;
+      }
+    } catch (e) {
+      console.warn(`[openNoteWindow] Failed to check existing window: ${label}`, e);
+    }
+
     await enqueueWindowCreation(async () => {
       try {
         if (isWindowInProgress(label)) return;
 
+        // Queue内でも念のため再チェック（生成直後の場合など）
+        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         const existing = await WebviewWindow.getByLabel(label);
         if (existing) {
           await existing.unminimize();
+          await existing.show();
           await existing.setFocus();
           return;
         }
@@ -439,6 +457,7 @@ function OrchestratorContent() {
         for (const win of allWindows) {
           try {
             if (win.label === label) {
+              await win.show(); // ★追加
               await win.unminimize();
               await win.setFocus();
               return;
@@ -586,204 +605,74 @@ function OrchestratorContent() {
 
   // イベントリスナー設定 (他ウィンドウからの依頼受取)
   useEffect(() => {
-    const unlistenPromise = listen<{ path: string; isNew?: boolean }>('fusen:open_note', (event) => {
-      openNoteWindow(event.payload.path, undefined, event.payload.isNew);
-    });
+    let unlisten: null | (() => void) = null;
+
+    (async () => {
+      unlisten = await listen<{ path: string; isNew?: boolean }>('fusen:open_note', (event) => {
+        openNoteWindow(event.payload.path, undefined, event.payload.isNew);
+      });
+    })();
 
     return () => {
-      unlistenPromise.then(async (unlisten) => {
-        try {
-          await unlisten();
-        } catch (e) {
-          console.warn('Failed to unlisten fusen:open_note', e);
-        }
-      });
+      try {
+        unlisten?.();
+      } catch (e) {
+        console.warn('Failed to unlisten fusen:open_note', e);
+      }
     };
   }, []);
 
   // タグフィルター: switch_world イベントリスナー（旧・単一選択）
   useEffect(() => {
-    const unlistenPromise = listen<string | null>('fusen:switch_world', async (event) => {
-      const selectedTag = event.payload;
-      console.log('[switch_world] Received:', selectedTag);
+    let unlisten: null | (() => void) = null;
 
-      try {
-        // State同期して最新のノート一覧を取得
-        await syncState();
-        const state = await invoke<AppState>('fusen_get_state');
-        const allNotes = state.notes;
+    (async () => {
+      unlisten = await listen<string | null>('fusen:switch_world', async (event) => {
+        const selectedTag = event.payload;
+        console.log('[switch_world] Received:', selectedTag);
 
-        // フィルタリング
-        const filteredNotes = selectedTag
-          ? allNotes.filter(n => n.tags && n.tags.includes(selectedTag))
-          : allNotes;
-
-        console.log('[switch_world] All notes:', allNotes.length, 'Filtered:', filteredNotes.length);
-
-        // 現在開いているウィンドウを取得
-        const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
-        const allWindows = await getAllWebviewWindows();
-
-        // フィルタ対象のパスをセットにする
-        const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
-
-        // 既存ウィンドウの処理
-        for (const win of allWindows) {
-          if (win.label === 'main') continue; // 管理画面は除外
-
-          const shouldShow = filteredPaths.has(win.label);
-          try {
-            if (shouldShow) {
-              await win.show();
-              await win.unminimize();
-            } else {
-              await win.hide();
-            }
-          } catch (e) {
-            console.error('[switch_world] Failed to show/hide window:', win.label, e);
-          }
-        }
-
-        // フィルタ対象で開いていないウィンドウを開く
-        const openedLabels = new Set(allWindows.map(w => w.label));
-        for (const note of filteredNotes) {
-          const label = getWindowLabel(note.path);
-          if (!openedLabels.has(label)) {
-            await openNoteWindow(note.path, {
-              x: note.x,
-              y: note.y,
-              width: note.width,
-              height: note.height
-            });
-            // 連続で開きすぎないように少し待機
-            await new Promise(resolve => setTimeout(resolve, 150));
-          }
-        }
-      } catch (e) {
-        console.error('[switch_world] Error:', e);
-      }
-    });
-
-    return () => {
-      unlistenPromise.then(async (unlisten) => {
         try {
-          await unlisten();
-        } catch (e) {
-          console.warn('Failed to unlisten fusen:switch_world', e);
-        }
-      });
-    };
-  }, []);
+          // State同期して最新のノート一覧を取得
+          await syncState();
+          const state = await invoke<AppState>('fusen_get_state');
+          const allNotes = state.notes;
 
-  // タグセレクター開くイベントリスナー
-  useEffect(() => {
-    const unlistenPromise = listen('fusen:open_tag_selector', async () => {
-      try {
-        const existing = await WebviewWindow.getByLabel('tag-selector');
-        if (existing) {
-          await existing.unminimize();
-          await existing.setFocus();
-          return;
-        }
+          // フィルタリング
+          const filteredNotes = selectedTag
+            ? allNotes.filter(n => n.tags && n.tags.includes(selectedTag))
+            : allNotes;
 
-        await new WebviewWindow('tag-selector', {
-          url: '/?tagSelector=1',
-          title: '世界を選ぶ',
-          width: 350,
-          height: 500,
-          alwaysOnTop: true,
-          decorations: true,
-          resizable: false,
-        });
-      } catch (e) {
-        console.error('[open_tag_selector] Error:', e);
-      }
-    });
+          console.log('[switch_world] All notes:', allNotes.length, 'Filtered:', filteredNotes.length);
 
-    return () => {
-      unlistenPromise.then(async (unlisten) => {
-        try {
-          await unlisten();
-        } catch (e) {
-          console.warn('Failed to unlisten fusen:open_tag_selector', e);
-        }
-      });
-    };
-  }, []);
+          // 現在開いているウィンドウを取得
+          const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+          const allWindows = await getAllWebviewWindows();
 
-  // タグフィルター適用イベントリスナー（複数選択）
-  useEffect(() => {
-    const unlistenPromise = listen<string[]>('fusen:apply_tag_filter', async (event) => {
-      // ONLY Main window (hidden manager) should handle global filtering
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const currentWin = getCurrentWindow();
+          // フィルタ対象のパスをセットにする
+          const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
 
-      // Ensure only the hidden main window handles orchestration
-      if (currentWin.label !== 'main') {
-        return;
-      }
+          // 既存ウィンドウの処理
+          for (const win of allWindows) {
+            if (win.label === 'main') continue; // 管理画面は除外
 
-      const selectedTags = event.payload;
-      console.error('[JS_DEBUG] Received Tags:', JSON.stringify(selectedTags));
-
-      try {
-        // State同期して最新のノート一覧を取得
-        await syncState();
-        const state = await invoke<AppState>('fusen_get_state');
-        const allNotes = state.notes;
-
-        // 複数タグフィルタリング（OR条件）
-        const filteredNotes = selectedTags.length > 0
-          ? allNotes.filter(n => n.tags && n.tags.some(tag => selectedTags.includes(tag)))
-          : allNotes;
-
-        console.log('[apply_tag_filter] All notes:', allNotes.length, 'Filtered:', filteredNotes.length);
-
-        // 現在開いているウィンドウを取得
-        const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
-        const allWindows = await getAllWebviewWindows();
-
-        // フィルタ対象のパスをセットにする
-        const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
-
-        // 既存ウィンドウの処理
-        for (const win of allWindows) {
-          if (win.label === 'main' || win.label === 'tag-selector') continue; // 管理画面とタグセレクターは除外
-
-          const shouldShow = filteredPaths.has(win.label);
-
-          // Debug Mismatch
-          if (!shouldShow) {
-            console.error(`[JS_DEBUG] Window '${win.label}' is hiding. Check if this is correct.`);
-            const matchedNote = filteredNotes.find(n => getWindowLabel(n.path) === win.label);
-            if (matchedNote) {
-              console.error(`[JS_DEBUG] CRITICAL: Window '${win.label}' matches note '${matchedNote.path}' but set to hide? Wait, shouldShow is false.`);
-            } else {
-              console.error(`[JS_DEBUG] Window '${win.label}' does NOT match any filtered note labels. Labels in set:`, Array.from(filteredPaths));
+            const shouldShow = filteredPaths.has(win.label);
+            try {
+              if (shouldShow) {
+                await win.show();
+                await win.unminimize();
+              } else {
+                await win.hide();
+              }
+            } catch (e) {
+              console.error('[switch_world] Failed to show/hide window:', win.label, e);
             }
-          } else {
-            console.error(`[JS_DEBUG] Showing Window '${win.label}'`);
           }
 
-          try {
-            if (shouldShow) {
-              await win.show();
-              await win.unminimize();
-            } else {
-              await win.hide();
-            }
-          } catch (e) {
-            console.error('[apply_tag_filter] Failed to show/hide window:', win.label, e);
-          }
-        }
-
-        // フィルタ対象で開いていないウィンドウを開く
-        const openedLabels = new Set(allWindows.map(w => w.label));
-        for (const note of filteredNotes) {
-          try {
+          // フィルタ対象で開いていないウィンドウを開く
+          const openedLabels = new Set(allWindows.map(w => w.label));
+          for (const note of filteredNotes) {
             const label = getWindowLabel(note.path);
             if (!openedLabels.has(label)) {
-              console.log(`[JS_DEBUG] Force opening Note: ${note.path}`);
               await openNoteWindow(note.path, {
                 x: note.x,
                 y: note.y,
@@ -793,23 +682,152 @@ function OrchestratorContent() {
               // 連続で開きすぎないように少し待機
               await new Promise(resolve => setTimeout(resolve, 150));
             }
-          } catch (e) {
-            console.error(`[JS_DEBUG] Failed to force open note: ${note.path}`, e);
           }
-        }
-      } catch (e) {
-        console.error('[apply_tag_filter] Error:', e);
-      }
-    });
-
-    return () => {
-      unlistenPromise.then(async (unlisten) => {
-        try {
-          await unlisten();
         } catch (e) {
-          console.warn('Failed to unlisten fusen:apply_tag_filter', e);
+          console.error('[switch_world] Error:', e);
         }
       });
+    })();
+
+    return () => {
+      try {
+        unlisten?.();
+      } catch (e) {
+        console.warn('Failed to unlisten fusen:switch_world', e);
+      }
+    };
+  }, []);
+
+  // タグセレクター開くイベントリスナー
+  useEffect(() => {
+    let unlisten: null | (() => void) = null;
+
+    (async () => {
+      unlisten = await listen('fusen:open_tag_selector', async () => {
+        try {
+          const existing = await WebviewWindow.getByLabel('tag-selector');
+          if (existing) {
+            await existing.unminimize();
+            await existing.setFocus();
+            return;
+          }
+
+          await new WebviewWindow('tag-selector', {
+            url: '/?tagSelector=1',
+            title: '世界を選ぶ',
+            width: 350,
+            height: 500,
+            alwaysOnTop: true,
+            decorations: true,
+            resizable: false,
+          });
+        } catch (e) {
+          console.error('[open_tag_selector] Error:', e);
+        }
+      });
+    })();
+
+    return () => {
+      try {
+        unlisten?.();
+      } catch (e) {
+        console.warn('Failed to unlisten fusen:open_tag_selector', e);
+      }
+    };
+  }, []);
+
+  // タグフィルター適用イベントリスナー（複数選択）
+  useEffect(() => {
+    let unlisten: null | (() => void) = null;
+
+    (async () => {
+      unlisten = await listen<string[]>('fusen:apply_tag_filter', async (event) => {
+        // ONLY Main window (hidden manager) should handle global filtering
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const currentWin = getCurrentWindow();
+
+        console.log("[apply_tag_filter] fired in:", currentWin.label); // DEBUG: Ensure only fired once per window type
+
+        // Ensure only the hidden main window handles orchestration
+        if (currentWin.label !== 'main') {
+          return;
+        }
+
+        const selectedTags = event.payload;
+        console.error('[JS_DEBUG] Received Tags:', JSON.stringify(selectedTags));
+
+        try {
+          // State同期して最新のノート一覧を取得 (Tagsを確実に含む)
+          console.error('[DEBUG] Step 1: Calling fusen_refresh_notes_with_tags...');
+          const allNotes = await invoke<NoteMeta[]>('fusen_refresh_notes_with_tags');
+          console.error('[DEBUG] Step 2: Got allNotes:', allNotes.length, 'notes');
+          console.error('[DEBUG] Step 2b: First few notes tags:', allNotes.slice(0, 3).map(n => ({ path: n.path, tags: n.tags })));
+
+          // 複数タグフィルタリング（OR条件） - Updated with trim
+          const selected = selectedTags.map(t => t.trim());
+          console.error('[DEBUG] Step 3: Selected tags (trimmed):', selected);
+
+          const filteredNotes = selected.length > 0
+            ? allNotes.filter(n => (n.tags ?? []).some(tag => selected.includes(tag.trim())))
+            : allNotes;
+
+          console.error('[DEBUG] Step 4: Filtered notes:', filteredNotes.length);
+          console.error('[DEBUG] Step 4b: Filtered note paths:', filteredNotes.map(n => n.path));
+
+          // 現在開いているウィンドウを取得
+          const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+          const allWindows = await getAllWebviewWindows();
+          console.error('[DEBUG] Step 5: Current windows:', allWindows.map(w => w.label));
+
+          // フィルタ対象のパスをセットにする
+          const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
+          console.error('[DEBUG] Step 6: Filtered window labels:', Array.from(filteredPaths));
+
+          // 既存ウィンドウの処理 (1/2): 非表示にする
+          for (const win of allWindows) {
+            if (win.label === 'main' || win.label === 'tag-selector') continue;
+
+            if (!filteredPaths.has(win.label)) {
+              try {
+                console.error(`[DEBUG] Hiding window: ${win.label}`);
+                await win.hide();
+              } catch (e) {
+                console.error('[apply_tag_filter] Failed to hide window:', win.label, e);
+              }
+            }
+          }
+
+          // 既存ウィンドウの処理 (2/2) & 新規ウィンドウ: 表示する
+          console.error('[DEBUG] Step 7: Opening/showing filtered notes...');
+          for (const note of filteredNotes) {
+            try {
+              console.error(`[DEBUG] Calling openNoteWindow for: ${note.path}`);
+              await openNoteWindow(note.path, {
+                x: note.x,
+                y: note.y,
+                width: note.width,
+                height: note.height
+              });
+              console.error(`[DEBUG] openNoteWindow completed for: ${note.path}`);
+              // 負荷分散のためごく短い待機
+              await new Promise(resolve => setTimeout(resolve, 50));
+            } catch (e) {
+              console.error(`[DEBUG] Failed to open/show note: ${note.path}`, e);
+            }
+          }
+          console.error('[DEBUG] Step 8: All done!');
+        } catch (e) {
+          console.error('[apply_tag_filter] Error:', e);
+        }
+      });
+    })();
+
+    return () => {
+      try {
+        unlisten?.();
+      } catch (e) {
+        console.warn('Failed to unlisten fusen:apply_tag_filter', e);
+      }
     };
   }, []);
 
