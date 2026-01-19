@@ -70,6 +70,7 @@ const StickyNote = memo(function StickyNote() {
     const [editBody, setEditBody] = useState('');
     const [savePending, setSavePending] = useState(false);
     const [cursorPosition, setCursorPosition] = useState<number | null>(null);
+    const [isNewNote, setIsNewNote] = useState(false); // [NEW] 新規ノートフラグ（state管理）
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [rawFrontmatter, setRawFrontmatter] = useState<string>('');
     const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
@@ -213,7 +214,7 @@ const StickyNote = memo(function StickyNote() {
     }, [selectedFile, rawFrontmatter, editBody, saveNote, savePending]);
 
     // コンテンツ読み込み
-    const loadFileContent = async (noteMeta: NoteMeta) => {
+    const loadFileContent = async (noteMeta: NoteMeta): Promise<string> => {
         setLoading(true);
         try {
             const note = await invoke<Note>('fusen_read_note', { path: noteMeta.path });
@@ -229,9 +230,11 @@ const StickyNote = memo(function StickyNote() {
             } else {
                 setNoteBackgroundColor('#f7e9b0');
             }
+            return body; // [NEW] Return body for immediate use
         } catch (error) {
             console.error('read_note failed', error);
             setContent('');
+            return ''; // [NEW] Return empty string on error
         } finally {
             setLoading(false);
         }
@@ -259,19 +262,14 @@ const StickyNote = memo(function StickyNote() {
         setSelectedFile(myNote);
 
         // 読み込みと初期フォーカス設定
-        loadFileContent(myNote).then(async () => {
+        loadFileContent(myNote).then(async (body) => {
             // Fix 2: Use captured isNew
             if (isNew) {
                 console.log('[STICKY_LOAD] New note detected. Enabling edit mode.');
                 // 3) 新規作成時はしばらく Blur を無視する
                 ignoreBlurUntilRef.current = Date.now() + 800;
                 setIsEditing(true);
-                setCursorPosition(0);
-
-                // [Fix] Remove isNew from URL to prevent infinite loop on reload/remount
-                const url = new URL(window.location.href);
-                url.searchParams.delete('isNew');
-                window.history.replaceState({}, '', url.toString());
+                setIsNewNote(true); // [NEW] stateに保存
 
                 // Fix 5 (Revert): Editor focus alone was insufficient.
                 // Re-enable explicit window focus, but slightly delayed to ensure it happens 
@@ -1449,6 +1447,7 @@ const StickyNote = memo(function StickyNote() {
                                 }}
                                 backgroundColor={noteBackgroundColor}
                                 cursorPosition={cursorPosition}
+                                isNewNote={isNewNote} // [NEW] stateから渡す
                             />
                         </div>
                     ) : (

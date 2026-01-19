@@ -12,6 +12,7 @@ interface RichTextEditorProps {
     onKeyDown?: (e: React.KeyboardEvent) => void;
     backgroundColor: string;
     cursorPosition?: number | null; // 初期カーソル位置（文字オフセット）
+    isNewNote?: boolean; // [NEW] 新規付箋フラグ（新規時のみプレースホルダ+選択）
     onInsertHeading1?: () => void; // 見出し1挿入リクエスト（外部から呼ぶ用）
     onInsertBold?: () => void; // 強調挿入リクエスト（外部から呼ぶ用）
 }
@@ -131,13 +132,64 @@ function buildDecorations(state: EditorState): DecorationSet {
     return Decoration.set(decorations, true);
 }
 
+// [NEW] Placeholder StateField for new notes only
+// Tracks whether to show placeholder (disabled on first docChanged)
+// NOTE: StateField is pure logic - does NOT reference React props
+const placeholderFlagField = StateField.define<boolean>({
+    create(_state) {
+        // 初期値はState生成時にのみ注入される（init()から）
+        return false; // デフォルトはfalse（既存付箋）
+    },
+    update(showPlaceholder, tr) {
+        // docChangedがあれば即座にfalseにする（二度と復活しない）
+        if (tr.docChanged && showPlaceholder) {
+            return false;
+        }
+        return showPlaceholder;
+    }
+});
+
+// [NEW] Placeholder Decoration Field
+// Shows first line in gray when flag is true
+// NOTE: Decoration生成は常にtr.state.docを基準にする
+const placeholderDecorationField = StateField.define<DecorationSet>({
+    create(state) {
+        const showPlaceholder = state.field(placeholderFlagField);
+        if (!showPlaceholder || state.doc.lines === 0) return Decoration.none;
+
+        const line1 = state.doc.line(1);
+        return Decoration.set([
+            Decoration.mark({
+                class: 'cm-placeholder-line'
+            }).range(line1.from, line1.to)
+        ], true);
+    },
+    update(decorations, tr) {
+        const showPlaceholder = tr.state.field(placeholderFlagField);
+        if (!showPlaceholder) return Decoration.none;
+
+        if (tr.docChanged || tr.startState.field(placeholderFlagField) !== showPlaceholder) {
+            const line1 = tr.state.doc.line(1);
+            return Decoration.set([
+                Decoration.mark({
+                    class: 'cm-placeholder-line'
+                }).range(line1.from, line1.to)
+            ], true);
+        }
+
+        return decorations.map(tr.changes);
+    },
+    provide: f => EditorView.decorations.from(f)
+});
+
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
     value,
     onChange,
 
     onKeyDown,
     backgroundColor,
-    cursorPosition
+    cursorPosition,
+    isNewNote = false // [NEW] デフォルトはfalse（既存付箋）
 }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
@@ -351,6 +403,14 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     ]),
                     // Markdown装飾
                     markdownDecorations,
+                    // [NEW] Placeholder for new notes
+                    // NOTE: 新規判定はState生成時にのみ注入する
+                    placeholderFlagField,
+                    placeholderDecorationField,
+                    ...(isNewNote ? [
+                        // 新規付箋の場合のみinit()でtrueを注入
+                        placeholderFlagField.init(() => true)
+                    ] : []),
                     // 変更検知
                     EditorView.updateListener.of((update: ViewUpdate) => {
                         if (update.docChanged) {
@@ -410,6 +470,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                             fontSize: '10.5px',
                             lineHeight: '1.4',
                             letterSpacing: '0.01em',
+                        },
+                        // [NEW] Placeholder style for new notes
+                        '.cm-placeholder-line': {
+                            color: '#999',
+                            opacity: 0.6,
                         }
                     })
                 ]
@@ -419,7 +484,21 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
 
         viewRef.current = view;
 
-        // 初期カーソル位置が指定されている場合は適用＆フォーカス
+        // [NEW] 初期選択処理（作成直後に一度だけ予約）
+        if (isNewNote) {
+            view.focus();
+            requestAnimationFrame(() => {
+                if (view.state.doc.lines > 0) {
+                    const line1 = view.state.doc.line(1);
+                    view.dispatch({
+                        selection: { anchor: line1.from, head: line1.to },
+                        scrollIntoView: true
+                    });
+                }
+            });
+        }
+
+        // 初期カーソル位置が指定されている場合は適用＆フォーカス（新規付箋以外）
         if (cursorPosition !== undefined && cursorPosition !== null) {
             // ドキュメントの長さを超えないようにガード
             const safePos = Math.min(cursorPosition, value.length);
@@ -441,7 +520,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
             view.destroy();
             viewRef.current = null;
         };
-    }, []); // backgroundColorが変わっても再作成しない (Fix B)
+    }, []); // 初回マウント時のみ作成
+
+
 
     // [New] cursorPosition change handler
     useEffect(() => {
