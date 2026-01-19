@@ -935,6 +935,23 @@ const StickyNote = memo(function StickyNote() {
                 id: 'ctx_delete',
                 text: '🗑️ このメモを削除',
                 action: async () => {
+                    // [Sound] Play delete sound with slight delay for UX
+                    try {
+                        const audio = new Audio('/sounds/peel-off.mp3');
+                        audio.volume = 1.0; // Volume up
+                        const playPromise = audio.play();
+
+                        // Wait for play to start
+                        if (playPromise !== undefined) {
+                            await playPromise;
+                        }
+                    } catch (e) {
+                        console.error('[Sound] Failed to play delete sound:', e);
+                    }
+
+                    // Slightly delay deletion to let sound allow to be heard
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
                     await invoke('fusen_move_to_trash', { path: selectedFile.path });
                 }
             }));
