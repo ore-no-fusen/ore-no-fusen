@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { pathsEqual } from '../utils/pathUtils';
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -176,8 +177,8 @@ const StickyNote = memo(function StickyNote() {
                 frontmatterRaw: frontmatter,
                 allowRename
             });
-            console.log('[DEBUG] saveNote result:', { old: path, new: newPath, renamed: newPath !== path });
-            if (newPath !== path) {
+            console.log('[DEBUG] saveNote result:', { old: path, new: newPath, renamed: !pathsEqual(newPath, path) });
+            if (!pathsEqual(newPath, path)) {
                 console.log('File renamed during save:', path, '->', newPath);
                 isRenamingRef.current = true; // リネームフラグを立てる
 
@@ -1147,8 +1148,8 @@ const StickyNote = memo(function StickyNote() {
                 const { action, path } = event.payload;
                 console.log('[NativeMenu] Action:', action, 'Path:', path);
 
-                // Ignore if not for this note (though window check should suffice, double check path)
-                if (path !== selectedFile.path) return;
+                // Ignore if not for this note (pathsEqual for cross-platform compatibility)
+                if (!pathsEqual(path, selectedFile.path)) return;
 
                 if (action === 'ctx_open_folder') {
                     // Rust side handles this mostly, but we can double check or do nothing

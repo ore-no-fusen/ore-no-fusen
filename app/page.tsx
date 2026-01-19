@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
+import { pathsEqual } from './utils/pathUtils';
 import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
 import SetupScreen from './components/SetupScreen';
@@ -563,16 +564,16 @@ function OrchestratorContent() {
         context,
       });
 
-      // 3️⃣ 仮ノートを正式ノートに置換
+      // 3️⃣ 仮ノートを正式ノートに置換（パス正規化して比較）
       setFiles(prev =>
-        prev.map((n: NoteMeta) => (n.path === tempPath ? newNote.meta : n))
+        prev.map((n: NoteMeta) => (pathsEqual(n.path, tempPath) ? newNote.meta : n))
       );
 
       // 4️⃣ 作成されたノートを開く
       await openNoteWindow(newNote.meta.path, undefined, true);
     } catch (e) {
-      // 失敗したら仮ノートを削除
-      setFiles(prev => prev.filter((n: NoteMeta) => n.path !== tempPath));
+      // 失敗したら仮ノートを削除（パス正規化して比較）
+      setFiles(prev => prev.filter((n: NoteMeta) => !pathsEqual(n.path, tempPath)));
       console.error('create_note failed', e);
     } finally {
       setIsCreating(false);

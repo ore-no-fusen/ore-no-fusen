@@ -1,0 +1,11 @@
+{
+    "rules": {
+        "no-restricted-syntax": [
+            "error",
+            {
+                "selector": "BinaryExpression[left.property.name='path'][operator=/^[!=]==?$/], BinaryExpression[right.property.name='path'][operator=/^[!=]==?$/]",
+                "message": "Direct path comparison detected. Use pathsEqual() from utils/pathUtils instead to handle Windows/Unix path differences."
+            }
+        ]
+    }
+}
