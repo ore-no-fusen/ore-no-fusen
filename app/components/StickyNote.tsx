@@ -137,6 +137,60 @@ const StickyNote = memo(function StickyNote() {
         return newFront;
     };
 
+    // [New] Link Parser Helper
+    const parseLinks = (text: string, baseOffset: number) => {
+        // 1. Web URL: http:// or https://
+        // 2. Windows Path: 
+        //    a) Drive Letter: C:\... (exclude invalid chars)
+        //    b) UNC: \\Server\...
+        const regex = /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
+
+        const parts = text.split(regex);
+        let currentOffset = 0;
+
+        return parts.map((part, k) => {
+            if (part === '') return null;
+
+            const partStart = baseOffset + currentOffset;
+            currentOffset += part.length;
+
+            if (regex.test(part)) {
+                return (
+                    <span
+                        key={k}
+                        style={{
+                            color: 'blue',
+                            textDecoration: 'underline',
+                            cursor: 'pointer',
+                        }}
+                        data-src-start={partStart}
+                        data-tauri-drag-region="false" // リンク上はドラッグ無効化
+                        onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('[OpenLink]', part);
+                            try {
+                                if (/^https?:\/\//i.test(part)) {
+                                    const { open } = await import('@tauri-apps/plugin-shell');
+                                    await open(part);
+                                } else {
+                                    const { invoke } = await import('@tauri-apps/api/core');
+                                    await invoke('fusen_open_file', { path: part });
+                                }
+                            } catch (err) {
+                                console.error('Failed to open link:', err);
+                            }
+                        }}
+                    >
+                        {part}
+                    </span>
+                );
+            }
+
+            return <span key={k} data-src-start={partStart}>{part}</span>;
+        });
+    };
+
     // ウィンドウ状態保存
     const saveWindowState = useCallback(async () => {
         // [New Feature Instruction for Frontend Dev]
@@ -1479,8 +1533,13 @@ const StickyNote = memo(function StickyNote() {
                                 lineHeight: '1.4',
                                 letterSpacing: '0.01em'
                             }}
-                            onPointerDown={onArticlePointerDown}
-                            onPointerUp={onArticlePointerUp}
+                            onPointerDown={onArticlePointerDown} // ドラッグ判定用は残す
+                            // onPointerUp={onArticlePointerUp} // [Deleted] シングルクリック編集開始を削除
+                            onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                handleEditStart();
+                            }}
+                            data-tauri-drag-region // [New] ネイティブドラッグ有効化
                         >
                             {content ? (
                                 <div style={{ whiteSpace: 'pre-wrap' }}>
@@ -1510,7 +1569,7 @@ const StickyNote = memo(function StickyNote() {
                                                         data-src-start={baseOffset}
                                                     ># </span>
                                                     <span data-src-start={baseOffset + 2}>
-                                                        {line.substring(2)}
+                                                        {parseLinks(line.substring(2), baseOffset + 2)}
                                                     </span>
                                                 </div>
                                             );
@@ -1556,7 +1615,7 @@ const StickyNote = memo(function StickyNote() {
                                                         style={{ textDecoration: isChecked ? 'line-through' : 'none', opacity: isChecked ? 0.6 : 1 }}
                                                         data-src-start={textStart}
                                                     >
-                                                        {text}
+                                                        {parseLinks(text, textStart)}
                                                     </span>
                                                 </div>
                                             );
@@ -1577,7 +1636,9 @@ const StickyNote = memo(function StickyNote() {
                                                         width: '1em',
                                                         textAlign: 'center'
                                                     }} data-src-start={baseOffset}>•</span>
-                                                    <span data-src-start={textStart}>{text}</span>
+                                                    <span data-src-start={textStart}>
+                                                        {parseLinks(text, textStart)}
+                                                    </span>
                                                 </div>
                                             );
                                         }
@@ -1614,7 +1675,7 @@ const StickyNote = memo(function StickyNote() {
 
                                             return (
                                                 <span key={j} data-src-start={partStart}>
-                                                    {part}
+                                                    {parseLinks(part, partStart)}
                                                 </span>
                                             );
                                         });
@@ -1625,13 +1686,14 @@ const StickyNote = memo(function StickyNote() {
                                             </div>
                                         );
                                     })}
-                                </div>
+                                </div >
                             ) : (
                                 <div className="text-gray-400 text-center py-8 text-xs font-mono opacity-50">
                                     クリックして編集を開始
                                 </div>
-                            )}
-                        </article>
+                            )
+                            }
+                        </article >
                     )
                 }
 

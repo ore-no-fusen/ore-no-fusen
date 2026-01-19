@@ -200,6 +200,26 @@ pub fn open_in_explorer(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn open_file(path: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        // Convert forward slashes to backslashes for Windows
+        let windows_path = path.replace('/', "\\");
+        
+        // Open file or folder with default application (explorer handles both)
+        Command::new("explorer")
+            .arg(&windows_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("Not implemented for this platform".to_string());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

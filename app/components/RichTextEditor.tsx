@@ -1,9 +1,11 @@
 'use client';
 
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, lineNumbers } from '@codemirror/view';
-import { EditorState, StateField } from '@codemirror/state';
+import { open } from '@tauri-apps/plugin-shell';
+import { EditorState, EditorStateConfig, Extension, StateField } from '@codemirror/state';
+import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, WidgetType } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 
 interface RichTextEditorProps {
     value: string;
@@ -180,6 +182,98 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
         return decorations.map(tr.changes);
     },
     provide: f => EditorView.decorations.from(f)
+});
+
+// [New] Link Detection Logic
+// URL and Windows Path Regex (Drive Letter & UNC)
+const LINK_REGEX = /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
+
+const linkDecorationField = ViewPlugin.fromClass(class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+        this.decorations = this.computeDecorations(view);
+    }
+
+    update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged) {
+            this.decorations = this.computeDecorations(update.view);
+        }
+    }
+
+    computeDecorations(view: EditorView) {
+        const widgets: any[] = [];
+        for (const { from, to } of view.visibleRanges) {
+            const text = view.state.doc.sliceString(from, to);
+            let match;
+            // Reset regex state just in case
+            LINK_REGEX.lastIndex = 0;
+
+            while ((match = LINK_REGEX.exec(text))) {
+                const start = from + match.index;
+                const end = start + match[0].length;
+                widgets.push(Decoration.mark({
+                    class: 'cm-link',
+                    attributes: { title: 'Ctrl + Click to open' }
+                }).range(start, end));
+            }
+        }
+        return Decoration.set(widgets, true); // true = sorted
+    }
+}, {
+    decorations: v => v.decorations
+});
+
+const linkEventHandler = EditorView.domEventHandlers({
+    mousedown(event, view) {
+        // Only trigger on Ctrl + Click (or Meta + Click)
+        if (!event.ctrlKey && !event.metaKey) return;
+
+        const target = event.target as HTMLElement;
+        // Check if clicked element is part of a link
+        if (target.closest('.cm-link')) {
+            // Find position
+            const pos = view.posAtDOM(target);
+            // Find full link text at this position
+            // Simple approach: get the line and match regex again to find the specific link
+            // Better approach: use the decorations, but we don't have easy access here.
+            // Fallback: Scan around cursor.
+
+            // Optimized: target text content is likely the link part because of how CodeMirror renders
+            // But CM might split text.
+            // Let's get the token at position.
+
+            const line = view.state.doc.lineAt(pos);
+            const lineText = line.text;
+            const offsetInLine = pos - line.from;
+
+            // Re-run regex on line to find the link at this offset
+            let match;
+            LINK_REGEX.lastIndex = 0;
+            while ((match = LINK_REGEX.exec(lineText))) {
+                const start = match.index;
+                const end = start + match[0].length;
+                if (offsetInLine >= start && offsetInLine <= end) {
+                    const link = match[0];
+                    console.log('[LinkClick] Opening:', link);
+                    event.preventDefault();
+
+                    if (/^https?:\/\//i.test(link)) {
+                        open(link).catch(e => console.error('Failed to open link:', e));
+                    } else {
+                        // Import invoke specifically for this action if not available in scope, 
+                        // or assume invoke is available (usually needs import).
+                        // Dynamic import to be safe and avoid top-level dependency if not used elsewhere
+                        import('@tauri-apps/api/core').then(({ invoke }) => {
+                            invoke('fusen_open_file', { path: link })
+                                .catch(e => console.error('Failed to open file:', e));
+                        });
+                    }
+                    return;
+                }
+            }
+        }
+    }
 });
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
@@ -407,6 +501,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     // NOTE: 新規判定はState生成時にのみ注入する
                     placeholderFlagField,
                     placeholderDecorationField,
+                    linkDecorationField, // [New]
+                    linkEventHandler,    // [New]
                     ...(isNewNote ? [
                         // 新規付箋の場合のみinit()でtrueを注入
                         placeholderFlagField.init(() => true)

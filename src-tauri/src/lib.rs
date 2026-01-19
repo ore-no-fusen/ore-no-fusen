@@ -334,6 +334,12 @@ fn fusen_open_containing_folder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn fusen_open_file(path: String) -> Result<(), String> {
+    storage::open_file(&path)?;
+    Ok(())
+}
+
+#[tauri::command]
 fn fusen_add_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, app: tauri::AppHandle) -> Result<(), String> {
     let mut app_state = state.lock().unwrap();
     
@@ -716,7 +722,6 @@ pub fn run() {
             fusen_get_state,
             fusen_update_geometry,
             fusen_toggle_always_on_top,
-            fusen_open_containing_folder,
             fusen_add_tag,
             fusen_remove_tag,
             fusen_delete_tag_globally,
@@ -724,6 +729,8 @@ pub fn run() {
             fusen_get_active_tags,
             fusen_set_active_tags,
             fusen_refresh_notes_with_tags,
+            fusen_open_containing_folder,
+            fusen_open_file,
             show_context_menu,
             get_base_path,
             setup_first_launch
@@ -763,6 +770,8 @@ pub fn run() {
                 app.handle().plugin(tauri_plugin_log::Builder::default().build())?;
             }
             
+            app.handle().plugin(tauri_plugin_shell::init())?;
+
             tray::create_tray(app.handle())?;
             logger::log_info("App initialization completed");
             Ok(())
