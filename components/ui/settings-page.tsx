@@ -3,7 +3,9 @@
 import React, { useState } from "react"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply } from "lucide-react"
 
-// ※もしshadcnの部品でエラーが出る場合は、パスを @/components/ui/... に直してください
+// ★さっき作った「倉庫番」をインポート
+import { useSettings, type AppSettings } from "@/lib/settings-store"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,33 +13,41 @@ import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 
-
-// --- ここから下が設定画面の本体です ---
 export default function SettingsPage() {
-    const handleSave = () => {
-        console.log("保存しました")
-        // ここに将来、保存処理を書きます
-    }
-
-    const handleCancel = () => {
-        console.log("キャンセルしました")
-        // ここに将来、画面を閉じる処理を書きます
-    }
     const [activeSection, setActiveSection] = useState("general")
 
-    // コンテンツの切り替えロジック
+    // ★ここで「倉庫番」を呼び出し！
+    // loading: 読み込み中かどうか
+    // settings: 現在の設定データ
+    // saveSettings: 保存するための関数
+    const { settings, saveSettings, loading } = useSettings()
+
+    // 読み込み中は「読み込み中...」と出す（チラつき防止）
+    if (loading) {
+        return <div className="flex h-[600px] items-center justify-center">読み込み中...</div>
+    }
+
+    // 設定を変更する共通の関数
+    // key: 変えたい項目の名前（例: "autoStart"）
+    // value: 新しい値
+    const updateSetting = (key: keyof AppSettings, value: any) => {
+        const newSettings = { ...settings, [key]: value }
+        saveSettings(newSettings)
+    }
+
+    // コンテンツの切り替えロジック（データをプロップスとして渡す）
     const renderContent = () => {
         switch (activeSection) {
             case "general":
-                return <GeneralSection />
+                return <GeneralSection settings={settings} onUpdate={updateSetting} />
             case "appearance":
-                return <AppearanceSection />
+                return <AppearanceSection settings={settings} onUpdate={updateSetting} />
             case "data":
-                return <DataSection />
+                return <DataSection settings={settings} onUpdate={updateSetting} />
             case "about":
                 return <AboutSection />
             default:
-                return <GeneralSection />
+                return <GeneralSection settings={settings} onUpdate={updateSetting} />
         }
     }
 
@@ -84,20 +94,13 @@ export default function SettingsPage() {
                 <div className="flex-1 overflow-y-auto p-8">
                     {renderContent()}
                 </div>
-
-                {/* フッター */}
-                <footer className="border-t bg-muted/30 p-4">
-                    <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost">キャンセル</Button>
-                        <Button>変更を保存</Button>
-                    </div>
-                </footer>
             </main>
         </div>
     )
 }
 
 // --- 以下、各セクションの部品 ---
+// ※設定データを受け取れるように改造しました
 
 function SidebarItem({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) {
     return (
@@ -112,7 +115,13 @@ function SidebarItem({ icon, label, isActive, onClick }: { icon: React.ReactNode
     )
 }
 
-function GeneralSection() {
+// プロップスの型定義
+type SectionProps = {
+    settings: AppSettings
+    onUpdate: (key: keyof AppSettings, value: any) => void
+}
+
+function GeneralSection({ settings, onUpdate }: SectionProps) {
     return (
         <div className="space-y-6">
             <div>
@@ -124,74 +133,86 @@ function GeneralSection() {
                 <div className="grid gap-2">
                     <Label>言語 (Language)</Label>
                     <div className="flex gap-2">
-                        <Button variant="outline" className="w-32 justify-start"><Globe className="mr-2 h-4 w-4" /> 日本語</Button>
-                        <Button variant="ghost" className="w-32 justify-start">English</Button>
+                        <Button
+                            variant={settings.language === "ja" ? "default" : "outline"}
+                            className="w-32 justify-start"
+                            onClick={() => onUpdate("language", "ja")}
+                        >
+                            <Globe className="mr-2 h-4 w-4" /> 日本語
+                        </Button>
+                        <Button
+                            variant={settings.language === "en" ? "default" : "ghost"}
+                            className="w-32 justify-start"
+                            onClick={() => onUpdate("language", "en")}
+                        >
+                            English
+                        </Button>
                     </div>
                 </div>
+
+                {/* 自動起動スイッチ */}
                 <div className="flex items-center justify-between rounded-lg border p-4">
                     <div className="space-y-0.5">
                         <Label className="text-base">ログイン時に起動</Label>
                         <p className="text-sm text-muted-foreground">PC起動時に自動でアプリを立ち上げます</p>
                     </div>
-                    <Switch />
+                    <Switch
+                        checked={settings.autoStart}
+                        onCheckedChange={(val) => onUpdate("autoStart", val)}
+                    />
                 </div>
+
+                {/* 効果音スイッチ */}
                 <div className="flex items-center justify-between rounded-lg border p-4">
                     <div className="space-y-0.5">
                         <Label className="text-base">効果音 (SE)</Label>
                         <p className="text-sm text-muted-foreground">操作時のサウンドエフェクトを有効にする</p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch
+                        checked={settings.soundEnabled}
+                        onCheckedChange={(val) => onUpdate("soundEnabled", val)}
+                    />
                 </div>
             </div>
         </div>
     )
 }
 
-function AppearanceSection() {
+function AppearanceSection({ settings, onUpdate }: SectionProps) {
     return (
         <div className="space-y-6">
             <div>
                 <h2 className="text-2xl font-bold tracking-tight">外観設定</h2>
-                <p className="text-muted-foreground">テーマやフォントサイズをカスタマイズします。</p>
+                <p className="text-muted-foreground">フォントサイズなどをカスタマイズします。</p>
             </div>
             <Separator />
-
-            <div className="space-y-4">
-                <Label>テーマ</Label>
-                <div className="grid grid-cols-3 gap-2 max-w-md">
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="flex h-20 w-full cursor-pointer items-center justify-center rounded-md border-2 bg-white text-black hover:border-primary">
-                            <Sun className="h-6 w-6" />
-                        </div>
-                        <span className="text-xs font-medium">ライト</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="flex h-20 w-full cursor-pointer items-center justify-center rounded-md border-2 border-primary bg-slate-950 text-white shadow-sm">
-                            <Moon className="h-6 w-6" />
-                        </div>
-                        <span className="text-xs font-medium">ダーク</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="flex h-20 w-full cursor-pointer items-center justify-center rounded-md border-2 bg-slate-100 text-slate-900 hover:border-primary">
-                            <Laptop className="h-6 w-6" />
-                        </div>
-                        <span className="text-xs font-medium">システム</span>
-                    </div>
-                </div>
-            </div>
 
             <div className="space-y-4 pt-4">
                 <div className="flex justify-between">
                     <Label>フォントサイズ</Label>
-                    <span className="text-sm text-muted-foreground">標準 (16px)</span>
+                    <span className="text-sm text-muted-foreground">現在: {settings.fontSize}px</span>
                 </div>
-                <Slider defaultValue={[50]} max={100} step={1} className="w-[60%]" />
+                {/* スライダーの値と連携 */}
+                <Slider
+                    defaultValue={[settings.fontSize]}
+                    value={[settings.fontSize]}
+                    max={32}
+                    min={10}
+                    step={1}
+                    className="w-[60%]"
+                    onValueChange={(vals) => onUpdate("fontSize", vals[0])}
+                />
+                <div className="h-20 w-full rounded border p-4 flex items-center justify-center bg-muted/20">
+                    <p style={{ fontSize: `${settings.fontSize}px` }}>
+                        文字サイズのプレビューです。
+                    </p>
+                </div>
             </div>
         </div>
     )
 }
 
-function DataSection() {
+function DataSection({ settings, onUpdate }: SectionProps) {
     return (
         <div className="space-y-6">
             <div>
@@ -202,11 +223,17 @@ function DataSection() {
 
             <div className="grid gap-4">
                 <div className="grid gap-2">
-                    <Label htmlFor="path">データ保存場所</Label>
+                    <Label htmlFor="path">データ保存場所 (Base Path)</Label>
                     <div className="flex gap-2">
-                        <Input id="path" defaultValue="C:\Users\Hirobu\Documents\OreNoFusen" className="font-mono text-sm" />
+                        <Input
+                            id="path"
+                            value={settings.base_path}
+                            readOnly
+                            className="font-mono text-sm bg-muted"
+                        />
                         <Button variant="outline"><FolderOpen className="mr-2 h-4 w-4" /> 参照</Button>
                     </div>
+                    <p className="text-xs text-muted-foreground">※変更機能はバックエンド実装後に有効化されます</p>
                 </div>
 
                 <div className="mt-4 rounded-lg border border-dashed p-6">
@@ -241,7 +268,7 @@ function AboutSection() {
                     {/* 黄色いアイコン */}
                     <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-yellow-100">
                         <div className="h-8 w-8 text-yellow-600">
-                            {/* 簡易的な付箋アイコン（FileTextなどを流用） */}
+                            {/* 簡易的な付箋アイコン */}
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 viewBox="0 0 24 24"
@@ -281,7 +308,6 @@ function AboutSection() {
                         <Button variant="outline" className="w-full justify-start h-12 text-base font-normal" asChild>
                             <a href="https://github.com" target="_blank" rel="noreferrer">
                                 <div className="mr-3 h-5 w-5 flex items-center justify-center">
-                                    {/* GitHubアイコン */}
                                     <svg role="img" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><title>GitHub</title><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg>
                                 </div>
                                 GitHub
