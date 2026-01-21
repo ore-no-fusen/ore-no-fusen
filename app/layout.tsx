@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import "./shadcn.css";  // Tailwind base + shadcn/ui variables
 import "./globals.css";
 import RegisterPWA from "./RegisterPWA";
 

@@ -1,21 +1,20 @@
 import { useState, useEffect } from "react"
+// Tauri v2 用のインポート（v1の場合は @tauri-apps/api/tauri）
+import { invoke } from "@tauri-apps/api/core"
 
 // --- 1. 定義書（データの型） ---
-// 既存の json と UI の項目を全部あわせた「完全な姿」を定義します
 export type AppSettings = {
-    // 既存の settings.json にある項目
-    base_path: string
-
-    // UIで新しく追加したい項目（JSONにはまだない）
+    // Rustの camelCase に合わせて修正！
+    basePath: string
     language: "ja" | "en"
     autoStart: boolean
     fontSize: number
     soundEnabled: boolean
 }
 
-// デフォルト値（初回起動時や、JSONに項目がない場合に使われます）
+// デフォルト値
 const DEFAULT_SETTINGS: AppSettings = {
-    base_path: "C:\\Users\\uck\\Documents\\OreNoFusen", // 初期値
+    basePath: "",
     language: "ja",
     autoStart: false,
     fontSize: 16,
@@ -24,34 +23,32 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 // --- 2. 倉庫番（保存ロジック） ---
 
-// ブラウザ環境かどうかを判定（テスト用）
+// ブラウザ環境かどうかを判定
 const isBrowser = typeof window !== "undefined" && !("__TAURI__" in window)
 
 export function useSettings() {
     const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
     const [loading, setLoading] = useState(true)
 
-    // 起動時にロードする
+    // 起動時にロード
     useEffect(() => {
         loadSettings()
     }, [])
 
-    // 読み込み処理
     const loadSettings = async () => {
         try {
             if (isBrowser) {
-                // 【テスト環境】ブラウザの保存領域から読む
+                // 【A. テスト環境】ブラウザの保存領域から読む
                 const saved = localStorage.getItem("ore-no-fusen-settings")
                 if (saved) {
-                    // 保存データがあれば、デフォルト値の上に上書きしてマージする
                     setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(saved) })
                 }
             } else {
-                // 【本番環境】ここで settings.json を読み込む（後で実装）
-                console.log("Tauri環境: settings.json を読み込み予定")
-
-                // ※今は仮にデフォルトをセットしておきます
-                // 将来ここに invoke('get_settings') などを書きます
+                // 【B. 本番環境】Rustから読み込む
+                // 戻り値の型 AppSettings に合わせて自動変換されます
+                const loaded = await invoke<AppSettings>("get_settings")
+                console.log("Rustから設定ロード:", loaded)
+                setSettings({ ...DEFAULT_SETTINGS, ...loaded })
             }
         } catch (e) {
             console.error("設定の読み込みに失敗:", e)
@@ -60,21 +57,19 @@ export function useSettings() {
         }
     }
 
-    // 保存処理
     const saveSettings = async (newSettings: AppSettings) => {
-        // 画面の見た目を即座に更新（サクサク感のため）
+        // 画面を即座に更新
         setSettings(newSettings)
 
         try {
             if (isBrowser) {
-                // 【テスト環境】ブラウザに保存
+                // 【A. テスト環境】
                 localStorage.setItem("ore-no-fusen-settings", JSON.stringify(newSettings))
-                console.log("ブラウザに保存しました:", newSettings)
             } else {
-                // 【本番環境】ここで settings.json に書き込む（後で実装）
-                console.log("Tauri環境: settings.json に保存予定:", newSettings)
-
-                // 将来ここに invoke('save_settings', { settings: newSettings }) などを書きます
+                // 【B. 本番環境】Rustに保存
+                // Rust側の引数名は自動で解決されます
+                await invoke("save_settings", { settings: newSettings })
+                console.log("Rustに設定セーブ完了")
             }
         } catch (e) {
             console.error("設定の保存に失敗:", e)

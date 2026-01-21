@@ -10,7 +10,7 @@ mod logic;
 mod storage;
 mod tray;
 mod logger;  // ログシステム
-
+mod settings; // ← これを追加
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
@@ -733,7 +733,9 @@ pub fn run() {
             fusen_open_file,
             show_context_menu,
             get_base_path,
-            setup_first_launch
+            setup_first_launch,
+            settings::get_settings,  // ← 「settings箱の中の」と指定！
+            settings::save_settings,  // ← 「settings箱の中の」と指定！
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);
