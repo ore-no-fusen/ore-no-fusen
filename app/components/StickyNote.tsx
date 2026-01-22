@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { pathsEqual } from '../utils/pathUtils';
+import { playDeleteSound } from '../utils/soundManager';
+import { getFontSize } from '../utils/settingsManager';
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -74,6 +76,7 @@ const StickyNote = memo(function StickyNote() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [rawFrontmatter, setRawFrontmatter] = useState<string>('');
     const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
+    const [noteFontSize, setNoteFontSize] = useState<number>(16); // 設定から読み込むフォントサイズ
     // リネームによる更新かどうかを判定するフラグ
     const isRenamingRef = useRef(false);
     // [Strict Rename] コミット（編集終了）処理中ガード
@@ -336,6 +339,13 @@ const StickyNote = memo(function StickyNote() {
             }
         });
     }, [urlPath, isNew]); // Fix 2: Add isNew to dependency array
+
+    // 設定からフォントサイズを読み込む
+    useEffect(() => {
+        getFontSize().then(size => {
+            setNoteFontSize(size);
+        });
+    }, []);
 
     // イベントリスナー設定
     useEffect(() => {
@@ -989,21 +999,10 @@ const StickyNote = memo(function StickyNote() {
                 id: 'ctx_delete',
                 text: '🗑️ このメモを削除',
                 action: async () => {
-                    // [Sound] Play delete sound with slight delay for UX
-                    try {
-                        const audio = new Audio('/sounds/peel-off.mp3');
-                        audio.volume = 1.0; // Volume up
-                        const playPromise = audio.play();
+                    // [Sound] 設定に基づいて削除音を再生
+                    await playDeleteSound();
 
-                        // Wait for play to start
-                        if (playPromise !== undefined) {
-                            await playPromise;
-                        }
-                    } catch (e) {
-                        console.error('[Sound] Failed to play delete sound:', e);
-                    }
-
-                    // Slightly delay deletion to let sound allow to be heard
+                    // 音が聞こえるように少し待つ
                     await new Promise(resolve => setTimeout(resolve, 300));
 
                     await invoke('fusen_move_to_trash', { path: selectedFile.path });
@@ -1519,6 +1518,7 @@ const StickyNote = memo(function StickyNote() {
                                 backgroundColor={noteBackgroundColor}
                                 cursorPosition={cursorPosition}
                                 isNewNote={isNewNote} // [NEW] stateから渡す
+                                fontSize={noteFontSize} // 設定からのフォントサイズ
                             />
                         </div>
                     ) : (
@@ -1529,7 +1529,7 @@ const StickyNote = memo(function StickyNote() {
                                 whiteSpace: 'pre-wrap',
                                 cursor: 'text',
                                 padding: 0, // 親のmainでパディングしているので0にする
-                                fontSize: '10.5px', // 明示的に指定
+                                fontSize: `${noteFontSize}px`, // 設定からのフォントサイズ
                                 lineHeight: '1.4',
                                 letterSpacing: '0.01em'
                             }}

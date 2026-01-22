@@ -94,6 +94,103 @@ export default function SettingsPage() {
                 <div className="flex-1 overflow-y-auto p-8">
                     {renderContent()}
                 </div>
+
+                {/* フッター - 設定完了ボタン */}
+                <div className="border-t bg-muted/20 px-8 py-4 flex justify-end gap-3">
+                    <Button
+                        variant="default"
+                        size="lg"
+                        className="min-w-[140px]"
+                        onClick={async () => {
+                            try {
+                                // 設定を保存
+                                await saveSettings(settings)
+
+                                const { invoke } = await import("@tauri-apps/api/core")
+                                const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow")
+
+                                // setup_first_launch を呼び出してベースパスを設定
+                                let basePath = settings.basePath
+                                if (!basePath || basePath.trim() === "") {
+                                    // デフォルトパスを使用してセットアップ
+                                    basePath = await invoke<string>("setup_first_launch", {
+                                        useDefault: true,
+                                        customPath: null,
+                                        importPath: null
+                                    })
+                                }
+
+                                // 最初の付箋を作成
+                                const newNote = await invoke<{
+                                    meta: { path: string; x?: number; y?: number; width?: number; height?: number }
+                                    frontmatter: string
+                                }>("fusen_create_note", {
+                                    folderPath: basePath,
+                                    context: "はじめての付箋（消してOK）"
+                                })
+
+                                // 初期内容を設定
+                                const initialContent = `はじめの付箋（消してOK）
+
+すぐ書ける
+**強調できる**
+そこに残る`
+
+                                await invoke("fusen_save_note", {
+                                    path: newNote.meta.path,
+                                    body: initialContent,
+                                    frontmatterRaw: newNote.frontmatter || "",
+                                    allowRename: false
+                                })
+
+                                // 付箋ウィンドウを開く
+                                const notePath = newNote.meta.path
+                                const safePath = notePath.replace(/\\/g, "/")
+                                const pathParam = encodeURIComponent(safePath)
+                                const url = `/?path=${pathParam}`
+
+                                // ウィンドウラベルを生成
+                                const normalizedPath = safePath.toLowerCase().replace(/\/+/g, "/").replace(/\/$/, "")
+                                let hash = 0
+                                for (let i = 0; i < normalizedPath.length; i++) {
+                                    const char = normalizedPath.charCodeAt(i)
+                                    hash = ((hash << 5) - hash) + char
+                                    hash = hash & hash
+                                }
+                                const label = `note-${Math.abs(hash).toString(36)}`
+
+                                // 付箋ウィンドウを作成
+                                new WebviewWindow(label, {
+                                    url,
+                                    transparent: true,
+                                    decorations: false,
+                                    alwaysOnTop: false,
+                                    visible: true,
+                                    width: 400,
+                                    height: 300,
+                                    x: 100,
+                                    y: 100,
+                                    skipTaskbar: false,
+                                    focus: true,
+                                })
+
+                                // メインウィンドウを非表示にする
+                                const { getCurrentWindow } = await import("@tauri-apps/api/window")
+                                const mainWin = getCurrentWindow()
+                                if (mainWin.label === "main") {
+                                    await mainWin.hide()
+                                }
+
+                            } catch (e) {
+                                console.error("設定の保存に失敗:", e)
+                                alert("設定の保存に失敗しました: " + String(e))
+                            }
+                        }}
+                    >
+                        <Save className="mr-2 h-4 w-4" />
+                        設定完了
+                    </Button>
+                </div>
             </main>
         </div>
     )
@@ -213,6 +310,19 @@ function AppearanceSection({ settings, onUpdate }: SectionProps) {
 }
 
 function DataSection({ settings, onUpdate }: SectionProps) {
+    const handleSelectFolder = async () => {
+        try {
+            const { invoke } = await import("@tauri-apps/api/core")
+            const folder = await invoke<string | null>("fusen_select_folder")
+            if (folder) {
+                onUpdate("basePath", folder)
+            }
+        } catch (e) {
+            console.error("フォルダ選択に失敗:", e)
+            alert("フォルダ選択に失敗しました: " + String(e))
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div>
@@ -229,11 +339,16 @@ function DataSection({ settings, onUpdate }: SectionProps) {
                             id="path"
                             value={settings.basePath}
                             readOnly
+                            placeholder="フォルダを選択してください..."
                             className="font-mono text-sm bg-muted"
                         />
-                        <Button variant="outline"><FolderOpen className="mr-2 h-4 w-4" /> 参照</Button>
+                        <Button variant="outline" onClick={handleSelectFolder}>
+                            <FolderOpen className="mr-2 h-4 w-4" /> 参照
+                        </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground">※変更機能はバックエンド実装後に有効化されます</p>
+                    <p className="text-xs text-muted-foreground">
+                        {settings.basePath ? "選択済み" : "未設定の場合、デフォルトの場所（Documents/OreNoFusen）が使用されます"}
+                    </p>
                 </div>
 
                 <div className="mt-4 rounded-lg border border-dashed p-6">

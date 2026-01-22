@@ -15,6 +15,7 @@ interface RichTextEditorProps {
     backgroundColor: string;
     cursorPosition?: number | null; // 初期カーソル位置（文字オフセット）
     isNewNote?: boolean; // [NEW] 新規付箋フラグ（新規時のみプレースホルダ+選択）
+    fontSize?: number; // 設定からのフォントサイズ（デフォルト: 16px）
     onInsertHeading1?: () => void; // 見出し1挿入リクエスト（外部から呼ぶ用）
     onInsertBold?: () => void; // 強調挿入リクエスト（外部から呼ぶ用）
 }
@@ -283,7 +284,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
     onKeyDown,
     backgroundColor,
     cursorPosition,
-    isNewNote = false // [NEW] デフォルトはfalse（既存付箋）
+    isNewNote = false, // [NEW] デフォルトはfalse（既存付箋）
+    fontSize = 16 // デフォルトは16px
 }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
@@ -530,7 +532,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     EditorView.theme({
                         '&': {
                             fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
-                            fontSize: '10.5px',
+                            fontSize: `${fontSize}px`,
                             lineHeight: '1.4',
                             letterSpacing: '0.01em',
                             backgroundColor: backgroundColor,
@@ -554,7 +556,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                         },
                         '.cm-md-h1': {
                             fontWeight: '700',
-                            fontSize: '10.5px',
+                            fontSize: `${fontSize}px`,
                         },
                         '.cm-md-bold': {
                             fontWeight: '700',
@@ -563,7 +565,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                         // エディタ内の全ての文字にフォントを強制適用 (英語monospace化防止)
                         '.cm-content, .cm-content *': {
                             fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important',
-                            fontSize: '10.5px',
+                            fontSize: `${fontSize}px`,
                             lineHeight: '1.4',
                             letterSpacing: '0.01em',
                         },

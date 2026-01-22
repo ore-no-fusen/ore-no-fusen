@@ -9,7 +9,6 @@ import { listen } from '@tauri-apps/api/event';
 import { pathsEqual } from './utils/pathUtils';
 import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
-import SetupScreen from './components/SetupScreen';
 // ▼ 修正箇所: ./ ではなく ../ に変更して、ルートのcomponentsフォルダを参照させます
 import SettingsPage from '../components/ui/settings-page';
 
