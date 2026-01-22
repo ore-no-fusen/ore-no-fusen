@@ -255,7 +255,22 @@ function GeneralSection({ settings, onUpdate }: SectionProps) {
                     </div>
                     <Switch
                         checked={settings.autoStart}
-                        onCheckedChange={(val) => onUpdate("autoStart", val)}
+                        onCheckedChange={async (val) => {
+                            onUpdate("autoStart", val)
+                            // autostart pluginを呼び出し
+                            try {
+                                const { enable, disable } = await import("@tauri-apps/plugin-autostart")
+                                if (val) {
+                                    await enable()
+                                    console.log("[AutoStart] Enabled")
+                                } else {
+                                    await disable()
+                                    console.log("[AutoStart] Disabled")
+                                }
+                            } catch (e) {
+                                console.error("[AutoStart] Failed to set autostart:", e)
+                            }
+                        }}
                     />
                 </div>
 

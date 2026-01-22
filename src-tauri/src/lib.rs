@@ -774,6 +774,15 @@ pub fn run() {
             
             app.handle().plugin(tauri_plugin_shell::init())?;
 
+            // Autostart plugin (デスクトップのみ)
+            #[cfg(desktop)]
+            {
+                app.handle().plugin(tauri_plugin_autostart::init(
+                    tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                    None, // 引数なし
+                ))?;
+            }
+
             tray::create_tray(app.handle())?;
             logger::log_info("App initialization completed");
             Ok(())
