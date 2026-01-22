@@ -1,10 +1,12 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useMemo } from "react"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
 import { useSettings, type AppSettings } from "@/lib/settings-store"
+// ★翻訳関数をインポート
+import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,9 +24,12 @@ export default function SettingsPage() {
     // saveSettings: 保存するための関数
     const { settings, saveSettings, loading } = useSettings()
 
+    // ★翻訳関数を設定の言語から作成
+    const t = useMemo(() => getTranslation((settings.language as Language) || 'ja'), [settings.language])
+
     // 読み込み中は「読み込み中...」と出す（チラつき防止）
     if (loading) {
-        return <div className="flex h-[600px] items-center justify-center">読み込み中...</div>
+        return <div className="flex h-[600px] items-center justify-center">{t('common.loading')}</div>
     }
 
     // 設定を変更する共通の関数
@@ -59,30 +64,30 @@ export default function SettingsPage() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                         <Settings className="h-5 w-5" />
                     </div>
-                    <span className="text-lg font-bold tracking-tight">俺の付箋</span>
+                    <span className="text-lg font-bold tracking-tight">{t('settings.title')}</span>
                 </div>
                 <nav className="space-y-1">
                     <SidebarItem
                         icon={<Settings className="mr-2 h-4 w-4" />}
-                        label="一般"
+                        label={t('settings.general')}
                         isActive={activeSection === "general"}
                         onClick={() => setActiveSection("general")}
                     />
                     <SidebarItem
                         icon={<Monitor className="mr-2 h-4 w-4" />}
-                        label="外観"
+                        label={t('settings.appearance')}
                         isActive={activeSection === "appearance"}
                         onClick={() => setActiveSection("appearance")}
                     />
                     <SidebarItem
                         icon={<Database className="mr-2 h-4 w-4" />}
-                        label="データ管理"
+                        label={t('settings.data')}
                         isActive={activeSection === "data"}
                         onClick={() => setActiveSection("data")}
                     />
                     <SidebarItem
                         icon={<Info className="mr-2 h-4 w-4" />}
-                        label="このアプリについて"
+                        label={t('settings.about')}
                         isActive={activeSection === "about"}
                         onClick={() => setActiveSection("about")}
                     />
@@ -188,7 +193,7 @@ export default function SettingsPage() {
                         }}
                     >
                         <Save className="mr-2 h-4 w-4" />
-                        設定完了
+                        {t('settings.save')}
                     </Button>
                 </div>
             </main>
