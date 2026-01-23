@@ -182,6 +182,7 @@ function OrchestratorContent() {
   const [setupRequired, setSetupRequired] = useState(true);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [NEW] 設定画面ステート
 
   // State同期
   const syncState = useCallback(async () => {
@@ -479,6 +480,33 @@ function OrchestratorContent() {
     return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:open_tag_selector', e); } };
   }, []);
 
+  // 設定画面イベント (Tray etc)
+  useEffect(() => {
+    let unlisten: null | (() => void) = null;
+    (async () => {
+      unlisten = await listen('fusen:open_settings', async () => {
+        try {
+          setIsSettingsOpen(true);
+          // ウィンドウを前面に
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const win = getCurrentWindow();
+          const { LogicalSize } = await import('@tauri-apps/api/dpi');
+
+          if (win.label === 'main') {
+            await win.setSize(new LogicalSize(900, 630));
+            await win.center();
+            await win.show();
+            await win.unminimize();
+            await win.setFocus();
+          }
+        } catch (e) {
+          console.error('[open_settings] Error:', e);
+        }
+      });
+    })();
+    return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:open_settings', e); } };
+  }, []);
+
   // タグフィルター（複数）
   useEffect(() => {
     let unlisten: null | (() => void) = null;
@@ -618,8 +646,26 @@ function OrchestratorContent() {
   if (isCheckingSetup) return <LoadingScreen message="STARTING..." />;
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
-  if (setupRequired) {
-    return <SettingsPage />;
+  if (setupRequired || isSettingsOpen) {
+    return <SettingsPage onClose={async () => {
+      // 設定画面を閉じる時の処理
+      setIsSettingsOpen(false);
+
+      // setupRequiredだった場合は、ここを通るということはセットアップ完了のはず（SettingsPage内でsetup_first_launchするから）
+      // ただしpage.tsxのstate更新が必要かもしれないが、現在のロジックではリロードが入るか、
+      // ユーザー操作でSettingsPage内の「設定完了」→ setup_first_launch → ウィンドウリサイズ等が行われる
+
+      // 通常の設定変更の場合は、メインウィンドウを隠すのが基本挙動
+      if (!setupRequired) {
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const win = getCurrentWindow();
+          if (win.label === 'main') {
+            await win.hide();
+          }
+        } catch (e) { }
+      }
+    }} />;
   }
 
   // 管理画面（ダッシュボード）

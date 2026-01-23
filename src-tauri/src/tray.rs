@@ -16,6 +16,7 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let hide_i = MenuItem::with_id(app, "hide_all", "全部隠す (Hide All)", true, None::<&str>)?;
     let show_i = MenuItem::with_id(app, "show_all", "全部戻す (Show All)", true, None::<&str>)?;
+    let settings_i = MenuItem::with_id(app, "open_settings", "設定 (Settings)", true, None::<&str>)?; // [NEW] 設定メニュー
     
     // Generate Tag Filter Submenu
     let world_menu = tauri::menu::Submenu::with_id(app, "choose_world", "タグで絞り込む (Filter by Tags)", true)?;
@@ -46,6 +47,8 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         &show_i, 
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &world_menu, 
+        &tauri::menu::PredefinedMenuItem::separator(app)?, 
+        &settings_i, // [NEW] 追加
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &quit_i
     ])?;
@@ -109,6 +112,15 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     },
                     "quit" => {
                         app.exit(0);
+                    },
+                    "open_settings" => { // [NEW] 設定イベント発行
+                        eprintln!("[Tray] Opening settings...");
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.emit("fusen:open_settings", ()); // イベント発行
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
                     },
                     _ => {}
                 }

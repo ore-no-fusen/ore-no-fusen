@@ -15,7 +15,12 @@ import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 
-export default function SettingsPage() {
+// [NEW] Props定義
+type SettingsPageProps = {
+    onClose?: () => void;
+}
+
+export default function SettingsPage({ onClose }: SettingsPageProps) {
     const [activeSection, setActiveSection] = useState("general")
 
     // ★ここで「倉庫番」を呼び出し！
@@ -180,10 +185,16 @@ export default function SettingsPage() {
                                 })
 
                                 // メインウィンドウを非表示にする
-                                const { getCurrentWindow } = await import("@tauri-apps/api/window")
-                                const mainWin = getCurrentWindow()
-                                if (mainWin.label === "main") {
-                                    await mainWin.hide()
+                                // 設定完了時のコールバックがあれば呼ぶ
+                                if (onClose) {
+                                    onClose();
+                                } else {
+                                    // コールバックがない場合（レガシー互換）、自分で隠す
+                                    const { getCurrentWindow } = await import("@tauri-apps/api/window")
+                                    const mainWin = getCurrentWindow()
+                                    if (mainWin.label === "main") {
+                                        await mainWin.hide()
+                                    }
                                 }
 
                             } catch (e) {
