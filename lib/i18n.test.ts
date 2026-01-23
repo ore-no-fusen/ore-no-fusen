@@ -6,12 +6,14 @@ describe('i18n Utility', () => {
         const t = getTranslation('ja');
         expect(t('settings.title')).toBe('俺の付箋');
         expect(t('common.save')).toBe('保存');
+        expect(t('settings.data.basePathPlaceholder')).toBe('フォルダを選択してください...');
     });
 
     it('returns correct translation for English', () => {
         const t = getTranslation('en');
         expect(t('settings.title')).toBe('OreNoFusen');
         expect(t('common.save')).toBe('Save');
+        expect(t('settings.data.basePathPlaceholder')).toBe('Select a folder...');
     });
 
     it('returns key if translation is missing', () => {

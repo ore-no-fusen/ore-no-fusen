@@ -19,6 +19,20 @@ type AppState = {
   selected_path: string | null;
 };
 
+// [NEW] 最初からウィンドウを表示するためのフック
+function useShowOnMount() {
+  useEffect(() => {
+    const show = async () => {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      setTimeout(async () => {
+        await win.show();
+      }, 500);
+    };
+    show();
+  }, []);
+}
+
 // 型定義
 type NoteMeta = {
   path: string;
@@ -175,6 +189,7 @@ function TagSelector() {
 }
 
 function OrchestratorContent() {
+  useShowOnMount();
   const searchParams = useSearchParams();
 
   const [folderPath, setFolderPath] = useState<string>('');
@@ -182,9 +197,25 @@ function OrchestratorContent() {
   const [setupRequired, setSetupRequired] = useState(true);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [NEW] 設定画面ステート
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
+  // ダッシュボード表示時も小さいサイズを維持する
+  useEffect(() => {
+    if (!setupRequired && !isSettingsOpen && !isCheckingSetup) {
+      const enforceSmallSize = async () => {
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const { LogicalSize } = await import('@tauri-apps/api/dpi');
+          const win = getCurrentWindow();
+          if (win.label === 'main') {
+            await win.setSize(new LogicalSize(240, 300));
+            await win.center();
+          }
+        } catch (e) { }
+      };
+      enforceSmallSize();
+    }
+  }, [setupRequired, isSettingsOpen, isCheckingSetup]);
 
-  // State同期
   const syncState = useCallback(async () => {
     try {
       const state = await invoke<AppState>('fusen_get_state');
@@ -201,65 +232,26 @@ function OrchestratorContent() {
   // [Splash Screen Logic] resize window
   useEffect(() => {
     const handleResize = async () => {
-      // セットアップ画面（設定画面）を表示する場合
-      if (!isCheckingSetup && setupRequired) {
-        try {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window');
-          const { LogicalSize } = await import('@tauri-apps/api/dpi');
-          const win = getCurrentWindow();
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
 
-          if (win.label === 'main') {
-            // 設定画面用に大きいサイズに変更
-            await win.setSize(new LogicalSize(900, 630));
-            await win.center();
-            await win.show();
-            await win.setFocus();
-          }
-        } catch (e) {
-          console.error('Failed to resize for settings', e);
+        // メインウィンドウ以外（付箋ウィンドウなど）はリサイズしない
+        if (!win.label.includes('main') && win.label.includes('note-')) return;
+
+        if (!isCheckingSetup && setupRequired) {
+          await win.setSize(new LogicalSize(900, 630));
+          await win.center();
+          await win.setFocus();
+        } else {
+          await win.setSize(new LogicalSize(240, 300));
+          await win.center();
         }
-      } else if (isCheckingSetup && !setupRequired) { // "Loading..." phase
-        try {
-          const { getCurrentWindow, currentMonitor } = await import('@tauri-apps/api/window');
-          const { LogicalPosition, LogicalSize } = await import('@tauri-apps/api/dpi');
-          const win = getCurrentWindow();
-
-          if (win.label === 'main') {
-            const splashWidth = 240;
-            const splashHeight = 300;
-            await win.setSize(new LogicalSize(splashWidth, splashHeight));
-
-            const monitor = await currentMonitor();
-            if (monitor) {
-              const screenWidth = monitor.size.width / monitor.scaleFactor;
-              const x = screenWidth - splashWidth - 20;
-              const y = 20;
-              await win.setPosition(new LogicalPosition(x, y));
-            }
-            await win.show();
-            await win.setFocus();
-          }
-        } catch (e) {
-          console.error('Failed to init splash', e);
-          try {
-            const { getCurrentWindow } = await import('@tauri-apps/api/window');
-            await getCurrentWindow().show();
-          } catch { }
-        }
-      } else if (!isCheckingSetup && folderPath) {
-        try {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window');
-          const win = getCurrentWindow();
-          if (win.label === 'main') {
-            await win.setSize(new (await import('@tauri-apps/api/dpi')).LogicalSize(800, 600));
-            await win.center();
-            await win.show();
-          }
-        } catch (e) { console.error('Failed to resize dashboard', e); }
-      }
+      } catch (e) { }
     };
     handleResize();
-  }, [isCheckingSetup, folderPath, setupRequired]);
+  }, [isCheckingSetup, setupRequired]);
 
   // パス正規化
   const normalizePath = (path: string): string => {
@@ -417,7 +409,10 @@ function OrchestratorContent() {
     await openNoteWindow(file.path, { x: file.x, y: file.y, width: file.width, height: file.height });
   };
 
-  const isInitialized = () => { if (typeof window === 'undefined') return false; return sessionStorage.getItem('__INITIALIZED__') === 'true'; };
+  const isInitialized = () => {
+    if (typeof window === 'undefined') return false;
+    return sessionStorage.getItem('__INITIALIZED__') === 'true';
+  };
   const setInitialized = () => { if (typeof window !== 'undefined') { sessionStorage.setItem('__INITIALIZED__', 'true'); } };
 
   // イベントリスナー設定
@@ -507,6 +502,48 @@ function OrchestratorContent() {
     return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:open_settings', e); } };
   }, []);
 
+  // [NEW] トレイからの新規作成イベント
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let isActive = true;
+
+    const setup = async () => {
+      try {
+        const u = await listen('fusen:create_note_from_tray', async () => {
+          try {
+            const { handleCreateNoteFromTray } = await import('../lib/tray-actions');
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+
+            await handleCreateNoteFromTray({
+              getCurrentWindowLabel: async () => getCurrentWindow().label,
+              getBasePath: async () => invoke<string | null>('get_base_path'),
+              createNote: async (folder, ctx) => invoke('fusen_create_note', { folderPath: folder, context: ctx }),
+              openWindow: async (path, isNew) => openNoteWindow(path, undefined, isNew),
+              folderPath: folderPath || undefined
+            });
+          } catch (e) {
+            console.error('[Tray] Create note failed:', e);
+          }
+        });
+
+        if (isActive) {
+          unlisten = u;
+        } else {
+          u(); // すでにアンマウントされている場合は即解除
+        }
+      } catch (e) {
+        console.warn('Failed to setup fusen:create_note_from_tray listener', e);
+      }
+    };
+
+    setup();
+
+    return () => {
+      isActive = false;
+      if (unlisten) unlisten();
+    };
+  }, [folderPath]);
+
   // タグフィルター（複数）
   useEffect(() => {
     let unlisten: null | (() => void) = null;
@@ -551,23 +588,25 @@ function OrchestratorContent() {
         if (needsSetup) {
           setSetupRequired(true);
           const win = getCurrentWindow();
-          await win.show();
           await win.setFocus();
         } else {
           setSetupRequired(false);
           const win = getCurrentWindow();
           if (win.label === 'main') {
-            setTimeout(async () => { try { await win.hide(); } catch (e) { } }, 500);
+            setTimeout(async () => {
+              try { await win.hide(); } catch (e) { }
+            }, 100);
           }
         }
       } catch (e) {
         console.error('Failed to check base_path:', e);
         setSetupRequired(true);
         const win = getCurrentWindow();
-        await win.show();
         await win.setFocus();
       } finally {
-        setIsCheckingSetup(false);
+        setTimeout(() => {
+          setIsCheckingSetup(false);
+        }, 800);
       }
     }
 
@@ -609,30 +648,25 @@ function OrchestratorContent() {
                   const mainWindow = await WebviewWindow.getByLabel('main');
                   if (mainWindow) { await mainWindow.hide(); }
                 } catch (e) { }
-              }, 1000);
+              }, 100);
             } else {
-              // [FIX] ノートが0件の場合、初期ノートを自動作成
-              console.log('[Startup] No notes found. Creating initial note...');
               try {
                 const newNote = await invoke<any>('fusen_create_note', {
                   folderPath: savedFolder,
                   context: 'ようこそ'
                 });
                 await openNoteWindow(newNote.meta.path, undefined, true);
-                // mainウィンドウを非表示
                 setTimeout(async () => {
                   try {
                     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                     const mainWindow = await WebviewWindow.getByLabel('main');
                     if (mainWindow) { await mainWindow.hide(); }
                   } catch (e) { }
-                }, 1000);
-              } catch (createErr) {
-                console.error('[Startup] Failed to create initial note:', createErr);
-              }
+                }, 100);
+              } catch (createErr) { }
             }
           } catch (e) { }
-        }, 800);
+        }, 300);
       };
       checkAndRestore().catch(e => { console.error('Failed to check setup:', e); });
     }
@@ -668,6 +702,7 @@ function OrchestratorContent() {
     }} />;
   }
 
+
   // 管理画面（ダッシュボード）
   return (
     <div className="h-screen w-screen flex flex-col relative bg-white overflow-hidden p-8">
@@ -676,8 +711,9 @@ function OrchestratorContent() {
         <p className="text-gray-400 text-sm">Minimalist Sticky Notes for Obsidian Vault</p>
       </header>
       {!folderPath ? (
-        <div className="flex-1 flex items-center justify-center border-2 border-dashed border-gray-100 rounded-3xl">
-          <button onClick={selectDirectory} className="px-8 py-4 bg-black text-white rounded-2xl shadow-2xl hover:bg-gray-800 transition-all font-bold text-lg">Vaultフォルダを選択</button>
+        <div className="flex-1 flex flex-col items-center justify-center p-4">
+          <p className="text-xs text-gray-500 mb-4 text-center">フォルダ設定が必要です</p>
+          <button onClick={selectDirectory} className="w-full py-3 bg-black text-white rounded-xl shadow-lg hover:bg-gray-800 transition-all font-bold text-sm">Vaultフォルダを選択</button>
         </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden">

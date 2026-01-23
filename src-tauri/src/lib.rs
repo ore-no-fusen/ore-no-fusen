@@ -10,7 +10,8 @@ mod logic;
 mod storage;
 mod tray;
 mod logger;  // ログシステム
-mod settings; // ← これを追加
+mod settings; 
+mod import; // [NEW] インポート機能
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
@@ -27,6 +28,12 @@ fn fusen_select_folder(state: State<'_, Mutex<AppState>>) -> Option<String> {
     } else {
         None
     }
+}
+
+// [NEW] 副作用のないフォルダ選択（インポート元選択用）
+#[tauri::command]
+fn fusen_pick_folder() -> Option<String> {
+    rfd::FileDialog::new().pick_folder().map(|p| p.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -635,9 +642,10 @@ fn setup_first_launch(
     }
     
     // 4. 設定保存
-    let settings = storage::Settings {
-        base_path: Some(base_path.clone()),
-    };
+    // 既存の設定を読み込んで、base_pathだけを更新する
+    let mut settings = storage::load_settings().unwrap_or_default();
+    settings.base_path = Some(base_path.clone());
+    
     storage::save_settings(&settings)
         .map_err(|e| {
             logger::log_error(&format!("Failed to save settings: {}", e));
@@ -653,6 +661,28 @@ fn setup_first_launch(
     
     logger::log_info("Setup completed successfully");
     Ok(base_path)
+}
+
+#[tauri::command]
+fn fusen_import_from_folder(
+    state: State<'_, Mutex<AppState>>,
+    source_path: String,
+    target_path: Option<String>
+) -> Result<import::ImportStats, String> {
+    let app_state = state.lock().unwrap();
+    let target_path = target_path
+        .or(app_state.base_path.clone())
+        .or(app_state.folder_path.clone())
+        .ok_or("Base path not set")?;
+    
+    // インポート実行
+    // TODO: ここで非同期実行したいが、ファイルコピーはブロッキングでやる
+    let stats = import::import_markdown_files(&source_path, &target_path)?;
+    
+    // ステート更新のためにノート一覧を再読み込みする必要があるが、
+    // ここでは Stats を返すだけにして、フロントエンド側でリロードを要求する設計にする
+    
+    Ok(stats)
 }
 
 #[tauri::command]
@@ -736,6 +766,8 @@ pub fn run() {
             setup_first_launch,
             settings::get_settings,  // ← 「settings箱の中の」と指定！
             settings::save_settings,  // ← 「settings箱の中の」と指定！
+            fusen_import_from_folder, // [NEW] インポートコマンド
+            fusen_pick_folder,        // [NEW] 純粋なフォルダ選択
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);

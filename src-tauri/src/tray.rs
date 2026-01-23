@@ -14,12 +14,28 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
 
 pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    let hide_i = MenuItem::with_id(app, "hide_all", "全部隠す (Hide All)", true, None::<&str>)?;
-    let show_i = MenuItem::with_id(app, "show_all", "全部戻す (Show All)", true, None::<&str>)?;
-    let settings_i = MenuItem::with_id(app, "open_settings", "設定 (Settings)", true, None::<&str>)?; // [NEW] 設定メニュー
+    // [i18n] Get language setting
+    let lang = match crate::settings::get_settings(app.clone()) {
+        Ok(s) => s.language,
+        Err(_) => "ja".to_string(),
+    };
+    let is_en = lang == "en";
+
+    // Labels
+    let label_hide = if is_en { "Hide All" } else { "全部隠す (Hide All)" };
+    let label_show = if is_en { "Show All" } else { "全部戻す (Show All)" };
+    let label_settings = if is_en { "Settings" } else { "設定 (Settings)" };
+    let label_new_note = if is_en { "New Note" } else { "新規メモ (New Note)" };
+    let label_filter = if is_en { "Filter by Tags" } else { "タグで絞り込む (Filter by Tags)" };
+    let label_quit = if is_en { "Quit" } else { "終了 (Quit)" };
+
+    let hide_i = MenuItem::with_id(app, "hide_all", label_hide, true, None::<&str>)?;
+    let show_i = MenuItem::with_id(app, "show_all", label_show, true, None::<&str>)?;
+    let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?; 
+    let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
     
     // Generate Tag Filter Submenu
-    let world_menu = tauri::menu::Submenu::with_id(app, "choose_world", "タグで絞り込む (Filter by Tags)", true)?;
+    let world_menu = tauri::menu::Submenu::with_id(app, "choose_world", label_filter, true)?;
     
     // Get tags from state
     let state = app.state::<Mutex<AppState>>();
@@ -40,15 +56,17 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         world_menu.append(&item)?;
     }
     
-    let quit_i = MenuItem::with_id(app, "quit", "終了 (Quit)", true, None::<&str>)?;
+    let quit_i = MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
     
     let menu = Menu::with_items(app, &[
+        &new_note_i, // [NEW] 最上部に配置
+        &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &hide_i, 
         &show_i, 
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &world_menu, 
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
-        &settings_i, // [NEW] 追加
+        &settings_i,
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &quit_i
     ])?;
@@ -113,13 +131,19 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     "quit" => {
                         app.exit(0);
                     },
-                    "open_settings" => { // [NEW] 設定イベント発行
+                    "open_settings" => { 
                         eprintln!("[Tray] Opening settings...");
                         if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.emit("fusen:open_settings", ()); // イベント発行
+                            let _ = win.emit("fusen:open_settings", ()); 
                             let _ = win.show();
                             let _ = win.unminimize();
                             let _ = win.set_focus();
+                        }
+                    },
+                    "create_note" => { // [NEW] 新規作成イベント
+                        eprintln!("[Tray] Creating new note...");
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.emit("fusen:create_note_from_tray", ());
                         }
                     },
                     _ => {}

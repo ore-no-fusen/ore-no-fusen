@@ -32,9 +32,13 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     // ★翻訳関数を設定の言語から作成
     const t = useMemo(() => getTranslation((settings.language as Language) || 'ja'), [settings.language])
 
+    // インポート機能用State
+    const [importSourcePath, setImportSourcePath] = useState("")
+    const [isImporting, setIsImporting] = useState(false)
+
     // 読み込み中は「読み込み中...」と出す（チラつき防止）
     if (loading) {
-        return <div className="flex h-[600px] items-center justify-center">{t('common.loading')}</div>
+        return <div className="flex h-screen items-center justify-center bg-white">{t('common.loading')}</div>
     }
 
     // 設定を変更する共通の関数
@@ -49,49 +53,57 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     const renderContent = () => {
         switch (activeSection) {
             case "general":
-                return <GeneralSection settings={settings} onUpdate={updateSetting} />
+                return <GeneralSection settings={settings} onUpdate={updateSetting} t={t} />
             case "appearance":
-                return <AppearanceSection settings={settings} onUpdate={updateSetting} />
+                return <AppearanceSection settings={settings} onUpdate={updateSetting} t={t} />
             case "data":
-                return <DataSection settings={settings} onUpdate={updateSetting} />
+                return <DataSection
+                    settings={settings}
+                    onUpdate={updateSetting}
+                    t={t}
+                    importSourcePath={importSourcePath}
+                    setImportSourcePath={setImportSourcePath}
+                    isImporting={isImporting}
+                    setIsImporting={setIsImporting}
+                />
             case "about":
-                return <AboutSection />
+                return <AboutSection t={t} />
             default:
-                return <GeneralSection settings={settings} onUpdate={updateSetting} />
+                return <GeneralSection settings={settings} onUpdate={updateSetting} t={t} />
         }
     }
 
     return (
-        <div className="flex h-[600px] w-full max-w-4xl overflow-hidden rounded-lg border bg-background shadow-xl text-foreground">
+        <div className="flex h-screen w-full overflow-hidden bg-white text-foreground">
             {/* サイドバー */}
-            <aside className="w-64 border-r bg-muted/30 p-4">
+            <aside className="w-64 border-r bg-gray-50/50 p-6">
                 <div className="mb-6 flex items-center gap-2 px-2 py-4">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                         <Settings className="h-5 w-5" />
                     </div>
-                    <span className="text-lg font-bold tracking-tight">{t('settings.title')}</span>
+                    <span className="text-xl font-black tracking-tighter">{t('settings.title')}</span>
                 </div>
                 <nav className="space-y-1">
                     <SidebarItem
-                        icon={<Settings className="mr-2 h-4 w-4" />}
+                        icon={<Settings className="mr-3 h-4 w-4" />}
                         label={t('settings.general')}
                         isActive={activeSection === "general"}
                         onClick={() => setActiveSection("general")}
                     />
                     <SidebarItem
-                        icon={<Monitor className="mr-2 h-4 w-4" />}
+                        icon={<Monitor className="mr-3 h-4 w-4" />}
                         label={t('settings.appearance')}
                         isActive={activeSection === "appearance"}
                         onClick={() => setActiveSection("appearance")}
                     />
                     <SidebarItem
-                        icon={<Database className="mr-2 h-4 w-4" />}
+                        icon={<Database className="mr-3 h-4 w-4" />}
                         label={t('settings.data')}
                         isActive={activeSection === "data"}
                         onClick={() => setActiveSection("data")}
                     />
                     <SidebarItem
-                        icon={<Info className="mr-2 h-4 w-4" />}
+                        icon={<Info className="mr-3 h-4 w-4" />}
                         label={t('settings.about')}
                         isActive={activeSection === "about"}
                         onClick={() => setActiveSection("about")}
@@ -100,13 +112,13 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             </aside>
 
             {/* メインコンテンツエリア */}
-            <main className="flex flex-1 flex-col overflow-hidden">
-                <div className="flex-1 overflow-y-auto p-8">
+            <main className="flex flex-1 flex-col overflow-hidden bg-white">
+                <div className="flex-1 overflow-y-auto p-10 pt-12">
                     {renderContent()}
                 </div>
 
                 {/* フッター - 設定完了ボタン */}
-                <div className="border-t bg-muted/20 px-8 py-4 flex justify-end gap-3">
+                <div className="border-t bg-gray-50/30 px-10 py-6 flex justify-end gap-3">
                     <Button
                         variant="default"
                         size="lg"
@@ -120,6 +132,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                                 const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow")
 
                                 // setup_first_launch を呼び出してベースパスを設定
+                                // ※ カスタムパスがある場合でも、ディレクトリ作成等のために必ず呼び出す必要がある
                                 let basePath = settings.basePath
                                 if (!basePath || basePath.trim() === "") {
                                     // デフォルトパスを使用してセットアップ
@@ -128,74 +141,76 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                                         customPath: null,
                                         importPath: null
                                     })
+                                } else {
+                                    // カスタムパスを使用してセットアップ
+                                    basePath = await invoke<string>("setup_first_launch", {
+                                        useDefault: false,
+                                        customPath: basePath,
+                                        importPath: isImporting ? importSourcePath : null
+                                    })
                                 }
 
-                                // 最初の付箋を作成
-                                const newNote = await invoke<{
-                                    meta: { path: string; x?: number; y?: number; width?: number; height?: number }
-                                    frontmatter: string
-                                }>("fusen_create_note", {
-                                    folderPath: basePath,
-                                    context: "はじめての付箋（消してOK）"
-                                })
+                                // [Check] 既存のノートがあるか確認
+                                const existingNotes = await invoke<any[]>("fusen_list_notes", { folderPath: basePath });
 
-                                // 初期内容を設定
-                                const initialContent = `はじめの付箋（消してOK）
+                                if (existingNotes.length === 0) {
+                                    // ノートがない場合のみ、初期ノートを作成
+                                    const newNote = await invoke<{
+                                        meta: { path: string; x?: number; y?: number; width?: number; height?: number }
+                                        frontmatter: string
+                                    }>("fusen_create_note", {
+                                        folderPath: basePath,
+                                        context: "はじめての付箋（消してOK）"
+                                    })
+
+                                    // 初期内容を設定
+                                    const initialContent = `はじめの付箋（消してOK）
 
 すぐ書ける
 **強調できる**
 そこに残る`
 
-                                await invoke("fusen_save_note", {
-                                    path: newNote.meta.path,
-                                    body: initialContent,
-                                    frontmatterRaw: newNote.frontmatter || "",
-                                    allowRename: false
-                                })
+                                    await invoke("fusen_save_note", {
+                                        path: newNote.meta.path,
+                                        body: initialContent,
+                                        frontmatterRaw: newNote.frontmatter || "",
+                                        allowRename: false
+                                    })
 
-                                // 付箋ウィンドウを開く
-                                const notePath = newNote.meta.path
-                                const safePath = notePath.replace(/\\/g, "/")
-                                const pathParam = encodeURIComponent(safePath)
-                                const url = `/?path=${pathParam}`
+                                    // 付箋ウィンドウを開く
+                                    const notePath = newNote.meta.path
+                                    const safePath = notePath.replace(/\\/g, "/")
+                                    const pathParam = encodeURIComponent(safePath)
+                                    const url = `/?path=${pathParam}`
 
-                                // ウィンドウラベルを生成
-                                const normalizedPath = safePath.toLowerCase().replace(/\/+/g, "/").replace(/\/$/, "")
-                                let hash = 0
-                                for (let i = 0; i < normalizedPath.length; i++) {
-                                    const char = normalizedPath.charCodeAt(i)
-                                    hash = ((hash << 5) - hash) + char
-                                    hash = hash & hash
-                                }
-                                const label = `note-${Math.abs(hash).toString(36)}`
-
-                                // 付箋ウィンドウを作成
-                                new WebviewWindow(label, {
-                                    url,
-                                    transparent: true,
-                                    decorations: false,
-                                    alwaysOnTop: false,
-                                    visible: true,
-                                    width: 400,
-                                    height: 300,
-                                    x: 100,
-                                    y: 100,
-                                    skipTaskbar: false,
-                                    focus: true,
-                                })
-
-                                // メインウィンドウを非表示にする
-                                // 設定完了時のコールバックがあれば呼ぶ
-                                if (onClose) {
-                                    onClose();
-                                } else {
-                                    // コールバックがない場合（レガシー互換）、自分で隠す
-                                    const { getCurrentWindow } = await import("@tauri-apps/api/window")
-                                    const mainWin = getCurrentWindow()
-                                    if (mainWin.label === "main") {
-                                        await mainWin.hide()
+                                    // ウィンドウラベルを生成
+                                    const normalizedPath = safePath.toLowerCase().replace(/\/+/g, "/").replace(/\/$/, "")
+                                    let hash = 0
+                                    for (let i = 0; i < normalizedPath.length; i++) {
+                                        const char = normalizedPath.charCodeAt(i)
+                                        hash = ((hash << 5) - hash) + char
+                                        hash = hash & hash
                                     }
+                                    const label = `note-${Math.abs(hash).toString(36)}`
+
+                                    // 付箋ウィンドウを作成
+                                    new WebviewWindow(label, {
+                                        url,
+                                        transparent: true,
+                                        decorations: false,
+                                        alwaysOnTop: false,
+                                        visible: true,
+                                        width: 400,
+                                        height: 300,
+                                        x: 100,
+                                        y: 100,
+                                        skipTaskbar: false,
+                                        focus: true,
+                                    })
                                 }
+
+                                // [Reload] 設定適用を確実にするため、アプリ全体をリロード
+                                window.location.reload();
 
                             } catch (e) {
                                 console.error("設定の保存に失敗:", e)
@@ -232,19 +247,28 @@ function SidebarItem({ icon, label, isActive, onClick }: { icon: React.ReactNode
 type SectionProps = {
     settings: AppSettings
     onUpdate: (key: keyof AppSettings, value: any) => void
+    t: (key: any) => string
 }
 
-function GeneralSection({ settings, onUpdate }: SectionProps) {
+// DataSection用の拡張Props
+type DataSectionProps = SectionProps & {
+    importSourcePath: string;
+    setImportSourcePath: (path: string) => void;
+    isImporting: boolean;
+    setIsImporting: (val: boolean) => void;
+}
+
+function GeneralSection({ settings, onUpdate, t }: SectionProps) {
     return (
         <div className="space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold tracking-tight">一般設定</h2>
-                <p className="text-muted-foreground">アプリケーションの基本動作を設定します。</p>
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.general.title')}</h2>
+                <p className="text-gray-500 text-sm">{t('settings.general.description')}</p>
             </div>
             <Separator />
             <div className="grid gap-4">
                 <div className="grid gap-2">
-                    <Label>言語 (Language)</Label>
+                    <Label>{t('settings.general.language')}</Label>
                     <div className="flex gap-2">
                         <Button
                             variant={settings.language === "ja" ? "default" : "outline"}
@@ -266,8 +290,8 @@ function GeneralSection({ settings, onUpdate }: SectionProps) {
                 {/* 自動起動スイッチ */}
                 <div className="flex items-center justify-between rounded-lg border p-4">
                     <div className="space-y-0.5">
-                        <Label className="text-base">ログイン時に起動</Label>
-                        <p className="text-sm text-muted-foreground">PC起動時に自動でアプリを立ち上げます</p>
+                        <Label className="text-base">{t('settings.general.autoStart')}</Label>
+                        <p className="text-sm text-muted-foreground">{t('settings.general.autoStartDesc')}</p>
                     </div>
                     <Switch
                         checked={settings.autoStart}
@@ -293,8 +317,8 @@ function GeneralSection({ settings, onUpdate }: SectionProps) {
                 {/* 効果音スイッチ */}
                 <div className="flex items-center justify-between rounded-lg border p-4">
                     <div className="space-y-0.5">
-                        <Label className="text-base">効果音 (SE)</Label>
-                        <p className="text-sm text-muted-foreground">操作時のサウンドエフェクトを有効にする</p>
+                        <Label className="text-base">{t('settings.general.sound')}</Label>
+                        <p className="text-sm text-muted-foreground">{t('settings.general.soundDesc')}</p>
                     </div>
                     <Switch
                         checked={settings.soundEnabled}
@@ -306,19 +330,19 @@ function GeneralSection({ settings, onUpdate }: SectionProps) {
     )
 }
 
-function AppearanceSection({ settings, onUpdate }: SectionProps) {
+function AppearanceSection({ settings, onUpdate, t }: SectionProps) {
     return (
         <div className="space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold tracking-tight">外観設定</h2>
-                <p className="text-muted-foreground">フォントサイズなどをカスタマイズします。</p>
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.appearance.title')}</h2>
+                <p className="text-gray-500 text-sm">{t('settings.appearance.description')}</p>
             </div>
             <Separator />
 
             <div className="space-y-4 pt-4">
                 <div className="flex justify-between">
-                    <Label>フォントサイズ</Label>
-                    <span className="text-sm text-muted-foreground">現在: {settings.fontSize}px</span>
+                    <Label>{t('settings.appearance.fontSize')}</Label>
+                    <span className="text-sm text-muted-foreground">{t('settings.appearance.fontSizeCurrent')}: {settings.fontSize}px</span>
                 </div>
                 {/* スライダーの値と連携 */}
                 <Slider
@@ -332,7 +356,7 @@ function AppearanceSection({ settings, onUpdate }: SectionProps) {
                 />
                 <div className="h-20 w-full rounded border p-4 flex items-center justify-center bg-muted/20">
                     <p style={{ fontSize: `${settings.fontSize}px` }}>
-                        文字サイズのプレビューです。
+                        {t('settings.appearance.preview')}
                     </p>
                 </div>
             </div>
@@ -340,7 +364,15 @@ function AppearanceSection({ settings, onUpdate }: SectionProps) {
     )
 }
 
-function DataSection({ settings, onUpdate }: SectionProps) {
+function DataSection({
+    settings,
+    onUpdate,
+    t,
+    importSourcePath,
+    setImportSourcePath,
+    isImporting,
+    setIsImporting
+}: DataSectionProps) {
     const handleSelectFolder = async () => {
         try {
             const { invoke } = await import("@tauri-apps/api/core")
@@ -356,40 +388,111 @@ function DataSection({ settings, onUpdate }: SectionProps) {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold tracking-tight">データ管理</h2>
-                <p className="text-muted-foreground">データの保存場所やインポートを管理します。</p>
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.data.title')}</h2>
+                <p className="text-gray-500 text-sm">{t('settings.data.description')}</p>
             </div>
             <Separator />
 
             <div className="grid gap-4">
                 <div className="grid gap-2">
-                    <Label htmlFor="path">データ保存場所 (Base Path)</Label>
+                    <Label htmlFor="path">{t('settings.data.basePath')}</Label>
                     <div className="flex gap-2">
                         <Input
                             id="path"
                             value={settings.basePath}
                             readOnly
-                            placeholder="フォルダを選択してください..."
+                            placeholder={t('settings.data.basePathPlaceholder')}
                             className="font-mono text-sm bg-muted"
                         />
                         <Button variant="outline" onClick={handleSelectFolder}>
-                            <FolderOpen className="mr-2 h-4 w-4" /> 参照
+                            <FolderOpen className="mr-2 h-4 w-4" /> {t('settings.data.browse')}
                         </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        {settings.basePath ? "選択済み" : "未設定の場合、デフォルトの場所（Documents/OreNoFusen）が使用されます"}
+                        {settings.basePath ? t('settings.data.selected') : t('settings.data.notSet')}
                     </p>
                 </div>
 
-                <div className="mt-4 rounded-lg border border-dashed p-6">
-                    <h3 className="mb-4 text-lg font-medium">Markdownインポート</h3>
-                    <p className="mb-4 text-sm text-muted-foreground">
-                        既存の .md ファイルがあるフォルダを指定して、付箋として読み込みます。
-                    </p>
+            </div>
+
+            {/* --- インポートセクション --- */}
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-6">
+                <div className="flex items-start justify-between mb-4">
+                    <div>
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                            <Database className="h-4 w-4" />
+                            {t('settings.data.import')}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            {t('settings.data.importDesc')}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
                     <div className="flex gap-2">
-                        <Input placeholder="インポート元のフォルダパス..." />
-                        <Button><Reply className="mr-2 h-4 w-4" />インポート実行</Button>
+                        <Input
+                            readOnly
+                            placeholder={t('settings.data.importPlaceholder')}
+                            value={importSourcePath}
+                            className="font-mono text-sm bg-white"
+                        />
+                        <Button variant="outline" onClick={async () => {
+                            try {
+                                const { invoke } = await import("@tauri-apps/api/core");
+                                // 副作用のないフォルダ選択を使う
+                                const path = await invoke<string | null>("fusen_pick_folder");
+                                if (path) setImportSourcePath(path);
+                            } catch (e) {
+                                console.error("フォルダ選択失敗:", e);
+                            }
+                        }}>
+                            <FolderOpen className="mr-2 h-4 w-4" /> {t('settings.data.browse')}
+                        </Button>
+                    </div>
+
+                    <div className="flex justify-end">
+                        <Button
+                            disabled={!importSourcePath || isImporting}
+                            onClick={async () => {
+                                if (!importSourcePath) return;
+                                setIsImporting(true);
+                                try {
+                                    const { invoke } = await import("@tauri-apps/api/core");
+                                    type Stats = { total_files: number, imported_md: number, imported_images: number, skipped: number, errors: string[] };
+                                    const stats = await invoke<Stats>("fusen_import_from_folder", {
+                                        sourcePath: importSourcePath,
+                                        targetPath: settings.basePath
+                                    });
+
+                                    let msg = `インポート完了！\n\n`;
+                                    msg += `📝 ノート: ${stats.imported_md}件\n`;
+                                    msg += `🖼️ 画像: ${stats.imported_images}件\n`;
+                                    if (stats.errors.length > 0) {
+                                        msg += `⚠️ エラー: ${stats.errors.length}件\n`;
+                                        console.error("Import Errors:", stats.errors);
+                                    }
+
+                                    alert(msg);
+
+                                    // リロードは不要（設定画面を閉じない）
+                                    // 保存時に反映、もしくは既にアクティブなフォルダなら次回更新時に反映される
+                                } catch (e) {
+                                    console.error("インポート失敗:", e);
+                                    alert("インポートに失敗しました: " + String(e));
+                                } finally {
+                                    setIsImporting(false);
+                                    setImportSourcePath("");
+                                }
+                            }}
+                        >
+                            {isImporting ? (
+                                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div> {t('common.loading')}</>
+                            ) : (
+                                <><Reply className="mr-2 h-4 w-4" /> {t('settings.data.importButton')}</>
+                            )}
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -397,14 +500,12 @@ function DataSection({ settings, onUpdate }: SectionProps) {
     )
 }
 
-function AboutSection() {
+function AboutSection({ t }: { t: (key: any) => string }) {
     return (
         <div className="space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold tracking-tight">このアプリについて</h2>
-                <p className="text-muted-foreground">
-                    アプリケーション情報とサポート
-                </p>
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.about.title')}</h2>
+                <p className="text-gray-500 text-sm">{t('settings.about.description')}</p>
             </div>
             <Separator />
 
@@ -433,22 +534,22 @@ function AboutSection() {
 
                     {/* タイトルとバージョン */}
                     <div className="space-y-1">
-                        <h3 className="font-bold text-xl leading-none">俺の付箋</h3>
+                        <h3 className="font-bold text-xl leading-none">{t('settings.about.appName')}</h3>
                         <p className="text-sm text-muted-foreground">OreNoFusen</p>
-                        <p className="text-xs text-muted-foreground pt-1">バージョン 1.0.0</p>
+                        <p className="text-xs text-muted-foreground pt-1">{t('settings.about.version')} 1.0.0</p>
                     </div>
                 </div>
 
                 <div className="mt-6 space-y-4">
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                        シンプルで使いやすいデスクトップ付箋アプリです。メモを素早く作成し、デスクトップ上で整理することができます。
+                        {t('settings.about.appDesc')}
                     </p>
 
                     <div className="space-y-2 pt-2">
                         <Button variant="outline" className="w-full justify-start h-12 text-base font-normal" asChild>
                             <a href="https://example.com" target="_blank" rel="noreferrer">
                                 <Globe className="mr-3 h-5 w-5" />
-                                公式ウェブサイト
+                                {t('settings.about.website')}
                             </a>
                         </Button>
                         <Button variant="outline" className="w-full justify-start h-12 text-base font-normal" asChild>
@@ -463,7 +564,7 @@ function AboutSection() {
                 </div>
 
                 <div className="mt-8 text-center text-xs text-muted-foreground border-t pt-4">
-                    &copy; 2026 OreNoFusen. All rights reserved.
+                    {t('settings.about.copyright')}
                 </div>
             </div>
         </div>

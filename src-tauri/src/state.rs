@@ -38,7 +38,33 @@ pub struct AppState {
 }
 
 // NEW: UC-01 - 設定ファイル用の構造体
-#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(alias = "base_path")]
     pub base_path: Option<String>,
+    #[serde(default = "default_language")]
+    pub language: String,
+    #[serde(default)]
+    pub auto_start: bool,
+    #[serde(default = "default_font_size")]
+    pub font_size: f64,
+    #[serde(default = "default_sound_enabled")]
+    pub sound_enabled: bool,
+}
+
+fn default_language() -> String { "ja".to_string() }
+fn default_font_size() -> f64 { 16.0 }
+fn default_sound_enabled() -> bool { true }
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            base_path: None,
+            language: default_language(),
+            auto_start: false,
+            font_size: default_font_size(),
+            sound_enabled: default_sound_enabled(),
+        }
+    }
 }

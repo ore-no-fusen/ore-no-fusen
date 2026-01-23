@@ -12,6 +12,9 @@ import { getFontSize } from '../utils/settingsManager';
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ConfirmDialog from './ConfirmDialog';
 
+import { useSettings } from "@/lib/settings-store";
+import { getTranslation, type Language } from "@/lib/i18n";
+
 // 型定義
 type NoteMeta = {
     path: string;
@@ -58,6 +61,10 @@ const StickyNote = memo(function StickyNote() {
     const [selectedFile, setSelectedFile] = useState<NoteMeta | null>(null);
     const [content, setContent] = useState<string>('');
 
+    // [i18n]
+    const { settings } = useSettings();
+    const t = useMemo(() => getTranslation((settings.language as Language) || 'ja'), [settings.language]);
+
     // [New] Line Offset Calculation for precise cursor positioning
     const lineOffsets = useMemo(() => {
         let offset = 0;
@@ -91,6 +98,11 @@ const StickyNote = memo(function StickyNote() {
     const ignoreBlurUntilRef = useRef<number>(0);
 
     const editorRef = useRef<RichTextEditorRef>(null);
+
+    // [Fix] Sync font size from settings
+    useEffect(() => {
+        setNoteFontSize(settings.fontSize);
+    }, [settings.fontSize]);
     const editorHostRef = useRef<HTMLDivElement>(null); // [New boundary ref]
     const editBodyRef = useRef(editBody); // [New] Stale closure fix
 
@@ -818,7 +830,7 @@ const StickyNote = memo(function StickyNote() {
 
             const openFolderItem = await MenuItem.new({
                 id: 'ctx_open_folder',
-                text: '📂 フォルダを開く',
+                text: `📂 ${t('menu.openFolder')}`,
                 action: async () => {
                     await invoke('fusen_open_containing_folder', { path: selectedFile.path });
                 }
@@ -826,7 +838,7 @@ const StickyNote = memo(function StickyNote() {
 
             const newNoteItem = await MenuItem.new({
                 id: 'ctx_new_note',
-                text: '📝 新規メモ',
+                text: `📝 ${t('menu.newNote')}`,
                 action: async () => { /* ... existing logic ... */
                     try {
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
@@ -852,11 +864,11 @@ const StickyNote = memo(function StickyNote() {
 
             // Color Items
             const colorItems = [
-                await MenuItem.new({ id: 'ctx_color_blue', text: '🔵 Blue', action: () => handleColorChange('#80d8ff') }),
-                await MenuItem.new({ id: 'ctx_color_pink', text: '🌸 Pink', action: () => handleColorChange('#ffcdd2') }),
-                await MenuItem.new({ id: 'ctx_color_yellow', text: '💛 Yellow', action: () => handleColorChange('#f7e9b0') })
+                await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange('#80d8ff') }),
+                await MenuItem.new({ id: 'ctx_color_pink', text: `🌸 ${t('menu.colors.pink')}`, action: () => handleColorChange('#ffcdd2') }),
+                await MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange('#f7e9b0') })
             ];
-            const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: '🎨 色変更', items: colorItems });
+            const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: `🎨 ${t('menu.changeColor')}`, items: colorItems });
 
             const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
 
@@ -874,7 +886,7 @@ const StickyNote = memo(function StickyNote() {
             if (isTagDeleteMode) {
                 console.log('[ShowContextMenu] Building menu in DELETE MODE.');
                 // DELETE MODE: Flattened Tags
-                menuItems.push(await MenuItem.new({ id: 'header_del', text: '⚠️ 削除モード (タグを選択して削除)', enabled: false }));
+                menuItems.push(await MenuItem.new({ id: 'header_del', text: `⚠️ ${t('menu.deleteMode')}`, enabled: false }));
 
                 try {
                     const tags = await invoke<string[]>('fusen_get_all_tags');
@@ -891,14 +903,14 @@ const StickyNote = memo(function StickyNote() {
                             }));
                         }
                     } else {
-                        menuItems.push(await MenuItem.new({ id: 'ctx_no_tags', text: '(タグなし)', enabled: false }));
+                        menuItems.push(await MenuItem.new({ id: 'ctx_no_tags', text: `(${t('menu.noTags')})`, enabled: false }));
                     }
                 } catch (e) { console.error('Failed to load tags in delete mode:', e); }
 
                 menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                 menuItems.push(await MenuItem.new({
                     id: 'ctx_exit_mode',
-                    text: '⬅️ 通常モードに戻る',
+                    text: `⬅️ ${t('menu.normalMode')}`,
                     action: () => {
                         shouldReopenMenu.current = true;
                         setIsTagDeleteMode(false);
@@ -910,7 +922,7 @@ const StickyNote = memo(function StickyNote() {
                 // NORMAL MODE: Tag Submenu
                 const tagNewItem = await MenuItem.new({
                     id: 'ctx_tag_new',
-                    text: '➕ 新規追加',
+                    text: `➕ ${t('menu.addTag')}`,
                     action: async () => {
                         /* Reuse logic to fetch tags and show modal */
                         try {
@@ -973,7 +985,7 @@ const StickyNote = memo(function StickyNote() {
                         tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                         tagSubItems.push(await MenuItem.new({
                             id: 'ctx_enter_del_mode',
-                            text: '🔧 削除モードにする',
+                            text: `🔧 ${t('menu.deleteMode')}`,
                             action: () => {
                                 shouldReopenMenu.current = true;
                                 setIsTagDeleteMode(true);
@@ -983,13 +995,13 @@ const StickyNote = memo(function StickyNote() {
                         tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                         tagSubItems.push(await MenuItem.new({
                             id: 'ctx_no_tags_normal',
-                            text: '(タグがありません)',
+                            text: `(${t('menu.noTags')})`,
                             enabled: false
                         }));
                     }
                 } catch (e) { console.error('Failed to load tags for submenu:', e); }
 
-                const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: '🏷️ タグ', items: tagSubItems });
+                const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `🏷️ ${t('menu.tags')}`, items: tagSubItems });
                 menuItems.push(tagSubmenu);
             }
 
@@ -997,7 +1009,7 @@ const StickyNote = memo(function StickyNote() {
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_delete',
-                text: '🗑️ このメモを削除',
+                text: `🗑️ ${t('menu.delete')}`,
                 action: async () => {
                     // [Sound] 設定に基づいて削除音を再生
                     await playDeleteSound();
@@ -1023,7 +1035,7 @@ const StickyNote = memo(function StickyNote() {
         } catch (err) {
             console.error('Failed to show context menu', err);
         }
-    }, [selectedFile, isTagDeleteMode, loadFileContent, noteBackgroundColor, rawFrontmatter, setEditBody, setSavePending]);
+    }, [selectedFile, isTagDeleteMode, loadFileContent, noteBackgroundColor, rawFrontmatter, setEditBody, setSavePending, t]);
 
     const handleEditBlur = useCallback(async () => { // Parameterless
         // [Ref Stability Check]

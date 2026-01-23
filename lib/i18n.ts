@@ -49,6 +49,7 @@ export const translations = {
         'settings.data.importDesc': '既存の .md ファイルがあるフォルダを指定して、付箋として読み込みます。',
         'settings.data.importButton': 'インポート実行',
         'settings.data.importPlaceholder': 'インポート元のフォルダパス...',
+        'settings.data.basePathPlaceholder': 'フォルダを選択してください...',
 
         // 設定画面 - フッター
         'settings.save': '設定完了',
@@ -71,6 +72,9 @@ export const translations = {
         'menu.deleteMode': '削除モードにする',
         'menu.normalMode': '通常モードに戻る',
         'menu.delete': 'このメモを削除',
+        'menu.colors.blue': '青',
+        'menu.colors.pink': '桃',
+        'menu.colors.yellow': '黄',
         'menu.noTags': 'タグがありません',
 
         // 共通
@@ -113,6 +117,7 @@ export const translations = {
         'settings.data.importDesc': 'Select a folder with existing .md files to import as notes.',
         'settings.data.importButton': 'Import',
         'settings.data.importPlaceholder': 'Import folder path...',
+        'settings.data.basePathPlaceholder': 'Select a folder...',
 
         // Settings - Footer
         'settings.save': 'Save Settings',
@@ -135,6 +140,9 @@ export const translations = {
         'menu.deleteMode': 'Delete Mode',
         'menu.normalMode': 'Back to Normal',
         'menu.delete': 'Delete This Note',
+        'menu.colors.blue': 'Blue',
+        'menu.colors.pink': 'Pink',
+        'menu.colors.yellow': 'Yellow',
         'menu.noTags': 'No tags',
 
         // Common

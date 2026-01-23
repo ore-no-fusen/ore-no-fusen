@@ -13,13 +13,14 @@
     "windows": [
       {
         "title": "俺の付箋",
-        "width": 900,
-        "height": 630,
+        "width": 240,
+        "height": 300,
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
-        "visible": true,
+        "visible": false,
+        "backgroundColor": "#111827",
         "center": true
       }
     ],
