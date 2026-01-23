@@ -582,6 +582,26 @@ function OrchestratorContent() {
                   if (mainWindow) { await mainWindow.hide(); }
                 } catch (e) { }
               }, 1000);
+            } else {
+              // [FIX] ノートが0件の場合、初期ノートを自動作成
+              console.log('[Startup] No notes found. Creating initial note...');
+              try {
+                const newNote = await invoke<any>('fusen_create_note', {
+                  folderPath: savedFolder,
+                  context: 'ようこそ'
+                });
+                await openNoteWindow(newNote.meta.path, undefined, true);
+                // mainウィンドウを非表示
+                setTimeout(async () => {
+                  try {
+                    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                    const mainWindow = await WebviewWindow.getByLabel('main');
+                    if (mainWindow) { await mainWindow.hide(); }
+                  } catch (e) { }
+                }, 1000);
+              } catch (createErr) {
+                console.error('[Startup] Failed to create initial note:', createErr);
+              }
             }
           } catch (e) { }
         }, 800);
