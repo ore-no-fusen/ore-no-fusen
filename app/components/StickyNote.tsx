@@ -683,13 +683,11 @@ const StickyNote = memo(function StickyNote() {
         }
 
         const target = e.target as HTMLElement;
+        const isInteractive = !!target.closest('button, textarea, input, [data-interactable="true"]');
 
-        // 特定要素（ボタン、エディタ、本文）上では開始しない
-        if (target.closest('button') || target.closest('.editorHost') || target.closest('article')) {
-            // タイトルバー（.file-name）だけは特別に許可
-            if (!target.classList.contains('file-name')) {
-                return;
-            }
+        // チェックボックスやボタンなど「操作が必要なパーツ」以外は、どこでもドラッグを許可する
+        if (isInteractive) {
+            return;
         }
 
         // トリプルジップロック：距離(10px)・時間(150ms)・ボタン状態(押下中)
@@ -770,26 +768,15 @@ const StickyNote = memo(function StickyNote() {
                 setIsCornerArea(false);
             } else if (isInside) {
                 const target = e.target as HTMLElement;
-                const textElement = target.closest('p, h1, h2, h3, li, span, strong, em, code, pre');
-                const interactive = target.closest('button, textarea, input, .file-name');
-
-                const gap = 15;
-                const nearLeft = e.clientX < rect.left + gap;
-                const nearRight = e.clientX > rect.right - gap;
-                const nearTop = e.clientY < rect.top + gap;
-                const nearBottom = e.clientY > rect.bottom - gap;
-                const isCorner = (nearLeft || nearRight) && (nearTop || nearBottom);
-                setIsCornerArea(isCorner);
+                const interactive = target.closest('button, textarea, input, [data-interactable="true"]');
 
                 if (interactive) {
                     setIsDraggableArea(false);
                     setIsEditableArea(false);
-                } else if (textElement) {
-                    setIsDraggableArea(false);
-                    setIsEditableArea(true);
                 } else {
+                    // 全域をドラッグ可能にする（テキストの上でも掴めるように緩和）
                     setIsDraggableArea(true);
-                    setIsEditableArea(false);
+                    setIsEditableArea(true);
                 }
             }
         };
@@ -809,7 +796,10 @@ const StickyNote = memo(function StickyNote() {
             window.removeEventListener('pointerleave', handleReset);
             window.removeEventListener('blur', handleReset);
         };
-    }, [isHover]);
+    }, []); // Only once for global move tracking
+
+    // [New] Dynamic Cursor Style based on area
+    const shellCursor = isEditing ? 'default' : (isDraggableArea ? 'grab' : 'default');
 
     // [New] Dirty Check
     const isDirty = isEditing
@@ -1353,9 +1343,9 @@ const StickyNote = memo(function StickyNote() {
                     alignItems: 'center',
                     gap: '8px',
                     padding: '4px',
-                    backgroundColor: 'rgba(255,255,255,0.4)',
+                    backgroundColor: 'transparent', // 透明化して白い横線を消去
                     borderRadius: '8px',
-                    backdropFilter: 'blur(4px)',
+                    backdropFilter: 'none', // 干渉を避けるため無効化
                     zIndex: 200
                 }}
             >
@@ -1429,7 +1419,7 @@ const StickyNote = memo(function StickyNote() {
         <div
             ref={shellRef}
             className="noteShell h-screen overflow-hidden flex flex-col"
-            style={{ backgroundColor: noteBackgroundColor }}
+            style={{ backgroundColor: noteBackgroundColor, cursor: shellCursor }}
         >
             <style>{`
                 /* Scoped Scrollbar Styles */
@@ -1463,7 +1453,8 @@ const StickyNote = memo(function StickyNote() {
                     zIndex: 100,
                     WebkitAppRegion: 'drag',
                     cursor: 'move',
-                    minHeight: '32px'
+                    minHeight: '32px',
+                    userSelect: 'none', // ドラッグ優先のため選択解除
                 } as any}
             >
                 {/* Right: Tag Chips Display & Status */}
@@ -1512,7 +1503,8 @@ const StickyNote = memo(function StickyNote() {
                     flexDirection: 'column',
                     padding: '0 18px 12px 18px', // Horizontal 18px matching header
                     boxSizing: 'border-box',
-                    position: 'relative'
+                    position: 'relative',
+                    userSelect: isEditing ? 'auto' : 'none' // 閲覧モード時はドラッグ優先
                 }}
             >
                 {/* Floating Vertical Toolbar (Pointer events auto to allow clicking) */}
@@ -1566,20 +1558,20 @@ const StickyNote = memo(function StickyNote() {
                             style={{
                                 backgroundColor: noteBackgroundColor,
                                 whiteSpace: 'pre-wrap',
-                                cursor: 'text',
+                                cursor: isEditing ? 'text' : (isDraggableArea ? 'grab' : 'text'),
+                                userSelect: isEditing ? 'auto' : 'none', // 閲覧モード時はドラッグ優先
                                 padding: 0, // 親のmainでパディングしているので0にする
                                 fontSize: `${noteFontSize}px`, // 設定からのフォントサイズ
                                 fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
                                 lineHeight: '1.4',
                                 letterSpacing: '0.01em'
                             }}
-                            onPointerDown={onArticlePointerDown} // ドラッグ判定用は残す
+                            onPointerDown={handleDragStart} // スムーズなドラッグエンジンを接続
                             // onPointerUp={onArticlePointerUp} // [Deleted] シングルクリック編集開始を削除
                             onDoubleClick={(e) => {
                                 e.stopPropagation();
                                 handleEditStart();
                             }}
-                            data-tauri-drag-region // [New] ネイティブドラッグ有効化
                         >
                             {content ? (
                                 <div style={{ whiteSpace: 'pre-wrap' }}>
@@ -1748,6 +1740,7 @@ const StickyNote = memo(function StickyNote() {
                         flexGrow: 1,
                         minHeight: '100px',
                         cursor: 'grab',
+                        userSelect: 'none' // 常に選択不可領域
                     }}
                     onPointerDown={(e) => {
                         // 【完全独立型ドラッグ管理】
