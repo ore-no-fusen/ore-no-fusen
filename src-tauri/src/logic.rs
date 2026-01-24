@@ -32,6 +32,20 @@ pub fn generate_filename(seq: i32, date: &str, context: &str) -> String {
     format!("{:04}_{}_{}.md", seq, date, context)
 }
 
+pub fn split_frontmatter(src: &str) -> (&str, &str) {
+    if !src.starts_with("---") {
+        return ("", src);
+    }
+    // Find second ---
+    if let Some(end) = src[3..].find("---") {
+        let fence_end = 3 + end + 3;
+        let front = &src[..fence_end];
+        let body = &src[fence_end..].trim_start();
+        return (front, body);
+    }
+    ("", src)
+}
+
 pub fn generate_frontmatter(seq: i32, context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String]) -> String {
     let color_line = if let Some(c) = background_color {
         format!("\nbackgroundColor: {}", c)
@@ -98,6 +112,7 @@ pub fn handle_save_note(
     state: &mut AppState, 
     current_path: &str, 
     body: &str, 
+    old_body: &str,
     frontmatter_raw: &str,
     allow_rename: bool
 ) -> Result<(String, Effect), String> {
@@ -112,33 +127,58 @@ pub fn handle_save_note(
     let (seq, created_date, old_context) = parse_filename(&filename);
     let first_line = body.lines().next().unwrap_or("").trim();
 
+    // Find old meta for comparison
+    let old_meta = state.notes.iter().find(|n| n.path == current_path).cloned();
+    let old_updated = old_meta.as_ref().map(|m| m.updated.clone()).unwrap_or_else(|| today.clone());
+
+    // Extract content fields from NEW frontmatter_raw
+    let (_, _, _, _, new_color, new_aot, new_tags) = extract_meta_from_content(frontmatter_raw);
+
+    // Check if "Content-related" fields changed
+    let content_changed = body != old_body 
+        || old_meta.as_ref().map_or(true, |m| m.background_color != new_color 
+            || m.always_on_top != new_aot 
+            || m.tags != new_tags);
+
+    // Determine final updated date
+    let final_updated = if content_changed { today } else { old_updated };
+
     // Rule A: If allow_rename is false, skip ALL rename logic
     if !allow_rename {
         println!("[DEBUG logic] allowRename=false. Skipping rename check. Path={}", current_path);
         
-        let final_frontmatter = update_updated_field(frontmatter_raw, &today);
+        let final_frontmatter = update_updated_field(frontmatter_raw, &final_updated);
         let content = format!("{}\n\n{}", final_frontmatter, body);
-        
-        // WriteNote ONLY
-        let effect = Effect::WriteNote {
-            path: current_path.to_string(),
-            content: content.clone(),
-        };
-        
+
         // Update State (Metadata)
         let (x, y, w, h, bg, aot, tags) = extract_meta_from_content(&content);
         let new_meta = NoteMeta {
             path: current_path.to_string(),
             seq,
             context: old_context, // Use old context
-            updated: today,
+            updated: final_updated,
             x, y, width: w, height: h,
             background_color: bg,
             always_on_top: aot,
             tags,
         };
+
+        // WRITE GUARD: If content is IDENTICAL to what logic expects (meaning no changes at all, inclusive of geometry)
+        // Note: content as assembled above vs what was theoretically there. 
+        // More robust: Compare new_meta with old_meta AND body with old_body.
+        let nothing_changed = !content_changed 
+            && old_meta.as_ref().map_or(false, |m| m.x == x && m.y == y && m.width == w && m.height == h);
+
+        let effect = if nothing_changed {
+            Effect::Batch(vec![]) // No write
+        } else {
+            Effect::WriteNote {
+                path: current_path.to_string(),
+                content: content.clone(),
+            }
+        };
+
         apply_update_note(state, current_path, new_meta);
-        
         return Ok((current_path.to_string(), effect));
     }
 
@@ -166,7 +206,7 @@ pub fn handle_save_note(
         current_path.to_string()
     };
     
-    let final_frontmatter = update_updated_field(frontmatter_raw, &today);
+    let final_frontmatter = update_updated_field(frontmatter_raw, &final_updated);
     let content = format!("{}\n\n{}", final_frontmatter, body);
     
     // Prepare Effect
@@ -177,18 +217,24 @@ pub fn handle_save_note(
             new_path: final_path_str.clone(),
         });
     }
-    effects.push(Effect::WriteNote {
-        path: final_path_str.clone(),
-        content: content.clone(),
-    });
-    
+
     // Update State
     let (x, y, w, h, bg, aot, tags) = extract_meta_from_content(&content);
+
+    let nothing_changed = !should_rename && !content_changed 
+        && old_meta.as_ref().map_or(false, |m| m.x == x && m.y == y && m.width == w && m.height == h);
+
+    if !nothing_changed {
+        effects.push(Effect::WriteNote {
+            path: final_path_str.clone(),
+            content: content.clone(),
+        });
+    }
     let new_meta = NoteMeta {
         path: final_path_str.clone(),
         seq,
         context: new_context,
-        updated: today,
+        updated: final_updated,
         x, y, width: w, height: h,
         background_color: bg,
         always_on_top: aot,

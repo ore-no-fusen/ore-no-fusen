@@ -207,6 +207,15 @@ fn fusen_save_note(
     frontmatter_raw: String,
     allow_rename: bool
 ) -> Result<String, String> {
+    // Read old content for change detection
+    let old_note = storage::read_note(&path).ok();
+    let old_body = old_note.as_ref().map(|n| {
+        // storage::read_note returns full content as body currently
+        // We need to extract the actual body part to compare correctly with incoming 'body'
+        let (_, body) = logic::split_frontmatter(&n.body);
+        body.to_string()
+    }).unwrap_or_default();
+
     let mut app_state = state.lock().unwrap();
     
     // Logicに全て任せる
@@ -214,6 +223,7 @@ fn fusen_save_note(
         &mut app_state, 
         &path, 
         &body, 
+        &old_body,
         &frontmatter_raw, 
         allow_rename
     )?;

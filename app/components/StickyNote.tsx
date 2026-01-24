@@ -365,24 +365,16 @@ const StickyNote = memo(function StickyNote() {
 
         let unlistenMove: (() => void) | undefined;
         let unlistenResize: (() => void) | undefined;
-        let moveTimer: NodeJS.Timeout;
-        let resizeTimer: NodeJS.Timeout;
 
         const setupListeners = async () => {
             const win = getCurrentWindow();
 
             unlistenMove = await win.listen('tauri://move', () => {
-                clearTimeout(moveTimer);
-                moveTimer = setTimeout(() => {
-                    saveWindowState();
-                }, 800);
+                saveWindowState();
             });
 
             unlistenResize = await win.listen('tauri://resize', () => {
-                clearTimeout(resizeTimer);
-                resizeTimer = setTimeout(() => {
-                    saveWindowState();
-                }, 800);
+                saveWindowState();
             });
         };
 
@@ -391,8 +383,6 @@ const StickyNote = memo(function StickyNote() {
         return () => {
             if (unlistenMove) unlistenMove();
             if (unlistenResize) unlistenResize();
-            clearTimeout(moveTimer);
-            clearTimeout(resizeTimer);
         };
     }, [selectedFile, saveWindowState]);
 
@@ -1486,7 +1476,7 @@ const StickyNote = memo(function StickyNote() {
                     {isEditing && (
                         <span className="ml-2 text-red-600 font-bold text-lg leading-none flex-shrink-0" title="編集中">●</span>
                     )}
-                    {!isEditing && isDirty && <span className="ml-1 text-xs flex-shrink-0">●</span>}
+                    {/* {!isEditing && isDirty && <span className="ml-1 text-xs flex-shrink-0">●</span>} */}
                 </div>
 
                 {/* ツールバーをスクロールに追従させるためのstickyコンテナ */}
