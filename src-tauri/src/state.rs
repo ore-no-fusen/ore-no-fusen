@@ -2,7 +2,6 @@
 // データ層: 純粋なデータ構造のみ
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct NoteMeta {
     pub path: String,
     pub seq: i32,
@@ -13,7 +12,6 @@ pub struct NoteMeta {
     pub width: Option<f64>,
     pub height: Option<f64>,
     pub background_color: Option<String>,
-    #[serde(rename = "alwaysOnTop")]
     pub always_on_top: Option<bool>,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -28,27 +26,29 @@ pub struct Note {
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct AppState {
-    pub base_path: Option<String>,  // NEW: UC-01 - サンドボックスベースフォルダ
+    pub base_path: Option<String>,
     pub folder_path: Option<String>,
     pub notes: Vec<NoteMeta>,
     pub selected_path: Option<String>,
     pub active_context_menu_path: Option<String>,
-    pub active_world: Option<String>, // NEW: 世界切替（集中モード）
-    pub active_tags: Vec<String>,     // NEW: 選択中のタグ（複数選択用）
+    pub active_world: Option<String>,
+    pub active_tags: Vec<String>,
 }
 
 // NEW: UC-01 - 設定ファイル用の構造体
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct Settings {
-    #[serde(alias = "base_path")]
+    #[serde(alias = "basePath")]
     pub base_path: Option<String>,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(alias = "autoStart")]
     #[serde(default)]
     pub auto_start: bool,
+    #[serde(alias = "fontSize")]
     #[serde(default = "default_font_size")]
     pub font_size: f64,
+    #[serde(alias = "soundEnabled")]
     #[serde(default = "default_sound_enabled")]
     pub sound_enabled: bool,
 }

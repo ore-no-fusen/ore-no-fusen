@@ -43,7 +43,8 @@ type NoteMeta = {
   y?: number;
   width?: number;
   height?: number;
-  backgroundColor?: string;
+  background_color?: string;
+  always_on_top?: boolean;
   tags?: string[];
 };
 
@@ -391,7 +392,7 @@ function OrchestratorContent() {
     const timestamp = Date.now();
     const tempPath = `${folderPath}/temp_${timestamp}.md`;
     const today = new Date().toISOString().slice(0, 10);
-    const tempMeta: NoteMeta = { path: tempPath, seq: timestamp, context, updated: today, x: 100, y: 100, width: 400, height: 300, backgroundColor: undefined, tags: [] };
+    const tempMeta: NoteMeta = { path: tempPath, seq: timestamp, context, updated: today, x: 100, y: 100, width: 400, height: 300, background_color: undefined, tags: [] };
 
     setFiles(prev => [...prev, tempMeta]);
     setIsCreating(true);
@@ -425,6 +426,27 @@ function OrchestratorContent() {
     })();
     return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:open_note', e); } };
   }, []);
+
+  // [New] 設定更新イベントの監視
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen<any>('settings_updated', async (event) => {
+          console.log('[ORCHESTRATOR] Settings updated:', event.payload);
+          const newSettings = event.payload;
+          if (newSettings && newSettings.base_path) {
+            setFolderPath(newSettings.base_path);
+            await syncState();
+          }
+        });
+      } catch (e) {
+        console.error("Failed to setup orchestrator settings listener", e);
+      }
+    })();
+    return () => { if (unlisten) unlisten(); };
+  }, [syncState]);
 
   // タグフィルター
   useEffect(() => {
@@ -686,11 +708,27 @@ function OrchestratorContent() {
       setIsSettingsOpen(false);
 
       // setupRequiredだった場合は、ここを通るということはセットアップ完了のはず（SettingsPage内でsetup_first_launchするから）
-      // ただしpage.tsxのstate更新が必要かもしれないが、現在のロジックではリロードが入るか、
-      // ユーザー操作でSettingsPage内の「設定完了」→ setup_first_launch → ウィンドウリサイズ等が行われる
+      if (setupRequired) {
+        // リロードせずに状態を同期してダッシュボードへ移行
+        await syncState();
+        setSetupRequired(false);
 
-      // 通常の設定変更の場合は、メインウィンドウを隠すのが基本挙動
-      if (!setupRequired) {
+        // メインウィンドウを表示
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const win = getCurrentWindow();
+          if (win.label === 'main') {
+            const { LogicalSize } = await import('@tauri-apps/api/dpi');
+            await win.setSize(new LogicalSize(240, 300));
+            await win.center();
+            await win.show();
+            await win.setFocus();
+          }
+        } catch (e) {
+          console.error("Failed to show main window", e);
+        }
+      } else {
+        // 通常の設定変更の場合は、メインウィンドウを隠すのが基本挙動
         try {
           const { getCurrentWindow } = await import('@tauri-apps/api/window');
           const win = getCurrentWindow();

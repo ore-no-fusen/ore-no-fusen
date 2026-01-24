@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
-import { emit } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { pathsEqual } from '../utils/pathUtils';
 import { playDeleteSound } from '../utils/soundManager';
@@ -25,8 +25,8 @@ type NoteMeta = {
     y?: number;
     width?: number;
     height?: number;
-    backgroundColor?: string;
-    alwaysOnTop?: boolean;
+    background_color?: string;
+    always_on_top?: boolean;
 };
 
 type Note = {
@@ -100,9 +100,31 @@ const StickyNote = memo(function StickyNote() {
     const editorRef = useRef<RichTextEditorRef>(null);
 
     // [Fix] Sync font size from settings
+    // [Fix] Sync font size from settings
     useEffect(() => {
-        setNoteFontSize(settings.fontSize);
-    }, [settings.fontSize]);
+        setNoteFontSize(settings.font_size);
+    }, [settings.font_size]);
+
+    // [New] Listen for global settings update from backend
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        (async () => {
+            try {
+                const { listen } = await import('@tauri-apps/api/event');
+                unlisten = await listen<any>("settings_updated", (event) => {
+                    const newSettings = event.payload;
+                    console.log("[STICKY]收到設定更新イベント:", newSettings);
+                    if (newSettings && typeof newSettings.font_size === 'number') {
+                        console.log("[STICKY] フォントサイズを更新します:", newSettings.font_size);
+                        setNoteFontSize(newSettings.font_size);
+                    }
+                });
+            } catch (e) {
+                console.error("Failed to setup settings_updated listener", e);
+            }
+        })();
+        return () => { if (unlisten) unlisten(); };
+    }, []);
     const editorHostRef = useRef<HTMLDivElement>(null); // [New boundary ref]
     const editBodyRef = useRef(editBody); // [New] Stale closure fix
 
@@ -1214,7 +1236,7 @@ const StickyNote = memo(function StickyNote() {
 
         const unlisten = (async () => {
             const win = getCurrentWindow();
-            return await win.listen<any>('fusen:context-action', async (event) => {
+            return await win.listen<any>('fusen:context_action', async (event) => {
                 const { action, path } = event.payload;
                 console.log('[NativeMenu] Action:', action, 'Path:', path);
 
@@ -1435,7 +1457,9 @@ const StickyNote = memo(function StickyNote() {
                         touchAction: 'none',
                         display: 'flex',
                         alignItems: 'center',
-                        overflow: 'hidden' // Ensure content doesn't overflow container
+                        overflow: 'hidden', // Ensure content doesn't overflow container
+                        fontSize: `${Math.max(10, noteFontSize * 0.85)}px`, // [New] Base size 연動 (最小10px)
+                        marginBottom: '4px'
                     }}
                 >
                     <span className="file-icon">
@@ -1532,6 +1556,7 @@ const StickyNote = memo(function StickyNote() {
                                 cursor: 'text',
                                 padding: 0, // 親のmainでパディングしているので0にする
                                 fontSize: `${noteFontSize}px`, // 設定からのフォントサイズ
+                                fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
                                 lineHeight: '1.4',
                                 letterSpacing: '0.01em'
                             }}
@@ -1565,7 +1590,7 @@ const StickyNote = memo(function StickyNote() {
                                         if (line.startsWith('# ')) {
                                             // Heading: start text after "# " (length 2)
                                             return (
-                                                <div key={i} data-line-index={i} style={{ ...lineStyle, fontWeight: 700 }}>
+                                                <div key={i} data-line-index={i} style={{ ...lineStyle, fontWeight: 700, fontSize: '1.1em' }}>
                                                     <span
                                                         style={{ color: '#ff8c00', marginRight: '4px', userSelect: 'none' }}
                                                         data-src-start={baseOffset}

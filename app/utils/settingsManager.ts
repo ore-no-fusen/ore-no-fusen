@@ -7,20 +7,20 @@ import { invoke } from '@tauri-apps/api/core';
 
 // 設定の型定義
 export type AppSettings = {
-    basePath: string;
+    base_path: string;
     language: 'ja' | 'en';
-    autoStart: boolean;
-    fontSize: number;
-    soundEnabled: boolean;
+    auto_start: boolean;
+    font_size: number;
+    sound_enabled: boolean;
 };
 
 // デフォルト値
 const DEFAULT_SETTINGS: AppSettings = {
-    basePath: '',
+    base_path: '',
     language: 'ja',
-    autoStart: false,
-    fontSize: 16,
-    soundEnabled: true,
+    auto_start: false,
+    font_size: 16,
+    sound_enabled: true,
 };
 
 // キャッシュ
@@ -47,14 +47,30 @@ export async function getSettings(): Promise<AppSettings> {
             // ブラウザ環境（開発用）
             const saved = localStorage.getItem('ore-no-fusen-settings');
             if (saved) {
-                settingsCache = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+                const parsed = JSON.parse(saved);
+                settingsCache = {
+                    ...DEFAULT_SETTINGS,
+                    base_path: parsed.base_path ?? parsed.basePath ?? DEFAULT_SETTINGS.base_path,
+                    language: parsed.language ?? DEFAULT_SETTINGS.language,
+                    auto_start: parsed.auto_start ?? parsed.autoStart ?? DEFAULT_SETTINGS.auto_start,
+                    font_size: parsed.font_size ?? parsed.fontSize ?? DEFAULT_SETTINGS.font_size,
+                    sound_enabled: parsed.sound_enabled ?? parsed.soundEnabled ?? DEFAULT_SETTINGS.sound_enabled,
+                };
             } else {
                 settingsCache = DEFAULT_SETTINGS;
             }
         } else {
             // Tauri環境
-            const loaded = await invoke<AppSettings>('get_settings');
-            settingsCache = { ...DEFAULT_SETTINGS, ...loaded };
+            const loaded = await invoke<any>('get_settings');
+            // Rust側もエイリアス付きで定義されているが、返却はsnake_caseのはず
+            const normalized = {
+                base_path: loaded.base_path,
+                language: loaded.language,
+                auto_start: loaded.auto_start,
+                font_size: loaded.font_size,
+                sound_enabled: loaded.sound_enabled,
+            }
+            settingsCache = { ...DEFAULT_SETTINGS, ...normalized };
         }
 
         lastCacheTime = now;
@@ -77,14 +93,14 @@ export async function getSetting<K extends keyof AppSettings>(key: K): Promise<A
  * fontSizeを取得
  */
 export async function getFontSize(): Promise<number> {
-    return getSetting('fontSize');
+    return getSetting('font_size');
 }
 
 /**
  * soundEnabledを取得
  */
 export async function isSoundEnabled(): Promise<boolean> {
-    return getSetting('soundEnabled');
+    return getSetting('sound_enabled');
 }
 
 /**

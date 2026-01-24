@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { open } from '@tauri-apps/plugin-shell';
-import { EditorState, EditorStateConfig, Extension, StateField } from '@codemirror/state';
+import { EditorState, Extension, StateField, Compartment } from '@codemirror/state';
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, WidgetType } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -289,6 +289,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
 }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
+    const themeCompartment = useRef(new Compartment());
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
@@ -528,8 +529,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                             }
                         }
                     }),
-                    // テーマ
-                    EditorView.theme({
+                    // テーマ (動的更新用Compartment)
+                    themeCompartment.current.of(EditorView.theme({
                         '&': {
                             fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
                             fontSize: `${fontSize}px`,
@@ -556,7 +557,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                         },
                         '.cm-md-h1': {
                             fontWeight: '700',
-                            fontSize: `${fontSize}px`,
+                            fontSize: '1.1em',
                         },
                         '.cm-md-bold': {
                             fontWeight: '700',
@@ -574,7 +575,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                             color: '#999',
                             opacity: 0.6,
                         }
-                    })
+                    }))
                 ]
             }),
             parent: editorRef.current
@@ -640,6 +641,32 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
             });
         });
     }, [cursorPosition]);
+
+    // [New] fontSize change handler
+    useEffect(() => {
+        if (!viewRef.current) return;
+        viewRef.current.dispatch({
+            effects: themeCompartment.current.reconfigure(EditorView.theme({
+                '&': {
+                    fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
+                    fontSize: `${fontSize}px`,
+                    lineHeight: '1.4',
+                    letterSpacing: '0.01em',
+                    backgroundColor: backgroundColor,
+                    outline: 'none !important', // [Fix] Remove black dotted outline
+                },
+                '.cm-content, .cm-content *': {
+                    fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important',
+                    fontSize: `${fontSize}px`,
+                    lineHeight: '1.4',
+                    letterSpacing: '0.01em',
+                },
+                '.cm-md-h1': {
+                    fontSize: '1.1em',
+                }
+            }))
+        });
+    }, [fontSize, backgroundColor]);
 
     // value が外部から変更された場合の同期
     useEffect(() => {

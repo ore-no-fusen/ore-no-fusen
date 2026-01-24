@@ -133,7 +133,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
 
                                 // setup_first_launch を呼び出してベースパスを設定
                                 // ※ カスタムパスがある場合でも、ディレクトリ作成等のために必ず呼び出す必要がある
-                                let basePath = settings.basePath
+                                let basePath = settings.base_path
                                 if (!basePath || basePath.trim() === "") {
                                     // デフォルトパスを使用してセットアップ
                                     basePath = await invoke<string>("setup_first_launch", {
@@ -209,8 +209,9 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                                     })
                                 }
 
-                                // [Reload] 設定適用を確実にするため、アプリ全体をリロード
-                                window.location.reload();
+                                // [Reload] 設定適用を確実にするため、アプリ全体をリロードしない
+                                // window.location.reload();
+                                onClose?.();
 
                             } catch (e) {
                                 console.error("設定の保存に失敗:", e)
@@ -294,9 +295,9 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                         <p className="text-sm text-muted-foreground">{t('settings.general.autoStartDesc')}</p>
                     </div>
                     <Switch
-                        checked={settings.autoStart}
+                        checked={settings.auto_start}
                         onCheckedChange={async (val) => {
-                            onUpdate("autoStart", val)
+                            onUpdate("auto_start", val)
                             // autostart pluginを呼び出し
                             try {
                                 const { enable, disable } = await import("@tauri-apps/plugin-autostart")
@@ -321,8 +322,8 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                         <p className="text-sm text-muted-foreground">{t('settings.general.soundDesc')}</p>
                     </div>
                     <Switch
-                        checked={settings.soundEnabled}
-                        onCheckedChange={(val) => onUpdate("soundEnabled", val)}
+                        checked={settings.sound_enabled}
+                        onCheckedChange={(val) => onUpdate("sound_enabled", val)}
                     />
                 </div>
             </div>
@@ -342,20 +343,20 @@ function AppearanceSection({ settings, onUpdate, t }: SectionProps) {
             <div className="space-y-4 pt-4">
                 <div className="flex justify-between">
                     <Label>{t('settings.appearance.fontSize')}</Label>
-                    <span className="text-sm text-muted-foreground">{t('settings.appearance.fontSizeCurrent')}: {settings.fontSize}px</span>
+                    <span className="text-sm text-muted-foreground">{t('settings.appearance.fontSizeCurrent')}: {settings.font_size}px</span>
                 </div>
                 {/* スライダーの値と連携 */}
                 <Slider
-                    defaultValue={[settings.fontSize]}
-                    value={[settings.fontSize]}
+                    defaultValue={[settings.font_size]}
+                    value={[settings.font_size]}
                     max={32}
                     min={10}
                     step={1}
                     className="w-[60%]"
-                    onValueChange={(vals) => onUpdate("fontSize", vals[0])}
+                    onValueChange={(vals) => onUpdate("font_size", vals[0])}
                 />
                 <div className="h-20 w-full rounded border p-4 flex items-center justify-center bg-muted/20">
-                    <p style={{ fontSize: `${settings.fontSize}px` }}>
+                    <p style={{ fontSize: `${settings.font_size}px` }}>
                         {t('settings.appearance.preview')}
                     </p>
                 </div>
@@ -378,7 +379,7 @@ function DataSection({
             const { invoke } = await import("@tauri-apps/api/core")
             const folder = await invoke<string | null>("fusen_select_folder")
             if (folder) {
-                onUpdate("basePath", folder)
+                onUpdate("base_path", folder)
             }
         } catch (e) {
             console.error("フォルダ選択に失敗:", e)
@@ -400,7 +401,7 @@ function DataSection({
                     <div className="flex gap-2">
                         <Input
                             id="path"
-                            value={settings.basePath}
+                            value={settings.base_path}
                             readOnly
                             placeholder={t('settings.data.basePathPlaceholder')}
                             className="font-mono text-sm bg-muted"
@@ -410,7 +411,7 @@ function DataSection({
                         </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        {settings.basePath ? t('settings.data.selected') : t('settings.data.notSet')}
+                        {settings.base_path ? t('settings.data.selected') : t('settings.data.notSet')}
                     </p>
                 </div>
 
@@ -463,7 +464,7 @@ function DataSection({
                                     type Stats = { total_files: number, imported_md: number, imported_images: number, skipped: number, errors: string[] };
                                     const stats = await invoke<Stats>("fusen_import_from_folder", {
                                         sourcePath: importSourcePath,
-                                        targetPath: settings.basePath
+                                        targetPath: settings.base_path
                                     });
 
                                     let msg = `インポート完了！\n\n`;
