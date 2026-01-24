@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import React from 'react';
@@ -15,7 +15,7 @@ import ConfirmDialog from './ConfirmDialog';
 import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
 
-// 型定義
+// 蝙句ｮ夂ｾｩ
 type NoteMeta = {
     path: string;
     seq: number;
@@ -35,7 +35,7 @@ type Note = {
     meta: NoteMeta;
 };
 
-// ユーティリティ関数
+// 繝ｦ繝ｼ繝・ぅ繝ｪ繝・ぅ髢｢謨ｰ
 function splitFrontMatter(src: string) {
     if (!src.startsWith('---')) return { front: '', body: src };
     const end = src.indexOf('\n---', 3);
@@ -79,14 +79,14 @@ const StickyNote = memo(function StickyNote() {
     const [editBody, setEditBody] = useState('');
     const [savePending, setSavePending] = useState(false);
     const [cursorPosition, setCursorPosition] = useState<number | null>(null);
-    const [isNewNote, setIsNewNote] = useState(false); // [NEW] 新規ノートフラグ（state管理）
+    const [isNewNote, setIsNewNote] = useState(false); // [NEW] 譁ｰ隕上ヮ繝ｼ繝医ヵ繝ｩ繧ｰ・・tate邂｡逅・ｼ・
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [rawFrontmatter, setRawFrontmatter] = useState<string>('');
     const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
-    const [noteFontSize, setNoteFontSize] = useState<number>(16); // 設定から読み込むフォントサイズ
-    // リネームによる更新かどうかを判定するフラグ
+    const [noteFontSize, setNoteFontSize] = useState<number>(16); // 險ｭ螳壹°繧芽ｪｭ縺ｿ霎ｼ繧繝輔か繝ｳ繝医し繧､繧ｺ
+    // 繝ｪ繝阪・繝縺ｫ繧医ｋ譖ｴ譁ｰ縺九←縺・°繧貞愛螳壹☆繧九ヵ繝ｩ繧ｰ
     const isRenamingRef = useRef(false);
-    // [Strict Rename] コミット（編集終了）処理中ガード
+    // [Strict Rename] 繧ｳ繝溘ャ繝茨ｼ育ｷｨ髮・ｵゆｺ・ｼ牙・逅・ｸｭ繧ｬ繝ｼ繝・
     const isCommittingRef = useRef(false);
 
     // [New] Selection & Pointer Refs
@@ -94,7 +94,7 @@ const StickyNote = memo(function StickyNote() {
     const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
 
     const lastEditEndedAt = useRef<number>(0);
-    // [New] 初期ロードやフォーカス揺れによる誤Blurを防ぐタイマー
+    // [New] 蛻晄悄繝ｭ繝ｼ繝峨ｄ繝輔か繝ｼ繧ｫ繧ｹ謠ｺ繧後↓繧医ｋ隱､Blur繧帝亟縺舌ち繧､繝槭・
     const ignoreBlurUntilRef = useRef<number>(0);
 
     const editorRef = useRef<RichTextEditorRef>(null);
@@ -113,9 +113,9 @@ const StickyNote = memo(function StickyNote() {
                 const { listen } = await import('@tauri-apps/api/event');
                 unlisten = await listen<any>("settings_updated", (event) => {
                     const newSettings = event.payload;
-                    console.log("[STICKY]收到設定更新イベント:", newSettings);
+                    console.log("[STICKY]謾ｶ蛻ｰ險ｭ螳壽峩譁ｰ繧､繝吶Φ繝・", newSettings);
                     if (newSettings && typeof newSettings.font_size === 'number') {
-                        console.log("[STICKY] フォントサイズを更新します:", newSettings.font_size);
+                        console.log("[STICKY] 繝輔か繝ｳ繝医し繧､繧ｺ繧呈峩譁ｰ縺励∪縺・", newSettings.font_size);
                         setNoteFontSize(newSettings.font_size);
                     }
                 });
@@ -133,7 +133,7 @@ const StickyNote = memo(function StickyNote() {
         editBodyRef.current = editBody;
     }, [editBody]);
 
-    // ホバー管理
+    // 繝帙ヰ繝ｼ邂｡逅・
     const [isHover, setIsHover] = useState(false);
     const [isDraggableArea, setIsDraggableArea] = useState(false);
     const [isEditableArea, setIsEditableArea] = useState(false);
@@ -147,7 +147,7 @@ const StickyNote = memo(function StickyNote() {
     const shellRef = useRef<HTMLDivElement>(null);
     const menuRef = useRef<any>(null); // Keep menu alive to prevent GC of callbacks
 
-    // Frontmatter更新ヘルパー
+    // Frontmatter譖ｴ譁ｰ繝倥Ν繝代・
     const updateFrontmatterValue = (front: string, key: string, value: string | number) => {
         // Use exact field names only - no aliases to prevent mismatches
         const regex = new RegExp(`(${key}:\\s*)(.*)`, 'm');
@@ -201,7 +201,7 @@ const StickyNote = memo(function StickyNote() {
                             cursor: 'pointer',
                         }}
                         data-src-start={partStart}
-                        data-tauri-drag-region="false" // リンク上はドラッグ無効化
+                        data-tauri-drag-region="false" // 繝ｪ繝ｳ繧ｯ荳翫・繝峨Λ繝・げ辟｡蜉ｹ蛹・
                         onClick={async (e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -228,7 +228,7 @@ const StickyNote = memo(function StickyNote() {
         });
     };
 
-    // ウィンドウ状態保存
+    // 繧ｦ繧｣繝ｳ繝峨え迥ｶ諷倶ｿ晏ｭ・
     const saveWindowState = useCallback(async () => {
         // [New Feature Instruction for Frontend Dev]
         // Use 'fusen_update_geometry' for efficient persistence without triggering full save.
@@ -257,7 +257,7 @@ const StickyNote = memo(function StickyNote() {
             console.error('Failed to save window state', e);
         }
     }, [selectedFile]);
-    // ノート保存
+    // 繝弱・繝井ｿ晏ｭ・
     const saveNote = useCallback(async (path: string, body: string, frontmatter: string, allowRename: boolean) => {
         // [Strict Log]
         console.log('[SAVE]', { allowRename, firstLine: body.split('\n')[0], path });
@@ -272,7 +272,7 @@ const StickyNote = memo(function StickyNote() {
             console.log('[DEBUG] saveNote result:', { old: path, new: newPath, renamed: !pathsEqual(newPath, path) });
             if (!pathsEqual(newPath, path)) {
                 console.log('File renamed during save:', path, '->', newPath);
-                isRenamingRef.current = true; // リネームフラグを立てる
+                isRenamingRef.current = true; // 繝ｪ繝阪・繝繝輔Λ繧ｰ繧堤ｫ九※繧・
 
                 // [Fix] Update Context and Path in State so UI reflects new title immediately
                 const newContext = body.split('\n')[0].trim();
@@ -287,7 +287,7 @@ const StickyNote = memo(function StickyNote() {
         }
     }, []);
 
-    // 自動保存
+    // 閾ｪ蜍穂ｿ晏ｭ・
     useEffect(() => {
         if (!selectedFile || !savePending) return;
         const timer = setTimeout(async () => {
@@ -304,7 +304,7 @@ const StickyNote = memo(function StickyNote() {
         return () => clearTimeout(timer);
     }, [selectedFile, rawFrontmatter, editBody, saveNote, savePending]);
 
-    // コンテンツ読み込み
+    // 繧ｳ繝ｳ繝・Φ繝・ｪｭ縺ｿ霎ｼ縺ｿ
     const loadFileContent = async (noteMeta: NoteMeta): Promise<string> => {
         setLoading(true);
         try {
@@ -331,11 +331,11 @@ const StickyNote = memo(function StickyNote() {
         }
     };
 
-    // 初期ロード
+    // 蛻晄悄繝ｭ繝ｼ繝・
     useEffect(() => {
         if (!urlPath) return;
 
-        // リネームによるURL更新の場合は、再読み込みをスキップ
+        // 繝ｪ繝阪・繝縺ｫ繧医ｋURL譖ｴ譁ｰ縺ｮ蝣ｴ蜷医・縲∝・隱ｭ縺ｿ霎ｼ縺ｿ繧偵せ繧ｭ繝・・
         if (isRenamingRef.current) {
             console.log('[STICKY_LOAD] Skipping reload due to rename:', urlPath);
             isRenamingRef.current = false;
@@ -352,15 +352,15 @@ const StickyNote = memo(function StickyNote() {
         };
         setSelectedFile(myNote);
 
-        // 読み込みと初期フォーカス設定
+        // 隱ｭ縺ｿ霎ｼ縺ｿ縺ｨ蛻晄悄繝輔か繝ｼ繧ｫ繧ｹ險ｭ螳・
         loadFileContent(myNote).then(async (body) => {
             // Fix 2: Use captured isNew
             if (isNew) {
                 console.log('[STICKY_LOAD] New note detected. Enabling edit mode.');
-                // 3) 新規作成時はしばらく Blur を無視する
+                // 3) 譁ｰ隕丈ｽ懈・譎ゅ・縺励・繧峨￥ Blur 繧堤┌隕悶☆繧・
                 ignoreBlurUntilRef.current = Date.now() + 800;
                 setIsEditing(true);
-                setIsNewNote(true); // [NEW] stateに保存
+                setIsNewNote(true); // [NEW] state縺ｫ菫晏ｭ・
 
                 // Fix 5 (Revert): Editor focus alone was insufficient.
                 // Re-enable explicit window focus, but slightly delayed to ensure it happens 
@@ -374,14 +374,14 @@ const StickyNote = memo(function StickyNote() {
         });
     }, [urlPath, isNew]); // Fix 2: Add isNew to dependency array
 
-    // 設定からフォントサイズを読み込む
+    // 險ｭ螳壹°繧峨ヵ繧ｩ繝ｳ繝医し繧､繧ｺ繧定ｪｭ縺ｿ霎ｼ繧
     useEffect(() => {
         getFontSize().then(size => {
             setNoteFontSize(size);
         });
     }, []);
 
-    // イベントリスナー設定
+    // 繧､繝吶Φ繝医Μ繧ｹ繝翫・險ｭ螳・
     useEffect(() => {
         if (!selectedFile) return;
 
@@ -463,14 +463,14 @@ const StickyNote = memo(function StickyNote() {
     }, [selectedFile]);
 
 
-    // 背景色変更を確実に反映させるためのuseEffect
+    // 閭梧勹濶ｲ螟画峩繧堤｢ｺ螳溘↓蜿肴丐縺輔○繧九◆繧√・useEffect
     useEffect(() => {
         if (shellRef.current) {
             shellRef.current.style.setProperty('background-color', noteBackgroundColor, 'important');
         }
     }, [noteBackgroundColor]);
 
-    // チェックボックスのトグル処理
+    // 繝√ぉ繝・け繝懊ャ繧ｯ繧ｹ縺ｮ繝医げ繝ｫ蜃ｦ逅・
     const handleToggleCheckbox = (lineIndex: number) => {
         const lines = (editBody || content).split('\n');
         if (lineIndex < 0 || lineIndex >= lines.length) return;
@@ -491,33 +491,33 @@ const StickyNote = memo(function StickyNote() {
 
 
 
-    // 編集モード開始
+    // 邱ｨ髮・Δ繝ｼ繝蛾幕蟋・
     const handleEditStart = (cursorPos?: number) => {
         if (isEditing) return;
-        // 2) 編集開始直後もしばらく Blur を無視する
+        // 2) 邱ｨ髮・幕蟋狗峩蠕後ｂ縺励・繧峨￥ Blur 繧堤┌隕悶☆繧・
         ignoreBlurUntilRef.current = Date.now() + 800;
         setIsEditing(true);
-        setEditBody(content); // 最新の状態をセット
+        setEditBody(content); // 譛譁ｰ縺ｮ迥ｶ諷九ｒ繧ｻ繝・ヨ
         setCursorPosition(cursorPos ?? null);
     };
 
-    // 編集モード終了
+    // 邱ｨ髮・Δ繝ｼ繝臥ｵゆｺ・
 
 
-    // 編集内容変更
+    // 邱ｨ髮・・螳ｹ螟画峩
     const handleEditChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setEditBody(e.target.value);
         setSavePending(true);
     };
 
-    // キーボードイベント
+    // 繧ｭ繝ｼ繝懊・繝峨う繝吶Φ繝・
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Escape') {
             handleEditBlur();
         }
     };
 
-    // カーソル位置設定 & 範囲選択復元
+    // 繧ｫ繝ｼ繧ｽ繝ｫ菴咲ｽｮ險ｭ螳・& 遽・峇驕ｸ謚槫ｾｩ蜈・
     useEffect(() => {
         if (!isEditing) return;
 
@@ -526,10 +526,10 @@ const StickyNote = memo(function StickyNote() {
                 return;
             }
             if (editorRef.current) {
-                // 範囲選択がある場合はそれを復元 (cursorPositionより優先)
+                // 遽・峇驕ｸ謚槭′縺ゅｋ蝣ｴ蜷医・縺昴ｌ繧貞ｾｩ蜈・(cursorPosition繧医ｊ蜆ｪ蜈・
                 if (pendingSelectionRef.current) {
                     const { start, end } = pendingSelectionRef.current;
-                    // ブラウザ側の選択解除を先に行う
+                    // 繝悶Λ繧ｦ繧ｶ蛛ｴ縺ｮ驕ｸ謚櫁ｧ｣髯､繧貞・縺ｫ陦後≧
                     window.getSelection()?.removeAllRanges();
 
                     editorRef.current.focus();
@@ -560,7 +560,7 @@ const StickyNote = memo(function StickyNote() {
         const base = parseInt(startStr, 10);
         if (!Number.isFinite(base)) return null;
 
-        // 最小実装：TextNode内のoffsetを足す
+        // 譛蟆丞ｮ溯｣・ｼ啜extNode蜀・・offset繧定ｶｳ縺・
         // Note: For non-text nodes (e.g. clicking the element itself), offset might mean child index.
         // But getSelection often returns text nodes. If it returns element, offset is index.
         // For simplicity and safety per user request "minimal implementation":
@@ -664,12 +664,12 @@ const StickyNote = memo(function StickyNote() {
 
 
 
-    // ドラッグ開始
+    // 繝峨Λ繝・げ髢句ｧ・
     const handleDragStart = useCallback(async (e: React.PointerEvent) => {
-        // 左クリック(0)以外はドラッグ処理しない
+        // 蟾ｦ繧ｯ繝ｪ繝・け(0)莉･螟悶・繝峨Λ繝・げ蜃ｦ逅・＠縺ｪ縺・
         if (e.button !== 0) return;
 
-        // 編集モード中なら、ドラッグさせずに編集終了処理を行う
+        // 邱ｨ髮・Δ繝ｼ繝我ｸｭ縺ｪ繧峨√ラ繝ｩ繝・げ縺輔○縺壹↓邱ｨ髮・ｵゆｺ・・逅・ｒ陦後≧
         if (isEditing) {
             e.preventDefault();
             e.stopPropagation();
@@ -677,22 +677,22 @@ const StickyNote = memo(function StickyNote() {
             return;
         }
 
-        // 編集終了直後(500ms)はガード（再編集入り防止）
+        // 邱ｨ髮・ｵゆｺ・峩蠕・500ms)縺ｯ繧ｬ繝ｼ繝会ｼ亥・邱ｨ髮・・繧企亟豁｢・・
         if (Date.now() - lastEditEndedAt.current < 500) {
             return;
         }
 
         const target = e.target as HTMLElement;
 
-        // 特定要素（ボタン、エディタ、本文）上では開始しない
+        // 迚ｹ螳夊ｦ∫ｴ・医・繧ｿ繝ｳ縲√お繝・ぅ繧ｿ縲∵悽譁・ｼ我ｸ翫〒縺ｯ髢句ｧ九＠縺ｪ縺・
         if (target.closest('button') || target.closest('.editorHost') || target.closest('article')) {
-            // タイトルバー（.file-name）だけは特別に許可
+            // 繧ｿ繧､繝医Ν繝舌・・・file-name・峨□縺代・迚ｹ蛻･縺ｫ險ｱ蜿ｯ
             if (!target.classList.contains('file-name')) {
                 return;
             }
         }
 
-        // トリプルジップロック：距離(10px)・時間(150ms)・ボタン状態(押下中)
+        // 繝医Μ繝励Ν繧ｸ繝・・繝ｭ繝・け・夊ｷ晞屬(10px)繝ｻ譎る俣(150ms)繝ｻ繝懊ち繝ｳ迥ｶ諷・謚ｼ荳倶ｸｭ)
         const startX = e.clientX;
         const startY = e.clientY;
         const startTime = Date.now();
@@ -750,7 +750,7 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [rawFrontmatter]);
 
-    // ホバー管理
+    // 繝帙ヰ繝ｼ邂｡逅・
     useEffect(() => {
         const handleGlobalPointer = (e: PointerEvent) => {
             if (!shellRef.current) return;
@@ -842,7 +842,7 @@ const StickyNote = memo(function StickyNote() {
 
             const openFolderItem = await MenuItem.new({
                 id: 'ctx_open_folder',
-                text: `📂 ${t('menu.openFolder')}`,
+                text: `唐 ${t('menu.openFolder')}`,
                 action: async () => {
                     await invoke('fusen_open_containing_folder', { path: selectedFile.path });
                 }
@@ -850,7 +850,7 @@ const StickyNote = memo(function StickyNote() {
 
             const newNoteItem = await MenuItem.new({
                 id: 'ctx_new_note',
-                text: `📝 ${t('menu.newNote')}`,
+                text: `統 ${t('menu.newNote')}`,
                 action: async () => { /* ... existing logic ... */
                     try {
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
@@ -876,11 +876,11 @@ const StickyNote = memo(function StickyNote() {
 
             // Color Items
             const colorItems = [
-                await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange('#80d8ff') }),
-                await MenuItem.new({ id: 'ctx_color_pink', text: `🌸 ${t('menu.colors.pink')}`, action: () => handleColorChange('#ffcdd2') }),
-                await MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange('#f7e9b0') })
+                await MenuItem.new({ id: 'ctx_color_blue', text: `鳩 ${t('menu.colors.blue')}`, action: () => handleColorChange('#80d8ff') }),
+                await MenuItem.new({ id: 'ctx_color_pink', text: `減 ${t('menu.colors.pink')}`, action: () => handleColorChange('#ffcdd2') }),
+                await MenuItem.new({ id: 'ctx_color_yellow', text: `兆 ${t('menu.colors.yellow')}`, action: () => handleColorChange('#f7e9b0') })
             ];
-            const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: `🎨 ${t('menu.changeColor')}`, items: colorItems });
+            const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: `耳 ${t('menu.changeColor')}`, items: colorItems });
 
             const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
 
@@ -898,7 +898,7 @@ const StickyNote = memo(function StickyNote() {
             if (isTagDeleteMode) {
                 console.log('[ShowContextMenu] Building menu in DELETE MODE.');
                 // DELETE MODE: Flattened Tags
-                menuItems.push(await MenuItem.new({ id: 'header_del', text: `⚠️ ${t('menu.deleteMode')}`, enabled: false }));
+                menuItems.push(await MenuItem.new({ id: 'header_del', text: `笞・・${t('menu.deleteMode')}`, enabled: false }));
 
                 try {
                     const tags = await invoke<string[]>('fusen_get_all_tags');
@@ -907,7 +907,7 @@ const StickyNote = memo(function StickyNote() {
                         for (const tag of tags) {
                             menuItems.push(await MenuItem.new({
                                 id: `ctx_del_tag_${tag}`,
-                                text: `🗑️ ${tag}`,
+                                text: `卵・・${tag}`,
                                 action: async () => {
                                     console.log('Requesting delete for:', tag);
                                     setTagToDelete(tag);
@@ -922,7 +922,7 @@ const StickyNote = memo(function StickyNote() {
                 menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                 menuItems.push(await MenuItem.new({
                     id: 'ctx_exit_mode',
-                    text: `⬅️ ${t('menu.normalMode')}`,
+                    text: `筮・ｸ・${t('menu.normalMode')}`,
                     action: () => {
                         shouldReopenMenu.current = true;
                         setIsTagDeleteMode(false);
@@ -934,7 +934,7 @@ const StickyNote = memo(function StickyNote() {
                 // NORMAL MODE: Tag Submenu
                 const tagNewItem = await MenuItem.new({
                     id: 'ctx_tag_new',
-                    text: `➕ ${t('menu.addTag')}`,
+                    text: `筐・${t('menu.addTag')}`,
                     action: async () => {
                         /* Reuse logic to fetch tags and show modal */
                         try {
@@ -972,7 +972,7 @@ const StickyNote = memo(function StickyNote() {
                             const isChecked = currentNoteTags.includes(tag);
                             tagSubItems.push(await MenuItem.new({
                                 id: `ctx_tag_${tag}`,
-                                text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
+                                text: isChecked ? `笘・${tag}` : `笘・${tag}`,
                                 action: async () => {
                                     try {
                                         if (!selectedFile) return;
@@ -997,7 +997,7 @@ const StickyNote = memo(function StickyNote() {
                         tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                         tagSubItems.push(await MenuItem.new({
                             id: 'ctx_enter_del_mode',
-                            text: `🔧 ${t('menu.deleteMode')}`,
+                            text: `肌 ${t('menu.deleteMode')}`,
                             action: () => {
                                 shouldReopenMenu.current = true;
                                 setIsTagDeleteMode(true);
@@ -1013,7 +1013,7 @@ const StickyNote = memo(function StickyNote() {
                     }
                 } catch (e) { console.error('Failed to load tags for submenu:', e); }
 
-                const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `🏷️ ${t('menu.tags')}`, items: tagSubItems });
+                const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `捷・・${t('menu.tags')}`, items: tagSubItems });
                 menuItems.push(tagSubmenu);
             }
 
@@ -1021,12 +1021,12 @@ const StickyNote = memo(function StickyNote() {
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_delete',
-                text: `🗑️ ${t('menu.delete')}`,
+                text: `卵・・${t('menu.delete')}`,
                 action: async () => {
-                    // [Sound] 設定に基づいて削除音を再生
+                    // [Sound] 險ｭ螳壹↓蝓ｺ縺･縺・※蜑企勁髻ｳ繧貞・逕・
                     await playDeleteSound();
 
-                    // 音が聞こえるように少し待つ
+                    // 髻ｳ縺瑚◇縺薙∴繧九ｈ縺・↓蟆代＠蠕・▽
                     await new Promise(resolve => setTimeout(resolve, 300));
 
                     await invoke('fusen_move_to_trash', { path: selectedFile.path });
@@ -1077,7 +1077,7 @@ const StickyNote = memo(function StickyNote() {
         setIsEditing(false);
         lastEditEndedAt.current = Date.now();
 
-        // 統一された保存処理を使用
+        // 邨ｱ荳縺輔ｌ縺滉ｿ晏ｭ伜・逅・ｒ菴ｿ逕ｨ
         try {
             await saveNote(selectedFile.path, currentBody, rawFrontmatter, true);
         } catch (e) {
@@ -1128,7 +1128,7 @@ const StickyNote = memo(function StickyNote() {
         };
     }, [isEditing, handleEditBlur]);
 
-    // コンテキストメニューアクション
+    // 繧ｳ繝ｳ繝・く繧ｹ繝医Γ繝九Η繝ｼ繧｢繧ｯ繧ｷ繝ｧ繝ｳ
     const handleToggleAlwaysOnTop = async (enabled: boolean) => {
         if (!selectedFile) return;
         try {
@@ -1163,17 +1163,17 @@ const StickyNote = memo(function StickyNote() {
     const handleDuplicate = async () => {
         if (!selectedFile) return;
         try {
-            // 現在のフォルダパスを取得
+            // 迴ｾ蝨ｨ縺ｮ繝輔か繝ｫ繝繝代せ繧貞叙蠕・
             const normalizedPath = selectedFile.path.replace(/\\/g, '/');
             const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
 
-            // 新規ノート作成（コンテキスト継承）
+            // 譁ｰ隕上ヮ繝ｼ繝井ｽ懈・・医さ繝ｳ繝・く繧ｹ繝育ｶ呎価・・
             const newNote = await invoke<Note>('fusen_create_note', {
                 folderPath,
                 context: selectedFile.context
             });
 
-            // 内容を現在の内容で上書き保存（メタデータ含む）
+            // 蜀・ｮｹ繧堤樟蝨ｨ縺ｮ蜀・ｮｹ縺ｧ荳頑嶌縺堺ｿ晏ｭ假ｼ医Γ繧ｿ繝・・繧ｿ蜷ｫ繧・・
             await invoke('fusen_save_note', {
                 path: newNote.meta.path,
                 body: editBody,
@@ -1181,7 +1181,7 @@ const StickyNote = memo(function StickyNote() {
                 allowRename: false // Initial save for duplicate, no rename needed
             });
 
-            // 新しいウィンドウを開く
+            // 譁ｰ縺励＞繧ｦ繧｣繝ｳ繝峨え繧帝幕縺・
             await emit('fusen:open_note', { path: newNote.meta.path });
         } catch (e) {
             console.error('Duplicate failed', e);
@@ -1224,7 +1224,7 @@ const StickyNote = memo(function StickyNote() {
             if (selectedFile) loadFileContent(selectedFile);
         } catch (e) {
             console.error('Failed to delete tag globally:', e);
-            alert(`タグの削除に失敗しました。\nエラー: ${e}`);
+            alert(`繧ｿ繧ｰ縺ｮ蜑企勁縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲・n繧ｨ繝ｩ繝ｼ: ${e}`);
         } finally {
             setTagToDelete(null);
         }
@@ -1276,7 +1276,7 @@ const StickyNote = memo(function StickyNote() {
         };
     }, [selectedFile, noteBackgroundColor, savePending, rawFrontmatter, editBody, content]);
 
-    // タグ追加ハンドラー
+    // 繧ｿ繧ｰ霑ｽ蜉繝上Φ繝峨Λ繝ｼ
     const handleAddTag = async () => {
         if (!selectedFile || !tagInputValue.trim()) return;
 
@@ -1286,22 +1286,22 @@ const StickyNote = memo(function StickyNote() {
                 tag: tagInputValue.trim()
             });
 
-            // モーダルを閉じる
+            // 繝｢繝ｼ繝繝ｫ繧帝哩縺倥ｋ
             setShowTagModal(false);
             setTagInputValue('');
 
-            // 全タグを再取得
+            // 蜈ｨ繧ｿ繧ｰ繧貞・蜿門ｾ・
             const tags = await invoke<string[]>('fusen_get_all_tags');
             setAllTags(tags);
 
-            // ノートを再読み込みして現在のタグも更新
+            // 繝弱・繝医ｒ蜀崎ｪｭ縺ｿ霎ｼ縺ｿ縺励※迴ｾ蝨ｨ縺ｮ繧ｿ繧ｰ繧よ峩譁ｰ
             const note = await invoke<Note>('fusen_read_note', { path: selectedFile.path });
             const { front, body } = splitFrontMatter(note.body);
             setRawFrontmatter(front);
             setContent(body);
             setEditBody(body);
 
-            // 現在のタグを更新
+            // 迴ｾ蝨ｨ縺ｮ繧ｿ繧ｰ繧呈峩譁ｰ
             const tagsMatch = front.match(/tags:\s*\[([^\]]*)\]/);
             if (tagsMatch) {
                 const noteTags = tagsMatch[1].split(',').map(t => t.trim()).filter(t => t);
@@ -1313,7 +1313,7 @@ const StickyNote = memo(function StickyNote() {
     };
 
     if (loading) return <div>Loading...</div>;
-    // Markdown挿入ヘルパー
+    // Markdown謖ｿ蜈･繝倥Ν繝代・
     const insertMarkdown = (marker: string) => {
         if (!textareaRef.current) return;
         const textarea = textareaRef.current;
@@ -1326,9 +1326,9 @@ const StickyNote = memo(function StickyNote() {
 
         const newText = `${before}${marker}${selection}${marker}${after}`;
         setEditBody(newText);
-        setSavePending(true); // 即座に保存キューへ
+        setSavePending(true); // 蜊ｳ蠎ｧ縺ｫ菫晏ｭ倥く繝･繝ｼ縺ｸ
 
-        // カーソル位置を復元（選択範囲を維持）
+        // 繧ｫ繝ｼ繧ｽ繝ｫ菴咲ｽｮ繧貞ｾｩ蜈・ｼ磯∈謚樒ｯ・峇繧堤ｶｭ謖・ｼ・
         requestAnimationFrame(() => {
             if (textareaRef.current) {
                 textareaRef.current.focus();
@@ -1337,7 +1337,7 @@ const StickyNote = memo(function StickyNote() {
         });
     };
 
-    // ホバーバー (編集モード時はツールバー)
+    // 繝帙ヰ繝ｼ繝舌・ (邱ｨ髮・Δ繝ｼ繝画凾縺ｯ繝・・繝ｫ繝舌・)
     const HoverBar = ({ show }: { show: boolean }) => {
         if (!isEditing) return null;
         return (
@@ -1368,7 +1368,7 @@ const StickyNote = memo(function StickyNote() {
                             }}
                             onClick={() => editorRef.current?.insertBold()}
                             className="font-bold text-red-600 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
-                            title="太字 (赤)"
+                            title="螟ｪ蟄・(襍､)"
                         >
                             B
                         </button>
@@ -1379,7 +1379,7 @@ const StickyNote = memo(function StickyNote() {
                             }}
                             onClick={() => editorRef.current?.insertHeading1()}
                             className="font-bold text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
-                            title="見出し1"
+                            title="隕句・縺・"
                         >
                             <span style={{ fontSize: '14px', position: 'relative', top: '-1px' }}>H<sub style={{ bottom: '0', fontSize: '10px' }}>1</sub></span>
                         </button>
@@ -1390,7 +1390,7 @@ const StickyNote = memo(function StickyNote() {
                             }}
                             onClick={() => editorRef.current?.insertList()}
                             className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
-                            title="箇条書き"
+                            title="邂・擅譖ｸ縺・
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <line x1="9" y1="6" x2="20" y2="6"></line>
@@ -1408,7 +1408,7 @@ const StickyNote = memo(function StickyNote() {
                             }}
                             onClick={() => editorRef.current?.insertCheckbox()}
                             className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
-                            title="チェックボックス"
+                            title="繝√ぉ繝・け繝懊ャ繧ｯ繧ｹ"
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -1478,7 +1478,7 @@ const StickyNote = memo(function StickyNote() {
                     {currentTags.length > 0 && (() => {
                         const MAX_DISPLAY = 5;
                         const displayTags = currentTags.slice(0, MAX_DISPLAY).map(tag =>
-                            tag.length > 10 ? tag.substring(0, 10) + '…' : tag
+                            tag.length > 10 ? tag.substring(0, 10) + '窶ｦ' : tag
                         );
                         if (currentTags.length > MAX_DISPLAY) {
                             displayTags.push(`+${currentTags.length - MAX_DISPLAY}`);
@@ -1499,7 +1499,7 @@ const StickyNote = memo(function StickyNote() {
                         ));
                     })()}
                     {isEditing && (
-                        <span style={{ color: '#ef4444', fontSize: '14px', marginLeft: '6px', alignSelf: 'center' }}>●</span>
+                        <span style={{ color: '#ef4444', fontSize: '14px', marginLeft: '6px', alignSelf: 'center' }}>笳・/span>
                     )}
                 </div>
             </header>
@@ -1556,8 +1556,8 @@ const StickyNote = memo(function StickyNote() {
                                 }}
                                 backgroundColor={noteBackgroundColor}
                                 cursorPosition={cursorPosition}
-                                isNewNote={isNewNote} // [NEW] stateから渡す
-                                fontSize={noteFontSize} // 設定からのフォントサイズ
+                                isNewNote={isNewNote} // [NEW] state縺九ｉ貂｡縺・
+                                fontSize={noteFontSize} // 險ｭ螳壹°繧峨・繝輔か繝ｳ繝医し繧､繧ｺ
                             />
                         </div>
                     ) : (
@@ -1567,29 +1567,29 @@ const StickyNote = memo(function StickyNote() {
                                 backgroundColor: noteBackgroundColor,
                                 whiteSpace: 'pre-wrap',
                                 cursor: 'text',
-                                padding: 0, // 親のmainでパディングしているので0にする
-                                fontSize: `${noteFontSize}px`, // 設定からのフォントサイズ
+                                padding: 0, // 隕ｪ縺ｮmain縺ｧ繝代ョ繧｣繝ｳ繧ｰ縺励※縺・ｋ縺ｮ縺ｧ0縺ｫ縺吶ｋ
+                                fontSize: `${noteFontSize}px`, // 險ｭ螳壹°繧峨・繝輔か繝ｳ繝医し繧､繧ｺ
                                 fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
                                 lineHeight: '1.4',
                                 letterSpacing: '0.01em'
                             }}
-                            onPointerDown={onArticlePointerDown} // ドラッグ判定用は残す
-                            // onPointerUp={onArticlePointerUp} // [Deleted] シングルクリック編集開始を削除
+                            onPointerDown={onArticlePointerDown} // 繝峨Λ繝・げ蛻､螳夂畑縺ｯ谿九☆
+                            // onPointerUp={onArticlePointerUp} // [Deleted] 繧ｷ繝ｳ繧ｰ繝ｫ繧ｯ繝ｪ繝・け邱ｨ髮・幕蟋九ｒ蜑企勁
                             onDoubleClick={(e) => {
                                 e.stopPropagation();
                                 handleEditStart();
                             }}
-                            data-tauri-drag-region // [New] ネイティブドラッグ有効化
+                            data-tauri-drag-region // [New] 繝阪う繝・ぅ繝悶ラ繝ｩ繝・げ譛牙柑蛹・
                         >
                             {content ? (
                                 <div style={{ whiteSpace: 'pre-wrap' }}>
                                     {content.split('\n').map((line, i) => {
-                                        // 1行の共通スタイル
+                                        // 1陦後・蜈ｱ騾壹せ繧ｿ繧､繝ｫ
                                         const lineStyle: React.CSSProperties = {
                                             margin: 0,
                                             padding: 0,
                                             lineHeight: '1.4',
-                                            minHeight: '1.4em', // 14.7px相当。エディタの1行と確実に一致させる
+                                            minHeight: '1.4em', // 14.7px逶ｸ蠖薙ゅお繝・ぅ繧ｿ縺ｮ1陦後→遒ｺ螳溘↓荳閾ｴ縺輔○繧・
                                             display: 'flex',
                                             alignItems: 'flex-start'
                                         };
@@ -1615,7 +1615,7 @@ const StickyNote = memo(function StickyNote() {
                                             );
                                         }
 
-                                        // チェックボックス (タスクリスト)
+                                        // 繝√ぉ繝・け繝懊ャ繧ｯ繧ｹ (繧ｿ繧ｹ繧ｯ繝ｪ繧ｹ繝・
                                         const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
                                         if (taskMatch) {
                                             const isChecked = taskMatch[2].toLowerCase() === 'x';
@@ -1632,7 +1632,7 @@ const StickyNote = memo(function StickyNote() {
                                                 <div key={i} data-line-index={i} style={lineStyle}>
                                                     <span
                                                         onClick={(e) => {
-                                                            e.stopPropagation(); // 編集モード移行を防ぐ
+                                                            e.stopPropagation(); // 邱ｨ髮・Δ繝ｼ繝臥ｧｻ陦後ｒ髦ｲ縺・
                                                             handleToggleCheckbox(i);
                                                         }}
                                                         data-interactable="true"
@@ -1643,13 +1643,13 @@ const StickyNote = memo(function StickyNote() {
                                                             display: 'inline-block',
                                                             width: '1em',
                                                             textAlign: 'center',
-                                                            cursor: 'pointer', // 押せることが分かるように
+                                                            cursor: 'pointer', // 謚ｼ縺帙ｋ縺薙→縺悟・縺九ｋ繧医≧縺ｫ
                                                             userSelect: 'none'
                                                         }}
-                                                        title={isChecked ? '未完了にする' : '完了にする'}
+                                                        title={isChecked ? '譛ｪ螳御ｺ・↓縺吶ｋ' : '螳御ｺ・↓縺吶ｋ'}
                                                         data-src-start={baseOffset} // Icon click -> start of line
                                                     >
-                                                        {isChecked ? '☑' : '☐'}
+                                                        {isChecked ? '笘・ : '笘・}
                                                     </span>
                                                     <span
                                                         style={{ textDecoration: isChecked ? 'line-through' : 'none', opacity: isChecked ? 0.6 : 1 }}
@@ -1661,7 +1661,7 @@ const StickyNote = memo(function StickyNote() {
                                             );
                                         }
 
-                                        // 箇条書き (リスト)
+                                        // 邂・擅譖ｸ縺・(繝ｪ繧ｹ繝・
                                         const listMatch = line.match(/^[\-\*\+]\s+(.*)$/);
                                         if (listMatch) {
                                             const text = listMatch[1];
@@ -1675,7 +1675,7 @@ const StickyNote = memo(function StickyNote() {
                                                         display: 'inline-block',
                                                         width: '1em',
                                                         textAlign: 'center'
-                                                    }} data-src-start={baseOffset}>•</span>
+                                                    }} data-src-start={baseOffset}>窶｢</span>
                                                     <span data-src-start={textStart}>
                                                         {parseLinks(text, textStart)}
                                                     </span>
@@ -1729,7 +1729,7 @@ const StickyNote = memo(function StickyNote() {
                                 </div >
                             ) : (
                                 <div className="text-gray-400 text-center py-8 text-xs font-mono opacity-50">
-                                    クリックして編集を開始
+                                    繧ｯ繝ｪ繝・け縺励※邱ｨ髮・ｒ髢句ｧ・
                                 </div>
                             )
                             }
@@ -1738,9 +1738,9 @@ const StickyNote = memo(function StickyNote() {
                 }
 
                 {/* 
-                  【フッタードラッグ領域】
-                   閲覧モード：ドラッグ可能領域、クリックで編集
-                   編集モード：クリックで保存して閲覧モードへ戻る
+                  縲舌ヵ繝・ち繝ｼ繝峨Λ繝・げ鬆伜沺縲・
+                   髢ｲ隕ｧ繝｢繝ｼ繝会ｼ壹ラ繝ｩ繝・げ蜿ｯ閭ｽ鬆伜沺縲√け繝ｪ繝・け縺ｧ邱ｨ髮・
+                   邱ｨ髮・Δ繝ｼ繝会ｼ壹け繝ｪ繝・け縺ｧ菫晏ｭ倥＠縺ｦ髢ｲ隕ｧ繝｢繝ｼ繝峨∈謌ｻ繧・
                 */}
                 <div
                     className="note-footer"
@@ -1750,21 +1750,21 @@ const StickyNote = memo(function StickyNote() {
                         cursor: 'grab',
                     }}
                     onPointerDown={(e) => {
-                        // 【完全独立型ドラッグ管理】
-                        // 親要素(noteShell)へのイベント伝播を常に遮断し、競合を物理的に排除する
+                        // 縲仙ｮ悟・迢ｬ遶句梛繝峨Λ繝・げ邂｡逅・・
+                        // 隕ｪ隕∫ｴ(noteShell)縺ｸ縺ｮ繧､繝吶Φ繝井ｼ晄眺繧貞ｸｸ縺ｫ驕ｮ譁ｭ縺励∫ｫｶ蜷医ｒ迚ｩ逅・噪縺ｫ謗帝勁縺吶ｋ
                         e.stopPropagation();
 
-                        // 閲覧モードかつクールダウン期間外の場合のみ、ここからドラッグを開始する
+                        // 髢ｲ隕ｧ繝｢繝ｼ繝峨°縺､繧ｯ繝ｼ繝ｫ繝繧ｦ繝ｳ譛滄俣螟悶・蝣ｴ蜷医・縺ｿ縲√％縺薙°繧峨ラ繝ｩ繝・げ繧帝幕蟋九☆繧・
                         if (!isEditing && (Date.now() - lastEditEndedAt.current >= 500)) {
                             handleDragStart(e);
                         }
                     }}
                     onClick={() => isEditing && handleEditBlur()}
-                    title="ドラッグで移動 / クリックで保存"
+                    title="繝峨Λ繝・げ縺ｧ遘ｻ蜍・/ 繧ｯ繝ｪ繝・け縺ｧ菫晏ｭ・
                 />
             </main >
 
-            {/* カスタムモーダルダイアログ - 新規タグ追加 */}
+            {/* 繧ｫ繧ｹ繧ｿ繝繝｢繝ｼ繝繝ｫ繝繧､繧｢繝ｭ繧ｰ - 譁ｰ隕上ち繧ｰ霑ｽ蜉 */}
             {
                 showTagModal && (
                     <div style={{
@@ -1787,7 +1787,7 @@ const StickyNote = memo(function StickyNote() {
                             minWidth: '320px',
                             maxWidth: '400px'
                         }}>
-                            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 'bold' }}>新規タグを追加</h3>
+                            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 'bold' }}>譁ｰ隕上ち繧ｰ繧定ｿｽ蜉</h3>
 
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                                 <input
@@ -1803,7 +1803,7 @@ const StickyNote = memo(function StickyNote() {
                                             setTagInputValue('');
                                         }
                                     }}
-                                    placeholder="タグ名を入力"
+                                    placeholder="繧ｿ繧ｰ蜷阪ｒ蜈･蜉・
                                     autoFocus
                                     style={{
                                         flex: 1,
@@ -1827,7 +1827,7 @@ const StickyNote = memo(function StickyNote() {
                                         whiteSpace: 'nowrap'
                                     }}
                                 >
-                                    追加
+                                    霑ｽ蜉
                                 </button>
                             </div>
 
@@ -1846,7 +1846,7 @@ const StickyNote = memo(function StickyNote() {
                                         fontSize: '13px'
                                     }}
                                 >
-                                    キャンセル
+                                    繧ｭ繝｣繝ｳ繧ｻ繝ｫ
                                 </button>
                             </div>
                         </div>
@@ -1856,8 +1856,8 @@ const StickyNote = memo(function StickyNote() {
             {/* Confirmation Dialog for Global Tag Deletion */}
             <ConfirmDialog
                 isOpen={!!tagToDelete}
-                title="タグの削除"
-                message={`タグ「${tagToDelete}」をすべてのメモから削除しますか？\nこの操作は元に戻せません。`}
+                title="繧ｿ繧ｰ縺ｮ蜑企勁"
+                message={`繧ｿ繧ｰ縲・{tagToDelete}縲阪ｒ縺吶∋縺ｦ縺ｮ繝｡繝｢縺九ｉ蜑企勁縺励∪縺吶°・歃n縺薙・謫堺ｽ懊・蜈・↓謌ｻ縺帙∪縺帙ｓ縲Ａ}
                 onConfirm={executeTagDelete}
                 onCancel={() => {
                     setTagToDelete(null);
@@ -1869,3 +1869,4 @@ const StickyNote = memo(function StickyNote() {
 });
 
 export default StickyNote;
+

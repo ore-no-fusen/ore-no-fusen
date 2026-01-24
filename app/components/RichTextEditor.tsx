@@ -654,6 +654,13 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     letterSpacing: '0.01em',
                     backgroundColor: backgroundColor,
                     outline: 'none !important', // [Fix] Remove black dotted outline
+                    padding: '0 !important', // Ensure no internal padding
+                },
+                '.cm-content': {
+                    padding: '0 !important',
+                },
+                '.cm-line': {
+                    padding: '0 !important',
                 },
                 '.cm-content, .cm-content *': {
                     fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important',

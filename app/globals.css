@@ -1,668 +1,101 @@
-/* ===== 莉倡ｮ具ｼ哺arkdown陦ｨ遉ｺ縺ｮ縲檎せ縲阪→縲悟､ｪ蟄苓ｦ句・縺苓｡後阪ｒ逶ｴ縺・===== */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Tailwind preflight縺ｧ豸医∴繧九檎せ縲阪ｒ蠕ｩ豢ｻ */
-.sticky-markdown ul {
-  list-style: disc;
-  list-style-position: outside;
-  padding-left: 1.6rem;
-  /* 轤ｹ縺ｮ蛻・・蟾ｦ菴咏區 */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
 }
 
-.sticky-markdown ol {
-  list-style: decimal;
-  list-style-position: outside;
-  padding-left: 1.6rem;
-}
+@layer base {
+  * {
+    @apply border-border;
+  }
 
-/* 1蛟狗岼縺ｮ鬆・岼縺悟ｷｦ縺ｫ隧ｰ縺ｾ縺｣縺ｦ隕九∴繧九・繧帝亟縺・*/
-.sticky-markdown li {
-  padding-left: 0.2rem;
-  /* 轤ｹ縺ｨ譁・ｭ励・髢・*/
-}
-
-/* 螟ｪ蟄励□縺代・陦鯉ｼ・*xxx**・峨ｒ縲瑚ｦ句・縺励▲縺ｽ縺上肴桶縺・ｼ・bsidan鬚ｨ・・*/
-.sticky-markdown p>strong:only-child {
-  display: block;
-  margin-top: 0.85em;
-  margin-bottom: 0.25em;
-  font-size: 1.05em;
-  font-weight: 600;
-}
-
-/* 螟ｪ蟄励□縺代・陦後・逶ｴ蠕後・繝ｪ繧ｹ繝医ｒ蟆代＠縺縺題ｩｰ繧√ｋ */
-.sticky-section+ul,
-.sticky-section+ol {
-  margin-top: 0.15em;
-  padding-left: 1.2rem;
-}
-
-.sticky-markdown ul {
-  list-style: disc;
-}
-
-.sticky-markdown ol {
-  list-style: decimal;
-}
-
-.sticky-markdown li {
-  list-style-position: outside;
-}
-
-/* 隕句・縺励・繧ｹ繧ｿ繧､繝ｫ繧定ｿｽ蜉 */
-.sticky-markdown h1 {
-  font-size: 1.05em;
-  font-weight: 600;
-  margin-top: 0.85em;
-  margin-bottom: 0.25em;
-  border-bottom: none;
-  padding-bottom: 0;
-  line-height: 1.4;
-}
-
-.sticky-markdown h2,
-.sticky-markdown h3,
-.sticky-markdown h4 {
-  font-size: 1.0em;
-  font-weight: 600;
-  margin-top: 0.85em;
-  margin-bottom: 0.25em;
-  border-bottom: none;
-  padding-bottom: 0;
-  line-height: 1.4;
-}
-
-/* 鄂ｫ邱壹・陦ｨ遉ｺ縺励↑縺・*/
-.sticky-markdown hr {
-  display: none;
-}
-
-/* sticky 譛蟆上ヰ繝ｼ */
-.sticky-mini-bar {
-  position: fixed;
-  top: 8px;
-  right: 10px;
-  z-index: 50;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.sticky-mini-btn {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.sticky-mini-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.sticky-mini-info {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.65);
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
-  padding: 6px 10px;
-  max-width: 260px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 譎ｮ谿ｵ縺ｯ螳悟・縺ｫ髫縺・*/
-.sticky-mini-bar {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-
-/* 逕ｻ髱｢蜿ｳ荳翫↓繝槭え繧ｹ繧呈戟縺｣縺ｦ縺・▲縺滓凾縺縺大・縺・*/
-.sticky-root:hover .sticky-mini-bar {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* 莉倡ｮ具ｼ壹ち繧､繝医Ν・郁ｦ句・縺礼嶌蠖楢｡鯉ｼ・*/
-.sticky-title {
-  display: block;
-  margin-top: 0.35rem;
-  margin-bottom: 0.15rem;
-  font-size: 1.05em;
-  font-weight: 700;
-  line-height: 1.5;
-  background: transparent !important;
-}
-
-.sticky-title strong {
-  background: transparent !important;
-}
-
-/* =========================
-   莉倡ｮ九Δ繝ｼ繝・隕九◆逶ｮ繧ｻ繝・ヨ Final
-   ========================= */
-
-/* 蜈ｨ菴難ｼ育ｴ呻ｼ・*/
-.sticky-paper {
-  max-width: 980px;
-  margin: 24px auto;
-  padding: 24px 28px;
-
-  background: #faf6ee;
-  /* 邏吶▲縺ｽ縺・埋縺・・繝ｼ繧ｸ繝･ */
-  border-radius: 14px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, .05),
-    0 8px 16px rgba(0, 0, 0, .06);
-}
-
-.sticky-markdown {
-  /* 繝輔か繝ｳ繝茨ｼ・indows縺ｧ隱ｭ縺ｿ繧・☆縺・・↓・・*/
-  font-family: "Meiryo", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
-
-  /* 逕ｻ髱｢蟷・↓蜷医ｏ縺帙※譁・ｭ励し繧､繧ｺ螟画峩 (蟇・ｺｦ鬮倥ａ) */
-  font-size: clamp(11px, 1.9vw, 18px);
-
-  /* 陦碁俣繧定ｩｰ繧√ｋ */
-  line-height: 1.4;
-
-  letter-spacing: .01em;
-  color: #222;
-}
-
-/* 谿ｵ關ｽ */
-.sticky-markdown p {
-  margin-bottom: 0.35em;
-}
-
-/* 繝ｪ繧ｹ繝茨ｼ育せ繝ｻ髢馴囈繝ｻ繧､繝ｳ繝・Φ繝茨ｼ・*/
-.sticky-markdown ul,
-.sticky-markdown ol {
-  margin: 0.25em 0 0.5em;
-  padding-left: 1.3em;
-  list-style-position: outside;
-}
-
-.sticky-markdown ul {
-  list-style: disc;
-}
-
-.sticky-markdown ol {
-  list-style: decimal;
-}
-
-.sticky-markdown li {
-  margin: 0.1em 0;
-  padding-left: 0.1em;
-}
-
-/* 驥崎ｦ√▲縺ｽ縺・焚蛟､繧貞ｰ代＠逶ｮ遶九◆縺帙ｋ・井ｻｻ諢擾ｼ・*/
-.sticky-markdown strong {
-  font-weight: 900;
-}
-
-/* 蜿ｳ荳翫Α繝九ヰ繝ｼ縺ｮ隕冶ｪ肴ｧ繧｢繝・・・磯が鬲斐＠縺ｪ縺・ｼ・*/
-.sticky-mini-btn {
-  font-family: inherit;
-  font-weight: 700;
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
 /* =========================================
-   Final Tuning: High Density & Paper Look
+   Preview Mode Custom Typography
    ========================================= */
-.sticky-root {
-  background-color: transparent;
-  /* 逕ｻ髱｢蜈ｨ菴薙・閭梧勹繧帝乗・蛹・*/
-  min-height: 100vh;
-}
 
-.sticky-paper {
-  padding: 14px 18px !important;
-  max-width: 880px !important;
-  width: calc(100% - 18px) !important;
-  /* background: #faf6ee (Existing) */
-}
-
-.sticky-markdown {
-  font-size: 18px !important;
-  /* 蜈ｷ菴鍋噪縺ｪ謖・ｮ壹≠繧・*/
-  line-height: 1.38 !important;
-  font-family: "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro", "BIZ UDPGothic", "Meiryo", sans-serif !important;
-}
-
-.sticky-markdown p {
-  margin: 0.25em 0 !important;
-}
-
-.sticky-markdown ul,
-.sticky-markdown ol {
-  margin: 0.25em 0 0.4em !important;
-}
-
-.sticky-markdown li {
-  margin-bottom: 0.1em !important;
-}
-
-/* =========================================
-   Sticky Note Paper Design
-   ========================================= */
-/* 閭梧勹・育ｴ吶′豬ｮ縺丞悄蜿ｰ・・*/
-body {
-  background: transparent;
-}
-
-/* 莉倡ｮ具ｼ育ｴ呻ｼ・*/
-.sticky-paper {
-  background: #fff3c0;
-  border-radius: 16px;
-  padding: 18px 18px;
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.12),
-    0 1px 0 rgba(0, 0, 0, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-
-  /* 縺・▲縺吶ｉ邏吶ヮ繧､繧ｺ・育判蜒上↑縺暦ｼ・*/
-  background-image:
-    linear-gradient(0deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.25)),
-    repeating-linear-gradient(0deg,
-      rgba(0, 0, 0, 0.015) 0px,
-      rgba(0, 0, 0, 0.015) 1px,
-      rgba(0, 0, 0, 0) 3px,
-      rgba(0, 0, 0, 0) 6px);
-
-  line-height: 1.4;
-  color: #111 !important;
-  /* 蜈ｨ菴薙・蟶ｸ縺ｫ鮟・*/
-  min-height: calc(100vh - 24px);
-  margin: 12px;
-  box-sizing: border-box;
-  font-family: "BIZ UDGothic", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif !important;
-}
-
-span.hl,
-span.point,
-mark.point {
-  background: transparent;
-  /* 閭梧勹蝪励ｊ縺､縺ｶ縺励↑縺・*/
-  color: #c00 !important;
-  /* 襍､蟄暦ｼ医・繧､繝ｳ繝茨ｼ・*/
-  font-weight: 700;
-  display: inline;
-  /* 繧､繝ｳ繝ｩ繧､繝ｳ菫晁ｨｼ */
-  white-space: inherit;
-  /* 謾ｹ陦後＆縺帙↑縺・*/
-}
-
-mark {
-  background: none;
-  color: #c62828 !important;
-  /* 襍､蟄暦ｼ亥ｼｷ隱ｿ・・*/
-  font-weight: 700;
-}
-
-/* 繝弱・繝医す繧ｧ繝ｫ縺ｮ蝓ｺ譛ｬ讒矩 */
-.noteShell {
-  position: relative;
-  height: 100%;
-  /* fit-content縺九ｉ螟画峩縺励※繧ｦ繧｣繝ｳ繝峨え縺・▲縺ｱ縺・↓ */
-  min-height: 100vh;
-  width: 100%;
-  overflow: hidden;
-  /* 閭梧勹濶ｲ縺ｯ繧､繝ｳ繝ｩ繧､繝ｳ繧ｹ繧ｿ繧､繝ｫ縺ｧ蜍慕噪縺ｫ險ｭ螳・*/
-}
-
-/* 繝帙ヰ繝ｼ謫堺ｽ懊ヰ繝ｼ (Extreme Compact Icons) */
-/* 繝帙ヰ繝ｼ謫堺ｽ懊ヰ繝ｼ (Extreme Compact Icons) */
-.hoverBar {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 10px;
-  padding: 3px 5px;
-  backdrop-filter: blur(6px);
-  z-index: 100;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-}
-
-.hoverBar button {
-  width: 24px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: rgba(255, 255, 255, 0.5);
-  font-size: 11px;
-  transition: all 0.15s;
-  color: #333;
-}
-
-.hoverBar button:hover {
-  background: #fff;
-  border-color: rgba(0, 0, 0, 0.2);
-  transform: translateY(-1px);
-}
-
-.hoverBar .file-name {
-  font-size: 9px;
-  color: #888;
-  max-width: 80px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-right: 2px;
-  padding-right: 6px;
-  border-right: 1px solid rgba(0, 0, 0, 0.06);
-  cursor: pointer;
-}
-
-.sticky-paper-editor {
-  width: 100%;
-  /* height/min-height is handled by JS but set min baseline */
-  min-height: 100%;
-  background: transparent;
-  border: none;
-  outline: none;
-  padding: 0.5rem 0.2rem;
-  /* 蟆代＠菴咏區繧呈戟縺溘○繧・*/
-  margin: 0;
-  display: block;
-  resize: none;
-  color: inherit;
-  font-family: inherit;
-  font-size: inherit !important;
+/* Use BIZ UDPGothic (or Meiryo) for readability */
+.preview-content {
+  font-family: "BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif;
   line-height: 1.4;
   letter-spacing: 0.01em;
   white-space: pre-wrap;
   word-break: break-all;
-  overflow: hidden;
-  /* Hide scrollbar if possible or match viewer */
-  /* 繝・く繧ｹ繝亥・蜉帛━蜈・*/
 }
 
-.sticky-paper-editor::placeholder {
-  color: rgba(0, 0, 0, 0.2);
-}
-
-/* 雜・ｫ伜ｯ・ｺｦ繝｡繝｢逕ｨ縺ｮ蠑ｷ蛻ｶ繧ｹ繧ｿ繧､繝ｫ */
-.notePaper {
-  font-family: "BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important;
-  line-height: 1.4 !important;
-  letter-spacing: 0.01em;
-  background: transparent !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
-  min-height: fit-content !important;
-  cursor: default !important;
-  transition: all 0.2s ease-out;
-  padding: 8px !important;
-}
-
-.notePaper p,
-.notePaper h1,
-.notePaper h2,
-.notePaper h3,
-.notePaper ul,
-.notePaper ol,
-.notePaper li {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-.notePaper p {
-  width: fit-content !important;
-  cursor: text !important;
-}
-
-.notePaper h1,
-.notePaper h2,
-.notePaper h3 {
-  font-size: 1.1em !important;
-  font-weight: 700 !important;
-  line-height: 1.2 !important;
-  width: fit-content !important;
-  cursor: text !important;
-}
-/* =========================================
-   Layout & Typography Fixes
-   ========================================= */
-.sticky-markdown> :first-child,
-.prose> :first-child {
-  margin-top: 0 !important;
-}
-
-.sticky-markdown {
-  padding: 0;
-}
-
-.sticky-title {
-  display: block;
-  margin-top: 0 !important;
-  margin-bottom: 0.2em !important;
-  line-height: 1.35 !important;
-  color: #333 !important;
-}
-
-/* =========================================
-   Custom Context Menu
-   ========================================= */
-.sticky-context {
-  position: fixed;
-  z-index: 9999;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, .12);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .15);
-  padding: 6px;
-  min-width: 160px;
-  animation: fadeIn 0.1s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.sticky-context button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #333;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-
-.sticky-context button:hover {
-  background: rgba(0, 0, 0, .06);
-}
-
-.sticky-context button.danger {
-  color: #d32f2f;
-}
-
-.sticky-context button.danger:hover {
-  background: #ffebee;
-}
-
-/* 縺ｯ縺後＠縺溷ｾ後・縲悟・陦ｨ遉ｺ縲攻I (騾乗・繝ｻ讌ｵ蟆丞喧) */
-.sticky-restore-view {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  background: transparent;
-  pointer-events: none;
-  /* 荳九・隕∫ｴ・医ョ繧ｹ繧ｯ繝医ャ繝礼ｭ会ｼ峨ｒ驍ｪ鬲斐＠縺ｪ縺・′縲√・繧ｿ繝ｳ縺ｯ閾ｪ蜉帙〒譛牙柑蛹・*/
-}
-
-.sticky-restore-btn {
-  pointer-events: auto;
-  margin: 10px;
-  padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 10px;
-  color: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  transition: all 0.2s;
-}
-
-.sticky-restore-btn:hover {
-  background: rgba(255, 255, 255, 0.8);
-  color: #333;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.sticky-restore-view p {
-  display: none;
-  /* 繝｡繝・そ繝ｼ繧ｸ縺ｯ荳崎ｦ・*/
-}
-
-html,
-body {
-  height: 100%;
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
-  background: transparent !important;
-  /* body縺ｧ縺ｮ繝輔か繝ｳ繝域欠螳壹・譛菴朱剞縺ｫ縺吶ｋ・・ain縺ｧ荳頑嶌縺阪☆繧九◆繧・ｼ・*/
-  font-family: system-ui, sans-serif;
-}
-
-/* =========================================
-   RichTextEditor Styles
-   ========================================= */
-
-/* 繧ｨ繝・ぅ繧ｿ繝ｩ繝・ヱ繝ｼ */
-.editor-wrapper {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-/* 繝励Ξ繝薙Η繝ｼ繝ｬ繧､繝､繝ｼ */
-.editor-preview {
-  pointer-events: none !important;
-  user-select: none !important;
-}
-
-/* 繝励Ξ繝薙Η繝ｼ蜀・・蜷・｡鯉ｼ亥渕譛ｬ・・*/
-.preview-line {
-  margin: 0 !important;
-  padding: 0 !important;
-  line-height: 1.4 !important;
-}
-
-/* 隕句・縺・・育ｷｨ髮・Δ繝ｼ繝会ｼ・*/
-.editor-preview .preview-h1 {
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  line-height: 1.4 !important;
-  margin-top: 2px !important;
-  margin-bottom: 4px !important;
-}
-
-/* Markdown繝槭・繧ｫ繝ｼ・・ 繧・**繧定埋縺擾ｼ・*/
-.editor-preview .preview-marker {
-  opacity: 0.25 !important;
-  color: #999 !important;
-  font-weight: normal !important;
-}
-
-/* 蠑ｷ隱ｿ・亥､ｪ蟄・襍､・・*/
-.editor-preview .preview-bold {
-  font-weight: bold !important;
-  color: red !important;
-}
-
-/* textarea・磯乗・蛹厄ｼ・/
-.editor-textarea {
-  background: transparent !important;
-  color: transparent !important;
-  caret-color: #333 !important;
-  -webkit-text-fill-color: transparent !important;
-  text-shadow: none !important;
-}
-
-/* textarea驕ｸ謚樒ｯ・峇 */
-.editor-textarea::selection {
-  background-color: rgba(0, 122, 255, 0.3) !important;
-  color: rgba(0, 0, 0, 0.5) !important;
-}
-
-/* textarea繝励Ξ繝ｼ繧ｹ繝帙Ν繝繝ｼ */
-.editor-textarea::placeholder {
-  color: rgba(0, 0, 0, 0.2) !important;
-  -webkit-text-fill-color: rgba(0, 0, 0, 0.2) !important;
-}
-/* =========================================
-   Editor Layout Fix
-   ========================================= */
-
-/* main(notePaper) の中でエディタを伸ばすための箱 */
-.editorHost {
-  height: 100%;
-  flex: 1;
-  min-height: 0;
-}
-
-/* mainをflex箱に */
-.noteMain {
-  height: 100%;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-/* =========================================
-   RichTextEditor Preview Styles
-   ========================================= */
-
-/* 繝槭・繧ｫ繝ｼ譁・ｭ暦ｼ・ 繧・** 縺ｪ縺ｩ・峨ｒ阮・￥陦ｨ遉ｺ */
-.preview-marker {
-  opacity: 0.25;
-  color: #666;
-}
-
-/* 隕句・縺励ユ繧ｭ繧ｹ繝医ｒ螟ｪ蟄励〒蠑ｷ隱ｿ */
-.preview-h1-text {
-  font-weight: 900;
-  color: #000;
-}
-
-/* 蠑ｷ隱ｿ繝・く繧ｹ繝医ｒ襍､縺・､ｪ蟄励〒陦ｨ遉ｺ */
+/* Strong emphasis with bold red text */
 .preview-bold {
   font-weight: bold;
   color: #d32f2f;
 }
 
-/* 繝励Ξ繝薙Η繝ｼ陦後・繧ｹ繧ｿ繧､繝ｫ */
+/* Preview line style */
 .preview-line {
   margin: 0;
   padding: 0;
@@ -672,22 +105,47 @@ body {
    CodeMirror Markdown Decoration Styles
    ========================================= */
 
-/* 繝槭・繧ｫ繝ｼ譁・ｭ暦ｼ・ 繧・** 縺ｪ縺ｩ・峨ｒ阮・￥陦ｨ遉ｺ */
+/* Marker text (e.g. **) faint display */
 .cm-md-marker {
   opacity: 0.3;
   color: #777;
 }
 
-/* 隕句・縺励ユ繧ｭ繧ｹ繝・*/
+/* Header text */
 .cm-md-h1 {
   font-size: 1.1em;
   font-weight: 700;
 }
 
-/* 蠑ｷ隱ｿ繝・く繧ｹ繝茨ｼ郁ｵ､螟ｪ蟄暦ｼ・*/
+/* Emphasis text (red bold) */
 .cm-md-bold {
   color: #c00;
   font-weight: 800;
 }
 
+html,
+body {
+  overscroll-behavior: none;
+  /* Disable bounce scroll */
+}
 
+/* Scrollbar Styles v2 (Forced) */
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.6);
+}
