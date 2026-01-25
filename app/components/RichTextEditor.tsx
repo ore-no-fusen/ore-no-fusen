@@ -2,14 +2,196 @@
 
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { open } from '@tauri-apps/plugin-shell';
-import { EditorState, Extension, StateField, Compartment } from '@codemirror/state';
+import { EditorState, Extension, StateField, Compartment, RangeSetBuilder, Transaction, Facet, StateEffect } from '@codemirror/state';
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, WidgetType } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { createRoot } from 'react-dom/client';
+import ResizableImage from './ResizableImage';
+
+// Helper to resolve relative path (same as in StickyNote)
+const resolvePath = (baseFile: string, relativePath: string) => {
+    if (!baseFile) return relativePath;
+    if (/^[a-zA-Z]:\\|^\\\\|^http/.test(relativePath)) return relativePath;
+
+    // Extract directory - support both \ and /
+    const lastSlash = Math.max(baseFile.lastIndexOf('\\'), baseFile.lastIndexOf('/'));
+    const baseDir = lastSlash >= 0 ? baseFile.substring(0, lastSlash) : '';
+
+    // Join and normalize to backslashes for Windows absolute paths
+    const combined = `${baseDir}/${relativePath}`.replace(/\//g, '\\');
+
+    // Ensure we don't have double backslashes unless it's UNC
+    const absPath = combined.replace(/\\\\+/g, '\\');
+    // But if it was UNC, we want to keep the first two
+    if (combined.startsWith('\\\\')) {
+        return '\\\\' + absPath.substring(1).replace(/\\+/g, '\\');
+    }
+
+    return absPath;
+};
+
+// [NEW] Image Widget for Live Preview
+class ImageWidget extends WidgetType {
+    constructor(
+        readonly src: string,
+        readonly alt: string,
+        readonly scale: number,
+        readonly filePath: string,
+        readonly fullMatch: string
+    ) {
+        super();
+    }
+
+    toDOM(view: EditorView): HTMLElement {
+        const container = document.createElement('span');
+        container.className = 'cm-image-widget';
+        container.style.display = 'inline-block';
+        container.style.verticalAlign = 'bottom';
+
+        const resolvedSrc = resolvePath(this.filePath, this.src);
+
+        const root = createRoot(container);
+        console.log('[WIDGET] Rendering ResizableImage. Src:', resolvedSrc, 'Scale:', this.scale);
+        root.render(
+            <ResizableImage
+                src={resolvedSrc}
+                alt={this.alt}
+                scale={this.scale}
+                baseOffset={0} // Not needed for widget
+                contentReadOnly={false}
+                onDragStart={(e) => {
+                    e.stopPropagation(); // Stop CodeMirror from handling this drag
+                    // Pass the full markdown source AND current position
+                    const pos = view.posAtDOM(container);
+                    e.dataTransfer.setData('application/x-fusen-markdown', this.fullMatch);
+                    if (pos !== null) {
+                        e.dataTransfer.setData('application/x-fusen-pos', pos.toString());
+                    }
+                    console.log('[DRAG] Start. Markdown:', this.fullMatch, 'Pos:', pos);
+                }}
+                onResizeEnd={(newScale) => {
+                    // Update markdown source
+                    // Need to find where this widget is in the doc
+                    // Since specific widget instance doesn't know its pos, we rely on React closure?
+                    // No, toDOM is creating a detached React root.
+                    // We need to dispatch a transaction to view.
+
+                    // But where is 'pos'? 
+                    // Widget doesn't track its own position live.
+                    // We need to implement 'update' or find a way to signal back.
+                    // The easiest way is to trigger a custom event or callback that searches for this specific match again?
+                    // Or create a closure that calls 'view.dispatch' but we need valid 'from/to'.
+
+                    // Actually, we can pass a callback that uses 'view.posAtDOM(container)'?
+                    // Yes, view.posAtDOM(container) should give us the position.
+
+                    const pos = view.posAtDOM(container);
+                    if (pos < 0) return;
+
+                    // We need 'from' and 'to' of the replaced decoration.
+                    // The decoration covers 'fullMatch'.
+                    // So we can replace 'fullMatch' length from pos?
+                    // Wait, posAtDOM returns position *before* the widget usually? Or inside?
+                    // For a replace decoration, the widget sits at 'from'.
+
+                    // Let's verify:
+                    const line = view.state.doc.lineAt(pos);
+                    // Match content at pos
+                    // We know fullMatch. Check if text at pos matches fullMatch.
+                    const text = view.state.doc.sliceString(pos, pos + this.fullMatch.length);
+                    // Check logic
+                    // If text != match, maybe pos is slightly off or doc changed.
+
+                    // Construct replacement: ![alt|newScale](src)
+                    const newMarkdown = `![${this.alt}|${newScale}](${this.src})`;
+
+                    view.dispatch({
+                        changes: { from: pos, to: pos + this.fullMatch.length, insert: newMarkdown }
+                    });
+                }}
+            />
+        );
+        return container;
+    }
+
+    ignoreEvent() { return true; }
+
+    eq(other: ImageWidget): boolean {
+        return other.src === this.src &&
+            other.alt === this.alt &&
+            other.scale === this.scale &&
+            other.filePath === this.filePath &&
+            other.fullMatch === this.fullMatch;
+    }
+}
+
+// [NEW] ViewPlugin to detect images and replace with Widgets
+const imagePreviewPlugin = ViewPlugin.fromClass(class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+        this.decorations = this.computeDecorations(view);
+    }
+
+    update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged) {
+            this.decorations = this.computeDecorations(update.view);
+        }
+    }
+
+    computeDecorations(view: EditorView) {
+        const builder = new RangeSetBuilder<Decoration>();
+        const { doc } = view.state;
+        const filePath = view.state.facet(filePathFacet); // Access filePath from facet
+
+        // Simple regex scan over visible ranges (or whole doc for simplicity if small)
+        // Sticky Notes are small, scanning whole doc is fine.
+        for (const { from, to } of view.visibleRanges) {
+            const text = doc.sliceString(from, to);
+            // Regex for ![alt](src) or ![alt|scale](src)
+            // Need global flag
+            const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+            let match;
+
+            while ((match = imgRegex.exec(text))) {
+                const fullMatch = match[0];
+                console.log('[PLUGIN] Found image match:', fullMatch);
+                const altRaw = match[1];
+                const src = match[2];
+                const start = from + match.index;
+                const end = start + fullMatch.length;
+
+                // Parse scale
+                const altParts = altRaw.split('|');
+                const realAlt = altParts[0];
+                let scale = 1.0;
+                if (altParts.length > 1) {
+                    const s = parseFloat(altParts[1]);
+                    if (!isNaN(s)) scale = s;
+                }
+
+                builder.add(start, end, Decoration.replace({
+                    widget: new ImageWidget(src, realAlt, scale, filePath, fullMatch),
+                    inclusive: false
+                }));
+            }
+        }
+        return builder.finish();
+    }
+}, {
+    decorations: v => v.decorations
+});
+
+// [NEW] Facet to pass filePath to extensions
+const filePathFacet = Facet.define<string, string>({
+    combine: (values: readonly string[]) => values[0] || ''
+});
 
 interface RichTextEditorProps {
     value: string;
     onChange: (value: string) => void;
+    filePath: string; // [NEW] Needed for relative path resolution
 
     onKeyDown?: (e: React.KeyboardEvent) => void;
     backgroundColor: string;
@@ -31,6 +213,7 @@ export interface RichTextEditorRef {
     setCursor: (offset: number) => void; // カーソルを指定位置に配置
     setSelection: (start: number, end: number) => void; // [New] 範囲選択を設定
     getContent: () => string; // [New] 最新の内容を同期的に取得
+    insertText: (text: string) => void; // [New] カーソル位置にテキスト挿入
 }
 
 // Decoration用のプラグイン（見出しと強調のみ）
@@ -280,6 +463,7 @@ const linkEventHandler = EditorView.domEventHandlers({
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
     value,
     onChange,
+    filePath, // [NEW]
 
     onKeyDown,
     backgroundColor,
@@ -290,6 +474,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
+    const filePathCompartment = useRef(new Compartment());
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
@@ -473,13 +658,32 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
             const b = Math.min(Math.max(0, end), docLength);
             const anchor = Math.min(a, b);
             const head = Math.max(a, b);
-
             view.dispatch({
                 selection: { anchor, head },
+                scrollIntoView: true
+            });
+            view.focus();
+        },
+        insertText: (text: string) => {
+            if (!viewRef.current) {
+                console.error('[EDITOR] insertText: viewRef is null');
+                return;
+            }
+            const view = viewRef.current;
+            const { state } = view;
+            const { from, to } = state.selection.main;
+
+            console.log(`[EDITOR] insertText: "${text}" at range [${from}, ${to}]`);
+
+            view.dispatch({
+                changes: { from, to, insert: text },
+                // カーソルを挿入テキストの後ろへ
+                selection: { anchor: from + text.length, head: from + text.length },
                 scrollIntoView: true,
             });
             view.focus();
-        }
+        },
+        view: viewRef.current
     }));
 
     useEffect(() => {
@@ -506,6 +710,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     placeholderDecorationField,
                     linkDecorationField, // [New]
                     linkEventHandler,    // [New]
+                    imagePreviewPlugin,  // [NEW]
+                    filePathFacet.of(filePath), // [NEW] Inject filePath
                     ...(isNewNote ? [
                         // 新規付箋の場合のみinit()でtrueを注入
                         placeholderFlagField.init(() => true)
@@ -519,13 +725,121 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     // イベントハンドラ
                     EditorView.domEventHandlers({
                         blur: (e, view) => {
-                            // Fix: Blur does not trigger edit end.
-                            // Boundaries are managed by StickyNote (click-outside, etc.)
                             console.log('[RichTextEditor] Blur ignored (managed by parent)');
                         },
                         keydown: (e) => {
                             if (e.key === 'Escape' && onKeyDown) {
                                 onKeyDown(e as any);
+                            }
+                        },
+                        // [FIX] Pasteハンドラの追加：カーソル位置への画像挿入
+                        paste: (e, view) => {
+                            console.log('[EDITOR] Paste event detected');
+                            const items = e.clipboardData?.items;
+                            if (!items) return;
+
+                            for (const item of items) {
+                                console.log('[EDITOR] Paste item type:', item.type);
+                                if (item.type.startsWith('image/')) {
+                                    e.preventDefault(); // デフォルト挙動（末尾追加など）を阻止
+
+                                    const file = item.getAsFile();
+                                    if (!file) {
+                                        console.warn('[EDITOR] Paste: Failed to get file from item');
+                                        continue;
+                                    }
+
+                                    // カーソル位置の取得
+                                    const currentPos = view.state.selection.main.from;
+                                    console.log('[EDITOR] Paste: Inserting image at pos:', currentPos);
+
+                                    // TODO: ここでTauri(Rust)側の画像保存コマンドを呼び出し、保存されたパスを受け取る
+                                    // const savedPath = await invoke('save_image', { ... });
+                                    // とりあえず今回は「カーソル位置への挿入」の検証のためダミーを使用
+                                    const imagePath = "image_path_placeholder.png";
+                                    const markdown = `![image](${imagePath})`;
+
+                                    // カーソル位置に挿入し、カーソルを画像の直後に移動
+                                    view.dispatch({
+                                        changes: {
+                                            from: currentPos,
+                                            to: currentPos,
+                                            insert: markdown
+                                        },
+                                        selection: {
+                                            anchor: currentPos + markdown.length,
+                                            head: currentPos + markdown.length
+                                        }
+                                    });
+                                    return;
+                                }
+                            }
+                        },
+                        dragenter: (e) => {
+                            e.preventDefault();
+                            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                        },
+                        dragover: (e, view) => {
+                            e.preventDefault();
+                            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+
+                            // ドラッグ中のカーソル位置追従
+                            const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+                            if (pos !== null) {
+                                if (view.state.selection.main.anchor !== pos) {
+                                    view.dispatch({ selection: { anchor: pos, head: pos } });
+                                }
+                            }
+                        },
+                        // [FIX] Dropハンドラの修正：座標ベースの移動ロジックへ変更
+                        drop: (e, view) => {
+                            if (e.dataTransfer?.types.includes('application/x-fusen-image')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+
+                                const dropPos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+                                console.log('[DRAG] Drop event. Drop Coords:', { x: e.clientX, y: e.clientY }, 'DropPos:', dropPos);
+                                if (dropPos === null) {
+                                    console.error('[DRAG] Failed to calculate drop position from coords');
+                                    return;
+                                }
+
+                                // Widgetから送られてきた正確な「元位置」を取得
+                                const posString = e.dataTransfer.getData('application/x-fusen-pos');
+                                const draggedMarkdown = e.dataTransfer.getData('application/x-fusen-markdown');
+
+                                console.log('[DRAG] Drop Data - PosString:', posString, 'Markdown:', draggedMarkdown);
+
+                                if (!posString || !draggedMarkdown) {
+                                    console.error('[DRAG] Missing drag data');
+                                    return;
+                                }
+
+                                const oldPos = parseInt(posString, 10);
+                                if (isNaN(oldPos)) {
+                                    console.error('[DRAG] Invalid start position:', posString);
+                                    return;
+                                }
+
+                                // 同じ場所にドロップした場合は無視
+                                if (dropPos >= oldPos && dropPos <= oldPos + draggedMarkdown.length) {
+                                    console.log('[DRAG] Dropped on itself. Ignoring.');
+                                    return;
+                                }
+
+                                console.log(`[DRAG] Executing Move: ${oldPos} -> ${dropPos}`);
+
+                                // 移動：元の削除と新しい場所への挿入をアトミックに実行
+                                // 削除によって位置がずれるため、削除箇所と挿入箇所の前後関係で補正が必要だが、
+                                // CodeMirrorのTransactionは賢いのでchanges配列で同時処理すれば整合性が取れる
+                                view.dispatch({
+                                    changes: [
+                                        { from: oldPos, to: oldPos + draggedMarkdown.length, insert: '' }, // 削除
+                                        { from: dropPos, to: dropPos, insert: draggedMarkdown }            // 挿入
+                                    ],
+                                    // ドロップ先にカーソルを合わせる
+                                    selection: { anchor: dropPos, head: dropPos }
+                                });
                             }
                         }
                     }),
@@ -642,7 +956,14 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
         });
     }, [cursorPosition]);
 
-    // [New] fontSize change handler
+    // [New] reconfigure filePath when it changes
+    useEffect(() => {
+        if (!viewRef.current) return;
+        viewRef.current.dispatch({
+            effects: filePathCompartment.current.reconfigure(filePathFacet.of(filePath))
+        });
+    }, [filePath]);
+
     useEffect(() => {
         if (!viewRef.current) return;
         viewRef.current.dispatch({

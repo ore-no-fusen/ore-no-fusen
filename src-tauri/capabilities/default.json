@@ -11,12 +11,14 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-size",
     "core:window:allow-hide",
+    "core:window:allow-show",
     "core:webview:allow-create-webview-window",
     "core:menu:allow-new",
     "core:menu:allow-popup",
     "core:window:allow-set-focus",
     "core:window:allow-unminimize",
     "shell:allow-open",
+    "core:path:default",
     "autostart:default"
   ]
 }

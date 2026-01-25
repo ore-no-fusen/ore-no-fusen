@@ -11,6 +11,7 @@ import { playDeleteSound } from '../utils/soundManager';
 import { getFontSize } from '../utils/settingsManager';
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ConfirmDialog from './ConfirmDialog';
+import ResizableImage from './ResizableImage';
 
 import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
@@ -127,6 +128,36 @@ const StickyNote = memo(function StickyNote() {
     }, []);
     const editorHostRef = useRef<HTMLDivElement>(null); // [New boundary ref]
     const editBodyRef = useRef(editBody); // [New] Stale closure fix
+    const isCapturingRef = useRef(false); // [New] Block blur during capture
+
+
+    // [Safety] アプリ内ドラッグの状態をグローバルに監視する
+    // これにより、ドラッグ操作による意図しないBlur（編集終了）を防ぐ
+    useEffect(() => {
+        const handleDragStart = () => {
+            console.log('[Safety] Internal Drag Started');
+            // isInternalDragRef.current = true;
+        };
+
+        const handleDragEnd = () => {
+            console.log('[Safety] Internal Drag Ended');
+            // ドロップ処理とBlur発火の競合を防ぐため、わずかな猶予を持たせてフラグを下ろす
+            setTimeout(() => {
+                // isInternalDragRef.current = false;
+            }, 100);
+        };
+
+        window.addEventListener('dragstart', handleDragStart);
+        window.addEventListener('dragend', handleDragEnd);
+        // ドラッグ失敗やキャンセルに備えて drop も監視
+        window.addEventListener('drop', handleDragEnd);
+
+        return () => {
+            window.removeEventListener('dragstart', handleDragStart);
+            window.removeEventListener('dragend', handleDragEnd);
+            window.removeEventListener('drop', handleDragEnd);
+        };
+    }, []);
 
     // Sync ref with state for event handlers
     useEffect(() => {
@@ -174,6 +205,23 @@ const StickyNote = memo(function StickyNote() {
         return newFront;
     };
 
+    // [Helpers moved to after saveNote]
+
+
+    // [New] Header Drag Handler (No Maximize, Works in Edit Mode)
+    const handleHeaderDrag = useCallback((e: React.PointerEvent) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        // No stopPropagation? standard drag region consumes it usually.
+        // Custom drag need to call startDragging.
+
+        try {
+            getCurrentWindow().startDragging();
+        } catch (err) {
+            console.error('startDragging failed', err);
+        }
+    }, []);
+
     // [New] Link Parser Helper
     const parseLinks = (text: string, baseOffset: number) => {
         // 1. Web URL: http:// or https://
@@ -185,7 +233,7 @@ const StickyNote = memo(function StickyNote() {
         const parts = text.split(regex);
         let currentOffset = 0;
 
-        return parts.map((part, k) => {
+        return <>{parts.map((part, k) => { // Use Fragment to return array compliant
             if (part === '') return null;
 
             const partStart = baseOffset + currentOffset;
@@ -225,7 +273,7 @@ const StickyNote = memo(function StickyNote() {
             }
 
             return <span key={k} data-src-start={partStart}>{part}</span>;
-        });
+        })}</>;
     };
 
     // ウィンドウ状態保存
@@ -303,6 +351,121 @@ const StickyNote = memo(function StickyNote() {
         }, 800);
         return () => clearTimeout(timer);
     }, [selectedFile, rawFrontmatter, editBody, saveNote, savePending]);
+
+
+
+    // [Moved] Helpers relying on saveNote
+    const updateNoteContent = useCallback(async (newContent: string) => {
+        if (!selectedFile) return;
+        try {
+            setEditBody(newContent);
+            setContent(newContent);
+            await saveNote(selectedFile.path, newContent, rawFrontmatter, false);
+        } catch (e) {
+            console.error('Failed to update content', e);
+        }
+    }, [selectedFile, rawFrontmatter, saveNote]);
+
+    const handleImageResize = (newScale: number, baseOffset: number, originalText: string) => {
+        if (!content) return;
+
+        // Verify match to update content correctly
+        const targetStr = content.substring(baseOffset, baseOffset + originalText.length);
+        if (targetStr !== originalText) return;
+
+        const match = originalText.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+        if (!match) return;
+
+        const rawAlt = match[1];
+        const url = match[2];
+        const altParts = rawAlt.split('|');
+        const realAlt = altParts[0];
+
+        // Save as |scale (e.g. 1.5)
+        const newMarkdown = `![${realAlt}|${newScale}](${url})`;
+        const before = content.substring(0, baseOffset);
+        const after = content.substring(baseOffset + originalText.length);
+
+        updateNoteContent(before + newMarkdown + after);
+    };
+
+    // Helper to resolve relative path to absolute
+    const resolvePath = (baseFile: string, relativePath: string) => {
+        // If already absolute or http, return as is
+        if (/^[a-zA-Z]:\\|^\\\\|^http/.test(relativePath)) return relativePath;
+
+        // Extract directory - support both \ and /
+        const lastSlash = Math.max(baseFile.lastIndexOf('\\'), baseFile.lastIndexOf('/'));
+        const baseDir = lastSlash >= 0 ? baseFile.substring(0, lastSlash) : '';
+
+        // Join and normalize to backslashes for Windows absolute paths
+        const combined = `${baseDir}/${relativePath}`.replace(/\//g, '\\');
+
+        // Ensure we don't have double backslashes unless it's UNC
+        const absPath = combined.replace(/\\\\+/g, '\\');
+        // But if it was UNC, we want to keep the first two
+        if (combined.startsWith('\\\\')) {
+            return '\\\\' + absPath.substring(1).replace(/\\+/g, '\\');
+        }
+
+        console.log('[STICKY] Resolved path:', { baseFile, relativePath, absPath });
+        return absPath;
+    };
+
+    // [New] content renderer that handles Images > Links > Text
+    const renderLineContent = (text: string, baseOffset: number) => {
+        const imgRegex = /(!\[([^\]]*)\]\(([^)]+)\))/g;
+        const parts = [];
+        let lastIndex = 0;
+        let match;
+
+        while ((match = imgRegex.exec(text)) !== null) {
+            const fullMatch = match[0];
+            const altTextRaw = match[2];
+            const urlRaw = match[3];
+            const index = match.index;
+
+            if (index > lastIndex) {
+                parts.push(parseLinks(text.substring(lastIndex, index), baseOffset + lastIndex));
+            }
+
+            // Resolve URL if relative
+            let url = urlRaw;
+            if (selectedFile && !/^[a-zA-Z]:\\|^\\\\|^http/.test(urlRaw)) {
+                url = resolvePath(selectedFile.path, urlRaw);
+            }
+
+            const altParts = altTextRaw.split('|');
+            const alt = altParts[0];
+
+            // Parse scale: |1.5 or |150%? Assuming float |1.5 for now based on resize handler.
+            let scale: number | undefined = undefined;
+            if (altParts.length > 1) {
+                const sStr = altParts[1];
+                const s = parseFloat(sStr);
+                if (!isNaN(s)) scale = s;
+            }
+
+            parts.push(
+                <ResizableImage
+                    key={baseOffset + index}
+                    src={url}
+                    alt={alt}
+                    scale={scale}
+                    baseOffset={baseOffset + index}
+                    onResizeEnd={(s) => handleImageResize(s, baseOffset + index, fullMatch)}
+                    contentReadOnly={false}
+                />
+            );
+            lastIndex = index + fullMatch.length;
+        }
+
+        if (lastIndex < text.length) {
+            parts.push(parseLinks(text.substring(lastIndex), baseOffset + lastIndex));
+        }
+
+        return parts;
+    };
 
     // コンテンツ読み込み
     const loadFileContent = async (noteMeta: NoteMeta): Promise<string> => {
@@ -430,6 +593,12 @@ const StickyNote = memo(function StickyNote() {
                 console.log('[RELOAD] Normalized modified path:', normalizedModifiedPath);
                 console.log('[RELOAD] Normalized current path:', normalizedCurrentPath);
                 console.log('[RELOAD] Paths match?', pathsMatch);
+
+                // [Fix] Prevent self-overwrite logic
+                if (isEditing || isCommittingRef.current || isRenamingRef.current) {
+                    console.log('[RELOAD] Skipped due to active edit/commit/rename state.');
+                    return;
+                }
 
                 // Only reload if this is the matching window
                 if (pathsMatch) {
@@ -841,23 +1010,15 @@ const StickyNote = memo(function StickyNote() {
             const newNoteItem = await MenuItem.new({
                 id: 'ctx_new_note',
                 text: `📝 ${t('menu.newNote')}`,
-                action: async () => { /* ... existing logic ... */
+                action: async () => {
                     try {
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                         const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
                         // Use default context "memo" for new notes instead of inheriting
                         const note = await invoke<Note>('fusen_create_note', { folderPath, context: 'memo' });
-                        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-                        const sanitizedPath = note.meta.path.replace(/[^a-zA-Z0-9]/g, '_');
-                        const label = `note_${sanitizedPath}`;
-                        new WebviewWindow(label, {
-                            url: `/?path=${encodeURIComponent(note.meta.path)}&isNew=1`, // Fix 1: Add isNew=1
-                            title: 'Sticky Note',
-                            width: 400,
-                            height: 300,
-                            decorations: false,
-                            transparent: true
-                        });
+
+                        // Unify logic: Delegate to Orchestrator (page.tsx) to handle window creation/queuing
+                        await emit('fusen:open_note', { path: note.meta.path, isNew: true });
                     } catch (e) {
                         console.error('New note error', e);
                     }
@@ -1020,6 +1181,10 @@ const StickyNote = memo(function StickyNote() {
                     await new Promise(resolve => setTimeout(resolve, 300));
 
                     await invoke('fusen_move_to_trash', { path: selectedFile.path });
+
+                    // Close the window immediately
+                    const win = getCurrentWindow();
+                    await win.close();
                 }
             }));
 
@@ -1047,6 +1212,10 @@ const StickyNote = memo(function StickyNote() {
         if (!selectedFile) return;
         if (isCommittingRef.current) {
             console.log('[DEBUG] handleEditBlur skipped: Already committing.');
+            return;
+        }
+        if (isCapturingRef.current) {
+            console.log('[DEBUG] handleEditBlur skipped: Capturing screen.');
             return;
         }
 
@@ -1103,20 +1272,7 @@ const StickyNote = memo(function StickyNote() {
     }, [isTagDeleteMode, showContextMenu]);
 
     // [New] Edit Mode Boundaries (Explicit Exit)
-    useEffect(() => {
-        if (!isEditing) return;
 
-        const onWindowBlur = () => {
-            console.log('[Boundary] Window Blur Detected. Committing.');
-            handleEditBlur();
-        };
-
-        window.addEventListener('blur', onWindowBlur);
-        return () => {
-            console.log('[Boundary] Cleanup blur listener');
-            window.removeEventListener('blur', onWindowBlur);
-        };
-    }, [isEditing, handleEditBlur]);
 
     // コンテキストメニューアクション
     const handleToggleAlwaysOnTop = async (enabled: boolean) => {
@@ -1136,47 +1292,27 @@ const StickyNote = memo(function StickyNote() {
 
 
     // [New] Edit Mode Boundaries (Explicit Exit) - Moved here to avoid "used before declaration"
+
+
+    // [New] Edit Mode Boundaries (Explicit Exit)
     useEffect(() => {
         if (!isEditing) return;
 
         const onWindowBlur = () => {
+
+
             console.log('[Boundary] Window Blur. Committing.');
-            handleEditBlur(); // No args
+            handleEditBlur();
         };
 
         window.addEventListener('blur', onWindowBlur);
         return () => {
             window.removeEventListener('blur', onWindowBlur);
         };
-    }, [isEditing, handleEditBlur]); // editBodyRef is stable
+    }, [isEditing, handleEditBlur]);
 
-    const handleDuplicate = async () => {
-        if (!selectedFile) return;
-        try {
-            // 現在のフォルダパスを取得
-            const normalizedPath = selectedFile.path.replace(/\\/g, '/');
-            const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
 
-            // 新規ノート作成（コンテキスト継承）
-            const newNote = await invoke<Note>('fusen_create_note', {
-                folderPath,
-                context: selectedFile.context
-            });
 
-            // 内容を現在の内容で上書き保存（メタデータ含む）
-            await invoke('fusen_save_note', {
-                path: newNote.meta.path,
-                body: editBody,
-                frontmatterRaw: rawFrontmatter,
-                allowRename: false // Initial save for duplicate, no rename needed
-            });
-
-            // 新しいウィンドウを開く
-            await emit('fusen:open_note', { path: newNote.meta.path });
-        } catch (e) {
-            console.error('Duplicate failed', e);
-        }
-    };
 
     const handleOpenFolder = async () => {
         if (!selectedFile) return;
@@ -1220,51 +1356,7 @@ const StickyNote = memo(function StickyNote() {
         }
     };
 
-    // Native Context Menu Action Listener
-    useEffect(() => {
-        if (!selectedFile) return;
 
-        const unlisten = (async () => {
-            const win = getCurrentWindow();
-            return await win.listen<any>('fusen:context_action', async (event) => {
-                const { action, path } = event.payload;
-                console.log('[NativeMenu] Action:', action, 'Path:', path);
-
-                // Ignore if not for this note (pathsEqual for cross-platform compatibility)
-                if (!pathsEqual(path, selectedFile.path)) return;
-
-                if (action === 'ctx_open_folder') {
-                    // Rust side handles this mostly, but we can double check or do nothing
-                } else if (action.startsWith('ctx_color_')) {
-                    const color = action.replace('ctx_color_', '');
-                    handleColorChange(color);
-                } else if (action === 'ctx_toggle_top') {
-                    // Toggle current state
-                    handleToggleAlwaysOnTop(!selectedFile.always_on_top);
-                } else if (action === 'ctx_new_note') {
-                    // Reuse "New Note" logic
-                    const normalizedPath = selectedFile.path.replace(/\\/g, '/');
-                    const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
-                    try {
-                        const note = await invoke<Note>('fusen_create_note', { folderPath, context: '' });
-                        await emit('fusen:open_note', { path: note.meta.path });
-                    } catch (e) {
-                        console.error('New note failed', e);
-                    }
-                } else if (action === 'ctx_duplicate') {
-                    handleDuplicate();
-                } else if (action === 'ctx_trash') {
-                    setSavePending(false);
-                    await invoke('fusen_move_to_trash', { path: selectedFile.path });
-                    await getCurrentWindow().close();
-                }
-            });
-        })();
-
-        return () => {
-            unlisten.then(f => f());
-        };
-    }, [selectedFile, noteBackgroundColor, savePending, rawFrontmatter, editBody, content]);
 
     // タグ追加ハンドラー
     const handleAddTag = async () => {
@@ -1325,6 +1417,116 @@ const StickyNote = memo(function StickyNote() {
                 textareaRef.current.setSelectionRange(start + marker.length, end + marker.length);
             }
         });
+    };
+
+    // [New] おにぎり（画面キャプチャ）機能
+    const handleCaptureScreen = async () => {
+        try {
+            const currentWin = getCurrentWindow();
+
+            // [Strategy] Save selection before hiding
+            let savedSelection: { anchor: number, head: number } | null = null;
+            if (editorRef.current) {
+                // Force cast to access view (interface update skipped)
+                const view = (editorRef.current as any).view;
+                if (view?.state) {
+                    savedSelection = view.state.selection.main;
+                    console.log('[STICKY] Saved selection before capture:', savedSelection);
+                }
+            }
+
+            isCapturingRef.current = true; // [New] Lock blur handling
+
+            // 1. 自分を隠す
+            // Force blur to ensure we don't hold focus weirdly
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+            }
+            await currentWin.hide();
+
+            // 2. 少し待つ（アニメーション完了待ち）
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // 3. キャプチャ実行 (Backend) - Timeout 30s
+            console.log('[STICKY] Invoking capture for seq:', selectedFile?.seq);
+            const capturePromise = invoke<string>('fusen_capture_screen', { noteSeq: selectedFile?.seq || 0 });
+            const timeoutPromise = new Promise<string>((_, reject) =>
+                setTimeout(() => reject(new Error('Capture timed out')), 30000)
+            );
+
+            const imagePath = await Promise.race([capturePromise, timeoutPromise]);
+            console.log('[STICKY] Captured:', imagePath);
+
+            // 4. 自分を表示
+            await currentWin.show();
+            await currentWin.setFocus();
+
+            // 重要：フォーカスが完全に復帰・安定するまで待つ (v2: 400ms)
+            await new Promise(r => setTimeout(r, 400));
+
+            // 5. 画像リンクを挿入
+            // Convert to relative path if possible
+            let storedPath = imagePath;
+            const currentPath = selectedFile?.path;
+            if (currentPath) {
+                const lastSlash = Math.max(currentPath.lastIndexOf('\\'), currentPath.lastIndexOf('/'));
+                const currentDir = lastSlash >= 0 ? currentPath.substring(0, lastSlash) : '';
+
+                // Normalize paths for comparison
+                const normImagePath = imagePath.replace(/\//g, '\\');
+                const normCurrentDir = currentDir.replace(/\//g, '\\');
+
+                if (normImagePath.startsWith(normCurrentDir)) {
+                    // Simple case: subpath
+                    let rel = normImagePath.substring(normCurrentDir.length);
+                    if (rel.startsWith('\\')) rel = rel.substring(1);
+                    // Use forward slashes for Markdown compatibility
+                    storedPath = rel.replace(/\\/g, '/');
+                }
+            }
+            console.log('[STICKY] Insert markdown path:', storedPath);
+
+            // Markdown text to insert: ![filename](path)
+            // Use simple filename as alt?
+            // Extract filename from path
+            const filenameObj = imagePath.split('\\').pop() || 'screenshot';
+            // User requested: filename + scale (initially 1.0 or omitted)
+            // Storing just ![filename](relPath)
+
+            const imageMarkdown = `\n![${filenameObj}](${storedPath})\n`;
+
+            console.log('[STICKY] Attempting insertion. editorRef.current exists?', !!editorRef.current);
+            if (editorRef.current) {
+                console.log('[STICKY] Explicitly focusing editor before insertText...');
+                editorRef.current.focus();
+
+                // Restore selection if saved
+                const view = (editorRef.current as any).view;
+                if (savedSelection && view) {
+                    console.log('[STICKY] Restoring saved selection:', savedSelection);
+                    try {
+                        view.dispatch({
+                            selection: { anchor: savedSelection.anchor, head: savedSelection.head }
+                        });
+                    } catch (e) {
+                        console.warn('[STICKY] Failed to restore selection:', e);
+                    }
+                }
+
+                editorRef.current.insertText(imageMarkdown);
+            } else {
+                console.log('[STICKY] Appending text to body (no editorRef)...');
+                setEditBody(prev => prev + imageMarkdown);
+                setSavePending(true);
+            }
+
+        } catch (e) {
+            console.error('Capture failed', e);
+            await getCurrentWindow().show(); // Ensure window comes back on error
+            alert(`キャプチャに失敗しました: ${e}`);
+        } finally {
+            isCapturingRef.current = false; // [Fix] Always release lock
+        }
     };
 
     // ホバーバー (編集モード時はツールバー)
@@ -1405,11 +1607,27 @@ const StickyNote = memo(function StickyNote() {
                                 <polyline points="9 11 12 14 22 4"></polyline>
                             </svg>
                         </button>
+                        <button
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }}
+                            onClick={handleCaptureScreen}
+                            className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
+                            title="画面キャプチャ"
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                <circle cx="12" cy="13" r="4"></circle>
+                            </svg>
+                        </button>
                     </>
                 ) : null}
             </div>
         );
     };
+
+
 
     if (!urlPath) {
         return <div className="p-8">No path parameter</div>;
@@ -1443,6 +1661,16 @@ const StickyNote = memo(function StickyNote() {
 
             {/* [NEW] Persistent Sticky Header for Tags & Drag */}
             <header
+                onPointerDown={handleHeaderDrag}
+                onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (isEditing) {
+                        handleEditBlur();
+                    } else {
+                        handleEditStart(0);
+                    }
+                }}
                 style={{
                     padding: '8px 18px 4px 18px',
                     display: 'flex',
@@ -1451,7 +1679,7 @@ const StickyNote = memo(function StickyNote() {
                     alignItems: 'center',
                     flexShrink: 0,
                     zIndex: 100,
-                    WebkitAppRegion: 'drag',
+                    // WebkitAppRegion: 'drag', // [Fix] Remove native drag to prevent maximize
                     cursor: 'move',
                     minHeight: '32px',
                     userSelect: 'none', // ドラッグ優先のため選択解除
@@ -1506,6 +1734,28 @@ const StickyNote = memo(function StickyNote() {
                     position: 'relative',
                     userSelect: isEditing ? 'auto' : 'none' // 閲覧モード時はドラッグ優先
                 }}
+                onDoubleClick={(e) => {
+                    // [Fix] Double Click Behavior:
+                    // View Mode -> Edit (Anywhere)
+                    // Edit Mode -> View (Outside Textarea)
+                    const target = e.target as HTMLElement;
+                    if (target.tagName === 'BUTTON' || target.closest('button')) return;
+
+                    // If editing, only close if we didn't click the editor itself (text selection)
+                    // The 'main' handles padding clicks.
+
+                    e.stopPropagation();
+
+                    if (isEditing) {
+                        // Check if we clicked the editor host (padding area click bubbles here)
+                        // If target IS the main container, it's a padding click.
+                        if (e.target === e.currentTarget) {
+                            handleEditBlur();
+                        }
+                    } else {
+                        handleEditStart(0);
+                    }
+                }}
             >
                 {/* Floating Vertical Toolbar (Pointer events auto to allow clicking) */}
                 <div style={{
@@ -1527,7 +1777,7 @@ const StickyNote = memo(function StickyNote() {
                     ) : isEditing ? (
                         <div
                             className="editorHost notePaper"
-                            ref={editorHostRef} // [New Ref]
+                            ref={editorHostRef}
                             style={{
                                 flex: 1,
                                 display: 'flex',
@@ -1542,14 +1792,15 @@ const StickyNote = memo(function StickyNote() {
                                     setEditBody(newValue);
                                     setSavePending(true);
                                 }}
+                                filePath={selectedFile?.path || ''} // [NEW] Pass file path for image resolution
 
                                 onKeyDown={(e) => {
                                     if (e.key === 'Escape') handleEditBlur();
                                 }}
                                 backgroundColor={noteBackgroundColor}
                                 cursorPosition={cursorPosition}
-                                isNewNote={isNewNote} // [NEW] stateから渡す
-                                fontSize={noteFontSize} // 設定からのフォントサイズ
+                                isNewNote={isNewNote}
+                                fontSize={noteFontSize}
                             />
                         </div>
                     ) : (
@@ -1570,7 +1821,7 @@ const StickyNote = memo(function StickyNote() {
                             // onPointerUp={onArticlePointerUp} // [Deleted] シングルクリック編集開始を削除
                             onDoubleClick={(e) => {
                                 e.stopPropagation();
-                                handleEditStart();
+                                handleEditStart(0); // [Fix] Force cursor to start
                             }}
                         >
                             {content ? (
@@ -1596,12 +1847,9 @@ const StickyNote = memo(function StickyNote() {
                                             // Heading: start text after "# " (length 2)
                                             return (
                                                 <div key={i} data-line-index={i} style={{ ...lineStyle, fontWeight: 700, fontSize: '1.1em' }}>
-                                                    <span
-                                                        style={{ color: '#ff8c00', marginRight: '4px', userSelect: 'none' }}
-                                                        data-src-start={baseOffset}
-                                                    ># </span>
+                                                    {/* [Fix] Hide # in View Mode as requested */}
                                                     <span data-src-start={baseOffset + 2}>
-                                                        {parseLinks(line.substring(2), baseOffset + 2)}
+                                                        {renderLineContent(line.substring(2), baseOffset + 2)}
                                                     </span>
                                                 </div>
                                             );
@@ -1613,10 +1861,6 @@ const StickyNote = memo(function StickyNote() {
                                             const isChecked = taskMatch[2].toLowerCase() === 'x';
 
                                             // Calculate offset for the text part
-                                            // Structure: [Marker] [Checkbox] [Text]
-                                            // "- [ ] " is length 6 if marker is "-".
-                                            // Robust calc: 
-                                            // line.length - text.length
                                             const text = taskMatch[3].substring(2);
                                             const textStart = baseOffset + (line.length - text.length);
 
@@ -1647,7 +1891,7 @@ const StickyNote = memo(function StickyNote() {
                                                         style={{ textDecoration: isChecked ? 'line-through' : 'none', opacity: isChecked ? 0.6 : 1 }}
                                                         data-src-start={textStart}
                                                     >
-                                                        {parseLinks(text, textStart)}
+                                                        {renderLineContent(text, textStart)}
                                                     </span>
                                                 </div>
                                             );
@@ -1662,14 +1906,14 @@ const StickyNote = memo(function StickyNote() {
                                                 <div key={i} data-line-index={i} style={lineStyle}>
                                                     <span style={{
                                                         marginRight: '8px',
-                                                        color: '#ff8c00',
+                                                        // color: '#ff8c00', // [Fix] Use default color for bullets
                                                         flexShrink: 0,
                                                         display: 'inline-block',
                                                         width: '1em',
                                                         textAlign: 'center'
                                                     }} data-src-start={baseOffset}>•</span>
                                                     <span data-src-start={textStart}>
-                                                        {parseLinks(text, textStart)}
+                                                        {renderLineContent(text, textStart)}
                                                     </span>
                                                 </div>
                                             );
@@ -1707,7 +1951,7 @@ const StickyNote = memo(function StickyNote() {
 
                                             return (
                                                 <span key={j} data-src-start={partStart}>
-                                                    {parseLinks(part, partStart)}
+                                                    {renderLineContent(part, partStart)}
                                                 </span>
                                             );
                                         });

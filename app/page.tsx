@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -9,8 +9,7 @@ import { listen } from '@tauri-apps/api/event';
 import { pathsEqual } from './utils/pathUtils';
 import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
-// ▼ 修正箇所: ./ ではなく ../ に変更して、ルートのcomponentsフォルダを参照させます
-import SettingsPage from '../components/ui/settings-page';
+import SettingsPage from './components/SettingsPage';
 
 // Global AppState type definition
 type AppState = {
@@ -20,18 +19,10 @@ type AppState = {
 };
 
 // [NEW] 最初からウィンドウを表示するためのフック
-function useShowOnMount() {
-  useEffect(() => {
-    const show = async () => {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const win = getCurrentWindow();
-      setTimeout(async () => {
-        await win.show();
-      }, 500);
-    };
-    show();
-  }, []);
-}
+
+
+// Global throttle for creation
+let globalLastCreateTime = 0;
 
 // 型定義
 type NoteMeta = {
@@ -190,7 +181,7 @@ function TagSelector() {
 }
 
 function OrchestratorContent() {
-  useShowOnMount();
+
   const searchParams = useSearchParams();
 
   const [folderPath, setFolderPath] = useState<string>('');
@@ -362,8 +353,8 @@ function OrchestratorContent() {
           const safePath = path.replace(/\\/g, '/');
           const pathParam = encodeURIComponent(safePath);
           const url = isNew ? `/?path=${pathParam}&isNew=1` : `/?path=${pathParam}`;
-          const width = meta?.width || 320;
-          const height = meta?.height || 220;
+          const width = meta?.width || 400;
+          const height = meta?.height || 300;
           const x = meta?.x;
           const y = meta?.y;
 
@@ -386,54 +377,79 @@ function OrchestratorContent() {
     } catch (e) { console.error('select_folder failed', e); }
   };
 
+  // [Fix] Synchronous lock for creation
+  const isCreatingRef = useRef(false);
+
   const handleCreateNote = async () => {
+    // Global Throttle (Module Level) prevention
+    const now = Date.now();
+    if (now - globalLastCreateTime < 1000) {
+      console.warn('[CREATE] Blocked by global throttle');
+      return;
+    }
+
+    // Sync check
+    if (!folderPath || isCreatingRef.current) return;
+
+    globalLastCreateTime = now;
+    isCreatingRef.current = true;
+    setIsCreating(true); // Keep for UI disabled state
+
     const context = 'NewNote';
-    if (!folderPath) return;
     const timestamp = Date.now();
     const tempPath = `${folderPath}/temp_${timestamp}.md`;
     const today = new Date().toISOString().slice(0, 10);
     const tempMeta: NoteMeta = { path: tempPath, seq: timestamp, context, updated: today, x: 100, y: 100, width: 400, height: 300, background_color: undefined, tags: [] };
 
     setFiles(prev => [...prev, tempMeta]);
-    setIsCreating(true);
+
     try {
+      console.log('[CREATE] Invoking fusen_create_note');
       const newNote = await invoke<any>('fusen_create_note', { folderPath: folderPath, context });
       setFiles(prev => prev.map((n: NoteMeta) => (pathsEqual(n.path, tempPath) ? newNote.meta : n)));
-      await openNoteWindow(newNote.meta.path, undefined, true);
+      // Listener handles opening
     } catch (e) {
       setFiles(prev => prev.filter((n: NoteMeta) => !pathsEqual(n.path, tempPath)));
       console.error('create_note failed', e);
-    } finally { setIsCreating(false); }
+    } finally {
+      isCreatingRef.current = false;
+      setIsCreating(false);
+    }
   };
 
   const handleFileSelect = async (file: NoteMeta) => {
     await openNoteWindow(file.path, { x: file.x, y: file.y, width: file.width, height: file.height });
   };
 
-  const isInitialized = () => {
-    if (typeof window === 'undefined') return false;
-    return sessionStorage.getItem('__INITIALIZED__') === 'true';
-  };
-  const setInitialized = () => { if (typeof window !== 'undefined') { sessionStorage.setItem('__INITIALIZED__', 'true'); } };
+
+
+  // [Removed] isInitialized (sessionStorage) - replaced with useRef in useEffect
+
 
   // イベントリスナー設定
   useEffect(() => {
-    let unlisten: null | (() => void) = null;
-    (async () => {
-      unlisten = await listen<{ path: string; isNew?: boolean }>('fusen:open_note', (event) => {
-        openNoteWindow(event.payload.path, undefined, event.payload.isNew);
-      });
-    })();
-    return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:open_note', e); } };
+    let unlisten: (() => void) | undefined;
+    const promise = listen<{ path: string; isNew?: boolean }>('fusen:open_note', (event) => {
+      openNoteWindow(event.payload.path, undefined, event.payload.isNew);
+    });
+
+    promise.then((u) => { unlisten = u; });
+
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then((u) => u());
+    };
   }, []);
 
   // [New] 設定更新イベントの監視
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    (async () => {
+
+    // settings_updated listener setup
+    const setup = async () => {
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        unlisten = await listen<any>('settings_updated', async (event) => {
+        return await listen<any>('settings_updated', async (event) => {
           console.log('[ORCHESTRATOR] Settings updated:', event.payload);
           const newSettings = event.payload;
           if (newSettings && newSettings.base_path) {
@@ -443,85 +459,102 @@ function OrchestratorContent() {
         });
       } catch (e) {
         console.error("Failed to setup orchestrator settings listener", e);
+        return () => { };
       }
-    })();
-    return () => { if (unlisten) unlisten(); };
+    };
+
+    const promise = setup();
+    promise.then(u => { unlisten = u; });
+
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then(u => u && u());
+    };
   }, [syncState]);
 
   // タグフィルター
   useEffect(() => {
-    let unlisten: null | (() => void) = null;
-    (async () => {
-      unlisten = await listen<string | null>('fusen:switch_world', async (event) => {
-        const selectedTag = event.payload;
-        try {
-          await syncState();
-          const state = await invoke<AppState>('fusen_get_state');
-          const allNotes = state.notes;
-          const filteredNotes = selectedTag ? allNotes.filter(n => n.tags && n.tags.includes(selectedTag)) : allNotes;
-          const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
-          const allWindows = await getAllWebviewWindows();
-          const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
+    let unlisten: (() => void) | undefined;
+    const promise = listen<string | null>('fusen:switch_world', async (event) => {
+      const selectedTag = event.payload;
+      try {
+        await syncState();
+        const state = await invoke<AppState>('fusen_get_state');
+        const allNotes = state.notes;
+        const filteredNotes = selectedTag ? allNotes.filter(n => n.tags && n.tags.includes(selectedTag)) : allNotes;
+        const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+        const allWindows = await getAllWebviewWindows();
+        const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
 
-          for (const win of allWindows) {
-            if (win.label === 'main') continue;
-            const shouldShow = filteredPaths.has(win.label);
-            try { if (shouldShow) { await win.show(); await win.unminimize(); } else { await win.hide(); } } catch (e) { }
+        for (const win of allWindows) {
+          if (win.label === 'main') continue;
+          const shouldShow = filteredPaths.has(win.label);
+          try { if (shouldShow) { await win.show(); await win.unminimize(); } else { await win.hide(); } } catch (e) { }
+        }
+        const openedLabels = new Set(allWindows.map(w => w.label));
+        for (const note of filteredNotes) {
+          const label = getWindowLabel(note.path);
+          if (!openedLabels.has(label)) {
+            await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
+            await new Promise(resolve => setTimeout(resolve, 150));
           }
-          const openedLabels = new Set(allWindows.map(w => w.label));
-          for (const note of filteredNotes) {
-            const label = getWindowLabel(note.path);
-            if (!openedLabels.has(label)) {
-              await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
-              await new Promise(resolve => setTimeout(resolve, 150));
-            }
-          }
-        } catch (e) { console.error('[switch_world] Error:', e); }
-      });
-    })();
-    return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:switch_world', e); } };
+        }
+      } catch (e) { console.error('[switch_world] Error:', e); }
+    });
+
+    promise.then(u => { unlisten = u; });
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then(u => u());
+    };
   }, []);
 
   // タグセレクター
   useEffect(() => {
-    let unlisten: null | (() => void) = null;
-    (async () => {
-      unlisten = await listen('fusen:open_tag_selector', async () => {
-        try {
-          const existing = await WebviewWindow.getByLabel('tag-selector');
-          if (existing) { await existing.unminimize(); await existing.setFocus(); return; }
-          await new WebviewWindow('tag-selector', { url: '/?tagSelector=1', title: '世界を選ぶ', width: 350, height: 500, alwaysOnTop: true, decorations: true, resizable: false });
-        } catch (e) { console.error('[open_tag_selector] Error:', e); }
-      });
-    })();
-    return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:open_tag_selector', e); } };
+    let unlisten: (() => void) | undefined;
+    const promise = listen('fusen:open_tag_selector', async () => {
+      try {
+        const existing = await WebviewWindow.getByLabel('tag-selector');
+        if (existing) { await existing.unminimize(); await existing.setFocus(); return; }
+        await new WebviewWindow('tag-selector', { url: '/?tagSelector=1', title: '世界を選ぶ', width: 350, height: 500, alwaysOnTop: true, decorations: true, resizable: false });
+      } catch (e) { console.error('[open_tag_selector] Error:', e); }
+    });
+
+    promise.then(u => { unlisten = u; });
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then(u => u());
+    };
   }, []);
 
   // 設定画面イベント (Tray etc)
   useEffect(() => {
-    let unlisten: null | (() => void) = null;
-    (async () => {
-      unlisten = await listen('fusen:open_settings', async () => {
-        try {
-          setIsSettingsOpen(true);
-          // ウィンドウを前面に
-          const { getCurrentWindow } = await import('@tauri-apps/api/window');
-          const win = getCurrentWindow();
-          const { LogicalSize } = await import('@tauri-apps/api/dpi');
+    let unlisten: (() => void) | undefined;
+    const promise = listen('fusen:open_settings', async () => {
+      try {
+        setIsSettingsOpen(true);
+        // ウィンドウを前面に
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
 
-          if (win.label === 'main') {
-            await win.setSize(new LogicalSize(900, 630));
-            await win.center();
-            await win.show();
-            await win.unminimize();
-            await win.setFocus();
-          }
-        } catch (e) {
-          console.error('[open_settings] Error:', e);
+        if (win.label === 'main') {
+          await win.setSize(new LogicalSize(900, 630));
+          await win.center();
+          await win.show();
+          await win.unminimize();
+          await win.setFocus();
         }
-      });
-    })();
-    return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:open_settings', e); } };
+      } catch (e) {
+        console.error('[open_settings] Error:', e);
+      }
+    });
+
+    promise.then(u => { unlisten = u; });
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then(u => u());
+    };
   }, []);
 
   // [NEW] トレイからの新規作成イベント
@@ -607,6 +640,13 @@ function OrchestratorContent() {
         const basePath = await invoke<string | null>('get_base_path');
         const needsSetup = !basePath || basePath.trim() === '';
 
+        // Explicitly show window for Splash Screen (since useShowOnMount was removed)
+        const win = getCurrentWindow();
+        if (win.label === 'main') {
+          await win.show();
+          await win.setFocus();
+        }
+
         if (needsSetup) {
           setSetupRequired(true);
           const win = getCurrentWindow();
@@ -615,9 +655,10 @@ function OrchestratorContent() {
           setSetupRequired(false);
           const win = getCurrentWindow();
           if (win.label === 'main') {
-            setTimeout(async () => {
-              try { await win.hide(); } catch (e) { }
-            }, 100);
+            // Removed premature hide to prevent dashboard flash
+            // setTimeout(async () => {
+            //   try { await win.hide(); } catch (e) { }
+            // }, 100);
           }
         }
       } catch (e) {
@@ -626,9 +667,19 @@ function OrchestratorContent() {
         const win = getCurrentWindow();
         await win.setFocus();
       } finally {
-        setTimeout(() => {
+        // [Modified] Do NOT clear isCheckingSetup here. Wait for restore logic.
+        // except if we are NOT restoring (e.g. first run setup needed)
+        // If setup is required, we stay in Loading/Settings page anyway?
+        // Let's rely on restoration logic to clear it or the Setup page to handle it.
+        // But if Needs Setup -> isCheckingSetup should be false so SettingsPage renders?
+        // Line 702: if (isCheckingSetup) return Loading.
+        // Line 705: if (setupRequired) return SettingsPage.
+
+        // So:
+        if (false) {
           setIsCheckingSetup(false);
-        }, 800);
+        }
+        // If NO setup needed, we wait for 'checkAndRestore' to finish.
       }
     }
 
@@ -640,13 +691,19 @@ function OrchestratorContent() {
   }, [searchParams]);
 
   // 起動時復元
+  const initializationRef = useRef(false);
   useEffect(() => {
-    if (isInitialized()) return;
+    // [Fix] checks initializedRef instead of sessionStorage to allow Reload to work
+    if (initializationRef.current) return;
     if (typeof window !== 'undefined' && window.location.search.includes('path=')) return;
-    const win = getCurrentWindow();
-    if (win.label !== 'main') return;
+    try {
+      const win = getCurrentWindow();
+      if (win.label !== 'main') return;
+    } catch (e) { return; }
 
-    setInitialized();
+    initializationRef.current = true;
+
+    // Original logic follows
     if (!searchParams.get('path')) {
       const checkAndRestore = async () => {
         const basePath = await invoke<string | null>('get_base_path');
@@ -682,7 +739,11 @@ function OrchestratorContent() {
                   try {
                     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                     const mainWindow = await WebviewWindow.getByLabel('main');
-                    if (mainWindow) { await mainWindow.hide(); }
+                    if (mainWindow) {
+                      await mainWindow.hide();
+                      // Only now we allow dashboard to render (in background)
+                      setIsCheckingSetup(false);
+                    }
                   } catch (e) { }
                 }, 100);
               } catch (createErr) { }
@@ -758,7 +819,7 @@ function OrchestratorContent() {
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-gray-800">ノート一覧</h2>
             <div className="flex gap-4 items-center">
-              <button onClick={handleCreateNote} className="text-sm font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1 rounded-lg">✨ 新規ノート</button>
+              <button onClick={handleCreateNote} disabled={isCreating} className="text-sm font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">✨ 新規ノート</button>
               <button onClick={selectDirectory} className="text-xs text-blue-500 hover:underline">フォルダ変更</button>
             </div>
           </div>

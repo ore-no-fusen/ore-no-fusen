@@ -12,6 +12,7 @@ mod tray;
 mod logger;  // ログシステム
 mod settings; 
 mod import; // [NEW] インポート機能
+mod capture; // [NEW] キャプチャ機能
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
@@ -778,6 +779,7 @@ pub fn run() {
             settings::save_settings,  // ← 「settings箱の中の」と指定！
             fusen_import_from_folder, // [NEW] インポートコマンド
             fusen_pick_folder,        // [NEW] 純粋なフォルダ選択
+            capture::fusen_capture_screen, // [NEW] 画面キャプチャ
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);

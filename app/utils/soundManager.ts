@@ -98,5 +98,5 @@ export async function playSound(type: SoundType, volume: number = 1.0): Promise<
  * 削除時の効果音（peel-off）
  */
 export async function playDeleteSound(): Promise<void> {
-    return playSound('peel-off', 1.0);
+    return playSound('peel-off', 0.3);
 }
