@@ -581,7 +581,7 @@ const StickyNote = memo(function StickyNote() {
         }
 
         const setupReloadListener = async () => {
-            const { listen } = await import('@tauri-apps/api/event');
+            // const { listen } = await import('@tauri-apps/api/event'); // [Fix] Use static import
             const unlisten = await listen<string>('fusen:reload_note', async (event) => {
                 const modifiedPath = event.payload;
 

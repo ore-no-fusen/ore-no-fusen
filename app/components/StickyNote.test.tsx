@@ -39,11 +39,31 @@ vi.mock('@tauri-apps/api/window', () => ({
     getCurrentWindow: () => mockWindow,
 }));
 
-vi.mock('@tauri-apps/api/menu', () => ({
-    Menu: { new: vi.fn().mockResolvedValue({ popup: vi.fn() }) },
-    MenuItem: { new: vi.fn() },
-    PredefinedMenuItem: { new: vi.fn() },
-    Submenu: { new: vi.fn() },
+vi.mock('@tauri-apps/api/menu', () => {
+    const Menu = { new: vi.fn().mockResolvedValue({ popup: vi.fn() }) };
+    const MenuItem = { new: vi.fn() };
+    const PredefinedMenuItem = { new: vi.fn() };
+    const Submenu = { new: vi.fn() };
+    return {
+        Menu,
+        MenuItem,
+        PredefinedMenuItem,
+        Submenu,
+        // Dynamic import needs these on the default export object if interop is involved, 
+        // or just on the top level. Vitest mocks typically handle named exports fine.
+        // But let's be safe.
+        default: { Menu, MenuItem, PredefinedMenuItem, Submenu }
+    };
+});
+
+vi.mock('@tauri-apps/api/event', () => ({
+    emit: vi.fn(),
+    listen: vi.fn().mockResolvedValue(() => { }),
+    // Ensure dynamic import finds these
+    default: {
+        emit: vi.fn(),
+        listen: vi.fn().mockResolvedValue(() => { })
+    }
 }));
 
 // Mock RichTextEditor to avoid CodeMirror issues in JSDOM
@@ -199,7 +219,7 @@ describe('StickyNote Component', () => {
 
         await waitFor(() => {
             expect(screen.getByText('Tag1')).toBeTruthy();
-            expect(screen.getByText('Long…')).toBeTruthy(); // Truncated 4 chars + ellipsis
+            expect(screen.getByText(/LongTagNam/)).toBeTruthy(); // Truncated 10 chars + ellipsis
             expect(screen.getByText('Tag3')).toBeTruthy();
             expect(screen.getByText('+1')).toBeTruthy();
         });
