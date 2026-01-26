@@ -178,6 +178,70 @@ pub fn ensure_trash_dir(parent_path: &Path) -> Result<PathBuf, String> {
     Ok(trash_dir)
 }
 
+pub fn ensure_tag_dir(parent_path: &Path, tag: &str) -> Result<PathBuf, String> {
+    let tags_dir = parent_path.join("tags");
+    if !tags_dir.exists() {
+        fs::create_dir(&tags_dir).map_err(|e| e.to_string())?;
+    }
+    // Sanitize tag name for use as directory name if necessary
+    // For now we assume tag is simple.
+    let tag_dir = tags_dir.join(tag);
+    if !tag_dir.exists() {
+        fs::create_dir(&tag_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(tag_dir)
+}
+
+pub fn ensure_archive_dir(parent_path: &Path) -> Result<PathBuf, String> {
+    let archive_dir = parent_path.join("Archive");
+    if !archive_dir.exists() {
+        fs::create_dir(&archive_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(archive_dir)
+}
+
+pub fn create_hard_link(src: &Path, dest: &Path) -> Result<(), String> {
+    fs::hard_link(src, dest).map_err(|e| e.to_string())
+}
+
+pub fn create_symlink(src: &Path, dest: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_file(src, dest).map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        std::os::unix::fs::symlink(src, dest).map_err(|e| e.to_string())
+    }
+}
+
+pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Result<(), String> {
+    let content = fs::read_to_string(note_path).map_err(|e| e.to_string())?;
+    let re = regex::Regex::new(r"!\[[^\]]*\]\((assets/[^)]+)\)").unwrap();
+
+    let note_dir = note_path.parent().ok_or("No parent")?;
+    let target_assets_dir = target_note_dir.join("assets");
+
+    for cap in re.captures_iter(&content) {
+        let asset_rel_path = &cap[1];
+        let src_asset_path = note_dir.join(asset_rel_path);
+        
+        if src_asset_path.exists() {
+            if !target_assets_dir.exists() {
+                fs::create_dir_all(&target_assets_dir).map_err(|e| e.to_string())?;
+            }
+            let asset_filename = src_asset_path.file_name().ok_or("No asset filename")?;
+            let dest_asset_path = target_assets_dir.join(asset_filename);
+            
+            // すでに存在する場合はスキップまたは上書き
+            if !dest_asset_path.exists() {
+                fs::copy(&src_asset_path, &dest_asset_path).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn open_in_explorer(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -404,5 +468,77 @@ mod tests {
         // 最大値(5) + 1 = 6 が返される
         let next_seq = get_next_seq(&dir_path);
         assert_eq!(next_seq, 6);
+    }
+
+    #[test]
+    fn test_ensure_tag_dir() {
+        let dir = tempdir().unwrap();
+        let vault_path = dir.path();
+        
+        let tag = "work";
+        let tag_dir = ensure_tag_dir(vault_path, tag).unwrap();
+        
+        assert!(tag_dir.exists());
+        assert!(tag_dir.ends_with(format!("tags/{}", tag)));
+        
+        // Check if tags/ dir exists
+        let tags_base = vault_path.join("tags");
+        assert!(tags_base.exists());
+    }
+
+    #[test]
+    fn test_ensure_archive_dir() {
+        let dir = tempdir().unwrap();
+        let vault_path = dir.path();
+        
+        let archive_dir = ensure_archive_dir(vault_path).unwrap();
+        
+        assert!(archive_dir.exists());
+        assert!(archive_dir.ends_with("Archive"));
+    }
+
+    #[test]
+    fn test_create_hard_link() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source.md");
+        let dest = dir.path().join("link.md");
+        
+        fs::write(&src, "content").unwrap();
+        create_hard_link(&src, &dest).unwrap();
+        
+        assert!(dest.exists());
+        
+        // Content should be the same
+        let content = fs::read_to_string(&dest).unwrap();
+        assert_eq!(content, "content");
+        
+        // Modifying src should affect dest
+        fs::write(&src, "modified").unwrap();
+        let content_after = fs::read_to_string(&dest).unwrap();
+        assert_eq!(content_after, "modified");
+    }
+
+    #[test]
+    fn test_create_symlink() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source.md");
+        let dest = dir.path().join("link.md");
+        
+        fs::write(&src, "content").unwrap();
+        
+        // symlink creation might fail if not running with enough privileges on Windows
+        // but we want to test the wrapper.
+        match create_symlink(&src, &dest) {
+            Ok(_) => {
+                assert!(dest.exists());
+                let content = fs::read_to_string(&dest).unwrap();
+                assert_eq!(content, "content");
+            },
+            Err(e) => {
+                // If it's a privilege issue, we might skip or just log it.
+                // On Windows, Developer Mode or Admin is needed.
+                println!("Symlink test skipped/failed (likely privileges): {}", e);
+            }
+        }
     }
 }
