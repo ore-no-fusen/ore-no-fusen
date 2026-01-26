@@ -34,15 +34,3 @@ export function pathsEqual(path1: string, path2: string): boolean {
     return normalizePath(path1) === normalizePath(path2);
 }
 
-/**
- * Check if a path is in a list of paths
- * - Uses normalized path comparison
- * 
- * @param path - Path to check
- * @param pathList - List of paths
- * @returns true if path is in the list
- */
-export function pathInList(path: string, pathList: string[]): boolean {
-    const normalizedPath = normalizePath(path);
-    return pathList.some(p => normalizePath(p) === normalizedPath);
-}

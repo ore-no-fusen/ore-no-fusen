@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use std::fs;
 use tauri::{State, command};
 use std::sync::Mutex;

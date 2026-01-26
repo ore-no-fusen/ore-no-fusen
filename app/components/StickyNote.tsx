@@ -12,6 +12,7 @@ import { getFontSize } from '../utils/settingsManager';
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ConfirmDialog from './ConfirmDialog';
 import ResizableImage from './ResizableImage';
+import { splitFrontMatter, updateFrontmatterValue } from '../utils/splitFrontMatter';
 
 import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
@@ -37,14 +38,8 @@ type Note = {
 };
 
 // ユーティリティ関数
-function splitFrontMatter(src: string) {
-    if (!src.startsWith('---')) return { front: '', body: src };
-    const end = src.indexOf('\n---', 3);
-    if (end === -1) return { front: '', body: src };
-    const front = src.slice(0, end + 4);
-    const body = src.slice(end + 4).replace(/^\s+/, '');
-    return { front, body };
-}
+
+
 
 function getFileName(path: string) {
     return path.split(/[\\/]/).pop() || path;
@@ -1014,13 +1009,11 @@ const StickyNote = memo(function StickyNote() {
                     try {
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                         const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
-                        // Use default context "memo" for new notes instead of inheriting
-                        const note = await invoke<Note>('fusen_create_note', { folderPath, context: 'memo' });
-
-                        // Unify logic: Delegate to Orchestrator (page.tsx) to handle window creation/queuing
-                        await emit('fusen:open_note', { path: note.meta.path, isNew: true });
+                        // [REFACTOR] Orchestrator (page.tsx) に新規作成を委譲
+                        console.log('[StickyNote] Requesting new note creation via emit');
+                        await emit('fusen:request_create', { folderPath, context: 'memo' });
                     } catch (e) {
-                        console.error('New note error', e);
+                        console.error('New note request error', e);
                     }
                 }
             });
@@ -1174,12 +1167,10 @@ const StickyNote = memo(function StickyNote() {
                 id: 'ctx_delete',
                 text: `🗑️ ${t('menu.delete')}`,
                 action: async () => {
-                    // [Sound] 設定に基づいて削除音を再生
+                    // [Sound] 設定に基づいて削除音を再生 (イベント経由でメインで鳴らす)
                     await playDeleteSound();
 
-                    // 音が聞こえるように少し待つ
-                    await new Promise(resolve => setTimeout(resolve, 300));
-
+                    // 即座に削除実行（音はメインプロセスで鳴り続ける）
                     await invoke('fusen_move_to_trash', { path: selectedFile.path });
 
                     // Close the window immediately
@@ -1275,18 +1266,7 @@ const StickyNote = memo(function StickyNote() {
 
 
     // コンテキストメニューアクション
-    const handleToggleAlwaysOnTop = async (enabled: boolean) => {
-        if (!selectedFile) return;
-        try {
-            await invoke('fusen_toggle_always_on_top', {
-                path: selectedFile.path,
-                enable: enabled
-            });
-            setSelectedFile(prev => prev ? { ...prev, alwaysOnTop: enabled } : null);
-        } catch (e) {
-            console.error('Failed to toggle always on top', e);
-        }
-    };
+
 
 
 

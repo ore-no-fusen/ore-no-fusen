@@ -13,6 +13,7 @@ mod logger;  // ログシステム
 mod settings; 
 mod import; // [NEW] インポート機能
 mod capture; // [NEW] キャプチャ機能
+mod sound; // [NEW] サウンド機能
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
@@ -37,15 +38,7 @@ fn fusen_pick_folder() -> Option<String> {
     rfd::FileDialog::new().pick_folder().map(|p| p.to_string_lossy().to_string())
 }
 
-#[tauri::command]
-fn fusen_select_file(default_path: Option<String>) -> Option<String> {
-    let mut dialog = rfd::FileDialog::new();
-    if let Some(path) = default_path {
-        dialog = dialog.set_directory(path);
-    }
-    let file = dialog.add_filter("Markdown", &["md"]).pick_file();
-    file.map(|p| p.to_string_lossy().to_string())
-}
+
 
 #[tauri::command]
 fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<NoteMeta, String> {
@@ -82,44 +75,7 @@ fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Not
 
 
 
-#[tauri::command]
-async fn fusen_warp_cursor(window: tauri::Window) -> Result<(), String> {
-    // Get window position and size (Physical)
-    let pos = window.outer_position().map_err(|e| e.to_string())?;
-    let size = window.inner_size().map_err(|e| e.to_string())?;
-    
-    // Calculate center-top position (top title bar area)
-    let x = pos.x + (size.width as i32 / 2);
-    let y = pos.y + 40; // Title bar area
 
-    println!("[WARP] Window Outer Pos: ({}, {}), Size: {}x{}", pos.x, pos.y, size.width, size.height);
-    println!("[WARP] Target Cursor Pos: ({}, {})", x, y);
-
-    #[cfg(target_os = "windows")]
-    {
-        use windows::Win32::UI::WindowsAndMessaging::{SetCursorPos, SetForegroundWindow};
-        use windows::Win32::Foundation::HWND;
-        use raw_window_handle::RawWindowHandle;
-        
-        unsafe {
-            // 1. Move Cursor
-            let result_cursor = SetCursorPos(x, y);
-            println!("[WARP] SetCursorPos result: {:?}", result_cursor);
-
-            // 2. Force Foreground
-            if let Ok(handle) = window.window_handle() {
-                 let raw = handle.as_raw();
-                 if let RawWindowHandle::Win32(win32_handle) = raw {
-                     let hwnd_val = HWND(win32_handle.hwnd.get());
-                     let result_fg = SetForegroundWindow(hwnd_val);
-                     println!("[WARP] SetForegroundWindow result: {:?}", result_fg);
-                 }
-            }
-        }
-    }
-
-    Ok(())
-}
 
 #[tauri::command]
 async fn fusen_force_focus(window: tauri::Window) -> Result<(), String> {
@@ -323,27 +279,7 @@ fn fusen_update_geometry(
     Ok(())
 }
 
-#[tauri::command]
-fn fusen_toggle_always_on_top(
-    window: tauri::Window,
-    state: State<'_, Mutex<AppState>>,
-    path: String,
-    enable: bool
-) -> Result<(), String> {
-    let mut app_state = state.lock().unwrap();
-    
-    let note = storage::read_note(&path)?;
-    let effect = logic::handle_toggle_always_on_top(&mut app_state, &path, &note.body, enable)?;
-    
-    match effect {
-        logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
-        _ => {}
-    }
-    
-    window.set_always_on_top(enable).map_err(|e| e.to_string())?;
-    
-    Ok(())
-}
+
 
 #[tauri::command]
 fn fusen_open_containing_folder(path: String) -> Result<(), String> {
@@ -750,10 +686,8 @@ pub fn run() {
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .invoke_handler(tauri::generate_handler![
             fusen_get_note,
-            fusen_warp_cursor,
             fusen_force_focus,
             fusen_select_folder,
-            fusen_select_file,
             fusen_list_notes,
             fusen_read_note,
             fusen_create_note,
@@ -762,7 +696,6 @@ pub fn run() {
             fusen_rename_note,
             fusen_get_state,
             fusen_update_geometry,
-            fusen_toggle_always_on_top,
             fusen_add_tag,
             fusen_remove_tag,
             fusen_delete_tag_globally,
@@ -780,6 +713,7 @@ pub fn run() {
             fusen_import_from_folder, // [NEW] インポートコマンド
             fusen_pick_folder,        // [NEW] 純粋なフォルダ選択
             capture::fusen_capture_screen, // [NEW] 画面キャプチャ
+            sound::fusen_play_sound, // [NEW] サウンド再生
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);

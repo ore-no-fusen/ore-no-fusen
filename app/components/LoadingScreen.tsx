@@ -1,6 +1,30 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 export default function LoadingScreen({ message = "Loading..." }: { message?: string }) {
+    useEffect(() => {
+        const showWindow = async () => {
+            try {
+                // クライアントサイドでのみ実行
+                if (typeof window === 'undefined') return;
+
+                // Tauri環境かどうかの簡易チェック（あるいはtry-catchで握りつぶす）
+                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                const win = getCurrentWindow();
+                // メインウィンドウの場合のみ表示（念のため）
+                if (win.label === 'main') {
+                    // 少し遅延させて、レンダリングが確実に完了してから表示
+                    setTimeout(async () => {
+                        await win.show();
+                        await win.setFocus();
+                    }, 100);
+                }
+            } catch (e) {
+                // ブラウザ等で実行した場合は無視
+            }
+        };
+        showWindow();
+    }, []);
+
     return (
         <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900 select-none cursor-wait overflow-hidden"
             style={{ WebkitAppRegion: 'drag' } as any}>

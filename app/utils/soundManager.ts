@@ -55,19 +55,10 @@ async function isSoundEnabled(): Promise<boolean> {
 }
 
 /**
- * キャッシュをクリア（設定変更時に呼び出す）
+ * 実際に音を再生する（ローカル再生用）
+ * page.tsx など、常駐するプロセスから呼ばれることを想定
  */
-export function clearSoundCache(): void {
-    soundEnabledCache = null;
-    lastCacheTime = 0;
-}
-
-/**
- * 効果音を再生
- * @param type サウンドタイプ
- * @param volume ボリューム (0.0 - 1.0)
- */
-export async function playSound(type: SoundType, volume: number = 1.0): Promise<void> {
+export async function playLocalSound(type: SoundType, volume: number = 1.0): Promise<void> {
     try {
         const enabled = await isSoundEnabled();
 
@@ -91,6 +82,26 @@ export async function playSound(type: SoundType, volume: number = 1.0): Promise<
         }
     } catch (e) {
         console.error('[SoundManager] Failed to play sound:', e);
+    }
+}
+
+/**
+ * 効果音を再生（Rustバックエンドに依頼）
+ * @param type サウンドタイプ
+ * @param volume ボリューム (0.0 - 1.0) - Rust側では現在無視されますが、API互換性のために残します
+ */
+export async function playSound(type: SoundType, volume: number = 1.0): Promise<void> {
+    try {
+        const enabled = await isSoundEnabled();
+        if (!enabled) return;
+
+        // Rustコマンドを呼び出す
+        // Rust側で非同期に再生されるため、awaitしてもブロックはしません
+        await invoke('fusen_play_sound', { name: type });
+    } catch (e) {
+        console.error('[SoundManager] Failed to invoke fusen_play_sound:', e);
+        // フォールバック：Rustコマンドが失敗した場合（Web環境など）はローカルで鳴らす
+        await playLocalSound(type, volume);
     }
 }
 

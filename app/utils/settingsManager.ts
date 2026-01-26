@@ -103,10 +103,3 @@ export async function isSoundEnabled(): Promise<boolean> {
     return getSetting('sound_enabled');
 }
 
-/**
- * キャッシュをクリア（設定変更時に呼び出す）
- */
-export function clearSettingsCache(): void {
-    settingsCache = null;
-    lastCacheTime = 0;
-}

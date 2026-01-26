@@ -39,16 +39,16 @@ describe('useSettings Hook (Browser Mode)', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         expect(result.current.settings.language).toBe('ja');
-        expect(result.current.settings.fontSize).toBe(16);
+        expect(result.current.settings.font_size).toBe(16);
     });
 
     it('loads settings from localStorage if available', async () => {
         const savedSettings = {
-            basePath: '/test/path',
+            base_path: '/test/path',
             language: 'en',
-            autoStart: true,
-            fontSize: 20,
-            soundEnabled: false,
+            auto_start: true,
+            font_size: 20,
+            sound_enabled: false,
         };
         localStorageMock.setItem('ore-no-fusen-settings', JSON.stringify(savedSettings));
 
@@ -57,8 +57,8 @@ describe('useSettings Hook (Browser Mode)', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         expect(result.current.settings.language).toBe('en');
-        expect(result.current.settings.fontSize).toBe(20);
-        expect(result.current.settings.autoStart).toBe(true);
+        expect(result.current.settings.font_size).toBe(20);
+        expect(result.current.settings.auto_start).toBe(true);
     });
 
     it('saves settings to localStorage and updates state', async () => {
@@ -68,7 +68,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         const newSettings = {
             ...result.current.settings,
             language: 'en' as const,
-            fontSize: 24,
+            font_size: 24,
         };
 
         await act(async () => {
@@ -77,7 +77,7 @@ describe('useSettings Hook (Browser Mode)', () => {
 
         // State update check
         expect(result.current.settings.language).toBe('en');
-        expect(result.current.settings.fontSize).toBe(24);
+        expect(result.current.settings.font_size).toBe(24);
 
         // localStorage check
         expect(localStorageMock.setItem).toHaveBeenCalledWith(
@@ -86,7 +86,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         );
         expect(localStorageMock.setItem).toHaveBeenCalledWith(
             'ore-no-fusen-settings',
-            expect.stringContaining('"fontSize":24')
+            expect.stringContaining('"font_size":24')
         );
     });
 });
