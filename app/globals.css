@@ -73,7 +73,7 @@
 
   body {
     /* Hardcode background to #111827 (gray-900) to match splash screen immediately */
-    background-color: #111827; 
+    background-color: #111827;
     @apply text-foreground;
   }
 }

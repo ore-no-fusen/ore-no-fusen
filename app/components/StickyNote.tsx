@@ -626,6 +626,75 @@ const StickyNote = memo(function StickyNote() {
         };
     }, [selectedFile]);
 
+    // [NEW] 全文検索からのジャンプ時にハイライトする
+    useEffect(() => {
+        if (!selectedFile) return;
+
+        const setupScrollToLineListener = async () => {
+            const unlisten = await listen<{ line: number; query?: string; targetPath?: string }>('fusen:scroll_to_line', async (event) => {
+                const { line, query, targetPath } = event.payload;
+
+                // この付箋が対象かどうかを確認
+                if (targetPath) {
+                    const normalizedTarget = targetPath.replace(/\\/g, '/').toLowerCase();
+                    const normalizedCurrent = selectedFile.path.replace(/\\/g, '/').toLowerCase();
+                    if (normalizedTarget !== normalizedCurrent) {
+                        console.log('[SCROLL_TO_LINE] Not my target, ignoring. target:', normalizedTarget, 'current:', normalizedCurrent);
+                        return; // この付箋は対象外
+                    }
+                }
+
+                console.log('[SCROLL_TO_LINE] line:', line, 'query:', query);
+
+                // 編集モードに移行
+                setIsEditing(true);
+
+                // 少し待ってエディタの準備完了を待つ
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                if (editorRef.current) {
+                    const content = editorRef.current.getContent();
+                    const lines = content.split('\n');
+
+                    // 行位置を計算（frontmatter含まない本文のオフセット）
+                    let offset = 0;
+                    for (let i = 0; i < Math.min(line - 1, lines.length); i++) {
+                        offset += lines[i].length + 1; // +1 for newline
+                    }
+
+                    // 検索語がある場合、ハイライトを設定しカーソルを移動
+                    if (query) {
+                        editorRef.current.highlightQuery(query);
+
+                        // 該当行の検索語位置にカーソルを移動
+                        if (line <= lines.length) {
+                            const lineContent = lines[line - 1] || '';
+                            const queryLower = query.toLowerCase();
+                            const matchIndex = lineContent.toLowerCase().indexOf(queryLower);
+
+                            if (matchIndex >= 0) {
+                                const start = offset + matchIndex;
+                                console.log('[SCROLL_TO_LINE] Setting cursor to:', start);
+                                editorRef.current.setCursor(start);
+                                return;
+                            }
+                        }
+                    }
+
+                    // 検索語が見つからない場合は行頭にカーソル
+                    editorRef.current.setCursor(offset);
+                }
+            });
+
+            return unlisten;
+        };
+
+        const cleanupPromise = setupScrollToLineListener();
+
+        return () => {
+            cleanupPromise.then(unlisten => unlisten());
+        };
+    }, [selectedFile]);
 
     // 背景色変更を確実に反映させるためのuseEffect
     useEffect(() => {
@@ -912,6 +981,24 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [rawFrontmatter]);
 
+    // [NEW] Ctrl+F で全文検索を開く
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ctrl+F (Windows) or Cmd+F (Mac) で全文検索を開く
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault(); // ブラウザのデフォルト検索を無効化
+                e.stopPropagation();
+                console.log('[StickyNote] Ctrl+F detected, emitting fusen:open_search');
+                emit('fusen:open_search', {});
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
+
     // ホバー管理
     useEffect(() => {
         const handleGlobalPointer = (e: PointerEvent) => {
@@ -1159,6 +1246,26 @@ const StickyNote = memo(function StickyNote() {
 
                 const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `🏷️ ${t('menu.tags')}`, items: tagSubItems });
                 menuItems.push(tagSubmenu);
+
+                // Archive Note Item (Organize to tag folder or general Archive)
+                menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                menuItems.push(await MenuItem.new({
+                    id: 'ctx_archive',
+                    text: `📦 ${t('menu.archive')}`,
+                    action: async () => {
+                        try {
+                            if (!selectedFile) return;
+                            await saveNote(selectedFile.path, editBody, rawFrontmatter, false);
+                            setSavePending(false);
+                            await invoke('fusen_archive_note', { path: selectedFile.path });
+                            const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
+                            await win.close();
+                        } catch (e) {
+                            console.error('Failed to archive note:', e);
+                            alert(`${t('menu.archive_failed')}\n${e}`);
+                        }
+                    }
+                }));
             }
 
             // Delete Note Item (Always available at bottom)

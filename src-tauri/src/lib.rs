@@ -297,6 +297,64 @@ fn fusen_archive_note(
     Ok("Archived successfully".to_string())
 }
 
+// [NEW] 全文検索
+#[derive(serde::Serialize, Clone)]
+pub struct SearchHit {
+    pub path: String,
+    pub line: usize,
+    pub preview: String,
+}
+
+#[tauri::command]
+fn fusen_search_notes(
+    state: State<'_, Mutex<AppState>>,
+    query: String
+) -> Vec<SearchHit> {
+    let app_state = state.lock().unwrap();
+    let folder_path = match app_state.base_path.as_ref().or(app_state.folder_path.as_ref()) {
+        Some(p) => p.clone(),
+        None => {
+            eprintln!("[Search] No folder path configured!");
+            return Vec::new();
+        }
+    };
+    drop(app_state);
+
+    eprintln!("[Search] Searching for '{}' in folder: {}", query, folder_path);
+
+    let mut hits = Vec::new();
+    let query_lower = query.to_lowercase();
+
+    // 再帰的に .md ファイルを検索
+    let mut file_count = 0;
+    for entry in walkdir::WalkDir::new(&folder_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+    {
+        file_count += 1;
+        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+            for (line_num, line) in content.lines().enumerate() {
+                if line.to_lowercase().contains(&query_lower) {
+                    let preview = if line.len() > 80 {
+                        format!("{}...", &line[..80])
+                    } else {
+                        line.to_string()
+                    };
+                    hits.push(SearchHit {
+                        path: entry.path().to_string_lossy().to_string(),
+                        line: line_num + 1, // 1-indexed
+                        preview,
+                    });
+                }
+            }
+        }
+    }
+
+    eprintln!("[Search] Scanned {} files, found {} hits", file_count, hits.len());
+    hits
+}
+
 #[tauri::command]
 fn fusen_rename_note(state: State<'_, Mutex<AppState>>, path: String, new_context: String) -> Result<String, String> {
     let current_path = Path::new(&path);
@@ -784,6 +842,7 @@ pub fn run() {
             fusen_pick_folder,        // [NEW] 純粋なフォルダ選択
             capture::fusen_capture_screen, // [NEW] 画面キャプチャ
             sound::fusen_play_sound, // [NEW] サウンド再生
+            fusen_search_notes, // [NEW] 全文検索
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);

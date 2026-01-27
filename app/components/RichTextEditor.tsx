@@ -6,6 +6,7 @@ import { EditorState, Extension, StateField, Compartment, RangeSetBuilder, Trans
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, WidgetType } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { highlightSelectionMatches, search, setSearchQuery, SearchQuery } from '@codemirror/search';
 import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
 
@@ -214,6 +215,8 @@ export interface RichTextEditorRef {
     setSelection: (start: number, end: number) => void; // [New] 範囲選択を設定
     getContent: () => string; // [New] 最新の内容を同期的に取得
     insertText: (text: string) => void; // [New] カーソル位置にテキスト挿入
+    highlightQuery: (query: string) => void; // [NEW] 検索語をハイライト
+    clearHighlight: () => void; // [NEW] ハイライトをクリア
 }
 
 // Decoration用のプラグイン（見出しと強調のみ）
@@ -683,6 +686,26 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
             });
             view.focus();
         },
+        highlightQuery: (query: string) => {
+            if (!viewRef.current) return;
+            const view = viewRef.current;
+            // CM6 の検索クエリを設定してハイライト
+            const searchQuery = new SearchQuery({
+                search: query,
+                caseSensitive: false,
+                literal: true,
+            });
+            view.dispatch({ effects: setSearchQuery.of(searchQuery) });
+        },
+        clearHighlight: () => {
+            if (!viewRef.current) return;
+            const view = viewRef.current;
+            // 空のクエリで検索をクリア
+            const emptyQuery = new SearchQuery({
+                search: '',
+            });
+            view.dispatch({ effects: setSearchQuery.of(emptyQuery) });
+        },
         view: viewRef.current
     }));
 
@@ -711,6 +734,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     linkDecorationField, // [New]
                     linkEventHandler,    // [New]
                     imagePreviewPlugin,  // [NEW]
+                    highlightSelectionMatches(), // [NEW] 選択テキストのハイライト
+                    search({ top: false }), // [NEW] 検索ハイライト用（パネル非表示）
                     filePathFacet.of(filePath), // [NEW] Inject filePath
                     ...(isNewNote ? [
                         // 新規付箋の場合のみinit()でtrueを注入

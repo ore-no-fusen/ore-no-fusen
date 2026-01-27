@@ -11,6 +11,7 @@ import { playLocalSound, SoundType } from './utils/soundManager'; // [NEW] Sound
 import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
+import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
 
 // Global AppState type definition
 type AppState = {
@@ -142,6 +143,7 @@ function OrchestratorContent() {
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
+  const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   // ダッシュボード表示時も小さいサイズを維持する
   useEffect(() => {
     if (!setupRequired && !isSettingsOpen && !isCheckingSetup) {
@@ -526,6 +528,50 @@ function OrchestratorContent() {
     };
   }, []);
 
+  // [NEW] 全文検索イベント (Tray etc)
+  useEffect(() => {
+    if (!isMainWindow) return; // Guard
+
+    let unlisten: (() => void) | undefined;
+    const promise = listen('fusen:open_search', async () => {
+      try {
+        setIsSearchOpen(true);
+        // ウィンドウを前面に
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        if (win.label === 'main') {
+          await win.show();
+          await win.unminimize();
+
+          // 検索画面に必要な最小サイズを確保
+          const MIN_WIDTH = 550;
+          const MIN_HEIGHT = 450;
+          const currentSize = await win.innerSize();
+          const scale = await win.scaleFactor();
+          const logicalWidth = currentSize.width / scale;
+          const logicalHeight = currentSize.height / scale;
+
+          if (logicalWidth < MIN_WIDTH || logicalHeight < MIN_HEIGHT) {
+            const newWidth = Math.max(logicalWidth, MIN_WIDTH);
+            const newHeight = Math.max(logicalHeight, MIN_HEIGHT);
+            await win.setSize(new LogicalSize(newWidth, newHeight));
+          }
+
+          await win.setFocus();
+        }
+      } catch (e) {
+        console.warn('[open_search] Window operation failed:', e);
+      }
+    });
+
+    promise.then(u => { unlisten = u; });
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then(u => u());
+    };
+  }, []);
+
   // [FIX] folderPathをRefで同期（リスナー内から参照するため）
   useEffect(() => {
     folderPathRef.current = folderPath;
@@ -796,6 +842,16 @@ function OrchestratorContent() {
     }} />;
   }
 
+
+  // [NEW] 検索オーバーレイを描画（独立したオーバーレイとして）
+  // メインウィンドウが非表示でも検索UIを表示するため、早期returnではなくオーバーレイとして描画
+  if (isSearchOpen) {
+    return (
+      <div className="fixed inset-0 bg-black/20 z-40">
+        <SearchOverlay onClose={() => setIsSearchOpen(false)} getWindowLabel={getWindowLabel} />
+      </div>
+    );
+  }
 
   // 管理画面（ダッシュボード）
   // ユーザー要望により、ダッシュボードは「はじめから非表示（描画しない）」とする
