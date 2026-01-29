@@ -16,7 +16,9 @@
     "core:menu:allow-new",
     "core:menu:allow-popup",
     "core:window:allow-set-focus",
+    "core:window:allow-minimize",
     "core:window:allow-unminimize",
+    "core:window:allow-center",
     "shell:allow-open",
     "core:path:default",
     "autostart:default"

@@ -130,6 +130,11 @@ function TagSelector() {
 }
 
 function OrchestratorContent() {
+  // [DEBUG] Lifecycle
+  useEffect(() => {
+    console.log('[Orchestrator] Mounted');
+    return () => console.log('[Orchestrator] Unmounted');
+  }, []);
 
   const searchParams = useSearchParams();
   const path = searchParams.get('path');
@@ -141,9 +146,16 @@ function OrchestratorContent() {
   const [files, setFiles] = useState<NoteMeta[]>([]);
   const [setupRequired, setSetupRequired] = useState(true);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState("STARTING..."); // [NEW] Visual Debug Log
   const [isCreating, setIsCreating] = useState(false);
+
+  // [DEBUG] Render interaction (Moved to top to avoid Hook Rule violation)
+  useEffect(() => {
+    console.log('[Home] Render update. isMainWindow:', isMainWindow, 'isSearchOpen:', isSearchOpen, 'folderPath:', folderPath);
+  });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
+  const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
   // ダッシュボード表示時も小さいサイズを維持する
   useEffect(() => {
     if (!setupRequired && !isSettingsOpen && !isCheckingSetup) {
@@ -340,6 +352,8 @@ function OrchestratorContent() {
   const handleCreateNote = async (overrideFolder?: string, overrideContext?: string) => {
     // Global Throttle (Module Level) prevention
     const now = Date.now();
+    console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
+
     if (now - globalLastCreateTime < 1000) {
       console.warn('[CREATE] Blocked by global throttle');
       return;
@@ -348,7 +362,7 @@ function OrchestratorContent() {
     // Sync check
     const targetFolder = overrideFolder || folderPath || folderPathRef.current;
     if (!targetFolder || isCreatingRef.current) {
-      console.warn('[CREATE] No folder or already creating');
+      console.warn('[CREATE] No folder or already creating. targetFolder:', targetFolder, 'creating:', isCreatingRef.current);
       return;
     }
 
@@ -402,6 +416,34 @@ function OrchestratorContent() {
       else promise.then((u) => u());
     };
   }, []);
+
+  // [FIX] メインウィンドウの「閉じる」を「隠す」に変更 (検索ウィンドウ再表示不具合修正)
+  useEffect(() => {
+    if (!isMainWindow) return;
+
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        if (win.label === 'main') {
+          const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
+          dbg('[Main] Setting up onCloseRequested handler');
+
+          unlisten = await win.onCloseRequested(async (event) => {
+            dbg('[Main] Close requested via X button. Intercepting -> Hide.');
+            event.preventDefault();
+            await win.hide();
+          });
+        }
+      } catch (e) {
+        console.error('Failed to setup close handler', e);
+      }
+    };
+    setup();
+
+    return () => { if (unlisten) unlisten(); };
+  }, [isMainWindow]);
 
   // [New] 設定更新イベントの監視
   useEffect(() => {
@@ -533,32 +575,53 @@ function OrchestratorContent() {
     if (!isMainWindow) return; // Guard
 
     let unlisten: (() => void) | undefined;
-    const promise = listen('fusen:open_search', async () => {
+    const promise = listen<{ sourceLabel?: string }>('fusen:open_search', async (event) => {
+      const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
+      dbg(`[Main:Listener] Event received! source: ${event.payload?.sourceLabel}`);
+      console.log('[open_search] Event received. Payload:', event.payload);
+
+      // 1. 呼び出し元を記録
+      if (event.payload?.sourceLabel) {
+        setSearchCaller(event.payload.sourceLabel);
+      }
+
+      console.log('[open_search] Opening search overlay...');
       try {
-        setIsSearchOpen(true);
+        // [FIX] Force clear loading state to ensure overlay renders even if init is slow/reloaded
+        setIsCheckingSetup(false);
+        setSetupRequired(false);
         // ウィンドウを前面に
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
         const win = getCurrentWindow();
         if (win.label === 'main') {
-          await win.show();
+          dbg('[open_search] 3. Main window operation start');
+
+          // [FIX] Priority 1: Mount overlay IMMEDIATELY
+          setIsSearchOpen(true);
+
+          // [FIX] Priority 2: Show and Focus (Reliability first)
           await win.unminimize();
-
-          // 検索画面に必要な最小サイズを確保
-          const MIN_WIDTH = 550;
-          const MIN_HEIGHT = 450;
-          const currentSize = await win.innerSize();
-          const scale = await win.scaleFactor();
-          const logicalWidth = currentSize.width / scale;
-          const logicalHeight = currentSize.height / scale;
-
-          if (logicalWidth < MIN_WIDTH || logicalHeight < MIN_HEIGHT) {
-            const newWidth = Math.max(logicalWidth, MIN_WIDTH);
-            const newHeight = Math.max(logicalHeight, MIN_HEIGHT);
-            await win.setSize(new LogicalSize(newWidth, newHeight));
-          }
-
+          await win.show();
           await win.setFocus();
+          dbg('[open_search] 3c. show/focus done');
+
+          // [FIX] Priority 3: Size and Position (Non-blocking to prevent UI hang)
+          (async () => {
+            try {
+              // Give OS a moment to finish 'show' animation before resizing
+              await new Promise(resolve => setTimeout(resolve, 150));
+              dbg('[open_search] 3d-async. setSize(800, 600)');
+              await win.setSize(new LogicalSize(800, 600));
+              dbg('[open_search] 3e-async. center');
+              await win.center();
+              dbg('[open_search] 3f-async. All window ops done');
+            } catch (e) {
+              dbg(`[open_search] Async Window Ops Error: ${e}`);
+            }
+          })();
+
+          dbg('[open_search] 4. Listener callback finished');
         }
       } catch (e) {
         console.warn('[open_search] Window operation failed:', e);
@@ -584,9 +647,10 @@ function OrchestratorContent() {
     let unlisten: (() => void) | undefined;
 
     const promise = listen('fusen:create_note_from_tray', async () => {
-      console.log('[Tray] Create note event received, delegating to handleCreateNote');
+      console.log('[Tray] Create note event received (Listener start). folderPathRef:', folderPathRef.current);
       // [UNIFIED] handleCreateNoteを呼ぶだけ（スロットルはhandleCreateNote内で管理）
       const basePath = folderPathRef.current || await invoke<string | null>('get_base_path');
+      console.log('[Tray] Resolved basePath:', basePath);
       if (basePath) {
         await handleCreateNote(basePath, '新規メモ');
       } else {
@@ -704,7 +768,10 @@ function OrchestratorContent() {
           }
         } else {
           setSetupRequired(false);
-          // Window remains hidden for normal startup (handled by restore logic)
+          // [FIX] Setup not required => Stop loading immediately if we are just "restoring"
+          // Ideally we wait for windows to open, but if the main window is shown early (e.g. search),
+          // we need to be ready.
+          // Note: The restore logic below will also run.
         }
       } catch (e) {
         console.error('Failed to check base_path:', e);
@@ -749,59 +816,116 @@ function OrchestratorContent() {
     // Original logic follows
     if (!searchParams.get('path')) {
       const checkAndRestore = async () => {
-        const basePath = await invoke<string | null>('get_base_path');
-        if (!basePath) return;
-        const savedFolder = basePath;
-        setTimeout(async () => {
-          try {
-            await invoke('fusen_list_notes', { folderPath: savedFolder });
-            const state = await syncState();
-            if (!state) return;
-            if (state.folder_path) {
-              setSetupRequired(false); // [Fix] Force false if we have a path
-            }
-            const notes = state.notes;
-            if (notes.length > 0) {
-              for (let i = 0; i < notes.length; i++) {
-                const note = notes[i];
-                await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
+        // [HELPER] Log to both Console and Terminal (via Rust)
+        const log = (msg: string) => {
+          console.log(msg);
+          invoke('fusen_debug_log', { message: msg }).catch(() => { });
+        };
+
+        setLoadingStatus("Checking Base Path...");
+        log('[Startup] checkAndRestore started');
+
+        try {
+          const basePath = await invoke<string | null>('get_base_path');
+          log(`[Startup] get_base_path result: ${basePath}`);
+
+          if (!basePath) {
+            log('[Startup] No base path, stopping restore.');
+            setLoadingStatus("No Base Path Found.");
+            return;
+          }
+          const savedFolder = basePath;
+
+          setTimeout(async () => {
+            try {
+              setLoadingStatus("Listing Notes...");
+              log('[Startup] invoking fusen_list_notes...');
+              await invoke('fusen_list_notes', { folderPath: savedFolder });
+              log('[Startup] fusen_list_notes done. Syncing state...');
+
+              setLoadingStatus("Syncing State...");
+              const state = await syncState();
+              log(`[Startup] syncState result: ${JSON.stringify(state)}`);
+
+              if (!state) {
+                setLoadingStatus("State Sync Failed.");
+                log('[Startup] Sync Failed: State is null');
+                return;
               }
-              setTimeout(async () => {
-                try {
-                  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-                  const mainWindow = await WebviewWindow.getByLabel('main');
-                  if (mainWindow) {
-                    await mainWindow.hide();
-                    setIsCheckingSetup(false); // [Fix] Stop loading
+              if (state.folder_path) {
+                setSetupRequired(false);
+              }
+              const notes = state.notes;
+              log(`[Startup] Notes found: ${notes.length}`);
+
+              if (notes.length > 0) {
+                setLoadingStatus(`Restoring ${notes.length} notes...`);
+                for (let i = 0; i < notes.length; i++) {
+                  const note = notes[i];
+                  setLoadingStatus(`Opening Note ${i + 1}/${notes.length}: ${note.path.split(/[\\/]/).pop()}...`);
+                  log(`[Startup] Opening note: ${note.path}`);
+                  await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
+                }
+
+                setLoadingStatus("Finalizing...");
+                setTimeout(async () => {
+                  try {
+                    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                    const mainWindow = await WebviewWindow.getByLabel('main');
+                    if (mainWindow) {
+                      log('[Startup] Minimizing main window (Restore path)');
+                      await mainWindow.minimize();
+                      setIsCheckingSetup(false);
+                    }
+                  } catch (e) {
+                    log(`[Startup] Failed to minimize: ${e}`);
+                    setLoadingStatus("Minimize Failed: " + String(e));
+                    setTimeout(() => setIsCheckingSetup(false), 2000);
                   }
-                } catch (e) { }
-              }, 100);
-            } else {
-              // [REFACTOR] 起動時復元でもhandleCreateNoteに統一
-              console.log('[Restore] No notes found, creating welcome note via handleCreateNote');
-              await handleCreateNote(savedFolder, 'ようこそ');
-              setTimeout(async () => {
-                try {
-                  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-                  const mainWindow = await WebviewWindow.getByLabel('main');
-                  if (mainWindow) {
-                    await mainWindow.hide();
-                    setIsCheckingSetup(false);
+                }, 100);
+              } else {
+                setLoadingStatus("Creating Welcome Note...");
+                log('[Restore] No notes found, creating welcome note');
+                await handleCreateNote(savedFolder, 'ようこそ');
+                setTimeout(async () => {
+                  try {
+                    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                    const mainWindow = await WebviewWindow.getByLabel('main');
+                    if (mainWindow) {
+                      log('[Startup] Minimizing main window (Welcome path)');
+                      await mainWindow.hide();
+                      setIsCheckingSetup(false);
+                    }
+                  } catch (e) {
+                    log(`[Startup] Failed to hide main window: ${e}`);
                   }
-                } catch (e) { }
-              }, 100);
+                }, 100);
+              }
+            } catch (e) {
+              log(`[Startup] Error in checkAndRestore inner block: ${e}`);
+              setLoadingStatus("Error: " + String(e));
+              setTimeout(() => setIsCheckingSetup(false), 3000);
             }
-          } catch (e) { }
-        }, 300);
+          }, 300);
+        } catch (e) {
+          log(`[Startup] Critical Error before inner block: ${e}`);
+          setLoadingStatus("Critical Error: " + String(e));
+          setTimeout(() => setIsCheckingSetup(false), 3000);
+        }
       };
-      checkAndRestore().catch(e => { console.error('Failed to check setup:', e); });
+
+      checkAndRestore().catch(e => {
+        invoke('fusen_debug_log', { message: `Failed to check setup: ${e}` }).catch(() => { });
+        setLoadingStatus("Setup Check Failed: " + String(e));
+        setTimeout(() => setIsCheckingSetup(false), 3000);
+      });
     }
   }, []);
 
   if (searchParams.get('tagSelector') === '1') return <TagSelector />;
   if (searchParams.get('path')) return <StickyNote />;
 
-  if (isCheckingSetup) return <LoadingScreen message="STARTING..." />;
+  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} />;
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
   if (setupRequired || isSettingsOpen) {
@@ -843,18 +967,69 @@ function OrchestratorContent() {
   }
 
 
-  // [NEW] 検索オーバーレイを描画（独立したオーバーレイとして）
-  // メインウィンドウが非表示でも検索UIを表示するため、早期returnではなくオーバーレイとして描画
-  if (isSearchOpen) {
+  // 管理画面（ダッシュボード）
+  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen;
+
+
+
+  // [NEW] Stable Return Structure
+  if (isDashboard || isSearchOpen) {
     return (
-      <div className="fixed inset-0 bg-black/20 z-40">
-        <SearchOverlay onClose={() => setIsSearchOpen(false)} getWindowLabel={getWindowLabel} />
-      </div>
+      <>
+        {/* Dashboard Placeholder (Always mounted when in dashboard/search mode) */}
+        <div style={{ display: isDashboard ? 'none' : 'block' }} data-testid="dashboard-anchor">
+          {/* If we ever want to show something in the dashboard, put it here. Currently hidden. */}
+        </div>
+
+        {/* Search Overlay */}
+        {isSearchOpen && (
+          <div className="fixed inset-0 bg-black/20 z-40">
+            <SearchOverlay onClose={async () => {
+              const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
+              dbg(`[Search] onClose triggered. Caller: ${searchCaller}`);
+              setIsSearchOpen(false); // UIを先に閉じる
+
+              try {
+                // [FIX] Imports split correctly
+                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+
+                // 2. 呼び出し元が存在する場合、フォーカスを戻す (Return Focus)
+                if (searchCaller) {
+                  try {
+                    console.log(`[Search] Returning focus to caller: ${searchCaller}`);
+                    const targetWin = await WebviewWindow.getByLabel(searchCaller);
+                    if (targetWin) {
+                      await targetWin.setFocus();
+                    } else {
+                      console.warn(`[Search] Caller window not found: ${searchCaller}`);
+                    }
+                  } catch (e) {
+                    console.warn(`[Search] Failed to focus caller: ${searchCaller}`, e);
+                  }
+                }
+
+                const win = getCurrentWindow();
+                if (win.label === 'main') {
+                  dbg('[Search] Hiding main window (Keeping size)');
+                  await win.hide();
+                  dbg('[Search] Window hidden successfully');
+                }
+              } catch (e) {
+                dbg(`[Search] Cleanup Error: ${e}`);
+                console.error('[Search] Failed to cleanup window:', e);
+              } finally {
+                dbg('[Search] onClose finished');
+                setSearchCaller(null);
+              }
+            }} getWindowLabel={getWindowLabel} />
+          </div>
+        )}
+      </>
     );
   }
 
-  // 管理画面（ダッシュボード）
-  // ユーザー要望により、ダッシュボードは「はじめから非表示（描画しない）」とする
+  // Fallback (should not be reached if conditions match)
   return null;
 }
 

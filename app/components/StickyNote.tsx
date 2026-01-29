@@ -983,13 +983,24 @@ const StickyNote = memo(function StickyNote() {
 
     // [NEW] Ctrl+F で全文検索を開く
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
+        const handleKeyDown = async (e: KeyboardEvent) => {
             // Ctrl+F (Windows) or Cmd+F (Mac) で全文検索を開く
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 e.preventDefault(); // ブラウザのデフォルト検索を無効化
                 e.stopPropagation();
-                console.log('[StickyNote] Ctrl+F detected, emitting fusen:open_search');
-                emit('fusen:open_search', {});
+
+                try {
+                    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                    const win = getCurrentWindow();
+                    const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
+                    dbg(`[StickyNote:${win.label}] Ctrl+F detected. Emitting fusen:open_search...`);
+                    // sourceLabelとして自分のラベルを送信
+                    await emit('fusen:open_search', { sourceLabel: win.label });
+                    dbg(`[StickyNote:${win.label}] Event emitted successfully.`);
+                } catch (err) {
+                    console.error('[StickyNote] Failed to emit search event:', err);
+                    await invoke('fusen_debug_log', { message: `[StickyNote] ERROR emitting search: ${err}` }).catch(() => { });
+                }
             }
         };
 

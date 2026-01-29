@@ -1,0 +1,12 @@
+# Antigravity Debugging Protocol (AGDP) Enforcement
+
+You must strictly follow the debugging protocol defined in `DEBUGGING_PROTOCOL.md` and `AG_RULES.md`.
+
+## Mandatory Steps for Bug Fixes:
+1. **Phase I: Observation**: Do NOT edit functional code. Add `console.log` or `invoke('fusen_debug_log')` to capture the failure point.
+2. **Phase II: Evidence**: Present the specific log lines that prove your hypothesis to the user.
+3. **Phase III: Visualization**: Create a sequence diagram (Mermaid) to explain the proposed fix. Get explicit user approval.
+4. **Phase IV: Implementation**: Only modify the code after Phase III is approved.
+5. **Phase V: Verification**: Run the app and present logs proving the fix works.
+
+NEVER skip to implementation without evidence and visualization. Guesswork is strictly prohibited.

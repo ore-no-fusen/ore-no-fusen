@@ -14,9 +14,15 @@ mod settings;
 mod import; // [NEW] インポート機能
 mod capture; // [NEW] キャプチャ機能
 mod sound; // [NEW] サウンド機能
+mod clipboard; // [NEW] クリップボード機能
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
+
+#[tauri::command]
+fn fusen_debug_log(message: String) {
+    println!("[Frontend] {}", message);
+}
 
 #[tauri::command]
 fn fusen_select_folder(state: State<'_, Mutex<AppState>>) -> Option<String> {
@@ -322,36 +328,83 @@ fn fusen_search_notes(
 
     eprintln!("[Search] Searching for '{}' in folder: {}", query, folder_path);
 
+    let hits = search_notes_logic(&folder_path, &query);
+
+    eprintln!("[Search] Found {} hits", hits.len());
+    hits
+}
+
+fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
+    use std::io::BufRead;
+    
     let mut hits = Vec::new();
     let query_lower = query.to_lowercase();
-
-    // 再帰的に .md ファイルを検索
-    let mut file_count = 0;
-    for entry in walkdir::WalkDir::new(&folder_path)
+    
+    for entry in walkdir::WalkDir::new(folder_path)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+        .filter(|e| {
+            // [Fix] Exclude Trash folder
+            let path_str = e.path().to_string_lossy();
+            if path_str.contains("\\Trash\\") || path_str.contains("/Trash/") || path_str.ends_with("Trash") {
+                return false;
+            }
+            e.path().extension().map_or(false, |ext| ext == "md")
+        })
     {
-        file_count += 1;
-        if let Ok(content) = std::fs::read_to_string(entry.path()) {
-            for (line_num, line) in content.lines().enumerate() {
-                if line.to_lowercase().contains(&query_lower) {
-                    let preview = if line.len() > 80 {
-                        format!("{}...", &line[..80])
-                    } else {
-                        line.to_string()
-                    };
-                    hits.push(SearchHit {
-                        path: entry.path().to_string_lossy().to_string(),
-                        line: line_num + 1, // 1-indexed
-                        preview,
-                    });
+        if let Ok(file) = std::fs::File::open(entry.path()) {
+            let reader = std::io::BufReader::new(file);
+            
+            // [Fix Line Numbers] State machine to track Body lines only
+            let mut is_frontmatter = false;
+            let mut body_started = false; // [Fix] Track if we hit the first non-empty body line
+            let mut body_line_counter = 0;
+            
+            for (file_line_idx, line_res) in reader.lines().enumerate() {
+                if let Ok(line) = line_res {
+                    // Check Frontmatter Start
+                    if file_line_idx == 0 && line.trim() == "---" {
+                        is_frontmatter = true;
+                        continue;
+                    }
+                    
+                    // Check Frontmatter End
+                    if is_frontmatter {
+                        if line.trim() == "---" {
+                            is_frontmatter = false;
+                        }
+                        continue;
+                    }
+                    
+                    // Body Logic
+                    // Mimic trim_start(): skip leading blank lines
+                    if !body_started {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        body_started = true;
+                    }
+
+                    // Now we are in the "visible" body
+                    body_line_counter += 1;
+                    
+                    if line.to_lowercase().contains(&query_lower) {
+                        let preview = if line.chars().count() > 80 {
+                            let start: String = line.chars().take(80).collect();
+                            format!("{}...", start)
+                        } else {
+                            line.to_string()
+                        };
+                        hits.push(SearchHit {
+                            path: entry.path().to_string_lossy().to_string(),
+                            line: body_line_counter,
+                            preview,
+                        });
+                    }
                 }
             }
         }
     }
-
-    eprintln!("[Search] Scanned {} files, found {} hits", file_count, hits.len());
     hits
 }
 
@@ -812,6 +865,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .invoke_handler(tauri::generate_handler![
+            fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_note,
             fusen_force_focus,
             fusen_select_folder,
@@ -843,6 +897,7 @@ pub fn run() {
             capture::fusen_capture_screen, // [NEW] 画面キャプチャ
             sound::fusen_play_sound, // [NEW] サウンド再生
             fusen_search_notes, // [NEW] 全文検索
+            clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);
@@ -899,3 +954,23 @@ pub fn run() {
 }
 
 
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+    use tempfile::tempdir;
+    use std::fs;
+
+    #[test]
+    fn test_search_logic() {
+        let dir = tempdir().unwrap();
+        let file1 = dir.path().join("Note1.md");
+        let file2 = dir.path().join("Note2.md");
+        
+        fs::write(&file1, "Hello World\nThis is a test.").unwrap();
+        fs::write(&file2, "Another note\nHello there.").unwrap();
+        
+        let hits = search_notes_logic(dir.path().to_str().unwrap(), "Hello");
+        assert_eq!(hits.len(), 2);
+    }
+}

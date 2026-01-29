@@ -778,24 +778,33 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                                     const currentPos = view.state.selection.main.from;
                                     console.log('[EDITOR] Paste: Inserting image at pos:', currentPos);
 
-                                    // TODO: ここでTauri(Rust)側の画像保存コマンドを呼び出し、保存されたパスを受け取る
-                                    // const savedPath = await invoke('save_image', { ... });
-                                    // とりあえず今回は「カーソル位置への挿入」の検証のためダミーを使用
-                                    const imagePath = "image_path_placeholder.png";
-                                    const markdown = `![image](${imagePath})`;
+                                    // Invoke backend command to save image from clipboard
+                                    import('@tauri-apps/api/core').then(({ invoke }) => {
+                                        invoke<string>('fusen_get_image_from_clipboard', { path: filePath })
+                                            .then((savedPath) => {
+                                                console.log('[EDITOR] Image saved at:', savedPath);
+                                                // Insert markdown: ![image](path)
+                                                // Use "image" as alt text, can be changed later
+                                                const markdown = `![image](${savedPath})`;
 
-                                    // カーソル位置に挿入し、カーソルを画像の直後に移動
-                                    view.dispatch({
-                                        changes: {
-                                            from: currentPos,
-                                            to: currentPos,
-                                            insert: markdown
-                                        },
-                                        selection: {
-                                            anchor: currentPos + markdown.length,
-                                            head: currentPos + markdown.length
-                                        }
+                                                view.dispatch({
+                                                    changes: {
+                                                        from: currentPos,
+                                                        to: currentPos,
+                                                        insert: markdown
+                                                    },
+                                                    selection: {
+                                                        anchor: currentPos + markdown.length,
+                                                        head: currentPos + markdown.length
+                                                    }
+                                                });
+                                            })
+                                            .catch((err) => {
+                                                console.error('[EDITOR] Failed to paste image:', err);
+                                                // Optional: Show error to user?
+                                            });
                                     });
+
                                     return;
                                 }
                             }
