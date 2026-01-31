@@ -1,61 +1,8 @@
 
+
 import { test, expect, Page } from '@playwright/test';
+import { mockTauriAPI } from './mock-tauri';
 
-// Reuse the mock setup from sticky-note.spec.ts (simplified here or imported)
-// For standalone robustness, I'll copy the minimal necessary mock.
-// Realistically, I should refactor the mock to a helper file, but I'll inline for now to avoid breaking existing tests.
-
-async function mockTauriAPI(page: Page) {
-    await page.addInitScript(() => {
-        const handleIpc = (cmd: string, args: any) => {
-            if (cmd === 'fusen_read_note') {
-                return {
-                    body: 'Line 1\nLine 2\nLine 3',
-                    frontmatter: '',
-                    meta: { path: args.path, seq: 1, context: 'Test', updated: '' }
-                };
-            }
-            if (cmd === 'get_base_path') return 'C:/test';
-            return null;
-        };
-
-        // Recursive proxy mock for robust API handling (fixes __TAURI_INTERNALS__ access)
-        const createRecursiveMock = (path: string = ''): any => {
-            return new Proxy(() => Promise.resolve(), {
-                get: (_target, prop) => {
-                    if (prop === 'then') return undefined; // Promise safety
-                    if (prop === 'toJSON') return () => ({});
-                    if (path === '' && prop === 'invoke') return (cmd: string, args: any) => Promise.resolve(handleIpc(cmd, args));
-                    return createRecursiveMock();
-                },
-                apply: () => Promise.resolve()
-            });
-        };
-
-        (window as any).__TAURI_IPC__ = async (m: any) => handleIpc(m.cmd, m);
-        (window as any).__TAURI_INTERNALS__ = createRecursiveMock();
-
-        const mockWindow = {
-            label: 'test-window',
-            listen: () => Promise.resolve(() => { }),
-            scaleFactor: () => Promise.resolve(1),
-            outerPosition: () => Promise.resolve({ x: 0, y: 0 }),
-            innerSize: () => Promise.resolve({ width: 400, height: 300 }),
-            setFocus: () => Promise.resolve(),
-        };
-
-        const tauriProxy = createRecursiveMock();
-        Object.assign(tauriProxy, {
-            window: {
-                getCurrentWindow: () => mockWindow,
-                WebviewWindow: { getByLabel: () => Promise.resolve(null) }
-            },
-            core: { invoke: (cmd: string, args: any) => Promise.resolve(handleIpc(cmd, args)) },
-            event: { listen: () => Promise.resolve(() => { }) }
-        });
-        (window as any).__TAURI__ = tauriProxy;
-    });
-}
 
 test.describe('範囲選択と編集モード', () => {
     test.beforeEach(async ({ page }) => {

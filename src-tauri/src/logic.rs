@@ -424,21 +424,7 @@ pub fn handle_update_geometry(
     Ok(Effect::WriteNote { path: path.to_string(), content: new_content })
 }
 
-pub fn handle_toggle_always_on_top(
-    state: &mut AppState,
-    path: &str,
-    current_content: &str,
-    enable: bool
-) -> Result<Effect, String> {
-    let new_content = update_frontmatter_value(current_content, "alwaysOnTop", enable.to_string());
-    
-    // State update
-    if let Some(index) = state.notes.iter().position(|n| n.path == path) {
-        state.notes[index].always_on_top = Some(enable);
-    }
-    
-    Ok(Effect::WriteNote { path: path.to_string(), content: new_content })
-}
+
 
 #[cfg(test)]
 mod tests {

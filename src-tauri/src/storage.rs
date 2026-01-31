@@ -200,9 +200,7 @@ pub fn ensure_archive_dir(parent_path: &Path) -> Result<PathBuf, String> {
     Ok(archive_dir)
 }
 
-pub fn create_hard_link(src: &Path, dest: &Path) -> Result<(), String> {
-    fs::hard_link(src, dest).map_err(|e| e.to_string())
-}
+
 
 pub fn create_symlink(src: &Path, dest: &Path) -> Result<(), String> {
     #[cfg(windows)]
@@ -497,26 +495,7 @@ mod tests {
         assert!(archive_dir.ends_with("Archive"));
     }
 
-    #[test]
-    fn test_create_hard_link() {
-        let dir = tempdir().unwrap();
-        let src = dir.path().join("source.md");
-        let dest = dir.path().join("link.md");
-        
-        fs::write(&src, "content").unwrap();
-        create_hard_link(&src, &dest).unwrap();
-        
-        assert!(dest.exists());
-        
-        // Content should be the same
-        let content = fs::read_to_string(&dest).unwrap();
-        assert_eq!(content, "content");
-        
-        // Modifying src should affect dest
-        fs::write(&src, "modified").unwrap();
-        let content_after = fs::read_to_string(&dest).unwrap();
-        assert_eq!(content_after, "modified");
-    }
+
 
     #[test]
     fn test_create_symlink() {

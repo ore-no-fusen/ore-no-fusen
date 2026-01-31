@@ -8,126 +8,15 @@ import { test, expect, Page } from '@playwright/test';
  * Tauri APIをモックしてテストします。
  */
 
-// Tauri APIをモックする関数
-async function mockTauriAPI(page: Page) {
-    await page.addInitScript(() => {
-        // IPCリクエストを処理するハンドラ
-        const handleIpc = (cmd: string, args: any) => {
-            console.log('[Mock Tauri] IPC:', cmd, args);
-            // コマンドに応じてモックレスポンスを返す
-            switch (cmd) {
-                case 'fusen_read_note':
-                    return {
-                        body: `---
-seq: 1
-context: テストノート
-backgroundColor: #f7e9b0
-x: 100
-y: 100
-width: 400
-height: 300
----
+import { mockTauriAPI } from './mock-tauri';
 
-- [ ] タスク1
-- [x] タスク2
-これはテスト本文です。`,
-                        frontmatter: '',
-                        meta: { path: args.path, seq: 1, context: 'テスト', updated: '2026-01-14' }
-                    };
-                case 'fusen_save_note':
-                    return args.path;
-                case 'fusen_get_all_tags':
-                    return ['タグ1', 'タグ2'];
-                case 'get_base_path':
-                    return 'C:/test';
-                case 'fusen_open_containing_folder':
-                    return null;
-                default:
-                    console.warn('[Mock Tauri] Unhandled command:', cmd);
-                    // イベントリスナー登録IDなどを期待するケースがあるため、とりあえず数値0を返す
-                    return 0;
-            }
-        };
-
-        // Tauri v2 / IPC モック
-        (window as any).__TAURI_IPC__ = async (message: any) => {
-            return handleIpc(message.cmd, message);
-        };
-
-        // 動的なモック生成のためのProxy
-        const createRecursiveMock = (path: string = ''): any => {
-            return new Proxy(() => Promise.resolve(), {
-                get: (_target, prop) => {
-                    if (prop === 'then') return undefined; // Promiseとして扱われないように
-                    if (prop === 'toJSON') return () => ({});
-                    if (typeof prop === 'string') {
-                        // 特定のプロパティは明示的に定義
-                        if (path === '' && prop === 'metadata') return { package: { version: '0.1.0' } };
-                        if (path === '' && prop === 'invoke') return (cmd: string, args: any) => Promise.resolve(handleIpc(cmd, args));
-                        if (path === '' && prop === 'transformCallback') return (cb: any) => cb;
-
-                        console.log(`[Mock Tauri] Auto-mocking access: ${path ? path + '.' : ''}${prop}`);
-                        return createRecursiveMock(`${path ? path + '.' : ''}${prop}`);
-                    }
-                    return createRecursiveMock();
-                },
-                apply: (_target, _thisArg, args) => {
-                    console.log(`[Mock Tauri] Auto-mocking call: ${path}`, args);
-                    return Promise.resolve();
-                }
-            });
-        };
-
-        (window as any).__TAURI_INTERNALS__ = createRecursiveMock();
-
-        // window.__TAURI__ も Proxy でラップし、必須メソッドのみ定義
-        const tauriProxy = createRecursiveMock();
-
-        // 必須メソッドの定義
-        const currentWindowMock = {
-            label: 'test-window',
-            listen: () => Promise.resolve(() => { }),
-            emit: () => Promise.resolve(),
-            innerSize: () => Promise.resolve({ width: 400, height: 300 }),
-            outerPosition: () => Promise.resolve({ x: 100, y: 100 }),
-            scaleFactor: () => Promise.resolve(1),
-            startDragging: () => Promise.resolve(),
-            show: () => Promise.resolve(),
-            hide: () => Promise.resolve(),
-            close: () => Promise.resolve(),
-            setFocus: () => Promise.resolve(),
-            unminimize: () => Promise.resolve(),
-            setAlwaysOnTop: () => Promise.resolve(),
-        };
-
-        // Proxyベースのサブモジュールを作成するヘルパー
-        const createModuleMock = (name: string, overrides: any = {}) => {
-            const proxy = createRecursiveMock(`window.__TAURI__.${name}`);
-            return Object.assign(proxy, overrides);
-        };
-
-        // window.__TAURI__.window などの構造を再現しつつ Proxy 機能を持たせる
-        Object.assign(tauriProxy, {
-            window: createModuleMock('window', {
-                getCurrentWindow: () => currentWindowMock,
-                getAll: () => [currentWindowMock],
-                WebviewWindow: {
-                    getByLabel: () => Promise.resolve(null),
-                },
-            }),
-            core: createModuleMock('core', {
-                invoke: (cmd: string, args: any) => Promise.resolve(handleIpc(cmd, args))
-            }),
-            event: createModuleMock('event', {
-                listen: () => Promise.resolve(() => { }),
-                emit: () => Promise.resolve(),
-            }),
-            // IPCなど他のネームスペースもProxyが自動生成
-        });
-
-        (window as any).__TAURI__ = tauriProxy;
-    });
-}
+/**
+ * E2Eテスト: 付箋アプリの基本動作
+ * 
+ * 注意: これらのテストはNext.js開発サーバーに対して実行されます。
+ * Tauri API（ウィンドウ操作など）はブラウザでは動作しないため、
+ * Tauri APIをモックしてテストします。
+ */
 
 test.describe('付箋アプリ基本動作', () => {
 

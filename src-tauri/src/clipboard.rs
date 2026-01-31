@@ -1,5 +1,4 @@
-use tauri::Runtime;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs;
 use arboard::Clipboard;
 use chrono::Local;

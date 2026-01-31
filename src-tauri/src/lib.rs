@@ -1,5 +1,5 @@
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::{State, Manager, AppHandle, Emitter};
 use raw_window_handle::HasWindowHandle;

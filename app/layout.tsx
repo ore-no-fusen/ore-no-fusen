@@ -7,10 +7,7 @@ export const metadata: Metadata = {
   title: "俺の付箋",
   description: "Obsidian VaultのMarkdownを付箋UIで表示",
   manifest: "/manifest.webmanifest",
-  icons: {
-    icon: "/icons/icon-192.png",
-    apple: "/icons/icon-192.png",
-  },
+  // icons is removed to prioritize the manual link in head or default favicon.ico resolution
 };
 
 export const viewport: Viewport = {
