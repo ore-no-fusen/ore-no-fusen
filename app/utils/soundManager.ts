@@ -4,6 +4,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { isSoundEnabled } from './settingsManager';
 
 // 利用可能なサウンド
 export type SoundType = 'peel-off' | 'pop';
@@ -14,56 +15,17 @@ const SOUND_FILES: Record<SoundType, string> = {
     'pop': '/sounds/pop.mp3', // 将来用
 };
 
-// キャッシュ用
-let soundEnabledCache: boolean | null = null;
-let lastCacheTime = 0;
-const CACHE_DURATION = 5000; // 5秒間キャッシュ
-
-/**
- * 設定から soundEnabled を取得（キャッシュ付き）
- */
-async function isSoundEnabled(): Promise<boolean> {
-    const now = Date.now();
-
-    // キャッシュが有効な場合
-    if (soundEnabledCache !== null && (now - lastCacheTime) < CACHE_DURATION) {
-        return soundEnabledCache;
-    }
-
-    try {
-        // ブラウザ環境（開発用）
-        if (typeof window !== 'undefined' && !('__TAURI__' in window)) {
-            const saved = localStorage.getItem('ore-no-fusen-settings');
-            if (saved) {
-                const settings = JSON.parse(saved);
-                soundEnabledCache = settings.soundEnabled ?? true;
-            } else {
-                soundEnabledCache = true; // デフォルトは有効
-            }
-        } else {
-            // Tauri環境
-            const settings = await invoke<{ soundEnabled: boolean }>('get_settings');
-            soundEnabledCache = settings.soundEnabled ?? true;
-        }
-
-        lastCacheTime = now;
-        return soundEnabledCache ?? true;
-    } catch (e) {
-        console.error('[SoundManager] Failed to get settings:', e);
-        return true; // エラー時はデフォルトで有効
-    }
-}
-
 /**
  * 実際に音を再生する（ローカル再生用）
  * page.tsx など、常駐するプロセスから呼ばれることを想定
  */
 export async function playLocalSound(type: SoundType, volume: number = 1.0): Promise<void> {
     try {
+        // [Fix] settingsManagerに委譲（ここで最新の設定が取れる）
         const enabled = await isSoundEnabled();
 
         if (!enabled) {
-            console.log('[SoundManager] Sound is disabled in settings');
+            // console.log('[SoundManager] Sound is disabled in settings');
             return;
         }
 

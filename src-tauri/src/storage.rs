@@ -263,6 +263,24 @@ pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Resul
     Ok(())
 }
 
+pub fn delete_associated_assets(note_path: &Path) -> Result<(), String> {
+    let content = fs::read_to_string(note_path).map_err(|e| e.to_string())?;
+    let re = regex::Regex::new(r"!\[[^\]]*\]\((assets/[^)]+)\)").unwrap();
+
+    let note_dir = note_path.parent().ok_or("No parent")?;
+    
+    for cap in re.captures_iter(&content) {
+        let asset_rel_path = &cap[1];
+        let src_asset_path = note_dir.join(asset_rel_path);
+        
+        if src_asset_path.exists() {
+            fs::remove_file(&src_asset_path).map_err(|e| e.to_string())?;
+            // Optional: Try removing parent 'assets' dir if empty, but might be risky/noisy
+        }
+    }
+    Ok(())
+}
+
 pub fn open_in_explorer(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {

@@ -4,6 +4,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 // 設定の型定義
 export type AppSettings = {
@@ -26,16 +27,42 @@ const DEFAULT_SETTINGS: AppSettings = {
 // キャッシュ
 let settingsCache: AppSettings | null = null;
 let lastCacheTime = 0;
-const CACHE_DURATION = 5000; // 5秒間キャッシュ
+const CACHE_DURATION = 5000; // 5秒間キャッシュ（イベントで更新されるので長くても本来OK）
+let isListenerSetup = false;
 
-// ブラウザ環境かどうか
-const isBrowser = typeof window !== 'undefined' && !('__TAURI__' in window);
+// 環境判定 (Tauri v2対応)
+const isTauri = typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+const isBrowser = !isTauri;
+
+/**
+ * リスナーのセットアップ（初回呼び出し時に実行）
+ */
+async function setupSettingsListener() {
+    if (isListenerSetup || isBrowser) return;
+
+    try {
+        await listen<AppSettings>('settings_updated', (event) => {
+            console.log('[SettingsManager] Received settings update:', event.payload);
+            settingsCache = event.payload;
+            lastCacheTime = Date.now();
+        });
+        isListenerSetup = true;
+        console.log('[SettingsManager] Listener setup complete');
+    } catch (e) {
+        console.error('[SettingsManager] Failed to setup listener:', e);
+    }
+}
 
 /**
  * 設定を取得（キャッシュ付き）
  */
 export async function getSettings(): Promise<AppSettings> {
     const now = Date.now();
+
+    // リスナーの遅延初期化
+    if (!isListenerSetup && !isBrowser) {
+        setupSettingsListener();
+    }
 
     // キャッシュが有効な場合
     if (settingsCache !== null && (now - lastCacheTime) < CACHE_DURATION) {
@@ -62,7 +89,7 @@ export async function getSettings(): Promise<AppSettings> {
         } else {
             // Tauri環境
             const loaded = await invoke<any>('get_settings');
-            // Rust側もエイリアス付きで定義されているが、返却はsnake_caseのはず
+            // Rust側もエイリアス付きで定義されているが、返却はsnake_case
             const normalized = {
                 base_path: loaded.base_path,
                 language: loaded.language,

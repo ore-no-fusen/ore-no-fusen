@@ -264,6 +264,9 @@ fn fusen_archive_note(
         // [New] Copy associated assets BEFORE moving the note
         storage::copy_associated_assets(current_path, &archive_dir)?;
 
+        // [New] Delete original assets after copy (Move)
+        storage::delete_associated_assets(current_path)?;
+
         storage::rename_note(&path, &new_path_str)?;
     } else {
         // Multi-tag logic
@@ -277,6 +280,10 @@ fn fusen_archive_note(
             if i == 0 {
                 // First tag: Move the file and assets
                 storage::copy_associated_assets(current_path, &tag_dir)?;
+
+                // [New] Delete original assets
+                storage::delete_associated_assets(current_path)?;
+
                 storage::rename_note(&path, &new_path_str)?;
                 first_new_path = Some(new_path);
             } else if let Some(ref src) = first_new_path {
