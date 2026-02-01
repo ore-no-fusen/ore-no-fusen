@@ -141,11 +141,34 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
 pub fn read_note(path: &str) -> Result<Note, String> {
     let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
     
-    // TEMP: Return full content as body - frontend will split
+    // 1. ファイル名から基本情報を解析
+    let path_obj = Path::new(path);
+    let filename = path_obj.file_name()
+        .ok_or("Invalid filename")?
+        .to_string_lossy()
+        .to_string();
+    let (seq, updated, context) = logic::parse_filename(&filename);
+
+    // 2. コンテンツから拡張メタデータを解析（list_notesと同様のロジック）
+    let (x, y, width, height, background_color, always_on_top, tags) = logic::extract_meta_from_content(&content);
+
+    // 3. 正しい値をセットして返す
     Ok(Note {
         body: content,
-        frontmatter: String::new(),
-        meta: NoteMeta { path: path.to_string(), ..Default::default() },
+        frontmatter: String::new(), 
+        meta: NoteMeta { 
+            path: path.to_string(),
+            seq,
+            context,
+            updated,
+            x, 
+            y, 
+            width, 
+            height, 
+            background_color, 
+            always_on_top,
+            tags,
+        },
     })
 }
 
@@ -244,15 +267,39 @@ pub fn open_in_explorer(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
+        use std::path::Path;
+
         // Convert forward slashes to backslashes for Windows
         let windows_path = path.replace('/', "\\");
+
+        // [DEBUG] Log path
+        crate::logger::log_info(&format!("[DEBUG] open_in_explorer called with: '{}'", path));
         
-        // Use explorer /select to open and highlight the file
-        Command::new("explorer")
-            .arg("/select,")
-            .arg(&windows_path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        let path_obj = Path::new(&windows_path);
+        
+        if path_obj.exists() {
+            // Plan A: File exists, select it
+            Command::new("explorer")
+                .arg("/select,")
+                .arg(&windows_path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else {
+            // Plan B: File missing, open parent folder (Fallback)
+            crate::logger::log_warn(&format!("[WARN] File not found: '{}'. Opening parent folder.", windows_path));
+            if let Some(parent) = path_obj.parent() {
+                 Command::new("explorer")
+                    .arg(parent)
+                    .spawn()
+                    .map_err(|e| e.to_string())?;
+            } else {
+                 // Fallback if parent lookup fails (e.g. root), try opening path directly
+                  Command::new("explorer")
+                    .arg(&windows_path)
+                    .spawn()
+                    .map_err(|e| e.to_string())?;
+            }
+        }
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -519,5 +566,32 @@ mod tests {
                 println!("Symlink test skipped/failed (likely privileges): {}", e);
             }
         }
+    }
+    #[test]
+    fn test_read_note_should_parse_metadata() {
+        let dir = tempdir().unwrap();
+        // ファイル名にメタ情報を含む（seq=1）
+        let file_path = dir.path().join("0001_2026-01-31_TestNote.md");
+        let file_path_str = file_path.to_string_lossy().to_string();
+
+        // コンテンツにメタデータ（x, y, tags）を埋め込む
+        let content = r#"---
+seq: 1
+x: 100.0
+y: 200.0
+tags: ["important"]
+---
+
+本文"#;
+        
+        write_note(&file_path_str, content).unwrap();
+
+        // 読み込み実行
+        let note = read_note(&file_path_str).unwrap();
+
+        // 検証：修正前はここで失敗する
+        assert_eq!(note.meta.x, Some(100.0), "x座標が読み込まれていません");
+        assert_eq!(note.meta.y, Some(200.0), "y座標が読み込まれていません");
+        assert!(note.meta.tags.contains(&"important".to_string()), "タグが読み込まれていません");
     }
 }

@@ -125,9 +125,9 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                         // Refresh menu to update checkboxes
                         let _ = refresh_tray_menu(app);
                         
-                        // Rust側で直接ウィンドウフィルタリングを実行
+                        // Shared Logicによるタグフィルタ適用
                         let state = app.state::<Mutex<AppState>>();
-                        if let Err(e) = crate::apply_tag_filter_windows(app, state, &active_tags) {
+                        if let Err(e) = crate::update_tag_filter(app, state, &active_tags) {
                             eprintln!("[Tray] Failed to apply tag filter: {}", e);
                         }
                     },

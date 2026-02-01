@@ -36,8 +36,16 @@ pub fn save_settings<R: Runtime>(
 
     // 3. 全ウィンドウに通知を飛ばす（全体更新イベント）
     let _ = app.emit("settings_updated", &settings);
+
+    // [Fix] トレイメニュー更新はメインスレッドで行う（Windowsでのクラッシュ防止）
+    let app_handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Err(e) = crate::tray::refresh_tray_menu(&app_handle) {
+            eprintln!("[SETTINGS] Failed to refresh tray menu: {}", e);
+        }
+    });
     
-    println!("[SETTINGS] Save successful. AppState updated and event emitted.");
+    println!("[SETTINGS] Save successful. AppState updated, event emitted, and Tray refreshed.");
 
     Ok(())
 }

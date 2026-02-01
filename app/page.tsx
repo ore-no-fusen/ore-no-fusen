@@ -73,6 +73,7 @@ function TagSelector() {
 
   const handleApply = async () => {
     try {
+      console.log('[TagSelector] Applying tags:', selectedTags);
       await invoke('fusen_set_active_tags', { tags: selectedTags });
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const win = getCurrentWindow();
@@ -455,14 +456,31 @@ function OrchestratorContent() {
     const setup = async () => {
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        return await listen<any>('settings_updated', async (event) => {
+
+        // 1. Settings Updated Listener
+        const unlistenSettings = await listen<any>('settings_updated', async (event) => {
           console.log('[ORCHESTRATOR] Settings updated:', event.payload);
           const newSettings = event.payload;
           if (newSettings && newSettings.base_path) {
             setFolderPath(newSettings.base_path);
             await syncState();
+
+            // [FIX] Listener should NOT close the settings window.
           }
         });
+
+        // 2. Notes Updated Listener (e.g. from Import)
+        const unlistenNotes = await listen('fusen:notes_updated', async () => {
+          console.log('[ORCHESTRATOR] Notes updated (external). Syncing state...');
+          await syncState();
+        });
+
+        // Return combined cleanup function
+        return () => {
+          unlistenSettings();
+          unlistenNotes();
+        };
+
       } catch (e) {
         console.error("Failed to setup orchestrator settings listener", e);
         return () => { };
@@ -654,7 +672,17 @@ function OrchestratorContent() {
       if (basePath) {
         await handleCreateNote(basePath, '新規メモ');
       } else {
-        console.warn('[Tray] No folder path available');
+        console.warn('[Tray] No folder path available. Opening Setup.');
+        // フォルダー未設定時は設定画面 (Setup) を開く
+        setIsSettingsOpen(true);
+        // 設定画面を開くためのウィンドウ操作
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        await win.setSize(new LogicalSize(900, 630));
+        await win.center();
+        await win.show();
+        await win.setFocus();
       }
     });
 
@@ -696,31 +724,40 @@ function OrchestratorContent() {
 
     let unlisten: null | (() => void) = null;
     (async () => {
-      unlisten = await listen<string[]>('fusen:apply_tag_filter', async (event) => {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const currentWin = getCurrentWindow();
-        if (currentWin.label !== 'main') return;
+      // [Refactor] SSOT-based Window Reconciliation
+      // Rust updates state -> Emits this event -> Frontend syncs actual windows
+      unlisten = await listen<string[]>('fusen:sync_visible_notes', async (event) => {
+        const visiblePaths = event.payload;
+        console.log('[Orchestrator] Reconciling windows. Desired visible count:', visiblePaths.length);
 
-        const selectedTags = event.payload;
         try {
-          const allNotes = await invoke<NoteMeta[]>('fusen_refresh_notes_with_tags');
-          const selected = selectedTags.map(t => t.trim());
-          const filteredNotes = selected.length > 0 ? allNotes.filter(n => (n.tags ?? []).some(tag => selected.includes(tag.trim()))) : allNotes;
           const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
           const allWindows = await getAllWebviewWindows();
-          const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
+          const currentWindowMap = new Map(allWindows.map(w => [w.label, w]));
 
+          // 1. Calculate Desired Labels
+          const desiredLabels = new Set(visiblePaths.map(p => getWindowLabel(p)));
+
+          // 2. Hide extra windows (Existent && Not Desired)
+          // Only target note windows (label starts with 'note-')
           for (const win of allWindows) {
-            if (win.label === 'main' || win.label === 'tag-selector') continue;
-            if (!filteredPaths.has(win.label)) { try { await win.hide(); } catch (e) { } }
+            if (win.label.startsWith('note-') && !desiredLabels.has(win.label)) {
+              await win.hide();
+            }
           }
-          for (const note of filteredNotes) {
-            try {
-              await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
-              await new Promise(resolve => setTimeout(resolve, 50));
-            } catch (e) { }
+
+          // 3. Show/Open missing windows
+          for (const path of visiblePaths) {
+            const label = getWindowLabel(path);
+            const win = currentWindowMap.get(label);
+            if (win) {
+              await win.show();
+              await win.unminimize();
+            } else {
+              await openNoteWindow(path);
+            }
           }
-        } catch (e) { console.error('[apply_tag_filter] Error:', e); }
+        } catch (e) { console.error('[Orchestrator] Failed to reconcile windows:', e); }
       });
     })();
     return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:apply_tag_filter', e); } };
@@ -939,19 +976,15 @@ function OrchestratorContent() {
         await syncState();
         setSetupRequired(false);
 
-        // メインウィンドウを表示
+        // メインウィンドウを隠す（UI改善: デスクトップには付箋だけ残す）
         try {
           const { getCurrentWindow } = await import('@tauri-apps/api/window');
           const win = getCurrentWindow();
           if (win.label === 'main') {
-            const { LogicalSize } = await import('@tauri-apps/api/dpi');
-            await win.setSize(new LogicalSize(240, 300));
-            await win.center();
-            await win.show();
-            await win.setFocus();
+            await win.hide();
           }
         } catch (e) {
-          console.error("Failed to show main window", e);
+          console.error("Failed to hide main window", e);
         }
       } else {
         // 通常の設定変更の場合は、メインウィンドウを隠すのが基本挙動

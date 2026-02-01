@@ -166,33 +166,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
-name = "app"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "chrono",
- "directories",
- "env_logger",
- "image 0.25.9",
- "log",
- "raw-window-handle",
- "regex",
- "rfd",
- "rodio",
- "screenshots",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-log",
- "tauri-plugin-shell",
- "tempfile",
- "walkdir",
- "windows 0.52.0",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3630,6 +3603,33 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "ore-no-fusen"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "chrono",
+ "directories",
+ "env_logger",
+ "image 0.25.9",
+ "log",
+ "raw-window-handle",
+ "regex",
+ "rfd",
+ "rodio",
+ "screenshots",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-log",
+ "tauri-plugin-shell",
+ "tempfile",
+ "walkdir",
+ "windows 0.52.0",
 ]
 
 [[package]]

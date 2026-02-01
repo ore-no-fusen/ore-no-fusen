@@ -217,7 +217,32 @@ const StickyNote = memo(function StickyNote() {
         }
     }, []);
 
-    // [New] Link Parser Helper
+    // [New] Bold Parser Helper
+    const parseInlineStyles = (text: string, baseOffset: number) => {
+        const parts = text.split(/(\*\*[^*]+\*\*)/g);
+        let currentOffset = 0;
+
+        return <>{parts.map((part, k) => {
+            const partStart = baseOffset + currentOffset;
+            currentOffset += part.length;
+
+            if (part.startsWith('**') && part.endsWith('**')) {
+                const innerText = part.slice(2, -2);
+                return (
+                    <strong
+                        key={k}
+                        style={{ color: 'red', fontWeight: 'bold' }}
+                        data-src-start={partStart + 2}
+                    >
+                        {innerText}
+                    </strong>
+                );
+            }
+            return <span key={k} data-src-start={partStart}>{part}</span>;
+        })}</>;
+    };
+
+    // [New] Link Parser Helper (Updated to include Bold)
     const parseLinks = (text: string, baseOffset: number) => {
         // 1. Web URL: http:// or https://
         // 2. Windows Path: 
@@ -267,7 +292,8 @@ const StickyNote = memo(function StickyNote() {
                 );
             }
 
-            return <span key={k} data-src-start={partStart}>{part}</span>;
+            // [Modified] call inline styles parser instead of returning plain span
+            return <React.Fragment key={k}>{parseInlineStyles(part, partStart)}</React.Fragment>;
         })}</>;
     };
 
@@ -2017,46 +2043,11 @@ const StickyNote = memo(function StickyNote() {
                                             );
                                         }
 
-                                        // Normal / Bold
-                                        // Split by **bold**
-                                        const parts = line.split(/(\*\*[^*]+\*\*)/g);
-                                        let currentLineCharIdx = 0;
-
-                                        const rendered = parts.map((part, j) => {
-                                            if (part === '') return null;
-
-                                            const partStart = baseOffset + currentLineCharIdx;
-                                            const partLength = part.length;
-
-                                            if (part.startsWith('**') && part.endsWith('**')) {
-                                                const innerText = part.slice(2, -2);
-                                                // Update index for next part
-                                                currentLineCharIdx += partLength;
-
-                                                return (
-                                                    <strong
-                                                        key={j}
-                                                        style={{ color: 'red', fontWeight: 'bold' }}
-                                                        data-src-start={partStart + 2} // Click inside bold -> start of inner text
-                                                    >
-                                                        {innerText}
-                                                    </strong>
-                                                );
-                                            }
-
-                                            // Update index for next part
-                                            currentLineCharIdx += partLength;
-
-                                            return (
-                                                <span key={j} data-src-start={partStart}>
-                                                    {renderLineContent(part, partStart)}
-                                                </span>
-                                            );
-                                        });
-
                                         return (
                                             <div key={i} data-line-index={i} style={lineStyle}>
-                                                {rendered}
+                                                <span data-src-start={baseOffset}>
+                                                    {renderLineContent(line, baseOffset)}
+                                                </span>
                                             </div>
                                         );
                                     })}

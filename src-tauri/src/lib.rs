@@ -598,15 +598,17 @@ fn fusen_get_active_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
 }
 
 /// タグフィルタリングを直接Rust側で実行する関数
-pub fn apply_tag_filter_windows<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_, Mutex<AppState>>, active_tags: &[String]) -> Result<(), String> {
-    // 最新のノート一覧を取得（タグ情報を含む）
+/// [Refactor] タグフィルタリング結果（パス一覧）を計算する関数
+/// ウィンドウ操作は行わず、純粋なデータリストを返す（SSOT）
+fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[String]) -> Result<Vec<String>, String> {
+    // 最新のノート一覧を取得
     let app_state = state.lock().unwrap();
     let base_path = app_state.base_path.clone()
         .or(app_state.folder_path.clone())
         .ok_or("base_path is not set")?;
     drop(app_state);
     
-    // タグ付きノート一覧を取得
+    // 全ノート取得 & タグ解析
     let mut all_notes = storage::list_notes(&base_path);
     for n in all_notes.iter_mut() {
         if let Ok(note) = storage::read_note(&n.path) {
@@ -617,76 +619,28 @@ pub fn apply_tag_filter_windows<R: tauri::Runtime>(app: &AppHandle<R>, state: St
     
     // フィルタリング（OR条件）
     let selected: Vec<String> = active_tags.iter().map(|t| t.trim().to_string()).collect();
-    let filtered_notes = if selected.is_empty() {
-        all_notes.clone()
+    let filtered_paths: Vec<String> = if selected.is_empty() {
+        all_notes.into_iter().map(|n| n.path).collect()
     } else {
-        all_notes.iter()
+        all_notes.into_iter()
             .filter(|n| n.tags.iter().any(|tag| selected.contains(&tag.trim().to_string())))
-            .cloned()
+            .map(|n| n.path)
             .collect()
     };
     
-    eprintln!("[Rust] Applying tag filter. Active tags: {:?}, Filtered notes: {}", selected, filtered_notes.len());
-    
-    // ウィンドウラベル生成関数（JS側と同じロジック）
-    fn get_window_label(path: &str) -> String {
-        let normalized = path.trim()
-            .replace('\\', "/")
-            .to_lowercase()
-            .replace("//", "/")
-            .trim_end_matches('/').to_string();
-        
-        // JavaScript同等のハッシュ計算: ((hash << 5) - hash) + char
-        let mut hash: i32 = 0;
-        for ch in normalized.chars() {
-            hash = ((hash << 5).wrapping_sub(hash)).wrapping_add(ch as i32);
-            hash = hash & hash; // JS: hash = hash & hash (no-op, but for exactness)
-        }
-        
-        // toString(36)を再現: 36進数変換
-        fn to_base36(mut num: u32) -> String {
-            const CHARS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
-            if num == 0 { return "0".to_string(); }
-            
-            let mut result = Vec::new();
-            while num > 0 {
-                result.push(CHARS[(num % 36) as usize] as char);
-                num /= 36;
-            }
-            result.reverse();
-            result.into_iter().collect()
-        }
-        
-        format!("note-{}", to_base36(hash.abs() as u32))
-    }
-    
-    // フィルタ対象のラベルをセットにする
-    let filtered_labels: std::collections::HashSet<String> = filtered_notes.iter()
-        .map(|n| get_window_label(&n.path))
-        .collect();
-    
-    // 全ウィンドウを取得
-    let all_windows = app.webview_windows();
-    
-    // 既存ウィンドウの処理: 非表示/表示
-    for (label, win) in all_windows.iter() {
-        if label == "main" || label == "tag-selector" {
-            continue;
-        }
-        
-        if filtered_labels.contains(label) {
-            eprintln!("[Rust] Showing window: {}", label);
-            let _ = win.show();
-            let _ = win.unminimize();
-        } else {
-            eprintln!("[Rust] Hiding window: {}", label);
-            let _ = win.hide();
-        }
-    }
-    
-    // TODO: 新規ウィンドウを開く処理は、Rust側では複雑になるため、
-    // まずは既存ウィンドウの表示/非表示のみを実装
-    // （フロントエンド側で新規ウィンドウを開く処理は別途必要）
+    eprintln!("[Rust] Filter calculated. Tags: {:?}, Count: {}", selected, filtered_paths.len());
+    Ok(filtered_paths)
+}
+
+/// [Shared] タグフィルタを適用し、結果を全ウィンドウに通知する
+/// Command (Tag Selector) と Tray Menu の両方から呼ばれる共通ロジック
+pub fn update_tag_filter<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_, Mutex<AppState>>, tags: &[String]) -> Result<(), String> {
+    // 1. 計算 (Pure Logic)
+    let visible_paths = get_filtered_note_paths(state, tags)?;
+
+    // 2. 通知 (Event Emit) -> Frontend Orchestrator handles UI
+    eprintln!("[Rust] Emitting fusen:sync_visible_notes with {} paths", visible_paths.len());
+    app.emit("fusen:sync_visible_notes", &visible_paths).map_err(|e| e.to_string())?;
     
     Ok(())
 }
@@ -697,8 +651,10 @@ fn fusen_set_active_tags(state: State<'_, Mutex<AppState>>, tags: Vec<String>, a
     app_state.active_tags = tags.clone();
     drop(app_state);
     
-    // Rust側で直接ウィンドウフィルタリングを実行
-    apply_tag_filter_windows(&app, state, &tags)?;
+    eprintln!("[Rust] fusen_set_active_tags called with: {:?}", tags);
+
+    // Shared Logic
+    update_tag_filter(&app, state, &tags)?;
     
     Ok(())
 }
@@ -716,6 +672,7 @@ fn get_base_path(state: State<'_, Mutex<AppState>>) -> Option<String> {
 // UC-01, UC-02, UC-03: セットアップ統合コマンド
 #[tauri::command]
 fn setup_first_launch(
+    app_handle: tauri::AppHandle,
     state: State<'_, Mutex<AppState>>,
     use_default: bool,
     custom_path: Option<String>,
@@ -785,6 +742,14 @@ fn setup_first_launch(
         app_state.base_path = Some(base_path.clone());
         app_state.folder_path = Some(base_path.clone());
     }
+
+    // [FIX] イベント発行: フロントエンドに設定変更を通知
+    use tauri::Emitter; // Emitterトレイトが必要
+    app_handle.emit("settings_updated", &settings)
+        .map_err(|e| {
+            logger::log_error(&format!("Failed to emit settings_updated: {}", e));
+            e.to_string()
+        })?;
     
     logger::log_info("Setup completed successfully");
     Ok(base_path)
@@ -792,11 +757,12 @@ fn setup_first_launch(
 
 #[tauri::command]
 fn fusen_import_from_folder(
+    app: AppHandle,
     state: State<'_, Mutex<AppState>>,
     source_path: String,
     target_path: Option<String>
 ) -> Result<import::ImportStats, String> {
-    let app_state = state.lock().unwrap();
+    let mut app_state = state.lock().unwrap(); // Lock for mutation later
     let target_path = target_path
         .or(app_state.base_path.clone())
         .or(app_state.folder_path.clone())
@@ -806,8 +772,29 @@ fn fusen_import_from_folder(
     // TODO: ここで非同期実行したいが、ファイルコピーはブロッキングでやる
     let stats = import::import_markdown_files(&source_path, &target_path)?;
     
-    // ステート更新のためにノート一覧を再読み込みする必要があるが、
-    // ここでは Stats を返すだけにして、フロントエンド側でリロードを要求する設計にする
+    // [Fix] インポート成功後、ステートを更新して通知する
+    eprintln!("[Import] Reloading notes from: {}", target_path);
+    app_state.notes = storage::list_notes(&target_path);
+    drop(app_state); // Release lock before emitting
+
+    // 全ウィンドウに更新通知
+    // page.tsx などで 'fusen:refresh_all' を監視させるか、
+    // 既存の 'settings_updated' フローに乗せる（ただし設定変更ではないので別イベントが好ましい）
+    // ここでは 'fusen:notes_updated' を発行する
+    let _ = app.emit("fusen:notes_updated", ());
+    
+    // タグフィルタも再適用する（新規ノートを表示するため）
+    // Show All（タグなし）の状態でも、全ノートを表示対象として更新する必要があるため常に呼び出す
+    let state_clone = app.state::<Mutex<AppState>>();
+    let app_state = state_clone.lock().unwrap();
+    let active_tags = app_state.active_tags.clone();
+    drop(app_state);
+    
+    // [Fix] active_tagsが空でも "全表示" として同期が必要なため、条件分岐を削除
+    let _ = crate::update_tag_filter(&app, state_clone, &active_tags);
+
+    // トレイメニューの件数なども更新が必要かもしれないのでリフレッシュ
+    let _ = crate::tray::refresh_tray_menu(&app);
     
     Ok(stats)
 }

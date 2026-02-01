@@ -252,7 +252,7 @@ function buildDecorations(state: EditorState): DecorationSet {
                 Decoration.mark({ class: 'cm-md-marker' }).range(markerStart, markerEnd - 1),
                 Decoration.mark({ class: 'cm-md-h1' }).range(titleStart, titleEnd)
             );
-            continue;
+            // continue; // [Fix] Allow other decorations (bold/link) inside header
         }
 
         // リスト / チェックボックス
@@ -285,7 +285,7 @@ function buildDecorations(state: EditorState): DecorationSet {
         }
 
         // 強調: **text**
-        const boldRegex = /(\*\*)([^*]+)(\*\*)/g;
+        const boldRegex = /(\*\*)(.*?)(\*\*)/g;
         let match;
         while ((match = boldRegex.exec(text)) !== null) {
             const startPos = line.from + match.index;
@@ -317,6 +317,9 @@ function buildDecorations(state: EditorState): DecorationSet {
             );
         }
     }
+
+    // [Fix] Ensure decorations are sorted, as we push them from multiple independent passes
+    decorations.sort((a, b) => a.from - b.from || a.startSide - b.startSide);
 
     return Decoration.set(decorations, true);
 }
