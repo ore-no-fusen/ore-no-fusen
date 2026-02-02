@@ -7,7 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
 import { pathsEqual } from './utils/pathUtils';
-import { playLocalSound, SoundType } from './utils/soundManager'; // [NEW] Sound imports
+import { playLocalSound, playCreateSound, SoundType } from './utils/soundManager'; // [NEW] Sound imports
 import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
@@ -134,6 +134,7 @@ function OrchestratorContent() {
   // [DEBUG] Lifecycle
   useEffect(() => {
     console.log('[Orchestrator] Mounted');
+    invoke('fusen_debug_log', { message: '[画面管理] 初期化を開始しました (Mounted)' }).catch(() => { });
     return () => console.log('[Orchestrator] Unmounted');
   }, []);
 
@@ -382,6 +383,10 @@ function OrchestratorContent() {
     try {
       console.log('[CREATE] Invoking fusen_create_note with folder:', targetFolder);
       const newNote = await invoke<any>('fusen_create_note', { folderPath: targetFolder, context });
+
+      // [NEW] 新規作成音を鳴らす
+      await playCreateSound();
+
       setFiles(prev => prev.map((n: NoteMeta) => (pathsEqual(n.path, tempPath) ? newNote.meta : n)));
       // Open window after creation
       await openNoteWindow(newNote.meta.path, undefined, true);
@@ -859,101 +864,101 @@ function OrchestratorContent() {
           invoke('fusen_debug_log', { message: msg }).catch(() => { });
         };
 
-        setLoadingStatus("Checking Base Path...");
-        log('[Startup] checkAndRestore started');
+        setLoadingStatus("保存先の設定を確認中...");
+        log('[起動処理] 復元処理を開始します (checkAndRestore started)');
 
         try {
           const basePath = await invoke<string | null>('get_base_path');
-          log(`[Startup] get_base_path result: ${basePath}`);
+          log(`[起動処理] 設定されたパス: ${basePath || 'なし'}`);
 
           if (!basePath) {
-            log('[Startup] No base path, stopping restore.');
-            setLoadingStatus("No Base Path Found.");
+            log('[起動処理] パスが未設定のため、復元を停止します');
+            setLoadingStatus("保存先が見つかりません");
             return;
           }
           const savedFolder = basePath;
 
           setTimeout(async () => {
             try {
-              setLoadingStatus("Listing Notes...");
-              log('[Startup] invoking fusen_list_notes...');
+              setLoadingStatus("ノート一覧を取得中...");
+              log('[起動処理] ノート一覧を取得しています...');
               await invoke('fusen_list_notes', { folderPath: savedFolder });
-              log('[Startup] fusen_list_notes done. Syncing state...');
+              log('[起動処理] 一覧取得完了。状態を同期します...');
 
-              setLoadingStatus("Syncing State...");
+              setLoadingStatus("状態を同期中...");
               const state = await syncState();
-              log(`[Startup] syncState result: ${JSON.stringify(state)}`);
+              log(`[起動処理] 同期結果: ${state ? '成功' : '失敗'}`);
 
               if (!state) {
-                setLoadingStatus("State Sync Failed.");
-                log('[Startup] Sync Failed: State is null');
+                setLoadingStatus("同期に失敗しました");
+                log('[起動処理] エラー: 状態オブジェクトが空です');
                 return;
               }
               if (state.folder_path) {
                 setSetupRequired(false);
               }
               const notes = state.notes;
-              log(`[Startup] Notes found: ${notes.length}`);
+              log(`[起動処理] 復元対象のノート数: ${notes.length}件`);
 
               if (notes.length > 0) {
-                setLoadingStatus(`Restoring ${notes.length} notes...`);
+                setLoadingStatus(`${notes.length} 件のノートを復元中...`);
                 for (let i = 0; i < notes.length; i++) {
                   const note = notes[i];
-                  setLoadingStatus(`Opening Note ${i + 1}/${notes.length}: ${note.path.split(/[\\/]/).pop()}...`);
-                  log(`[Startup] Opening note: ${note.path}`);
+                  setLoadingStatus(`ノートを開いています (${i + 1}/${notes.length}): ${note.path.split(/[\\/]/).pop()}...`);
+                  log(`[起動処理] ウィンドウを開く: ${note.path}`);
                   await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
                 }
 
-                setLoadingStatus("Finalizing...");
+                setLoadingStatus("仕上げ処理...");
                 setTimeout(async () => {
                   try {
                     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                     const mainWindow = await WebviewWindow.getByLabel('main');
                     if (mainWindow) {
-                      log('[Startup] Minimizing main window (Restore path)');
+                      log('[起動処理] メインウィンドウを最小化します (通常起動)');
                       await mainWindow.minimize();
                       setIsCheckingSetup(false);
                     }
                   } catch (e) {
-                    log(`[Startup] Failed to minimize: ${e}`);
-                    setLoadingStatus("Minimize Failed: " + String(e));
+                    log(`[起動処理] 最小化エラー: ${e}`);
+                    setLoadingStatus("最小化失敗: " + String(e));
                     setTimeout(() => setIsCheckingSetup(false), 2000);
                   }
                 }, 100);
               } else {
-                setLoadingStatus("Creating Welcome Note...");
-                log('[Restore] No notes found, creating welcome note');
+                setLoadingStatus("ようこそノートを作成中...");
+                log('[起動処理] ノートが0件のため、ようこそノートを作成します');
                 await handleCreateNote(savedFolder, 'ようこそ');
                 setTimeout(async () => {
                   try {
                     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                     const mainWindow = await WebviewWindow.getByLabel('main');
                     if (mainWindow) {
-                      log('[Startup] Minimizing main window (Welcome path)');
+                      log('[起動処理] メインウィンドウを隠します (初回ウェルカム)');
                       await mainWindow.hide();
                       setIsCheckingSetup(false);
                     }
                   } catch (e) {
-                    log(`[Startup] Failed to hide main window: ${e}`);
+                    log(`[起動処理] ウィンドウ非表示エラー: ${e}`);
                   }
                 }, 100);
               }
             } catch (e) {
-              log(`[Startup] Error in checkAndRestore inner block: ${e}`);
-              setLoadingStatus("Error: " + String(e));
+              log(`[起動処理] 内部エラー: ${e}`);
+              setLoadingStatus("エラー: " + String(e));
               setTimeout(() => setIsCheckingSetup(false), 3000);
             }
           }, 300);
         } catch (e) {
-          log(`[Startup] Critical Error before inner block: ${e}`);
-          setLoadingStatus("Critical Error: " + String(e));
+          log(`[起動処理] 重大なエラー: ${e}`);
+          setLoadingStatus("重大なエラー: " + String(e));
           setTimeout(() => setIsCheckingSetup(false), 3000);
         }
       };
 
       checkAndRestore().catch(e => {
-        invoke('fusen_debug_log', { message: `Failed to check setup: ${e}` }).catch(() => { });
-        setLoadingStatus("Setup Check Failed: " + String(e));
+        invoke('fusen_debug_log', { message: `[起動処理] セットアップ確認中に例外発生: ${e}` }).catch(() => { });
+        setLoadingStatus("確認失敗: " + String(e));
         setTimeout(() => setIsCheckingSetup(false), 3000);
       });
     }

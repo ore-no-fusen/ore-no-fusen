@@ -21,6 +21,9 @@ use state::{AppState, Note, NoteMeta};
 
 #[tauri::command]
 fn fusen_debug_log(message: String) {
+    // [DEBUG] Redirect to file logger for persistence (especially for Release/Auto-launch)
+    // Using log_info to ensure it appears in standard log file
+    logger::log_info(&format!("[Frontend] {}", message));
     println!("[Frontend] {}", message);
 }
 
@@ -900,11 +903,27 @@ pub fn run() {
             // アプリケーション起動ログ
             logger::log_app_start();
             
+            // [DEBUG] Startup Environment Diagnosis
+            if let Ok(cwd) = std::env::current_dir() {
+                logger::log_info(&format!("現在の作業ディレクトリ: {:?}", cwd));
+            } else {
+                logger::log_warn("作業ディレクトリの取得に失敗しました");
+            }
+            
+            if let Ok(exe) = std::env::current_exe() {
+                logger::log_info(&format!("実行ファイルパス: {:?}", exe));
+            }
+
+            match storage::get_settings_path() {
+                Ok(path) => logger::log_info(&format!("設定ファイルパス: {:?}", path)),
+                Err(e) => logger::log_warn(&format!("設定ファイルパスの解決に失敗: {}", e)),
+            }
+            
             // UC-01: 設定ファイルからbase_pathを読み込み、AppStateに反映
-            logger::log_info("Loading settings...");
+            logger::log_info("設定を読み込んでいます...");
             match storage::load_settings() {
                 Ok(settings) => {
-                    logger::log_info("Settings loaded successfully");
+                    logger::log_info("設定の読み込みに成功しました");
                     logger::log_debug(&format!("base_path: {:?}", settings.base_path));
                     
                     let state: State<Mutex<AppState>> = app.state();
@@ -913,14 +932,14 @@ pub fn run() {
                     app_state.folder_path = settings.base_path.clone();
                     
                     if settings.base_path.is_some() {
-                        logger::log_info("Vault folder configured");
+                        logger::log_info("保存先フォルダは設定済みです");
                     } else {
-                        logger::log_info("No vault folder - Setup required");
+                        logger::log_info("保存先フォルダが未設定です - セットアップが必要です");
                     }
                 },
                 Err(e) => {
-                    logger::log_warn(&format!("Settings file not found or invalid: {}", e));
-                    logger::log_info("First launch or clean install detected");
+                    logger::log_warn(&format!("設定ファイルが見つからないか無効です: {}", e));
+                    logger::log_info("初回起動またはクリーンインストールを検出しました");
                 }
             }
             
@@ -940,7 +959,7 @@ pub fn run() {
             }
 
             tray::create_tray(app.handle())?;
-            logger::log_info("App initialization completed");
+            logger::log_info("アプリの初期化が完了しました");
             Ok(())
         })
         .run(tauri::generate_context!())

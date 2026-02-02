@@ -3,7 +3,9 @@ use rodio::{Decoder, OutputStream, Sink};
 // thread is used via std::thread::spawn directly
 
 // Sound embedded in the binary
-const PEEL_OFF_SOUND: &[u8] = include_bytes!("../../public/sounds/peel-off.mp3");
+const CREATE_SOUND: &[u8] = include_bytes!("../../public/sounds/create_ore_no_fusen_final.wav");
+const SAVE_SOUND: &[u8] = include_bytes!("../../public/sounds/save_ore_no_fusen_final.wav");
+const DELETE_SOUND: &[u8] = include_bytes!("../../public/sounds/delete_ore_no_fusen_final.wav");
 
 #[tauri::command]
 pub fn fusen_play_sound(name: String) {
@@ -21,7 +23,9 @@ fn play_sound_impl(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     sink.set_volume(1.0); // Force max volume
 
     let data = match name {
-        "peel-off" => PEEL_OFF_SOUND,
+        "create" => CREATE_SOUND,
+        "save" => SAVE_SOUND,
+        "delete" => DELETE_SOUND,
         _ => return Ok(()),
     };
 

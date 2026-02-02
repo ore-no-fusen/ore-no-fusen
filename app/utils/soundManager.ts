@@ -7,12 +7,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { isSoundEnabled } from './settingsManager';
 
 // 利用可能なサウンド
-export type SoundType = 'peel-off' | 'pop';
+export type SoundType = 'create' | 'save' | 'delete';
 
 // サウンドファイルのマッピング
 const SOUND_FILES: Record<SoundType, string> = {
-    'peel-off': '/sounds/peel-off.mp3',
-    'pop': '/sounds/pop.mp3', // 将来用
+    'create': '/sounds/create_ore_no_fusen_final.wav',
+    'save': '/sounds/save_ore_no_fusen_final.wav',
+    'delete': '/sounds/delete_ore_no_fusen_final.wav',
 };
 
 /**
@@ -68,8 +69,22 @@ export async function playSound(type: SoundType, volume: number = 1.0): Promise<
 }
 
 /**
- * 削除時の効果音（peel-off）
+ * 新規作成時の効果音
+ */
+export async function playCreateSound(): Promise<void> {
+    return playSound('create', 0.5);
+}
+
+/**
+ * 保存/アーカイブ時の効果音
+ */
+export async function playSaveSound(): Promise<void> {
+    return playSound('save', 0.4);
+}
+
+/**
+ * 削除時の効果音
  */
 export async function playDeleteSound(): Promise<void> {
-    return playSound('peel-off', 0.3);
+    return playSound('delete', 0.3);
 }

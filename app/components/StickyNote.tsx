@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { pathsEqual } from '../utils/pathUtils';
-import { playDeleteSound } from '../utils/soundManager';
+import { playDeleteSound, playSaveSound } from '../utils/soundManager';
 import { getFontSize } from '../utils/settingsManager';
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ConfirmDialog from './ConfirmDialog';
@@ -1294,6 +1294,10 @@ const StickyNote = memo(function StickyNote() {
                             if (!selectedFile) return;
                             await saveNote(selectedFile.path, editBody, rawFrontmatter, false);
                             setSavePending(false);
+
+                            // [NEW] アーカイブ（整理）音を鳴らす
+                            await playSaveSound();
+
                             await invoke('fusen_archive_note', { path: selectedFile.path });
                             const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
                             await win.close();
