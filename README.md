@@ -1,25 +1,27 @@
 # 俺の付箋
 
-ObsidianのVault（ローカルフォルダ）内のMarkdownファイルを付箋UIで表示するPWAアプリです。
+Markdownファイルをデスクトップ上の付箋として表示するTauriアプリケーションです。
 
-## 機能
+## 📥 インストール
 
-- File System Access APIを使用したローカルフォルダ選択
-- フォルダ内の`.md`ファイル一覧表示
-- MarkdownのHTMLレンダリング表示
-- 最後に選択したファイル名の自動保存・復元
-- 再読み込み機能
+### 一般ユーザー向け（推奨）
 
-## セットアップ
+1. [Releases ページ](https://github.com/ore-no-fusen/ore-no-fusen/releases)を開く
+2. 最新版の **`ore-no-fusen_x.x.x_x64-setup.exe`** をダウンロード
+3. ダウンロードしたファイルをダブルクリックしてインストール
+4. インストール完了後、スタートメニューから「俺の付箋」を起動
 
-### 前提条件
+### 開発者向け
 
-- Node.js 18以上がインストールされていること
+#### 前提条件
+- Node.js 18以上
+- Rust（[rustup](https://rustup.rs/)からインストール）
 
-### インストール手順
+#### セットアップ手順
 
-1. プロジェクトディレクトリに移動：
+1. リポジトリをクローン：
 ```bash
+git clone https://github.com/ore-no-fusen/ore-no-fusen.git
 cd ore-no-fusen
 ```
 
@@ -28,60 +30,45 @@ cd ore-no-fusen
 npm install
 ```
 
-3. 開発サーバーを起動：
+3. 開発モードで起動：
 ```bash
-npm run dev
+npm run tauri dev
 ```
 
-4. ブラウザで `http://localhost:3000` を開く
-
-## 使い方
-
-1. 「Vaultフォルダを選択」ボタンをクリック
-2. ObsidianのVaultフォルダ（またはMarkdownファイルが入っているフォルダ）を選択
-3. 左側のファイル一覧から表示したい`.md`ファイルをクリック
-4. 右側にMarkdownがレンダリングされて表示されます
-5. 「再読み込み」ボタンで選択中のファイルを再読み込みできます
-
-## 注意事項
-
-- File System Access APIは、Chrome、Edge、OperaなどのChromiumベースのブラウザでのみ利用可能です
-- FirefoxやSafariでは動作しません
-- ローカルファイルへのアクセスには、ブラウザの許可が必要です
-
-## ビルド
-
-本番用ビルド：
+4. プロダクションビルド：
 ```bash
-npm run build
-npm start
+npm run tauri build
 ```
 
-## プロジェクト構造
+ビルド成果物は `src-tauri\target\release\bundle\nsis\` に生成されます。
 
-```
-ore-no-fusen/
-├── app/
-│   ├── layout.tsx      # ルートレイアウト
-│   ├── page.tsx        # メインページ（ファイル選択・表示機能）
-│   └── globals.css     # グローバルスタイル
-├── public/
-│   └── manifest.json   # PWAマニフェスト
-├── types/
-│   └── filesystem.d.ts   # File System Access APIの型定義
-├── package.json
-├── tsconfig.json
-├── tailwind.config.ts
-├── next.config.mjs
-└── README.md
-```
+## 🎯 主な機能
 
-## 技術スタック
+- デスクトップ上に付箋として表示
+- Markdownのリアルタイムプレビュー
+- タグ・アーカイブ機能
+- システムトレイ統合
+- 自動起動設定
+- 効果音
 
+## 🛠️ 技術スタック
+
+### フロントエンド
 - Next.js 14 (App Router)
 - React 18
 - TypeScript
 - Tailwind CSS
-- react-markdown
-- remark-gfm
+- CodeMirror 6
+
+### バックエンド
+- Tauri 2.x
+- Rust
+
+## 📝 ライセンス
+
+MIT License
+
+## 🤝 コントリビューション
+
+Issue、Pull Requestを歓迎します！
 
