@@ -20,6 +20,7 @@
         "decorations": true,
         "transparent": false,
         "visible": false,
+        "skipTaskbar": true,
         "backgroundColor": "#111827",
         "center": true
       }

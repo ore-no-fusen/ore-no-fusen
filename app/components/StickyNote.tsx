@@ -29,6 +29,7 @@ type NoteMeta = {
     height?: number;
     background_color?: string;
     always_on_top?: boolean;
+    tags?: string[]; // タグ配列
 };
 
 type Note = {
@@ -202,20 +203,6 @@ const StickyNote = memo(function StickyNote() {
 
     // [Helpers moved to after saveNote]
 
-
-    // [New] Header Drag Handler (No Maximize, Works in Edit Mode)
-    const handleHeaderDrag = useCallback((e: React.PointerEvent) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        // No stopPropagation? standard drag region consumes it usually.
-        // Custom drag need to call startDragging.
-
-        try {
-            getCurrentWindow().startDragging();
-        } catch (err) {
-            console.error('startDragging failed', err);
-        }
-    }, []);
 
     // [New] Bold Parser Helper
     const parseInlineStyles = (text: string, baseOffset: number) => {
@@ -949,7 +936,7 @@ const StickyNote = memo(function StickyNote() {
             return;
         }
 
-        // トリプルジップロック：距離(10px)・時間(150ms)・ボタン状態(押下中)
+        // [改善] ドラッグ閾値を緩和: 距離(3px)・時間(50ms)で素早くドラッグ開始
         const startX = e.clientX;
         const startY = e.clientY;
         const startTime = Date.now();
@@ -959,7 +946,8 @@ const StickyNote = memo(function StickyNote() {
             const dy = moveEvent.clientY - startY;
             const elapsed = Date.now() - startTime;
 
-            if ((Math.abs(dx) > 10 || Math.abs(dy) > 10) && elapsed > 150 && moveEvent.buttons === 1) {
+            // 閾値を緩和: 2px以上動いたら、または10ms経過したらドラッグ開始
+            if ((Math.abs(dx) > 2 || Math.abs(dy) > 2) && elapsed > 10 && moveEvent.buttons === 1) {
                 cleanup();
                 try {
                     getCurrentWindow().startDragging();
@@ -1669,9 +1657,10 @@ const StickyNote = memo(function StickyNote() {
                     pointerEvents: (show || isEditing) ? 'auto' : 'none',
                     transition: 'opacity 0.1s ease',
                     display: 'flex',
-                    flexDirection: 'column', // Vertical layout as requested
+                    flexDirection: 'row', // 横並びに変更
+                    justifyContent: 'flex-end', // 右寄せ
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '0px', // ボタン間隔を狭く
                     padding: '4px',
                     backgroundColor: 'transparent', // 透明化して白い横線を消去
                     borderRadius: '8px',
@@ -1787,69 +1776,7 @@ const StickyNote = memo(function StickyNote() {
                 }
             `}</style>
 
-            {/* [NEW] Persistent Sticky Header for Tags & Drag */}
-            <header
-                onPointerDown={handleHeaderDrag}
-                onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    if (isEditing) {
-                        handleEditBlur();
-                    } else {
-                        handleEditStart(0);
-                    }
-                }}
-                style={{
-                    padding: '8px 18px 4px 18px',
-                    display: 'flex',
-                    flexDirection: 'row',
-                    justifyContent: 'flex-end',
-                    alignItems: 'center',
-                    flexShrink: 0,
-                    zIndex: 100,
-                    // WebkitAppRegion: 'drag', // [Fix] Remove native drag to prevent maximize
-                    cursor: 'move',
-                    minHeight: '32px',
-                    userSelect: 'none', // ドラッグ優先のため選択解除
-                } as any}
-            >
-                {/* Right: Tag Chips Display & Status */}
-                <div style={{
-                    display: 'flex',
-                    gap: '4px',
-                    overflow: 'hidden',
-                    whiteSpace: 'nowrap',
-                    pointerEvents: 'auto',
-                    justifyContent: 'flex-end'
-                }}>
-                    {currentTags.length > 0 && (() => {
-                        const MAX_DISPLAY = 5;
-                        const displayTags = currentTags.slice(0, MAX_DISPLAY).map(tag =>
-                            tag.length > 10 ? tag.substring(0, 10) + '…' : tag
-                        );
-                        if (currentTags.length > MAX_DISPLAY) {
-                            displayTags.push(`+${currentTags.length - MAX_DISPLAY}`);
-                        }
-
-                        return displayTags.map((tag, i) => (
-                            <span key={i} style={{
-                                backgroundColor: 'rgba(0,0,0,0.08)',
-                                padding: '1px 6px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                color: 'rgba(0,0,0,0.5)',
-                                flexShrink: 0,
-                                cursor: 'default'
-                            }}>
-                                {tag}
-                            </span>
-                        ));
-                    })()}
-                    {isEditing && (
-                        <span style={{ color: '#ef4444', fontSize: '14px', marginLeft: '6px', alignSelf: 'center' }}>●</span>
-                    )}
-                </div>
-            </header>
+            {/* ヘッダ削除: タグ情報は右クリックメニューから確認可能 */}
 
             <main
                 className="flex-1 overflow-y-auto w-full notePaper noteMain pb-10"
@@ -1857,10 +1784,19 @@ const StickyNote = memo(function StickyNote() {
                     backgroundColor: noteBackgroundColor,
                     display: 'flex',
                     flexDirection: 'column',
-                    padding: '0 18px 12px 18px', // Horizontal 18px matching header
+                    padding: '4px 6px 4px 6px', // 上下4px、左右6pxに統一
                     boxSizing: 'border-box',
                     position: 'relative',
-                    userSelect: isEditing ? 'auto' : 'none' // 閲覧モード時はドラッグ優先
+                    userSelect: isEditing ? 'auto' : 'none', // 閲覧モード時はドラッグ優先
+                    cursor: isEditing ? 'text' : 'grab' // カーソル表示を明確に
+                }}
+                onPointerEnter={() => setIsHover(true)} // ホバー開始
+                onPointerLeave={() => setIsHover(false)} // ホバー終了
+                onPointerDown={(e) => {
+                    // 閲覧モード時、mainのパディング部分からもドラッグ開始できるようにする
+                    if (!isEditing && e.target === e.currentTarget) {
+                        handleDragStart(e);
+                    }
                 }}
                 onDoubleClick={(e) => {
                     // [Fix] Double Click Behavior:
@@ -1888,16 +1824,75 @@ const StickyNote = memo(function StickyNote() {
                 {/* Floating Vertical Toolbar (Pointer events auto to allow clicking) */}
                 <div style={{
                     position: 'sticky',
-                    top: '0px',
+                    top: '8px', // ツールバーを8px下げる
                     right: '0px',
                     zIndex: 200,
                     pointerEvents: 'none',
                     height: 0, // Ensure it doesn't take vertical space
                     display: 'flex',
-                    justifyContent: 'flex-end'
+                    justifyContent: 'flex-end',
+                    paddingRight: '0px' // 右端に詰める
                 }}>
                     <HoverBar show={isHover} />
                 </div>
+
+                {/* タグ表示エリア（右下、ホバー時のみ） */}
+                {!isEditing && currentTags.length > 0 && (
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '12px',
+                        right: '8px',
+                        zIndex: 100,
+                        pointerEvents: 'none',
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        opacity: isHover ? 1 : 0,
+                        transition: 'opacity 0.2s ease',
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            gap: '4px',
+                            flexWrap: 'wrap',
+                            maxWidth: '250px',
+                            justifyContent: 'flex-end',
+                        }}>
+                            {currentTags.slice(0, 3).map((tag: string, idx: number) => (
+                                <span
+                                    key={idx}
+                                    style={{
+                                        fontSize: '10px',
+                                        padding: '3px 8px',
+                                        backgroundColor: 'rgba(100, 100, 100, 0.08)',
+                                        color: '#6b7280',
+                                        borderRadius: '4px',
+                                        border: '1px solid rgba(100, 100, 100, 0.15)',
+                                        whiteSpace: 'nowrap',
+                                        fontWeight: 500,
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                    }}
+                                >
+                                    {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
+                                </span>
+                            ))}
+                            {currentTags.length > 3 && (
+                                <span
+                                    style={{
+                                        fontSize: '10px',
+                                        padding: '3px 8px',
+                                        backgroundColor: 'rgba(100, 100, 100, 0.05)',
+                                        color: '#9ca3af',
+                                        borderRadius: '4px',
+                                        border: '1px solid rgba(100, 100, 100, 0.1)',
+                                        whiteSpace: 'nowrap',
+                                        fontWeight: 500,
+                                    }}
+                                >
+                                    +{currentTags.length - 3}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                )}
                 {/* The old file-name div is removed/simplified to just a spacer or hidden */}
                 {
                     loading ? (

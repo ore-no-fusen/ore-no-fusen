@@ -331,7 +331,18 @@ function OrchestratorContent() {
 
           console.log(`[openNoteWindow] Creating window: url=${url}, isNew=${isNew}, width=${width}, height=${height}`);
           const win = new WebviewWindow(label, {
-            url, transparent: true, decorations: false, alwaysOnTop: false, visible: true, width, height, x, y, skipTaskbar: false, focus: true,
+            url,
+            title: 'Quick Memo',  // タスクバープレビューのタイトル
+            transparent: true,
+            decorations: false,
+            alwaysOnTop: false,
+            visible: true,
+            width,
+            height,
+            x,
+            y,
+            skipTaskbar: false,
+            focus: true,
           });
           win.once('tauri://created', async () => { console.log(`[openNoteWindow] Window created: ${label}. Forcing focus.`); await win.setFocus(); });
           await win.setFocus();
