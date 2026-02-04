@@ -1000,6 +1000,44 @@ pub fn run() {
             }
 
             tray::create_tray(app.handle())?;
+            
+            // [NEW] グローバルショートカット: Ctrl+Shift+H で全付箋を隠す/表示する
+            use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState};
+            
+            // 付箋の表示/非表示状態を追跡するための静的変数
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
+            
+            app.handle().plugin(
+                ShortcutBuilder::new()
+                    .with_shortcuts(["ctrl+shift+h"])?
+                    .with_handler(|app, _shortcut, event| {
+                        if event.state == ShortcutState::Pressed {
+                            let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
+                            
+                            for win in app.webview_windows().values() {
+                                if win.label() != "main" {
+                                    if is_hidden {
+                                        let _ = win.show();
+                                        let _ = win.set_focus();
+                                    } else {
+                                        let _ = win.hide();
+                                    }
+                                }
+                            }
+                            
+                            // 状態を反転
+                            NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
+                            
+                            logger::log_info(&format!(
+                                "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",
+                                if is_hidden { "SHOWN" } else { "HIDDEN" }
+                            ));
+                        }
+                    })
+                    .build()
+            )?;
+            
             logger::log_info("アプリの初期化が完了しました");
             Ok(())
         })

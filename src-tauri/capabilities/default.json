@@ -21,6 +21,7 @@
     "core:window:allow-center",
     "shell:allow-open",
     "core:path:default",
-    "autostart:default"
+    "autostart:default",
+    "global-shortcut:default"
   ]
 }

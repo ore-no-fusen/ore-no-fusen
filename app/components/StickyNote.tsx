@@ -81,6 +81,9 @@ const StickyNote = memo(function StickyNote() {
     const [rawFrontmatter, setRawFrontmatter] = useState<string>('');
     const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
     const [noteFontSize, setNoteFontSize] = useState<number>(16); // 設定から読み込むフォントサイズ
+    // [NEW] ミニマイズモード（1行表示）
+    const [isMinimized, setIsMinimized] = useState<boolean>(false);
+    const originalSizeRef = useRef<{ width: number; height: number } | null>(null);
     // リネームによる更新かどうかを判定するフラグ
     const isRenamingRef = useRef(false);
     // [Strict Rename] コミット（編集終了）処理中ガード
@@ -756,6 +759,64 @@ const StickyNote = memo(function StickyNote() {
         setEditBody(content); // 最新の状態をセット
         setCursorPosition(cursorPos ?? null);
     };
+
+    // [NEW] ミニマイズ（1行化）トグル
+    const toggleMinimize = useCallback(async () => {
+        const win = getCurrentWindow();
+
+        if (isMinimized) {
+            // 元のサイズに復元
+            if (originalSizeRef.current) {
+                // [Fix] Use PhysicalSize to restore exact pixels
+                const { PhysicalSize } = await import('@tauri-apps/api/dpi');
+                await win.setSize(new PhysicalSize(
+                    originalSizeRef.current.width,
+                    originalSizeRef.current.height
+                ));
+            }
+            setIsMinimized(false);
+            console.log('[Minimize] Restored to original size');
+        } else {
+            // 現在のサイズを記憶してからミニマイズ
+            const size = await win.innerSize();
+            originalSizeRef.current = { width: size.width, height: size.height };
+
+            // [Fix] Use PhysicalSize to maintain exact width without scaling artifacts
+            const factor = await win.scaleFactor();
+            const targetHeight = Math.round(40 * factor); // 40px logical -> physical
+
+            const { PhysicalSize } = await import('@tauri-apps/api/dpi');            // 1行分のサイズに縮小（幅は維持、高さを40pxに）
+            await win.setSize(new PhysicalSize(
+                size.width,
+                targetHeight
+            ));
+            setIsMinimized(true);
+            console.log('[Minimize] Minimized to single line (Physical):', size.width, 'x', targetHeight);
+        }
+    }, [isMinimized]);
+
+    // [New] Effect to enforce scroll reset when minimized
+    useEffect(() => {
+        if (isMinimized && shellRef.current) {
+            // Use requestAnimationFrame to ensure layout has updated
+            requestAnimationFrame(() => {
+                if (!shellRef.current) return;
+                const main = shellRef.current.querySelector('main');
+                if (main) {
+                    console.log('[Minimize] Resetting scrollTop. Width:', main.clientWidth, 'Height:', main.clientHeight, 'Current Scroll:', main.scrollTop);
+                    main.scrollTop = 0;
+                    // Double check
+                    setTimeout(() => {
+                        console.log('[Minimize] ScrollTop Check (50ms later):', main.scrollTop);
+                        if (main.scrollTop !== 0) {
+                            console.warn('[Minimize] ScrollTop stubborn! Forcing again.');
+                            main.scrollTop = 0;
+                        }
+                    }, 50);
+                }
+            });
+        }
+    }, [isMinimized]);
 
     // 編集モード終了
 
@@ -1547,6 +1608,7 @@ const StickyNote = memo(function StickyNote() {
 
     // [New] おにぎり（画面キャプチャ）機能
     const handleCaptureScreen = async () => {
+        console.log('[CAPTURE_DEBUG] === Client: Starting capture flow ===');
         try {
             const currentWin = getCurrentWindow();
 
@@ -1557,33 +1619,36 @@ const StickyNote = memo(function StickyNote() {
                 const view = (editorRef.current as any).view;
                 if (view?.state) {
                     savedSelection = view.state.selection.main;
-                    console.log('[STICKY] Saved selection before capture:', savedSelection);
+                    console.log('[CAPTURE_DEBUG] Saved selection before capture:', savedSelection);
                 }
             }
 
             isCapturingRef.current = true; // [New] Lock blur handling
+            console.log('[CAPTURE_DEBUG] Set isCapturingRef = true');
 
             // 1. 自分を隠す
             // Force blur to ensure we don't hold focus weirdly
             if (document.activeElement instanceof HTMLElement) {
                 document.activeElement.blur();
             }
+            console.log('[CAPTURE_DEBUG] Hiding current window...');
             await currentWin.hide();
 
             // 2. 少し待つ（アニメーション完了待ち）
             await new Promise(resolve => setTimeout(resolve, 300));
 
             // 3. キャプチャ実行 (Backend) - Timeout 30s
-            console.log('[STICKY] Invoking capture for seq:', selectedFile?.seq);
+            console.log('[CAPTURE_DEBUG] Invoking backend capture for seq:', selectedFile?.seq);
             const capturePromise = invoke<string>('fusen_capture_screen', { noteSeq: selectedFile?.seq || 0 });
             const timeoutPromise = new Promise<string>((_, reject) =>
-                setTimeout(() => reject(new Error('Capture timed out')), 30000)
+                setTimeout(() => reject(new Error('Capture timed out (30s)')), 30000)
             );
 
             const imagePath = await Promise.race([capturePromise, timeoutPromise]);
-            console.log('[STICKY] Captured:', imagePath);
+            console.log('[CAPTURE_DEBUG] Backend returned image path:', imagePath);
 
             // 4. 自分を表示
+            console.log('[CAPTURE_DEBUG] Showing window again...');
             await currentWin.show();
             await currentWin.setFocus();
 
@@ -1610,7 +1675,7 @@ const StickyNote = memo(function StickyNote() {
                     storedPath = rel.replace(/\\/g, '/');
                 }
             }
-            console.log('[STICKY] Insert markdown path:', storedPath);
+            console.log('[CAPTURE_DEBUG] Relative path for markdown:', storedPath);
 
             // Markdown text to insert: ![filename](path)
             // Use simple filename as alt?
@@ -1621,43 +1686,81 @@ const StickyNote = memo(function StickyNote() {
 
             const imageMarkdown = `\n![${filenameObj}](${storedPath})\n`;
 
-            console.log('[STICKY] Attempting insertion. editorRef.current exists?', !!editorRef.current);
+            console.log('[CAPTURE_DEBUG] Markdown to insert:', imageMarkdown);
+            console.log('[CAPTURE_DEBUG] editorRef.current exists?', !!editorRef.current);
+
             if (editorRef.current) {
-                console.log('[STICKY] Explicitly focusing editor before insertText...');
+                console.log('[CAPTURE_DEBUG] Focusing editor and inserting text...');
                 editorRef.current.focus();
 
                 // Restore selection if saved
                 const view = (editorRef.current as any).view;
                 if (savedSelection && view) {
-                    console.log('[STICKY] Restoring saved selection:', savedSelection);
+                    console.log('[CAPTURE_DEBUG] Restoring saved selection:', savedSelection);
                     try {
                         view.dispatch({
                             selection: { anchor: savedSelection.anchor, head: savedSelection.head }
                         });
                     } catch (e) {
-                        console.warn('[STICKY] Failed to restore selection:', e);
+                        console.warn('[CAPTURE_DEBUG] Failed to restore selection:', e);
                     }
                 }
 
                 editorRef.current.insertText(imageMarkdown);
+                console.log('[CAPTURE_DEBUG] ✓ Text inserted successfully');
             } else {
-                console.log('[STICKY] Appending text to body (no editorRef)...');
+                console.log('[CAPTURE_DEBUG] No editorRef, appending to body state...');
                 setEditBody(prev => prev + imageMarkdown);
                 setSavePending(true);
             }
 
         } catch (e) {
-            console.error('Capture failed', e);
+            console.error('[CAPTURE_DEBUG] ✗ Capture failed:', e);
             await getCurrentWindow().show(); // Ensure window comes back on error
             alert(`キャプチャに失敗しました: ${e}`);
         } finally {
+            console.log('[CAPTURE_DEBUG] Setting isCapturingRef = false');
             isCapturingRef.current = false; // [Fix] Always release lock
         }
     };
 
-    // ホバーバー (編集モード時はツールバー)
+    // ホバーバー (編集モード時はツールバー、表示モード時は畳むボタン)
     const HoverBar = ({ show }: { show: boolean }) => {
-        if (!isEditing) return null;
+        // 表示モードでホバー時：畳む/展開ボタンのみ表示
+        if (!isEditing) {
+            if (!show) return null;
+            return (
+                <div
+                    className="hoverBar"
+                    style={{
+                        opacity: show ? 1 : 0,
+                        visibility: show ? 'visible' : 'hidden',
+                        pointerEvents: show ? 'auto' : 'none',
+                        transition: 'opacity 0.1s ease',
+                        display: 'flex',
+                        flexDirection: 'row',
+                        justifyContent: 'flex-end',
+                        alignItems: 'center',
+                        gap: '0px',
+                        padding: '4px',
+                        backgroundColor: 'transparent',
+                        borderRadius: '8px',
+                        zIndex: 200
+                    }}
+                >
+                    <button
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={() => toggleMinimize()}
+                        className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded text-sm flex items-center justify-center"
+                        title={isMinimized ? '展開する' : '畳む'}
+                        style={{ fontSize: '14px' }}
+                    >
+                        {isMinimized ? '▽' : '△'}
+                    </button>
+                </div>
+            );
+        }
+        // 編集モード時：ツールバー
         return (
             <div
                 className="hoverBar"
@@ -1789,16 +1892,18 @@ const StickyNote = memo(function StickyNote() {
             {/* ヘッダ削除: タグ情報は右クリックメニューから確認可能 */}
 
             <main
-                className="flex-1 overflow-y-auto w-full notePaper noteMain pb-10"
+                className={`flex-1 overflow-y-auto w-full notePaper noteMain ${isMinimized ? '' : 'pb-10'}`} // [Fix] Remove bottom padding when minimized
                 style={{
                     backgroundColor: noteBackgroundColor,
-                    display: 'flex',
+                    display: isMinimized ? 'block' : 'flex', // [FIX] 最小化時はblock
                     flexDirection: 'column',
-                    padding: '4px 6px 4px 6px', // 上下4px、左右6pxに統一
+                    padding: isMinimized ? '0' : '4px 6px 4px 6px', // [FIX] 最小化時は0（divで制御）
                     boxSizing: 'border-box',
                     position: 'relative',
                     userSelect: isEditing ? 'auto' : 'none', // 閲覧モード時はドラッグ優先
-                    cursor: isEditing ? 'text' : 'grab' // カーソル表示を明確に
+                    cursor: isEditing ? 'text' : 'grab', // カーソル表示を明確に
+                    overflow: isMinimized ? 'hidden' : 'auto', // [FIX] 最小化時はoverflow hidden
+                    height: isMinimized ? '32px' : 'auto', // [FIX] 最小化時は固定高さ
                 }}
                 onPointerEnter={() => setIsHover(true)} // ホバー開始
                 onPointerLeave={() => setIsHover(false)} // ホバー終了
@@ -1809,25 +1914,27 @@ const StickyNote = memo(function StickyNote() {
                     }
                 }}
                 onDoubleClick={(e) => {
-                    // [Fix] Double Click Behavior:
-                    // View Mode -> Edit (Anywhere)
-                    // Edit Mode -> View (Outside Textarea)
+                    // Double Click Behavior:
+                    // - View Mode -> Edit (Anywhere)
+                    // - Edit Mode -> View (Outside Textarea)
                     const target = e.target as HTMLElement;
                     if (target.tagName === 'BUTTON' || target.closest('button')) return;
-
-                    // If editing, only close if we didn't click the editor itself (text selection)
-                    // The 'main' handles padding clicks.
 
                     e.stopPropagation();
 
                     if (isEditing) {
-                        // Check if we clicked the editor host (padding area click bubbles here)
-                        // If target IS the main container, it's a padding click.
+                        // 編集中：パディングエリアクリックで編集終了
                         if (e.target === e.currentTarget) {
                             handleEditBlur();
                         }
                     } else {
-                        handleEditStart(0);
+                        if (isMinimized) {
+                            // [Fix] 最小化時は編集せず展開する（誤操作防止）
+                            toggleMinimize();
+                        } else {
+                            // 表示モード：ダブルクリックで編集開始
+                            handleEditStart(0);
+                        }
                     }
                 }}
             >
@@ -1847,7 +1954,7 @@ const StickyNote = memo(function StickyNote() {
                 </div>
 
                 {/* タグ表示エリア（右下、ホバー時のみ） */}
-                {!isEditing && currentTags.length > 0 && (
+                {!isEditing && !isMinimized && currentTags.length > 0 && (
                     <div style={{
                         position: 'absolute',
                         bottom: '12px',
@@ -1905,7 +2012,29 @@ const StickyNote = memo(function StickyNote() {
                 )}
                 {/* The old file-name div is removed/simplified to just a spacer or hidden */}
                 {
-                    loading ? (
+                    isMinimized ? (
+                        // [NEW] ミニマイズモード：1行目のみ表示
+                        <div
+                            style={{
+                                padding: '4px 6px',
+                                fontSize: `${noteFontSize}px`,
+                                lineHeight: '1.4',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                color: '#000000', // [FIX] 明示的に黒色を設定
+                            }}
+                            onClick={() => {
+                                console.log('[MINIMIZE_DEBUG] Click to expand');
+                                toggleMinimize();
+                            }}
+                            title="クリックで展開"
+                        >
+                            {content?.split('\n')[0]?.replace(/^#\s*/, '') || '（空のメモ）'}
+                        </div>
+                    ) : loading ? (
                         <div className="text-center text-gray-300 py-8 text-xs font-mono opacity-30">Loading...</div>
                     ) : isEditing ? (
                         <div

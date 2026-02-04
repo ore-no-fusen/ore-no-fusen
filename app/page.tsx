@@ -167,10 +167,22 @@ function OrchestratorContent() {
           const { LogicalSize } = await import('@tauri-apps/api/dpi');
           const win = getCurrentWindow();
           if (win.label === 'main') {
+            // [AGDP Log] Phase I: Observation
+            console.log('[MAIN_WINDOW_DEBUG] enforceSmallSize triggered');
+            const sizeBefore = await win.innerSize();
+            const visibleBefore = await win.isVisible();
+            console.log('[MAIN_WINDOW_DEBUG] Before: size=', sizeBefore, 'visible=', visibleBefore);
+
             await win.setSize(new LogicalSize(240, 300));
             await win.center();
+
+            const sizeAfter = await win.innerSize();
+            const visibleAfter = await win.isVisible();
+            console.log('[MAIN_WINDOW_DEBUG] After: size=', sizeAfter, 'visible=', visibleAfter);
           }
-        } catch (e) { }
+        } catch (e) {
+          console.error('[MAIN_WINDOW_DEBUG] enforceSmallSize failed:', e);
+        }
       };
       enforceSmallSize();
     }
@@ -587,6 +599,7 @@ function OrchestratorContent() {
     let unlisten: (() => void) | undefined;
     const promise = listen('fusen:open_settings', async () => {
       try {
+        console.log('[MAIN_WINDOW_DEBUG] Settings open requested');
         setIsSettingsOpen(true);
         // ウィンドウを前面に
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -594,11 +607,13 @@ function OrchestratorContent() {
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
 
         if (win.label === 'main') {
+          console.log('[MAIN_WINDOW_DEBUG] Opening settings - resizing to 900x630');
           await win.setSize(new LogicalSize(900, 630));
           await win.center();
           await win.show();
           await win.unminimize();
           await win.setFocus();
+          console.log('[MAIN_WINDOW_DEBUG] Settings window shown');
         }
       } catch (e) {
         // ウィンドウ操作に失敗しても致命的ではないため無視
