@@ -854,6 +854,46 @@ fn fusen_refresh_notes_with_tags(state: State<'_, Mutex<AppState>>) -> Result<Ve
     Ok(notes)
 }
 
+// [NEW] ウィンドウをAlt+Tab/タスクビューから除外する（WS_EX_TOOLWINDOW適用）
+#[tauri::command]
+async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
+        };
+        use windows::Win32::Foundation::HWND;
+        use raw_window_handle::RawWindowHandle;
+
+        unsafe {
+            if let Ok(handle) = window.window_handle() {
+                let raw = handle.as_raw();
+                if let RawWindowHandle::Win32(win32_handle) = raw {
+                    let hwnd = HWND(win32_handle.hwnd.get());
+                    
+                    // 現在のスタイルを取得
+                    let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+                    
+                    // WS_EX_TOOLWINDOWを追加し、WS_EX_APPWINDOWを削除
+                    // これによりAlt+Tabとタスクビューから除外される
+                    let new_style = (style as u32 | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0;
+                    SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
+                    
+                    logger::log_debug(&format!("[ToolWindow] Applied WS_EX_TOOLWINDOW to window: {}", window.label()));
+                }
+            }
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 他のOSでは何もしない
+        let _ = window;
+    }
+
+    Ok(())
+}
+
 
 // --- Entry Point ---
 
@@ -895,6 +935,7 @@ pub fn run() {
             sound::fusen_play_sound, // [NEW] サウンド再生
             fusen_search_notes, // [NEW] 全文検索
             clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
+            fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);

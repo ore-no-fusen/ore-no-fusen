@@ -341,10 +341,19 @@ function OrchestratorContent() {
             height,
             x,
             y,
-            skipTaskbar: false,
+            skipTaskbar: true,
             focus: true,
           });
-          win.once('tauri://created', async () => { console.log(`[openNoteWindow] Window created: ${label}. Forcing focus.`); await win.setFocus(); });
+          win.once('tauri://created', async () => {
+            console.log(`[openNoteWindow] Window created: ${label}. Applying tool window style.`);
+            await win.setFocus();
+            // [NEW] Alt+Tab/タスクビューから除外するためWS_EX_TOOLWINDOWを適用
+            try {
+              await invoke('fusen_make_tool_window');
+            } catch (e) {
+              console.warn('[openNoteWindow] Failed to apply tool window style:', e);
+            }
+          });
           await win.setFocus();
           await new Promise(resolve => setTimeout(resolve, 100));
         } finally { unmarkWindowInProgress(label); }

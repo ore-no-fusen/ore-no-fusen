@@ -558,6 +558,7 @@ const StickyNote = memo(function StickyNote() {
 
         let unlistenMove: (() => void) | undefined;
         let unlistenResize: (() => void) | undefined;
+        let unlistenClose: (() => void) | undefined;
 
         const setupListeners = async () => {
             const win = getCurrentWindow();
@@ -569,6 +570,14 @@ const StickyNote = memo(function StickyNote() {
             unlistenResize = await win.listen('tauri://resize', () => {
                 saveWindowState();
             });
+
+            // [NEW] 閉じる操作（Alt+F4、タスクビュー×など）を「隠す」動作に変換
+            // これにより付箋が破棄されず、「全部表示する」で再表示可能
+            unlistenClose = await win.onCloseRequested(async (event) => {
+                console.log('[StickyNote] Close requested. Intercepting -> Hide.');
+                event.preventDefault();  // 閉じる操作をキャンセル
+                await win.hide();        // 代わりに隠す
+            });
         };
 
         setupListeners();
@@ -576,6 +585,7 @@ const StickyNote = memo(function StickyNote() {
         return () => {
             if (unlistenMove) unlistenMove();
             if (unlistenResize) unlistenResize();
+            if (unlistenClose) unlistenClose();
         };
     }, [selectedFile, saveWindowState]);
 

@@ -73,9 +73,17 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
                     height: 300,
                     visible: true,
                     focus: true,
+                    skipTaskbar: true,
                 });
                 win.once('tauri://created', async () => {
                     await win.setFocus();
+                    // [NEW] Alt+Tab/タスクビューから除外
+                    try {
+                        const { invoke } = await import('@tauri-apps/api/core');
+                        await invoke('fusen_make_tool_window');
+                    } catch (e) {
+                        console.warn('[SearchOverlay] Failed to apply tool window style:', e);
+                    }
                 });
             }
         } catch (e) {
