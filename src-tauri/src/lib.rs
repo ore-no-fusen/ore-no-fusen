@@ -227,6 +227,10 @@ fn fusen_move_to_trash(
     let new_path = trash_dir.join(filename.as_ref());
     let new_path_str = new_path.to_string_lossy().to_string();
     
+    // Move associated assets (images) to Trash as well
+    storage::copy_associated_assets(current_path, &trash_dir)?;
+    storage::delete_associated_assets(current_path)?;
+    
     storage::rename_note(&path, &new_path_str)?;
     
     logic::apply_remove_note(&mut *state.lock().unwrap(), &path);
@@ -272,30 +276,16 @@ fn fusen_archive_note(
 
         storage::rename_note(&path, &new_path_str)?;
     } else {
-        // Multi-tag logic
-        let mut first_new_path: Option<std::path::PathBuf> = None;
+        // Tagged notes: Move to the first tag folder only
+        let first_tag = &tags[0];
+        let tag_dir = storage::ensure_tag_dir(vault_root_path, first_tag)?;
+        let new_path = tag_dir.join(current_path.file_name().ok_or("no name")?);
+        let new_path_str = new_path.to_string_lossy().to_string();
 
-        for (i, tag) in tags.iter().enumerate() {
-            let tag_dir = storage::ensure_tag_dir(vault_root_path, tag)?;
-            let new_path = tag_dir.join(current_path.file_name().ok_or("no name")?);
-            let new_path_str = new_path.to_string_lossy().to_string();
-
-            if i == 0 {
-                // First tag: Move the file and assets
-                storage::copy_associated_assets(current_path, &tag_dir)?;
-
-                // [New] Delete original assets
-                storage::delete_associated_assets(current_path)?;
-
-                storage::rename_note(&path, &new_path_str)?;
-                first_new_path = Some(new_path);
-            } else if let Some(ref src) = first_new_path {
-                // Subsequent tags: Create symbolic link
-                if !new_path.exists() {
-                    storage::create_symlink(src, &new_path)?;
-                }
-            }
-        }
+        // Move the file and assets to the first tag folder
+        storage::copy_associated_assets(current_path, &tag_dir)?;
+        storage::delete_associated_assets(current_path)?;
+        storage::rename_note(&path, &new_path_str)?;
     }
     
     // 4. Update state

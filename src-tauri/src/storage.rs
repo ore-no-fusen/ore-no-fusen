@@ -222,20 +222,6 @@ pub fn ensure_archive_dir(parent_path: &Path) -> Result<PathBuf, String> {
     }
     Ok(archive_dir)
 }
-
-
-
-pub fn create_symlink(src: &Path, dest: &Path) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        std::os::windows::fs::symlink_file(src, dest).map_err(|e| e.to_string())
-    }
-    #[cfg(not(windows))]
-    {
-        std::os::unix::fs::symlink(src, dest).map_err(|e| e.to_string())
-    }
-}
-
 pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Result<(), String> {
     let content = fs::read_to_string(note_path).map_err(|e| e.to_string())?;
     let re = regex::Regex::new(r"!\[[^\]]*\]\((assets/[^)]+)\)").unwrap();
@@ -561,30 +547,6 @@ mod tests {
     }
 
 
-
-    #[test]
-    fn test_create_symlink() {
-        let dir = tempdir().unwrap();
-        let src = dir.path().join("source.md");
-        let dest = dir.path().join("link.md");
-        
-        fs::write(&src, "content").unwrap();
-        
-        // symlink creation might fail if not running with enough privileges on Windows
-        // but we want to test the wrapper.
-        match create_symlink(&src, &dest) {
-            Ok(_) => {
-                assert!(dest.exists());
-                let content = fs::read_to_string(&dest).unwrap();
-                assert_eq!(content, "content");
-            },
-            Err(e) => {
-                // If it's a privilege issue, we might skip or just log it.
-                // On Windows, Developer Mode or Admin is needed.
-                println!("Symlink test skipped/failed (likely privileges): {}", e);
-            }
-        }
-    }
     #[test]
     fn test_read_note_should_parse_metadata() {
         let dir = tempdir().unwrap();

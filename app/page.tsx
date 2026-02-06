@@ -150,14 +150,15 @@ function OrchestratorContent() {
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState("STARTING..."); // [NEW] Visual Debug Log
   const [isCreating, setIsCreating] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
+  const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
+  const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
 
   // [DEBUG] Render interaction (Moved to top to avoid Hook Rule violation)
   useEffect(() => {
     console.log('[Home] Render update. isMainWindow:', isMainWindow, 'isSearchOpen:', isSearchOpen, 'folderPath:', folderPath);
   });
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
-  const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
-  const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
+
   // ダッシュボード表示時も小さいサイズを維持する
   useEffect(() => {
     if (!setupRequired && !isSettingsOpen && !isCheckingSetup) {
@@ -999,6 +1000,67 @@ function OrchestratorContent() {
     }
   }, []);
 
+  // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
+  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen;
+
+  // [DEBUG] isDashboard状態の詳細ログ
+  useEffect(() => {
+    const logState = async () => {
+      const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
+
+      dbg(`[Dashboard:State] isDashboard=${isDashboard} | breakdown: isMainWindow=${isMainWindow}, isSearchOpen=${isSearchOpen}, isCheckingSetup=${isCheckingSetup}, setupRequired=${setupRequired}, isSettingsOpen=${isSettingsOpen}`);
+
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        if (win.label === 'main') {
+          const isVisible = await win.isVisible();
+          const isMinimized = await win.isMinimized();
+          const size = await win.innerSize();
+
+          dbg(`[Dashboard:Window] label=main, visible=${isVisible}, minimized=${isMinimized}, size=${size.width}x${size.height}`);
+          console.log('[Dashboard:Window]', { isDashboard, isVisible, isMinimized, size: `${size.width}x${size.height}` });
+        }
+      } catch (e) {
+        console.error('[Dashboard:State] Failed to get window info:', e);
+      }
+    };
+    logState();
+  }, [isDashboard, isMainWindow, isSearchOpen, isCheckingSetup, setupRequired, isSettingsOpen]);
+
+  // [FIX] ダッシュボードモード時にメインウィンドウを確実に隠す
+  useEffect(() => {
+    if (!isDashboard) return;
+
+    const hideWindow = async () => {
+      const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
+
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+
+        if (win.label === 'main') {
+          const isVisible = await win.isVisible();
+
+          if (isVisible) {
+            dbg(`[Dashboard:Fix] メインウィンドウが表示されているため隠します (visible=${isVisible})`);
+            console.log('[Dashboard:Fix] Hiding main window because isDashboard=true');
+            await win.hide();
+            dbg('[Dashboard:Fix] ウィンドウを隠しました');
+            console.log('[Dashboard:Fix] Window hidden successfully');
+          } else {
+            console.log('[Dashboard:Fix] Window already hidden, no action needed');
+          }
+        }
+      } catch (e) {
+        dbg(`[Dashboard:Fix] エラー: ${e}`);
+        console.error('[Dashboard:Fix] Failed to hide window:', e);
+      }
+    };
+
+    hideWindow();
+  }, [isDashboard]);
+
   if (searchParams.get('tagSelector') === '1') return <TagSelector />;
   if (searchParams.get('path')) return <StickyNote />;
 
@@ -1038,12 +1100,6 @@ function OrchestratorContent() {
       }
     }} />;
   }
-
-
-  // 管理画面（ダッシュボード）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen;
-
-
 
   // [NEW] Stable Return Structure
   if (isDashboard || isSearchOpen) {
