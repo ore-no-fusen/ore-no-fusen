@@ -297,21 +297,20 @@ const StickyNote = memo(function StickyNote() {
         if (!selectedFile) return;
         try {
             const win = getCurrentWindow();
-            const factor = await win.scaleFactor();
             const physPos = await win.outerPosition();
             const physSize = await win.innerSize();
 
-            // [AGDP Phase I] 座標の詳細ログ
-            console.log(`[GEOMETRY_SAVE] Physical: x=${physPos.x}, y=${physPos.y}, w=${physSize.width}, h=${physSize.height}, factor=${factor}`);
-            
-            const x = Math.round(physPos.x / factor);
-            const y = Math.round(physPos.y / factor);
-            const width = Math.round(physSize.width / factor);
-            const height = Math.round(physSize.height / factor);
+            // [MULTI_MONITOR_FIX] 物理座標をそのまま保存（scaleFactorで割らない）
+            // WebviewWindowコンストラクタは物理座標を期待しているため、座標系を統一
+            const x = Math.round(physPos.x);
+            const y = Math.round(physPos.y);
+            const width = Math.round(physSize.width);
+            const height = Math.round(physSize.height);
+
+            console.log(`[GEOMETRY_SAVE] Physical coordinates saved: x=${x}, y=${y}, w=${width}, h=${height}`);
 
             setRawFrontmatter(prev => {
                 const updated = updateFrontmatterGeometry(prev, { x, y, width, height });
-                console.log(`[GEOMETRY] Saved (Logical): x=${x}, y=${y}, w=${width}, h=${height} (Factor: ${factor})`);
                 return updated;
             });
             setSavePending(true);

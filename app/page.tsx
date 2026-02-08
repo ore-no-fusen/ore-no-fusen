@@ -307,16 +307,26 @@ function OrchestratorContent() {
   // ウィンドウ生成
   const openNoteWindow = async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number }, isNew?: boolean) => {
     const label = getWindowLabel(path);
+
+    // [AGDP] ターミナルとコンソールの両方にログ出力
+    const debugLog = (msg: string) => {
+      console.log(msg);
+      invoke('fusen_debug_log', { message: msg }).catch(() => { });
+    };
+
+    debugLog(`[openNoteWindow] Called for: ${path}, x=${meta?.x}, y=${meta?.y}, width=${meta?.width}, height=${meta?.height}`);
+
     try {
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
       const existing = await WebviewWindow.getByLabel(label);
       if (existing) {
-        console.log(`[openNoteWindow] Showing existing window: ${label}`);
+        debugLog(`[openNoteWindow] Showing existing window: ${label}`);
         await existing.show();
         await existing.unminimize();
         await existing.setFocus();
         return;
       }
+      debugLog(`[openNoteWindow] No existing window found for: ${label}, creating new...`);
     } catch (e) { console.warn(`[openNoteWindow] Failed to check existing window: ${label}`, e); }
 
     await enqueueWindowCreation(async () => {
@@ -343,8 +353,10 @@ function OrchestratorContent() {
           const y = meta?.y;
 
           // [AGDP Phase I] 復元時の座標ログ
-          console.log(`[openNoteWindow] Creating window: url=${url}, isNew=${isNew}, width=${width}, height=${height}, x=${x}, y=${y}`);
-          
+          const logMsg = `[openNoteWindow] Creating window: url=${url}, isNew=${isNew}, width=${width}, height=${height}, x=${x}, y=${y}`;
+          console.log(logMsg);
+          invoke('fusen_debug_log', { message: logMsg }).catch(() => { });
+
           const win = new WebviewWindow(label, {
             url,
             title: 'Quick Memo',  // タスクバープレビューのタイトル
@@ -359,14 +371,18 @@ function OrchestratorContent() {
             skipTaskbar: true,
             focus: true,
           });
-          
+
           // [AGDP Phase I] ウィンドウ作成後の位置確認ログ
           win.once('tauri://created', async () => {
             try {
               const actualPos = await win.outerPosition();
-              console.log(`[openNoteWindow] Window created. Actual position: x=${actualPos.x}, y=${actualPos.y} (Requested: x=${x}, y=${y})`);
+              const posMsg = `[openNoteWindow] Window created. Requested: (${x}, ${y}), Actual: (${actualPos.x}, ${actualPos.y})`;
+              console.log(posMsg);
+              invoke('fusen_debug_log', { message: posMsg }).catch(() => { });
             } catch (e) {
-              console.warn('[openNoteWindow] Failed to get actual position:', e);
+              const errMsg = `[openNoteWindow] Failed to get actual position: ${e}`;
+              console.log(errMsg);
+              invoke('fusen_debug_log', { message: errMsg }).catch(() => { });
             }
           });
           win.once('tauri://created', async () => {

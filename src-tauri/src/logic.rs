@@ -68,10 +68,10 @@ pub fn generate_frontmatter(seq: i32, context: &str, created: &str, updated: &st
 
 pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>, Vec<String>) {
     // \b (単語境界) を使い、他フィールドの末尾文字にマッチしないよう安全に抽出
-    let re_x = regex::Regex::new(r"\bx:\s*([\d\.]+)").unwrap();
-    let re_y = regex::Regex::new(r"\by:\s*([\d\.]+)").unwrap();
-    let re_w = regex::Regex::new(r"\b(?:width|w):\s*([\d\.]+)").unwrap();
-    let re_h = regex::Regex::new(r"\b(?:height|h):\s*([\d\.]+)").unwrap();
+    let re_x = regex::Regex::new(r"\bx:\s*(-?[\d\.]+)").unwrap();
+    let re_y = regex::Regex::new(r"\by:\s*(-?[\d\.]+)").unwrap();
+    let re_w = regex::Regex::new(r"\b(?:width|w):\s*(-?[\d\.]+)").unwrap();
+    let re_h = regex::Regex::new(r"\b(?:height|h):\s*(-?[\d\.]+)").unwrap();
     let re_color = regex::Regex::new(r#"backgroundColor:\s*["']?([^"'\s]+)["']?"#).unwrap();
     let re_aot = regex::Regex::new(r"alwaysOnTop:\s*(true|false)").unwrap();
     let re_tags = regex::Regex::new(r"(?m)^tags:\s*(.*)$").unwrap();
