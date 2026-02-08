@@ -34,5 +34,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# 俺のファイル置き場
+/my
 
+# 一時ファイル置き場
 /tmp
+
+# バックアップファイル置き場
+/bk
