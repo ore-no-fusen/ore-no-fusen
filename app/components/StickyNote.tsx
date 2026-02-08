@@ -301,6 +301,9 @@ const StickyNote = memo(function StickyNote() {
             const physPos = await win.outerPosition();
             const physSize = await win.innerSize();
 
+            // [AGDP Phase I] 座標の詳細ログ
+            console.log(`[GEOMETRY_SAVE] Physical: x=${physPos.x}, y=${physPos.y}, w=${physSize.width}, h=${physSize.height}, factor=${factor}`);
+            
             const x = Math.round(physPos.x / factor);
             const y = Math.round(physPos.y / factor);
             const width = Math.round(physSize.width / factor);

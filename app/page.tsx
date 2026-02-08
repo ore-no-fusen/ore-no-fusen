@@ -342,7 +342,9 @@ function OrchestratorContent() {
           const x = meta?.x;
           const y = meta?.y;
 
-          console.log(`[openNoteWindow] Creating window: url=${url}, isNew=${isNew}, width=${width}, height=${height}`);
+          // [AGDP Phase I] 復元時の座標ログ
+          console.log(`[openNoteWindow] Creating window: url=${url}, isNew=${isNew}, width=${width}, height=${height}, x=${x}, y=${y}`);
+          
           const win = new WebviewWindow(label, {
             url,
             title: 'Quick Memo',  // タスクバープレビューのタイトル
@@ -356,6 +358,16 @@ function OrchestratorContent() {
             y,
             skipTaskbar: true,
             focus: true,
+          });
+          
+          // [AGDP Phase I] ウィンドウ作成後の位置確認ログ
+          win.once('tauri://created', async () => {
+            try {
+              const actualPos = await win.outerPosition();
+              console.log(`[openNoteWindow] Window created. Actual position: x=${actualPos.x}, y=${actualPos.y} (Requested: x=${x}, y=${y})`);
+            } catch (e) {
+              console.warn('[openNoteWindow] Failed to get actual position:', e);
+            }
           });
           win.once('tauri://created', async () => {
             console.log(`[openNoteWindow] Window created: ${label}. Applying tool window style.`);
