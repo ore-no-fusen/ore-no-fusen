@@ -502,6 +502,19 @@ function DataSection({
 }
 
 function AboutSection({ t }: { t: (key: any) => string }) {
+    const [version, setVersion] = React.useState<string>('...')
+
+    React.useEffect(() => {
+        // Tauriのバージョン情報を取得
+        import('@tauri-apps/api/app')
+            .then(({ getVersion }) => getVersion())
+            .then(v => setVersion(v))
+            .catch(e => {
+                console.error('Failed to get version:', e)
+                setVersion('0.1.2') // フォールバック
+            })
+    }, [])
+
     return (
         <div className="space-y-6">
             <div className="mb-8">
@@ -537,7 +550,7 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                     <div className="space-y-1">
                         <h3 className="font-bold text-xl leading-none">{t('settings.about.appName')}</h3>
                         <p className="text-sm text-muted-foreground">OreNoFusen</p>
-                        <p className="text-xs text-muted-foreground pt-1">{t('settings.about.version')} 0.1.2</p>
+                        <p className="text-xs text-muted-foreground pt-1">{t('settings.about.version')} {version}</p>
                     </div>
                 </div>
 

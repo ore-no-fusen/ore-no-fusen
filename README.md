@@ -1,6 +1,51 @@
 # 俺の付箋
 
-Markdownファイルをデスクトップ上の付箋として表示するTauriアプリケーションです。
+<div align="center">
+
+![ore-no-fusen Logo](app-icon-source.png)
+
+**デスクトップに、思考を貼り付けよう**
+
+Markdownで書ける、美しい付箋アプリ
+
+[![GitHub release](https://img.shields.io/github/v/release/ore-no-fusen/ore-no-fusen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
+[![License](https://img.shields.io/github/license/ore-no-fusen/ore-no-fusen?style=flat-square)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
+
+[ダウンロード](#-インストール) • [ドキュメント](docs/USER_GUIDE.md) • [FAQ](docs/FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app)
+
+</div>
+
+---
+
+## ✨ 特徴
+
+### 🎯 シンプルで強力
+
+- **Markdownサポート** - 見出し、リスト、コードブロックなど、豊富な記法をサポート
+- **リアルタイムプレビュー** - 入力した内容が即座に美しく表示される
+- **タグ・アーカイブ** - 付箋を整理して管理。フォルダ構造で見やすく
+- **高速検索** - 全文検索で瞬時に目的の付箋を発見
+- **システムトレイ統合** - 常駐して、いつでもアクセス可能
+- **自動起動** - システム起動時に自動で立ち上がる
+- **効果音** - 心地よいフィードバックで快適な操作感
+
+### 🔒 プライバシー重視
+
+- **完全ローカル** - データは全てローカルに保存。クラウド不要
+- **オフライン動作** - インターネット接続不要で動作
+- **オープンソース** - コードは全て公開。安心して使える
+
+---
+
+## 📸 スクリーンショット
+
+<!-- スクリーンショットをここに配置 -->
+<!-- 例: ![メイン画面](public/screenshots/main.png) -->
+
+> **Note**: スクリーンショットは `public/screenshots/` フォルダに配置してください
+
+---
 
 ## 📥 インストール
 
@@ -10,6 +55,13 @@ Markdownファイルをデスクトップ上の付箋として表示するTauri�
 2. 最新版の **`ore-no-fusen_x.x.x_x64-setup.exe`** をダウンロード
 3. ダウンロードしたファイルをダブルクリックしてインストール
 4. インストール完了後、スタートメニューから「俺の付箋」を起動
+
+**システム要件:**
+- OS: Windows 10/11 (64-bit)
+- 容量: 約 100MB
+- メモリ: 4GB以上推奨
+
+詳しいインストール手順は[ユーザーガイド](docs/USER_GUIDE.md#インストール)をご覧ください。
 
 ### 開発者向け
 
@@ -42,33 +94,125 @@ npm run tauri build
 
 ビルド成果物は `src-tauri\target\release\bundle\nsis\` に生成されます。
 
-## 🎯 主な機能
+---
 
-- デスクトップ上に付箋として表示
-- Markdownのリアルタイムプレビュー
-- タグ・アーカイブ機能
-- システムトレイ統合
-- 自動起動設定
-- 効果音
+## 🎯 使い方
+
+### 基本操作
+
+1. **付箋を作成** - システムトレイのアイコンを右クリック → 「新しい付箋」
+2. **編集** - 付箋をダブルクリック
+3. **検索** - `Ctrl+F` で検索ウィンドウを開く
+4. **タグ付け** - 付箋の内容に `#タグ名` を記述
+
+詳しい使い方は[ユーザーガイド](docs/USER_GUIDE.md)をご覧ください。
+
+### Markdownの例
+
+```markdown
+# 今日のタスク
+
+## 重要
+- [ ] プレゼン資料作成
+- [x] メール返信
+
+## メモ
+**締切**: 2026/02/15
+*担当*: 山田さん
+
+#仕事 #重要
+```
+
+---
+
+## 💡 ユースケース
+
+### 📝 タスク管理
+チェックリストとタグで、日々のタスクを整理。完了したタスクはアーカイブへ。
+
+### 💭 アイデアメモ
+思いついたアイデアを即座にメモ。Markdownで構造化して整理。
+
+### 📚 学習ノート
+学習内容をタグで分類。検索機能で復習も簡単。
+
+### 🔖 リンク集
+よく使うリンクを付箋に保存。タグで分類して管理。
+
+---
 
 ## 🛠️ 技術スタック
 
 ### フロントエンド
-- Next.js 14 (App Router)
-- React 18
-- TypeScript
-- Tailwind CSS
-- CodeMirror 6
+- **Next.js 14** (App Router)
+- **React 18**
+- **TypeScript**
+- **Tailwind CSS**
+- **CodeMirror 6** (Markdownエディタ)
 
 ### バックエンド
-- Tauri 2.x
-- Rust
+- **Tauri 2.x** (デスクトップアプリフレームワーク)
+- **Rust** (高速・安全なバックエンド)
 
-## 📝 ライセンス
+### アーキテクチャ
+- **DOD (Data-Oriented Design)** - データ中心設計
+- **Effect Pattern** - 副作用の明示的な管理
+- **AppState (SSOT)** - 単一の信頼できる情報源
 
-MIT License
+---
+
+## 📖 ドキュメント
+
+- [ユーザーガイド](docs/USER_GUIDE.md) - 詳しい使い方
+- [FAQ](docs/FAQ.md) - よくある質問
+- [開発ルール](AG_RULES.md) - 開発者向けルール
+
+---
 
 ## 🤝 コントリビューション
 
 Issue、Pull Requestを歓迎します！
 
+1. このリポジトリをフォーク
+2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
+4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
+5. Pull Requestを作成
+
+詳しくは[CONTRIBUTING.md](CONTRIBUTING.md)をご覧ください（作成予定）。
+
+---
+
+## 📝 ライセンス
+
+MIT License - 詳細は[LICENSE](LICENSE)をご覧ください。
+
+---
+
+## 🙏 謝辞
+
+ore-no-fusenは以下のオープンソースプロジェクトを使用しています:
+
+- [Tauri](https://tauri.app/)
+- [Next.js](https://nextjs.org/)
+- [React](https://react.dev/)
+- [CodeMirror](https://codemirror.net/)
+- [Tailwind CSS](https://tailwindcss.com/)
+
+---
+
+## 📞 サポート
+
+- **バグ報告**: [GitHub Issues](https://github.com/ore-no-fusen/ore-no-fusen/issues)
+- **機能リクエスト**: [GitHub Discussions](https://github.com/ore-no-fusen/ore-no-fusen/discussions)
+- **質問**: [FAQ](docs/FAQ.md)
+
+---
+
+<div align="center">
+
+**ore-no-fusenで、思考整理をもっと楽しく** 🎉
+
+Made with ❤️ by ONF Studios
+
+</div>
