@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     base_path: '',
     language: 'ja',
     auto_start: false,
-    font_size: 16,
+    font_size: 12,
     sound_enabled: true,
 };
 

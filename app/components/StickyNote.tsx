@@ -12,7 +12,7 @@ import { getFontSize } from '../utils/settingsManager';
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ConfirmDialog from './ConfirmDialog';
 import ResizableImage from './ResizableImage';
-import { splitFrontMatter, updateFrontmatterValue } from '../utils/splitFrontMatter';
+import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey } from '../utils/splitFrontMatter';
 
 import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
@@ -178,29 +178,29 @@ const StickyNote = memo(function StickyNote() {
     const menuRef = useRef<any>(null); // Keep menu alive to prevent GC of callbacks
 
     // Frontmatter更新ヘルパー
-    const updateFrontmatterValue = (front: string, key: string, value: string | number) => {
-        // Use exact field names only - no aliases to prevent mismatches
-        const regex = new RegExp(`(${key}:\\s*)(.*)`, 'm');
-        if (regex.test(front)) {
-            return front.replace(regex, `$1${value}`);
-        } else {
-            const lastFence = front.lastIndexOf('---');
-            if (lastFence > 0) {
-                return front.slice(0, lastFence) + `${key}: ${value}\n` + front.slice(lastFence);
-            }
-            if (!front || front.trim() === '') {
-                return `---\n${key}: ${value}\n---\n`;
-            }
-            return front + `\n---\n${key}: ${value}\n---\n`;
-        }
-    };
+    // (Removed local definition, using imported one)
 
     const updateFrontmatterGeometry = (front: string, geom: { x?: number, y?: number, width?: number, height?: number }) => {
         let newFront = front;
-        if (geom.x !== undefined) newFront = updateFrontmatterValue(newFront, 'x', Math.round(geom.x));
-        if (geom.y !== undefined) newFront = updateFrontmatterValue(newFront, 'y', Math.round(geom.y));
-        if (geom.width !== undefined) newFront = updateFrontmatterValue(newFront, 'width', Math.round(geom.width));
-        if (geom.height !== undefined) newFront = updateFrontmatterValue(newFront, 'height', Math.round(geom.height));
+
+        // Consolidate into window object if full geometry is available
+        // Format: window: { x: 100, y: 100, width: 400, height: 300 }
+        if (geom.x !== undefined && geom.y !== undefined && geom.width !== undefined && geom.height !== undefined) {
+            const val = `{ x: ${Math.round(geom.x)}, y: ${Math.round(geom.y)}, width: ${Math.round(geom.width)}, height: ${Math.round(geom.height)} }`;
+            newFront = updateFrontmatterValue(newFront, 'window', val);
+
+            // Cleanup legacy fields
+            newFront = removeFrontmatterKey(newFront, 'rect'); // Remove rect
+            newFront = removeFrontmatterKey(newFront, 'x');
+            newFront = removeFrontmatterKey(newFront, 'y');
+            newFront = removeFrontmatterKey(newFront, 'width');
+            newFront = removeFrontmatterKey(newFront, 'height');
+            newFront = removeFrontmatterKey(newFront, 'fontFamily');
+            newFront = removeFrontmatterKey(newFront, 'fontSize');
+            newFront = removeFrontmatterKey(newFront, 'lineHeight');
+            newFront = removeFrontmatterKey(newFront, 'context');
+        }
+
         return newFront;
     };
 
@@ -297,17 +297,20 @@ const StickyNote = memo(function StickyNote() {
         if (!selectedFile) return;
         try {
             const win = getCurrentWindow();
+            // [FIX] 物理座標(Physical)ではなく、論理座標(Logical)で保存する
+            // WebviewWindowのコンストラクタやsetPositionはデフォルトで論理座標を扱うため、
+            // 物理座標のまま保存すると、再起動時にDPIスケール分だけ位置やサイズがズレる（拡大される）原因になる。
             const physPos = await win.outerPosition();
             const physSize = await win.innerSize();
+            const factor = await win.scaleFactor();
 
-            // [MULTI_MONITOR_FIX] 物理座標をそのまま保存（scaleFactorで割らない）
-            // WebviewWindowコンストラクタは物理座標を期待しているため、座標系を統一
-            const x = Math.round(physPos.x);
-            const y = Math.round(physPos.y);
-            const width = Math.round(physSize.width);
-            const height = Math.round(physSize.height);
+            // 論理座標に変換 (Physical / ScaleFactor)
+            const x = Math.round(physPos.x / factor);
+            const y = Math.round(physPos.y / factor);
+            const width = Math.round(physSize.width / factor);
+            const height = Math.round(physSize.height / factor);
 
-            console.log(`[GEOMETRY_SAVE] Physical coordinates saved: x=${x}, y=${y}, w=${width}, h=${height}`);
+            console.log(`[GEOMETRY_SAVE] Logical coordinates saved: x=${x}, y=${y}, w=${width}, h=${height} (factor=${factor})`);
 
             setRawFrontmatter(prev => {
                 const updated = updateFrontmatterGeometry(prev, { x, y, width, height });
@@ -578,11 +581,15 @@ const StickyNote = memo(function StickyNote() {
 
             // [NEW] 閉じる操作（Alt+F4、タスクビュー×など）を「隠す」動作に変換
             // これにより付箋が破棄されず、「全部表示する」で再表示可能
-            unlistenClose = await win.onCloseRequested(async (event) => {
-                console.log('[StickyNote] Close requested. Intercepting -> Hide.');
-                event.preventDefault();  // 閉じる操作をキャンセル
-                await win.hide();        // 代わりに隠す
-            });
+            if (typeof win.onCloseRequested === 'function') {
+                unlistenClose = await win.onCloseRequested(async (event) => {
+                    console.log('[StickyNote] Close requested. Intercepting -> Hide.');
+                    event.preventDefault();  // 閉じる操作をキャンセル
+                    await win.hide();        // 代わりに隠す
+                });
+            } else {
+                console.warn('[StickyNote] win.onCloseRequested is missing (test environment?)');
+            }
         };
 
         setupListeners();

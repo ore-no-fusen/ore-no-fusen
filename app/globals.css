@@ -84,7 +84,7 @@
 
 /* Use BIZ UDPGothic (or Meiryo) for readability */
 .preview-content {
-  font-family: "BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif;
+  font-family: "BIZ UDGothic", "Meiryo", "Yu Gothic UI", sans-serif;
   line-height: 1.4;
   letter-spacing: 0.01em;
   white-space: pre-wrap;

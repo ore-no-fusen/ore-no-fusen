@@ -54,7 +54,7 @@ pub struct Settings {
 }
 
 fn default_language() -> String { "ja".to_string() }
-fn default_font_size() -> f64 { 16.0 }
+fn default_font_size() -> f64 { 12.0 }
 fn default_sound_enabled() -> bool { true }
 
 impl Default for Settings {

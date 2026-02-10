@@ -46,7 +46,8 @@ pub fn split_frontmatter(src: &str) -> (&str, &str) {
     ("", src)
 }
 
-pub fn generate_frontmatter(seq: i32, context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String]) -> String {
+
+pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String]) -> String {
     let color_line = if let Some(c) = background_color {
         format!("\nbackgroundColor: {}", c)
     } else {
@@ -59,27 +60,43 @@ pub fn generate_frontmatter(seq: i32, context: &str, created: &str, updated: &st
         "".to_string()
     };
     
-    // Δ0.7: Complete frontmatter with all fields including geometry defaults
+    // Reformatted: 'window' key with flow-style object for readability and compactness
     format!(
-        "---\ntype: sticky\nseq: {}\ncontext: {}\ncreated: {}\nupdated: {}{}{}\nx: 100\ny: 100\nwidth: 400\nheight: 300\nfontFamily: BIZ UDGothic\nfontSize: 8\nlineHeight: 1.0\n---\n",
-        seq, context, created, updated, color_line, tags_line
+        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
+        seq, created, updated, color_line, tags_line
     )
 }
 
 pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>, Vec<String>) {
-    // \b (単語境界) を使い、他フィールドの末尾文字にマッチしないよう安全に抽出
-    let re_x = regex::Regex::new(r"\bx:\s*(-?[\d\.]+)").unwrap();
-    let re_y = regex::Regex::new(r"\by:\s*(-?[\d\.]+)").unwrap();
-    let re_w = regex::Regex::new(r"\b(?:width|w):\s*(-?[\d\.]+)").unwrap();
-    let re_h = regex::Regex::new(r"\b(?:height|h):\s*(-?[\d\.]+)").unwrap();
+    // Parse 'window: { x: ..., y: ..., width: ..., height: ... }'
+    // Also support 'rect' temporarily/fallback or just 'window'
+    // Regex allows specific order: x, y, width, height.
+    let re_window = regex::Regex::new(r"window:\s*\{\s*x:\s*(-?[\d\.]+),\s*y:\s*(-?[\d\.]+),\s*width:\s*(-?[\d\.]+),\s*height:\s*(-?[\d\.]+)\s*\}").unwrap();
+    // Fallback/Legacy rect parsing if needed (optional, but good for transition)
+    let re_rect = regex::Regex::new(r"rect:\s*\[\s*(-?[\d\.]+),\s*(-?[\d\.]+),\s*(-?[\d\.]+),\s*(-?[\d\.]+)\s*\]").unwrap();
+
     let re_color = regex::Regex::new(r#"backgroundColor:\s*["']?([^"'\s]+)["']?"#).unwrap();
     let re_aot = regex::Regex::new(r"alwaysOnTop:\s*(true|false)").unwrap();
     let re_tags = regex::Regex::new(r"(?m)^tags:\s*(.*)$").unwrap();
 
-    let x = re_x.captures(content).and_then(|c| c[1].parse().ok());
-    let y = re_y.captures(content).and_then(|c| c[1].parse().ok());
-    let width = re_w.captures(content).and_then(|c| c[1].parse().ok());
-    let height = re_h.captures(content).and_then(|c| c[1].parse().ok());
+    let (x, y, width, height) = if let Some(caps) = re_window.captures(content) {
+        (
+            caps[1].parse().ok(),
+            caps[2].parse().ok(),
+            caps[3].parse().ok(),
+            caps[4].parse().ok(),
+        )
+    } else if let Some(caps) = re_rect.captures(content) {
+         (
+            caps[1].parse().ok(),
+            caps[2].parse().ok(),
+            caps[3].parse().ok(),
+            caps[4].parse().ok(),
+        )
+    } else {
+        (None, None, None, None)
+    };
+
     let color = re_color.captures(content).map(|c| c[1].to_string());
     let always_on_top = re_aot.captures(content).and_then(|c| c[1].parse().ok());
     
@@ -401,6 +418,22 @@ pub fn get_all_unique_tags(state: &AppState) -> Vec<String> {
     tags_vec
 }
 
+// Helper to remove key
+pub fn remove_frontmatter_key(content: &str, key: &str) -> String {
+    if !content.trim_start().starts_with("---") { return content.to_string(); }
+    let start_idx = content.find("---").unwrap() + 3;
+    let end_idx = match content[start_idx..].find("---") {
+        Some(i) => start_idx + i,
+        None => return content.to_string(),
+    };
+    let frontmatter = &content[..end_idx];
+    let body = &content[end_idx..];
+    
+    let re = regex::Regex::new(&format!(r"(?m)^{}:\s*.*$\n?", regex::escape(key))).unwrap();
+    let new_fm = re.replace_all(frontmatter, "").to_string();
+    format!("{}{}", new_fm, body)
+}
+
 pub fn handle_update_geometry(
     state: &mut AppState,
     path: &str,
@@ -408,11 +441,22 @@ pub fn handle_update_geometry(
     x: f64, y: f64, w: f64, h: f64
 ) -> Result<Effect, String> {
     let mut new_content = current_content.to_string();
-    new_content = update_frontmatter_value(&new_content, "x", x.round().to_string());
-    new_content = update_frontmatter_value(&new_content, "y", y.round().to_string());
-    new_content = update_frontmatter_value(&new_content, "width", w.round().to_string());
-    new_content = update_frontmatter_value(&new_content, "height", h.round().to_string());
     
+    // Update 'window' in flow style: { x: ..., y: ..., width: ..., height: ... }
+    let window_val = format!("{{ x: {}, y: {}, width: {}, height: {} }}", x.round(), y.round(), w.round(), h.round());
+    new_content = update_frontmatter_value(&new_content, "window", window_val);
+    
+    // Cleanup old fields - including 'rect'
+    new_content = remove_frontmatter_key(&new_content, "rect");
+    new_content = remove_frontmatter_key(&new_content, "x");
+    new_content = remove_frontmatter_key(&new_content, "y");
+    new_content = remove_frontmatter_key(&new_content, "width");
+    new_content = remove_frontmatter_key(&new_content, "height");
+    new_content = remove_frontmatter_key(&new_content, "fontFamily");
+    new_content = remove_frontmatter_key(&new_content, "fontSize");
+    new_content = remove_frontmatter_key(&new_content, "lineHeight");
+    new_content = remove_frontmatter_key(&new_content, "context");
+
     // State update (Single Source of Truth)
     if let Some(index) = state.notes.iter().position(|n| n.path == path) {
         state.notes[index].x = Some(x);
@@ -425,10 +469,19 @@ pub fn handle_update_geometry(
 }
 
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_remove_frontmatter_key() {
+        let content = "---\nx: 100\ny: 200\n---\nbody";
+        let res = remove_frontmatter_key(content, "x");
+        assert!(!res.contains("x:"));
+        assert!(res.contains("y: 200"));
+        assert!(res.contains("body"));
+    }
+
 
     #[test]
     fn sanitize_basic() {

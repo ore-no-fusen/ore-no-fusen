@@ -52,3 +52,11 @@ export function updateFrontmatterValue(frontmatter: string, key: string, value: 
         return frontmatter;
     }
 }
+/**
+ * フロントマターから特定のキーを削除する
+ */
+export function removeFrontmatterKey(frontmatter: string, key: string): string {
+    // \s* allows for indentation. \r? handles Windows CRLF.
+    const keyPattern = new RegExp(`^\\s*${key}:.*$\\r?\\n?`, 'gm');
+    return frontmatter.replace(keyPattern, '');
+}

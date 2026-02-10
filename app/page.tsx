@@ -305,7 +305,7 @@ function OrchestratorContent() {
   };
 
   // ウィンドウ生成
-  const openNoteWindow = async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number }, isNew?: boolean) => {
+  const openNoteWindow = async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean }, isNew?: boolean) => {
     const label = getWindowLabel(path);
 
     // [AGDP] ターミナルとコンソールの両方にログ出力
@@ -362,7 +362,7 @@ function OrchestratorContent() {
             title: 'Quick Memo',  // タスクバープレビューのタイトル
             transparent: true,
             decorations: false,
-            alwaysOnTop: false,
+            alwaysOnTop: meta?.always_on_top || false,
             visible: true,
             width,
             height,
@@ -497,11 +497,15 @@ function OrchestratorContent() {
           const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
           dbg('[Main] Setting up onCloseRequested handler');
 
-          unlisten = await win.onCloseRequested(async (event) => {
-            dbg('[Main] Close requested via X button. Intercepting -> Hide.');
-            event.preventDefault();
-            await win.hide();
-          });
+          if (typeof win.onCloseRequested === 'function') {
+            unlisten = await win.onCloseRequested(async (event) => {
+              dbg('[Main] Close requested via X button. Intercepting -> Hide.');
+              event.preventDefault();
+              await win.hide();
+            });
+          } else {
+            console.warn('[Main] win.onCloseRequested is missing (test environment?)');
+          }
         }
       } catch (e) {
         console.error('Failed to setup close handler', e);
@@ -787,6 +791,87 @@ function OrchestratorContent() {
     };
   }, []); // 空の依存配列でリスナー再登録防止
 
+  // [NEW] トレイからの再配置イベント
+  useEffect(() => {
+    if (!isMainWindow) return; // Guard
+
+    let unlisten: (() => void) | undefined;
+
+    const promise = listen('fusen:reposition_notes', async () => {
+      console.log('[Reposition] Repositioning notes from tray menu...');
+      const log = (msg: string) => {
+        console.log(msg);
+        invoke('fusen_debug_log', { message: msg }).catch(() => { });
+      };
+
+      try {
+        // 状態を再同期して最新の座標情報を取得
+        log('[Reposition] Syncing state to get latest note positions...');
+        const state = await syncState();
+        if (!state || !state.notes || state.notes.length === 0) {
+          log('[Reposition] No notes found to reposition');
+          return;
+        }
+
+        const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+        const allWindows = await getAllWebviewWindows();
+        const openWindows = new Map<string, WebviewWindow>();
+        for (const win of allWindows) {
+          if (win.label !== 'main' && win.label.startsWith('note-')) {
+            openWindows.set(win.label, win);
+          }
+        }
+
+        log(`[Reposition] Found ${state.notes.length} notes, ${openWindows.size} windows currently open`);
+
+        // 各ノートに対して再配置処理
+        for (const note of state.notes) {
+          const label = getWindowLabel(note.path);
+          const existingWin = openWindows.get(label);
+
+          if (existingWin && note.x !== undefined && note.y !== undefined) {
+            // 既に開いているウィンドウ: 座標を再適用
+            try {
+              log(`[Reposition] Moving existing window ${label} to (${note.x}, ${note.y})`);
+              const { LogicalPosition, LogicalSize } = await import('@tauri-apps/api/dpi');
+              await existingWin.setPosition(new LogicalPosition(note.x, note.y));
+              // サイズも更新
+              if (note.width && note.height) {
+                await existingWin.setSize(new LogicalSize(note.width, note.height));
+              }
+            } catch (e) {
+              log(`[Reposition] Failed to reposition window ${label}: ${e}`);
+            }
+          } else if (!existingWin && note.x !== undefined && note.y !== undefined) {
+            // まだ開いていないノート: 保存されている座標で開く
+            log(`[Reposition] Opening note ${note.path} at (${note.x}, ${note.y})`);
+            await openNoteWindow(note.path, {
+              x: note.x,
+              y: note.y,
+              width: note.width,
+              height: note.height
+            });
+            // ウィンドウ作成の待機時間
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
+
+        log('[Reposition] Repositioning completed');
+      } catch (e) {
+        const errMsg = `[Reposition] Error during repositioning: ${e}`;
+        console.error(errMsg);
+        invoke('fusen_debug_log', { message: errMsg }).catch(() => { });
+      }
+    });
+
+    promise.then(u => { unlisten = u; });
+
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then(u => u());
+    };
+  }, []); // 空の依存配列でリスナー再登録防止
+
   // タグフィルター（複数）
   useEffect(() => {
     if (!isMainWindow) return; // Guard
@@ -942,6 +1027,9 @@ function OrchestratorContent() {
           }
           const savedFolder = basePath;
 
+          // [MULTI_MONITOR_FIX] OS起動直後はモニタ検出が完了していない可能性があるため、
+          // スタートアップ時の復元処理を少し遅延させる（1500ms）
+          // 再起動時は既にモニタ検出が完了しているため、この遅延は問題にならない
           setTimeout(async () => {
             try {
               setLoadingStatus("ノート一覧を取得中...");
@@ -966,11 +1054,17 @@ function OrchestratorContent() {
 
               if (notes.length > 0) {
                 setLoadingStatus(`${notes.length} 件のノートを復元中...`);
+                // [MULTI_MONITOR_FIX] ウィンドウを開く前に少し待機してモニタ検出の完了を待つ
+                await new Promise(resolve => setTimeout(resolve, 500));
                 for (let i = 0; i < notes.length; i++) {
                   const note = notes[i];
                   setLoadingStatus(`ノートを開いています (${i + 1}/${notes.length}): ${note.path.split(/[\\/]/).pop()}...`);
-                  log(`[起動処理] ウィンドウを開く: ${note.path}`);
+                  log(`[起動処理] ウィンドウを開く: ${note.path} at (${note.x}, ${note.y})`);
                   await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
+                  // 各ウィンドウ作成の間に少し待機（モニタ検出の確実性を高める）
+                  if (i < notes.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                  }
                 }
 
                 setLoadingStatus("仕上げ処理...");
@@ -1012,7 +1106,7 @@ function OrchestratorContent() {
               setLoadingStatus("エラー: " + String(e));
               setTimeout(() => setIsCheckingSetup(false), 3000);
             }
-          }, 300);
+          }, 1500); // [MULTI_MONITOR_FIX] 300ms → 1500ms に延長（OS起動直後のモニタ検出完了を待つ）
         } catch (e) {
           log(`[起動処理] 重大なエラー: ${e}`);
           setLoadingStatus("重大なエラー: " + String(e));

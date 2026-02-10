@@ -24,6 +24,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     // Labels
     let label_hide = if is_en { "Hide All" } else { "全部隠す (Hide All)" };
     let label_show = if is_en { "Show All" } else { "全部戻す (Show All)" };
+    let label_reposition = if is_en { "Reposition Notes" } else { "付箋を再配置 (Reposition Notes)" };
     let label_settings = if is_en { "Settings" } else { "設定 (Settings)" };
     let label_new_note = if is_en { "New Note" } else { "新規メモ (New Note)" };
     let label_search = if is_en { "Search" } else { "検索 (Search)" }; // [NEW] 全文検索
@@ -32,6 +33,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
     let hide_i = MenuItem::with_id(app, "hide_all", label_hide, true, None::<&str>)?;
     let show_i = MenuItem::with_id(app, "show_all", label_show, true, None::<&str>)?;
+    let reposition_i = MenuItem::with_id(app, "reposition_notes", label_reposition, true, None::<&str>)?;
     let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?; 
     let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
     let search_i = MenuItem::with_id(app, "open_search", label_search, true, None::<&str>)?; // [NEW] 全文検索
@@ -66,6 +68,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &hide_i, 
         &show_i, 
+        &reposition_i, // [NEW] 再配置ボタン
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &world_menu, 
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
@@ -102,6 +105,12 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                                 let _ = win.show();
                                 let _ = win.set_focus();
                             }
+                        }
+                    },
+                    "reposition_notes" => {
+                        eprintln!("[Tray] Repositioning notes...");
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.emit("fusen:reposition_notes", ());
                         }
                     },
 

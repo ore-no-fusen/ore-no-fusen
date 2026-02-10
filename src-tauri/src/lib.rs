@@ -998,35 +998,44 @@ pub fn run() {
             use std::sync::atomic::{AtomicBool, Ordering};
             static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
             
-            app.handle().plugin(
-                ShortcutBuilder::new()
-                    .with_shortcuts(["ctrl+shift+h"])?
-                    .with_handler(|app, _shortcut, event| {
-                        if event.state == ShortcutState::Pressed {
-                            let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
-                            
-                            for win in app.webview_windows().values() {
-                                if win.label() != "main" {
-                                    if is_hidden {
-                                        let _ = win.show();
-                                        let _ = win.set_focus();
-                                    } else {
-                                        let _ = win.hide();
+            // [Fix] Safely attempt to register shortcuts
+            match ShortcutBuilder::new().with_shortcuts(["ctrl+shift+h"]) {
+                Ok(builder) => {
+                    let plugin = builder
+                        .with_handler(|app, _shortcut, event| {
+                            if event.state == ShortcutState::Pressed {
+                                let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
+                                
+                                for win in app.webview_windows().values() {
+                                    if win.label() != "main" {
+                                        if is_hidden {
+                                            let _ = win.show();
+                                            let _ = win.set_focus();
+                                        } else {
+                                            let _ = win.hide();
+                                        }
                                     }
                                 }
+                                
+                                // 状態を反転
+                                NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
+                                
+                                logger::log_info(&format!(
+                                    "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",
+                                    if is_hidden { "SHOWN" } else { "HIDDEN" }
+                                ));
                             }
-                            
-                            // 状態を反転
-                            NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
-                            
-                            logger::log_info(&format!(
-                                "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",
-                                if is_hidden { "SHOWN" } else { "HIDDEN" }
-                            ));
-                        }
-                    })
-                    .build()
-            )?;
+                        })
+                        .build();
+
+                    if let Err(e) = app.handle().plugin(plugin) {
+                        logger::log_warn(&format!("Failed to initialize global shortcut plugin: {}", e));
+                    }
+                },
+                Err(e) => {
+                    logger::log_warn(&format!("Failed to register global shortcuts (might be conflicting): {}", e));
+                }
+            }
             
             logger::log_info("アプリの初期化が完了しました");
             Ok(())

@@ -173,7 +173,48 @@ pub fn read_note(path: &str) -> Result<Note, String> {
 }
 
 pub fn write_note(path: &str, content: &str) -> Result<(), String> {
-    fs::write(path, content).map_err(|e| e.to_string())
+    // Atomic Write attempt: Write to temp file then rename
+    let path_obj = Path::new(path);
+    // temp path: same dir, different extension to ensure same filesystem
+    
+    // Add a random suffix or just .tmp extension. 
+    // using .tmp extension might conflict if multiple writes happen, but sufficient for single user app.
+    // Better: use UUID or timestamp if possible, but let's stick to simple .tmp for now.
+    let file_stem = path_obj.file_stem().unwrap_or_default().to_string_lossy();
+    let extension = path_obj.extension().unwrap_or_default().to_string_lossy();
+    let temp_filename = format!("{}.{}.tmp", file_stem, extension);
+    let temp_path = path_obj.parent().unwrap_or(Path::new(".")).join(temp_filename);
+
+    if let Err(e) = fs::write(&temp_path, content) {
+        return Err(format!("Failed to write temp file: {}", e));
+    }
+
+    // Rename temp file to target file
+    match fs::rename(&temp_path, path_obj) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // Windows fallback: rename fails if target exists? 
+            // Actually std::fs::rename on Windows might fail if target exists depending on impl.
+            // Try removing target first if it exists.
+            if path_obj.exists() {
+                if let Err(rm_err) = fs::remove_file(path_obj) {
+                     // Clean up temp file
+                     let _ = fs::remove_file(&temp_path);
+                     return Err(format!("Failed to overwrite: {} (remove error: {})", e, rm_err));
+                }
+                if let Err(rn_err) = fs::rename(&temp_path, path_obj) {
+                     // Clean up temp file
+                     let _ = fs::remove_file(&temp_path);
+                     return Err(format!("Failed to rename after remove: {}", rn_err));
+                }
+                Ok(())
+            } else {
+                 // Clean up temp file
+                 let _ = fs::remove_file(&temp_path);
+                 Err(format!("Failed to rename: {}", e))
+            }
+        }
+    }
 }
 
 pub fn rename_note(old_path: &str, new_path: &str) -> Result<(), String> {
