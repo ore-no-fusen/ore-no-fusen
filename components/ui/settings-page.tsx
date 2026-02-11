@@ -566,7 +566,7 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                             onClick={async () => {
                                 try {
                                     const { open } = await import('@tauri-apps/plugin-shell');
-                                    await open('https://github.com/ore-no-fusen/ore-no-fusen');
+                                    await open('https://ore-no-fusen.vercel.app');
                                 } catch (e) {
                                     console.error('Failed to open link:', e);
                                 }
