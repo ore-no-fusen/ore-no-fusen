@@ -20,7 +20,6 @@
     "core:window:allow-unminimize",
     "core:window:allow-center",
     "shell:allow-open",
-    "core:path:default",
-    "shell:open"
+    "core:path:default"
   ]
 }
