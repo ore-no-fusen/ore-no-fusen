@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![ore-no-fusen Logo](public/logo.svg)
+![ore-no-fusen Logo](public/logo-neon.svg)
 
 **デスクトップに、思考を貼り付けよう**
 
