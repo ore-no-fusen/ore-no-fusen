@@ -170,21 +170,15 @@ export default function LandingPage() {
                         </p>
                     </div>
 
-                    {/* スクリーンショットプレースホルダー */}
+                    {/* スクリーンショット */}
                     <div className="relative">
                         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 blur-3xl" />
-                        <div className="relative bg-slate-800/50 border border-slate-700/50 rounded-2xl p-8 min-h-[400px] flex items-center justify-center">
-                            <div className="text-center">
-                                <div className="w-24 h-24 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                                    <FileText className="w-12 h-12 text-slate-400" />
-                                </div>
-                                <p className="text-slate-400 text-lg">
-                                    スクリーンショットをここに配置予定
-                                </p>
-                                <p className="text-slate-500 text-sm mt-2">
-                                    public/screenshots/ フォルダに画像を追加してください
-                                </p>
-                            </div>
+                        <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl">
+                            <img
+                                src="/screenshots/ScreenShot_OreNoFusen.jpg"
+                                alt="俺の付箋 スクリーンショット"
+                                className="w-full h-auto"
+                            />
                         </div>
                     </div>
                 </div>

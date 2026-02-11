@@ -164,11 +164,11 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                                     })
 
                                     // 初期内容を設定
-                                    const initialContent = `はじめの付箋（消してOK）
+                                    const initialContent = `はじめの付箋(消してOK)
 
 すぐ書ける
 **強調できる**
-そこに残る`
+そこに残る！`
 
                                     await invoke("fusen_save_note", {
                                         path: newNote.meta.path,
