@@ -240,9 +240,7 @@ export default function LandingPage() {
                             <Link href="https://github.com/ore-no-fusen/ore-no-fusen/blob/main/README.md" target="_blank" className="text-slate-400 hover:text-white transition-colors">
                                 ドキュメント
                             </Link>
-                            <Link href="https://github.com/ore-no-fusen/ore-no-fusen/blob/main/LICENSE" target="_blank" className="text-slate-400 hover:text-white transition-colors">
-                                ライセンス
-                            </Link>
+
                         </div>
                     </div>
                 </div>
