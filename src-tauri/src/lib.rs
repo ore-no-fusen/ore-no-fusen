@@ -892,7 +892,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .plugin(tauri_plugin_os::init()) // Added tauri_plugin_os::init()
-        .plugin(tauri_plugin_http::init()) // Added HTTP plugin for CORS bypass
+
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
