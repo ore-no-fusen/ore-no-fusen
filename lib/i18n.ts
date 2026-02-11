@@ -139,7 +139,7 @@ export const translations = {
         'settings.data.title': 'Data Management',
         'settings.data.description': 'Manage where your notes are saved.',
         'settings.data.basePath': 'Save Location',
-        'settings.data.basePathPlaceholder': 'Not set',
+        'settings.data.basePathPlaceholder': 'Select a folder...',
         'settings.data.browse': 'Browse...',
         'settings.data.selected': 'Notes will be saved here.',
         'settings.data.notSet': 'Please select a folder to save your notes.',

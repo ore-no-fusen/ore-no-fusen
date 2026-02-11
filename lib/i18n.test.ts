@@ -11,8 +11,8 @@ describe('i18n Utility', () => {
 
     it('returns correct translation for English', () => {
         const t = getTranslation('en');
-        expect(t('settings.title')).toBe('OreNoFusen');
-        expect(t('common.save')).toBe('Save');
+        expect(t('settings.title')).toBe('Settings');
+        expect(t('common.save')).toBe('Save & Close');
         expect(t('settings.data.basePathPlaceholder')).toBe('Select a folder...');
     });
 
