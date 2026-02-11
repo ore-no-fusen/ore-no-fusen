@@ -85,14 +85,7 @@ export const translations = {
         'common.cancel': 'キャンセル',
         'common.optional': '任意',
 
-        // About
-        'settings.about.title': "このアプリについて",
-        'settings.about.description': "バージョン情報とライセンス",
-        'settings.about.appName': "俺の付箋",
-        'settings.about.version': "Version",
-        'settings.about.appDesc': "「俺の付箋」は、シンプルさとカスタマイズ性を追求したデスクトップ付箋アプリです。あなたの思考を邪魔せず、必要な情報を常に手元に。",
-        'settings.about.website': "公式ウェブサイト",
-        'settings.about.copyright': "© 2026 OreNoFusen Project. All rights reserved.",
+
 
         // Feedback
         'settings.feedback.menuTitle': "ご意見・ご要望",
