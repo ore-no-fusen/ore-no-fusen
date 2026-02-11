@@ -83,55 +83,89 @@ export const translations = {
         'common.loading': '読み込み中...',
         'common.save': '保存',
         'common.cancel': 'キャンセル',
+        'common.optional': '任意',
+
+        // About
+        'settings.about.title': "このアプリについて",
+        'settings.about.description': "バージョン情報とライセンス",
+        'settings.about.appName': "俺の付箋",
+        'settings.about.version': "Version",
+        'settings.about.appDesc': "「俺の付箋」は、シンプルさとカスタマイズ性を追求したデスクトップ付箋アプリです。あなたの思考を邪魔せず、必要な情報を常に手元に。",
+        'settings.about.website': "公式ウェブサイト",
+        'settings.about.copyright': "© 2026 OreNoFusen Project. All rights reserved.",
+
+        // Feedback
+        'settings.feedback.menuTitle': "ご意見・ご要望",
+        'settings.feedback.title': "フィードバックを送る",
+        'settings.feedback.description': "バグ報告や機能リクエストなど、開発者へのメッセージをお待ちしています。",
+        'settings.feedback.typeLabel': "フィードバックの種類",
+        'settings.feedback.typeBug': "バグ報告",
+        'settings.feedback.typeBugDesc': "動作がおかしい、エラーが出る",
+        'settings.feedback.typeFeature': "機能リクエスト",
+        'settings.feedback.typeFeatureDesc': "こんな機能が欲しい！",
+        'settings.feedback.typeOther': "その他",
+        'settings.feedback.typeOtherDesc': "感想や励ましなど",
+        'settings.feedback.contentLabel': "内容",
+        'settings.feedback.contentPlaceholder': "ここに詳しく書いてください...",
+        'settings.feedback.contactLabel': "連絡先",
+        'settings.feedback.contactDesc': "回答が必要な場合は入力してください。",
+        'settings.feedback.systemInfoLabel': "システム情報（OSやバージョン）を自動添付する",
+        'settings.feedback.sendButton': "送信する",
+        'settings.feedback.sending': "送信中...",
+        'settings.feedback.successTitle': "送信しました！",
+        'settings.feedback.successDesc': "貴重なご意見ありがとうございます。開発の参考にさせていただきます。",
+        'settings.feedback.sendAnother': "続けて送る",
+        'settings.feedback.errorEmpty': "内容を入力してください。",
+        'settings.feedback.errorSend': "送信に失敗しました。"
     },
     en: {
         // Settings - Sidebar
-        'settings.title': 'OreNoFusen',
+        'settings.title': 'Settings',
         'settings.general': 'General',
         'settings.appearance': 'Appearance',
-        'settings.data': 'Data',
+        'settings.data': 'Data Management',
         'settings.about': 'About',
 
         // Settings - General
         'settings.general.title': 'General Settings',
-        'settings.general.description': 'Configure basic app behaviors.',
+        'settings.general.description': 'Customize language and behavior.',
         'settings.general.language': 'Language',
-        'settings.general.autoStart': 'Launch at Login',
-        'settings.general.autoStartDesc': 'Start app automatically when PC boots',
+        'settings.general.autoStart': 'Auto Start',
+        'settings.general.autoStartDesc': 'Launch automatically when you log in.',
         'settings.general.sound': 'Sound Effects',
-        'settings.general.soundDesc': 'Enable sound effects for actions',
+        'settings.general.soundDesc': 'Play sounds on interaction.',
 
         // Settings - Appearance
-        'settings.appearance.title': 'Appearance Settings',
-        'settings.appearance.description': 'Customize font size and more.',
+        'settings.appearance.title': 'Appearance',
+        'settings.appearance.description': 'Customize how your notes look.',
         'settings.appearance.fontSize': 'Font Size',
         'settings.appearance.fontSizeCurrent': 'Current',
-        'settings.appearance.preview': 'Preview of font size.',
+        'settings.appearance.preview': 'Preview Text',
 
         // Settings - Data
         'settings.data.title': 'Data Management',
-        'settings.data.description': 'Manage data storage location and imports.',
-        'settings.data.basePath': 'Data Location (Base Path)',
-        'settings.data.browse': 'Browse',
-        'settings.data.selected': 'Selected',
-        'settings.data.notSet': 'If not set, default location (Documents/OreNoFusen) will be used',
-        'settings.data.import': 'Import Markdown',
-        'settings.data.importDesc': 'Select a folder with existing .md files to import as notes.',
+        'settings.data.description': 'Manage where your notes are saved.',
+        'settings.data.basePath': 'Save Location',
+        'settings.data.basePathPlaceholder': 'Not set',
+        'settings.data.browse': 'Browse...',
+        'settings.data.selected': 'Notes will be saved here.',
+        'settings.data.notSet': 'Please select a folder to save your notes.',
+        'settings.data.import': 'Import Data',
+        'settings.data.importDesc': 'Import existing Markdown files or images from another folder.',
         'settings.data.importButton': 'Import',
-        'settings.data.importPlaceholder': 'Import folder path...',
-        'settings.data.basePathPlaceholder': 'Select a folder...',
+        'settings.data.importPlaceholder': 'Source folder path',
 
         // Settings - Footer
         'settings.save': 'Save Settings',
 
         // Settings - About
-        'settings.about.title': 'About',
-        'settings.about.description': 'Application info and support',
-        'settings.about.appName': 'OreNoFusen',
-        'settings.about.appDesc': 'A simple and easy-to-use desktop sticky note app. Quickly create notes and organize them on your desktop.',
-        'settings.about.version': 'Version',
-        'settings.about.website': 'Official Website',
-        'settings.about.copyright': '© 2026 OreNoFusen. All rights reserved.',
+        'settings.about.title': "About",
+        'settings.about.description': "Version info and license",
+        'settings.about.appName': "OreNoFusen",
+        'settings.about.version': "Version",
+        'settings.about.appDesc': "OreNoFusen is a desktop sticky note app designed for simplicity and customization.",
+        'settings.about.website': "Official Website",
+        'settings.about.copyright': "© 2026 OreNoFusen Project. All rights reserved.",
 
         // Context Menu
         'menu.openFolder': 'Open Folder',
@@ -151,9 +185,34 @@ export const translations = {
 
         // Common
         'common.loading': 'Loading...',
-        'common.save': 'Save',
+        'common.save': 'Save & Close',
         'common.cancel': 'Cancel',
-    },
+        'common.optional': 'Optional',
+
+        // Feedback
+        'settings.feedback.menuTitle': "Feedback",
+        'settings.feedback.title': "Send Feedback",
+        'settings.feedback.description': "We'd love to hear from you! Send us bug reports or feature requests.",
+        'settings.feedback.typeLabel': "Type",
+        'settings.feedback.typeBug': "Bug Report",
+        'settings.feedback.typeBugDesc': "Something's not working right",
+        'settings.feedback.typeFeature': "Feature Request",
+        'settings.feedback.typeFeatureDesc': "I want this feature!",
+        'settings.feedback.typeOther': "Other",
+        'settings.feedback.typeOtherDesc': "General comments",
+        'settings.feedback.contentLabel': "Message",
+        'settings.feedback.contentPlaceholder': "Tell us more...",
+        'settings.feedback.contactLabel': "Contact",
+        'settings.feedback.contactDesc': "Optional: Leave check valid email/ID if you want a reply.",
+        'settings.feedback.systemInfoLabel': "Attach system info (OS, Version)",
+        'settings.feedback.sendButton': "Send",
+        'settings.feedback.sending': "Sending...",
+        'settings.feedback.successTitle': "Sent!",
+        'settings.feedback.successDesc': "Thank you for your feedback.",
+        'settings.feedback.sendAnother': "Send another",
+        'settings.feedback.errorEmpty': "Please enter a message.",
+        'settings.feedback.errorSend': "Failed to send."
+    }
 } as const;
 
 /**

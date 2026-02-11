@@ -68,6 +68,8 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                 />
             case "about":
                 return <AboutSection t={t} />
+            case "feedback":
+                return <FeedbackSection t={t} />
             default:
                 return <GeneralSection settings={settings} onUpdate={updateSetting} t={t} />
         }
@@ -107,6 +109,16 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         label={t('settings.about')}
                         isActive={activeSection === "about"}
                         onClick={() => setActiveSection("about")}
+                    />
+                    <div className="pt-4 pb-2">
+                        <Separator />
+                        <span className="text-xs font-bold text-muted-foreground px-4 py-2 block uppercase tracking-wider">Help & Feedback</span>
+                    </div>
+                    <SidebarItem
+                        icon={<div className="mr-3 h-4 w-4">📨</div>}
+                        label={t('settings.feedback.menuTitle')}
+                        isActive={activeSection === "feedback"}
+                        onClick={() => setActiveSection("feedback")}
                     />
                 </nav>
             </aside>
@@ -597,6 +609,177 @@ function AboutSection({ t }: { t: (key: any) => string }) {
 
                 <div className="mt-8 text-center text-xs text-muted-foreground border-t pt-4">
                     {t('settings.about.copyright')}
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// --- フィードバックセクション ---
+function FeedbackSection({ t }: { t: (key: any) => string }) {
+    const [type, setType] = useState<'bug' | 'feature' | 'other'>('bug')
+    const [content, setContent] = useState('')
+    const [contact, setContact] = useState('')
+    const [isSending, setIsSending] = useState(false)
+    const [sent, setSent] = useState(false)
+    const [includeSystemInfo, setIncludeSystemInfo] = useState(true)
+
+    const handleSubmit = async () => {
+        if (!content.trim()) {
+            alert(t('settings.feedback.errorEmpty'))
+            return
+        }
+
+        setIsSending(true)
+        try {
+            // システム情報の収集
+            let systemInfo = "Unknown";
+            let appVersion = "Unknown";
+
+            if (includeSystemInfo) {
+                try {
+                    const { type, version, arch } = await import('@tauri-apps/plugin-os');
+                    const { getVersion } = await import('@tauri-apps/api/app');
+
+                    const osType = await type();
+                    const osVer = await version();
+                    const osArch = await arch();
+                    appVersion = await getVersion();
+
+                    systemInfo = `${osType} ${osVer} (${osArch})`;
+                } catch (e) {
+                    console.error("Failed to get system info", e);
+                }
+            }
+
+            // Vercel上のAPIに送信 (CORS対応済み)
+
+            // 環境に応じてAPIのエンドポイントを切り替え
+            const isDev = process.env.NODE_ENV === 'development';
+            const apiUrl = isDev
+                ? 'http://localhost:3002/api/feedback'
+                : 'https://ore-no-fusen.vercel.app/api/feedback';
+
+            console.log(`Sending feedback to: ${apiUrl}`);
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type,
+                    content,
+                    contact,
+                    systemInfo,
+                    version: appVersion
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            setSent(true)
+            setContent('')
+        } catch (e) {
+            console.error('Feedback failed:', e)
+            alert(t('settings.feedback.errorSend') + ": " + String(e))
+        } finally {
+            setIsSending(false)
+        }
+    }
+
+    if (sent) {
+        return (
+            <div className="flex flex-col items-center justify-center p-10 space-y-4 text-center">
+                <div className="h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                    <Save className="h-8 w-8" />
+                </div>
+                <h3 className="text-2xl font-bold">{t('settings.feedback.successTitle')}</h3>
+                <p className="text-muted-foreground">{t('settings.feedback.successDesc')}</p>
+                <Button onClick={() => setSent(false)} variant="outline" className="mt-4">
+                    {t('settings.feedback.sendAnother')}
+                </Button>
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.feedback.title')}</h2>
+                <p className="text-gray-500 text-sm">{t('settings.feedback.description')}</p>
+            </div>
+            <Separator />
+
+            <div className="space-y-6 max-w-2xl">
+                {/* 種類選択 */}
+                <div className="space-y-3">
+                    <Label>{t('settings.feedback.typeLabel')}</Label>
+                    <div className="flex gap-4">
+                        <label className={`flex-1 border rounded-lg p-4 cursor-pointer transition-all hover:bg-slate-50 ${type === 'bug' ? 'ring-2 ring-primary border-transparent bg-slate-50' : ''}`}>
+                            <input type="radio" name="type" className="hidden" checked={type === 'bug'} onChange={() => setType('bug')} />
+                            <div className="font-bold flex items-center gap-2">🐛 {t('settings.feedback.typeBug')}</div>
+                            <div className="text-xs text-muted-foreground mt-1">{t('settings.feedback.typeBugDesc')}</div>
+                        </label>
+                        <label className={`flex-1 border rounded-lg p-4 cursor-pointer transition-all hover:bg-slate-50 ${type === 'feature' ? 'ring-2 ring-primary border-transparent bg-slate-50' : ''}`}>
+                            <input type="radio" name="type" className="hidden" checked={type === 'feature'} onChange={() => setType('feature')} />
+                            <div className="font-bold flex items-center gap-2">💡 {t('settings.feedback.typeFeature')}</div>
+                            <div className="text-xs text-muted-foreground mt-1">{t('settings.feedback.typeFeatureDesc')}</div>
+                        </label>
+                        <label className={`flex-1 border rounded-lg p-4 cursor-pointer transition-all hover:bg-slate-50 ${type === 'other' ? 'ring-2 ring-primary border-transparent bg-slate-50' : ''}`}>
+                            <input type="radio" name="type" className="hidden" checked={type === 'other'} onChange={() => setType('other')} />
+                            <div className="font-bold flex items-center gap-2">💬 {t('settings.feedback.typeOther')}</div>
+                            <div className="text-xs text-muted-foreground mt-1">{t('settings.feedback.typeOtherDesc')}</div>
+                        </label>
+                    </div>
+                </div>
+
+                {/* 内容 */}
+                <div className="space-y-2">
+                    <Label>{t('settings.feedback.contentLabel')}</Label>
+                    <textarea
+                        className="flex min-h-[150px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        placeholder={t('settings.feedback.contentPlaceholder')}
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                    />
+                </div>
+
+                {/* 連絡先 */}
+                <div className="space-y-2">
+                    <Label>{t('settings.feedback.contactLabel')} <span className="text-xs text-muted-foreground">({t('common.optional')})</span></Label>
+                    <Input
+                        placeholder="Discord ID / Email"
+                        value={contact}
+                        onChange={(e) => setContact(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">{t('settings.feedback.contactDesc')}</p>
+                </div>
+
+                {/* システム情報送信の同意 */}
+                <div className="flex items-center space-x-2 pt-2">
+                    <Switch id="sys-info" checked={includeSystemInfo} onCheckedChange={setIncludeSystemInfo} />
+                    <Label htmlFor="sys-info" className="text-sm font-normal cursor-pointer">
+                        {t('settings.feedback.systemInfoLabel')}
+                    </Label>
+                </div>
+
+                {/* 送信ボタン */}
+                <div className="pt-4 flex justify-end">
+                    <Button
+                        size="lg"
+                        onClick={handleSubmit}
+                        disabled={isSending || !content.trim()}
+                        className="min-w-[150px]"
+                    >
+                        {isSending ? (
+                            <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div> {t('settings.feedback.sending')}</>
+                        ) : (
+                            <><div className="mr-2">📨</div> {t('settings.feedback.sendButton')}</>
+                        )}
+                    </Button>
                 </div>
             </div>
         </div>
