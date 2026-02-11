@@ -40,10 +40,7 @@ Markdownで書ける、美しい付箋アプリ
 
 ## 📸 スクリーンショット
 
-<!-- スクリーンショットをここに配置 -->
-<!-- 例: ![メイン画面](public/screenshots/main.png) -->
-
-> **Note**: スクリーンショットは `public/screenshots/` フォルダに配置してください
+![メイン画面](public/screenshots/ScreenShot_OreNoFusen.jpg)
 
 ---
 
