@@ -2,17 +2,21 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
-  // 自動同期: public/sounds のファイルを src/ にコピーして埋め込み可能にする
+  // 自動同期: public/sounds のファイルを OUT_DIR にコピーして埋め込み可能にする
+  // ソースディレクトリ(src/)へのコピーは無限ループの原因になるため廃止
   let sounds = ["create.wav", "save.wav", "delete.wav"];
   let public_sounds_dir = Path::new("../public/sounds"); // src-tauri から見た相対パス
-  let src_dir = Path::new("src");
+  
+  // OUT_DIRを取得 (Cargoが設定するビルド出力ディレクトリ)
+  let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
+  let dest_dir = Path::new(&out_dir);
 
   // 変更監視: public/sounds フォルダに変更があったら再ビルド
   println!("cargo:rerun-if-changed=../public/sounds");
 
   for sound in sounds.iter() {
     let src_path = public_sounds_dir.join(sound);
-    let dest_path = src_dir.join(sound);
+    let dest_path = dest_dir.join(sound);
 
     if src_path.exists() {
       // 上書きコピー

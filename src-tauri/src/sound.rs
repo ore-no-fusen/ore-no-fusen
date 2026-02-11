@@ -3,9 +3,10 @@ use rodio::{Decoder, OutputStream, Sink};
 // thread is used via std::thread::spawn directly
 
 // Sound embedded in the binary
-const CREATE_SOUND: &[u8] = include_bytes!("create.wav");
-const SAVE_SOUND: &[u8] = include_bytes!("save.wav");
-const DELETE_SOUND: &[u8] = include_bytes!("delete.wav");
+// Sound embedded in the binary (from OUT_DIR)
+const CREATE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/create.wav"));
+const SAVE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/save.wav"));
+const DELETE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/delete.wav"));
 
 #[tauri::command]
 pub fn fusen_play_sound(name: String, volume: Option<f32>) {
