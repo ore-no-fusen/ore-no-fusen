@@ -67,7 +67,7 @@ export default function LandingPage() {
                         </div>
 
                         <p className="text-sm text-slate-400 mt-6">
-                            Windows 10/11 対応 • v0.1.7
+                            Windows 10/11 対応 • v0.9.9
                         </p>
                     </div>
                 </div>

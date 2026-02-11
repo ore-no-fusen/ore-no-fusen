@@ -1,6 +1,6 @@
 [package]
 name = "ore-no-fusen"
-version = "0.1.7"
+version = "0.9.9"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
