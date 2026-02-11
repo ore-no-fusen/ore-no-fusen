@@ -51,12 +51,21 @@ export default function LandingPage() {
                             <Link
                                 href="https://github.com/ore-no-fusen/ore-no-fusen/releases/latest"
                                 target="_blank"
+                                onClick={() => {
+                                    if (typeof window !== 'undefined' && 'gtag' in window) {
+                                        (window as any).gtag('event', 'download_click', {
+                                            event_category: 'engagement',
+                                            event_label: 'github_release'
+                                        });
+                                    }
+                                }}
                                 className="group relative px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-semibold text-lg hover:shadow-2xl hover:shadow-purple-500/50 transition-all duration-300 flex items-center gap-2"
                             >
                                 <Download className="w-5 h-5" />
                                 無料ダウンロード
                                 <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 rounded-xl opacity-0 group-hover:opacity-20 blur transition-opacity" />
                             </Link>
+
 
                             <Link
                                 href="#features"

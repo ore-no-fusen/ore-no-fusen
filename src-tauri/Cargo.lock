@@ -3666,7 +3666,7 @@ dependencies = [
 
 [[package]]
 name = "ore-no-fusen"
-version = "0.9.9"
+version = "0.10.0"
 dependencies = [
  "arboard",
  "chrono",

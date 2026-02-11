@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ore-no-fusen",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "identifier": "com.ore-no-fusen.app",
   "build": {
     "frontendDist": "../out",
@@ -32,7 +32,10 @@
         "scope": [
           "**"
         ]
-      }
+      },
+      "capabilities": [
+        "default"
+      ]
     }
   },
   "bundle": {

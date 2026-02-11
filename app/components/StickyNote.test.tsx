@@ -32,7 +32,12 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('@tauri-apps/api/event', () => ({
     emit: vi.fn(),
-    listen: vi.fn().mockReturnValue(Promise.resolve(() => { })),
+    listen: vi.fn().mockResolvedValue(() => { }),
+    // Ensure dynamic import finds these
+    default: {
+        emit: vi.fn(),
+        listen: vi.fn().mockResolvedValue(() => { })
+    }
 }));
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -56,28 +61,33 @@ vi.mock('@tauri-apps/api/menu', () => {
     };
 });
 
-vi.mock('@tauri-apps/api/event', () => ({
-    emit: vi.fn(),
-    listen: vi.fn().mockResolvedValue(() => { }),
-    // Ensure dynamic import finds these
-    default: {
-        emit: vi.fn(),
-        listen: vi.fn().mockResolvedValue(() => { })
-    }
-}));
 
 // Mock RichTextEditor to avoid CodeMirror issues in JSDOM
 vi.mock('./RichTextEditor', () => {
-    return {
-        default: ({ value, onChange, onKeyDown }: any) => (
-            <textarea
-                data-testid="rich-text-editor"
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                onKeyDown={onKeyDown}
-            />
-        )
-    };
+    const React = require('react');
+    class MockEditor extends React.Component<any> {
+        focus() {
+            // Mock focus
+        }
+        insertBold() { }
+        insertHeading1() { }
+        insertList() { }
+        insertCheckbox() { }
+        insertText() { }
+
+        render() {
+            const { value, onChange, onKeyDown } = this.props;
+            return (
+                <textarea
+                    data-testid="rich-text-editor"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    onKeyDown={onKeyDown}
+                />
+            );
+        }
+    }
+    return { default: MockEditor };
 });
 
 describe('StickyNote Component', () => {
@@ -85,7 +95,7 @@ describe('StickyNote Component', () => {
         vi.clearAllMocks();
 
         // Default mock responses
-        mockInvoke.mockImplementation((cmd) => {
+        mockInvoke.mockImplementation((cmd, args) => {
             switch (cmd) {
                 case 'fusen_read_note':
                     return Promise.resolve({
@@ -93,7 +103,7 @@ describe('StickyNote Component', () => {
                         body: '---\ntags: []\n---\nTest Content'
                     });
                 case 'fusen_save_note':
-                    return Promise.resolve();
+                    return Promise.resolve(args?.path || 'd:/test/note.md');
                 case 'fusen_get_all_tags':
                     return Promise.resolve(['tag1', 'tag2']);
                 default:
@@ -121,6 +131,11 @@ describe('StickyNote Component', () => {
         await waitFor(() => {
             expect(screen.getAllByTestId('rich-text-editor').length).toBeGreaterThan(0);
         }, { timeout: 3000 });
+
+        // Wait for grace period (800ms) to pass
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 850));
+        });
 
         // Trigger Window Blur
         await act(async () => {
@@ -199,7 +214,7 @@ describe('StickyNote Component', () => {
         mockInvoke.mockImplementation((cmd) => {
             if (cmd === 'fusen_read_note') {
                 return Promise.resolve({
-                    meta: { path: 'd:/test/note.md', width: 200, height: 200 },
+                    meta: { path: 'd:/test/note.md', width: 200, height: 200, tags: ['Tag1'] },
                     // Test cases: Normal
                     body: '---\ntags: [Tag1]\n---\nTest Content'
                 });
