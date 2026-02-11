@@ -3,24 +3,25 @@ use rodio::{Decoder, OutputStream, Sink};
 // thread is used via std::thread::spawn directly
 
 // Sound embedded in the binary
-const CREATE_SOUND: &[u8] = include_bytes!("../../public/sounds/create_ore_no_fusen_final.wav");
-const SAVE_SOUND: &[u8] = include_bytes!("../../public/sounds/save_ore_no_fusen_final.wav");
-const DELETE_SOUND: &[u8] = include_bytes!("../../public/sounds/delete_ore_no_fusen_final.wav");
+const CREATE_SOUND: &[u8] = include_bytes!("create.wav");
+const SAVE_SOUND: &[u8] = include_bytes!("save.wav");
+const DELETE_SOUND: &[u8] = include_bytes!("delete.wav");
 
 #[tauri::command]
-pub fn fusen_play_sound(name: String) {
+pub fn fusen_play_sound(name: String, volume: Option<f32>) {
     std::thread::spawn(move || {
-        if let Err(e) = play_sound_impl(&name) {
+        let vol = volume.unwrap_or(1.0);
+        if let Err(e) = play_sound_impl(&name, vol) {
             eprintln!("[Sound] Failed to play sound '{}': {}", name, e);
         }
     });
 }
 
-fn play_sound_impl(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn play_sound_impl(name: &str, volume: f32) -> Result<(), Box<dyn std::error::Error>> {
     // Get a output stream handle to the default physical sound device
     let (_stream, stream_handle) = OutputStream::try_default()?;
     let sink = Sink::try_new(&stream_handle)?;
-    sink.set_volume(1.0); // Force max volume
+    sink.set_volume(volume);
 
     let data = match name {
         "create" => CREATE_SOUND,

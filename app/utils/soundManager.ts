@@ -11,9 +11,9 @@ export type SoundType = 'create' | 'save' | 'delete';
 
 // サウンドファイルのマッピング
 const SOUND_FILES: Record<SoundType, string> = {
-    'create': '/sounds/create_ore_no_fusen_final.wav',
-    'save': '/sounds/save_ore_no_fusen_final.wav',
-    'delete': '/sounds/delete_ore_no_fusen_final.wav',
+    'create': '/sounds/create.wav',
+    'save': '/sounds/save.wav',
+    'delete': '/sounds/delete.wav',
 };
 
 /**
@@ -60,7 +60,7 @@ export async function playSound(type: SoundType, volume: number = 1.0): Promise<
 
         // Rustコマンドを呼び出す
         // Rust側で非同期に再生されるため、awaitしてもブロックはしません
-        await invoke('fusen_play_sound', { name: type });
+        await invoke('fusen_play_sound', { name: type, volume: volume });
     } catch (e) {
         console.error('[SoundManager] Failed to invoke fusen_play_sound:', e);
         // フォールバック：Rustコマンドが失敗した場合（Web環境など）はローカルで鳴らす

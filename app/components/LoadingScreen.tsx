@@ -47,6 +47,9 @@ export default function LoadingScreen({ message = "Loading..." }: { message?: st
                 <h1 className="text-xl font-black text-white tracking-widest mb-3 drop-shadow-md">
                     ORE-NO-FUSEN
                 </h1>
+                <p className="text-[10px] text-gray-500 font-mono tracking-[0.2em] mb-4 opacity-80">
+                    v{process.env.NEXT_PUBLIC_APP_VERSION}
+                </p>
 
                 {/* Loading Indicator */}
                 <div className="flex flex-col items-center gap-2">
