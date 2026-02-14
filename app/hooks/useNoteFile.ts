@@ -69,7 +69,8 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             return body;
         } catch (error) {
             console.error('[useNoteFile] Failed to load note:', error);
-            setContent('');
+            // [DEBUG] Show error in content to diagnose "Empty Note" issue
+            setContent(`Error loading note:\n${String(error)}\nPath: ${path}`);
             return '';
         } finally {
             setLoading(false);
@@ -85,6 +86,14 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         allowRename: boolean
     ) => {
         if (!path) return;
+
+        // [Safe Guard] Prevent saving empty content if the note hasn't been loaded yet.
+        // This protects against race conditions where save is triggered before load completes.
+        if (body.trim() === '' && note === null && !isNew) {
+            const msg = '[useNoteFile] BLOCKED: Attempted to save empty content before note was loaded.';
+            console.error(msg);
+            throw new Error(msg);
+        }
 
         try {
             console.log('[useNoteFile] Saving note:', {
@@ -112,7 +121,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             console.error('[useNoteFile] Failed to save note:', e);
             throw e;
         }
-    }, [path, onPathChange]);
+    }, [path, onPathChange, note, isNew]);
 
     /**
      * フロントマターの値を更新する
