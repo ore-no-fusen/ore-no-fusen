@@ -1,6 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+/**
+ * 検索オーバーレイコンポーネント
+ *
+ * 責務:
+ * - 全文検索UIの表示
+ * - 検索クエリの入力とバックエンドへの送信
+ * - 検索結果リストの表示とハイライト
+ * - 検索結果選択時のナビゲーション処理
+ */
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
@@ -46,18 +56,37 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
     }, [query]);
 
     const jumpToHit = async (hit: SearchHit) => {
+        // [Fix] Ensure path is consistent (though getWindowLabel handles normalization)
         const label = getWindowLabel(hit.path);
+        console.log(`[SearchOverlay] jumpToHit: path=${hit.path}, label=${label}`);
         try {
-            const existing = await WebviewWindow.getByLabel(label);
-            if (existing) {
-                await existing.show();
-                await existing.unminimize();
-                await existing.setFocus();
+            // [Fix] Robust window finding: getByLabel -> getAllWebviewWindows
+            // Try getByLabel first
+            let targetWin = await WebviewWindow.getByLabel(label);
+
+            // If not found, try getAllWebviewWindows as fallback (sometimes getByLabel fails contextually)
+            if (!targetWin) {
+                try {
+                    const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+                    const allWindows = await getAllWebviewWindows();
+                    console.log(`[SearchOverlay] Searching for label: ${label}`);
+                    console.log('[SearchOverlay] Available windows:', allWindows.map(w => w.label));
+                    targetWin = allWindows.find(w => w.label === label) || null;
+                } catch (e) {
+                    console.warn('[SearchOverlay] Failed to get all windows:', e);
+                }
+            }
+
+            if (targetWin) {
+                console.log(`[SearchOverlay] Found existing window: ${label}`);
+                await targetWin.show();
+                await targetWin.unminimize();
+                await targetWin.setFocus();
                 // 行番号、検索語、対象パスを渡してハイライト
-                await existing.emit('fusen:scroll_to_line', {
+                await targetWin.emit('fusen:scroll_to_line', {
                     line: hit.line,
                     query: query,
-                    targetPath: hit.path
+                    path: hit.path // [Fix] corrected property name
                 });
             } else {
                 // Open new window with line parameter and query

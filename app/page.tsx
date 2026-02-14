@@ -1,3 +1,13 @@
+/**
+ * メインオーケストレーター (Page Component)
+ *
+ * 責務:
+ * - アプリケーション全体の初期化と状態管理 (AppState)
+ * - ウィンドウ管理（新規作成、復元、リサイズ、整列）
+ * - グローバルイベントのリスニング (Tauriイベント, ショートカット)
+ * - バックエンド (Rust) との通信ブリッジ
+ */
+
 'use client';
 
 import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
@@ -6,7 +16,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
-import { pathsEqual } from './utils/pathUtils';
+import { pathsEqual, normalizePath } from './utils/pathUtils';
 import { playLocalSound, playCreateSound, SoundType } from './utils/soundManager'; // [NEW] Sound imports
 import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
@@ -230,17 +240,6 @@ function OrchestratorContent() {
     handleResize();
   }, [isCheckingSetup, setupRequired]);
 
-  // パス正規化
-  const normalizePath = (path: string): string => {
-    let normalized = path.trim();
-    normalized = normalized.normalize('NFC');
-    normalized = normalized.replace(/\\/g, '/');
-    normalized = normalized.toLowerCase();
-    normalized = normalized.replace(/\/+/g, '/');
-    normalized = normalized.replace(/\/$/, '');
-    return normalized;
-  };
-
   // ウィンドウラベル生成
   const getWindowLabel = (path: string) => {
     const simpleHash = (str: string): string => {
@@ -252,8 +251,10 @@ function OrchestratorContent() {
       }
       return Math.abs(hash).toString(36);
     };
+    // [Fix] Use shared normalization logic
     const normalizedPath = normalizePath(path);
     const hash = simpleHash(normalizedPath);
+    console.log(`[getWindowLabel] Input: ${path} -> Normalized: ${normalizedPath} -> Hash: note-${hash}`);
     return `note-${hash}`;
   };
 

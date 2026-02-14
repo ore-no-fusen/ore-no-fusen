@@ -1,8 +1,10 @@
 /**
- * Path normalization utilities for Windows/Unix compatibility
- * 
- * Windows uses backslash (\) while Unix uses forward slash (/)
- * This utility ensures consistent path comparison across platforms
+ * パス操作ユーティリティ
+ *
+ * 責務:
+ * - Windows/Unix パスの正規化（バックスラッシュの統一など）
+ * - 大文字小文字を区別しないパス比較
+ * - 末尾スラッシュの除去による一貫性確保
  */
 
 /**
@@ -15,10 +17,13 @@
  * @returns Normalized path
  */
 export function normalizePath(path: string): string {
-    return path
-        .replace(/\\/g, '/')
-        .toLowerCase()
-        .replace(/\/+$/, ''); // Remove trailing slashes
+    let normalized = path.trim();
+    normalized = normalized.normalize('NFC');
+    normalized = normalized.replace(/\\/g, '/');
+    normalized = normalized.toLowerCase();
+    normalized = normalized.replace(/\/+/g, '/'); // Collapse multiple slashes
+    normalized = normalized.replace(/\/$/, ''); // Remove trailing slashes
+    return normalized;
 }
 
 /**
