@@ -66,10 +66,17 @@ export function useEditMode({
     /**
      * 編集モードを開始する
      */
+    /**
+     * 編集モードを開始する
+     */
     const startEditing = useCallback((cursorPos?: number) => {
-        if (isEditing) return;
+        console.log('[useEditMode] startEditing called. Current isEditing:', isEditing, 'New POS:', cursorPos);
+        if (isEditing) {
+            console.log('[useEditMode] Already editing, ignoring startEditing');
+            return;
+        }
 
-        console.log('[useEditMode] Starting edit mode');
+        console.log('[useEditMode] Starting edit mode (Setting ignoreBlur for 800ms)');
         ignoreBlurUntilRef.current = Date.now() + 800;
         setIsEditing(true);
         setEditBody(initialContent);
@@ -80,19 +87,20 @@ export function useEditMode({
      * 編集モードを終了する（保存を実行）
      */
     const endEditing = useCallback(async () => {
+        console.log('[useEditMode] endEditing called.');
         if (isCommittingRef.current) {
-            console.log('[useEditMode] Already committing, skipping');
+            console.log('[useEditMode] Already committing, skipping endEditing');
             return;
         }
 
         if (isCapturing) {
-            console.log('[useEditMode] Capturing screen, skipping blur');
+            console.log('[useEditMode] Capturing screen, skipping blur/endEditing');
             return;
         }
 
         isCommittingRef.current = true;
 
-        console.log('[useEditMode] Ending edit mode, saving changes');
+        console.log('[useEditMode] Ending edit mode, saving changes...');
 
         try {
             const currentBody = editBodyRef.current;

@@ -201,6 +201,7 @@ interface RichTextEditorProps {
     fontSize?: number; // 設定からのフォントサイズ（デフォルト: 16px）
     onInsertHeading1?: () => void; // 見出し1挿入リクエスト（外部から呼ぶ用）
     onInsertBold?: () => void; // 強調挿入リクエスト（外部から呼ぶ用）
+    onBlur?: (event?: FocusEvent) => void; // フォーカスが外れた時
 }
 
 // 外部から呼べるメソッドの型定義
@@ -350,6 +351,7 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
         if (!showPlaceholder || state.doc.lines === 0) return Decoration.none;
 
         const line1 = state.doc.line(1);
+        if (line1.from >= line1.to) return Decoration.none; // 空行ガード
         return Decoration.set([
             Decoration.mark({
                 class: 'cm-placeholder-line'
@@ -362,6 +364,7 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
 
         if (tr.docChanged || tr.startState.field(placeholderFlagField) !== showPlaceholder) {
             const line1 = tr.state.doc.line(1);
+            if (line1.from >= line1.to) return Decoration.none; // 空行ガード
             return Decoration.set([
                 Decoration.mark({
                     class: 'cm-placeholder-line'
@@ -475,12 +478,14 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
     backgroundColor,
     cursorPosition,
     isNewNote = false, // [NEW] デフォルトはfalse（既存付箋）
-    fontSize = 16 // デフォルトは16px
+    fontSize = 16, // デフォルトは16px
+    onBlur
 }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
     const filePathCompartment = useRef(new Compartment());
+    const isReadyRef = useRef(false); // [NEW] 初期化直後の誤検知防止用フラグ
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
@@ -725,9 +730,39 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     // 基本的な編集機能
                     history(),
                     keymap.of([
+                        {
+                            key: 'Tab',
+                            run: (view) => {
+                                // React側のonKeyDownに任せるため、ここでは何もしないが
+                                // CodeMirrorのデフォルトTab（インデント）を無効化するためにtrueを返す
+                                // ただし、onKeyDownが発火するようにイベントをパスする必要がある？
+                                // CodeMirrorのkeymapはDOMイベントの前に処理されるため、ここでtrueを返すとonKeyDownが呼ばれない可能性がある。
+                                // 逆にここでfalseを返すとデフォルトのTab（indentMore）が走る。
+                                // なので、ここでフォーカス移動処理を行うのが確実。
+                                const toolbar = document.querySelector('.hoverBar');
+                                const firstButton = toolbar?.querySelector('button');
+                                if (firstButton) {
+                                    (firstButton as HTMLElement).focus();
+                                    return true;
+                                }
+                                return false;
+                            }
+                        },
                         ...defaultKeymap,
                         ...historyKeymap
                     ]),
+                    // Blurハンドラ
+                    EditorView.domEventHandlers({
+                        blur: (event, _view) => {
+                            if (!isReadyRef.current) {
+                                console.log('[RichTextEditor] Blur ignored (not ready yet)');
+                                return;
+                            }
+                            if (onBlur) {
+                                onBlur(event);
+                            }
+                        }
+                    }),
                     // Markdown装飾
                     markdownDecorations,
                     // [NEW] Placeholder for new notes
@@ -752,9 +787,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     }),
                     // イベントハンドラ
                     EditorView.domEventHandlers({
-                        blur: (e, view) => {
-                            console.log('[RichTextEditor] Blur ignored (managed by parent)');
-                        },
+                        // blur: 削除（上で定義済み）
                         keydown: (e) => {
                             if (e.key === 'Escape' && onKeyDown) {
                                 onKeyDown(e as any);
@@ -972,6 +1005,17 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
         };
     }, []); // 初回マウント時のみ作成
 
+    // [New] Ready flag initialization
+    useEffect(() => {
+        // マウント直後はBlurを無視し、少し待ってから有効化
+        // これによりダブルクリック時の誤爆や初期フォーカス移動時の誤検知を防ぐ
+        isReadyRef.current = false; // 明示的にリセット
+        const timer = setTimeout(() => {
+            isReadyRef.current = true;
+        }, 300); // 300ms待機（十分な余裕を持たせる）
+        return () => clearTimeout(timer);
+    }, []);
+
 
 
     // [New] cursorPosition change handler
@@ -1060,9 +1104,12 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
         <div
             ref={editorRef}
             style={{
-                width: '100%',
-                minHeight: '100px',
-                backgroundColor: backgroundColor
+                flex: 1, // 親要素(editorHost)に合わせて伸縮
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden', // 内部スクロールはCM6に任せる
+                backgroundColor: backgroundColor,
+                minHeight: '100px' // 最低限の高さは維持
             }}
         />
     );

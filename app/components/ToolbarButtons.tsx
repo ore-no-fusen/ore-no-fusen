@@ -21,7 +21,6 @@ export type ToolbarButtonsProps = {
     onCheckbox?: () => void;
     onCapture?: () => void;
     onToggleMinimize: () => void;
-    onNew?: () => void;
 };
 
 export default function ToolbarButtons({
@@ -33,8 +32,7 @@ export default function ToolbarButtons({
     onList,
     onCheckbox,
     onCapture,
-    onToggleMinimize,
-    onNew
+    onToggleMinimize
 }: ToolbarButtonsProps) {
     // 通常モード時：ミニマイズボタンのみ
     if (!isEditing) {
@@ -73,6 +71,45 @@ export default function ToolbarButtons({
         );
     }
 
+    // キーボードナビゲーションハンドラ
+    const handleButtonKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+        // Tab (next) or ArrowRight
+        if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'ArrowRight') {
+            e.preventDefault();
+            const parent = e.currentTarget.parentElement;
+            if (!parent) return;
+
+            const buttons = Array.from(parent.querySelectorAll('button:not(:disabled)'));
+            const index = buttons.indexOf(e.currentTarget);
+
+            if (index >= 0 && index < buttons.length - 1) {
+                (buttons[index + 1] as HTMLElement).focus();
+            } else {
+                // Return to Editor (loop)
+                const editor = document.querySelector('.cm-content');
+                if (editor) (editor as HTMLElement).focus();
+            }
+        }
+
+        // Tab+Shift (prev) or ArrowLeft
+        if ((e.key === 'Tab' && e.shiftKey) || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            const parent = e.currentTarget.parentElement;
+            if (!parent) return;
+
+            const buttons = Array.from(parent.querySelectorAll('button:not(:disabled)'));
+            const index = buttons.indexOf(e.currentTarget);
+
+            if (index > 0) {
+                (buttons[index - 1] as HTMLElement).focus();
+            } else {
+                // Return to Editor (loop)
+                const editor = document.querySelector('.cm-content');
+                if (editor) (editor as HTMLElement).focus();
+            }
+        }
+    };
+
     // 編集モード時：全ツールバー
     return (
         <div
@@ -82,7 +119,7 @@ export default function ToolbarButtons({
                 visibility: show || isEditing ? 'visible' : 'hidden',
                 pointerEvents: show || isEditing ? 'auto' : 'none',
                 transition: 'opacity 0.1s ease',
-                display: 'flex',
+                display: 'flex', // Flexbox ensures buttons are in row
                 flexDirection: 'row',
                 justifyContent: 'flex-end',
                 alignItems: 'center',
@@ -101,6 +138,8 @@ export default function ToolbarButtons({
                     e.stopPropagation();
                 }}
                 onClick={onBold}
+                onKeyDown={handleButtonKeyDown}
+                tabIndex={0}
                 className="font-bold text-red-600 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
                 title="太字 (赤)"
             >
@@ -114,6 +153,8 @@ export default function ToolbarButtons({
                     e.stopPropagation();
                 }}
                 onClick={onHeading}
+                onKeyDown={handleButtonKeyDown}
+                tabIndex={0}
                 className="font-bold text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
                 title="見出し1"
             >
@@ -129,6 +170,8 @@ export default function ToolbarButtons({
                     e.stopPropagation();
                 }}
                 onClick={onList}
+                onKeyDown={handleButtonKeyDown}
+                tabIndex={0}
                 className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
                 title="箇条書き"
             >
@@ -158,6 +201,8 @@ export default function ToolbarButtons({
                     e.stopPropagation();
                 }}
                 onClick={onCheckbox}
+                onKeyDown={handleButtonKeyDown}
+                tabIndex={0}
                 className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
                 title="チェックボックス"
             >
@@ -176,30 +221,7 @@ export default function ToolbarButtons({
                 </svg>
             </button>
 
-            {/* New Note ボタン */}
-            <button
-                onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }}
-                onClick={onNew}
-                className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
-                title="新規メモ作成"
-            >
-                <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                >
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-            </button>
+
 
             {/* Capture ボタン */}
             <button
@@ -208,6 +230,8 @@ export default function ToolbarButtons({
                     e.stopPropagation();
                 }}
                 onClick={onCapture}
+                onKeyDown={handleButtonKeyDown}
+                tabIndex={0}
                 className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
                 title="画面キャプチャ"
             >

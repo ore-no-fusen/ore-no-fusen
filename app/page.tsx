@@ -16,8 +16,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
-import { pathsEqual, normalizePath } from './utils/pathUtils';
-import { playLocalSound, playCreateSound, SoundType } from './utils/soundManager'; // [NEW] Sound imports
+import { pathsEqual, normalizePath, getFileName } from './utils/pathUtils';
+import { playLocalSound, playCreateSound, SoundType } from './utils/soundManager';
+import { type NoteMeta } from './api/notes';
 import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
@@ -38,24 +39,7 @@ type AppState = {
 // Global throttle for creation
 let globalLastCreateTime = 0;
 
-// 型定義
-type NoteMeta = {
-  path: string;
-  seq: number;
-  context: string;
-  updated: string;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  background_color?: string;
-  always_on_top?: boolean;
-  tags?: string[];
-};
 
-function getFileName(path: string) {
-  return path.split(/[\\/]/).pop() || path;
-}
 
 function TagSelector() {
   const [allTags, setAllTags] = useState<string[]>([]);

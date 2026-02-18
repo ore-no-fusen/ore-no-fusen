@@ -10,7 +10,101 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
 import ResizableImage from './ResizableImage';
+
+/**
+ * インラインスタイル（太字）をパースする
+ */
+export const parseInlineStyles = (text: string, baseOffset: number) => {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    let currentOffset = 0;
+
+    return (
+        <>
+            {parts.map((part, k) => {
+                if (part === '') return null;
+
+                const partStart = baseOffset + currentOffset;
+                currentOffset += part.length;
+
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    const innerText = part.slice(2, -2);
+                    return (
+                        <strong
+                            key={k}
+                            style={{ color: 'red', fontWeight: 'bold' }}
+                            data-src-start={partStart + 2}
+                        >
+                            {innerText}
+                        </strong>
+                    );
+                }
+                return (
+                    <span key={k} data-src-start={partStart}>
+                        {part}
+                    </span>
+                );
+            })}
+        </>
+    );
+};
+
+/**
+ * リンクをパースする
+ */
+export const parseLinks = (text: string, baseOffset: number) => {
+    const regex = /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
+    const parts = text.split(regex);
+    let currentOffset = 0;
+
+    return (
+        <>
+            {parts.map((part, k) => {
+                if (part === '') return null;
+
+                const partStart = baseOffset + currentOffset;
+                currentOffset += part.length;
+
+                // regexの状態をリセットするため、新しくマッチ判定
+                const isLink = /^(?:https?:\/\/[^\s]+)|^(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|^(?:\\\\[^:<>"\/?*|\r\n]+)$/.test(part);
+                if (isLink) {
+                    return (
+                        <span
+                            key={k}
+                            style={{
+                                color: 'blue',
+                                textDecoration: 'underline',
+                                cursor: 'pointer'
+                            }}
+                            data-src-start={partStart}
+                            data-tauri-drag-region="false"
+                            onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('[OpenLink]', part);
+                                try {
+                                    if (/^https?:\/\//i.test(part)) {
+                                        await open(part);
+                                    } else {
+                                        await invoke('fusen_open_file', { path: part });
+                                    }
+                                } catch (err) {
+                                    console.error('Failed to open link:', err);
+                                }
+                            }}
+                        >
+                            {part}
+                        </span>
+                    );
+                }
+
+                return <React.Fragment key={k}>{parseInlineStyles(part, partStart)}</React.Fragment>;
+            })}
+        </>
+    );
+};
 
 export type MarkdownRendererProps = {
     content: string;
@@ -23,7 +117,6 @@ export type MarkdownRendererProps = {
     onPointerDown?: (e: React.PointerEvent) => void;
     selectedFilePath?: string;
     resolvePath: (baseFile: string, relativePath: string) => string;
-    parseLinks: (text: string, baseOffset: number) => React.ReactNode;
 };
 
 export default function MarkdownRenderer({
@@ -36,8 +129,7 @@ export default function MarkdownRenderer({
     onDoubleClick,
     onPointerDown,
     selectedFilePath = '',
-    resolvePath,
-    parseLinks
+    resolvePath
 }: MarkdownRendererProps) {
     // 行オフセット計算（カーソル位置精度向上）
     const lineOffsets = useMemo(() => {
@@ -127,7 +219,10 @@ export default function MarkdownRenderer({
                 fontSize: `${fontSize}px`,
                 fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
                 lineHeight: '1.4',
-                letterSpacing: '0.01em'
+                letterSpacing: '0.01em',
+                flex: 1, // 親要素(main)いっぱいに広げる
+                display: 'flex',
+                flexDirection: 'column'
             }}
             onPointerDown={onPointerDown}
             onDoubleClick={(e) => {

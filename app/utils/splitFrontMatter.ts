@@ -60,3 +60,36 @@ export function removeFrontmatterKey(frontmatter: string, key: string): string {
     const keyPattern = new RegExp(`^\\s*${key}:.*$\\r?\\n?`, 'gm');
     return frontmatter.replace(keyPattern, '');
 }
+
+/**
+ * フロントマターのgeometry情報を更新する
+ */
+export function updateFrontmatterGeometry(
+    front: string,
+    geom: { x?: number; y?: number; width?: number; height?: number }
+): string {
+    let newFront = front;
+
+    if (
+        geom.x !== undefined &&
+        geom.y !== undefined &&
+        geom.width !== undefined &&
+        geom.height !== undefined
+    ) {
+        const val = `{ x: ${Math.round(geom.x)}, y: ${Math.round(geom.y)}, width: ${Math.round(geom.width)}, height: ${Math.round(geom.height)} }`;
+        newFront = updateFrontmatterValue(newFront, 'window', val);
+
+        // レガシーフィールドのクリーンアップ
+        newFront = removeFrontmatterKey(newFront, 'rect');
+        newFront = removeFrontmatterKey(newFront, 'x');
+        newFront = removeFrontmatterKey(newFront, 'y');
+        newFront = removeFrontmatterKey(newFront, 'width');
+        newFront = removeFrontmatterKey(newFront, 'height');
+        newFront = removeFrontmatterKey(newFront, 'fontFamily');
+        newFront = removeFrontmatterKey(newFront, 'fontSize');
+        newFront = removeFrontmatterKey(newFront, 'lineHeight');
+        newFront = removeFrontmatterKey(newFront, 'context');
+    }
+
+    return newFront;
+}

@@ -4,6 +4,7 @@
  * 責務:
  * - 右クリックメニューの構築と表示
  * - 色変更、アーカイブ、削除、フォルダを開く、タグ操作
+ * - iPhone連携メニュー
  * - コンテキストメニューイベントのリスニング
  */
 
@@ -11,11 +12,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NoteMeta } from '@/app/api/notes';
 import { playDeleteSound, playSaveSound } from '../utils/soundManager';
-import { TranslationKey } from '@/lib/i18n';
+import { TranslationKey, Language } from '@/lib/i18n';
 
 type UseStickyNoteContextMenuProps = {
     selectedFile: NoteMeta | null;
     t: (key: TranslationKey) => string;
+    language: Language;
     allTags: string[];
     currentTags: string[];
     editBody: string;
@@ -32,11 +34,13 @@ type UseStickyNoteContextMenuProps = {
     setTagInputValue: (val: string) => void;
     isEditing: boolean;
     handleEditBlur: () => Promise<void>;
+    onInsertText?: (text: string) => void;
 };
 
 export function useStickyNoteContextMenu({
     selectedFile,
     t,
+    language,
     allTags,
     currentTags,
     editBody,
@@ -52,7 +56,8 @@ export function useStickyNoteContextMenu({
     setShowTagModal,
     setTagInputValue,
     isEditing,
-    handleEditBlur
+    handleEditBlur,
+    onInsertText
 }: UseStickyNoteContextMenuProps) {
     const lastContextMenuPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -80,10 +85,62 @@ export function useStickyNoteContextMenu({
             const { Menu, MenuItem, PredefinedMenuItem, Submenu } = await import('@tauri-apps/api/menu');
             const { LogicalPosition } = await import('@tauri-apps/api/dpi');
 
+            // ============================================================
+            // 編集モード用のメニュー
+            // ============================================================
+            if (isEditing) {
+                const now = new Date();
+                const pad = (n: number) => n.toString().padStart(2, '0');
+                const yyyy = now.getFullYear();
+                const mm = pad(now.getMonth() + 1);
+                const dd = pad(now.getDate());
+
+                // 曜日を取得
+                const weekDay = new Intl.DateTimeFormat(language === 'ja' ? 'ja-JP' : 'en-US', { weekday: 'short' }).format(now);
+                // フォーマット: 2026-02-18(水) or 2026-02-18(Wed)
+                const dateStrWithDay = `${yyyy}-${mm}-${dd}(${weekDay})`;
+
+                const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+                const items = [
+                    await PredefinedMenuItem.new({ item: 'Undo', text: t('menu.undo') || 'Undo' }),
+                    await PredefinedMenuItem.new({ item: 'Redo', text: t('menu.redo') || 'Redo' }),
+                    await PredefinedMenuItem.new({ item: 'Separator' }),
+                    await PredefinedMenuItem.new({ item: 'Cut', text: t('menu.cut') || 'Cut' }),
+                    await PredefinedMenuItem.new({ item: 'Copy', text: t('menu.copy') || 'Copy' }),
+                    await PredefinedMenuItem.new({ item: 'Paste', text: t('menu.paste') || 'Paste' }),
+                    await PredefinedMenuItem.new({ item: 'SelectAll', text: t('menu.selectAll') || 'Select All' }),
+                    await PredefinedMenuItem.new({ item: 'Separator' }),
+                    await MenuItem.new({
+                        id: 'ctx_insert_date_day',
+                        text: `📅 ${dateStrWithDay}`,
+                        action: () => onInsertText?.(dateStrWithDay)
+                    }),
+                    await MenuItem.new({
+                        id: 'ctx_insert_time',
+                        text: `🕒 ${timeStr}`,
+                        action: () => onInsertText?.(timeStr)
+                    }),
+                    await MenuItem.new({
+                        id: 'ctx_insert_datetime',
+                        text: `📅🕒 ${dateStrWithDay} ${timeStr}`,
+                        action: () => onInsertText?.(`${dateStrWithDay} ${timeStr}`)
+                    })
+                ];
+
+                const menu = await Menu.new({ id: 'editor_context_menu', items });
+                await menu.popup(new LogicalPosition(x, y));
+                return;
+            }
+
+            // ============================================================
+            // 閲覧モード用のメニュー（既存）
+            // ============================================================
+
             // ファイル名アイテム
             const filenameItem = await MenuItem.new({
                 id: 'ctx_filename',
-                text: `📄 ${selectedFile?.path ? selectedFile.path.split(/[/\\]/).pop() : 'Untitled'}`,
+                text: `📄 ${selectedFile?.path ? selectedFile.path.split(/[/\\]/).pop() : 'Untitled'} (${selectedFile?.seq || '-'})`,
                 enabled: false
             });
 
@@ -135,17 +192,14 @@ export function useStickyNoteContextMenu({
                 separatorCommon
             ];
 
-            // タグ関連 (簡易実装: モード切替なしの基本タグ追加のみまず実装)
-            // TODO: Delete Modeなどは後日完全復元を検討
-
-            // タグサブメニュー (Normal Mode)
+            // タグサブメニュー
             const tagNewItem = await MenuItem.new({
                 id: 'ctx_tag_new',
                 text: `➕ ${t('menu.addTag')}`,
                 action: async () => {
                     try {
                         const tags = await invoke<string[]>('fusen_get_all_tags');
-                        loadAllTags(); // Refresh hook state
+                        loadAllTags();
                         setShowTagModal(true);
                         setTagInputValue('');
                     } catch (e) { console.error('Failed to load tags for new tag modal:', e); }
@@ -154,31 +208,10 @@ export function useStickyNoteContextMenu({
 
             let tagSubItems: any[] = [tagNewItem];
 
-            // 最新のタグ一覧を取得 (PropsのallTagsだけでなく都度取得して確実性を高める)
-            let latestTags = allTags;
-            try {
-                // インポートが必要: import { getAllTags } from '@/app/api/tags';
-                // しかし、このファイルで直接importするより、API呼び出し関数をPropsで受け取るか、
-                // あるいはここでもinvokeを使う方が、このフックの依存関係としては疎結合かもしれないが、
-                // useTagManagerがラップしているので、getAllTagsをimportして使うのが正攻法。
-                // ただしimport追加が面倒なので、invokeを直接呼ぶか、loadAllTagsがPromiseを返すならそれを待つ手もあるが、
-                // loadAllTagsはvoid戻り値の可能性もある（確認：Promise<void>だった）。
-                // しかしloadAllTagsはstate更新を含むので、ここでのlocal変数には反映されない。
-                // よって直接fetchする。
-                const fetched = await invoke<string[]>('fusen_get_all_tags');
-                if (fetched && Array.isArray(fetched)) {
-                    latestTags = fetched;
-                    // React側のstateも更新しておく（次回以降のため）
-                    loadAllTags();
-                }
-            } catch (e) {
-                console.warn('Failed to fetch latest tags for context menu:', e);
-            }
-
             // 既存タグのトグル
-            if (latestTags.length > 0) {
+            if (allTags.length > 0) {
                 tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                for (const tag of latestTags) {
+                for (const tag of allTags) {
                     const isChecked = currentTags.includes(tag);
                     tagSubItems.push(await MenuItem.new({
                         id: `ctx_tag_${tag}`,
@@ -194,6 +227,20 @@ export function useStickyNoteContextMenu({
 
             const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `🏷️ ${t('menu.tags')}`, items: tagSubItems });
             menuItems.push(tagSubmenu);
+
+            // iPhoneに表示
+            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            menuItems.push(await MenuItem.new({
+                id: 'ctx_send_to_iphone',
+                text: `📱 ${t('menu.sendToIphone')}`,
+                action: async () => {
+                    console.log('[iPhone連携] iPhoneに表示がクリックされました');
+                    // TODO: フェーズ3でPush通知送信ロジックを実装
+                    // 初回: セットアップ画面を表示
+                    // 2回目以降: 直接通知送信
+                    alert('📱 iPhone連携は現在準備中です。もうしばらくお待ちください！');
+                }
+            }));
 
             // アーカイブ
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
@@ -213,7 +260,7 @@ export function useStickyNoteContextMenu({
 
                         // Backend closes, but ensure frontend close with permission
                         const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
-                        await win.hide(); // まず隠す
+                        await win.hide();
                         await win.close();
                     } catch (e) {
                         isDeletingRef.current = false;
@@ -243,7 +290,7 @@ export function useStickyNoteContextMenu({
                         // Backend closes window, but we explicitly close it here to ensure UI update
                         const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
                         console.log('[Delete] Hiding and Closing window...');
-                        await win.hide(); // まず隠す
+                        await win.hide();
                         await win.close();
                         console.log('[Delete] Close requested');
                     } catch (e) {
@@ -261,14 +308,18 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, allTags, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, handleColorChange, handleOpenFolder/*, isDeletingRef, setShowTagModal, setTagInputValue*/]);
+    }, [selectedFile, t, allTags, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, handleColorChange, handleOpenFolder, isEditing, onInsertText]);
 
 
+    // 右クリックイベントリスナー
     useEffect(() => {
         const handleContextMenu = async (e: MouseEvent) => {
             e.preventDefault();
-            if (isEditing) {
-                await handleEditBlur();
+            // 編集モード中はBlurしない（メニュー操作のため）
+            if (!isEditing) {
+                // 閲覧モード中なら、他の操作をキャンセルするなどの意図で呼ぶかもしれないが、
+                // 基本的には何もしなくてよい。
+                // ただし、もし選択状態などをクリアしたい場合はここで処理。
             }
             lastContextMenuPos.current = { x: e.clientX, y: e.clientY };
             await showContextMenu(e.clientX, e.clientY);

@@ -17,7 +17,6 @@ import React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { open } from '@tauri-apps/plugin-shell';
 
 // カスタムHook
 import { useNoteFile } from '@/app/hooks/useNoteFile';
@@ -25,6 +24,7 @@ import { useEditMode } from '@/app/hooks/useEditMode';
 import { useWindowManager } from '@/app/hooks/useWindowManager';
 import { useTagManager } from '@/app/hooks/useTagManager';
 import { useScreenCapture } from '@/app/hooks/useScreenCapture';
+import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 
 // UIコンポーネント
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
@@ -33,9 +33,8 @@ import MarkdownRenderer from './MarkdownRenderer';
 import ConfirmDialog from './ConfirmDialog';
 
 // ユーティリティ
-import { pathsEqual } from '../utils/pathUtils';
-import { playDeleteSound, playSaveSound } from '../utils/soundManager';
-import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey } from '../utils/splitFrontMatter';
+import { pathsEqual, getFileName } from '../utils/pathUtils';
+import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
 import { resolvePath } from '../utils/markdownUtils';
 
 // API
@@ -46,137 +45,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
 
-/**
- * ファイル名を取得する
- */
-function getFileName(path: string) {
-    return path.split(/[\\/]/).pop() || path;
-}
 
-/**
- * フロントマターのgeometry情報を更新する
- */
-const updateFrontmatterGeometry = (
-    front: string,
-    geom: { x?: number; y?: number; width?: number; height?: number }
-) => {
-    let newFront = front;
-
-    if (
-        geom.x !== undefined &&
-        geom.y !== undefined &&
-        geom.width !== undefined &&
-        geom.height !== undefined
-    ) {
-        const val = `{ x: ${Math.round(geom.x)}, y: ${Math.round(geom.y)}, width: ${Math.round(geom.width)}, height: ${Math.round(geom.height)} }`;
-        newFront = updateFrontmatterValue(newFront, 'window', val);
-
-        // レガシーフィールドのクリーンアップ
-        newFront = removeFrontmatterKey(newFront, 'rect');
-        newFront = removeFrontmatterKey(newFront, 'x');
-        newFront = removeFrontmatterKey(newFront, 'y');
-        newFront = removeFrontmatterKey(newFront, 'width');
-        newFront = removeFrontmatterKey(newFront, 'height');
-        newFront = removeFrontmatterKey(newFront, 'fontFamily');
-        newFront = removeFrontmatterKey(newFront, 'fontSize');
-        newFront = removeFrontmatterKey(newFront, 'lineHeight');
-        newFront = removeFrontmatterKey(newFront, 'context');
-    }
-
-    return newFront;
-};
-
-/**
- * インラインスタイル（太字）をパースする
- */
-const parseInlineStyles = (text: string, baseOffset: number) => {
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
-    let currentOffset = 0;
-
-    return (
-        <>
-            {parts.map((part, k) => {
-                if (part === '') return null;
-
-                const partStart = baseOffset + currentOffset;
-                currentOffset += part.length;
-
-                if (part.startsWith('**') && part.endsWith('**')) {
-                    const innerText = part.slice(2, -2);
-                    return (
-                        <strong
-                            key={k}
-                            style={{ color: 'red', fontWeight: 'bold' }}
-                            data-src-start={partStart + 2}
-                        >
-                            {innerText}
-                        </strong>
-                    );
-                }
-                return (
-                    <span key={k} data-src-start={partStart}>
-                        {part}
-                    </span>
-                );
-            })}
-        </>
-    );
-};
-
-/**
- * リンクをパースする
- */
-const parseLinks = (text: string, baseOffset: number) => {
-    const regex = /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
-    const parts = text.split(regex);
-    let currentOffset = 0;
-
-    return (
-        <>
-            {parts.map((part, k) => {
-                if (part === '') return null;
-
-                const partStart = baseOffset + currentOffset;
-                currentOffset += part.length;
-
-                // regexの状態をリセットするため、新しくマッチ判定
-                const isLink = /^(?:https?:\/\/[^\s]+)|^(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|^(?:\\\\[^:<>"\/?*|\r\n]+)$/.test(part);
-                if (isLink) {
-                    return (
-                        <span
-                            key={k}
-                            style={{
-                                color: 'blue',
-                                textDecoration: 'underline',
-                                cursor: 'pointer'
-                            }}
-                            data-src-start={partStart}
-                            data-tauri-drag-region="false"
-                            onClick={async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                console.log('[OpenLink]', part);
-                                try {
-                                    if (/^https?:\/\//i.test(part)) {
-                                        await open(part);
-                                    } else {
-                                        await invoke('fusen_open_file', { path: part });
-                                    }
-                                } catch (err) {
-                                    console.error('Failed to open link:', err);
-                                }
-                            }}
-                        >
-                            {part}
-                        </span>
-                    );
-                }
-
-                return <React.Fragment key={k}>{parseInlineStyles(part, partStart)}</React.Fragment>;
-            })}
-        </>
-    );
-};
 
 const StickyNote = memo(function StickyNote() {
     const searchParams = useSearchParams();
@@ -186,10 +55,12 @@ const StickyNote = memo(function StickyNote() {
     const [selectedFile, setSelectedFile] = useState<NoteMeta | null>(null);
 
     // 設定・i18n
+    // 設定・i18n
     const { settings } = useSettings();
+    const language = (settings.language as Language) || 'ja';
     const t = useMemo(
-        () => getTranslation((settings.language as Language) || 'ja'),
-        [settings.language]
+        () => getTranslation(language),
+        [language]
     );
 
     // スタイル関連
@@ -214,7 +85,6 @@ const StickyNote = memo(function StickyNote() {
     const shellRef = useRef<HTMLDivElement>(null);
     const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
-    const lastContextMenuPos = useRef<{ x: number; y: number } | null>(null);
     const shouldReopenMenu = useRef(false);
     const isCapturingRef = useRef(false);
 
@@ -368,8 +238,8 @@ const StickyNote = memo(function StickyNote() {
                 setNoteBackgroundColor(colorMatch[1]);
             }
 
-            // 新規ノートの場合は編集モード開始
-            if (isNew && body === '') {
+            // 新規ノートの場合は即座に編集モード開始（最速で書き込める）
+            if (isNew) {
                 startEditing();
             }
         });
@@ -520,6 +390,7 @@ const StickyNote = memo(function StickyNote() {
             lines[lineIndex] = `${taskMatch[1]}${newChar}${taskMatch[3]}`;
 
             const newText = lines.join('\n');
+            setContent(newText);
             setEditBody(newText);
             setSavePending(true);
         }
@@ -555,7 +426,14 @@ const StickyNote = memo(function StickyNote() {
     /**
      * 編集モード終了処理（handleEditBlur）
      */
-    const handleEditBlur = useCallback(async () => {
+    const handleEditBlur = useCallback(async (e?: FocusEvent) => {
+        // フォーカス移動先がツールバー内なら編集終了しない
+        if (e && e.relatedTarget instanceof Element) {
+            if (e.relatedTarget.closest('.hoverBar') || e.relatedTarget.closest('.editorHost')) {
+                console.log('[Blur] Focus moved to toolbar/editor, keeping edit mode');
+                return;
+            }
+        }
         await endEditing();
     }, [endEditing]);
 
@@ -563,24 +441,33 @@ const StickyNote = memo(function StickyNote() {
      * ドラッグ開始処理
      */
     const handleDragStart = useCallback(async (e: React.PointerEvent) => {
-        // 左クリック(0)以外はドラッグ処理しない
         if (e.button !== 0) return;
 
-        // 編集モード中なら、ドラッグさせずに編集終了処理を行う
+        const target = e.target as HTMLElement;
+        const isInteractive = !!target.closest('button, textarea, input, [data-interactable="true"], .cm-content, .editorHost');
+
+        // 編集モード中かつエディタ内の操作なら、標準のドラッグ（テキスト選択）を妨害しない
+        if (isEditing && isInteractive) {
+            return;
+        }
+
+        // 編集モード中でエディタ外をクリックした場合
+        // 以前は編集終了していたが、ユーザー要望により「カーソル移動」を優先するため
+        // ここでの編集終了処理は行わない。
+        // 代わりにエディタがフォーカスを失った(blur)タイミングで終了するようにする。
+        /*
         if (isEditing) {
             e.preventDefault();
             e.stopPropagation();
             handleEditBlur();
             return;
         }
+        */
 
         // 編集終了直後(500ms)はガード（再編集入り防止）
         if (Date.now() - lastEditEndedAt.current < 500) {
             return;
         }
-
-        const target = e.target as HTMLElement;
-        const isInteractive = !!target.closest('button, textarea, input, [data-interactable="true"]');
 
         // チェックボックスやボタンなど「操作が必要なパーツ」以外は、どこでもドラッグを許可する
         if (isInteractive) {
@@ -707,209 +594,34 @@ const StickyNote = memo(function StickyNote() {
     }, [isHover]);
 
     /**
-     * コンテキストメニュー処理
+     * コンテキストメニュー処理（外部hook）
      */
-
-    // フォルダを開く
-    const handleOpenFolder = useCallback(async () => {
-        if (!selectedFile) return;
-        await invoke('fusen_open_containing_folder', { path: selectedFile.path });
-    }, [selectedFile]);
-
-    // 背景色変更
-    const handleColorChange = useCallback((newColor: string) => {
-        console.log('[COLOR] Changing to:', newColor);
-        setNoteBackgroundColor(newColor);
-        updateFrontmatter('backgroundColor', newColor);
-        if (shellRef.current) {
-            shellRef.current.style.setProperty('background-color', newColor, 'important');
-        }
-    }, [updateFrontmatter]);
-
-    /**
-     * コンテキストメニュー表示
-     */
-    const showContextMenu = useCallback(async (x: number, y: number) => {
-        try {
-            const { Menu, MenuItem, PredefinedMenuItem, Submenu } = await import('@tauri-apps/api/menu');
-            const { LogicalPosition } = await import('@tauri-apps/api/dpi');
-
-            // ファイル名アイテム
-            const filenameItem = await MenuItem.new({
-                id: 'ctx_filename',
-                text: `📄 ${selectedFile?.path ? selectedFile.path.split(/[/\\]/).pop() : 'Untitled'} (${selectedFile?.seq || '-'})`,
-                enabled: false
-            });
-
-            const separator1 = await PredefinedMenuItem.new({ item: 'Separator' });
-
-            // フォルダを開く
-            const openFolderItem = await MenuItem.new({
-                id: 'ctx_open_folder',
-                text: `📂 ${t('menu.openFolder')}`,
-                action: handleOpenFolder
-            });
-
-            // 新規メモ作成
-            const newNoteItem = await MenuItem.new({
-                id: 'ctx_new_note',
-                text: `✨ ${t('menu.newNote')}`,
-                action: async () => {
-                    try {
-                        if (!selectedFile) return;
-                        const { emit } = await import('@tauri-apps/api/event');
-                        const normalizedPath = selectedFile.path.replace(/\\/g, '/');
-                        const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
-                        console.log('[StickyNote] Requesting new note creation via emit');
-                        await emit('fusen:request_create', { folderPath, context: 'memo' });
-                    } catch (e) {
-                        console.error('New note request error', e);
-                    }
-                }
-            });
-
-            // 色変更サブメニュー
-            const colorItems = [
-                await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange('#80d8ff') }),
-                await MenuItem.new({ id: 'ctx_color_pink', text: `🌸 ${t('menu.colors.pink')}`, action: () => handleColorChange('#ffcdd2') }),
-                await MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange('#f7e9b0') })
-            ];
-            const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: `🎨 ${t('menu.changeColor')}`, items: colorItems });
-
-            const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
-
-            // メニュー項目の構築
-            let menuItems: any[] = [
-                filenameItem,
-                separator1,
-                openFolderItem,
-                await PredefinedMenuItem.new({ item: 'Separator' }),
-                newNoteItem,
-                colorSubmenu,
-                separatorCommon
-            ];
-
-            // タグ関連 (簡易実装: モード切替なしの基本タグ追加のみまず実装)
-            // TODO: Delete Modeなどは後日完全復元を検討
-
-            // タグサブメニュー (Normal Mode)
-            const tagNewItem = await MenuItem.new({
-                id: 'ctx_tag_new',
-                text: `➕ ${t('menu.addTag')}`,
-                action: async () => {
-                    try {
-                        const tags = await invoke<string[]>('fusen_get_all_tags');
-                        loadAllTags(); // Refresh hook state
-                        setShowTagModal(true);
-                        setTagInputValue('');
-                    } catch (e) { console.error('Failed to load tags for new tag modal:', e); }
-                }
-            });
-
-            let tagSubItems: any[] = [tagNewItem];
-
-            // 既存タグのトグル
-            if (allTags.length > 0) {
-                tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                for (const tag of allTags) {
-                    const isChecked = currentTags.includes(tag);
-                    tagSubItems.push(await MenuItem.new({
-                        id: `ctx_tag_${tag}`,
-                        text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
-                        action: async () => {
-                            if (!selectedFile) return;
-                            if (isChecked) await removeTagFromNote(selectedFile.path, tag);
-                            else await addTagToNote(selectedFile.path, tag);
-                        }
-                    }));
-                }
+    useStickyNoteContextMenu({
+        selectedFile,
+        t,
+        language,
+        allTags,
+        currentTags,
+        editBody,
+        rawFrontmatter,
+        saveNoteContent,
+        loadAllTags,
+        addTagToNote,
+        removeTagFromNote,
+        isDeletingRef,
+        setNoteBackgroundColor,
+        updateFrontmatter,
+        shellRef,
+        setShowTagModal,
+        setTagInputValue,
+        isEditing,
+        handleEditBlur,
+        onInsertText: (text: string) => {
+            if (editorRef.current) {
+                editorRef.current.insertText(text);
             }
-
-            const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `🏷️ ${t('menu.tags')}`, items: tagSubItems });
-            menuItems.push(tagSubmenu);
-
-            // アーカイブ
-            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-            menuItems.push(await MenuItem.new({
-                id: 'ctx_archive',
-                text: `📦 ${t('menu.archive')}`,
-                action: async () => {
-                    try {
-                        if (!selectedFile) return;
-
-                        // 保存処理をブロック
-                        isDeletingRef.current = true;
-
-                        await saveNoteContent(editBody, rawFrontmatter, false);
-                        await playSaveSound();
-                        await invoke('fusen_archive_note', { path: selectedFile.path });
-
-                        // Backend closes, but ensure frontend close with permission
-                        const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
-                        await win.hide(); // まず隠す
-                        await win.close();
-                    } catch (e) {
-                        isDeletingRef.current = false;
-                        console.error('Failed to archive note:', e);
-                        alert(`${t('menu.archive_failed')}\n${e}`);
-                    }
-                }
-            }));
-
-            // 削除
-            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-            menuItems.push(await MenuItem.new({
-                id: 'ctx_delete',
-                text: `🗑️ ${t('menu.delete')}`,
-                action: async () => {
-                    try {
-                        if (!selectedFile) return;
-
-                        // 保存処理をブロック
-                        isDeletingRef.current = true;
-
-                        await playDeleteSound();
-                        console.log('[Delete] invoking fusen_move_to_trash');
-                        await invoke('fusen_move_to_trash', { path: selectedFile.path });
-                        console.log('[Delete] Success from backend');
-
-                        // Backend closes window, but we explicitly close it here to ensure UI update
-                        const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
-                        console.log('[Delete] Hiding and Closing window...');
-                        await win.hide(); // まず隠す
-                        await win.close();
-                        console.log('[Delete] Close requested');
-                    } catch (e) {
-                        isDeletingRef.current = false;
-                        console.error('Failed to delete note:', e);
-                        alert(`${t('menu.delete_failed')}\n${e}`);
-                    }
-                }
-            }));
-
-
-            const menu = await Menu.new({ id: 'context_menu', items: menuItems });
-            await menu.popup(new LogicalPosition(x, y));
-
-        } catch (e) {
-            console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, allTags, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote]);
-
-    useEffect(() => {
-        const handleContextMenu = async (e: MouseEvent) => {
-            e.preventDefault();
-            if (isEditing) {
-                await handleEditBlur();
-            }
-            lastContextMenuPos.current = { x: e.clientX, y: e.clientY };
-            await showContextMenu(e.clientX, e.clientY);
-            console.log('[ContextMenu] Right click detected');
-        };
-
-        window.addEventListener('contextmenu', handleContextMenu);
-        return () => window.removeEventListener('contextmenu', handleContextMenu);
-    }, [isEditing, handleEditBlur, showContextMenu]);
+    });
 
     /**
      * Ctrl+F 全文検索ショートカット
@@ -980,28 +692,26 @@ const StickyNote = memo(function StickyNote() {
                         isCapturingRef.current = false;
                     }}
                     onToggleMinimize={toggleMinimize}
-                    onNew={async () => {
-                        try {
-                            if (!selectedFile) return;
-                            const { emit } = await import('@tauri-apps/api/event');
-                            const normalizedPath = selectedFile.path.replace(/\\/g, '/');
-                            const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
-                            console.log('[StickyNote] Requesting new note creation via emit');
-                            await emit('fusen:request_create', { folderPath, context: 'memo' });
-                        } catch (e) {
-                            console.error('New note request error', e);
-                        }
-                    }}
                 />
             </div>
 
             {/* メインコンテンツ */}
             <main
                 style={{
-                    flex: 1,
+                    flex: isEditing ? 9 : 1,    // 変更: 編集時は9、表示時は1（全画面）
+                    display: 'flex',
+                    flexDirection: 'column',
                     overflow: 'auto',
-                    padding: '24px 16px 16px',
+                    padding: '4px',
                     position: 'relative' // Add relative positioning for tags
+                }}
+                onDoubleClick={(e) => {
+                    // コンテンツ外（余白）のクリック時は末尾から編集開始
+                    console.log('[DEBUG] Main onDoubleClick fired. isEditing:', isEditing, 'isMinimized:', isMinimized);
+                    if (!isEditing && !isMinimized) {
+                        e.preventDefault();
+                        startEditing(content.length);
+                    }
                 }}
             >
                 {isMinimized ? (
@@ -1036,7 +746,18 @@ const StickyNote = memo(function StickyNote() {
                             flex: 1,
                             display: 'flex',
                             flexDirection: 'column',
-                            cursor: 'text'
+                            cursor: 'text',
+                            // 編集エリアの視覚化
+                            backgroundColor: 'rgba(255, 255, 255, 0.5)',
+                            borderRadius: '4px',
+                            boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.1)',
+                            margin: '0 4px 4px 4px' // 少し内側に配置
+                        }}
+                        onClick={(e) => {
+                            // 余白クリックでエディタにフォーカスし、末尾にカーソル移動
+                            if (e.target === editorHostRef.current) {
+                                editorRef.current?.setCursorToEnd();
+                            }
                         }}
                     >
                         <RichTextEditor
@@ -1049,11 +770,23 @@ const StickyNote = memo(function StickyNote() {
                             filePath={selectedFile?.path || ''}
                             onKeyDown={(e) => {
                                 if (e.key === 'Escape') handleEditBlur();
+                                // Tabキーでツールバーへフォーカス移動
+                                if (e.key === 'Tab' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    // ツールバー内の最初のボタンを探してフォーカス
+                                    const toolbar = document.querySelector('.hoverBar');
+                                    const firstButton = toolbar?.querySelector('button');
+                                    if (firstButton) {
+                                        (firstButton as HTMLElement).focus();
+                                    }
+                                }
                             }}
-                            backgroundColor={noteBackgroundColor}
+                            // エディタ自体は透明にして親の色を見せる
+                            backgroundColor="transparent"
                             cursorPosition={cursorPosition}
                             isNewNote={isNewNote}
                             fontSize={noteFontSize}
+                            onBlur={handleEditBlur}
                         />
                     </div>
                 ) : (
@@ -1066,75 +799,100 @@ const StickyNote = memo(function StickyNote() {
                         onCheckboxToggle={handleToggleCheckbox}
                         onImageResize={handleImageResize}
                         onDoubleClick={(e) => {
+                            console.log('[DEBUG] MarkdownRenderer onDoubleClick fired.');
                             e.stopPropagation();
-                            startEditing(0);
+                            // クリック位置の文字オフセットを取得
+                            const target = e.target as HTMLElement;
+                            const srcStart = target.closest('[data-src-start]')?.getAttribute('data-src-start');
+                            const offset = srcStart ? parseInt(srcStart, 10) : 0;
+                            startEditing(isNaN(offset) ? 0 : offset);
                         }}
-                        onPointerDown={handleDragStart}
                         selectedFilePath={selectedFile?.path}
                         resolvePath={resolvePath}
-                        parseLinks={parseLinks}
                     />
                 )}
-
-                {/* タグ表示エリア（右下、ホバー時のみ） */}
-                {!isEditing && !isMinimized && currentTags.length > 0 && (
-                    <div style={{
-                        position: 'absolute',
-                        bottom: '12px',
-                        right: '8px',
-                        zIndex: 100,
-                        pointerEvents: 'none',
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        opacity: isHover ? 1 : 0,
-                        transition: 'opacity 0.2s ease',
-                    }}>
-                        <div style={{
-                            display: 'flex',
-                            gap: '4px',
-                            flexWrap: 'wrap',
-                            maxWidth: '250px',
-                            justifyContent: 'flex-end',
-                        }}>
-                            {currentTags.slice(0, 3).map((tag: string, idx: number) => (
-                                <span
-                                    key={idx}
-                                    style={{
-                                        fontSize: '10px',
-                                        padding: '3px 8px',
-                                        backgroundColor: 'rgba(100, 100, 100, 0.08)',
-                                        color: '#6b7280',
-                                        borderRadius: '4px',
-                                        border: '1px solid rgba(100, 100, 100, 0.15)',
-                                        whiteSpace: 'nowrap',
-                                        fontWeight: 500,
-                                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                                    }}
-                                >
-                                    {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
-                                </span>
-                            ))}
-                            {currentTags.length > 3 && (
-                                <span
-                                    style={{
-                                        fontSize: '10px',
-                                        padding: '3px 8px',
-                                        backgroundColor: 'rgba(100, 100, 100, 0.05)',
-                                        color: '#9ca3af',
-                                        borderRadius: '4px',
-                                        border: '1px solid rgba(100, 100, 100, 0.1)',
-                                        whiteSpace: 'nowrap',
-                                        fontWeight: 500,
-                                    }}
-                                >
-                                    +{currentTags.length - 3}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                )}
             </main>
-        </div>
+
+            {/* フッター領域（ドラッグ＆確認用、全体の約1割） - 編集モード時のみ表示 */}
+            {isEditing && (
+                <div
+                    className="noteFooter"
+                    style={{
+                        flex: 1, // 全体の1割
+                        minHeight: '20px',
+                        cursor: 'grab',
+                        userSelect: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        // 見た目は変えないという要望なので透明（背景色継承）
+                        backgroundColor: 'transparent'
+                    }}
+                    onPointerDown={handleDragStart}
+                    title="ドラッグで移動"
+                />
+            )}
+
+
+            {/* タグ表示エリア（右下、ホバー時のみ） */}
+            {!isEditing && !isMinimized && currentTags.length > 0 && (
+                <div style={{
+                    position: 'absolute',
+                    bottom: '12px',
+                    right: '8px',
+                    zIndex: 100,
+                    pointerEvents: 'none',
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    opacity: isHover ? 1 : 0,
+                    transition: 'opacity 0.2s ease',
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        gap: '4px',
+                        flexWrap: 'wrap',
+                        maxWidth: '250px',
+                        justifyContent: 'flex-end',
+                    }}>
+                        {currentTags.slice(0, 3).map((tag: string, idx: number) => (
+                            <span
+                                key={idx}
+                                style={{
+                                    fontSize: '10px',
+                                    padding: '3px 8px',
+                                    backgroundColor: 'rgba(100, 100, 100, 0.08)',
+                                    color: '#6b7280',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(100, 100, 100, 0.15)',
+                                    whiteSpace: 'nowrap',
+                                    fontWeight: 500,
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                }}
+                            >
+                                {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
+                            </span>
+                        ))}
+                        {currentTags.length > 3 && (
+                            <span
+                                style={{
+                                    fontSize: '10px',
+                                    padding: '3px 8px',
+                                    backgroundColor: 'rgba(100, 100, 100, 0.05)',
+                                    color: '#9ca3af',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(100, 100, 100, 0.1)',
+                                    whiteSpace: 'nowrap',
+                                    fontWeight: 500,
+                                }}
+                            >
+                                +{currentTags.length - 3}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
+
+        </div >
     );
 });
 
