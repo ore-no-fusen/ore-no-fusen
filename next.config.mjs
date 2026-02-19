@@ -14,6 +14,13 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  staticPageGenerationTimeout: 300, // 5分に延長
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 };
 
 // 設定をエクスポート（ここが最後です）

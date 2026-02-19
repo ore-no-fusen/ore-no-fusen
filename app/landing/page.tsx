@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { Download, Github, FileText, Tag, Search, Sparkles, Zap, Shield } from 'lucide-react';
 

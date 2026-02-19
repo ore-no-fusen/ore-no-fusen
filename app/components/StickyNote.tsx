@@ -427,6 +427,12 @@ const StickyNote = memo(function StickyNote() {
      * 編集モード終了処理（handleEditBlur）
      */
     const handleEditBlur = useCallback(async (e?: FocusEvent) => {
+        // [Fix] キャプチャ中は編集モードを維持する
+        if (isCapturingRef.current) {
+            console.log('[Blur] Capturing in progress, skipping endEditing');
+            return;
+        }
+
         // フォーカス移動先がツールバー内なら編集終了しない
         if (e && e.relatedTarget instanceof Element) {
             if (e.relatedTarget.closest('.hoverBar') || e.relatedTarget.closest('.editorHost')) {
@@ -687,6 +693,7 @@ const StickyNote = memo(function StickyNote() {
                     onList={() => editorRef.current?.insertList()}
                     onCheckbox={() => editorRef.current?.insertCheckbox()}
                     onCapture={async () => {
+                        if (isCapturingRef.current) return;
                         isCapturingRef.current = true;
                         await captureScreen();
                         isCapturingRef.current = false;
