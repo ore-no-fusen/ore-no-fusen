@@ -1,3 +1,11 @@
+/*
+ * Tauri ビルドスクリプト
+ *
+ * 責務:
+ * - ビルド時の追加処理 (音声ファイルのコピー等)
+ * - 変更検知トリガーの設定 (cargo:rerun-if-changed)
+ */
+
 use std::fs;
 use std::path::Path;
 

@@ -66,9 +66,6 @@ export function useEditMode({
     /**
      * 編集モードを開始する
      */
-    /**
-     * 編集モードを開始する
-     */
     const startEditing = useCallback((cursorPos?: number) => {
         console.log('[useEditMode] startEditing called. Current isEditing:', isEditing, 'New POS:', cursorPos);
         if (isEditing) {
@@ -76,8 +73,9 @@ export function useEditMode({
             return;
         }
 
-        console.log('[useEditMode] Starting edit mode (Setting ignoreBlur for 800ms)');
-        ignoreBlurUntilRef.current = Date.now() + 800;
+        const gracePeriod = 200;
+        console.log(`[useEditMode] Starting edit mode (Setting ignoreBlur for ${gracePeriod}ms). New ignoreBlurUntil: ${Date.now() + gracePeriod}`);
+        ignoreBlurUntilRef.current = Date.now() + gracePeriod;
         setIsEditing(true);
         setEditBody(initialContent);
         setCursorPosition(cursorPos ?? null);
@@ -105,16 +103,15 @@ export function useEditMode({
         try {
             const currentBody = editBodyRef.current;
             await onSave(currentBody, rawFrontmatter, true);
-
+            console.log('[useEditMode] Save succeeded.');
+        } catch (e) {
+            console.error('[useEditMode] Save failed (editing will still end):', e);
+        } finally {
+            // 保存成功・失敗に関わらず、編集モードを必ず終了する
             setIsEditing(false);
             lastEditEndedAt.current = Date.now();
-
-            console.log('[useEditMode] Edit mode ended successfully');
-        } catch (e) {
-            console.error('[useEditMode] Save failed:', e);
-            throw e;
-        } finally {
             isCommittingRef.current = false;
+            console.log('[useEditMode] Edit mode ended. isEditing set to false.');
         }
     }, [onSave, rawFrontmatter, isCapturing]);
 

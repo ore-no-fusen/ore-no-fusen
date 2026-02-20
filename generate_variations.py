@@ -1,3 +1,11 @@
+"""
+効果音生成スクリプト (バリエーション)
+
+責務:
+- 開発用: 様々なタイプのクリック音(wav)を生成する
+- public/sounds/variations に出力
+"""
+
 import wave
 import math
 import struct

@@ -1,3 +1,12 @@
+/**
+ * リッチテキストエディタ (CodeMirror Wrapper)
+ *
+ * 責務:
+ * - CodeMirror 6 を使用したMarkdown編集機能の提供
+ * - シンタックスハイライト、キーバインド等のエディタ設定
+ * - 編集内容の変更検知と親コンポーネントへの通知
+ */
+
 'use client';
 
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
@@ -1003,6 +1012,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
             view.destroy();
             viewRef.current = null;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // 初回マウント時のみ作成
 
     // [New] Ready flag initialization

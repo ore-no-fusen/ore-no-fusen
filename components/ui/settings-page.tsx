@@ -1,3 +1,12 @@
+/**
+ * 設定画面 (Settings Page)
+ *
+ * 責務:
+ * - アプリケーション全体の設定UI（全般、外観、データ、情報）の構築
+ * - `useSettings` ストアとの連携による設定値の読み書き
+ * - 言語切り替え、自動起動設定、インポート機能の実装
+ */
+
 "use client"
 
 import React, { useState, useMemo } from "react"

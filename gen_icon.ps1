@@ -1,3 +1,13 @@
+<#
+.SYNOPSIS
+アイコン画像生成スクリプト
+
+.DESCRIPTION
+責務:
+- アプリアイコンのソース画像 (clean_source.png) を生成する
+- System.Drawing を使用して描画
+#>
+
 Add-Type -AssemblyName System.Drawing
 
 # Configuration

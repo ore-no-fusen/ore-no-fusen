@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+/**
+ * 設定ストア (SettingsStore) テスト
+ *
+ * 責務:
+ * - Zustandストア (useSettings) の動作検証
+ * - 初期値、更新処理 (setSettings)、リセット処理のテスト
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useSettings } from './settings-store';
 
 // Mock localStorage

@@ -140,7 +140,7 @@ export function useStickyNoteContextMenu({
             // ファイル名アイテム
             const filenameItem = await MenuItem.new({
                 id: 'ctx_filename',
-                text: `📄 ${selectedFile?.path ? selectedFile.path.split(/[/\\]/).pop() : 'Untitled'} (${selectedFile?.seq || '-'})`,
+                text: `📄 ${selectedFile?.path ? selectedFile.path.split(/[/\\]/).pop() : 'Untitled'}`,
                 enabled: false
             });
 
@@ -218,8 +218,17 @@ export function useStickyNoteContextMenu({
                         text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
                         action: async () => {
                             if (!selectedFile) return;
-                            if (isChecked) await removeTagFromNote(selectedFile.path, tag);
-                            else await addTagToNote(selectedFile.path, tag);
+                            if (isChecked) {
+                                await removeTagFromNote(selectedFile.path, tag);
+                            } else {
+                                await addTagToNote(selectedFile.path, tag);
+                            }
+                            // [Fix] Tag操作後にノートをリロードして最新の状態（タグ反映済み）を取得する
+                            // これにより useNoteFile の state (note, content, rawFrontmatter) が更新される
+                            // ※ loadAllTags は useTagManager 内で呼ばれているが、note自体の再読み込みが必要
+                            await import('@tauri-apps/api/event').then(({ emit }) => {
+                                emit('fusen:reload_note', { path: selectedFile.path });
+                            });
                         }
                     }));
                 }
@@ -308,7 +317,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, allTags, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, handleColorChange, handleOpenFolder, isEditing, onInsertText]);
+    }, [selectedFile, t, allTags, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue]);
 
 
     // 右クリックイベントリスナー

@@ -3,6 +3,15 @@ import withPWA from 'next-pwa';
 import fs from 'fs';
 const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf-8'));
 
+/**
+ * Next.js 設定ファイル
+ *
+ * 責務:
+ * - Next.jsのビルド・ランタイム設定
+ * - React Strict Modeの有効化
+ * - スタティックエクスポート設定 (Tauri用)
+ */
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
@@ -15,12 +24,6 @@ const nextConfig = {
     unoptimized: true,
   },
   staticPageGenerationTimeout: 300, // 5分に延長
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
 };
 
 // 設定をエクスポート（ここが最後です）

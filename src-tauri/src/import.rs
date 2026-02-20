@@ -1,3 +1,12 @@
+/*
+ * インポート機能
+ *
+ * 責務:
+ * - 外部ディレクトリからのMarkdownファイル取り込み
+ * - インポート時の統計情報生成
+ * - シンボリックリンクの解決とファイルコピー
+ */
+
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;

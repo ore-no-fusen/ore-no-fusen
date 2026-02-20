@@ -1,10 +1,12 @@
 import { Page } from '@playwright/test';
 
 /**
- * Tauri APIをモックする関数 (Shared)
- * 
- * 各テストファイルでこの関数を呼び出すことで、
- * TauriのIPC通信やウィンドウ操作をシミュレートできます。
+ * Tauri API モックユーティリティ
+ *
+ * 責務:
+ * - Playwright環境でのTauri Backend (IPC) のシミュレーション
+ * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
+ * - ウィンドウイベント・メニューイベントの発火制御
  */
 export async function mockTauriAPI(page: Page) {
     await page.addInitScript(() => {

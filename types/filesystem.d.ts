@@ -1,3 +1,11 @@
+/**
+ * 型定義: File System Access API
+ *
+ * 責務:
+ * - ブラウザ標準の File System Access API の型定義拡張
+ * - showDirectoryPicker 等の未標準化APIのサポート
+ */
+
 // File System Access API の型定義
 
 interface FileSystemHandle {

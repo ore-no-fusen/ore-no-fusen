@@ -1,3 +1,12 @@
+/**
+ * Vitest 設定ファイル
+ *
+ * 責務:
+ * - 単体テスト (Unit Test) の実行設定
+ * - テスト環境 (jsdom) の指定
+ * - パスエイリアスの解決設定
+ */
+
 import { defineConfig } from 'vitest/config';
 import path from 'path';
 

@@ -1,3 +1,11 @@
+/**
+ * PWA登録コンポーネント (RegisterPWA)
+ *
+ * 責務:
+ * - Service Workerの登録
+ * - オフライン対応とキャッシュ管理の有効化
+ */
+
 "use client";
 
 import { useEffect } from "react";

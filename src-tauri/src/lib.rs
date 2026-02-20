@@ -1,3 +1,11 @@
+/*
+ * Tauri アプリケーションバックエンド (Core)
+ *
+ * 責務:
+ * - Tauriコマンドの登録とハンドリング
+ * - アプリケーションライフサイクルの管理
+ * - 各モジュールの統合 (State, Logic, Storage, etc.)
+ */
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -63,7 +71,7 @@ fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Not
     let (seq, updated, context) = logic::parse_filename(&filename);
 
     // 3. Parse Content for extended meta
-    let (x, y, w, h, bg, aot, tags) = logic::extract_meta_from_content(&note.body);
+    let (x, y, w, h, bg, aot, tags, folded) = logic::extract_meta_from_content(&note.body);
 
     let meta = NoteMeta {
         path: path.clone(),
@@ -74,6 +82,7 @@ fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Not
         background_color: bg,
         always_on_top: aot,
         tags,
+        folded,
     };
 
     // 4. Update AppState
@@ -85,6 +94,12 @@ fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Not
 
 
 
+
+#[tauri::command]
+fn fusen_set_always_on_top(window: tauri::Window, enabled: bool) -> Result<(), String> {
+    window.set_always_on_top(enabled).map_err(|e| e.to_string())?;
+    Ok(())
+}
 
 #[tauri::command]
 async fn fusen_force_focus(window: tauri::Window) -> Result<(), String> {
@@ -251,7 +266,7 @@ fn fusen_archive_note(
     
     // 1. Get current tags
     let content = storage::read_note(&path)?;
-    let (_, _, _, _, _, _, tags) = logic::extract_meta_from_content(&content.body);
+    let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&content.body);
     
     // 2. Determine vault root
     let vault_root = {
@@ -546,7 +561,7 @@ fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app
     for path in paths {
         // Read note content
         if let Ok(note) = storage::read_note(&path) {
-            let (_, _, _, _, _, _, tags) = logic::extract_meta_from_content(&note.body);
+            let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&note.body);
             eprintln!("[Global Delete] Checking note: {} - tags: {:?}", path, tags);
 
             // Check if tag exists (trim both sides for safety)
@@ -612,7 +627,7 @@ fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[Str
     let mut all_notes = storage::list_notes(&base_path);
     for n in all_notes.iter_mut() {
         if let Ok(note) = storage::read_note(&n.path) {
-            let (_, _, _, _, _, _, tags) = logic::extract_meta_from_content(&note.body);
+            let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&note.body);
             n.tags = tags;
         }
     }
@@ -834,7 +849,7 @@ fn fusen_refresh_notes_with_tags(state: State<'_, Mutex<AppState>>) -> Result<Ve
     // 各ノートを読んで tags を確実に詰める
     for n in notes.iter_mut() {
         if let Ok(note) = storage::read_note(&n.path) {
-            let (_x, _y, _w, _h, _bg, _aot, tags) = logic::extract_meta_from_content(&note.body);
+            let (_x, _y, _w, _h, _bg, _aot, tags, _) = logic::extract_meta_from_content(&note.body);
             n.tags = tags;
         }
     }
@@ -898,6 +913,7 @@ pub fn run() {
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_note,
             fusen_force_focus,
+            fusen_set_always_on_top,
             fusen_select_folder,
             fusen_list_notes,
             fusen_read_note,

@@ -20,16 +20,26 @@ export type UseWindowManagerReturn = {
     isMinimized: boolean;
     toggleMinimize: () => Promise<void>;
     saveWindowState: () => Promise<void>;
+    setOriginalSize: (width: number, height: number) => void; // [New]
+    setIsMinimized: (value: boolean) => void; // [New] Only for initial sync
 };
 
 export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions): UseWindowManagerReturn {
     const [isMinimized, setIsMinimized] = useState(false);
     const originalSizeRef = useRef<{ width: number; height: number } | null>(null);
 
+    const setOriginalSize = useCallback((width: number, height: number) => {
+        originalSizeRef.current = { width, height };
+    }, []);
+
     /**
      * ウィンドウの座標とサイズを保存する
      */
     const saveWindowState = useCallback(async () => {
+        if (isMinimized) {
+            console.log('[useWindowManager] Skipping saveWindowState because isMinimized is true');
+            return;
+        }
         try {
             const geometry = await getWindowGeometry();
             console.log('[useWindowManager] Saving geometry:', geometry);
@@ -37,7 +47,7 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
         } catch (e) {
             console.error('[useWindowManager] Failed to save window state:', e);
         }
-    }, [onGeometryChange]);
+    }, [onGeometryChange, isMinimized]);
 
     /**
      * ミニマイズモードをトグルする
@@ -72,6 +82,11 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
         }
     }, [isMinimized]);
 
+    // [New] 初期化時にfolded状態だった場合、現在のサイズを「展開時サイズ」として保持するのではなく
+    // 明示的に展開時のデフォルトサイズ（またはメタデータからのサイズ）をセットすべきだが
+    // ここでは簡易的に「現在のサイズ」を保存しないようにガードする。
+    // 実際の展開サイズ復元は StickyNote.tsx 側で folded 判定時に行う。
+
     /**
      * ウィンドウイベントリスナーをセットアップ
      */
@@ -105,6 +120,8 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
     return {
         isMinimized,
         toggleMinimize,
-        saveWindowState
+        saveWindowState,
+        setOriginalSize,
+        setIsMinimized
     };
 }

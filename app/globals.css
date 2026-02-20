@@ -1,3 +1,13 @@
+/**
+ * グローバルスタイルシート
+ *
+ * 責務:
+ * - Tailwind CSSのディレクティブ定義 (@tailwind base, components, utilities)
+ * - CSS変数のテーマ定義 (:root, .dark)
+ * - プレビュー用カスタムフォント設定 (.preview-content)
+ * - スクロールバーのカスタマイズ
+ */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

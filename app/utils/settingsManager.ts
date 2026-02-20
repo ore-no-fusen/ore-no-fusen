@@ -1,6 +1,10 @@
 /**
- * SettingsManager - アプリ設定の一元管理ユーティリティ
- * 設定値をキャッシュし、各コンポーネントで簡単に利用できるようにします
+ * 設定管理ユーティリティ (SettingsManager)
+ *
+ * 責務:
+ * - アプリケーション設定のキャッシュ管理
+ * - 設定変更イベントのリスニングと自動更新
+ * - 環境（Browser/Tauri）に応じた設定読み込み
  */
 
 import { invoke } from '@tauri-apps/api/core';

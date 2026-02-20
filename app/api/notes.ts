@@ -1,11 +1,9 @@
 /**
- * ノート操作のTauri API呼び出しをラップ
+ * ノート操作API (Tauri Wrapper)
  *
- * このモジュールは、付箋ノートのCRUD操作を提供します。
- * - ノートの読み込み
- * - ノートの保存（リネーム対応）
- * - アーカイブ
- * - ゴミ箱への移動
+ * 責務:
+ * - ノートのCRUD操作（読み込み、保存、アーカイブ、削除）
+ * - バックエンド(Rust)コマンドの型安全な呼び出し
  */
 
 import { invoke } from '@tauri-apps/api/core';
@@ -24,6 +22,7 @@ export type NoteMeta = {
     height?: number;
     background_color?: string;
     always_on_top?: boolean;
+    folded?: boolean;
     tags?: string[];
 };
 

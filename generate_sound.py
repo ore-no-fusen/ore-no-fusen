@@ -1,3 +1,10 @@
+"""
+効果音生成スクリプト (単発)
+
+責務:
+- 開発用: 特定のクリック音(create_calm.wav)を生成する
+"""
+
 import wave
 import math
 import struct

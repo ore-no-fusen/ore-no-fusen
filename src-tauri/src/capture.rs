@@ -1,3 +1,12 @@
+/*
+ * 画面キャプチャ機能
+ *
+ * 責務:
+ * - OSネイティブのスクリーンショット機能の呼び出し
+ * - キャプチャ画像の取得と保存
+ * - クリップボード経由の画像データ処理
+ */
+
 use std::path::PathBuf;
 use std::process::Command;
 use std::thread;

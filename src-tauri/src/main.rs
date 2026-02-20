@@ -1,4 +1,11 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+/*
+ * アプリケーションエントリーポイント
+ *
+ * 責務:
+ * - アプリケーションの初期化と実行
+ * - Windows用コンソール制御
+ */
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {

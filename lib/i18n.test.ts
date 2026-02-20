@@ -1,3 +1,12 @@
+/**
+ * i18n ユーティリティテスト
+ *
+ * 責務:
+ * - 翻訳機能の動作検証
+ * - 言語切り替えロジックのテスト
+ * - 辞書データの整合性確認
+ */
+
 import { describe, it, expect } from 'vitest';
 import { getTranslation, translations } from './i18n';
 

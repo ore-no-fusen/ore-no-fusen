@@ -151,7 +151,8 @@ const StickyNote = memo(function StickyNote() {
     });
 
     // ウィンドウ管理
-    const { isMinimized, toggleMinimize, saveWindowState } = useWindowManager({
+    const [isPinned, setIsPinned] = useState(false); // [New]
+    const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize, setIsMinimized } = useWindowManager({
         onGeometryChange: (geom) => {
             if (isDeletingRef.current) return;
             setRawFrontmatter((prev) => updateFrontmatterGeometry(prev, geom));
@@ -170,6 +171,11 @@ const StickyNote = memo(function StickyNote() {
         deleteTagFromAllNotes
     } = useTagManager();
 
+    // 初期ロード時に全タグを取得
+    useEffect(() => {
+        loadAllTags();
+    }, [loadAllTags]);
+
     // スクリーンキャプチャ
     const { captureScreen } = useScreenCapture({
         currentFilePath: urlPath,
@@ -181,12 +187,108 @@ const StickyNote = memo(function StickyNote() {
         }
     });
 
-    // タグ情報の同期
+    // タグ・背景情報・その他メタデータの同期 (From Metadata)
     useEffect(() => {
-        if (note?.meta?.tags) {
+        if (!note?.meta) return;
+
+        // Tags
+        if (note.meta.tags) {
             setCurrentTags(note.meta.tags);
         }
+
+        // Background Color
+        if (note.meta.background_color) {
+            setNoteBackgroundColor(note.meta.background_color);
+        }
+
+        // Pin State
+        if (note.meta.always_on_top !== undefined) {
+            setIsPinned(note.meta.always_on_top);
+        }
     }, [note, setCurrentTags]);
+
+    // 初期ロード時の Folded ハンドリング
+    const initialSyncDone = useRef(false);
+    useEffect(() => {
+        if (!initialSyncDone.current && note?.meta) {
+            if (note.meta.folded) {
+                if (note.meta.width && note.meta.height) {
+                    setOriginalSize(note.meta.width, note.meta.height);
+                }
+                setIsMinimized(true);
+                toggleMinimize(); // Apply minimisation (size change)
+            }
+            initialSyncDone.current = true;
+        }
+    }, [note, toggleMinimize, setOriginalSize, setIsMinimized]);
+
+    // ピン留め状態の同期（初期ロード完了時および変更時）
+    useEffect(() => {
+        invoke('fusen_set_always_on_top', { enabled: isPinned });
+    }, [isPinned]);
+
+    /**
+     * Pin Toggle Handler
+     */
+    /**
+     * Pin Toggle Handler
+     */
+    const handleTogglePin = useCallback(async () => {
+        const newState = !isPinned;
+        setIsPinned(newState);
+
+        try {
+            // invoke は useEffect で処理されるためここでは削除
+            if (note) {
+                // [Fix] updateFrontmatterValue は frontmatter 文字列のみを受け取る必要がある
+                // 以前の実装では note.body (全文) を渡していたため、FrontMatter分離に失敗して本文が消えていた
+
+                // 現在のrawFrontmatterを使用（なければnote.bodyから分離）
+                let currentFront = rawFrontmatter;
+                let currentBody = content;
+
+                if (!currentFront) {
+                    const { front, body } = splitFrontMatter(note.body);
+                    currentFront = front;
+                    currentBody = body;
+                }
+
+                const newFront = updateFrontmatterValue(currentFront, 'alwaysOnTop', newState.toString());
+
+                // saveNoteContent は (body, frontmatter, allowRename) を受け取る
+                await saveNoteContent(currentBody, newFront, false);
+            }
+        } catch (e) {
+            console.error('Failed to toggle pin:', e);
+            setIsPinned(!newState);
+        }
+    }, [isPinned, note, rawFrontmatter, content, saveNoteContent]);
+
+    /**
+     * Minimize Toggle Handler
+     */
+    /**
+     * Minimize Toggle Handler
+     */
+    const handleToggleMinimizeWithSave = useCallback(async () => {
+        await toggleMinimize();
+        const nextState = !isMinimized; // toggleMinimize toggles logic state
+
+        if (note) {
+            // [Fix] ここも同様に修正
+            let currentFront = rawFrontmatter;
+            let currentBody = content;
+
+            if (!currentFront) {
+                const { front, body } = splitFrontMatter(note.body);
+                currentFront = front;
+                currentBody = body;
+            }
+
+            const newFront = updateFrontmatterValue(currentFront, 'folded', nextState.toString());
+            await saveNoteContent(currentBody, newFront, false);
+        }
+    }, [isMinimized, toggleMinimize, note, rawFrontmatter, content, saveNoteContent]);
 
     // ============================================================
     // 初期化・イベントリスナー
@@ -217,9 +319,12 @@ const StickyNote = memo(function StickyNote() {
         };
     }, []);
 
-    // 初期ロード
+    // 初期ロード（一度だけ実行）
+    const hasInitializedRef = useRef(false);
     useEffect(() => {
         if (!urlPath) return;
+        if (hasInitializedRef.current) return;
+        hasInitializedRef.current = true;
 
         const myNote: NoteMeta = {
             path: urlPath,
@@ -232,17 +337,18 @@ const StickyNote = memo(function StickyNote() {
         setIsNewNote(isNew);
 
         loadNote().then((body) => {
-            // フロントマターから背景色を取得
-            const colorMatch = rawFrontmatter.match(/backgroundColor:\s*["']?([^"'\s]+)["']?/);
-            if (colorMatch) {
-                setNoteBackgroundColor(colorMatch[1]);
-            }
+            // [Optimized] 背景色は note.meta から取得するため、ここでの正規表現パースは削除
+            // これによりレンダリングブロックを回避し、表示速度を向上
+
+            console.log('[StickyNote] Note loaded. isNew:', isNew); // [Debug]
 
             // 新規ノートの場合は即座に編集モード開始（最速で書き込める）
             if (isNew) {
+                console.log('[StickyNote] isNew is true. Calling startEditing()'); // [Debug]
                 startEditing();
             }
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [urlPath, isNew]);
 
     // イベントリスナー設定（move, resize, close）
@@ -484,15 +590,17 @@ const StickyNote = memo(function StickyNote() {
         const startX = e.clientX;
         const startY = e.clientY;
         const startTime = Date.now();
+        let hasDragged = false; // [New] ドラッグ判定フラグ
 
         const onPointerMove = (moveEvent: PointerEvent) => {
             const dx = moveEvent.clientX - startX;
             const dy = moveEvent.clientY - startY;
             const elapsed = Date.now() - startTime;
 
-            // 閾値を緩和: 2px以上動いたら、または10ms経過したらドラッグ開始
-            if ((Math.abs(dx) > 2 || Math.abs(dy) > 2) && elapsed > 10 && moveEvent.buttons === 1) {
-                cleanup();
+            // 閾値を緩和: 5px以上動いたら、または10ms経過したらドラッグ開始 (誤検知防止のため2px -> 5pxへ変更)
+            if (!hasDragged && (Math.abs(dx) > 5 || Math.abs(dy) > 5) && elapsed > 10 && moveEvent.buttons === 1) {
+                hasDragged = true;
+                cleanup(); // リスナー解除（Tauriに委譲するため）
                 try {
                     getCurrentWindow().startDragging();
                 } catch (err) {
@@ -501,7 +609,14 @@ const StickyNote = memo(function StickyNote() {
             }
         };
 
-        const onPointerUp = () => cleanup();
+        const onPointerUp = () => {
+            cleanup();
+            // ドラッグせずにクリックだけで終わった場合、編集エリア外をクリックしたとみなして編集終了
+            if (!hasDragged) {
+                console.log('[Footer] Click detected (no drag). Ending edit.');
+                handleEditBlur();
+            }
+        };
         const cleanup = () => {
             window.removeEventListener('pointermove', onPointerMove);
             window.removeEventListener('pointerup', onPointerUp);
@@ -511,7 +626,7 @@ const StickyNote = memo(function StickyNote() {
         e.stopPropagation();
         window.addEventListener('pointermove', onPointerMove);
         window.addEventListener('pointerup', onPointerUp);
-    }, [isEditing, handleEditBlur]);
+    }, [isEditing, handleEditBlur, lastEditEndedAt]);
 
     /**
      * ウィンドウブラー時の編集終了
@@ -520,11 +635,12 @@ const StickyNote = memo(function StickyNote() {
         if (!isEditing) return;
 
         const onWindowBlur = () => {
+            console.log('[StickyNote] Window blur event fired'); // [Debug]
             if (Date.now() < ignoreBlurUntilRef.current) {
-                console.log('[Blur] Ignored due to grace period');
+                console.log('[StickyNote] Blur ignored due to grace period'); // [Debug]
                 return;
             }
-            console.log('[Blur] Window blurred, ending edit');
+            console.log('[StickyNote] Window blurred, calling handleEditBlur'); // [Debug]
             handleEditBlur();
         };
 
@@ -541,10 +657,16 @@ const StickyNote = memo(function StickyNote() {
         const onPointerDownCapture = (e: PointerEvent) => {
             const target = e.target as Node;
 
-            if (editorHostRef.current?.contains(target)) return;
-            if ((target as HTMLElement)?.closest?.('.hoverBar')) return;
+            if (editorHostRef.current?.contains(target)) {
+                // console.log('[StickyNote] Click inside editor host'); // Verbose
+                return;
+            }
+            if ((target as HTMLElement)?.closest?.('.hoverBar')) {
+                console.log('[StickyNote] Click inside hoverBar'); // [Debug]
+                return;
+            }
 
-            console.log('[Boundary] Click outside detected. Ending edit.');
+            console.log('[StickyNote] Click outside detected (onPointerDownCapture). Calling handleEditBlur.'); // [Debug]
             handleEditBlur();
         };
 
@@ -568,10 +690,10 @@ const StickyNote = memo(function StickyNote() {
             );
 
             if (!isInside && isHover) {
-                setIsHover(false);
+                // setIsHover(false); // React eventで管理するため無効化
                 setIsDraggableArea(false);
             } else if (isInside) {
-                setIsHover(true);
+                // setIsHover(true); // React eventで管理するため無効化
                 const target = e.target as HTMLElement;
                 const interactive = target.closest('button, textarea, input, [data-interactable="true"]');
 
@@ -660,6 +782,8 @@ const StickyNote = memo(function StickyNote() {
             className="noteShell h-screen overflow-hidden flex flex-col"
             style={{ backgroundColor: noteBackgroundColor, cursor: shellCursor }}
             onPointerDown={handleDragStart}
+            onPointerEnter={() => setIsHover(true)}
+            onPointerLeave={() => setIsHover(false)}
         >
             <style>{`
                 .notePaper::-webkit-scrollbar { width: 12px; height: 12px; }
@@ -681,13 +805,12 @@ const StickyNote = memo(function StickyNote() {
                     right: 0,
                     zIndex: 100
                 }}
-                onPointerEnter={() => setIsHover(true)}
-                onPointerLeave={() => setIsHover(false)}
             >
                 <ToolbarButtons
                     isEditing={isEditing}
                     isMinimized={isMinimized}
-                    show={isHover}
+                    isPinned={isPinned}
+                    show={isHover && !isEditing}
                     onBold={() => editorRef.current?.insertBold()}
                     onHeading={() => editorRef.current?.insertHeading1()}
                     onList={() => editorRef.current?.insertList()}
@@ -698,7 +821,8 @@ const StickyNote = memo(function StickyNote() {
                         await captureScreen();
                         isCapturingRef.current = false;
                     }}
-                    onToggleMinimize={toggleMinimize}
+                    onToggleMinimize={handleToggleMinimizeWithSave}
+                    onTogglePin={handleTogglePin}
                 />
             </div>
 

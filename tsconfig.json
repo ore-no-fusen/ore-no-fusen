@@ -1,7 +1,19 @@
+/**
+ * TypeScript 設定ファイル
+ *
+ * 責務:
+ * - TypeScriptコンパイラオプションの定義 (Target: ES2017, Module: esnext)
+ * - Next.js との統合設定 (plugins, jsx: preserve)
+ * - パスエイリアスの設定 (@/* -> ./*)
+ */
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,11 +31,22 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": [
+        "./*"
+      ]
+    },
+    // [Fix] Vitestの型定義を認識させる
+    "types": [
+      "vitest/globals"
+    ]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
-
-

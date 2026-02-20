@@ -14,6 +14,7 @@ import React from 'react';
 export type ToolbarButtonsProps = {
     isEditing: boolean;
     isMinimized: boolean;
+    isPinned?: boolean; // [New]
     show: boolean;
     onBold?: () => void;
     onHeading?: () => void;
@@ -21,20 +22,23 @@ export type ToolbarButtonsProps = {
     onCheckbox?: () => void;
     onCapture?: () => void;
     onToggleMinimize: () => void;
+    onTogglePin?: () => void; // [New]
 };
 
 export default function ToolbarButtons({
     isEditing,
     isMinimized,
+    isPinned,
     show,
     onBold,
     onHeading,
     onList,
     onCheckbox,
     onCapture,
-    onToggleMinimize
+    onToggleMinimize,
+    onTogglePin
 }: ToolbarButtonsProps) {
-    // 通常モード時：ミニマイズボタンのみ
+    // 通常モード時：ツールバー（折りたたみ + ピン）
     if (!isEditing) {
         return (
             <div
@@ -48,13 +52,14 @@ export default function ToolbarButtons({
                     flexDirection: 'row',
                     justifyContent: 'flex-end',
                     alignItems: 'center',
-                    gap: '0px',
+                    gap: '2px', // 少し間隔を空ける
                     padding: '4px',
                     backgroundColor: 'transparent',
                     borderRadius: '8px',
                     zIndex: 200
                 }}
             >
+                {/* 折りたたみボタン (左) */}
                 <button
                     onPointerDown={(e) => {
                         e.preventDefault();
@@ -67,6 +72,91 @@ export default function ToolbarButtons({
                 >
                     {isMinimized ? '▽' : '△'}
                 </button>
+
+                {/* ピン留めボタン (右) */}
+                {onTogglePin && (
+                    <button
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onClick={() => {
+                            // Sound Effect
+                            try {
+                                const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+                                if (AudioContext) {
+                                    const ctx = new AudioContext();
+                                    const osc = ctx.createOscillator();
+                                    const gain = ctx.createGain();
+                                    const now = ctx.currentTime;
+
+                                    osc.connect(gain);
+                                    gain.connect(ctx.destination);
+
+                                    if (!isPinned) {
+                                        // Turning ON (Pinning) - "Gyuh" (Thud/Press)
+                                        // Low frequency, short, dull sound
+                                        osc.type = 'triangle';
+                                        osc.frequency.setValueAtTime(120, now);
+                                        osc.frequency.exponentialRampToValueAtTime(60, now + 0.08);
+
+                                        gain.gain.setValueAtTime(0.6, now);
+                                        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+                                        osc.start(now);
+                                        osc.stop(now + 0.15);
+                                    } else {
+                                        // Turning OFF (Unpinning) - "Pop" (Release)
+                                        // Higher pitch, light pop
+                                        osc.type = 'sine';
+                                        osc.frequency.setValueAtTime(400, now);
+                                        osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+
+                                        gain.gain.setValueAtTime(0.3, now);
+                                        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+                                        osc.start(now);
+                                        osc.stop(now + 0.1);
+                                    }
+
+                                    // Cleanup AudioContext
+                                    setTimeout(() => {
+                                        ctx.close();
+                                    }, 200);
+                                }
+                            } catch (e) {
+                                console.error('SFX Error:', e);
+                            }
+
+                            onTogglePin();
+                        }}
+                        className={`px-2 min-w-[28px] rounded text-sm flex items-center justify-center transition-all duration-200 ${isPinned
+                            ? 'text-red-600 bg-red-50 hover:bg-red-100 scale-100 opacity-100'
+                            : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600 scale-95 opacity-70 hover:opacity-100'
+                            }`}
+                        title={isPinned ? '最前面固定を解除' : '最前面に固定'}
+                        style={{ fontSize: '16px' }}
+                    >
+                        {isPinned ? (
+                            // ON State: Pinned (刺さっている)
+                            // Vertical pin, firmly planted
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2L12 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                <rect x="8" y="2" width="8" height="6" rx="1" fill="currentColor" />
+                                {/* Shadow/Hole at the bottom to indicate insertion */}
+                                <ellipse cx="12" cy="15" rx="3" ry="1.5" fill="rgba(0,0,0,0.3)" />
+                            </svg>
+                        ) : (
+                            // OFF State: Unpinned (外れている)
+                            // Pin lying on its side
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ transform: 'rotate(45deg)' }}>
+                                <path d="M16 12L7 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                <rect x="16" y="8" width="6" height="8" rx="1" fill="currentColor" stroke="currentColor" strokeWidth="2" />
+                                <path d="M4 12L7 12" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+                            </svg>
+                        )}
+                    </button>
+                )}
             </div>
         );
     }

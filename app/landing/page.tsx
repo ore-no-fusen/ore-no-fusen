@@ -1,6 +1,16 @@
+/**
+ * ランディングページ (LandingPage)
+ *
+ * 責務:
+ * - アプリケーションの紹介とダウンロードリンクの提供
+ * - VercelなどのWebホスティング環境での表示用ページ
+ * - 製品の特徴、スクリーンショット、ダウンロードボタンの表示
+ */
+
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Download, Github, FileText, Tag, Search, Sparkles, Zap, Shield } from 'lucide-react';
 
 export default function LandingPage() {
@@ -185,9 +195,11 @@ export default function LandingPage() {
                     <div className="relative">
                         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 blur-3xl" />
                         <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl">
-                            <img
+                            <Image
                                 src="/screenshots/ScreenShot_OreNoFusen.jpg"
                                 alt="俺の付箋 スクリーンショット"
+                                width={1200}
+                                height={800}
                                 className="w-full h-auto"
                             />
                         </div>

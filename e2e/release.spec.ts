@@ -1,10 +1,19 @@
+/**
+ * リリース前確認テスト (Release E2E)
+ *
+ * 責務:
+ * - リリース前の重要機能（CRUD、設定、検索）の厳格な動作検証
+ * - エラー隠蔽を許容しない品質ゲートとしての役割
+ */
 import { test, expect } from '@playwright/test';
 import { mockTauriAPI } from './mock-tauri';
 
 /**
  * リリース前確認テスト (Release E2E)
- * 
- * 厳格モード: エラー隠蔽禁止。基本機能の動作を保証する。
+ *
+ * 責務:
+ * - リリース前の重要機能（CRUD、設定、検索）の厳格な動作検証
+ * - エラー隠蔽を許容しない品質ゲートとしての役割
  */
 test.describe('Release Verification Suite (Strict)', () => {
 
