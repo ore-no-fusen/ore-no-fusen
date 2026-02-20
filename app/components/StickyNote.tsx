@@ -142,7 +142,8 @@ const StickyNote = memo(function StickyNote() {
         editBodyRef,
         isCommittingRef,
         ignoreBlurUntilRef,
-        lastEditEndedAt
+        lastEditEndedAt,
+        initialCoords,
     } = useEditMode({
         initialContent: content,
         onSave: handleSave, // ラップした保存関数を使用
@@ -780,7 +781,15 @@ const StickyNote = memo(function StickyNote() {
         <div
             ref={shellRef}
             className="noteShell h-screen overflow-hidden flex flex-col"
-            style={{ backgroundColor: noteBackgroundColor, cursor: shellCursor }}
+            style={{
+                backgroundColor: noteBackgroundColor,
+                cursor: shellCursor,
+                // [再発防止] レイアウト整合性のための定数定義
+                // これらを変えることで、表示・編集モード問わず一貫した余白を保持する
+                ['--editor-padding' as any]: '4px',
+                ['--editor-margin-bottom' as any]: '4px',
+                ['--footer-height' as any]: '20px',
+            }}
             onPointerDown={handleDragStart}
             onPointerEnter={() => setIsHover(true)}
             onPointerLeave={() => setIsHover(false)}
@@ -826,22 +835,54 @@ const StickyNote = memo(function StickyNote() {
                 />
             </div>
 
-            {/* メインコンテンツ */}
+            {/* メインコンテンツ - 付箋のほぼ全域を占める */}
             <main
                 style={{
-                    flex: isEditing ? 9 : 1,    // 変更: 編集時は9、表示時は1（全画面）
+                    flex: 1, // 常に残りの全領域を占有
                     display: 'flex',
                     flexDirection: 'column',
                     overflow: 'auto',
-                    padding: '4px',
-                    position: 'relative' // Add relative positioning for tags
+                    // 編集時はコンテナのパディングを外し、エディタ(cm-content)側でパディングを持つ（横幅いっぱいを白くするため）
+                    padding: isEditing ? '0' : 'var(--editor-padding)',
+                    position: 'relative'
+                }}
+                onClick={(e) => {
+                    // 編集モードで、エディタより下にあるこのコンテナ領域（＝黄色いフッタ領域）をクリックした場合は編集モードを終了
+                    if (isEditing && e.target === e.currentTarget) {
+                        handleEditBlur();
+                    }
                 }}
                 onDoubleClick={(e) => {
-                    // コンテンツ外（余白）のクリック時は末尾から編集開始
-                    console.log('[DEBUG] Main onDoubleClick fired. isEditing:', isEditing, 'isMinimized:', isMinimized);
+                    // 表示モードでのダブルクリック（編集開始）
                     if (!isEditing && !isMinimized) {
                         e.preventDefault();
-                        startEditing(content.length);
+                        const target = e.target as HTMLElement;
+                        const lineEl = target.closest('[data-line-index]');
+                        if (lineEl) {
+                            // テキスト行（白い部分）のダブルクリック
+                            const lineIndex = parseInt(lineEl.getAttribute('data-line-index') || '0', 10);
+                            const lines = content.split('\n');
+                            let offset = 0;
+                            for (let i = 0; i < lineIndex; i++) {
+                                offset += (lines[i]?.length ?? 0) + 1; // +1 for newline
+                            }
+                            offset += lines[lineIndex]?.length ?? 0; // 行末
+                            startEditing(offset);
+                        } else {
+                            // 行外（エディタ余白 または フッタ）のダブルクリック
+                            const lineEls = e.currentTarget.querySelectorAll('[data-line-index]');
+                            const lastLineEl = lineEls.length > 0 ? lineEls[lineEls.length - 1] as HTMLElement : null;
+                            // 最後の行のbottomより下をクリックした場合はフッタ領域と判定
+                            const isFooter = lastLineEl ? e.clientY > lastLineEl.getBoundingClientRect().bottom : true;
+
+                            if (isFooter) {
+                                // (B) フッタ領域: 全体の一番下（文末）から編集を始める
+                                startEditing(content.length);
+                            } else {
+                                // (A) エディタ余白: クリック座標に最も近い文字から編集を始める
+                                startEditing(undefined, { x: e.clientX, y: e.clientY });
+                            }
+                        }
                     }
                 }}
             >
@@ -874,23 +915,18 @@ const StickyNote = memo(function StickyNote() {
                         className="editorHost notePaper"
                         ref={editorHostRef}
                         style={{
-                            flex: 1,
                             display: 'flex',
                             flexDirection: 'column',
                             cursor: 'text',
-                            // 編集エリアの視覚化
-                            backgroundColor: 'rgba(255, 255, 255, 0.5)',
+                            backgroundColor: 'transparent',
                             borderRadius: '4px',
-                            boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.1)',
-                            margin: '0 4px 4px 4px' // 少し内側に配置
-                        }}
-                        onClick={(e) => {
-                            // 余白クリックでエディタにフォーカスし、末尾にカーソル移動
-                            if (e.target === editorHostRef.current) {
-                                editorRef.current?.setCursorToEnd();
-                            }
+                            marginBottom: 'var(--editor-margin-bottom)',
+                            width: '100%',
+                            padding: 0,
+                            // flex: 1 を意図的に外しています（内容に合わせて縦幅が自然に決まり、下部はフッタ領域として残る）
                         }}
                     >
+                        {/* [再発防止] RichTextEditor内部で height: 100% を強制し、この白いエリアを埋め尽くす */}
                         <RichTextEditor
                             ref={editorRef}
                             value={editBody}
@@ -915,6 +951,7 @@ const StickyNote = memo(function StickyNote() {
                             // エディタ自体は透明にして親の色を見せる
                             backgroundColor="transparent"
                             cursorPosition={cursorPosition}
+                            initialCoords={initialCoords}
                             isNewNote={isNewNote}
                             fontSize={noteFontSize}
                             onBlur={handleEditBlur}
@@ -930,13 +967,22 @@ const StickyNote = memo(function StickyNote() {
                         onCheckboxToggle={handleToggleCheckbox}
                         onImageResize={handleImageResize}
                         onDoubleClick={(e) => {
-                            console.log('[DEBUG] MarkdownRenderer onDoubleClick fired.');
                             e.stopPropagation();
-                            // クリック位置の文字オフセットを取得
+                            // クリック位置の行を特定し、その行末にカーソルを移動する
                             const target = e.target as HTMLElement;
-                            const srcStart = target.closest('[data-src-start]')?.getAttribute('data-src-start');
-                            const offset = srcStart ? parseInt(srcStart, 10) : 0;
-                            startEditing(isNaN(offset) ? 0 : offset);
+                            const lineEl = target.closest('[data-line-index]');
+                            if (lineEl) {
+                                const lineIndex = parseInt(lineEl.getAttribute('data-line-index') || '0', 10);
+                                const lines = content.split('\n');
+                                let offset = 0;
+                                for (let i = 0; i < lineIndex; i++) {
+                                    offset += (lines[i]?.length ?? 0) + 1;
+                                }
+                                offset += lines[lineIndex]?.length ?? 0;
+                                startEditing(offset);
+                            } else {
+                                startEditing(content.length);
+                            }
                         }}
                         selectedFilePath={selectedFile?.path}
                         resolvePath={resolvePath}
@@ -944,26 +990,30 @@ const StickyNote = memo(function StickyNote() {
                 )}
             </main>
 
-            {/* フッター領域（ドラッグ＆確認用、全体の約1割） - 編集モード時のみ表示 */}
+            {/* フッター領域 - 編集モード時のドラッグ操作用。最小限の高さに設定。 */}
             {isEditing && (
                 <div
                     className="noteFooter"
                     style={{
-                        flex: 1, // 全体の1割
-                        minHeight: '20px',
+                        height: 'var(--footer-height)',
                         cursor: 'grab',
                         userSelect: 'none',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        // 見た目は変えないという要望なので透明（背景色継承）
-                        backgroundColor: 'transparent'
+                        // 「エディタではない」ことを明確にするため、視覚的に区別できる背景を設定
+                        backgroundColor: 'rgba(0, 0, 0, 0.08)',
+                        borderTop: '1px solid rgba(0, 0, 0, 0.12)',
+                        color: 'rgba(0, 0, 0, 0.3)',
+                        fontSize: '12px',
+                        letterSpacing: '4px',
                     }}
                     onPointerDown={handleDragStart}
                     title="ドラッグで移動"
-                />
+                >
+                    ⠿
+                </div>
             )}
-
 
             {/* タグ表示エリア（右下、ホバー時のみ） */}
             {!isEditing && !isMinimized && currentTags.length > 0 && (

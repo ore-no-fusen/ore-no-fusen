@@ -231,7 +231,7 @@ export default function MarkdownRenderer({
             }}
         >
             {content ? (
-                <div style={{ whiteSpace: 'pre-wrap' }}>
+                <div style={{ whiteSpace: 'pre-wrap', flex: 1 }}>
                     {content.split('\n').map((line, i) => {
                         const lineStyle: React.CSSProperties = {
                             margin: 0,
