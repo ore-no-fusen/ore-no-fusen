@@ -14,6 +14,8 @@ import { PhysicalSize } from '@tauri-apps/api/dpi';
 
 export type UseWindowManagerOptions = {
     onGeometryChange: (geometry: { x: number; y: number; width: number; height: number }) => void;
+    onAutoExpand?: () => void; // [New] リサイズ操作により自動展開された際に呼ばれるコールバック
+    getMinimizedHeight?: () => number; // [New] ミニマイズ時のウィンドウ高さを動的に計算するコールバック
 };
 
 export type UseWindowManagerReturn = {
@@ -24,9 +26,26 @@ export type UseWindowManagerReturn = {
     setIsMinimized: (value: boolean) => void; // [New] Only for initial sync
 };
 
-export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions): UseWindowManagerReturn {
+export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedHeight }: UseWindowManagerOptions): UseWindowManagerReturn {
     const [isMinimized, setIsMinimized] = useState(false);
     const originalSizeRef = useRef<{ width: number; height: number } | null>(null);
+
+    // [New] イベントリスナー内で最新のステート/コールバックを参照するためのRef
+    const isMinimizedRef = useRef(isMinimized);
+    const onAutoExpandRef = useRef(onAutoExpand);
+    const getMinimizedHeightRef = useRef(getMinimizedHeight);
+
+    useEffect(() => {
+        isMinimizedRef.current = isMinimized;
+    }, [isMinimized]);
+
+    useEffect(() => {
+        onAutoExpandRef.current = onAutoExpand;
+    }, [onAutoExpand]);
+
+    useEffect(() => {
+        getMinimizedHeightRef.current = getMinimizedHeight;
+    }, [getMinimizedHeight]);
 
     const setOriginalSize = useCallback((width: number, height: number) => {
         originalSizeRef.current = { width, height };
@@ -72,9 +91,11 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
             const size = await win.innerSize();
             originalSizeRef.current = { width: size.width, height: size.height };
 
-            // DPIスケールファクターを考慮して1行分のサイズに縮小
+            // DPIスケールファクターを考慮して高さを設定
             const factor = await win.scaleFactor();
-            const targetHeight = Math.round(40 * factor); // 40px論理 → 物理
+            // 呼び出し元の計算式があればそれを使用し、なければデフォルト40px
+            const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
+            const targetHeight = Math.round(logicalHeight * factor);
 
             await win.setSize(new PhysicalSize(size.width, targetHeight));
             setIsMinimized(true);
@@ -101,8 +122,28 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
                 saveWindowState();
             });
 
-            unlistenResize = await win.listen('tauri://resize', () => {
-                saveWindowState();
+            unlistenResize = await win.listen('tauri://resize', async () => {
+                if (isMinimizedRef.current) {
+                    // ミニマイズ中にリサイズされた場合、高さが一定以上増えていたら「自動展開」とする
+                    const size = await win.innerSize();
+                    const factor = await win.scaleFactor();
+                    const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
+                    const targetHeight = Math.round(logicalHeight * factor);
+
+                    // 10px(物理ピクセル)以上広げられたら自動展開
+                    if (size.height > targetHeight + 10) {
+                        console.log('[useWindowManager] Auto-expanding due to vertical resize');
+                        setIsMinimized(false);
+                        // 手動で広げたサイズを新たな「展開サイズ」として記憶しておく
+                        originalSizeRef.current = { width: size.width, height: size.height };
+
+                        if (onAutoExpandRef.current) {
+                            onAutoExpandRef.current();
+                        }
+                    }
+                } else {
+                    saveWindowState();
+                }
             });
 
             console.log('[useWindowManager] Event listeners setup complete');

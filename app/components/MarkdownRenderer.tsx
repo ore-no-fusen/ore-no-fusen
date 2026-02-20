@@ -111,6 +111,7 @@ export type MarkdownRendererProps = {
     backgroundColor: string;
     fontSize: number;
     isDraggableArea?: boolean;
+    singleLinePreview?: boolean; // [New] ミニマイズ時用。1行のみ表示し省略するモード
     onCheckboxToggle: (lineIndex: number) => void;
     onImageResize: (newScale: number, baseOffset: number, originalText: string) => void;
     onDoubleClick: (e: React.MouseEvent) => void;
@@ -124,6 +125,7 @@ export default function MarkdownRenderer({
     backgroundColor,
     fontSize,
     isDraggableArea = false,
+    singleLinePreview = false,
     onCheckboxToggle,
     onImageResize,
     onDoubleClick,
@@ -231,15 +233,21 @@ export default function MarkdownRenderer({
             }}
         >
             {content ? (
-                <div style={{ whiteSpace: 'pre-wrap', flex: 1 }}>
-                    {content.split('\n').map((line, i) => {
+                <div style={{
+                    whiteSpace: singleLinePreview ? 'nowrap' : 'pre-wrap',
+                    overflow: singleLinePreview ? 'hidden' : 'visible',
+                    flex: 1
+                }}>
+                    {(singleLinePreview ? [content.split('\n')[0]] : content.split('\n')).map((line, i) => {
                         const lineStyle: React.CSSProperties = {
                             margin: 0,
                             padding: 0,
                             lineHeight: '1.4',
                             minHeight: '1.4em',
-                            display: 'flex',
-                            alignItems: 'flex-start'
+                            display: singleLinePreview ? 'block' : 'flex',
+                            alignItems: 'flex-start',
+                            overflow: singleLinePreview ? 'hidden' : 'visible',
+                            textOverflow: singleLinePreview ? 'ellipsis' : 'clip',
                         };
 
                         const baseOffset = lineOffsets[i] || 0;
@@ -266,7 +274,11 @@ export default function MarkdownRenderer({
                                     data-line-index={i}
                                     style={{ ...lineStyle, fontWeight: 700, fontSize: '1.1em' }}
                                 >
-                                    <span data-src-start={baseOffset + 2}>
+                                    <span data-src-start={baseOffset + 2} style={{
+                                        display: singleLinePreview ? 'block' : 'inline',
+                                        overflow: singleLinePreview ? 'hidden' : 'visible',
+                                        textOverflow: singleLinePreview ? 'ellipsis' : 'clip',
+                                    }}>
                                         {renderLineContent(line.substring(2), baseOffset + 2)}
                                     </span>
                                 </div>
@@ -345,7 +357,11 @@ export default function MarkdownRenderer({
                         // 通常のテキスト
                         return (
                             <div key={i} data-line-index={i} style={lineStyle}>
-                                <span data-src-start={baseOffset}>
+                                <span data-src-start={baseOffset} style={{
+                                    display: singleLinePreview ? 'block' : 'inline',
+                                    overflow: singleLinePreview ? 'hidden' : 'visible',
+                                    textOverflow: singleLinePreview ? 'ellipsis' : 'clip',
+                                }}>
                                     {renderLineContent(line, baseOffset)}
                                 </span>
                             </div>

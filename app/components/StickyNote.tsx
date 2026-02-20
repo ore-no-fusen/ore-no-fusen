@@ -153,12 +153,45 @@ const StickyNote = memo(function StickyNote() {
 
     // ウィンドウ管理
     const [isPinned, setIsPinned] = useState(false); // [New]
+
+    // [New] ミニマイズ状態からリサイズ操作により自動展開された場合の処理
+    const handleAutoExpand = useCallback(async () => {
+        if (!note) return;
+
+        let currentFront = rawFrontmatter;
+        let currentBody = content;
+
+        if (!currentFront) {
+            const { front, body } = splitFrontMatter(note.body);
+            currentFront = front;
+            currentBody = body;
+        }
+
+        const newFront = updateFrontmatterValue(currentFront, 'folded', 'false');
+        await saveNoteContent(currentBody, newFront, false);
+    }, [note, rawFrontmatter, content, saveNoteContent]);
+
+    // [New] ミニマイズ時の高さをフォント・見出し状況から動的計算
+    const getMinimizedHeight = useCallback(() => {
+        const lines = content.split('\n');
+        const firstLine = lines.length > 0 ? lines[0] : '';
+        const isHeading = firstLine.startsWith('# ');
+        // 見出しフォーマットの場合は1.1倍のフォントサイズが使われる
+        const fontSizeToUse = isHeading ? noteFontSize * 1.1 : noteFontSize;
+        const lineHeight = 1.4;
+        const paddingY = 8; // 上下4pxずつ (var(--editor-padding))
+
+        return Math.ceil(fontSizeToUse * lineHeight + paddingY);
+    }, [content, noteFontSize]);
+
     const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize, setIsMinimized } = useWindowManager({
         onGeometryChange: (geom) => {
             if (isDeletingRef.current) return;
             setRawFrontmatter((prev) => updateFrontmatterGeometry(prev, geom));
             setSavePending(true);
-        }
+        },
+        onAutoExpand: handleAutoExpand,
+        getMinimizedHeight // [New]
     });
 
     // タグ管理
@@ -887,23 +920,38 @@ const StickyNote = memo(function StickyNote() {
                 }}
             >
                 {isMinimized ? (
-                    // ミニマイズモード
+                    // ミニマイズモード: MarkdownRendererエンジンを再利用して1行表示
                     <div
                         style={{
-                            padding: '4px 6px',
-                            fontSize: `${noteFontSize}px`,
-                            lineHeight: '1.4',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
                             cursor: 'pointer',
                             userSelect: 'none',
-                            color: '#000000'
+                            color: '#000000',
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden'
                         }}
-                        onClick={() => toggleMinimize()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMinimize();
+                        }}
                         title="クリックで展開"
                     >
-                        {content?.split('\n')[0]?.replace(/^#\s*/, '') || '（空のメモ）'}
+                        <MarkdownRenderer
+                            content={content}
+                            backgroundColor="transparent"
+                            fontSize={noteFontSize}
+                            isDraggableArea={false}
+                            singleLinePreview={true} // [New] 省略表示モード
+                            onCheckboxToggle={handleToggleCheckbox}
+                            onImageResize={handleImageResize}
+                            onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                toggleMinimize();
+                            }}
+                            selectedFilePath={selectedFile?.path}
+                            resolvePath={resolvePath}
+                        />
                     </div>
                 ) : loading ? (
                     <div className="text-center text-gray-300 py-8 text-xs font-mono opacity-30">
