@@ -162,8 +162,7 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
 
     return (
         <div
-            className="fixed top-0 left-0 w-full h-full z-50 bg-white/98 backdrop-blur-md flex flex-col gap-3 p-4 box-border"
-            style={{}}
+            className="fixed inset-0 z-search bg-white/98 backdrop-blur-md flex flex-col gap-3 p-4 box-border"
         >
             {/* 検索入力 */}
             <div className="flex items-center gap-2">

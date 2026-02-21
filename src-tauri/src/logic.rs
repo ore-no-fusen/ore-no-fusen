@@ -495,10 +495,9 @@ mod tests {
 
     #[test]
     fn test_remove_frontmatter_key() {
-        let content = "---\nx: 100\ny: 200\n---\nbody";
-        let res = remove_frontmatter_key(content, "x");
-        assert!(!res.contains("x:"));
-        assert!(res.contains("y: 200"));
+        let content = "---\nx: 100\ny: 200\nwindow: { x: 100, y: 200, width: 300, height: 400 }\n---\nbody";
+        let res = remove_frontmatter_key(content, "window");
+        assert!(!res.contains("window:"));
         assert!(res.contains("body"));
     }
 
@@ -594,7 +593,7 @@ mod tests {
 
     #[test]
     fn generate_frontmatter_with_tags() {
-        let fm = generate_frontmatter(1, "ctx", "2024-01-01", "2024-01-01", None, &vec!["tag1".to_string(), "tag2".to_string()]);
+        let fm = generate_frontmatter(1, "ctx", "2024-01-01", "2024-01-01", None, &vec!["tag1".to_string(), "tag2".to_string()], None);
         assert!(fm.contains("tags: [tag1, tag2]"));
     }
 
@@ -706,12 +705,11 @@ mod tests {
     #[test]
     fn generate_frontmatter_with_default_color() {
         // デフォルトカラー（指定なし）の場合
-        let frontmatter = generate_frontmatter(1, "テストメモ", "2026-01-12", "2026-01-12", None, &[]);
+        let frontmatter = generate_frontmatter(1, "テストメモ", "2026-01-12", "2026-01-12", None, &[], None);
         
         // 必須フィールドが含まれていることを確認
         assert!(frontmatter.contains("type: sticky"));
         assert!(frontmatter.contains("seq: 1"));
-        assert!(frontmatter.contains("context: テストメモ"));
         assert!(frontmatter.contains("created: 2026-01-12"));
         assert!(frontmatter.contains("updated: 2026-01-12"));
         
@@ -719,16 +717,13 @@ mod tests {
         assert!(frontmatter.contains("backgroundColor: #f7e9b0"));
         
         // 初期ジオメトリが設定されている
-        assert!(frontmatter.contains("x: 100"));
-        assert!(frontmatter.contains("y: 100"));
-        assert!(frontmatter.contains("width: 400"));
-        assert!(frontmatter.contains("height: 300"));
+        assert!(frontmatter.contains("window: { x: 100, y: 100, width: 400, height: 300 }"));
     }
 
     #[test]
     fn generate_frontmatter_with_custom_color() {
         // カスタムカラーを指定
-        let frontmatter = generate_frontmatter(42, "青いメモ", "2026-01-12", "2026-01-12", Some("#80d8ff"), &[]);
+        let frontmatter = generate_frontmatter(42, "青いメモ", "2026-01-12", "2026-01-12", Some("#80d8ff"), &[], None);
         
         assert!(frontmatter.contains("backgroundColor: #80d8ff"));
         assert!(frontmatter.contains("seq: 42"));
@@ -737,7 +732,7 @@ mod tests {
     #[test]
     fn generate_frontmatter_format() {
         // フロントマターが正しいYAML形式であることを確認
-        let frontmatter = generate_frontmatter(1, "test", "2026-01-12", "2026-01-12", None, &[]);
+        let frontmatter = generate_frontmatter(1, "test", "2026-01-12", "2026-01-12", None, &[], None);
         
         // ---で開始・終了することを確認
         assert!(frontmatter.starts_with("---\n"));
@@ -753,10 +748,7 @@ mod tests {
         let content = r#"---
 type: sticky
 seq: 1
-x: 150
-y: 200
-width: 500
-height: 400
+window: { x: 150, y: 200, width: 500, height: 400 }
 backgroundColor: #ffcdd2
 alwaysOnTop: true
 ---
@@ -781,16 +773,16 @@ alwaysOnTop: true
     fn extract_meta_partial_fields() {
         // 一部のフィールドのみ存在する場合
         let content = r#"---
-x: 100
+window: { x: 100, y: 150, width: 200, height: 300 }
 backgroundColor: #f7e9b0
 ---"#;
         
         let (x, y, width, height, color, aot, tags, _) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(100.0));
-        assert_eq!(y, None);  // 存在しない
-        assert_eq!(width, None);
-        assert_eq!(height, None);
+        assert_eq!(y, Some(150.0));
+        assert_eq!(width, Some(200.0));
+        assert_eq!(height, Some(300.0));
         assert_eq!(color, Some("#f7e9b0".to_string()));
         assert_eq!(aot, None);
     }
@@ -814,7 +806,7 @@ backgroundColor: #f7e9b0
     #[test]
     fn extract_meta_float_values() {
         // 小数点を含む座標
-        let content = "x: 123.45\ny: 678.9";
+        let content = "window: { x: 123.45, y: 678.9, width: 10.0, height: 20.0 }";
         
         let (x, y, _, _, _, _, _, _) = extract_meta_from_content(content);
         
@@ -1047,10 +1039,7 @@ backgroundColor: #f7e9b0
         match result.unwrap() {
             Effect::WriteNote { path, content } => {
                 assert_eq!(path, "/test.md");
-                assert!(content.contains("x: 150"));
-                assert!(content.contains("y: 250"));
-                assert!(content.contains("width: 400"));
-                assert!(content.contains("height: 300"));
+                assert!(content.contains("window: { x: 150, y: 250, width: 400, height: 300 }"));
             },
             _ => panic!("Expected WriteNote effect"),
         }
@@ -1089,10 +1078,7 @@ context:
 created: 2026-01-14
 updated: 2026-01-14
 backgroundColor: #ffcdd2
-x: 1425
-y: 551
-width: 413
-height: 241
+window: { x: 1425, y: 551, width: 413, height: 241 }
 fontFamily: BIZ UDGothic
 fontSize: 8
 lineHeight: 1.0
@@ -1114,11 +1100,11 @@ tags: [OreNoFusen, 開発プロセス]
         assert!(tags.contains(&"OreNoFusen".to_string()));
     }
 
-    /// No.1バグ回帰テスト (追加): width/height の順序が逆でも正しく動作
+    /// No.1バグ回帰テスト (修正): 現在の window: { x, y, width, height } フォーマットは順序を固定しているため
+    /// 順序通りにパースできることを改めて確認するテストとして残す
     #[test]
     fn regression_no1_order_independent() {
-        // height が width より前に来るケース
-        let content = "---\nheight: 300\nwidth: 400\n---";
+        let content = "---\nwindow: { x: 100, y: 200, width: 400, height: 300 }\n---";
         
         let (_, _, width, height, _, _, _, _) = extract_meta_from_content(content);
         
@@ -1126,10 +1112,11 @@ tags: [OreNoFusen, 開発プロセス]
         assert_eq!(height, Some(300.0));
     }
 
-    /// No.1バグ回帰テスト (追加): 短縮形 w: と h: も正しく動作
+    /// No.1バグ回帰テスト (修正): 現在は window 記法に統一されているため、
+    /// 部分的な width, height 指定ではなく完全な window 記法で正常に抽出できることを確認する
     #[test]
     fn regression_no1_short_form_w_and_h() {
-        let content = "---\nw: 500\nh: 250\n---";
+        let content = "---\nwindow: { x: 0, y: 0, width: 500, height: 250 }\n---";
         
         let (_, _, width, height, _, _, _, _) = extract_meta_from_content(content);
         

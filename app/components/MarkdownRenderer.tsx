@@ -211,20 +211,10 @@ export default function MarkdownRenderer({
 
     return (
         <article
-            className="notePaper max-w-none"
+            className={`notePaper max-w-none whitespace-pre-wrap select-none p-0 flex-1 flex flex-col font-["BIZ_UDPGothic",_"Meiryo",_"Yu_Gothic_UI",_sans-serif] leading-[1.4] tracking-[0.01em] ${isDraggableArea ? 'cursor-grab' : 'cursor-text'}`}
             style={{
                 backgroundColor,
-                whiteSpace: 'pre-wrap',
-                cursor: isDraggableArea ? 'grab' : 'text',
-                userSelect: 'none',
-                padding: 0,
                 fontSize: `${fontSize}px`,
-                fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
-                lineHeight: '1.4',
-                letterSpacing: '0.01em',
-                flex: 1, // 親要素(main)いっぱいに広げる
-                display: 'flex',
-                flexDirection: 'column'
             }}
             onPointerDown={onPointerDown}
             onDoubleClick={(e) => {
@@ -233,22 +223,9 @@ export default function MarkdownRenderer({
             }}
         >
             {content ? (
-                <div style={{
-                    whiteSpace: singleLinePreview ? 'nowrap' : 'pre-wrap',
-                    overflow: singleLinePreview ? 'hidden' : 'visible',
-                    flex: 1
-                }}>
+                <div className={`flex-1 ${singleLinePreview ? 'whitespace-nowrap overflow-hidden' : 'whitespace-pre-wrap overflow-visible'}`}>
                     {(singleLinePreview ? [content.split('\n')[0]] : content.split('\n')).map((line, i) => {
-                        const lineStyle: React.CSSProperties = {
-                            margin: 0,
-                            padding: 0,
-                            lineHeight: '1.4',
-                            minHeight: '1.4em',
-                            display: singleLinePreview ? 'block' : 'flex',
-                            alignItems: 'flex-start',
-                            overflow: singleLinePreview ? 'hidden' : 'visible',
-                            textOverflow: singleLinePreview ? 'ellipsis' : 'clip',
-                        };
+                        const lineClass = `m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
 
                         const baseOffset = lineOffsets[i] || 0;
 
@@ -258,7 +235,7 @@ export default function MarkdownRenderer({
                                 <div
                                     key={i}
                                     data-line-index={i}
-                                    style={lineStyle}
+                                    className={lineClass}
                                     data-src-start={baseOffset}
                                 >
                                     &nbsp;
@@ -272,13 +249,9 @@ export default function MarkdownRenderer({
                                 <div
                                     key={i}
                                     data-line-index={i}
-                                    style={{ ...lineStyle, fontWeight: 700, fontSize: '1.1em' }}
+                                    className={`${lineClass} font-bold text-[1.1em]`}
                                 >
-                                    <span data-src-start={baseOffset + 2} style={{
-                                        display: singleLinePreview ? 'block' : 'inline',
-                                        overflow: singleLinePreview ? 'hidden' : 'visible',
-                                        textOverflow: singleLinePreview ? 'ellipsis' : 'clip',
-                                    }}>
+                                    <span data-src-start={baseOffset + 2} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
                                         {renderLineContent(line.substring(2), baseOffset + 2)}
                                     </span>
                                 </div>
@@ -293,33 +266,21 @@ export default function MarkdownRenderer({
                             const textStart = baseOffset + (line.length - text.length);
 
                             return (
-                                <div key={i} data-line-index={i} style={lineStyle}>
+                                <div key={i} data-line-index={i} className={lineClass}>
                                     <span
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onCheckboxToggle(i);
                                         }}
                                         data-interactable="true"
-                                        style={{
-                                            marginRight: '6px',
-                                            color: isChecked ? '#4caf50' : '#888',
-                                            flexShrink: 0,
-                                            display: 'inline-block',
-                                            width: '1em',
-                                            textAlign: 'center',
-                                            cursor: 'pointer',
-                                            userSelect: 'none'
-                                        }}
+                                        className={`mr-[6px] shrink-0 inline-block w-[1em] text-center cursor-pointer select-none ${isChecked ? 'text-[#4caf50]' : 'text-[#888]'}`}
                                         title={isChecked ? '未完了にする' : '完了にする'}
                                         data-src-start={baseOffset}
                                     >
                                         {isChecked ? '☑' : '☐'}
                                     </span>
                                     <span
-                                        style={{
-                                            textDecoration: isChecked ? 'line-through' : 'none',
-                                            opacity: isChecked ? 0.6 : 1
-                                        }}
+                                        className={isChecked ? 'line-through opacity-60' : 'no-underline opacity-100'}
                                         data-src-start={textStart}
                                     >
                                         {renderLineContent(text, textStart)}
@@ -334,15 +295,9 @@ export default function MarkdownRenderer({
                             const text = listMatch[1];
                             const textStart = baseOffset + (line.length - text.length);
                             return (
-                                <div key={i} data-line-index={i} style={lineStyle}>
+                                <div key={i} data-line-index={i} className={lineClass}>
                                     <span
-                                        style={{
-                                            marginRight: '8px',
-                                            flexShrink: 0,
-                                            display: 'inline-block',
-                                            width: '1em',
-                                            textAlign: 'center'
-                                        }}
+                                        className="mr-[8px] shrink-0 inline-block w-[1em] text-center"
                                         data-src-start={baseOffset}
                                     >
                                         •
@@ -356,12 +311,8 @@ export default function MarkdownRenderer({
 
                         // 通常のテキスト
                         return (
-                            <div key={i} data-line-index={i} style={lineStyle}>
-                                <span data-src-start={baseOffset} style={{
-                                    display: singleLinePreview ? 'block' : 'inline',
-                                    overflow: singleLinePreview ? 'hidden' : 'visible',
-                                    textOverflow: singleLinePreview ? 'ellipsis' : 'clip',
-                                }}>
+                            <div key={i} data-line-index={i} className={lineClass}>
+                                <span data-src-start={baseOffset} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
                                     {renderLineContent(line, baseOffset)}
                                 </span>
                             </div>
@@ -369,7 +320,7 @@ export default function MarkdownRenderer({
                     })}
                 </div>
             ) : (
-                <div style={{ color: '#999', padding: '8px' }}>
+                <div className="text-[#999] p-2">
                     （空のメモ）
                 </div>
             )}

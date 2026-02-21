@@ -8,7 +8,7 @@
  * - コンテキストメニューイベントのリスニング
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NoteMeta } from '@/app/api/notes';
 import { playDeleteSound, playSaveSound } from '../utils/soundManager';
@@ -35,6 +35,7 @@ type UseStickyNoteContextMenuProps = {
     isEditing: boolean;
     handleEditBlur: () => Promise<void>;
     onInsertText?: (text: string) => void;
+    setTagToDelete: (tag: string) => void;
 };
 
 export function useStickyNoteContextMenu({
@@ -57,9 +58,12 @@ export function useStickyNoteContextMenu({
     setTagInputValue,
     isEditing,
     handleEditBlur,
-    onInsertText
+    onInsertText,
+    setTagToDelete
 }: UseStickyNoteContextMenuProps) {
     const lastContextMenuPos = useRef<{ x: number; y: number } | null>(null);
+    const shouldReopenMenu = useRef(false);
+    const [isTagDeleteMode, setIsTagDeleteMode] = useState(false);
 
     // フォルダを開く
     const handleOpenFolder = useCallback(async () => {
@@ -192,43 +196,77 @@ export function useStickyNoteContextMenu({
                 separatorCommon
             ];
 
-            // タグサブメニュー
-            const tagNewItem = await MenuItem.new({
-                id: 'ctx_tag_new',
-                text: `➕ ${t('menu.addTag')}`,
-                action: async () => {
-                    try {
-                        const tags = await invoke<string[]>('fusen_get_all_tags');
-                        loadAllTags();
-                        setShowTagModal(true);
-                        setTagInputValue('');
-                    } catch (e) { console.error('Failed to load tags for new tag modal:', e); }
-                }
-            });
+            // タグサブメニューの構築
+            let tagSubItems: any[] = [];
 
-            let tagSubItems: any[] = [tagNewItem];
+            if (isTagDeleteMode) {
+                // =============== 削除モード ===============
+                tagSubItems.push(await MenuItem.new({ id: 'header_del', text: '🗑️ 削除モード (タグを選択して削除)', enabled: false }));
+                tagSubItems.push(await MenuItem.new({
+                    id: 'ctx_exit_mode',
+                    text: '🔙 通常モードに戻る',
+                    action: () => {
+                        shouldReopenMenu.current = true;
+                        setIsTagDeleteMode(false);
+                    }
+                }));
 
-            // 既存タグのトグル
-            if (allTags.length > 0) {
-                tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                for (const tag of allTags) {
-                    const isChecked = currentTags.includes(tag);
-                    tagSubItems.push(await MenuItem.new({
-                        id: `ctx_tag_${tag}`,
-                        text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
-                        action: async () => {
-                            if (!selectedFile) return;
-                            if (isChecked) {
-                                await removeTagFromNote(selectedFile.path, tag);
-                            } else {
-                                await addTagToNote(selectedFile.path, tag);
+                if (allTags.length > 0) {
+                    tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                    for (const tag of allTags) {
+                        tagSubItems.push(await MenuItem.new({
+                            id: `ctx_tag_del_${tag}`,
+                            text: `❌ ${tag}`,
+                            action: () => {
+                                setTagToDelete(tag);
                             }
-                            // [Fix] Tag操作後にノートをリロードして最新の状態（タグ反映済み）を取得する
-                            // これにより useNoteFile の state (note, content, rawFrontmatter) が更新される
-                            // ※ loadAllTags は useTagManager 内で呼ばれているが、note自体の再読み込みが必要
-                            await import('@tauri-apps/api/event').then(({ emit }) => {
-                                emit('fusen:reload_note', { path: selectedFile.path });
-                            });
+                        }));
+                    }
+                }
+            } else {
+                // =============== 通常モード ===============
+                const tagNewItem = await MenuItem.new({
+                    id: 'ctx_tag_new',
+                    text: `➕ ${t('menu.addTag')}`,
+                    action: async () => {
+                        try {
+                            const tags = await invoke<string[]>('fusen_get_all_tags');
+                            loadAllTags();
+                            setShowTagModal(true);
+                            setTagInputValue('');
+                        } catch (e) { console.error('Failed to load tags for new tag modal:', e); }
+                    }
+                });
+
+                tagSubItems.push(tagNewItem);
+
+                if (allTags.length > 0) {
+                    tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                    for (const tag of allTags) {
+                        const isChecked = currentTags.includes(tag);
+                        tagSubItems.push(await MenuItem.new({
+                            id: `ctx_tag_${tag}`,
+                            text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
+                            action: async () => {
+                                if (!selectedFile) return;
+                                if (isChecked) {
+                                    await removeTagFromNote(selectedFile.path, tag);
+                                } else {
+                                    await addTagToNote(selectedFile.path, tag);
+                                }
+                                await import('@tauri-apps/api/event').then(({ emit }) => {
+                                    emit('fusen:reload_note', { path: selectedFile.path });
+                                });
+                            }
+                        }));
+                    }
+                    tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                    tagSubItems.push(await MenuItem.new({
+                        id: 'ctx_enter_del_mode',
+                        text: '🗑️ 削除モードにする',
+                        action: () => {
+                            shouldReopenMenu.current = true;
+                            setIsTagDeleteMode(true);
                         }
                     }));
                 }
@@ -317,18 +355,15 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, allTags, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue]);
+    }, [selectedFile, t, allTags, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete]);
 
 
     // 右クリックイベントリスナー
     useEffect(() => {
         const handleContextMenu = async (e: MouseEvent) => {
             e.preventDefault();
-            // 編集モード中はBlurしない（メニュー操作のため）
             if (!isEditing) {
-                // 閲覧モード中なら、他の操作をキャンセルするなどの意図で呼ぶかもしれないが、
-                // 基本的には何もしなくてよい。
-                // ただし、もし選択状態などをクリアしたい場合はここで処理。
+                // 閲覧モード時の処理
             }
             lastContextMenuPos.current = { x: e.clientX, y: e.clientY };
             await showContextMenu(e.clientX, e.clientY);
@@ -338,6 +373,19 @@ export function useStickyNoteContextMenu({
         window.addEventListener('contextmenu', handleContextMenu);
         return () => window.removeEventListener('contextmenu', handleContextMenu);
     }, [isEditing, handleEditBlur, showContextMenu]);
+
+    // モード切り替えによるメニューの再表示
+    useEffect(() => {
+        if (shouldReopenMenu.current) {
+            shouldReopenMenu.current = false;
+            setTimeout(() => {
+                const pos = lastContextMenuPos.current;
+                if (pos) {
+                    showContextMenu(pos.x, pos.y);
+                }
+            }, 50);
+        }
+    }, [isTagDeleteMode, showContextMenu]);
 
     return { showContextMenu };
 }

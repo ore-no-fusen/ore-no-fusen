@@ -25,6 +25,7 @@ import { useWindowManager } from '@/app/hooks/useWindowManager';
 import { useTagManager } from '@/app/hooks/useTagManager';
 import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
+import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 
 // UIコンポーネント
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
@@ -63,9 +64,7 @@ const StickyNote = memo(function StickyNote() {
         [language]
     );
 
-    // スタイル関連
-    const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
-    const [noteFontSize, setNoteFontSize] = useState<number>(16);
+
     const [isNewNote, setIsNewNote] = useState(false);
 
     // UI状態
@@ -76,7 +75,6 @@ const StickyNote = memo(function StickyNote() {
     // タグモーダル
     const [showTagModal, setShowTagModal] = useState(false);
     const [tagInputValue, setTagInputValue] = useState('');
-    const [isTagDeleteMode, setIsTagDeleteMode] = useState(false);
     const [tagToDelete, setTagToDelete] = useState<string | null>(null);
 
     // Refs
@@ -85,7 +83,6 @@ const StickyNote = memo(function StickyNote() {
     const shellRef = useRef<HTMLDivElement>(null);
     const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
-    const shouldReopenMenu = useRef(false);
     const isCapturingRef = useRef(false);
 
     // ============================================================
@@ -116,6 +113,9 @@ const StickyNote = memo(function StickyNote() {
             setSelectedFile((prev) => (prev ? { ...prev, path: newPath, context: newContext } : null));
         }
     });
+
+    // スタイル関連（カスタムフックで一元管理）
+    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize } = useNoteStyles(note);
 
     // 削除・アーカイブ中の保存防止フラグ
     const isDeletingRef = useRef(false);
@@ -230,11 +230,6 @@ const StickyNote = memo(function StickyNote() {
             setCurrentTags(note.meta.tags);
         }
 
-        // Background Color
-        if (note.meta.background_color) {
-            setNoteBackgroundColor(note.meta.background_color);
-        }
-
         // Pin State
         if (note.meta.always_on_top !== undefined) {
             setIsPinned(note.meta.always_on_top);
@@ -258,7 +253,11 @@ const StickyNote = memo(function StickyNote() {
 
     // ピン留め状態の同期（初期ロード完了時および変更時）
     useEffect(() => {
-        invoke('fusen_set_always_on_top', { enabled: isPinned });
+        if (isPinned !== undefined && isPinned !== null) {
+            invoke('fusen_set_always_on_top', { enabled: Boolean(isPinned) }).catch(err => {
+                console.error('[StickyNote] Failed to set always-on-top:', err);
+            });
+        }
     }, [isPinned]);
 
     /**
@@ -328,31 +327,6 @@ const StickyNote = memo(function StickyNote() {
     // 初期化・イベントリスナー
     // ============================================================
 
-    // フォントサイズ同期
-    useEffect(() => {
-        setNoteFontSize(settings.font_size);
-    }, [settings.font_size]);
-
-    // グローバル設定更新リスナー
-    useEffect(() => {
-        let unlisten: (() => void) | undefined;
-        (async () => {
-            try {
-                unlisten = await listen<any>('settings_updated', (event) => {
-                    const newSettings = event.payload;
-                    if (newSettings && typeof newSettings.font_size === 'number') {
-                        setNoteFontSize(newSettings.font_size);
-                    }
-                });
-            } catch (e) {
-                console.error('Failed to setup settings_updated listener', e);
-            }
-        })();
-        return () => {
-            if (unlisten) unlisten();
-        };
-    }, []);
-
     // 初期ロード（一度だけ実行）
     const hasInitializedRef = useRef(false);
     useEffect(() => {
@@ -389,35 +363,62 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => {
         if (!selectedFile) return;
 
-        let unlistenMove: (() => void) | undefined;
-        let unlistenResize: (() => void) | undefined;
-        let unlistenClose: (() => void) | undefined;
+        let isMounted = true;
+        let unlistenMove: (() => void) | null = null;
+        let unlistenResize: (() => void) | null = null;
+        let unlistenClose: (() => void) | null = null;
 
         const setupListeners = async () => {
-            const win = getCurrentWindow();
+            try {
+                const win = getCurrentWindow();
 
-            unlistenMove = await win.listen('tauri://move', () => {
-                saveWindowState();
-            });
+                // unlisten関数自体がPromiseを返すTauri v2仕様への対策ラッパー
+                const wrapUnlisten = (u: any) => () => {
+                    try {
+                        const p = u?.();
+                        if (p && p.catch) p.catch(() => { });
+                    } catch (e) { }
+                };
 
-            unlistenResize = await win.listen('tauri://resize', () => {
-                saveWindowState();
-            });
+                const uMove = await win.listen('tauri://move', () => {
+                    saveWindowState();
+                });
+                const safeMove = wrapUnlisten(uMove);
+                if (isMounted) unlistenMove = safeMove; else safeMove();
 
-            unlistenClose = await win.listen('tauri://close-requested', async () => {
-                if (isDeletingRef.current) return; // 削除中はクローズ処理を阻害しない
-                if (isEditing) {
-                    await endEditing();
-                }
-            });
+                const uResize = await win.listen('tauri://resize', () => {
+                    saveWindowState();
+                });
+                const safeResize = wrapUnlisten(uResize);
+                if (isMounted) unlistenResize = safeResize; else safeResize();
+
+                const uClose = await win.listen('tauri://close-requested', async () => {
+                    if (isDeletingRef.current) return;
+                    if (isEditing) {
+                        await endEditing();
+                    }
+                });
+                const safeClose = wrapUnlisten(uClose);
+                if (isMounted) unlistenClose = safeClose; else safeClose();
+
+            } catch (err) {
+                console.warn('[StickyNote] Event listener setup failed:', err);
+            }
         };
 
         setupListeners();
 
         return () => {
-            if (unlistenMove) unlistenMove();
-            if (unlistenResize) unlistenResize();
-            if (unlistenClose) unlistenClose();
+            isMounted = false;
+            const safeUnlisten = (u: any) => {
+                try {
+                    const p = u?.();
+                    if (p && p.catch) p.catch(() => { });
+                } catch (e) { }
+            };
+            safeUnlisten(unlistenMove);
+            safeUnlisten(unlistenResize);
+            safeUnlisten(unlistenClose);
         };
     }, [selectedFile, isEditing, endEditing, saveWindowState]);
 
@@ -425,28 +426,50 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => {
         if (!selectedFile) return;
 
-        let unlisten: (() => void) | undefined;
+        let isMounted = true;
+        let unlistenReload: (() => void) | null = null;
 
         const setupListener = async () => {
-            unlisten = await listen<{ path: string }>('fusen:reload_note', async (event) => {
-                const targetPath = event.payload.path;
-                if (pathsEqual(targetPath, selectedFile.path)) {
-                    console.log('[RELOAD] Reloading note:', targetPath);
-                    const body = await loadNote();
-                    setContent(body);
-                    setEditBody(body);
+            try {
+                // unlisten関数自体がPromiseを返すTauri v2仕様への対策ラッパー
+                const wrapUnlisten = (u: any) => () => {
+                    try {
+                        const p = u?.();
+                        if (p && p.catch) p.catch(() => { });
+                    } catch (e) { }
+                };
 
-                    if (isEditing) {
-                        setIsEditing(false);
+                const uReload = await listen<{ path: string }>('fusen:reload_note', async (event) => {
+                    const targetPath = event.payload?.path;
+                    if (targetPath && selectedFile?.path && pathsEqual(targetPath, selectedFile.path)) {
+                        console.log('[RELOAD] Reloading note:', targetPath);
+                        const body = await loadNote();
+                        setContent(body);
+                        setEditBody(body);
+
+                        if (isEditing) {
+                            setIsEditing(false);
+                        }
                     }
-                }
-            });
+                });
+                const safeReload = wrapUnlisten(uReload);
+                if (isMounted) unlistenReload = safeReload; else safeReload();
+            } catch (err) {
+                console.warn('[StickyNote] reload_note listener setup failed:', err);
+            }
         };
 
         setupListener();
 
         return () => {
-            if (unlisten) unlisten();
+            isMounted = false;
+            const safeUnlisten = (u: any) => {
+                try {
+                    const p = u?.();
+                    if (p && p.catch) p.catch(() => { });
+                } catch (e) { }
+            };
+            safeUnlisten(unlistenReload);
         };
     }, [selectedFile, isEditing, loadNote, setContent, setEditBody, setIsEditing]);
 
@@ -457,49 +480,68 @@ const StickyNote = memo(function StickyNote() {
         let unlisten: (() => void) | undefined;
 
         const setupScrollToLineListener = async () => {
-            unlisten = await listen<{ path: string; line: number; query?: string }>(
-                'fusen:scroll_to_line',
-                async (event) => {
-                    const { path: targetPath, line, query } = event.payload;
+            try {
+                // unlisten関数自体がPromiseを返すTauri v2仕様への対策ラッパー
+                const wrapUnlisten = (u: any) => () => {
+                    try {
+                        const p = u?.();
+                        if (p && p.catch) p.catch(() => { });
+                    } catch (e) { }
+                };
 
-                    if (!pathsEqual(targetPath, selectedFile.path)) return;
+                const uScroll = await listen<{ path: string; line: number; query?: string }>(
+                    'fusen:scroll_to_line',
+                    async (event) => {
+                        const { path: targetPath, line, query } = event.payload;
 
-                    if (!isEditing) {
-                        startEditing();
-                    }
+                        if (!pathsEqual(targetPath, selectedFile.path)) return;
 
-                    await new Promise((r) => setTimeout(r, 100));
-
-                    if (editorRef.current) {
-                        const lines = content.split('\n');
-                        const offset = lines.slice(0, line - 1).reduce((acc, l) => acc + l.length + 1, 0);
-
-                        if (query) {
-                            editorRef.current.highlightQuery(query);
-
-                            if (line <= lines.length) {
-                                const lineContent = lines[line - 1] || '';
-                                const queryLower = query.toLowerCase();
-                                const matchIndex = lineContent.toLowerCase().indexOf(queryLower);
-
-                                if (matchIndex >= 0) {
-                                    const start = offset + matchIndex;
-                                    editorRef.current.setCursor(start);
-                                    return;
-                                }
-                            }
+                        if (!isEditing) {
+                            startEditing();
                         }
 
-                        editorRef.current.setCursor(offset);
+                        await new Promise((r) => setTimeout(r, 100));
+
+                        if (editorRef.current) {
+                            const lines = content.split('\n');
+                            const offset = lines.slice(0, line - 1).reduce((acc, l) => acc + l.length + 1, 0);
+
+                            if (query) {
+                                editorRef.current.highlightQuery(query);
+
+                                if (line <= lines.length) {
+                                    const lineContent = lines[line - 1] || '';
+                                    const queryLower = query.toLowerCase();
+                                    const matchIndex = lineContent.toLowerCase().indexOf(queryLower);
+
+                                    if (matchIndex >= 0) {
+                                        const start = offset + matchIndex;
+                                        editorRef.current.setCursor(start);
+                                        return;
+                                    }
+                                }
+                            }
+
+                            editorRef.current.setCursor(offset);
+                        }
                     }
-                }
-            );
+                );
+                unlisten = wrapUnlisten(uScroll);
+            } catch (err) {
+                console.warn('[StickyNote] scroll_to_line listener setup failed:', err);
+            }
         };
 
         setupScrollToLineListener();
 
         return () => {
-            if (unlisten) unlisten();
+            const safeUnlisten = (u: any) => {
+                try {
+                    const p = u?.();
+                    if (p && p.catch) p.catch(() => { });
+                } catch (e) { }
+            };
+            safeUnlisten(unlisten);
         };
     }, [selectedFile, content, isEditing, startEditing]);
 
@@ -561,6 +603,55 @@ const StickyNote = memo(function StickyNote() {
         setContent(newContent);
         setEditBody(newContent);
         setSavePending(true);
+    };
+
+    /**
+     * タグ追加処理
+     */
+    const handleTagSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const tag = tagInputValue.trim();
+        if (tag && selectedFile) {
+            try {
+                await addTagToNote(selectedFile.path, tag);
+                // Tag操作後にノートをリロードして最新の状態（タグ反映済み）を取得する
+                await import('@tauri-apps/api/event').then(({ emit }) => {
+                    emit('fusen:reload_note', { path: selectedFile.path });
+                });
+            } catch (err) {
+                console.error('[Tag] Failed to add tag:', err);
+                alert('タグの追加に失敗しました。');
+            }
+        }
+        setShowTagModal(false);
+        setTagInputValue('');
+    };
+
+    /**
+     * グローバルにタグを削除する処理
+     */
+    const executeTagDelete = async () => {
+        if (!tagToDelete) return;
+
+        console.log('[Frontend] Executing global delete for:', tagToDelete);
+        try {
+            const count = await deleteTagFromAllNotes(tagToDelete);
+            console.log(`[Frontend] Deleted tag ${tagToDelete} from ${count} notes.`);
+            if (count === 0) {
+                console.warn('[Frontend] Backend reported 0 notes modified. Is the tag matching correct?');
+            }
+
+            // Tag操作後にノートをリロードして最新の状態を取得する
+            if (selectedFile) {
+                await import('@tauri-apps/api/event').then(({ emit }) => {
+                    emit('fusen:reload_note', { path: selectedFile.path });
+                });
+            }
+        } catch (err) {
+            console.error('[Tag] Failed to delete tag globally:', err);
+            alert(`タグの全件削除に失敗しました。\n${err}`);
+        }
+        setTagToDelete(null); // モーダルを閉じてリセット
     };
 
     /**
@@ -782,7 +873,8 @@ const StickyNote = memo(function StickyNote() {
             if (editorRef.current) {
                 editorRef.current.insertText(text);
             }
-        }
+        },
+        setTagToDelete
     });
 
     /**
@@ -840,14 +932,7 @@ const StickyNote = memo(function StickyNote() {
             `}</style>
 
             {/* ツールバー */}
-            <div
-                style={{
-                    position: 'absolute',
-                    top: 0,
-                    right: 0,
-                    zIndex: 100
-                }}
-            >
+            <div className="absolute top-0 right-0 z-toolbar">
                 <ToolbarButtons
                     isEditing={isEditing}
                     isMinimized={isMinimized}
@@ -870,15 +955,7 @@ const StickyNote = memo(function StickyNote() {
 
             {/* メインコンテンツ - 付箋のほぼ全域を占める */}
             <main
-                style={{
-                    flex: 1, // 常に残りの全領域を占有
-                    display: 'flex',
-                    flexDirection: 'column',
-                    overflow: 'auto',
-                    // 編集時はコンテナのパディングを外し、エディタ(cm-content)側でパディングを持つ（横幅いっぱいを白くするため）
-                    padding: isEditing ? '0' : 'var(--editor-padding)',
-                    position: 'relative'
-                }}
+                className={`flex-1 flex flex-col overflow-auto relative ${isEditing ? 'p-0' : 'p-[var(--editor-padding)]'}`}
                 onClick={(e) => {
                     // 編集モードで、エディタより下にあるこのコンテナ領域（＝黄色いフッタ領域）をクリックした場合は編集モードを終了
                     if (isEditing && e.target === e.currentTarget) {
@@ -922,15 +999,7 @@ const StickyNote = memo(function StickyNote() {
                 {isMinimized ? (
                     // ミニマイズモード: MarkdownRendererエンジンを再利用して1行表示
                     <div
-                        style={{
-                            cursor: 'pointer',
-                            userSelect: 'none',
-                            color: '#000000',
-                            flex: 1,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            overflow: 'hidden'
-                        }}
+                        className="cursor-pointer select-none text-black flex-1 flex flex-col overflow-hidden"
                         onClick={(e) => {
                             e.stopPropagation();
                             toggleMinimize();
@@ -960,19 +1029,8 @@ const StickyNote = memo(function StickyNote() {
                 ) : isEditing ? (
                     // 編集モード
                     <div
-                        className="editorHost notePaper"
+                        className="editorHost notePaper flex flex-col cursor-text bg-transparent rounded mb-[var(--editor-margin-bottom)] w-full p-0"
                         ref={editorHostRef}
-                        style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            cursor: 'text',
-                            backgroundColor: 'transparent',
-                            borderRadius: '4px',
-                            marginBottom: 'var(--editor-margin-bottom)',
-                            width: '100%',
-                            padding: 0,
-                            // flex: 1 を意図的に外しています（内容に合わせて縦幅が自然に決まり、下部はフッタ領域として残る）
-                        }}
                     >
                         {/* [再発防止] RichTextEditor内部で height: 100% を強制し、この白いエリアを埋め尽くす */}
                         <RichTextEditor
@@ -1063,56 +1121,38 @@ const StickyNote = memo(function StickyNote() {
                 </div>
             )}
 
+            {/* UI: リモート同期ステータス (将来の拡張用) */}
+            {/*
+            {settings.remote_sync_enabled && (
+                <div
+                    className="absolute bottom-ui-offset-y left-ui-offset-x font-mono text-[10px] tracking-widest pointer-events-none select-none"
+                    style={{ color: `${noteBackgroundColor} filter invert(50%)` }}
+                >
+                    {syncStatus === 'syncing' && 'SYNCING...'}
+                    {syncStatus === 'synced' && 'SYNCED'}
+                    {syncStatus === 'error' && 'SYNC ERROR'}
+                </div>
+            )}
+            */}
+
             {/* タグ表示エリア（右下、ホバー時のみ） */}
             {!isEditing && !isMinimized && currentTags.length > 0 && (
-                <div style={{
-                    position: 'absolute',
-                    bottom: '12px',
-                    right: '8px',
-                    zIndex: 100,
-                    pointerEvents: 'none',
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    opacity: isHover ? 1 : 0,
-                    transition: 'opacity 0.2s ease',
-                }}>
-                    <div style={{
-                        display: 'flex',
-                        gap: '4px',
-                        flexWrap: 'wrap',
-                        maxWidth: '250px',
-                        justifyContent: 'flex-end',
-                    }}>
+                <div
+                    className="absolute bottom-ui-offset-y right-ui-offset-x z-tags pointer-events-none flex justify-end"
+                    style={{ opacity: isHover ? 1 : 0, transition: 'opacity 0.2s ease' }}
+                >
+                    <div className="flex gap-1 flex-wrap max-w-[250px] justify-end">
                         {currentTags.slice(0, 3).map((tag: string, idx: number) => (
                             <span
                                 key={idx}
-                                style={{
-                                    fontSize: '10px',
-                                    padding: '3px 8px',
-                                    backgroundColor: 'rgba(100, 100, 100, 0.08)',
-                                    color: '#6b7280',
-                                    borderRadius: '4px',
-                                    border: '1px solid rgba(100, 100, 100, 0.15)',
-                                    whiteSpace: 'nowrap',
-                                    fontWeight: 500,
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                                }}
+                                className="text-[10px] px-2 py-[3px] bg-gray-200/80 text-gray-700 rounded border border-gray-300/80 whitespace-nowrap font-medium shadow-sm"
                             >
                                 {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
                             </span>
                         ))}
                         {currentTags.length > 3 && (
                             <span
-                                style={{
-                                    fontSize: '10px',
-                                    padding: '3px 8px',
-                                    backgroundColor: 'rgba(100, 100, 100, 0.05)',
-                                    color: '#9ca3af',
-                                    borderRadius: '4px',
-                                    border: '1px solid rgba(100, 100, 100, 0.1)',
-                                    whiteSpace: 'nowrap',
-                                    fontWeight: 500,
-                                }}
+                                className="text-[10px] px-2 py-[3px] bg-gray-200/50 text-gray-500 rounded border border-gray-300/50 whitespace-nowrap font-medium"
                             >
                                 +{currentTags.length - 3}
                             </span>
@@ -1120,6 +1160,68 @@ const StickyNote = memo(function StickyNote() {
                     </div>
                 </div>
             )}
+
+            {/* 新規タグ追加モーダル */}
+            {showTagModal && (
+                <div
+                    className="absolute inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                    onPointerDown={(e) => {
+                        e.stopPropagation();
+                        if (e.target === e.currentTarget) {
+                            setShowTagModal(false);
+                        }
+                    }}
+                >
+                    <div
+                        className="bg-white p-6 rounded-xl shadow-2xl flex flex-col gap-4 w-[85%] max-w-[320px] transform scale-100 opacity-100 transition-all"
+                        onPointerDown={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="text-gray-800 font-bold text-lg mb-2 flex items-center gap-2">
+                            <span>🏷️</span> 新規タグを追加
+                        </h3>
+                        <form onSubmit={handleTagSubmit} className="flex flex-col gap-4">
+                            <input
+                                autoFocus
+                                type="text"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 text-sm"
+                                placeholder="例: Todo, アイデア, etc..."
+                                value={tagInputValue}
+                                onChange={(e) => setTagInputValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                        setShowTagModal(false);
+                                    }
+                                }}
+                            />
+                            <div className="flex justify-end gap-2 mt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTagModal(false)}
+                                    className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                    キャンセル
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!tagInputValue.trim()}
+                                    className="px-6 py-2 text-sm font-bold text-white bg-purple-600 rounded-lg disabled:opacity-50 hover:bg-purple-700 transition-colors shadow-md"
+                                >
+                                    追加
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* グローバルタグ削除の確認ダイアログ */}
+            <ConfirmDialog
+                isOpen={!!tagToDelete}
+                title="タグの削除"
+                message={`タグ「${tagToDelete}」を完全に削除しますか？\n\n※この操作は元に戻せません。このタグを含む**すべての付箋**からバッジが消去されます。付箋本体は消去されません。`}
+                onConfirm={executeTagDelete}
+                onCancel={() => setTagToDelete(null)}
+            />
 
         </div >
     );

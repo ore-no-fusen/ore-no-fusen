@@ -609,8 +609,7 @@ mod tests {
         // コンテンツにメタデータ（x, y, tags）を埋め込む
         let content = r#"---
 seq: 1
-x: 100.0
-y: 200.0
+window: { x: 100.0, y: 200.0, width: 300.0, height: 400.0 }
 tags: ["important"]
 ---
 

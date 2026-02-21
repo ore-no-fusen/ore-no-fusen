@@ -12,11 +12,11 @@ import { useEffect } from "react";
 
 export default function RegisterPWA() {
     useEffect(() => {
-        if ("serviceWorker" in navigator) {
+        if ("serviceWorker" in navigator && process.env.NODE_ENV !== "development") {
             navigator.serviceWorker
                 .register("/sw.js")
                 .then((reg) => console.log("Service Worker registered (scope: " + reg.scope + ")"))
-                .catch((error) => console.log("Service Worker registration failed: " + error));
+                .catch((error) => console.error("Service Worker registration failed: " + error));
         }
     }, []);
 

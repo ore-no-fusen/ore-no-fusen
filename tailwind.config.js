@@ -25,6 +25,15 @@ module.exports = {
             },
         },
         extend: {
+            zIndex: {
+                'tags': '50',
+                'toolbar': '100',
+                'search': '200',
+            },
+            spacing: {
+                'ui-offset-x': '8px',
+                'ui-offset-y': '12px',
+            },
             colors: {
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",

@@ -112,48 +112,72 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
      * ウィンドウイベントリスナーをセットアップ
      */
     useEffect(() => {
-        let unlistenMove: (() => void) | undefined;
-        let unlistenResize: (() => void) | undefined;
+        let isMounted = true;
+        let unlistenMove: (() => void) | null = null;
+        let unlistenResize: (() => void) | null = null;
 
         const setupListeners = async () => {
-            const win = getCurrentWindow();
+            try {
+                const win = getCurrentWindow();
 
-            unlistenMove = await win.listen('tauri://move', () => {
-                saveWindowState();
-            });
+                // unlisten関数自体がPromiseを返すTauri v2仕様への対策ラッパー
+                const wrapUnlisten = (u: any) => () => {
+                    try {
+                        const p = u?.();
+                        if (p && p.catch) p.catch(() => { });
+                    } catch (e) { }
+                };
 
-            unlistenResize = await win.listen('tauri://resize', async () => {
-                if (isMinimizedRef.current) {
-                    // ミニマイズ中にリサイズされた場合、高さが一定以上増えていたら「自動展開」とする
-                    const size = await win.innerSize();
-                    const factor = await win.scaleFactor();
-                    const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
-                    const targetHeight = Math.round(logicalHeight * factor);
-
-                    // 10px(物理ピクセル)以上広げられたら自動展開
-                    if (size.height > targetHeight + 10) {
-                        console.log('[useWindowManager] Auto-expanding due to vertical resize');
-                        setIsMinimized(false);
-                        // 手動で広げたサイズを新たな「展開サイズ」として記憶しておく
-                        originalSizeRef.current = { width: size.width, height: size.height };
-
-                        if (onAutoExpandRef.current) {
-                            onAutoExpandRef.current();
-                        }
-                    }
-                } else {
+                const uMove = await win.listen('tauri://move', () => {
                     saveWindowState();
-                }
-            });
+                });
+                const safeMove = wrapUnlisten(uMove);
+                if (isMounted) unlistenMove = safeMove; else safeMove();
 
-            console.log('[useWindowManager] Event listeners setup complete');
+                const uResize = await win.listen('tauri://resize', async () => {
+                    if (isMinimizedRef.current) {
+                        // ミニマイズ中にリサイズされた場合、高さが一定以上増えていたら「自動展開」とする
+                        const size = await win.innerSize();
+                        const factor = await win.scaleFactor();
+                        const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
+                        const targetHeight = Math.round(logicalHeight * factor);
+
+                        // 10px(物理ピクセル)以上広げられたら自動展開
+                        if (size.height > targetHeight + 10) {
+                            console.log('[useWindowManager] Auto-expanding due to vertical resize');
+                            setIsMinimized(false);
+                            // 手動で広げたサイズを新たな「展開サイズ」として記憶しておく
+                            originalSizeRef.current = { width: size.width, height: size.height };
+
+                            if (onAutoExpandRef.current) {
+                                onAutoExpandRef.current();
+                            }
+                        }
+                    } else {
+                        saveWindowState();
+                    }
+                });
+                const safeResize = wrapUnlisten(uResize);
+                if (isMounted) unlistenResize = safeResize; else safeResize();
+
+                console.log('[useWindowManager] Event listeners setup complete');
+            } catch (err) {
+                console.warn('[useWindowManager] Event listener setup failed:', err);
+            }
         };
 
         setupListeners();
 
         return () => {
-            if (unlistenMove) unlistenMove();
-            if (unlistenResize) unlistenResize();
+            isMounted = false;
+            const safeUnlisten = (u: any) => {
+                try {
+                    const p = u?.();
+                    if (p && p.catch) p.catch(() => { });
+                } catch (e) { }
+            };
+            safeUnlisten(unlistenMove);
+            safeUnlisten(unlistenResize);
             console.log('[useWindowManager] Event listeners cleaned up');
         };
     }, [saveWindowState]);

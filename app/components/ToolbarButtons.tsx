@@ -42,22 +42,8 @@ export default function ToolbarButtons({
     if (!isEditing) {
         return (
             <div
-                className="hoverBar"
-                style={{
-                    opacity: show ? 1 : 0,
-                    visibility: show ? 'visible' : 'hidden',
-                    pointerEvents: show ? 'auto' : 'none',
-                    transition: 'opacity 0.1s ease',
-                    display: 'flex',
-                    flexDirection: 'row',
-                    justifyContent: 'flex-end',
-                    alignItems: 'center',
-                    gap: '2px', // 少し間隔を空ける
-                    padding: '4px',
-                    backgroundColor: 'transparent',
-                    borderRadius: '8px',
-                    zIndex: 200
-                }}
+                className={`hoverBar flex flex-row justify-end items-center gap-[2px] p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
+                    }`}
             >
                 {/* 折りたたみボタン (左) */}
                 <button
@@ -66,9 +52,8 @@ export default function ToolbarButtons({
                         e.stopPropagation();
                     }}
                     onClick={() => onToggleMinimize()}
-                    className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded text-sm flex items-center justify-center"
+                    className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[14px]"
                     title={isMinimized ? '展開する' : '畳む'}
-                    style={{ fontSize: '14px' }}
                 >
                     {isMinimized ? '▽' : '△'}
                 </button>
@@ -130,12 +115,11 @@ export default function ToolbarButtons({
 
                             onTogglePin();
                         }}
-                        className={`px-2 min-w-[28px] rounded text-sm flex items-center justify-center transition-all duration-200 ${isPinned
+                        className={`px-2 min-w-[28px] rounded flex items-center justify-center transition-all duration-200 text-[16px] ${isPinned
                             ? 'text-red-600 bg-red-50 hover:bg-red-100 scale-100 opacity-100'
                             : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600 scale-95 opacity-70 hover:opacity-100'
                             }`}
                         title={isPinned ? '最前面固定を解除' : '最前面に固定'}
-                        style={{ fontSize: '16px' }}
                     >
                         {isPinned ? (
                             // ON State: Pinned (刺さっている)
@@ -149,7 +133,7 @@ export default function ToolbarButtons({
                         ) : (
                             // OFF State: Unpinned (外れている)
                             // Pin lying on its side
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ transform: 'rotate(45deg)' }}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="rotate-45">
                                 <path d="M16 12L7 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                                 <rect x="16" y="8" width="6" height="8" rx="1" fill="currentColor" stroke="currentColor" strokeWidth="2" />
                                 <path d="M4 12L7 12" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
@@ -203,23 +187,8 @@ export default function ToolbarButtons({
     // 編集モード時：全ツールバー
     return (
         <div
-            className="hoverBar"
-            style={{
-                opacity: show || isEditing ? 1 : 0,
-                visibility: show || isEditing ? 'visible' : 'hidden',
-                pointerEvents: show || isEditing ? 'auto' : 'none',
-                transition: 'opacity 0.1s ease',
-                display: 'flex', // Flexbox ensures buttons are in row
-                flexDirection: 'row',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-                gap: '0px',
-                padding: '4px',
-                backgroundColor: 'transparent',
-                borderRadius: '8px',
-                backdropFilter: 'none',
-                zIndex: 200
-            }}
+            className={`hoverBar flex flex-row justify-end items-center gap-0 p-1 bg-transparent rounded-lg backdrop-filter-none z-[200] transition-opacity duration-100 ease-in ${show || isEditing ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
+                }`}
         >
             {/* Bold ボタン */}
             <button
@@ -248,8 +217,8 @@ export default function ToolbarButtons({
                 className="font-bold text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
                 title="見出し1"
             >
-                <span style={{ fontSize: '14px', position: 'relative', top: '-1px' }}>
-                    H<sub style={{ bottom: '0', fontSize: '10px' }}>1</sub>
+                <span className="text-[14px] relative -top-[1px]">
+                    H<sub className="bottom-0 text-[10px]">1</sub>
                 </span>
             </button>
 

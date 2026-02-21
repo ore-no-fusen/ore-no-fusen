@@ -1,8 +1,1 @@
-{
-    "files.exclude": {
-        "": true
-    },
-    "search.useGlobalIgnoreFiles": false,
-    "search.useParentIgnoreFiles": false,
-    "search.useIgnoreFiles": false
-}
+{ "css.validate": false, "less.validate": false, "scss.validate": false, "tailwindCSS.emmetCompletions": true }
