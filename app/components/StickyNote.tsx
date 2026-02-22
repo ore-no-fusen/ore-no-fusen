@@ -344,18 +344,29 @@ const StickyNote = memo(function StickyNote() {
         setSelectedFile(myNote);
         setIsNewNote(isNew);
 
-        loadNote().then((body) => {
-            // [Optimized] 背景色は note.meta から取得するため、ここでの正規表現パースは削除
-            // これによりレンダリングブロックを回避し、表示速度を向上
+        if (isNew) {
+            // 新規ノート: readNoteをスキップし、直接編集モードで開始
+            // ①空白画面 ②Loading ③表示→編集の切り替え を全て省略
+            console.log('[StickyNote] New note: skipping loadNote, starting edit mode directly');
+            startEditing();
 
-            console.log('[StickyNote] Note loaded. isNew:', isNew); // [Debug]
-
-            // 新規ノートの場合は即座に編集モード開始（最速で書き込める）
-            if (isNew) {
-                console.log('[StickyNote] isNew is true. Calling startEditing()'); // [Debug]
-                startEditing();
-            }
-        });
+            // 編集モードの描画が完了した後にウィンドウを表示
+            requestAnimationFrame(async () => {
+                try {
+                    const win = getCurrentWindow();
+                    await win.show();
+                    await win.setFocus();
+                    console.log('[StickyNote] New note window shown');
+                } catch (e) {
+                    console.warn('[StickyNote] Failed to show window:', e);
+                }
+            });
+        } else {
+            // 既存ノート: 通常のロードフロー
+            loadNote().then((body) => {
+                console.log('[StickyNote] Note loaded. isNew:', isNew);
+            });
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [urlPath, isNew]);
 
@@ -878,7 +889,12 @@ const StickyNote = memo(function StickyNote() {
     });
 
     /**
-     * Ctrl+F 全文検索ショートカット
+     * ローカルキーボードショートカット（この付箋ウィンドウがアクティブな時のみ有効）
+     *
+     * ショートカット一覧:
+     *   Ctrl+N  → 新規付箋作成（ローカル: ここで定義）
+     *   Ctrl+F  → 全文検索（ローカル: ここで定義）
+     *   Ctrl+Shift+H → 全付箋の表示/非表示トグル（グローバル: src-tauri/src/lib.rs で定義）
      */
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -887,11 +903,22 @@ const StickyNote = memo(function StickyNote() {
                 console.log('[Shortcut] Ctrl+F pressed, opening search');
                 emit('fusen:open_search');
             }
+            // [New] Ctrl+N: 新規付箋作成
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                console.log('[Shortcut] Ctrl+N pressed, creating new note');
+                if (selectedFile) {
+                    const normalizedPath = selectedFile.path.replace(/\\/g, '/');
+                    const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+                    emit('fusen:request_create', { folderPath, context: 'memo' });
+                }
+            }
+
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [selectedFile]);
 
     // ============================================================
     // レンダリング
@@ -950,6 +977,13 @@ const StickyNote = memo(function StickyNote() {
                     }}
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}
+                    onCreateNewNote={async () => {
+                        if (!selectedFile) return;
+                        const normalizedPath = selectedFile.path.replace(/\\/g, '/');
+                        const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+                        console.log('[ToolbarButton] + clicked, requesting new note creation');
+                        emit('fusen:request_create', { folderPath, context: 'memo' });
+                    }}
                 />
             </div>
 

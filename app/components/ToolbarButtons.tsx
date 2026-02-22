@@ -23,6 +23,7 @@ export type ToolbarButtonsProps = {
     onCapture?: () => void;
     onToggleMinimize: () => void;
     onTogglePin?: () => void; // [New]
+    onCreateNewNote?: () => void; // [New] 新規付箋作成
 };
 
 export default function ToolbarButtons({
@@ -36,7 +37,8 @@ export default function ToolbarButtons({
     onCheckbox,
     onCapture,
     onToggleMinimize,
-    onTogglePin
+    onTogglePin,
+    onCreateNewNote
 }: ToolbarButtonsProps) {
     // 通常モード時：ツールバー（折りたたみ + ピン）
     if (!isEditing) {
@@ -45,7 +47,22 @@ export default function ToolbarButtons({
                 className={`hoverBar flex flex-row justify-end items-center gap-[2px] p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
                     }`}
             >
-                {/* 折りたたみボタン (左) */}
+                {/* 新規作成ボタン (左端) */}
+                {onCreateNewNote && (
+                    <button
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onClick={() => onCreateNewNote()}
+                        className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[14px]"
+                        title="新しい付箋 (Ctrl+N)"
+                    >
+                        ＋
+                    </button>
+                )}
+
+                {/* 折りたたみボタン */}
                 <button
                     onPointerDown={(e) => {
                         e.preventDefault();

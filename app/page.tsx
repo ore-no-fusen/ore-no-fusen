@@ -351,7 +351,7 @@ function OrchestratorContent() {
             transparent: true,
             decorations: false,
             alwaysOnTop: meta?.always_on_top || false,
-            visible: true,
+            visible: !isNew, // 新規ノートは準備完了まで非表示（チラつき防止）
             width,
             height,
             x,

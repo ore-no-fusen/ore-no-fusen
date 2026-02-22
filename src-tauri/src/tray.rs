@@ -31,7 +31,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let is_en = lang == "en";
 
     // Labels
-    let label_hide = if is_en { "Hide All" } else { "全部隠す (Hide All)" };
+    let label_hide = if is_en { "Hide All\tCtrl+Shift+H" } else { "全部隠す (Ctrl+Shift+H)" };
     let label_show = if is_en { "Show All" } else { "全部戻す (Show All)" };
     let label_reposition = if is_en { "Reposition Notes" } else { "付箋を再配置 (Reposition Notes)" };
     let label_settings = if is_en { "Settings" } else { "設定 (Settings)" };
