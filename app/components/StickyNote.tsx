@@ -263,9 +263,6 @@ const StickyNote = memo(function StickyNote() {
     /**
      * Pin Toggle Handler
      */
-    /**
-     * Pin Toggle Handler
-     */
     const handleTogglePin = useCallback(async () => {
         const newState = !isPinned;
         setIsPinned(newState);
@@ -297,9 +294,6 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [isPinned, note, rawFrontmatter, content, saveNoteContent]);
 
-    /**
-     * Minimize Toggle Handler
-     */
     /**
      * Minimize Toggle Handler
      */

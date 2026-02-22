@@ -149,10 +149,7 @@ function OrchestratorContent() {
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
 
-  // [DEBUG] Render interaction (Moved to top to avoid Hook Rule violation)
-  useEffect(() => {
-    console.log('[Home] Render update. isMainWindow:', isMainWindow, 'isSearchOpen:', isSearchOpen, 'folderPath:', folderPath);
-  });
+
 
   // ダッシュボード表示時も小さいサイズを維持する
   useEffect(() => {
@@ -163,21 +160,11 @@ function OrchestratorContent() {
           const { LogicalSize } = await import('@tauri-apps/api/dpi');
           const win = getCurrentWindow();
           if (win.label === 'main') {
-            // [AGDP Log] Phase I: Observation
-            console.log('[MAIN_WINDOW_DEBUG] enforceSmallSize triggered');
-            const sizeBefore = await win.innerSize();
-            const visibleBefore = await win.isVisible();
-            console.log('[MAIN_WINDOW_DEBUG] Before: size=', sizeBefore, 'visible=', visibleBefore);
-
             await win.setSize(new LogicalSize(240, 300));
             await win.center();
-
-            const sizeAfter = await win.innerSize();
-            const visibleAfter = await win.isVisible();
-            console.log('[MAIN_WINDOW_DEBUG] After: size=', sizeAfter, 'visible=', visibleAfter);
           }
         } catch (e) {
-          console.error('[MAIN_WINDOW_DEBUG] enforceSmallSize failed:', e);
+          console.error('[enforceSmallSize] failed:', e);
         }
       };
       enforceSmallSize();
@@ -261,7 +248,7 @@ function OrchestratorContent() {
         const task = queue.queue.shift();
         if (task) {
           try { await task(); } catch (e) { console.error('[processQueue] Task failed:', e); }
-          if (queue.queue.length > 0) await new Promise(resolve => setTimeout(resolve, 300));
+          if (queue.queue.length > 0) await new Promise(resolve => setTimeout(resolve, 50));
         }
       }
     } finally { queue.processing = false; }
@@ -384,7 +371,7 @@ function OrchestratorContent() {
             }
           });
           await win.setFocus();
-          await new Promise(resolve => setTimeout(resolve, 100));
+
         } finally { unmarkWindowInProgress(label); }
       } catch (e) { console.error(`Failed to open window:`, e); unmarkWindowInProgress(label); }
     });
@@ -422,12 +409,6 @@ function OrchestratorContent() {
     setIsCreating(true); // Keep for UI disabled state
 
     const context = overrideContext || 'NewNote';
-    const timestamp = Date.now();
-    const tempPath = `${targetFolder}/temp_${timestamp}.md`;
-    const today = new Date().toISOString().slice(0, 10);
-    const tempMeta: NoteMeta = { path: tempPath, seq: timestamp, context, updated: today, x: 100, y: 100, width: 400, height: 300, background_color: undefined, tags: [] };
-
-    setFiles(prev => [...prev, tempMeta]);
 
     try {
       console.log('[CREATE] Invoking fusen_create_note with folder:', targetFolder);
@@ -436,11 +417,10 @@ function OrchestratorContent() {
       // [NEW] 新規作成音を鳴らす
       await playCreateSound();
 
-      setFiles(prev => prev.map((n: NoteMeta) => (pathsEqual(n.path, tempPath) ? newNote.meta : n)));
+      setFiles(prev => [...prev, newNote.meta]);
       // Open window after creation
       await openNoteWindow(newNote.meta.path, undefined, true);
     } catch (e) {
-      setFiles(prev => prev.filter((n: NoteMeta) => !pathsEqual(n.path, tempPath)));
       console.error('create_note failed', e);
     } finally {
       isCreatingRef.current = false;
@@ -1015,9 +995,8 @@ function OrchestratorContent() {
           }
           const savedFolder = basePath;
 
-          // [MULTI_MONITOR_FIX] OS起動直後はモニタ検出が完了していない可能性があるため、
-          // スタートアップ時の復元処理を少し遅延させる（1500ms）
-          setTimeout(async () => {
+          // ノート復元を即座に開始
+          (async () => {
             try {
               setLoadingStatus("ノート一覧を取得中...");
               log('[起動処理] ノート一覧を取得しています...');
@@ -1041,17 +1020,13 @@ function OrchestratorContent() {
 
               if (notes.length > 0) {
                 setLoadingStatus(`${notes.length} 件のノートを復元中...`);
-                // [MULTI_MONITOR_FIX] ウィンドウを開く前に少し待機してモニタ検出の完了を待つ
-                await new Promise(resolve => setTimeout(resolve, 500));
+
                 for (let i = 0; i < notes.length; i++) {
                   const note = notes[i];
                   setLoadingStatus(`ノートを開いています (${i + 1}/${notes.length}): ${note.path.split(/[\\/]/).pop()}...`);
                   log(`[起動処理] ウィンドウを開く: ${note.path} at (${note.x}, ${note.y})`);
                   await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
-                  // 各ウィンドウ作成の間に少し待機（モニタ検出の確実性を高める）
-                  if (i < notes.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                  }
+
                 }
 
                 setLoadingStatus("仕上げ処理...");
@@ -1093,7 +1068,7 @@ function OrchestratorContent() {
               setLoadingStatus("エラー: " + String(e));
               setTimeout(() => setIsCheckingSetup(false), 3000);
             }
-          }, 1500);
+          })();
         } catch (e) {
           log(`[起動処理] 重大なエラー: ${e}`);
           setLoadingStatus("重大なエラー: " + String(e));
