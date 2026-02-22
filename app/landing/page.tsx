@@ -196,7 +196,7 @@ export default function LandingPage() {
                         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 blur-3xl" />
                         <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl">
                             <Image
-                                src="/screenshots/ScreenShot_OreNoFusen.jpg"
+                                src="/screenshots/ScreenShot_OreNoFusen.png"
                                 alt="俺の付箋 スクリーンショット"
                                 width={1200}
                                 height={800}
