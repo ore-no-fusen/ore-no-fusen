@@ -36,26 +36,7 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
         inputRef.current?.focus();
     }, []);
 
-    const handleSearch = useCallback(async () => {
-        if (!query.trim()) return;
-        setIsSearching(true);
-        try {
-            console.log('[SearchOverlay] Invoking fusen_search_notes with query:', query.trim());
-            const hits = await invoke<SearchHit[]>('fusen_search_notes', { query: query.trim() });
-            console.log('[SearchOverlay] Got results:', hits.length);
-            setResults(hits);
-            setCurrentIndex(0);
-            if (hits.length > 0) {
-                await jumpToHit(hits[0]);
-            }
-        } catch (e) {
-            console.error('Search failed:', e);
-        } finally {
-            setIsSearching(false);
-        }
-    }, [query]);
-
-    const jumpToHit = async (hit: SearchHit) => {
+    const jumpToHit = useCallback(async (hit: SearchHit) => {
         // [Fix] Ensure path is consistent (though getWindowLabel handles normalization)
         const label = getWindowLabel(hit.path);
         console.log(`[SearchOverlay] jumpToHit: path=${hit.path}, label=${label}`);
@@ -118,21 +99,40 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
         } catch (e) {
             console.error('Failed to jump to hit:', e);
         }
-    };
+    }, [getWindowLabel, query]);
+
+    const handleSearch = useCallback(async () => {
+        if (!query.trim()) return;
+        setIsSearching(true);
+        try {
+            console.log('[SearchOverlay] Invoking fusen_search_notes with query:', query.trim());
+            const hits = await invoke<SearchHit[]>('fusen_search_notes', { query: query.trim() });
+            console.log('[SearchOverlay] Got results:', hits.length);
+            setResults(hits);
+            setCurrentIndex(0);
+            if (hits.length > 0) {
+                await jumpToHit(hits[0]);
+            }
+        } catch (e) {
+            console.error('Search failed:', e);
+        } finally {
+            setIsSearching(false);
+        }
+    }, [query, jumpToHit]);
 
     const handleNext = useCallback(async () => {
         if (results.length === 0) return;
         const nextIndex = (currentIndex + 1) % results.length;
         setCurrentIndex(nextIndex);
         await jumpToHit(results[nextIndex]);
-    }, [results, currentIndex]);
+    }, [results.length, currentIndex, jumpToHit]);
 
     const handlePrev = useCallback(async () => {
         if (results.length === 0) return;
         const prevIndex = (currentIndex - 1 + results.length) % results.length;
         setCurrentIndex(prevIndex);
         await jumpToHit(results[prevIndex]);
-    }, [results, currentIndex]);
+    }, [results.length, currentIndex, jumpToHit]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
@@ -162,8 +162,7 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
 
     return (
         <div
-            className="fixed top-0 left-0 w-full h-full z-50 bg-white/98 backdrop-blur-md flex flex-col gap-3 p-4 box-border"
-            style={{}}
+            className="fixed inset-0 z-search bg-white/98 backdrop-blur-md flex flex-col gap-3 p-4 box-border"
         >
             {/* 検索入力 */}
             <div className="flex items-center gap-2">

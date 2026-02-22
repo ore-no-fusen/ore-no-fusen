@@ -1,3 +1,11 @@
+/**
+ * UIコンポーネント: Label
+ *
+ * 責務:
+ * - フォームコントロールと関連付けるためのラベル要素
+ * - アクセシビリティ（WAI-ARIA）に配慮したラベル機能の提供
+ */
+
 import * as React from "react"
 import * as LabelPrimitive from "@radix-ui/react-label"
 import { cva, type VariantProps } from "class-variance-authority"

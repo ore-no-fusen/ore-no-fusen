@@ -1,3 +1,12 @@
+/**
+ * リサイズ可能な画像コンポーネント (ResizableImage)
+ *
+ * 責務:
+ * - 付箋内での画像の表示とリサイズ機能の提供
+ * - ローカル画像パスの自動変換と読み込み
+ * - ドラッグ操作によるサイズ変更UI
+ */
+
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -132,6 +141,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
             contentEditable={false}
             data-src-start={baseOffset}
         >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
                 ref={imgRef}
                 src={displaySrc}

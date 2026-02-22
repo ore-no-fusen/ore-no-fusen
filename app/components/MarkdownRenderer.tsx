@@ -10,20 +10,114 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
 import ResizableImage from './ResizableImage';
+
+/**
+ * インラインスタイル（太字）をパースする
+ */
+export const parseInlineStyles = (text: string, baseOffset: number) => {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    let currentOffset = 0;
+
+    return (
+        <>
+            {parts.map((part, k) => {
+                if (part === '') return null;
+
+                const partStart = baseOffset + currentOffset;
+                currentOffset += part.length;
+
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    const innerText = part.slice(2, -2);
+                    return (
+                        <strong
+                            key={k}
+                            style={{ color: 'red', fontWeight: 'bold' }}
+                            data-src-start={partStart + 2}
+                        >
+                            {innerText}
+                        </strong>
+                    );
+                }
+                return (
+                    <span key={k} data-src-start={partStart}>
+                        {part}
+                    </span>
+                );
+            })}
+        </>
+    );
+};
+
+/**
+ * リンクをパースする
+ */
+export const parseLinks = (text: string, baseOffset: number) => {
+    const regex = /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
+    const parts = text.split(regex);
+    let currentOffset = 0;
+
+    return (
+        <>
+            {parts.map((part, k) => {
+                if (part === '') return null;
+
+                const partStart = baseOffset + currentOffset;
+                currentOffset += part.length;
+
+                // regexの状態をリセットするため、新しくマッチ判定
+                const isLink = /^(?:https?:\/\/[^\s]+)|^(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|^(?:\\\\[^:<>"\/?*|\r\n]+)$/.test(part);
+                if (isLink) {
+                    return (
+                        <span
+                            key={k}
+                            style={{
+                                color: 'blue',
+                                textDecoration: 'underline',
+                                cursor: 'pointer'
+                            }}
+                            data-src-start={partStart}
+                            data-tauri-drag-region="false"
+                            onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('[OpenLink]', part);
+                                try {
+                                    if (/^https?:\/\//i.test(part)) {
+                                        await open(part);
+                                    } else {
+                                        await invoke('fusen_open_file', { path: part });
+                                    }
+                                } catch (err) {
+                                    console.error('Failed to open link:', err);
+                                }
+                            }}
+                        >
+                            {part}
+                        </span>
+                    );
+                }
+
+                return <React.Fragment key={k}>{parseInlineStyles(part, partStart)}</React.Fragment>;
+            })}
+        </>
+    );
+};
 
 export type MarkdownRendererProps = {
     content: string;
     backgroundColor: string;
     fontSize: number;
     isDraggableArea?: boolean;
+    singleLinePreview?: boolean; // [New] ミニマイズ時用。1行のみ表示し省略するモード
     onCheckboxToggle: (lineIndex: number) => void;
     onImageResize: (newScale: number, baseOffset: number, originalText: string) => void;
     onDoubleClick: (e: React.MouseEvent) => void;
     onPointerDown?: (e: React.PointerEvent) => void;
     selectedFilePath?: string;
     resolvePath: (baseFile: string, relativePath: string) => string;
-    parseLinks: (text: string, baseOffset: number) => React.ReactNode;
 };
 
 export default function MarkdownRenderer({
@@ -31,13 +125,13 @@ export default function MarkdownRenderer({
     backgroundColor,
     fontSize,
     isDraggableArea = false,
+    singleLinePreview = false,
     onCheckboxToggle,
     onImageResize,
     onDoubleClick,
     onPointerDown,
     selectedFilePath = '',
-    resolvePath,
-    parseLinks
+    resolvePath
 }: MarkdownRendererProps) {
     // 行オフセット計算（カーソル位置精度向上）
     const lineOffsets = useMemo(() => {
@@ -117,17 +211,10 @@ export default function MarkdownRenderer({
 
     return (
         <article
-            className="notePaper max-w-none"
+            className={`notePaper max-w-none whitespace-pre-wrap select-none p-0 flex-1 flex flex-col font-["BIZ_UDPGothic",_"Meiryo",_"Yu_Gothic_UI",_sans-serif] leading-[1.4] tracking-[0.01em] ${isDraggableArea ? 'cursor-grab' : 'cursor-text'}`}
             style={{
                 backgroundColor,
-                whiteSpace: 'pre-wrap',
-                cursor: isDraggableArea ? 'grab' : 'text',
-                userSelect: 'none',
-                padding: 0,
                 fontSize: `${fontSize}px`,
-                fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
-                lineHeight: '1.4',
-                letterSpacing: '0.01em'
             }}
             onPointerDown={onPointerDown}
             onDoubleClick={(e) => {
@@ -136,16 +223,9 @@ export default function MarkdownRenderer({
             }}
         >
             {content ? (
-                <div style={{ whiteSpace: 'pre-wrap' }}>
-                    {content.split('\n').map((line, i) => {
-                        const lineStyle: React.CSSProperties = {
-                            margin: 0,
-                            padding: 0,
-                            lineHeight: '1.4',
-                            minHeight: '1.4em',
-                            display: 'flex',
-                            alignItems: 'flex-start'
-                        };
+                <div className={`flex-1 ${singleLinePreview ? 'whitespace-nowrap overflow-hidden' : 'whitespace-pre-wrap overflow-visible'}`}>
+                    {(singleLinePreview ? [content.split('\n')[0]] : content.split('\n')).map((line, i) => {
+                        const lineClass = `m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
 
                         const baseOffset = lineOffsets[i] || 0;
 
@@ -155,7 +235,7 @@ export default function MarkdownRenderer({
                                 <div
                                     key={i}
                                     data-line-index={i}
-                                    style={lineStyle}
+                                    className={lineClass}
                                     data-src-start={baseOffset}
                                 >
                                     &nbsp;
@@ -169,9 +249,9 @@ export default function MarkdownRenderer({
                                 <div
                                     key={i}
                                     data-line-index={i}
-                                    style={{ ...lineStyle, fontWeight: 700, fontSize: '1.1em' }}
+                                    className={`${lineClass} font-bold text-[1.1em]`}
                                 >
-                                    <span data-src-start={baseOffset + 2}>
+                                    <span data-src-start={baseOffset + 2} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
                                         {renderLineContent(line.substring(2), baseOffset + 2)}
                                     </span>
                                 </div>
@@ -186,33 +266,21 @@ export default function MarkdownRenderer({
                             const textStart = baseOffset + (line.length - text.length);
 
                             return (
-                                <div key={i} data-line-index={i} style={lineStyle}>
+                                <div key={i} data-line-index={i} className={lineClass}>
                                     <span
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onCheckboxToggle(i);
                                         }}
                                         data-interactable="true"
-                                        style={{
-                                            marginRight: '6px',
-                                            color: isChecked ? '#4caf50' : '#888',
-                                            flexShrink: 0,
-                                            display: 'inline-block',
-                                            width: '1em',
-                                            textAlign: 'center',
-                                            cursor: 'pointer',
-                                            userSelect: 'none'
-                                        }}
+                                        className={`mr-[6px] shrink-0 inline-block w-[1em] text-center cursor-pointer select-none ${isChecked ? 'text-[#4caf50]' : 'text-[#888]'}`}
                                         title={isChecked ? '未完了にする' : '完了にする'}
                                         data-src-start={baseOffset}
                                     >
                                         {isChecked ? '☑' : '☐'}
                                     </span>
                                     <span
-                                        style={{
-                                            textDecoration: isChecked ? 'line-through' : 'none',
-                                            opacity: isChecked ? 0.6 : 1
-                                        }}
+                                        className={isChecked ? 'line-through opacity-60' : 'no-underline opacity-100'}
                                         data-src-start={textStart}
                                     >
                                         {renderLineContent(text, textStart)}
@@ -227,15 +295,9 @@ export default function MarkdownRenderer({
                             const text = listMatch[1];
                             const textStart = baseOffset + (line.length - text.length);
                             return (
-                                <div key={i} data-line-index={i} style={lineStyle}>
+                                <div key={i} data-line-index={i} className={lineClass}>
                                     <span
-                                        style={{
-                                            marginRight: '8px',
-                                            flexShrink: 0,
-                                            display: 'inline-block',
-                                            width: '1em',
-                                            textAlign: 'center'
-                                        }}
+                                        className="mr-[8px] shrink-0 inline-block w-[1em] text-center"
                                         data-src-start={baseOffset}
                                     >
                                         •
@@ -249,8 +311,8 @@ export default function MarkdownRenderer({
 
                         // 通常のテキスト
                         return (
-                            <div key={i} data-line-index={i} style={lineStyle}>
-                                <span data-src-start={baseOffset}>
+                            <div key={i} data-line-index={i} className={lineClass}>
+                                <span data-src-start={baseOffset} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
                                     {renderLineContent(line, baseOffset)}
                                 </span>
                             </div>
@@ -258,7 +320,7 @@ export default function MarkdownRenderer({
                     })}
                 </div>
             ) : (
-                <div style={{ color: '#999', padding: '8px' }}>
+                <div className="text-[#999] p-2">
                     （空のメモ）
                 </div>
             )}

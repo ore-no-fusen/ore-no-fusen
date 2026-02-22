@@ -1,3 +1,12 @@
+/*
+ * 設定コマンドハンドラ
+ *
+ * 責務:
+ * - フロントエンドからの設定読み書き要求の処理
+ * - 設定変更時の状態同期とイベント通知
+ * - トレイメニューなどのUIへの設定反映トリガー
+ */
+
 use crate::storage;
 use crate::state::Settings as AppSettings;
 use crate::state::AppState;

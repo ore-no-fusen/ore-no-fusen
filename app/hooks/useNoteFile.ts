@@ -116,6 +116,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             }
 
             setContent(body);
+            setRawFrontmatter(frontmatter); // [Fix] Update frontmatter state
             console.log('[useNoteFile] Note saved successfully');
         } catch (e) {
             console.error('[useNoteFile] Failed to save note:', e);

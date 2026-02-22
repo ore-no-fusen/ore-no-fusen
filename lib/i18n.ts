@@ -1,9 +1,10 @@
 /**
  * 多言語対応 (i18n) ユーティリティ
  * 
- * 使い方:
- * 1. useLanguage() フックで現在の言語と翻訳関数を取得
- * 2. t('key') で翻訳テキストを取得
+ * 責務:
+ * - 言語設定（日/英）の管理と翻訳テキストの提供
+ * - コンポーネント向けの `useLanguage` フックの提供
+ * - 翻訳辞書データの定義
  */
 
 // 対応言語
@@ -79,6 +80,13 @@ export const translations = {
         'menu.colors.pink': '桃',
         'menu.colors.yellow': '黄',
         'menu.noTags': 'タグがありません',
+        'menu.sendToIphone': 'iPhoneに表示',
+        'menu.undo': '元に戻す',
+        'menu.redo': 'やり直し',
+        'menu.cut': '切り取り',
+        'menu.copy': 'コピー',
+        'menu.paste': '貼り付け',
+        'menu.selectAll': 'すべて選択',
 
         // 共通
         'common.loading': '読み込み中...',
@@ -177,6 +185,13 @@ export const translations = {
         'menu.colors.pink': 'Pink',
         'menu.colors.yellow': 'Yellow',
         'menu.noTags': 'No tags',
+        'menu.sendToIphone': 'Send to iPhone',
+        'menu.undo': 'Undo',
+        'menu.redo': 'Redo',
+        'menu.cut': 'Cut',
+        'menu.copy': 'Copy',
+        'menu.paste': 'Paste',
+        'menu.selectAll': 'Select All',
 
         // Common
         'common.loading': 'Loading...',

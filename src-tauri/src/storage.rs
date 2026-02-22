@@ -1,3 +1,11 @@
+/*
+ * ストレージ層 (File I/O)
+ *
+ * 責務:
+ * - ローカルファイルシステムへのアクセス（読み書き、リネーム、削除）
+ * - 設定ファイルの永続化
+ * - ディレクトリ操作（作成、走査）
+ */
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -69,7 +77,8 @@ pub fn import_files(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
                     &today,  // created
                     &today,  // updated
                     Some("#f7e9b0"),
-                    &[]
+                    &[],
+                    None // folded
                 );
                 
                 // 6. 新しい内容を作成して保存
@@ -115,11 +124,12 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
                 let mut height = None;
                 let mut background_color = None;
                 let mut always_on_top = None;
+                let mut folded = None;
                 let mut tags = Vec::new();
 
                 if let Ok(content) = fs::read_to_string(path) {
-                     let (lx, ly, lw, lh, lc, laot, ltags) = logic::extract_meta_from_content(&content);
-                     x = lx; y = ly; width = lw; height = lh; background_color = lc; always_on_top = laot;
+                     let (lx, ly, lw, lh, lc, laot, ltags, lfolded) = logic::extract_meta_from_content(&content);
+                     x = lx; y = ly; width = lw; height = lh; background_color = lc; always_on_top = laot; folded = lfolded;
                      tags = ltags;
                 }
 
@@ -128,7 +138,7 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
                     seq,
                     context,
                     updated,
-                    x, y, width, height, background_color, always_on_top,
+                    x, y, width, height, background_color, always_on_top, folded,
                     tags
                 });
             }
@@ -150,7 +160,7 @@ pub fn read_note(path: &str) -> Result<Note, String> {
     let (seq, updated, context) = logic::parse_filename(&filename);
 
     // 2. コンテンツから拡張メタデータを解析（list_notesと同様のロジック）
-    let (x, y, width, height, background_color, always_on_top, tags) = logic::extract_meta_from_content(&content);
+    let (x, y, width, height, background_color, always_on_top, tags, folded) = logic::extract_meta_from_content(&content);
 
     // 3. 正しい値をセットして返す
     Ok(Note {
@@ -168,6 +178,7 @@ pub fn read_note(path: &str) -> Result<Note, String> {
             background_color, 
             always_on_top,
             tags,
+            folded,
         },
     })
 }
@@ -598,8 +609,7 @@ mod tests {
         // コンテンツにメタデータ（x, y, tags）を埋め込む
         let content = r#"---
 seq: 1
-x: 100.0
-y: 200.0
+window: { x: 100.0, y: 200.0, width: 300.0, height: 400.0 }
 tags: ["important"]
 ---
 

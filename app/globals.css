@@ -1,3 +1,13 @@
+/**
+ * グローバルスタイルシート
+ *
+ * 責務:
+ * - Tailwind CSSのディレクティブ定義 (@tailwind base, components, utilities)
+ * - CSS変数のテーマ定義 (:root, .dark)
+ * - プレビュー用カスタムフォント設定 (.preview-content)
+ * - スクロールバーのカスタマイズ
+ */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -150,4 +160,36 @@ body {
 
 *::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* =========================================
+   CodeMirror エディタ の挙動
+   余白の修正：本文の幅に合わせて高さが縮み、横方向は100%になるようにする
+   ========================================= */
+
+/* RichTextEditor のコンテナ div */
+.rich-text-editor-container {
+  display: flex;
+  flex-direction: column;
+}
+
+/* .cm-editor */
+.rich-text-editor-container .cm-editor {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* .cm-scroller: 親コンテナのスクロールに任せるためvisible */
+.rich-text-editor-container .cm-scroller {
+  overflow: visible !important;
+}
+
+/* .cm-content は自身の高さだけを取りつつ全幅。これに白背景とパディングを付与することで
+   横幅いっぱい＆縦方向はテキストぴったりになる */
+.rich-text-editor-container .cm-content {
+  cursor: text !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  padding: var(--editor-padding) !important;
+  border-radius: 4px;
+  min-height: 1.5em !important;
 }

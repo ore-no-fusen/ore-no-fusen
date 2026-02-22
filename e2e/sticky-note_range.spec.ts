@@ -1,4 +1,12 @@
 
+/**
+ * 範囲選択・編集テスト (E2E)
+ *
+ * 責務:
+ * - テキスト選択範囲の維持と編集操作の検証
+ * - 書式適用（太字など）の動作確認
+ * - ドラッグ操作による範囲選択のテスト
+ */
 
 import { test, expect, Page } from '@playwright/test';
 import { mockTauriAPI } from './mock-tauri';

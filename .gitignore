@@ -42,3 +42,7 @@ next-env.d.ts
 
 # バックアップファイル置き場
 /bk
+
+# PWA (next-pwa) が自動生成するService Workerファイル（ビルド時に毎回再生成される）
+public/sw.js
+public/workbox-*.js

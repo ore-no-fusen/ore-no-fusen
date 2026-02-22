@@ -1,5 +1,13 @@
+/*
+ * データ定義層 (State & Types)
+ *
+ * 責務:
+ * - アプリケーション全体の状態定義 (`AppState`)
+ * - ノート、メタデータ、設定の型定義 (`Note`, `NoteMeta`, `Settings`)
+ * - データのシリアライズ/デシリアライズ構造
+ */
 
-// データ層: 純粋なデータ構造のみ
+
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct NoteMeta {
@@ -13,6 +21,7 @@ pub struct NoteMeta {
     pub height: Option<f64>,
     pub background_color: Option<String>,
     pub always_on_top: Option<bool>,
+    pub folded: Option<bool>,
     #[serde(default)]
     pub tags: Vec<String>,
 }

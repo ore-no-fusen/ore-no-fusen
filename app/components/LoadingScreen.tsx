@@ -1,3 +1,12 @@
+/**
+ * ローディング画面コンポーネント
+ *
+ * 責務:
+ * - アプリケーション起動時や処理中の待機画面表示
+ * - 起動アニメーションの提供
+ * - Tauriウィンドウの初期表示制御
+ */
+
 import React, { useEffect } from 'react';
 
 export default function LoadingScreen({ message = "Loading..." }: { message?: string }) {

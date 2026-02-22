@@ -1,12 +1,21 @@
+/**
+ * リッチテキストエディタ (CodeMirror Wrapper)
+ *
+ * 責務:
+ * - CodeMirror 6 を使用したMarkdown編集機能の提供
+ * - シンタックスハイライト、キーバインド等のエディタ設定
+ * - 編集内容の変更検知と親コンポーネントへの通知
+ */
+
 'use client';
 
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { open } from '@tauri-apps/plugin-shell';
 import { EditorState, Extension, StateField, Compartment, RangeSetBuilder, Transaction, Facet, StateEffect } from '@codemirror/state';
-import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, WidgetType } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { highlightSelectionMatches, search, setSearchQuery, SearchQuery } from '@codemirror/search';
+import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, WidgetType } from '@codemirror/view'; // Remove scrollPastEnd
 import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
 
@@ -197,10 +206,12 @@ interface RichTextEditorProps {
     onKeyDown?: (e: React.KeyboardEvent) => void;
     backgroundColor: string;
     cursorPosition?: number | null; // 初期カーソル位置（文字オフセット）
+    initialCoords?: { x: number, y: number } | null; // [NEW] 初期カーソル位置（座標）
     isNewNote?: boolean; // [NEW] 新規付箋フラグ（新規時のみプレースホルダ+選択）
     fontSize?: number; // 設定からのフォントサイズ（デフォルト: 16px）
     onInsertHeading1?: () => void; // 見出し1挿入リクエスト（外部から呼ぶ用）
     onInsertBold?: () => void; // 強調挿入リクエスト（外部から呼ぶ用）
+    onBlur?: (event?: FocusEvent) => void; // フォーカスが外れた時
 }
 
 // 外部から呼べるメソッドの型定義
@@ -211,6 +222,9 @@ export interface RichTextEditorRef {
     insertCheckbox: () => void;
     focus: () => void; // カーソル位置を変えずにフォーカスだけ当てる
     setCursorToEnd: () => void; // カーソルを末尾に配置
+    setCursorToLineEnd: (clientX: number, clientY: number) => void; // クリック座標の行末にカーソルを配置
+    setCursorAtCoords: (clientX: number, clientY: number) => void; // [NEW] クリック座標に最も近いテキスト位置にカーソルを配置
+    isFooterArea: (clientY: number) => boolean; // [NEW] 指定したY座標がエディタ本文より下のフッタ領域かどうか判定する
     setCursor: (offset: number) => void; // カーソルを指定位置に配置
     setSelection: (start: number, end: number) => void; // [New] 範囲選択を設定
     getContent: () => string; // [New] 最新の内容を同期的に取得
@@ -350,6 +364,7 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
         if (!showPlaceholder || state.doc.lines === 0) return Decoration.none;
 
         const line1 = state.doc.line(1);
+        if (line1.from >= line1.to) return Decoration.none; // 空行ガード
         return Decoration.set([
             Decoration.mark({
                 class: 'cm-placeholder-line'
@@ -362,6 +377,7 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
 
         if (tr.docChanged || tr.startState.field(placeholderFlagField) !== showPlaceholder) {
             const line1 = tr.state.doc.line(1);
+            if (line1.from >= line1.to) return Decoration.none; // 空行ガード
             return Decoration.set([
                 Decoration.mark({
                     class: 'cm-placeholder-line'
@@ -466,21 +482,13 @@ const linkEventHandler = EditorView.domEventHandlers({
     }
 });
 
-const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
-    value,
-    onChange,
-    filePath, // [NEW]
-
-    onKeyDown,
-    backgroundColor,
-    cursorPosition,
-    isNewNote = false, // [NEW] デフォルトはfalse（既存付箋）
-    fontSize = 16 // デフォルトは16px
-}, ref) => {
+const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
+    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur } = props;
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
     const filePathCompartment = useRef(new Compartment());
+    const isReadyRef = useRef(false); // [NEW] 初期化直後の誤検知防止用フラグ
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
@@ -646,6 +654,54 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
             });
             viewRef.current.focus();
         },
+        // クリック座標に対応する行の末尾にカーソルを移動する
+        setCursorToLineEnd: (clientX: number, clientY: number) => {
+            if (!viewRef.current) return;
+            const view = viewRef.current;
+            // CodeMirror の posAtCoords でクリック位置に対応するドキュメント位置を取得
+            const pos = view.posAtCoords({ x: clientX, y: clientY }, false);
+            if (pos !== null) {
+                // その位置の行の末尾を取得
+                const line = view.state.doc.lineAt(pos);
+                view.dispatch({
+                    selection: { anchor: line.to, head: line.to }
+                });
+            } else {
+                // 範囲外（ドキュメント末尾に移動）
+                const docLength = view.state.doc.length;
+                view.dispatch({
+                    selection: { anchor: docLength, head: docLength }
+                });
+            }
+            view.focus();
+        },
+        // [NEW] クリック座標に最も近いテキスト位置に直接カーソルを移動する
+        setCursorAtCoords: (clientX: number, clientY: number) => {
+            if (!viewRef.current) return;
+            const view = viewRef.current;
+            const pos = view.posAtCoords({ x: clientX, y: clientY }, false);
+            if (pos !== null) {
+                view.dispatch({
+                    selection: { anchor: pos, head: pos },
+                    scrollIntoView: true
+                });
+            } else {
+                const docLength = view.state.doc.length;
+                view.dispatch({
+                    selection: { anchor: docLength, head: docLength },
+                    scrollIntoView: true
+                });
+            }
+            view.focus();
+        },
+        // [NEW] クリック座標がテキスト領域（cm-content）より下（フッタ領域）かどうかを判定する
+        isFooterArea: (clientY: number) => {
+            if (!viewRef.current) return true;
+            const contentDOM = viewRef.current.contentDOM;
+            const rect = contentDOM.getBoundingClientRect();
+            // contentDOMの底辺より下ならフッタ領域と判定
+            return clientY > rect.bottom;
+        },
         setCursor: (offset: number) => {
             if (!viewRef.current) return;
             const docLength = viewRef.current.state.doc.length;
@@ -725,9 +781,39 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     // 基本的な編集機能
                     history(),
                     keymap.of([
+                        {
+                            key: 'Tab',
+                            run: (view) => {
+                                // React側のonKeyDownに任せるため、ここでは何もしないが
+                                // CodeMirrorのデフォルトTab（インデント）を無効化するためにtrueを返す
+                                // ただし、onKeyDownが発火するようにイベントをパスする必要がある？
+                                // CodeMirrorのkeymapはDOMイベントの前に処理されるため、ここでtrueを返すとonKeyDownが呼ばれない可能性がある。
+                                // 逆にここでfalseを返すとデフォルトのTab（indentMore）が走る。
+                                // なので、ここでフォーカス移動処理を行うのが確実。
+                                const toolbar = document.querySelector('.hoverBar');
+                                const firstButton = toolbar?.querySelector('button');
+                                if (firstButton) {
+                                    (firstButton as HTMLElement).focus();
+                                    return true;
+                                }
+                                return false;
+                            }
+                        },
                         ...defaultKeymap,
                         ...historyKeymap
                     ]),
+                    // Blurハンドラ
+                    EditorView.domEventHandlers({
+                        blur: (event, _view) => {
+                            if (!isReadyRef.current) {
+                                console.log('[RichTextEditor] Blur ignored (not ready yet)');
+                                return;
+                            }
+                            if (onBlur) {
+                                onBlur(event);
+                            }
+                        }
+                    }),
                     // Markdown装飾
                     markdownDecorations,
                     // [NEW] Placeholder for new notes
@@ -752,9 +838,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     }),
                     // イベントハンドラ
                     EditorView.domEventHandlers({
-                        blur: (e, view) => {
-                            console.log('[RichTextEditor] Blur ignored (managed by parent)');
-                        },
+                        // blur: 削除（上で定義済み）
                         keydown: (e) => {
                             if (e.key === 'Escape' && onKeyDown) {
                                 onKeyDown(e as any);
@@ -880,53 +964,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                             }
                         }
                     }),
-                    // テーマ (動的更新用Compartment)
-                    themeCompartment.current.of(EditorView.theme({
-                        '&': {
-                            fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif',
-                            fontSize: `${fontSize}px`,
-                            lineHeight: '1.4',
-                            letterSpacing: '0.01em',
-                            backgroundColor: backgroundColor,
-                        },
-                        '&.cm-focused': {
-                            outline: 'none'
-                        },
-                        '.cm-content': {
-                            padding: '0px',
-                            caretColor: '#333',
-                            whiteSpace: 'pre-wrap',
-                            wordWrap: 'break-word',
-                        },
-                        '.cm-line': {
-                            padding: '0px',
-                        },
-                        // Markdown装飾の追加スタイル
-                        '.cm-md-marker': {
-                            color: '#ff8c00', // 装飾であることをアピールするオレンジ色
-                            opacity: 0.6,      // 視認性確保
-                        },
-                        '.cm-md-h1': {
-                            fontWeight: '700',
-                            fontSize: '1.1em',
-                        },
-                        '.cm-md-bold': {
-                            fontWeight: '700',
-                            color: 'red',
-                        },
-                        // エディタ内の全ての文字にフォントを強制適用 (英語monospace化防止)
-                        '.cm-content, .cm-content *': {
-                            fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important',
-                            fontSize: `${fontSize}px`,
-                            lineHeight: '1.4',
-                            letterSpacing: '0.01em',
-                        },
-                        // [NEW] Placeholder style for new notes
-                        '.cm-placeholder-line': {
-                            color: '#999',
-                            opacity: 0.6,
-                        }
-                    }))
+                    // テーマ (動的更新用Compartment) - 初期は空。useEffect で設定される。
+                    themeCompartment.current.of(EditorView.theme({}))
                 ]
             }),
             parent: editorRef.current
@@ -970,7 +1009,19 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
             view.destroy();
             viewRef.current = null;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // 初回マウント時のみ作成
+
+    // [New] Ready flag initialization
+    useEffect(() => {
+        // マウント直後はBlurを無視し、少し待ってから有効化
+        // これによりダブルクリック時の誤爆や初期フォーカス移動時の誤検知を防ぐ
+        isReadyRef.current = false; // 明示的にリセット
+        const timer = setTimeout(() => {
+            isReadyRef.current = true;
+        }, 300); // 300ms待機（十分な余裕を持たせる）
+        return () => clearTimeout(timer);
+    }, []);
 
 
 
@@ -985,13 +1036,34 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
 
         // 描画/初回ロードのズレに勝つため2フレームで確実にfocus
         requestAnimationFrame(() => {
-            view.dispatch({ selection: { anchor: safePos, head: safePos } });
+            view.dispatch({ selection: { anchor: safePos, head: safePos }, scrollIntoView: true });
             view.focus();
             requestAnimationFrame(() => {
                 view.focus();
             });
         });
     }, [cursorPosition]);
+
+    // [New] initialCoords change handler
+    useEffect(() => {
+        if (!initialCoords) return;
+        if (!viewRef.current) return;
+
+        const view = viewRef.current;
+        requestAnimationFrame(() => {
+            const pos = view.posAtCoords({ x: initialCoords.x, y: initialCoords.y }, false);
+            if (pos !== null) {
+                view.dispatch({ selection: { anchor: pos, head: pos }, scrollIntoView: true });
+            } else {
+                const docLength = view.state.doc.length;
+                view.dispatch({ selection: { anchor: docLength, head: docLength }, scrollIntoView: true });
+            }
+            view.focus();
+            requestAnimationFrame(() => {
+                view.focus();
+            });
+        });
+    }, [initialCoords]);
 
     // [New] reconfigure filePath when it changes
     useEffect(() => {
@@ -1011,14 +1083,29 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     lineHeight: '1.4',
                     letterSpacing: '0.01em',
                     backgroundColor: backgroundColor,
-                    outline: 'none !important', // [Fix] Remove black dotted outline
-                    padding: '0 !important', // Ensure no internal padding
+                    outline: 'none !important',
+                    padding: '0 !important',
+                },
+                '.cm-editor': {
+                    // height: 100% 等を削除し、テキスト量にフィットさせる
+                },
+                '.cm-scroller': {
+                    overflow: 'visible',
+                    paddingBottom: '0 !important',
                 },
                 '.cm-content': {
+                    width: '100%',
+                    boxSizing: 'border-box',
                     padding: '0 !important',
+                    caretColor: '#333',
+                    whiteSpace: 'pre-wrap',
+                    wordWrap: 'break-word',
+                    cursor: 'text',
                 },
                 '.cm-line': {
                     padding: '0 !important',
+                    width: '100%',
+                    boxSizing: 'border-box',
                 },
                 '.cm-content, .cm-content *': {
                     fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important',
@@ -1027,9 +1114,22 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
                     letterSpacing: '0.01em',
                 },
                 '.cm-md-h1': {
+                    fontWeight: '700',
                     fontSize: '1.1em',
+                },
+                '.cm-md-bold': {
+                    fontWeight: '700',
+                    color: 'red',
+                },
+                '.cm-md-marker': {
+                    color: '#ff8c00',
+                    opacity: 0.6,
+                },
+                '.cm-placeholder-line': {
+                    color: '#999',
+                    opacity: 0.6,
                 }
-            }))
+            })) // カンマを追加すべき箇所と閉じ括弧の整理
         });
     }, [fontSize, backgroundColor]);
 
@@ -1059,10 +1159,12 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(({
     return (
         <div
             ref={editorRef}
+            className="rich-text-editor-container"
             style={{
-                width: '100%',
-                minHeight: '100px',
-                backgroundColor: backgroundColor
+                // レイアウトは globals.css の .rich-text-editor-container で管理
+                // ここでは動的な値のみ設定
+                backgroundColor: backgroundColor,
+                overflow: 'hidden',
             }}
         />
     );

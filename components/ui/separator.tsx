@@ -1,3 +1,11 @@
+/**
+ * UIコンポーネント: Separator
+ *
+ * 責務:
+ * - コンテンツを視覚的に区切るための水平または垂直の線
+ * - レイアウトの整理と情報のグループ化
+ */
+
 import * as React from "react"
 import * as SeparatorPrimitive from "@radix-ui/react-separator"
 import { cn } from "@/lib/utils"

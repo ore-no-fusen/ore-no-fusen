@@ -1,3 +1,12 @@
+/**
+ * アプリケーション設定ストア (Global State)
+ *
+ * 責務:
+ * - アプリ全体の共通設定（パス、言語、起動設定など）の管理
+ * - Reactコンポーネントへの設定値の提供
+ * - Rustバックエンドとの設定同期（読み込み・保存）
+ */
+
 import { useState, useEffect } from "react"
 // Tauri v2 用のインポート（v1の場合は @tauri-apps/api/tauri）
 import { invoke } from "@tauri-apps/api/core"

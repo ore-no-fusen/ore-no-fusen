@@ -1,3 +1,11 @@
+/**
+ * UIコンポーネント: Input
+ *
+ * 責務:
+ * - ユーザーからのテキスト入力を受け付けるフォーム要素
+ * - アプリケーション共通のスタイル（境界線、フォーカスリング等）の適用
+ */
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

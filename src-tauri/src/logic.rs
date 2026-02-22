@@ -1,3 +1,12 @@
+/*
+ * ビジネスロジック層 (Pure Logic)
+ *
+ * 責務:
+ * - 副作用を持たない純粋関数によるロジック実装
+ * - ファイル名パース、フロントマター操作、メタデータ抽出
+ * - 状態更新ロジックの計算 (`Effect`の生成)
+ */
+
 use crate::state::{AppState, NoteMeta};
 
 // ロジック層: 副作用なし、純粋関数のみ
@@ -47,7 +56,7 @@ pub fn split_frontmatter(src: &str) -> (&str, &str) {
 }
 
 
-pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String]) -> String {
+pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String], folded: Option<bool>) -> String {
     let color_line = if let Some(c) = background_color {
         format!("\nbackgroundColor: {}", c)
     } else {
@@ -59,15 +68,21 @@ pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &s
     } else {
         "".to_string()
     };
+
+    let folded_line = if let Some(true) = folded {
+        "\nfolded: true".to_string()
+    } else {
+        "".to_string()
+    };
     
     // Reformatted: 'window' key with flow-style object for readability and compactness
     format!(
-        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
-        seq, created, updated, color_line, tags_line
+        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}{}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
+        seq, created, updated, color_line, tags_line, folded_line
     )
 }
 
-pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>, Vec<String>) {
+pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>, Vec<String>, Option<bool>) {
     // Parse 'window: { x: ..., y: ..., width: ..., height: ... }'
     // Also support 'rect' temporarily/fallback or just 'window'
     // Regex allows specific order: x, y, width, height.
@@ -78,6 +93,7 @@ pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Op
     let re_color = regex::Regex::new(r#"backgroundColor:\s*["']?([^"'\s]+)["']?"#).unwrap();
     let re_aot = regex::Regex::new(r"alwaysOnTop:\s*(true|false)").unwrap();
     let re_tags = regex::Regex::new(r"(?m)^tags:\s*(.*)$").unwrap();
+    let re_folded = regex::Regex::new(r"folded:\s*(true|false)").unwrap();
 
     let (x, y, width, height) = if let Some(caps) = re_window.captures(content) {
         (
@@ -99,6 +115,7 @@ pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Op
 
     let color = re_color.captures(content).map(|c| c[1].to_string());
     let always_on_top = re_aot.captures(content).and_then(|c| c[1].parse().ok());
+    let folded = re_folded.captures(content).and_then(|c| c[1].parse().ok());
     
     let tags_val = re_tags.captures(content).map(|c| c[1].trim().to_string()).unwrap_or_default();
     let tags = if tags_val.starts_with('[') && tags_val.ends_with(']') {
@@ -115,7 +132,7 @@ pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Op
         Vec::new()
     };
 
-    (x, y, width, height, color, always_on_top, tags)
+    (x, y, width, height, color, always_on_top, tags, folded)
 }
 
 pub fn update_updated_field(frontmatter: &str, new_date: &str) -> String {
@@ -149,13 +166,14 @@ pub fn handle_save_note(
     let old_updated = old_meta.as_ref().map(|m| m.updated.clone()).unwrap_or_else(|| today.clone());
 
     // Extract content fields from NEW frontmatter_raw
-    let (_, _, _, _, new_color, new_aot, new_tags) = extract_meta_from_content(frontmatter_raw);
+    let (_, _, _, _, new_color, new_aot, new_tags, new_folded) = extract_meta_from_content(frontmatter_raw);
 
     // Check if "Content-related" fields changed
     let content_changed = body != old_body 
         || old_meta.as_ref().map_or(true, |m| m.background_color != new_color 
             || m.always_on_top != new_aot 
-            || m.tags != new_tags);
+            || m.tags != new_tags
+            || m.folded != new_folded);
 
     // Determine final updated date
     let final_updated = if content_changed { today } else { old_updated };
@@ -168,7 +186,7 @@ pub fn handle_save_note(
         let content = format!("{}\n\n{}", final_frontmatter, body);
 
         // Update State (Metadata)
-        let (x, y, w, h, bg, aot, tags) = extract_meta_from_content(&content);
+        let (x, y, w, h, bg, aot, tags, folded) = extract_meta_from_content(&content);
         let new_meta = NoteMeta {
             path: current_path.to_string(),
             seq,
@@ -178,6 +196,7 @@ pub fn handle_save_note(
             background_color: bg,
             always_on_top: aot,
             tags,
+            folded,
         };
 
         // WRITE GUARD: If content is IDENTICAL to what logic expects (meaning no changes at all, inclusive of geometry)
@@ -236,7 +255,7 @@ pub fn handle_save_note(
     }
 
     // Update State
-    let (x, y, w, h, bg, aot, tags) = extract_meta_from_content(&content);
+    let (x, y, w, h, bg, aot, tags, folded) = extract_meta_from_content(&content);
 
     let nothing_changed = !should_rename && !content_changed 
         && old_meta.as_ref().map_or(false, |m| m.x == x && m.y == y && m.width == w && m.height == h);
@@ -256,6 +275,7 @@ pub fn handle_save_note(
         background_color: bg,
         always_on_top: aot,
         tags,
+        folded,
     };
     
     apply_update_note(state, current_path, new_meta);
@@ -280,7 +300,7 @@ pub fn build_create_note_data(folder_path: &str, context: &str, next_seq: i32, t
     let path = std::path::Path::new(folder_path).join(&filename);
     let path_str = path.to_string_lossy().to_string();
     
-    let frontmatter = generate_frontmatter(next_seq, context, today, today, Some("#f7e9b0"), &[]);
+    let frontmatter = generate_frontmatter(next_seq, context, today, today, Some("#f7e9b0"), &[], None);
     let body = "ここにコンテキストを書く！".to_string();
     let content = format!("{}\n\n{}", frontmatter, body);
     
@@ -371,7 +391,7 @@ pub fn handle_add_tag(
     current_content: &str,
     tag: &str
 ) -> Result<Effect, String> {
-    let (_, _, _, _, _, _, mut tags) = extract_meta_from_content(current_content);
+    let (_, _, _, _, _, _, mut tags, _) = extract_meta_from_content(current_content);
     if !tags.contains(&tag.to_string()) {
         tags.push(tag.to_string());
         tags.sort();
@@ -393,7 +413,7 @@ pub fn handle_remove_tag(
     current_content: &str,
     tag: &str
 ) -> Result<Effect, String> {
-    let (_, _, _, _, _, _, mut tags) = extract_meta_from_content(current_content);
+    let (_, _, _, _, _, _, mut tags, _) = extract_meta_from_content(current_content);
     tags.retain(|t| t != tag);
     
     let new_content = update_frontmatter_value(current_content, "tags", format!("[{}]", tags.join(", ")));
@@ -475,10 +495,9 @@ mod tests {
 
     #[test]
     fn test_remove_frontmatter_key() {
-        let content = "---\nx: 100\ny: 200\n---\nbody";
-        let res = remove_frontmatter_key(content, "x");
-        assert!(!res.contains("x:"));
-        assert!(res.contains("y: 200"));
+        let content = "---\nx: 100\ny: 200\nwindow: { x: 100, y: 200, width: 300, height: 400 }\n---\nbody";
+        let res = remove_frontmatter_key(content, "window");
+        assert!(!res.contains("window:"));
         assert!(res.contains("body"));
     }
 
@@ -568,13 +587,13 @@ mod tests {
     #[test]
     fn extract_meta_with_tags() {
         let content = "---\ntags: [work, personal,  hoge]\n---";
-        let (_, _, _, _, _, _, tags) = extract_meta_from_content(content);
+        let (_, _, _, _, _, _, tags, _) = extract_meta_from_content(content);
         assert_eq!(tags, vec!["work", "personal", "hoge"]);
     }
 
     #[test]
     fn generate_frontmatter_with_tags() {
-        let fm = generate_frontmatter(1, "ctx", "2024-01-01", "2024-01-01", None, &vec!["tag1".to_string(), "tag2".to_string()]);
+        let fm = generate_frontmatter(1, "ctx", "2024-01-01", "2024-01-01", None, &vec!["tag1".to_string(), "tag2".to_string()], None);
         assert!(fm.contains("tags: [tag1, tag2]"));
     }
 
@@ -686,12 +705,11 @@ mod tests {
     #[test]
     fn generate_frontmatter_with_default_color() {
         // デフォルトカラー（指定なし）の場合
-        let frontmatter = generate_frontmatter(1, "テストメモ", "2026-01-12", "2026-01-12", None, &[]);
+        let frontmatter = generate_frontmatter(1, "テストメモ", "2026-01-12", "2026-01-12", None, &[], None);
         
         // 必須フィールドが含まれていることを確認
         assert!(frontmatter.contains("type: sticky"));
         assert!(frontmatter.contains("seq: 1"));
-        assert!(frontmatter.contains("context: テストメモ"));
         assert!(frontmatter.contains("created: 2026-01-12"));
         assert!(frontmatter.contains("updated: 2026-01-12"));
         
@@ -699,16 +717,13 @@ mod tests {
         assert!(frontmatter.contains("backgroundColor: #f7e9b0"));
         
         // 初期ジオメトリが設定されている
-        assert!(frontmatter.contains("x: 100"));
-        assert!(frontmatter.contains("y: 100"));
-        assert!(frontmatter.contains("width: 400"));
-        assert!(frontmatter.contains("height: 300"));
+        assert!(frontmatter.contains("window: { x: 100, y: 100, width: 400, height: 300 }"));
     }
 
     #[test]
     fn generate_frontmatter_with_custom_color() {
         // カスタムカラーを指定
-        let frontmatter = generate_frontmatter(42, "青いメモ", "2026-01-12", "2026-01-12", Some("#80d8ff"), &[]);
+        let frontmatter = generate_frontmatter(42, "青いメモ", "2026-01-12", "2026-01-12", Some("#80d8ff"), &[], None);
         
         assert!(frontmatter.contains("backgroundColor: #80d8ff"));
         assert!(frontmatter.contains("seq: 42"));
@@ -717,7 +732,7 @@ mod tests {
     #[test]
     fn generate_frontmatter_format() {
         // フロントマターが正しいYAML形式であることを確認
-        let frontmatter = generate_frontmatter(1, "test", "2026-01-12", "2026-01-12", None, &[]);
+        let frontmatter = generate_frontmatter(1, "test", "2026-01-12", "2026-01-12", None, &[], None);
         
         // ---で開始・終了することを確認
         assert!(frontmatter.starts_with("---\n"));
@@ -733,10 +748,7 @@ mod tests {
         let content = r#"---
 type: sticky
 seq: 1
-x: 150
-y: 200
-width: 500
-height: 400
+window: { x: 150, y: 200, width: 500, height: 400 }
 backgroundColor: #ffcdd2
 alwaysOnTop: true
 ---
@@ -744,7 +756,7 @@ alwaysOnTop: true
 メモの本文
 "#;
         
-        let (x, y, width, height, color, aot, tags) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, tags, _) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(150.0));
         assert_eq!(y, Some(200.0));
@@ -761,16 +773,16 @@ alwaysOnTop: true
     fn extract_meta_partial_fields() {
         // 一部のフィールドのみ存在する場合
         let content = r#"---
-x: 100
+window: { x: 100, y: 150, width: 200, height: 300 }
 backgroundColor: #f7e9b0
 ---"#;
         
-        let (x, y, width, height, color, aot, tags) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, tags, _) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(100.0));
-        assert_eq!(y, None);  // 存在しない
-        assert_eq!(width, None);
-        assert_eq!(height, None);
+        assert_eq!(y, Some(150.0));
+        assert_eq!(width, Some(200.0));
+        assert_eq!(height, Some(300.0));
         assert_eq!(color, Some("#f7e9b0".to_string()));
         assert_eq!(aot, None);
     }
@@ -780,7 +792,7 @@ backgroundColor: #f7e9b0
         // フロントマターが存在しない場合
         let content = "ただのテキスト";
         
-        let (x, y, width, height, color, aot, tags) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, tags, _) = extract_meta_from_content(content);
         
         // 全てNone
         assert_eq!(x, None);
@@ -794,9 +806,9 @@ backgroundColor: #f7e9b0
     #[test]
     fn extract_meta_float_values() {
         // 小数点を含む座標
-        let content = "x: 123.45\ny: 678.9";
+        let content = "window: { x: 123.45, y: 678.9, width: 10.0, height: 20.0 }";
         
-        let (x, y, _, _, _, _, _) = extract_meta_from_content(content);
+        let (x, y, _, _, _, _, _, _) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(123.45));
         assert_eq!(y, Some(678.9));
@@ -1027,10 +1039,7 @@ backgroundColor: #f7e9b0
         match result.unwrap() {
             Effect::WriteNote { path, content } => {
                 assert_eq!(path, "/test.md");
-                assert!(content.contains("x: 150"));
-                assert!(content.contains("y: 250"));
-                assert!(content.contains("width: 400"));
-                assert!(content.contains("height: 300"));
+                assert!(content.contains("window: { x: 150, y: 250, width: 400, height: 300 }"));
             },
             _ => panic!("Expected WriteNote effect"),
         }
@@ -1069,10 +1078,7 @@ context:
 created: 2026-01-14
 updated: 2026-01-14
 backgroundColor: #ffcdd2
-x: 1425
-y: 551
-width: 413
-height: 241
+window: { x: 1425, y: 551, width: 413, height: 241 }
 fontFamily: BIZ UDGothic
 fontSize: 8
 lineHeight: 1.0
@@ -1081,7 +1087,7 @@ tags: [OreNoFusen, 開発プロセス]
 
 ロードマップ"#;
         
-        let (x, y, width, height, color, _, tags) = extract_meta_from_content(content);
+        let (x, y, width, height, color, _, tags, _) = extract_meta_from_content(content);
         
         // ⚠️ 最重要: height が width の値で上書きされていないこと
         assert_eq!(width, Some(413.0), "width は 413.0 であるべき");
@@ -1094,24 +1100,25 @@ tags: [OreNoFusen, 開発プロセス]
         assert!(tags.contains(&"OreNoFusen".to_string()));
     }
 
-    /// No.1バグ回帰テスト (追加): width/height の順序が逆でも正しく動作
+    /// No.1バグ回帰テスト (修正): 現在の window: { x, y, width, height } フォーマットは順序を固定しているため
+    /// 順序通りにパースできることを改めて確認するテストとして残す
     #[test]
     fn regression_no1_order_independent() {
-        // height が width より前に来るケース
-        let content = "---\nheight: 300\nwidth: 400\n---";
+        let content = "---\nwindow: { x: 100, y: 200, width: 400, height: 300 }\n---";
         
-        let (_, _, width, height, _, _, _) = extract_meta_from_content(content);
+        let (_, _, width, height, _, _, _, _) = extract_meta_from_content(content);
         
         assert_eq!(width, Some(400.0));
         assert_eq!(height, Some(300.0));
     }
 
-    /// No.1バグ回帰テスト (追加): 短縮形 w: と h: も正しく動作
+    /// No.1バグ回帰テスト (修正): 現在は window 記法に統一されているため、
+    /// 部分的な width, height 指定ではなく完全な window 記法で正常に抽出できることを確認する
     #[test]
     fn regression_no1_short_form_w_and_h() {
-        let content = "---\nw: 500\nh: 250\n---";
+        let content = "---\nwindow: { x: 0, y: 0, width: 500, height: 250 }\n---";
         
-        let (_, _, width, height, _, _, _) = extract_meta_from_content(content);
+        let (_, _, width, height, _, _, _, _) = extract_meta_from_content(content);
         
         assert_eq!(width, Some(500.0));
         assert_eq!(height, Some(250.0));

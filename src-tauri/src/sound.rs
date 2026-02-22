@@ -1,3 +1,12 @@
+/*
+ * サウンド再生機能
+ *
+ * 責務:
+ * - 効果音リソースの埋め込みと管理
+ * - サウンドの非同期再生
+ * - 音量制御
+ */
+
 use std::io::Cursor;
 use rodio::{Decoder, OutputStream, Sink};
 // thread is used via std::thread::spawn directly

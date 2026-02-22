@@ -1,3 +1,12 @@
+/**
+ * FrontMatter分離ロジックテスト
+ *
+ * 責務:
+ * - フロントマター分離処理の正確性検証
+ * - データ破損（閉じタグ欠落）ケースの回帰テスト
+ * - 特殊文字・エンコーディング処理の検証
+ */
+
 import { describe, it, expect } from 'vitest';
 import { splitFrontMatter } from './splitFrontMatter';
 

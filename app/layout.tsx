@@ -1,3 +1,13 @@
+/**
+ * Root Layout
+ *
+ * 責務:
+ * - アプリケーション全体のHTML構造定義
+ * - グローバルCSS、フォント、メタデータの適用
+ * - GA4スクリプトのロード
+ * - PWA登録コンポーネントの配置
+ */
+
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";   // ← 追加
 import "./shadcn.css";

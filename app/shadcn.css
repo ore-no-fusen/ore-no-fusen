@@ -1,3 +1,11 @@
+/**
+ * shadcn/ui スタイルシート
+ *
+ * 責務:
+ * - shadcn/ui コンポーネント用ユーティリティスタイルの定義
+ * - グローバルCSSとは別の、コンポーネント固有のスタイル調整
+ */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -1,7 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Tauri能力設定: デフォルトの権限セット (ウィンドウ操作、メニュー、WebView作成等)",
+  "_role": "アプリケーションの基本動作に必要な権限を定義する",
   "windows": [
     "*"
   ],

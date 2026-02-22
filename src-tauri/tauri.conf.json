@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ore-no-fusen",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "identifier": "com.ore-no-fusen.app",
   "build": {
     "frontendDist": "../out",
@@ -48,6 +48,19 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false,
+        "languages": [
+          "Japanese"
+        ],
+        "template": "windows/installer.nsi",
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "icons/installer_header.bmp",
+        "sidebarImage": "icons/installer_sidebar.bmp",
+        "installMode": "currentUser"
+      }
+    }
   }
 }

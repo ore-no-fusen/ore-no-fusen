@@ -1,3 +1,12 @@
+/**
+ * Tailwind CSS 設定ファイル
+ *
+ * 責務:
+ * - コンテンツパスの設定 (Tailwindがスキャンするファイル)
+ * - テーマの拡張 (カラーパレット、アニメーション、キーフレーム)
+ * - プラグインの登録 (tailwindcss-animate等)
+ */
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
     darkMode: ["class"],
@@ -16,6 +25,15 @@ module.exports = {
             },
         },
         extend: {
+            zIndex: {
+                'tags': '50',
+                'toolbar': '100',
+                'search': '200',
+            },
+            spacing: {
+                'ui-offset-x': '8px',
+                'ui-offset-y': '12px',
+            },
             colors: {
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",

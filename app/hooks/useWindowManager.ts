@@ -14,22 +14,51 @@ import { PhysicalSize } from '@tauri-apps/api/dpi';
 
 export type UseWindowManagerOptions = {
     onGeometryChange: (geometry: { x: number; y: number; width: number; height: number }) => void;
+    onAutoExpand?: () => void; // [New] リサイズ操作により自動展開された際に呼ばれるコールバック
+    getMinimizedHeight?: () => number; // [New] ミニマイズ時のウィンドウ高さを動的に計算するコールバック
 };
 
 export type UseWindowManagerReturn = {
     isMinimized: boolean;
     toggleMinimize: () => Promise<void>;
     saveWindowState: () => Promise<void>;
+    setOriginalSize: (width: number, height: number) => void; // [New]
+    setIsMinimized: (value: boolean) => void; // [New] Only for initial sync
 };
 
-export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions): UseWindowManagerReturn {
+export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedHeight }: UseWindowManagerOptions): UseWindowManagerReturn {
     const [isMinimized, setIsMinimized] = useState(false);
     const originalSizeRef = useRef<{ width: number; height: number } | null>(null);
+
+    // [New] イベントリスナー内で最新のステート/コールバックを参照するためのRef
+    const isMinimizedRef = useRef(isMinimized);
+    const onAutoExpandRef = useRef(onAutoExpand);
+    const getMinimizedHeightRef = useRef(getMinimizedHeight);
+
+    useEffect(() => {
+        isMinimizedRef.current = isMinimized;
+    }, [isMinimized]);
+
+    useEffect(() => {
+        onAutoExpandRef.current = onAutoExpand;
+    }, [onAutoExpand]);
+
+    useEffect(() => {
+        getMinimizedHeightRef.current = getMinimizedHeight;
+    }, [getMinimizedHeight]);
+
+    const setOriginalSize = useCallback((width: number, height: number) => {
+        originalSizeRef.current = { width, height };
+    }, []);
 
     /**
      * ウィンドウの座標とサイズを保存する
      */
     const saveWindowState = useCallback(async () => {
+        if (isMinimized) {
+            console.log('[useWindowManager] Skipping saveWindowState because isMinimized is true');
+            return;
+        }
         try {
             const geometry = await getWindowGeometry();
             console.log('[useWindowManager] Saving geometry:', geometry);
@@ -37,7 +66,7 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
         } catch (e) {
             console.error('[useWindowManager] Failed to save window state:', e);
         }
-    }, [onGeometryChange]);
+    }, [onGeometryChange, isMinimized]);
 
     /**
      * ミニマイズモードをトグルする
@@ -62,9 +91,11 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
             const size = await win.innerSize();
             originalSizeRef.current = { width: size.width, height: size.height };
 
-            // DPIスケールファクターを考慮して1行分のサイズに縮小
+            // DPIスケールファクターを考慮して高さを設定
             const factor = await win.scaleFactor();
-            const targetHeight = Math.round(40 * factor); // 40px論理 → 物理
+            // 呼び出し元の計算式があればそれを使用し、なければデフォルト40px
+            const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
+            const targetHeight = Math.round(logicalHeight * factor);
 
             await win.setSize(new PhysicalSize(size.width, targetHeight));
             setIsMinimized(true);
@@ -72,32 +103,81 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
         }
     }, [isMinimized]);
 
+    // [New] 初期化時にfolded状態だった場合、現在のサイズを「展開時サイズ」として保持するのではなく
+    // 明示的に展開時のデフォルトサイズ（またはメタデータからのサイズ）をセットすべきだが
+    // ここでは簡易的に「現在のサイズ」を保存しないようにガードする。
+    // 実際の展開サイズ復元は StickyNote.tsx 側で folded 判定時に行う。
+
     /**
      * ウィンドウイベントリスナーをセットアップ
      */
     useEffect(() => {
-        let unlistenMove: (() => void) | undefined;
-        let unlistenResize: (() => void) | undefined;
+        let isMounted = true;
+        let unlistenMove: (() => void) | null = null;
+        let unlistenResize: (() => void) | null = null;
 
         const setupListeners = async () => {
-            const win = getCurrentWindow();
+            try {
+                const win = getCurrentWindow();
 
-            unlistenMove = await win.listen('tauri://move', () => {
-                saveWindowState();
-            });
+                // unlisten関数自体がPromiseを返すTauri v2仕様への対策ラッパー
+                const wrapUnlisten = (u: any) => () => {
+                    try {
+                        const p = u?.();
+                        if (p && p.catch) p.catch(() => { });
+                    } catch (e) { }
+                };
 
-            unlistenResize = await win.listen('tauri://resize', () => {
-                saveWindowState();
-            });
+                const uMove = await win.listen('tauri://move', () => {
+                    saveWindowState();
+                });
+                const safeMove = wrapUnlisten(uMove);
+                if (isMounted) unlistenMove = safeMove; else safeMove();
 
-            console.log('[useWindowManager] Event listeners setup complete');
+                const uResize = await win.listen('tauri://resize', async () => {
+                    if (isMinimizedRef.current) {
+                        // ミニマイズ中にリサイズされた場合、高さが一定以上増えていたら「自動展開」とする
+                        const size = await win.innerSize();
+                        const factor = await win.scaleFactor();
+                        const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
+                        const targetHeight = Math.round(logicalHeight * factor);
+
+                        // 10px(物理ピクセル)以上広げられたら自動展開
+                        if (size.height > targetHeight + 10) {
+                            console.log('[useWindowManager] Auto-expanding due to vertical resize');
+                            setIsMinimized(false);
+                            // 手動で広げたサイズを新たな「展開サイズ」として記憶しておく
+                            originalSizeRef.current = { width: size.width, height: size.height };
+
+                            if (onAutoExpandRef.current) {
+                                onAutoExpandRef.current();
+                            }
+                        }
+                    } else {
+                        saveWindowState();
+                    }
+                });
+                const safeResize = wrapUnlisten(uResize);
+                if (isMounted) unlistenResize = safeResize; else safeResize();
+
+                console.log('[useWindowManager] Event listeners setup complete');
+            } catch (err) {
+                console.warn('[useWindowManager] Event listener setup failed:', err);
+            }
         };
 
         setupListeners();
 
         return () => {
-            if (unlistenMove) unlistenMove();
-            if (unlistenResize) unlistenResize();
+            isMounted = false;
+            const safeUnlisten = (u: any) => {
+                try {
+                    const p = u?.();
+                    if (p && p.catch) p.catch(() => { });
+                } catch (e) { }
+            };
+            safeUnlisten(unlistenMove);
+            safeUnlisten(unlistenResize);
             console.log('[useWindowManager] Event listeners cleaned up');
         };
     }, [saveWindowState]);
@@ -105,6 +185,8 @@ export function useWindowManager({ onGeometryChange }: UseWindowManagerOptions):
     return {
         isMinimized,
         toggleMinimize,
-        saveWindowState
+        saveWindowState,
+        setOriginalSize,
+        setIsMinimized
     };
 }

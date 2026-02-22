@@ -1,3 +1,9 @@
+# Tauri アプリケーションマニフェスト (Rust)
+#
+# 責務:
+# - Rustクレートの依存関係管理
+# - ビルド設定 (features, capabilities)
+
 [package]
 name = "ore-no-fusen"
 version = "0.10.0"

@@ -1,3 +1,11 @@
+/**
+ * UIコンポーネント: Switch
+ *
+ * 責務:
+ * - 二者択一（ON/OFF）の状態を切り替えるトグルスイッチ
+ * - 設定画面などでのブール値の入力制御
+ */
+
 import * as React from "react"
 import * as SwitchPrimitive from "@radix-ui/react-switch"
 import { cn } from "@/lib/utils"

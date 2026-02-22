@@ -1,8 +1,9 @@
 /**
- * ウィンドウ操作のTauri API呼び出しをラップ
+ * ウィンドウ操作API (Tauri Wrapper)
  *
- * このモジュールは、付箋ウィンドウの座標・サイズ管理を提供します。
- * DPI対応のため、物理座標と論理座標の変換を行います。
+ * 責務:
+ * - ウィンドウの座標・サイズ・フォーカス管理
+ * - DPIスケーリングを考慮した座標変換 (物理⇔論理)
  */
 
 import { getCurrentWindow } from '@tauri-apps/api/window';

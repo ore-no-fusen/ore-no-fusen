@@ -1,3 +1,11 @@
+/*
+ * クリップボード管理
+ *
+ * 責務:
+ * - クリップボードからの画像データ取得
+ * - 取得した画像のローカル保存処理
+ */
+
 use std::path::Path;
 use std::fs;
 use arboard::Clipboard;

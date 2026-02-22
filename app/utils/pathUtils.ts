@@ -39,3 +39,14 @@ export function pathsEqual(path1: string, path2: string): boolean {
     return normalizePath(path1) === normalizePath(path2);
 }
 
+/**
+ * パスからファイル名を取得する
+ * Windows / Unix 両対応
+ * 
+ * @param path - ファイルパス
+ * @returns ファイル名
+ */
+export function getFileName(path: string): string {
+    return path.split(/[\\/]/).pop() || path;
+}
+

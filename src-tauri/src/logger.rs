@@ -1,3 +1,12 @@
+/*
+ * ログシステム
+ *
+ * 責務:
+ * - アプリケーションログのファイル出力
+ * - ログローテーション管理（サイズ制限）
+ * - 各種ログレベル（INFO, WARN, ERROR, DEBUG）のAPI提供
+ */
+
 use std::fs::{OpenOptions, create_dir_all, metadata, File};
 use std::io::{Write, BufRead, BufReader};
 use std::path::PathBuf;

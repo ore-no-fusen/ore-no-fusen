@@ -1,3 +1,11 @@
+/**
+ * UIコンポーネント: Slider
+ *
+ * 責務:
+ * - 数値を範囲指定で選択するための入力インターフェース
+ * - 音量調節やフォントサイズ変更などの連続値の調整
+ */
+
 import * as React from "react"
 import * as SliderPrimitive from "@radix-ui/react-slider"
 import { cn } from "@/lib/utils"

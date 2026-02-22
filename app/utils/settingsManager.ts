@@ -1,19 +1,16 @@
 /**
- * SettingsManager - アプリ設定の一元管理ユーティリティ
- * 設定値をキャッシュし、各コンポーネントで簡単に利用できるようにします
+ * 設定管理ユーティリティ (SettingsManager)
+ *
+ * 責務:
+ * - アプリケーション設定のキャッシュ管理
+ * - 設定変更イベントのリスニングと自動更新
+ * - 環境（Browser/Tauri）に応じた設定読み込み
  */
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { type AppSettings } from '@/lib/settings-store';
 
-// 設定の型定義
-export type AppSettings = {
-    base_path: string;
-    language: 'ja' | 'en';
-    auto_start: boolean;
-    font_size: number;
-    sound_enabled: boolean;
-};
 
 // デフォルト値
 const DEFAULT_SETTINGS: AppSettings = {
@@ -109,24 +106,10 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 /**
- * 特定の設定値を取得
- */
-export async function getSetting<K extends keyof AppSettings>(key: K): Promise<AppSettings[K]> {
-    const settings = await getSettings();
-    return settings[key];
-}
-
-/**
- * fontSizeを取得
- */
-export async function getFontSize(): Promise<number> {
-    return getSetting('font_size');
-}
-
-/**
  * soundEnabledを取得
  */
 export async function isSoundEnabled(): Promise<boolean> {
-    return getSetting('sound_enabled');
+    const settings = await getSettings();
+    return settings.sound_enabled;
 }
 

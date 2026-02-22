@@ -1,3 +1,12 @@
+/**
+ * フィードバック送信API (Route Handler)
+ *
+ * 責務:
+ * - クライアントからのフィードバック受信
+ * - Discord Webhookへの通知転送
+ * - エラーハンドリングとレスポンス生成
+ */
+
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
