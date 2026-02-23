@@ -60,7 +60,13 @@ Section "Uninstall"
   ; アンインストーラー自身を削除
   Delete "$INSTDIR\uninstall.exe"
 
-  ; フォルダを削除
-  RMDir "$INSTDIR"
+  ; アプリが実行時に生成したファイルを削除
+  Delete "$INSTDIR\app.log"
+
+  ; WebViewキャッシュ（EBWebView）を削除
+  RMDir /r "$INSTDIR\EBWebView"
+
+  ; フォルダを完全削除（残ったファイルも含む）
+  RMDir /r "$INSTDIR"
 SectionEnd
 

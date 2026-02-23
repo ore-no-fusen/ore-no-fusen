@@ -36,6 +36,15 @@ export default function RootLayout({
     <html lang="ja">
       <head>
         <link rel="icon" href="/favicon.ico" />
+        {/* 付箋ウィンドウ（?path=）はglobals.cssの#111827より先に黄色を設定 */}
+        <script dangerouslySetInnerHTML={{
+          __html: `
+          if (new URLSearchParams(location.search).has('path')) {
+            var s = document.createElement('style');
+            s.textContent = 'html,body{background:#f7e9b0!important}';
+            document.head.appendChild(s);
+          }
+        `}} />
       </head>
       <body>
         <RegisterPWA />

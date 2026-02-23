@@ -75,7 +75,7 @@ fn write_log(level: &str, message: &str) {
 
 /// アプリケーション起動ログ
 pub fn log_app_start() {
-    write_log("INFO", &format!("ore-no-fusen v{} started (OS: {})", APP_VERSION, std::env::consts::OS));
+    write_log("INFO", &format!("★★★ ore-no-fusen v{} started (OS: {}) ★★★", APP_VERSION, std::env::consts::OS));
 }
 
 /// デバッグログを出力（開発版のみ）

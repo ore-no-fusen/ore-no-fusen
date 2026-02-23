@@ -15,6 +15,7 @@ export type UseEditModeOptions = {
     onSave: (body: string, frontmatter: string, allowRename: boolean) => Promise<void>;
     rawFrontmatter: string;
     isCapturing?: boolean;
+    initialIsEditing?: boolean; // 新規ノート等で最初から編集モードで開始する場合
 };
 
 export type UseEditModeReturn = {
@@ -41,9 +42,10 @@ export function useEditMode({
     initialContent,
     onSave,
     rawFrontmatter,
-    isCapturing = false
+    isCapturing = false,
+    initialIsEditing = false,
 }: UseEditModeOptions): UseEditModeReturn {
-    const [isEditing, setIsEditing] = useState(false);
+    const [isEditing, setIsEditing] = useState(initialIsEditing);
     const [editBody, setEditBody] = useState(initialContent);
     const [cursorPosition, setCursorPosition] = useState<number | null>(null);
     const [initialCoords, setInitialCoords] = useState<{ x: number, y: number } | null>(null);

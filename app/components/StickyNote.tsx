@@ -146,9 +146,10 @@ const StickyNote = memo(function StickyNote() {
         initialCoords,
     } = useEditMode({
         initialContent: content,
-        onSave: handleSave, // ラップした保存関数を使用
+        onSave: handleSave,
         rawFrontmatter,
-        isCapturing: isCapturingRef.current
+        isCapturing: isCapturingRef.current,
+        initialIsEditing: isNew, // 新規ノートは最初から編集モード（④「空のメモ」フラッシュを排除）
     });
 
     // ウィンドウ管理
@@ -342,18 +343,11 @@ const StickyNote = memo(function StickyNote() {
             // 新規ノート: readNoteをスキップし、直接編集モードで開始
             // ①空白画面 ②Loading ③表示→編集の切り替え を全て省略
             console.log('[StickyNote] New note: skipping loadNote, starting edit mode directly');
-            startEditing();
-
-            // 編集モードの描画が完了した後にウィンドウを表示
-            requestAnimationFrame(async () => {
-                try {
-                    const win = getCurrentWindow();
-                    await win.show();
-                    await win.setFocus();
-                    console.log('[StickyNote] New note window shown');
-                } catch (e) {
-                    console.warn('[StickyNote] Failed to show window:', e);
-                }
+            // initialIsEditing:true で既にisEditing=trueなので startEditing は早期リターンする
+            // エディタとウィンドウへのフォーカスを明示的に当てる
+            requestAnimationFrame(() => {
+                editorRef.current?.focus();
+                getCurrentWindow().setFocus().catch(() => { });
             });
         } else {
             // 既存ノート: 通常のロードフロー

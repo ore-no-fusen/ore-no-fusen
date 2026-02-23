@@ -193,3 +193,25 @@ body {
   border-radius: 4px;
   min-height: 1.5em !important;
 }
+
+/* =========================================
+   付箋ウィンドウ フェードイン演出
+   世界一速く「書ける」印象を作るための
+   0.15秒アニメーション
+   ========================================= */
+
+@keyframes noteAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.noteShell {
+  animation: noteAppear 0.15s cubic-bezier(0.2, 0, 0, 1) both;
+}

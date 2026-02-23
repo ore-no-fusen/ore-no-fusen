@@ -335,10 +335,11 @@ function OrchestratorContent() {
           const win = new WebviewWindow(label, {
             url,
             title: 'Quick Memo',  // タスクバープレビューのタイトル
-            transparent: true,
+            transparent: false,   // OS側でbackgroundColorを制御するため不透明に
             decorations: false,
             alwaysOnTop: meta?.always_on_top || false,
-            visible: !isNew, // 新規ノートは準備完了まで非表示（チラつき防止）
+            visible: true, // 即時表示
+            backgroundColor: [247, 233, 176, 255], // デフォルト付箋色 #f7e9b0 - 最初から黄色
             width,
             height,
             x,
