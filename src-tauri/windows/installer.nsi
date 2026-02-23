@@ -45,8 +45,8 @@ Section "Install"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; --- ショートカット作成 ---
-  CreateShortcut "$SMPROGRAMS\ore-no-fusen.lnk" "$INSTDIR\ore-no-fusen.exe"
-  CreateShortcut "$DESKTOP\ore-no-fusen.lnk" "$INSTDIR\ore-no-fusen.exe"
+  CreateShortcut "$SMPROGRAMS\ore-no-fusen {{{version}}}.lnk" "$INSTDIR\ore-no-fusen.exe"
+  CreateShortcut "$DESKTOP\ore-no-fusen {{{version}}}.lnk" "$INSTDIR\ore-no-fusen.exe"
 SectionEnd
 
 Section "Uninstall"
@@ -54,8 +54,8 @@ Section "Uninstall"
   Delete "$INSTDIR\ore-no-fusen.exe"
   
   ; ショートカットを削除
-  Delete "$SMPROGRAMS\ore-no-fusen.lnk"
-  Delete "$DESKTOP\ore-no-fusen.lnk"
+  Delete "$SMPROGRAMS\ore-no-fusen {{{version}}}.lnk"
+  Delete "$DESKTOP\ore-no-fusen {{{version}}}.lnk"
 
   ; アンインストーラー自身を削除
   Delete "$INSTDIR\uninstall.exe"
