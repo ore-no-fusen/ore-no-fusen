@@ -154,9 +154,19 @@ pub fn handle_save_note(
     
     // 1. Filename & Path Logic
     let current_path_obj = std::path::Path::new(current_path);
+
+    if !allow_rename && !current_path_obj.exists() {
+        // [FIX] リネーム処理後に遅延していた自動保存（ジオメトリ変更など）が古いパスめがけて実行された際、
+        // 古い名前のまま内容が復活してしまう（増殖バグ）のを完全に防ぐ
+        println!("[TRACE:RUST_SAVE] Blocked auto-save to non-existent path: {}", current_path);
+        return Err(format!("Skipping auto-save because file was moved or deleted: {}", current_path));
+    }
+
     let parent = current_path_obj.parent().ok_or("No parent")?;
     let filename = current_path_obj.file_name().ok_or("Invalid path")?.to_string_lossy().to_string();
     
+    println!("[TRACE:RUST_SAVE] Start logic for path: {}, allow_rename: {}", current_path, allow_rename);
+
     // Parse current filename to get fixed params (seq, created)
     let (seq, created_date, old_context) = parse_filename(&filename);
     let first_line = body.lines().next().unwrap_or("").trim();

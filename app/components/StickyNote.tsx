@@ -50,8 +50,14 @@ import { getTranslation, type Language } from "@/lib/i18n";
 
 const StickyNote = memo(function StickyNote() {
     const searchParams = useSearchParams();
-    const urlPath = searchParams.get('path');
-    const isNew = searchParams.get('isNew') === '1';
+    // [NEW] プールモード判定と動的パス
+    const isPoolParams = searchParams.get('isPool') === 'true';
+    const [dynamicUrlPath, setDynamicUrlPath] = useState<string | null>(searchParams.get('path') || null);
+    const [isPool, setIsPool] = useState<boolean>(isPoolParams);
+    const [isNewState, setIsNewState] = useState<boolean>(searchParams.get('isNew') === '1');
+
+    const urlPath = dynamicUrlPath;
+    const isNew = isNewState;
 
     const [selectedFile, setSelectedFile] = useState<NoteMeta | null>(null);
 
@@ -105,6 +111,14 @@ const StickyNote = memo(function StickyNote() {
         path: urlPath,
         isNew,
         onPathChange: (newPath) => {
+            // [ROOT FIX] リネーム後にこのコールバックが呼ばれる。
+            // 必ず setDynamicUrlPath を呼んで React の urlPath state を新しいパスに更新する。
+            // これを呼ばないと urlPath が古いパスのままになり、
+            // リネーム後の自動保存が全部「ファイルが見つからない」エラーになる
+            const ts = new Date().toLocaleTimeString('ja-JP');
+            console.log(`[StickyNote | ${ts}] onPathChange called: ${urlPath} -> ${newPath}`);
+            setDynamicUrlPath(newPath);
+
             const url = new URL(window.location.href);
             url.searchParams.set('path', newPath);
             window.history.replaceState({}, '', url.toString());
@@ -123,11 +137,21 @@ const StickyNote = memo(function StickyNote() {
     // 保存処理のラッパー（削除中は保存しない）
     const handleSave = useCallback(async (body: string, front: string, allowRename: boolean) => {
         if (isDeletingRef.current) {
-            console.log('[Save] Skipped because note is being deleted/archived');
+            console.log('[TRACE:STICKYNOTE_SAVE] Skipped because note is being deleted/archived');
             return;
         }
+        if (isPool) {
+            console.log(`[TRACE:STICKYNOTE_SAVE] Skipped save because window is currently a Pool. bodyPreview=${body.substring(0, 10)}...`);
+            return;
+        }
+
+        console.log(`[TRACE:STICKYNOTE_SAVE] Executing saveNoteContent. isNew=${isNew}, allowRename=${allowRename}, contentLength=${body.length}`);
         await saveNoteContent(body, front, allowRename);
-    }, [saveNoteContent]);
+        if (isNew) {
+            console.log(`[TRACE:STICKYNOTE_SAVE] Clearing isNew flag after save`);
+            setIsNewState(false);
+        }
+    }, [saveNoteContent, isNew, isPool]);
 
     // 編集モード管理
     const {
@@ -149,7 +173,7 @@ const StickyNote = memo(function StickyNote() {
         onSave: handleSave,
         rawFrontmatter,
         isCapturing: isCapturingRef.current,
-        initialIsEditing: isNew, // 新規ノートは最初から編集モード（④「空のメモ」フラッシュを排除）
+        initialIsEditing: isNew || isPool, // 新規ノートまたはプール待機は最初から編集モード
     });
 
     // ウィンドウ管理
@@ -188,6 +212,13 @@ const StickyNote = memo(function StickyNote() {
     const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize, setIsMinimized } = useWindowManager({
         onGeometryChange: (geom) => {
             if (isDeletingRef.current) return;
+            // [FIX] プール状態・新規ノート昇格直後はジオメトリ変更保存をスキップする
+            // ウィンドウを表示位置に移動する際にこのコールバックが呼ばれ、
+            // まだファイルが確定していないパスへのauto-saveが走ってしまうのを防ぐ
+            if (isPool) {
+                console.log('[TRACE:STICKYNOTE] Geometry change ignored: window is still a pool');
+                return;
+            }
             setRawFrontmatter((prev) => updateFrontmatterGeometry(prev, geom));
             setSavePending(true);
         },
@@ -344,11 +375,12 @@ const StickyNote = memo(function StickyNote() {
             // ①空白画面 ②Loading ③表示→編集の切り替え を全て省略
             console.log('[StickyNote] New note: skipping loadNote, starting edit mode directly');
             // initialIsEditing:true で既にisEditing=trueなので startEditing は早期リターンする
-            // エディタとウィンドウへのフォーカスを明示的に当てる
-            requestAnimationFrame(() => {
-                editorRef.current?.focus();
+            // [FIX] Ticksを少し遅らせてDOMの描画とエディタの初期化完了後にフォーカスする
+            setTimeout(() => {
+                console.log('[StickyNote] Direct Start: Calling focusAndSelectFirstLine');
+                editorRef.current?.focusAndSelectFirstLine();
                 getCurrentWindow().setFocus().catch(() => { });
-            });
+            }, 100);
         } else {
             // 既存ノート: 通常のロードフロー
             loadNote().then((body) => {
@@ -420,6 +452,65 @@ const StickyNote = memo(function StickyNote() {
             safeUnlisten(unlistenClose);
         };
     }, [selectedFile, isEditing, endEditing, saveWindowState]);
+
+    // [NEW] プールからの昇格（Promote）処理
+    useEffect(() => {
+        if (!isPool) return;
+
+        console.log('[StickyNote:Pool] Waiting for promote_from_pool event...');
+        let unlisten: (() => void) | undefined;
+
+        const setup = async () => {
+            // [ROOT FIX] global な listen ではなく、このウィンドウ固有の listen を使う。
+            // Tauri の global listen は emitTo で宛先を絞っても全ウィンドウに届いてしまう。
+            // getCurrentWebviewWindow().listen を使うことで、このウィンドウ宛てのイベントだけ受け取る。
+            const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            const thisWin = getCurrentWebviewWindow();
+
+            unlisten = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string }>('fusen:promote_from_pool', async (event) => {
+                const ts = new Date().toLocaleTimeString('ja-JP');
+                console.log(`[TRACE:POOL_PROMOTE | ${ts}] Window ${thisWin.label} received promote. path=${event.payload.path}, isNew=${event.payload.isNew}`);
+
+                setDynamicUrlPath(event.payload.path);
+                if (event.payload.isNew) {
+                    setIsNewState(true);
+                    if (event.payload.frontmatter !== undefined) {
+                        setRawFrontmatter(event.payload.frontmatter);
+                        setContent(event.payload.content || '');
+                    } else if (event.payload.content) {
+                        const { front, body } = splitFrontMatter(event.payload.content);
+                        setRawFrontmatter(front);
+                        setContent(body);
+                    }
+                }
+
+                // リロード時にプールとして再認識されないようURLを書き換え
+                window.history.replaceState(null, '', `/?path=${encodeURIComponent(event.payload.path)}`);
+
+                setIsPool(false); // プールモード解除
+
+                // プール待機中のBlurでisEditingがfalseになっているため、明示的に編集モードを開始
+                startEditing();
+
+                await thisWin.show();
+                await thisWin.setFocus();
+
+                // Reactレンダリング完了を待ってからフォーカス
+                setTimeout(() => {
+                    if (event.payload.isNew) {
+                        editorRef.current?.focusAndSelectFirstLine();
+                    } else {
+                        editorRef.current?.focus();
+                    }
+                }, 300);
+            });
+        };
+        setup();
+
+        return () => {
+            if (unlisten) unlisten();
+        };
+    }, [isPool, startEditing]);
 
     // リロードイベントリスナー
     useEffect(() => {
@@ -911,7 +1002,8 @@ const StickyNote = memo(function StickyNote() {
     // ============================================================
     // レンダリング
     // ============================================================
-    if (!urlPath) {
+    // 初回レンダリング: ファイルパスがない場合で、プールでもない場合は何もしない
+    if (!urlPath && !isPool) {
         return <div className="p-8">No path parameter</div>;
     }
 

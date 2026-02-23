@@ -89,14 +89,16 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
 
         // [Safe Guard] Prevent saving empty content if the note hasn't been loaded yet.
         // This protects against race conditions where save is triggered before load completes.
-        if (body.trim() === '' && note === null && !isNew) {
-            const msg = '[useNoteFile] BLOCKED: Attempted to save empty content before note was loaded.';
+        if (body.trim() === '' && !frontmatter) {
+            const msg = '[useNoteFile] BLOCKED: Attempted to save empty content and empty frontmatter. This indicates initialization failure.';
             console.error(msg);
             throw new Error(msg);
         }
 
         try {
-            console.log('[useNoteFile] Saving note:', {
+            const now = new Date();
+            const ts = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+            console.log(`[useNoteFile | ${ts}] Saving note:`, {
                 path,
                 bodyLength: body.length,
                 allowRename,
@@ -140,7 +142,9 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
 
         const timer = setTimeout(async () => {
             try {
-                console.log('[useNoteFile] Auto-save triggered');
+                const now = new Date();
+                const ts = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+                console.log(`[useNoteFile | ${ts}] Auto-save triggered`);
                 await saveNoteContent(content, rawFrontmatter, false);
                 setSavePending(false);
             } catch (e) {

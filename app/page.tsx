@@ -136,10 +136,12 @@ function OrchestratorContent() {
   const searchParams = useSearchParams();
   const path = searchParams.get('path');
   const tagSelector = searchParams.get('tagSelector');
-  const isMainWindow = !path && !tagSelector; // [FIX] Added definition guard
+  const isPool = searchParams.get('isPool') === 'true'; // [NEW] プール判定
+  const isMainWindow = !path && !tagSelector && !isPool; // [FIX] プールウィンドウをメインウィンドウ扱いしない
 
   const [folderPath, setFolderPath] = useState<string>('');
   const folderPathRef = useRef<string>(''); // [FIX] スロットル用にRefでも保持
+  const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
   const [files, setFiles] = useState<NoteMeta[]>([]);
   const [setupRequired, setSetupRequired] = useState(true);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
@@ -419,8 +421,54 @@ function OrchestratorContent() {
       await playCreateSound();
 
       setFiles(prev => [...prev, newNote.meta]);
-      // Open window after creation
-      await openNoteWindow(newNote.meta.path, undefined, true);
+
+      // [NEW] プールウィンドウからの昇格を試みる
+      try {
+        const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
+        const allWindows = await getAllWebviewWindows();
+
+        // pool-window- で始まり、かつまだ昇格（使用）されていないものを選ぶ
+        // [FIX] ホットリロード等でRefが飛んでも上書きしないよう、localStorageのフラグも確認する
+        console.log(`[TRACE:CREATE] All windows:`, allWindows.map(w => w.label));
+        const poolWindow = allWindows.find(w => {
+          if (!w.label.startsWith('pool-window-')) return false;
+          const isUsedRef = usedPoolWindowsRef.current.has(w.label);
+          const isPromotedStorage = localStorage.getItem(`promoted_${w.label}`);
+          console.log(`[TRACE:CREATE] Checking pool candidate: ${w.label} | isUsedRef: ${isUsedRef} | promotedStorage: ${isPromotedStorage}`);
+          return !isUsedRef && !isPromotedStorage;
+        });
+
+        if (poolWindow) {
+          // [ROOT FIX] Tauriでは各WebviewのLocalStorageは完全に独立して共有されない。
+          // StickyNote.tsx側でlocalStorage.setItemを呼んでもmainウィンドウからは見えない。
+          // そのため、昇格フラグはemitToを呼ぶpage.tsx（mainウィンドウ）自身が管理する。
+          usedPoolWindowsRef.current.add(poolWindow.label);
+          localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
+          const ts = new Date().toLocaleTimeString('ja-JP');
+          console.log(`[TRACE:CREATE | ${ts}] Promoting pool window ${poolWindow.label} -> ${newNote.meta.path}. localStorage flag set.`);
+          const { emitTo } = await import('@tauri-apps/api/event');
+          await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
+            path: newNote.meta.path,
+            isNew: true,
+            content: newNote.body,
+            frontmatter: newNote.frontmatter
+          });
+
+          // 次のプールウィンドウを補充する（OSのフォーカス奪取を防ぐため少し遅延させる）
+          setTimeout(() => {
+            invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
+          }, 500);
+        } else {
+          console.warn(`[CREATE] No pool window found, falling back to normal window creation`);
+          await openNoteWindow(newNote.meta.path, undefined, true);
+          setTimeout(() => {
+            invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
+          }, 500);
+        }
+      } catch (poolErr) {
+        console.error('[CREATE] Pool promotion failed, falling back:', poolErr);
+        await openNoteWindow(newNote.meta.path, undefined, true);
+      }
     } catch (e) {
       console.error('create_note failed', e);
     } finally {
@@ -440,6 +488,8 @@ function OrchestratorContent() {
 
   // イベントリスナー設定
   useEffect(() => {
+    if (!isMainWindow) return; // [FIX] プールウィンドウからの過剰反応を防ぐ Guard
+
     let unlisten: (() => void) | undefined;
     const promise = listen<{ path: string; isNew?: boolean }>('fusen:open_note', (event) => {
       openNoteWindow(event.payload.path, undefined, event.payload.isNew);
@@ -451,7 +501,7 @@ function OrchestratorContent() {
       if (unlisten) unlisten();
       else promise.then((u) => u());
     };
-  }, []);
+  }, [isMainWindow, openNoteWindow]);
 
   // [FIX] メインウィンドウの「閉じる」を「隠す」に変更 (検索ウィンドウ再表示不具合修正)
   useEffect(() => {
@@ -821,7 +871,6 @@ function OrchestratorContent() {
               height: note.height
             });
             // ウィンドウ作成の待機時間
-            await new Promise(resolve => setTimeout(resolve, 200));
           }
         }
 
@@ -953,7 +1002,7 @@ function OrchestratorContent() {
       }
     }
 
-    if (!searchParams.get('path')) {
+    if (!searchParams.get('path') && searchParams.get('isPool') !== 'true') {
       checkSetup();
     } else {
       setIsCheckingSetup(false);
@@ -965,7 +1014,11 @@ function OrchestratorContent() {
   useEffect(() => {
     // [Fix] checks initializedRef instead of sessionStorage to allow Reload to work
     if (initializationRef.current) return;
-    if (typeof window !== 'undefined' && window.location.search.includes('path=')) return;
+    if (typeof window !== 'undefined') {
+      if (window.location.search.includes('path=')) return;
+      if (window.location.search.includes('isPool=true')) return; // [NEW] プール時は復元しない
+    }
+
     try {
       const win = getCurrentWindow();
       if (win.label !== 'main') return;
@@ -1040,6 +1093,10 @@ function OrchestratorContent() {
                       await mainWindow.minimize();
                       setIsCheckingSetup(false);
                     }
+                    log('[起動処理] プールウィンドウ(予備)を生成します');
+                    setTimeout(() => {
+                      invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー: ${e}`));
+                    }, 500);
                   } catch (e) {
                     log(`[起動処理] 最小化エラー: ${e}`);
                     setLoadingStatus("最小化失敗: " + String(e));
@@ -1059,6 +1116,10 @@ function OrchestratorContent() {
                       await mainWindow.hide();
                       setIsCheckingSetup(false);
                     }
+                    log('[起動処理] プールウィンドウ(予備)を生成します');
+                    setTimeout(() => {
+                      invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー: ${e}`));
+                    }, 500);
                   } catch (e) {
                     log(`[起動処理] ウィンドウ非表示エラー: ${e}`);
                   }
@@ -1164,7 +1225,7 @@ function OrchestratorContent() {
   }, [isDashboard]);
 
   if (searchParams.get('tagSelector') === '1') return <TagSelector />;
-  if (searchParams.get('path')) return <StickyNote />;
+  if (searchParams.get('path') || searchParams.get('isPool') === 'true') return <StickyNote />;
 
   if (isCheckingSetup) return <LoadingScreen message={loadingStatus} />;
 

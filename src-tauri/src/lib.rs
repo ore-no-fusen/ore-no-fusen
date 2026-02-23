@@ -164,11 +164,13 @@ fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Note {
 
 #[tauri::command]
 fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, context: String) -> Result<Note, String> {
+    println!("[TRACE:RUST_CREATE] Request to create note in folder: {}, context: {}", folder_path, context);
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let next_seq = storage::get_next_seq(&folder_path);
     
     let data = logic::build_create_note_data(&folder_path, &context, next_seq, &today);
     
+    println!("[TRACE:RUST_CREATE] Generated new note path: {}", data.path_str);
     storage::write_note(&data.path_str, &data.content)?;
     
     logic::apply_add_note(&mut *state.lock().unwrap(), data.meta.clone());
@@ -188,6 +190,7 @@ fn fusen_save_note(
     frontmatter_raw: String,
     allow_rename: bool
 ) -> Result<String, String> {
+    println!("[TRACE:RUST_SAVE_CMD] Received save request. path: {}, allow_rename: {}, bodyLength: {}", path, allow_rename, body.len());
     // Read old content for change detection
     let old_note = storage::read_note(&path).ok();
     let old_body = old_note.as_ref().map(|n| {
@@ -212,12 +215,24 @@ fn fusen_save_note(
     // CommandはI/Oを実行するだけ
     match effect {
         logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
-        logic::Effect::RenameNote { old_path, new_path } => storage::rename_note(&old_path, &new_path)?,
+        logic::Effect::RenameNote { old_path, new_path } => {
+            if std::path::Path::new(&old_path).exists() {
+                storage::rename_note(&old_path, &new_path)?;
+            } else {
+                println!("[TRACE:RUST_SAVE_CMD] Fallback: target renamed file missing ({}), skipping rename.", old_path);
+            }
+        },
         logic::Effect::Batch(effects) => {
             for e in effects {
                 match e {
                     logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
-                    logic::Effect::RenameNote { old_path, new_path } => storage::rename_note(&old_path, &new_path)?,
+                    logic::Effect::RenameNote { old_path, new_path } => {
+                        if std::path::Path::new(&old_path).exists() {
+                            storage::rename_note(&old_path, &new_path)?;
+                        } else {
+                            println!("[TRACE:RUST_SAVE_CMD] Fallback: target renamed file missing ({}), skipping rename.", old_path);
+                        }
+                    },
                     logic::Effect::Batch(_) => {} // Nested batch not supported
                 }
             }
@@ -234,6 +249,13 @@ fn fusen_move_to_trash(
     path: String
 ) -> Result<String, String> {
     let current_path = Path::new(&path);
+    
+    // ファイルが既に存在しない場合（空のメモなど）は成功扱いとしてウィンドウを閉じる
+    if !current_path.exists() {
+        let _ = window.close();
+        return Ok("Already deleted".to_string());
+    }
+
     let parent = current_path.parent().ok_or("no parent")?;
     
     let trash_dir = storage::ensure_trash_dir(parent)?;
@@ -899,6 +921,37 @@ async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn fusen_create_pool_window(app: tauri::AppHandle) -> Result<String, String> {
+    logger::log_info("[Pool] fusen_create_pool_window called (async)");
+    create_pool_window_internal(&app)?;
+    Ok("Pool window created".into())
+}
+
+fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
+    let uuid = uuid::Uuid::new_v4().to_string();
+    let label = format!("pool-window-{}", uuid);
+    
+    logger::log_debug(&format!("[Pool] Creating hidden pool window: {}", label));
+    
+    // 背景色は透明ではなく黄色で初期化（OSレベルでの白フラッシュ防止）
+    tauri::WebviewWindowBuilder::new(
+        app,
+        &label,
+        tauri::WebviewUrl::App("/?path=&isPool=true".into())
+    )
+    .title("Quick Memo")
+    .transparent(false) // 透明にせずに不透明にする
+    .decorations(false)
+    .visible(false) // 予備なので最初は非表示
+    .focused(false) // [FIX] ここでフォーカスを奪わないようにする
+    .skip_taskbar(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
 
 // --- Entry Point ---
 
@@ -945,6 +998,7 @@ pub fn run() {
             fusen_search_notes, // [NEW] 全文検索
             clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
+            fusen_create_pool_window, // [NEW] プールウィンドウ生成
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);
@@ -998,6 +1052,34 @@ pub fn run() {
             }
             
             app.handle().plugin(tauri_plugin_shell::init())?;
+            
+            if let Some(win) = app.get_webview_window("main") {
+                // 古いPWA (ServiceWorker) のキャッシュを強制クリアする
+                let _ = win.eval(r#"
+                    (async function clearServiceWorkerCache() {
+                        try {
+                            let cleared = false;
+                            if ('serviceWorker' in navigator) {
+                                const registrations = await navigator.serviceWorker.getRegistrations();
+                                for (const reg of registrations) {
+                                    await reg.unregister();
+                                    cleared = true;
+                                }
+                            }
+                            if ('caches' in window) {
+                                const names = await caches.keys();
+                                for (const name of names) {
+                                    await caches.delete(name);
+                                    cleared = true;
+                                }
+                            }
+                            if (cleared) {
+                                window.location.reload();
+                            }
+                        } catch(e) {}
+                    })();
+                "#);
+            }
 
             // Autostart plugin (デスクトップのみ)
             #[cfg(desktop)]

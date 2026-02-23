@@ -221,6 +221,7 @@ export interface RichTextEditorRef {
     insertList: () => void;
     insertCheckbox: () => void;
     focus: () => void; // カーソル位置を変えずにフォーカスだけ当てる
+    focusAndSelectFirstLine: () => void; // 新規作成時用：フォーカスし、先頭にカーソルを置く
     setCursorToEnd: () => void; // カーソルを末尾に配置
     setCursorToLineEnd: (clientX: number, clientY: number) => void; // クリック座標の行末にカーソルを配置
     setCursorAtCoords: (clientX: number, clientY: number) => void; // [NEW] クリック座標に最も近いテキスト位置にカーソルを配置
@@ -646,6 +647,28 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             if (!viewRef.current) return;
             viewRef.current.focus();
         },
+        focusAndSelectFirstLine: () => {
+            console.log('[RichTextEditor] focusAndSelectFirstLine CLIED! viewRef exists?', !!viewRef.current);
+            if (!viewRef.current) return;
+            const doFocus = () => {
+                const view = viewRef.current;
+                if (!view) return;
+                console.log(`[RichTextEditor] Executing doFocus. Currently hasFocus=${view.hasFocus}`);
+                view.focus();
+                if (view.state.doc.lines > 0) {
+                    view.dispatch({
+                        selection: { anchor: 0, head: 0 },
+                        scrollIntoView: true
+                    });
+                }
+                console.log(`[RichTextEditor] After doFocus dispatch. hasFocus=${view.hasFocus}, activeElement=${document.activeElement?.className}`);
+            };
+
+            // Focusを確実にするため、段階的に複数回試行する
+            requestAnimationFrame(doFocus);
+            setTimeout(doFocus, 50);
+            setTimeout(doFocus, 150);
+        },
         setCursorToEnd: () => {
             if (!viewRef.current) return;
             const docLength = viewRef.current.state.doc.length;
@@ -975,16 +998,27 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
         // [NEW] 初期選択処理（作成直後に一度だけ予約）
         if (isNewNote) {
-            view.focus();
-            requestAnimationFrame(() => {
-                if (view.state.doc.lines > 0) {
-                    const line1 = view.state.doc.line(1);
-                    view.dispatch({
-                        selection: { anchor: line1.from, head: line1.to },
+            console.log('[RichTextEditor] isNewNote is true on mount. Setting up focus loop.');
+            // [FIX] CodeMirrorインスタンス生成完了後に、確実にフォーカスさせる
+            const doFocus = () => {
+                const currentView = viewRef.current;
+                if (!currentView) return;
+                console.log(`[RichTextEditor:Mount] Executing doFocus. hasFocus=${currentView.hasFocus}`);
+                currentView.focus();
+                if (currentView.state.doc.lines > 0) {
+                    currentView.dispatch({
+                        selection: { anchor: 0, head: 0 },
                         scrollIntoView: true
                     });
                 }
-            });
+                console.log(`[RichTextEditor:Mount] After doFocus. hasFocus=${currentView.hasFocus}, activeElement=${document.activeElement?.className}`);
+            };
+
+            // 複数段階のアプローチでどれか一つが確実にヒットするようにする
+            requestAnimationFrame(doFocus);
+            setTimeout(doFocus, 50);
+            setTimeout(doFocus, 150);
+            setTimeout(doFocus, 300);
         }
 
         // 初期カーソル位置が指定されている場合は適用＆フォーカス（新規付箋以外）
