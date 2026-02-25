@@ -74,7 +74,7 @@ graph TD
     end
 ```
 
-![iPhoneロック画面連携 構造図描画](/C:/Users/uck/.gemini/antigravity/brain/82426293-f082-40f6-864d-d8480f938d2f/architecture_iphone_sync_v2_1771880509146.png)
+![iPhoneロック画面連携 構造図描画](./assets/architecture_iphone_sync_v2_1771880509146.png)
 
 ---
 
@@ -88,6 +88,7 @@ classDiagram
 
     class AppState {
         +Option~String~ base_path
+        +Option~String~ folder_path
         +Vec~NoteMeta~ notes
         +Option~String~ selected_path
         +Vec~String~ active_tags
@@ -98,9 +99,12 @@ classDiagram
         +string path
         +number seq
         +string context
+        +string updated
         +number? x, y, width, height
-        +string[] tags
+        +string? background_color
+        +boolean? always_on_top
         +boolean folded
+        +string[] tags
     }
     note for NoteMeta "付箋のメタデータ"
 
@@ -168,6 +172,7 @@ sequenceDiagram
     Note over Logic: Effect::WriteNote を計算
     Logic-->>Rust: Effect
     Rust->>FS: storage::write_note()
+    Note over FS: .tmpファイル作成 -> rename (Atomic)
     Rust-->>UI: Success
 ```
 
