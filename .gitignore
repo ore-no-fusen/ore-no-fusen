@@ -46,3 +46,6 @@ next-env.d.ts
 # PWA (next-pwa) が自動生成するService Workerファイル（ビルド時に毎回再生成される）
 public/sw.js
 public/workbox-*.js
+
+# Claude Code のローカル設定（マシン固有のため除外）
+.claude/settings.local.json
