@@ -62,7 +62,6 @@ class ImageWidget extends WidgetType {
         const resolvedSrc = resolvePath(this.filePath, this.src);
 
         const root = createRoot(container);
-        console.log('[WIDGET] Rendering ResizableImage. Src:', resolvedSrc, 'Scale:', this.scale);
         root.render(
             <ResizableImage
                 src={resolvedSrc}
@@ -78,7 +77,6 @@ class ImageWidget extends WidgetType {
                     if (pos !== null) {
                         e.dataTransfer.setData('application/x-fusen-pos', pos.toString());
                     }
-                    console.log('[DRAG] Start. Markdown:', this.fullMatch, 'Pos:', pos);
                 }}
                 onResizeEnd={(newScale) => {
                     // Update markdown source
@@ -166,7 +164,6 @@ const imagePreviewPlugin = ViewPlugin.fromClass(class {
 
             while ((match = imgRegex.exec(text))) {
                 const fullMatch = match[0];
-                console.log('[PLUGIN] Found image match:', fullMatch);
                 const altRaw = match[1];
                 const src = match[2];
                 const start = from + match.index;
@@ -462,7 +459,6 @@ const linkEventHandler = EditorView.domEventHandlers({
                 const end = start + match[0].length;
                 if (offsetInLine >= start && offsetInLine <= end) {
                     const link = match[0];
-                    console.log('[LinkClick] Opening:', link);
                     event.preventDefault();
 
                     if (/^https?:\/\//i.test(link)) {
@@ -648,30 +644,21 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             viewRef.current.focus();
         },
         focusAndSelectFirstLine: () => {
-            const dbg = (msg: string) => {
-                console.log(msg);
-                import('@tauri-apps/api/core').then(({ invoke }) =>
-                    invoke('fusen_debug_log', { message: msg }).catch(() => {})
-                );
-            };
-            dbg(`[FocusFirst] called viewRef=${!!viewRef.current}`);
             if (!viewRef.current) return;
-            const doFocus = (tag: string) => {
+            const doFocus = () => {
                 const view = viewRef.current;
-                if (!view) { dbg(`[FocusFirst|${tag}] viewRef became null`); return; }
-                dbg(`[FocusFirst|${tag}] hasFocus=${view.hasFocus} docLines=${view.state.doc.lines} docLen=${view.state.doc.length}`);
+                if (!view) { return; }
                 view.focus();
                 view.dispatch({
                     selection: { anchor: 0, head: 0 },
                     scrollIntoView: true
                 });
-                dbg(`[FocusFirst|${tag}] after: hasFocus=${view.hasFocus} activeEl=${document.activeElement?.tagName}.${document.activeElement?.className?.substring(0,30)}`);
             };
 
             // Focusを確実にするため、段階的に複数回試行する
-            requestAnimationFrame(() => doFocus('rAF'));
-            setTimeout(() => doFocus('50ms'), 50);
-            setTimeout(() => doFocus('150ms'), 150);
+            requestAnimationFrame(() => doFocus());
+            setTimeout(() => doFocus(), 50);
+            setTimeout(() => doFocus(), 150);
         },
         setCursorToEnd: () => {
             if (!viewRef.current) return;
@@ -762,8 +749,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             const { state } = view;
             const { from, to } = state.selection.main;
 
-            console.log(`[EDITOR] insertText: "${text}" at range [${from}, ${to}]`);
-
             view.dispatch({
                 changes: { from, to, insert: text },
                 // カーソルを挿入テキストの後ろへ
@@ -832,11 +817,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     // Blurハンドラ
                     EditorView.domEventHandlers({
                         blur: (event, _view) => {
-                            const msg = `[RichTextEditor] blur fired isReady=${isReadyRef.current}`;
-                            console.log(msg);
-                            import('@tauri-apps/api/core').then(({ invoke }) =>
-                                invoke('fusen_debug_log', { message: msg }).catch(() => {})
-                            );
                             if (!isReadyRef.current) {
                                 return;
                             }
@@ -877,30 +857,25 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         },
                         // [FIX] Pasteハンドラの追加：カーソル位置への画像挿入
                         paste: (e, view) => {
-                            console.log('[EDITOR] Paste event detected');
                             const items = e.clipboardData?.items;
                             if (!items) return;
 
                             for (const item of items) {
-                                console.log('[EDITOR] Paste item type:', item.type);
                                 if (item.type.startsWith('image/')) {
                                     e.preventDefault(); // デフォルト挙動（末尾追加など）を阻止
 
                                     const file = item.getAsFile();
                                     if (!file) {
-                                        console.warn('[EDITOR] Paste: Failed to get file from item');
                                         continue;
                                     }
 
                                     // カーソル位置の取得
                                     const currentPos = view.state.selection.main.from;
-                                    console.log('[EDITOR] Paste: Inserting image at pos:', currentPos);
 
                                     // Invoke backend command to save image from clipboard
                                     import('@tauri-apps/api/core').then(({ invoke }) => {
                                         invoke<string>('fusen_get_image_from_clipboard', { path: filePath })
                                             .then((savedPath) => {
-                                                console.log('[EDITOR] Image saved at:', savedPath);
                                                 // Insert markdown: ![image](path)
                                                 // Use "image" as alt text, can be changed later
                                                 const markdown = `![image](${savedPath})`;
@@ -950,7 +925,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 e.stopPropagation();
 
                                 const dropPos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-                                console.log('[DRAG] Drop event. Drop Coords:', { x: e.clientX, y: e.clientY }, 'DropPos:', dropPos);
                                 if (dropPos === null) {
                                     console.error('[DRAG] Failed to calculate drop position from coords');
                                     return;
@@ -959,8 +933,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 // Widgetから送られてきた正確な「元位置」を取得
                                 const posString = e.dataTransfer.getData('application/x-fusen-pos');
                                 const draggedMarkdown = e.dataTransfer.getData('application/x-fusen-markdown');
-
-                                console.log('[DRAG] Drop Data - PosString:', posString, 'Markdown:', draggedMarkdown);
 
                                 if (!posString || !draggedMarkdown) {
                                     console.error('[DRAG] Missing drag data');
@@ -975,11 +947,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
                                 // 同じ場所にドロップした場合は無視
                                 if (dropPos >= oldPos && dropPos <= oldPos + draggedMarkdown.length) {
-                                    console.log('[DRAG] Dropped on itself. Ignoring.');
                                     return;
                                 }
-
-                                console.log(`[DRAG] Executing Move: ${oldPos} -> ${dropPos}`);
 
                                 // 移動：元の削除と新しい場所への挿入をアトミックに実行
                                 // 削除によって位置がずれるため、削除箇所と挿入箇所の前後関係で補正が必要だが、
@@ -1006,12 +975,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
         // [NEW] 初期選択処理（作成直後に一度だけ予約）
         if (isNewNote) {
-            console.log('[RichTextEditor] isNewNote is true on mount. Setting up focus loop.');
             // [FIX] CodeMirrorインスタンス生成完了後に、確実にフォーカスさせる
             const doFocus = () => {
                 const currentView = viewRef.current;
                 if (!currentView) return;
-                console.log(`[RichTextEditor:Mount] Executing doFocus. hasFocus=${currentView.hasFocus}`);
                 currentView.focus();
                 if (currentView.state.doc.lines > 0) {
                     currentView.dispatch({
@@ -1019,7 +986,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         scrollIntoView: true
                     });
                 }
-                console.log(`[RichTextEditor:Mount] After doFocus. hasFocus=${currentView.hasFocus}, activeElement=${document.activeElement?.className}`);
             };
 
             // 複数段階のアプローチでどれか一つが確実にヒットするようにする

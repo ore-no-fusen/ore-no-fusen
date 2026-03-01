@@ -6,7 +6,7 @@
 
 [package]
 name = "ore-no-fusen"
-version = "0.10.7"
+version = "0.10.8"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -44,6 +44,7 @@ arboard = "3.6.1"
 rodio = "0.19.0"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-os = "2.3.2"
+tokio = { version = "1", features = ["rt"] }
 
 
 [target.'cfg(windows)'.dependencies]

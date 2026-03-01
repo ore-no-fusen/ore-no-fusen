@@ -51,7 +51,6 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
 
         // リネームによるURL更新の場合は、再読み込みをスキップ
         if (isRenamingRef.current) {
-            console.log('[useNoteFile] Skipping reload due to rename:', path);
             isRenamingRef.current = false;
             return content;
         }
@@ -65,7 +64,6 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             setRawFrontmatter(front);
             setContent(body);
 
-            console.log('[useNoteFile] Note loaded:', path);
             return body;
         } catch (error) {
             console.error('[useNoteFile] Failed to load note:', error);
@@ -94,20 +92,10 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         }
 
         try {
-            const now = new Date();
-            const ts = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
-            console.log(`[useNoteFile | ${ts}] Saving note:`, {
-                path,
-                bodyLength: body.length,
-                allowRename,
-                firstLine: body.split('\n')[0]
-            });
-
             const newPath = await saveNote(path, body, frontmatter, allowRename);
 
             // パスが変更された場合（リネーム）
             if (!pathsEqual(newPath, path)) {
-                console.log('[useNoteFile] File renamed:', path, '->', newPath);
                 isRenamingRef.current = true;
 
                 if (onPathChange) {
@@ -116,8 +104,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             }
 
             setContent(body);
-            setRawFrontmatter(frontmatter); // [Fix] Update frontmatter state
-            console.log('[useNoteFile] Note saved successfully');
+            setRawFrontmatter(frontmatter);
         } catch (e) {
             console.error('[useNoteFile] Failed to save note:', e);
             throw e;
@@ -145,9 +132,6 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         const attemptSave = async (attempt: number) => {
             if (cancelled) return;
             try {
-                const now = new Date();
-                const ts = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
-                console.log(`[useNoteFile | ${ts}] Auto-save triggered (attempt ${attempt}/${MAX_RETRY})`);
                 await saveNoteContent(content, rawFrontmatter, false);
                 if (!cancelled) setSavePending(false);
             } catch (e) {
@@ -155,11 +139,11 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
                 console.error(`[useNoteFile] Auto-save failed (attempt ${attempt}/${MAX_RETRY}):`, e);
                 if (attempt < MAX_RETRY) {
                     const delay = 1000 * Math.pow(2, attempt); // 2s, 4s
-                    console.warn(`[useNoteFile] Retrying auto-save in ${delay}ms...`);
                     const t = setTimeout(() => attemptSave(attempt + 1), delay);
                     timers.push(t);
                 } else {
                     console.error('[useNoteFile] Auto-save failed after all retries. Data may be lost.');
+                    alert('⚠️ 自動保存に失敗しました。ファイルが読み取り専用になっていないか確認してください。');
                 }
             }
         };

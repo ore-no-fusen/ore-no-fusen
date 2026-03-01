@@ -56,12 +56,10 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
      */
     const saveWindowState = useCallback(async () => {
         if (isMinimized) {
-            console.log('[useWindowManager] Skipping saveWindowState because isMinimized is true');
             return;
         }
         try {
             const geometry = await getWindowGeometry();
-            console.log('[useWindowManager] Saving geometry:', geometry);
             onGeometryChange(geometry);
         } catch (e) {
             console.error('[useWindowManager] Failed to save window state:', e);
@@ -85,7 +83,6 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
                 );
             }
             setIsMinimized(false);
-            console.log('[useWindowManager] Restored to original size');
         } else {
             // 現在のサイズを記憶してからミニマイズ
             const size = await win.innerSize();
@@ -99,7 +96,6 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
 
             await win.setSize(new PhysicalSize(size.width, targetHeight));
             setIsMinimized(true);
-            console.log('[useWindowManager] Minimized to 1 line');
         }
     }, [isMinimized]);
 
@@ -144,7 +140,6 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
 
                         // 10px(物理ピクセル)以上広げられたら自動展開
                         if (size.height > targetHeight + 10) {
-                            console.log('[useWindowManager] Auto-expanding due to vertical resize');
                             setIsMinimized(false);
                             // 手動で広げたサイズを新たな「展開サイズ」として記憶しておく
                             originalSizeRef.current = { width: size.width, height: size.height };
@@ -160,9 +155,8 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
                 const safeResize = wrapUnlisten(uResize);
                 if (isMounted) unlistenResize = safeResize; else safeResize();
 
-                console.log('[useWindowManager] Event listeners setup complete');
             } catch (err) {
-                console.warn('[useWindowManager] Event listener setup failed:', err);
+                // setup failed silently
             }
         };
 
@@ -178,7 +172,6 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
             };
             safeUnlisten(unlistenMove);
             safeUnlisten(unlistenResize);
-            console.log('[useWindowManager] Event listeners cleaned up');
         };
     }, [saveWindowState]);
 

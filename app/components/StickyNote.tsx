@@ -116,8 +116,6 @@ const StickyNote = memo(function StickyNote() {
             // 必ず setDynamicUrlPath を呼んで React の urlPath state を新しいパスに更新する。
             // これを呼ばないと urlPath が古いパスのままになり、
             // リネーム後の自動保存が全部「ファイルが見つからない」エラーになる
-            const ts = new Date().toLocaleTimeString('ja-JP');
-            console.log(`[StickyNote | ${ts}] onPathChange called: ${urlPath} -> ${newPath}`);
             setDynamicUrlPath(newPath);
 
             const url = new URL(window.location.href);
@@ -140,18 +138,14 @@ const StickyNote = memo(function StickyNote() {
     // 保存処理のラッパー（削除中は保存しない）
     const handleSave = useCallback(async (body: string, front: string, allowRename: boolean) => {
         if (isDeletingRef.current) {
-            console.log('[TRACE:STICKYNOTE_SAVE] Skipped because note is being deleted/archived');
             return;
         }
         if (isPool) {
-            console.log(`[TRACE:STICKYNOTE_SAVE] Skipped save because window is currently a Pool. bodyPreview=${body.substring(0, 10)}...`);
             return;
         }
 
-        console.log(`[TRACE:STICKYNOTE_SAVE] Executing saveNoteContent. isNew=${isNew}, allowRename=${allowRename}, contentLength=${body.length}`);
         await saveNoteContent(body, front, allowRename);
         if (isNew) {
-            console.log(`[TRACE:STICKYNOTE_SAVE] Clearing isNew flag after save`);
             setIsNewState(false);
         }
     }, [saveNoteContent, isNew, isPool]);
@@ -219,7 +213,6 @@ const StickyNote = memo(function StickyNote() {
             // ウィンドウを表示位置に移動する際にこのコールバックが呼ばれ、
             // まだファイルが確定していないパスへのauto-saveが走ってしまうのを防ぐ
             if (isPool) {
-                console.log('[TRACE:STICKYNOTE] Geometry change ignored: window is still a pool');
                 return;
             }
             setRawFrontmatter((prev) => updateFrontmatterGeometry(prev, geom));
@@ -376,19 +369,15 @@ const StickyNote = memo(function StickyNote() {
         if (isNew) {
             // 新規ノート: readNoteをスキップし、直接編集モードで開始
             // ①空白画面 ②Loading ③表示→編集の切り替え を全て省略
-            console.log('[StickyNote] New note: skipping loadNote, starting edit mode directly');
             // initialIsEditing:true で既にisEditing=trueなので startEditing は早期リターンする
             // [FIX] Ticksを少し遅らせてDOMの描画とエディタの初期化完了後にフォーカスする
             setTimeout(() => {
-                console.log('[StickyNote] Direct Start: Calling focusAndSelectFirstLine');
                 editorRef.current?.focusAndSelectFirstLine();
                 getCurrentWindow().setFocus().catch(() => { });
             }, 100);
         } else {
             // 既存ノート: 通常のロードフロー
-            loadNote().then((body) => {
-                console.log('[StickyNote] Note loaded. isNew:', isNew);
-            });
+            loadNote();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [urlPath, isNew]);
@@ -444,7 +433,7 @@ const StickyNote = memo(function StickyNote() {
                 if (isMounted) unlistenClose = safeClose; else safeClose();
 
             } catch (err) {
-                console.warn('[StickyNote] Event listener setup failed:', err);
+                // Event listener setup failed
             }
         };
 
@@ -467,42 +456,34 @@ const StickyNote = memo(function StickyNote() {
     // [NEW] Alt+Tab表示制御: フォーカス時にRustへ通知（selectedFileに依存しない独立したuseEffect）
     useEffect(() => {
         const win = getCurrentWindow();
-        console.log(`[AltTab] useEffect started. label=${win.label}`);
         let unlisten: (() => void) | null = null;
 
         const setup = async () => {
             try {
                 // まずこのウィンドウをAlt+Tabから隠す（フォーカス前は非表示）
                 await invoke('fusen_make_tool_window');
-                console.log(`[AltTab] fusen_make_tool_window OK (initial hide). label=${win.label}`);
 
                 // 既にフォーカス済みの場合は即座に表示登録
                 const focused = await win.isFocused();
-                console.log(`[AltTab] isFocused=${focused}, label=${win.label}`);
                 if (focused) {
-                    const result = await invoke('fusen_set_as_alt_tab_window', { label: win.label });
-                    console.log(`[AltTab] fusen_set_as_alt_tab_window OK (initial show):`, result);
+                    await invoke('fusen_set_as_alt_tab_window', { label: win.label });
                 }
 
                 unlisten = await win.listen('tauri://focus', async () => {
-                    console.log(`[AltTab] tauri://focus fired. label=${win.label}`);
                     try {
-                        const result = await invoke('fusen_set_as_alt_tab_window', { label: win.label });
-                        console.log(`[AltTab] fusen_set_as_alt_tab_window OK:`, result);
+                        await invoke('fusen_set_as_alt_tab_window', { label: win.label });
                     } catch (e) {
-                        console.warn('[AltTab] fusen_set_as_alt_tab_window failed:', e);
+                        // fusen_set_as_alt_tab_window failed
                     }
                 });
-                console.log(`[AltTab] tauri://focus listener registered. label=${win.label}`);
             } catch (e) {
-                console.warn('[AltTab] setup failed:', e);
+                // AltTab setup failed
             }
         };
 
         setup();
 
         return () => {
-            console.log(`[AltTab] cleanup. label=${win.label}`);
             try {
                 const p = (unlisten as any)?.();
                 if (p && p.catch) p.catch(() => { });
@@ -514,7 +495,6 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => {
         if (!isPool) return;
 
-        console.log('[StickyNote:Pool] Waiting for promote_from_pool event...');
         let unlisten: (() => void) | undefined;
         let mounted = true; // [FIX] React Strict Mode のダブルsetup対策
 
@@ -527,12 +507,8 @@ const StickyNote = memo(function StickyNote() {
 
             const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
-                const dbgLog = (msg: string) => {
-                    console.log(msg);
-                    invoke('fusen_debug_log', { message: msg }).catch(() => {});
-                };
                 isPromotingRef.current = true; // blur防止フラグ ON
-                dbgLog(`[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}`);
+                invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => {});
 
                 setDynamicUrlPath(event.payload.path);
                 if (event.payload.isNew) {
@@ -568,16 +544,16 @@ const StickyNote = memo(function StickyNote() {
                         physWidth: event.payload.targetPhysWidth ?? 400,
                         physHeight: event.payload.targetPhysHeight ?? 300,
                     });
-                    dbgLog(`[POOL_PROMOTE|${ts}] fusen_show_at_position OK pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})`);
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position OK pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => {});
                 } catch (e) {
-                    dbgLog(`[POOL_PROMOTE|${ts}] fusen_show_at_position FAILED: ${e} – falling back to show()`);
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position FAILED: ${e} – falling back to show()` }).catch(() => {});
                     await thisWin.show();
                 }
 
                 // 実際の位置を確認
                 try {
                     const finalPos = await thisWin.outerPosition();
-                    dbgLog(`[POOL_PROMOTE|${ts}] FINAL pos=(${finalPos.x},${finalPos.y})`);
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] FINAL pos=(${finalPos.x},${finalPos.y})` }).catch(() => {});
                 } catch(e) { /* ignore */ }
 
                 // CodeMirror のレイアウトを再計算させる（hidden→visible 時に必要）
@@ -591,13 +567,13 @@ const StickyNote = memo(function StickyNote() {
                     setIsEditing(true);
                     // Reactの再レンダリングを待ってからフォーカス
                     await new Promise(r => setTimeout(r, 80));
-                    dbgLog(`[POOL_PROMOTE|${ts}] focus attempt: editorRef=${!!editorRef.current}`);
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus attempt: editorRef=${!!editorRef.current}` }).catch(() => {});
                     if (event.payload.isNew) {
                         editorRef.current?.focusAndSelectFirstLine();
                     } else {
                         editorRef.current?.focus();
                     }
-                    dbgLog(`[POOL_PROMOTE|${ts}] focus+cursor applied, editorRef=${!!editorRef.current}`);
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus+cursor applied, editorRef=${!!editorRef.current}` }).catch(() => {});
                 }, 300);
             });
             // [FIX] React Strict Mode でダブルsetupが起きた場合、cleanup後にlistenが解決したら即解除
@@ -632,7 +608,6 @@ const StickyNote = memo(function StickyNote() {
                 const uReload = await listen<{ path: string }>('fusen:reload_note', async (event) => {
                     const targetPath = event.payload?.path;
                     if (targetPath && selectedFile?.path && pathsEqual(targetPath, selectedFile.path)) {
-                        console.log('[RELOAD] Reloading note:', targetPath);
                         const body = await loadNote();
                         setContent(body);
                         setEditBody(body);
@@ -645,7 +620,7 @@ const StickyNote = memo(function StickyNote() {
                 const safeReload = wrapUnlisten(uReload);
                 if (isMounted) unlistenReload = safeReload; else safeReload();
             } catch (err) {
-                console.warn('[StickyNote] reload_note listener setup failed:', err);
+                // reload_note listener setup failed
             }
         };
 
@@ -718,7 +693,7 @@ const StickyNote = memo(function StickyNote() {
                 );
                 unlisten = wrapUnlisten(uScroll);
             } catch (err) {
-                console.warn('[StickyNote] scroll_to_line listener setup failed:', err);
+                // scroll_to_line listener setup failed
             }
         };
 
@@ -823,13 +798,8 @@ const StickyNote = memo(function StickyNote() {
     const executeTagDelete = async () => {
         if (!tagToDelete) return;
 
-        console.log('[Frontend] Executing global delete for:', tagToDelete);
         try {
             const count = await deleteTagFromAllNotes(tagToDelete);
-            console.log(`[Frontend] Deleted tag ${tagToDelete} from ${count} notes.`);
-            if (count === 0) {
-                console.warn('[Frontend] Backend reported 0 notes modified. Is the tag matching correct?');
-            }
 
             // Tag操作後にノートをリロードして最新の状態を取得する
             if (selectedFile) {
@@ -850,19 +820,16 @@ const StickyNote = memo(function StickyNote() {
     const handleEditBlur = useCallback(async (e?: FocusEvent) => {
         // [Fix] キャプチャ中は編集モードを維持する
         if (isCapturingRef.current) {
-            console.log('[Blur] Capturing in progress, skipping endEditing');
             return;
         }
         // [Fix] promote中（プールウィンドウ昇格中）はblurによる編集モード解除を防ぐ
         if (isPromotingRef.current) {
-            console.log('[Blur] Promoting in progress, skipping endEditing');
             return;
         }
 
         // フォーカス移動先がツールバー内なら編集終了しない
         if (e && e.relatedTarget instanceof Element) {
             if (e.relatedTarget.closest('.hoverBar') || e.relatedTarget.closest('.editorHost')) {
-                console.log('[Blur] Focus moved to toolbar/editor, keeping edit mode');
                 return;
             }
         }
@@ -934,7 +901,6 @@ const StickyNote = memo(function StickyNote() {
             // ドラッグせずにクリックだけで終わった場合、編集モード中のみ編集終了する
             // （非編集時に呼ぶと startEditing との競合が起きるため除外）
             if (!hasDragged && isEditing) {
-                console.log('[Footer] Click detected (no drag). Ending edit.');
                 handleEditBlur();
             }
         };
@@ -958,12 +924,9 @@ const StickyNote = memo(function StickyNote() {
         if (!isEditing) return;
 
         const onWindowBlur = () => {
-            console.log('[StickyNote] Window blur event fired'); // [Debug]
             if (Date.now() < ignoreBlurUntilRef.current) {
-                console.log('[StickyNote] Blur ignored due to grace period'); // [Debug]
                 return;
             }
-            console.log('[StickyNote] Window blurred, calling handleEditBlur'); // [Debug]
             handleEditBlur();
         };
 
@@ -981,15 +944,12 @@ const StickyNote = memo(function StickyNote() {
             const target = e.target as Node;
 
             if (editorHostRef.current?.contains(target)) {
-                // console.log('[StickyNote] Click inside editor host'); // Verbose
                 return;
             }
             if ((target as HTMLElement)?.closest?.('.hoverBar')) {
-                console.log('[StickyNote] Click inside hoverBar'); // [Debug]
                 return;
             }
 
-            console.log('[StickyNote] Click outside detected (onPointerDownCapture). Calling handleEditBlur.'); // [Debug]
             handleEditBlur();
         };
 
@@ -1087,13 +1047,11 @@ const StickyNote = memo(function StickyNote() {
         const handleKeyDown = async (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 e.preventDefault();
-                console.log('[Shortcut] Ctrl+F pressed, opening search');
                 emit('fusen:open_search');
             }
             // [New] Ctrl+N: 新規付箋作成
             if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
                 e.preventDefault();
-                console.log('[Shortcut] Ctrl+N pressed, creating new note');
                 if (selectedFile) {
                     const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                     const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
@@ -1193,9 +1151,7 @@ const StickyNote = memo(function StickyNote() {
                         } catch (e) {
                             invoke('fusen_debug_log', { message: `[CREATE_REQ] + button outerPosition/scaleFactor FAILED: ${e}` }).catch(() => {});
                         }
-                        const dbgMsg = `[CREATE_REQ] + clicked label=${win.label} sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale}`;
-                        console.log(dbgMsg);
-                        invoke('fusen_debug_log', { message: dbgMsg }).catch(() => {});
+                        invoke('fusen_debug_log', { message: `[CREATE_REQ] + clicked label=${win.label} sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale}` }).catch(() => {});
                         emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale });
                     }}
                 />

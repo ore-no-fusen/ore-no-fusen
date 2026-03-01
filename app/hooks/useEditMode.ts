@@ -71,14 +71,11 @@ export function useEditMode({
      * 編集モードを開始する
      */
     const startEditing = useCallback((cursorPos?: number, coords?: { x: number, y: number }) => {
-        console.log('[useEditMode] startEditing called. Current isEditing:', isEditing, 'New POS:', cursorPos);
         if (isEditing) {
-            console.log('[useEditMode] Already editing, ignoring startEditing');
             return;
         }
 
         const gracePeriod = 200;
-        console.log(`[useEditMode] Starting edit mode (Setting ignoreBlur for ${gracePeriod}ms). New ignoreBlurUntil: ${Date.now() + gracePeriod}`);
         ignoreBlurUntilRef.current = Date.now() + gracePeriod;
         setIsEditing(true);
         // [修正] 以前は下部クリック空間確保のために \n を15行追加していましたが、
@@ -92,26 +89,20 @@ export function useEditMode({
      * 編集モードを終了する（保存を実行）
      */
     const endEditing = useCallback(async () => {
-        console.log('[useEditMode] endEditing called.');
         if (isCommittingRef.current) {
-            console.log('[useEditMode] Already committing, skipping endEditing');
             return;
         }
 
         if (isCapturing) {
-            console.log('[useEditMode] Capturing screen, skipping blur/endEditing');
             return;
         }
 
         isCommittingRef.current = true;
 
-        console.log('[useEditMode] Ending edit mode, saving changes...');
-
         try {
             // [修正] Padding Line仕様を廃止したため、ユーザーの入力した末尾改行を意図的に維持する
             const currentBody = editBodyRef.current;
             await onSave(currentBody, rawFrontmatter, true);
-            console.log('[useEditMode] Save succeeded.');
         } catch (e) {
             console.error('[useEditMode] Save failed (editing will still end):', e);
         } finally {
@@ -119,7 +110,6 @@ export function useEditMode({
             setIsEditing(false);
             lastEditEndedAt.current = Date.now();
             isCommittingRef.current = false;
-            console.log('[useEditMode] Edit mode ended. isEditing set to false.');
         }
     }, [onSave, rawFrontmatter, isCapturing]);
 

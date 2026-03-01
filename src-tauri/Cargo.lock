@@ -3666,7 +3666,7 @@ dependencies = [
 
 [[package]]
 name = "ore-no-fusen"
-version = "0.10.7"
+version = "0.10.8"
 dependencies = [
  "arboard",
  "chrono",
@@ -3689,6 +3689,7 @@ dependencies = [
  "tauri-plugin-os",
  "tauri-plugin-shell",
  "tempfile",
+ "tokio",
  "uuid",
  "walkdir",
  "windows 0.52.0",

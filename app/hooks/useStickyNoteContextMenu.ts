@@ -286,18 +286,13 @@ export function useStickyNoteContextMenu({
             const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `🏷️ ${t('menu.tags')}`, items: tagSubItems });
             menuItems.push(tagSubmenu);
 
-            // iPhoneに表示
+            // iPhoneに表示（将来実装予定）
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_send_to_iphone',
                 text: `📱 ${t('menu.sendToIphone')}`,
-                action: async () => {
-                    console.log('[iPhone連携] iPhoneに表示がクリックされました');
-                    // TODO: フェーズ3でPush通知送信ロジックを実装
-                    // 初回: セットアップ画面を表示
-                    // 2回目以降: 直接通知送信
-                    alert('📱 iPhone連携は現在準備中です。もうしばらくお待ちください！');
-                }
+                enabled: false,
+                action: async () => {}
             }));
 
             // アーカイブ

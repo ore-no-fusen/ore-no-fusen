@@ -164,13 +164,11 @@ fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Note {
 
 #[tauri::command]
 fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, context: String) -> Result<Note, String> {
-    println!("[TRACE:RUST_CREATE] Request to create note in folder: {}, context: {}", folder_path, context);
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let next_seq = storage::get_next_seq(&folder_path);
-    
+
     let data = logic::build_create_note_data(&folder_path, &context, next_seq, &today);
-    
-    println!("[TRACE:RUST_CREATE] Generated new note path: {}", data.path_str);
+
     storage::write_note(&data.path_str, &data.content)?;
     
     logic::apply_add_note(&mut *state.lock().unwrap(), data.meta.clone());
@@ -190,7 +188,6 @@ fn fusen_save_note(
     frontmatter_raw: String,
     allow_rename: bool
 ) -> Result<String, String> {
-    println!("[TRACE:RUST_SAVE_CMD] Received save request. path: {}, allow_rename: {}, bodyLength: {}", path, allow_rename, body.len());
     // Read old content for change detection
     let old_note = storage::read_note(&path).ok();
     let old_body = old_note.as_ref().map(|n| {
@@ -218,8 +215,6 @@ fn fusen_save_note(
         logic::Effect::RenameNote { old_path, new_path } => {
             if std::path::Path::new(&old_path).exists() {
                 storage::rename_note(&old_path, &new_path)?;
-            } else {
-                println!("[TRACE:RUST_SAVE_CMD] Fallback: target renamed file missing ({}), skipping rename.", old_path);
             }
         },
         logic::Effect::Batch(effects) => {
@@ -229,8 +224,6 @@ fn fusen_save_note(
                     logic::Effect::RenameNote { old_path, new_path } => {
                         if std::path::Path::new(&old_path).exists() {
                             storage::rename_note(&old_path, &new_path)?;
-                        } else {
-                            println!("[TRACE:RUST_SAVE_CMD] Fallback: target renamed file missing ({}), skipping rename.", old_path);
                         }
                     },
                     logic::Effect::Batch(_) => {} // Nested batch not supported
@@ -356,11 +349,8 @@ fn fusen_search_notes(
     };
     drop(app_state);
 
-    eprintln!("[Search] Searching for '{}' in folder: {}", query, folder_path);
-
     let hits = search_notes_logic(&folder_path, &query);
 
-    eprintln!("[Search] Found {} hits", hits.len());
     hits
 }
 
@@ -553,66 +543,55 @@ fn fusen_remove_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String
 
 #[tauri::command]
 fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app: tauri::AppHandle) -> Result<usize, String> {
-    eprintln!("[Global Delete] Request for tag: '{}'", tag);
-    
     // CRITICAL FIX: Refresh notes list before processing to ensure we have the latest state
     let mut app_state = state.lock().unwrap();
     let base_path = app_state.base_path.clone()
         .or(app_state.folder_path.clone())
         .ok_or("base_path is not set")?;
-    
+
     // Reload all notes to get the most up-to-date list
-    eprintln!("[Global Delete] Reloading notes from: {}", base_path);
     app_state.notes = storage::list_notes(&base_path);
-    eprintln!("[Global Delete] Found {} notes in total", app_state.notes.len());
-    
+
     let mut modified_count = 0;
     let mut modified_paths: Vec<String> = Vec::new(); // Track modified paths
-    
+
     // Create a list of paths to process to avoid borrowing issues
     let paths: Vec<String> = app_state.notes.iter().map(|n| n.path.clone()).collect();
-    
+
     // Iterate through all notes
     for path in paths {
         // Read note content
         if let Ok(note) = storage::read_note(&path) {
             let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&note.body);
-            eprintln!("[Global Delete] Checking note: {} - tags: {:?}", path, tags);
 
             // Check if tag exists (trim both sides for safety)
             let tag_trimmed = tag.trim();
             if tags.iter().any(|t| t.trim() == tag_trimmed) {
-                eprintln!("[Global Delete] Found tag '{}' in {}, attempting to remove...", tag, path);
                 // Remove tag
                 if let Ok(effect) = logic::handle_remove_tag(&mut *app_state, &path, &note.body, tag_trimmed) {
                     if let logic::Effect::WriteNote { path: write_path, content } = effect {
                         match storage::write_note(&write_path, &content) {
                             Ok(_) => {
-                                eprintln!("[Global Delete] Successfully wrote modified note: {}", write_path);
                                 modified_count += 1;
                                 modified_paths.push(write_path);
                             },
-                            Err(e) => eprintln!("[Global Delete] Failed to write note: {} error: {}", write_path, e),
+                            Err(_e) => {},
                         }
                     }
-                } else {
-                    eprintln!("[Global Delete] handle_remove_tag returned error for {}", path);
                 }
             }
         }
     }
-    
+
     // Update tray menu
     drop(app_state);
     let _ = crate::tray::refresh_tray_menu(&app);
-    
+
     // [NEW] Notify each modified window to reload
     for path in modified_paths {
-        eprintln!("[Global Delete] Sending reload event for: {}", path);
         let _ = app.emit("fusen:reload_note", path);
     }
-    
-    eprintln!("[Global Delete] Finished. Modified {} notes.", modified_count);
+
     Ok(modified_count)
 }
 
@@ -658,7 +637,6 @@ fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[Str
             .collect()
     };
     
-    eprintln!("[Rust] Filter calculated. Tags: {:?}, Count: {}", selected, filtered_paths.len());
     Ok(filtered_paths)
 }
 
@@ -669,7 +647,6 @@ pub fn update_tag_filter<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_,
     let visible_paths = get_filtered_note_paths(state, tags)?;
 
     // 2. 通知 (Event Emit) -> Frontend Orchestrator handles UI
-    eprintln!("[Rust] Emitting fusen:sync_visible_notes with {} paths", visible_paths.len());
     app.emit("fusen:sync_visible_notes", &visible_paths).map_err(|e| e.to_string())?;
     
     Ok(())
@@ -680,8 +657,6 @@ fn fusen_set_active_tags(state: State<'_, Mutex<AppState>>, tags: Vec<String>, a
     let mut app_state = state.lock().unwrap();
     app_state.active_tags = tags.clone();
     drop(app_state);
-    
-    eprintln!("[Rust] fusen_set_active_tags called with: {:?}", tags);
 
     // Shared Logic
     update_tag_filter(&app, state, &tags)?;
@@ -786,46 +761,51 @@ fn setup_first_launch(
 }
 
 #[tauri::command]
-fn fusen_import_from_folder(
+async fn fusen_import_from_folder(
     app: AppHandle,
     state: State<'_, Mutex<AppState>>,
     source_path: String,
     target_path: Option<String>
 ) -> Result<import::ImportStats, String> {
-    let mut app_state = state.lock().unwrap(); // Lock for mutation later
-    let target_path = target_path
-        .or(app_state.base_path.clone())
-        .or(app_state.folder_path.clone())
-        .ok_or("Base path not set")?;
-    
-    // インポート実行
-    // TODO: ここで非同期実行したいが、ファイルコピーはブロッキングでやる
-    let stats = import::import_markdown_files(&source_path, &target_path)?;
-    
-    // [Fix] インポート成功後、ステートを更新して通知する
-    eprintln!("[Import] Reloading notes from: {}", target_path);
-    app_state.notes = storage::list_notes(&target_path);
-    drop(app_state); // Release lock before emitting
+    // target_path を解決してすぐロックを解放（spawn_blocking に渡すため）
+    let target_path = {
+        let app_state = state.lock().unwrap();
+        target_path
+            .or(app_state.base_path.clone())
+            .or(app_state.folder_path.clone())
+            .ok_or("Base path not set")?
+    };
+
+    // ファイルコピーを別スレッドで実行（UIをブロックしない）
+    let source = source_path.clone();
+    let target = target_path.clone();
+    let stats = tokio::task::spawn_blocking(move || {
+        import::import_markdown_files(&source, &target)
+    }).await
+        .map_err(|e| format!("Thread error: {e}"))??;
+
+    // インポート成功後、ステートを更新して通知する
+    {
+        let mut app_state = state.lock().unwrap();
+        app_state.notes = storage::list_notes(&target_path);
+    }
 
     // 全ウィンドウに更新通知
-    // page.tsx などで 'fusen:refresh_all' を監視させるか、
-    // 既存の 'settings_updated' フローに乗せる（ただし設定変更ではないので別イベントが好ましい）
-    // ここでは 'fusen:notes_updated' を発行する
     let _ = app.emit("fusen:notes_updated", ());
-    
+
     // タグフィルタも再適用する（新規ノートを表示するため）
-    // Show All（タグなし）の状態でも、全ノートを表示対象として更新する必要があるため常に呼び出す
     let state_clone = app.state::<Mutex<AppState>>();
-    let app_state = state_clone.lock().unwrap();
-    let active_tags = app_state.active_tags.clone();
-    drop(app_state);
-    
+    let active_tags = {
+        let app_state = state_clone.lock().unwrap();
+        app_state.active_tags.clone()
+    };
+
     // [Fix] active_tagsが空でも "全表示" として同期が必要なため、条件分岐を削除
     let _ = crate::update_tag_filter(&app, state_clone, &active_tags);
 
     // トレイメニューの件数なども更新が必要かもしれないのでリフレッシュ
     let _ = crate::tray::refresh_tray_menu(&app);
-    
+
     Ok(stats)
 }
 
@@ -902,7 +882,6 @@ async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
                         let _ = tbl.HrInit();
                         let _ = tbl.DeleteTab(hwnd);
                     }
-                    println!("[ToolWindow] HIDE {}: {:#010x}->{:#010x}", window.label(), style, new_style);
                 }
             }
         }
@@ -923,8 +902,7 @@ async fn fusen_set_as_alt_tab_window(
     app: tauri::AppHandle,
     state: tauri::State<'_, Mutex<AppState>>,
 ) -> Result<String, String> {
-    let mut diag = format!("[AltTab] called with label={}", label);
-    println!("{}", diag);
+    let mut diag = format!("called with label={}", label);
 
     #[cfg(target_os = "windows")]
     {
@@ -947,7 +925,6 @@ async fn fusen_set_as_alt_tab_window(
             s.last_alt_tab_window.replace(label.clone())
         };
         diag.push_str(&format!(", prev={:?}", prev_label));
-        println!("{}", diag);
 
         // 前のウィンドウをAlt+Tabから除外（WS_EX_TOOLWINDOW を追加、WS_EX_APPWINDOW を除去）
         if let Some(prev) = prev_label {
@@ -966,15 +943,11 @@ async fn fusen_set_as_alt_tab_window(
                                     let _ = tbl.HrInit();
                                     let _ = tbl.DeleteTab(hwnd);
                                 }
-                                let after = GetWindowLongW(hwnd, GWL_EXSTYLE);
-                                let msg = format!("[AltTab] HIDE prev={} {:#010x}->{:#010x} verify={:#010x}", prev, style, new_style, after);
-                                println!("{}", msg);
                                 diag.push_str(&format!("; HIDE {} ({:#010x}->{:#010x})", prev, style, new_style));
                             }
                         }
                     },
                     None => {
-                        println!("[AltTab] prev window not found: {}", prev);
                         diag.push_str("; prev_win=NOT_FOUND");
                     }
                 }
@@ -997,17 +970,11 @@ async fn fusen_set_as_alt_tab_window(
                             let _ = tbl.AddTab(hwnd);
                         }
                         let after = GetWindowLongW(hwnd, GWL_EXSTYLE);
-                        let msg = format!("[AltTab] SHOW cur={} {:#010x}->{:#010x} verify={:#010x} WS_EX_APPWINDOW={} WS_EX_TOOLWINDOW={}",
-                            label, style, new_style, after,
-                            (after as u32 & WS_EX_APPWINDOW.0) != 0,
-                            (after as u32 & WS_EX_TOOLWINDOW.0) != 0);
-                        println!("{}", msg);
                         diag.push_str(&format!("; SHOW {:#010x}->{:#010x} verify={:#010x}", style, new_style, after));
                     }
                 }
             },
             None => {
-                println!("[AltTab] cur window not found: {}", label);
                 diag.push_str("; cur_win=NOT_FOUND");
             }
         }
@@ -1019,7 +986,6 @@ async fn fusen_set_as_alt_tab_window(
         diag.push_str("; (non-windows noop)");
     }
 
-    println!("[AltTab] done: {}", diag);
     Ok(diag)
 }
 
@@ -1038,8 +1004,6 @@ async fn fusen_show_at_position(
     phys_height: u32,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    println!("[ShowAtPos] label={} pos=({:?},{:?}) size={}x{}", label, phys_x, phys_y, phys_width, phys_height);
-
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::UI::WindowsAndMessaging::{
@@ -1068,19 +1032,16 @@ async fn fusen_show_at_position(
                             phys_width as i32,
                             phys_height as i32,
                             flags,
-                        ).map_err(|e| format!("[ShowAtPos] SetWindowPos failed: {}", e))?;
+                        ).map_err(|e| format!("SetWindowPos failed: {}", e))?;
                         // SetForegroundWindow でOSのフォアグラウンドに設定する。
                         // SetWindowPos だけでは document.hasFocus()=false のままで
                         // CodeMirror が hasFocus=false を報告し、キー入力を受け付けない。
                         // このコマンドはユーザー操作（+ボタン等）直後に呼ばれるため
                         // Windows のフォアグラウンド制限に引っかからない。
-                        let fg_result = SetForegroundWindow(hwnd);
-                        println!("[ShowAtPos] SetWindowPos OK pos=({:?},{:?}) size={}x{} SetForegroundWindow={}", phys_x, phys_y, phys_width, phys_height, fg_result.as_bool());
+                        let _ = SetForegroundWindow(hwnd);
                     }
                 }
             }
-        } else {
-            println!("[ShowAtPos] Window not found: {}", label);
         }
     }
 
