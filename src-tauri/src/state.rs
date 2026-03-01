@@ -42,6 +42,8 @@ pub struct AppState {
     pub active_context_menu_path: Option<String>,
     pub active_world: Option<String>,
     pub active_tags: Vec<String>,
+    /// Alt+Tabに表示する付箋ウィンドウのラベル（最後にフォーカスされたもの）
+    pub last_alt_tab_window: Option<String>,
 }
 
 // NEW: UC-01 - 設定ファイル用の構造体

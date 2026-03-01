@@ -887,8 +887,11 @@ async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
+            GetWindowLongW, SetWindowLongW,
+            GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
         };
+        use windows::Win32::UI::Shell::{ITaskbarList, TaskbarList};
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
         use windows::Win32::Foundation::HWND;
         use raw_window_handle::RawWindowHandle;
 
@@ -897,28 +900,134 @@ async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
                 let raw = handle.as_raw();
                 if let RawWindowHandle::Win32(win32_handle) = raw {
                     let hwnd = HWND(win32_handle.hwnd.get());
-                    
-                    // 現在のスタイルを取得
                     let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
-                    
                     // WS_EX_TOOLWINDOWを追加し、WS_EX_APPWINDOWを削除
-                    // これによりAlt+Tabとタスクビューから除外される
                     let new_style = (style as u32 | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0;
                     SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
-                    
-                    logger::log_debug(&format!("[ToolWindow] Applied WS_EX_TOOLWINDOW to window: {}", window.label()));
+                    // ITaskbarList::DeleteTab でシェルのAlt+Tabリストから直接削除
+                    if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(&TaskbarList, None, CLSCTX_INPROC_SERVER) {
+                        let _ = tbl.HrInit();
+                        let _ = tbl.DeleteTab(hwnd);
+                    }
+                    println!("[ToolWindow] HIDE {}: {:#010x}->{:#010x}", window.label(), style, new_style);
                 }
             }
         }
     }
-    
+
     #[cfg(not(target_os = "windows"))]
     {
-        // 他のOSでは何もしない
         let _ = window;
     }
 
     Ok(())
+}
+
+// [NEW] 直前に使用した付箋のみAlt+Tabに表示する
+#[tauri::command]
+async fn fusen_set_as_alt_tab_window(
+    label: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Mutex<AppState>>,
+) -> Result<String, String> {
+    let mut diag = format!("[AltTab] called with label={}", label);
+    println!("{}", diag);
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongW, SetWindowLongW,
+            GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
+        };
+        use windows::Win32::UI::Shell::{ITaskbarList, TaskbarList};
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+        use windows::Win32::Foundation::HWND;
+        use raw_window_handle::RawWindowHandle;
+
+        // 前のラベルを取得して新しいラベルを保存
+        let prev_label = {
+            let mut s = state.lock().unwrap();
+            // 同じウィンドウへの再フォーカス: スタイル変更不要のため即リターン
+            if s.last_alt_tab_window.as_deref() == Some(label.as_str()) {
+                return Ok(format!("already_active label={}", label));
+            }
+            s.last_alt_tab_window.replace(label.clone())
+        };
+        diag.push_str(&format!(", prev={:?}", prev_label));
+        println!("{}", diag);
+
+        // 前のウィンドウをAlt+Tabから除外（WS_EX_TOOLWINDOW を追加、WS_EX_APPWINDOW を除去）
+        if let Some(prev) = prev_label {
+            if prev != label {
+                match app.get_webview_window(&prev) {
+                    Some(prev_win) => unsafe {
+                        if let Ok(handle) = prev_win.window_handle() {
+                            let raw = handle.as_raw();
+                            if let RawWindowHandle::Win32(win32_handle) = raw {
+                                let hwnd = HWND(win32_handle.hwnd.get());
+                                let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+                                let new_style = (style as u32 | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0;
+                                SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
+                                // ITaskbarList::DeleteTab でシェルのAlt+Tabリストから直接削除
+                                if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(&TaskbarList, None, CLSCTX_INPROC_SERVER) {
+                                    let _ = tbl.HrInit();
+                                    let _ = tbl.DeleteTab(hwnd);
+                                }
+                                let after = GetWindowLongW(hwnd, GWL_EXSTYLE);
+                                let msg = format!("[AltTab] HIDE prev={} {:#010x}->{:#010x} verify={:#010x}", prev, style, new_style, after);
+                                println!("{}", msg);
+                                diag.push_str(&format!("; HIDE {} ({:#010x}->{:#010x})", prev, style, new_style));
+                            }
+                        }
+                    },
+                    None => {
+                        println!("[AltTab] prev window not found: {}", prev);
+                        diag.push_str("; prev_win=NOT_FOUND");
+                    }
+                }
+            }
+        }
+
+        // 現在のウィンドウをAlt+Tabに表示（WS_EX_TOOLWINDOW を除去、WS_EX_APPWINDOW を付与）
+        match app.get_webview_window(&label) {
+            Some(cur_win) => unsafe {
+                if let Ok(handle) = cur_win.window_handle() {
+                    let raw = handle.as_raw();
+                    if let RawWindowHandle::Win32(win32_handle) = raw {
+                        let hwnd = HWND(win32_handle.hwnd.get());
+                        let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+                        let new_style = (style as u32 & !WS_EX_TOOLWINDOW.0) | WS_EX_APPWINDOW.0;
+                        SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
+                        // ITaskbarList::AddTab でシェルのAlt+Tabリストに直接追加
+                        if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(&TaskbarList, None, CLSCTX_INPROC_SERVER) {
+                            let _ = tbl.HrInit();
+                            let _ = tbl.AddTab(hwnd);
+                        }
+                        let after = GetWindowLongW(hwnd, GWL_EXSTYLE);
+                        let msg = format!("[AltTab] SHOW cur={} {:#010x}->{:#010x} verify={:#010x} WS_EX_APPWINDOW={} WS_EX_TOOLWINDOW={}",
+                            label, style, new_style, after,
+                            (after as u32 & WS_EX_APPWINDOW.0) != 0,
+                            (after as u32 & WS_EX_TOOLWINDOW.0) != 0);
+                        println!("{}", msg);
+                        diag.push_str(&format!("; SHOW {:#010x}->{:#010x} verify={:#010x}", style, new_style, after));
+                    }
+                }
+            },
+            None => {
+                println!("[AltTab] cur window not found: {}", label);
+                diag.push_str("; cur_win=NOT_FOUND");
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, state);
+        diag.push_str("; (non-windows noop)");
+    }
+
+    println!("[AltTab] done: {}", diag);
+    Ok(diag)
 }
 
 #[tauri::command]
@@ -998,6 +1107,7 @@ pub fn run() {
             fusen_search_notes, // [NEW] 全文検索
             clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
+            fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
         ])
         /* .on_menu_event(|app, event| {

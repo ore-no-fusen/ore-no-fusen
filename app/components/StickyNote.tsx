@@ -453,6 +453,52 @@ const StickyNote = memo(function StickyNote() {
         };
     }, [selectedFile, isEditing, endEditing, saveWindowState]);
 
+    // [NEW] Alt+Tab表示制御: フォーカス時にRustへ通知（selectedFileに依存しない独立したuseEffect）
+    useEffect(() => {
+        const win = getCurrentWindow();
+        console.log(`[AltTab] useEffect started. label=${win.label}`);
+        let unlisten: (() => void) | null = null;
+
+        const setup = async () => {
+            try {
+                // まずこのウィンドウをAlt+Tabから隠す（フォーカス前は非表示）
+                await invoke('fusen_make_tool_window');
+                console.log(`[AltTab] fusen_make_tool_window OK (initial hide). label=${win.label}`);
+
+                // 既にフォーカス済みの場合は即座に表示登録
+                const focused = await win.isFocused();
+                console.log(`[AltTab] isFocused=${focused}, label=${win.label}`);
+                if (focused) {
+                    const result = await invoke('fusen_set_as_alt_tab_window', { label: win.label });
+                    console.log(`[AltTab] fusen_set_as_alt_tab_window OK (initial show):`, result);
+                }
+
+                unlisten = await win.listen('tauri://focus', async () => {
+                    console.log(`[AltTab] tauri://focus fired. label=${win.label}`);
+                    try {
+                        const result = await invoke('fusen_set_as_alt_tab_window', { label: win.label });
+                        console.log(`[AltTab] fusen_set_as_alt_tab_window OK:`, result);
+                    } catch (e) {
+                        console.warn('[AltTab] fusen_set_as_alt_tab_window failed:', e);
+                    }
+                });
+                console.log(`[AltTab] tauri://focus listener registered. label=${win.label}`);
+            } catch (e) {
+                console.warn('[AltTab] setup failed:', e);
+            }
+        };
+
+        setup();
+
+        return () => {
+            console.log(`[AltTab] cleanup. label=${win.label}`);
+            try {
+                const p = (unlisten as any)?.();
+                if (p && p.catch) p.catch(() => { });
+            } catch (e) { }
+        };
+    }, []); // 依存なし - マウント時に一度だけ登録
+
     // [NEW] プールからの昇格（Promote）処理
     useEffect(() => {
         if (!isPool) return;
@@ -826,8 +872,9 @@ const StickyNote = memo(function StickyNote() {
 
         const onPointerUp = () => {
             cleanup();
-            // ドラッグせずにクリックだけで終わった場合、編集エリア外をクリックしたとみなして編集終了
-            if (!hasDragged) {
+            // ドラッグせずにクリックだけで終わった場合、編集モード中のみ編集終了する
+            // （非編集時に呼ぶと startEditing との競合が起きるため除外）
+            if (!hasDragged && isEditing) {
                 console.log('[Footer] Click detected (no drag). Ending edit.');
                 handleEditBlur();
             }
@@ -837,7 +884,9 @@ const StickyNote = memo(function StickyNote() {
             window.removeEventListener('pointerup', onPointerUp);
         };
 
-        e.preventDefault();
+        // e.preventDefault() を除去: これがあると Chromium の仕様で mousedown → click → dblclick
+        // の連鎖がキャンセルされ、ダブルクリックによる編集開始が機能しなくなる。
+        // テキスト選択防止は CSS の select-none で対応済み。
         e.stopPropagation();
         window.addEventListener('pointermove', onPointerMove);
         window.addEventListener('pointerup', onPointerUp);
