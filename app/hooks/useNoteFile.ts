@@ -69,8 +69,6 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             return body;
         } catch (error) {
             console.error('[useNoteFile] Failed to load note:', error);
-            // [DEBUG] Show error in content to diagnose "Empty Note" issue
-            setContent(`Error loading note:\n${String(error)}\nPath: ${path}`);
             return '';
         } finally {
             setLoading(false);
@@ -135,24 +133,44 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
     }, []);
 
     /**
-     * 自動保存ロジック（800msデバウンス）
+     * 自動保存ロジック（800msデバウンス、失敗時は最大3回リトライ）
      */
     useEffect(() => {
         if (!path || !savePending || !content) return;
 
-        const timer = setTimeout(async () => {
+        const MAX_RETRY = 3;
+        let cancelled = false;
+        const timers: ReturnType<typeof setTimeout>[] = [];
+
+        const attemptSave = async (attempt: number) => {
+            if (cancelled) return;
             try {
                 const now = new Date();
                 const ts = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
-                console.log(`[useNoteFile | ${ts}] Auto-save triggered`);
+                console.log(`[useNoteFile | ${ts}] Auto-save triggered (attempt ${attempt}/${MAX_RETRY})`);
                 await saveNoteContent(content, rawFrontmatter, false);
-                setSavePending(false);
+                if (!cancelled) setSavePending(false);
             } catch (e) {
-                console.error('[useNoteFile] Auto-save failed:', e);
+                if (cancelled) return;
+                console.error(`[useNoteFile] Auto-save failed (attempt ${attempt}/${MAX_RETRY}):`, e);
+                if (attempt < MAX_RETRY) {
+                    const delay = 1000 * Math.pow(2, attempt); // 2s, 4s
+                    console.warn(`[useNoteFile] Retrying auto-save in ${delay}ms...`);
+                    const t = setTimeout(() => attemptSave(attempt + 1), delay);
+                    timers.push(t);
+                } else {
+                    console.error('[useNoteFile] Auto-save failed after all retries. Data may be lost.');
+                }
             }
-        }, 800);
+        };
 
-        return () => clearTimeout(timer);
+        const initialTimer = setTimeout(() => attemptSave(1), 800);
+        timers.push(initialTimer);
+
+        return () => {
+            cancelled = true;
+            timers.forEach(clearTimeout);
+        };
     }, [path, savePending, content, rawFrontmatter, saveNoteContent]);
 
     return {
