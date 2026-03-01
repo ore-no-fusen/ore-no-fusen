@@ -1025,7 +1025,7 @@ const StickyNote = memo(function StickyNote() {
      *   Ctrl+Shift+H → 全付箋の表示/非表示トグル（グローバル: src-tauri/src/lib.rs で定義）
      */
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
+        const handleKeyDown = async (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 e.preventDefault();
                 console.log('[Shortcut] Ctrl+F pressed, opening search');
@@ -1038,7 +1038,16 @@ const StickyNote = memo(function StickyNote() {
                 if (selectedFile) {
                     const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                     const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
-                    emit('fusen:request_create', { folderPath, context: 'memo' });
+                    const win = getCurrentWindow();
+                    let sourceX: number | undefined;
+                    let sourceY: number | undefined;
+                    try {
+                        const physPos = await win.outerPosition();
+                        const scale = await win.scaleFactor();
+                        sourceX = physPos.x / scale;
+                        sourceY = physPos.y / scale;
+                    } catch (e) { /* 位置取得失敗時はデフォルト位置を使う */ }
+                    emit('fusen:request_create', { folderPath, context: 'memo', sourceX, sourceY });
                 }
             }
 
@@ -1111,7 +1120,16 @@ const StickyNote = memo(function StickyNote() {
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                         const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
                         console.log('[ToolbarButton] + clicked, requesting new note creation');
-                        emit('fusen:request_create', { folderPath, context: 'memo' });
+                        const win = getCurrentWindow();
+                        let sourceX: number | undefined;
+                        let sourceY: number | undefined;
+                        try {
+                            const physPos = await win.outerPosition();
+                            const scale = await win.scaleFactor();
+                            sourceX = physPos.x / scale;
+                            sourceY = physPos.y / scale;
+                        } catch (e) { /* 位置取得失敗時はデフォルト位置を使う */ }
+                        emit('fusen:request_create', { folderPath, context: 'memo', sourceX, sourceY });
                     }}
                 />
             </div>

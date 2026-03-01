@@ -390,7 +390,7 @@ function OrchestratorContent() {
   // [Fix] Synchronous lock for creation
   const isCreatingRef = useRef(false);
 
-  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string) => {
+  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { x: number, y: number }) => {
     // Global Throttle (Module Level) prevention
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
@@ -446,6 +446,14 @@ function OrchestratorContent() {
           localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
           const ts = new Date().toLocaleTimeString('ja-JP');
           console.log(`[TRACE:CREATE | ${ts}] Promoting pool window ${poolWindow.label} -> ${newNote.meta.path}. localStorage flag set.`);
+
+          // show() の前にサイズ・位置を確定させる（表示時に正しい状態になるよう）
+          const { LogicalSize, LogicalPosition } = await import('@tauri-apps/api/dpi');
+          await poolWindow.setSize(new LogicalSize(400, 300));
+          if (sourceMeta) {
+            await poolWindow.setPosition(new LogicalPosition(sourceMeta.x + 30, sourceMeta.y + 30));
+          }
+
           const { emitTo } = await import('@tauri-apps/api/event');
           await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
             path: newNote.meta.path,
@@ -460,7 +468,12 @@ function OrchestratorContent() {
           }, 500);
         } else {
           console.warn(`[CREATE] No pool window found, falling back to normal window creation`);
-          await openNoteWindow(newNote.meta.path, undefined, true);
+          await openNoteWindow(newNote.meta.path, sourceMeta ? {
+            x: sourceMeta.x + 30,
+            y: sourceMeta.y + 30,
+            width: 400,
+            height: 300,
+          } : undefined, true);
           setTimeout(() => {
             invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
           }, 500);
@@ -792,14 +805,17 @@ function OrchestratorContent() {
 
     let unlisten: (() => void) | undefined;
 
-    const promise = listen<{ folderPath: string; context: string }>('fusen:request_create', async (event) => {
+    const promise = listen<{ folderPath: string; context: string; sourceX?: number; sourceY?: number }>('fusen:request_create', async (event) => {
       console.log('[RequestCreate] Event received from sticky note:', event.payload);
-      const { folderPath, context } = event.payload;
-      if (folderPath) {
-        await handleCreateNote(folderPath, context || 'memo');
-      } else {
+      const { folderPath, context, sourceX, sourceY } = event.payload;
+      if (!folderPath) {
         console.warn('[RequestCreate] No folder path in request');
+        return;
       }
+      const sourceMeta = (sourceX !== undefined && sourceY !== undefined)
+        ? { x: sourceX, y: sourceY }
+        : undefined;
+      await handleCreateNote(folderPath, context || 'memo', sourceMeta);
     });
 
     promise.then(u => { unlisten = u; });
