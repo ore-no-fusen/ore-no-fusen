@@ -648,26 +648,30 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             viewRef.current.focus();
         },
         focusAndSelectFirstLine: () => {
-            console.log('[RichTextEditor] focusAndSelectFirstLine CLIED! viewRef exists?', !!viewRef.current);
+            const dbg = (msg: string) => {
+                console.log(msg);
+                import('@tauri-apps/api/core').then(({ invoke }) =>
+                    invoke('fusen_debug_log', { message: msg }).catch(() => {})
+                );
+            };
+            dbg(`[FocusFirst] called viewRef=${!!viewRef.current}`);
             if (!viewRef.current) return;
-            const doFocus = () => {
+            const doFocus = (tag: string) => {
                 const view = viewRef.current;
-                if (!view) return;
-                console.log(`[RichTextEditor] Executing doFocus. Currently hasFocus=${view.hasFocus}`);
+                if (!view) { dbg(`[FocusFirst|${tag}] viewRef became null`); return; }
+                dbg(`[FocusFirst|${tag}] hasFocus=${view.hasFocus} docLines=${view.state.doc.lines} docLen=${view.state.doc.length}`);
                 view.focus();
-                if (view.state.doc.lines > 0) {
-                    view.dispatch({
-                        selection: { anchor: 0, head: 0 },
-                        scrollIntoView: true
-                    });
-                }
-                console.log(`[RichTextEditor] After doFocus dispatch. hasFocus=${view.hasFocus}, activeElement=${document.activeElement?.className}`);
+                view.dispatch({
+                    selection: { anchor: 0, head: 0 },
+                    scrollIntoView: true
+                });
+                dbg(`[FocusFirst|${tag}] after: hasFocus=${view.hasFocus} activeEl=${document.activeElement?.tagName}.${document.activeElement?.className?.substring(0,30)}`);
             };
 
             // Focusを確実にするため、段階的に複数回試行する
-            requestAnimationFrame(doFocus);
-            setTimeout(doFocus, 50);
-            setTimeout(doFocus, 150);
+            requestAnimationFrame(() => doFocus('rAF'));
+            setTimeout(() => doFocus('50ms'), 50);
+            setTimeout(() => doFocus('150ms'), 150);
         },
         setCursorToEnd: () => {
             if (!viewRef.current) return;
@@ -828,8 +832,12 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     // Blurハンドラ
                     EditorView.domEventHandlers({
                         blur: (event, _view) => {
+                            const msg = `[RichTextEditor] blur fired isReady=${isReadyRef.current}`;
+                            console.log(msg);
+                            import('@tauri-apps/api/core').then(({ invoke }) =>
+                                invoke('fusen_debug_log', { message: msg }).catch(() => {})
+                            );
                             if (!isReadyRef.current) {
-                                console.log('[RichTextEditor] Blur ignored (not ready yet)');
                                 return;
                             }
                             if (onBlur) {

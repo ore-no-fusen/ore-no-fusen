@@ -90,6 +90,7 @@ const StickyNote = memo(function StickyNote() {
     const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
     const isCapturingRef = useRef(false);
+    const isPromotingRef = useRef(false); // promote中はblurによる編集モード解除を防ぐ
 
     // ============================================================
     // カスタムHook統合
@@ -133,6 +134,8 @@ const StickyNote = memo(function StickyNote() {
 
     // 削除・アーカイブ中の保存防止フラグ
     const isDeletingRef = useRef(false);
+    // ウィンドウクローズ処理中フラグ（onCloseRequested 再入防止）
+    const isHandlingCloseRef = useRef(false);
 
     // 保存処理のラッパー（削除中は保存しない）
     const handleSave = useCallback(async (body: string, front: string, allowRename: boolean) => {
@@ -423,11 +426,17 @@ const StickyNote = memo(function StickyNote() {
                 const safeResize = wrapUnlisten(uResize);
                 if (isMounted) unlistenResize = safeResize; else safeResize();
 
-                const uClose = await win.listen('tauri://close-requested', async () => {
-                    if (isDeletingRef.current) return;
+                const uClose = await win.onCloseRequested(async (event) => {
+                    // 削除・アーカイブ中、または再入時はそのままクローズ許可
+                    if (isDeletingRef.current || isHandlingCloseRef.current) return;
                     if (isEditing) {
+                        // クローズをいったん防いで保存してから再クローズ
+                        isHandlingCloseRef.current = true;
+                        event.preventDefault();
                         await endEditing();
+                        await win.close(); // 保存完了後に再度クローズ要求（今度は通過）
                     }
+                    // 閲覧モードではそのままクローズ許可
                 });
                 const safeClose = wrapUnlisten(uClose);
                 if (isMounted) unlistenClose = safeClose; else safeClose();
@@ -505,6 +514,7 @@ const StickyNote = memo(function StickyNote() {
 
         console.log('[StickyNote:Pool] Waiting for promote_from_pool event...');
         let unlisten: (() => void) | undefined;
+        let mounted = true; // [FIX] React Strict Mode のダブルsetup対策
 
         const setup = async () => {
             // [ROOT FIX] global な listen ではなく、このウィンドウ固有の listen を使う。
@@ -513,9 +523,14 @@ const StickyNote = memo(function StickyNote() {
             const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const thisWin = getCurrentWebviewWindow();
 
-            unlisten = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string }>('fusen:promote_from_pool', async (event) => {
+            const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
-                console.log(`[TRACE:POOL_PROMOTE | ${ts}] Window ${thisWin.label} received promote. path=${event.payload.path}, isNew=${event.payload.isNew}`);
+                const dbgLog = (msg: string) => {
+                    console.log(msg);
+                    invoke('fusen_debug_log', { message: msg }).catch(() => {});
+                };
+                isPromotingRef.current = true; // blur防止フラグ ON
+                dbgLog(`[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}`);
 
                 setDynamicUrlPath(event.payload.path);
                 if (event.payload.isNew) {
@@ -538,22 +553,59 @@ const StickyNote = memo(function StickyNote() {
                 // プール待機中のBlurでisEditingがfalseになっているため、明示的に編集モードを開始
                 startEditing();
 
-                await thisWin.show();
-                await thisWin.setFocus();
+                // [FIX] JS の show()→setSize→setPosition は React の非同期再レンダリングによる
+                // IPC タイミング問題で setSize/setPosition が例外を投げクラッシュする。
+                // Rust の SetWindowPos(SWP_SHOWWINDOW) で show+サイズ(+位置)を原子的に実行する。
+                // targetPhysWidth/Height は常に送られるため必ずサイズを適用できる。
+                // targetPhysX/Y は undefined の場合は null を渡して SWP_NOMOVE（位置変更なし）。
+                try {
+                    await invoke('fusen_show_at_position', {
+                        label: thisWin.label,
+                        physX: event.payload.targetPhysX ?? null,
+                        physY: event.payload.targetPhysY ?? null,
+                        physWidth: event.payload.targetPhysWidth ?? 400,
+                        physHeight: event.payload.targetPhysHeight ?? 300,
+                    });
+                    dbgLog(`[POOL_PROMOTE|${ts}] fusen_show_at_position OK pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})`);
+                } catch (e) {
+                    dbgLog(`[POOL_PROMOTE|${ts}] fusen_show_at_position FAILED: ${e} – falling back to show()`);
+                    await thisWin.show();
+                }
 
-                // Reactレンダリング完了を待ってからフォーカス
-                setTimeout(() => {
+                // 実際の位置を確認
+                try {
+                    const finalPos = await thisWin.outerPosition();
+                    dbgLog(`[POOL_PROMOTE|${ts}] FINAL pos=(${finalPos.x},${finalPos.y})`);
+                } catch(e) { /* ignore */ }
+
+                // CodeMirror のレイアウトを再計算させる（hidden→visible 時に必要）
+                window.dispatchEvent(new Event('resize'));
+
+                // [FIX] Rust側でSetForegroundWindowを呼ぶため、JS側のsetFocusは不要。
+                // 300ms 待つことで ITaskbarList 操作完了後に確実にフォーカスを取得する。
+                setTimeout(async () => {
+                    isPromotingRef.current = false; // blur防止フラグ OFF
+                    // blurでisEditingがリセットされた場合に備えて強制的にedit modeをONにする
+                    setIsEditing(true);
+                    // Reactの再レンダリングを待ってからフォーカス
+                    await new Promise(r => setTimeout(r, 80));
+                    dbgLog(`[POOL_PROMOTE|${ts}] focus attempt: editorRef=${!!editorRef.current}`);
                     if (event.payload.isNew) {
                         editorRef.current?.focusAndSelectFirstLine();
                     } else {
                         editorRef.current?.focus();
                     }
+                    dbgLog(`[POOL_PROMOTE|${ts}] focus+cursor applied, editorRef=${!!editorRef.current}`);
                 }, 300);
             });
+            // [FIX] React Strict Mode でダブルsetupが起きた場合、cleanup後にlistenが解決したら即解除
+            if (!mounted) { u(); return; }
+            unlisten = u;
         };
         setup();
 
         return () => {
+            mounted = false;
             if (unlisten) unlisten();
         };
     }, [isPool, startEditing]);
@@ -799,6 +851,11 @@ const StickyNote = memo(function StickyNote() {
             console.log('[Blur] Capturing in progress, skipping endEditing');
             return;
         }
+        // [Fix] promote中（プールウィンドウ昇格中）はblurによる編集モード解除を防ぐ
+        if (isPromotingRef.current) {
+            console.log('[Blur] Promoting in progress, skipping endEditing');
+            return;
+        }
 
         // フォーカス移動先がツールバー内なら編集終了しない
         if (e && e.relatedTarget instanceof Element) {
@@ -1039,15 +1096,18 @@ const StickyNote = memo(function StickyNote() {
                     const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                     const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
                     const win = getCurrentWindow();
-                    let sourceX: number | undefined;
-                    let sourceY: number | undefined;
+                    let sourcePhysX: number | undefined;
+                    let sourcePhysY: number | undefined;
+                    let sourceScale: number | undefined;
                     try {
                         const physPos = await win.outerPosition();
-                        const scale = await win.scaleFactor();
-                        sourceX = physPos.x / scale;
-                        sourceY = physPos.y / scale;
-                    } catch (e) { /* 位置取得失敗時はデフォルト位置を使う */ }
-                    emit('fusen:request_create', { folderPath, context: 'memo', sourceX, sourceY });
+                        sourcePhysX = physPos.x;
+                        sourcePhysY = physPos.y;
+                        sourceScale = await win.scaleFactor();
+                    } catch (e) {
+                        invoke('fusen_debug_log', { message: `[CREATE_REQ] Ctrl+N outerPosition/scaleFactor FAILED: ${e}` }).catch(() => {});
+                    }
+                    emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale });
                 }
             }
 
@@ -1119,17 +1179,22 @@ const StickyNote = memo(function StickyNote() {
                         if (!selectedFile) return;
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                         const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
-                        console.log('[ToolbarButton] + clicked, requesting new note creation');
                         const win = getCurrentWindow();
-                        let sourceX: number | undefined;
-                        let sourceY: number | undefined;
+                        let sourcePhysX: number | undefined;
+                        let sourcePhysY: number | undefined;
+                        let sourceScale: number | undefined;
                         try {
                             const physPos = await win.outerPosition();
-                            const scale = await win.scaleFactor();
-                            sourceX = physPos.x / scale;
-                            sourceY = physPos.y / scale;
-                        } catch (e) { /* 位置取得失敗時はデフォルト位置を使う */ }
-                        emit('fusen:request_create', { folderPath, context: 'memo', sourceX, sourceY });
+                            sourcePhysX = physPos.x;
+                            sourcePhysY = physPos.y;
+                            sourceScale = await win.scaleFactor();
+                        } catch (e) {
+                            invoke('fusen_debug_log', { message: `[CREATE_REQ] + button outerPosition/scaleFactor FAILED: ${e}` }).catch(() => {});
+                        }
+                        const dbgMsg = `[CREATE_REQ] + clicked label=${win.label} sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale}`;
+                        console.log(dbgMsg);
+                        invoke('fusen_debug_log', { message: dbgMsg }).catch(() => {});
+                        emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale });
                     }}
                 />
             </div>

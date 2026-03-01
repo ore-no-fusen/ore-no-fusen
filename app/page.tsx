@@ -390,7 +390,7 @@ function OrchestratorContent() {
   // [Fix] Synchronous lock for creation
   const isCreatingRef = useRef(false);
 
-  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { x: number, y: number }) => {
+  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number }) => {
     // Global Throttle (Module Level) prevention
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
@@ -447,19 +447,31 @@ function OrchestratorContent() {
           const ts = new Date().toLocaleTimeString('ja-JP');
           console.log(`[TRACE:CREATE | ${ts}] Promoting pool window ${poolWindow.label} -> ${newNote.meta.path}. localStorage flag set.`);
 
-          // show() の前にサイズ・位置を確定させる（表示時に正しい状態になるよう）
-          const { LogicalSize, LogicalPosition } = await import('@tauri-apps/api/dpi');
-          await poolWindow.setSize(new LogicalSize(400, 300));
-          if (sourceMeta) {
-            await poolWindow.setPosition(new LogicalPosition(sourceMeta.x + 30, sourceMeta.y + 30));
+          // [FIX] JS の show()→setSize→setPosition は非同期タイミング問題と
+          // WINDOWPLACEMENT 復元問題で不安定。代わりに Rust の SetWindowPos(SWP_SHOWWINDOW) で
+          // show・サイズ・位置を原子的に実行する (fusen_show_at_position)。
+          // DPI 対応のオフセット: 30 論理ピクセル → ソースの scale 倍で物理ピクセルに変換
+          const physOffset = sourceMeta ? Math.round(30 * sourceMeta.scale) : 0;
+          const targetPhysX = sourceMeta ? sourceMeta.physX + physOffset : undefined;
+          const targetPhysY = sourceMeta ? sourceMeta.physY + physOffset : undefined;
+          // サイズを物理ピクセルで計算。sourceMeta がない場合は pool window 自身の scale を取得する。
+          let sizeScale = sourceMeta?.scale;
+          if (sizeScale === undefined) {
+            try { sizeScale = await poolWindow.scaleFactor(); } catch (_) { sizeScale = 1.0; }
           }
-
+          const targetPhysWidth = Math.round(400 * sizeScale);
+          const targetPhysHeight = Math.round(300 * sizeScale);
+          invoke('fusen_debug_log', { message: `[CREATE_EMIT] emitTo ${poolWindow.label}: physOffset=${physOffset} target=(${targetPhysX},${targetPhysY}) size=${targetPhysWidth}x${targetPhysHeight} sizeScale=${sizeScale}` }).catch(() => {});
           const { emitTo } = await import('@tauri-apps/api/event');
           await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
             path: newNote.meta.path,
             isNew: true,
             content: newNote.body,
-            frontmatter: newNote.frontmatter
+            frontmatter: newNote.frontmatter,
+            targetPhysX,
+            targetPhysY,
+            targetPhysWidth,
+            targetPhysHeight,
           });
 
           // 次のプールウィンドウを補充する（OSのフォーカス奪取を防ぐため少し遅延させる）
@@ -469,8 +481,9 @@ function OrchestratorContent() {
         } else {
           console.warn(`[CREATE] No pool window found, falling back to normal window creation`);
           await openNoteWindow(newNote.meta.path, sourceMeta ? {
-            x: sourceMeta.x + 30,
-            y: sourceMeta.y + 30,
+            // openNoteWindow は論理座標で受け取るため変換する
+            x: (sourceMeta.physX / sourceMeta.scale) + 30,
+            y: (sourceMeta.physY / sourceMeta.scale) + 30,
             width: 400,
             height: 300,
           } : undefined, true);
@@ -805,15 +818,15 @@ function OrchestratorContent() {
 
     let unlisten: (() => void) | undefined;
 
-    const promise = listen<{ folderPath: string; context: string; sourceX?: number; sourceY?: number }>('fusen:request_create', async (event) => {
-      console.log('[RequestCreate] Event received from sticky note:', event.payload);
-      const { folderPath, context, sourceX, sourceY } = event.payload;
+    const promise = listen<{ folderPath: string; context: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number }>('fusen:request_create', async (event) => {
+      const { folderPath, context, sourcePhysX, sourcePhysY, sourceScale } = event.payload;
+      invoke('fusen_debug_log', { message: `[CREATE_REQ] page.tsx received: sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale}` }).catch(() => {});
       if (!folderPath) {
         console.warn('[RequestCreate] No folder path in request');
         return;
       }
-      const sourceMeta = (sourceX !== undefined && sourceY !== undefined)
-        ? { x: sourceX, y: sourceY }
+      const sourceMeta = (sourcePhysX !== undefined && sourcePhysY !== undefined)
+        ? { physX: sourcePhysX, physY: sourcePhysY, scale: sourceScale ?? 1.0 }
         : undefined;
       await handleCreateNote(folderPath, context || 'memo', sourceMeta);
     });

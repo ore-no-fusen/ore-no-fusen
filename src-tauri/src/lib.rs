@@ -244,43 +244,38 @@ fn fusen_save_note(
 
 #[tauri::command]
 fn fusen_move_to_trash(
-    window: tauri::Window,
     state: State<'_, Mutex<AppState>>,
     path: String
 ) -> Result<String, String> {
     let current_path = Path::new(&path);
-    
-    // ファイルが既に存在しない場合（空のメモなど）は成功扱いとしてウィンドウを閉じる
+
+    // ファイルが既に存在しない場合（空のメモなど）は成功扱い（JS側でウィンドウを閉じる）
     if !current_path.exists() {
-        let _ = window.close();
         return Ok("Already deleted".to_string());
     }
 
     let parent = current_path.parent().ok_or("no parent")?;
-    
+
     let trash_dir = storage::ensure_trash_dir(parent)?;
-    
+
     let filename = current_path.file_name().ok_or("no name")?.to_string_lossy();
     let new_path = trash_dir.join(filename.as_ref());
     let new_path_str = new_path.to_string_lossy().to_string();
-    
+
     // Move associated assets (images) to Trash as well
     storage::copy_associated_assets(current_path, &trash_dir)?;
     storage::delete_associated_assets(current_path)?;
-    
+
     storage::rename_note(&path, &new_path_str)?;
-    
+
     logic::apply_remove_note(&mut *state.lock().unwrap(), &path);
-    
-    // Close the window after successful trash move
-    let _ = window.close();
-    
+
+    // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
     Ok(new_path_str)
 }
 
 #[tauri::command]
 fn fusen_archive_note(
-    window: tauri::Window,
     state: State<'_, Mutex<AppState>>,
     path: String
 ) -> Result<String, String> {
@@ -334,9 +329,7 @@ fn fusen_archive_note(
     // However, since multiple notes might share assets (rare in this app but possible),
     // we'll stick to Copy-and-Success-Move for now.
     
-    // Close the window
-    let _ = window.close();
-    
+    // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
     Ok("Archived successfully".to_string())
 }
 
@@ -1030,6 +1023,73 @@ async fn fusen_set_as_alt_tab_window(
     Ok(diag)
 }
 
+// [NEW] プールウィンドウを show+resize+move を1回の SetWindowPos で原子的に実行する。
+// JS 側から thisWin.show() → setSize → setPosition の順で呼ぶと、
+// show() が WINDOWPLACEMENT の古い位置を復元してしまい、その後 setPosition が
+// JS async タイミングの問題で失敗することがある。
+// SetWindowPos(SWP_SHOWWINDOW) は表示と位置を原子的に設定し WINDOWPLACEMENT を使わないため
+// マルチモニター環境でも安定して動作する。
+#[tauri::command]
+async fn fusen_show_at_position(
+    label: String,
+    phys_x: Option<i32>,   // None → SWP_NOMOVE (位置変更なし、サイズのみ適用)
+    phys_y: Option<i32>,
+    phys_width: u32,
+    phys_height: u32,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    println!("[ShowAtPos] label={} pos=({:?},{:?}) size={}x{}", label, phys_x, phys_y, phys_width, phys_height);
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, SetForegroundWindow, HWND_TOP, SET_WINDOW_POS_FLAGS,
+            SWP_SHOWWINDOW, SWP_NOMOVE,
+        };
+        use windows::Win32::Foundation::HWND;
+        use raw_window_handle::RawWindowHandle;
+
+        if let Some(win) = app.get_webview_window(&label) {
+            unsafe {
+                if let Ok(handle) = win.window_handle() {
+                    if let RawWindowHandle::Win32(h) = handle.as_raw() {
+                        let hwnd = HWND(h.hwnd.get());
+                        // 位置が指定されている場合は位置+サイズ、なければサイズのみ
+                        let flags: SET_WINDOW_POS_FLAGS = if phys_x.is_some() {
+                            SWP_SHOWWINDOW
+                        } else {
+                            SWP_SHOWWINDOW | SWP_NOMOVE
+                        };
+                        SetWindowPos(
+                            hwnd,
+                            HWND_TOP,
+                            phys_x.unwrap_or(0),
+                            phys_y.unwrap_or(0),
+                            phys_width as i32,
+                            phys_height as i32,
+                            flags,
+                        ).map_err(|e| format!("[ShowAtPos] SetWindowPos failed: {}", e))?;
+                        // SetForegroundWindow でOSのフォアグラウンドに設定する。
+                        // SetWindowPos だけでは document.hasFocus()=false のままで
+                        // CodeMirror が hasFocus=false を報告し、キー入力を受け付けない。
+                        // このコマンドはユーザー操作（+ボタン等）直後に呼ばれるため
+                        // Windows のフォアグラウンド制限に引っかからない。
+                        let fg_result = SetForegroundWindow(hwnd);
+                        println!("[ShowAtPos] SetWindowPos OK pos=({:?},{:?}) size={}x{} SetForegroundWindow={}", phys_x, phys_y, phys_width, phys_height, fg_result.as_bool());
+                    }
+                }
+            }
+        } else {
+            println!("[ShowAtPos] Window not found: {}", label);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    let _ = (label, phys_x, phys_y, phys_width, phys_height, app);
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn fusen_create_pool_window(app: tauri::AppHandle) -> Result<String, String> {
     logger::log_info("[Pool] fusen_create_pool_window called (async)");
@@ -1109,6 +1169,7 @@ pub fn run() {
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
+            fusen_show_at_position, // [NEW] プールウィンドウをShow+リサイズ+移動を原子的に実行
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);

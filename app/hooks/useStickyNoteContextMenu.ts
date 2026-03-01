@@ -165,10 +165,21 @@ export function useStickyNoteContextMenu({
                     try {
                         if (!selectedFile) return;
                         const { emit } = await import('@tauri-apps/api/event');
+                        const { getCurrentWindow } = await import('@tauri-apps/api/window');
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                         const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
-                        console.log('[StickyNote] Requesting new note creation via emit');
-                        await emit('fusen:request_create', { folderPath, context: 'memo' });
+                        const win = getCurrentWindow();
+                        let sourcePhysX: number | undefined;
+                        let sourcePhysY: number | undefined;
+                        let sourceScale: number | undefined;
+                        try {
+                            const physPos = await win.outerPosition();
+                            sourcePhysX = physPos.x;
+                            sourcePhysY = physPos.y;
+                            sourceScale = await win.scaleFactor();
+                        } catch (_) { /* fallback: no position */ }
+                        console.log('[StickyNote] Requesting new note creation via emit', { sourcePhysX, sourcePhysY, sourceScale });
+                        await emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale });
                     } catch (e) {
                         console.error('New note request error', e);
                     }
