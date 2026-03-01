@@ -427,16 +427,18 @@ const StickyNote = memo(function StickyNote() {
                 if (isMounted) unlistenResize = safeResize; else safeResize();
 
                 const uClose = await win.onCloseRequested(async (event) => {
-                    // 削除・アーカイブ中、または再入時はそのままクローズ許可
+                    // 削除・アーカイブ中、または endEditing 後の再クローズ時のみ通過
                     if (isDeletingRef.current || isHandlingCloseRef.current) return;
+                    // Alt+F4 等の外部クローズ要求は常にブロック（再表示手段がないため）
+                    event.preventDefault();
                     if (isEditing) {
-                        // クローズをいったん防いで保存してから再クローズ
+                        // 編集中は保存してから閉じる処理を行う（削除・アーカイブ操作時のみ）
+                        // 通常の Alt+F4 では保存のみ行い、ウィンドウは維持する
                         isHandlingCloseRef.current = true;
-                        event.preventDefault();
                         await endEditing();
-                        await win.close(); // 保存完了後に再度クローズ要求（今度は通過）
+                        isHandlingCloseRef.current = false;
                     }
-                    // 閲覧モードではそのままクローズ許可
+                    // 閲覧モード・編集モードとも: ウィンドウ維持（何もしない）
                 });
                 const safeClose = wrapUnlisten(uClose);
                 if (isMounted) unlistenClose = safeClose; else safeClose();
