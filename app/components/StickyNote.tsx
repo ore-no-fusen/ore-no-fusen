@@ -381,7 +381,16 @@ const StickyNote = memo(function StickyNote() {
             }, 100);
         } else {
             // 既存ノート: 通常のロードフロー
-            loadNote();
+            // [FIX] loadNote() の結果を editBody にも反映する。
+            // プールウィンドウは isEditing=true で起動するため、useEditMode の
+            // 「!isEditing のときだけ editBody を更新する」同期 effect が動かず
+            // エディタが空白になるバグを防ぐ。
+            loadNote().then((body) => {
+                if (body) {
+                    console.log('[StickyNote] loadNote complete, syncing editBody. length=', body.length);
+                    setEditBody(body);
+                }
+            });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [urlPath, isNew]);
@@ -665,6 +674,8 @@ const StickyNote = memo(function StickyNote() {
 
                         if (!pathsEqual(targetPath, selectedFile.path)) return;
 
+                        console.log('[StickyNote] scroll_to_line received. isEditing=', isEditing, 'contentLen=', content.length, 'line=', line, 'query=', query);
+
                         if (!isEditing) {
                             startEditing();
                         }
@@ -672,6 +683,12 @@ const StickyNote = memo(function StickyNote() {
                         await new Promise((r) => setTimeout(r, 100));
 
                         if (editorRef.current) {
+                            // content が空（まだロード中）の場合は 0 にフォールバック
+                            if (!content) {
+                                console.warn('[StickyNote] scroll_to_line: content empty at jump time. Cursor set to 0.');
+                                editorRef.current.setCursor(0);
+                                return;
+                            }
                             const lines = content.split('\n');
                             const offset = lines.slice(0, line - 1).reduce((acc, l) => acc + l.length + 1, 0);
 

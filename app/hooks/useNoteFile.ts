@@ -38,10 +38,14 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
     const [note, setNote] = useState<Note | null>(null);
     const [content, setContent] = useState<string>('');
     const [rawFrontmatter, setRawFrontmatter] = useState<string>('');
-    const [loading, setLoading] = useState<boolean>(false);
+    // 既存ノートは最初からロード中扱い（pool window で一瞬空エディタが映るのを防ぐ）
+    const [loading, setLoading] = useState<boolean>(!!path && !isNew);
     const [savePending, setSavePending] = useState(false);
 
     const isRenamingRef = useRef(false);
+    // loadNote が content に依存しないように ref で現在値を保持
+    const contentRef = useRef(content);
+    useEffect(() => { contentRef.current = content; }, [content]);
 
     /**
      * ノートファイルを読み込む
@@ -52,7 +56,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         // リネームによるURL更新の場合は、再読み込みをスキップ
         if (isRenamingRef.current) {
             isRenamingRef.current = false;
-            return content;
+            return contentRef.current; // ref 経由で取得（stale closure 回避）
         }
 
         setLoading(true);
@@ -71,7 +75,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         } finally {
             setLoading(false);
         }
-    }, [path, content]);
+    }, [path]); // content を依存配列から除去 → loadNote が毎回再生成されなくなる
 
     /**
      * ノートを保存する（リネーム対応）
