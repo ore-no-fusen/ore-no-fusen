@@ -209,6 +209,7 @@ interface RichTextEditorProps {
     onInsertHeading1?: () => void; // 見出し1挿入リクエスト（外部から呼ぶ用）
     onInsertBold?: () => void; // 強調挿入リクエスト（外部から呼ぶ用）
     onBlur?: (event?: FocusEvent) => void; // フォーカスが外れた時
+    onSelectionChange?: (coords: { top: number; left: number; bottom: number } | null) => void; // テキスト選択変化
 }
 
 // 外部から呼べるメソッドの型定義
@@ -480,7 +481,7 @@ const linkEventHandler = EditorView.domEventHandlers({
 });
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
-    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur } = props;
+    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange } = props;
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
@@ -793,6 +794,104 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     // 基本的な編集機能
                     history(),
                     keymap.of([
+                        // Ctrl+B: 太字トグル
+                        {
+                            key: 'Mod-b',
+                            run: (view) => {
+                                const { state } = view;
+                                const { from, to } = state.selection.main;
+                                if (from === to) {
+                                    view.dispatch({
+                                        changes: { from, to, insert: '****' },
+                                        selection: { anchor: from + 2, head: from + 2 }
+                                    });
+                                } else {
+                                    const sel = state.doc.sliceString(from, to);
+                                    const isBolded = sel.startsWith('**') && sel.endsWith('**') && sel.length > 4;
+                                    const newText = isBolded ? sel.slice(2, -2) : `**${sel}**`;
+                                    view.dispatch({
+                                        changes: { from, to, insert: newText },
+                                        selection: { anchor: from, head: from + newText.length }
+                                    });
+                                }
+                                return true;
+                            }
+                        },
+                        // Ctrl+H: 見出し1トグル
+                        {
+                            key: 'Mod-h',
+                            run: (view) => {
+                                const { state } = view;
+                                const { from, to } = state.selection.main;
+                                const lineStart = state.doc.lineAt(from).number;
+                                const lineEnd = state.doc.lineAt(to).number;
+                                const changes: { from: number; to?: number; insert?: string }[] = [];
+                                let allHave = true;
+                                for (let i = lineStart; i <= lineEnd; i++) {
+                                    if (!state.doc.line(i).text.startsWith('# ')) { allHave = false; break; }
+                                }
+                                for (let i = lineStart; i <= lineEnd; i++) {
+                                    const line = state.doc.line(i);
+                                    if (allHave) {
+                                        changes.push({ from: line.from, to: line.from + 2 });
+                                    } else if (!line.text.startsWith('# ')) {
+                                        changes.push({ from: line.from, insert: '# ' });
+                                    }
+                                }
+                                view.dispatch({ changes });
+                                return true;
+                            }
+                        },
+                        // Ctrl+L: 箇条書きトグル
+                        {
+                            key: 'Mod-l',
+                            run: (view) => {
+                                const { state } = view;
+                                const { from, to } = state.selection.main;
+                                const lineStart = state.doc.lineAt(from).number;
+                                const lineEnd = state.doc.lineAt(to).number;
+                                const changes: { from: number; to?: number; insert?: string }[] = [];
+                                let allHave = true;
+                                for (let i = lineStart; i <= lineEnd; i++) {
+                                    if (!state.doc.line(i).text.startsWith('- ')) { allHave = false; break; }
+                                }
+                                for (let i = lineStart; i <= lineEnd; i++) {
+                                    const line = state.doc.line(i);
+                                    if (allHave) {
+                                        changes.push({ from: line.from, to: line.from + 2 });
+                                    } else if (!line.text.startsWith('- ')) {
+                                        changes.push({ from: line.from, insert: '- ' });
+                                    }
+                                }
+                                view.dispatch({ changes });
+                                return true;
+                            }
+                        },
+                        // Ctrl+Shift+C: チェックボックストグル
+                        {
+                            key: 'Mod-Shift-c',
+                            run: (view) => {
+                                const { state } = view;
+                                const { from, to } = state.selection.main;
+                                const lineStart = state.doc.lineAt(from).number;
+                                const lineEnd = state.doc.lineAt(to).number;
+                                const changes: { from: number; to?: number; insert?: string }[] = [];
+                                let allHave = true;
+                                for (let i = lineStart; i <= lineEnd; i++) {
+                                    if (!state.doc.line(i).text.startsWith('- [ ] ')) { allHave = false; break; }
+                                }
+                                for (let i = lineStart; i <= lineEnd; i++) {
+                                    const line = state.doc.line(i);
+                                    if (allHave) {
+                                        changes.push({ from: line.from, to: line.from + 6 });
+                                    } else if (!line.text.startsWith('- [ ] ')) {
+                                        changes.push({ from: line.from, insert: '- [ ] ' });
+                                    }
+                                }
+                                view.dispatch({ changes });
+                                return true;
+                            }
+                        },
                         {
                             key: 'Tab',
                             run: (view) => {
@@ -841,10 +940,19 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         // 新規付箋の場合のみinit()でtrueを注入
                         placeholderFlagField.init(() => true)
                     ] : []),
-                    // 変更検知
+                    // 変更検知・選択変化検知
                     EditorView.updateListener.of((update: ViewUpdate) => {
                         if (update.docChanged) {
                             onChange(update.state.doc.toString());
+                        }
+                        if ((update.selectionSet || update.docChanged) && onSelectionChange) {
+                            const sel = update.state.selection.main;
+                            if (!sel.empty) {
+                                const coords = update.view.coordsAtPos(sel.from);
+                                onSelectionChange(coords ? { top: coords.top, left: coords.left, bottom: coords.bottom } : null);
+                            } else {
+                                onSelectionChange(null);
+                            }
                         }
                     }),
                     // イベントハンドラ

@@ -30,6 +30,7 @@ import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 // UIコンポーネント
 import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ToolbarButtons from './ToolbarButtons';
+import FloatingFormatBar from './FloatingFormatBar';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -72,6 +73,9 @@ const StickyNote = memo(function StickyNote() {
 
 
     const [isNewNote, setIsNewNote] = useState(false);
+
+    // フローティングフォーマットバー
+    const [floatBarCoords, setFloatBarCoords] = useState<{ top: number; left: number } | null>(null);
 
     // UI状態
     const [isHover, setIsHover] = useState(false);
@@ -815,6 +819,26 @@ const StickyNote = memo(function StickyNote() {
     };
 
     /**
+     * テキスト選択変化時にフローティングバーの座標を更新
+     */
+    const handleSelectionChange = useCallback((coords: { top: number; left: number; bottom: number } | null) => {
+        if (!coords || !editorHostRef.current) {
+            setFloatBarCoords(null);
+            return;
+        }
+        const rect = editorHostRef.current.getBoundingClientRect();
+        setFloatBarCoords({
+            top: coords.top - rect.top,
+            left: Math.max(0, coords.left - rect.left),
+        });
+    }, []);
+
+    // 編集モード終了時にフローティングバーを非表示
+    useEffect(() => {
+        if (!isEditing) setFloatBarCoords(null);
+    }, [isEditing]);
+
+    /**
      * 編集モード終了処理（handleEditBlur）
      */
     const handleEditBlur = useCallback(async (e?: FocusEvent) => {
@@ -829,7 +853,7 @@ const StickyNote = memo(function StickyNote() {
 
         // フォーカス移動先がツールバー内なら編集終了しない
         if (e && e.relatedTarget instanceof Element) {
-            if (e.relatedTarget.closest('.hoverBar') || e.relatedTarget.closest('.editorHost')) {
+            if (e.relatedTarget.closest('.hoverBar') || e.relatedTarget.closest('.floatBar') || e.relatedTarget.closest('.editorHost')) {
                 return;
             }
         }
@@ -946,7 +970,7 @@ const StickyNote = memo(function StickyNote() {
             if (editorHostRef.current?.contains(target)) {
                 return;
             }
-            if ((target as HTMLElement)?.closest?.('.hoverBar')) {
+            if ((target as HTMLElement)?.closest?.('.hoverBar') || (target as HTMLElement)?.closest?.('.floatBar')) {
                 return;
             }
 
@@ -1265,7 +1289,18 @@ const StickyNote = memo(function StickyNote() {
                             isNewNote={isNewNote}
                             fontSize={noteFontSize}
                             onBlur={handleEditBlur}
+                            onSelectionChange={handleSelectionChange}
                         />
+                        {floatBarCoords && (
+                            <FloatingFormatBar
+                                top={floatBarCoords.top}
+                                left={floatBarCoords.left}
+                                onBold={() => editorRef.current?.insertBold()}
+                                onHeading={() => editorRef.current?.insertHeading1()}
+                                onList={() => editorRef.current?.insertList()}
+                                onCheckbox={() => editorRef.current?.insertCheckbox()}
+                            />
+                        )}
                     </div>
                 ) : (
                     // 表示モード
