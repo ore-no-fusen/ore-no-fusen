@@ -180,6 +180,16 @@ const StickyNote = memo(function StickyNote() {
     // ウィンドウ管理
     const [isPinned, setIsPinned] = useState(false); // [New]
 
+    // [FIX] stale closure 防止用 ref群
+    // scroll_to_line / reload リスナーはasync setupの間にdepsが変わるとリスナーがリークする。
+    // リスナー内ではstateではなくrefを参照することで、常に最新値を取得できる。
+    const contentForListenerRef = useRef(content);
+    useEffect(() => { contentForListenerRef.current = content; }, [content]);
+    const isEditingForListenerRef = useRef(isEditing);
+    useEffect(() => { isEditingForListenerRef.current = isEditing; }, [isEditing]);
+    const startEditingForListenerRef = useRef(startEditing);
+    useEffect(() => { startEditingForListenerRef.current = startEditing; }, [startEditing]);
+
     // [New] ミニマイズ状態からリサイズ操作により自動展開された場合の処理
     const handleAutoExpand = useCallback(async () => {
         if (!note) return;
@@ -605,33 +615,40 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => {
         if (!selectedFile) return;
 
-        let isMounted = true;
+        // [FIX] listener leak 防止: キャンセルフラグを使う
         let unlistenReload: (() => void) | null = null;
+        let cancelled = false;
+
+        const wrapUnlisten = (u: any) => () => {
+            try {
+                const p = u?.();
+                if (p && p.catch) p.catch(() => { });
+            } catch (e) { }
+        };
 
         const setupListener = async () => {
             try {
-                // unlisten関数自体がPromiseを返すTauri v2仕様への対策ラッパー
-                const wrapUnlisten = (u: any) => () => {
-                    try {
-                        const p = u?.();
-                        if (p && p.catch) p.catch(() => { });
-                    } catch (e) { }
-                };
-
                 const uReload = await listen<{ path: string }>('fusen:reload_note', async (event) => {
                     const targetPath = event.payload?.path;
                     if (targetPath && selectedFile?.path && pathsEqual(targetPath, selectedFile.path)) {
                         const body = await loadNote();
+                        // [FIX] loadNote()が失敗して空を返した場合は上書きしない（C-2対策）
+                        if (!body) {
+                            console.error('[StickyNote] reload_note: loadNote returned empty, skipping content update to prevent data loss.');
+                            return;
+                        }
                         setContent(body);
                         setEditBody(body);
 
-                        if (isEditing) {
+                        // isEditing は ref から取得（stale closure 回避）
+                        if (isEditingForListenerRef.current) {
                             setIsEditing(false);
                         }
                     }
                 });
-                const safeReload = wrapUnlisten(uReload);
-                if (isMounted) unlistenReload = safeReload; else safeReload();
+                // [FIX] listen() 解決後にすでにクリーンアップ済みなら即 unlisten
+                if (cancelled) { wrapUnlisten(uReload)(); return; }
+                unlistenReload = wrapUnlisten(uReload);
             } catch (err) {
                 // reload_note listener setup failed
             }
@@ -640,7 +657,7 @@ const StickyNote = memo(function StickyNote() {
         setupListener();
 
         return () => {
-            isMounted = false;
+            cancelled = true;
             const safeUnlisten = (u: any) => {
                 try {
                     const p = u?.();
@@ -649,24 +666,26 @@ const StickyNote = memo(function StickyNote() {
             };
             safeUnlisten(unlistenReload);
         };
-    }, [selectedFile, isEditing, loadNote, setContent, setEditBody, setIsEditing]);
+    // [FIX] deps を selectedFile のみに絞る（loadNote は path 変更時のみ再生成、isEditing は ref 経由）
+    }, [selectedFile, loadNote]);
 
     // 全文検索スクロールイベントリスナー
     useEffect(() => {
         if (!selectedFile) return;
 
+        // [FIX] listener leak 防止: async listen() の解決前に deps が変わっても安全に unlisten できるようにする
         let unlisten: (() => void) | undefined;
+        let cancelled = false;
+
+        const wrapUnlisten = (u: any) => () => {
+            try {
+                const p = u?.();
+                if (p && p.catch) p.catch(() => { });
+            } catch (e) { }
+        };
 
         const setupScrollToLineListener = async () => {
             try {
-                // unlisten関数自体がPromiseを返すTauri v2仕様への対策ラッパー
-                const wrapUnlisten = (u: any) => () => {
-                    try {
-                        const p = u?.();
-                        if (p && p.catch) p.catch(() => { });
-                    } catch (e) { }
-                };
-
                 const uScroll = await listen<{ path: string; line: number; query?: string }>(
                     'fusen:scroll_to_line',
                     async (event) => {
@@ -674,22 +693,27 @@ const StickyNote = memo(function StickyNote() {
 
                         if (!pathsEqual(targetPath, selectedFile.path)) return;
 
-                        console.log('[StickyNote] scroll_to_line received. isEditing=', isEditing, 'contentLen=', content.length, 'line=', line, 'query=', query);
+                        // [FIX] state の stale closure を避けるため ref から最新値を取得
+                        const currentIsEditing = isEditingForListenerRef.current;
+                        const currentContent = contentForListenerRef.current;
 
-                        if (!isEditing) {
-                            startEditing();
+                        console.log('[StickyNote] scroll_to_line received. isEditing=', currentIsEditing, 'contentLen=', currentContent.length, 'line=', line, 'query=', query);
+
+                        if (!currentIsEditing) {
+                            startEditingForListenerRef.current();
                         }
 
                         await new Promise((r) => setTimeout(r, 100));
 
                         if (editorRef.current) {
-                            // content が空（まだロード中）の場合は 0 にフォールバック
-                            if (!content) {
+                            // wait後も ref から最新のcontentを取得
+                            const latestContent = contentForListenerRef.current;
+                            if (!latestContent) {
                                 console.warn('[StickyNote] scroll_to_line: content empty at jump time. Cursor set to 0.');
                                 editorRef.current.setCursor(0);
                                 return;
                             }
-                            const lines = content.split('\n');
+                            const lines = latestContent.split('\n');
                             const offset = lines.slice(0, line - 1).reduce((acc, l) => acc + l.length + 1, 0);
 
                             if (query) {
@@ -712,6 +736,8 @@ const StickyNote = memo(function StickyNote() {
                         }
                     }
                 );
+                // [FIX] listen() 解決後にすでにクリーンアップ済みなら即 unlisten
+                if (cancelled) { wrapUnlisten(uScroll)(); return; }
                 unlisten = wrapUnlisten(uScroll);
             } catch (err) {
                 // scroll_to_line listener setup failed
@@ -721,6 +747,7 @@ const StickyNote = memo(function StickyNote() {
         setupScrollToLineListener();
 
         return () => {
+            cancelled = true;
             const safeUnlisten = (u: any) => {
                 try {
                     const p = u?.();
@@ -729,7 +756,8 @@ const StickyNote = memo(function StickyNote() {
             };
             safeUnlisten(unlisten);
         };
-    }, [selectedFile, content, isEditing, startEditing]);
+    // [FIX] deps を selectedFile のみに絞る。state は ref 経由で取得するため deps 不要。
+    }, [selectedFile]);
 
     // 背景色をDOMに反映
     useEffect(() => {
