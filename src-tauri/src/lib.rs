@@ -772,7 +772,7 @@ async fn fusen_import_from_folder(
     // タグフィルタも再適用する（新規ノートを表示するため）
     let state_clone = app.state::<Mutex<AppState>>();
     let active_tags = {
-        let app_state = state_clone.lock().unwrap();
+        let app_state = state_clone.lock().unwrap_or_else(|e| e.into_inner());
         app_state.active_tags.clone()
     };
 

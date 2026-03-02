@@ -33,7 +33,7 @@ pub fn save_settings<R: Runtime>(
 
     // 2. メモリ上の AppState を同期
     {
-        let mut app_state = state.lock().unwrap();
+        let mut app_state = state.lock().unwrap_or_else(|e| e.into_inner());
         app_state.base_path = settings.base_path.clone();
         app_state.folder_path = settings.base_path.clone();
 

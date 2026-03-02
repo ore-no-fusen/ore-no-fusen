@@ -23,7 +23,7 @@ pub async fn fusen_capture_screen(state: State<'_, Mutex<AppState>>, note_seq: i
     eprintln!("[CAPTURE_DEBUG] === Starting screen capture for note seq: {} ===", note_seq);
     
     // 1. Resolve Base Path
-    let app_state = state.lock().unwrap();
+    let app_state = state.lock().unwrap_or_else(|e| e.into_inner());
     let base_path_str = app_state.base_path.clone()
         .or(app_state.folder_path.clone())
         .ok_or("Base path not set")?;
