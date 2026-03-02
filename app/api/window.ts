@@ -7,7 +7,6 @@
  */
 
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { PhysicalSize } from '@tauri-apps/api/dpi';
 
 /**
  * ウィンドウ座標・サイズの型定義（論理座標）
@@ -42,41 +41,3 @@ export async function getWindowGeometry(): Promise<WindowGeometry> {
     };
 }
 
-/**
- * ウィンドウのサイズを設定する
- *
- * @param width - 幅（論理座標）
- * @param height - 高さ（論理座標）
- */
-export async function setWindowSize(width: number, height: number): Promise<void> {
-    const win = getCurrentWindow();
-    const factor = await win.scaleFactor();
-
-    // 論理座標を物理座標に変換
-    const physicalWidth = Math.round(width * factor);
-    const physicalHeight = Math.round(height * factor);
-
-    await win.setSize(new PhysicalSize(physicalWidth, physicalHeight));
-}
-
-/**
- * ウィンドウを非表示にする
- */
-export async function hideWindow(): Promise<void> {
-    await getCurrentWindow().hide();
-}
-
-/**
- * ウィンドウを表示する
- */
-export async function showWindow(): Promise<void> {
-    await getCurrentWindow().show();
-}
-
-/**
- * ウィンドウにフォーカスを設定する
- */
-export async function focusWindow(): Promise<void> {
-    const win = getCurrentWindow();
-    await win.setFocus();
-}

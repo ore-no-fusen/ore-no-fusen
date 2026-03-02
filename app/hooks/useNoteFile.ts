@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { readNote, saveNote, NoteMeta, Note } from '@/app/api/notes';
+import { readNote, saveNote, Note } from '@/app/api/notes';
 import { splitFrontMatter, updateFrontmatterValue } from '@/app/utils/splitFrontMatter';
 import { pathsEqual } from '@/app/utils/pathUtils';
 

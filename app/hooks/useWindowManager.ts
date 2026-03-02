@@ -9,7 +9,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { getWindowGeometry, setWindowSize } from '@/app/api/window';
+import { getWindowGeometry } from '@/app/api/window';
 import { PhysicalSize } from '@tauri-apps/api/dpi';
 
 export type UseWindowManagerOptions = {

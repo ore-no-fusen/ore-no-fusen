@@ -17,7 +17,7 @@ import ResizableImage from './ResizableImage';
 /**
  * インラインスタイル（太字）をパースする
  */
-export const parseInlineStyles = (text: string, baseOffset: number) => {
+const parseInlineStyles = (text: string, baseOffset: number) => {
     const parts = text.split(/(\*\*[^*]+\*\*)/g);
     let currentOffset = 0;
 
@@ -54,7 +54,7 @@ export const parseInlineStyles = (text: string, baseOffset: number) => {
 /**
  * リンクをパースする
  */
-export const parseLinks = (text: string, baseOffset: number) => {
+const parseLinks = (text: string, baseOffset: number) => {
     const regex = /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
     const parts = text.split(regex);
     let currentOffset = 0;
