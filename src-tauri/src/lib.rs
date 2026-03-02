@@ -456,30 +456,6 @@ fn fusen_get_state(state: State<'_, Mutex<AppState>>) -> AppState {
     state.lock().unwrap_or_else(|p| p.into_inner()).clone()
 }
 
-#[tauri::command]
-fn fusen_update_geometry(
-    state: State<'_, Mutex<AppState>>,
-    path: String,
-    x: f64, y: f64, width: f64, height: f64
-) -> Result<(), String> {
-    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    
-    // Command層でI/O: 現在の内容を読み込む
-    let note = storage::read_note(&path)?;
-    
-    // Logic層: 更新ロジックとState同期
-    let effect = logic::handle_update_geometry(&mut app_state, &path, &note.body, x, y, width, height)?;
-    
-    // Effect実行
-    match effect {
-        logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
-        _ => {}
-    }
-    
-    Ok(())
-}
-
-
 
 #[tauri::command]
 fn fusen_open_containing_folder(path: String) -> Result<(), String> {
@@ -1105,7 +1081,6 @@ pub fn run() {
             fusen_move_to_trash,
             fusen_rename_note,
             fusen_get_state,
-            fusen_update_geometry,
             fusen_add_tag,
             fusen_remove_tag,
             fusen_delete_tag_globally,

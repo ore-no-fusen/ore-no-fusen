@@ -46,6 +46,9 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
     // loadNote が content に依存しないように ref で現在値を保持
     const contentRef = useRef(content);
     useEffect(() => { contentRef.current = content; }, [content]);
+    // [H-1 Safe Guard] 最初のロード完了前に空ボディで保存することを防ぐ
+    // 新規ノートは最初から空で意図的なのでフラグをtrueで初期化する
+    const hasLoadedRef = useRef(isNew);
 
     /**
      * ノートファイルを読み込む
@@ -67,6 +70,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             setNote(loadedNote);
             setRawFrontmatter(front);
             setContent(body);
+            hasLoadedRef.current = true;
 
             return body;
         } catch (error) {
@@ -86,6 +90,15 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         allowRename: boolean
     ) => {
         if (!path) return;
+
+        // [Safe Guard H-1] ロード完了前に空ボディで保存しようとした場合はブロック
+        // フロントマターが存在していても（有効なメモには必ず存在する）、
+        // ロード前の空ボディ保存はデータ消失を引き起こすため防ぐ
+        if (!hasLoadedRef.current && body.trim() === '') {
+            const msg = '[useNoteFile] BLOCKED: Attempted to save empty body before first successful load. Possible initialization race condition.';
+            console.error(msg);
+            throw new Error(msg);
+        }
 
         // [Safe Guard] Prevent saving empty content if the note hasn't been loaded yet.
         // This protects against race conditions where save is triggered before load completes.

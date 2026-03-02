@@ -448,68 +448,10 @@ pub fn get_all_unique_tags(state: &AppState) -> Vec<String> {
     tags_vec
 }
 
-// Helper to remove key
-pub fn remove_frontmatter_key(content: &str, key: &str) -> String {
-    if !content.trim_start().starts_with("---") { return content.to_string(); }
-    let start_idx = content.find("---").unwrap() + 3;
-    let end_idx = match content[start_idx..].find("---") {
-        Some(i) => start_idx + i,
-        None => return content.to_string(),
-    };
-    let frontmatter = &content[..end_idx];
-    let body = &content[end_idx..];
-    
-    let re = regex::Regex::new(&format!(r"(?m)^{}:\s*.*$\n?", regex::escape(key))).unwrap();
-    let new_fm = re.replace_all(frontmatter, "").to_string();
-    format!("{}{}", new_fm, body)
-}
-
-pub fn handle_update_geometry(
-    state: &mut AppState,
-    path: &str,
-    current_content: &str,
-    x: f64, y: f64, w: f64, h: f64
-) -> Result<Effect, String> {
-    let mut new_content = current_content.to_string();
-    
-    // Update 'window' in flow style: { x: ..., y: ..., width: ..., height: ... }
-    let window_val = format!("{{ x: {}, y: {}, width: {}, height: {} }}", x.round(), y.round(), w.round(), h.round());
-    new_content = update_frontmatter_value(&new_content, "window", window_val);
-    
-    // Cleanup old fields - including 'rect'
-    new_content = remove_frontmatter_key(&new_content, "rect");
-    new_content = remove_frontmatter_key(&new_content, "x");
-    new_content = remove_frontmatter_key(&new_content, "y");
-    new_content = remove_frontmatter_key(&new_content, "width");
-    new_content = remove_frontmatter_key(&new_content, "height");
-    new_content = remove_frontmatter_key(&new_content, "fontFamily");
-    new_content = remove_frontmatter_key(&new_content, "fontSize");
-    new_content = remove_frontmatter_key(&new_content, "lineHeight");
-    new_content = remove_frontmatter_key(&new_content, "context");
-
-    // State update (Single Source of Truth)
-    if let Some(index) = state.notes.iter().position(|n| n.path == path) {
-        state.notes[index].x = Some(x);
-        state.notes[index].y = Some(y);
-        state.notes[index].width = Some(w);
-        state.notes[index].height = Some(h);
-    }
-    
-    Ok(Effect::WriteNote { path: path.to_string(), content: new_content })
-}
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_remove_frontmatter_key() {
-        let content = "---\nx: 100\ny: 200\nwindow: { x: 100, y: 200, width: 300, height: 400 }\n---\nbody";
-        let res = remove_frontmatter_key(content, "window");
-        assert!(!res.contains("window:"));
-        assert!(res.contains("body"));
-    }
 
 
     #[test]
@@ -1022,43 +964,6 @@ backgroundColor: #f7e9b0
         
         assert_eq!(state.notes.len(), 1);
         assert_eq!(state.notes[0].path, "/test2.md");
-    }
-
-    // === handle_update_geometry のテスト ===
-    
-    #[test]
-    fn test_handle_update_geometry() {
-        let mut state = AppState::default();
-        
-        // ノートを追加
-        apply_add_note(&mut state, NoteMeta { 
-            path: "/test.md".to_string(),
-            x: Some(100.0),
-            y: Some(200.0),
-            ..Default::default() 
-        });
-        
-        let content = "---\nseq: 1\nx: 100\ny: 200\n---\n\n本文";
-        
-        // 座標を更新
-        let result = handle_update_geometry(&mut state, "/test.md", content, 150.0, 250.0, 400.0, 300.0);
-        
-        assert!(result.is_ok());
-        
-        // Effectが返される
-        match result.unwrap() {
-            Effect::WriteNote { path, content } => {
-                assert_eq!(path, "/test.md");
-                assert!(content.contains("window: { x: 150, y: 250, width: 400, height: 300 }"));
-            },
-            _ => panic!("Expected WriteNote effect"),
-        }
-        
-        // Stateが更新されている
-        assert_eq!(state.notes[0].x, Some(150.0));
-        assert_eq!(state.notes[0].y, Some(250.0));
-        assert_eq!(state.notes[0].width, Some(400.0));
-        assert_eq!(state.notes[0].height, Some(300.0));
     }
 
     // === handle_toggle_always_on_top のテスト ===
