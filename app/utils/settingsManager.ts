@@ -53,7 +53,7 @@ async function setupSettingsListener() {
 /**
  * 設定を取得（キャッシュ付き）
  */
-export async function getSettings(): Promise<AppSettings> {
+async function getSettings(): Promise<AppSettings> {
     const now = Date.now();
 
     // リスナーの遅延初期化

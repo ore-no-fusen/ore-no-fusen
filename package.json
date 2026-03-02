@@ -29,7 +29,6 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
-    "@tauri-apps/plugin-http": "^2.5.7",
     "@tauri-apps/plugin-os": "^2.3.2",
     "@tauri-apps/plugin-shell": "^2.3.3",
     "class-variance-authority": "^0.7.1",
@@ -39,14 +38,8 @@
     "next-pwa": "^5.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.1",
-    "rehype-raw": "^7.0.0",
-    "remark-breaks": "^4.0.0",
-    "remark-directive": "^4.0.0",
-    "remark-gfm": "^4.0.0",
     "tailwind-merge": "^3.4.0",
-    "tailwindcss-animate": "^1.0.7",
-    "unist-util-visit": "^5.0.0"
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

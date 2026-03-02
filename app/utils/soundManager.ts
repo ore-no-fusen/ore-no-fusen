@@ -57,7 +57,7 @@ export async function playLocalSound(type: SoundType, volume: number = 1.0): Pro
  * @param type サウンドタイプ
  * @param volume ボリューム (0.0 - 1.0) - Rust側では現在無視されますが、API互換性のために残します
  */
-export async function playSound(type: SoundType, volume: number = 1.0): Promise<void> {
+async function playSound(type: SoundType, volume: number = 1.0): Promise<void> {
     try {
         const enabled = await isSoundEnabled();
         if (!enabled) return;

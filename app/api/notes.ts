@@ -68,38 +68,3 @@ export async function saveNote(
     });
 }
 
-/**
- * ノートをアーカイブする
- *
- * @param path - ノートファイルのパス
- */
-export async function archiveNote(path: string): Promise<void> {
-    await invoke('fusen_archive_note', { path });
-}
-
-/**
- * ノートをゴミ箱に移動する
- *
- * @param path - ノートファイルのパス
- */
-export async function moveToTrash(path: string): Promise<void> {
-    await invoke('fusen_move_to_trash', { path });
-}
-
-/**
- * ノートの保存先フォルダを開く
- *
- * @param path - ノートファイルのパス
- */
-export async function openContainingFolder(path: string): Promise<void> {
-    await invoke('fusen_open_containing_folder', { path });
-}
-
-/**
- * ファイルまたはURLを外部アプリで開く
- *
- * @param path - ファイルパスまたはURL
- */
-export async function openFile(path: string): Promise<void> {
-    await invoke('fusen_open_file', { path });
-}

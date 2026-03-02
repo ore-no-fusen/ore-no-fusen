@@ -1,0 +1,15 @@
+{
+  "ignore": [
+    "src-tauri/target/**",
+    "src-tauri/gen/**",
+    ".next/**",
+    "node_modules/**"
+  ],
+  "ignoreDependencies": [
+    "cross-env",
+    "autoprefixer",
+    "postcss",
+    "tailwindcss",
+    "tailwindcss-animate"
+  ]
+}
