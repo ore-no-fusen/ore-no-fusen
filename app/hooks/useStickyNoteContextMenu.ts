@@ -68,7 +68,12 @@ export function useStickyNoteContextMenu({
     // フォルダを開く
     const handleOpenFolder = useCallback(async () => {
         if (!selectedFile) return;
-        await invoke('fusen_open_containing_folder', { path: selectedFile.path });
+        try {
+            await invoke('fusen_open_containing_folder', { path: selectedFile.path });
+        } catch (e) {
+            console.error('Failed to open folder:', e);
+            alert(`フォルダを開けませんでした。\n${selectedFile.path}`);
+        }
     }, [selectedFile]);
 
     // 背景色変更

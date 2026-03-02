@@ -463,14 +463,17 @@ const linkEventHandler = EditorView.domEventHandlers({
                     event.preventDefault();
 
                     if (/^https?:\/\//i.test(link)) {
-                        open(link).catch(e => console.error('Failed to open link:', e));
+                        open(link).catch(e => {
+                            console.error('Failed to open link:', e);
+                            alert(`リンクを開けませんでした。\n${link}`);
+                        });
                     } else {
-                        // Import invoke specifically for this action if not available in scope, 
-                        // or assume invoke is available (usually needs import).
-                        // Dynamic import to be safe and avoid top-level dependency if not used elsewhere
                         import('@tauri-apps/api/core').then(({ invoke }) => {
                             invoke('fusen_open_file', { path: link })
-                                .catch(e => console.error('Failed to open file:', e));
+                                .catch(e => {
+                                    console.error('Failed to open file:', e);
+                                    alert(`ファイルを開けませんでした。\n${link}`);
+                                });
                         });
                     }
                     return;
