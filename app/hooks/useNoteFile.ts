@@ -126,7 +126,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             console.error('[useNoteFile] Failed to save note:', e);
             throw e;
         }
-    }, [path, onPathChange, note, isNew]);
+    }, [path, onPathChange]);
 
     /**
      * フロントマターの値を更新する
