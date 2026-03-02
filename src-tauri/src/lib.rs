@@ -42,7 +42,7 @@ fn fusen_select_folder(state: State<'_, Mutex<AppState>>) -> Option<String> {
         let path = path_buf.to_string_lossy().to_string();
         let notes = storage::list_notes(&path);
         
-        logic::apply_set_folder(&mut *state.lock().unwrap(), path.clone(), notes);
+        logic::apply_set_folder(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path.clone(), notes);
         Some(path)
     } else {
         None
@@ -86,7 +86,7 @@ fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Not
     };
 
     // 4. Update AppState
-    logic::apply_update_note(&mut *state.lock().unwrap(), &path, meta.clone());
+    logic::apply_update_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path, meta.clone());
 
     Ok(meta)
 }
@@ -146,7 +146,7 @@ async fn fusen_force_focus(window: tauri::Window) -> Result<(), String> {
 fn fusen_list_notes(state: State<'_, Mutex<AppState>>, folder_path: String) -> Vec<NoteMeta> {
     let notes = storage::list_notes(&folder_path);
     
-    logic::apply_set_folder(&mut *state.lock().unwrap(), folder_path, notes.clone());
+    logic::apply_set_folder(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), folder_path, notes.clone());
     notes
 }
 
@@ -158,7 +158,7 @@ fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Note {
         meta: NoteMeta { path: path.clone(), ..Default::default() },
     });
     
-    logic::apply_select_note(&mut *state.lock().unwrap(), path);
+    logic::apply_select_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path);
     note
 }
 
@@ -171,7 +171,7 @@ fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, con
 
     storage::write_note(&data.path_str, &data.content)?;
     
-    logic::apply_add_note(&mut *state.lock().unwrap(), data.meta.clone());
+    logic::apply_add_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), data.meta.clone());
     
     Ok(Note {
         body: data.body,
@@ -197,7 +197,7 @@ fn fusen_save_note(
         body.to_string()
     }).unwrap_or_default();
 
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     
     // Logicに全て任せる
     let (new_path, effect) = logic::handle_save_note(
@@ -261,7 +261,7 @@ fn fusen_move_to_trash(
 
     storage::rename_note(&path, &new_path_str)?;
 
-    logic::apply_remove_note(&mut *state.lock().unwrap(), &path);
+    logic::apply_remove_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path);
 
     // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
     Ok(new_path_str)
@@ -280,7 +280,7 @@ fn fusen_archive_note(
     
     // 2. Determine vault root
     let vault_root = {
-        let app_state = state.lock().unwrap();
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
         app_state.base_path.clone().or(app_state.folder_path.clone())
             .ok_or("Vault root not found")?
     };
@@ -314,7 +314,7 @@ fn fusen_archive_note(
     }
     
     // 4. Update state
-    logic::apply_remove_note(&mut *state.lock().unwrap(), &path);
+    logic::apply_remove_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path);
     
     // 5. Cleanup original assets? (Optional but requested as "移動")
     // Note: copy_associated_assets used fs::copy. 
@@ -339,7 +339,7 @@ fn fusen_search_notes(
     state: State<'_, Mutex<AppState>>,
     query: String
 ) -> Vec<SearchHit> {
-    let app_state = state.lock().unwrap();
+    let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     let folder_path = match app_state.base_path.as_ref().or(app_state.folder_path.as_ref()) {
         Some(p) => p.clone(),
         None => {
@@ -445,7 +445,7 @@ fn fusen_rename_note(state: State<'_, Mutex<AppState>>, path: String, new_contex
     storage::rename_note(&path, &new_path_str)?;
 
     if let Ok(saved_note) = storage::read_note(&new_path_str) {
-        logic::apply_update_note(&mut *state.lock().unwrap(), &path, saved_note.meta);
+        logic::apply_update_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path, saved_note.meta);
     }
 
     Ok(new_path_str)
@@ -453,7 +453,7 @@ fn fusen_rename_note(state: State<'_, Mutex<AppState>>, path: String, new_contex
 
 #[tauri::command]
 fn fusen_get_state(state: State<'_, Mutex<AppState>>) -> AppState {
-    state.lock().unwrap().clone()
+    state.lock().unwrap_or_else(|p| p.into_inner()).clone()
 }
 
 #[tauri::command]
@@ -462,7 +462,7 @@ fn fusen_update_geometry(
     path: String,
     x: f64, y: f64, width: f64, height: f64
 ) -> Result<(), String> {
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     
     // Command層でI/O: 現在の内容を読み込む
     let note = storage::read_note(&path)?;
@@ -495,7 +495,7 @@ fn fusen_open_file(path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn fusen_add_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, app: tauri::AppHandle) -> Result<(), String> {
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     
     // Read current content
     let content = storage::read_note(&path)
@@ -519,7 +519,7 @@ fn fusen_add_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, a
 
 #[tauri::command]
 fn fusen_remove_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, app: tauri::AppHandle) -> Result<(), String> {
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     
     // Read current content
     let content = storage::read_note(&path)
@@ -544,7 +544,7 @@ fn fusen_remove_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String
 #[tauri::command]
 fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app: tauri::AppHandle) -> Result<usize, String> {
     // CRITICAL FIX: Refresh notes list before processing to ensure we have the latest state
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     let base_path = app_state.base_path.clone()
         .or(app_state.folder_path.clone())
         .ok_or("base_path is not set")?;
@@ -597,13 +597,13 @@ fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app
 
 #[tauri::command]
 fn fusen_get_all_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
-    let app_state = state.lock().unwrap();
+    let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     logic::get_all_unique_tags(&*app_state)
 }
 
 #[tauri::command]
 fn fusen_get_active_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
-    state.lock().unwrap().active_tags.clone()
+    state.lock().unwrap_or_else(|p| p.into_inner()).active_tags.clone()
 }
 
 /// タグフィルタリングを直接Rust側で実行する関数
@@ -611,7 +611,7 @@ fn fusen_get_active_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
 /// ウィンドウ操作は行わず、純粋なデータリストを返す（SSOT）
 fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[String]) -> Result<Vec<String>, String> {
     // 最新のノート一覧を取得
-    let app_state = state.lock().unwrap();
+    let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     let base_path = app_state.base_path.clone()
         .or(app_state.folder_path.clone())
         .ok_or("base_path is not set")?;
@@ -654,7 +654,7 @@ pub fn update_tag_filter<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_,
 
 #[tauri::command]
 fn fusen_set_active_tags(state: State<'_, Mutex<AppState>>, tags: Vec<String>, app: tauri::AppHandle) -> Result<(), String> {
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     app_state.active_tags = tags.clone();
     drop(app_state);
 
@@ -667,7 +667,7 @@ fn fusen_set_active_tags(state: State<'_, Mutex<AppState>>, tags: Vec<String>, a
 // UC-01: ベースパスの取得
 #[tauri::command]
 fn get_base_path(state: State<'_, Mutex<AppState>>) -> Option<String> {
-    let result = state.lock().unwrap().base_path.clone();
+    let result = state.lock().unwrap_or_else(|p| p.into_inner()).base_path.clone();
     logger::log_debug("get_base_path called");
     logger::log_debug(&format!("Returning: {:?}", result));
     logger::log_debug(&format!("Type: {}", if result.is_none() { "None" } else { "Some" }));
@@ -743,7 +743,7 @@ fn setup_first_launch(
     
     // 5. AppState更新
     {
-        let mut app_state = state.lock().unwrap();
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
         app_state.base_path = Some(base_path.clone());
         app_state.folder_path = Some(base_path.clone());
     }
@@ -769,7 +769,7 @@ async fn fusen_import_from_folder(
 ) -> Result<import::ImportStats, String> {
     // target_path を解決してすぐロックを解放（spawn_blocking に渡すため）
     let target_path = {
-        let app_state = state.lock().unwrap();
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
         target_path
             .or(app_state.base_path.clone())
             .or(app_state.folder_path.clone())
@@ -786,7 +786,7 @@ async fn fusen_import_from_folder(
 
     // インポート成功後、ステートを更新して通知する
     {
-        let mut app_state = state.lock().unwrap();
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
         app_state.notes = storage::list_notes(&target_path);
     }
 
@@ -818,7 +818,7 @@ fn show_context_menu(
 ) -> Result<(), String> {
     // Store the target path in AppState for later use
     {
-        let mut app_state = state.lock().unwrap();
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
         app_state.active_context_menu_path = Some(path.clone());
     }
     
@@ -830,7 +830,7 @@ fn show_context_menu(
 
 #[tauri::command]
 fn fusen_refresh_notes_with_tags(state: State<'_, Mutex<AppState>>) -> Result<Vec<NoteMeta>, String> {
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
 
     let base_path = app_state
         .base_path
@@ -917,7 +917,7 @@ async fn fusen_set_as_alt_tab_window(
 
         // 前のラベルを取得して新しいラベルを保存
         let prev_label = {
-            let mut s = state.lock().unwrap();
+            let mut s = state.lock().unwrap_or_else(|p| p.into_inner());
             // 同じウィンドウへの再フォーカス: スタイル変更不要のため即リターン
             if s.last_alt_tab_window.as_deref() == Some(label.as_str()) {
                 return Ok(format!("already_active label={}", label));
@@ -1163,7 +1163,7 @@ pub fn run() {
                     logger::log_debug(&format!("base_path: {:?}", settings.base_path));
                     
                     let state: State<Mutex<AppState>> = app.state();
-                    let mut app_state = state.lock().unwrap();
+                    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
                     app_state.base_path = settings.base_path.clone();
                     app_state.folder_path = settings.base_path.clone();
                     
