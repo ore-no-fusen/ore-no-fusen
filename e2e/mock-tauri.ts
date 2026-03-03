@@ -68,10 +68,11 @@ updated: 2026-01-31
                 case 'fusen_load_config':
                 case 'get_settings':
                     return {
-                        theme: 'system',
-                        font_size: 16,
-                        auto_save: true,
-                        language: 'ja'
+                        base_path: 'C:/test',
+                        language: 'ja',
+                        auto_start: false,
+                        font_size: 12,
+                        sound_enabled: true,
                     };
 
                 // 設定保存
@@ -180,24 +181,42 @@ updated: 2026-01-31
         };
 
         // Tauri Internals Mocking
-        const internalsMock = createRecursiveMock();
-
-        // [FIX] transformCallback must return a UID, not a Promise.
-        (internalsMock as any).transformCallback = (callback: Function, once: boolean) => {
-            const identifier = Math.floor(Math.random() * 1000000); // Random UID
+        // NOTE: createRecursiveMock() の Proxy は set されたプロパティを get で返さないため、
+        //       既知のプロパティは明示的に定義し、未知のプロパティは再帰モックで安全にフォールバックする Proxy を使う。
+        //
+        // 問題1 (旧): transformCallback が Proxy の get トラップで常に新しいモックを返し、
+        //             Promise を返してしまっていた → IPC のハンドラー ID が壊れていた。
+        // 問題2 (新): プレーンオブジェクトにすると metadata が undefined になり
+        //             `metadata.currentWindow` で TypeError → Next.js エラーオーバーレイ表示。
+        const transformCallbackFn = (callback: Function, once: boolean = false) => {
+            const identifier = Math.floor(Math.random() * 1000000);
             const callbackName = `_${identifier}`;
-
             (window as any)[callbackName] = (response: any) => {
                 callback(response);
-                if (once) {
-                    delete (window as any)[callbackName];
-                }
+                if (once) delete (window as any)[callbackName];
             };
-
             return identifier;
         };
-
-        (window as any).__TAURI_INTERNALS__ = internalsMock;
+        const internalsOverrides: Record<string, any> = {
+            transformCallback: transformCallbackFn,
+            invoke: (cmd: string, args: any) => Promise.resolve(handleIpc(cmd, args)),
+            convertFileSrc: (src: string) => src,
+            metadata: {
+                currentWindow: { label: 'main' },
+                windows: [{ label: 'main' }],
+            },
+        };
+        (window as any).__TAURI_INTERNALS__ = new Proxy(() => Promise.resolve(), {
+            get: (_target, prop) => {
+                if (prop === 'then') return undefined;
+                if (prop === 'toJSON') return () => ({});
+                if (typeof prop === 'string' && prop in internalsOverrides) {
+                    return internalsOverrides[prop];
+                }
+                return createRecursiveMock(`__TAURI_INTERNALS__.${String(prop)}`);
+            },
+            apply: () => Promise.resolve(),
+        });
 
         // window.__TAURI__ の構築
         const tauriProxy = createRecursiveMock();

@@ -94,7 +94,10 @@ test.describe('Release Verification Suite (Strict)', () => {
      * 既存のPassするテスト
      */
     test('検索機能の動作確認', async ({ page }) => {
-        await page.goto('/?path=C:/test/note.md');
+        // isMainWindow = true にするため path なしで開く
+        await page.goto('/');
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(2000);
 
         // イベント発火
         await page.evaluate(() => {
@@ -119,6 +122,7 @@ test.describe('Release Verification Suite (Strict)', () => {
         // メインウィンドウモードで開始
         await page.goto('/');
         await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(2000);
 
         // 設定イベント発火
         await page.evaluate(() => {
@@ -127,10 +131,11 @@ test.describe('Release Verification Suite (Strict)', () => {
 
         // 厳格な検証: 設定ヘッダーが見つからなければ即座にFailする
         // タイムアウト待ち (5秒)
-        const settingsHeader = page.getByText('基本設定').first();
+        // 注: 日本語UIでは「一般設定」が settings.general.title の翻訳値
+        const settingsHeader = page.getByText('一般設定').first();
         await expect(settingsHeader).toBeVisible({ timeout: 5000 });
 
-        // 追加検証: 設定項目が表示されているか ("テーマ"は存在しない可能性があるため"言語"で確認)
+        // 追加検証: 設定項目が表示されているか (「言語 (Language)」は必ず存在する)
         await expect(page.getByText('言語')).toBeVisible();
     });
 

@@ -678,6 +678,10 @@ function OrchestratorContent() {
     const promise = listen('fusen:open_settings', async () => {
       try {
         console.log('[MAIN_WINDOW_DEBUG] Settings open requested');
+        // [FIX] Force clear loading state to ensure settings panel renders even if init is slow/reloaded
+        // (Same fix as fusen:open_search handler)
+        setIsCheckingSetup(false);
+        setSetupRequired(false);
         setIsSettingsOpen(true);
         // ウィンドウを前面に
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
