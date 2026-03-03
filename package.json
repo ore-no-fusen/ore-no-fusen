@@ -1,6 +1,6 @@
 {
   "name": "ore-no-fusen",
-  "version": "0.10.8",
+  "version": "1.0.0-beta",
   "description": "俺の付箋 - シンプルで高速なデスクトップ付箋アプリ",
   "private": true,
   "scripts": {
