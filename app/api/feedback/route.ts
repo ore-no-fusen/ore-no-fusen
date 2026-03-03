@@ -9,6 +9,16 @@
 
 import { NextResponse } from 'next/server';
 
+// Static export (Tauri build) requires at least one GET handler per route.
+// This endpoint is only functional on Vercel (server-side). In Tauri builds,
+// the app calls https://ore-no-fusen.vercel.app/api/feedback instead.
+export async function GET() {
+    return NextResponse.json(
+        { error: 'Method Not Allowed' },
+        { status: 405, headers: { 'Access-Control-Allow-Origin': '*' } }
+    );
+}
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
