@@ -146,6 +146,9 @@ export function useStickyNoteContextMenu({
             // 閲覧モード用のメニュー（既存）
             // ============================================================
 
+            // メニューオープン時に常に最新のタグ一覧を取得（stale state 回避）
+            const freshTags = await invoke<string[]>('fusen_get_all_tags');
+
             // ファイル名アイテム
             const filenameItem = await MenuItem.new({
                 id: 'ctx_filename',
@@ -227,9 +230,9 @@ export function useStickyNoteContextMenu({
                     }
                 }));
 
-                if (allTags.length > 0) {
+                if (freshTags.length > 0) {
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                    for (const tag of allTags) {
+                    for (const tag of freshTags) {
                         tagSubItems.push(await MenuItem.new({
                             id: `ctx_tag_del_${tag}`,
                             text: `❌ ${tag}`,
@@ -246,7 +249,6 @@ export function useStickyNoteContextMenu({
                     text: `➕ ${t('menu.addTag')}`,
                     action: async () => {
                         try {
-                            const tags = await invoke<string[]>('fusen_get_all_tags');
                             loadAllTags();
                             setShowTagModal(true);
                             setTagInputValue('');
@@ -256,9 +258,9 @@ export function useStickyNoteContextMenu({
 
                 tagSubItems.push(tagNewItem);
 
-                if (allTags.length > 0) {
+                if (freshTags.length > 0) {
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                    for (const tag of allTags) {
+                    for (const tag of freshTags) {
                         const isChecked = currentTags.includes(tag);
                         tagSubItems.push(await MenuItem.new({
                             id: `ctx_tag_${tag}`,
@@ -366,7 +368,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, allTags, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete]);
 
 
     // 右クリックイベントリスナー

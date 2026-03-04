@@ -44,6 +44,17 @@ export default function RootLayout({
             s.textContent = 'html,body{background:#f7e9b0!important}';
             document.head.appendChild(s);
           }
+          (function() {
+            function forceRepaint() {
+              var el = document.documentElement;
+              el.style.transform = 'translateZ(0)';
+              requestAnimationFrame(function() { el.style.transform = ''; });
+            }
+            window.addEventListener('focus', forceRepaint);
+            document.addEventListener('visibilitychange', function() {
+              if (document.visibilityState === 'visible') forceRepaint();
+            });
+          })();
         `}} />
       </head>
       <body>
