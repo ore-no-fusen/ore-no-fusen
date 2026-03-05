@@ -1370,6 +1370,7 @@ const StickyNote = memo(function StickyNote() {
                                 onHeading={() => editorRef.current?.insertHeading1()}
                                 onList={() => editorRef.current?.insertList()}
                                 onCheckbox={() => editorRef.current?.insertCheckbox()}
+                                onTable={() => editorRef.current?.insertTable()}
                             />
                         )}
                     </div>

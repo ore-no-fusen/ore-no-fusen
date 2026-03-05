@@ -218,6 +218,7 @@ export interface RichTextEditorRef {
     insertBold: () => void;
     insertList: () => void;
     insertCheckbox: () => void;
+    insertTable: () => void; // テキスト↔テーブル変換トグル
     focus: () => void; // カーソル位置を変えずにフォーカスだけ当てる
     focusAndSelectFirstLine: () => void; // 新規作成時用：フォーカスし、先頭にカーソルを置く
     setCursorToEnd: () => void; // カーソルを末尾に配置
@@ -641,6 +642,66 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     }
                 }
             }
+            view.focus();
+        },
+        insertTable: () => {
+            if (!viewRef.current) return;
+            const view = viewRef.current;
+            const { state } = view;
+            const { from, to } = state.selection.main;
+
+            // 選択なし → 何もしない
+            if (from === to) return;
+
+            const selectedText = state.doc.sliceString(from, to);
+            const lines = selectedText.split('\n');
+            const nonEmptyLines = lines.filter(l => l.trim() !== '');
+            if (nonEmptyLines.length === 0) return;
+
+            // トグル判定: 先頭行が | で始まり | で終わる → テーブル → テキストへ逆変換
+            const isTable = nonEmptyLines[0].trim().startsWith('|') && nonEmptyLines[0].trim().endsWith('|');
+
+            let newText: string;
+            if (isTable) {
+                // テーブル → テキスト（区切り行 |---| を除外してセルをスペース2個で結合）
+                newText = nonEmptyLines
+                    .filter(l => !/^\|[-:\s|]+\|$/.test(l.trim()))
+                    .map(l => l.trim().slice(1, -1).split('|').map((c: string) => c.trim()).join('  '))
+                    .join('\n');
+            } else {
+                // テキスト → テーブル（スペース2個以上 or タブ で列を区切る）
+                const rows = nonEmptyLines.map(l =>
+                    l.split(/  +|\t/).map((c: string) => c.trim()).filter((_: string, i: number, a: string[]) => {
+                        // 末尾の空列を除去しない（列数を正確に保つ）
+                        return true;
+                    })
+                );
+                // 末尾の空セルをトリム
+                const trimmedRows = rows.map(r => {
+                    let end = r.length;
+                    while (end > 0 && r[end - 1] === '') end--;
+                    return end > 0 ? r.slice(0, end) : r;
+                });
+                const maxCols = Math.max(...trimmedRows.map(r => r.length));
+                // 列数を揃える
+                const normalized = trimmedRows.map(r => [
+                    ...r,
+                    ...Array(Math.max(0, maxCols - r.length)).fill('')
+                ]);
+                const toRow = (cells: string[]) => `| ${cells.join(' | ')} |`;
+                const sep = `|${Array(maxCols).fill('---').join('|')}|`;
+
+                newText = [
+                    toRow(normalized[0]),  // 1行目 = ヘッダー
+                    sep,
+                    ...normalized.slice(1).map(toRow)
+                ].join('\n');
+            }
+
+            view.dispatch({
+                changes: { from, to, insert: newText },
+                selection: { anchor: from, head: from + newText.length }
+            });
             view.focus();
         },
         focus: () => {
