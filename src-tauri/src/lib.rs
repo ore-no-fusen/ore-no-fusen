@@ -582,6 +582,54 @@ fn fusen_get_active_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
     state.lock().unwrap_or_else(|p| p.into_inner()).active_tags.clone()
 }
 
+/// JSの getWindowLabel と同じアルゴリズムでウィンドウラベルを生成する
+/// JS: path → normalizePath（小文字・スラッシュ統一）→ simpleHash（djb2変形・UTF-16）→ toString(36) → "note-{hash}"
+fn normalize_path_for_label(path: &str) -> String {
+    let s = path.trim().replace('\\', "/").to_lowercase();
+    // 連続スラッシュを単一に
+    let mut result = String::with_capacity(s.len());
+    let mut prev_slash = false;
+    for c in s.chars() {
+        if c == '/' {
+            if !prev_slash { result.push(c); }
+            prev_slash = true;
+        } else {
+            result.push(c);
+            prev_slash = false;
+        }
+    }
+    // 末尾スラッシュ除去
+    while result.ends_with('/') { result.pop(); }
+    result
+}
+
+fn to_radix36(mut n: u64) -> String {
+    if n == 0 { return "0".to_string(); }
+    const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut buf = Vec::new();
+    while n > 0 {
+        buf.push(DIGITS[(n % 36) as usize] as char);
+        n /= 36;
+    }
+    buf.into_iter().rev().collect()
+}
+
+/// JSの simpleHash と同一: UTF-16 charCode の djb2変形
+fn simple_hash_js(s: &str) -> String {
+    let utf16: Vec<u16> = s.encode_utf16().collect();
+    let mut hash: i32 = 0i32;
+    for &c in &utf16 {
+        hash = hash.wrapping_shl(5).wrapping_sub(hash).wrapping_add(c as i32);
+    }
+    to_radix36(hash.unsigned_abs() as u64)
+}
+
+pub fn get_window_label(path: &str) -> String {
+    let normalized = normalize_path_for_label(path);
+    let hash = simple_hash_js(&normalized);
+    format!("note-{}", hash)
+}
+
 /// タグフィルタリングを直接Rust側で実行する関数
 /// [Refactor] タグフィルタリング結果（パス一覧）を計算する関数
 /// ウィンドウ操作は行わず、純粋なデータリストを返す（SSOT）
@@ -616,15 +664,45 @@ fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[Str
     Ok(filtered_paths)
 }
 
-/// [Shared] タグフィルタを適用し、結果を全ウィンドウに通知する
-/// Command (Tag Selector) と Tray Menu の両方から呼ばれる共通ロジック
+/// [Shared] タグフィルタを適用し、Rust側から直接ウィンドウをhide/showする
+/// メインウィンドウがminimized状態でもJSに依存せず確実に動作する
 pub fn update_tag_filter<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_, Mutex<AppState>>, tags: &[String]) -> Result<(), String> {
+    eprintln!("[TagFilter] called. tags={:?}", tags);
+
     // 1. 計算 (Pure Logic)
     let visible_paths = get_filtered_note_paths(state, tags)?;
+    eprintln!("[TagFilter] visible_paths ({} notes):", visible_paths.len());
+    for p in &visible_paths {
+        eprintln!("[TagFilter]   path={} => label={}", p, get_window_label(p));
+    }
 
-    // 2. 通知 (Event Emit) -> Frontend Orchestrator handles UI
+    // 2. [FIX] Rust側で直接ウィンドウをhide/show（メインウィンドウ最小化時もJS不要）
+    use std::collections::HashSet;
+    let desired_labels: HashSet<String> = visible_paths.iter()
+        .map(|p| get_window_label(p))
+        .collect();
+
+    let all_windows = app.webview_windows();
+    eprintln!("[TagFilter] all open windows ({}):", all_windows.len());
+    for (label, window) in &all_windows {
+        let is_note = label.starts_with("note-");
+        let desired = desired_labels.contains(label.as_str());
+        eprintln!("[TagFilter]   label={} is_note={} desired={}", label, is_note, desired);
+        if !is_note { continue; }
+        if desired {
+            let r1 = window.show();
+            let r2 = window.unminimize();
+            eprintln!("[TagFilter]   => show={:?} unminimize={:?}", r1.is_ok(), r2.is_ok());
+        } else {
+            let r = window.hide();
+            eprintln!("[TagFilter]   => hide={:?}", r.is_ok());
+        }
+    }
+
+    // 3. JSへも通知（状態同期の保険）
     app.emit("fusen:sync_visible_notes", &visible_paths).map_err(|e| e.to_string())?;
-    
+    eprintln!("[TagFilter] emit done.");
+
     Ok(())
 }
 

@@ -144,6 +144,42 @@ export default function MarkdownRenderer({
     }, [content]);
 
     /**
+     * テーブル行のグループ化
+     * 連続する | で始まる行を table ブロックとしてまとめる
+     */
+    type LineGroup =
+        | { type: 'table'; rows: string[]; startIndex: number }
+        | { type: 'line'; line: string; index: number };
+
+    const groupedLines = useMemo((): LineGroup[] => {
+        const lines = (content || '').split('\n');
+        const groups: LineGroup[] = [];
+        let i = 0;
+        while (i < lines.length) {
+            const trimmed = lines[i].trim();
+            if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2) {
+                const tableRows: string[] = [];
+                const startIdx = i;
+                while (i < lines.length) {
+                    const t = lines[i].trim();
+                    if (t.startsWith('|') && t.endsWith('|') && t.length > 2) {
+                        tableRows.push(lines[i]);
+                        i++;
+                    } else {
+                        break;
+                    }
+                }
+                groups.push({ type: 'table', rows: tableRows, startIndex: startIdx });
+            } else {
+                groups.push({ type: 'line', line: lines[i], index: i });
+                i++;
+            }
+        }
+        return groups;
+    }, [content]);
+
+
+    /**
      * 行の内容をレンダリング（画像 > リンク > テキスト）
      */
     const renderLineContent = (text: string, baseOffset: number) => {
@@ -224,9 +260,65 @@ export default function MarkdownRenderer({
         >
             {content ? (
                 <div className={`flex-1 ${singleLinePreview ? 'whitespace-nowrap overflow-hidden' : 'whitespace-pre-wrap overflow-visible'}`}>
-                    {(singleLinePreview ? [content.split('\n')[0]] : content.split('\n')).map((line, i) => {
-                        const lineClass = `m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
+                    {groupedLines.map((group, gi) => {
+                        // テーブルブロック
+                        if (group.type === 'table') {
+                            const rows = group.rows;
+                            // 区切り行（|---|---|）のインデックスを検出
+                            const sepIdx = rows.findIndex(r =>
+                                /^\|[-:\s|]+\|$/.test(r.trim())
+                            );
+                            const hasHeader = sepIdx === 1;
+                            const headerRow = hasHeader ? rows[0] : null;
+                            const dataRows = hasHeader ? rows.slice(2) : rows;
 
+                            const parseRow = (row: string) =>
+                                row.trim().slice(1, -1).split('|').map(c => c.trim());
+
+                            return (
+                                <div key={gi} style={{ overflowX: 'auto', margin: '4px 0' }}>
+                                    <table style={{
+                                        borderCollapse: 'collapse',
+                                        fontSize: 'inherit',
+                                        width: 'max-content',
+                                        maxWidth: '100%',
+                                    }}>
+                                        {headerRow && (
+                                            <thead>
+                                                <tr>
+                                                    {parseRow(headerRow).map((cell, ci) => (
+                                                        <th key={ci} style={{
+                                                            border: '1px solid #999',
+                                                            padding: '3px 8px',
+                                                            background: 'rgba(0,0,0,0.07)',
+                                                            fontWeight: 'bold',
+                                                            whiteSpace: 'nowrap',
+                                                        }}>{cell}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                        )}
+                                        <tbody>
+                                            {dataRows.map((row, ri) => (
+                                                <tr key={ri}>
+                                                    {parseRow(row).map((cell, ci) => (
+                                                        <td key={ci} style={{
+                                                            border: '1px solid #bbb',
+                                                            padding: '3px 8px',
+                                                            whiteSpace: 'nowrap',
+                                                        }}>{cell}</td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            );
+                        }
+
+                        // 通常行処理
+                        const { line, index: i } = group;
+                        const lineClass = `m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
                         const baseOffset = lineOffsets[i] || 0;
 
                         // 空行

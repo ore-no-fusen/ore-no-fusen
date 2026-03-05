@@ -531,7 +531,7 @@ const StickyNote = memo(function StickyNote() {
             const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
                 isPromotingRef.current = true; // blur防止フラグ ON
-                invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => {});
+                invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
 
                 setDynamicUrlPath(event.payload.path);
                 if (event.payload.isNew) {
@@ -567,17 +567,17 @@ const StickyNote = memo(function StickyNote() {
                         physWidth: event.payload.targetPhysWidth ?? 400,
                         physHeight: event.payload.targetPhysHeight ?? 300,
                     });
-                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position OK pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => {});
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position OK pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => { });
                 } catch (e) {
-                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position FAILED: ${e} – falling back to show()` }).catch(() => {});
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position FAILED: ${e} – falling back to show()` }).catch(() => { });
                     await thisWin.show();
                 }
 
                 // 実際の位置を確認
                 try {
                     const finalPos = await thisWin.outerPosition();
-                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] FINAL pos=(${finalPos.x},${finalPos.y})` }).catch(() => {});
-                } catch(e) { /* ignore */ }
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] FINAL pos=(${finalPos.x},${finalPos.y})` }).catch(() => { });
+                } catch (e) { /* ignore */ }
 
                 // CodeMirror のレイアウトを再計算させる（hidden→visible 時に必要）
                 window.dispatchEvent(new Event('resize'));
@@ -590,13 +590,13 @@ const StickyNote = memo(function StickyNote() {
                     setIsEditing(true);
                     // Reactの再レンダリングを待ってからフォーカス
                     await new Promise(r => setTimeout(r, 80));
-                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus attempt: editorRef=${!!editorRef.current}` }).catch(() => {});
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus attempt: editorRef=${!!editorRef.current}` }).catch(() => { });
                     if (event.payload.isNew) {
                         editorRef.current?.focusAndSelectFirstLine();
                     } else {
                         editorRef.current?.focus();
                     }
-                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus+cursor applied, editorRef=${!!editorRef.current}` }).catch(() => {});
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus+cursor applied, editorRef=${!!editorRef.current}` }).catch(() => { });
                 }, 300);
             });
             // [FIX] React Strict Mode でダブルsetupが起きた場合、cleanup後にlistenが解決したら即解除
@@ -640,6 +640,24 @@ const StickyNote = memo(function StickyNote() {
                         setContent(body);
                         setEditBody(body);
 
+                        // [再発防止] reload後にnoteのタグを再同期する
+                        // note stateはloadNote()内で更新されるため、useEffect(note)が発火するまでの
+                        // タイムラグを埋めるためにフロントマターから直接タグを抽出して即時反映する
+                        const { splitFrontMatter: split } = await import('@/app/utils/splitFrontMatter');
+                        const { front } = split(body);
+                        const tagMatch = front.match(/(?:^|\n)tags:\s*\[([^\]]*)\]/);
+                        if (tagMatch) {
+                            const reloadedTags = tagMatch[1]
+                                .split(',')
+                                .map((t: string) => t.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''))
+                                .filter((t: string) => t.length > 0);
+                            setCurrentTags(reloadedTags);
+                        } else {
+                            // tagsフィールドが空または存在しない場合
+                            const emptyMatch = front.match(/(?:^|\n)tags:\s*\[\s*\]/);
+                            if (emptyMatch) setCurrentTags([]);
+                        }
+
                         // isEditing は ref から取得（stale closure 回避）
                         if (isEditingForListenerRef.current) {
                             setIsEditing(false);
@@ -666,7 +684,7 @@ const StickyNote = memo(function StickyNote() {
             };
             safeUnlisten(unlistenReload);
         };
-    // [FIX] deps を selectedFile のみに絞る（loadNote は path 変更時のみ再生成、isEditing は ref 経由）
+        // [FIX] deps を selectedFile のみに絞る（loadNote は path 変更時のみ再生成、isEditing は ref 経由）
     }, [selectedFile, loadNote]);
 
     // 全文検索スクロールイベントリスナー
@@ -756,7 +774,7 @@ const StickyNote = memo(function StickyNote() {
             };
             safeUnlisten(unlisten);
         };
-    // [FIX] deps を selectedFile のみに絞る。state は ref 経由で取得するため deps 不要。
+        // [FIX] deps を selectedFile のみに絞る。state は ref 経由で取得するため deps 不要。
     }, [selectedFile]);
 
     // 背景色をDOMに反映
@@ -828,7 +846,11 @@ const StickyNote = memo(function StickyNote() {
         if (tag && selectedFile) {
             try {
                 await addTagToNote(selectedFile.path, tag);
-                // Tag操作後にノートをリロードして最新の状態（タグ反映済み）を取得する
+                // [FIX] UI即時更新: addTagToNote後にcurrentTagsをすぐ反映する
+                if (!currentTags.includes(tag)) {
+                    setCurrentTags([...currentTags, tag].sort());
+                }
+                // reload_noteでノート本文も最新化（タグのフロントマター含む）
                 await import('@tauri-apps/api/event').then(({ emit }) => {
                     emit('fusen:reload_note', { path: selectedFile.path });
                 });
@@ -846,11 +868,15 @@ const StickyNote = memo(function StickyNote() {
      */
     const executeTagDelete = async () => {
         if (!tagToDelete) return;
+        const deletedTag = tagToDelete;
 
         try {
-            const count = await deleteTagFromAllNotes(tagToDelete);
+            await deleteTagFromAllNotes(deletedTag);
 
-            // Tag操作後にノートをリロードして最新の状態を取得する
+            // [FIX] UI即時更新: このノートのcurrentTagsからも削除
+            setCurrentTags(currentTags.filter((t: string) => t !== deletedTag));
+
+            // reload_noteでノート本文も最新化
             if (selectedFile) {
                 await import('@tauri-apps/api/event').then(({ emit }) => {
                     emit('fusen:reload_note', { path: selectedFile.path });
@@ -1134,7 +1160,7 @@ const StickyNote = memo(function StickyNote() {
                         sourcePhysY = physPos.y;
                         sourceScale = await win.scaleFactor();
                     } catch (e) {
-                        invoke('fusen_debug_log', { message: `[CREATE_REQ] Ctrl+N outerPosition/scaleFactor FAILED: ${e}` }).catch(() => {});
+                        invoke('fusen_debug_log', { message: `[CREATE_REQ] Ctrl+N outerPosition/scaleFactor FAILED: ${e}` }).catch(() => { });
                     }
                     emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale });
                 }
@@ -1218,9 +1244,9 @@ const StickyNote = memo(function StickyNote() {
                             sourcePhysY = physPos.y;
                             sourceScale = await win.scaleFactor();
                         } catch (e) {
-                            invoke('fusen_debug_log', { message: `[CREATE_REQ] + button outerPosition/scaleFactor FAILED: ${e}` }).catch(() => {});
+                            invoke('fusen_debug_log', { message: `[CREATE_REQ] + button outerPosition/scaleFactor FAILED: ${e}` }).catch(() => { });
                         }
-                        invoke('fusen_debug_log', { message: `[CREATE_REQ] + clicked label=${win.label} sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale}` }).catch(() => {});
+                        invoke('fusen_debug_log', { message: `[CREATE_REQ] + clicked label=${win.label} sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale}` }).catch(() => { });
                         emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale });
                     }}
                 />
