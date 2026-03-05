@@ -9,10 +9,70 @@
 
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import ResizableImage from './ResizableImage';
+
+/**
+ * Mermaid図ブロックコンポーネント
+ * mermaid.jsを動的インポートして初回のみロードする
+ */
+let mermaidIdCounter = 0;
+function MermaidBlock({ code }: { code: string }) {
+    const [svg, setSvg] = useState<string>('');
+    const [error, setError] = useState<string>('');
+    const idRef = useRef(`mermaid-${++mermaidIdCounter}`);
+
+    useEffect(() => {
+        let cancelled = false;
+        setError('');
+        setSvg('');
+        import('mermaid').then(({ default: mermaid }) => {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'neutral',
+                securityLevel: 'loose',
+            });
+            mermaid.render(idRef.current, code)
+                .then(({ svg: rendered }) => {
+                    if (!cancelled) setSvg(rendered);
+                })
+                .catch((err: unknown) => {
+                    if (!cancelled) setError(String(err));
+                });
+        }).catch((err: unknown) => {
+            if (!cancelled) setError(`mermaidロード失敗: ${String(err)}`);
+        });
+        return () => { cancelled = true; };
+    }, [code]);
+
+    if (error) {
+        return (
+            <div style={{
+                border: '1px solid #f5a623',
+                borderRadius: '4px',
+                padding: '6px 8px',
+                color: '#c0392b',
+                fontSize: '0.85em',
+                fontFamily: 'monospace',
+                background: '#fff8f0',
+                margin: '4px 0',
+            }}>
+                ⚠️ Mermaid構文エラー: {error}
+            </div>
+        );
+    }
+    if (!svg) {
+        return <div style={{ color: '#999', fontSize: '0.85em', margin: '4px 0' }}>レンダリング中...</div>;
+    }
+    return (
+        <div
+            style={{ overflowX: 'auto', margin: '4px 0', maxWidth: '100%' }}
+            dangerouslySetInnerHTML={{ __html: svg }}
+        />
+    );
+}
 
 /**
  * インラインスタイル（太字）をパースする
@@ -144,11 +204,13 @@ export default function MarkdownRenderer({
     }, [content]);
 
     /**
-     * テーブル行のグループ化
-     * 連続する | で始まる行を table ブロックとしてまとめる
+     * コードフェンス + テーブル行のグループ化
+     * - 連続する | で始まる行 → table ブロック
+     * - ``` で囲まれた複数行 → code ブロック
      */
     type LineGroup =
         | { type: 'table'; rows: string[]; startIndex: number }
+        | { type: 'code'; lang: string; lines: string[]; startIndex: number }
         | { type: 'line'; line: string; index: number };
 
     const groupedLines = useMemo((): LineGroup[] => {
@@ -157,6 +219,23 @@ export default function MarkdownRenderer({
         let i = 0;
         while (i < lines.length) {
             const trimmed = lines[i].trim();
+
+            // コードフェンス検出（``` で始まる行）
+            if (trimmed.startsWith('```')) {
+                const lang = trimmed.slice(3).trim().toLowerCase();
+                const startIdx = i;
+                i++; // 開始行を越える
+                const codeLines: string[] = [];
+                while (i < lines.length && !lines[i].trim().startsWith('```')) {
+                    codeLines.push(lines[i]);
+                    i++;
+                }
+                if (i < lines.length) i++; // 閉じる ``` を越える
+                groups.push({ type: 'code', lang, lines: codeLines, startIndex: startIdx });
+                continue;
+            }
+
+            // テーブル行検出
             if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2) {
                 const tableRows: string[] = [];
                 const startIdx = i;
@@ -313,6 +392,29 @@ export default function MarkdownRenderer({
                                         </tbody>
                                     </table>
                                 </div>
+                            );
+                        }
+
+                        // コードブロック（``` で囲まれたブロック）
+                        if (group.type === 'code') {
+                            const codeText = group.lines.join('\n');
+                            if (group.lang === 'mermaid') {
+                                return <MermaidBlock key={gi} code={codeText} />;
+                            }
+                            // 通常コードブロック → 等幅フォントで表示
+                            return (
+                                <pre key={gi} style={{
+                                    fontFamily: 'monospace',
+                                    background: 'rgba(0,0,0,0.06)',
+                                    padding: '6px 8px',
+                                    borderRadius: '4px',
+                                    margin: '4px 0',
+                                    overflowX: 'auto',
+                                    whiteSpace: 'pre',
+                                    fontSize: '0.9em',
+                                }}>
+                                    <code>{codeText}</code>
+                                </pre>
                             );
                         }
 

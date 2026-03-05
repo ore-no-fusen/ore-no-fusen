@@ -1,6 +1,6 @@
 {
   "name": "ore-no-fusen",
-  "version": "1.0.0-beta",
+  "version": "1.0.1-beta",
   "description": "俺の付箋 - シンプルで高速なデスクトップ付箋アプリ",
   "private": true,
   "scripts": {
@@ -34,6 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
+    "mermaid": "^11.12.3",
     "next": "^14.2.5",
     "next-pwa": "^5.6.0",
     "react": "^18.3.1",

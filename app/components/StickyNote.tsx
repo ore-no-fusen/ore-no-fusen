@@ -1371,6 +1371,7 @@ const StickyNote = memo(function StickyNote() {
                                 onList={() => editorRef.current?.insertList()}
                                 onCheckbox={() => editorRef.current?.insertCheckbox()}
                                 onTable={() => editorRef.current?.insertTable()}
+                                onMermaid={() => editorRef.current?.insertMermaid()}
                             />
                         )}
                     </div>

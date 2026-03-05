@@ -219,6 +219,7 @@ export interface RichTextEditorRef {
     insertList: () => void;
     insertCheckbox: () => void;
     insertTable: () => void; // テキスト↔テーブル変換トグル
+    insertMermaid: () => void; // テキスト↔Mermaid図変換トグル
     focus: () => void; // カーソル位置を変えずにフォーカスだけ当てる
     focusAndSelectFirstLine: () => void; // 新規作成時用：フォーカスし、先頭にカーソルを置く
     setCursorToEnd: () => void; // カーソルを末尾に配置
@@ -702,6 +703,37 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                 changes: { from, to, insert: newText },
                 selection: { anchor: from, head: from + newText.length }
             });
+            view.focus();
+        },
+        insertMermaid: () => {
+            if (!viewRef.current) return;
+            const view = viewRef.current;
+            const { state } = view;
+            const { from, to } = state.selection.main;
+
+            // 選択なし → 何もしない
+            if (from === to) return;
+
+            const selectedText = state.doc.sliceString(from, to);
+            const trimmed = selectedText.trim();
+
+            // トグル判定: ```mermaid で始まる → 囲を外す
+            if (trimmed.startsWith('```mermaid') && trimmed.endsWith('```')) {
+                // 囲みを外す: 先頭行と末尾行を削除
+                const innerLines = trimmed.split('\n').slice(1, -1);
+                const newText = innerLines.join('\n');
+                view.dispatch({
+                    changes: { from, to, insert: newText },
+                    selection: { anchor: from, head: from + newText.length }
+                });
+            } else {
+                // テキスト → ```mermaid ``` で囲む
+                const newText = `\`\`\`mermaid\n${trimmed}\n\`\`\``;
+                view.dispatch({
+                    changes: { from, to, insert: newText },
+                    selection: { anchor: from, head: from + newText.length }
+                });
+            }
             view.focus();
         },
         focus: () => {
