@@ -989,21 +989,40 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             }
                         },
                         {
+                            // Tab: 選択行を2スペース字下げ
                             key: 'Tab',
                             run: (view) => {
-                                // React側のonKeyDownに任せるため、ここでは何もしないが
-                                // CodeMirrorのデフォルトTab（インデント）を無効化するためにtrueを返す
-                                // ただし、onKeyDownが発火するようにイベントをパスする必要がある？
-                                // CodeMirrorのkeymapはDOMイベントの前に処理されるため、ここでtrueを返すとonKeyDownが呼ばれない可能性がある。
-                                // 逆にここでfalseを返すとデフォルトのTab（indentMore）が走る。
-                                // なので、ここでフォーカス移動処理を行うのが確実。
-                                const toolbar = document.querySelector('.hoverBar');
-                                const firstButton = toolbar?.querySelector('button');
-                                if (firstButton) {
-                                    (firstButton as HTMLElement).focus();
-                                    return true;
+                                const { state } = view;
+                                const { from, to } = state.selection.main;
+                                const lineStart = state.doc.lineAt(from).number;
+                                const lineEnd = state.doc.lineAt(to).number;
+                                const changes: { from: number; insert: string }[] = [];
+                                for (let i = lineStart; i <= lineEnd; i++) {
+                                    changes.push({ from: state.doc.line(i).from, insert: '  ' });
                                 }
-                                return false;
+                                view.dispatch({ changes });
+                                return true;
+                            }
+                        },
+                        {
+                            // Shift+Tab: 選択行の字下げを1段戻す
+                            key: 'Shift-Tab',
+                            run: (view) => {
+                                const { state } = view;
+                                const { from, to } = state.selection.main;
+                                const lineStart = state.doc.lineAt(from).number;
+                                const lineEnd = state.doc.lineAt(to).number;
+                                const changes: { from: number; to: number }[] = [];
+                                for (let i = lineStart; i <= lineEnd; i++) {
+                                    const line = state.doc.line(i);
+                                    if (line.text.startsWith('  ')) {
+                                        changes.push({ from: line.from, to: line.from + 2 });
+                                    } else if (line.text.startsWith(' ')) {
+                                        changes.push({ from: line.from, to: line.from + 1 });
+                                    }
+                                }
+                                if (changes.length > 0) view.dispatch({ changes });
+                                return true;
                             }
                         },
                         ...defaultKeymap,
