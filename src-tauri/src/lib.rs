@@ -1188,6 +1188,12 @@ pub fn run() {
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);
         }) */
+        .on_window_event(|window, event| {
+            // タスクバーの「ウィンドウを閉じる」でアプリ全体を終了させる
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                window.app_handle().exit(0);
+            }
+        })
         .setup(|app| {
             // アプリケーション起動ログ
             logger::log_app_start();
