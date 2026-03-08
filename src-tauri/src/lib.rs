@@ -1189,9 +1189,11 @@ pub fn run() {
              // handle_menu_event(app, &event);
         }) */
         .on_window_event(|window, event| {
-            // タスクバーの「ウィンドウを閉じる」でアプリ全体を終了させる
+            // タスクバーの「ウィンドウを閉じる」でアプリ全体を終了させる（mainウィンドウのみ）
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                window.app_handle().exit(0);
+                if window.label() == "main" {
+                    window.app_handle().exit(0);
+                }
             }
         })
         .setup(|app| {
@@ -1279,6 +1281,17 @@ pub fn run() {
                     tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                     None, // 引数なし
                 ))?;
+
+                // 設定に従って自動起動をOSに登録/解除
+                use tauri_plugin_autostart::ManagerExt;
+                let auto_start = storage::load_settings()
+                    .unwrap_or_default()
+                    .auto_start;
+                if auto_start {
+                    let _ = app.handle().autolaunch().enable();
+                } else {
+                    let _ = app.handle().autolaunch().disable();
+                }
             }
 
             tray::create_tray(app.handle())?;

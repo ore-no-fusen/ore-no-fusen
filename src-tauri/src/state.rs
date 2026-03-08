@@ -54,7 +54,7 @@ pub struct Settings {
     #[serde(default = "default_language")]
     pub language: String,
     #[serde(alias = "autoStart")]
-    #[serde(default)]
+    #[serde(default = "default_auto_start")]
     pub auto_start: bool,
     #[serde(alias = "fontSize")]
     #[serde(default = "default_font_size")]
@@ -67,13 +67,14 @@ pub struct Settings {
 fn default_language() -> String { "ja".to_string() }
 fn default_font_size() -> f64 { 12.0 }
 fn default_sound_enabled() -> bool { true }
+fn default_auto_start() -> bool { true }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             base_path: None,
             language: default_language(),
-            auto_start: false,
+            auto_start: default_auto_start(),
             font_size: default_font_size(),
             sound_enabled: default_sound_enabled(),
         }

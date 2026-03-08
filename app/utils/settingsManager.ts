@@ -16,7 +16,7 @@ import { type AppSettings } from '@/lib/settings-store';
 const DEFAULT_SETTINGS: AppSettings = {
     base_path: '',
     language: 'ja',
-    auto_start: false,
+    auto_start: true,
     font_size: 12,
     sound_enabled: true,
 };
