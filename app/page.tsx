@@ -133,32 +133,6 @@ function OrchestratorContent() {
     return () => console.log('[Orchestrator] Unmounted');
   }, []);
 
-  // 自動アップデート確認（メインウィンドウのみ・起動後に実行）
-  useEffect(() => {
-    if (!isMainWindow) return;
-    const checkForUpdate = async () => {
-      try {
-        const { check } = await import('@tauri-apps/plugin-updater');
-        const { relaunch } = await import('@tauri-apps/plugin-process');
-        const update = await check();
-        if (!update) return;
-        console.log(`[Updater] 新しいバージョンが見つかりました: ${update.version}`);
-        const confirmed = window.confirm(
-          `新しいバージョン ${update.version} が利用可能です。\n今すぐアップデートしますか？`
-        );
-        if (!confirmed) return;
-        await update.downloadAndInstall();
-        await relaunch();
-      } catch (e) {
-        // アップデートチェック失敗はサイレントに無視
-        console.warn('[Updater] アップデートチェック失敗:', e);
-      }
-    };
-    // 起動から3秒後に確認（初期化完了を待つ）
-    const timer = setTimeout(checkForUpdate, 3000);
-    return () => clearTimeout(timer);
-  }, [isMainWindow]);
-
   const searchParams = useSearchParams();
   const path = searchParams.get('path');
   const tagSelector = searchParams.get('tagSelector');
@@ -198,6 +172,32 @@ function OrchestratorContent() {
       enforceSmallSize();
     }
   }, [setupRequired, isSettingsOpen, isCheckingSetup]);
+
+  // 自動アップデート確認（メインウィンドウのみ・起動後に実行）
+  useEffect(() => {
+    if (!isMainWindow) return;
+    const checkForUpdate = async () => {
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        const { relaunch } = await import('@tauri-apps/plugin-process');
+        const update = await check();
+        if (!update) return;
+        console.log(`[Updater] 新しいバージョンが見つかりました: ${update.version}`);
+        const confirmed = window.confirm(
+          `新しいバージョン ${update.version} が利用可能です。\n今すぐアップデートしますか？`
+        );
+        if (!confirmed) return;
+        await update.downloadAndInstall();
+        await relaunch();
+      } catch (e) {
+        // アップデートチェック失敗はサイレントに無視
+        console.warn('[Updater] アップデートチェック失敗:', e);
+      }
+    };
+    // 起動から3秒後に確認（初期化完了を待つ）
+    const timer = setTimeout(checkForUpdate, 3000);
+    return () => clearTimeout(timer);
+  }, [isMainWindow]);
 
   const syncState = useCallback(async (): Promise<AppState | null> => {
     try {
