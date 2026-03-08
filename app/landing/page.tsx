@@ -21,6 +21,7 @@ export default function LandingPage() {
                 {/* 背景グラデーション */}
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 blur-3xl" />
 
+
                 <div className="relative max-w-7xl mx-auto px-6 py-24 sm:py-32 lg:py-40">
                     {/* ナビゲーション */}
                     <nav className="absolute top-0 left-0 right-0 px-6 py-6 flex justify-between items-center">
@@ -46,17 +47,21 @@ export default function LandingPage() {
                         </div>
 
                         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
-                            デスクトップに、
+                            デスクトップを、
                             <br />
                             <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                                思考を貼り付けよう
+                                思考のキャンバスに
                             </span>
                         </h1>
 
-                        <p className="text-xl sm:text-2xl text-slate-300 mb-12 max-w-3xl mx-auto">
-                            Markdownで書ける、美しい付箋アプリ。
-                            <br />
-                            シンプルで強力な、あなたの思考整理ツール。
+                        <p className="text-xl sm:text-2xl text-slate-300 mb-4 max-w-3xl mx-auto">
+                            Markdownで書ける、美しい付箋アプリ
+                        </p>
+
+                        <p className="text-sm sm:text-base text-slate-500 mb-12 max-w-3xl mx-auto space-y-1">
+                            <span className="block">Ore-no-Fusen</span>
+                            <span className="block">Thinking Canvas for your mind</span>
+                            <span className="block">The Digital Cave Wall ― デジタルの洞窟壁画 ―</span>
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -88,7 +93,7 @@ export default function LandingPage() {
                         </div>
 
                         <p className="text-sm text-slate-400 mt-6">
-                            Windows 10/11 対応 • v1.0.1-beta-beta
+                            Windows 10/11 対応 • v1.0.1-beta
                         </p>
                     </div>
                 </div>
@@ -120,9 +125,9 @@ export default function LandingPage() {
                             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <FileText className="w-6 h-6" />
                             </div>
-                            <h3 className="text-2xl font-bold mb-4">Markdownサポート</h3>
+                            <h3 className="text-2xl font-bold mb-4">リッチなMarkdown</h3>
                             <p className="text-slate-400 leading-relaxed">
-                                見出し、リスト、コードブロックなど、Markdownの豊富な記法をサポート。リアルタイムプレビューで美しく表示。
+                                見出し・リスト・チェックボックス・表・Mermaid図・画像まで対応。書きながら見た目が確認できるWYSIWYGエディタ。
                             </p>
                         </div>
 
@@ -133,7 +138,7 @@ export default function LandingPage() {
                             </div>
                             <h3 className="text-2xl font-bold mb-4">タグ・アーカイブ</h3>
                             <p className="text-slate-400 leading-relaxed">
-                                付箋をタグで整理。完了したタスクはアーカイブへ。フォルダ構造で見やすく管理できます。
+                                付箋をタグで整理・絞り込み。完了したメモはアーカイブへ移動。大切なものだけをデスクトップに残せます。
                             </p>
                         </div>
 
@@ -142,9 +147,9 @@ export default function LandingPage() {
                             <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <Search className="w-6 h-6" />
                             </div>
-                            <h3 className="text-2xl font-bold mb-4">高速検索</h3>
+                            <h3 className="text-2xl font-bold mb-4">全文検索</h3>
                             <p className="text-slate-400 leading-relaxed">
-                                全文検索で瞬時に目的の付箋を発見。タグフィルターと組み合わせて、効率的に情報を見つけられます。
+                                正規表現対応の全文検索で瞬時に発見。該当行に自動ジャンプ・ハイライト表示で、目的のメモにすぐたどり着けます。
                             </p>
                         </div>
                     </div>
@@ -154,8 +159,8 @@ export default function LandingPage() {
                         <div className="flex items-start gap-4 p-6 bg-slate-800/30 rounded-xl border border-slate-700/30">
                             <Zap className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" />
                             <div>
-                                <h4 className="font-semibold mb-1">自動起動</h4>
-                                <p className="text-sm text-slate-400">システム起動時に自動で立ち上がり、すぐに使える</p>
+                                <h4 className="font-semibold mb-1">最前面固定（ピン留め）</h4>
+                                <p className="text-sm text-slate-400">他のウィンドウの前に常に表示。見落とし防止に</p>
                             </div>
                         </div>
 
@@ -163,15 +168,15 @@ export default function LandingPage() {
                             <Shield className="w-6 h-6 text-green-400 flex-shrink-0 mt-1" />
                             <div>
                                 <h4 className="font-semibold mb-1">ローカル保存</h4>
-                                <p className="text-sm text-slate-400">データは全てローカルに保存。プライバシー安心</p>
+                                <p className="text-sm text-slate-400">データはすべてローカルに保存。クラウド不要でプライバシー安心</p>
                             </div>
                         </div>
 
                         <div className="flex items-start gap-4 p-6 bg-slate-800/30 rounded-xl border border-slate-700/30">
                             <Sparkles className="w-6 h-6 text-blue-400 flex-shrink-0 mt-1" />
                             <div>
-                                <h4 className="font-semibold mb-1">効果音</h4>
-                                <p className="text-sm text-slate-400">作成・保存・削除時に心地よいサウンドフィードバック</p>
+                                <h4 className="font-semibold mb-1">ワンクリック編集</h4>
+                                <p className="text-sm text-slate-400">クリックした場所からすぐ入力開始。自動保存で手間なし</p>
                             </div>
                         </div>
                     </div>

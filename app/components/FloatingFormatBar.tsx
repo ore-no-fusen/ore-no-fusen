@@ -9,11 +9,9 @@ type Props = {
     onHeading: () => void;
     onList: () => void;
     onCheckbox: () => void;
-    onTable: () => void;
-    onMermaid: () => void;
 };
 
-export default function FloatingFormatBar({ top, left, onBold, onHeading, onList, onCheckbox, onTable, onMermaid }: Props) {
+export default function FloatingFormatBar({ top, left, onBold, onHeading, onList, onCheckbox }: Props) {
     return (
         <div
             className="floatBar absolute z-[300] bg-white border border-gray-200 shadow-lg rounded-lg
@@ -55,20 +53,6 @@ export default function FloatingFormatBar({ top, left, onBold, onHeading, onList
                 className="text-gray-700 hover:bg-gray-100 px-2 py-1 rounded text-sm"
             >
                 ☑
-            </button>
-            <button
-                onClick={onTable}
-                title="テーブル変換（選択行を表に／表をテキストに）"
-                className="text-gray-700 hover:bg-gray-100 px-2 py-1 rounded text-sm"
-            >
-                ⊞
-            </button>
-            <button
-                onClick={onMermaid}
-                title="Mermaid図に変換（選択行を図に／図をテキストに）"
-                className="text-gray-700 hover:bg-gray-100 px-2 py-1 rounded text-sm"
-            >
-                🔷
             </button>
         </div>
     );

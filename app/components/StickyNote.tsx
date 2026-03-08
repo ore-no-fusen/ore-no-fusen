@@ -55,6 +55,7 @@ const StickyNote = memo(function StickyNote() {
     const isPoolParams = searchParams.get('isPool') === 'true';
     const [dynamicUrlPath, setDynamicUrlPath] = useState<string | null>(searchParams.get('path') || null);
     const [isPool, setIsPool] = useState<boolean>(isPoolParams);
+    const isPoolRef = useRef(isPoolParams);
     const [isNewState, setIsNewState] = useState<boolean>(searchParams.get('isNew') === '1');
 
     const urlPath = dynamicUrlPath;
@@ -111,7 +112,8 @@ const StickyNote = memo(function StickyNote() {
         updateFrontmatter,
         setSavePending,
         setContent,
-        setRawFrontmatter
+        setRawFrontmatter,
+        pathRef: noteFilePathRef
     } = useNoteFile({
         path: urlPath,
         isNew,
@@ -141,10 +143,13 @@ const StickyNote = memo(function StickyNote() {
 
     // 保存処理のラッパー（削除中は保存しない）
     const handleSave = useCallback(async (body: string, front: string, allowRename: boolean) => {
+        console.log('[DBG:handleSave] body=', JSON.stringify(body.slice(0, 50)), 'isPool=', isPool, 'isNew=', isNew, 'isDeleting=', isDeletingRef.current);
         if (isDeletingRef.current) {
+            console.log('[DBG:handleSave] SKIP: isDeleting');
             return;
         }
-        if (isPool) {
+        if (isPoolRef.current) {
+            console.log('[DBG:handleSave] SKIP: isPool');
             return;
         }
 
@@ -152,7 +157,7 @@ const StickyNote = memo(function StickyNote() {
         if (isNew) {
             setIsNewState(false);
         }
-    }, [saveNoteContent, isNew, isPool]);
+    }, [saveNoteContent, isNew]);
 
     // 編集モード管理
     const {
@@ -533,7 +538,6 @@ const StickyNote = memo(function StickyNote() {
                 isPromotingRef.current = true; // blur防止フラグ ON
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
 
-                setDynamicUrlPath(event.payload.path);
                 if (event.payload.isNew) {
                     setIsNewState(true);
                     if (event.payload.frontmatter !== undefined) {
@@ -549,6 +553,9 @@ const StickyNote = memo(function StickyNote() {
                 // リロード時にプールとして再認識されないようURLを書き換え
                 window.history.replaceState(null, '', `/?path=${encodeURIComponent(event.payload.path)}`);
 
+                noteFilePathRef.current = event.payload.path; // 即座に確定（stale closure 対策）
+                setDynamicUrlPath(event.payload.path); // React state 更新（非同期だが pathRef で補完）
+                isPoolRef.current = false; // 即座に確定（stale closure 対策）
                 setIsPool(false); // プールモード解除
 
                 // プール待機中のBlurでisEditingがfalseになっているため、明示的に編集モードを開始
@@ -631,12 +638,14 @@ const StickyNote = memo(function StickyNote() {
                 const uReload = await listen<{ path: string }>('fusen:reload_note', async (event) => {
                     const targetPath = event.payload?.path;
                     if (targetPath && selectedFile?.path && pathsEqual(targetPath, selectedFile.path)) {
+                        console.log('[DBG:reload_note] FIRED targetPath=', targetPath, 'isEditing=', isEditingForListenerRef.current, 'stack=', new Error().stack?.split('\n').slice(1,3).join(' | '));
                         const body = await loadNote();
                         // [FIX] loadNote()が失敗して空を返した場合は上書きしない（C-2対策）
                         if (!body) {
                             console.error('[StickyNote] reload_note: loadNote returned empty, skipping content update to prevent data loss.');
                             return;
                         }
+                        console.log('[DBG:reload_note] setContent+setEditBody body=', JSON.stringify(body.slice(0, 50)));
                         setContent(body);
                         setEditBody(body);
 
@@ -913,18 +922,22 @@ const StickyNote = memo(function StickyNote() {
      * 編集モード終了処理（handleEditBlur）
      */
     const handleEditBlur = useCallback(async (e?: FocusEvent) => {
+        console.log('[DBG:handleEditBlur] called relatedTarget=', (e?.relatedTarget as Element)?.className ?? 'none');
         // [Fix] キャプチャ中は編集モードを維持する
         if (isCapturingRef.current) {
+            console.log('[DBG:handleEditBlur] SKIP: isCapturing');
             return;
         }
         // [Fix] promote中（プールウィンドウ昇格中）はblurによる編集モード解除を防ぐ
         if (isPromotingRef.current) {
+            console.log('[DBG:handleEditBlur] SKIP: isPromoting');
             return;
         }
 
         // フォーカス移動先がツールバー内なら編集終了しない
         if (e && e.relatedTarget instanceof Element) {
             if (e.relatedTarget.closest('.hoverBar') || e.relatedTarget.closest('.floatBar') || e.relatedTarget.closest('.editorHost')) {
+                console.log('[DBG:handleEditBlur] SKIP: relatedTarget in toolbar');
                 return;
             }
         }
@@ -1218,10 +1231,8 @@ const StickyNote = memo(function StickyNote() {
                     isMinimized={isMinimized}
                     isPinned={isPinned}
                     show={isHover && !isEditing}
-                    onBold={() => editorRef.current?.insertBold()}
-                    onHeading={() => editorRef.current?.insertHeading1()}
-                    onList={() => editorRef.current?.insertList()}
-                    onCheckbox={() => editorRef.current?.insertCheckbox()}
+                    onTable={() => editorRef.current?.insertTable()}
+                    onMermaid={() => editorRef.current?.insertMermaid()}
                     onCapture={async () => {
                         if (isCapturingRef.current) return;
                         isCapturingRef.current = true;
@@ -1258,6 +1269,7 @@ const StickyNote = memo(function StickyNote() {
                 onClick={(e) => {
                     // 編集モードで、エディタより下にあるこのコンテナ領域（＝黄色いフッタ領域）をクリックした場合は編集モードを終了
                     if (isEditing && e.target === e.currentTarget) {
+                        console.log('[DBG:footer-click] handleEditBlur called');
                         handleEditBlur();
                     }
                 }}
@@ -1370,8 +1382,6 @@ const StickyNote = memo(function StickyNote() {
                                 onHeading={() => editorRef.current?.insertHeading1()}
                                 onList={() => editorRef.current?.insertList()}
                                 onCheckbox={() => editorRef.current?.insertCheckbox()}
-                                onTable={() => editorRef.current?.insertTable()}
-                                onMermaid={() => editorRef.current?.insertMermaid()}
                             />
                         )}
                     </div>

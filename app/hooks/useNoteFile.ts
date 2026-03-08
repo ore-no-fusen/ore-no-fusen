@@ -32,6 +32,7 @@ export type UseNoteFileReturn = {
     setSavePending: (pending: boolean) => void;
     setContent: (content: string) => void;
     setRawFrontmatter: React.Dispatch<React.SetStateAction<string>>;
+    pathRef: React.MutableRefObject<string | null>; // 同期アクセス用（stale closure 対策）
 };
 
 export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): UseNoteFileReturn {
@@ -46,6 +47,9 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
     // loadNote が content に依存しないように ref で現在値を保持
     const contentRef = useRef(content);
     useEffect(() => { contentRef.current = content; }, [content]);
+    // path を ref で保持（stale closure 対策 - setDynamicUrlPath の非同期 setState を回避）
+    const pathRef = useRef(path);
+    pathRef.current = path; // レンダーごとに同期更新
     // [H-1 Safe Guard] 最初のロード完了前に空ボディで保存することを防ぐ
     // 新規ノートは最初から空で意図的なのでフラグをtrueで初期化する
     const hasLoadedRef = useRef(isNew);
@@ -62,6 +66,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             return contentRef.current; // ref 経由で取得（stale closure 回避）
         }
 
+        console.log('[DBG:loadNote] START path=', path, 'stack=', new Error().stack?.split('\n').slice(1,4).join(' | '));
         setLoading(true);
         try {
             const loadedNote = await readNote(path);
@@ -72,6 +77,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
             setContent(body);
             hasLoadedRef.current = true;
 
+            console.log('[DBG:loadNote] END body=', JSON.stringify(body.slice(0, 50)));
             return body;
         } catch (error) {
             console.error('[useNoteFile] Failed to load note:', error);
@@ -89,11 +95,19 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         frontmatter: string,
         allowRename: boolean
     ) => {
-        if (!path) return;
+        // pathRef.current を使う（stale closure 対策: setDynamicUrlPath の非同期 setState を回避）
+        const currentPath = pathRef.current;
+        if (!currentPath) {
+            const msg = '[useNoteFile] BLOCKED: path is null (promote setState not yet processed). Rethrowing to abort endEditing.';
+            console.error(msg);
+            throw new Error(msg);
+        }
 
         // [Safe Guard H-1] ロード完了前に空ボディで保存しようとした場合はブロック
         // フロントマターが存在していても（有効なメモには必ず存在する）、
         // ロード前の空ボディ保存はデータ消失を引き起こすため防ぐ
+        console.log('[DBG:saveNoteContent] START path=', currentPath.slice(-30), 'body=', JSON.stringify(body.slice(0, 50)), 'fm=', JSON.stringify(frontmatter.slice(0, 30)), 'hasLoaded=', hasLoadedRef.current);
+
         if (!hasLoadedRef.current && body.trim() === '') {
             const msg = '[useNoteFile] BLOCKED: Attempted to save empty body before first successful load. Possible initialization race condition.';
             console.error(msg);
@@ -109,10 +123,10 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         }
 
         try {
-            const newPath = await saveNote(path, body, frontmatter, allowRename);
+            const newPath = await saveNote(currentPath, body, frontmatter, allowRename);
 
             // パスが変更された場合（リネーム）
-            if (!pathsEqual(newPath, path)) {
+            if (!pathsEqual(newPath, currentPath)) {
                 isRenamingRef.current = true;
 
                 if (onPathChange) {
@@ -122,11 +136,13 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
 
             setContent(body);
             setRawFrontmatter(frontmatter);
+            hasLoadedRef.current = true; // 保存成功 = ロード済みとみなす（以降の auto-save を有効化）
+            console.log('[DBG:saveNoteContent] END saved ok body=', JSON.stringify(body.slice(0, 50)));
         } catch (e) {
             console.error('[useNoteFile] Failed to save note:', e);
             throw e;
         }
-    }, [path, onPathChange]);
+    }, [onPathChange]);
 
     /**
      * フロントマターの値を更新する
@@ -141,6 +157,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
      */
     useEffect(() => {
         if (!path || !savePending || !content) return;
+        if (!hasLoadedRef.current) return; // ロード完了前の auto-save をブロック
 
         const MAX_RETRY = 3;
         let cancelled = false;
@@ -185,6 +202,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         updateFrontmatter,
         setSavePending,
         setContent,
-        setRawFrontmatter
+        setRawFrontmatter,
+        pathRef
     };
 }

@@ -16,10 +16,8 @@ export type ToolbarButtonsProps = {
     isMinimized: boolean;
     isPinned?: boolean; // [New]
     show: boolean;
-    onBold?: () => void;
-    onHeading?: () => void;
-    onList?: () => void;
-    onCheckbox?: () => void;
+    onTable?: () => void;
+    onMermaid?: () => void;
     onCapture?: () => void;
     onToggleMinimize: () => void;
     onTogglePin?: () => void; // [New]
@@ -31,10 +29,8 @@ export default function ToolbarButtons({
     isMinimized,
     isPinned,
     show,
-    onBold,
-    onHeading,
-    onList,
-    onCheckbox,
+    onTable,
+    onMermaid,
     onCapture,
     onToggleMinimize,
     onTogglePin,
@@ -201,103 +197,45 @@ export default function ToolbarButtons({
         }
     };
 
-    // 編集モード時：全ツールバー
+    // 編集モード時：挿入系ツールバー
     return (
         <div
             className={`hoverBar flex flex-row justify-end items-center gap-0 p-1 bg-transparent rounded-lg backdrop-filter-none z-[200] transition-opacity duration-100 ease-in ${show || isEditing ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
                 }`}
         >
-            {/* Bold ボタン */}
-            <button
-                onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }}
-                onClick={onBold}
-                onKeyDown={handleButtonKeyDown}
-                tabIndex={0}
-                className="font-bold text-red-600 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
-                title="太字 (赤)"
-            >
-                B
-            </button>
-
-            {/* Heading1 ボタン */}
-            <button
-                onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }}
-                onClick={onHeading}
-                onKeyDown={handleButtonKeyDown}
-                tabIndex={0}
-                className="font-bold text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded text-sm flex items-center justify-center whitespace-nowrap"
-                title="見出し1"
-            >
-                <span className="text-[14px] relative -top-[1px]">
-                    H<sub className="bottom-0 text-[10px]">1</sub>
-                </span>
-            </button>
-
-            {/* List ボタン */}
-            <button
-                onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }}
-                onClick={onList}
-                onKeyDown={handleButtonKeyDown}
-                tabIndex={0}
-                className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
-                title="箇条書き"
-            >
-                <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+            {/* テーブル変換ボタン */}
+            {onTable && (
+                <button
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }}
+                    onClick={onTable}
+                    onKeyDown={handleButtonKeyDown}
+                    tabIndex={0}
+                    className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center text-sm"
+                    title="テーブル変換（選択行を表に／表をテキストに）"
                 >
-                    <line x1="9" y1="6" x2="20" y2="6"></line>
-                    <line x1="9" y1="12" x2="20" y2="12"></line>
-                    <line x1="9" y1="18" x2="20" y2="18"></line>
-                    <circle cx="5" cy="6" r="1.5" fill="currentColor"></circle>
-                    <circle cx="5" cy="12" r="1.5" fill="currentColor"></circle>
-                    <circle cx="5" cy="18" r="1.5" fill="currentColor"></circle>
-                </svg>
-            </button>
+                    ⊞
+                </button>
+            )}
 
-            {/* Checkbox ボタン */}
-            <button
-                onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }}
-                onClick={onCheckbox}
-                onKeyDown={handleButtonKeyDown}
-                tabIndex={0}
-                className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center"
-                title="チェックボックス"
-            >
-                <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+            {/* Mermaid変換ボタン */}
+            {onMermaid && (
+                <button
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }}
+                    onClick={onMermaid}
+                    onKeyDown={handleButtonKeyDown}
+                    tabIndex={0}
+                    className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center text-sm"
+                    title="Mermaid図に変換（選択行を図に／図をテキストに）"
                 >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <polyline points="9 11 12 14 22 4"></polyline>
-                </svg>
-            </button>
-
-
+                    🔷
+                </button>
+            )}
 
             {/* Capture ボタン */}
             <button

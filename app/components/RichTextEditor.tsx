@@ -317,12 +317,14 @@ function buildDecorations(state: EditorState): DecorationSet {
                 }).range(startPos, openMarkerEnd)
             );
 
-            // 強調テキスト
-            decorations.push(
-                Decoration.mark({
-                    class: 'cm-md-bold'
-                }).range(contentStart, contentEnd)
-            );
+            // 強調テキスト（空rangeは不可）
+            if (contentStart < contentEnd) {
+                decorations.push(
+                    Decoration.mark({
+                        class: 'cm-md-bold'
+                    }).range(contentStart, contentEnd)
+                );
+            }
 
             // 終了 ** マーカー
             decorations.push(
@@ -626,20 +628,34 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     });
                 } else {
                     // 単一行の選択
-                    if (selectedText.startsWith('**') && selectedText.endsWith('**')) {
-                        // 解除
+                    if (selectedText.startsWith('**') && selectedText.endsWith('**') && selectedText.length >= 4) {
+                        // 選択テキスト自体が **...** → 解除
                         const unbolded = selectedText.slice(2, -2);
                         view.dispatch({
                             changes: { from, to, insert: unbolded },
                             selection: { anchor: from, head: from + unbolded.length }
                         });
                     } else {
-                        // 適用
-                        const bolded = `**${selectedText}**`;
-                        view.dispatch({
-                            changes: { from, to, insert: bolded },
-                            selection: { anchor: from, head: from + bolded.length }
-                        });
+                        // 選択範囲の外側に ** があるかチェック（内側だけ選択した場合）
+                        const beforeFrom = from >= 2 ? state.doc.sliceString(from - 2, from) : '';
+                        const afterTo = state.doc.sliceString(to, to + 2);
+                        if (beforeFrom === '**' && afterTo === '**') {
+                            // 外側の ** を削除（解除）
+                            view.dispatch({
+                                changes: [
+                                    { from: to, to: to + 2, insert: '' },
+                                    { from: from - 2, to: from, insert: '' }
+                                ],
+                                selection: { anchor: from - 2, head: to - 2 }
+                            });
+                        } else {
+                            // 適用
+                            const bolded = `**${selectedText}**`;
+                            view.dispatch({
+                                changes: { from, to, insert: bolded },
+                                selection: { anchor: from, head: from + bolded.length }
+                            });
+                        }
                     }
                 }
             }
@@ -995,7 +1011,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 const lineStart = state.doc.lineAt(from).number;
-                                const lineEnd = state.doc.lineAt(to).number;
+                                const toLine = state.doc.lineAt(to);
+                                const lineEnd = (to > from && toLine.from === to)
+                                    ? toLine.number - 1
+                                    : toLine.number;
                                 const changes: { from: number; insert: string }[] = [];
                                 for (let i = lineStart; i <= lineEnd; i++) {
                                     changes.push({ from: state.doc.line(i).from, insert: '  ' });
@@ -1011,7 +1030,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 const lineStart = state.doc.lineAt(from).number;
-                                const lineEnd = state.doc.lineAt(to).number;
+                                const toLine = state.doc.lineAt(to);
+                                const lineEnd = (to > from && toLine.from === to)
+                                    ? toLine.number - 1
+                                    : toLine.number;
                                 const changes: { from: number; to: number }[] = [];
                                 for (let i = lineStart; i <= lineEnd; i++) {
                                     const line = state.doc.line(i);
