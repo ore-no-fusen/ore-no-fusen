@@ -183,6 +183,21 @@ export default function LandingPage() {
                 </div>
             </section>
 
+            {/* プロモーションアニメーション */}
+            <section className="py-24">
+                <div className="max-w-5xl mx-auto px-6">
+                    <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-700/50"
+                         style={{ aspectRatio: '16/9' }}>
+                        <iframe
+                            src="/promo/promo.html"
+                            className="w-full h-full"
+                            style={{ border: 'none' }}
+                            title="Ore-no-Fusen プロモーション"
+                        />
+                    </div>
+                </div>
+            </section>
+
             {/* スクリーンショットセクション（プレースホルダー） */}
             <section className="py-24">
                 <div className="max-w-7xl mx-auto px-6">
