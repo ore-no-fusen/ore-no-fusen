@@ -1245,6 +1245,8 @@ pub fn run() {
             }
             
             app.handle().plugin(tauri_plugin_shell::init())?;
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            app.handle().plugin(tauri_plugin_process::init())?;
             
             if let Some(win) = app.get_webview_window("main") {
                 // 古いPWA (ServiceWorker) のキャッシュを強制クリアする

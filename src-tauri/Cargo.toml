@@ -45,6 +45,8 @@ rodio = "0.19.0"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-os = "2.3.2"
 tokio = { version = "1", features = ["rt"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 
 [target.'cfg(windows)'.dependencies]
