@@ -212,22 +212,26 @@ const $ = id => document.getElementById(id);
 
 function applyScale() {
   const stage = $('stage');
-  const scaleX = window.innerWidth  / 1920;
-  const scaleY = window.innerHeight / 1080;
+  const w = window.innerWidth  || document.documentElement.clientWidth  || 800;
+  const h = window.innerHeight || document.documentElement.clientHeight || 450;
+  const scaleX = w / 1920;
+  const scaleY = h / 1080;
   const scale  = Math.min(scaleX, scaleY);
-  const offX   = (window.innerWidth  - 1920 * scale) / 2;
-  const offY   = (window.innerHeight - 1080 * scale) / 2;
+  const offX   = (w - 1920 * scale) / 2;
+  const offY   = (h - 1080 * scale) / 2;
   stage.style.transform = `scale(${scale})`;
   stage.style.left = offX + 'px';
   stage.style.top  = offY + 'px';
 }
 window.addEventListener('resize', applyScale);
-applyScale();
+// iframeでサイズが確定するまで少し待つ
+setTimeout(applyScale, 50);
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function show(id, ...classes) {
   const el = $(id); if (!el) return;
+  el.style.opacity = ''; // インラインスタイルをクリアしてクラスを有効化
   el.classList.add('show', ...classes);
 }
 function hide(id) {
@@ -238,13 +242,15 @@ function hide(id) {
 function charShow(id, animate = 'bounce') {
   const el = $(id); if (!el) return;
   el.classList.remove('bounce', 'peek');
+  el.style.opacity = '';    // インラインをクリア → .show の opacity:1 が効く
+  el.style.transform = '';  // インラインをクリア → .show の transform が効く
   el.classList.add('show');
   if (animate) el.classList.add(animate);
 }
 function charHide(id) {
   const el = $(id); if (!el) return;
   el.classList.remove('show', 'bounce', 'peek');
-  el.style.transform = 'translateX(-50%) translateY(110%)';
+  el.style.transform = 'translateX(-50%) translateY(140%)';
   el.style.opacity = '0';
 }
 
@@ -364,7 +370,7 @@ async function run() {
   }
 }
 
-window.addEventListener('load', run);
+window.addEventListener('load', () => setTimeout(run, 100));
 </script>
 </body>
 </html>
