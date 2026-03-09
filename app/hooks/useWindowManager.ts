@@ -111,6 +111,8 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
         let isMounted = true;
         let unlistenMove: (() => void) | null = null;
         let unlistenResize: (() => void) | null = null;
+        // [FIX] moveTimer を上位スコープに置きクリーンアップ時にクリアできるようにする
+        let moveTimer: ReturnType<typeof setTimeout> | null = null;
 
         const setupListeners = async () => {
             try {
@@ -124,8 +126,16 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
                     } catch (e) { }
                 };
 
+                // [FIX] tauri://move は毎ピクセル発火するため、移動中は IPC を一切呼ばない。
+                // 150ms 間イベントが来なくなった（＝移動が止まった）タイミングで
+                // saveWindowState を1回だけ実行する。
+                // これにより移動中の IPC 3往復 × N回 がゼロになりドラッグがなめらかになる。
                 const uMove = await win.listen('tauri://move', () => {
-                    saveWindowState();
+                    if (moveTimer) clearTimeout(moveTimer);
+                    moveTimer = setTimeout(() => {
+                        moveTimer = null;
+                        saveWindowState();
+                    }, 150);
                 });
                 const safeMove = wrapUnlisten(uMove);
                 if (isMounted) unlistenMove = safeMove; else safeMove();
@@ -164,6 +174,7 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
 
         return () => {
             isMounted = false;
+            if (moveTimer) clearTimeout(moveTimer);
             const safeUnlisten = (u: any) => {
                 try {
                     const p = u?.();

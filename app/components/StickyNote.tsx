@@ -1004,27 +1004,18 @@ const StickyNote = memo(function StickyNote() {
             return;
         }
 
-        // ドラッグ閾値を緩和: 距離(3px)・時間(50ms)で素早くドラッグ開始
+        // [FIX] pointerdown 時点で即 startDragging() を呼び出す。
+        // OS はポインターが実際に動くまでウィンドウを動かさないため、
+        // クリック・ダブルクリックへの影響はゼロ。
+        // 旧実装（5px閾値 + 10ms待機 → startDragging）は「動き出しの遅さ」の原因だった。
         const startX = e.clientX;
         const startY = e.clientY;
-        const startTime = Date.now();
-        let hasDragged = false; // [New] ドラッグ判定フラグ
+        let hasDragged = false;
 
         const onPointerMove = (moveEvent: PointerEvent) => {
             const dx = moveEvent.clientX - startX;
             const dy = moveEvent.clientY - startY;
-            const elapsed = Date.now() - startTime;
-
-            // 閾値を緩和: 5px以上動いたら、または10ms経過したらドラッグ開始 (誤検知防止のため2px -> 5pxへ変更)
-            if (!hasDragged && (Math.abs(dx) > 5 || Math.abs(dy) > 5) && elapsed > 10 && moveEvent.buttons === 1) {
-                hasDragged = true;
-                cleanup(); // リスナー解除（Tauriに委譲するため）
-                try {
-                    getCurrentWindow().startDragging();
-                } catch (err) {
-                    console.error('startDragging failed', err);
-                }
-            }
+            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) hasDragged = true;
         };
 
         const onPointerUp = () => {
@@ -1046,6 +1037,12 @@ const StickyNote = memo(function StickyNote() {
         e.stopPropagation();
         window.addEventListener('pointermove', onPointerMove);
         window.addEventListener('pointerup', onPointerUp);
+
+        try {
+            getCurrentWindow().startDragging();
+        } catch (err) {
+            console.error('startDragging failed', err);
+        }
     }, [isEditing, handleEditBlur, lastEditEndedAt]);
 
     /**
