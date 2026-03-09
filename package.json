@@ -15,7 +15,8 @@
     "test:coverage:ui": "vitest --ui --coverage",
     "test:e2e": "playwright test",
     "tauri": "tauri",
-    "release": "npm run tauri build && node scripts/generate-latest-json.mjs"
+    "release": "npm run tauri build && node scripts/generate-latest-json.mjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.1",
@@ -58,6 +59,7 @@
     "cross-env": "^10.1.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5",
+    "husky": "^9.1.7",
     "jsdom": "^27.4.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",

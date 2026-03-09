@@ -193,6 +193,8 @@ test.describe('付箋アプリ基本動作', () => {
         // ウィンドウのBlurをシミュレート
         // Playwrightで別ウィンドウをクリックするのは難しいため、
         // window.dispatchEvent(new Event('blur')) を発行してエミュレートする
+        // startEditing の grace period (200ms) が終わるのを待ってからblurを発火する
+        await page.waitForTimeout(300);
         await page.evaluate(() => {
             window.dispatchEvent(new Event('blur'));
         });
@@ -306,6 +308,8 @@ test.describe('フロントマター処理（ユニットテストで主にカ�
             const editor = page.locator('.cm-content');
             await editor.clear();
             await editor.type('# Heading');
+            // startEditing の grace period (200ms) が終わるのを待ってからblurを発火する
+            await page.waitForTimeout(300);
             await page.evaluate(() => window.dispatchEvent(new Event('blur')));
             const article = page.locator('article.notePaper');
             await article.waitFor({ state: 'visible', timeout: 5000 });
