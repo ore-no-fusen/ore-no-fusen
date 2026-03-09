@@ -140,6 +140,7 @@ updated: 2026-01-31
                 case 'plugin:window|hide':
                 case 'plugin:window|close':
                 case 'plugin:window|unminimize':
+                case 'plugin:window|start_dragging':
                     console.log(`[Mock Tauri] Window Command: ${cmd}`);
                     return null;
 
