@@ -64,6 +64,8 @@ export function useStickyNoteContextMenu({
     const lastContextMenuPos = useRef<{ x: number; y: number } | null>(null);
     const shouldReopenMenu = useRef(false);
     const [isTagDeleteMode, setIsTagDeleteMode] = useState(false);
+    // showContextMenu を ref 化: リスナーが showContextMenu の再生成のたびに再登録されるのを防ぐ
+    const showContextMenuRef = useRef<(x: number, y: number) => Promise<void>>(() => Promise.resolve());
 
     // フォルダを開く
     const handleOpenFolder = useCallback(async () => {
@@ -371,21 +373,21 @@ export function useStickyNoteContextMenu({
     }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete]);
 
 
-    // 右クリックイベントリスナー
+    // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）
+    useEffect(() => { showContextMenuRef.current = showContextMenu; }, [showContextMenu]);
+
+    // 右クリックイベントリスナー（deps を [] にして不要な再登録を防ぐ）
     useEffect(() => {
         const handleContextMenu = async (e: MouseEvent) => {
             e.preventDefault();
-            if (!isEditing) {
-                // 閲覧モード時の処理
-            }
             lastContextMenuPos.current = { x: e.clientX, y: e.clientY };
-            await showContextMenu(e.clientX, e.clientY);
+            await showContextMenuRef.current(e.clientX, e.clientY);
             console.log('[ContextMenu] Right click detected');
         };
 
         window.addEventListener('contextmenu', handleContextMenu);
         return () => window.removeEventListener('contextmenu', handleContextMenu);
-    }, [isEditing, handleEditBlur, showContextMenu]);
+    }, []); // showContextMenu は ref 経由で参照するため deps 不要
 
     // モード切り替えによるメニューの再表示
     useEffect(() => {
@@ -394,11 +396,11 @@ export function useStickyNoteContextMenu({
             setTimeout(() => {
                 const pos = lastContextMenuPos.current;
                 if (pos) {
-                    showContextMenu(pos.x, pos.y);
+                    showContextMenuRef.current(pos.x, pos.y);
                 }
             }, 50);
         }
-    }, [isTagDeleteMode, showContextMenu]);
+    }, [isTagDeleteMode]); // showContextMenu は ref 経由
 
     return { showContextMenu };
 }

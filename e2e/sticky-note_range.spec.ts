@@ -47,12 +47,14 @@ test.describe('範囲選択と編集モード', () => {
         const editor = page.locator('.cm-content');
         await expect(editor).toBeVisible({ timeout: 3000 });
 
-        // テキストをすべて選択
-        await editor.press('Control+a');
-        await page.waitForTimeout(200);
+        // 最終行に移動して1行選択（先頭行は overflow クリップで太字バーが非表示になるため）
+        await editor.press('Control+End');
+        await editor.press('Home');
+        await editor.press('Shift+End');
+        await page.waitForTimeout(300);
 
         // 太字ボタンをクリック
-        await page.locator('button[title="太字 (赤)"]').click();
+        await page.locator('button[title="太字 (Ctrl+B)"]').click();
 
         const content = await editor.innerText();
         expect(content).toMatch(/\*\*.*\*\*/);

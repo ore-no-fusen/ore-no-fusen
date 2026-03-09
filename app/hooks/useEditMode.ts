@@ -54,6 +54,9 @@ export function useEditMode({
     const isCommittingRef = useRef(false);
     const ignoreBlurUntilRef = useRef(0);
     const lastEditEndedAt = useRef(0);
+    // rawFrontmatter を ref 化: endEditing の deps から外し不要な再生成を防ぐ
+    const rawFrontmatterRef = useRef(rawFrontmatter);
+    useEffect(() => { rawFrontmatterRef.current = rawFrontmatter; }, [rawFrontmatter]);
 
     // ref を同期的に更新するラッパー（useEffectより先に ref を確定させる）
     const setEditBodyAndRef = useCallback((body: string) => {
@@ -103,8 +106,8 @@ export function useEditMode({
         try {
             // [修正] Padding Line仕様を廃止したため、ユーザーの入力した末尾改行を意図的に維持する
             const currentBody = editBodyRef.current;
-            console.log('[DBG:endEditing] START currentBody=', JSON.stringify(currentBody.slice(0, 50)), 'rawFM=', JSON.stringify(rawFrontmatter.slice(0, 30)));
-            await onSave(currentBody, rawFrontmatter, true);
+            console.log('[DBG:endEditing] START currentBody=', JSON.stringify(currentBody.slice(0, 50)), 'rawFM=', JSON.stringify(rawFrontmatterRef.current.slice(0, 30)));
+            await onSave(currentBody, rawFrontmatterRef.current, true);
             console.log('[DBG:endEditing] onSave done');
         } catch (e) {
             console.error('[useEditMode] Save failed (editing will still end):', e);
@@ -114,7 +117,7 @@ export function useEditMode({
             lastEditEndedAt.current = Date.now();
             isCommittingRef.current = false;
         }
-    }, [onSave, rawFrontmatter, isCapturing]);
+    }, [onSave, isCapturing]); // rawFrontmatter は ref 経由で参照するため deps 不要
 
     /**
      * 編集内容を更新する

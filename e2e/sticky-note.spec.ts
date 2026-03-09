@@ -120,9 +120,14 @@ test.describe('付箋アプリ基本動作', () => {
         await editor.click();
         await expect(editor).toBeFocused();
 
+        // 最終行に移動して選択（先頭行は overflow クリップで太字バーが非表示になるため）
+        await editor.press('Control+End');
+        await editor.press('Home');
+        await editor.press('Shift+End');
+        await page.waitForTimeout(300);
+
         // 太字ボタンをクリック (onPointerDownでpreventDefaultされているはず)
-        // ボタンのセレクタを特定
-        const boldBtn = page.locator('button[title="太字 (赤)"]');
+        const boldBtn = page.locator('button[title="太字 (Ctrl+B)"]');
         await boldBtn.click();
 
         // エディタにまだフォーカスがあるか、あるいは編集モード(.cm-contentが存在)が維持されているか

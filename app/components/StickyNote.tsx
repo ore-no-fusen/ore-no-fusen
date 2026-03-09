@@ -194,6 +194,8 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => { isEditingForListenerRef.current = isEditing; }, [isEditing]);
     const startEditingForListenerRef = useRef(startEditing);
     useEffect(() => { startEditingForListenerRef.current = startEditing; }, [startEditing]);
+    const endEditingForListenerRef = useRef(endEditing);
+    useEffect(() => { endEditingForListenerRef.current = endEditing; }, [endEditing]);
 
     // [New] ミニマイズ状態からリサイズ操作により自動展開された場合の処理
     const handleAutoExpand = useCallback(async () => {
@@ -225,18 +227,17 @@ const StickyNote = memo(function StickyNote() {
         return Math.ceil(fontSizeToUse * lineHeight + paddingY);
     }, [content, noteFontSize]);
 
+    // useCallback 化: 毎レンダーの新参照を防ぎ saveWindowState の不要な再生成を止める
+    const handleGeometryChange = useCallback((geom: { x: number; y: number; width: number; height: number }) => {
+        if (isDeletingRef.current) return;
+        // [FIX] プール状態・新規ノート昇格直後はジオメトリ変更保存をスキップする
+        if (isPool) return;
+        setRawFrontmatter((prev) => updateFrontmatterGeometry(prev, geom));
+        setSavePending(true);
+    }, [isPool]); // isDeletingRef は ref（安定）、setters は React 保証の安定参照
+
     const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize, setIsMinimized } = useWindowManager({
-        onGeometryChange: (geom) => {
-            if (isDeletingRef.current) return;
-            // [FIX] プール状態・新規ノート昇格直後はジオメトリ変更保存をスキップする
-            // ウィンドウを表示位置に移動する際にこのコールバックが呼ばれ、
-            // まだファイルが確定していないパスへのauto-saveが走ってしまうのを防ぐ
-            if (isPool) {
-                return;
-            }
-            setRawFrontmatter((prev) => updateFrontmatterGeometry(prev, geom));
-            setSavePending(true);
-        },
+        onGeometryChange: handleGeometryChange,
         onAutoExpand: handleAutoExpand,
         getMinimizedHeight // [New]
     });
@@ -301,9 +302,10 @@ const StickyNote = memo(function StickyNote() {
     // ピン留め状態の同期（初期ロード完了時および変更時）
     useEffect(() => {
         if (isPinned !== undefined && isPinned !== null) {
-            invoke('fusen_set_always_on_top', { enabled: Boolean(isPinned) }).catch(err => {
-                console.error('[StickyNote] Failed to set always-on-top:', err);
-            });
+            invoke('fusen_set_always_on_top', { enabled: Boolean(isPinned) })
+                .catch(err => {
+                    console.error('[StickyNote] Failed to set always-on-top:', err);
+                });
         }
     }, [isPinned]);
 
@@ -315,12 +317,7 @@ const StickyNote = memo(function StickyNote() {
         setIsPinned(newState);
 
         try {
-            // invoke は useEffect で処理されるためここでは削除
             if (note) {
-                // [Fix] updateFrontmatterValue は frontmatter 文字列のみを受け取る必要がある
-                // 以前の実装では note.body (全文) を渡していたため、FrontMatter分離に失敗して本文が消えていた
-
-                // 現在のrawFrontmatterを使用（なければnote.bodyから分離）
                 let currentFront = rawFrontmatter;
                 let currentBody = content;
 
@@ -331,8 +328,6 @@ const StickyNote = memo(function StickyNote() {
                 }
 
                 const newFront = updateFrontmatterValue(currentFront, 'alwaysOnTop', newState.toString());
-
-                // saveNoteContent は (body, frontmatter, allowRename) を受け取る
                 await saveNoteContent(currentBody, newFront, false);
             }
         } catch (e) {
@@ -410,14 +405,13 @@ const StickyNote = memo(function StickyNote() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [urlPath, isNew]);
 
-    // イベントリスナー設定（move, resize, close）
+    // イベントリスナー設定（move, resize）
     useEffect(() => {
         if (!selectedFile) return;
 
         let isMounted = true;
         let unlistenMove: (() => void) | null = null;
         let unlistenResize: (() => void) | null = null;
-        let unlistenClose: (() => void) | null = null;
 
         const setupListeners = async () => {
             try {
@@ -443,23 +437,6 @@ const StickyNote = memo(function StickyNote() {
                 const safeResize = wrapUnlisten(uResize);
                 if (isMounted) unlistenResize = safeResize; else safeResize();
 
-                const uClose = await win.onCloseRequested(async (event) => {
-                    // 削除・アーカイブ中、または endEditing 後の再クローズ時のみ通過
-                    if (isDeletingRef.current || isHandlingCloseRef.current) return;
-                    // Alt+F4 等の外部クローズ要求は常にブロック（再表示手段がないため）
-                    event.preventDefault();
-                    if (isEditing) {
-                        // 編集中は保存してから閉じる処理を行う（削除・アーカイブ操作時のみ）
-                        // 通常の Alt+F4 では保存のみ行い、ウィンドウは維持する
-                        isHandlingCloseRef.current = true;
-                        await endEditing();
-                        isHandlingCloseRef.current = false;
-                    }
-                    // 閲覧モード・編集モードとも: ウィンドウ維持（何もしない）
-                });
-                const safeClose = wrapUnlisten(uClose);
-                if (isMounted) unlistenClose = safeClose; else safeClose();
-
             } catch (err) {
                 // Event listener setup failed
             }
@@ -477,9 +454,55 @@ const StickyNote = memo(function StickyNote() {
             };
             safeUnlisten(unlistenMove);
             safeUnlisten(unlistenResize);
-            safeUnlisten(unlistenClose);
         };
-    }, [selectedFile, isEditing, endEditing, saveWindowState]);
+    }, [selectedFile, saveWindowState]);
+
+    // クローズリスナー（onCloseRequested）を分離: saveWindowState/isEditing の変化で
+    // 再登録されると一瞬リスナーが外れてウィンドウが閉じるバグを防ぐ
+    useEffect(() => {
+        if (!selectedFile) return;
+
+        let isMounted = true;
+        let unlistenClose: (() => void) | null = null;
+
+        const setupClose = async () => {
+            try {
+                const win = getCurrentWindow();
+                const wrapUnlisten = (u: any) => () => {
+                    try {
+                        const p = u?.();
+                        if (p && p.catch) p.catch(() => { });
+                    } catch (e) { }
+                };
+
+                const uClose = await win.onCloseRequested(async (event) => {
+                    if (isDeletingRef.current || isHandlingCloseRef.current) return;
+                    // Alt+F4 等の外部クローズ要求は常にブロック（再表示手段がないため）
+                    event.preventDefault();
+                    if (isEditingForListenerRef.current) {
+                        isHandlingCloseRef.current = true;
+                        await endEditingForListenerRef.current();
+                        isHandlingCloseRef.current = false;
+                    }
+                });
+                const safeClose = wrapUnlisten(uClose);
+                if (isMounted) unlistenClose = safeClose; else safeClose();
+
+            } catch (err) {
+                // setup failed
+            }
+        };
+
+        setupClose();
+
+        return () => {
+            isMounted = false;
+            try {
+                const p = unlistenClose?.();
+                if (p && (p as any).catch) (p as any).catch(() => { });
+            } catch (e) { }
+        };
+    }, [selectedFile]); // deps は selectedFile のみ（state は ref 経由で参照）
 
     // [NEW] Alt+Tab表示制御: フォーカス時にRustへ通知（selectedFileに依存しない独立したuseEffect）
     useEffect(() => {

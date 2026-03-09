@@ -97,7 +97,38 @@ fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Not
 
 #[tauri::command]
 fn fusen_set_always_on_top(window: tauri::Window, enabled: bool) -> Result<(), String> {
-    window.set_always_on_top(enabled).map_err(|e| e.to_string())?;
+    // [FIX] Tauri の set_always_on_top() は内部 visibility 状態を参照するため、
+    // fusen_show_at_position (生Win32 SetWindowPos) で表示したプールウィンドウに対して
+    // 呼び出すと tao が "hidden" 判定でウィンドウを非表示にする。
+    // 生Win32 SetWindowPos を直接使用することで Tauri 内部状態の影響を排除する。
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, HWND_NOTOPMOST,
+            SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE,
+        };
+        use windows::Win32::Foundation::HWND;
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+        unsafe {
+            if let Ok(handle) = window.window_handle() {
+                if let RawWindowHandle::Win32(win32_handle) = handle.as_raw() {
+                    let hwnd = HWND(win32_handle.hwnd.get());
+                    let z_order = if enabled { HWND_TOPMOST } else { HWND_NOTOPMOST };
+                    SetWindowPos(
+                        hwnd, z_order, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    ).map_err(|e| format!("SetWindowPos failed: {}", e))?;
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        window.set_always_on_top(enabled).map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -1096,6 +1127,11 @@ async fn fusen_show_at_position(
                     }
                 }
             }
+            // [FIX] 生Win32 SetWindowPos(SWP_SHOWWINDOW) はOSには表示を伝えるが
+            // Tauri の内部 visibility 状態を更新しない。
+            // win.show() で Tauri 状態を同期しないと、後続の Tauri API 呼び出し時に
+            // tao が "hidden" 判定してウィンドウを非表示にするバグが発生する。
+            let _ = win.show();
         }
     }
 
