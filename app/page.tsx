@@ -187,8 +187,13 @@ function OrchestratorContent() {
           `新しいバージョン ${update.version} が利用可能です。\n今すぐアップデートしますか？`
         );
         if (!confirmed) return;
-        await update.downloadAndInstall();
-        await relaunch();
+        try {
+          await update.downloadAndInstall();
+          await relaunch();
+        } catch (installErr) {
+          console.error('[Updater] インストール失敗:', installErr);
+          window.alert(`アップデートに失敗しました。\n${installErr}`);
+        }
       } catch (e) {
         // アップデートチェック失敗はサイレントに無視
         console.warn('[Updater] アップデートチェック失敗:', e);
