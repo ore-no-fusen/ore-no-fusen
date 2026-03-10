@@ -137,14 +137,14 @@ describe('StickyNote Component', () => {
             expect(screen.getAllByTestId('rich-text-editor').length).toBeGreaterThan(0);
         }, { timeout: 3000 });
 
-        // [Fix] ignoreBlurUntilRef (200ms grace period) を十分に超える時間を待機
+        // 起動直後のフォーカス外れ抑制（200ms）が終わるのを十分に超えて待機
         await act(async () => {
             await new Promise((r) => setTimeout(r, 400));
         });
 
         // Trigger Outside Click (Pointer Down)
         await act(async () => {
-            // Dispatch pointerdown on body (simulating click outside)
+            // 付箋の外側をクリックした状態をシミュレート
             fireEvent.pointerDown(document.body);
         });
 
@@ -203,7 +203,7 @@ describe('StickyNote Component', () => {
 
         // Trigger Context Menu
         await act(async () => {
-            // [Fix] Wait for grace period before blurring (reduced 800->200ms + buffer)
+            // フォーカス外れ抑制（200ms）が終わるのを待つ
             await new Promise((r) => setTimeout(r, 400));
 
             // Simulate blur first to trigger save

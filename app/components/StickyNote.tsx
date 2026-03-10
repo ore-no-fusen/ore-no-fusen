@@ -95,7 +95,7 @@ const StickyNote = memo(function StickyNote() {
     const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
     const isCapturingRef = useRef(false);
-    const isPromotingRef = useRef(false); // promote中はblurによる編集モード解除を防ぐ
+    const isPromotingRef = useRef(false); // 付箋表示中はフォーカスが外れても編集モードを維持する
 
     // ============================================================
     // カスタムHook統合
@@ -540,7 +540,7 @@ const StickyNote = memo(function StickyNote() {
                 if (p && p.catch) p.catch(() => { });
             } catch (e) { }
         };
-    }, []); // 依存なし - マウント時に一度だけ登録
+    }, []); // 起動時に一度だけ登録
 
     // [NEW] プールからの昇格（Promote）処理
     useEffect(() => {
@@ -558,7 +558,7 @@ const StickyNote = memo(function StickyNote() {
 
             const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
-                isPromotingRef.current = true; // blur防止フラグ ON
+                isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
 
                 if (event.payload.isNew) {
@@ -581,14 +581,12 @@ const StickyNote = memo(function StickyNote() {
                 isPoolRef.current = false; // 即座に確定（stale closure 対策）
                 setIsPool(false); // プールモード解除
 
-                // プール待機中のBlurでisEditingがfalseになっているため、明示的に編集モードを開始
+                // 待機中にフォーカスが外れて編集モードが解除されている可能性があるため、明示的に編集モードを開始
                 startEditing();
 
-                // [FIX] JS の show()→setSize→setPosition は React の非同期再レンダリングによる
-                // IPC タイミング問題で setSize/setPosition が例外を投げクラッシュする。
-                // Rust の SetWindowPos(SWP_SHOWWINDOW) で show+サイズ(+位置)を原子的に実行する。
-                // targetPhysWidth/Height は常に送られるため必ずサイズを適用できる。
-                // targetPhysX/Y は undefined の場合は null を渡して SWP_NOMOVE（位置変更なし）。
+                // ウィンドウの表示・サイズ・位置をRust側でまとめて設定する。
+                // JS側から個別に設定すると順序のズレでクラッシュするため、Rust側で一括処理している。
+                // 座標が指定されていない場合は現在位置を維持する。
                 try {
                     await invoke('fusen_show_at_position', {
                         label: thisWin.label,
@@ -615,8 +613,8 @@ const StickyNote = memo(function StickyNote() {
                 // [FIX] Rust側でSetForegroundWindowを呼ぶため、JS側のsetFocusは不要。
                 // 300ms 待つことで ITaskbarList 操作完了後に確実にフォーカスを取得する。
                 setTimeout(async () => {
-                    isPromotingRef.current = false; // blur防止フラグ OFF
-                    // blurでisEditingがリセットされた場合に備えて強制的にedit modeをONにする
+                    isPromotingRef.current = false; // 付箋表示中フラグ OFF
+                    // フォーカスが外れて編集モードが解除された場合に備えて、強制的に編集モードをONにする
                     setIsEditing(true);
                     // Reactの再レンダリングを待ってからフォーカス
                     await new Promise(r => setTimeout(r, 80));
@@ -951,7 +949,7 @@ const StickyNote = memo(function StickyNote() {
             console.log('[DBG:handleEditBlur] SKIP: isCapturing');
             return;
         }
-        // [Fix] promote中（プールウィンドウ昇格中）はblurによる編集モード解除を防ぐ
+        // 付箋表示中はフォーカスが外れても編集モードを解除しない
         if (isPromotingRef.current) {
             console.log('[DBG:handleEditBlur] SKIP: isPromoting');
             return;
@@ -984,7 +982,7 @@ const StickyNote = memo(function StickyNote() {
         // 編集モード中でエディタ外をクリックした場合
         // 以前は編集終了していたが、ユーザー要望により「カーソル移動」を優先するため
         // ここでの編集終了処理は行わない。
-        // 代わりにエディタがフォーカスを失った(blur)タイミングで終了するようにする。
+        // 代わりにエディタのフォーカスが外れたタイミングで終了するようにする。
         /*
         if (isEditing) {
             e.preventDefault();
@@ -1004,10 +1002,8 @@ const StickyNote = memo(function StickyNote() {
             return;
         }
 
-        // [FIX] pointerdown 時点で即 startDragging() を呼び出す。
-        // OS はポインターが実際に動くまでウィンドウを動かさないため、
-        // クリック・ダブルクリックへの影響はゼロ。
-        // 旧実装（5px閾値 + 10ms待機 → startDragging）は「動き出しの遅さ」の原因だった。
+        // マウスボタンを押した瞬間に移動処理を開始する。
+        // OSはマウスが実際に動くまでウィンドウを動かさないため、クリックやダブルクリックには影響しない。
         const startX = e.clientX;
         const startY = e.clientY;
         let hasDragged = false;

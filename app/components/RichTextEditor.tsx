@@ -1094,7 +1094,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     }),
                     // イベントハンドラ
                     EditorView.domEventHandlers({
-                        // blur: 削除（上で定義済み）
+                        // フォーカスが外れた時の処理: 削除（上で定義済み）
                         keydown: (e) => {
                             if (e.key === 'Escape' && onKeyDown) {
                                 onKeyDown(e as any);
@@ -1263,12 +1263,12 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             viewRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // 初回マウント時のみ作成
+    }, []); // 起動時に一度だけ作成
 
     // [New] Ready flag initialization
     useEffect(() => {
-        // マウント直後はBlurを無視し、少し待ってから有効化
-        // これによりダブルクリック時の誤爆や初期フォーカス移動時の誤検知を防ぐ
+        // 起動直後はフォーカスが外れても無視し、少し待ってから有効化
+        // これによりダブルクリック時の誤動作や起動時のフォーカス移動での誤検知を防ぐ
         isReadyRef.current = false; // 明示的にリセット
         const timer = setTimeout(() => {
             isReadyRef.current = true;

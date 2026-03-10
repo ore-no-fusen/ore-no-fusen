@@ -1,7 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "Bash(netstat:*)"
+      "Bash(*)",
+      "Bash(netstat:*)",
+      "Bash(TAURI_PRIVATE_KEY_PASSWORD=\"\" node_modules/.bin/tauri.cmd signer sign -f \"C:/Users/uck/.tauri/ore-no-fusen.key\" -p \"\" \"src-tauri/target/release/bundle/nsis/ore-no-fusen_1.0.2-beta_x64-setup.exe\")",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(npx tauri signer sign --help)",
+      "Bash(npx tauri signer sign -f \"C:/Users/uck/.tauri\" -p \"\" \"src-tauri/target/release/bundle/nsis/ore-no-fusen_1.0.3_x64-setup.exe\")",
+      "Bash(npx tauri signer sign -f \"C:/Users/uck/.tauri\" -p \"xxxxxxxx\" \"src-tauri/target/release/bundle/nsis/ore-no-fusen_1.0.3_x64-setup.exe\")",
+      "Bash(gh release list)",
+      "Bash(gh release create v1.0.3 \"src-tauri/target/release/bundle/nsis/ore-no-fusen_1.0.3_x64-setup.exe\" \"src-tauri/target/release/bundle/nsis/ore-no-fusen_1.0.3_x64-setup.exe.sig\" \"src-tauri/target/release/bundle/nsis/latest.json\" --title \"v1.0.3\" --notes \"release\" --latest)",
+      "Bash(curl -s \"https://github.com/ore-no-fusen/ore-no-fusen/releases/latest/download/latest.json\")",
+      "Bash(curl -sL \"https://github.com/ore-no-fusen/ore-no-fusen/releases/latest/download/latest.json\")",
+      "Bash(gh release upload v1.0.3 \"src-tauri/target/release/bundle/nsis/ore-no-fusen_1.0.3_x64-setup.exe\" \"src-tauri/target/release/bundle/nsis/ore-no-fusen_1.0.3_x64-setup.exe.sig\" \"src-tauri/target/release/bundle/nsis/latest.json\" --clobber)",
+      "Bash(npm install --save-dev husky)",
+      "Bash(npx husky init)",
+      "Bash(npm run test:e2e)",
+      "Bash(npx playwright test e2e/core-features.spec.ts)",
+      "Bash(npx playwright test e2e/core-features.spec.ts --grep \"閲覧モード\")",
+      "Bash(npx playwright test e2e/sticky-note.spec.ts --reporter=line)"
     ]
   }
 }

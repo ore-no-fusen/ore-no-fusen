@@ -33,7 +33,7 @@ export function useNoteStyles(note: Note | null) {
         };
     }, []);
 
-    // 3. 個別付箋のフロントマター(メタデータ)の設定適用 (優先度高)
+    // 3. 個別付箋の設定（先頭の---部分）を適用（優先度高）
     useEffect(() => {
         if (!note?.meta) return;
 

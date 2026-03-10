@@ -104,7 +104,7 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
         }
 
         // [Safe Guard H-1] ロード完了前に空ボディで保存しようとした場合はブロック
-        // フロントマターが存在していても（有効なメモには必ず存在する）、
+        // 先頭の設定欄（---で囲まれた部分）が存在していても、
         // ロード前の空ボディ保存はデータ消失を引き起こすため防ぐ
         console.log('[DBG:saveNoteContent] START path=', currentPath.slice(-30), 'body=', JSON.stringify(body.slice(0, 50)), 'fm=', JSON.stringify(frontmatter.slice(0, 30)), 'hasLoaded=', hasLoadedRef.current);
 

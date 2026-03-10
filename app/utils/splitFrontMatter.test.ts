@@ -56,7 +56,7 @@ seq: 1
 区切り線の下も本文。`;
         const { front, body } = splitFrontMatter(input);
 
-        // フロントマターは最初の2つの `---` だけ
+        // 先頭の設定欄（---で囲まれた部分）は最初の2つの `---` だけ
         expect(front).toBe(`---
 seq: 1
 ---`);
@@ -84,7 +84,7 @@ type: sticky
     });
 
     //
-    // ❌ エッジケース（フロントマターなし）
+    // ❌ 先頭に設定欄がない場合
     //
 
     it('フロントマターがない場合は全体をbodyとして返す', () => {
@@ -169,7 +169,7 @@ height: 241
         // 最も重要なアサーション: 閉じ `---` が含まれている
         expect(front.endsWith('---')).toBe(true);
 
-        // フロントマターの内容が正しい
+        // 先頭の設定欄の内容が正しい
         expect(front).toContain('seq: 28');
         expect(front).toContain('height: 241');
 

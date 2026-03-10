@@ -10,7 +10,7 @@ import { Page } from '@playwright/test';
  */
 export async function mockTauriAPI(page: Page) {
     await page.addInitScript(() => {
-        // --- IPC Handler Definition ---
+        // --- Windowsアプリ側コマンドの処理定義 ---
         const handleIpc = (cmd: string, args: any) => {
             console.log('[Mock Tauri] IPC:', cmd, args);
 
@@ -150,14 +150,14 @@ updated: 2026-01-31
             }
         };
 
-        // --- Tauri Internals Mocking ---
+        // --- Windowsアプリ側との通信をダミーに差し替え ---
 
-        // Tauri v2 / IPC モック
+        // Windowsアプリ側との通信口をダミーに差し替え
         (window as any).__TAURI_IPC__ = async (message: any) => {
             return handleIpc(message.cmd, message);
         };
 
-        // 再帰的なモック生成プロキシ (API構造を動的に模倣)
+        // どんなAPIアクセスでも安全に返せるダミーオブジェクト
         const createRecursiveMock = (path: string = ''): any => {
             return new Proxy(() => Promise.resolve(), {
                 get: (_target, prop) => {
@@ -181,14 +181,9 @@ updated: 2026-01-31
             });
         };
 
-        // Tauri Internals Mocking
-        // NOTE: createRecursiveMock() の Proxy は set されたプロパティを get で返さないため、
-        //       既知のプロパティは明示的に定義し、未知のプロパティは再帰モックで安全にフォールバックする Proxy を使う。
-        //
-        // 問題1 (旧): transformCallback が Proxy の get トラップで常に新しいモックを返し、
-        //             Promise を返してしまっていた → IPC のハンドラー ID が壊れていた。
-        // 問題2 (新): プレーンオブジェクトにすると metadata が undefined になり
-        //             `metadata.currentWindow` で TypeError → Next.js エラーオーバーレイ表示。
+        // アプリ内部のAPI接続をダミーに差し替える
+        // 既知のプロパティは個別に定義し、未知のプロパティはダミーオブジェクトで安全に返す。
+        // プレーンオブジェクトにすると metadata が undefined になりクラッシュするため、ダミーオブジェクトを使う。
         const transformCallbackFn = (callback: Function, once: boolean = false) => {
             const identifier = Math.floor(Math.random() * 1000000);
             const callbackName = `_${identifier}`;

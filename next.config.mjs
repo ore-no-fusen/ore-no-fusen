@@ -17,7 +17,7 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: packageJson.version,
   },
-  reactStrictMode: true,
+  reactStrictMode: false,
   // Tauriビルド時のみ 'export' を有効化 (VercelではAPI Routeを使うため無効化)
   output: process.env.IS_TAURI_BUILD === 'true' ? 'export' : undefined,
   images: {

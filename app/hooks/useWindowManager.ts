@@ -126,10 +126,9 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
                     } catch (e) { }
                 };
 
-                // [FIX] tauri://move は毎ピクセル発火するため、移動中は IPC を一切呼ばない。
-                // 150ms 間イベントが来なくなった（＝移動が止まった）タイミングで
-                // saveWindowState を1回だけ実行する。
-                // これにより移動中の IPC 3往復 × N回 がゼロになりドラッグがなめらかになる。
+                // 移動イベントはマウスが1ピクセル動くたびに発火するため、移動中は保存処理を呼ばない。
+                // 150ms 間イベントが来なくなった（＝移動が止まった）タイミングで1回だけ保存する。
+                // これにより移動中の通信がゼロになりドラッグがなめらかになる。
                 const uMove = await win.listen('tauri://move', () => {
                     if (moveTimer) clearTimeout(moveTimer);
                     moveTimer = setTimeout(() => {
