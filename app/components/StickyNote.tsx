@@ -1412,6 +1412,7 @@ const StickyNote = memo(function StickyNote() {
                         onImageResize={handleImageResize}
                         onDoubleClick={(e) => {
                             e.stopPropagation();
+                            setIsNewNote(false); // 再編集時は新規ノート扱いを解除
                             // クリック位置の行を特定し、その行末にカーソルを移動する
                             const target = e.target as HTMLElement;
                             const lineEl = target.closest('[data-line-index]');
