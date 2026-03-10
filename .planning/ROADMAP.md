@@ -8,6 +8,13 @@
 
 **Requirements**: STAB-01, STAB-02, DATA-01, DATA-02, UI-01
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Rust コード静的レビュー（unwrap残存・Win32同期・保存フロー）
+- [ ] 01-02-PLAN.md — フロントエンド静的レビュー（Listenerリーク・データ保護・競合状態・カーソル位置）
+- [ ] 01-03-PLAN.md — FINDINGS.md 作成（全発見事項の統合文書化・人間レビュー）
+
 **Success Criteria**:
 1. 全 useEffect 内の async listen() が正しく解除されていることを確認
 2. Rust コード全体で `unwrap()` の残存をリストアップ
