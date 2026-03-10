@@ -4,18 +4,18 @@
 
 ### 安定性（Stability）
 
-- [ ] **STAB-01**: Listener Leak が新たに発生していないこと（useEffect内のasync listen()の解除漏れ）
+- [x] **STAB-01**: Listener Leak が新たに発生していないこと（useEffect内のasync listen()の解除漏れ）
 - [x] **STAB-02**: Rustコード全体で `unwrap()` の残存がないこと
 - [ ] **STAB-03**: Win32 API 呼び出し後に Tauri の内部状態が正しく同期されていること
 
 ### データ保護（Data Safety）
 
-- [ ] **DATA-01**: 空body によるノートデータ上書きが発生しないこと
-- [ ] **DATA-02**: ノートロード時の競合状態（race condition）がないこと（hasLoadedRef で制御）
+- [x] **DATA-01**: 空body によるノートデータ上書きが発生しないこと
+- [x] **DATA-02**: ノートロード時の競合状態（race condition）がないこと（hasLoadedRef で制御）
 
 ### UI安定性（UI Stability）
 
-- [ ] **UI-01**: 編集開始時のカーソル位置が正しいこと（新規作成・再編集の両方）
+- [x] **UI-01**: 編集開始時のカーソル位置が正しいこと（新規作成・再編集の両方）
 - [ ] **UI-02**: FloatingFormatBar の blur 除外が正しく機能し、フォーマット操作中に編集モードが解除されないこと
 
 ## v2 Requirements（次のマイルストーン以降）
