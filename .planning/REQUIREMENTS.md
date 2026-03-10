@@ -5,7 +5,7 @@
 ### 安定性（Stability）
 
 - [ ] **STAB-01**: Listener Leak が新たに発生していないこと（useEffect内のasync listen()の解除漏れ）
-- [ ] **STAB-02**: Rustコード全体で `unwrap()` の残存がないこと
+- [x] **STAB-02**: Rustコード全体で `unwrap()` の残存がないこと
 - [ ] **STAB-03**: Win32 API 呼び出し後に Tauri の内部状態が正しく同期されていること
 
 ### データ保護（Data Safety）

@@ -8,7 +8,7 @@
 
 **Requirements**: STAB-01, STAB-02, DATA-01, DATA-02, UI-01
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 01-01-PLAN.md — Rust コード静的レビュー（unwrap残存・Win32同期・保存フロー）
