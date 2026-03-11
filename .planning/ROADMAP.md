@@ -33,8 +33,8 @@ Plans:
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 02-01-PLAN.md — Rust unwrap() 修正（tray.rs 2箇所・logic.rs 1箇所）
-- [ ] 02-02-PLAN.md — STAB-03 / UI-02 実装確認と REQUIREMENTS.md 更新
+- [x] 02-01-PLAN.md — Rust unwrap() 修正（tray.rs 2箇所・logic.rs 1箇所）
+- [x] 02-02-PLAN.md — STAB-03 / UI-02 実装確認と REQUIREMENTS.md 更新
 
 **Success Criteria**:
 1. 各修正が最小変更であること（無関係なコードを変更しない）
@@ -50,11 +50,11 @@ Plans:
 
 **Requirements**: 全 REQ（STAB-01〜03, DATA-01〜02, UI-01〜02）
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 
 Plans:
-- [ ] 03-01-PLAN.md — 自動テスト実行（vitest 全件 + Playwright E2E 13件）
-- [ ] 03-02-PLAN.md — Tauri ビルド確認 + 手動テスト（STAB-02/03 動作確認）
+- [x] 03-01-PLAN.md — 自動テスト実行（vitest 全件 + Playwright E2E 13件）
+- [x] 03-02-PLAN.md — Tauri ビルド確認 + 手動テスト（STAB-02/03 動作確認）
 
 **Success Criteria**:
 1. `npx playwright test` が全13件パス
