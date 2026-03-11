@@ -21,9 +21,12 @@ flowchart TD
     F --> A
     E -->|成功| G[✅ コミット完了]
 
-    G --> H[バージョン番号を更新\npackage.json\nsrc-tauri/tauri.conf.json]
-    H --> I[git commit & push\ngit tag v1.0.x & push]
-    I --> J[GitHub Actions 起動]
+    G --> H[バージョン番号を更新\npackage.json\nsrc-tauri/tauri.conf.json\nsrc-tauri/Cargo.toml]
+    H --> I["git commit\ngit tag vX.X.X\ngit push origin main\ngit push origin vX.X.X"]
+    I --> WARN["⚠️ 注意\n・--tags は使わない\n  複数タグ同時プッシュでCDが起動しないことがある\n・gh release create は使わない\n  tauri-actionが自動で作成する"]
+    WARN --> J[GitHub Actions 起動]
+
+    style WARN fill:#fff3cd,stroke:#f0ad4e,color:#333
 
     subgraph actions [GitHub Actions: release.yml]
         J1[npm ci]
