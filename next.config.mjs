@@ -1,4 +1,5 @@
 import withPWA from 'next-pwa';
+import { withSentryConfig } from '@sentry/nextjs';
 
 import fs from 'fs';
 const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf-8'));
@@ -26,11 +27,20 @@ const nextConfig = {
   staticPageGenerationTimeout: 300, // 5分に延長
 };
 
-// 設定をエクスポート（ここが最後です）
-export default withPWA({
+const pwaConfig = withPWA({
   dest: "public",
   register: process.env.IS_TAURI_BUILD !== 'true',
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development' || process.env.IS_TAURI_BUILD === 'true',
 })(nextConfig);
+
+// 設定をエクスポート（ここが最後です）
+export default withSentryConfig(pwaConfig, {
+  // ソースマップをSentryにアップロードしない（ローカルアプリなので不要）
+  silent: true,
+  telemetry: false,
+  // Tauriの静的エクスポートではサーバー側Sentryは不要
+  disableServerWebpackPlugin: true,
+  disableClientWebpackPlugin: false,
+});
 
