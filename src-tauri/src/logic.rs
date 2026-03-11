@@ -368,7 +368,7 @@ pub fn update_frontmatter_value(content: &str, key: &str, value: String) -> Stri
     
     // Find closing ---
     // skip first ---
-    let start_idx = content.find("---").unwrap() + 3;
+    let start_idx = content.find("---").unwrap_or(0) + 3;
     let end_idx = match content[start_idx..].find("---") {
         Some(i) => start_idx + i,
         None => return format!("---\n{}: {}\n---\n\n{}", key, value, content),
