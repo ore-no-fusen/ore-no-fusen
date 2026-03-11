@@ -50,7 +50,7 @@ Plans:
 
 **Requirements**: 全 REQ（STAB-01〜03, DATA-01〜02, UI-01〜02）
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 03-01-PLAN.md — 自動テスト実行（vitest 全件 + Playwright E2E 13件）
