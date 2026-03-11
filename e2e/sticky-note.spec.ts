@@ -294,6 +294,8 @@ test.describe('そこに残る', () => {
         if (!box) throw new Error('付箋が見つかりません');
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         await page.mouse.down();
+        // 移動量ベースのドラッグ開始（5px以上動かすと start_dragging が呼ばれる）
+        await page.mouse.move(box.x + box.width / 2 + 10, box.y + box.height / 2 + 10);
         await page.waitForTimeout(100);
         await page.mouse.up();
 

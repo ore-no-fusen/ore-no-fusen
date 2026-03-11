@@ -1225,10 +1225,10 @@ pub fn run() {
              // handle_menu_event(app, &event);
         }) */
         .on_window_event(|window, event| {
-            // タスクバーの「ウィンドウを閉じる」でアプリ全体を終了させる（mainウィンドウのみ）
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
+            // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
-                    window.app_handle().exit(0);
+                    api.prevent_close();
                 }
             }
         })

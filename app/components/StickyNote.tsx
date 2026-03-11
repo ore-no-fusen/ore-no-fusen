@@ -1002,23 +1002,32 @@ const StickyNote = memo(function StickyNote() {
             return;
         }
 
-        // マウスボタンを押した瞬間に移動処理を開始する。
-        // OSはマウスが実際に動くまでウィンドウを動かさないため、クリックやダブルクリックには影響しない。
-        const startX = e.clientX;
-        const startY = e.clientY;
-        let hasDragged = false;
+        // startDragging() をマウスが実際に動いた瞬間（5px以上）に呼び出す。
+        // 即時呼び出しだとダブルクリック2回目の pointerdown でも startDragging() が走り、
+        // OSがマウスイベントを横取りして dblclick が届かなくなるケースがある。
+        // 移動量ベースにすることで、クリック・ダブルクリックに干渉せず、
+        // かつドラッグ開始の遅延もない。
+        let dragStarted = false;
 
         const onPointerMove = (moveEvent: PointerEvent) => {
-            const dx = moveEvent.clientX - startX;
-            const dy = moveEvent.clientY - startY;
-            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) hasDragged = true;
+            if (dragStarted) return;
+            const dx = moveEvent.clientX - e.clientX;
+            const dy = moveEvent.clientY - e.clientY;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                dragStarted = true;
+                try {
+                    getCurrentWindow().startDragging();
+                } catch (err) {
+                    console.error('startDragging failed', err);
+                }
+            }
         };
 
         const onPointerUp = () => {
             cleanup();
             // ドラッグせずにクリックだけで終わった場合、編集モード中のみ編集終了する
             // （非編集時に呼ぶと startEditing との競合が起きるため除外）
-            if (!hasDragged && isEditing) {
+            if (!dragStarted && isEditing) {
                 handleEditBlur();
             }
         };
@@ -1033,12 +1042,6 @@ const StickyNote = memo(function StickyNote() {
         e.stopPropagation();
         window.addEventListener('pointermove', onPointerMove);
         window.addEventListener('pointerup', onPointerUp);
-
-        try {
-            getCurrentWindow().startDragging();
-        } catch (err) {
-            console.error('startDragging failed', err);
-        }
     }, [isEditing, handleEditBlur, lastEditEndedAt]);
 
     /**

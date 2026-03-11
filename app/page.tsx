@@ -150,6 +150,8 @@ function OrchestratorContent() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
+  const isSearchOpenRef = useRef(false);
+  useEffect(() => { isSearchOpenRef.current = isSearchOpen; }, [isSearchOpen]);
 
 
 
@@ -575,8 +577,14 @@ function OrchestratorContent() {
 
           if (typeof win.onCloseRequested === 'function') {
             unlisten = await win.onCloseRequested(async (event) => {
-              dbg('[Main] Close requested via X button. Intercepting -> Hide.');
+              dbg('[Main] Close requested via X button. Intercepting.');
               event.preventDefault();
+              if (isSearchOpenRef.current) {
+                // 検索画面が開いている場合は検索を閉じるだけ（内部×と同じ挙動）
+                dbg('[Main] Search is open -> closing search overlay.');
+                setIsSearchOpen(false);
+                setSearchCaller(null);
+              }
               await win.hide();
             });
           } else {
@@ -761,6 +769,7 @@ function OrchestratorContent() {
         // [FIX] Force clear loading state to ensure overlay renders even if init is slow/reloaded
         setIsCheckingSetup(false);
         setSetupRequired(false);
+        setIsSettingsOpen(false); // 設定画面が開いていても検索を優先する
         // ウィンドウを前面に
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
@@ -771,26 +780,16 @@ function OrchestratorContent() {
           // [FIX] Priority 1: Mount overlay IMMEDIATELY
           setIsSearchOpen(true);
 
+          // サイズ・位置をshow前に設定して確実に反映
+          await win.setSize(new LogicalSize(600, 200));
+          await win.center();
+          dbg('[open_search] 3b. setSize/center done');
+
           // [FIX] Priority 2: Show and Focus (Reliability first)
           await win.unminimize();
           await win.show();
           await win.setFocus();
           dbg('[open_search] 3c. show/focus done');
-
-          // [FIX] Priority 3: Size and Position (Non-blocking to prevent UI hang)
-          (async () => {
-            try {
-              // Give OS a moment to finish 'show' animation before resizing
-              await new Promise(resolve => setTimeout(resolve, 150));
-              dbg('[open_search] 3d-async. setSize(800, 600)');
-              await win.setSize(new LogicalSize(800, 600));
-              dbg('[open_search] 3e-async. center');
-              await win.center();
-              dbg('[open_search] 3f-async. All window ops done');
-            } catch (e) {
-              dbg(`[open_search] Async Window Ops Error: ${e}`);
-            }
-          })();
 
           dbg('[open_search] 4. Listener callback finished');
         }
@@ -1369,6 +1368,7 @@ function OrchestratorContent() {
 
                 const win = getCurrentWindow();
                 if (win.label === 'main') {
+                  await win.setClosable(true); // タイトルバーの×を復元
                   dbg('[Search] Hiding main window (Keeping size)');
                   await win.hide();
                   dbg('[Search] Window hidden successfully');

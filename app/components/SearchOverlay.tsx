@@ -36,6 +36,14 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
         inputRef.current?.focus();
     }, []);
 
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [onClose]);
+
     const jumpToHit = useCallback(async (hit: SearchHit) => {
         // [Fix] Ensure path is consistent (though getWindowLabel handles normalization)
         const label = getWindowLabel(hit.path);
@@ -138,8 +146,6 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
         if (e.key === 'Enter') {
             if (e.shiftKey && results.length > 0) {
                 handlePrev();
-            } else if (results.length > 0 && !isSearching) {
-                handleNext();
             } else {
                 handleSearch();
             }
@@ -183,12 +189,6 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
                     className="px-3 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 font-medium"
                 >
                     {isSearching ? '...' : '検索'}
-                </button>
-                <button
-                    onClick={onClose}
-                    className="text-gray-400 hover:text-gray-600 p-1"
-                >
-                    ✕
                 </button>
             </div>
 
