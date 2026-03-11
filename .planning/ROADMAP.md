@@ -30,7 +30,7 @@ Plans:
 
 **Requirements**: STAB-03, UI-02、および Phase 1 で発見された問題
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 02-01-PLAN.md — Rust unwrap() 修正（tray.rs 2箇所・logic.rs 1箇所）
