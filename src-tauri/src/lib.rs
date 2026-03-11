@@ -201,13 +201,59 @@ fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, con
     let data = logic::build_create_note_data(&folder_path, &context, next_seq, &today);
 
     storage::write_note(&data.path_str, &data.content)?;
-    
+
     logic::apply_add_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), data.meta.clone());
-    
+
     Ok(Note {
         body: data.body,
         frontmatter: data.frontmatter,
         meta: data.meta,
+    })
+}
+
+#[tauri::command]
+fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Note, String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+    // 元ノートを読む
+    let original = storage::read_note(&path).map_err(|e| e.to_string())?;
+    let (orig_front, orig_body) = logic::split_frontmatter(&original.body);
+    let (_, _, _, _, color, _, tags, _) = logic::extract_meta_from_content(orig_front);
+    let bg_color = color.as_deref().unwrap_or("#f7e9b0").to_string();
+
+    // stateからfolder_pathとcontextを取得（lockをすぐ解放）
+    let (folder_path, context, next_seq) = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        let fp = app_state.folder_path.clone().ok_or("No folder set")?;
+        let ctx = app_state.notes.iter()
+            .find(|n| n.path == path)
+            .map(|n| n.context.clone())
+            .unwrap_or_else(|| "copy".to_string());
+        let seq = storage::get_next_seq(&fp);
+        (fp, ctx, seq)
+    };
+
+    let new_frontmatter = logic::generate_frontmatter(next_seq, &context, &today, &today, Some(&bg_color), &tags, None);
+    let new_filename = logic::generate_filename(next_seq, &today, &context);
+    let new_path_str = std::path::Path::new(&folder_path).join(&new_filename).to_string_lossy().to_string();
+    let content = format!("{}\n\n{}", new_frontmatter, orig_body.trim());
+
+    storage::write_note(&new_path_str, &content)?;
+
+    let meta = NoteMeta {
+        path: new_path_str,
+        seq: next_seq,
+        context,
+        updated: today,
+        ..Default::default()
+    };
+
+    logic::apply_add_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), meta.clone());
+
+    Ok(Note {
+        body: orig_body.to_string(),
+        frontmatter: new_frontmatter,
+        meta,
     })
 }
 
@@ -1194,6 +1240,7 @@ pub fn run() {
             fusen_list_notes,
             fusen_read_note,
             fusen_create_note,
+            fusen_duplicate_note,
             fusen_save_note,
             fusen_move_to_trash,
             fusen_rename_note,

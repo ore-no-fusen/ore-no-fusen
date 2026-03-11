@@ -426,7 +426,7 @@ function OrchestratorContent() {
   // [Fix] Synchronous lock for creation
   const isCreatingRef = useRef(false);
 
-  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number }) => {
+  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number }, duplicatePath?: string) => {
     // Global Throttle (Module Level) prevention
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
@@ -450,8 +450,10 @@ function OrchestratorContent() {
     const context = overrideContext || 'NewNote';
 
     try {
-      console.log('[CREATE] Invoking fusen_create_note with folder:', targetFolder);
-      const newNote = await invoke<any>('fusen_create_note', { folderPath: targetFolder, context });
+      const newNote = duplicatePath
+        ? await invoke<any>('fusen_duplicate_note', { path: duplicatePath })
+        : await invoke<any>('fusen_create_note', { folderPath: targetFolder, context });
+      console.log('[CREATE] newNote:', newNote.meta.path, duplicatePath ? '(duplicate)' : '(new)');
 
       // [NEW] 新規作成音を鳴らす
       await playCreateSound();
@@ -871,6 +873,24 @@ function OrchestratorContent() {
 
     promise.then(u => { unlisten = u; });
 
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then(u => u());
+    };
+  }, [isMainWindow, handleCreateNote]);
+
+  // 複製リクエスト
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen<{ path: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number }>('fusen:request_duplicate', async (event) => {
+      const { path, sourcePhysX, sourcePhysY, sourceScale } = event.payload;
+      const sourceMeta = (sourcePhysX !== undefined && sourcePhysY !== undefined)
+        ? { physX: sourcePhysX, physY: sourcePhysY, scale: sourceScale ?? 1.0 }
+        : undefined;
+      await handleCreateNote(undefined, undefined, sourceMeta, path);
+    });
+    promise.then(u => { unlisten = u; });
     return () => {
       if (unlisten) unlisten();
       else promise.then(u => u());

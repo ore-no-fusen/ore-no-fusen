@@ -196,6 +196,32 @@ export function useStickyNoteContextMenu({
                 }
             });
 
+            // 複製
+            const duplicateItem = await MenuItem.new({
+                id: 'ctx_duplicate',
+                text: `📋 複製`,
+                action: async () => {
+                    try {
+                        if (!selectedFile) return;
+                        const { emit } = await import('@tauri-apps/api/event');
+                        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                        const win = getCurrentWindow();
+                        let sourcePhysX: number | undefined;
+                        let sourcePhysY: number | undefined;
+                        let sourceScale: number | undefined;
+                        try {
+                            const physPos = await win.outerPosition();
+                            sourcePhysX = physPos.x;
+                            sourcePhysY = physPos.y;
+                            sourceScale = await win.scaleFactor();
+                        } catch (_) { }
+                        await emit('fusen:request_duplicate', { path: selectedFile.path, sourcePhysX, sourcePhysY, sourceScale });
+                    } catch (e) {
+                        console.error('Duplicate note request error', e);
+                    }
+                }
+            });
+
             // 色変更サブメニュー
             const colorItems = [
                 await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange('#80d8ff') }),
@@ -213,6 +239,7 @@ export function useStickyNoteContextMenu({
                 openFolderItem,
                 await PredefinedMenuItem.new({ item: 'Separator' }),
                 newNoteItem,
+                duplicateItem,
                 colorSubmenu,
                 separatorCommon
             ];
