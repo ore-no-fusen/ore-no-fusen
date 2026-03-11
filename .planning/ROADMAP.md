@@ -50,6 +50,12 @@ Plans:
 
 **Requirements**: 全 REQ（STAB-01〜03, DATA-01〜02, UI-01〜02）
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — 自動テスト実行（vitest 全件 + Playwright E2E 13件）
+- [ ] 03-02-PLAN.md — Tauri ビルド確認 + 手動テスト（STAB-02/03 動作確認）
+
 **Success Criteria**:
 1. `npx playwright test` が全13件パス
 2. `npm run test` (vitest) がパス
