@@ -395,9 +395,12 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            // [Fix] Exclude Trash folder
+            // tagsフォルダとTrashフォルダを除外（重複ヒット防止）
             let path_str = e.path().to_string_lossy();
             if path_str.contains("\\Trash\\") || path_str.contains("/Trash/") || path_str.ends_with("Trash") {
+                return false;
+            }
+            if path_str.contains("\\tags\\") || path_str.contains("/tags/") || path_str.ends_with("tags") {
                 return false;
             }
             e.path().extension().map_or(false, |ext| ext == "md")

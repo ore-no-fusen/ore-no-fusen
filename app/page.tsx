@@ -233,6 +233,9 @@ function OrchestratorContent() {
         // メインウィンドウ以外（付箋ウィンドウなど）はリサイズしない
         if (!win.label.includes('main') && win.label.includes('note-')) return;
 
+        // 検索中はリサイズしない（setSize(600,450)を上書きしないよう）
+        if (isSearchOpen) return;
+
         if (!isCheckingSetup && setupRequired) {
           await win.setSize(new LogicalSize(900, 630));
           await win.center();
@@ -244,7 +247,7 @@ function OrchestratorContent() {
       } catch (e) { }
     };
     handleResize();
-  }, [isCheckingSetup, setupRequired]);
+  }, [isCheckingSetup, setupRequired, isSearchOpen]);
 
   // ウィンドウラベル生成
   const getWindowLabel = useCallback((path: string) => {
@@ -774,6 +777,7 @@ function OrchestratorContent() {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
         const win = getCurrentWindow();
+        console.log('[open_search] win.label:', win.label);
         if (win.label === 'main') {
           dbg('[open_search] 3. Main window operation start');
 
@@ -781,7 +785,7 @@ function OrchestratorContent() {
           setIsSearchOpen(true);
 
           // サイズ・位置をshow前に設定して確実に反映
-          await win.setSize(new LogicalSize(600, 200));
+          await win.setSize(new LogicalSize(600, 450));
           await win.center();
           dbg('[open_search] 3b. setSize/center done');
 
