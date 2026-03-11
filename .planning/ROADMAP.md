@@ -30,6 +30,12 @@ Plans:
 
 **Requirements**: STAB-03, UI-02、および Phase 1 で発見された問題
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Rust unwrap() 修正（tray.rs 2箇所・logic.rs 1箇所）
+- [ ] 02-02-PLAN.md — STAB-03 / UI-02 実装確認と REQUIREMENTS.md 更新
+
 **Success Criteria**:
 1. 各修正が最小変更であること（無関係なコードを変更しない）
 2. Win32 API 呼び出し後の Tauri 状態同期が正しく行われている
