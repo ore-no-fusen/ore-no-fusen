@@ -52,8 +52,8 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     
     // Get tags from state
     let state = app.state::<Mutex<AppState>>();
-    let mut app_state = state.lock().unwrap();
-    
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+
     // 常にノート一覧を再読み込み（タグ更新を反映するため）
     if let Some(base_path) = &app_state.base_path.clone() {
         app_state.notes = storage::list_notes(base_path);
@@ -128,7 +128,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                         
                         // Toggle tag in active_tags
                         let state = app.state::<Mutex<AppState>>();
-                        let mut app_state = state.lock().unwrap();
+                        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
                         if app_state.active_tags.contains(&tag) {
                             app_state.active_tags.retain(|t| t != &tag);
                         } else {
