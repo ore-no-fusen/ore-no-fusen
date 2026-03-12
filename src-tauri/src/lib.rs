@@ -1229,7 +1229,18 @@ pub fn run() {
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .plugin(tauri_plugin_os::init()) // Added tauri_plugin_os::init()
-        .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}))
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // 二重起動時: 最後にフォーカスした付箋を前面に出す
+            let state = app.state::<Mutex<AppState>>();
+            let label = state.lock().unwrap_or_else(|p| p.into_inner())
+                .last_alt_tab_window.clone();
+            if let Some(label) = label {
+                if let Some(win) = app.get_webview_window(&label) {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
