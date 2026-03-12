@@ -347,10 +347,10 @@ export function useStickyNoteContextMenu({
                         await playSaveSound();
                         await invoke('fusen_archive_note', { path: selectedFile.path });
 
-                        // Backend closes, but ensure frontend close with permission
+                        // destroy() はCloseRequestedを発火しないため、アプリ終了を誘発しない
                         const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
                         await win.hide();
-                        await win.close();
+                        await win.destroy();
                     } catch (e) {
                         isDeletingRef.current = false;
                         console.error('Failed to archive note:', e);
@@ -376,12 +376,12 @@ export function useStickyNoteContextMenu({
                         await invoke('fusen_move_to_trash', { path: selectedFile.path });
                         console.log('[Delete] Success from backend');
 
-                        // Backend closes window, but we explicitly close it here to ensure UI update
+                        // destroy() はCloseRequestedを発火しないため、アプリ終了を誘発しない
                         const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
                         console.log('[Delete] Hiding and Closing window...');
                         await win.hide();
-                        await win.close();
-                        console.log('[Delete] Close requested');
+                        await win.destroy();
+                        console.log('[Delete] Destroyed');
                     } catch (e) {
                         isDeletingRef.current = false;
                         console.error('Failed to delete note:', e);

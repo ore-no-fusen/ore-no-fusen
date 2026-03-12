@@ -1229,7 +1229,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .plugin(tauri_plugin_os::init()) // Added tauri_plugin_os::init()
-
+        .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}))
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
@@ -1275,10 +1275,15 @@ pub fn run() {
              // handle_menu_event(app, &event);
         }) */
         .on_window_event(|window, event| {
-            // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+                let label = window.label();
+                if label == "main" {
+                    // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
                     api.prevent_close();
+                } else if !label.starts_with("pool-window-") {
+                    // 付箋ウィンドウをタスクバーから「ウィンドウを閉じる」→ アプリ終了
+                    // ※JSからの削除・アーカイブ時は destroy() を使うためここには来ない
+                    window.app_handle().exit(0);
                 }
             }
         })

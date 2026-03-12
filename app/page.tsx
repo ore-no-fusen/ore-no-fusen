@@ -72,7 +72,7 @@ function TagSelector() {
       await invoke('fusen_set_active_tags', { tags: selectedTags });
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const win = getCurrentWindow();
-      await win.close();
+      await win.destroy();
     } catch (e) {
       console.error('Failed to apply tag filter:', e);
     }
@@ -82,7 +82,7 @@ function TagSelector() {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const win = getCurrentWindow();
-      await win.close();
+      await win.destroy();
     } catch (e) {
       console.error("Window close failed", e);
     }
