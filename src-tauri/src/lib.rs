@@ -1029,6 +1029,45 @@ async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
     Ok(())
 }
 
+/// HWNDごとに元のWndProcを保存するグローバルマップ（最小化ブロック用）
+#[cfg(target_os = "windows")]
+fn original_wndprocs() -> &'static std::sync::Mutex<std::collections::HashMap<isize, isize>> {
+    static PROCS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<isize, isize>>> = std::sync::OnceLock::new();
+    PROCS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// タスクバーアイコン左クリックによる最小化をブロックするウィンドウプロシージャ
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn minimize_block_proc(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::UI::WindowsAndMessaging::{WM_SYSCOMMAND, SC_MINIMIZE, CallWindowProcW};
+    use windows::Win32::Foundation::LRESULT;
+    if msg == WM_SYSCOMMAND && (wparam.0 & 0xFFF0) == SC_MINIMIZE as usize {
+        return LRESULT(0);
+    }
+    let orig = original_wndprocs()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(&hwnd.0)
+        .copied()
+        .unwrap_or(0);
+    if orig != 0 {
+        type WndProcFn = unsafe extern "system" fn(
+            windows::Win32::Foundation::HWND, u32,
+            windows::Win32::Foundation::WPARAM,
+            windows::Win32::Foundation::LPARAM,
+        ) -> windows::Win32::Foundation::LRESULT;
+        let orig_fn: WndProcFn = std::mem::transmute(orig as usize);
+        CallWindowProcW(Some(orig_fn), hwnd, msg, wparam, lparam)
+    } else {
+        LRESULT(0)
+    }
+}
+
 // [NEW] 直前に使用した付箋のみAlt+Tabに表示する
 #[tauri::command]
 async fn fusen_set_as_alt_tab_window(
@@ -1046,6 +1085,7 @@ async fn fusen_set_as_alt_tab_window(
         };
         use windows::Win32::UI::Shell::{ITaskbarList, TaskbarList};
         use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+        use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW, GWLP_WNDPROC};
         use windows::Win32::Foundation::HWND;
         use raw_window_handle::RawWindowHandle;
 
@@ -1077,6 +1117,13 @@ async fn fusen_set_as_alt_tab_window(
                                     let _ = tbl.HrInit();
                                     let _ = tbl.DeleteTab(hwnd);
                                 }
+                                // 最小化ブロックのWndProcを解除して元に戻す
+                                if let Some(orig) = original_wndprocs()
+                                    .lock().unwrap_or_else(|p| p.into_inner())
+                                    .remove(&hwnd.0)
+                                {
+                                    SetWindowLongPtrW(hwnd, GWLP_WNDPROC, orig);
+                                }
                                 diag.push_str(&format!("; HIDE {} ({:#010x}->{:#010x})", prev, style, new_style));
                             }
                         }
@@ -1103,6 +1150,12 @@ async fn fusen_set_as_alt_tab_window(
                             let _ = tbl.HrInit();
                             let _ = tbl.AddTab(hwnd);
                         }
+                        // 最小化ブロックのWndProcを登録（元のProcをHashMapに保存）
+                        let orig = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
+                        original_wndprocs()
+                            .lock().unwrap_or_else(|p| p.into_inner())
+                            .insert(hwnd.0, orig);
+                        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, minimize_block_proc as isize);
                         let after = GetWindowLongW(hwnd, GWL_EXSTYLE);
                         diag.push_str(&format!("; SHOW {:#010x}->{:#010x} verify={:#010x}", style, new_style, after));
                     }
