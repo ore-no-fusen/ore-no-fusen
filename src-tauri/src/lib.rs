@@ -1234,10 +1234,32 @@ pub fn run() {
             let state = app.state::<Mutex<AppState>>();
             let label = state.lock().unwrap_or_else(|p| p.into_inner())
                 .last_alt_tab_window.clone();
-            if let Some(label) = label {
-                if let Some(win) = app.get_webview_window(&label) {
-                    let _ = win.show();
-                    let _ = win.set_focus();
+            let target_win = if let Some(label) = label {
+                app.get_webview_window(&label)
+            } else {
+                app.webview_windows().into_values()
+                    .find(|w| w.label() != "main" && !w.label().starts_with("pool-window-"))
+            };
+            if let Some(win) = target_win {
+                let _ = win.show();
+                // AttachThreadInput + SetForegroundWindow でスレッド間のフォアグラウンド制限を回避
+                #[cfg(target_os = "windows")]
+                {
+                    use windows::Win32::UI::WindowsAndMessaging::{
+                        SetForegroundWindow, BringWindowToTop, ShowWindow, SW_RESTORE,
+                    };
+                    use windows::Win32::Foundation::HWND;
+                    use raw_window_handle::RawWindowHandle;
+                    if let Ok(handle) = win.window_handle() {
+                        if let RawWindowHandle::Win32(h) = handle.as_raw() {
+                            unsafe {
+                                let hwnd = HWND(h.hwnd.get());
+                                let _ = ShowWindow(hwnd, SW_RESTORE);
+                                let _ = SetForegroundWindow(hwnd);
+                                let _ = BringWindowToTop(hwnd);
+                            }
+                        }
+                    }
                 }
             }
         }))
