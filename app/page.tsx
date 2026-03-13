@@ -655,44 +655,6 @@ function OrchestratorContent() {
     };
   }, [syncState, isMainWindow]);
 
-  // タグフィルター
-  useEffect(() => {
-    if (!isMainWindow) return; // Guard
-
-    let unlisten: (() => void) | undefined;
-    const promise = listen<string | null>('fusen:switch_world', async (event) => {
-      const selectedTag = event.payload;
-      try {
-        const state = await syncState();
-        if (!state) return;
-        const allNotes = state.notes;
-        const filteredNotes = selectedTag ? allNotes.filter(n => n.tags && n.tags.includes(selectedTag)) : allNotes;
-        const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
-        const allWindows = await getAllWebviewWindows();
-        const filteredPaths = new Set(filteredNotes.map(n => getWindowLabel(n.path)));
-
-        for (const win of allWindows) {
-          if (win.label === 'main') continue;
-          const shouldShow = filteredPaths.has(win.label);
-          try { if (shouldShow) { await win.show(); await win.unminimize(); } else { await win.hide(); } } catch (e) { }
-        }
-        const openedLabels = new Set(allWindows.map(w => w.label));
-        for (const note of filteredNotes) {
-          const label = getWindowLabel(note.path);
-          if (!openedLabels.has(label)) {
-            await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
-            await new Promise(resolve => setTimeout(resolve, 150));
-          }
-        }
-      } catch (e) { console.error('[switch_world] Error:', e); }
-    });
-
-    promise.then(u => { unlisten = u; });
-    return () => {
-      if (unlisten) unlisten();
-      else promise.then(u => u());
-    };
-  }, [isMainWindow, syncState, getWindowLabel, openNoteWindow]);
 
   // タグセレクター
   useEffect(() => {
