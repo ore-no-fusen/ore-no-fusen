@@ -11,7 +11,6 @@ use std::path::Path;
 use std::sync::Mutex;
 use tauri::{State, Manager, AppHandle, Emitter};
 use raw_window_handle::HasWindowHandle;
-// use tauri::menu::{Menu, MenuItem, CheckMenuItem, Submenu, PredefinedMenuItem, MenuEvent};
 
 mod state;
 mod logic;
@@ -19,7 +18,6 @@ mod storage;
 mod tray;
 mod logger;  // ログシステム
 mod settings; 
-mod import; // [NEW] インポート機能
 mod capture; // [NEW] キャプチャ機能
 mod sound; // [NEW] サウンド機能
 mod clipboard; // [NEW] クリップボード機能
@@ -48,49 +46,6 @@ fn fusen_select_folder(state: State<'_, Mutex<AppState>>) -> Option<String> {
         None
     }
 }
-
-// [NEW] 副作用のないフォルダ選択（インポート元選択用）
-#[tauri::command]
-fn fusen_pick_folder() -> Option<String> {
-    rfd::FileDialog::new().pick_folder().map(|p| p.to_string_lossy().to_string())
-}
-
-
-
-#[tauri::command]
-fn fusen_get_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<NoteMeta, String> {
-    // 1. Read note content
-    let note = storage::read_note(&path)?;
-    
-    // 2. Parse Filename for basic meta
-    let path_obj = Path::new(&path);
-    let filename = path_obj.file_name()
-        .ok_or("Invalid path")?
-        .to_string_lossy()
-        .to_string();
-    let (seq, updated, context) = logic::parse_filename(&filename);
-
-    // 3. Parse Content for extended meta
-    let (x, y, w, h, bg, aot, tags, folded) = logic::extract_meta_from_content(&note.body);
-
-    let meta = NoteMeta {
-        path: path.clone(),
-        seq,
-        context,
-        updated,
-        x, y, width: w, height: h,
-        background_color: bg,
-        always_on_top: aot,
-        tags,
-        folded,
-    };
-
-    // 4. Update AppState
-    logic::apply_update_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path, meta.clone());
-
-    Ok(meta)
-}
-
 
 
 
@@ -132,46 +87,6 @@ fn fusen_set_always_on_top(window: tauri::Window, enabled: bool) -> Result<(), S
     Ok(())
 }
 
-#[tauri::command]
-async fn fusen_force_focus(window: tauri::Window) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            SetForegroundWindow, BringWindowToTop, 
-            ShowWindow, SW_RESTORE, SW_SHOW
-        };
-        use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
-        use windows::Win32::Foundation::HWND;
-        use raw_window_handle::RawWindowHandle;
-
-        unsafe {
-            if let Ok(handle) = window.window_handle() {
-                 let raw = handle.as_raw();
-                 if let RawWindowHandle::Win32(win32_handle) = raw {
-                     let hwnd = HWND(win32_handle.hwnd.get());
-                     
-                     // 1. Ensure window is visible/restored
-                     ShowWindow(hwnd, SW_SHOW);
-                     if window.is_minimized().unwrap_or(false) {
-                        ShowWindow(hwnd, SW_RESTORE);
-                     }
-
-                     // 2. Simply force foreground and top (Skip AttachThreadInput for now)
-                     let _ = BringWindowToTop(hwnd);
-                     let _ = SetForegroundWindow(hwnd);
-                     let _ = SetFocus(hwnd);
-                 }
-            }
-        }
-    }
-    
-    #[cfg(not(target_os = "windows"))]
-    {
-        window.set_focus().map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
 
 #[tauri::command]
 fn fusen_list_notes(state: State<'_, Mutex<AppState>>, folder_path: String) -> Vec<NoteMeta> {
@@ -508,28 +423,6 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
     hits
 }
 
-#[tauri::command]
-fn fusen_rename_note(state: State<'_, Mutex<AppState>>, path: String, new_context: String) -> Result<String, String> {
-    let current_path = Path::new(&path);
-    let filename = current_path.file_name().ok_or("no name")?.to_string_lossy().to_string();
-        
-    let (seq, updated, _) = logic::parse_filename(&filename);
-    if seq == 0 && filename.starts_with("unknown") {
-         return Err("Invalid format".to_string()); 
-    }
-    
-    let new_filename = logic::generate_filename(seq, &updated, &new_context);
-    let new_path = current_path.parent().ok_or("no parent")?.join(&new_filename);
-    let new_path_str = new_path.to_string_lossy().to_string();
-    
-    storage::rename_note(&path, &new_path_str)?;
-
-    if let Ok(saved_note) = storage::read_note(&new_path_str) {
-        logic::apply_update_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path, saved_note.meta);
-    }
-
-    Ok(new_path_str)
-}
 
 #[tauri::command]
 fn fusen_get_state(state: State<'_, Mutex<AppState>>) -> AppState {
@@ -913,54 +806,6 @@ fn setup_first_launch(
     Ok(base_path)
 }
 
-#[tauri::command]
-async fn fusen_import_from_folder(
-    app: AppHandle,
-    state: State<'_, Mutex<AppState>>,
-    source_path: String,
-    target_path: Option<String>
-) -> Result<import::ImportStats, String> {
-    // target_path を解決してすぐロックを解放（spawn_blocking に渡すため）
-    let target_path = {
-        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-        target_path
-            .or(app_state.base_path.clone())
-            .or(app_state.folder_path.clone())
-            .ok_or("Base path not set")?
-    };
-
-    // ファイルコピーを別スレッドで実行（UIをブロックしない）
-    let source = source_path.clone();
-    let target = target_path.clone();
-    let stats = tokio::task::spawn_blocking(move || {
-        import::import_markdown_files(&source, &target)
-    }).await
-        .map_err(|e| format!("Thread error: {e}"))??;
-
-    // インポート成功後、ステートを更新して通知する
-    {
-        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-        app_state.notes = storage::list_notes(&target_path);
-    }
-
-    // 全ウィンドウに更新通知
-    let _ = app.emit("fusen:notes_updated", ());
-
-    // タグフィルタも再適用する（新規ノートを表示するため）
-    let state_clone = app.state::<Mutex<AppState>>();
-    let active_tags = {
-        let app_state = state_clone.lock().unwrap_or_else(|e| e.into_inner());
-        app_state.active_tags.clone()
-    };
-
-    // [Fix] active_tagsが空でも "全表示" として同期が必要なため、条件分岐を削除
-    let _ = crate::update_tag_filter(&app, state_clone, &active_tags);
-
-    // トレイメニューの件数なども更新が必要かもしれないのでリフレッシュ
-    let _ = crate::tray::refresh_tray_menu(&app);
-
-    Ok(stats)
-}
 
 #[tauri::command]
 fn show_context_menu(
@@ -981,31 +826,6 @@ fn show_context_menu(
 
 
 
-#[tauri::command]
-fn fusen_refresh_notes_with_tags(state: State<'_, Mutex<AppState>>) -> Result<Vec<NoteMeta>, String> {
-    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-
-    let base_path = app_state
-        .base_path
-        .clone()
-        .or(app_state.folder_path.clone())
-        .ok_or("base_path is not set")?;
-
-    // まず一覧（パス）を取る
-    let mut notes = storage::list_notes(&base_path);
-
-    // 各ノートを読んで tags を確実に詰める
-    for n in notes.iter_mut() {
-        if let Ok(note) = storage::read_note(&n.path) {
-            let (_x, _y, _w, _h, _bg, _aot, tags, _) = logic::extract_meta_from_content(&note.body);
-            n.tags = tags;
-        }
-    }
-
-    // stateにも反映
-    app_state.notes = notes.clone();
-    Ok(notes)
-}
 
 // [NEW] ウィンドウをAlt+Tab/タスクビューから除外する（WS_EX_TOOLWINDOW適用）
 #[tauri::command]
@@ -1338,8 +1158,6 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
-            fusen_get_note,
-            fusen_force_focus,
             fusen_set_always_on_top,
             fusen_select_folder,
             fusen_list_notes,
@@ -1348,7 +1166,6 @@ pub fn run() {
             fusen_duplicate_note,
             fusen_save_note,
             fusen_move_to_trash,
-            fusen_rename_note,
             fusen_get_state,
             fusen_add_tag,
             fusen_remove_tag,
@@ -1356,7 +1173,6 @@ pub fn run() {
             fusen_get_all_tags,
             fusen_get_active_tags,
             fusen_set_active_tags,
-            fusen_refresh_notes_with_tags,
             fusen_archive_note,
             fusen_open_containing_folder,
             fusen_open_file,
@@ -1365,8 +1181,6 @@ pub fn run() {
             setup_first_launch,
             settings::get_settings,  // ← 「settings箱の中の」と指定！
             settings::save_settings,  // ← 「settings箱の中の」と指定！
-            fusen_import_from_folder, // [NEW] インポートコマンド
-            fusen_pick_folder,        // [NEW] 純粋なフォルダ選択
             capture::fusen_capture_screen, // [NEW] 画面キャプチャ
             sound::fusen_play_sound, // [NEW] サウンド再生
             fusen_search_notes, // [NEW] 全文検索
