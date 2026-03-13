@@ -898,38 +898,47 @@ function OrchestratorContent() {
   }, [isMainWindow, handleCreateNote]);
 
   // タグフィルター（複数）& 全隠し/全表示
-  // [Fix] メインウィンドウが全ウィンドウをループして show/hide すると
-  //       WebView2 COM のネストしたメッセージポンプでスタックオーバーフローが起きる。
-  //       各付箋ウィンドウが自分自身の表示/非表示を判断して処理する。
+  // [Fix] Rust側ループ・全ウィンドウ同時処理はいずれも WebView2 COM の
+  //       ネストしたメッセージポンプでスタックオーバーフローを起こす。
+  //       メインウィンドウが 1ウィンドウずつ 50ms 間隔で順番に処理する。
+  //       Rust 側 can_do_visibility_op() で 3秒クールダウンも設けている。
   useEffect(() => {
-    if (isMainWindow) return; // 付箋ウィンドウのみ（メインウィンドウは除外）
-    if (!path) return;
+    if (!isMainWindow) return;
 
-    const myLabel = getWindowLabel(path);
+    const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+
     let unlistenSync: (() => void) | null = null;
     let unlistenVisible: (() => void) | null = null;
 
     (async () => {
-      const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      const current = getCurrentWebviewWindow();
+      const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
 
-      // タグフィルター: 自分が表示対象かどうか自分で判断して show/hide する
+      // タグフィルター: 1ウィンドウずつ順番に show/hide
       unlistenSync = await listen<string[]>('fusen:sync_visible_notes', async (event) => {
         const desiredLabels = new Set(event.payload.map((p: string) => getWindowLabel(p)));
-        if (desiredLabels.has(myLabel)) {
-          await current.show();
-        } else {
-          await current.hide();
-        }
+        try {
+          const wins = (await getAllWebviewWindows()).filter(w => w.label.startsWith('note-'));
+          for (const win of wins) {
+            try {
+              if (desiredLabels.has(win.label)) { await win.show(); } else { await win.hide(); }
+            } catch (e) { /* per-window エラーは無視 */ }
+            await delay(50); // Win32 メッセージキューをドレインしてから次へ
+          }
+        } catch (e) { console.error('[TagFilter] sync failed:', e); }
       });
 
-      // 全隠し/全表示: 自分自身を show/hide する
+      // 全隠し/全表示: 1ウィンドウずつ順番に show/hide
       unlistenVisible = await listen<boolean>('fusen:set_all_notes_visible', async (event) => {
-        if (event.payload) {
-          await current.show();
-        } else {
-          await current.hide();
-        }
+        const visible = event.payload;
+        try {
+          const wins = (await getAllWebviewWindows()).filter(w => w.label.startsWith('note-'));
+          for (const win of wins) {
+            try {
+              if (visible) { await win.show(); } else { await win.hide(); }
+            } catch (e) { /* per-window エラーは無視 */ }
+            await delay(50); // Win32 メッセージキューをドレインしてから次へ
+          }
+        } catch (e) { console.error('[Visibility] set_all failed:', e); }
       });
     })();
 
@@ -937,7 +946,7 @@ function OrchestratorContent() {
       try { unlistenSync?.(); } catch (e) { /* ignore */ }
       try { unlistenVisible?.(); } catch (e) { /* ignore */ }
     };
-  }, [isMainWindow, path, getWindowLabel]);
+  }, [isMainWindow, getWindowLabel]);
 
   // [New] 音声再生イベントハンドラ (メインウィンドウのみ)
   useEffect(() => {

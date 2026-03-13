@@ -99,12 +99,11 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 let id = event.id().as_ref();
                 match id {
                     "hide_all" => {
-                        // [Fix] Rust側ループで ShowWindow を呼ぶと WebView2 COM の
-                        // ネストしたメッセージポンプでスタックオーバーフローが起きる。
-                        // 各付箋ウィンドウの JS が自分自身を hide するよう broadcast する。
+                        if !crate::can_do_visibility_op() { return; }
                         let _ = app.emit("fusen:set_all_notes_visible", false);
                     },
                     "show_all" => {
+                        if !crate::can_do_visibility_op() { return; }
                         let _ = app.emit("fusen:set_all_notes_visible", true);
                     },
                     id if id.starts_with("world_") => {

@@ -744,6 +744,27 @@ fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[Str
     Ok(filtered_paths)
 }
 
+/// [Fix] 全隠し/全表示のクールダウン制御。
+/// 高速連続操作で WebView2 COM のネストしたメッセージポンプが積み重なり
+/// スタックオーバーフローが起きることを防ぐ。
+/// 前回の操作から 3000ms 以内の呼び出しは無視する。
+static LAST_VISIBILITY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn can_do_visibility_op() -> bool {
+    use std::sync::atomic::Ordering;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let last = LAST_VISIBILITY_MS.load(Ordering::SeqCst);
+    if now.saturating_sub(last) < 3000 {
+        eprintln!("[Visibility] クールダウン中のためスキップ ({}ms 経過)", now.saturating_sub(last));
+        return false;
+    }
+    LAST_VISIBILITY_MS.store(now, Ordering::SeqCst);
+    true
+}
+
 /// [Fix] ShowWindowAsync: Win32の非同期版ShowWindow。PostMessageベースで動作するため
 /// メインスレッドにSendMessageしないのでスタックオーバーフローが起きない。
 /// Tauriの win.show()/win.hide() は内部でSendMessageを使うため複数ウィンドウの
@@ -1486,13 +1507,9 @@ pub fn run() {
                     let plugin = builder
                         .with_handler(|app, _shortcut, event| {
                             if event.state == ShortcutState::Pressed {
+                                if !can_do_visibility_op() { return; }
                                 let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
-                                // 状態を反転
                                 NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
-
-                                // [Fix] Rust側ループで ShowWindow を呼ぶと WebView2 COM の
-                                // ネストしたメッセージポンプでスタックオーバーフローが起きる。
-                                // 各付箋ウィンドウの JS が自分自身を show/hide するよう broadcast する。
                                 let visible = is_hidden; // was hidden → now show (true)
                                 let _ = app.emit("fusen:set_all_notes_visible", visible);
                                 
