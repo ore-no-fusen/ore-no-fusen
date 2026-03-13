@@ -63,3 +63,9 @@ progress:
 ## Blockers
 
 なし
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 001 | デッドコードを削除する | 2026-03-14 | 8fde980 | [001-dead-code-removal](.planning/quick/001-dead-code-removal/) |
