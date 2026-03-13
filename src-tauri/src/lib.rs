@@ -744,6 +744,25 @@ fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[Str
     Ok(filtered_paths)
 }
 
+/// [Fix] ShowWindowAsync: Win32の非同期版ShowWindow。PostMessageベースで動作するため
+/// メインスレッドにSendMessageしないのでスタックオーバーフローが起きない。
+/// Tauriの win.show()/win.hide() は内部でSendMessageを使うため複数ウィンドウの
+/// ループで呼び出すとスタックが溢れる。この関数を代わりに使う。
+#[cfg(target_os = "windows")]
+pub fn win32_show_window_async<R: tauri::Runtime>(win: &tauri::WebviewWindow<R>, visible: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindowAsync, SW_SHOW, SW_HIDE};
+    use windows::Win32::Foundation::HWND;
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    unsafe {
+        if let Ok(handle) = win.window_handle() {
+            if let RawWindowHandle::Win32(h) = handle.as_raw() {
+                let hwnd = HWND(h.hwnd.get());
+                let _ = ShowWindowAsync(hwnd, if visible { SW_SHOW } else { SW_HIDE });
+            }
+        }
+    }
+}
+
 /// [Shared] タグフィルタを適用し、Rust側から直接ウィンドウをhide/showする
 /// メインウィンドウがminimized状態でもJSに依存せず確実に動作する
 pub fn update_tag_filter<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_, Mutex<AppState>>, tags: &[String]) -> Result<(), String> {
@@ -756,30 +775,9 @@ pub fn update_tag_filter<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_,
         eprintln!("[TagFilter]   path={} => label={}", p, get_window_label(p));
     }
 
-    // 2. [FIX] Rust側で直接ウィンドウをhide/show（メインウィンドウ最小化時もJS不要）
-    use std::collections::HashSet;
-    let desired_labels: HashSet<String> = visible_paths.iter()
-        .map(|p| get_window_label(p))
-        .collect();
-
-    let all_windows = app.webview_windows();
-    eprintln!("[TagFilter] all open windows ({}):", all_windows.len());
-    for (label, window) in &all_windows {
-        let is_note = label.starts_with("note-");
-        let desired = desired_labels.contains(label.as_str());
-        eprintln!("[TagFilter]   label={} is_note={} desired={}", label, is_note, desired);
-        if !is_note { continue; }
-        if desired {
-            let r1 = window.show();
-            let r2 = window.unminimize();
-            eprintln!("[TagFilter]   => show={:?} unminimize={:?}", r1.is_ok(), r2.is_ok());
-        } else {
-            let r = window.hide();
-            eprintln!("[TagFilter]   => hide={:?}", r.is_ok());
-        }
-    }
-
-    // 3. JSへも通知（状態同期の保険）
+    // window.show()/hide() を Rust から直接呼ぶと Win32 の SendMessage で
+    // メインスレッドに同期的に届きスタック溢れの原因になる。
+    // JS側（WebView2 PostMessage = 非同期）に委ねることでスタックを消費しない。
     app.emit("fusen:sync_visible_notes", &visible_paths).map_err(|e| e.to_string())?;
     eprintln!("[TagFilter] emit done.");
 
@@ -1418,7 +1416,7 @@ pub fn run() {
             }
             
             if cfg!(debug_assertions) {
-                app.handle().plugin(tauri_plugin_log::Builder::default().build())?;
+                app.handle().plugin(tauri_plugin_log::Builder::default().timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal).build())?;
             }
             
             app.handle().plugin(tauri_plugin_shell::init())?;
@@ -1489,20 +1487,25 @@ pub fn run() {
                         .with_handler(|app, _shortcut, event| {
                             if event.state == ShortcutState::Pressed {
                                 let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
-                                
-                                for win in app.webview_windows().values() {
-                                    if win.label() != "main" {
-                                        if is_hidden {
-                                            let _ = win.show();
-                                            let _ = win.set_focus();
-                                        } else {
-                                            let _ = win.hide();
-                                        }
-                                    }
-                                }
-                                
                                 // 状態を反転
                                 NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
+
+                                let app_clone = app.clone();
+                                std::thread::spawn(move || {
+                                    for win in app_clone.webview_windows().values() {
+                                        if win.label() != "main" {
+                                            #[cfg(target_os = "windows")]
+                                            win32_show_window_async(win, is_hidden);
+                                            #[cfg(not(target_os = "windows"))]
+                                            if is_hidden {
+                                                let _ = win.show();
+                                                let _ = win.set_focus();
+                                            } else {
+                                                let _ = win.hide();
+                                            }
+                                        }
+                                    }
+                                });
                                 
                                 logger::log_info(&format!(
                                     "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",

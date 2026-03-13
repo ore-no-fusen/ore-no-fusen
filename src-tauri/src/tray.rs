@@ -33,7 +33,6 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     // Labels
     let label_hide = if is_en { "Hide All\tCtrl+Shift+H" } else { "全部隠す (Ctrl+Shift+H)" };
     let label_show = if is_en { "Show All" } else { "全部戻す (Show All)" };
-    let label_reposition = if is_en { "Reposition Notes" } else { "付箋を再配置 (Reposition Notes)" };
     let label_settings = if is_en { "Settings" } else { "設定 (Settings)" };
     let label_new_note = if is_en { "New Note" } else { "新規メモ (New Note)" };
     let label_search = if is_en { "Search" } else { "検索 (Search)" }; // [NEW] 全文検索
@@ -42,7 +41,6 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
     let hide_i = MenuItem::with_id(app, "hide_all", label_hide, true, None::<&str>)?;
     let show_i = MenuItem::with_id(app, "show_all", label_show, true, None::<&str>)?;
-    let reposition_i = MenuItem::with_id(app, "reposition_notes", label_reposition, true, None::<&str>)?;
     let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?; 
     let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
     let search_i = MenuItem::with_id(app, "open_search", label_search, true, None::<&str>)?; // [NEW] 全文検索
@@ -76,8 +74,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         &search_i, // [NEW] 全文検索
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &hide_i, 
-        &show_i, 
-        &reposition_i, // [NEW] 再配置ボタン
+        &show_i,
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &world_menu, 
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
@@ -102,52 +99,56 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 let id = event.id().as_ref();
                 match id {
                     "hide_all" => {
-                        for win in app.webview_windows().values() {
-                            if win.label() != "main" {
-                                let _ = win.hide();
+                        let app_clone = app.clone();
+                        std::thread::spawn(move || {
+                            for win in app_clone.webview_windows().values() {
+                                if win.label() != "main" {
+                                    #[cfg(target_os = "windows")]
+                                    crate::win32_show_window_async(win, false);
+                                    #[cfg(not(target_os = "windows"))]
+                                    let _ = win.hide();
+                                }
                             }
-                        }
+                        });
                     },
                     "show_all" => {
-                        for win in app.webview_windows().values() {
-                            if win.label() != "main" {
-                                let _ = win.show();
-                                let _ = win.set_focus();
+                        let app_clone = app.clone();
+                        std::thread::spawn(move || {
+                            for win in app_clone.webview_windows().values() {
+                                if win.label() != "main" {
+                                    #[cfg(target_os = "windows")]
+                                    crate::win32_show_window_async(win, true);
+                                    #[cfg(not(target_os = "windows"))]
+                                    { let _ = win.show(); let _ = win.set_focus(); }
+                                }
                             }
-                        }
+                        });
                     },
-                    "reposition_notes" => {
-                        eprintln!("[Tray] Repositioning notes...");
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.emit("fusen:reposition_notes", ());
-                        }
-                    },
-
                     id if id.starts_with("world_") => {
                         let tag = id.replace("world_", "");
-                        
-                        // Toggle tag in active_tags
-                        let state = app.state::<Mutex<AppState>>();
-                        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-                        if app_state.active_tags.contains(&tag) {
-                            app_state.active_tags.retain(|t| t != &tag);
-                        } else {
-                            app_state.active_tags.push(tag.clone());
-                        }
-                        let active_tags = app_state.active_tags.clone();
-                        drop(app_state);
-                        
-                        // DEBUG LOG
-                        eprintln!("[Tray] Toggled tag '{}'. Current Active Tags: {:?}", tag, active_tags);
+                        let app_clone = app.clone();
+                        // refresh_tray_menu と update_tag_filter 両方をメインスレッドから外す
+                        // （Win32同期メッセージによるスタック消費を防ぐ）
+                        std::thread::spawn(move || {
+                            let state = app_clone.state::<Mutex<AppState>>();
+                            let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+                            if app_state.active_tags.contains(&tag) {
+                                app_state.active_tags.retain(|t| t != &tag);
+                            } else {
+                                app_state.active_tags.push(tag.clone());
+                            }
+                            let active_tags = app_state.active_tags.clone();
+                            drop(app_state);
 
-                        // Refresh menu to update checkboxes
-                        let _ = refresh_tray_menu(app);
-                        
-                        // Shared Logicによるタグフィルタ適用
-                        let state = app.state::<Mutex<AppState>>();
-                        if let Err(e) = crate::update_tag_filter(app, state, &active_tags) {
-                            eprintln!("[Tray] Failed to apply tag filter: {}", e);
-                        }
+                            eprintln!("[Tray] Toggled tag '{}'. Current Active Tags: {:?}", tag, active_tags);
+
+                            let _ = refresh_tray_menu(&app_clone);
+
+                            let state = app_clone.state::<Mutex<AppState>>();
+                            if let Err(e) = crate::update_tag_filter(&app_clone, state, &active_tags) {
+                                eprintln!("[Tray] Failed to apply tag filter: {}", e);
+                            }
+                        });
                     },
                     "quit" => {
                         app.exit(0);
