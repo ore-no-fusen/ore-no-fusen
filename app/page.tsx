@@ -1216,6 +1216,27 @@ function OrchestratorContent() {
     </ErrorBoundary>
   );
 
+  // [FIX] アップデートダイアログは最優先で表示（isDashboard より前に判定）
+  // isDashboard=true だとメインウィンドウが非表示になるため、先にreturnしないと届かない
+  if (showUpdateDialog && pendingUpdate) {
+    // ウィンドウを前面に表示する
+    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      getCurrentWindow().show().catch(() => {});
+      getCurrentWindow().setFocus().catch(() => {});
+    });
+    return (
+      <ConfirmDialog
+        isOpen={showUpdateDialog}
+        title="アップデートがあります"
+        message={`バージョン ${pendingUpdate.version} が利用可能です。\n今すぐアップデートしますか？\n（ダウンロード後に自動で再起動します）`}
+        confirmText="アップデートする"
+        cancelText="あとで"
+        onConfirm={handleUpdateConfirm}
+        onCancel={() => { setShowUpdateDialog(false); setPendingUpdate(null); }}
+      />
+    );
+  }
+
   if (isCheckingSetup) return <LoadingScreen message={loadingStatus} />;
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
@@ -1308,22 +1329,6 @@ function OrchestratorContent() {
           </div>
         )}
       </>
-    );
-  }
-
-
-  // [NEW] アップデート確認ダイアログ（アプリ内モーダル）
-  if (showUpdateDialog && pendingUpdate) {
-    return (
-      <ConfirmDialog
-        isOpen={showUpdateDialog}
-        title="アップデートがあります"
-        message={`バージョン ${pendingUpdate.version} が利用可能です。\n今すぐアップデートしますか？\n（ダウンロード後に自動で再起動します）`}
-        confirmText="アップデートする"
-        cancelText="あとで"
-        onConfirm={handleUpdateConfirm}
-        onCancel={() => { setShowUpdateDialog(false); setPendingUpdate(null); }}
-      />
     );
   }
 
