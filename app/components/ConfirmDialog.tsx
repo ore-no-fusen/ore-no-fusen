@@ -16,9 +16,11 @@ type ConfirmDialogProps = {
     message: string;
     onConfirm: () => void;
     onCancel: () => void;
+    confirmText?: string; // [NEW] 確認ボタンの文言（デフォルト：「削除する」）
+    cancelText?: string;  // [NEW] キャンセルボタンの文言
 };
 
-export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }: ConfirmDialogProps) {
+export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel, confirmText = '削除する (Delete)', cancelText = 'キャンセル (Cancel)' }: ConfirmDialogProps) {
     if (!isOpen) return null;
 
     return (
@@ -72,7 +74,7 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
                             cursor: 'pointer'
                         }}
                     >
-                        キャンセル (Cancel)
+                        {cancelText}
                     </button>
                     <button
                         onClick={onConfirm}
@@ -88,7 +90,7 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
                             boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
                         }}
                     >
-                        削除する (Delete)
+                        {confirmText}
                     </button>
                 </div>
             </div>

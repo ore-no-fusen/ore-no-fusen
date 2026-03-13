@@ -46,6 +46,7 @@ import { invoke } from '@tauri-apps/api/core';
 // 設定・国際化
 import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
+import ErrorBoundary from './ErrorBoundary';
 
 
 
@@ -1569,4 +1570,12 @@ const StickyNote = memo(function StickyNote() {
     );
 });
 
-export default StickyNote;
+// [NEW] ErrorBoundaryでラップしてエクスポート
+// エラー発生時に付箋ウィンドウが白画面にならず、再試行ボタン付きエラー UI を表示する
+export default function StickyNoteWithBoundary() {
+    return (
+        <ErrorBoundary>
+            <StickyNote />
+        </ErrorBoundary>
+    );
+}

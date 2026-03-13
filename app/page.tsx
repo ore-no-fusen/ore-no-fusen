@@ -24,6 +24,8 @@ import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
 import LandingPage from './landing/page'; // [NEW] Vercel用ランディングページ
+import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
+import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 
 // Global AppState type definition
 type AppState = {
@@ -150,6 +152,9 @@ function OrchestratorContent() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
+  // [NEW] アップデートダイアログ
+  const [pendingUpdate, setPendingUpdate] = useState<any>(null);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const isSearchOpenRef = useRef(false);
   useEffect(() => { isSearchOpenRef.current = isSearchOpen; }, [isSearchOpen]);
 
@@ -181,21 +186,12 @@ function OrchestratorContent() {
     const checkForUpdate = async () => {
       try {
         const { check } = await import('@tauri-apps/plugin-updater');
-        const { relaunch } = await import('@tauri-apps/plugin-process');
         const update = await check();
         if (!update) return;
         console.log(`[Updater] 新しいバージョンが見つかりました: ${update.version}`);
-        const confirmed = window.confirm(
-          `新しいバージョン ${update.version} が利用可能です。\n今すぐアップデートしますか？`
-        );
-        if (!confirmed) return;
-        try {
-          await update.downloadAndInstall();
-          await relaunch();
-        } catch (installErr) {
-          console.error('[Updater] インストール失敗:', installErr);
-          window.alert(`アップデートに失敗しました。\n${installErr}`);
-        }
+        // [FIX] window.confirm → アプリ内ConfirmDialogに変更
+        setPendingUpdate(update);
+        setShowUpdateDialog(true);
       } catch (e) {
         // アップデートチェック失敗はサイレントに無視
         console.warn('[Updater] アップデートチェック失敗:', e);
@@ -205,6 +201,20 @@ function OrchestratorContent() {
     const timer = setTimeout(checkForUpdate, 3000);
     return () => clearTimeout(timer);
   }, [isMainWindow]);
+
+  // アップデートのダウンロードとインストールを実行
+  const handleUpdateConfirm = useCallback(async () => {
+    setShowUpdateDialog(false);
+    if (!pendingUpdate) return;
+    try {
+      const { relaunch } = await import('@tauri-apps/plugin-process');
+      await pendingUpdate.downloadAndInstall();
+      await relaunch();
+    } catch (installErr) {
+      console.error('[Updater] インストール失敗:', installErr);
+    }
+    setPendingUpdate(null);
+  }, [pendingUpdate]);
 
   const syncState = useCallback(async (): Promise<AppState | null> => {
     try {
@@ -1200,7 +1210,11 @@ function OrchestratorContent() {
   }, [isDashboard]);
 
   if (searchParams.get('tagSelector') === '1') return <TagSelector />;
-  if (searchParams.get('path') || searchParams.get('isPool') === 'true') return <StickyNote />;
+  if (searchParams.get('path') || searchParams.get('isPool') === 'true') return (
+    <ErrorBoundary>
+      <StickyNote />
+    </ErrorBoundary>
+  );
 
   if (isCheckingSetup) return <LoadingScreen message={loadingStatus} />;
 
@@ -1298,6 +1312,20 @@ function OrchestratorContent() {
   }
 
 
+  // [NEW] アップデート確認ダイアログ（アプリ内モーダル）
+  if (showUpdateDialog && pendingUpdate) {
+    return (
+      <ConfirmDialog
+        isOpen={showUpdateDialog}
+        title="アップデートがあります"
+        message={`バージョン ${pendingUpdate.version} が利用可能です。\n今すぐアップデートしますか？\n（ダウンロード後に自動で再起動します）`}
+        confirmText="アップデートする"
+        cancelText="あとで"
+        onConfirm={handleUpdateConfirm}
+        onCancel={() => { setShowUpdateDialog(false); setPendingUpdate(null); }}
+      />
+    );
+  }
 
   // Default return to avoid returning undefined
   return null;
@@ -1319,7 +1347,9 @@ export default function Home() {
 
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <OrchestratorContent />
+      <ErrorBoundary>
+        <OrchestratorContent />
+      </ErrorBoundary>
     </Suspense>
   );
 }
