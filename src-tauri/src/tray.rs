@@ -99,30 +99,13 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 let id = event.id().as_ref();
                 match id {
                     "hide_all" => {
-                        let app_clone = app.clone();
-                        std::thread::spawn(move || {
-                            for win in app_clone.webview_windows().values() {
-                                if win.label() != "main" {
-                                    #[cfg(target_os = "windows")]
-                                    crate::win32_show_window_async(win, false);
-                                    #[cfg(not(target_os = "windows"))]
-                                    let _ = win.hide();
-                                }
-                            }
-                        });
+                        // [Fix] Rust側ループで ShowWindow を呼ぶと WebView2 COM の
+                        // ネストしたメッセージポンプでスタックオーバーフローが起きる。
+                        // 各付箋ウィンドウの JS が自分自身を hide するよう broadcast する。
+                        let _ = app.emit("fusen:set_all_notes_visible", false);
                     },
                     "show_all" => {
-                        let app_clone = app.clone();
-                        std::thread::spawn(move || {
-                            for win in app_clone.webview_windows().values() {
-                                if win.label() != "main" {
-                                    #[cfg(target_os = "windows")]
-                                    crate::win32_show_window_async(win, true);
-                                    #[cfg(not(target_os = "windows"))]
-                                    { let _ = win.show(); let _ = win.set_focus(); }
-                                }
-                            }
-                        });
+                        let _ = app.emit("fusen:set_all_notes_visible", true);
                     },
                     id if id.starts_with("world_") => {
                         let tag = id.replace("world_", "");

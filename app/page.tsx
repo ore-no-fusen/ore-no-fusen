@@ -897,52 +897,47 @@ function OrchestratorContent() {
     };
   }, [isMainWindow, handleCreateNote]);
 
-  // タグフィルター（複数）
+  // タグフィルター（複数）& 全隠し/全表示
+  // [Fix] メインウィンドウが全ウィンドウをループして show/hide すると
+  //       WebView2 COM のネストしたメッセージポンプでスタックオーバーフローが起きる。
+  //       各付箋ウィンドウが自分自身の表示/非表示を判断して処理する。
   useEffect(() => {
-    if (!isMainWindow) return; // Guard
+    if (isMainWindow) return; // 付箋ウィンドウのみ（メインウィンドウは除外）
+    if (!path) return;
 
-    let unlisten: null | (() => void) = null;
+    const myLabel = getWindowLabel(path);
+    let unlistenSync: (() => void) | null = null;
+    let unlistenVisible: (() => void) | null = null;
+
     (async () => {
-      // [Refactor] SSOT-based Window Reconciliation
-      // Rust が update_tag_filter 内で直接 hide/show を実行済み。
-      // JS は補完的に hide のみ担当。openNoteWindow は呼ばない
-      // （ラベル不一致時に重複ウィンドウが作られるバグの防止）
-      unlisten = await listen<string[]>('fusen:sync_visible_notes', async (event) => {
-        const visiblePaths = event.payload;
-        console.log('[Orchestrator] sync_visible_notes. Desired visible count:', visiblePaths.length);
+      const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      const current = getCurrentWebviewWindow();
 
-        try {
-          const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
-          const allWindows = await getAllWebviewWindows();
-          const currentWindowMap = new Map(allWindows.map(w => [w.label, w]));
+      // タグフィルター: 自分が表示対象かどうか自分で判断して show/hide する
+      unlistenSync = await listen<string[]>('fusen:sync_visible_notes', async (event) => {
+        const desiredLabels = new Set(event.payload.map((p: string) => getWindowLabel(p)));
+        if (desiredLabels.has(myLabel)) {
+          await current.show();
+        } else {
+          await current.hide();
+        }
+      });
 
-          // 1. Calculate Desired Labels
-          const desiredLabels = new Set(visiblePaths.map(p => getWindowLabel(p)));
-
-          // 2. Hide extra windows (Existent && Not Desired)
-          for (const win of allWindows) {
-            if (win.label.startsWith('note-') && !desiredLabels.has(win.label)) {
-              await win.hide();
-            }
-          }
-
-          // 3. Show existing windows only (NOT openNoteWindow)
-          // [FIX] ラベル不一致時に openNoteWindow を呼ぶと重複ウィンドウが作られるバグを防止
-          // Rust側がラベルを直接解決して show() を呼ぶため、ここではスキップするだけでよい
-          for (const path of visiblePaths) {
-            const label = getWindowLabel(path);
-            const win = currentWindowMap.get(label);
-            if (win) {
-              await win.show();
-              await win.unminimize();
-            }
-            // ウィンドウが見つからない場合: Rust が処理済みのため何もしない
-          }
-        } catch (e) { console.error('[Orchestrator] Failed to reconcile windows:', e); }
+      // 全隠し/全表示: 自分自身を show/hide する
+      unlistenVisible = await listen<boolean>('fusen:set_all_notes_visible', async (event) => {
+        if (event.payload) {
+          await current.show();
+        } else {
+          await current.hide();
+        }
       });
     })();
-    return () => { try { unlisten?.(); } catch (e) { console.warn('Failed to unlisten fusen:apply_tag_filter', e); } };
-  }, [isMainWindow, openNoteWindow, getWindowLabel]);
+
+    return () => {
+      try { unlistenSync?.(); } catch (e) { /* ignore */ }
+      try { unlistenVisible?.(); } catch (e) { /* ignore */ }
+    };
+  }, [isMainWindow, path, getWindowLabel]);
 
   // [New] 音声再生イベントハンドラ (メインウィンドウのみ)
   useEffect(() => {

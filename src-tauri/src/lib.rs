@@ -1490,22 +1490,11 @@ pub fn run() {
                                 // 状態を反転
                                 NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
 
-                                let app_clone = app.clone();
-                                std::thread::spawn(move || {
-                                    for win in app_clone.webview_windows().values() {
-                                        if win.label() != "main" {
-                                            #[cfg(target_os = "windows")]
-                                            win32_show_window_async(win, is_hidden);
-                                            #[cfg(not(target_os = "windows"))]
-                                            if is_hidden {
-                                                let _ = win.show();
-                                                let _ = win.set_focus();
-                                            } else {
-                                                let _ = win.hide();
-                                            }
-                                        }
-                                    }
-                                });
+                                // [Fix] Rust側ループで ShowWindow を呼ぶと WebView2 COM の
+                                // ネストしたメッセージポンプでスタックオーバーフローが起きる。
+                                // 各付箋ウィンドウの JS が自分自身を show/hide するよう broadcast する。
+                                let visible = is_hidden; // was hidden → now show (true)
+                                let _ = app.emit("fusen:set_all_notes_visible", visible);
                                 
                                 logger::log_info(&format!(
                                     "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",
