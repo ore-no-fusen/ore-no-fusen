@@ -34,7 +34,6 @@ export type UseEditModeReturn = {
     editBodyRef: React.MutableRefObject<string>;
     isCommittingRef: React.MutableRefObject<boolean>;
     ignoreBlurUntilRef: React.MutableRefObject<number>;
-    isCapturingRef?: React.MutableRefObject<boolean>;
     lastEditEndedAt: React.MutableRefObject<number>;
 };
 
