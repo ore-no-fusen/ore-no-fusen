@@ -21,12 +21,20 @@ flowchart TD
     F --> A
     E -->|成功| G[✅ コミット完了]
 
-    G --> H[バージョン番号を更新\npackage.json\nsrc-tauri/tauri.conf.json\nsrc-tauri/Cargo.toml]
-    H --> I["git commit\ngit tag vX.X.X\ngit push origin main\ngit push origin vX.X.X"]
-    I --> WARN["⚠️ 注意\n・--tags は使わない\n  複数タグ同時プッシュでCDが起動しないことがある\n・gh release create は使わない\n  tauri-actionが自動で作成する"]
-    WARN --> J[GitHub Actions 起動]
+    G --> REL["リリースしたくなったら\n/release を実行"]
 
-    style WARN fill:#fff3cd,stroke:#f0ad4e,color:#333
+    subgraph cmd [Claude Code カスタムコマンド: /release]
+        R1["新バージョンをユーザーに確認"]
+        R2["3ファイルを一括更新\npackage.json\ntauri.conf.json\nCargo.toml"]
+        R3["git commit\nchore: バージョンを vX.X.X に更新"]
+        R4["git tag vX.X.X"]
+        R5["git push origin main"]
+        R6["git push origin vX.X.X\n※--tags は使わない"]
+        R1 --> R2 --> R3 --> R4 --> R5 --> R6
+    end
+    REL --- cmd
+
+    R6 --> J[GitHub Actions 起動]
 
     subgraph actions [GitHub Actions: release.yml]
         J1[npm ci]
@@ -41,13 +49,6 @@ flowchart TD
     J5 --> K[✅ GitHubリリースページに\n署名付きインストーラーが出現]
 ```
 
-## バージョン更新ファイル
-
-| ファイル | 場所 |
-|------|------|
-| `package.json` | `"version": "x.x.x"` |
-| `src-tauri/tauri.conf.json` | `"version": "x.x.x"` |
-
 ## ローカルビルド（動作確認用・署名なし）
 
 ```bash
@@ -58,26 +59,28 @@ npm run tauri build
 
 ## 正式リリース（署名付き）
 
-```bash
-# バージョン更新後
-git commit -m "chore: バージョンを vX.X.X に更新"
-git tag vX.X.X
-git push origin main
-git push origin vX.X.X
 ```
+/release
+```
+
+Claude Code のカスタムコマンドが以下を自動実行する：
+1. 新バージョンをユーザーに確認
+2. 3ファイルのバージョンを一括更新
+3. バージョン更新コミット
+4. タグ作成・push
 
 GitHub Actionsが自動でビルド・署名・リリースを行う（所要時間：15〜25分）。
 
 ## ⚠️ 注意事項
 
-### タグは必ず単体でプッシュする
+### タグは必ず単体でプッシュする（/release が自動で守る）
 
 ```bash
 # ❌ NG: --tags はローカルの未プッシュタグを全部送るため、複数タグ同時プッシュになり
 #         GitHub Actions が正しくトリガーされないことがある
 git push origin main --tags
 
-# ✅ OK: タグは個別にプッシュする
+# ✅ OK: タグは個別にプッシュする（/release はこの順序で実行する）
 git push origin main
 git push origin vX.X.X
 ```
