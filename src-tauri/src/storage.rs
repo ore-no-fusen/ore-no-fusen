@@ -115,7 +115,12 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
         if entry.file_type().is_file() {
             let path = entry.path();
             if path.extension().map_or(false, |ext| ext == "md") {
-                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                // [Safety] file_name() が None になるのはルートパスのみで、WalkDir 経由では発生しない。
+                // それでも unwrap() を排除し、万一の場合はスキップする。
+                let filename = match path.file_name() {
+                    Some(n) => n.to_string_lossy().to_string(),
+                    None => continue, // ルートパスは付箋ファイルではないためスキップ
+                };
                 let (seq, updated, context) = logic::parse_filename(&filename);
                 
                 let mut x = None;
@@ -274,9 +279,21 @@ pub fn ensure_archive_dir(parent_path: &Path) -> Result<PathBuf, String> {
     }
     Ok(archive_dir)
 }
+/// 添付画像（assets/...）を参照するMarkdownパターン
+/// OnceLock: アプリ起動後に1度だけコンパイルし、以降は再利用する。
+/// リテラル正規表現は実行時に失敗しないため get_or_init + expect が安全。
+static ASSETS_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+
+fn get_assets_regex() -> &'static regex::Regex {
+    ASSETS_RE.get_or_init(|| {
+        regex::Regex::new(r"!\[[^\]]*\]\((assets/[^)]+)\)")
+            .expect("ASSETS_RE: リテラル正規表現のコンパイルは常に成功するはず")
+    })
+}
+
 pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Result<(), String> {
     let content = fs::read_to_string(note_path).map_err(|e| e.to_string())?;
-    let re = regex::Regex::new(r"!\[[^\]]*\]\((assets/[^)]+)\)").unwrap();
+    let re = get_assets_regex();
 
     let note_dir = note_path.parent().ok_or("No parent")?;
     let target_assets_dir = target_note_dir.join("assets");
@@ -303,7 +320,7 @@ pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Resul
 
 pub fn delete_associated_assets(note_path: &Path) -> Result<(), String> {
     let content = fs::read_to_string(note_path).map_err(|e| e.to_string())?;
-    let re = regex::Regex::new(r"!\[[^\]]*\]\((assets/[^)]+)\)").unwrap();
+    let re = get_assets_regex(); // OnceLock 共有インスタンスを使用
 
     let note_dir = note_path.parent().ok_or("No parent")?;
     

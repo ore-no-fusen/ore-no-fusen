@@ -643,6 +643,11 @@ fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[Str
 /// 前回の操作から 3000ms 以内の呼び出しは無視する。
 static LAST_VISIBILITY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// [FIX] Ctrl+N連打クラッシュ防止: プールウィンドウ補充のスロットル
+/// fusen_create_pool_windowが500ms以内に連続呼び出された場合にスキップする。
+/// 1枚目の付箋昇格（promote）には一切影響しない。
+static LAST_POOL_CREATE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub fn can_do_visibility_op() -> bool {
     use std::sync::atomic::Ordering;
     let now = std::time::SystemTime::now()
@@ -1084,6 +1089,20 @@ async fn fusen_show_at_position(
 
 #[tauri::command]
 async fn fusen_create_pool_window(app: tauri::AppHandle) -> Result<String, String> {
+    // [FIX] Ctrl+N連打クラッシュ防止: 500ms以内の連続呼び出しをブロック
+    // JS側スロットル（1.2秒）のダブルガード。付箋昇格（promote）には影響しない。
+    use std::sync::atomic::Ordering;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let last = LAST_POOL_CREATE_MS.load(Ordering::SeqCst);
+    if now.saturating_sub(last) < 500 {
+        logger::log_debug("[Pool] fusen_create_pool_window: throttled (< 500ms), skipping.");
+        return Ok("Throttled".into());
+    }
+    LAST_POOL_CREATE_MS.store(now, Ordering::SeqCst);
+
     logger::log_info("[Pool] fusen_create_pool_window called (async)");
     create_pool_window_internal(&app)?;
     Ok("Pool window created".into())

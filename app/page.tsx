@@ -797,24 +797,30 @@ function OrchestratorContent() {
     const promise = listen('fusen:create_note_from_tray', async () => {
       console.log('[Tray] Create note event received (Listener start). folderPathRef:', folderPathRef.current);
       // [UNIFIED] handleCreateNoteを呼ぶだけ（スロットルはhandleCreateNote内で管理）
-      const basePath = folderPathRef.current || await invoke<string | null>('get_base_path');
-      console.log('[Tray] Resolved basePath:', basePath);
-      if (basePath) {
-        await handleCreateNote(basePath, '新規メモ');
-      } else {
-        console.warn('[Tray] No folder path available. Opening Setup.');
-        // フォルダー未設定時は設定画面 (Setup) を開く
-        setIsSettingsOpen(true);
-        // 設定画面を開くためのウィンドウ操作
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const win = getCurrentWindow();
-        const { LogicalSize } = await import('@tauri-apps/api/dpi');
-        await win.setSize(new LogicalSize(900, 630));
-        await win.center();
-        await win.show();
-        await win.setFocus();
+      try {
+        const basePath = folderPathRef.current || await invoke<string | null>('get_base_path');
+        console.log('[Tray] Resolved basePath:', basePath);
+        if (basePath) {
+          await handleCreateNote(basePath, '新規メモ');
+        } else {
+          console.warn('[Tray] No folder path available. Opening Setup.');
+          // フォルダー未設定時は設定画面 (Setup) を開く
+          setIsSettingsOpen(true);
+          // 設定画面を開くためのウィンドウ操作
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const win = getCurrentWindow();
+          const { LogicalSize } = await import('@tauri-apps/api/dpi');
+          await win.setSize(new LogicalSize(900, 630));
+          await win.center();
+          await win.show();
+          await win.setFocus();
+        }
+      } catch (e) {
+        // [FIX] トレイイベント内のエラーはサイレントに処理（アプリをクラッシュさせない）
+        console.error('[Tray] create note from tray failed:', e);
       }
     });
+
 
     promise.then(u => { unlisten = u; });
 
