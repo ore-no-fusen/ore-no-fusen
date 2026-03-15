@@ -20,7 +20,9 @@
       "Bash(npx playwright test e2e/core-features.spec.ts --grep \"閲覧モード\")",
       "Bash(npx playwright test e2e/sticky-note.spec.ts --reporter=line)",
       "Read(//c/Users/uck/Documents/OreNoFusen/**)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Skill(gsd:quick)",
+      "Skill(gsd:quick:*)"
     ]
   },
   "hooks": {
