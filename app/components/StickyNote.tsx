@@ -33,6 +33,8 @@ import ToolbarButtons from './ToolbarButtons';
 import FloatingFormatBar from './FloatingFormatBar';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConfirmDialog from './ConfirmDialog';
+import SaveErrorToast from './SaveErrorToast';
+
 
 // ユーティリティ
 import { pathsEqual, getFileName } from '../utils/pathUtils';
@@ -89,6 +91,10 @@ const StickyNote = memo(function StickyNote() {
     const [tagInputValue, setTagInputValue] = useState('');
     const [tagToDelete, setTagToDelete] = useState<string | null>(null);
 
+    // 保存失敗トースト
+    const [showSaveError, setShowSaveError] = useState(false);
+
+
     // Refs
     const editorRef = useRef<RichTextEditorRef>(null);
     const editorHostRef = useRef<HTMLDivElement>(null);
@@ -97,6 +103,9 @@ const StickyNote = memo(function StickyNote() {
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
     const isCapturingRef = useRef(false);
     const isPromotingRef = useRef(false); // 付箋表示中はフォーカスが外れても編集モードを維持する
+    // [FIX] Ctrl+N 連打クラッシュ防止: emit自体を1.2秒スロットルする
+    // 1枚目は lastCtrlNRef=0 なので即座に通過、2枚目以降は1.2秒インターバルを強制
+    const lastCtrlNRef = useRef<number>(0);
 
     // ============================================================
     // カスタムHook統合
@@ -131,8 +140,10 @@ const StickyNote = memo(function StickyNote() {
 
             const newContext = content.split('\n')[0].trim();
             setSelectedFile((prev) => (prev ? { ...prev, path: newPath, context: newContext } : null));
-        }
+        },
+        onSaveError: () => setShowSaveError(true),
     });
+
 
     // スタイル関連（カスタムフックで一元管理）
     const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize } = useNoteStyles(note);
@@ -1180,6 +1191,10 @@ const StickyNote = memo(function StickyNote() {
             // [New] Ctrl+N: 新規付箋作成
             if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
                 e.preventDefault();
+                // [FIX] 連打クラッシュ防止: 1.2秒以内の連続 emit をブロック
+                const now = Date.now();
+                if (now - lastCtrlNRef.current < 1200) return;
+                lastCtrlNRef.current = now;
                 if (selectedFile) {
                     const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                     const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
@@ -1564,6 +1579,12 @@ const StickyNote = memo(function StickyNote() {
                 message={`タグ「${tagToDelete}」を完全に削除しますか？\n\n※この操作は元に戻せません。このタグを含む**すべての付箋**からバッジが消去されます。付箋本体は消去されません。`}
                 onConfirm={executeTagDelete}
                 onCancel={() => setTagToDelete(null)}
+            />
+
+            {/* 自動保存失敗トースト */}
+            <SaveErrorToast
+                isVisible={showSaveError}
+                onDismiss={() => setShowSaveError(false)}
             />
 
         </div >

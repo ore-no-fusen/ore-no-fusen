@@ -17,7 +17,10 @@ export type UseNoteFileOptions = {
     path: string | null;
     isNew: boolean;
     onPathChange?: (newPath: string) => void;
+    /** 自動保存が全リトライ失敗したときに呼ばれるコールバック */
+    onSaveError?: () => void;
 };
+
 
 export type UseNoteFileReturn = {
     note: Note | null;
@@ -35,7 +38,8 @@ export type UseNoteFileReturn = {
     pathRef: React.MutableRefObject<string | null>; // 同期アクセス用（stale closure 対策）
 };
 
-export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): UseNoteFileReturn {
+export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteFileOptions): UseNoteFileReturn {
+
     const [note, setNote] = useState<Note | null>(null);
     const [content, setContent] = useState<string>('');
     const [rawFrontmatter, setRawFrontmatter] = useState<string>('');
@@ -177,8 +181,10 @@ export function useNoteFile({ path, isNew, onPathChange }: UseNoteFileOptions): 
                     timers.push(t);
                 } else {
                     console.error('[useNoteFile] Auto-save failed after all retries. Data may be lost.');
-                    alert('⚠️ 自動保存に失敗しました。ファイルが読み取り専用になっていないか確認してください。');
+                    // [FIX] alert() の代わりにコールバックで通知（ブロッキング排除）
+                    onSaveError?.();
                 }
+
             }
         };
 

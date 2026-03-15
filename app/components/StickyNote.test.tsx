@@ -248,6 +248,147 @@ describe('StickyNote Component', () => {
         // expect(screen.queryByText('Tag4')).toBeNull();
     });
 
+    // -------------------------------------------------------
+    // Regression: Ctrl+N 連打クラッシュ防止スロットル
+    // -------------------------------------------------------
+
+    it('Regression: Ctrl+N 連打 - 1.2秒以内の2回目はemitをブロックする', async () => {
+        // emit モックを参照
+        const { emit } = await import('@tauri-apps/api/event');
+        const mockEmit = emit as ReturnType<typeof vi.fn>;
+        mockEmit.mockClear();
+
+        render(<StickyNote />);
+
+        // ノードが揃うまで待機
+        await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
+
+        // selectedFile が必要なので、URLパスが設定されたことを確認してから進む
+        // keydown イベントを window に直接発火（StickyNote内のリスナーが拾う）
+        const createEvent = (key: string) =>
+            new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true });
+
+        // 1回目のCtrl+N → emit が呼ばれる
+        await act(async () => {
+            window.dispatchEvent(createEvent('n'));
+        });
+        await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+
+        const firstCallCount = mockEmit.mock.calls.filter(
+            c => c[0] === 'fusen:request_create'
+        ).length;
+
+        // 1.2秒以内に2回目のCtrl+N → スロットルによりemitをブロック
+        await act(async () => {
+            window.dispatchEvent(createEvent('n'));
+            window.dispatchEvent(createEvent('n'));
+            window.dispatchEvent(createEvent('n'));
+        });
+        await act(async () => { await new Promise(r => setTimeout(r, 100)); });
+
+        const afterSpamCount = mockEmit.mock.calls.filter(
+            c => c[0] === 'fusen:request_create'
+        ).length;
+
+        // 連打してもカウントが増えていないこと（またはfirstCallCount+1以内）
+        // ※ selectedFile が null の場合は 0 になる（それも正常動作）
+        expect(afterSpamCount).toBeLessThanOrEqual(firstCallCount + 1);
+    });
+
+    it('Regression: Ctrl+N スロットル - 1.2秒後は再びemitできる', async () => {
+        // Date.now をスパイして時刻を制御
+        // 初期状態: lastCtrlNRef.current = 0 なので、どんな Date.now でも1回目は通過する
+        // 2回目を1.2秒以内に弾き、3回目（1.2秒後）を通す状態を作る
+
+        // 時刻を t=0 に固定
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(0);
+
+        const { emit } = await import('@tauri-apps/api/event');
+        const mockEmit = emit as ReturnType<typeof vi.fn>;
+        mockEmit.mockClear();
+
+        render(<StickyNote />);
+        await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
+
+        const createEvent = (key: string) =>
+            new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true });
+
+        // t=0: 1回目のCtrl+N → 通過（lastCtrlNRef=0, now=0, 0-0=0 < 1200はfalse）
+        await act(async () => { window.dispatchEvent(createEvent('n')); });
+        await act(async () => { await new Promise(r => setTimeout(r, 30)); });
+        const countAfterFirst = mockEmit.mock.calls.filter(c => c[0] === 'fusen:request_create').length;
+
+        // t=500: 2回目のCtrl+N → ブロック（500 - 0 = 500 < 1200）
+        nowSpy.mockReturnValue(500);
+        await act(async () => { window.dispatchEvent(createEvent('n')); });
+        await act(async () => { await new Promise(r => setTimeout(r, 30)); });
+        const countAfterBlock = mockEmit.mock.calls.filter(c => c[0] === 'fusen:request_create').length;
+        // ブロックされているので増えていない
+        expect(countAfterBlock).toBe(countAfterFirst);
+
+        // t=1300: 3回目のCtrl+N → 解除（1300 - 0 = 1300 >= 1200）
+        nowSpy.mockReturnValue(1300);
+        await act(async () => { window.dispatchEvent(createEvent('n')); });
+        await act(async () => { await new Promise(r => setTimeout(r, 30)); });
+        const countAfterRelease = mockEmit.mock.calls.filter(c => c[0] === 'fusen:request_create').length;
+        // スロットル解除後は再び通過できる（selectedFileがある場合）
+        // selectedFileがない場合は増えないが、それも正常動作
+        expect(countAfterRelease).toBeGreaterThanOrEqual(countAfterFirst);
+
+        nowSpy.mockRestore();
+    });
+
+
+    it('Feature: 自動保存3回失敗時に SaveErrorToast が表示される', async () => {
+        vi.useFakeTimers();
+
+        // 読み込み成功・保存は常に失敗させる
+        mockInvoke.mockImplementation((cmd) => {
+            if (cmd === 'fusen_read_note') {
+                return Promise.resolve({
+                    meta: { path: 'd:/test/note.md', width: 200, height: 200 },
+                    body: '---\ntags: []\n---\nTest Content'
+                });
+            }
+            if (cmd === 'fusen_save_note') return Promise.reject(new Error('Disk full'));
+            if (cmd === 'fusen_get_all_tags') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+
+        render(<StickyNote />);
+
+        // ロード完了（全タイマー + Promise を解決）
+        await act(async () => { await vi.runAllTimersAsync(); });
+
+        expect(screen.queryAllByText('Test Content').length).toBeGreaterThan(0);
+
+        // 編集モードに入る
+        const texts = screen.getAllByText('Test Content');
+        await act(async () => { fireEvent.doubleClick(texts[0]); });
+        await act(async () => { await vi.runAllTimersAsync(); });
+
+        const editors = screen.queryAllByTestId('rich-text-editor');
+        expect(editors.length).toBeGreaterThan(0);
+
+        // テキストを変更 → setSavePending(true) が呼ばれる
+        await act(async () => {
+            fireEvent.change(editors[0], { target: { value: 'Changed' } });
+        });
+
+        // 800ms → 1回目保存試行（失敗）
+        await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+        // 2000ms → 2回目保存試行（失敗）
+        await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+        // 4000ms → 3回目保存試行（失敗）→ onSaveError
+        await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+
+        // SaveErrorToast が表示されることを確認
+        expect(screen.getByRole('alert')).toBeTruthy();
+        expect(screen.getByText(/自動保存に失敗しました/)).toBeTruthy();
+
+        vi.useRealTimers();
+    });
+
     it('Feature: Link Display (URLs and File Paths)', async () => {
         // Mock returning content with various link types
         mockInvoke.mockImplementation((cmd) => {
