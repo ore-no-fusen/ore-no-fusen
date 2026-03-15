@@ -21,9 +21,9 @@ flowchart TD
     F --> A
     E -->|成功| G[✅ コミット完了]
 
-    G --> REL["リリースしたくなったら\n/release を実行"]
+    G --> REL["リリースしたくなったら\nClaudeに「リリースして」と伝える"]
 
-    subgraph cmd [Claude Code カスタムコマンド: /release]
+    subgraph cmd [Claude が .claude/skills/do-release.md を読んで実行]
         R1["新バージョンをユーザーに確認"]
         R2["3ファイルを一括更新\npackage.json\ntauri.conf.json\nCargo.toml"]
         R3["git commit\nchore: バージョンを vX.X.X に更新"]
@@ -59,11 +59,9 @@ npm run tauri build
 
 ## 正式リリース（署名付き）
 
-```
-/release
-```
+Claude に「リリースして」と伝えるだけ。
 
-Claude Code のカスタムコマンドが以下を自動実行する：
+Claude が `.claude/skills/do-release.md` を読んで以下を自動実行する：
 1. 新バージョンをユーザーに確認
 2. 3ファイルのバージョンを一括更新
 3. バージョン更新コミット
@@ -73,7 +71,7 @@ GitHub Actionsが自動でビルド・署名・リリースを行う（所要時
 
 ## ⚠️ 注意事項
 
-### タグは必ず単体でプッシュする（/release が自動で守る）
+### タグは必ず単体でプッシュする（do-release.md の手順が自動で守る）
 
 ```bash
 # ❌ NG: --tags はローカルの未プッシュタグを全部送るため、複数タグ同時プッシュになり
