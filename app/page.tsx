@@ -1034,11 +1034,18 @@ function OrchestratorContent() {
           log(`[起動処理] 設定されたパス: ${basePath || 'なし'}`);
 
           if (!basePath) {
-            log('[起動処理] パスが未設定のため、復元を停止します');
-            setLoadingStatus("保存先が見つかりません");
-            return;
+            log('[起動処理] パスが未設定のため、デフォルトフォルダを自動作成します');
+            setLoadingStatus("保存先フォルダを準備中...");
+            try {
+              await invoke<string>('setup_first_launch', { useDefault: true, importPath: null });
+              log('[起動処理] デフォルトフォルダの作成に成功しました');
+            } catch (setupErr) {
+              log(`[起動処理] デフォルトフォルダ作成に失敗: ${setupErr}`);
+              setLoadingStatus("保存先の準備に失敗しました");
+              return;
+            }
           }
-          const savedFolder = basePath;
+          const savedFolder = await invoke<string | null>('get_base_path') ?? '';
 
           // ノート復元を即座に開始
           (async () => {
@@ -1097,7 +1104,21 @@ function OrchestratorContent() {
               } else {
                 setLoadingStatus("ようこそノートを作成中...");
                 log('[起動処理] ノートが0件のため、ようこそノートを作成します');
-                await handleCreateNote(savedFolder, 'ようこそ');
+                try {
+                  const newNote = await invoke<{ meta: { path: string }; frontmatter: string }>(
+                    'fusen_create_note', { folderPath: savedFolder, context: 'はじめての付箋（消してOK）' }
+                  );
+                  await invoke('fusen_save_note', {
+                    path: newNote.meta.path,
+                    body: 'はじめの付箋(消してOK)\n\nすぐ書ける\n**強調できる**\nそこに残る！',
+                    frontmatterRaw: newNote.frontmatter || '',
+                    allowRename: false,
+                  });
+                  await openNoteWindow(newNote.meta.path, {});
+                } catch (e) {
+                  log(`[起動処理] ウェルカムノート作成失敗: ${e}`);
+                  await handleCreateNote(savedFolder, 'ようこそ'); // fallback
+                }
                 setTimeout(async () => {
                   try {
                     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');

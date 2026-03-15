@@ -16,6 +16,7 @@ export type ToolbarButtonsProps = {
     isMinimized: boolean;
     isPinned?: boolean; // [New]
     show: boolean;
+    isWelcome?: boolean; // ウェルカムノート時に＋ボタンを強調
     onTable?: () => void;
     onMermaid?: () => void;
     onCapture?: () => void;
@@ -29,6 +30,7 @@ export default function ToolbarButtons({
     isMinimized,
     isPinned,
     show,
+    isWelcome,
     onTable,
     onMermaid,
     onCapture,
@@ -40,7 +42,7 @@ export default function ToolbarButtons({
     if (!isEditing) {
         return (
             <div
-                className={`hoverBar flex flex-row justify-end items-center gap-[2px] p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
+                className={`hoverBar flex flex-row justify-end items-center gap-[2px] p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show || isWelcome ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
                     }`}
             >
                 {/* 新規作成ボタン (左端) */}
@@ -51,7 +53,7 @@ export default function ToolbarButtons({
                             e.stopPropagation();
                         }}
                         onClick={() => onCreateNewNote()}
-                        className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[14px]"
+                        className={`text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[14px] ${isWelcome ? 'animate-bounce text-orange-500 font-bold' : ''}`}
                         title="新しい付箋 (Ctrl+N)"
                     >
                         ＋

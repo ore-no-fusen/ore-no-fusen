@@ -1266,6 +1266,7 @@ const StickyNote = memo(function StickyNote() {
                     isMinimized={isMinimized}
                     isPinned={isPinned}
                     show={isHover && !isEditing}
+                    isWelcome={!isEditing && (selectedFile?.context?.includes('はじめての付箋') ?? (urlPath?.includes('はじめての付箋') ?? false))}
                     onTable={() => editorRef.current?.insertTable()}
                     onMermaid={() => editorRef.current?.insertMermaid()}
                     onCapture={async () => {
