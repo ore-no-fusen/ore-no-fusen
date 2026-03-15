@@ -55,6 +55,34 @@ pub fn split_frontmatter(src: &str) -> (&str, &str) {
     ("", src)
 }
 
+/// タグフォルダへ整理する際に、アプリ固有のフィールドを除去する。
+/// Obsidian互換フィールド（tags, created, updated）は保持する。
+pub fn strip_sticky_fields(content: &str) -> String {
+    let (front, body) = split_frontmatter(content);
+    if front.is_empty() {
+        return content.to_string();
+    }
+
+    const REMOVE_KEYS: &[&str] = &["type", "seq", "window", "backgroundColor", "folded", "alwaysOnTop"];
+
+    let cleaned_lines: Vec<&str> = front
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            if trimmed == "---" { return true; }
+            !REMOVE_KEYS.iter().any(|key| trimmed.starts_with(&format!("{}:", key)))
+        })
+        .collect();
+
+    let cleaned_front = cleaned_lines.join("\n");
+
+    if body.is_empty() {
+        cleaned_front
+    } else {
+        format!("{}\n\n{}", cleaned_front, body)
+    }
+}
+
 
 pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String], folded: Option<bool>) -> String {
     let color_line = if let Some(c) = background_color {
@@ -1088,6 +1116,34 @@ tags: [OreNoFusen, 開発プロセス]
         let all_tags = get_all_unique_tags(&state);
         assert!(!all_tags.contains(&"delete_me".to_string()));
         assert!(all_tags.contains(&"keep_me".to_string()));
+    }
+
+    #[test]
+    fn test_strip_sticky_fields_removes_app_fields() {
+        let content = "---\ntype: sticky\nseq: 96\ncreated: 2026-03-15\nupdated: 2026-03-15\nbackgroundColor: #f7e9b0\ntags: [仕事]\nwindow: { x: 100, y: 100, width: 400, height: 300 }\nfolded: false\n---\n\n本文";
+        let result = strip_sticky_fields(content);
+
+        // アプリ固有フィールドが除去されていること
+        assert!(!result.contains("type:"), "type が残っている");
+        assert!(!result.contains("seq:"), "seq が残っている");
+        assert!(!result.contains("backgroundColor:"), "backgroundColor が残っている");
+        assert!(!result.contains("window:"), "window が残っている");
+        assert!(!result.contains("folded:"), "folded が残っている");
+
+        // Obsidian互換フィールドが保持されていること
+        assert!(result.contains("created:"), "created が消えた");
+        assert!(result.contains("updated:"), "updated が消えた");
+        assert!(result.contains("tags:"), "tags が消えた");
+
+        // 本文が保持されていること
+        assert!(result.contains("本文"), "本文が消えた");
+    }
+
+    #[test]
+    fn test_strip_sticky_fields_no_frontmatter() {
+        let content = "フロントマターなし\n本文のみ";
+        let result = strip_sticky_fields(content);
+        assert_eq!(result, content, "フロントマターなしはそのまま");
     }
 }
 

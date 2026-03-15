@@ -279,30 +279,30 @@ fn fusen_archive_note(
     let vault_root_path = std::path::Path::new(&vault_root);
 
     // 3. Move/Link files and handle assets
+    // タグフォルダ・アーカイブへ移動前にアプリ固有フィールドを除去（Obsidian互換化）
+    let cleaned_content = logic::strip_sticky_fields(&content.body);
+
     if tags.is_empty() {
         // Tagless notes go to general "Archive" folder (Move)
         let archive_dir = storage::ensure_archive_dir(vault_root_path)?;
         let new_path = archive_dir.join(current_path.file_name().ok_or("no name")?);
-        let new_path_str = new_path.to_string_lossy().to_string();
 
-        // [New] Copy associated assets BEFORE moving the note
         storage::copy_associated_assets(current_path, &archive_dir)?;
-
-        // [New] Delete original assets after copy (Move)
         storage::delete_associated_assets(current_path)?;
 
-        storage::rename_note(&path, &new_path_str)?;
+        std::fs::write(&new_path, &cleaned_content).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     } else {
         // Tagged notes: Move to the first tag folder only
         let first_tag = &tags[0];
         let tag_dir = storage::ensure_tag_dir(vault_root_path, first_tag)?;
         let new_path = tag_dir.join(current_path.file_name().ok_or("no name")?);
-        let new_path_str = new_path.to_string_lossy().to_string();
 
-        // Move the file and assets to the first tag folder
         storage::copy_associated_assets(current_path, &tag_dir)?;
         storage::delete_associated_assets(current_path)?;
-        storage::rename_note(&path, &new_path_str)?;
+
+        std::fs::write(&new_path, &cleaned_content).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     
     // 4. Update state

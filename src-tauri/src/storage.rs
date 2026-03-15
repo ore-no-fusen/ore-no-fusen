@@ -109,48 +109,93 @@ fn extract_body_without_frontmatter(content: &str) -> String {
 
 pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
     let mut notes = Vec::new();
-    let walker = WalkDir::new(folder_path).max_depth(1).into_iter();
 
-    for entry in walker.filter_map(|e| e.ok()) {
-        if entry.file_type().is_file() {
-            let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "md") {
-                // [Safety] file_name() が None になるのはルートパスのみで、WalkDir 経由では発生しない。
-                // それでも unwrap() を排除し、万一の場合はスキップする。
-                let filename = match path.file_name() {
-                    Some(n) => n.to_string_lossy().to_string(),
-                    None => continue, // ルートパスは付箋ファイルではないためスキップ
-                };
-                let (seq, updated, context) = logic::parse_filename(&filename);
-                
-                let mut x = None;
-                let mut y = None;
-                let mut width = None;
-                let mut height = None;
-                let mut background_color = None;
-                let mut always_on_top = None;
-                let mut folded = None;
-                let mut tags = Vec::new();
+    // WalkDir 中にリネームして混乱しないよう、先にパスを収集する
+    let md_paths: Vec<PathBuf> = WalkDir::new(folder_path)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+        .map(|e| e.path().to_path_buf())
+        .collect();
 
-                if let Ok(content) = fs::read_to_string(path) {
-                     let (lx, ly, lw, lh, lc, laot, ltags, lfolded) = logic::extract_meta_from_content(&content);
-                     x = lx; y = ly; width = lw; height = lh; background_color = lc; always_on_top = laot; folded = lfolded;
-                     tags = ltags;
-                }
+    for path in md_paths {
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
 
-                notes.push(NoteMeta {
-                    path: path.to_string_lossy().to_string(),
-                    seq,
-                    context,
-                    updated,
-                    x, y, width, height, background_color, always_on_top, folded,
-                    tags
-                });
-            }
-        }
+        // フロントマターがない場合はリネーム＋フロントマター付与して移行
+        let actual_path = if !content.trim_start().starts_with("---") {
+            migrate_to_frontmatter(&path, &content, folder_path).unwrap_or(path)
+        } else {
+            path
+        };
+
+        let final_content = match fs::read_to_string(&actual_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let filename = match actual_path.file_name() {
+            Some(n) => n.to_string_lossy().to_string(),
+            None => continue,
+        };
+        let (seq, updated, context) = logic::parse_filename(&filename);
+        let (x, y, width, height, background_color, always_on_top, tags, folded) =
+            logic::extract_meta_from_content(&final_content);
+
+        notes.push(NoteMeta {
+            path: actual_path.to_string_lossy().to_string(),
+            seq,
+            context,
+            updated,
+            x, y, width, height, background_color, always_on_top, folded,
+            tags,
+        });
     }
     notes.sort_by(|a, b| a.path.cmp(&b.path));
     notes
+}
+
+/// フロントマターなしの .md ファイルを標準形式に移行する。
+/// 新しいパスを返す。失敗した場合は元のパスをそのまま返す。
+fn migrate_to_frontmatter(path: &PathBuf, content: &str, folder_path: &str) -> Result<PathBuf, PathBuf> {
+    // 空ファイルは移行しない（コンテンツが消える危険を避ける）
+    if content.trim().is_empty() {
+        return Err(path.clone());
+    }
+
+    let first_line = content.lines().next().unwrap_or("note").trim();
+    let safe_context = logic::sanitize_context(first_line);
+    let context = if safe_context.is_empty() { "note".to_string() } else { safe_context };
+
+    let seq = get_next_seq(folder_path);
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let new_filename = logic::generate_filename(seq, &today, &context);
+    let new_path = PathBuf::from(folder_path).join(&new_filename);
+
+    let frontmatter = logic::generate_frontmatter(seq, &context, &today, &today, Some("#f7e9b0"), &[], None);
+    let new_content = format!("{}\n\n{}", frontmatter, content);
+
+    if fs::write(&new_path, &new_content).is_err() {
+        return Err(path.clone());
+    }
+
+    // 書き込み後に元の本文が含まれているか検証してから削除
+    let verified = fs::read_to_string(&new_path)
+        .map(|c| c.contains(content.trim()))
+        .unwrap_or(false);
+    if !verified {
+        let _ = fs::remove_file(&new_path);
+        return Err(path.clone());
+    }
+
+    if *path != new_path {
+        let _ = fs::remove_file(path);
+    }
+    Ok(new_path)
 }
 
 pub fn read_note(path: &str) -> Result<Note, String> {
@@ -641,5 +686,68 @@ tags: ["important"]
         assert_eq!(note.meta.x, Some(100.0), "x座標が読み込まれていません");
         assert_eq!(note.meta.y, Some(200.0), "y座標が読み込まれていません");
         assert!(note.meta.tags.contains(&"important".to_string()), "タグが読み込まれていません");
+    }
+
+    // === migrate_to_frontmatter / list_notes フロントマター自動付与のテスト ===
+
+    #[test]
+    fn test_list_notes_adds_frontmatter_to_plain_md() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        // フロントマターなしの .md を配置
+        std::fs::write(dir.path().join("メモ.md"), "これはメモです\n本文2行目").unwrap();
+
+        let notes = list_notes(&dir_path);
+
+        // 1件認識されること
+        assert_eq!(notes.len(), 1);
+
+        // 元ファイルが消えて標準形式にリネームされていること
+        assert!(!dir.path().join("メモ.md").exists(), "元ファイルが残っている");
+        let renamed: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
+            .collect();
+        assert_eq!(renamed.len(), 1, "リネーム後のファイルが1件あること");
+
+        // NoteMeta の context が本文1行目から生成されていること
+        assert_eq!(notes[0].context, "これはメモです");
+    }
+
+    #[test]
+    fn test_list_notes_plain_md_gets_frontmatter_content() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        std::fs::write(dir.path().join("todo.md"), "買い物リスト\n- 牛乳\n- 卵").unwrap();
+
+        list_notes(&dir_path);
+
+        // リネーム後のファイルを読んでフロントマターが付いていることを確認
+        let entry = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.path().extension().map_or(false, |x| x == "md"))
+            .unwrap();
+        let content = std::fs::read_to_string(entry.path()).unwrap();
+        assert!(content.starts_with("---"), "フロントマターが付いていない");
+        assert!(content.contains("買い物リスト"), "本文が保持されていない");
+    }
+
+    #[test]
+    fn test_list_notes_with_frontmatter_unchanged() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        // 標準形式のファイルはリネームされないこと
+        let file_path = dir.path().join("0001_2026-03-15_テスト.md");
+        std::fs::write(&file_path, "---\nseq: 1\n---\n\n本文").unwrap();
+
+        let notes = list_notes(&dir_path);
+
+        assert_eq!(notes.len(), 1);
+        assert!(file_path.exists(), "既存の標準形式ファイルが消えてはいけない");
     }
 }
