@@ -1246,10 +1246,14 @@ function OrchestratorContent() {
   // [FIX] アップデートダイアログは最優先で表示（isDashboard より前に判定）
   // isDashboard=true だとメインウィンドウが非表示になるため、先にreturnしないと届かない
   if (showUpdateDialog && pendingUpdate) {
-    // ウィンドウを前面に表示する
-    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-      getCurrentWindow().show().catch(() => {});
-      getCurrentWindow().setFocus().catch(() => {});
+    // ウィンドウをダイアログに合わせてリサイズして前面に表示する
+    import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+      const { LogicalSize } = await import('@tauri-apps/api/dpi');
+      const win = getCurrentWindow();
+      await win.setSize(new LogicalSize(420, 280)).catch(() => {});
+      await win.center().catch(() => {});
+      await win.show().catch(() => {});
+      await win.setFocus().catch(() => {});
     });
     return (
       <ConfirmDialog
@@ -1259,7 +1263,16 @@ function OrchestratorContent() {
         confirmText="アップデートする"
         cancelText="あとで"
         onConfirm={handleUpdateConfirm}
-        onCancel={() => { setShowUpdateDialog(false); setPendingUpdate(null); }}
+        onCancel={async () => {
+          setShowUpdateDialog(false);
+          setPendingUpdate(null);
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const { LogicalSize } = await import('@tauri-apps/api/dpi');
+          const win = getCurrentWindow();
+          await win.setSize(new LogicalSize(240, 300)).catch(() => {});
+          await win.center().catch(() => {});
+          await win.hide().catch(() => {});
+        }}
       />
     );
   }
