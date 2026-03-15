@@ -498,8 +498,9 @@ function DataSection({
 
                                     alert(msg);
 
-                                    // リロードは不要（設定画面を閉じない）
-                                    // 保存時に反映、もしくは既にアクティブなフォルダなら次回更新時に反映される
+                                    // 付箋一覧を再描画
+                                    const { emit } = await import("@tauri-apps/api/event");
+                                    await emit("fusen:notes_updated");
                                 } catch (e) {
                                     console.error("インポート失敗:", e);
                                     alert("インポートに失敗しました: " + String(e));

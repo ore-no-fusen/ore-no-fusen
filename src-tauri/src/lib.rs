@@ -21,6 +21,7 @@ mod settings;
 mod capture; // [NEW] キャプチャ機能
 mod sound; // [NEW] サウンド機能
 mod clipboard; // [NEW] クリップボード機能
+mod import; // インポート機能
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
@@ -39,12 +40,24 @@ fn fusen_select_folder(state: State<'_, Mutex<AppState>>) -> Option<String> {
     if let Some(path_buf) = folder_opt {
         let path = path_buf.to_string_lossy().to_string();
         let notes = storage::list_notes(&path);
-        
+
         logic::apply_set_folder(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path.clone(), notes);
         Some(path)
     } else {
         None
     }
+}
+
+#[tauri::command]
+fn fusen_pick_folder() -> Option<String> {
+    rfd::FileDialog::new()
+        .pick_folder()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn fusen_import_from_folder(source_path: String, target_path: String) -> Result<import::ImportStats, String> {
+    import::import_markdown_files(&source_path, &target_path)
 }
 
 
@@ -1208,6 +1221,8 @@ pub fn run() {
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
             fusen_show_at_position, // [NEW] プールウィンドウをShow+リサイズ+移動を原子的に実行
+            fusen_pick_folder,
+            fusen_import_from_folder,
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);
