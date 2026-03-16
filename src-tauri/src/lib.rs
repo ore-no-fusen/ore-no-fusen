@@ -1239,9 +1239,10 @@ pub fn run() {
                 if label == "main" {
                     // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
                     api.prevent_close();
-                } else if !label.starts_with("pool-window-") {
+                } else {
                     // 付箋ウィンドウをタスクバーから「ウィンドウを閉じる」→ アプリ終了
                     // ※JSからの削除・アーカイブ時は destroy() を使うためここには来ない
+                    // ※pool-window- ラベルの昇格済み付箋も含めて終了する
                     window.app_handle().exit(0);
                 }
             }
