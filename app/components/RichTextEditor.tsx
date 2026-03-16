@@ -1005,11 +1005,15 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             }
                         },
                         {
-                            // Tab: 選択行を2スペース字下げ
+                            // Tab: 選択なし→カーソル位置にスペース2個、選択あり→行インデント
                             key: 'Tab',
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
+                                if (from === to) {
+                                    view.dispatch({ changes: { from, insert: '  ' }, selection: { anchor: from + 2 } });
+                                    return true;
+                                }
                                 const lineStart = state.doc.lineAt(from).number;
                                 const toLine = state.doc.lineAt(to);
                                 const lineEnd = (to > from && toLine.from === to)
