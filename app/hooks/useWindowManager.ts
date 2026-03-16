@@ -55,7 +55,7 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
      * ウィンドウの座標とサイズを保存する
      */
     const saveWindowState = useCallback(async () => {
-        if (isMinimized) {
+        if (isMinimizedRef.current) {
             return;
         }
         try {
@@ -64,7 +64,7 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
         } catch (e) {
             console.error('[useWindowManager] Failed to save window state:', e);
         }
-    }, [onGeometryChange, isMinimized]);
+    }, [onGeometryChange]);
 
     /**
      * ミニマイズモードをトグルする
@@ -75,6 +75,7 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
         if (isMinimized) {
             // 元のサイズに復元
             if (originalSizeRef.current) {
+                isMinimizedRef.current = false; // setSize前に同期更新（resizeイベントが正しく処理されるよう）
                 await win.setSize(
                     new PhysicalSize(
                         originalSizeRef.current.width,
@@ -87,6 +88,7 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
             // 現在のサイズを記憶してからミニマイズ
             const size = await win.innerSize();
             originalSizeRef.current = { width: size.width, height: size.height };
+            isMinimizedRef.current = true; // setSize前に同期更新（resizeイベントで保存されないよう）
 
             // DPIスケールファクターを考慮して高さを設定
             const factor = await win.scaleFactor();
