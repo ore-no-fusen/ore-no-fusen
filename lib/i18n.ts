@@ -51,6 +51,11 @@ export const translations = {
         'settings.data.importButton': 'インポート実行',
         'settings.data.importPlaceholder': 'インポート元のフォルダパス...',
         'settings.data.basePathPlaceholder': 'フォルダを選択してください...',
+        'settings.data.backup': 'バックアップ',
+        'settings.data.backupDesc': '現在のデータ（付箋・タグ・画像）を別のフォルダに丸ごとコピーします。',
+        'settings.data.backupButton': 'バックアップ実行',
+        'settings.data.backupPlaceholder': 'バックアップ先フォルダ...',
+        'settings.data.backupDone': 'バックアップ完了！\n\nコピーしたファイル数: ',
 
         // 設定画面 - フッター
         'settings.save': '設定完了',
@@ -156,6 +161,11 @@ export const translations = {
         'settings.data.importDesc': 'Import existing Markdown files or images from another folder.',
         'settings.data.importButton': 'Import',
         'settings.data.importPlaceholder': 'Source folder path',
+        'settings.data.backup': 'Backup',
+        'settings.data.backupDesc': 'Copy all your notes, tags, and images to another folder.',
+        'settings.data.backupButton': 'Run Backup',
+        'settings.data.backupPlaceholder': 'Backup destination folder...',
+        'settings.data.backupDone': 'Backup complete!\n\nFiles copied: ',
 
         // Settings - Footer
         'settings.save': 'Save Settings',

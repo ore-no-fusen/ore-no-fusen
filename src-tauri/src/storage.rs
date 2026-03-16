@@ -447,6 +447,40 @@ pub fn open_file(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// ベースパス全体を dest_dir へ再帰コピーする（バックアップ用）
+/// tags/, assets/ を含むすべてのファイルを対象とする。
+/// 戻り値: コピーしたファイル数
+pub fn backup_notes(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
+    let src = std::path::Path::new(source_dir);
+    let dst = std::path::Path::new(dest_dir);
+
+    if !src.exists() {
+        return Err(format!("バックアップ元が見つかりません: {}", source_dir));
+    }
+    if !dst.exists() {
+        return Err(format!("バックアップ先が見つかりません: {}", dest_dir));
+    }
+
+    let mut count = 0;
+    backup_dir_recursive(src, dst, &mut count)?;
+    Ok(count)
+}
+
+fn backup_dir_recursive(src: &std::path::Path, dst: &std::path::Path, count: &mut usize) -> Result<(), String> {
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())?.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let dest = dst.join(entry.file_name());
+        if path.is_dir() {
+            fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+            backup_dir_recursive(&path, &dest, count)?;
+        } else {
+            fs::copy(&path, &dest).map_err(|e| e.to_string())?;
+            *count += 1;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

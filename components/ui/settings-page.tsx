@@ -45,6 +45,10 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     const [importSourcePath, setImportSourcePath] = useState("")
     const [isImporting, setIsImporting] = useState(false)
 
+    // バックアップ機能用State
+    const [backupDestPath, setBackupDestPath] = useState("")
+    const [isBackingUp, setIsBackingUp] = useState(false)
+
     // 読み込み中は「読み込み中...」と出す（チラつき防止）
     if (loading) {
         return <div className="flex h-screen items-center justify-center bg-white">{t('common.loading')}</div>
@@ -74,6 +78,10 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                     setImportSourcePath={setImportSourcePath}
                     isImporting={isImporting}
                     setIsImporting={setIsImporting}
+                    backupDestPath={backupDestPath}
+                    setBackupDestPath={setBackupDestPath}
+                    isBackingUp={isBackingUp}
+                    setIsBackingUp={setIsBackingUp}
                 />
             case "about":
                 return <AboutSection t={t} />
@@ -278,6 +286,10 @@ type DataSectionProps = SectionProps & {
     setImportSourcePath: (path: string) => void;
     isImporting: boolean;
     setIsImporting: (val: boolean) => void;
+    backupDestPath: string;
+    setBackupDestPath: (path: string) => void;
+    isBackingUp: boolean;
+    setIsBackingUp: (val: boolean) => void;
 }
 
 function GeneralSection({ settings, onUpdate, t }: SectionProps) {
@@ -393,7 +405,11 @@ function DataSection({
     importSourcePath,
     setImportSourcePath,
     isImporting,
-    setIsImporting
+    setIsImporting,
+    backupDestPath,
+    setBackupDestPath,
+    isBackingUp,
+    setIsBackingUp,
 }: DataSectionProps) {
     const handleSelectFolder = async () => {
         try {
@@ -514,6 +530,73 @@ function DataSection({
                                 <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div> {t('common.loading')}</>
                             ) : (
                                 <><Reply className="mr-2 h-4 w-4" /> {t('settings.data.importButton')}</>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+            {/* --- バックアップセクション --- */}
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-6">
+                <div className="flex items-start justify-between mb-4">
+                    <div>
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                            <Database className="h-4 w-4" />
+                            {t('settings.data.backup')}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            {t('settings.data.backupDesc')}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <div className="flex gap-2">
+                        <Input
+                            readOnly
+                            placeholder={t('settings.data.backupPlaceholder')}
+                            value={backupDestPath}
+                            className="font-mono text-sm bg-white"
+                        />
+                        <Button variant="outline" onClick={async () => {
+                            try {
+                                const { invoke } = await import("@tauri-apps/api/core");
+                                const path = await invoke<string | null>("fusen_pick_folder");
+                                if (path) setBackupDestPath(path);
+                            } catch (e) {
+                                console.error("フォルダ選択失敗:", e);
+                            }
+                        }}>
+                            <FolderOpen className="mr-2 h-4 w-4" /> {t('settings.data.browse')}
+                        </Button>
+                    </div>
+
+                    <div className="flex justify-end">
+                        <Button
+                            disabled={!backupDestPath || isBackingUp || !settings.base_path}
+                            onClick={async () => {
+                                if (!backupDestPath || !settings.base_path) return;
+                                setIsBackingUp(true);
+                                try {
+                                    const { invoke } = await import("@tauri-apps/api/core");
+                                    const count = await invoke<number>("fusen_backup", {
+                                        sourcePath: settings.base_path,
+                                        destPath: backupDestPath,
+                                    });
+                                    alert(t('settings.data.backupDone') + count + '件');
+                                } catch (e) {
+                                    console.error("バックアップ失敗:", e);
+                                    alert("バックアップに失敗しました: " + String(e));
+                                } finally {
+                                    setIsBackingUp(false);
+                                    setBackupDestPath("");
+                                }
+                            }}
+                        >
+                            {isBackingUp ? (
+                                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div> {t('common.loading')}</>
+                            ) : (
+                                <><Database className="mr-2 h-4 w-4" /> {t('settings.data.backupButton')}</>
                             )}
                         </Button>
                     </div>

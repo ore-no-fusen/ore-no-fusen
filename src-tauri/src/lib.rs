@@ -60,6 +60,11 @@ fn fusen_import_from_folder(source_path: String, target_path: String) -> Result<
     import::import_markdown_files(&source_path, &target_path)
 }
 
+#[tauri::command]
+fn fusen_backup(source_path: String, dest_path: String) -> Result<usize, String> {
+    storage::backup_notes(&source_path, &dest_path)
+}
+
 
 
 
@@ -1223,6 +1228,7 @@ pub fn run() {
             fusen_show_at_position, // [NEW] プールウィンドウをShow+リサイズ+移動を原子的に実行
             fusen_pick_folder,
             fusen_import_from_folder,
+            fusen_backup,
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);
