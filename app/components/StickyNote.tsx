@@ -34,6 +34,7 @@ import FloatingFormatBar from './FloatingFormatBar';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConfirmDialog from './ConfirmDialog';
 import SaveErrorToast from './SaveErrorToast';
+import Tooltip from './Tooltip';
 
 
 // ユーティリティ
@@ -1345,30 +1346,31 @@ const StickyNote = memo(function StickyNote() {
             >
                 {isMinimized ? (
                     // ミニマイズモード: MarkdownRendererエンジンを再利用して1行表示
-                    <div
-                        className="cursor-pointer select-none text-black flex-1 flex flex-col overflow-hidden"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            toggleMinimize();
-                        }}
-                        title="クリックで展開"
-                    >
-                        <MarkdownRenderer
-                            content={content}
-                            backgroundColor="transparent"
-                            fontSize={noteFontSize}
-                            isDraggableArea={false}
-                            singleLinePreview={true} // [New] 省略表示モード
-                            onCheckboxToggle={handleToggleCheckbox}
-                            onImageResize={handleImageResize}
-                            onDoubleClick={(e) => {
+                    <Tooltip text="クリックで展開">
+                        <div
+                            className="cursor-pointer select-none text-black flex-1 flex flex-col overflow-hidden"
+                            onClick={(e) => {
                                 e.stopPropagation();
                                 toggleMinimize();
                             }}
-                            selectedFilePath={selectedFile?.path}
-                            resolvePath={resolvePath}
-                        />
-                    </div>
+                        >
+                            <MarkdownRenderer
+                                content={content}
+                                backgroundColor="transparent"
+                                fontSize={noteFontSize}
+                                isDraggableArea={false}
+                                singleLinePreview={true} // [New] 省略表示モード
+                                onCheckboxToggle={handleToggleCheckbox}
+                                onImageResize={handleImageResize}
+                                onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleMinimize();
+                                }}
+                                selectedFilePath={selectedFile?.path}
+                                resolvePath={resolvePath}
+                            />
+                        </div>
+                    </Tooltip>
                 ) : loading ? (
                     <div className="text-center text-gray-300 py-8 text-xs font-mono opacity-30">
                         Loading...
@@ -1457,27 +1459,30 @@ const StickyNote = memo(function StickyNote() {
 
             {/* フッター領域 - 編集モード時のドラッグ操作用。最小限の高さに設定。 */}
             {isEditing && (
-                <div
-                    className="noteFooter"
-                    style={{
-                        height: 'var(--footer-height)',
-                        cursor: 'grab',
-                        userSelect: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        // 「エディタではない」ことを明確にするため、視覚的に区別できる背景を設定
-                        backgroundColor: 'rgba(0, 0, 0, 0.08)',
-                        borderTop: '1px solid rgba(0, 0, 0, 0.12)',
-                        color: 'rgba(0, 0, 0, 0.3)',
-                        fontSize: '12px',
-                        letterSpacing: '4px',
-                    }}
-                    onPointerDown={handleDragStart}
-                    title="ドラッグで移動"
-                >
-                    ⠿
-                </div>
+                <Tooltip text="ドラッグで移動">
+                    <div
+                        className="noteFooter"
+                        style={{
+                            height: 'var(--footer-height)',
+                            cursor: 'grab',
+                            userSelect: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            // 「エディタではない」ことを明確にするため、視覚的に区別できる背景を設定
+                            backgroundColor: 'rgba(0, 0, 0, 0.08)',
+                            borderTop: '1px solid rgba(0, 0, 0, 0.12)',
+                            color: 'rgba(0, 0, 0, 0.3)',
+                            fontSize: '12px',
+                            letterSpacing: '4px',
+                            width: '100%',
+                        }}
+                        onPointerDown={handleDragStart}
+                        aria-label="ドラッグで移動"
+                    >
+                        ⠿
+                    </div>
+                </Tooltip>
             )}
 
             {/* UI: リモート同期ステータス (将来の拡張用) */}

@@ -160,7 +160,7 @@ test.describe('すぐ書ける', () => {
         await page.locator('article.notePaper').dblclick();
         await page.locator('.cm-content').waitFor({ state: 'visible', timeout: 3000 });
         await editor.type('フッタークリックテスト');
-        await page.locator('[title="ドラッグで移動"]').click();
+        await page.locator('[aria-label="ドラッグで移動"]').click();
         await expect(page.locator('.cm-content')).not.toBeVisible();
         await expect(page.locator('article.notePaper')).toContainText('フッタークリックテスト');
 
@@ -200,7 +200,7 @@ test.describe('すぐ書ける', () => {
         await editor.press('Shift+End');
         await page.waitForTimeout(300);
 
-        await page.locator('button[title="太字 (Ctrl+B)"]').click();
+        await page.locator('button[aria-label="太字"]').click();
 
         // 書式ボタン後もそのまま入力できること
         await expect(page.locator('.cm-content')).toBeVisible();
@@ -226,7 +226,7 @@ test.describe('強調できる', () => {
         await editor.press('Shift+End');
         await page.waitForTimeout(300);
 
-        await page.locator('button[title="太字 (Ctrl+B)"]').click();
+        await page.locator('button[aria-label="太字"]').click();
 
         const content = await editor.innerText();
         expect(content).toMatch(/\*\*.*\*\*/);
@@ -250,7 +250,7 @@ test.describe('強調できる', () => {
         await editor.press('Shift+ArrowLeft'); // 1文字戻す（行末を外す）
         await page.waitForTimeout(200);
 
-        await page.locator('button[title="テーブル変換（選択行を表に／表をテキストに）"]').click();
+        await page.locator('button[aria-label="テーブル変換"]').click();
         await page.waitForTimeout(200);
 
         const content = await editor.innerText();
@@ -277,7 +277,7 @@ test.describe('強調できる', () => {
         await editor.press('Shift+ArrowLeft'); // 1文字戻す
         await page.waitForTimeout(200);
 
-        await page.locator('button[title="Mermaid図に変換（選択行を図に／図をテキストに）"]').click();
+        await page.locator('button[aria-label="Mermaid変換"]').click();
         await page.waitForTimeout(200);
 
         const content = await editor.innerText();
