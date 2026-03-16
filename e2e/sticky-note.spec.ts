@@ -211,7 +211,7 @@ test.describe('すぐ書ける', () => {
 
 
 // ============================================================
-// 2. 強調できる（1件）
+// 2. 強調できる・変換できる（3件）
 // ============================================================
 test.describe('強調できる', () => {
     test.beforeEach(async ({ page }) => { await setupEditMode(page); });
@@ -230,6 +230,61 @@ test.describe('強調できる', () => {
 
         const content = await editor.innerText();
         expect(content).toMatch(/\*\*.*\*\*/);
+    });
+
+    test('2.2 行の途中を選択して表ボタンを押すと行全体が表に変換される', async ({ page }) => {
+        const editor = page.locator('.cm-content');
+        await expect(editor).toBeVisible({ timeout: 3000 });
+
+        // 2列のデータを入力（スペース2個で列区切り）
+        await editor.click();
+        await editor.press('Control+a');
+        await editor.press('Delete');
+        await editor.type('col1  col2');
+        await page.waitForTimeout(200);
+
+        // 行の途中だけ選択（"ol1  col" の部分 = 行頭・行末ではない）
+        await editor.press('Home');
+        await editor.press('ArrowRight'); // 1文字進む（行頭を外す）
+        await editor.press('Shift+End');
+        await editor.press('Shift+ArrowLeft'); // 1文字戻す（行末を外す）
+        await page.waitForTimeout(200);
+
+        await page.locator('button[title="テーブル変換（選択行を表に／表をテキストに）"]').click();
+        await page.waitForTimeout(200);
+
+        const content = await editor.innerText();
+        // 行全体が変換され、先頭の "c" と末尾の "2" が表の中に含まれていること
+        expect(content).toContain('| col1');
+        expect(content).toContain('col2 |');
+    });
+
+    test('2.3 行の途中を選択してMermaidボタンを押すと行全体がMermaidブロックに変換される', async ({ page }) => {
+        const editor = page.locator('.cm-content');
+        await expect(editor).toBeVisible({ timeout: 3000 });
+
+        // Mermaid のサンプルコードを入力
+        await editor.click();
+        await editor.press('Control+a');
+        await editor.press('Delete');
+        await editor.type('graph TD');
+        await page.waitForTimeout(200);
+
+        // 行の途中だけ選択（"raph T" の部分）
+        await editor.press('Home');
+        await editor.press('ArrowRight'); // 1文字進む
+        await editor.press('Shift+End');
+        await editor.press('Shift+ArrowLeft'); // 1文字戻す
+        await page.waitForTimeout(200);
+
+        await page.locator('button[title="Mermaid図に変換（選択行を図に／図をテキストに）"]').click();
+        await page.waitForTimeout(200);
+
+        const content = await editor.innerText();
+        // 行全体が変換され、先頭の "g" と末尾の "D" が ```mermaid ブロックの中に含まれていること
+        expect(content).toContain('```mermaid');
+        expect(content).toContain('graph TD');
+        expect(content).toContain('```');
     });
 });
 

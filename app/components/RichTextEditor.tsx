@@ -665,10 +665,16 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             if (!viewRef.current) return;
             const view = viewRef.current;
             const { state } = view;
-            const { from, to } = state.selection.main;
+            const sel = state.selection.main;
 
             // 選択なし → 何もしない
-            if (from === to) return;
+            if (sel.from === sel.to) return;
+
+            // 選択範囲を行頭・行末に拡張（行の途中から変換するとぐちゃぐちゃになるため）
+            // sel.to が次の行頭ちょうどの場合は1つ戻して前の行末を使う
+            const toPos = sel.to > sel.from && state.doc.lineAt(sel.to).from === sel.to ? sel.to - 1 : sel.to;
+            const from = state.doc.lineAt(sel.from).from;
+            const to = state.doc.lineAt(toPos).to;
 
             const selectedText = state.doc.sliceString(from, to);
             const lines = selectedText.split('\n');
@@ -725,10 +731,16 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             if (!viewRef.current) return;
             const view = viewRef.current;
             const { state } = view;
-            const { from, to } = state.selection.main;
+            const sel = state.selection.main;
 
             // 選択なし → 何もしない
-            if (from === to) return;
+            if (sel.from === sel.to) return;
+
+            // 選択範囲を行頭・行末に拡張（行の途中から変換するとぐちゃぐちゃになるため）
+            // sel.to が次の行頭ちょうどの場合は1つ戻して前の行末を使う
+            const toPos = sel.to > sel.from && state.doc.lineAt(sel.to).from === sel.to ? sel.to - 1 : sel.to;
+            const from = state.doc.lineAt(sel.from).from;
+            const to = state.doc.lineAt(toPos).to;
 
             const selectedText = state.doc.sliceString(from, to);
             const trimmed = selectedText.trim();
