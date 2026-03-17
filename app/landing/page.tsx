@@ -95,6 +95,9 @@ export default function LandingPage() {
                         <p className="text-sm text-slate-400 mt-6">
                             Windows 10/11 対応 • v{process.env.NEXT_PUBLIC_APP_VERSION}
                         </p>
+                        <p className="text-xs text-slate-500 mt-2">
+                            ダウンロード後、<span className="text-slate-300 font-mono">ore-no-fusen_x64_setup.exe</span> を実行してインストール
+                        </p>
                     </div>
                 </div>
 
@@ -245,6 +248,10 @@ export default function LandingPage() {
                         <Download className="w-6 h-6" />
                         ore-no-fusen をダウンロード
                     </Link>
+
+                    <p className="text-sm text-slate-400 mt-4">
+                        ページが開いたら <span className="text-white font-mono bg-slate-800 px-2 py-0.5 rounded">ore-no-fusen_x64_setup.exe</span> をクリックしてダウンロード・インストール
+                    </p>
 
                     <div className="mt-12 p-6 bg-slate-800/50 border border-slate-700/50 rounded-xl">
                         <h3 className="font-semibold mb-4">システム要件</h3>
