@@ -7,6 +7,7 @@ import { getTranslation, type Language } from '@/lib/i18n';
 type Props = {
     top: number;
     left: number;
+    flip?: boolean;
     onBold: () => void;
     onHeading: () => void;
     onList: () => void;
@@ -14,7 +15,7 @@ type Props = {
     language?: Language;
 };
 
-export default function FloatingFormatBar({ top, left, onBold, onHeading, onList, onCheckbox, language }: Props) {
+export default function FloatingFormatBar({ top, left, flip, onBold, onHeading, onList, onCheckbox, language }: Props) {
     const t = getTranslation(language ?? 'ja');
     return (
         <div
@@ -23,7 +24,7 @@ export default function FloatingFormatBar({ top, left, onBold, onHeading, onList
             style={{
                 top: `${top}px`,
                 left: `${left}px`,
-                transform: 'translateY(-100%) translateY(-4px)',
+                transform: flip ? 'translateY(4px)' : 'translateY(-100%) translateY(-4px)',
             }}
             onPointerDown={(e) => {
                 e.preventDefault();

@@ -4,49 +4,49 @@
 
 ```mermaid
 flowchart TD
-    A[ソース修正] --> B[ローカルビルドで動作確認\nnpm run tauri build]
+    A["① ソース修正"] --> B["② ローカルビルドで動作確認<br/>npm run tauri build"]
     B --> C{問題あり?}
     C -->|あり| A
-    C -->|なし| D[git commit]
+    C -->|なし| D["③ git commit"]
     D --> E{pre-commit hook\nHusky}
 
     subgraph hook [pre-commit で自動実行]
-        E1[Vitest\n単体テスト]
-        E2[Playwright\nE2Eテスト]
+        E1["1) Vitest 単体テスト"]
+        E2["2) Playwright E2Eテスト"]
         E1 --> E2
     end
     E --- hook
 
-    E -->|失敗| F[❌ コミット中断\n修正して再挑戦]
+    E -->|失敗| F["❌ コミット中断<br/>修正して再挑戦"]
     F --> A
-    E -->|成功| G[✅ コミット完了]
+    E -->|成功| G["④ ✅ コミット完了"]
 
-    G --> REL["リリースしたくなったら\nClaudeに「リリースして」と伝える"]
+    G --> REL["⑤ リリースしたくなったら<br/>Claudeに「リリースして」と伝える"]
 
     subgraph cmd [Claude が .claude/skills/do-release.md を読んで実行]
-        R1["新バージョンをユーザーに確認"]
-        R2["3ファイルを一括更新\npackage.json\ntauri.conf.json\nCargo.toml"]
-        R3["git commit\nchore: バージョンを vX.X.X に更新"]
-        R4["git tag vX.X.X"]
-        R5["git push origin main"]
-        R6["git push origin vX.X.X\n※--tags は使わない"]
+        R1["1) 新バージョンをユーザーに確認"]
+        R2["2) 3ファイルを一括更新<br/>package.json / tauri.conf.json / Cargo.toml"]
+        R3["3) git commit<br/>chore: バージョンを vX.X.X に更新"]
+        R4["4) git tag vX.X.X"]
+        R5["5) git push origin main"]
+        R6["6) git push origin vX.X.X<br/>🚫 --tags 禁止（理由は下の注意事項参照）"]
         R1 --> R2 --> R3 --> R4 --> R5 --> R6
     end
     REL --- cmd
 
-    R6 --> J[GitHub Actions 起動]
+    R6 --> J["GitHub Actions 起動"]
 
     subgraph actions [GitHub Actions: release.yml]
-        J1[npm ci]
-        J2[Rustツールチェーン準備]
-        J3[tauri-action\nNext.jsビルド + Rustビルド]
-        J4[インストーラー署名]
-        J5[GitHubリリース作成]
+        J1["1) npm ci"]
+        J2["2) Rustツールチェーン準備"]
+        J3["3) tauri-action<br/>Next.jsビルド + Rustビルド"]
+        J4["4) インストーラー署名"]
+        J5["5) GitHubリリース作成"]
         J1 --> J2 --> J3 --> J4 --> J5
     end
     J --- actions
 
-    J5 --> K[✅ GitHubリリースページに\n署名付きインストーラーが出現]
+    J5 --> K["✅ GitHubリリースページに<br/>署名付きインストーラーが出現"]
 ```
 
 ## ローカルビルド（動作確認用・署名なし）
@@ -74,13 +74,21 @@ GitHub Actionsが自動でビルド・署名・リリースを行う（所要時
 ### タグは必ず単体でプッシュする（do-release.md の手順が自動で守る）
 
 ```bash
-# ❌ NG: --tags はローカルの未プッシュタグを全部送るため、複数タグ同時プッシュになり
-#         GitHub Actions が正しくトリガーされないことがある
+# ❌ NG: 絶対にやってはいけない
 git push origin main --tags
+```
 
-# ✅ OK: タグは個別にプッシュする（/release はこの順序で実行する）
-git push origin main
-git push origin vX.X.X
+**なぜダメか（実際に起きた事故）:**
+- `--tags` はローカルに溜まっている**未プッシュのタグを全部まとめて**送る
+- 過去タグが残っていると複数タグが同時にプッシュされる
+- GitHub Actions がタグの数だけ起動し、それぞれ異なるコミットでビルドが走る
+- 結果: 1つのリリースに複数バージョンのインストーラーが混在し、リリースが壊れる
+- → **v1.1.6 でこれが発生。リリースを削除して v1.1.7 を作り直すことになった**
+
+```bash
+# ✅ OK: タグは1個ずつ個別にプッシュする
+git push origin main       # コミット履歴を送る（Actionsは動かない）
+git push origin vX.X.X     # タグを送る（これがトリガーになりActionsが1回だけ起動）
 ```
 
 ### リリースは手動で作らない
@@ -88,3 +96,24 @@ git push origin vX.X.X
 `gh release create` や GitHub Web UI でリリースを手動作成しないこと。
 `tauri-action` がビルド完了後に自動でリリースとインストーラーを作成する。
 手動作成すると競合して CD が失敗する。
+
+---
+
+## このドキュメントの設計思想
+
+**機械はバグる。だから人間が判断できる情報を残す。**
+
+具体的には以下の考えに基づいて書いている。
+
+**1. 人と機械の作業を明確に分ける**
+何を人間がやり、何を機械がやるかを明示する。
+さらに「なぜそこで分けたか」も書く。理由がないと、次に問題が起きたとき境界線を変えていいのか判断できない。
+
+**2. 絵で示す**
+文章だけでは流れが頭に入りにくい。フローチャートにすることで、自分が今どのステップにいるか・何が起きているかを視覚的に把握できる。
+
+**3. 禁止事項とその理由をセットで書く**
+「〜してはいけない」だけでは、状況が変わったとき守るべきかどうか判断できない。理由があれば応用が利く。
+
+**4. 具体的な痛みを書く**
+抽象的な注意書きは忘れる。「v1.1.6でこれが発生して作り直した」という事実が書いてあると、記憶に残り、次に同じミスをしにくくなる。

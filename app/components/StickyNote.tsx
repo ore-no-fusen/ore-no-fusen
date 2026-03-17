@@ -80,7 +80,7 @@ const StickyNote = memo(function StickyNote() {
     const [isNewNote, setIsNewNote] = useState(false);
 
     // フローティングフォーマットバー
-    const [floatBarCoords, setFloatBarCoords] = useState<{ top: number; left: number } | null>(null);
+    const [floatBarCoords, setFloatBarCoords] = useState<{ top: number; left: number; flip?: boolean } | null>(null);
 
     // UI状態
     const [isHover, setIsHover] = useState(false);
@@ -941,9 +941,13 @@ const StickyNote = memo(function StickyNote() {
             return;
         }
         const rect = editorHostRef.current.getBoundingClientRect();
+        const BAR_HEIGHT = 36;
+        const topRelative = coords.top - rect.top;
+        const flip = topRelative < BAR_HEIGHT;
         setFloatBarCoords({
-            top: coords.top - rect.top,
+            top: flip ? coords.bottom - rect.top : topRelative,
             left: Math.max(0, coords.left - rect.left),
+            flip,
         });
     }, []);
 
@@ -1417,6 +1421,7 @@ const StickyNote = memo(function StickyNote() {
                             <FloatingFormatBar
                                 top={floatBarCoords.top}
                                 left={floatBarCoords.left}
+                                flip={floatBarCoords.flip}
                                 onBold={() => editorRef.current?.insertBold()}
                                 onHeading={() => editorRef.current?.insertHeading1()}
                                 onList={() => editorRef.current?.insertList()}

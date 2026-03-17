@@ -6,6 +6,9 @@ Sentry.init({
   // エラーの詳細度（本番は低め）
   tracesSampleRate: 0,
 
+  // 開発環境では送信しない
+  enabled: process.env.NODE_ENV === 'production',
+
   // デバッグログ無効
   debug: false,
 
@@ -26,3 +29,5 @@ Sentry.init({
     return event;
   },
 });
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

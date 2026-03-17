@@ -1200,7 +1200,7 @@ function OrchestratorContent() {
 
   }, [handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen;
+  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog;
 
   // [DEBUG] isDashboard状態の詳細ログ
   useEffect(() => {
