@@ -155,6 +155,7 @@ function OrchestratorContent() {
   // [NEW] アップデートダイアログ
   const [pendingUpdate, setPendingUpdate] = useState<any>(null);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [isHidingAfterUpdate, setIsHidingAfterUpdate] = useState(false);
   const isSearchOpenRef = useRef(false);
   useEffect(() => { isSearchOpenRef.current = isSearchOpen; }, [isSearchOpen]);
 
@@ -201,6 +202,20 @@ function OrchestratorContent() {
     const timer = setTimeout(checkForUpdate, 3000);
     return () => clearTimeout(timer);
   }, [isMainWindow]);
+
+  // [FIX] アップデートダイアログ表示時のウィンドウ操作をuseEffectに移動
+  // レンダー内でサイドエフェクトを呼ぶとタイミングが不安定になりフラッシュが起きるため
+  useEffect(() => {
+    if (!showUpdateDialog || !pendingUpdate) return;
+    import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+      const { LogicalSize } = await import('@tauri-apps/api/dpi');
+      const win = getCurrentWindow();
+      await win.setSize(new LogicalSize(420, 280)).catch(() => {});
+      await win.center().catch(() => {});
+      await win.show().catch(() => {});
+      await win.setFocus().catch(() => {});
+    });
+  }, [showUpdateDialog, pendingUpdate]);
 
   // アップデートのダウンロードとインストールを実行
   const handleUpdateConfirm = useCallback(async () => {
@@ -1245,16 +1260,8 @@ function OrchestratorContent() {
 
   // [FIX] アップデートダイアログは最優先で表示（isDashboard より前に判定）
   // isDashboard=true だとメインウィンドウが非表示になるため、先にreturnしないと届かない
+  if (isHidingAfterUpdate) return null;
   if (showUpdateDialog && pendingUpdate) {
-    // ウィンドウをダイアログに合わせてリサイズして前面に表示する
-    import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
-      const { LogicalSize } = await import('@tauri-apps/api/dpi');
-      const win = getCurrentWindow();
-      await win.setSize(new LogicalSize(420, 280)).catch(() => {});
-      await win.center().catch(() => {});
-      await win.show().catch(() => {});
-      await win.setFocus().catch(() => {});
-    });
     return (
       <ConfirmDialog
         isOpen={showUpdateDialog}
@@ -1264,6 +1271,7 @@ function OrchestratorContent() {
         cancelText="あとで"
         onConfirm={handleUpdateConfirm}
         onCancel={async () => {
+          setIsHidingAfterUpdate(true);
           setShowUpdateDialog(false);
           setPendingUpdate(null);
           const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -1272,6 +1280,7 @@ function OrchestratorContent() {
           await win.setSize(new LogicalSize(240, 300)).catch(() => {});
           await win.center().catch(() => {});
           await win.hide().catch(() => {});
+          setIsHidingAfterUpdate(false);
         }}
       />
     );
