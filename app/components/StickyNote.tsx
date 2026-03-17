@@ -1278,6 +1278,7 @@ const StickyNote = memo(function StickyNote() {
                     }}
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}
+                    language={language}
                     onCreateNewNote={async () => {
                         if (!selectedFile) return;
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
@@ -1346,7 +1347,7 @@ const StickyNote = memo(function StickyNote() {
             >
                 {isMinimized ? (
                     // ミニマイズモード: MarkdownRendererエンジンを再利用して1行表示
-                    <Tooltip text="クリックで展開">
+                    <Tooltip text={t('tooltip.expand')}>
                         <div
                             className="cursor-pointer select-none text-black flex-1 flex flex-col overflow-hidden"
                             onClick={(e) => {
@@ -1420,6 +1421,7 @@ const StickyNote = memo(function StickyNote() {
                                 onHeading={() => editorRef.current?.insertHeading1()}
                                 onList={() => editorRef.current?.insertList()}
                                 onCheckbox={() => editorRef.current?.insertCheckbox()}
+                                language={language}
                             />
                         )}
                     </div>
@@ -1459,7 +1461,7 @@ const StickyNote = memo(function StickyNote() {
 
             {/* フッター領域 - 編集モード時のドラッグ操作用。最小限の高さに設定。 */}
             {isEditing && (
-                <Tooltip text="ドラッグで移動">
+                <Tooltip text={t('tooltip.drag')}>
                     <div
                         className="noteFooter"
                         style={{
@@ -1478,7 +1480,7 @@ const StickyNote = memo(function StickyNote() {
                             width: '100%',
                         }}
                         onPointerDown={handleDragStart}
-                        aria-label="ドラッグで移動"
+                        aria-label={t('tooltip.drag')}
                     >
                         ⠿
                     </div>
@@ -1541,14 +1543,14 @@ const StickyNote = memo(function StickyNote() {
                         onPointerDown={(e) => e.stopPropagation()}
                     >
                         <h3 className="text-gray-800 font-bold text-lg mb-2 flex items-center gap-2">
-                            <span>🏷️</span> 新規タグを追加
+                            <span>🏷️</span> {t('tag.addTitle')}
                         </h3>
                         <form onSubmit={handleTagSubmit} className="flex flex-col gap-4">
                             <input
                                 autoFocus
                                 type="text"
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 text-sm"
-                                placeholder="例: Todo, アイデア, etc..."
+                                placeholder={t('tag.addPlaceholder')}
                                 value={tagInputValue}
                                 onChange={(e) => setTagInputValue(e.target.value)}
                                 onKeyDown={(e) => {
@@ -1563,14 +1565,14 @@ const StickyNote = memo(function StickyNote() {
                                     onClick={() => setShowTagModal(false)}
                                     className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
                                 >
-                                    キャンセル
+                                    {t('common.cancel')}
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={!tagInputValue.trim()}
                                     className="px-6 py-2 text-sm font-bold text-white bg-purple-600 rounded-lg disabled:opacity-50 hover:bg-purple-700 transition-colors shadow-md"
                                 >
-                                    追加
+                                    {t('tag.addButton')}
                                 </button>
                             </div>
                         </form>
@@ -1581,8 +1583,8 @@ const StickyNote = memo(function StickyNote() {
             {/* グローバルタグ削除の確認ダイアログ */}
             <ConfirmDialog
                 isOpen={!!tagToDelete}
-                title="タグの削除"
-                message={`タグ「${tagToDelete}」を完全に削除しますか？\n\n※この操作は元に戻せません。このタグを含む**すべての付箋**からバッジが消去されます。付箋本体は消去されません。`}
+                title={t('tag.deleteTitle')}
+                message={t('tag.deleteMessage').replace('{tag}', tagToDelete ?? '')}
                 onConfirm={executeTagDelete}
                 onCancel={() => setTagToDelete(null)}
             />

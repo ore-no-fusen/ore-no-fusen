@@ -25,6 +25,7 @@ import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
 import LandingPage from './landing/page'; // [NEW] Vercel用ランディングページ
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
+import { getTranslation, type Language } from '@/lib/i18n';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 
 // Global AppState type definition
@@ -156,6 +157,13 @@ function OrchestratorContent() {
   const [pendingUpdate, setPendingUpdate] = useState<any>(null);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [isHidingAfterUpdate, setIsHidingAfterUpdate] = useState(false);
+  const [uiLanguage, setUiLanguage] = useState<Language>('ja');
+  const tUpdate = getTranslation(uiLanguage);
+  useEffect(() => {
+    invoke<any>('get_settings').then(s => {
+      if (s?.language) setUiLanguage(s.language as Language);
+    }).catch(() => {});
+  }, []);
   const isSearchOpenRef = useRef(false);
   useEffect(() => { isSearchOpenRef.current = isSearchOpen; }, [isSearchOpen]);
 
@@ -645,6 +653,7 @@ function OrchestratorContent() {
         const unlistenSettings = await listen<any>('settings_updated', async (event) => {
           console.log('[ORCHESTRATOR] Settings updated:', event.payload);
           const newSettings = event.payload;
+          if (newSettings?.language) setUiLanguage(newSettings.language as Language);
           if (newSettings && newSettings.base_path) {
             setFolderPath(newSettings.base_path);
             await syncState();
@@ -1265,10 +1274,10 @@ function OrchestratorContent() {
     return (
       <ConfirmDialog
         isOpen={showUpdateDialog}
-        title="アップデートがあります"
-        message={`バージョン ${pendingUpdate.version} が利用可能です。\n今すぐアップデートしますか？\n（ダウンロード後に自動で再起動します）`}
-        confirmText="アップデートする"
-        cancelText="あとで"
+        title={tUpdate('update.title')}
+        message={tUpdate('update.message').replace('{version}', pendingUpdate.version)}
+        confirmText={tUpdate('update.confirm')}
+        cancelText={tUpdate('update.cancel')}
         onConfirm={handleUpdateConfirm}
         onCancel={async () => {
           setIsHidingAfterUpdate(true);

@@ -11,6 +11,7 @@
 
 import React from 'react';
 import Tooltip from './Tooltip';
+import { getTranslation, type Language } from '@/lib/i18n';
 
 export type ToolbarButtonsProps = {
     isEditing: boolean;
@@ -24,6 +25,7 @@ export type ToolbarButtonsProps = {
     onToggleMinimize: () => void;
     onTogglePin?: () => void; // [New]
     onCreateNewNote?: () => void; // [New] 新規付箋作成
+    language?: Language;
 };
 
 export default function ToolbarButtons({
@@ -37,8 +39,10 @@ export default function ToolbarButtons({
     onCapture,
     onToggleMinimize,
     onTogglePin,
-    onCreateNewNote
+    onCreateNewNote,
+    language
 }: ToolbarButtonsProps) {
+    const t = getTranslation(language ?? 'ja');
     // 通常モード時：ツールバー（折りたたみ + ピン）
     if (!isEditing) {
         return (
@@ -48,7 +52,7 @@ export default function ToolbarButtons({
             >
                 {/* 新規作成ボタン (左端) */}
                 {onCreateNewNote && (
-                    <Tooltip text="新しい付箋" hint="Ctrl+N" placement="top-right">
+                    <Tooltip text={t('tooltip.newNote')} hint="Ctrl+N" placement="top-right">
                         <button
                             onPointerDown={(e) => {
                                 e.preventDefault();
@@ -63,7 +67,7 @@ export default function ToolbarButtons({
                 )}
 
                 {/* 折りたたみボタン */}
-                <Tooltip text={isMinimized ? '展開する' : '畳む'} placement="top-right">
+                <Tooltip text={isMinimized ? t('tooltip.unfold') : t('tooltip.fold')} placement="top-right">
                     <button
                         onPointerDown={(e) => {
                             e.preventDefault();
@@ -78,7 +82,7 @@ export default function ToolbarButtons({
 
                 {/* ピン留めボタン (右) */}
                 {onTogglePin && (
-                    <Tooltip text={isPinned ? '最前面固定を解除' : '最前面に固定'} placement="top-right">
+                    <Tooltip text={isPinned ? t('tooltip.unpin') : t('tooltip.pin')} placement="top-right">
                         <button
                             onPointerDown={(e) => {
                                 e.preventDefault();
@@ -211,7 +215,7 @@ export default function ToolbarButtons({
         >
             {/* テーブル変換ボタン */}
             {onTable && (
-                <Tooltip text="テーブル変換" placement="top-right">
+                <Tooltip text={t('tooltip.table')} placement="top-right">
                     <button
                         onPointerDown={(e) => {
                             e.preventDefault();
@@ -220,7 +224,7 @@ export default function ToolbarButtons({
                         onClick={onTable}
                         onKeyDown={handleButtonKeyDown}
                         tabIndex={0}
-                        aria-label="テーブル変換"
+                        aria-label={t('tooltip.table')}
                         className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center text-sm"
                     >
                         ⊞
@@ -230,7 +234,7 @@ export default function ToolbarButtons({
 
             {/* Mermaid変換ボタン */}
             {onMermaid && (
-                <Tooltip text="Mermaid変換" placement="top-right">
+                <Tooltip text={t('tooltip.mermaid')} placement="top-right">
                     <button
                         onPointerDown={(e) => {
                             e.preventDefault();
@@ -239,7 +243,7 @@ export default function ToolbarButtons({
                         onClick={onMermaid}
                         onKeyDown={handleButtonKeyDown}
                         tabIndex={0}
-                        aria-label="Mermaid変換"
+                        aria-label={t('tooltip.mermaid')}
                         className="text-gray-700 hover:bg-gray-100 px-2 min-w-[32px] rounded flex items-center justify-center text-sm"
                     >
                         🔷
@@ -248,7 +252,7 @@ export default function ToolbarButtons({
             )}
 
             {/* Capture ボタン */}
-            <Tooltip text="画面キャプチャ" hint="Shift+Win+S → Ctrl+V" placement="top-right">
+            <Tooltip text={t('tooltip.capture')} hint={t('tooltip.captureHint')} placement="top-right">
                 <button
                     onPointerDown={(e) => {
                         e.preventDefault();

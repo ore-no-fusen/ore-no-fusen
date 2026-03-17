@@ -101,6 +101,36 @@ export const translations = {
 
 
 
+        // ツールチップ
+        'tooltip.newNote': '新しい付箋',
+        'tooltip.fold': '畳む',
+        'tooltip.unfold': '展開する',
+        'tooltip.pin': '最前面に固定',
+        'tooltip.unpin': '最前面固定を解除',
+        'tooltip.table': 'テーブル変換',
+        'tooltip.mermaid': 'Mermaid変換',
+        'tooltip.capture': '画面キャプチャ',
+        'tooltip.captureHint': 'Shift+Win+S → Ctrl+V',
+        'tooltip.bold': '太字',
+        'tooltip.heading': '見出し',
+        'tooltip.list': '箇条書き',
+        'tooltip.checkbox': 'チェック',
+        'tooltip.expand': 'クリックで展開',
+        'tooltip.drag': 'ドラッグで移動',
+
+        // タグ操作
+        'tag.addTitle': '新規タグを追加',
+        'tag.addPlaceholder': '例: Todo, アイデア, etc...',
+        'tag.addButton': '追加',
+        'tag.deleteTitle': 'タグの削除',
+        'tag.deleteMessage': 'タグ「{tag}」を完全に削除しますか？\n\n※この操作は元に戻せません。このタグを含む**すべての付箋**からバッジが消去されます。付箋本体は消去されません。',
+
+        // アップデート
+        'update.title': 'アップデートがあります',
+        'update.message': 'バージョン {version} が利用可能です。\n今すぐアップデートしますか？\n（ダウンロード後に自動で再起動します）',
+        'update.confirm': 'アップデートする',
+        'update.cancel': 'あとで',
+
         // Feedback
         'settings.feedback.menuTitle': "ご意見・ご要望",
         'settings.feedback.title': "フィードバックを送る",
@@ -208,6 +238,36 @@ export const translations = {
         'common.save': 'Save & Close',
         'common.cancel': 'Cancel',
         'common.optional': 'Optional',
+
+        // Tooltips
+        'tooltip.newNote': 'New Note',
+        'tooltip.fold': 'Minimize',
+        'tooltip.unfold': 'Expand',
+        'tooltip.pin': 'Pin to Front',
+        'tooltip.unpin': 'Unpin from Front',
+        'tooltip.table': 'Convert to Table',
+        'tooltip.mermaid': 'Convert to Mermaid',
+        'tooltip.capture': 'Capture Image',
+        'tooltip.captureHint': 'Shift+Win+S → Ctrl+V',
+        'tooltip.bold': 'Bold',
+        'tooltip.heading': 'Heading',
+        'tooltip.list': 'List',
+        'tooltip.checkbox': 'Checkbox',
+        'tooltip.expand': 'Click to expand',
+        'tooltip.drag': 'Drag to move',
+
+        // Tags
+        'tag.addTitle': 'Add New Tag',
+        'tag.addPlaceholder': 'e.g. Todo, Ideas, etc...',
+        'tag.addButton': 'Add',
+        'tag.deleteTitle': 'Delete Tag',
+        'tag.deleteMessage': 'Permanently delete the tag "{tag}"?\n\nThis cannot be undone. The tag will be removed from **all notes** containing it. The notes themselves will not be deleted.',
+
+        // Update
+        'update.title': 'Update Available',
+        'update.message': 'Version {version} is available.\nWould you like to update now?\n(The app will restart automatically after download.)',
+        'update.confirm': 'Update Now',
+        'update.cancel': 'Later',
 
         // Feedback
         'settings.feedback.menuTitle': "Feedback",

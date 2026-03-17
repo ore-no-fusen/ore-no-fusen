@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Tooltip from './Tooltip';
+import { getTranslation, type Language } from '@/lib/i18n';
 
 type Props = {
     top: number;
@@ -10,9 +11,11 @@ type Props = {
     onHeading: () => void;
     onList: () => void;
     onCheckbox: () => void;
+    language?: Language;
 };
 
-export default function FloatingFormatBar({ top, left, onBold, onHeading, onList, onCheckbox }: Props) {
+export default function FloatingFormatBar({ top, left, onBold, onHeading, onList, onCheckbox, language }: Props) {
+    const t = getTranslation(language ?? 'ja');
     return (
         <div
             className="floatBar absolute z-[300] bg-white border border-gray-200 shadow-lg rounded-lg
@@ -27,16 +30,16 @@ export default function FloatingFormatBar({ top, left, onBold, onHeading, onList
                 e.stopPropagation();
             }}
         >
-            <Tooltip text="太字" hint="Ctrl+B">
+            <Tooltip text={t('tooltip.bold')} hint="Ctrl+B">
                 <button
                     onClick={onBold}
-                    aria-label="太字"
+                    aria-label={t('tooltip.bold')}
                     className="font-bold text-red-600 hover:bg-gray-100 px-2 py-1 rounded text-sm"
                 >
                     B
                 </button>
             </Tooltip>
-            <Tooltip text="見出し" hint="Ctrl+H">
+            <Tooltip text={t('tooltip.heading')} hint="Ctrl+H">
                 <button
                     onClick={onHeading}
                     className="font-bold text-gray-700 hover:bg-gray-100 px-2 py-1 rounded text-sm"
@@ -44,7 +47,7 @@ export default function FloatingFormatBar({ top, left, onBold, onHeading, onList
                     H<sub className="text-[9px]">1</sub>
                 </button>
             </Tooltip>
-            <Tooltip text="箇条書き" hint="Ctrl+L">
+            <Tooltip text={t('tooltip.list')} hint="Ctrl+L">
                 <button
                     onClick={onList}
                     className="text-gray-700 hover:bg-gray-100 px-2 py-1 rounded text-sm"
@@ -52,7 +55,7 @@ export default function FloatingFormatBar({ top, left, onBold, onHeading, onList
                     ≡
                 </button>
             </Tooltip>
-            <Tooltip text="チェック" hint="Ctrl+Shift+C">
+            <Tooltip text={t('tooltip.checkbox')} hint="Ctrl+Shift+C">
                 <button
                     onClick={onCheckbox}
                     className="text-gray-700 hover:bg-gray-100 px-2 py-1 rounded text-sm"
