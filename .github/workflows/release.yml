@@ -43,3 +43,12 @@ jobs:
           releaseBody: release
           releaseDraft: false
           prerelease: false
+
+  winget:
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - uses: vedantmgoyal2009/winget-releaser@v2
+        with:
+          identifier: ONFStudios.OreNoFusen
+          token: ${{ secrets.WINGET_TOKEN }}
