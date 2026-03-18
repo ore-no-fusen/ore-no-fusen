@@ -5,6 +5,7 @@ The fastest way to capture thoughts.
 ## Install (10 sec)
 ```bash
 winget install ore-no-fusen
+```
 
 Or download from:
 [Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
