@@ -12,7 +12,6 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 type Tool = 'pen' | 'highlight' | 'arrow' | 'rect' | 'callout';
-type Color = '#ef4444' | '#3b82f6' | '#22c55e' | '#eab308';
 
 interface Props {
     absolutePath: string;
@@ -21,11 +20,20 @@ interface Props {
     onCancel: () => void;
 }
 
-const COLORS: { value: Color; label: string }[] = [
+// 通常ツール用カラー
+const PEN_COLORS = [
     { value: '#ef4444', label: '赤' },
     { value: '#3b82f6', label: '青' },
     { value: '#22c55e', label: '緑' },
     { value: '#eab308', label: '黄' },
+];
+
+// 蛍光ペン用: Excelと同等のビビッドカラー
+const HIGHLIGHT_COLORS = [
+    { value: '#FFFF00', label: '黄' },
+    { value: '#00FF00', label: '緑' },
+    { value: '#00FFFF', label: '水色' },
+    { value: '#FF69B4', label: 'ピンク' },
 ];
 
 const TOOLS: { value: Tool; label: string }[] = [
@@ -42,7 +50,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     const drawLayerRef = useRef<import('konva/lib/Layer').Layer | null>(null);
     // Refs for current drawing state (avoid stale closures)
     const toolRef = useRef<Tool>('pen');
-    const colorRef = useRef<Color>('#ef4444');
+    const colorRef = useRef<string>('#ef4444');
+    const strokeWidthRef = useRef<number>(3);
     const isDrawingRef = useRef(false);
     const currentShapeRef = useRef<import('konva/lib/Shape').Shape | null>(null);
     const pointsRef = useRef<number[]>([]);
@@ -50,7 +59,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
     // UI state (for toolbar rendering)
     const [tool, setTool] = useState<Tool>('pen');
-    const [color, setColor] = useState<Color>('#ef4444');
+    const [color, setColor] = useState<string>('#ef4444');
+    const [strokeWidth, setStrokeWidth] = useState<number>(3);
     const [isSaving, setIsSaving] = useState(false);
     const [historyCount, setHistoryCount] = useState(0); // for undo button enable
 
@@ -61,6 +71,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     // Keep refs in sync with state
     useEffect(() => { toolRef.current = tool; }, [tool]);
     useEffect(() => { colorRef.current = color; }, [color]);
+    useEffect(() => { strokeWidthRef.current = strokeWidth; }, [strokeWidth]);
 
     // ─── Init Konva Stage ────────────────────────────────────────────────
     useEffect(() => {
@@ -172,11 +183,12 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
                 if (t === 'pen' || t === 'highlight') {
                     pointsRef.current = [pos.x, pos.y];
+                    const sw = strokeWidthRef.current;
                     const line = new Konva.Line({
                         points: [pos.x, pos.y],
                         stroke: c,
-                        strokeWidth: t === 'highlight' ? 24 : 3,
-                        opacity: t === 'highlight' ? 0.4 : 1,
+                        strokeWidth: sw,
+                        opacity: t === 'highlight' ? 0.45 : 1,
                         lineCap: 'round',
                         lineJoin: 'round',
                         tension: t === 'highlight' ? 0 : 0.5,
@@ -262,6 +274,17 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     }, [displayUrl]);
 
     // ─── Undo ────────────────────────────────────────────────────────────
+    const handleToolChange = useCallback((t: Tool) => {
+        setTool(t);
+        if (t === 'highlight') {
+            setColor('#FFFF00');
+            setStrokeWidth(24);
+        } else if (t === 'pen') {
+            setColor('#ef4444');
+            setStrokeWidth(3);
+        }
+    }, []);
+
     const handleUndo = useCallback(() => {
         const layer = drawLayerRef.current;
         if (!layer) return;
@@ -319,7 +342,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         {TOOLS.map(({ value, label }) => (
                             <button
                                 key={value}
-                                onClick={() => setTool(value)}
+                                onClick={() => handleToolChange(value)}
                                 className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                                     tool === value
                                         ? 'bg-blue-500 text-white'
@@ -333,9 +356,9 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
                     <div className="w-px h-6 bg-gray-300" />
 
-                    {/* Color buttons */}
+                    {/* Color buttons: 蛍光ペン時はビビッドカラー、それ以外は通常色 */}
                     <div className="flex gap-1 items-center">
-                        {COLORS.map(({ value, label }) => (
+                        {(tool === 'highlight' ? HIGHLIGHT_COLORS : PEN_COLORS).map(({ value, label }) => (
                             <button
                                 key={value}
                                 title={label}
@@ -343,12 +366,31 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                                 className="w-7 h-7 rounded-full border-2 transition-transform"
                                 style={{
                                     backgroundColor: value,
-                                    borderColor: color === value ? '#1d4ed8' : 'transparent',
+                                    borderColor: color === value ? '#1d4ed8' : 'rgba(0,0,0,0.2)',
                                     transform: color === value ? 'scale(1.2)' : 'scale(1)',
                                 }}
                             />
                         ))}
                     </div>
+
+                    {/* 太さスライダー: ペン・蛍光ペンのみ表示 */}
+                    {(tool === 'pen' || tool === 'highlight') && (
+                        <>
+                            <div className="w-px h-6 bg-gray-300" />
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">太さ</span>
+                                <input
+                                    type="range"
+                                    min={tool === 'highlight' ? 10 : 1}
+                                    max={tool === 'highlight' ? 50 : 20}
+                                    value={strokeWidth}
+                                    onChange={(e) => setStrokeWidth(Number(e.target.value))}
+                                    className="w-24 accent-blue-500"
+                                />
+                                <span className="text-xs text-gray-500 w-5 text-right">{strokeWidth}</span>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* ── Canvas ── */}
