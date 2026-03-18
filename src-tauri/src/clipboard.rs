@@ -51,3 +51,17 @@ pub fn get_image_from_clipboard(note_path: &str) -> Result<String, String> {
 pub fn fusen_get_image_from_clipboard(path: String) -> Result<String, String> {
     get_image_from_clipboard(&path)
 }
+
+#[tauri::command]
+pub fn fusen_save_annotated_image(path: String, data: String) -> Result<(), String> {
+    use base64::{Engine as _, engine::general_purpose};
+    let b64 = data
+        .strip_prefix("data:image/png;base64,")
+        .unwrap_or(&data);
+    let bytes = general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("base64デコード失敗: {e}"))?;
+    fs::write(&path, &bytes)
+        .map_err(|e| format!("ファイル書き込み失敗: {e}"))?;
+    Ok(())
+}

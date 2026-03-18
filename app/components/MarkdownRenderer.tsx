@@ -178,6 +178,8 @@ export type MarkdownRendererProps = {
     onPointerDown?: (e: React.PointerEvent) => void;
     selectedFilePath?: string;
     resolvePath: (baseFile: string, relativePath: string) => string;
+    onAnnotationClick?: (absolutePath: string) => void;
+    imageVersion?: number;
 };
 
 export default function MarkdownRenderer({
@@ -191,7 +193,9 @@ export default function MarkdownRenderer({
     onDoubleClick,
     onPointerDown,
     selectedFilePath = '',
-    resolvePath
+    resolvePath,
+    onAnnotationClick,
+    imageVersion = 0,
 }: MarkdownRendererProps) {
     // 行オフセット計算（カーソル位置精度向上）
     const lineOffsets = useMemo(() => {
@@ -299,13 +303,14 @@ export default function MarkdownRenderer({
 
             parts.push(
                 <ResizableImage
-                    key={baseOffset + index}
+                    key={`${baseOffset + index}-${imageVersion}`}
                     src={url}
                     alt={alt}
                     scale={scale}
                     baseOffset={baseOffset + index}
                     onResizeEnd={(s) => onImageResize(s, baseOffset + index, fullMatch)}
                     contentReadOnly={false}
+                    onAnnotationClick={onAnnotationClick}
                 />
             );
 

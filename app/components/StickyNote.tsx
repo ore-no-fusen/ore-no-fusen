@@ -32,6 +32,7 @@ import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
 import ToolbarButtons from './ToolbarButtons';
 import FloatingFormatBar from './FloatingFormatBar';
 import MarkdownRenderer from './MarkdownRenderer';
+import ImageAnnotationModal from './ImageAnnotationModal';
 import ConfirmDialog from './ConfirmDialog';
 import SaveErrorToast from './SaveErrorToast';
 import Tooltip from './Tooltip';
@@ -86,6 +87,10 @@ const StickyNote = memo(function StickyNote() {
     const [isHover, setIsHover] = useState(false);
     const [isDraggableArea, setIsDraggableArea] = useState(false);
     const [shellCursor, setShellCursor] = useState('default');
+
+    // 画像アノテーションモーダル
+    const [annotationTarget, setAnnotationTarget] = useState<{ path: string; url: string } | null>(null);
+    const [imageVersion, setImageVersion] = useState(0);
 
     // タグモーダル
     const [showTagModal, setShowTagModal] = useState(false);
@@ -884,6 +889,11 @@ const StickyNote = memo(function StickyNote() {
         setSavePending(true);
     };
 
+    const handleAnnotationClick = useCallback(async (absPath: string) => {
+        const { convertFileSrc } = await import('@tauri-apps/api/core');
+        setAnnotationTarget({ path: absPath, url: convertFileSrc(absPath) });
+    }, []);
+
     /**
      * タグ追加処理
      */
@@ -1464,6 +1474,8 @@ const StickyNote = memo(function StickyNote() {
                         }}
                         selectedFilePath={selectedFile?.path}
                         resolvePath={resolvePath}
+                        onAnnotationClick={handleAnnotationClick}
+                        imageVersion={imageVersion}
                     />
                 )}
             </main>
@@ -1534,6 +1546,19 @@ const StickyNote = memo(function StickyNote() {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* 画像アノテーションモーダル */}
+            {annotationTarget && (
+                <ImageAnnotationModal
+                    absolutePath={annotationTarget.path}
+                    displayUrl={annotationTarget.url}
+                    onSaved={() => {
+                        setAnnotationTarget(null);
+                        setImageVersion(v => v + 1);
+                    }}
+                    onCancel={() => setAnnotationTarget(null)}
+                />
             )}
 
             {/* 新規タグ追加モーダル */}

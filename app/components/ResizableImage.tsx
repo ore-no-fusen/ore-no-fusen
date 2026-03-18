@@ -19,9 +19,10 @@ export interface ResizableImageProps {
     onDragStart?: (e: React.DragEvent) => void;
     baseOffset: number;
     contentReadOnly?: boolean;
+    onAnnotationClick?: (absolutePath: string) => void;
 }
 
-export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false }: ResizableImageProps) {
+export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick }: ResizableImageProps) {
     const [currentWidth, setCurrentWidth] = useState<number | undefined>(undefined);
     const [isResizing, setIsResizing] = useState(false);
     const imgRef = useRef<HTMLImageElement>(null);
@@ -48,22 +49,17 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
     useEffect(() => {
         let active = true;
 
-        // Skip if src is the same as what we have (optimization) although displaySrc might be converted
-
         const loadSrc = async () => {
             const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(src);
             if (isLocalPath) {
                 try {
                     const { convertFileSrc } = await import('@tauri-apps/api/core');
                     const assetUrl = convertFileSrc(src);
-
                     if (active) {
-                        // Only update if changed to avoid loops
                         setDisplaySrc(prev => prev !== assetUrl ? assetUrl : prev);
                     }
                 } catch (e) {
                     console.error('[IMAGE] Failed to convert src', e);
-                    // On error, we might leave it as placeholder or try src (which will fail in browser but meh)
                 }
             } else {
                 if (active) setDisplaySrc(src);
@@ -197,6 +193,35 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                     className="resize-handle"
                 />
             )}
+            {!contentReadOnly && onAnnotationClick && /^[a-zA-Z]:[\\\/]|^\\\\/.test(src) && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: '4px',
+                        right: '4px',
+                        width: '24px',
+                        height: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        opacity: 0,
+                        transition: 'opacity 0.2s',
+                        zIndex: 11,
+                    }}
+                    className="annotation-hint"
+                    title="描き込む"
+                    onPointerDown={(e) => {
+                        e.stopPropagation();
+                        onAnnotationClick(src);
+                    }}
+                >
+                    ✏️
+                </div>
+            )}
             <style jsx>{`
                 .resizable-image-container:hover .resize-handle {
                     opacity: 1 !important;
@@ -204,6 +229,9 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                 .resize-handle:hover {
                     opacity: 1 !important;
                     background-color: #2196f3 !important;
+                }
+                .resizable-image-container:hover .annotation-hint {
+                    opacity: 1 !important;
                 }
             `}</style>
         </span>
