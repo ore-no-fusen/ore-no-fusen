@@ -11,7 +11,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-type Tool = 'pen' | 'arrow' | 'rect' | 'callout';
+type Tool = 'pen' | 'highlight' | 'arrow' | 'rect' | 'callout';
 type Color = '#ef4444' | '#3b82f6' | '#22c55e' | '#eab308';
 
 interface Props {
@@ -29,10 +29,11 @@ const COLORS: { value: Color; label: string }[] = [
 ];
 
 const TOOLS: { value: Tool; label: string }[] = [
-    { value: 'pen',     label: 'ペン' },
-    { value: 'arrow',   label: '矢印' },
-    { value: 'rect',    label: '四角' },
-    { value: 'callout', label: '吹き出し' },
+    { value: 'pen',       label: 'ペン' },
+    { value: 'highlight', label: '蛍光ペン' },
+    { value: 'arrow',     label: '矢印' },
+    { value: 'rect',      label: '四角' },
+    { value: 'callout',   label: '吹き出し' },
 ];
 
 export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved, onCancel }: Props) {
@@ -169,15 +170,17 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                 isDrawingRef.current = true;
                 originRef.current = { x: pos.x, y: pos.y };
 
-                if (t === 'pen') {
+                if (t === 'pen' || t === 'highlight') {
                     pointsRef.current = [pos.x, pos.y];
                     const line = new Konva.Line({
                         points: [pos.x, pos.y],
                         stroke: c,
-                        strokeWidth: 3,
+                        strokeWidth: t === 'highlight' ? 24 : 3,
+                        opacity: t === 'highlight' ? 0.4 : 1,
                         lineCap: 'round',
                         lineJoin: 'round',
-                        tension: 0.5,
+                        tension: t === 'highlight' ? 0 : 0.5,
+                        globalCompositeOperation: t === 'highlight' ? 'multiply' : 'source-over',
                     });
                     layer.add(line);
                     currentShapeRef.current = line as unknown as import('konva/lib/Shape').Shape;
@@ -217,7 +220,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                 const shape = currentShapeRef.current;
                 if (!shape) return;
 
-                if (t === 'pen') {
+                if (t === 'pen' || t === 'highlight') {
                     const line = shape as unknown as import('konva/lib/shapes/Line').Line;
                     const newPoints = [...pointsRef.current, pos.x, pos.y];
                     pointsRef.current = newPoints;
