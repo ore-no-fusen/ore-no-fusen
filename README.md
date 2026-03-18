@@ -13,26 +13,11 @@ Or download from:
 
 [Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
 
-## What
-
-* Write instantly (click → type)
-* Always on top
-* Lightweight (Tauri)
-
-## Why
-
-Never lose a thought.
-
-## Features
-
-- Fast sticky notes for capturing ideas instantly
-- Markdown support (headings, lists, checkboxes, code blocks, images)
-- Lightweight and local-first — no cloud, no account
-- Simple desktop thinking canvas
 
 ## Concept
 
 Capture thoughts instantly without interrupting your thinking.
+
 Ore-no-Fusen is designed as a fast thinking canvas where ideas can appear the moment they come to mind.
 
 ---
