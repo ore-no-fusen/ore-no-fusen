@@ -10,6 +10,7 @@ winget install ore-no-fusen
 ```
 
 Or download from:
+
 [Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
 
 ## What
