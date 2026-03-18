@@ -41,7 +41,7 @@ Ore-no-Fusen is designed as a fast thinking canvas where ideas can appear the mo
 
 <div align="center">
 
-![ore-no-fusen Logo](public/logo.png)
+![Ore-no-Fusen Desktop](public/screenshots/ScreenShot_OreNoFusen.png)
 
 **デスクトップに、思考を貼り付けよう**
 
