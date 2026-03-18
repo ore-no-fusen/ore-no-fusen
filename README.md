@@ -1,6 +1,7 @@
 # Ore-no-Fusen
 
 The fastest way to capture thoughts.
+
 Markdown sticky notes for your desktop.
 
 ## Install (10 sec)
