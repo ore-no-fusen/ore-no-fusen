@@ -3,9 +3,10 @@
 The fastest way to capture thoughts.
 
 ## Install (10 sec)
-
 winget install ore-no-fusen
-Or download the installer from the [Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
+
+Or download from:
+[Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
 
 ## What
 
