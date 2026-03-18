@@ -1,16 +1,21 @@
 # Ore-no-Fusen
 
-**The fastest way to capture thoughts.**
+The fastest way to capture thoughts.
 
-Markdown sticky notes for your desktop.
+## Install (10 sec)
 
-## Install (Windows)
-
-```
-winget install ONFStudios.OreNoFusen
-```
-
+winget install ore-no-fusen
 Or download the installer from the [Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
+
+## What
+
+* Write instantly (click → type)
+* Always on top
+* Lightweight (Tauri)
+
+## Why
+
+Never lose a thought.
 
 ## Features
 
