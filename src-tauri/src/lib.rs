@@ -1067,7 +1067,6 @@ async fn fusen_show_at_position(
                 if let Ok(handle) = win.window_handle() {
                     if let RawWindowHandle::Win32(h) = handle.as_raw() {
                         let hwnd = HWND(h.hwnd.get());
-                        // 位置が指定されている場合は位置+サイズ、なければサイズのみ
                         let flags: SET_WINDOW_POS_FLAGS = if phys_x.is_some() {
                             SWP_SHOWWINDOW
                         } else {

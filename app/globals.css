@@ -195,19 +195,13 @@ body {
 }
 
 /* =========================================
-   付箋ウィンドウ フェードイン演出
-   世界一速く「書ける」印象を作るための
-   0.15秒アニメーション
+   付箋ウィンドウ 出現演出
+   「机にパッと置いた」接地感
    ========================================= */
 
 @keyframes noteAppear {
-  from {
-    transform: scale(0.96);
-  }
-
-  to {
-    transform: scale(1);
-  }
+  from { transform: scale(0.96); }
+  to   { transform: scale(1); }
 }
 
 .noteShell {

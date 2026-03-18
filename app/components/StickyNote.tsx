@@ -643,6 +643,10 @@ const StickyNote = memo(function StickyNote() {
             // [FIX] React Strict Mode でダブルsetupが起きた場合、cleanup後にlistenが解決したら即解除
             if (!mounted) { u(); return; }
             unlisten = u;
+
+            // リスナー登録完了をメインウィンドウに通知（レース条件対策）
+            const { emit } = await import('@tauri-apps/api/event');
+            emit('fusen:pool_window_ready', { label: thisWin.label }).catch(() => { });
         };
         setup();
 

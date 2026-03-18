@@ -145,6 +145,7 @@ function OrchestratorContent() {
   const [folderPath, setFolderPath] = useState<string>('');
   const folderPathRef = useRef<string>(''); // [FIX] スロットル用にRefでも保持
   const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
+  const readyPoolWindowsRef = useRef<Set<string>>(new Set()); // リスナー登録完了済みのプールウィンドウ
   const [files, setFiles] = useState<NoteMeta[]>([]);
   const [setupRequired, setSetupRequired] = useState(true);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
@@ -406,7 +407,7 @@ function OrchestratorContent() {
           const win = new WebviewWindow(label, {
             url,
             title: 'Quick Memo',  // タスクバープレビューのタイトル
-            transparent: false,   // OS側でbackgroundColorを制御するため不透明に
+            transparent: false,
             decorations: false,
             alwaysOnTop: meta?.always_on_top || false,
             visible: true, // 即時表示
@@ -464,7 +465,7 @@ function OrchestratorContent() {
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
 
-    if (now - globalLastCreateTime < 1000) {
+    if (now - globalLastCreateTime < 400) {
       console.warn('[CREATE] Blocked by global throttle');
       return;
     }
@@ -505,8 +506,9 @@ function OrchestratorContent() {
           if (!w.label.startsWith('pool-window-')) return false;
           const isUsedRef = usedPoolWindowsRef.current.has(w.label);
           const isPromotedStorage = localStorage.getItem(`promoted_${w.label}`);
-          console.log(`[TRACE:CREATE] Checking pool candidate: ${w.label} | isUsedRef: ${isUsedRef} | promotedStorage: ${isPromotedStorage}`);
-          return !isUsedRef && !isPromotedStorage;
+          const isReady = readyPoolWindowsRef.current.has(w.label);
+          console.log(`[TRACE:CREATE] Checking pool candidate: ${w.label} | isUsedRef: ${isUsedRef} | promotedStorage: ${isPromotedStorage} | isReady: ${isReady}`);
+          return !isUsedRef && !isPromotedStorage && isReady;
         });
 
         if (poolWindow) {
@@ -545,10 +547,8 @@ function OrchestratorContent() {
             targetPhysHeight,
           });
 
-          // 次のプールウィンドウを補充する（OSのフォーカス奪取を防ぐため少し遅延させる）
-          setTimeout(() => {
-            invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
-          }, 500);
+          // 次のプールウィンドウを補充する（即時開始）
+          invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
         } else {
           console.warn(`[CREATE] No pool window found, falling back to normal window creation`);
           await openNoteWindow(newNote.meta.path, sourceMeta ? {
@@ -558,9 +558,7 @@ function OrchestratorContent() {
             width: 400,
             height: 300,
           } : undefined, true);
-          setTimeout(() => {
-            invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
-          }, 500);
+          invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
         }
       } catch (poolErr) {
         console.error('[CREATE] Pool promotion failed, falling back:', poolErr);
@@ -599,6 +597,16 @@ function OrchestratorContent() {
       else promise.then((u) => u());
     };
   }, [isMainWindow, openNoteWindow]);
+
+  // プールウィンドウのリスナー登録完了シグナルを受け取る
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    listen<{ label: string }>('fusen:pool_window_ready', (event) => {
+      readyPoolWindowsRef.current.add(event.payload.label);
+    }).then((u) => { unlisten = u; });
+    return () => { if (unlisten) unlisten(); };
+  }, [isMainWindow]);
 
   // [FIX] メインウィンドウの「閉じる」を「隠す」に変更 (検索ウィンドウ再表示不具合修正)
   useEffect(() => {
@@ -1115,10 +1123,13 @@ function OrchestratorContent() {
                       await mainWindow.minimize();
                       setIsCheckingSetup(false);
                     }
-                    log('[起動処理] プールウィンドウ(予備)を生成します');
+                    log('[起動処理] プールウィンドウ(予備)を2枚生成します');
                     setTimeout(() => {
                       invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー: ${e}`));
                     }, 500);
+                    setTimeout(() => {
+                      invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー2: ${e}`));
+                    }, 1200);
                   } catch (e) {
                     log(`[起動処理] 最小化エラー: ${e}`);
                     setLoadingStatus("最小化失敗: " + String(e));
@@ -1152,10 +1163,13 @@ function OrchestratorContent() {
                       await mainWindow.hide();
                       setIsCheckingSetup(false);
                     }
-                    log('[起動処理] プールウィンドウ(予備)を生成します');
+                    log('[起動処理] プールウィンドウ(予備)を2枚生成します');
                     setTimeout(() => {
                       invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー: ${e}`));
                     }, 500);
+                    setTimeout(() => {
+                      invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー2: ${e}`));
+                    }, 1200);
                   } catch (e) {
                     log(`[起動処理] ウィンドウ非表示エラー: ${e}`);
                   }
