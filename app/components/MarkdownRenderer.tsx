@@ -301,18 +301,31 @@ export default function MarkdownRenderer({
                 if (!isNaN(s)) scale = s;
             }
 
-            parts.push(
-                <ResizableImage
-                    key={`${baseOffset + index}-${imageVersion}`}
-                    src={url}
-                    alt={alt}
-                    scale={scale}
-                    baseOffset={baseOffset + index}
-                    onResizeEnd={(s) => onImageResize(s, baseOffset + index, fullMatch)}
-                    contentReadOnly={false}
-                    onAnnotationClick={onAnnotationClick}
-                />
-            );
+            // singleLinePreview 時は ResizableImage を描画しない
+            // （折りたたみウィンドウで画像が高さ計算を狂わせウィンドウが消える問題を防ぐ）
+            if (singleLinePreview) {
+                parts.push(
+                    <span
+                        key={baseOffset + index}
+                        style={{ color: '#999', fontSize: '0.8em', fontStyle: 'italic' }}
+                    >
+                        [画像]
+                    </span>
+                );
+            } else {
+                parts.push(
+                    <ResizableImage
+                        key={`${baseOffset + index}-${imageVersion}`}
+                        src={url}
+                        alt={alt}
+                        scale={scale}
+                        baseOffset={baseOffset + index}
+                        onResizeEnd={(s) => onImageResize(s, baseOffset + index, fullMatch)}
+                        contentReadOnly={false}
+                        onAnnotationClick={onAnnotationClick}
+                    />
+                );
+            }
 
             lastIndex = index + fullMatch.length;
         }
