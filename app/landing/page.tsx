@@ -11,213 +11,340 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Download, Github, FileText, Tag, Search, Sparkles, Zap, Shield } from 'lucide-react';
+import { Download } from 'lucide-react';
+
+// ジブリ風カラーパレット
+// 背景: #EDE4D3 (羊皮紙)
+// 付箋黄: #E8D88A (古い紙の黄)
+// 付箋緑: #8BAF7C (トトロの緑)
+// 付箋青: #7AAFC0 (空と海)
+// 付箋ピンク: #D4957A (ナウシカのローブ)
+// アクセント: #5C7A3E (森の深緑)
+// テキスト: #2C1F0E (土の色)
 
 export default function LandingPage() {
+    const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
+    const downloadUrl = `https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v${version}/ore-no-fusen_${version}_x64-setup.exe`;
+
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+        <div
+            className="min-h-screen text-[#2C1F0E]"
+            style={{
+                backgroundColor: '#EDE4D3',
+                fontFamily: "'Helvetica Neue', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif",
+            }}
+        >
+            {/* ナビゲーション */}
+            <nav className="px-6 py-5 flex justify-between items-center border-b border-[#C8B89A]/40">
+                <div className="text-xl font-bold tracking-wide text-[#2C1F0E]">
+                    俺の付箋
+                </div>
+                <Link
+                    href="https://github.com/ore-no-fusen/ore-no-fusen"
+                    target="_blank"
+                    className="flex items-center gap-2 text-sm text-[#7A6A50] hover:text-[#2C1F0E] transition-colors px-3 py-1.5 rounded border border-[#C8B89A]/60 hover:border-[#C8B89A]"
+                >
+                    {/* GitHub SVGアイコン */}
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+                    </svg>
+                    GitHub
+                </Link>
+            </nav>
+
             {/* ヒーローセクション */}
-            <section className="relative overflow-hidden">
-                {/* 背景グラデーション */}
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 blur-3xl" />
+            <section className="relative overflow-hidden py-20 sm:py-28 px-6">
+                {/* 薄い点描模様（手描き感） */}
+                <div className="absolute inset-0 opacity-[0.04]"
+                    style={{
+                        backgroundImage: 'radial-gradient(circle, #5C7A3E 1px, transparent 1px)',
+                        backgroundSize: '28px 28px'
+                    }}
+                />
 
-
-                <div className="relative max-w-7xl mx-auto px-6 py-24 sm:py-32 lg:py-40">
-                    {/* ナビゲーション */}
-                    <nav className="absolute top-0 left-0 right-0 px-6 py-6 flex justify-between items-center">
-                        <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                            俺の付箋
-                        </div>
-                        <div className="flex gap-4">
-                            <Link
-                                href="https://github.com/ore-no-fusen/ore-no-fusen"
-                                target="_blank"
-                                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                            >
-                                <Github className="w-6 h-6" />
-                            </Link>
-                        </div>
-                    </nav>
-
-                    {/* メインコンテンツ */}
-                    <div className="text-center mt-16">
-                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-full text-sm text-blue-300 mb-8">
-                            <Sparkles className="w-4 h-4" />
-                            <span>無料・オープンソース</span>
-                        </div>
-
-                        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
-                            デスクトップを、
-                            <br />
-                            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                                思考のキャンバスに
-                            </span>
-                        </h1>
-
-                        <p className="text-xl sm:text-2xl text-slate-300 mb-4 max-w-3xl mx-auto">
-                            Markdownで書ける、美しい付箋アプリ
-                        </p>
-
-                        <p className="text-sm sm:text-base text-slate-500 mb-12 max-w-3xl mx-auto space-y-1">
-                            <span className="block">Ore-no-Fusen</span>
-                            <span className="block">Thinking Canvas for your mind</span>
-                            <span className="block">The Digital Cave Wall ― デジタルの洞窟壁画 ―</span>
-                        </p>
-
-                        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                            <Link
-                                href="https://github.com/ore-no-fusen/ore-no-fusen/releases/latest"
-                                target="_blank"
-                                onClick={() => {
-                                    if (typeof window !== 'undefined' && 'gtag' in window) {
-                                        (window as any).gtag('event', 'download_click', {
-                                            event_category: 'engagement',
-                                            event_label: 'github_release'
-                                        });
-                                    }
-                                }}
-                                className="group relative px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-semibold text-lg hover:shadow-2xl hover:shadow-purple-500/50 transition-all duration-300 flex items-center gap-2"
-                            >
-                                <Download className="w-5 h-5" />
-                                無料ダウンロード
-                                <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 rounded-xl opacity-0 group-hover:opacity-20 blur transition-opacity" />
-                            </Link>
-
-
-                            <Link
-                                href="#features"
-                                className="px-8 py-4 bg-white/5 border border-white/10 rounded-xl font-semibold text-lg hover:bg-white/10 transition-colors"
-                            >
-                                機能を見る
-                            </Link>
-                        </div>
-
-                        <p className="text-sm text-slate-400 mt-6">
-                            Windows 10/11 対応 • v{process.env.NEXT_PUBLIC_APP_VERSION}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-2">
-                            ダウンロード後、<span className="text-slate-300 font-mono">ore-no-fusen_x64_setup.exe</span> を実行してインストール
-                        </p>
-                    </div>
+                {/* 葉っぱ風装飾（左上） */}
+                <div className="absolute top-10 left-8 opacity-10 pointer-events-none select-none"
+                    style={{ fontSize: '5rem', transform: 'rotate(-20deg)' }}>
+                    🍃
+                </div>
+                <div className="absolute bottom-16 right-10 opacity-10 pointer-events-none select-none"
+                    style={{ fontSize: '4rem', transform: 'rotate(15deg)' }}>
+                    🌿
                 </div>
 
-                {/* スクロールインジケーター */}
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
-                    <div className="w-6 h-10 border-2 border-white/20 rounded-full flex justify-center">
-                        <div className="w-1.5 h-3 bg-white/40 rounded-full mt-2" />
+                <div className="relative max-w-5xl mx-auto">
+                    <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+
+                        {/* 左：テキスト */}
+                        <div className="flex-1 text-center lg:text-left">
+                            {/* 手書き風バッジ */}
+                            <div className="inline-block px-3 py-1 bg-[#8BAF7C]/20 text-[#4A6B35] text-xs font-semibold rounded-full border border-[#8BAF7C]/40 mb-6">
+                                無料・オープンソース
+                            </div>
+
+                            <h1 className="text-4xl sm:text-5xl lg:text-[3.4rem] font-bold leading-snug tracking-tight mb-6 text-[#2C1F0E]">
+                                大事なことは、
+                                <br />
+                                <span className="text-[#5C7A3E]">貼っておけばいい。</span>
+                            </h1>
+
+                            {/* 哲学的一節 */}
+                            <div className="mb-8 pl-4 border-l-2 border-[#8BAF7C]/50 text-left">
+                                <p className="text-sm text-[#7A6A50] leading-loose">
+                                    人は太古から、大事なことを壁に貼ってきた。
+                                    <br />
+                                    ラスコーから続く習慣を、デスクトップへ。
+                                </p>
+                                <p className="text-xs text-[#9A8878] mt-2 italic tracking-wide">
+                                    ── 本能は変わらない。形が変わった。
+                                </p>
+                            </div>
+
+                            <p className="text-lg sm:text-xl text-[#6A5540] mb-3 leading-relaxed">
+                                デスクトップに貼れる付箋アプリ
+                            </p>
+                            <p className="text-sm text-[#9A8470] mb-10">
+                                Markdownで書けて、自動保存。<br className="sm:hidden" />ワンクリックで、すぐ書ける。
+                            </p>
+
+                            <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start items-center">
+                                <Link
+                                    href={downloadUrl}
+                                    target="_blank"
+                                    onClick={() => {
+                                        if (typeof window !== 'undefined' && 'gtag' in window) {
+                                            (window as any).gtag('event', 'download_click', {
+                                                event_category: 'engagement',
+                                                event_label: 'github_release'
+                                            });
+                                        }
+                                    }}
+                                    className="flex items-center gap-2 px-7 py-3.5 bg-[#5C7A3E] hover:bg-[#4A6730] text-[#F5EDD8] rounded-sm font-semibold text-base shadow-[2px_3px_10px_rgba(92,122,62,0.35)] hover:shadow-[2px_4px_14px_rgba(92,122,62,0.45)] transition-all duration-200"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    無料ダウンロード
+                                </Link>
+
+                                <Link
+                                    href="#features"
+                                    className="px-6 py-3.5 border border-[#B8A888] hover:border-[#8A7860] text-[#7A6A50] hover:text-[#4A3A28] rounded-sm font-medium text-base transition-colors"
+                                >
+                                    機能を見る
+                                </Link>
+                            </div>
+
+                            <p className="text-xs text-[#A89878] mt-5">
+                                Windows 10/11 対応 · v{process.env.NEXT_PUBLIC_APP_VERSION}
+                            </p>
+                        </div>
+
+                        {/* 右：付箋クラスター */}
+                        <div className="flex-1 relative h-80 sm:h-96 w-full max-w-sm">
+
+                            {/* 付箋1: 黄色（古紙） */}
+                            <div className="absolute top-2 left-6 w-48 rounded-sm -rotate-2 z-20"
+                                style={{
+                                    backgroundColor: '#EDD87A',
+                                    boxShadow: '3px 5px 16px rgba(0,0,0,0.18)',
+                                }}>
+                                <div className="h-3 rounded-t-sm" style={{ backgroundColor: '#D9C060' }} />
+                                <div className="p-4">
+                                    {/* テープ */}
+                                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-10 h-4 rounded-sm opacity-60"
+                                        style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880', transform: 'translateX(-50%) rotate(1deg)' }} />
+                                    <p className="text-sm font-medium text-[#3A2C00] leading-relaxed">
+                                        MTG の議題<br />
+                                        <span className="text-xs text-[#6A5200]">・来週の方向性<br />・予算確認</span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* 付箋2: 森の緑 */}
+                            <div className="absolute top-14 right-2 w-44 rounded-sm rotate-1 z-10"
+                                style={{
+                                    backgroundColor: '#A8C890',
+                                    boxShadow: '3px 5px 16px rgba(0,0,0,0.15)',
+                                }}>
+                                <div className="h-3 rounded-t-sm" style={{ backgroundColor: '#8BAF75' }} />
+                                <div className="p-4">
+                                    <p className="text-sm font-medium text-[#1E3A10] leading-relaxed">
+                                        買うもの<br />
+                                        <span className="text-xs text-[#2E5A20]">□ 牛乳<br />□ コーヒー ✓<br />□ A4ノート</span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* 付箋3: ナウシカのローブ色（テラコッタ） */}
+                            <div className="absolute bottom-20 left-0 w-40 rounded-sm -rotate-1 z-20"
+                                style={{
+                                    backgroundColor: '#D4A48A',
+                                    boxShadow: '3px 5px 16px rgba(0,0,0,0.15)',
+                                }}>
+                                <div className="h-3 rounded-t-sm" style={{ backgroundColor: '#BC8A70' }} />
+                                <div className="p-4">
+                                    <p className="text-sm font-medium text-[#3A1A08] leading-relaxed">
+                                        ⚡ 今日中に！<br />
+                                        <span className="text-xs text-[#6A3010]">報告書を送る</span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* 付箋4: 空の青 */}
+                            <div className="absolute bottom-6 right-6 w-44 rounded-sm rotate-2 z-10"
+                                style={{
+                                    backgroundColor: '#9DC0D0',
+                                    boxShadow: '3px 5px 16px rgba(0,0,0,0.14)',
+                                }}>
+                                <div className="h-3 rounded-t-sm" style={{ backgroundColor: '#7AAFC0' }} />
+                                <div className="p-4">
+                                    <p className="text-sm font-medium text-[#102030] leading-relaxed">
+                                        アイデアメモ<br />
+                                        <span className="text-xs text-[#204050]">もっとシンプルに<br />→ 付箋ぽく？</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
+
+            {/* 波形の区切り */}
+            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#EDE4D3' }}>
+                <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
+                    <path d="M0,20 C300,40 900,0 1200,20 L1200,40 L0,40 Z" fill="#E2D7C3" />
+                </svg>
+            </div>
 
             {/* 主要機能セクション */}
-            <section id="features" className="py-24 bg-slate-900/50">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="text-center mb-16">
-                        <h2 className="text-4xl sm:text-5xl font-bold mb-4">
-                            シンプルで
-                            <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent"> 強力</span>
+            <section id="features" className="py-20 sm:py-24 px-6" style={{ backgroundColor: '#E2D7C3' }}>
+                <div className="max-w-5xl mx-auto">
+                    <div className="text-center mb-14">
+                        <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
+                            壁に残す、という本能の、最新版
                         </h2>
-                        <p className="text-xl text-slate-400">
-                            思考整理に必要な機能を、すべて
-                        </p>
+                        <p className="text-[#8A7055]">シンプルだけど、こだわってます</p>
                     </div>
 
-                    <div className="grid md:grid-cols-3 gap-8">
-                        {/* Markdownサポート */}
-                        <div className="group p-8 bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-2xl hover:border-blue-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10">
-                            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                                <FileText className="w-6 h-6" />
-                            </div>
-                            <h3 className="text-2xl font-bold mb-4">リッチなMarkdown</h3>
-                            <p className="text-slate-400 leading-relaxed">
-                                見出し・リスト・チェックボックス・表・Mermaid図・画像まで対応。書きながら見た目が確認できるWYSIWYGエディタ。
+                    <div className="grid md:grid-cols-3 gap-7">
+                        {/* カード1: 古紙黄 */}
+                        <div
+                            className="-rotate-1 p-6 rounded-sm hover:rotate-0 transition-all duration-200 cursor-default"
+                            style={{
+                                backgroundColor: '#EDD87A',
+                                boxShadow: '3px 5px 14px rgba(0,0,0,0.13)',
+                            }}
+                        >
+                            <div className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5" style={{ backgroundColor: '#D9C060' }} />
+                            <div className="text-2xl mb-3">✏️</div>
+                            <h3 className="text-lg font-bold text-[#3A2C00] mb-2">すぐ書ける</h3>
+                            <p className="text-sm text-[#6A5200] leading-relaxed">
+                                ワンクリックでクリックした場所から入力開始。自動保存で手間なし。
                             </p>
                         </div>
 
-                        {/* タグ・アーカイブ */}
-                        <div className="group p-8 bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-2xl hover:border-purple-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10">
-                            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                                <Tag className="w-6 h-6" />
-                            </div>
-                            <h3 className="text-2xl font-bold mb-4">タグ・アーカイブ</h3>
-                            <p className="text-slate-400 leading-relaxed">
-                                付箋をタグで整理・絞り込み。完了したメモはアーカイブへ移動。大切なものだけをデスクトップに残せます。
+                        {/* カード2: 森の緑 */}
+                        <div
+                            className="rotate-1 p-6 rounded-sm hover:rotate-0 transition-all duration-200 cursor-default"
+                            style={{
+                                backgroundColor: '#A8C890',
+                                boxShadow: '3px 5px 14px rgba(0,0,0,0.12)',
+                            }}
+                        >
+                            <div className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5" style={{ backgroundColor: '#8BAF75' }} />
+                            <div className="text-2xl mb-3">🖊️</div>
+                            <h3 className="text-lg font-bold text-[#1E3A10] mb-2">Markdownで書ける</h3>
+                            <p className="text-sm text-[#2E5A20] leading-relaxed">
+                                見出し・リスト・チェックボックス・画像まで対応。書きながら見た目が確認できるWYSIWYG。
                             </p>
                         </div>
 
-                        {/* 高速検索 */}
-                        <div className="group p-8 bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-2xl hover:border-pink-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-pink-500/10">
-                            <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                                <Search className="w-6 h-6" />
-                            </div>
-                            <h3 className="text-2xl font-bold mb-4">全文検索</h3>
-                            <p className="text-slate-400 leading-relaxed">
-                                正規表現対応の全文検索で瞬時に発見。該当行に自動ジャンプ・ハイライト表示で、目的のメモにすぐたどり着けます。
+                        {/* カード3: 空の青 */}
+                        <div
+                            className="-rotate-1 p-6 rounded-sm hover:rotate-0 transition-all duration-200 cursor-default"
+                            style={{
+                                backgroundColor: '#9DC0D0',
+                                boxShadow: '3px 5px 14px rgba(0,0,0,0.12)',
+                            }}
+                        >
+                            <div className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5" style={{ backgroundColor: '#7AAFC0' }} />
+                            <div className="text-2xl mb-3">📌</div>
+                            <h3 className="text-lg font-bold text-[#102030] mb-2">デスクトップに残る</h3>
+                            <p className="text-sm text-[#204050] leading-relaxed">
+                                ピン留めで最前面固定。タグで整理して、必要なものだけを目の前に置ける。
                             </p>
                         </div>
                     </div>
 
-                    {/* 追加機能 */}
-                    <div className="grid md:grid-cols-3 gap-6 mt-8">
-                        <div className="flex items-start gap-4 p-6 bg-slate-800/30 rounded-xl border border-slate-700/30">
-                            <Zap className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" />
-                            <div>
-                                <h4 className="font-semibold mb-1">最前面固定（ピン留め）</h4>
-                                <p className="text-sm text-slate-400">他のウィンドウの前に常に表示。見落とし防止に</p>
+                    {/* サブ機能 */}
+                    <div className="grid sm:grid-cols-3 gap-4 mt-8">
+                        {[
+                            { emoji: '🔍', text: '全文検索（正規表現対応）' },
+                            { emoji: '🔒', text: 'データはすべてローカル保存' },
+                            { emoji: '🖼️', text: '画像の貼り付け・蛍光ペン対応' },
+                        ].map((item) => (
+                            <div key={item.text}
+                                className="flex items-center gap-3 px-4 py-3 rounded-sm border text-sm text-[#6A5540]"
+                                style={{ backgroundColor: '#EDE4D3', borderColor: '#C8B898' }}>
+                                <span>{item.emoji}</span>
+                                <span>{item.text}</span>
                             </div>
-                        </div>
-
-                        <div className="flex items-start gap-4 p-6 bg-slate-800/30 rounded-xl border border-slate-700/30">
-                            <Shield className="w-6 h-6 text-green-400 flex-shrink-0 mt-1" />
-                            <div>
-                                <h4 className="font-semibold mb-1">ローカル保存</h4>
-                                <p className="text-sm text-slate-400">データはすべてローカルに保存。クラウド不要でプライバシー安心</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-start gap-4 p-6 bg-slate-800/30 rounded-xl border border-slate-700/30">
-                            <Sparkles className="w-6 h-6 text-blue-400 flex-shrink-0 mt-1" />
-                            <div>
-                                <h4 className="font-semibold mb-1">ワンクリック編集</h4>
-                                <p className="text-sm text-slate-400">クリックした場所からすぐ入力開始。自動保存で手間なし</p>
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
             </section>
 
-            {/* プロモーションアニメーション */}
-            <section className="py-24">
-                <div className="max-w-5xl mx-auto px-6">
-                    <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-700/50"
-                         style={{ aspectRatio: '16/9' }}>
-                        <iframe
-                            src="/promo/promo.html"
-                            className="w-full h-full"
-                            style={{ border: 'none' }}
-                            title="Ore-no-Fusen プロモーション"
-                        />
-                    </div>
-                </div>
-            </section>
+            {/* 波形の区切り（逆） */}
+            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#E2D7C3' }}>
+                <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
+                    <path d="M0,20 C300,0 900,40 1200,20 L1200,0 L0,0 Z" fill="#EDE4D3" />
+                </svg>
+            </div>
 
-            {/* スクリーンショットセクション（プレースホルダー） */}
-            <section className="py-24">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="text-center mb-16">
-                        <h2 className="text-4xl sm:text-5xl font-bold mb-4">
-                            美しく、
-                            <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent"> 直感的</span>
-                        </h2>
-                        <p className="text-xl text-slate-400">
-                            洗練されたUIで、思考整理がもっと楽しく
-                        </p>
-                    </div>
-
-                    {/* スクリーンショット */}
+            {/* プロモーション */}
+            <section className="py-20 px-6" style={{ backgroundColor: '#EDE4D3' }}>
+                <div className="max-w-4xl mx-auto">
                     <div className="relative">
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 blur-3xl" />
-                        <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl">
+                        {/* テープ装飾 */}
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 w-16 h-5 rounded-sm opacity-70 -rotate-1"
+                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }} />
+                        <div className="rounded-sm overflow-hidden"
+                            style={{
+                                boxShadow: '4px 6px 24px rgba(0,0,0,0.18)',
+                                border: '1px solid #C8B898',
+                                aspectRatio: '16/9'
+                            }}>
+                            <iframe
+                                src="/promo/promo.html"
+                                className="w-full h-full"
+                                style={{ border: 'none' }}
+                                title="Ore-no-Fusen プロモーション"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* スクリーンショット */}
+            <section className="py-20 px-6" style={{ backgroundColor: '#E2D7C3' }}>
+                <div className="max-w-5xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
+                            こんな感じです
+                        </h2>
+                        <p className="text-[#8A7055]">デスクトップに、ちゃんと馴染みます</p>
+                    </div>
+
+                    <div className="relative">
+                        {/* テープ装飾 */}
+                        <div className="absolute -top-3 left-14 z-10 w-14 h-5 rounded-sm opacity-60 rotate-2"
+                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }} />
+                        <div className="absolute -top-3 right-20 z-10 w-12 h-5 rounded-sm opacity-60 -rotate-1"
+                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }} />
+                        <div className="rounded-sm overflow-hidden"
+                            style={{
+                                boxShadow: '4px 6px 24px rgba(0,0,0,0.15)',
+                                border: '1px solid #C8B898',
+                            }}>
                             <Image
                                 src="/screenshots/ScreenShot_OreNoFusen.png"
                                 alt="俺の付箋 スクリーンショット"
@@ -231,45 +358,48 @@ export default function LandingPage() {
             </section>
 
             {/* ダウンロードセクション */}
-            <section className="py-24 bg-gradient-to-br from-slate-900/50 to-slate-800/50">
-                <div className="max-w-4xl mx-auto px-6 text-center">
-                    <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-                        今すぐ始めよう
-                    </h2>
-                    <p className="text-xl text-slate-400 mb-12">
-                        無料でダウンロード。インストールは1分で完了。
-                    </p>
+            <section className="py-24 px-6" style={{ backgroundColor: '#EDE4D3' }}>
+                <div className="max-w-lg mx-auto text-center">
+                    {/* 大きな付箋カード */}
+                    <div className="relative -rotate-1 rounded-sm px-10 py-12 mb-10"
+                        style={{
+                            backgroundColor: '#EDD87A',
+                            boxShadow: '4px 6px 24px rgba(0,0,0,0.16)',
+                        }}>
+                        <div className="h-3.5 -mx-10 -mt-12 rounded-t-sm mb-10" style={{ backgroundColor: '#D9C060' }} />
+                        {/* テープ */}
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-16 h-5 rounded-sm opacity-70 rotate-1"
+                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }} />
 
-                    <Link
-                        href="https://github.com/ore-no-fusen/ore-no-fusen/releases/latest"
-                        target="_blank"
-                        className="inline-flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-semibold text-xl hover:shadow-2xl hover:shadow-purple-500/50 transition-all duration-300"
-                    >
-                        <Download className="w-6 h-6" />
-                        ore-no-fusen をダウンロード
-                    </Link>
-
-                    <p className="text-sm text-slate-400 mt-4">
-                        ページが開いたら <span className="text-white font-mono bg-slate-800 px-2 py-0.5 rounded">ore-no-fusen_x64_setup.exe</span> をクリックしてダウンロード・インストール
-                    </p>
-
-                    <div className="mt-12 p-6 bg-slate-800/50 border border-slate-700/50 rounded-xl">
-                        <h3 className="font-semibold mb-4">システム要件</h3>
-                        <div className="grid sm:grid-cols-2 gap-4 text-sm text-slate-400">
-                            <div>
-                                <span className="text-slate-300 font-medium">OS:</span> Windows 10/11 (64-bit)
-                            </div>
-                            <div>
-                                <span className="text-slate-300 font-medium">容量:</span> 約 100MB
-                            </div>
-                        </div>
+                        <h2 className="text-2xl font-bold text-[#2C1F0E] mb-2">
+                            まず使ってみてください
+                        </h2>
+                        <p className="text-sm text-[#7A6200] mb-7">
+                            無料・インストール1分・データはローカル保存
+                        </p>
+                        <Link
+                            href={downloadUrl}
+                            target="_blank"
+                            className="inline-flex items-center gap-2 px-7 py-3 rounded-sm font-semibold text-[#F5EDD8] transition-all duration-200"
+                            style={{
+                                backgroundColor: '#5C7A3E',
+                                boxShadow: '2px 3px 10px rgba(92,122,62,0.35)',
+                            }}
+                        >
+                            <Download className="w-4 h-4" />
+                            ダウンロード（Windows）
+                        </Link>
                     </div>
 
-                    <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center text-sm">
-                        <Link href="https://github.com/ore-no-fusen/ore-no-fusen" target="_blank" className="text-blue-400 hover:text-blue-300 transition-colors">
-                            📖 ドキュメントを読む
+                    <p className="text-sm text-[#9A8468] mb-6">Windows 10/11 (64-bit) · 約100MB</p>
+
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center text-sm">
+                        <Link href="https://github.com/ore-no-fusen/ore-no-fusen" target="_blank"
+                            className="text-[#5C7A3E] hover:text-[#3A5020] transition-colors">
+                            📖 GitHubを見る
                         </Link>
-                        <Link href="https://github.com/ore-no-fusen/ore-no-fusen/issues" target="_blank" className="text-blue-400 hover:text-blue-300 transition-colors">
+                        <Link href="https://x.com/uchikiman" target="_blank"
+                            className="text-[#5C7A3E] hover:text-[#3A5020] transition-colors">
                             💬 フィードバックを送る
                         </Link>
                     </div>
@@ -277,21 +407,14 @@ export default function LandingPage() {
             </section>
 
             {/* フッター */}
-            <footer className="border-t border-slate-800 py-12">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="text-slate-400 text-sm">
-                            © 2026 ore-no-fusen by ONF Studios. MIT License.
-                        </div>
-                        <div className="flex gap-6">
-                            <Link href="https://github.com/ore-no-fusen/ore-no-fusen" target="_blank" className="text-slate-400 hover:text-white transition-colors">
-                                GitHub
-                            </Link>
-                            <Link href="https://github.com/ore-no-fusen/ore-no-fusen/blob/main/README.md" target="_blank" className="text-slate-400 hover:text-white transition-colors">
-                                ドキュメント
-                            </Link>
-
-                        </div>
+            <footer className="py-8 px-6 border-t" style={{ backgroundColor: '#D8CEBA', borderColor: '#C0B098' }}>
+                <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-[#8A7458]">
+                    <div>© 2026 ore-no-fusen by ONF Studios. MIT License.</div>
+                    <div className="flex gap-6">
+                        <Link href="https://github.com/ore-no-fusen/ore-no-fusen" target="_blank"
+                            className="hover:text-[#5A4830] transition-colors">GitHub</Link>
+                        <Link href="https://github.com/ore-no-fusen/ore-no-fusen/blob/main/README.md" target="_blank"
+                            className="hover:text-[#5A4830] transition-colors">ドキュメント</Link>
                     </div>
                 </div>
             </footer>
