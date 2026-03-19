@@ -10,6 +10,8 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi';
 
 type Tool = 'pen' | 'highlight' | 'arrow' | 'rect' | 'callout';
 
@@ -61,6 +63,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     const [tool, setTool] = useState<Tool>('pen');
     const [color, setColor] = useState<string>('#ef4444');
     const [strokeWidth, setStrokeWidth] = useState<number>(3);
+    const [highlightOpacity, setHighlightOpacity] = useState<number>(0.6);
+    const highlightOpacityRef = useRef<number>(0.6);
     const [isSaving, setIsSaving] = useState(false);
     const [historyCount, setHistoryCount] = useState(0); // for undo button enable
 
@@ -72,6 +76,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     useEffect(() => { toolRef.current = tool; }, [tool]);
     useEffect(() => { colorRef.current = color; }, [color]);
     useEffect(() => { strokeWidthRef.current = strokeWidth; }, [strokeWidth]);
+    useEffect(() => { highlightOpacityRef.current = highlightOpacity; }, [highlightOpacity]);
 
     // ─── Init Konva Stage ────────────────────────────────────────────────
     useEffect(() => {
@@ -107,12 +112,12 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             const nh = img.naturalHeight || img.height || 600;
             naturalSizeRef.current = { w: nw, h: nh };
 
-            // Scale to fit 80% viewport
-            const maxW = window.innerWidth * 0.8;
-            const maxH = (window.innerHeight - 160) * 0.9; // leave room for toolbars
+            // Scale to fit 拡大後ウィンドウ(680x540)基準で計算
+            const maxW = 680 * 0.88;
+            const maxH = (540 - 120) * 0.88; // toolbar ~80px + footer ~40px
             const scaleW = maxW / nw;
             const scaleH = maxH / nh;
-            const sc = Math.min(scaleW, scaleH, 1); // don't upscale
+            const sc = Math.min(scaleW, scaleH); // upscale も許可
             const stageW = Math.round(nw * sc);
             const stageH = Math.round(nh * sc);
             stageSizeRef.current = { w: stageW, h: stageH };
@@ -188,7 +193,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         points: [pos.x, pos.y],
                         stroke: c,
                         strokeWidth: sw,
-                        opacity: t === 'highlight' ? 0.45 : 1,
+                        opacity: t === 'highlight' ? highlightOpacityRef.current : 1,
                         lineCap: 'round',
                         lineJoin: 'round',
                         tension: t === 'highlight' ? 0 : 0.5,
@@ -315,6 +320,21 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         }
     }, [absolutePath, onSaved]);
 
+    // ─── ウィンドウ拡大（モーダル表示中のみ）────────────────────────────
+    useEffect(() => {
+        const win = getCurrentWindow();
+        let originalSize: { width: number; height: number } | null = null;
+        win.outerSize().then((size) => {
+            originalSize = { width: size.width, height: size.height };
+            win.setSize(new LogicalSize(680, 540)).catch(() => {});
+        }).catch(() => {});
+        return () => {
+            if (originalSize) {
+                win.setSize(new PhysicalSize(originalSize.width, originalSize.height)).catch(() => {});
+            }
+        };
+    }, []);
+
     // ─── Keyboard shortcut (Escape = cancel) ─────────────────────────────
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -388,6 +408,24 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                                     className="w-24 accent-blue-500"
                                 />
                                 <span className="text-xs text-gray-500 w-5 text-right">{strokeWidth}</span>
+                            </div>
+                        </>
+                    )}
+                    {/* 透明度スライダー: 蛍光ペンのみ表示 */}
+                    {tool === 'highlight' && (
+                        <>
+                            <div className="w-px h-6 bg-gray-300" />
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">濃さ</span>
+                                <input
+                                    type="range"
+                                    min={10}
+                                    max={90}
+                                    value={Math.round(highlightOpacity * 100)}
+                                    onChange={(e) => setHighlightOpacity(Number(e.target.value) / 100)}
+                                    className="w-24 accent-blue-500"
+                                />
+                                <span className="text-xs text-gray-500 w-5 text-right">{Math.round(highlightOpacity * 100)}</span>
                             </div>
                         </>
                     )}
