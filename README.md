@@ -1,27 +1,23 @@
 # Ore-no-Fusen
 
-**The fastest way to capture thoughts.**
+The fastest way to capture thoughts.
 
 Markdown sticky notes for your desktop.
 
-## Install (Windows)
-
+## Install (10 sec)
+```bash
+winget install ore-no-fusen
 ```
-winget install ONFStudios.OreNoFusen
-```
 
-Or download the installer from the [Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
+Or download from:
 
-## Features
+[Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
 
-- Fast sticky notes for capturing ideas instantly
-- Markdown support (headings, lists, checkboxes, code blocks, images)
-- Lightweight and local-first — no cloud, no account
-- Simple desktop thinking canvas
 
 ## Concept
 
 Capture thoughts instantly without interrupting your thinking.
+
 Ore-no-Fusen is designed as a fast thinking canvas where ideas can appear the moment they come to mind.
 
 ---
@@ -30,7 +26,7 @@ Ore-no-Fusen is designed as a fast thinking canvas where ideas can appear the mo
 
 <div align="center">
 
-![ore-no-fusen Logo](public/logo.png)
+![Ore-no-Fusen Desktop](public/screenshots/ScreenShot_OreNoFusen.png)
 
 **デスクトップに、思考を貼り付けよう**
 
