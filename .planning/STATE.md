@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-03-23T11:17:46.118Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-03-23T11:25:46.280Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 17
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 ---
@@ -71,6 +71,7 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 | Phase 05-iphone-pwa-rust-soshin P00 | 8 | 3 tasks | 3 files |
 | Phase 05-iphone-pwa-rust-soshin P01 | 9 | 3 tasks | 4 files |
 | Phase 05-iphone-pwa-rust-soshin P02 | 12 | 1 tasks | 1 files |
+| Phase 05-iphone-pwa-rust-soshin P03 | 5 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,7 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 - [Phase 05-iphone-pwa-rust-soshin]: RegisterPWA.tsx は __TAURI_INTERNALS__ 検出で Tauri/Safari 分岐: Tauri は全SW解除、Safari は /sw.js 登録
 - [Phase 05-iphone-pwa-rust-soshin]: Uint8Array.buffer.slice() used for applicationServerKey to satisfy TypeScript ArrayBuffer type constraint
 - [Phase 05-iphone-pwa-rust-soshin]: ESLint @typescript-eslint/* rule comments removed: eslint-config-next does not include @typescript-eslint/eslint-plugin
+- [Phase 05-iphone-pwa-rust-soshin]: selectedFile が null のときは invoke を呼ばない（null チェック必須）
 
 ### Pending Todos
 
@@ -116,8 +118,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 
 ## Session Continuity
 
-Last session: 2026-03-23T11:17:46.112Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-03-23T11:25:46.273Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
