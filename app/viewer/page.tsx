@@ -277,8 +277,12 @@ export default function ViewerPage() {
         {step === 'login' && (
           <div className="flex flex-col items-center gap-4">
             <p className="text-gray-700">セットアップ ステップ 1 / 2</p>
+            {!swReady && (
+              <p className="text-gray-500 text-sm">SW準備中...</p>
+            )}
             <button
-              className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium"
+              className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium disabled:opacity-40"
+              disabled={!swReady}
               onClick={async () => {
                 const { verifier, challenge } = await generatePKCE();
                 localStorage.setItem('pkce_verifier', verifier);
