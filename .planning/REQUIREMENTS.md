@@ -17,11 +17,11 @@
 
 ### iPhone連携（Phase 5）
 
-- [ ] **PWA-01**: `public/manifest.json` が作成され `display: standalone` が設定されている
-- [ ] **PWA-02**: `public/sw.js` が push 受信・showNotification・notificationclick を実装し、next-pwa との上書き衝突を回避している
-- [ ] **PWA-03**: `app/viewer/page.tsx` が初回セットアップガイド（Google OAuth PKCE + push subscription）と note 全文表示を提供する
-- [ ] **SEND-01**: iPhone PWA が Google OAuth PKCE フローで `fusen_push_config.json` を自分の Google Drive に保存する
-- [ ] **SEND-02**: 右クリックメニューに「iPhoneに送る」が追加され、`fusen_send_to_iphone` コマンドを呼び出す
+- [x] **PWA-01**: `public/manifest.json` が作成され `display: standalone` が設定されている
+- [x] **PWA-02**: `public/sw.js` が push 受信・showNotification・notificationclick を実装し、next-pwa との上書き衝突を回避している
+- [x] **PWA-03**: `app/viewer/page.tsx` が初回セットアップガイド（Google OAuth PKCE + push subscription）と note 全文表示を提供する
+- [x] **SEND-01**: iPhone PWA が Google OAuth PKCE フローで `fusen_push_config.json` を自分の Google Drive に保存する
+- [x] **SEND-02**: 右クリックメニューに「iPhoneに送る」が追加され、`fusen_send_to_iphone` コマンドを呼び出す
 
 ## v2 Requirements（v3.0以降）
 
@@ -56,11 +56,11 @@
 | API-05 | Phase 4 | Complete |
 | API-06 | Phase 4 | Complete |
 | API-07 | Phase 4 | Complete |
-| PWA-01 | Phase 5 | Pending |
-| PWA-02 | Phase 5 | Pending |
-| PWA-03 | Phase 5 | Pending |
-| SEND-01 | Phase 5 | Pending |
-| SEND-02 | Phase 5 | Pending |
+| PWA-01 | Phase 5 | Complete |
+| PWA-02 | Phase 5 | Complete |
+| PWA-03 | Phase 5 | Complete |
+| SEND-01 | Phase 5 | Complete |
+| SEND-02 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 12 total

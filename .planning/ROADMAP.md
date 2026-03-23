@@ -154,4 +154,4 @@ Plans:
 | 2. バグ修正 | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 3. 確認・検証 | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 4. Hono API基盤 | 5/5 | Complete   | 2026-03-23 | - |
-| 5. iPhone PWA + Rust送信 | v2.0 | 0/4 | Not started | - |
+| 5. iPhone PWA + Rust送信 | 1/5 | In Progress|  | - |
