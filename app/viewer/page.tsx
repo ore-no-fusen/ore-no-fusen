@@ -288,10 +288,14 @@ export default function ViewerPage() {
                     setIsLoading(false);
                     return;
                   }
+                  // SW が未登録なら登録してから待つ
+                  if (!navigator.serviceWorker.controller) {
+                    await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+                  }
                   const sw = await Promise.race([
                     navigator.serviceWorker.ready,
                     new Promise<never>((_, reject) =>
-                      setTimeout(() => reject(new Error('Service Worker の準備がタイムアウトしました。ページを再読み込みして再試行してください。')), 15000)
+                      setTimeout(() => reject(new Error('Service Worker がタイムアウトしました。ページを閉じて再度開いてから試してください。')), 30000)
                     ),
                   ]);
                   const vapidKey = urlBase64ToUint8Array(
