@@ -124,15 +124,21 @@ export default function ViewerPage() {
     setIsStandalone(standalone);
 
     // SW を登録し、ready になったら swReady=true にする
+    // タイムアウト（8秒）後は強制的に true にして先に進む
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistration('/').then((reg) => {
         if (!reg) {
           navigator.serviceWorker.register('/sw.js', { scope: '/' });
         }
       });
+      const swTimeout = setTimeout(() => setSwReady(true), 8000);
       navigator.serviceWorker.ready.then(() => {
+        clearTimeout(swTimeout);
         setSwReady(true);
       });
+    } else {
+      // SW非対応ブラウザでも先に進む
+      setSwReady(true);
     }
 
     if (!standalone) return; // バナー表示のみ
