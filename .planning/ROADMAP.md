@@ -75,9 +75,14 @@ Plans:
   2. `fusen_send_to_iphone` が note JSON を Google Drive にアップロードできる
   3. `fusen_send_to_iphone` が APNs に Push を送信できる（push_config が有効な場合）
   4. Google OAuth PKCE フローで取得したトークンがローカルに保存・再利用される
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
+- [ ] 04-01-PLAN.md — Cargo.toml 新規クレート追加 + state.rs ProConfig 定義
+- [ ] 04-02-PLAN.md — gdrive.rs 実装（OAuth PKCE + Drive R/W + poll_push_config）
+- [ ] 04-03-PLAN.md — webpush.rs 実装（VAPID + AES-128-GCM + APNs POST）
+- [ ] 04-04-PLAN.md — lib.rs に fusen_send_to_iphone / fusen_check_pro_setup / fusen_oauth_connect 追加
+- [ ] 04-05-PLAN.md — 自動テスト + Tauri ビルド確認 + 手動検証チェックポイント
 
 ---
 
@@ -111,9 +116,14 @@ Plans:
   2. `fusen_send_to_iphone` が note JSON を Google Drive にアップロードできる
   3. `fusen_send_to_iphone` が APNs に Push を送信できる（push_config が有効な場合）
   4. Google OAuth PKCE フローで取得したトークンがローカルに保存・再利用される
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
+- [ ] 04-01-PLAN.md — Cargo.toml 新規クレート追加 + state.rs ProConfig 定義
+- [ ] 04-02-PLAN.md — gdrive.rs 実装（OAuth PKCE + Drive R/W + poll_push_config）
+- [ ] 04-03-PLAN.md — webpush.rs 実装（VAPID + AES-128-GCM + APNs POST）
+- [ ] 04-04-PLAN.md — lib.rs に fusen_send_to_iphone / fusen_check_pro_setup / fusen_oauth_connect 追加
+- [ ] 04-05-PLAN.md — 自動テスト + Tauri ビルド確認 + 手動検証チェックポイント
 
 ### Phase 5: iPhone PWA + Rust送信
 **Goal**: 右クリック「iPhoneに送る」でロック画面に通知が届き、タップで付箋全文が読める完全なE2Eフローが動く
@@ -143,5 +153,5 @@ Plans:
 | 1. コードレビュー | v1.0 | 3/3 | Complete | 2026-03-23 |
 | 2. バグ修正 | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 3. 確認・検証 | v1.0 | 2/2 | Complete | 2026-03-23 |
-| 4. Hono API基盤 | 5/5 | Complete   | 2026-03-23 | - |
+| 4. Hono API基盤 | v2.0 | 0/5 | In planning | - |
 | 5. iPhone PWA + Rust送信 | v2.0 | 0/4 | Not started | - |
