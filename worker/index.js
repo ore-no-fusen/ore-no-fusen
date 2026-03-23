@@ -9,22 +9,22 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      data: { url: self.location.origin + '/viewer' },
     })
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const targetUrl = self.location.origin + '/viewer?note=1';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if (client.url.includes('/viewer') && 'focus' in client) {
+          client.navigate(targetUrl);
           return client.focus();
         }
       }
-      // iOS Safari では相対パスが動かないケースがあるため絶対 URL を使用
-      return clients.openWindow(self.location.origin + '/viewer');
+      return clients.openWindow(targetUrl);
     })
   );
 });

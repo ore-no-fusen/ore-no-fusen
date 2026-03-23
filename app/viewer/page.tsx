@@ -171,10 +171,8 @@ export default function ViewerPage() {
         .then((data) => {
           const t = data.access_token;
           if (!t) throw new Error('access_token missing');
-          localStorage.setItem('pkce_verifier_used', 'done'); // cleanup flag
           localStorage.setItem('viewer_access_token', t);
           setAccessToken(t);
-          token = t;
           window.history.replaceState({}, '', '/viewer');
           setStep('push');
         })
