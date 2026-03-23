@@ -22,6 +22,7 @@ mod capture; // [NEW] キャプチャ機能
 mod sound; // [NEW] サウンド機能
 mod clipboard; // [NEW] クリップボード機能
 mod import; // インポート機能
+mod gdrive; // Google Drive 連携
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
@@ -1191,6 +1192,7 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
