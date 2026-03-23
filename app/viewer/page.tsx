@@ -121,6 +121,16 @@ export default function ViewerPage() {
       (navigator as any).standalone === true ||
       window.matchMedia('(display-mode: standalone)').matches;
     setIsStandalone(standalone);
+
+    // SW をページ読み込み時に登録しておく（ボタンタップ時にはすでに active になっている）
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration('/').then((reg) => {
+        if (!reg) {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        }
+      });
+    }
+
     if (!standalone) return; // バナー表示のみ
 
     const params = new URLSearchParams(window.location.search);
@@ -288,21 +298,8 @@ export default function ViewerPage() {
                     setIsLoading(false);
                     return;
                   }
-                  // SW 登録を取得（なければ登録）し、active になるまで待つ
-                  let reg = await navigator.serviceWorker.getRegistration('/');
-                  if (!reg) {
-                    reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-                  }
-                  if (!reg.active) {
-                    await new Promise<void>((resolve, reject) => {
-                      const timer = setTimeout(() => reject(new Error('SW の起動がタイムアウトしました。アプリを閉じて再度開いてから試してください。')), 15000);
-                      const sw = reg!.installing || reg!.waiting;
-                      if (!sw) { clearTimeout(timer); resolve(); return; }
-                      sw.addEventListener('statechange', () => {
-                        if (sw.state === 'activated') { clearTimeout(timer); resolve(); }
-                      });
-                    });
-                  }
+                  // SW 登録を取得（ページ読み込み時に登録済みのはず）
+                  const reg = await navigator.serviceWorker.ready;
                   const vapidKey = urlBase64ToUint8Array(
                     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
                   );
