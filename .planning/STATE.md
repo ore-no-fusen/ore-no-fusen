@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-23T06:58:57.762Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-23T07:06:06.771Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 ---
@@ -65,6 +65,7 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 | Phase 04-hono-api-kiban P05 | 20 | 1 tasks | 4 files |
 | Phase 04-hono-api-kiban P01 | 9min | 2 tasks | 2 files |
 | Phase 04-hono-api-kiban P02 | 6min | 1 tasks | 3 files |
+| Phase 04-hono-api-kiban P03 | 10min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 - [Phase 04-hono-api-kiban]: reqwest は 0.12 を直接依存として指定: 0.13 は cmake 必須の aws-lc-rs を引き込むため
 - [Phase 04-hono-api-kiban]: oauth2 v5 の BasicClient::new は引数1つ (ClientId のみ): 旧4引数シグネチャは廃止、チェーンメソッドで設定
 - [Phase 04-hono-api-kiban]: url クレートを追加: oauth callback URL クエリパース用 (gdrive.rs)
+- [Phase 04-hono-api-kiban]: p256 pkcs8 feature追加: SigningKey::to_pkcs8_der() で PKCS#8 DER を jsonwebtoken EncodingKey::from_ec_der に渡す
+- [Phase 04-hono-api-kiban]: sha2/rand_core を明示的依存に追加: transitive のみでは use 宣言がコンパイルエラーになる
 
 ### Pending Todos
 
@@ -98,8 +101,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 
 ## Session Continuity
 
-Last session: 2026-03-23T06:58:57.756Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-23T07:06:06.764Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
