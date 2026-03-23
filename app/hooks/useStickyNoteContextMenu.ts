@@ -332,13 +332,16 @@ export function useStickyNoteContextMenu({
                 action: () => onSetAlarm()
             }));
 
-            // iPhoneに表示（将来実装予定）
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_send_to_iphone',
                 text: `📱 ${t('menu.sendToIphone')}`,
-                enabled: false,
-                action: async () => {}
+                enabled: true,
+                action: async () => {
+                    if (selectedFile) {
+                        await invoke('fusen_send_to_iphone', { path: selectedFile.path });
+                    }
+                }
             }));
 
             // アーカイブ
