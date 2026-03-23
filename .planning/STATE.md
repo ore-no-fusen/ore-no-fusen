@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-03-23T07:12:18.848Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-03-23T08:43:09.466Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 ---
@@ -67,6 +67,7 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 | Phase 04-hono-api-kiban P02 | 6min | 1 tasks | 3 files |
 | Phase 04-hono-api-kiban P03 | 10min | 1 tasks | 3 files |
 | Phase 04-hono-api-kiban P04 | 8min | 2 tasks | 1 files |
+| Phase 04-hono-api-kiban P05 | 10 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 - [Phase 04-hono-api-kiban]: sha2/rand_core を明示的依存に追加: transitive のみでは use 宣言がコンパイルエラーになる
 - [Phase 04-hono-api-kiban]: fusen_check_pro_setup はエラー時に false を返す: 設定未完了は通常フロー
 - [Phase 04-hono-api-kiban]: fusen_send_to_iphone は pro_config キャッシュなし時に poll_push_config を再実行してフォールバック
+- [Phase 04-hono-api-kiban]: cargo build 全67テスト PASS + 警告ゼロを確認し Phase 5 移行を承認
+- [Phase 04-hono-api-kiban]: TokenRefreshRequest dead_code warning は即削除（Rule 1 auto-fix）
 
 ### Pending Todos
 
@@ -104,8 +107,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 
 ## Session Continuity
 
-Last session: 2026-03-23T07:12:18.842Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-03-23T08:43:04.915Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
