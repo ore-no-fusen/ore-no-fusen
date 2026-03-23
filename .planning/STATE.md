@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
-stopped_at: Completed 04-05-PLAN.md
-last_updated: "2026-03-23T08:48:29.847Z"
+stopped_at: Phase 5 context gathered
+last_updated: "2026-03-23T09:12:10.340Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
@@ -107,9 +107,9 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 
 ## Session Continuity
 
-Last session: 2026-03-23T08:43:04.915Z
-Stopped at: Completed 04-05-PLAN.md
-Resume file: None
+Last session: 2026-03-23T09:12:10.334Z
+Stopped at: Phase 5 context gathered
+Resume file: .planning/phases/05-iphone-pwa-rust-soshin/05-CONTEXT.md
 
 ### Quick Tasks Completed
 
