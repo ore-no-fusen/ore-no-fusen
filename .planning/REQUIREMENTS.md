@@ -7,10 +7,10 @@
 
 ### API基盤
 
-- [ ] **API-01**: Hono ルーターが `app/api/v1/[[...route]]/route.ts` に設置され `nodejs` runtime が宣言されている
-- [ ] **API-02**: Google Drive OAuth2 認証が動作する（OAuth2Client + refresh_token 管理 + 失効時 503 レスポンス）
-- [ ] **API-03**: Google Drive の JSON 読み書きが動作する（`fusen_push_config.json` / `fusen_note.json`）
-- [ ] **API-04**: VAPID 鍵ペアが生成・設定される（`lib/webpush.ts`、`sub` クレームに `mailto:` を設定）
+- [x] **API-01**: Hono ルーターが `app/api/v1/[[...route]]/route.ts` に設置され `nodejs` runtime が宣言されている
+- [x] **API-02**: Google Drive OAuth2 認証が動作する（OAuth2Client + refresh_token 管理 + 失効時 503 レスポンス）
+- [x] **API-03**: Google Drive の JSON 読み書きが動作する（`fusen_push_config.json` / `fusen_note.json`）
+- [x] **API-04**: VAPID 鍵ペアが生成・設定される（`lib/webpush.ts`、`sub` クレームに `mailto:` を設定）
 - [ ] **API-05**: `POST /api/v1/subscribe` が Push Subscription（endpoint + p256dh + auth）を Google Drive に保存する
 - [ ] **API-06**: `POST /api/v1/notes/push` が Google Drive への書込と APNs Push 送信を行う
 - [ ] **API-07**: `GET /api/v1/notes/latest` が最後に送信した note JSON を返す
@@ -53,10 +53,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| API-01 | Phase 4 | Pending |
-| API-02 | Phase 4 | Pending |
-| API-03 | Phase 4 | Pending |
-| API-04 | Phase 4 | Pending |
+| API-01 | Phase 4 | Complete |
+| API-02 | Phase 4 | Complete |
+| API-03 | Phase 4 | Complete |
+| API-04 | Phase 4 | Complete |
 | API-05 | Phase 4 | Pending |
 | API-06 | Phase 4 | Pending |
 | API-07 | Phase 4 | Pending |
