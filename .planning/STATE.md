@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
-stopped_at: Completed 04-hono-api-kiban-01-PLAN.md
-last_updated: "2026-03-23T03:59:31.043Z"
+stopped_at: Completed 04-hono-api-kiban-02-PLAN.md
+last_updated: "2026-03-23T04:04:56.674Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 ---
@@ -59,6 +59,7 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 | 2. バグ修正 | 2/2 | Complete |
 | 3. 確認・検証 | 2/2 | Complete |
 | Phase 04-hono-api-kiban P01 | 5 | 2 tasks | 5 files |
+| Phase 04-hono-api-kiban P02 | 8 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,7 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 - v2.0: Google Drive をデータ中継に使用（DB不要・費用ゼロ）
 - v2.0: 既存APIは移植しない（iPhone機能エンドポイントのみ新規追加）
 - [Phase 04-hono-api-kiban]: TDD REDフェーズのコミットは --no-verify: pre-commitがnpm testを呼ぶため、RED状態ではフックをスキップ
+- [Phase 04-hono-api-kiban]: vi.fn().mockImplementation アロー関数はコンストラクタ不可、function キーワード使用が必要
 
 ### Pending Todos
 
@@ -81,8 +83,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 
 ## Session Continuity
 
-Last session: 2026-03-23T03:59:31.038Z
-Stopped at: Completed 04-hono-api-kiban-01-PLAN.md
+Last session: 2026-03-23T04:04:56.668Z
+Stopped at: Completed 04-hono-api-kiban-02-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
