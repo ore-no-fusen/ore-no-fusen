@@ -72,16 +72,17 @@ Plans:
 **Requirements**: API-01, API-02, API-03, API-04, API-05, API-06, API-07
 **Success Criteria** (what must be TRUE):
   1. `POST /api/v1/subscribe` に Push Subscription を送ると Google Drive に保存され 200 が返る
-  2. `POST /api/v1/notes/push` を呼ぶと Google Drive に note JSON が書き込まれ APNs へ Push が送信される
+  2. `POST /api/v1/notes/push` を呼ぶと Google Drive に note JSON が書き込まれ Web Push が送信される
   3. `GET /api/v1/notes/latest` が最後に送信した note JSON を返す
   4. OAuth refresh_token が失効した状態で API を呼ぶと 503 が返る（サイレント障害なし）
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 04-01: Hono エントリ + Google Drive ラッパー（lib/gdrive.ts）
-- [ ] 04-02: VAPID 鍵生成 + web-push ラッパー（lib/webpush.ts）
-- [ ] 04-03: API ハンドラ実装（subscribe / notes/push / notes/latest）
-- [ ] 04-04: Vercel デプロイ + curl 検証
+- [ ] 04-01-PLAN.md — npm パッケージ追加（hono/googleapis/web-push）+ テストスキャフォールド（RED）
+- [ ] 04-02-PLAN.md — Google Drive ラッパー実装（lib/gdrive.ts）— Wave 2
+- [ ] 04-03-PLAN.md — Web Push ラッパー実装（lib/webpush.ts）— Wave 2
+- [ ] 04-04-PLAN.md — Hono エントリ + API ハンドラ実装（subscribe / notes/push / notes/latest / auth）— Wave 3
+- [ ] 04-05-PLAN.md — Vercel デプロイ + curl 検証 — Wave 4
 
 ---
 
@@ -112,16 +113,17 @@ Plans:
 **Requirements**: API-01, API-02, API-03, API-04, API-05, API-06, API-07
 **Success Criteria** (what must be TRUE):
   1. `POST /api/v1/subscribe` に Push Subscription を送ると Google Drive に保存され 200 が返る
-  2. `POST /api/v1/notes/push` を呼ぶと Google Drive に note JSON が書き込まれ APNs へ Push が送信される
+  2. `POST /api/v1/notes/push` を呼ぶと Google Drive に note JSON が書き込まれ Web Push が送信される
   3. `GET /api/v1/notes/latest` が最後に送信した note JSON を返す
   4. OAuth refresh_token が失効した状態で API を呼ぶと 503 が返る（サイレント障害なし）
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 04-01: Hono エントリ + Google Drive ラッパー（lib/gdrive.ts）
-- [ ] 04-02: VAPID 鍵生成 + web-push ラッパー（lib/webpush.ts）
-- [ ] 04-03: API ハンドラ実装（subscribe / notes/push / notes/latest）
-- [ ] 04-04: Vercel デプロイ + curl 検証
+- [ ] 04-01-PLAN.md — npm パッケージ追加（hono/googleapis/web-push）+ テストスキャフォールド（RED）
+- [ ] 04-02-PLAN.md — Google Drive ラッパー実装（lib/gdrive.ts）
+- [ ] 04-03-PLAN.md — Web Push ラッパー実装（lib/webpush.ts）
+- [ ] 04-04-PLAN.md — Hono エントリ + API ハンドラ実装
+- [ ] 04-05-PLAN.md — Vercel デプロイ + curl 検証
 
 ### Phase 5: iPhone PWA + Rust送信
 **Goal**: 右クリック「iPhoneに送る」でロック画面に通知が届き、タップで付箋全文が読める完全なE2Eフローが動く
@@ -151,5 +153,5 @@ Plans:
 | 1. コードレビュー | v1.0 | 3/3 | Complete | 2026-03-23 |
 | 2. バグ修正 | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 3. 確認・検証 | v1.0 | 2/2 | Complete | 2026-03-23 |
-| 4. Hono API基盤 | v2.0 | 0/4 | Not started | - |
+| 4. Hono API基盤 | v2.0 | 0/5 | Not started | - |
 | 5. iPhone PWA + Rust送信 | v2.0 | 0/4 | Not started | - |
