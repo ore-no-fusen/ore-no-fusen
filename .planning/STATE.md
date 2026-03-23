@@ -4,7 +4,7 @@ milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
 stopped_at: Completed 04-05-PLAN.md
-last_updated: "2026-03-23T08:43:09.466Z"
+last_updated: "2026-03-23T08:48:29.847Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
