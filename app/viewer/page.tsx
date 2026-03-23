@@ -201,9 +201,11 @@ export default function ViewerPage() {
           setNoteData(data);
           setStep('note');
         })
-        .catch((err) =>
-          setErrorMessage('メモの取得に失敗しました: ' + err.message)
-        )
+        .catch(() => {
+          localStorage.removeItem('viewer_access_token');
+          setErrorMessage('セッションが切れました。再度ログインしてください。');
+          setStep('login');
+        })
         .finally(() => setIsLoading(false));
       return;
     }
@@ -219,9 +221,11 @@ export default function ViewerPage() {
           setNoteData(data);
           setStep('note');
         })
-        .catch((err) =>
-          setErrorMessage('メモの取得に失敗しました: ' + err.message)
-        )
+        .catch(() => {
+          localStorage.removeItem('viewer_access_token');
+          setErrorMessage('セッションが切れました。再度ログインしてください。');
+          setStep('login');
+        })
         .finally(() => setIsLoading(false));
       return;
     }

@@ -1190,13 +1190,20 @@ async fn fusen_send_to_iphone(
         std::fs::read_to_string(&path).map_err(|e| e.to_string())?
     };
 
-    // 2. note JSON を生成
+    // 2. note JSON を生成（frontmatter を除去したbodyのみ送信）
     let sent_at = chrono::Utc::now().to_rfc3339();
     let title = path.split(['/', '\\']).last().unwrap_or("note")
         .trim_end_matches(".md").to_string();
+    let body = if note.starts_with("---") {
+        note[3..].find("---")
+            .map(|end| note[3 + end + 3..].trim_start_matches('\n').to_string())
+            .unwrap_or_else(|| note.clone())
+    } else {
+        note.clone()
+    };
     let note_json = serde_json::json!({
         "title": title,
-        "body": note,
+        "body": body,
         "tags": [],
         "sent_at": sent_at
     });
