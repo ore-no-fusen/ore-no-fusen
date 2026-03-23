@@ -276,15 +276,23 @@ export default function ViewerPage() {
           <div className="flex flex-col items-center gap-4">
             <p className="text-gray-700">セットアップ ステップ 2 / 2</p>
             <button
-              className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium"
+              className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium disabled:opacity-50"
+              disabled={isLoading}
               onClick={async () => {
                 try {
+                  setIsLoading(true);
                   const perm = await Notification.requestPermission();
                   if (perm !== 'granted') {
                     setErrorMessage('通知を許可してください');
+                    setIsLoading(false);
                     return;
                   }
-                  const sw = await navigator.serviceWorker.ready;
+                  const sw = await Promise.race([
+                    navigator.serviceWorker.ready,
+                    new Promise<never>((_, reject) =>
+                      setTimeout(() => reject(new Error('Service Worker の準備がタイムアウトしました。ページを再読み込みして再試行してください。')), 15000)
+                    ),
+                  ]);
                   const vapidKey = urlBase64ToUint8Array(
                     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
                   );
@@ -306,10 +314,12 @@ export default function ViewerPage() {
                 } catch (err: unknown) {
                   const msg = err instanceof Error ? err.message : String(err);
                   setErrorMessage('通知設定に失敗しました: ' + msg);
+                } finally {
+                  setIsLoading(false);
                 }
               }}
             >
-              通知を許可する
+              {isLoading ? '処理中...' : '通知を許可する'}
             </button>
             {errorMessage && (
               <p className="text-red-600 text-sm">{errorMessage}</p>
