@@ -17,11 +17,14 @@ vi.mock('googleapis', () => {
   return {
     google: {
       auth: {
-        OAuth2: vi.fn().mockImplementation(() => ({
-          setCredentials: vi.fn(),
-          refreshAccessToken: vi.fn(),
-          on: vi.fn(),
-        })),
+        // アロー関数はコンストラクタになれないため function キーワードを使用
+        OAuth2: vi.fn().mockImplementation(function () {
+          return {
+            setCredentials: vi.fn(),
+            refreshAccessToken: vi.fn(),
+            on: vi.fn(),
+          };
+        }),
       },
       drive: vi.fn().mockReturnValue({
         files: {
@@ -92,7 +95,7 @@ describe('gdrive', () => {
 
     // API-03: 既存ファイルあり → files.update を呼ぶ
     it('既存ファイルあり時は files.update を呼ぶ', async () => {
-      const { google, _mockFilesList, _mockFilesUpdate } = await import('googleapis') as any;
+      const { _mockFilesList, _mockFilesUpdate, _mockFilesCreate } = await import('googleapis') as any;
       _mockFilesList.mockResolvedValueOnce({
         data: { files: [{ id: 'existing-file-id' }] },
       });
@@ -156,8 +159,9 @@ describe('gdrive', () => {
       _mockFilesList.mockResolvedValueOnce({
         data: { files: [{ id: 'note-file-id', name: 'latest-note.json' }] },
       });
+      // files.get は responseType: 'text' で呼ばれるため data は JSON 文字列
       _mockFilesGet.mockResolvedValueOnce({
-        data: { title: 'テストメモ', content: 'メモの内容' },
+        data: JSON.stringify({ title: 'テストメモ', content: 'メモの内容' }),
       });
 
       const result = await getLatestNote();
