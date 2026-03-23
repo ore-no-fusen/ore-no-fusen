@@ -1,112 +1,132 @@
-# Phase 4: Hono API基盤 - Context
+# Phase 4: Rust バックエンド（Google Drive + APNs）- Context
 
 **Gathered:** 2026-03-23
 **Status:** Ready for planning
+**Source:** iPhone連携_実装計画.html（設計書）
 
 <domain>
 ## Phase Boundary
 
-Vercel上でWeb Push通知パイプラインのAPIを完全稼働させる。
-curl で全エンドポイント（subscribe / notes/push / notes/latest）を検証できる状態にする。
-iPhone PWAやRust送信コマンドはPhase 5のスコープ。
+Rust (Tauri) から直接 Google Drive への読み書きと APNs Push 通知送信を実装する。
+サーバーサイド API（Vercel API Routes）は不要。各ユーザーが自分の Google Drive を使う。
+iPhone PWA や右クリックメニューは Phase 5 のスコープ。
 
 </domain>
 
 <decisions>
 ## Implementation Decisions
 
-### Push通知方式（重要な修正）
-- **APNsは使用しない。Web Push（VAPID）で統一。**
-- iPhoneのPWA PushはiOS 16.4以降のSafari Web Pushのみ対応（ネイティブAPNsはPWA非対応）
-- APNs関連コード・ライブラリ・証明書は一切実装しない
-- `web-push` ライブラリでVAPID署名を行い、ブラウザのプッシュサービス経由で送信する
+### アーキテクチャ方針（最重要）
+- **サーバー不要**: Vercel は PWA ホスティングのみ。API Routes は使わない
+- **Rust が直接実行**: Google Drive 読み書き・APNs POST はすべて Rust (Tauri) から行う
+- **各ユーザーが自分の Google Drive を使う**: OAuth PKCE フローでユーザーが自分のアカウントで認証
 
-### APIエンドポイント保護
-- 全エンドポイント（subscribe / notes/push / notes/latest）をBearer認証で保護
-- ヘッダー形式: `Authorization: Bearer {API_SECRET}`
-- `API_SECRET` はVercel環境変数で管理。PWA側・Rust側ともに同じトークンを使用
+### 新規 Rust ファイル
+- `src-tauri/src/gdrive.rs` — Google OAuth2 PKCE + Drive REST API R/W
+- `src-tauri/src/webpush.rs` — VAPID JWT 署名 + AES-128-GCM 暗号化 + APNs POST
 
-### Google OAuth認証フロー
-- APIの `/api/v1/auth` エンドポイントで認証フローを実装
-- 初回のみブラウザで Google認証 → refresh_token を取得
-- 取得したrefresh_tokenをVercel環境変数に登録、以降は自動更新
-- refresh_token失効時は503を返す（サイレント障害なし）
+### Cargo.toml 追加クレート
+```toml
+reqwest   = { version = "0.12", features = ["json", "rustls-tls"] }
+p256      = { version = "0.13", features = ["ecdh", "ecdsa"] }
+jwt-simple = "0.12"
+base64    = "0.22"
+aes-gcm   = "0.10"
+hkdf      = "0.12"
+sha2      = "0.10"
+```
 
-### Google Driveファイル配置
-- フォルダ名: `ore-no-fusen`（マイドライブ直下に作成）
-- 構成: フラット（サブフォルダなし）
-  - `ore-no-fusen/fusen_push_config.json` — Push Subscription（endpoint + p256dh + auth）
-  - `ore-no-fusen/fusen_note.json` — 最後に送信した付箋1件（上書き保存）
+### Google Drive データ構造
+- フォルダ: `ore-no-fusen`（マイドライブ直下）
+- `fusen_push_config.json` — iPhone PWA が書き込む Push Subscription（endpoint + p256dh + auth）
+- `fusen_note.json` — PC が書き込む最新ノート（上書き保存）
 
-### fusen_note.jsonの保存形式
-- 最新の1件のみ上書き保存（履歴は持たない）
-- ユーザーが選択した付箋をそのまま1件保存する
+### gdrive.rs 主要関数
+- `oauth_pkce_flow()` — ブラウザで OAuth 認証 → refresh_token をローカル保存
+- `get_access_token()` — refresh_token で access_token を取得
+- `upload_json(filename, data)` — Google Drive REST API v3 で上書き
+- `download_json(filename)` — ファイル名で Drive を検索してダウンロード
+- `poll_push_config()` — fusen_push_config.json を取得・AppState にキャッシュ
 
-### Vercel環境変数の管理
-- 設定手順はPLAN.mdの「セットアップ手順」セクションに記載（開発者向け）
-- 必要な変数:
-  - `GOOGLE_CLIENT_ID` — Google Cloud ConsoleのOAuth 2.0クライアントID
-  - `GOOGLE_CLIENT_SECRET` — 同シークレット
-  - `GOOGLE_REFRESH_TOKEN` — 認証フロー実行後に取得・登録
-  - `VAPID_PUBLIC_KEY` — `npx web-push generate-vapid-keys` で生成
-  - `VAPID_PRIVATE_KEY` — 同上
-  - `API_SECRET` — 任意の文字列（Bearer認証トークン）
+### webpush.rs 主要関数
+- `generate_vapid_keys()` — P-256 ECDSA 鍵ペア生成・設定ファイルに保存
+- `sign_vapid_jwt(endpoint)` — 有効期限 12h の JWT 生成（RFC 8292）
+- `encrypt_payload(p256dh, auth, json)` — ECDH → HKDF → AES-128-GCM（RFC 8291）
+- `send_web_push(config, payload)` — APNs に TTL="86400" で POST
+
+### Push 通知フロー（B. 2回目以降）
+```
+PC付箋 右クリック「iPhoneに送る」
+  → invoke('fusen_send_to_iphone', {path})
+  → Rust: fusen_read_note(path) でコンテンツ取得
+  → Rust: note JSON 生成
+  → Rust: Google Drive fusen_note.json を上書き (~200ms)
+  → Rust: キャッシュ済み push_config を使用
+  → Rust: VAPID JWT 署名 (~50ms)
+  → Rust: AES-128-GCM 暗号化 (~30ms)
+  → Rust: APNs HTTPS POST (~400ms)
+  → iPhone ロック画面に通知表示
+```
+
+### AppState の追加フィールド
+```rust
+pub struct ProConfig {
+    pub push_endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+}
+// AppState に Option<ProConfig> を追加
+```
+
+### Tauri コマンド
+- `fusen_check_pro_setup` — push_config がキャッシュ済みか確認
+- `fusen_send_to_iphone` — 送信オーケストレーション
 
 ### Claude's Discretion
-- Hono のミドルウェア構成（認証チェックの実装方法）
-- Google Drive APIのファイルUPDATE vs CREATE処理の詳細
-- エラーレスポンスのJSON body形式
-- `lib/gdrive.ts` と `lib/webpush.ts` のインターフェース設計
+- OAuth トークンのローカル保存場所（`~/.config/ore-no-fusen/` or Tauri app data dir）
+- エラーハンドリングの詳細（ネットワークエラー、Drive API エラー）
+- VAPID keys の保存場所
 
 </decisions>
 
 <specifics>
 ## Specific Ideas
 
-- 正しいPush通知フロー:
-  ```
-  [PC付箋] → [Rustコマンド] → [API(Hono)] → [Web Push送信（VAPID）] → [iPhone Service Worker] → [Notification表示]
-  ```
-- Service Workerのpushハンドラ:
-  ```javascript
-  self.addEventListener('push', (event) => {
-    const data = event.data.json();
-    self.registration.showNotification(data.title, { body: data.body });
-  });
-  ```
-- Subscribe時の保存データ: `{ "endpoint": "...", "p256dh": "...", "auth": "..." }`
+### fusen_push_config.json 形式
+```json
+{
+  "endpoint": "https://api.push.apple.com/3/device/XXXXXXXXXXXX",
+  "keys": {
+    "p256dh": "BNcRdreALRFXTkOOUHK...(base64url, 65bytes)",
+    "auth":   "tBy8sdLk...(base64url, 16bytes)"
+  },
+  "created_at": "2026-03-03T06:00:00Z"
+}
+```
+
+### fusen_note.json 形式
+```json
+{
+  "title":   "今日のタスク",
+  "body":    "# 今日のタスク\n- [ ] 資料作成\n- [x] メール返信\n",
+  "tags":    ["仕事", "重要"],
+  "sent_at": "2026-03-03T06:05:00Z"
+}
+```
 
 </specifics>
-
-<code_context>
-## Existing Code Insights
-
-### Reusable Assets
-- `app/api/notes.ts`, `app/api/window.ts` — Tauri invoke wrappers（Hono routesとは別物、参照のみ）
-- `.env.local` に `NEXT_PUBLIC_GOOGLE_CLIENT_ID_PC` / `NEXT_PUBLIC_GOOGLE_CLIENT_ID_PWA` が既にある（同じGCPプロジェクトを使う）
-
-### Established Patterns
-- `next.config.mjs`: `output: process.env.IS_TAURI_BUILD === 'true' ? 'export' : undefined` — VercelではAPI Routes有効、TauriではStaticExportに切り替わる設計が既にある
-- `next-pwa@5.6.0` は既存依存。Tauriビルドでは無効化、Vercelビルドでは有効
-- `app/lib/` 内: `i18n.ts`, `settings-store.ts`, `utils.ts` — Hono lib は新規追加（`lib/gdrive.ts`, `lib/webpush.ts`）
-
-### Integration Points
-- 新規: `app/api/v1/[[...route]]/route.ts` に Hono エントリを作成（既存 `app/api/` は Tauri invoke wrappers なので衝突しない）
-- nodejs runtime 宣言必須（googleapis は Node.js 依存、Edge Runtime 非対応）
-
-</code_context>
 
 <deferred>
 ## Deferred Ideas
 
-- Android Chrome での Web Push 対応 — v3.0以降（REQUIREMENTS: MULTI-01）
-- 複数デバイスへの同時送信 — v3.0以降（REQUIREMENTS: MULTI-02）
-- 既存 `app/api/*.ts` の Hono 移植 — v3.0以降（REQUIREMENTS: INT-01）
-- 付箋の送信履歴管理（複数件保存）— Phase 4スコープ外、将来検討
+- iPhone PWA セットアップ画面 → Phase 5
+- 右クリックメニュー「iPhoneに送る」→ Phase 5
+- Service Worker → Phase 5
+- Android Chrome 対応 → v3.0
 
 </deferred>
 
 ---
 
-*Phase: 04-hono-api-kiban*
-*Context gathered: 2026-03-23*
+*Phase: 04-hono-api-kiban（正式名称: Rust バックエンド）*
+*Context updated: 2026-03-23 — corrected from Hono API to Rust direct implementation*

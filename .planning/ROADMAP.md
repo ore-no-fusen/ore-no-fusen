@@ -66,23 +66,18 @@ Plans:
 
 **Milestone Goal:** PCの付箋を右クリック一発でiPhoneのロック画面に送れるようにする
 
-#### Phase 4: Hono API基盤
-**Goal**: Vercel 上で Push 通知パイプラインの API が完全稼働し、curl で全エンドポイントを検証できる
+#### Phase 4: Rust バックエンド（Google Drive + APNs）
+**Goal**: Rust (Tauri) から Google Drive への読み書きと APNs Push 通知送信が完全稼働し、`fusen_send_to_iphone` コマンドで付箋を iPhone に送信できる
 **Depends on**: Phase 3
 **Requirements**: API-01, API-02, API-03, API-04, API-05, API-06, API-07
 **Success Criteria** (what must be TRUE):
-  1. `POST /api/v1/subscribe` に Push Subscription を送ると Google Drive に保存され 200 が返る
-  2. `POST /api/v1/notes/push` を呼ぶと Google Drive に note JSON が書き込まれ Web Push が送信される
-  3. `GET /api/v1/notes/latest` が最後に送信した note JSON を返す
-  4. OAuth refresh_token が失効した状態で API を呼ぶと 503 が返る（サイレント障害なし）
-**Plans**: 5 plans
+  1. `fusen_check_pro_setup` が Google Drive から `fusen_push_config.json` を読み込んで AppState にキャッシュできる
+  2. `fusen_send_to_iphone` が note JSON を Google Drive にアップロードできる
+  3. `fusen_send_to_iphone` が APNs に Push を送信できる（push_config が有効な場合）
+  4. Google OAuth PKCE フローで取得したトークンがローカルに保存・再利用される
+**Plans**: TBD
 
 Plans:
-- [ ] 04-01-PLAN.md — npm パッケージ追加（hono/googleapis/web-push）+ テストスキャフォールド（RED）
-- [ ] 04-02-PLAN.md — Google Drive ラッパー実装（lib/gdrive.ts）— Wave 2
-- [ ] 04-03-PLAN.md — Web Push ラッパー実装（lib/webpush.ts）— Wave 2
-- [ ] 04-04-PLAN.md — Hono エントリ + API ハンドラ実装（subscribe / notes/push / notes/latest / auth）— Wave 3
-- [ ] 04-05-PLAN.md — Vercel デプロイ + curl 検証 — Wave 4
 
 ---
 
@@ -107,23 +102,18 @@ Plans:
 
 ## Phase Details
 
-### Phase 4: Hono API基盤
-**Goal**: Vercel 上で Push 通知パイプラインの API が完全稼働し、curl で全エンドポイントを検証できる
+### Phase 4: Rust バックエンド（Google Drive + APNs）
+**Goal**: Rust (Tauri) から Google Drive への読み書きと APNs Push 通知送信が完全稼働し、`fusen_send_to_iphone` コマンドで付箋を iPhone に送信できる
 **Depends on**: Phase 3
 **Requirements**: API-01, API-02, API-03, API-04, API-05, API-06, API-07
 **Success Criteria** (what must be TRUE):
-  1. `POST /api/v1/subscribe` に Push Subscription を送ると Google Drive に保存され 200 が返る
-  2. `POST /api/v1/notes/push` を呼ぶと Google Drive に note JSON が書き込まれ Web Push が送信される
-  3. `GET /api/v1/notes/latest` が最後に送信した note JSON を返す
-  4. OAuth refresh_token が失効した状態で API を呼ぶと 503 が返る（サイレント障害なし）
-**Plans**: 5 plans
+  1. `fusen_check_pro_setup` が Google Drive から `fusen_push_config.json` を読み込んで AppState にキャッシュできる
+  2. `fusen_send_to_iphone` が note JSON を Google Drive にアップロードできる
+  3. `fusen_send_to_iphone` が APNs に Push を送信できる（push_config が有効な場合）
+  4. Google OAuth PKCE フローで取得したトークンがローカルに保存・再利用される
+**Plans**: TBD
 
 Plans:
-- [ ] 04-01-PLAN.md — npm パッケージ追加（hono/googleapis/web-push）+ テストスキャフォールド（RED）
-- [ ] 04-02-PLAN.md — Google Drive ラッパー実装（lib/gdrive.ts）
-- [ ] 04-03-PLAN.md — Web Push ラッパー実装（lib/webpush.ts）
-- [ ] 04-04-PLAN.md — Hono エントリ + API ハンドラ実装
-- [ ] 04-05-PLAN.md — Vercel デプロイ + curl 検証
 
 ### Phase 5: iPhone PWA + Rust送信
 **Goal**: 右クリック「iPhoneに送る」でロック画面に通知が届き、タップで付箋全文が読める完全なE2Eフローが動く

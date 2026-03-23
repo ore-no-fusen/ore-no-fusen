@@ -28,7 +28,9 @@
       "Read(//c/Users/uck/Documents/**)",
       "Skill(gsd:new-milestone)",
       "Skill(gsd:new-milestone:*)",
-      "WebSearch"
+      "WebSearch",
+      "Skill(gsd:plan-phase)",
+      "Skill(gsd:plan-phase:*)"
     ]
   },
   "hooks": {
