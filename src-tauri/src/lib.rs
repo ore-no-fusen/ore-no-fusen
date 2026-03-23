@@ -23,6 +23,7 @@ mod sound; // [NEW] サウンド機能
 mod clipboard; // [NEW] クリップボード機能
 mod import; // インポート機能
 mod gdrive; // Google Drive 連携
+mod webpush; // Web Push (VAPID + AES-128-GCM + APNs)
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
