@@ -1,42 +1,76 @@
-# Requirements — 俺の付箋 品質改善
+# Requirements: 俺の付箋 v2.0 iPhone連携
 
-## v1 Requirements
+**Defined:** 2026-03-23
+**Core Value:** すぐ書けて、そこに残る。PCの付箋を1秒でiPhoneに送れる。
 
-### 安定性（Stability）
+## v1 Requirements（v2.0マイルストーン）
 
-- [x] **STAB-01**: Listener Leak が新たに発生していないこと（useEffect内のasync listen()の解除漏れ）
-- [x] **STAB-02**: Rustコード全体で `unwrap()` の残存がないこと
-- [x] **STAB-03**: Win32 API 呼び出し後に Tauri の内部状態が正しく同期されていること
+### API基盤
 
-### データ保護（Data Safety）
+- [ ] **API-01**: Hono ルーターが `app/api/v1/[[...route]]/route.ts` に設置され `nodejs` runtime が宣言されている
+- [ ] **API-02**: Google Drive OAuth2 認証が動作する（OAuth2Client + refresh_token 管理 + 失効時 503 レスポンス）
+- [ ] **API-03**: Google Drive の JSON 読み書きが動作する（`fusen_push_config.json` / `fusen_note.json`）
+- [ ] **API-04**: VAPID 鍵ペアが生成・設定される（`lib/webpush.ts`、`sub` クレームに `mailto:` を設定）
+- [ ] **API-05**: `POST /api/v1/subscribe` が Push Subscription（endpoint + p256dh + auth）を Google Drive に保存する
+- [ ] **API-06**: `POST /api/v1/notes/push` が Google Drive への書込と APNs Push 送信を行う
+- [ ] **API-07**: `GET /api/v1/notes/latest` が最後に送信した note JSON を返す
 
-- [x] **DATA-01**: 空body によるノートデータ上書きが発生しないこと
-- [x] **DATA-02**: ノートロード時の競合状態（race condition）がないこと（hasLoadedRef で制御）
+### iPhone連携
 
-### UI安定性（UI Stability）
+- [ ] **PWA-01**: `public/manifest.json` が作成され `display: standalone` が設定されている
+- [ ] **PWA-02**: `public/sw.js` が push 受信・showNotification・notificationclick を実装し、next-pwa との上書き衝突を回避している
+- [ ] **PWA-03**: `app/viewer/page.tsx` がホーム画面追加ガイドと note 全文表示を提供する
+- [ ] **SEND-01**: `fusen_send_to_iphone` Rust コマンドが実装される（Cargo.toml に reqwest 追加、lib.rs にコマンド追加）
+- [ ] **SEND-02**: 右クリックメニューの `ctx_send_to_iphone` が `enabled: true` になり、アクションが実装される
 
-- [x] **UI-01**: 編集開始時のカーソル位置が正しいこと（新規作成・再編集の両方）
-- [x] **UI-02**: FloatingFormatBar の blur 除外が正しく機能し、フォーマット操作中に編集モードが解除されないこと
+## v2 Requirements（v3.0以降）
 
-## v2 Requirements（次のマイルストーン以降）
+### 双方向編集
 
-- テストカバレッジの引き上げ（現在30%）
-- StickyNote.tsx のリファクタリング
-- 新機能（画像・タグ・リンク）
+- **EDIT-01**: iPhoneから付箋を編集して保存する
+- **EDIT-02**: PC側が Google Drive の変更を検知して取り込む
+- **EDIT-03**: 競合検知（PC・iPhone 同時編集時）
+
+### マルチデバイス
+
+- **MULTI-01**: Android Chrome での Web Push 対応
+- **MULTI-02**: 複数デバイスへの同時送信
+
+### API統合
+
+- **INT-01**: 既存 `app/api/*.ts` を Hono に統合
 
 ## Out of Scope
 
-- 新機能追加 — 品質改善マイルストーンの対象外
-- StickyNote.tsx のリファクタリング — リスク大、別マイルストーンで実施
+| 機能 | 理由 |
+|------|------|
+| 複数ユーザー対応 | シングルユーザー前提。認証設計が大きく変わるため別マイルストーン |
+| リアルタイム同期（WebSocket/SSE） | Google Drive ポーリングで代替。要件が固まってから検討 |
+| ネイティブ iOS アプリ（Swift） | PWA で十分。コスト不釣り合い |
+| Edge Runtime での動作 | googleapis は Node.js 依存。変更コストに見合わない |
 
 ## Traceability
 
-| REQ-ID | Phase |
-|--------|-------|
-| STAB-01 | Phase 1: コードレビュー |
-| STAB-02 | Phase 1: コードレビュー |
-| STAB-03 | Phase 2: Win32/Tauri修正 |
-| DATA-01 | Phase 1: コードレビュー |
-| DATA-02 | Phase 1: コードレビュー |
-| UI-01 | Phase 1: コードレビュー |
-| UI-02 | Phase 2: UI修正 |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| API-01 | Phase 4 | Pending |
+| API-02 | Phase 4 | Pending |
+| API-03 | Phase 4 | Pending |
+| API-04 | Phase 4 | Pending |
+| API-05 | Phase 4 | Pending |
+| API-06 | Phase 4 | Pending |
+| API-07 | Phase 4 | Pending |
+| PWA-01 | Phase 5 | Pending |
+| PWA-02 | Phase 5 | Pending |
+| PWA-03 | Phase 5 | Pending |
+| SEND-01 | Phase 5 | Pending |
+| SEND-02 | Phase 5 | Pending |
+
+**Coverage:**
+- v1 requirements: 12 total
+- Mapped to phases: 12
+- Unmapped: 0 ✓
+
+---
+*Requirements defined: 2026-03-23*
+*Last updated: 2026-03-23 after initial definition*
