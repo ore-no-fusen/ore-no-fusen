@@ -1,0 +1,11 @@
+src-tauri
+out
+coverage
+test-results
+bk
+promo
+winget-manifests
+my
+docs
+e2e
+public/sounds

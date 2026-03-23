@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 // app/api/v1/[[...route]]/route.ts は Wave 2 で実装される（現時点では存在しない）
 // Hono app インスタンスを直接インポートして app.request() でテスト
-import { app } from './route';
+import { app } from './_app';
 
 describe('Hono API v1 - Bearer 認証 (API-01)', () => {
   const TEST_SECRET = 'test-secret-for-vitest';
