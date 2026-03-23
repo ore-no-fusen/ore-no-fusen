@@ -1152,6 +1152,81 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 
+// --- Pro / iPhone 連携コマンド ---
+
+#[tauri::command]
+async fn fusen_oauth_connect(app: tauri::AppHandle) -> Result<(), String> {
+    gdrive::oauth_pkce_flow(&app).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn fusen_check_pro_setup(
+    state: tauri::State<'_, Mutex<AppState>>,
+) -> Result<bool, String> {
+    let client = reqwest::Client::new();
+    match gdrive::poll_push_config(&client, &state).await {
+        Ok(_) => {
+            let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+            Ok(guard.pro_config.is_some())
+        }
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
+async fn fusen_send_to_iphone(
+    state: tauri::State<'_, Mutex<AppState>>,
+    path: String,
+) -> Result<(), String> {
+    let client = reqwest::Client::new();
+
+    // 1. ノートの内容を読む
+    let note = {
+        let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        let _folder = guard.folder_path.clone()
+            .ok_or_else(|| "Folder not set".to_string())?;
+        drop(guard);
+        std::fs::read_to_string(&path).map_err(|e| e.to_string())?
+    };
+
+    // 2. note JSON を生成
+    let sent_at = chrono::Utc::now().to_rfc3339();
+    let title = path.split(['/', '\\']).last().unwrap_or("note")
+        .trim_end_matches(".md").to_string();
+    let note_json = serde_json::json!({
+        "title": title,
+        "body": note,
+        "tags": [],
+        "sent_at": sent_at
+    });
+
+    // 3. Google Drive に fusen_note.json をアップロード
+    let access_token = gdrive::get_access_token(&client).await?;
+    gdrive::upload_json(&client, &access_token, "fusen_note.json", &note_json).await?;
+
+    // 4. キャッシュ済み pro_config を取得（なければ Drive から再取得）
+    let pro_config = {
+        let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        guard.pro_config.clone()
+    };
+    let pro_config = match pro_config {
+        Some(c) => c,
+        None => {
+            gdrive::poll_push_config(&client, &state).await?;
+            let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+            guard.pro_config.clone()
+                .ok_or_else(|| "push_config not found in Google Drive. Please set up the iPhone app first.".to_string())?
+        }
+    };
+
+    // 5. APNs に Push 通知送信
+    let plaintext = serde_json::to_string(&note_json).map_err(|e| e.to_string())?;
+    webpush::send_web_push(&client, &pro_config, &plaintext).await?;
+
+    Ok(())
+}
+
 // --- Entry Point ---
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1232,6 +1307,9 @@ pub fn run() {
             fusen_pick_folder,
             fusen_import_from_folder,
             fusen_backup,
+            fusen_oauth_connect,
+            fusen_check_pro_setup,
+            fusen_send_to_iphone,
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);
