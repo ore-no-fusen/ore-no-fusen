@@ -12,7 +12,7 @@ use std::path::Path;
 fn main() {
   // 自動同期: public/sounds のファイルを OUT_DIR にコピーして埋め込み可能にする
   // ソースディレクトリ(src/)へのコピーは無限ループの原因になるため廃止
-  let sounds = ["create.wav", "save.wav", "delete.wav"];
+  let sounds = ["create.wav", "save.wav", "delete.wav", "alarm.wav"];
   let public_sounds_dir = Path::new("../public/sounds"); // src-tauri から見た相対パス
   
   // OUT_DIRを取得 (Cargoが設定するビルド出力ディレクトリ)

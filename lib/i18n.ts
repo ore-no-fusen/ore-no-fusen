@@ -125,6 +125,17 @@ export const translations = {
         'tag.deleteTitle': 'タグの削除',
         'tag.deleteMessage': 'タグ「{tag}」を完全に削除しますか？\n\n※この操作は元に戻せません。このタグを含む**すべての付箋**からバッジが消去されます。付箋本体は消去されません。',
 
+        // アラーム
+        'menu.setAlarm': 'アラームをセット',
+        'alarm.setTitle': 'アラームをセット',
+        'alarm.relative': '相対時刻',
+        'alarm.absolute': '絶対時刻',
+        'alarm.sound': '通知音あり',
+        'alarm.clear': '解除する',
+        'alarm.current': '現在のアラーム: ',
+        'alarm.set': '設定する',
+        'alarm.ringing': '⏰ タップして止める',
+
         // アップデート
         'update.title': 'アップデートがあります',
         'update.message': 'バージョン {version} が利用可能です。\n今すぐアップデートしますか？\n（ダウンロード後に自動で再起動します）',
@@ -262,6 +273,17 @@ export const translations = {
         'tag.addButton': 'Add',
         'tag.deleteTitle': 'Delete Tag',
         'tag.deleteMessage': 'Permanently delete the tag "{tag}"?\n\nThis cannot be undone. The tag will be removed from **all notes** containing it. The notes themselves will not be deleted.',
+
+        // Alarm
+        'menu.setAlarm': 'Set Alarm',
+        'alarm.setTitle': 'Set Alarm',
+        'alarm.relative': 'Relative',
+        'alarm.absolute': 'Date & Time',
+        'alarm.sound': 'With sound',
+        'alarm.clear': 'Clear alarm',
+        'alarm.current': 'Current alarm: ',
+        'alarm.set': 'Set',
+        'alarm.ringing': '⏰ Tap to stop',
 
         // Update
         'update.title': 'Update Available',

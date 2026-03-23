@@ -26,6 +26,9 @@ export type ToolbarButtonsProps = {
     onTogglePin?: () => void; // [New]
     onCreateNewNote?: () => void; // [New] 新規付箋作成
     language?: Language;
+    onAlarmClick?: () => void;
+    alarmAtStr?: string | null;
+    alarmTooltip?: string;
 };
 
 export default function ToolbarButtons({
@@ -40,7 +43,10 @@ export default function ToolbarButtons({
     onToggleMinimize,
     onTogglePin,
     onCreateNewNote,
-    language
+    language,
+    onAlarmClick,
+    alarmAtStr,
+    alarmTooltip,
 }: ToolbarButtonsProps) {
     const t = getTranslation(language ?? 'ja');
     // 通常モード時：ツールバー（折りたたみ + ピン）
@@ -50,6 +56,19 @@ export default function ToolbarButtons({
                 className={`hoverBar flex flex-row justify-end items-center gap-[2px] p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show || isWelcome ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
                     }`}
             >
+                {/* アラームボタン（アラームがセットされている時のみ表示） */}
+                {onAlarmClick && alarmAtStr && (
+                    <Tooltip text={alarmTooltip || ''} placement="top-right">
+                        <button
+                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={() => onAlarmClick()}
+                            className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[13px]"
+                        >
+                            ⏰
+                        </button>
+                    </Tooltip>
+                )}
+
                 {/* 新規作成ボタン (左端) */}
                 {onCreateNewNote && (
                     <Tooltip text={t('tooltip.newNote')} hint="Ctrl+N" placement="top-right">

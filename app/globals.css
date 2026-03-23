@@ -107,6 +107,12 @@
   color: #d32f2f;
 }
 
+/* Alarm blink animation */
+@keyframes alarmBlink {
+  from { opacity: 1; }
+  to   { opacity: 0.4; }
+}
+
 /* Preview line style */
 .preview-line {
   margin: 0;

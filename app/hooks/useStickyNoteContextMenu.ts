@@ -36,6 +36,7 @@ type UseStickyNoteContextMenuProps = {
     handleEditBlur: () => Promise<void>;
     onInsertText?: (text: string) => void;
     setTagToDelete: (tag: string) => void;
+    onSetAlarm: () => void;
 };
 
 export function useStickyNoteContextMenu({
@@ -59,7 +60,8 @@ export function useStickyNoteContextMenu({
     isEditing,
     handleEditBlur,
     onInsertText,
-    setTagToDelete
+    setTagToDelete,
+    onSetAlarm
 }: UseStickyNoteContextMenuProps) {
     const lastContextMenuPos = useRef<{ x: number; y: number } | null>(null);
     const shouldReopenMenu = useRef(false);
@@ -322,6 +324,14 @@ export function useStickyNoteContextMenu({
             const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `🏷️ ${t('menu.tags')}`, items: tagSubItems });
             menuItems.push(tagSubmenu);
 
+            // アラーム
+            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            menuItems.push(await MenuItem.new({
+                id: 'ctx_set_alarm',
+                text: `⏰ ${t('menu.setAlarm')}`,
+                action: () => onSetAlarm()
+            }));
+
             // iPhoneに表示（将来実装予定）
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
@@ -397,7 +407,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm]);
 
 
     // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）

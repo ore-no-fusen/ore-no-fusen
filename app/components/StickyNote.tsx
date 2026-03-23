@@ -34,6 +34,7 @@ import FloatingFormatBar from './FloatingFormatBar';
 import MarkdownRenderer from './MarkdownRenderer';
 import ImageAnnotationModal from './ImageAnnotationModal';
 import ConfirmDialog from './ConfirmDialog';
+import AlarmDialog from './AlarmDialog';
 import SaveErrorToast from './SaveErrorToast';
 import Tooltip from './Tooltip';
 
@@ -100,6 +101,11 @@ const StickyNote = memo(function StickyNote() {
     // 保存失敗トースト
     const [showSaveError, setShowSaveError] = useState(false);
 
+    // アラーム
+    const [showAlarmDialog, setShowAlarmDialog] = useState(false);
+    const [isAlarmRinging, setIsAlarmRinging] = useState(false);
+    const [alarmNowStr, setAlarmNowStr] = useState('');
+
 
     // Refs
     const editorRef = useRef<RichTextEditorRef>(null);
@@ -112,6 +118,13 @@ const StickyNote = memo(function StickyNote() {
     // [FIX] Ctrl+N 連打クラッシュ防止: emit自体を1.2秒スロットルする
     // 1枚目は lastCtrlNRef=0 なので即座に通過、2枚目以降は1.2秒インターバルを強制
     const lastCtrlNRef = useRef<number>(0);
+
+    // アラーム用 refs（setInterval内でstale closureを避けるため）
+    const rawFrontmatterForAlarmRef = useRef('');
+    const prevAlwaysOnTopRef = useRef<boolean>(false);
+    const alarmSoundEnabledRef = useRef<boolean>(true);
+    // 再生中の alarm Audio（即時停止用）
+    const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
 
     // ============================================================
     // カスタムHook統合
@@ -208,6 +221,9 @@ const StickyNote = memo(function StickyNote() {
     // リスナー内ではstateではなくrefを参照することで、常に最新値を取得できる。
     const contentForListenerRef = useRef(content);
     useEffect(() => { contentForListenerRef.current = content; }, [content]);
+    useEffect(() => { rawFrontmatterForAlarmRef.current = rawFrontmatter; }, [rawFrontmatter]);
+    const isPinnedRef = useRef(isPinned);
+    useEffect(() => { isPinnedRef.current = isPinned; }, [isPinned]);
     const isEditingForListenerRef = useRef(isEditing);
     useEffect(() => { isEditingForListenerRef.current = isEditing; }, [isEditing]);
     const startEditingForListenerRef = useRef(startEditing);
@@ -836,6 +852,92 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [noteBackgroundColor]);
 
+    // アラームチェック（alarm_at がある場合のみ interval を作成）
+    const hasAlarm = /alarm_at:/.test(rawFrontmatter);
+    useEffect(() => {
+        if (!selectedFile || isPool || !hasAlarm) return;
+
+        const checkAlarm = async () => {
+            const front = rawFrontmatterForAlarmRef.current;
+            const alarmAtMatch = front.match(/alarm_at:\s*"([^"]+)"/);
+            if (!alarmAtMatch) return;
+
+            const alarmAt = new Date(alarmAtMatch[1]);
+            if (isNaN(alarmAt.getTime())) return;
+            if (Date.now() < alarmAt.getTime()) return;
+
+            // 発火
+            const soundMatch = front.match(/alarm_sound:\s*(\S+)/);
+            alarmSoundEnabledRef.current = soundMatch ? soundMatch[1] === 'true' : true;
+            prevAlwaysOnTopRef.current = isPinnedRef.current;
+
+            // frontmatter から alarm_at / alarm_sound を削除（静的importを使用）
+            const newFront1 = removeFrontmatterKey(front, 'alarm_at');
+            const newFront2 = removeFrontmatterKey(newFront1, 'alarm_sound');
+
+            // ref を即時更新（次の10秒チェックで再発火しないようにするため）
+            rawFrontmatterForAlarmRef.current = newFront2;
+            setRawFrontmatter(newFront2);
+            await saveNoteContent(contentForListenerRef.current, newFront2, false);
+
+            setIsAlarmRinging(true);
+            await invoke('fusen_set_always_on_top', { enabled: true });
+        };
+
+        checkAlarm();
+        const id = setInterval(checkAlarm, 10000);
+        return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedFile, isPool, hasAlarm]);
+
+    // アラーム サウンドループ（alarm.wav を使用・段階的音量）
+    useEffect(() => {
+        if (!isAlarmRinging || !alarmSoundEnabledRef.current) return;
+
+        let count = 0;
+        const getVolume = () => {
+            if (count < 3) return 0.25; // 小
+            if (count < 6) return 0.6;  // 中
+            return 1.0;                  // 大
+        };
+
+        const fire = () => {
+            // 前の音を即時停止してから再生
+            if (alarmAudioRef.current) {
+                alarmAudioRef.current.pause();
+                alarmAudioRef.current.currentTime = 0;
+            }
+            const audio = new Audio('/sounds/alarm.wav');
+            audio.volume = getVolume();
+            alarmAudioRef.current = audio;
+            audio.play().catch(() => {});
+            count++;
+        };
+
+        fire();
+        const id = setInterval(fire, 3000);
+        return () => {
+            clearInterval(id);
+            if (alarmAudioRef.current) {
+                alarmAudioRef.current.pause();
+                alarmAudioRef.current = null;
+            }
+        };
+    }, [isAlarmRinging]);
+
+    // アラーム発火中：現在時刻を1秒ごとに更新
+    useEffect(() => {
+        if (!isAlarmRinging) return;
+        const update = () => {
+            const now = new Date();
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            setAlarmNowStr(`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`);
+        };
+        update();
+        const id = setInterval(update, 1000);
+        return () => clearInterval(id);
+    }, [isAlarmRinging]);
+
     // ============================================================
     // イベントハンドラー
     // ============================================================
@@ -995,6 +1097,41 @@ const StickyNote = memo(function StickyNote() {
         }
         await endEditing();
     }, [endEditing]);
+
+    /**
+     * アラーム設定確定（AlarmDialog onConfirm）
+     */
+    const handleConfirmAlarm = useCallback(async (alarmAt: string, alarmSound: boolean) => {
+        setShowAlarmDialog(false);
+        const newFront1 = updateFrontmatterValue(rawFrontmatter, 'alarm_at', `"${alarmAt}"`);
+        const newFront2 = updateFrontmatterValue(newFront1, 'alarm_sound', alarmSound.toString());
+        setRawFrontmatter(newFront2);
+        await saveNoteContent(content, newFront2, false);
+    }, [rawFrontmatter, content, saveNoteContent, setRawFrontmatter]);
+
+    /**
+     * アラーム解除（AlarmDialog onClear）
+     */
+    const handleClearAlarm = useCallback(async () => {
+        setShowAlarmDialog(false);
+        const newFront1 = removeFrontmatterKey(rawFrontmatter, 'alarm_at');
+        const newFront2 = removeFrontmatterKey(newFront1, 'alarm_sound');
+        setRawFrontmatter(newFront2);
+        await saveNoteContent(content, newFront2, false);
+    }, [rawFrontmatter, content, saveNoteContent, setRawFrontmatter]);
+
+    /**
+     * アラーム停止（点滅バークリック）
+     */
+    const handleStopAlarm = useCallback(async () => {
+        // 再生中の音を即時停止
+        if (alarmAudioRef.current) {
+            alarmAudioRef.current.pause();
+            alarmAudioRef.current = null;
+        }
+        setIsAlarmRinging(false);
+        await invoke('fusen_set_always_on_top', { enabled: prevAlwaysOnTopRef.current });
+    }, []);
 
     /**
      * ドラッグ開始処理
@@ -1190,7 +1327,8 @@ const StickyNote = memo(function StickyNote() {
                 editorRef.current.insertText(text);
             }
         },
-        setTagToDelete
+        setTagToDelete,
+        onSetAlarm: () => setShowAlarmDialog(true)
     });
 
     /**
@@ -1247,6 +1385,23 @@ const StickyNote = memo(function StickyNote() {
         return <div className="p-8">No path parameter</div>;
     }
 
+    // アラーム情報（表示用）
+    const alarmAtMatch = rawFrontmatter.match(/alarm_at:\s*"([^"]+)"/);
+    const alarmAtStr = alarmAtMatch ? alarmAtMatch[1] : null;
+    const alarmAtDate = alarmAtStr ? new Date(alarmAtStr) : null;
+    const alarmSoundMatch = rawFrontmatter.match(/alarm_sound:\s*(\S+)/);
+    const alarmSoundValue = alarmSoundMatch ? alarmSoundMatch[1] === 'true' : true;
+    const alarmTooltip = (() => {
+        if (!alarmAtDate) return '';
+        const diffMs = alarmAtDate.getTime() - Date.now();
+        const timeStr = alarmAtDate.toLocaleTimeString(language === 'ja' ? 'ja-JP' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+        const diffMin = Math.round(diffMs / 60000);
+        if (diffMin <= 0) return language === 'ja' ? `${timeStr} にアラーム（まもなく）` : `Alarm at ${timeStr} (soon)`;
+        if (diffMin < 60) return language === 'ja' ? `${timeStr} にアラーム（あと${diffMin}分）` : `Alarm at ${timeStr} (in ${diffMin}min)`;
+        const diffHour = Math.round(diffMin / 60);
+        return language === 'ja' ? `${timeStr} にアラーム（あと${diffHour}時間）` : `Alarm at ${timeStr} (in ${diffHour}h)`;
+    })();
+
 
 
     return (
@@ -1278,6 +1433,32 @@ const StickyNote = memo(function StickyNote() {
                 .notePaper::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, 0.5); }
             `}</style>
 
+            {/* アラーム点滅バー */}
+            {isAlarmRinging && (
+                <div
+                    onClick={handleStopAlarm}
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        zIndex: 9999,
+                        backgroundColor: '#dc2626',
+                        color: '#fff',
+                        textAlign: 'center',
+                        padding: '6px 8px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        animation: 'alarmBlink 0.6s ease-in-out infinite alternate',
+                    }}
+                >
+                    <span style={{ fontFamily: 'monospace', marginRight: '8px', letterSpacing: '1px' }}>{alarmNowStr}</span>
+                    {t('alarm.ringing')}
+                </div>
+            )}
+
             {/* ツールバー */}
             <div className="absolute top-0 right-0 z-toolbar">
                 <ToolbarButtons
@@ -1297,6 +1478,9 @@ const StickyNote = memo(function StickyNote() {
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}
                     language={language}
+                    onAlarmClick={() => setShowAlarmDialog(true)}
+                    alarmAtStr={alarmAtStr}
+                    alarmTooltip={alarmTooltip || t('menu.setAlarm')}
                     onCreateNewNote={async () => {
                         if (!selectedFile) return;
                         const normalizedPath = selectedFile.path.replace(/\\/g, '/');
@@ -1548,6 +1732,7 @@ const StickyNote = memo(function StickyNote() {
                 </div>
             )}
 
+
             {/* 画像アノテーションモーダル */}
             {annotationTarget && (
                 <ImageAnnotationModal
@@ -1621,6 +1806,17 @@ const StickyNote = memo(function StickyNote() {
                 message={t('tag.deleteMessage').replace('{tag}', tagToDelete ?? '')}
                 onConfirm={executeTagDelete}
                 onCancel={() => setTagToDelete(null)}
+            />
+
+            {/* アラームダイアログ */}
+            <AlarmDialog
+                isOpen={showAlarmDialog}
+                existingAlarmAt={alarmAtStr}
+                existingAlarmSound={alarmSoundValue}
+                onConfirm={handleConfirmAlarm}
+                onClear={handleClearAlarm}
+                onCancel={() => setShowAlarmDialog(false)}
+                t={t}
             />
 
             {/* 自動保存失敗トースト */}

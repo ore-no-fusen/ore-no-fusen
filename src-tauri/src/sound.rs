@@ -16,6 +16,7 @@ use rodio::{Decoder, OutputStream, Sink};
 const CREATE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/create.wav"));
 const SAVE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/save.wav"));
 const DELETE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/delete.wav"));
+const ALARM_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alarm.wav"));
 
 #[tauri::command]
 pub fn fusen_play_sound(name: String, volume: Option<f32>) {
@@ -37,6 +38,7 @@ fn play_sound_impl(name: &str, volume: f32) -> Result<(), Box<dyn std::error::Er
         "create" => CREATE_SOUND,
         "save" => SAVE_SOUND,
         "delete" => DELETE_SOUND,
+        "alarm" => ALARM_SOUND,
         _ => return Ok(()),
     };
 
