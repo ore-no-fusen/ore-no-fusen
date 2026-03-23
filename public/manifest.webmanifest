@@ -2,7 +2,7 @@
     "name": "俺の付箋",
     "short_name": "付箋",
     "description": "Obsidian VaultのMarkdownを付箋UIで表示",
-    "start_url": "/?sticky=1",
+    "start_url": "/viewer",
     "display": "standalone",
     "background_color": "#faf6ee",
     "theme_color": "#faf6ee",
