@@ -146,9 +146,7 @@ export default function ViewerPage() {
     const params = new URLSearchParams(window.location.search);
 
     // accessToken 調達: localStorage → localStorage → 再認証
-    let token =
-      localStorage.getItem('viewer_access_token') ??
-      localStorage.getItem('viewer_access_token');
+    let token = localStorage.getItem('viewer_access_token');
 
     // OAuth コールバック（?code= あり）
     if (params.get('code')) {
@@ -315,9 +313,7 @@ export default function ViewerPage() {
                       setIsLoading(false);
                       return;
                     }
-                    // swReady=true の時点で navigator.serviceWorker.controller は active 確定
-                    const reg = await navigator.serviceWorker.getRegistration('/');
-                    if (!reg) throw new Error('Service Worker が見つかりません');
+                    const reg = await navigator.serviceWorker.ready;
                     const vapidKey = urlBase64ToUint8Array(
                       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
                     );
