@@ -288,10 +288,20 @@ export default function ViewerPage() {
                     setIsLoading(false);
                     return;
                   }
-                  // SW 登録を取得（なければ登録）
+                  // SW 登録を取得（なければ登録）し、active になるまで待つ
                   let reg = await navigator.serviceWorker.getRegistration('/');
                   if (!reg) {
                     reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+                  }
+                  if (!reg.active) {
+                    await new Promise<void>((resolve, reject) => {
+                      const timer = setTimeout(() => reject(new Error('SW の起動がタイムアウトしました。アプリを閉じて再度開いてから試してください。')), 15000);
+                      const sw = reg!.installing || reg!.waiting;
+                      if (!sw) { clearTimeout(timer); resolve(); return; }
+                      sw.addEventListener('statechange', () => {
+                        if (sw.state === 'activated') { clearTimeout(timer); resolve(); }
+                      });
+                    });
                   }
                   const vapidKey = urlBase64ToUint8Array(
                     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
