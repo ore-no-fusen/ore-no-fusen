@@ -3732,7 +3732,7 @@ dependencies = [
 
 [[package]]
 name = "ore-no-fusen"
-version = "1.2.1"
+version = "1.2.3"
 dependencies = [
  "arboard",
  "base64 0.22.1",

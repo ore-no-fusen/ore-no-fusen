@@ -22,7 +22,13 @@
       "Read(//c/Users/uck/Documents/OreNoFusen/**)",
       "WebFetch(domain:github.com)",
       "Skill(gsd:quick)",
-      "Skill(gsd:quick:*)"
+      "Skill(gsd:quick:*)",
+      "Read(//c/Users/uck/.claude/skills/**)",
+      "Read(//c/Users/uck/.claude/**)",
+      "Read(//c/Users/uck/Documents/**)",
+      "Skill(gsd:new-milestone)",
+      "Skill(gsd:new-milestone:*)",
+      "WebSearch"
     ]
   },
   "hooks": {
