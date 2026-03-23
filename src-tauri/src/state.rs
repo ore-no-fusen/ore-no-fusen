@@ -44,6 +44,16 @@ pub struct AppState {
     pub active_tags: Vec<String>,
     /// Alt+Tabに表示する付箋ウィンドウのラベル（最後にフォーカスされたもの）
     pub last_alt_tab_window: Option<String>,
+    /// Pro機能の設定（Web Push サブスクリプション情報）
+    pub pro_config: Option<ProConfig>,
+}
+
+// Phase 4: Pro機能設定構造体
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct ProConfig {
+    pub push_endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
 }
 
 // NEW: UC-01 - 設定ファイル用の構造体
