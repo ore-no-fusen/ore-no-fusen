@@ -77,10 +77,8 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
         CsrfToken, PkceCodeChallenge, Scope, AuthorizationCode, TokenResponse,
     };
 
-    let client_id = std::env::var("GDRIVE_CLIENT_ID")
-        .map_err(|_| "GDRIVE_CLIENT_ID not set".to_string())?;
-    let client_secret = std::env::var("GDRIVE_CLIENT_SECRET")
-        .map_err(|_| "GDRIVE_CLIENT_SECRET not set".to_string())?;
+    let client_id = env!("GDRIVE_CLIENT_ID").to_string();
+    let client_secret = env!("GDRIVE_CLIENT_SECRET").to_string();
 
     // tauri-plugin-oauth でポートを取得してリダイレクト URI を確定
     let (tx, rx) = std::sync::mpsc::channel::<String>();
@@ -88,7 +86,8 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
         let _ = tx.send(url);
     }).map_err(|e| e.to_string())?;
 
-    let redirect_uri = format!("http://127.0.0.1:{}", port);
+    let redirect_url = RedirectUrl::new(format!("http://127.0.0.1:{}", port))
+        .map_err(|e| e.to_string())?;
 
     // oauth2 v5: BasicClient::new(ClientId) + チェーンメソッドで設定
     let oauth_client = BasicClient::new(ClientId::new(client_id))
@@ -101,21 +100,21 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
             TokenUrl::new("https://oauth2.googleapis.com/token".to_string())
                 .map_err(|e| e.to_string())?
         )
-        .set_redirect_uri(
-            RedirectUrl::new(redirect_uri).map_err(|e| e.to_string())?
-        );
+        .set_redirect_uri(redirect_url.clone());
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+    // oauth2 v5: authorize_url チェーンにも明示的に redirect_uri を渡す必要あり
     let (auth_url, _csrf_token) = oauth_client
         .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("https://www.googleapis.com/auth/drive.file".to_string()))
         .set_pkce_challenge(pkce_challenge)
+        .set_redirect_uri(std::borrow::Cow::Owned(redirect_url.clone()))
         .url();
 
-    // ブラウザで開く
+    // ブラウザで開く（cmd経由は & をコマンド区切りとして解釈するため rundll32 を使用）
     #[cfg(target_os = "windows")]
-    std::process::Command::new("cmd")
-        .args(["/c", "start", auth_url.as_str()])
+    std::process::Command::new("rundll32.exe")
+        .args(["url.dll,FileProtocolHandler", auth_url.as_str()])
         .spawn()
         .map_err(|e| e.to_string())?;
 
@@ -125,9 +124,9 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
         .spawn()
         .map_err(|e| e.to_string())?;
 
-    // コールバック URL を待機
-    let callback_url = rx.recv()
-        .map_err(|_| "OAuth callback not received".to_string())?;
+    // コールバック URL を待機（5分でタイムアウト）
+    let callback_url = rx.recv_timeout(std::time::Duration::from_secs(300))
+        .map_err(|_| "OAuth callback not received (timeout or browser closed)".to_string())?;
 
     // code を抽出
     let parsed_url = url::Url::parse(&callback_url).map_err(|e| e.to_string())?;
@@ -145,6 +144,7 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
     let token_response = oauth_client
         .exchange_code(AuthorizationCode::new(code))
         .set_pkce_verifier(pkce_verifier)
+        .set_redirect_uri(std::borrow::Cow::Owned(redirect_url))
         .request_async(&http_client)
         .await
         .map_err(|e| e.to_string())?;
@@ -187,10 +187,8 @@ pub async fn get_access_token(client: &Client) -> Result<String, String> {
         || saved.expires_at.map_or(true, |exp| exp - now < 60);
 
     if needs_refresh {
-        let client_id = std::env::var("GDRIVE_CLIENT_ID")
-            .map_err(|_| "GDRIVE_CLIENT_ID not set".to_string())?;
-        let client_secret = std::env::var("GDRIVE_CLIENT_SECRET")
-            .map_err(|_| "GDRIVE_CLIENT_SECRET not set".to_string())?;
+        let client_id = env!("GDRIVE_CLIENT_ID").to_string();
+        let client_secret = env!("GDRIVE_CLIENT_SECRET").to_string();
 
         let params = [
             ("client_id", client_id.as_str()),
@@ -359,15 +357,27 @@ pub async fn upload_json(
 }
 
 /// Drive から JSON ファイルをダウンロードして serde_json::Value で返す
+/// フォルダを指定せず Drive 全体から名前で検索する（PWA はルート直下に保存するため）
 pub async fn download_json(
     client: &Client,
     access_token: &str,
     filename: &str,
 ) -> Result<serde_json::Value, String> {
-    let folder_id = ensure_folder(client, access_token).await?;
-    let file_id = find_file(client, access_token, &folder_id, filename)
-        .await?
-        .ok_or_else(|| format!("File not found: {}", filename))?;
+    let q = format!("name='{}' and trashed=false", filename);
+    let resp: DriveFileList = client
+        .get("https://www.googleapis.com/drive/v3/files")
+        .bearer_auth(access_token)
+        .query(&[("q", q.as_str()), ("fields", "files(id)")])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let file_id = resp.files.into_iter()
+        .next()
+        .ok_or_else(|| format!("File not found: {}", filename))?
+        .id;
 
     let body = client
         .get(format!(

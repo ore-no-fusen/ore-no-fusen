@@ -101,6 +101,9 @@ const StickyNote = memo(function StickyNote() {
     // 保存失敗トースト
     const [showSaveError, setShowSaveError] = useState(false);
 
+    // トースト
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
+
     // アラーム
     const [showAlarmDialog, setShowAlarmDialog] = useState(false);
     const [isAlarmRinging, setIsAlarmRinging] = useState(false);
@@ -1328,7 +1331,11 @@ const StickyNote = memo(function StickyNote() {
             }
         },
         setTagToDelete,
-        onSetAlarm: () => setShowAlarmDialog(true)
+        onSetAlarm: () => setShowAlarmDialog(true),
+        onToast: (msg: string) => {
+            setToastMessage(msg);
+            setTimeout(() => setToastMessage(null), 3000);
+        },
     });
 
     /**
@@ -1824,6 +1831,19 @@ const StickyNote = memo(function StickyNote() {
                 isVisible={showSaveError}
                 onDismiss={() => setShowSaveError(false)}
             />
+
+            {/* iPhone送信トースト */}
+            {toastMessage && (
+                <div style={{
+                    position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+                    background: 'rgba(30,30,30,0.85)', color: 'white',
+                    padding: '8px 18px', borderRadius: 8, fontSize: 13,
+                    pointerEvents: 'none', zIndex: 9999,
+                    backdropFilter: 'blur(4px)',
+                }}>
+                    {toastMessage}
+                </div>
+            )}
 
         </div >
     );

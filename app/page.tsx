@@ -152,6 +152,7 @@ function OrchestratorContent() {
   const [loadingStatus, setLoadingStatus] = useState("STARTING..."); // [NEW] Visual Debug Log
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
+  const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
   // [NEW] アップデートダイアログ
@@ -170,24 +171,28 @@ function OrchestratorContent() {
 
 
 
-  // ダッシュボード表示時も小さいサイズを維持する
+  // 設定画面が開いたときは 900x700 に、閉じたときは 240x300 に自動リサイズ
   useEffect(() => {
-    if (!setupRequired && !isSettingsOpen && !isCheckingSetup) {
-      const enforceSmallSize = async () => {
-        try {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window');
-          const { LogicalSize } = await import('@tauri-apps/api/dpi');
-          const win = getCurrentWindow();
-          if (win.label === 'main') {
-            await win.setSize(new LogicalSize(240, 300));
-            await win.center();
-          }
-        } catch (e) {
-          console.error('[enforceSmallSize] failed:', e);
+    const resize = async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        if (win.label !== 'main') return;
+        if (setupRequired || isSettingsOpen) {
+          await win.setSize(new LogicalSize(900, 700));
+          await win.center();
+          await win.show();
+          await win.setFocus();
+        } else if (!isCheckingSetup) {
+          await win.setSize(new LogicalSize(240, 300));
+          await win.center();
         }
-      };
-      enforceSmallSize();
-    }
+      } catch (e) {
+        console.error('[resizeForSettings] failed:', e);
+      }
+    };
+    resize();
   }, [setupRequired, isSettingsOpen, isCheckingSetup]);
 
   // 自動アップデート確認（メインウィンドウのみ・起動後に実行）
@@ -264,24 +269,25 @@ function OrchestratorContent() {
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
         const win = getCurrentWindow();
 
-        // メインウィンドウ以外（付箋ウィンドウなど）はリサイズしない
-        if (!win.label.includes('main') && win.label.includes('note-')) return;
+        // メインウィンドウ以外（付箋・プールウィンドウなど）はリサイズしない
+        if (win.label !== 'main') return;
 
         // 検索中はリサイズしない（setSize(600,450)を上書きしないよう）
         if (isSearchOpen) return;
 
-        if (!isCheckingSetup && setupRequired) {
-          await win.setSize(new LogicalSize(900, 630));
+        if (!isCheckingSetup && (setupRequired || isSettingsOpen)) {
+          await win.setSize(new LogicalSize(900, 700));
           await win.center();
+          await win.show();
           await win.setFocus();
-        } else {
+        } else if (!isCheckingSetup && !isSettingsOpen) {
           await win.setSize(new LogicalSize(240, 300));
           await win.center();
         }
       } catch (e) { }
     };
     handleResize();
-  }, [isCheckingSetup, setupRequired, isSearchOpen]);
+  }, [isCheckingSetup, setupRequired, isSearchOpen, isSettingsOpen]);
 
   // ウィンドウラベル生成
   const getWindowLabel = useCallback((path: string) => {
@@ -723,13 +729,15 @@ function OrchestratorContent() {
     if (!isMainWindow) return; // Guard
 
     let unlisten: (() => void) | undefined;
-    const promise = listen('fusen:open_settings', async () => {
+    const promise = listen('fusen:open_settings', async (event: any) => {
       try {
         console.log('[MAIN_WINDOW_DEBUG] Settings open requested');
         // [FIX] Force clear loading state to ensure settings panel renders even if init is slow/reloaded
         // (Same fix as fusen:open_search handler)
         setIsCheckingSetup(false);
         setSetupRequired(false);
+        const tab = event?.payload?.tab ?? 'general';
+        setSettingsDefaultTab(tab);
         setIsSettingsOpen(true);
         // ウィンドウを前面に
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -737,8 +745,8 @@ function OrchestratorContent() {
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
 
         if (win.label === 'main') {
-          console.log('[MAIN_WINDOW_DEBUG] Opening settings - resizing to 900x630');
-          await win.setSize(new LogicalSize(900, 630));
+          console.log('[MAIN_WINDOW_DEBUG] Opening settings - resizing to 900x700');
+          await win.setSize(new LogicalSize(900, 700));
           await win.center();
           await win.show();
           await win.unminimize();
@@ -842,7 +850,7 @@ function OrchestratorContent() {
           const { getCurrentWindow } = await import('@tauri-apps/api/window');
           const win = getCurrentWindow();
           const { LogicalSize } = await import('@tauri-apps/api/dpi');
-          await win.setSize(new LogicalSize(900, 630));
+          await win.setSize(new LogicalSize(900, 700));
           await win.center();
           await win.show();
           await win.setFocus();
@@ -1313,7 +1321,7 @@ function OrchestratorContent() {
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
   if (setupRequired || isSettingsOpen) {
-    return <SettingsPage onClose={async () => {
+    return <SettingsPage defaultTab={setupRequired ? 'general' : settingsDefaultTab} onClose={async () => {
       // 設定画面を閉じる時の処理
       setIsSettingsOpen(false);
 

@@ -9,8 +9,8 @@
 
 "use client"
 
-import React, { useState, useMemo } from "react"
-import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply } from "lucide-react"
+import React, { useState, useMemo, useEffect } from "react"
+import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
 import { useSettings, type AppSettings } from "@/lib/settings-store"
@@ -27,10 +27,11 @@ import { Switch } from "@/components/ui/switch"
 // [NEW] Props定義
 type SettingsPageProps = {
     onClose?: () => void;
+    defaultTab?: string;
 }
 
-export default function SettingsPage({ onClose }: SettingsPageProps) {
-    const [activeSection, setActiveSection] = useState("general")
+export default function SettingsPage({ onClose, defaultTab }: SettingsPageProps) {
+    const [activeSection, setActiveSection] = useState(defaultTab ?? "general")
 
     // ★ここで「倉庫番」を呼び出し！
     // loading: 読み込み中かどうか
@@ -85,6 +86,8 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                 />
             case "about":
                 return <AboutSection t={t} />
+            case "iphone":
+                return <IphoneSection t={t} />
             case "feedback":
                 return <FeedbackSection t={t} />
             default:
@@ -120,6 +123,12 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         label={t('settings.data')}
                         isActive={activeSection === "data"}
                         onClick={() => setActiveSection("data")}
+                    />
+                    <SidebarItem
+                        icon={<Smartphone className="mr-3 h-4 w-4" />}
+                        label="iPhone連携"
+                        isActive={activeSection === "iphone"}
+                        onClick={() => setActiveSection("iphone")}
                     />
                     <SidebarItem
                         icon={<Info className="mr-3 h-4 w-4" />}
@@ -875,6 +884,104 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
                     </Button>
                 </div>
             </div>
+        </div>
+    )
+}
+
+// --- iPhone連携セクション ---
+function IphoneSection({ t }: { t: (key: any) => string }) {
+    const [status, setStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading')
+    const [isConnecting, setIsConnecting] = useState(false)
+    const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+    useEffect(() => {
+        const check = async () => {
+            try {
+                const { invoke } = await import('@tauri-apps/api/core')
+                const ok = await invoke<boolean>('fusen_check_pro_setup')
+                setStatus(ok ? 'connected' : 'disconnected')
+            } catch {
+                setStatus('disconnected')
+            }
+        }
+        check()
+    }, [])
+
+    const handleConnect = async () => {
+        setIsConnecting(true)
+        setErrorMsg(null)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            await invoke('fusen_oauth_connect')
+            const ok = await invoke<boolean>('fusen_check_pro_setup')
+            setStatus(ok ? 'connected' : 'disconnected')
+            if (!ok) setErrorMsg('接続しましたが、iPhoneのセットアップがまだ完了していません。iPhoneでPWAを開いてセットアップしてください。')
+        } catch (e: unknown) {
+            setErrorMsg('接続に失敗しました: ' + String(e))
+            setStatus('disconnected')
+        } finally {
+            setIsConnecting(false)
+        }
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">iPhone連携</h2>
+                <p className="text-gray-500 text-sm">付箋をiPhoneのロック画面に送信するための設定です。</p>
+            </div>
+            <Separator />
+
+            <div className="rounded-lg border p-6 space-y-4">
+                <h3 className="font-semibold text-gray-800">Googleドライブ接続</h3>
+                <p className="text-sm text-gray-500">PCとiPhoneのデータ中継にGoogleドライブを使用します。</p>
+
+                {status === 'loading' && (
+                    <p className="text-sm text-gray-400">確認中...</p>
+                )}
+
+                {status === 'connected' && (
+                    <div className="flex items-center gap-3">
+                        <span className="text-green-600 font-semibold">✅ 接続済み</span>
+                        <Button variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting}>
+                            再接続
+                        </Button>
+                    </div>
+                )}
+
+                {status === 'disconnected' && (
+                    <Button onClick={handleConnect} disabled={isConnecting}>
+                        {isConnecting ? (
+                            <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />接続中...</>
+                        ) : (
+                            <><Smartphone className="mr-2 h-4 w-4" />Googleドライブに接続</>
+                        )}
+                    </Button>
+                )}
+
+                {errorMsg && (
+                    <p className="text-sm text-amber-600 bg-amber-50 rounded p-3">{errorMsg}</p>
+                )}
+            </div>
+
+            {status === 'connected' && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-6">
+                    <p className="text-sm text-green-700 font-medium">✅ iPhoneへの送信が有効です</p>
+                    <p className="text-sm text-green-600 mt-1">付箋を右クリック →「iPhoneに送る」で送信できます。</p>
+                </div>
+            )}
+
+            {status === 'disconnected' && !isConnecting && (
+                <div className="rounded-lg border p-6 space-y-2 bg-gray-50">
+                    <h3 className="font-semibold text-gray-700 text-sm">セットアップ手順</h3>
+                    <ol className="text-sm text-gray-500 space-y-1 list-decimal list-inside">
+                        <li>上の「Googleドライブに接続」ボタンをクリック</li>
+                        <li>ブラウザでGoogleアカウントにログイン</li>
+                        <li>iPhoneのSafariでPWAを開いてセットアップを完了</li>
+                        <li>付箋を右クリック →「iPhoneに送る」</li>
+                    </ol>
+                </div>
+            )}
         </div>
     )
 }

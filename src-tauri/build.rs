@@ -10,6 +10,23 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
+  // .env.local から GDRIVE_CLIENT_ID / GDRIVE_CLIENT_SECRET をコンパイル時に埋め込む
+  let env_path = std::path::Path::new("../.env.local");
+  println!("cargo:rerun-if-changed=../.env.local");
+  if let Ok(content) = std::fs::read_to_string(env_path) {
+    for line in content.lines() {
+      let line = line.trim();
+      if line.starts_with('#') { continue; }
+      if let Some(pos) = line.find('=') {
+        let key = &line[..pos];
+        let val = line[pos + 1..].trim_matches('"');
+        if key == "GDRIVE_CLIENT_ID" || key == "GDRIVE_CLIENT_SECRET" {
+          println!("cargo:rustc-env={}={}", key, val);
+        }
+      }
+    }
+  }
+
   // 自動同期: public/sounds のファイルを OUT_DIR にコピーして埋め込み可能にする
   // ソースディレクトリ(src/)へのコピーは無限ループの原因になるため廃止
   let sounds = ["create.wav", "save.wav", "delete.wav", "alarm.wav"];

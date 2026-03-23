@@ -268,7 +268,7 @@ export default function ViewerPage() {
 
   // standalone → ステップUI / 全文表示
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900">
       <div className="max-w-prose mx-auto w-full">
         {step === 'login' && (
           <div className="flex flex-col items-center gap-4">
