@@ -139,16 +139,14 @@ export default function ViewerPage() {
         return;
       }
       setIsLoading(true);
-      fetch('https://oauth2.googleapis.com/token', {
+      fetch('/api/auth/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           code,
-          client_id: process.env.NEXT_PUBLIC_GDRIVE_CLIENT_ID!,
           redirect_uri: window.location.origin + '/viewer',
           code_verifier: verifier,
-          grant_type: 'authorization_code',
-        }).toString(),
+        }),
       })
         .then((r) => r.json())
         .then((data) => {
