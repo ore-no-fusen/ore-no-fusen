@@ -1,46 +1,33 @@
-# 俺の付箋 — 品質改善マイルストーン
+# 俺の付箋
 
-## Overview
+## What This Is
 
-**プロジェクト**: 俺の付箋（デスクトップ付箋アプリ）
-**種類**: 既存プロジェクトへの品質改善（Brownfield）
-**現在バージョン**: v1.0.4
-**目標**: 潜在バグ・不安定要素を洗い出して修正し、安定した v1.1.0 をリリースする
+デスクトップ付箋アプリ（Tauri v2 + Next.js 14）。付箋をデスクトップに貼り、すぐ書いてそこに残す。
+v2.0 マイルストーンでは Hono + Google Drive + APNs を使い、PCからiPhoneのロック画面に付箋を送れるようにする。
 
 ## Core Value
 
 > 「大事なことは貼っておけばいいと思うよ」
 > すぐ書けて、そこに残る。それだけ確実に動く。
 
+## Current Milestone: v2.0 iPhone連携
+
+**Goal:** PCの付箋を右クリック一発でiPhoneのロック画面に送れるようにする
+
+**Target features:**
+- Hono API 基盤（Push通知エンドポイント）
+- Google Drive 連携（データ中継・費用ゼロ）
+- VAPID + APNs によるiPhone Push通知
+- iPhone Safari PWA（閲覧・通知受信）
+
 ## Tech Stack
 
 - **Frontend**: Next.js 14 + React 18 + TypeScript
 - **Backend**: Rust（Tauri v2）
-- **通信**: Tauri `invoke()`
-- **テスト**: Playwright E2E（13件）
-
-## Current Status
-
-### 解決済みリスク
-- C-1: `fusen_update_geometry` デッドコード削除済み
-- C-2: `reload_note` リスナーの空body上書き → 修正済み
-- H-1: `hasLoadedRef` による空body通過ブロック → 修正済み
-- Listener Leak: `cancelled` フラグ + ref パターン → 修正済み
-- ピンボタンバグ: 生Win32後のTauri状態同期 → 修正済み
-- isNewNoteバグ: 再編集時カーソル先頭戻り → 修正済み
-- Rust `unwrap()`: 29箇所 → `unwrap_or_else` に変更済み
-
-### 既知の潜在リスク
-- StickyNote.tsx が大きい（リファクタリング候補・現在は対象外）
-- テストカバレッジ 30%（E2E 13件のみ）
-- その他の未発見バグ・パターン
-
-## Goals for This Milestone
-
-1. **潜在リスクの洗い出し**: コードベースを横断的にレビューし、未対処のバグパターンを発見する
-2. **優先度付け**: 影響度・再現性・修正コストで分類する
-3. **修正**: 高優先度の問題を最小変更で修正する
-4. **回帰防止**: 修正後にテストで確認する
+- **API**: Hono（Next.js App Router内）
+- **通信（デスクトップ）**: Tauri `invoke()`
+- **通信（Web）**: Google Drive API + APNs
+- **テスト**: Vitest（33件）+ Playwright E2E（13件）
 
 ## Requirements
 
@@ -51,25 +38,47 @@
 - ✓ マルチウィンドウ
 - ✓ ピン（常に最前面）
 - ✓ リッチテキスト編集（太字・見出し・箇条書き・チェックボックス）
+- ✓ 潜在バグの洗い出しと修正（v1.0マイルストーン）
 
 ### Active
 
-- [ ] 潜在バグの体系的な洗い出しと文書化
-- [ ] 発見されたバグの修正（優先度高）
-- [ ] 修正後の動作確認
+- [ ] Hono API 基盤の構築
+- [ ] Google Drive 連携（Push Subscription保存・note JSON読み書き）
+- [ ] VAPID署名 + APNs Push通知送信
+- [ ] iPhone Safari PWA（Service Worker・通知受信・閲覧）
+- [ ] PCからの「iPhoneに送る」操作（右クリックメニュー）
 
 ### Out of Scope
 
-- 新機能追加（画像貼り付け・タグ・リンク）— 別マイルストーン
-- StickyNote.tsx のリファクタリング — 別マイルストーン
-- テストカバレッジの大幅引き上げ — 別マイルストーン
+- iPhoneからの双方向編集 — Phase 3（次マイルストーン）
+- Android対応 — Phase 3（次マイルストーン）
+- 既存 `app/api/*.ts` のHono移植 — 今は不要、次マイルストーン以降
+- ユーザー認証（複数ユーザー） — シングルユーザー前提のため不要
+
+## Context
+
+- **ノートデータ形式**: Markdownファイル（YAML frontmatter付き）
+- **現在の保存先**: ローカルファイルシステム
+- **移行方針**: デスクトップ側コード変更なし。Google Driveの同期フォルダにノートフォルダを移動するだけ
+- **`ctx_send_to_iphone` が既存コードに `enabled: false` で実装済み** — Phase 2の工数削減に直結
+- **VAPID暗号化はHono側で処理** — Rustには reqwest 1クレート追加のみ
+
+## Constraints
+
+- **費用**: ¥0（Vercel無料枠 + Google Drive 15GB + APNs 無料）
+- **Tech stack**: 既存 Next.js プロジェクト内に Hono を追加（新サーバー不要）
+- **Rust変更最小化**: reqwest のみ追加、暗号処理はTypeScript側
+- **シングルユーザー**: 自分だけが使う前提（認証はGoogle OAuth最小構成）
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| 最小修正のみ | CLAUDE.md のルール。無関係なコードは変更しない | — Active |
-| ソース変更なし（調査フェーズ） | まず問題を把握してから修正に入る | — Active |
+| 最小修正のみ | CLAUDE.md のルール | ✓ Good |
+| Hono を Next.js 内に統合 | 新サーバー不要・Vercel同居 | — Pending |
+| VAPID処理をHono側に | Rustクレート7個 → 1個（reqwestのみ） | — Pending |
+| Google Drive をデータ中継に使用 | DB不要・費用ゼロ・ファイルがそのままデータ | — Pending |
+| 既存APIは移植しない（v2.0では） | 移植コスト > メリット。iPhone機能に必要なエンドポイントだけ新規追加 | — Pending |
 
 ---
-*Last updated: 2026-03-11 after initialization*
+*Last updated: 2026-03-23 after v2.0 milestone start*
