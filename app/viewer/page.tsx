@@ -116,9 +116,10 @@ export default function ViewerPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    const standalone = window.matchMedia(
-      '(display-mode: standalone)'
-    ).matches;
+    // iOS Safari は navigator.standalone で判定、他は matchMedia
+    const standalone =
+      (navigator as any).standalone === true ||
+      window.matchMedia('(display-mode: standalone)').matches;
     setIsStandalone(standalone);
     if (!standalone) return; // バナー表示のみ
 
