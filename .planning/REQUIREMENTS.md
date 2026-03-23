@@ -7,8 +7,8 @@
 
 ### Rust バックエンド（Phase 4）
 
-- [ ] **API-01**: `src-tauri/src/gdrive.rs` が実装され、Google OAuth2 PKCE フロー + access_token 自動更新が動作する
-- [ ] **API-02**: `gdrive.rs` が Google Drive REST API で JSON ファイルの上書きアップロード・ダウンロードを行う（`fusen_push_config.json` / `fusen_note.json`）
+- [x] **API-01**: `src-tauri/src/gdrive.rs` が実装され、Google OAuth2 PKCE フロー + access_token 自動更新が動作する
+- [x] **API-02**: `gdrive.rs` が Google Drive REST API で JSON ファイルの上書きアップロード・ダウンロードを行う（`fusen_push_config.json` / `fusen_note.json`）
 - [x] **API-03**: `gdrive.rs` が `fusen_push_config.json` をポーリングして AppState にキャッシュする
 - [ ] **API-04**: `src-tauri/src/webpush.rs` が VAPID 鍵ペア生成・JWT 署名（RFC 8292）を実装する
 - [ ] **API-05**: `webpush.rs` が AES-128-GCM ペイロード暗号化（RFC 8291）を実装する
@@ -49,8 +49,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| API-01 | Phase 4 | Pending |
-| API-02 | Phase 4 | Pending |
+| API-01 | Phase 4 | Complete |
+| API-02 | Phase 4 | Complete |
 | API-03 | Phase 4 | Complete |
 | API-04 | Phase 4 | Pending |
 | API-05 | Phase 4 | Pending |
