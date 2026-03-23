@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
-stopped_at: Completed 04-hono-api-kiban-03-PLAN.md
-last_updated: "2026-03-23T04:08:24.782Z"
+stopped_at: Completed 04-hono-api-kiban-04-PLAN.md
+last_updated: "2026-03-23T04:12:45.013Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 ---
@@ -61,6 +61,7 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 | Phase 04-hono-api-kiban P01 | 5 | 2 tasks | 5 files |
 | Phase 04-hono-api-kiban P02 | 8 | 1 tasks | 2 files |
 | Phase 04-hono-api-kiban P03 | 1 | 1 tasks | 2 files |
+| Phase 04-hono-api-kiban P04 | 3 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 - [Phase 04-hono-api-kiban]: vi.fn().mockImplementation アロー関数はコンストラクタ不可、function キーワード使用が必要
 - [Phase 04-hono-api-kiban]: sendNoteToIphone の subscription 引数は keys ネスト形式（テスト契約が正式仕様）
 - [Phase 04-hono-api-kiban]: vi.hoisted() パターン: vi.mock ファクトリ内でモック参照するときは vi.hoisted() で事前初期化が必要
+- [Phase 04-hono-api-kiban]: bearerAuth verifyToken パターン: token オプションは string のみ受け付けるため verifyToken で環境変数をリクエスト時に評価
+- [Phase 04-hono-api-kiban]: Hono /auth Bearer 除外: 先にルートを登録し app.use は対象パスのみに限定適用
 
 ### Pending Todos
 
@@ -86,8 +89,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 
 ## Session Continuity
 
-Last session: 2026-03-23T04:08:24.776Z
-Stopped at: Completed 04-hono-api-kiban-03-PLAN.md
+Last session: 2026-03-23T04:12:45.007Z
+Stopped at: Completed 04-hono-api-kiban-04-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
