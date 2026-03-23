@@ -95,13 +95,13 @@ Plans:
   2. PWA インストール後に通知許可ダイアログが表示され、購読が完了して Google Drive に保存される
   3. PC 側の付箋を右クリック「iPhoneに送る」を押すとiPhoneのロック画面に通知が届く
   4. 通知をタップすると PWA が開き付箋の全文が読める
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 05-01: PWA manifest + Service Worker（public/manifest.json、public/sw.js）
-- [ ] 05-02: viewer ページ（app/viewer/page.tsx）— ホーム画面追加ガイド + 購読フロー + 全文表示
-- [ ] 05-03: Rust 送信コマンド（Cargo.toml reqwest 追加 + fusen_send_to_iphone 実装）
-- [ ] 05-04: 右クリックメニュー有効化（ctx_send_to_iphone enabled: true）+ 実機E2E検証
+- [ ] 05-01-PLAN.md — PWA基盤（manifest.json + worker/index.js + RegisterPWA.tsx Tauri/Safari分岐）
+- [ ] 05-02-PLAN.md — viewer ページ（app/viewer/page.tsx）— ホーム画面追加ガイド + OAuth PKCE + Push購読 + 全文表示
+- [ ] 05-03-PLAN.md — 右クリックメニュー有効化（ctx_send_to_iphone enabled: true + invoke）
+- [ ] 05-04-PLAN.md — 自動テスト確認 + 実機E2E検証チェックポイント
 
 ---
 
@@ -134,13 +134,13 @@ Plans:
   2. PWA インストール後に通知許可ダイアログが表示され、購読が完了して Google Drive に保存される
   3. PC 側の付箋を右クリック「iPhoneに送る」を押すとiPhoneのロック画面に通知が届く
   4. 通知をタップすると PWA が開き付箋の全文が読める
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 05-01: PWA manifest + Service Worker（public/manifest.json、public/sw.js）
-- [ ] 05-02: viewer ページ（app/viewer/page.tsx）— ホーム画面追加ガイド + 購読フロー + 全文表示
-- [ ] 05-03: Rust 送信コマンド（Cargo.toml reqwest 追加 + fusen_send_to_iphone 実装）
-- [ ] 05-04: 右クリックメニュー有効化（ctx_send_to_iphone enabled: true）+ 実機E2E検証
+- [ ] 05-01-PLAN.md — PWA基盤（manifest.json + worker/index.js + RegisterPWA.tsx Tauri/Safari分岐）
+- [ ] 05-02-PLAN.md — viewer ページ（app/viewer/page.tsx）— ホーム画面追加ガイド + OAuth PKCE + Push購読 + 全文表示
+- [ ] 05-03-PLAN.md — 右クリックメニュー有効化（ctx_send_to_iphone enabled: true + invoke）
+- [ ] 05-04-PLAN.md — 自動テスト確認 + 実機E2E検証チェックポイント
 
 ---
 
