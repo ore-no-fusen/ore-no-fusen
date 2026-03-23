@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
-stopped_at: "Checkpoint: 04-05 Task 2 awaiting Vercel env vars + curl verification"
-last_updated: "2026-03-23T04:45:20.733Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-23T06:49:12.536Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 12
+  completed_plans: 8
 ---
 
 ---
@@ -63,6 +63,7 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 | Phase 04-hono-api-kiban P03 | 1 | 1 tasks | 2 files |
 | Phase 04-hono-api-kiban P04 | 3 | 2 tasks | 1 files |
 | Phase 04-hono-api-kiban P05 | 20 | 1 tasks | 4 files |
+| Phase 04-hono-api-kiban P01 | 9min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 - [Phase 04-hono-api-kiban]: Hono /auth Bearer 除外: 先にルートを登録し app.use は対象パスのみに限定適用
 - [Phase 04-hono-api-kiban]: Hono app を _app.ts に分離: route.ts から export const app すると Next.js が不正 Route export として拒否するため
 - [Phase 04-hono-api-kiban]: .vercelignore/.eslintignore 追加: src-tauri 除外でメモリエラー回避、テスト除外で ESLint ビルドエラー回避
+- [Phase 04-hono-api-kiban]: jwt-simple を jsonwebtoken 9 に変更: cmake なし環境で boring-sys ビルド不可のため ES256 対応の cmake 不要クレートを採用
+- [Phase 04-hono-api-kiban]: reqwest は 0.12 を直接依存として指定: 0.13 は cmake 必須の aws-lc-rs を引き込むため
 
 ### Pending Todos
 
@@ -92,8 +95,8 @@ Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
 
 ## Session Continuity
 
-Last session: 2026-03-23T04:45:20.727Z
-Stopped at: Checkpoint: 04-05 Task 2 awaiting Vercel env vars + curl verification
+Last session: 2026-03-23T06:49:12.530Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
