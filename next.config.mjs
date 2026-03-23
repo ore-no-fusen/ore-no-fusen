@@ -34,6 +34,9 @@ const pwaConfig = withPWA({
   disable: process.env.NODE_ENV === 'development' || process.env.IS_TAURI_BUILD === 'true',
   // カスタム SW ソース — next-pwa が Workbox sw.js に merge する（上書き衝突回避）
   customWorkerDir: 'worker',
+  // /viewer はオンライン必須（Google Drive依存）のためprecaching不要
+  // precachingを全て無効化することでSWが即座にactivatedになる
+  exclude: [/.*/],
 })(nextConfig);
 
 // 設定をエクスポート（ここが最後です）
