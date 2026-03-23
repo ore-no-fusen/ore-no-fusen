@@ -51,14 +51,6 @@ struct PushConfigKeys {
     auth: String,
 }
 
-#[derive(Serialize)]
-struct TokenRefreshRequest<'a> {
-    client_id: &'a str,
-    client_secret: &'a str,
-    refresh_token: &'a str,
-    grant_type: &'a str,
-}
-
 #[derive(Deserialize)]
 struct TokenRefreshResponse {
     access_token: String,
