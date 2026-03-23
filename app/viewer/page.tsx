@@ -288,20 +288,15 @@ export default function ViewerPage() {
                     setIsLoading(false);
                     return;
                   }
-                  // SW が未登録なら登録してから待つ
-                  if (!navigator.serviceWorker.controller) {
-                    await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+                  // SW 登録を取得（なければ登録）
+                  let reg = await navigator.serviceWorker.getRegistration('/');
+                  if (!reg) {
+                    reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
                   }
-                  const sw = await Promise.race([
-                    navigator.serviceWorker.ready,
-                    new Promise<never>((_, reject) =>
-                      setTimeout(() => reject(new Error('Service Worker がタイムアウトしました。ページを閉じて再度開いてから試してください。')), 30000)
-                    ),
-                  ]);
                   const vapidKey = urlBase64ToUint8Array(
                     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
                   );
-                  const sub = await sw.pushManager.subscribe({
+                  const sub = await reg.pushManager.subscribe({
                     userVisibleOnly: true,
                     applicationServerKey: vapidKey.buffer.slice(
                       vapidKey.byteOffset,
