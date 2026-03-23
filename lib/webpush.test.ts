@@ -7,9 +7,11 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-// web-push を完全モック
-const mockSendNotification = vi.fn();
-const mockSetVapidDetails = vi.fn();
+// vi.hoisted で vi.mock より先に評価されるようにする
+const { mockSendNotification, mockSetVapidDetails } = vi.hoisted(() => ({
+  mockSendNotification: vi.fn(),
+  mockSetVapidDetails: vi.fn(),
+}));
 
 vi.mock('web-push', () => ({
   default: {
