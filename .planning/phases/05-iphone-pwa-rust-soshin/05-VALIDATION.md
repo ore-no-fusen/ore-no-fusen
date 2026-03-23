@@ -17,18 +17,18 @@ created: 2026-03-23
 
 | Property | Value |
 |----------|-------|
-| **Framework** | jest 29.x (unit) + Playwright (E2E) |
-| **Config file** | jest.config.js / playwright.config.ts |
-| **Quick run command** | `npx jest --testPathPattern="viewer\|pwa\|sw"` |
-| **Full suite command** | `npx jest && npx playwright test` |
-| **Estimated runtime** | ~30 seconds (jest) / ~60 seconds (playwright) |
+| **Framework** | vitest (unit) + Playwright (E2E) |
+| **Config file** | vitest.config.ts / playwright.config.ts |
+| **Quick run command** | `npm run test -- --reporter=verbose` |
+| **Full suite command** | `npm run test && npx playwright test` |
+| **Estimated runtime** | ~30 seconds (vitest) / ~60 seconds (playwright) |
 
 ---
 
 ## Sampling Rate
 
-- **After every task commit:** Run `npx jest --testPathPattern="viewer\|pwa\|sw"`
-- **After every plan wave:** Run `npx jest && npx playwright test`
+- **After every task commit:** Run `npm run test`
+- **After every plan wave:** Run `npm run test && npx playwright test`
 - **Before `/gsd:verify-work`:** Full suite must be green
 - **Max feedback latency:** 30 seconds
 
@@ -38,11 +38,11 @@ created: 2026-03-23
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 5-01-01 | 01 | 1 | PWA-01 | unit | `npx jest --testPathPattern="manifest"` | ❌ W0 | ⬜ pending |
-| 5-01-02 | 01 | 1 | PWA-01 | unit | `npx jest --testPathPattern="sw"` | ❌ W0 | ⬜ pending |
-| 5-02-01 | 02 | 1 | PWA-02 | unit | `npx jest --testPathPattern="viewer"` | ❌ W0 | ⬜ pending |
-| 5-02-02 | 02 | 1 | PWA-02 | unit | `npx jest --testPathPattern="viewer"` | ❌ W0 | ⬜ pending |
-| 5-02-03 | 02 | 1 | PWA-03 | unit | `npx jest --testPathPattern="viewer"` | ❌ W0 | ⬜ pending |
+| 5-01-01 | 01 | 1 | PWA-01 | unit | `npm run test` | ❌ W0 | ⬜ pending |
+| 5-01-02 | 01 | 1 | PWA-01 | unit | `npm run test` | ❌ W0 | ⬜ pending |
+| 5-02-01 | 02 | 1 | PWA-02 | unit | `npm run test` | ❌ W0 | ⬜ pending |
+| 5-02-02 | 02 | 1 | PWA-02 | unit | `npm run test` | ❌ W0 | ⬜ pending |
+| 5-02-03 | 02 | 1 | PWA-03 | unit | `npm run test` | ❌ W0 | ⬜ pending |
 | 5-03-01 | 03 | 2 | SEND-01 | manual | — | — | ⬜ pending |
 | 5-04-01 | 04 | 3 | SEND-02 | manual | — | — | ⬜ pending |
 | 5-04-02 | 04 | 3 | SEND-02 | E2E | `npx playwright test --grep="iphone"` | ❌ W0 | ⬜ pending |
@@ -53,12 +53,12 @@ created: 2026-03-23
 
 ## Wave 0 Requirements
 
-- [ ] `__tests__/viewer.test.tsx` — viewer ページのレンダリング・ステップ遷移スタブ
-- [ ] `__tests__/sw.test.ts` — service worker push/notificationclick ハンドラスタブ
-- [ ] `__tests__/manifest.test.ts` — manifest.json の内容検証スタブ
+- [ ] `app/viewer/viewer.test.tsx` — viewer ページのレンダリング・ステップ遷移スタブ
+- [ ] `worker/worker.test.js` — service worker push/notificationclick ハンドラスタブ
+- [ ] `app/hooks/useStickyNoteContextMenu.test.ts` — SEND-02 ctx_send_to_iphone invoke スタブ
 - [ ] `tests/iphone-e2e.spec.ts` — Playwright E2E スタブ（iPhoneに送る右クリックメニュー）
 
-*既存の jest / playwright infrastructure は導入済み。Wave 0 はテストファイルの追加のみ。*
+*既存の vitest / playwright infrastructure は導入済み。Wave 0 はテストファイルの追加のみ。*
 
 ---
 
