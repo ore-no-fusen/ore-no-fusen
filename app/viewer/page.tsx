@@ -124,15 +124,15 @@ export default function ViewerPage() {
 
     const params = new URLSearchParams(window.location.search);
 
-    // accessToken 調達: sessionStorage → localStorage → 再認証
+    // accessToken 調達: localStorage → localStorage → 再認証
     let token =
-      sessionStorage.getItem('viewer_access_token') ??
+      localStorage.getItem('viewer_access_token') ??
       localStorage.getItem('viewer_access_token');
 
     // OAuth コールバック（?code= あり）
     if (params.get('code')) {
       const code = params.get('code')!;
-      const verifier = sessionStorage.getItem('pkce_verifier');
+      const verifier = localStorage.getItem('pkce_verifier');
       if (!verifier) {
         setErrorMessage('セッションが切れました。再度ログインしてください。');
         setStep('login');
@@ -152,7 +152,7 @@ export default function ViewerPage() {
         .then((data) => {
           const t = data.access_token;
           if (!t) throw new Error('access_token missing');
-          sessionStorage.setItem('viewer_access_token', t);
+          localStorage.setItem('pkce_verifier_used', 'done'); // cleanup flag
           localStorage.setItem('viewer_access_token', t);
           setAccessToken(t);
           token = t;
@@ -171,8 +171,8 @@ export default function ViewerPage() {
     if (params.get('note')) {
       if (!token) {
         generatePKCE().then(({ verifier, challenge }) => {
-          sessionStorage.setItem('pkce_verifier', verifier);
-          sessionStorage.setItem('pending_note', params.get('note')!);
+          localStorage.setItem('pkce_verifier', verifier);
+          localStorage.setItem('pending_note', params.get('note')!);
           startOAuth(challenge);
         });
         return;
@@ -192,9 +192,9 @@ export default function ViewerPage() {
     }
 
     // OAuth 再リダイレクト後の pending_note 処理
-    const pendingNote = sessionStorage.getItem('pending_note');
+    const pendingNote = localStorage.getItem('pending_note');
     if (pendingNote && token) {
-      sessionStorage.removeItem('pending_note');
+      localStorage.removeItem('pending_note');
       setAccessToken(token);
       setIsLoading(true);
       downloadFromDrive(token, 'fusen_note.json')
@@ -260,7 +260,7 @@ export default function ViewerPage() {
               className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium"
               onClick={async () => {
                 const { verifier, challenge } = await generatePKCE();
-                sessionStorage.setItem('pkce_verifier', verifier);
+                localStorage.setItem('pkce_verifier', verifier);
                 startOAuth(challenge);
               }}
             >
