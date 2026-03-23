@@ -114,6 +114,7 @@ export default function ViewerPage() {
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [swReady, setSwReady] = useState(false);
 
   useEffect(() => {
     // iOS Safari は navigator.standalone で判定、他は matchMedia
@@ -122,12 +123,15 @@ export default function ViewerPage() {
       window.matchMedia('(display-mode: standalone)').matches;
     setIsStandalone(standalone);
 
-    // SW をページ読み込み時に登録しておく（ボタンタップ時にはすでに active になっている）
+    // SW を登録し、ready になったら swReady=true にする
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistration('/').then((reg) => {
         if (!reg) {
           navigator.serviceWorker.register('/sw.js', { scope: '/' });
         }
+      });
+      navigator.serviceWorker.ready.then(() => {
+        setSwReady(true);
       });
     }
 
@@ -286,48 +290,53 @@ export default function ViewerPage() {
         {step === 'push' && (
           <div className="flex flex-col items-center gap-4">
             <p className="text-gray-700">セットアップ ステップ 2 / 2</p>
-            <button
-              className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium disabled:opacity-50"
-              disabled={isLoading}
-              onClick={async () => {
-                try {
-                  setIsLoading(true);
-                  const perm = await Notification.requestPermission();
-                  if (perm !== 'granted') {
-                    setErrorMessage('通知を許可してください');
+            {!swReady ? (
+              <p className="text-gray-500 text-sm">SW準備中...</p>
+            ) : (
+              <button
+                className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium disabled:opacity-50"
+                disabled={isLoading}
+                onClick={async () => {
+                  try {
+                    setIsLoading(true);
+                    const perm = await Notification.requestPermission();
+                    if (perm !== 'granted') {
+                      setErrorMessage('通知を許可してください');
+                      setIsLoading(false);
+                      return;
+                    }
+                    // swReady=true の時点で navigator.serviceWorker.controller は active 確定
+                    const reg = await navigator.serviceWorker.getRegistration('/');
+                    if (!reg) throw new Error('Service Worker が見つかりません');
+                    const vapidKey = urlBase64ToUint8Array(
+                      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+                    );
+                    const sub = await reg.pushManager.subscribe({
+                      userVisibleOnly: true,
+                      applicationServerKey: vapidKey.buffer.slice(
+                        vapidKey.byteOffset,
+                        vapidKey.byteOffset + vapidKey.byteLength
+                      ) as ArrayBuffer,
+                    });
+                    const subJson = sub.toJSON();
+                    const endpoint = subJson?.endpoint as string;
+                    const keys = subJson?.keys;
+                    await uploadToDrive(accessToken!, 'fusen_push_config.json', {
+                      endpoint,
+                      keys,
+                    });
+                    setStep('ready');
+                  } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    setErrorMessage('通知設定に失敗しました: ' + msg);
+                  } finally {
                     setIsLoading(false);
-                    return;
                   }
-                  // SW 登録を取得（ページ読み込み時に登録済みのはず）
-                  const reg = await navigator.serviceWorker.ready;
-                  const vapidKey = urlBase64ToUint8Array(
-                    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-                  );
-                  const sub = await reg.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: vapidKey.buffer.slice(
-                      vapidKey.byteOffset,
-                      vapidKey.byteOffset + vapidKey.byteLength
-                    ) as ArrayBuffer,
-                  });
-                  const subJson = sub.toJSON();
-                  const endpoint = subJson?.endpoint as string;
-                  const keys = subJson?.keys;
-                  await uploadToDrive(accessToken!, 'fusen_push_config.json', {
-                    endpoint,
-                    keys,
-                  });
-                  setStep('ready');
-                } catch (err: unknown) {
-                  const msg = err instanceof Error ? err.message : String(err);
-                  setErrorMessage('通知設定に失敗しました: ' + msg);
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-            >
-              {isLoading ? '処理中...' : '通知を許可する'}
-            </button>
+                }}
+              >
+                {isLoading ? '処理中...' : '通知を許可する'}
+              </button>
+            )}
             {errorMessage && (
               <p className="text-red-600 text-sm">{errorMessage}</p>
             )}
