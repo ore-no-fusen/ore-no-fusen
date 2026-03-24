@@ -4,9 +4,13 @@
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
+  const title = data.title || '俺の付箋';
+  const body = data.body || '';
   event.waitUntil(
-    self.registration.showNotification(data.title || '俺の付箋', {
-      body: data.body || '',
+    self.registration.showNotification(title, {
+      body,
+      tag: 'fusen',
+      data: { title, body },
       icon: '/icon-192.png',
       badge: '/icon-192.png',
     })
@@ -14,17 +18,29 @@ self.addEventListener('push', (event) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
+  const { title, body } = event.notification.data || {};
   event.notification.close();
   const targetUrl = self.location.origin + '/viewer?note=1';
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes('/viewer') && 'focus' in client) {
-          client.navigate(targetUrl);
-          return client.focus();
+    Promise.all([
+      // 通知を即復活（消す意思がないなら残り続ける）
+      self.registration.showNotification(title, {
+        body,
+        tag: 'fusen',
+        data: { title, body },
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+      }),
+      // Viewer を開く
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          if (client.url.includes('/viewer') && 'focus' in client) {
+            client.navigate(targetUrl);
+            return client.focus();
+          }
         }
-      }
-      return clients.openWindow(targetUrl);
-    })
+        return clients.openWindow(targetUrl);
+      }),
+    ])
   );
 });

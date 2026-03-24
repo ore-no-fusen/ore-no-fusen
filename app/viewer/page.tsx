@@ -366,6 +366,19 @@ export default function ViewerPage() {
           <div>
             <h1 className="text-xl font-bold">{noteData.title}</h1>
             <pre className="whitespace-pre-wrap mt-4">{noteData.body}</pre>
+            <button
+              className="mt-6 px-4 py-2 bg-gray-200 text-gray-700 rounded"
+              onClick={() => {
+                navigator.serviceWorker.ready.then((reg) => {
+                  reg.getNotifications({ tag: 'fusen' }).then((notifications) => {
+                    notifications.forEach((n) => n.close());
+                  });
+                });
+                setStep('ready');
+              }}
+            >
+              消す
+            </button>
             {errorMessage && (
               <p className="text-red-600 text-sm mt-2">{errorMessage}</p>
             )}
