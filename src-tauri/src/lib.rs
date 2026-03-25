@@ -1208,9 +1208,17 @@ async fn fusen_send_to_iphone(
         "sent_at": sent_at
     });
 
-    // 3. Google Drive に fusen_note.json をアップロード
+    // 3. Google Drive に fusen_note.json をアップロード（バックグラウンド）
+    // トーストを遅らせないよう await しない。Viewer が開くまでに完了すれば十分。
     let access_token = gdrive::get_access_token(&client).await?;
-    gdrive::upload_json(&client, &access_token, "fusen_note.json", &note_json).await?;
+    let bg_client = client.clone();
+    let bg_token = access_token.clone();
+    let bg_json = note_json.clone();
+    tokio::spawn(async move {
+        if let Err(e) = gdrive::upload_json(&bg_client, &bg_token, "fusen_note.json", &bg_json).await {
+            eprintln!("[iphone] Drive upload error: {}", e);
+        }
+    });
 
     // 4. キャッシュ済み pro_config を取得（なければ Drive から再取得）
     let pro_config = {
