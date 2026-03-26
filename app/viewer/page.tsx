@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // ---------------------------------------------------------------------------
 // ヘルパー関数
@@ -99,6 +99,83 @@ async function downloadFromDrive(accessToken: string, fileName: string) {
 }
 
 // ---------------------------------------------------------------------------
+// リフレッシュトークンでアクセストークンを更新する
+// ---------------------------------------------------------------------------
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('viewer_refresh_token');
+  if (!refreshToken) return null;
+
+  const res = await fetch('/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  if (!res.ok) {
+    localStorage.removeItem('viewer_refresh_token');
+    return null;
+  }
+
+  const data = await res.json();
+  const newToken = data.access_token;
+  if (!newToken) return null;
+
+  localStorage.setItem('viewer_access_token', newToken);
+  if (data.expires_in) {
+    localStorage.setItem('viewer_expires_at', String(Date.now() + data.expires_in * 1000));
+  }
+  return newToken;
+}
+
+// Drive ダウンロード（トークン期限切れ時に自動リフレッシュ）
+function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: string }> {
+  return downloadFromDrive(token, 'fusen_note.json').catch(() =>
+    refreshAccessToken().then((newToken) => {
+      if (!newToken) throw new Error('session expired');
+      return downloadFromDrive(newToken, 'fusen_note.json');
+    })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SimpleNoteBody: body テキスト内の data: URI 画像を <img> としてレンダリング
+// ---------------------------------------------------------------------------
+
+export function SimpleNoteBody({ body }: { body: string }) {
+  const imgRe = /!\[([^\]]*)\]\((data:[^)]+)\)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = imgRe.exec(body)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <span key={key++} style={{ whiteSpace: 'pre-wrap' }}>
+          {body.slice(lastIndex, match.index)}
+        </span>
+      );
+    }
+    // eslint-disable-next-line @next/next/no-img-element
+    parts.push(
+      <img key={key++} src={match[2]} alt={match[1]} style={{ maxWidth: '100%', display: 'block', margin: '8px 0' }} />
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < body.length) {
+    parts.push(
+      <span key={key++} style={{ whiteSpace: 'pre-wrap' }}>
+        {body.slice(lastIndex)}
+      </span>
+    );
+  }
+
+  return <div className="mt-4">{parts}</div>;
+}
+
+// ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
 // ---------------------------------------------------------------------------
 
@@ -172,6 +249,12 @@ export default function ViewerPage() {
           const t = data.access_token;
           if (!t) throw new Error('access_token missing');
           localStorage.setItem('viewer_access_token', t);
+          if (data.refresh_token) {
+            localStorage.setItem('viewer_refresh_token', data.refresh_token);
+          }
+          if (data.expires_in) {
+            localStorage.setItem('viewer_expires_at', String(Date.now() + data.expires_in * 1000));
+          }
           setAccessToken(t);
           window.history.replaceState({}, '', '/viewer');
           setStep('push');
@@ -196,7 +279,7 @@ export default function ViewerPage() {
       }
       setAccessToken(token);
       setIsLoading(true);
-      downloadFromDrive(token, 'fusen_note.json')
+      downloadWithAutoRefresh(token)
         .then((data) => {
           setNoteData(data);
           setStep('note');
@@ -216,7 +299,7 @@ export default function ViewerPage() {
       localStorage.removeItem('pending_note');
       setAccessToken(token);
       setIsLoading(true);
-      downloadFromDrive(token, 'fusen_note.json')
+      downloadWithAutoRefresh(token)
         .then((data) => {
           setNoteData(data);
           setStep('note');
@@ -316,6 +399,8 @@ export default function ViewerPage() {
                       return;
                     }
                     const reg = await navigator.serviceWorker.ready;
+                    const existingSub = await reg.pushManager.getSubscription();
+                    if (existingSub) await existingSub.unsubscribe();
                     const vapidKey = urlBase64ToUint8Array(
                       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
                     );
@@ -365,7 +450,7 @@ export default function ViewerPage() {
         {step === 'note' && noteData && (
           <div>
             <h1 className="text-xl font-bold">{noteData.title}</h1>
-            <pre className="whitespace-pre-wrap mt-4">{noteData.body}</pre>
+            <SimpleNoteBody body={noteData.body} />
             <button
               className="mt-6 px-4 py-2 bg-gray-200 text-gray-700 rounded"
               onClick={() => {
