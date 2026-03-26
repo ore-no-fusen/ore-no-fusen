@@ -311,14 +311,16 @@ export default function LandingPage() {
                             style={{
                                 boxShadow: '4px 6px 24px rgba(0,0,0,0.18)',
                                 border: '1px solid #C8B898',
-                                aspectRatio: '16/9'
                             }}>
-                            <iframe
-                                src="/promo/promo.html"
-                                className="w-full h-full"
-                                style={{ border: 'none' }}
-                                title="Ore-no-Fusen プロモーション"
-                            />
+                            <video
+                                autoPlay
+                                muted
+                                loop
+                                playsInline
+                                className="w-full h-auto block"
+                            >
+                                <source src="/promo/promo2.mp4" type="video/mp4" />
+                            </video>
                         </div>
                     </div>
                 </div>
