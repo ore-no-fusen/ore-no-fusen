@@ -311,13 +311,18 @@ export default function LandingPage() {
                             style={{
                                 boxShadow: '4px 6px 24px rgba(0,0,0,0.18)',
                                 border: '1px solid #C8B898',
+                                aspectRatio: '1/1',
+                                maxWidth: '560px',
+                                margin: '0 auto',
+                                background: '#000',
                             }}>
                             <video
                                 autoPlay
                                 muted
                                 loop
                                 playsInline
-                                className="w-full h-auto block"
+                                className="w-full h-full block"
+                                style={{ objectFit: 'cover' }}
                             >
                                 <source src="/promo/promo2.mp4" type="video/mp4" />
                             </video>
