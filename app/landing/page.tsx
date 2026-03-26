@@ -12,6 +12,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Download } from 'lucide-react';
+import { useRef, useEffect } from 'react';
 
 // ジブリ風カラーパレット
 // 背景: #EDE4D3 (羊皮紙)
@@ -25,6 +26,13 @@ import { Download } from 'lucide-react';
 export default function LandingPage() {
     const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
     const downloadUrl = `https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v${version}/ore-no-fusen_${version}_x64-setup.exe`;
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.muted = true;
+            videoRef.current.play().catch(() => {});
+        }
+    }, []);
 
     return (
         <div
@@ -317,6 +325,7 @@ export default function LandingPage() {
                                 background: '#000',
                             }}>
                             <video
+                                ref={videoRef}
                                 autoPlay
                                 muted
                                 loop
