@@ -1174,6 +1174,63 @@ async fn fusen_check_pro_setup(
     }
 }
 
+/// body 中のローカル画像パスを base64 data URI に変換する（Drive用）
+/// note_dir: ノートファイルのディレクトリ（相対パス解決に使用）
+fn embed_local_images(body: &str, note_dir: &std::path::Path) -> String {
+    let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
+    re.replace_all(body, |caps: &regex::Captures| {
+        let alt = &caps[1];
+        let raw_path = &caps[2];
+        // http:// / https:// / data: は変換しない
+        if raw_path.starts_with("http://") || raw_path.starts_with("https://") || raw_path.starts_with("data:") {
+            return caps[0].to_string();
+        }
+        // 絶対パスか相対パスかを判定して解決
+        let resolved = if raw_path.len() >= 2 && raw_path.chars().nth(1) == Some(':') {
+            // 絶対パス (C:\...)
+            std::path::PathBuf::from(raw_path.replace('/', "\\"))
+        } else if raw_path.starts_with("\\\\") {
+            // UNCパス
+            std::path::PathBuf::from(raw_path.to_string())
+        } else {
+            // 相対パス: ノートファイルのディレクトリ基準で解決
+            note_dir.join(raw_path.replace('/', std::path::MAIN_SEPARATOR_STR))
+        };
+        match std::fs::read(&resolved) {
+            Ok(bytes) => {
+                let ext = std::path::Path::new(&resolved).extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("png")
+                    .to_lowercase();
+                let mime = match ext.as_str() {
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "gif" => "image/gif",
+                    "webp" => "image/webp",
+                    "bmp" => "image/bmp",
+                    _ => "image/png",
+                };
+                use base64::Engine as _;
+                let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                format!("![{}](data:{};base64,{})", alt, mime, encoded)
+            }
+            Err(_) => caps[0].to_string(), // 読み込み失敗時はそのまま残す
+        }
+    }).into_owned()
+}
+
+/// body 中のローカル画像パスを [画像] に置換する（Web Push 4KB制限対応）
+fn strip_local_images(body: &str) -> String {
+    let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
+    re.replace_all(body, |caps: &regex::Captures| {
+        let raw_path = &caps[2];
+        if raw_path.starts_with("http://") || raw_path.starts_with("https://") || raw_path.starts_with("data:") {
+            caps[0].to_string()
+        } else {
+            "[画像]".to_string()
+        }
+    }).into_owned()
+}
+
 #[tauri::command]
 async fn fusen_send_to_iphone(
     state: tauri::State<'_, Mutex<AppState>>,
@@ -1190,10 +1247,7 @@ async fn fusen_send_to_iphone(
         std::fs::read_to_string(&path).map_err(|e| e.to_string())?
     };
 
-    // 2. note JSON を生成（frontmatter を除去したbodyのみ送信）
-    let sent_at = chrono::Utc::now().to_rfc3339();
-    let title = path.split(['/', '\\']).last().unwrap_or("note")
-        .trim_end_matches(".md").to_string();
+    // 2. frontmatter を除去して body を取り出し、Drive用／Push用に変換
     let body = if note.starts_with("---") {
         note[3..].find("---")
             .map(|end| note[3 + end + 3..].trim_start_matches('\n').to_string())
@@ -1201,26 +1255,89 @@ async fn fusen_send_to_iphone(
     } else {
         note.clone()
     };
-    let note_json = serde_json::json!({
+    // Drive用: ローカル画像を base64 data URI に変換（iPhoneで表示できるよう）
+    let note_dir = std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new("."));
+    let body_rich = embed_local_images(&body, note_dir);
+    // Push通知用: ローカル画像パスを [画像] に置換（Web Push 4KB制限対応）
+    let body_push = strip_local_images(&body);
+
+    let sent_at = chrono::Utc::now().to_rfc3339();
+    let title = path.split(['/', '\\']).last().unwrap_or("note")
+        .trim_end_matches(".md").to_string();
+
+    let note_json_drive = serde_json::json!({
         "title": title,
-        "body": body,
+        "body": body_rich,
+        "tags": [],
+        "sent_at": sent_at
+    });
+    let note_json_push = serde_json::json!({
+        "title": title,
+        "body": body_push,
         "tags": [],
         "sent_at": sent_at
     });
 
-    // 3. Google Drive に fusen_note.json をアップロード（バックグラウンド）
-    // トーストを遅らせないよう await しない。Viewer が開くまでに完了すれば十分。
+    // 3. access_token 取得
     let access_token = gdrive::get_access_token(&client).await?;
+
+    // 3a. VAPID鍵を Drive と同期
+    // ローカルに鍵がある（元のPC）→ そのまま使い、Drive にバックグラウンドアップ（別PC共有用）
+    // ローカルに鍵がない（別PC）  → Drive からダウンロードして保存
+    let vk_path = webpush::get_vapid_key_path();
+    if vk_path.exists() {
+        // 元のPC: ローカルの鍵を Drive にアップ（別PC が使えるよう最新を保つ）
+        if let Ok(local_keys) = webpush::load_or_generate_vapid_keys() {
+            if let Ok(value) = serde_json::to_value(&local_keys) {
+                let bg_client_v = client.clone();
+                let bg_token_v = access_token.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = gdrive::upload_json(&bg_client_v, &bg_token_v, "vapid_keys.json", &value).await {
+                        eprintln!("[vapid] Drive upload error: {}", e);
+                    }
+                });
+            }
+        }
+    } else {
+        // 別PC: Drive からダウンロードしてローカルに保存
+        match gdrive::download_json(&client, &access_token, "vapid_keys.json").await {
+            Ok(value) => {
+                if let Ok(json) = serde_json::to_string_pretty(&value) {
+                    if let Some(parent) = vk_path.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    std::fs::write(&vk_path, json).ok();
+                }
+            }
+            Err(e) => {
+                eprintln!("[vapid] Drive download failed (new PC, no keys yet): {}", e);
+                // Drive にも鍵がない → 新規生成して Drive にもアップ
+                if let Ok(new_keys) = webpush::load_or_generate_vapid_keys() {
+                    if let Ok(value) = serde_json::to_value(&new_keys) {
+                        let bg_client_v = client.clone();
+                        let bg_token_v = access_token.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = gdrive::upload_json(&bg_client_v, &bg_token_v, "vapid_keys.json", &value).await {
+                                eprintln!("[vapid] Drive upload error (new keys): {}", e);
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Google Drive に fusen_note.json をアップロード（バックグラウンド）
+    // トーストを遅らせないよう await しない。Viewer が開くまでに完了すれば十分。
     let bg_client = client.clone();
     let bg_token = access_token.clone();
-    let bg_json = note_json.clone();
     tokio::spawn(async move {
-        if let Err(e) = gdrive::upload_json(&bg_client, &bg_token, "fusen_note.json", &bg_json).await {
+        if let Err(e) = gdrive::upload_json(&bg_client, &bg_token, "fusen_note.json", &note_json_drive).await {
             eprintln!("[iphone] Drive upload error: {}", e);
         }
     });
 
-    // 4. キャッシュ済み pro_config を取得（なければ Drive から再取得）
+    // 5. キャッシュ済み pro_config を取得（なければ Drive から再取得）
     let pro_config = {
         let guard = state.lock().unwrap_or_else(|p| p.into_inner());
         guard.pro_config.clone()
@@ -1235,8 +1352,8 @@ async fn fusen_send_to_iphone(
         }
     };
 
-    // 5. APNs に Push 通知送信
-    let plaintext = serde_json::to_string(&note_json).map_err(|e| e.to_string())?;
+    // 6. Web Push 送信
+    let plaintext = serde_json::to_string(&note_json_push).map_err(|e| e.to_string())?;
     webpush::send_web_push(&client, &pro_config, &plaintext).await?;
 
     Ok(())
@@ -1489,6 +1606,97 @@ pub fn run() {
 }
 
 
+
+#[cfg(test)]
+mod image_embed_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_embed_local_images_no_images() {
+        let body = "画像なしのテキスト\nただのメモ";
+        let dir = std::path::Path::new(".");
+        assert_eq!(embed_local_images(body, dir), body);
+    }
+
+    #[test]
+    fn test_embed_local_images_nonexistent_path_skipped() {
+        let body = "![photo](C:\\nonexistent\\path\\image.png)";
+        let dir = std::path::Path::new(".");
+        // 存在しないファイルはそのまま残る
+        assert_eq!(embed_local_images(body, dir), body);
+    }
+
+    #[test]
+    fn test_embed_local_images_converts_png() {
+        let dir = tempdir().unwrap();
+        let img_path = dir.path().join("test.png");
+        let dummy_bytes = b"\x89PNG\r\nfake_png_data";
+        fs::write(&img_path, dummy_bytes).unwrap();
+
+        let path_str = img_path.to_str().unwrap();
+        let body = format!("テキスト\n![my image]({})\n続き", path_str);
+        let result = embed_local_images(&body, dir.path());
+
+        assert!(result.contains("data:image/png;base64,"));
+        assert!(result.contains("![my image](data:image/png;base64,"));
+        assert!(result.contains("\n続き"));
+    }
+
+    #[test]
+    fn test_embed_local_images_relative_path() {
+        let dir = tempdir().unwrap();
+        let assets_dir = dir.path().join("assets");
+        fs::create_dir(&assets_dir).unwrap();
+        let img_path = assets_dir.join("photo.png");
+        fs::write(&img_path, b"\x89PNG\r\nfake").unwrap();
+
+        let body = "![img](assets/photo.png)".to_string();
+        let result = embed_local_images(&body, dir.path());
+        assert!(result.contains("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn test_embed_local_images_jpeg_mime() {
+        let dir = tempdir().unwrap();
+        let img_path = dir.path().join("photo.jpg");
+        fs::write(&img_path, b"fake_jpeg").unwrap();
+
+        let path_str = img_path.to_str().unwrap();
+        let body = format!("![alt]({})", path_str);
+        let result = embed_local_images(&body, dir.path());
+
+        assert!(result.contains("data:image/jpeg;base64,"));
+    }
+
+    #[test]
+    fn test_strip_local_images_replaces_with_placeholder() {
+        let body = "テキスト\n![photo](C:\\Users\\test\\image.png)\n続き";
+        let result = strip_local_images(body);
+        assert_eq!(result, "テキスト\n[画像]\n続き");
+    }
+
+    #[test]
+    fn test_strip_local_images_no_images_unchanged() {
+        let body = "画像なしのテキスト";
+        assert_eq!(strip_local_images(body), body);
+    }
+
+    #[test]
+    fn test_strip_local_images_multiple() {
+        let body = "![a](C:\\img1.png) and ![b](C:\\img2.jpg)";
+        let result = strip_local_images(body);
+        assert_eq!(result, "[画像] and [画像]");
+    }
+
+    #[test]
+    fn test_strip_does_not_affect_data_uris() {
+        // data: URI はローカルパスではないので変換しない
+        let body = "![img](data:image/png;base64,abc123)";
+        assert_eq!(strip_local_images(body), body);
+    }
+}
 
 #[cfg(test)]
 mod search_tests {
