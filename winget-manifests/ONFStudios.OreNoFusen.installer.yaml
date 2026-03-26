@@ -2,11 +2,11 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
 
 PackageIdentifier: ONFStudios.OreNoFusen
-PackageVersion: 1.1.9
+PackageVersion: 2.1.0
 InstallerType: nullsoft
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v1.1.9/ore-no-fusen_1.1.9_x64-setup.exe
-    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+    InstallerUrl: https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v2.1.0/ore-no-fusen_2.1.0_x64-setup.exe
+    InstallerSha256: 0ECDC770BF005AD05338F74E8FA9D5B152B1D73BE101121D29655D25243981E2
 ManifestType: installer
 ManifestVersion: 1.6.0
