@@ -320,6 +320,7 @@ export default function LandingPage() {
                             }}>
                             <video
                                 ref={videoRef}
+                                controls
                                 loop
                                 playsInline
                                 className="w-full h-full block"
