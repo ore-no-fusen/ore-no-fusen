@@ -217,8 +217,48 @@ export default function LandingPage() {
                 </svg>
             </div>
 
+            {/* スクリーンショット */}
+            <section className="py-20 px-6" style={{ backgroundColor: '#E2D7C3' }}>
+                <div className="max-w-5xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
+                            こんな感じです
+                        </h2>
+                        <p className="text-[#8A7055]">デスクトップに、ちゃんと馴染みます</p>
+                    </div>
+
+                    <div className="relative">
+                        {/* テープ装飾 */}
+                        <div className="absolute -top-3 left-14 z-10 w-14 h-5 rounded-sm opacity-60 rotate-2"
+                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }} />
+                        <div className="absolute -top-3 right-20 z-10 w-12 h-5 rounded-sm opacity-60 -rotate-1"
+                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }} />
+                        <div className="rounded-sm overflow-hidden"
+                            style={{
+                                boxShadow: '4px 6px 24px rgba(0,0,0,0.15)',
+                                border: '1px solid #C8B898',
+                            }}>
+                            <Image
+                                src="/screenshots/ScreenShot_OreNoFusen.png"
+                                alt="俺の付箋 スクリーンショット"
+                                width={1200}
+                                height={800}
+                                className="w-full h-auto"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* 波形の区切り（逆） */}
+            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#E2D7C3' }}>
+                <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
+                    <path d="M0,20 C300,0 900,40 1200,20 L1200,0 L0,0 Z" fill="#EDE4D3" />
+                </svg>
+            </div>
+
             {/* 主要機能セクション */}
-            <section id="features" className="py-20 sm:py-24 px-6" style={{ backgroundColor: '#E2D7C3' }}>
+            <section id="features" className="py-20 sm:py-24 px-6" style={{ backgroundColor: '#EDE4D3' }}>
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-14">
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
@@ -295,15 +335,15 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            {/* 波形の区切り（逆） */}
-            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#E2D7C3' }}>
+            {/* 波形の区切り */}
+            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#EDE4D3' }}>
                 <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
-                    <path d="M0,20 C300,0 900,40 1200,20 L1200,0 L0,0 Z" fill="#EDE4D3" />
+                    <path d="M0,20 C300,40 900,0 1200,20 L1200,40 L0,40 Z" fill="#E2D7C3" />
                 </svg>
             </div>
 
             {/* プロモーション */}
-            <section className="py-20 px-6" style={{ backgroundColor: '#EDE4D3' }}>
+            <section className="py-12 px-6" style={{ backgroundColor: '#E2D7C3' }}>
                 <div className="max-w-4xl mx-auto">
                     <div className="relative">
                         {/* テープ装飾 */}
@@ -314,7 +354,7 @@ export default function LandingPage() {
                                 boxShadow: '4px 6px 24px rgba(0,0,0,0.18)',
                                 border: '1px solid #C8B898',
                                 aspectRatio: '1/1',
-                                maxWidth: '560px',
+                                maxWidth: '280px',
                                 margin: '0 auto',
                                 background: '#000',
                             }}>
@@ -333,38 +373,12 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            {/* スクリーンショット */}
-            <section className="py-20 px-6" style={{ backgroundColor: '#E2D7C3' }}>
-                <div className="max-w-5xl mx-auto">
-                    <div className="text-center mb-12">
-                        <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
-                            こんな感じです
-                        </h2>
-                        <p className="text-[#8A7055]">デスクトップに、ちゃんと馴染みます</p>
-                    </div>
-
-                    <div className="relative">
-                        {/* テープ装飾 */}
-                        <div className="absolute -top-3 left-14 z-10 w-14 h-5 rounded-sm opacity-60 rotate-2"
-                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }} />
-                        <div className="absolute -top-3 right-20 z-10 w-12 h-5 rounded-sm opacity-60 -rotate-1"
-                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }} />
-                        <div className="rounded-sm overflow-hidden"
-                            style={{
-                                boxShadow: '4px 6px 24px rgba(0,0,0,0.15)',
-                                border: '1px solid #C8B898',
-                            }}>
-                            <Image
-                                src="/screenshots/ScreenShot_OreNoFusen.png"
-                                alt="俺の付箋 スクリーンショット"
-                                width={1200}
-                                height={800}
-                                className="w-full h-auto"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </section>
+            {/* 波形の区切り（逆） */}
+            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#E2D7C3' }}>
+                <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
+                    <path d="M0,20 C300,0 900,40 1200,20 L1200,0 L0,0 Z" fill="#EDE4D3" />
+                </svg>
+            </div>
 
             {/* ダウンロードセクション */}
             <section className="py-24 px-6" style={{ backgroundColor: '#EDE4D3' }}>
