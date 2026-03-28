@@ -282,14 +282,15 @@ fn fusen_move_to_trash(
 #[tauri::command]
 fn fusen_archive_note(
     state: State<'_, Mutex<AppState>>,
-    path: String
+    path: String,
+    target_tag: Option<String>
 ) -> Result<String, String> {
     let current_path = std::path::Path::new(&path);
-    
+
     // 1. Get current tags
     let content = storage::read_note(&path)?;
     let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&content.body);
-    
+
     // 2. Determine vault root
     let vault_root = {
         let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
@@ -302,23 +303,24 @@ fn fusen_archive_note(
     // タグフォルダ・アーカイブへ移動前にアプリ固有フィールドを除去（Obsidian互換化）
     let cleaned_content = logic::strip_sticky_fields(&content.body);
 
-    if tags.is_empty() {
-        // Tagless notes go to general "Archive" folder (Move)
-        let archive_dir = storage::ensure_archive_dir(vault_root_path)?;
-        let new_path = archive_dir.join(current_path.file_name().ok_or("no name")?);
+    // target_tag が指定されていればそのタグフォルダへ、なければ従来通り
+    let resolved_tag = target_tag.or_else(|| tags.into_iter().next());
 
-        storage::copy_associated_assets(current_path, &archive_dir)?;
+    if let Some(tag) = resolved_tag {
+        let tag_dir = storage::ensure_tag_dir(vault_root_path, &tag)?;
+        let new_path = tag_dir.join(current_path.file_name().ok_or("no name")?);
+
+        storage::copy_associated_assets(current_path, &tag_dir)?;
         storage::delete_associated_assets(current_path)?;
 
         std::fs::write(&new_path, &cleaned_content).map_err(|e| e.to_string())?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     } else {
-        // Tagged notes: Move to the first tag folder only
-        let first_tag = &tags[0];
-        let tag_dir = storage::ensure_tag_dir(vault_root_path, first_tag)?;
-        let new_path = tag_dir.join(current_path.file_name().ok_or("no name")?);
+        // タグなし → Archive フォルダへ
+        let archive_dir = storage::ensure_archive_dir(vault_root_path)?;
+        let new_path = archive_dir.join(current_path.file_name().ok_or("no name")?);
 
-        storage::copy_associated_assets(current_path, &tag_dir)?;
+        storage::copy_associated_assets(current_path, &archive_dir)?;
         storage::delete_associated_assets(current_path)?;
 
         std::fs::write(&new_path, &cleaned_content).map_err(|e| e.to_string())?;

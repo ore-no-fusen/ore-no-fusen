@@ -176,7 +176,7 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
 pub async fn get_access_token(client: &Client) -> Result<String, String> {
     let path = get_token_path();
     if !path.exists() {
-        return Err("OAuth not configured. Run fusen_oauth_connect first.".to_string());
+        return Err("Googleアカウントが接続されていません。設定画面から再接続してください。".to_string());
     }
 
     let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -203,6 +203,10 @@ pub async fn get_access_token(client: &Client) -> Result<String, String> {
             .send()
             .await
             .map_err(|e| e.to_string())?;
+
+        if !resp.status().is_success() {
+            return Err("Googleの認証が切れました。設定画面から再接続してください。".to_string());
+        }
 
         let body: TokenRefreshResponse = resp.json().await.map_err(|e| e.to_string())?;
         let expires_at = body.expires_in.map(|s| chrono::Utc::now().timestamp() + s);

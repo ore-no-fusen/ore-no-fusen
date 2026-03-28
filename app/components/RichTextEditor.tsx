@@ -143,7 +143,8 @@ const imagePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged) {
+        const filePathChanged = update.startState.facet(filePathFacet) !== update.state.facet(filePathFacet);
+        if (update.docChanged || update.viewportChanged || filePathChanged) {
             this.decorations = this.computeDecorations(update.view);
         }
     }
@@ -1088,7 +1089,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     imagePreviewPlugin,  // [NEW]
                     highlightSelectionMatches(), // [NEW] 選択テキストのハイライト
                     search({ top: false }), // [NEW] 検索ハイライト用（パネル非表示）
-                    filePathFacet.of(filePath), // [NEW] Inject filePath
+                    filePathCompartment.current.of(filePathFacet.of(filePath)), // [NEW] Inject filePath (compartment for dynamic updates)
                     ...(isNewNote ? [
                         // 新規付箋の場合のみinit()でtrueを注入
                         placeholderFlagField.init(() => true)

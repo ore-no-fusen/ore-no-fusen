@@ -598,15 +598,18 @@ const StickyNote = memo(function StickyNote() {
                 isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
 
+                let promotedBody: string | undefined;
                 if (event.payload.isNew) {
                     setIsNewState(true);
                     if (event.payload.frontmatter !== undefined) {
                         setRawFrontmatter(event.payload.frontmatter);
-                        setContent(event.payload.content || '');
+                        promotedBody = event.payload.content || '';
+                        setContent(promotedBody);
                     } else if (event.payload.content) {
                         const { front, body } = splitFrontMatter(event.payload.content);
                         setRawFrontmatter(front);
-                        setContent(body);
+                        promotedBody = body;
+                        setContent(promotedBody);
                     }
                 }
 
@@ -620,6 +623,11 @@ const StickyNote = memo(function StickyNote() {
 
                 // 待機中にフォーカスが外れて編集モードが解除されている可能性があるため、明示的に編集モードを開始
                 startEditing();
+                // [FIX] startEditing() は stale な initialContent（""）で editBody を上書きするため、
+                // 複製・新規ノートのコンテンツを直接 setEditBody で反映する。
+                if (promotedBody !== undefined) {
+                    setEditBody(promotedBody);
+                }
 
                 // ウィンドウの表示・サイズ・位置をRust側でまとめて設定する。
                 // JS側から個別に設定すると順序のズレでクラッシュするため、Rust側で一括処理している。
@@ -1481,6 +1489,7 @@ const StickyNote = memo(function StickyNote() {
                         isCapturingRef.current = true;
                         await captureScreen();
                         isCapturingRef.current = false;
+                        await endEditing();
                     }}
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}

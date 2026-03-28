@@ -359,32 +359,53 @@ export function useStickyNoteContextMenu({
             }));
 
             // アーカイブ
-            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-            menuItems.push(await MenuItem.new({
-                id: 'ctx_archive',
-                text: `📦 ${t('menu.archive')}`,
-                action: async () => {
-                    try {
-                        if (!selectedFile) return;
-
-                        // 保存処理をブロック
-                        isDeletingRef.current = true;
-
-                        await saveNoteContent(editBody, rawFrontmatter, false);
-                        await playSaveSound();
-                        await invoke('fusen_archive_note', { path: selectedFile.path });
-
-                        // destroy() はCloseRequestedを発火しないため、アプリ終了を誘発しない
-                        const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
-                        await win.hide();
-                        await win.destroy();
-                    } catch (e) {
-                        isDeletingRef.current = false;
-                        console.error('Failed to archive note:', e);
-                        alert(`${t('menu.archive_failed')}\n${e}`);
-                    }
+            const doArchive = async (targetTag?: string) => {
+                try {
+                    if (!selectedFile) return;
+                    isDeletingRef.current = true;
+                    await saveNoteContent(editBody, rawFrontmatter, false);
+                    await playSaveSound();
+                    await invoke('fusen_archive_note', { path: selectedFile.path, targetTag: targetTag ?? null });
+                    const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
+                    await win.hide();
+                    await win.destroy();
+                } catch (e) {
+                    isDeletingRef.current = false;
+                    console.error('Failed to archive note:', e);
+                    alert(`${t('menu.archive_failed')}\n${e}`);
                 }
-            }));
+            };
+
+            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            if (currentTags.length > 1) {
+                // 複数タグ: サブメニューで移動先を選択
+                const archiveSubItems: any[] = [];
+                for (const tag of currentTags) {
+                    archiveSubItems.push(await MenuItem.new({
+                        id: `ctx_archive_tag_${tag}`,
+                        text: `🏷️ ${tag}`,
+                        action: () => doArchive(tag)
+                    }));
+                }
+                archiveSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                archiveSubItems.push(await MenuItem.new({
+                    id: 'ctx_archive_no_tag',
+                    text: `📁 Archive（タグなし）`,
+                    action: () => doArchive(undefined)
+                }));
+                menuItems.push(await Submenu.new({
+                    id: 'ctx_archive_submenu',
+                    text: `📦 ${t('menu.archive')}`,
+                    items: archiveSubItems
+                }));
+            } else {
+                // 0 or 1タグ: 従来通り直接実行
+                menuItems.push(await MenuItem.new({
+                    id: 'ctx_archive',
+                    text: `📦 ${t('menu.archive')}`,
+                    action: () => doArchive()
+                }));
+            }
 
             // 削除
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
