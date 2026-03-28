@@ -4,13 +4,28 @@ milestone: v2.0
 milestone_name: iPhone連携
 status: ready_to_plan
 stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-03-23T11:25:46.280Z"
+last_updated: "2026-03-28T22:12:39.166Z"
 last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 17
-  completed_plans: 16
+  completed_plans: 17
+---
+
+---
+gsd_state_version: 1.0
+milestone: v2.0
+milestone_name: iPhone連携
+status: ready_to_plan
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-03-29T00:00:00.000Z"
+last_activity: 2026-03-29 — Phase 05 完了（A〜Cフロー実機確認済み）
+progress:
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 17
+  completed_plans: 17
 ---
 
 ---
@@ -33,16 +48,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** すぐ書けて、そこに残る。それだけ確実に動く。
-**Current focus:** v2.0 iPhone連携 — Phase 4 開始待ち
+**Current focus:** v3.0 iPhone→PC送信 — Phase 6 計画待ち
 
 ## Current Position
 
-Phase: 4 of 5 (Hono API基盤)
-Plan: — (未開始)
-Status: Ready to plan
-Last activity: 2026-03-23 — v2.0 ロードマップ作成完了
+Phase: — (v2.0完了・v3.0未開始)
+Plan: —
+Status: Between milestones
+Last activity: 2026-03-29 — v2.0 iPhone連携 完了・アーカイブ済み
 
-Progress: [██░░░░░░░░] 20% (v1.0 Phases 1-3 完了済み)
+Progress: [████████████████████] 100% (v2.0 全5フェーズ完了)
 
 ## Performance Metrics
 
