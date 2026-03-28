@@ -57,6 +57,8 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
     // [H-1 Safe Guard] 最初のロード完了前に空ボディで保存することを防ぐ
     // 新規ノートは最初から空で意図的なのでフラグをtrueで初期化する
     const hasLoadedRef = useRef(isNew);
+    // プール窓がisNew=trueに昇格した場合に同期（初期値はfalseだったため）
+    if (isNew && !hasLoadedRef.current) hasLoadedRef.current = true;
 
     /**
      * ノートファイルを読み込む

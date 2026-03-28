@@ -79,7 +79,7 @@ const StickyNote = memo(function StickyNote() {
     );
 
 
-    const [isNewNote, setIsNewNote] = useState(false);
+    const [isNewNote, setIsNewNote] = useState(isNew);
 
     // フローティングフォーマットバー
     const [floatBarCoords, setFloatBarCoords] = useState<{ top: number; left: number; flip?: boolean } | null>(null);
@@ -601,6 +601,7 @@ const StickyNote = memo(function StickyNote() {
                 let promotedBody: string | undefined;
                 if (event.payload.isNew) {
                     setIsNewState(true);
+                    setIsNewNote(true);
                     if (event.payload.frontmatter !== undefined) {
                         setRawFrontmatter(event.payload.frontmatter);
                         promotedBody = event.payload.content || '';
@@ -1313,7 +1314,7 @@ const StickyNote = memo(function StickyNote() {
     /**
      * コンテキストメニュー処理（外部hook）
      */
-    useStickyNoteContextMenu({
+    const { handleDeleteNote } = useStickyNoteContextMenu({
         selectedFile,
         t,
         language,
@@ -1360,6 +1361,12 @@ const StickyNote = memo(function StickyNote() {
                 e.preventDefault();
                 emit('fusen:open_search');
             }
+            // Ctrl+Delete: このメモを削除
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                e.preventDefault();
+                await handleDeleteNote();
+                return;
+            }
             // [New] Ctrl+N: 新規付箋作成
             if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
                 e.preventDefault();
@@ -1390,7 +1397,7 @@ const StickyNote = memo(function StickyNote() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedFile]);
+    }, [selectedFile, handleDeleteNote]);
 
     // ============================================================
     // レンダリング

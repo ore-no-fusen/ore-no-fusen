@@ -339,7 +339,7 @@ pub fn build_create_note_data(folder_path: &str, context: &str, next_seq: i32, t
     let path_str = path.to_string_lossy().to_string();
     
     let frontmatter = generate_frontmatter(next_seq, context, today, today, Some("#f7e9b0"), &[], None);
-    let body = "ここにコンテキストを書く！".to_string();
+    let body = "".to_string();
     let content = format!("{}\n\n{}", frontmatter, body);
     
     let meta = NoteMeta {
@@ -894,7 +894,7 @@ backgroundColor: #f7e9b0
         // コンテンツにフロントマターと本文が含まれる
         assert!(data.content.contains("---"));
         assert!(data.content.contains("seq: 42"));
-        assert!(data.content.contains("ここにコンテキストを書く！"));
+        assert!(data.body.is_empty());
     }
 
     // === AppState ヘルパー関数のテスト ===

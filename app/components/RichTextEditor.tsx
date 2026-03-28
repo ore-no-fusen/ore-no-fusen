@@ -342,6 +342,7 @@ function buildDecorations(state: EditorState): DecorationSet {
     return Decoration.set(decorations, true);
 }
 
+
 // [NEW] Placeholder StateField for new notes only
 // Tracks whether to show placeholder (disabled on first docChanged)
 // NOTE: StateField is pure logic - does NOT reference React props
@@ -1092,7 +1093,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     filePathCompartment.current.of(filePathFacet.of(filePath)), // [NEW] Inject filePath (compartment for dynamic updates)
                     ...(isNewNote ? [
                         // 新規付箋の場合のみinit()でtrueを注入
-                        placeholderFlagField.init(() => true)
+                        placeholderFlagField.init(() => true),
                     ] : []),
                     // 変更検知・選択変化検知
                     EditorView.updateListener.of((update: ViewUpdate) => {
@@ -1342,6 +1343,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             effects: filePathCompartment.current.reconfigure(filePathFacet.of(filePath))
         });
     }, [filePath]);
+
 
     useEffect(() => {
         if (!viewRef.current) return;

@@ -71,6 +71,23 @@ export function useStickyNoteContextMenu({
     // showContextMenu を ref 化: リスナーが showContextMenu の再生成のたびに再登録されるのを防ぐ
     const showContextMenuRef = useRef<(x: number, y: number) => Promise<void>>(() => Promise.resolve());
 
+    // 削除
+    const handleDeleteNote = useCallback(async () => {
+        if (!selectedFile) return;
+        try {
+            isDeletingRef.current = true;
+            await playDeleteSound();
+            await invoke('fusen_move_to_trash', { path: selectedFile.path });
+            const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
+            await win.hide();
+            await win.destroy();
+        } catch (e) {
+            isDeletingRef.current = false;
+            console.error('Failed to delete note:', e);
+            alert(`削除に失敗しました\n${e}`);
+        }
+    }, [selectedFile, isDeletingRef]);
+
     // フォルダを開く
     const handleOpenFolder = useCallback(async () => {
         if (!selectedFile) return;
@@ -174,7 +191,7 @@ export function useStickyNoteContextMenu({
             // 新規メモ作成
             const newNoteItem = await MenuItem.new({
                 id: 'ctx_new_note',
-                text: `✨ ${t('menu.newNote')}`,
+                text: `✨ ${t('menu.newNote')}  Ctrl+N`,
                 action: async () => {
                     try {
                         if (!selectedFile) return;
@@ -411,31 +428,8 @@ export function useStickyNoteContextMenu({
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_delete',
-                text: `🗑️ ${t('menu.delete')}`,
-                action: async () => {
-                    try {
-                        if (!selectedFile) return;
-
-                        // 保存処理をブロック
-                        isDeletingRef.current = true;
-
-                        await playDeleteSound();
-                        console.log('[Delete] invoking fusen_move_to_trash');
-                        await invoke('fusen_move_to_trash', { path: selectedFile.path });
-                        console.log('[Delete] Success from backend');
-
-                        // destroy() はCloseRequestedを発火しないため、アプリ終了を誘発しない
-                        const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
-                        console.log('[Delete] Hiding and Closing window...');
-                        await win.hide();
-                        await win.destroy();
-                        console.log('[Delete] Destroyed');
-                    } catch (e) {
-                        isDeletingRef.current = false;
-                        console.error('Failed to delete note:', e);
-                        alert(`${t('menu.delete_failed')}\n${e}`);
-                    }
-                }
+                text: `🗑️ ${t('menu.delete')}  Ctrl+D`,
+                action: handleDeleteNote
             }));
 
 
@@ -477,5 +471,5 @@ export function useStickyNoteContextMenu({
         }
     }, [isTagDeleteMode]); // showContextMenu は ref 経由
 
-    return { showContextMenu };
+    return { showContextMenu, handleDeleteNote };
 }
