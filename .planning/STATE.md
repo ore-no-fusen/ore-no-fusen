@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 06-iphone-send-ui-01-PLAN.md
-last_updated: "2026-03-29T08:18:34.252Z"
+stopped_at: Completed 06-iphone-send-ui-02-PLAN.md
+last_updated: "2026-03-29T08:29:24.751Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
-  percent: 20
+  completed_plans: 2
+  percent: 40
 ---
 
 ---
@@ -45,7 +45,7 @@ Status: Ready to plan
 Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
 
 **Progress:**
-[██░░░░░░░░] 20%
+[████░░░░░░] 40%
 Phase 6 [          ] 0%
 Phase 7 [          ] 0%
 Overall [          ] 0%
@@ -71,6 +71,7 @@ Overall [          ] 0%
 | 4. Rust バックエンド（Drive+APNs） | 5/5 | Complete |
 | 5. iPhone PWA + Rust送信 | 5/5 | Complete |
 | Phase 06-iphone-send-ui P01 | 10 | 1 tasks | 1 files |
+| Phase 06-iphone-send-ui P02 | 15 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,8 @@ Overall [          ] 0%
 - [Phase 05-iphone-pwa-rust-soshin]: ESLint @typescript-eslint/* rule comments removed: eslint-config-next does not include @typescript-eslint/eslint-plugin
 - [Phase 05-iphone-pwa-rust-soshin]: selectedFile が null のときは invoke を呼ばない（null チェック必須）
 - [Phase 06-iphone-send-ui]: Wave 0 先行スタブパターン: Nyquist ルール準拠で Phase 6 全テスト(22件)を実装前に定義
+- [Phase 06-iphone-send-ui]: push完了後/note消去後はsetStep('write') — writeがホーム画面になる
+- [Phase 06-iphone-send-ui]: Mermaidモーダル UI は Plan 04 に委ねる（showMermaidModal state と呼び出しのみ追加）
 
 ### Pending Todos
 
@@ -127,8 +130,8 @@ Overall [          ] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-29T08:18:34.247Z
-Stopped at: Completed 06-iphone-send-ui-01-PLAN.md
+Last session: 2026-03-29T08:29:24.744Z
+Stopped at: Completed 06-iphone-send-ui-02-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed

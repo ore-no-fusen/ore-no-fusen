@@ -80,5 +80,5 @@ Plans:
 | 3. 確認・検証 | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 4. Rust バックエンド（Drive+APNs） | v2.0 | 5/5 | Complete | 2026-03-23 |
 | 5. iPhone PWA + Rust送信 | v2.0 | 5/5 | Complete | 2026-03-29 |
-| 6. iPhone送信UI | 1/5 | In Progress|  | — |
+| 6. iPhone送信UI | 2/5 | In Progress|  | — |
 | 7. PC受信 | v3.0 | 0/? | Not started | — |
