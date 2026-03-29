@@ -198,6 +198,7 @@ export default function ViewerPage() {
   const [swReady, setSwReady] = useState(false);
   const [writeTitle, setWriteTitle] = useState('');
   const [writeBody, setWriteBody] = useState('');
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [sendSuccess, setSendSuccess] = useState(false);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -510,6 +511,21 @@ export default function ViewerPage() {
               className="flex-1 px-4 py-3 text-base outline-none resize-none"
             />
 
+            {/* 添付画像サムネイル */}
+            {attachedImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-4 py-2 border-t border-gray-100">
+                {attachedImages.map((b64, i) => (
+                  <div key={i} className="relative">
+                    <img src={b64} className="w-16 h-16 object-cover rounded" alt="" />
+                    <button
+                      className="absolute -top-1 -right-1 w-5 h-5 bg-gray-600 text-white rounded-full text-xs leading-none"
+                      onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* 添付ツールバー */}
             <div className="flex gap-3 px-4 py-2 border-t border-gray-100">
               <button
@@ -532,12 +548,10 @@ export default function ViewerPage() {
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
-                  if (!file || !textareaRef.current) return;
+                  if (!file) return;
                   try {
                     const base64 = await resizeImageToBase64(file);
-                    const insertion = `![](${base64})`;
-                    const newBody = insertAtCursor(textareaRef.current, insertion);
-                    setWriteBody(newBody);
+                    setAttachedImages((prev) => [...prev, base64]);
                   } catch {
                     setErrorMessage('画像の処理に失敗しました');
                   } finally {
@@ -565,14 +579,16 @@ export default function ViewerPage() {
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
+                    const fullBody = writeBody + attachedImages.map((b64) => `\n![](${b64})`).join('');
                     const note: IphoneNote = {
                       id: crypto.randomUUID(),
                       status: 'draft',
                       title: writeTitle,
-                      body: writeBody,
+                      body: fullBody,
                       created_at: new Date().toISOString(),
                     };
                     await saveToHistory(accessToken, note);
+                    setAttachedImages([]);
                     setStep('list');
                   } catch (err: unknown) {
                     setErrorMessage('保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -594,23 +610,25 @@ export default function ViewerPage() {
                   try {
                     const noteId = crypto.randomUUID();
                     const sentAt = new Date().toISOString();
+                    const fullBody = writeBody + attachedImages.map((b64) => `\n![](${b64})`).join('');
                     await uploadWithAutoRefresh(accessToken, 'fusen_from_iphone.json', {
                       id: noteId,
                       title: writeTitle,
-                      body: writeBody,
+                      body: fullBody,
                       sent_at: sentAt,
                     });
                     const note: IphoneNote = {
                       id: noteId,
                       status: 'sent',
                       title: writeTitle,
-                      body: writeBody,
+                      body: fullBody,
                       created_at: sentAt,
                       sent_at: sentAt,
                     };
                     await saveToHistory(accessToken, note);
                     setWriteTitle('');
                     setWriteBody('');
+                    setAttachedImages([]);
                     setSendSuccess(true);
                     setTimeout(() => setSendSuccess(false), 3000);
                   } catch (err: unknown) {
@@ -750,16 +768,16 @@ export default function ViewerPage() {
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <span
-                          className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                          className={`text-sm font-semibold px-2 py-0.5 rounded ${
                             note.status === 'sent'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-yellow-100 text-yellow-700'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-yellow-400 text-gray-900'
                           }`}
                         >
                           {note.status === 'sent' ? '送信済み' : '下書き'}
                         </span>
-                        <span className="text-xs text-gray-400">
-                          {formatRelativeTime(note.created_at)}
+                        <span className="text-sm text-gray-500">
+                          {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
                         </span>
                       </div>
                       <p className="text-sm text-gray-700 truncate">
