@@ -129,6 +129,44 @@ async function refreshAccessToken(): Promise<string | null> {
   return newToken;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 6 型定義
+// ---------------------------------------------------------------------------
+
+type IphoneNote = {
+  id: string;
+  status: 'sent' | 'draft';
+  title: string;
+  body: string;
+  created_at: string;
+  sent_at?: string;
+};
+
+// Drive 書き込み（トークン期限切れ時に自動リフレッシュ）
+async function uploadWithAutoRefresh(
+  token: string,
+  fileName: string,
+  data: object
+): Promise<void> {
+  try {
+    await uploadToDrive(token, fileName, data);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    await uploadToDrive(newToken, fileName, data);
+  }
+}
+
+// iPhone 履歴への追記（最新50件上限、ID重複排除）
+async function saveToHistory(token: string, note: IphoneNote): Promise<void> {
+  const existing: IphoneNote[] = await downloadFromDrive(token, 'fusen_iphone_notes.json')
+    .then((data) => data.notes ?? [])
+    .catch(() => []);
+  const filtered = existing.filter((n) => n.id !== note.id);
+  const updated = [note, ...filtered].slice(0, 50);
+  await uploadWithAutoRefresh(token, 'fusen_iphone_notes.json', { notes: updated });
+}
+
 // Drive ダウンロード（トークン期限切れ時に自動リフレッシュ）
 function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: string }> {
   return downloadFromDrive(token, 'fusen_note.json').catch(() =>
@@ -146,7 +184,7 @@ function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: 
 export default function ViewerPage() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [step, setStep] = useState<
-    'banner' | 'login' | 'push' | 'ready' | 'note'
+    'banner' | 'login' | 'push' | 'ready' | 'write' | 'list' | 'note'
   >('banner');
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [noteData, setNoteData] = useState<{
@@ -280,7 +318,11 @@ export default function ViewerPage() {
     // 通常フロー（セットアップ）
     if (token) {
       setAccessToken(token);
-      setStep('push');
+      if (localStorage.getItem('viewer_push_done') === 'true') {
+        setStep('write');
+      } else {
+        setStep('push');
+      }
     } else {
       setStep('login');
     }
@@ -382,7 +424,8 @@ export default function ViewerPage() {
                       endpoint,
                       keys,
                     });
-                    setStep('ready');
+                    localStorage.setItem('viewer_push_done', 'true');
+                    setStep('write');
                   } catch (err: unknown) {
                     const msg = err instanceof Error ? err.message : String(err);
                     setErrorMessage('通知設定に失敗しました: ' + msg);
@@ -423,7 +466,7 @@ export default function ViewerPage() {
                     notifications.forEach((n) => n.close());
                   });
                 });
-                setStep('ready');
+                setStep('write');
               }}
             >
               消す
