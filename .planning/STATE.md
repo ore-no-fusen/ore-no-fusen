@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 06-iphone-send-ui-02-PLAN.md
-last_updated: "2026-03-29T08:29:24.751Z"
+stopped_at: Completed 06-iphone-send-ui-03-PLAN.md
+last_updated: "2026-03-29T08:37:02.051Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
-  percent: 40
+  completed_plans: 3
+  percent: 60
 ---
 
 ---
@@ -45,7 +45,7 @@ Status: Ready to plan
 Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
 
 **Progress:**
-[████░░░░░░] 40%
+[██████░░░░] 60%
 Phase 6 [          ] 0%
 Phase 7 [          ] 0%
 Overall [          ] 0%
@@ -72,6 +72,7 @@ Overall [          ] 0%
 | 5. iPhone PWA + Rust送信 | 5/5 | Complete |
 | Phase 06-iphone-send-ui P01 | 10 | 1 tasks | 1 files |
 | Phase 06-iphone-send-ui P02 | 15 | 2 tasks | 1 files |
+| Phase 06-iphone-send-ui P03 | 10 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,8 @@ Overall [          ] 0%
 - [Phase 06-iphone-send-ui]: Wave 0 先行スタブパターン: Nyquist ルール準拠で Phase 6 全テスト(22件)を実装前に定義
 - [Phase 06-iphone-send-ui]: push完了後/note消去後はsetStep('write') — writeがホーム画面になる
 - [Phase 06-iphone-send-ui]: Mermaidモーダル UI は Plan 04 に委ねる（showMermaidModal state と呼び出しのみ追加）
+- [Phase 06-iphone-send-ui]: resizeImageToBase64 と insertAtCursor は export キーワード追加のみで最小変更を実現（別ファイル分離は不要）
+- [Phase 06-iphone-send-ui]: Canvas テスト: HTMLCanvasElement.prototype.toDataURL モックは getContext モックに加えて必須（canvas.toDataURL() 呼び出しパス対応）
 
 ### Pending Todos
 
@@ -130,8 +133,8 @@ Overall [          ] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-29T08:29:24.744Z
-Stopped at: Completed 06-iphone-send-ui-02-PLAN.md
+Last session: 2026-03-29T08:37:02.045Z
+Stopped at: Completed 06-iphone-send-ui-03-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
