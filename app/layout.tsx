@@ -13,7 +13,7 @@ import Script from "next/script";   // ← 追加
 import "./shadcn.css";
 import "./globals.css";
 import RegisterPWA from "./RegisterPWA";
-import { Analytics } from "@vercel/analytics/react";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   title: "俺の付箋",
