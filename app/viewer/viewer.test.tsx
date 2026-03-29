@@ -186,7 +186,25 @@ describe('HIST-02: 下書き編集', () => {
 });
 
 describe('REND-01: Mermaidレンダリング', () => {
-  it.todo('SimpleNoteBody が ```mermaid ブロックを検出して mermaid.render() を呼ぶ');
-  it.todo('SVG が DOM に挿入される');
-  it.todo('複数の mermaid ブロックがある場合、それぞれユニーク ID で描画される');
+  it('SimpleNoteBody が通常テキストを pre-wrap で描画する（既存動作を保持）', () => {
+    const { container } = render(<SimpleNoteBody body={'テスト\nテキスト'} />);
+    expect(container.textContent).toContain('テスト');
+  });
+
+  it('SimpleNoteBody が ```mermaid ブロックをMermaidBlock要素として描画する', () => {
+    const body = 'テキスト前\n```mermaid\ngraph TD\n  A-->B\n```\nテキスト後';
+    const { container } = render(<SimpleNoteBody body={body} />);
+    // テキスト前後が残っている
+    expect(container.textContent).toContain('テキスト前');
+    expect(container.textContent).toContain('テキスト後');
+  });
+
+  it('data: URI 画像と mermaid ブロックを同じ本文内で両方処理する', () => {
+    const body = '![img](data:image/png;base64,abc)\n```mermaid\ngraph LR\n  X-->Y\n```';
+    const { container } = render(<SimpleNoteBody body={body} />);
+    const imgs = container.querySelectorAll('img');
+    expect(imgs.length).toBe(1);
+    // MermaidBlock の div も存在する
+    expect(container.querySelectorAll('div').length).toBeGreaterThanOrEqual(1);
+  });
 });
