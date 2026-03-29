@@ -46,13 +46,33 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
+const APP_FOLDER_NAME = 'ore-no-fusen';
+
+async function getAppFolderId(accessToken: string): Promise<string> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='${APP_FOLDER_NAME}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await res.json();
+  if (data.files?.[0]?.id) return data.files[0].id;
+  // フォルダが存在しない場合は作成
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: APP_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }),
+  });
+  const created = await createRes.json();
+  return created.id;
+}
+
 async function uploadToDrive(
   accessToken: string,
   fileName: string,
   data: object
 ) {
+  const folderId = await getAppFolderId(accessToken);
   const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'+and+trashed=false`,
+    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'+and+'${folderId}'+in+parents+and+trashed=false`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const searchData = await searchRes.json();
@@ -65,7 +85,7 @@ async function uploadToDrive(
     form.append('metadata', new Blob([updateMeta], { type: 'application/json' }));
     form.append('file', fileBlob);
     await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&addParents=root`,
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -73,7 +93,7 @@ async function uploadToDrive(
       }
     );
   } else {
-    const createMeta = JSON.stringify({ name: fileName, mimeType: 'application/json', parents: ['root'] });
+    const createMeta = JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [folderId] });
     const form = new FormData();
     form.append('metadata', new Blob([createMeta], { type: 'application/json' }));
     form.append('file', fileBlob);
@@ -89,8 +109,9 @@ async function uploadToDrive(
 }
 
 async function downloadFromDrive(accessToken: string, fileName: string) {
+  const folderId = await getAppFolderId(accessToken);
   const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'+and+trashed=false`,
+    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'+and+'${folderId}'+in+parents+and+trashed=false`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const searchData = await searchRes.json();
