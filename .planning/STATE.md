@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 06-iphone-send-ui-03-PLAN.md
-last_updated: "2026-03-29T08:37:02.051Z"
+stopped_at: Completed 06-iphone-send-ui-04-PLAN.md
+last_updated: "2026-03-29T08:51:51.953Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 5
-  completed_plans: 3
-  percent: 60
+  completed_plans: 4
+  percent: 80
 ---
 
 ---
@@ -45,7 +45,7 @@ Status: Ready to plan
 Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
 
 **Progress:**
-[██████░░░░] 60%
+[████████░░] 80%
 Phase 6 [          ] 0%
 Phase 7 [          ] 0%
 Overall [          ] 0%
@@ -73,6 +73,7 @@ Overall [          ] 0%
 | Phase 06-iphone-send-ui P01 | 10 | 1 tasks | 1 files |
 | Phase 06-iphone-send-ui P02 | 15 | 2 tasks | 1 files |
 | Phase 06-iphone-send-ui P03 | 10 | 1 tasks | 2 files |
+| Phase 06-iphone-send-ui P04 | 12 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,8 @@ Overall [          ] 0%
 - [Phase 06-iphone-send-ui]: Mermaidモーダル UI は Plan 04 に委ねる（showMermaidModal state と呼び出しのみ追加）
 - [Phase 06-iphone-send-ui]: resizeImageToBase64 と insertAtCursor は export キーワード追加のみで最小変更を実現（別ファイル分離は不要）
 - [Phase 06-iphone-send-ui]: Canvas テスト: HTMLCanvasElement.prototype.toDataURL モックは getContext モックに加えて必須（canvas.toDataURL() 呼び出しパス対応）
+- [Phase 06-iphone-send-ui]: Mermaidモーダルはインライン JSX として page.tsx に実装（別ファイル分離不要）
+- [Phase 06-iphone-send-ui]: SimpleNoteBody は mermaid/img 両方を segments 配列に収集してソート後に描画
 
 ### Pending Todos
 
@@ -133,8 +136,8 @@ Overall [          ] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-29T08:37:02.045Z
-Stopped at: Completed 06-iphone-send-ui-03-PLAN.md
+Last session: 2026-03-29T08:51:51.948Z
+Stopped at: Completed 06-iphone-send-ui-04-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
