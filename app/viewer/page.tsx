@@ -240,6 +240,8 @@ export default function ViewerPage() {
   const [writeTitle, setWriteTitle] = useState('');
   const [writeBody, setWriteBody] = useState('');
   const [sendSuccess, setSendSuccess] = useState(false);
+  const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const [mermaidCode, setMermaidCode] = useState('');
   const [mermaidPreviewSvg, setMermaidPreviewSvg] = useState<string | null>(null);
@@ -381,6 +383,15 @@ export default function ViewerPage() {
       setStep('login');
     }
   }, []);
+
+  useEffect(() => {
+    if (step !== 'list' || !accessToken) return;
+    setIsHistoryLoading(true);
+    downloadFromDrive(accessToken, 'fusen_iphone_notes.json')
+      .then((data) => setHistoryNotes((data.notes ?? []).slice(0, 10)))
+      .catch(() => setHistoryNotes([]))
+      .finally(() => setIsHistoryLoading(false));
+  }, [step, accessToken]);
 
   // ローディング表示
   if (isLoading) {
@@ -738,6 +749,68 @@ export default function ViewerPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {step === 'list' && (
+          <div className="flex flex-col min-h-[100dvh] bg-white">
+            {/* ヘッダー */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <button
+                className="text-blue-600 text-sm font-medium"
+                onClick={() => setStep('write')}
+              >
+                ← 戻る
+              </button>
+              <span className="font-semibold text-gray-900">履歴</span>
+              <div className="w-12" />
+            </div>
+
+            {/* コンテンツ */}
+            <div className="flex-1 overflow-y-auto">
+              {isHistoryLoading ? (
+                <p className="text-center text-gray-400 py-8 text-sm">読み込み中...</p>
+              ) : historyNotes.length === 0 ? (
+                <p className="text-center text-gray-400 py-8 text-sm">まだ履歴がありません</p>
+              ) : (
+                <ul>
+                  {historyNotes.map((note) => (
+                    <li
+                      key={note.id}
+                      className={`px-4 py-3 border-b border-gray-100 ${
+                        note.status === 'draft'
+                          ? 'cursor-pointer active:bg-gray-50'
+                          : 'cursor-default'
+                      }`}
+                      onClick={() => {
+                        if (note.status !== 'draft') return;
+                        setWriteTitle(note.title);
+                        setWriteBody(note.body);
+                        setStep('write');
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span
+                          className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                            note.status === 'sent'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}
+                        >
+                          {note.status === 'sent' ? '送信済み' : '下書き'}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {formatRelativeTime(note.created_at)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700 truncate">
+                        {(note.title || note.body).slice(0, 20) || '（空のメモ）'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 
