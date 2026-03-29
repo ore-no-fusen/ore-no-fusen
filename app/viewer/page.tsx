@@ -58,11 +58,12 @@ async function uploadToDrive(
   const searchData = await searchRes.json();
   const fileId = searchData.files?.[0]?.id;
   const body = JSON.stringify(data);
-  const meta = JSON.stringify({ name: fileName, mimeType: 'application/json' });
-  const form = new FormData();
-  form.append('metadata', new Blob([meta], { type: 'application/json' }));
-  form.append('file', new Blob([body], { type: 'application/json' }));
+  const fileBlob = new Blob([body], { type: 'application/json' });
   if (fileId) {
+    const updateMeta = JSON.stringify({ name: fileName, mimeType: 'application/json' });
+    const form = new FormData();
+    form.append('metadata', new Blob([updateMeta], { type: 'application/json' }));
+    form.append('file', fileBlob);
     await fetch(
       `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
       {
@@ -72,6 +73,10 @@ async function uploadToDrive(
       }
     );
   } else {
+    const createMeta = JSON.stringify({ name: fileName, mimeType: 'application/json', parents: ['root'] });
+    const form = new FormData();
+    form.append('metadata', new Blob([createMeta], { type: 'application/json' }));
+    form.append('file', fileBlob);
     await fetch(
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
       {
