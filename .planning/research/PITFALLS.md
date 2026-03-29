@@ -1,171 +1,224 @@
 # Pitfalls Research
 
-**Domain:** iPhone連携 — Web Push (VAPID/APNs) + Google Drive API + Hono + PWA Service Worker
-**Researched:** 2026-03-23
-**Confidence:** MEDIUM (training data ~Aug 2025; WebSearch/WebFetch unavailable — verify flagged items against current Apple/Google docs)
+**Domain:** iPhone→PC双方向同期 — Drive polling background task + PWA image handling + Rust async spawn
+**Researched:** 2026-03-29
+**Confidence:** HIGH (project codebase + domain knowledge; confirmed against existing implementation patterns)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: iOS Safari の「PWAインストール必須」制約を後から知る
+### Pitfall 1: tokio::spawn を Tauri setup() でブロッキング実行してしまう
 
 **What goes wrong:**
-Chrome/Android では `Notification.requestPermission()` をブラウザ上で直接呼べる。iOS Safari では**ホーム画面に追加（Add to Home Screen）した PWA の中からしか**プッシュ通知の許可ダイアログを出せない。通常のブラウザセッションで `requestPermission()` を呼ぶと即座に拒否（denied）になる。
+Drive ポーリングを `setup()` 内で `tauri::async_runtime::block_on()` または `std::thread::spawn` で起動し、その中でネットワーク待機が発生する。Tauri の `setup()` はメインスレッドで同期的に実行される。ここでブロックすると Tauri ウィンドウが開かないまま数秒フリーズし、最悪タイムアウトでクラッシュする。
 
 **Why it happens:**
-Apple の設計方針。iOS 16.4 で Web Push が解放されたが、ブラウザ内 Web サイトからの無制限プッシュ許可申請を防ぐためにこの制限を維持した（HIGH confidence — 複数の公式 WebKit ブログ・Apple Developer Docs に明記）。
+"バックグラウンドでポーリングしたい" → `setup()` に書くのが直感的に見える。`block_on()` は非同期コードを同期に変換するため、気づかずに使ってしまう。
 
 **How to avoid:**
-- iPhone 側 PWA は `<meta name="apple-mobile-web-app-capable" content="yes">` + `<link rel="manifest">` を必ず設定する
-- 通知許可フローは PWA インストール後のオンボーディング画面で行う
-- `navigator.standalone` をチェックし、PWA として実行されていない場合は「ホーム画面に追加してください」の案内を表示する
-
-**Warning signs:**
-- `Notification.permission` が常に `"denied"` または `"default"` で `requestPermission()` が解決しない
-- iPhone Safari のブラウザタブで動作確認しようとしている
-
-**Phase to address:**
-Phase 1（Hono API 基盤） — manifest.json と PWA メタタグを最初から正しく設定する。後から追加すると Service Worker の scope 問題が連鎖する。
-
----
-
-### Pitfall 2: VAPID の `sub` クレームが Apple の要件を満たしていない
-
-**What goes wrong:**
-VAPID JWT の `sub` フィールドに `mailto:` URI か有効な URL を設定しないと、APNs 経由での Push が HTTP 400/403 で拒否される。多くのライブラリはデフォルトで `sub` を省略するか空文字にする。Chrome (FCM) は `sub` に甘いが APNs は厳格。
-
-**Why it happens:**
-RFC 8292 (VAPID) では `sub` は任意だが、Apple の APNs ゲートウェイは必須として扱う（MEDIUM confidence — Apple Developer Forums と web-push ライブラリの issues から）。
-
-**How to avoid:**
+`tauri::async_runtime::spawn()` を使い、`setup()` に渡すのは起動の予約だけにする。
+```rust
+// setup() 内でこう書く
+let app_handle = app.handle().clone();
+tauri::async_runtime::spawn(async move {
+    drive_poll_loop(app_handle).await;
+});
+// setup() はここで即 return する — ブロックしない
 ```
-VAPID_SUBJECT=mailto:your@email.com
+tokio の features に `"rt-multi-thread"` が必要。現在の `Cargo.toml` は `features = ["rt"]` のみなので `"rt-multi-thread"` を追加する必要がある。
+
+**Warning signs:**
+- アプリ起動後にウィンドウが数秒間真っ白
+- `setup()` 内の `await` や `recv_timeout()` が長い
+
+**Phase to address:**
+Drive ポーリング実装フェーズ（最初にスケルトンを書く段階で正しいパターンを確立する）
+
+---
+
+### Pitfall 2: Drive ポーリングがネットワークエラーで panic してアプリごとクラッシュする
+
+**What goes wrong:**
+`tauri::async_runtime::spawn()` 内の async タスクが `unwrap()` または `?` で早期リターンせず panic する。Tokio のタスク panic はスレッド単位で隔離されるが、Tauri のメインランタイムが終了するとアプリが無応答になる。ポーリングタスクが死ぬとその後ポーリングが二度と動かない（再起動まで）。
+
+**Why it happens:**
+Rust のエラー伝播 (`?`) がタスクのトップレベルで使えないため、`unwrap()` を使いたくなる。ネットワークエラーは「一時的なもの」と思い込みエラーハンドリングを後回しにする。
+
+**How to avoid:**
+ポーリングループ全体を `Result` を返す内部関数にし、タスクのトップレベルでは `loop { if let Err(e) = inner().await { log_error(e); sleep(30s).await; } }` パターンを使う。panic が来ても外側のループで再試行する。
+```rust
+async fn drive_poll_loop(app: AppHandle) {
+    loop {
+        if let Err(e) = poll_once(&app).await {
+            logger::log_error(&format!("[poll] error: {}", e));
+        }
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+}
 ```
-`web-push` (Node.js) を使う場合、`webpush.setVapidDetails(subject, publicKey, privateKey)` の `subject` を必ず `mailto:` か `https://` URL にする。
+既存プロジェクトの `unwrap_or_else(|p| p.into_inner())` パターン（`state.lock()`）を同様にポーリング内でも使う。
 
 **Warning signs:**
-- Chrome/Android では Push が届くのに iPhone だけ届かない
-- Hono エンドポイントは 201 を返しているがデバイスに何も来ない
-- APNs のエラーレスポンスが `"MissingTopic"` または `"BadMessageId"`
+- ポーリングが最初の1回しか動いていない
+- ログに `[poll] error:` が出た後に次のポーリングログが来ない
+- アプリが無応答になる
 
 **Phase to address:**
-Phase 2（VAPID + APNs Push送信）— VAPID 初期化コードを書く最初の時点で `sub` を設定する。
+Drive ポーリング実装フェーズ（エラーハンドリングをスケルトン段階で設計する）
 
 ---
 
-### Pitfall 3: APNs の Push Topic (Bundle ID) 設定ミス
+### Pitfall 3: Drive ポーリングとユーザー操作による重複ノート作成
 
 **What goes wrong:**
-Web Push for Safari は APNs の `apns-topic` ヘッダーに `<bundle-id>.pushkit.fileprovider` ではなく `<bundle-id>` + `.push.web` サフィックスの形式を使う。古い APNs ライブラリや Curl サンプルをそのまま流用すると `BadTopic` エラーになる。
+PC が5秒ごとに Drive の `fusen_iphone_notes.json` をポーリングし、新しいノートを検出してローカルファイルを作成する。同じファイルが2回読まれると（Drive API の応答遅延 + ポーリングタイミングが重なる）、同じノートが2回作成される。
 
 **Why it happens:**
-Safari の Web Push は Native App Push とは異なる APNs トピック命名規則を持つ（HIGH confidence — Apple WWDC 2023 資料・WebKit ブログに明記）。
+Drive の `modifiedTime` を確認するだけでは不十分。Drive API の `files.get` は eventually consistent であり、更新直後は古い `modifiedTime` を返すことがある。また、PC 側でクラッシュ後に再起動した場合、処理済みの既読 ID を覚えていない。
 
 **How to avoid:**
-`web-push` npm ライブラリの最新版（v3.6+）は Safari Web Push の `apns-topic` を自動設定する。独自実装する場合はトピックを `<team-id>.<bundle-id>` 形式で指定し、APNs エンドポイントは production (`api.push.apple.com`) と development (`api.sandbox.push.apple.com`) を使い分ける。
-
-**Warning signs:**
-- APNs が `BadTopic` レスポンスを返す
-- Push が Sandbox では届くが Production では届かない（エンドポイント混在）
-
-**Phase to address:**
-Phase 2（APNs Push 送信）
-
----
-
-### Pitfall 4: Service Worker の scope が Next.js App Router の `app/` ルーティングと衝突する
-
-**What goes wrong:**
-`/service-worker.js` を `public/` に置き、`scope: '/'` で登録すると、Next.js の `app/` ルートへのナビゲーションが Service Worker の fetch ハンドラを通る。静的アセットのキャッシュ戦略を誤ると、Next.js のサーバーコンポーネントへのリクエストがキャッシュ済みの古いレスポンスで返される。
-
-**Why it happens:**
-Service Worker は登録スコープ以下の全リクエストを傍受する。Next.js の RSC ペイロード（`?_rsc=...` クエリ）をキャッシュするとデータが腐る。
-
-**How to avoid:**
-- Service Worker の fetch ハンドラで `/_next/` と `/api/` はキャッシュせず `return fetch(event.request)` で素通し
-- `scope` を Push 通知受信専用なら `/push-sw.js` のようにスコープを狭める
-- `workbox-webpack-plugin` は使わず、手書きの最小 SW で通知受信だけ行う
-
-**Warning signs:**
-- ページ更新後に古いデータが表示される
-- Next.js の `/_next/data/` リクエストがネットワークに出ずキャッシュから返る
-- `chrome://serviceworker-internals` でエラーログが出る
-
-**Phase to address:**
-Phase 1（PWA Service Worker 基盤構築）
-
----
-
-### Pitfall 5: Google Drive API の OAuth トークンを環境変数に直書きして Vercel にデプロイする
-
-**What goes wrong:**
-`refresh_token` を `.env.local` に書き、Vercel の Environment Variables に設定する。初回は動く。しかし Google は refresh token を失効させることがある（consent 再取得、長期未使用、セキュリティイベント）。失効後は Hono エンドポイントが 401 を返すがアラートがなく、ユーザーは Push が来なくなるまで気づかない。
-
-**Why it happens:**
-シングルユーザー前提なのでトークンリフレッシュの仕組みを省略しがち。Google の OAuth 2.0 では `refresh_token` は初回認証時のみ返され、その後の再認証では返されない（`prompt=consent` が必要）。
-
-**How to avoid:**
-- `access_token` + `refresh_token` + `expiry_date` を Google Drive ファイルか Vercel KV に保存し、リクエストごとに有効期限を確認してリフレッシュする
-- `google-auth-library` の `OAuth2Client` を使えば `refreshIfNeeded()` が自動処理する
-- トークンリフレッシュ失敗時は Hono エンドポイントが 503 を返し、Tauri 側でユーザーに再認証を促す
-
-**Warning signs:**
-- Google Drive API が突然 `401 Invalid Credentials` を返す
-- 数週間後に Push が届かなくなる
-
-**Phase to address:**
-Phase 2（Google Drive 連携）— OAuth フローの初回実装時にリフレッシュロジックを含める。
-
----
-
-### Pitfall 6: Hono を Next.js App Router の `route.ts` に統合する際の Edge Runtime 非互換
-
-**What goes wrong:**
-Next.js App Router のデフォルト runtime は Node.js だが、Vercel の Hobby/Pro プランでは Edge Functions の方が起動が速い。Hono は Edge 対応だが、`web-push` ライブラリ（`crypto.subtle` 依存）や `google-auth-library` は Edge Runtime では動かない。途中で runtime を切り替えると import エラーで全体が壊れる。
-
-**Why it happens:**
-Edge Runtime は Web Crypto API のみ使用可。Node.js `crypto` モジュールは使えない。`web-push` と `googleapis` は Node.js `crypto` に依存する。
-
-**How to avoid:**
-`route.ts` の先頭に `export const runtime = 'nodejs'` を明示して最初から固定する。Edge Runtime に切り替える誘惑に負けない。
-
-**Warning signs:**
-- Vercel デプロイ時に `The edge runtime does not support Node.js 'crypto' module` エラー
-- ローカルでは動くが Vercel でクラッシュする
-
-**Phase to address:**
-Phase 1（Hono API 基盤）— `route.ts` 作成時点で runtime を宣言する。
-
----
-
-### Pitfall 7: Push Subscription の endpoint URL を保存せずに VAPID 公開鍵だけ保存する
-
-**What goes wrong:**
-`PushSubscription` オブジェクトは `endpoint`（APNs/FCM のデバイス固有 URL）・`p256dh`・`auth` の3つで構成される。endpoint だけ、または公開鍵だけ保存すると Push を送れない。再サブスクリプション（Service Worker 更新）で endpoint が変わることもある。
-
-**Why it happens:**
-`subscription.toJSON()` を丸ごと保存すれば問題ないが、フィールドを手動でピックするコードでは `endpoint` を忘れがち。
-
-**How to avoid:**
-```typescript
-// Google Drive に保存する JSON はこの形式
+ポーリング後に「処理済みノートID」を AppState（またはローカルファイル）に保存する。Drive JSON に `id` フィールドを持たせ、PC 側は "最後に処理した id" を比較する。
+```rust
+// fusen_iphone_notes.json のスキーマ
 {
-  endpoint: subscription.endpoint,
-  keys: {
-    p256dh: subscription.toJSON().keys?.p256dh,
-    auth: subscription.toJSON().keys?.auth,
+  "notes": [
+    { "id": "uuid", "title": "...", "body": "...", "created_at": "..." }
+  ]
+}
+// PC は最後に処理した created_at または id リストを state に保持
+```
+ポーリング間隔は5秒より長く（30秒程度）して Drive API レート制限（100 req/100s per user）内に収める。
+
+**Warning signs:**
+- 同じタイトルのノートファイルが2つ存在する
+- ファイル名にタイムスタンプが付いていて重複が見える
+- Drive API が 429 を返す
+
+**Phase to address:**
+Drive ポーリング実装フェーズ（Drive JSON スキーマ設計段階で id フィールドを入れる）
+
+---
+
+### Pitfall 4: PWA カメラ画像がそのまま base64 で Drive にアップロードされて容量・速度問題になる
+
+**What goes wrong:**
+iPhone カメラの写真は 3〜12MB。これを `<input type="file" capture>` で取得し、`FileReader.readAsDataURL()` で base64 化すると 4〜16MB のテキストになる。Drive にアップロードするだけで数十秒かかり、その後 PC がポーリングで取得するときも同様に遅い。Drive の 15GB 上限も圧迫する。
+
+**Why it happens:**
+Web API で画像をリサイズする処理は一手間かかるので省略したくなる。base64 はブラウザで完結するため「とりあえず動く」実装として選ばれやすい。
+
+**How to avoid:**
+アップロード前に Canvas でリサイズ＋JPEG 圧縮する。
+```typescript
+async function compressImage(file: File, maxWidth = 1280): Promise<Blob> {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, maxWidth / img.width);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.width * scale;
+  canvas.height = img.height * scale;
+  canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return new Promise(res => canvas.toBlob(b => res(b!), 'image/jpeg', 0.75));
+}
+```
+目標: 1280px幅・JPEG 0.75品質 → 約100〜300KB。Drive に base64 ではなくバイナリ（`image/jpeg`）として保存する。PC 側は Rust の `bytes()` で受け取り、ファイルとして保存する。
+
+**Warning signs:**
+- アップロードに10秒以上かかる
+- Drive の使用量が急増する
+- PC 側のポーリングで JSON デシリアライズが遅い（base64 文字列が大きすぎる）
+
+**Phase to address:**
+PWA 画像投稿フェーズ（最初の実装から圧縮を入れる。後から追加するのはデータ形式変更になり困難）
+
+---
+
+### Pitfall 5: Mermaid.js を Next.js Server Component または SSR で import してクラッシュする
+
+**What goes wrong:**
+`import mermaid from 'mermaid'` を `app/viewer/page.tsx` のトップレベルや Server Component で行うと、`window is not defined` または `document is not defined` でビルドエラー・ランタイムエラーが発生する。Next.js 14 の App Router は `'use client'` でもサーバーサイドで初回レンダリングされるためこの罠に引っかかる。
+
+**Why it happens:**
+Mermaid は `window` と `document` に直接アクセスする。`'use client'` ディレクティブはクライアント専用と思われがちだが、Next.js の App Router では SSR でも実行される。
+
+**How to avoid:**
+`dynamic()` で `ssr: false` を使うか、`useEffect` 内で dynamic import する。
+```typescript
+// 正しいアプローチ
+useEffect(() => {
+  import('mermaid').then(m => {
+    m.default.initialize({ startOnLoad: false });
+    m.default.run({ querySelector: '.mermaid' });
+  });
+}, []);
+```
+または `next/dynamic` で `ssr: false` のラッパーコンポーネントを作る。現在の `SimpleNoteBody.tsx` がどう実装されているか確認してからアプローチを決める。
+
+**Warning signs:**
+- `Error: window is not defined` at build time または runtime
+- Vercel ビルドは成功するが `/viewer` ページがブランクになる
+- `next build` の console に mermaid 関連の警告
+
+**Phase to address:**
+ノート表示フェーズ（Mermaid を viewer に追加する際に最初から dynamic import を使う）
+
+---
+
+### Pitfall 6: iPhone 側の Drive アクセストークンが期限切れでサイレント失敗する
+
+**What goes wrong:**
+iPhone PWA の `viewer_access_token` は localStorage に保存されている（既存実装確認済み）。有効期限は1時間。ユーザーがアプリを数時間ぶりに開くとトークンが切れており、Drive へのアップロードが 401 で失敗するが、UI 上は何も表示されない（エラーハンドリング漏れ）。
+
+**Why it happens:**
+既存の `refreshAccessToken()` は Drive ダウンロード失敗時のみ呼ばれる（`downloadWithAutoRefresh` パターン）。アップロード側には同様のリフレッシュラッパーがない。
+
+**How to avoid:**
+アップロード関数にも `uploadWithAutoRefresh` ラッパーを作る。既存の `refreshAccessToken()` を共通化して全 Drive 操作で使えるようにする。
+```typescript
+async function withAutoRefresh<T>(
+  token: string,
+  fn: (t: string) => Promise<T>
+): Promise<T> {
+  try {
+    return await fn(token);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    return fn(newToken);
   }
 }
 ```
-Service Worker の `pushsubscriptionchange` イベントをリッスンし、endpoint 変更時に Drive を自動更新する。
 
 **Warning signs:**
-- Push API が `410 Gone` を返す（古い endpoint）
-- サブスクリプション再登録後に Push が届かない
+- 朝一番にアプリを開いた時だけ画像アップロードが無言で失敗する
+- `localStorage.viewer_expires_at` の値が現在時刻より過去
+- ネットワークタブで Drive API が 401 を返している
 
 **Phase to address:**
-Phase 2（Google Drive + Push Subscription 保存）
+PWA 画像投稿フェーズ（アップロード実装と同時にトークンリフレッシュを入れる）
+
+---
+
+### Pitfall 7: Service Worker が新しい /viewer 画像投稿ルートを古い precache で返す
+
+**What goes wrong:**
+既存の `sw.js` は Workbox の precache リストをビルド時に生成している（確認済み: `public/sw.js` 内の `precacheAndRoute([...])`）。新しいルートを追加してデプロイしても、iPhone の Service Worker が古い sw.js をキャッシュしていて新しいコードが動かない。`self.skipWaiting()` は入っているが、古い SW が active のままだと `skipWaiting` は次のナビゲーションまで反映されない。
+
+**Why it happens:**
+iPhone Safari の Service Worker キャッシュは非常に保守的。`sw.js` 自体がキャッシュされていると更新が届かない。Workbox の `clientsClaim()` は入っているが、既存の active SW を強制置換するには条件がある。
+
+**How to avoid:**
+- `sw.js` を `public/` に直置きしていてもバージョン管理を行う（ビルドごとに `sw.js` の中身が変わることを確認する）
+- デプロイ後にテスト端末で Safari → 設定 → 詳細 → Web サイトデータ削除、または PWA を一度削除して再インストールして確認する
+- 開発中は `next-pwa` のキャッシュを無効にするか `sw.js` を手書きに切り替えてデバッグする
+
+**Warning signs:**
+- デプロイ後も iPhone で古い UI が表示される
+- `navigator.serviceWorker.controller.scriptURL` が古い URL を指している
+- Chrome DevTools の Application > Service Workers に "waiting" ステータスが出る
+
+**Phase to address:**
+PWA 画像投稿フェーズ（新機能追加後に必ず実機で Service Worker の更新を確認する）
 
 ---
 
@@ -173,11 +226,11 @@ Phase 2（Google Drive + Push Subscription 保存）
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| `refresh_token` を env に直書きしてリフレッシュなし | 実装が速い | 数週間後にサイレント障害 | never |
-| Service Worker で全リクエストをキャッシュ | オフライン動作 | Next.js RSC が腐る | never |
-| VAPID 鍵ペアをハードコード（rotation なし） | 設定不要 | 鍵漏洩時に全購読が無効化 | MVP 期間中は許容（シングルユーザー） |
-| Google Drive のファイル一覧を毎回全取得 | 実装が単純 | ファイル数増加で遅くなる | ファイル数 < 1000 なら許容 |
-| `web-push` のエラーを catch して無視 | 実装が速い | 配信失敗がサイレントになる | never |
+| ポーリング間隔を5秒以下にする | 即時性が高い | Drive API レート制限 (100 req/100s) に当たる。1ユーザーでも付箋10枚で詰まる | never — 30秒以上が安全 |
+| 圧縮なしで画像を base64 で Drive に保存 | 実装が速い | Drive 容量圧迫 + PC 側のポーリング遅延 | never |
+| アップロード失敗をサイレントに無視 | 実装が速い | ユーザーが投稿できていないことに気づかない | never |
+| 処理済みノート ID を AppState のみに保存（ファイルなし） | 実装が速い | アプリ再起動後に重複作成が起きる | MVP 期間中の一時的な許容（すぐに永続化する） |
+| tokio `"rt"` feature のみ（シングルスレッド） | Cargo.toml 変更不要 | ポーリングタスクがメインスレッドをブロックする可能性 | never — `"rt-multi-thread"` が必要 |
 
 ---
 
@@ -185,12 +238,12 @@ Phase 2（Google Drive + Push Subscription 保存）
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| APNs (Safari Web Push) | `web-push` の古いバージョン（v3.4 以下）を使う | v3.6+ を使う。Safari Web Push 対応が v3.5 以降で追加 |
-| Google Drive API | `drive.files.list` の `fields` パラメータを省略する | `fields: 'files(id,name,modifiedTime)'` で必要なフィールドだけ指定。省略すると余分なデータで遅くなる |
-| Hono + Next.js | `app/api/[...route]/route.ts` ではなく `pages/api/` に置く | App Router の場合は `app/api/hono/[...path]/route.ts` パターンを使う |
-| Google OAuth | `access_type: 'offline'` を指定しない | `access_type: 'offline'` + `prompt: 'consent'` で refresh_token を確実に取得 |
-| VAPID | 公開鍵を Base64URL でなく Base64 として扱う | `urlBase64ToUint8Array()` ヘルパーで変換してから `subscribe()` に渡す |
-| iOS PWA | `manifest.json` の `display: 'standalone'` を忘れる | `display: 'standalone'` がないと Add to Home Screen しても通知許可が出ない |
+| Google Drive API（Rust） | `upload_json()` の中で `ensure_folder()` を毎回呼ぶ | フォルダ ID を AppState にキャッシュして初回のみ取得（既存 `gdrive.rs` は毎回呼んでいる — 要改善） |
+| Google Drive API（PWA） | `files?q=name='...'` クエリに URL エンコードを忘れる | ファイル名にシングルクォートが含まれると検索が壊れる — `encodeURIComponent` を使う |
+| tokio in Tauri | `tauri::async_runtime::block_on()` でポーリングを起動する | `tauri::async_runtime::spawn()` で分離したタスクとして起動する |
+| Next.js + Mermaid | Server Component またはトップレベルで import する | `useEffect` + dynamic import または `next/dynamic` with `ssr: false` |
+| iPhone PWA + Drive | アップロード成功を HTTP 200 だけで判定する | Drive API はファイル作成失敗でも 200 を返す場合がある — レスポンス JSON の `id` フィールドの存在を確認する |
+| Workbox precache | `sw.js` をビルド外で手動編集する | Workbox 生成ファイルは手動編集すると次のビルドで上書きされる — カスタムコードは `worker-*.js` に書く |
 
 ---
 
@@ -198,9 +251,9 @@ Phase 2（Google Drive + Push Subscription 保存）
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Push 送信のたびに Google Drive からサブスクリプションを読む | 右クリック→送信が 3〜5 秒かかる | サブスクリプション JSON を Tauri の AppState にキャッシュ（初回同期時に取得） | Drive API のレート制限（100 req/100s）に引っかかると更に悪化 |
-| VAPID 鍵ペアを毎リクエスト生成 | CPU spike + 遅延 | サーバー起動時に一度生成して環境変数に保存 | 即時（毎回） |
-| Service Worker が Push で大量の Drive API を呼ぶ | 通知が遅延、バッテリー消費 | Push ペイロードにノート本文を含める（4KB 以内） | iOS の Background Fetch 制限あり |
+| Drive ポーリングごとに `ensure_folder()` を呼ぶ | ポーリング1回あたり余分に1 API コール | フォルダ ID を起動時に1回取得して AppState に保存 | Drive API レート制限に達した時（シングルユーザーでも連続操作で発生） |
+| 画像を base64 JSON に埋め込む | ポーリングのデシリアライズが遅い、Drive 容量大 | 画像はバイナリファイルとして Drive に別途保存、JSON にはファイル ID だけ入れる | ノート本文が 1MB を超える時点で即座に遅くなる |
+| Access token の有効期限チェックをせずに毎回リフレッシュ | Google API に無駄なリクエスト | `expires_at` と現在時刻を比較し、60秒以上余裕があれば既存トークンを使う（既存 `gdrive.rs` の実装を参照） | Drive API のトークンリフレッシュレート制限に当たると詰まる |
 
 ---
 
@@ -208,10 +261,9 @@ Phase 2（Google Drive + Push Subscription 保存）
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| VAPID 秘密鍵を `NEXT_PUBLIC_` プレフィックスの env に設定 | 秘密鍵がブラウザに露出 | `VAPID_PRIVATE_KEY`（プレフィックスなし）にする |
-| Google Drive の service account JSON をリポジトリにコミット | 認証情報漏洩 | `.gitignore` に追加 + Vercel Environment Variables に JSON をエスケープして設定 |
-| Push ペイロードを暗号化せずに送信 | ネットワーク上でノート内容が平文 | `web-push` は AES-128-GCM で自動暗号化する — ライブラリを使えば自動対処 |
-| Hono エンドポイントを認証なしで公開 | 誰でも Push を送れる | Tauri からのリクエストに HMAC 署名ヘッダーを付け、Hono 側で検証する |
+| iPhone からアップロードされたノートを PC 側で検証なしに実行する | 悪意のある Markdown/HTML をノートに埋め込まれる | PC 側の表示は既存の RichTextEditor と同じサニタイズを通す。特にリンクの `href` を検証する |
+| Drive の `fusen_iphone_notes.json` を誰でも読めるように設定する | Drive API はデフォルトで作成したユーザーのみアクセス可 — 問題ない。ただし `drive` スコープではなく `drive.file` スコープを使っていることを確認する | `drive.file` スコープ（アプリが作成したファイルのみ）を使う（既存実装確認済み: `drive.file` スコープ使用） |
+| Vercel の Route Handler に `GOOGLE_CLIENT_SECRET_PWA` を `NEXT_PUBLIC_` で設定する | シークレットがブラウザに露出 | `GOOGLE_CLIENT_SECRET_PWA`（`NEXT_PUBLIC_` なし）のまま維持（既存実装は正しい） |
 
 ---
 
@@ -219,24 +271,24 @@ Phase 2（Google Drive + Push Subscription 保存）
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| 通知許可ダイアログをアプリ起動直後に出す | iOS は初回表示で拒否されると永久に blocked | オンボーディング画面で理由を説明してから `requestPermission()` を呼ぶ |
-| Push が届いてもタップ先が Safari のブラウザタブで開く | PWA が起動せず UX が悪い | Service Worker の `notificationclick` で `clients.openWindow('/')` + `focus()` を実装 |
-| 通知テキストが長すぎる | iOS のロック画面で切り捨てられる | `title` は 50 文字以内、`body` は 100 文字以内に収める |
-| 「iPhoneに送る」操作後に成功・失敗のフィードバックがない | ユーザーが送信できたか不明 | Tauri 側で Hono からの HTTP ステータスを受け取りトースト表示 |
+| ノートが PC に届くまで iPhone 側にフィードバックがない | 「投稿できたのか？」が分からない | アップロード完了後に「送りました」トーストを表示し、エラー時は「失敗しました。再試行しますか？」を表示する |
+| PC 側でポーリング中にノートが突然現れる（アニメーションなし） | ノートがどこから来たか分からず驚く | 新規ノート作成時に既存の create サウンドを再生 + アニメーションで出現させる |
+| 画像の圧縮中に UI がフリーズする | iPhone で Canvas 処理中に操作不能になる | `createImageBitmap()` は Web Workers でも実行できる。または圧縮中にローディングスピナーを表示する |
+| ポーリングが止まっていることにユーザーが気づかない | iPhone から送ったノートが来ない状態が続く | PC 側で最後の正常ポーリング時刻を表示する設定画面項目を追加する |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **PWA インストール:** `manifest.json` に `display: 'standalone'`・`start_url`・`icons`（192px + 512px）が設定されているか確認
-- [ ] **Service Worker 登録:** HTTPS 環境（または localhost）でのみ登録される条件分岐があるか確認
-- [ ] **Push Subscription 保存:** `endpoint` + `p256dh` + `auth` の3フィールドすべてが Google Drive に保存されているか確認
-- [ ] **VAPID subject:** `mailto:` または `https://` で始まる `sub` クレームが設定されているか確認
-- [ ] **OAuth refresh_token:** `access_type: 'offline'` + `prompt: 'consent'` で取得し、リフレッシュロジックがあるか確認
-- [ ] **iOS PWA 確認:** 実機 iPhone でホーム画面から起動し通知許可ダイアログが出るか確認（シミュレーター不可）
-- [ ] **Hono runtime:** `export const runtime = 'nodejs'` が `route.ts` に宣言されているか確認
-- [ ] **Push ペイロードサイズ:** 4096 バイト以内か確認（APNs の上限）
-- [ ] **`pushsubscriptionchange`:** Service Worker が endpoint 変更を検知して再保存するか確認
+- [ ] **ポーリングタスク起動:** `setup()` 内で `block_on()` ではなく `spawn()` を使っているか確認
+- [ ] **ポーリングエラーハンドリング:** ネットワーク失敗時にタスクが終了せずリトライするか確認
+- [ ] **重複ノート防止:** 処理済みノート ID をアプリ再起動後も保持しているか確認（ファイルまたは AppState 永続化）
+- [ ] **画像圧縮:** アップロード前に Canvas で 1280px/JPEG 0.75 に圧縮されているか確認
+- [ ] **トークンリフレッシュ（アップロード側）:** アップロード関数も 401 時に自動リフレッシュするか確認
+- [ ] **Mermaid の dynamic import:** `window is not defined` エラーが出ないか SSR で確認
+- [ ] **Service Worker 更新:** デプロイ後に実機 iPhone で新しい UI が表示されるか確認
+- [ ] **Drive フォルダ ID キャッシュ:** ポーリングのたびに `ensure_folder()` を呼んでいないか確認
+- [ ] **tokio features:** `Cargo.toml` に `"rt-multi-thread"` があるか確認
 
 ---
 
@@ -244,11 +296,12 @@ Phase 2（Google Drive + Push Subscription 保存）
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| VAPID sub 未設定で APNs 拒否 | LOW | 環境変数に `VAPID_SUBJECT=mailto:...` 追加、再デプロイ。既存サブスクリプションは有効なまま |
-| OAuth refresh_token 失効 | MEDIUM | `prompt=consent` で再認証 URL を生成、手動でブラウザアクセス、新 token を env に更新、再デプロイ |
-| Service Worker が Next.js RSC をキャッシュして壊れた | MEDIUM | SW を unregister → `caches.delete()` → ページリロード。その後 SW の fetch ハンドラを修正して再デプロイ |
-| 全 Push Subscription の endpoint が失効 | MEDIUM | iPhone 側で PWA を再インストール（ホーム画面から削除→追加）して再サブスクリプション |
-| Hono が Edge Runtime エラーで Vercel クラッシュ | LOW | `route.ts` に `export const runtime = 'nodejs'` を追加して再デプロイ |
+| ポーリングタスクが panic で停止 | LOW | アプリ再起動でリカバリ。根本修正: パニックハンドラをタスク内に入れてループ継続 |
+| 重複ノートが作成された | LOW | 重複ファイルを手動削除。根本修正: 処理済み ID 保存ロジックを追加 |
+| 画像が巨大で Drive 容量を圧迫 | MEDIUM | Drive の `fusen_iphone_notes.json` を手動で空にする + 圧縮コードを追加してデプロイ |
+| Service Worker が古いコードをキャッシュ | LOW | iPhone で PWA を削除して再インストール。または Safari の「Web サイトデータを削除」 |
+| iPhone のトークンが失効してアップロード不能 | LOW | iPhone PWA で再ログイン（既存のログアウト→ログインフローを使う） |
+| tokio がシングルスレッドでポーリングがブロック | MEDIUM | `Cargo.toml` に `"rt-multi-thread"` を追加してビルド。既存のコマンドへの影響を確認する |
 
 ---
 
@@ -256,29 +309,28 @@ Phase 2（Google Drive + Push Subscription 保存）
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| PWAインストール必須制約 | Phase 1: PWA/Service Worker 基盤 | 実機 iPhone でホーム画面追加後に `Notification.requestPermission()` が出ることを確認 |
-| VAPID sub クレーム未設定 | Phase 2: VAPID + APNs 送信 | `web-push` の `setVapidDetails()` 呼び出しに `mailto:` subject があることを確認 |
-| APNs Push Topic 設定ミス | Phase 2: VAPID + APNs 送信 | `web-push` v3.6+ を使用、APNs の 200 レスポンスを確認 |
-| Service Worker が Next.js を壊す | Phase 1: Service Worker 基盤 | `/_next/` パスを SW のキャッシュから除外するテストを書く |
-| OAuth refresh_token 管理ミス | Phase 2: Google Drive 連携 | `refreshIfNeeded()` を呼ぶコードと失敗時の 503 レスポンスの存在確認 |
-| Hono + Edge Runtime 非互換 | Phase 1: Hono API 基盤 | `route.ts` に `runtime = 'nodejs'` の存在確認 |
-| Push Subscription 不完全保存 | Phase 2: Google Drive + Subscription 保存 | Drive に保存された JSON に3フィールドが揃っているか確認 |
+| tokio::spawn のブロッキング | Drive ポーリング基盤フェーズ | アプリ起動が2秒以内に完了すること |
+| ポーリングタスクの panic/停止 | Drive ポーリング基盤フェーズ | ネットワーク切断状態でのテスト（Wi-Fi オフ）でアプリが継続動作すること |
+| 重複ノート作成 | Drive ポーリング基盤フェーズ | 同じ JSON を2回ポーリングしても1ファイルしか作られないことを確認 |
+| 画像サイズ問題 | PWA 画像投稿フェーズ | アップロードファイルサイズが 500KB 以下であることを確認 |
+| Mermaid SSR クラッシュ | ノート表示フェーズ | `next build` が警告なく完了し `/viewer` がブランクにならないことを確認 |
+| iPhone トークンリフレッシュ漏れ | PWA 画像投稿フェーズ | トークン期限切れ状態でアップロードが自動リフレッシュして成功することを確認 |
+| Service Worker 古いキャッシュ | PWA 画像投稿フェーズ | デプロイ後に実機 iPhone で新機能が反映されていることを確認 |
 
 ---
 
 ## Sources
 
-- Apple WebKit Blog: "Web Push for Web Apps on iOS and iPadOS" — https://webkit.org/blog/13878/ (WebFetch 不可のため未確認、知識ベースからの HIGH confidence 情報)
-- RFC 8292 — Voluntary Application Server Identification (VAPID): https://datatracker.ietf.org/doc/html/rfc8292
-- `web-push` npm library changelog (training data から MEDIUM confidence)
-- Google Identity OAuth 2.0 docs — `access_type: 'offline'` (HIGH confidence — well-documented)
-- Next.js App Router Edge Runtime documentation (HIGH confidence)
-- Hono Vercel deployment docs (MEDIUM confidence — verify current version compatibility)
-- APNs HTTP/2 provider API docs — payload limits 4096 bytes (HIGH confidence)
-
-**注意:** WebSearch / WebFetch が利用不可のため、すべての情報はトレーニングデータ（〜2025年8月）に基づく。iOS 17 / iOS 18 での Web Push の変更点、最新の `web-push` バージョン互換性については、Phase 1 開始前に公式ドキュメントで検証することを強く推奨する。
+- プロジェクトコードベース直接確認: `src-tauri/src/gdrive.rs`, `src-tauri/src/lib.rs`, `app/viewer/page.tsx`, `public/sw.js`
+- `src-tauri/Cargo.toml`: `tokio = { version = "1", features = ["rt"] }` — `"rt-multi-thread"` 未追加を確認
+- プロジェクトメモリ: 全隠し/全表示スタックオーバーフロー修正（v1.0.6）— `tauri::async_runtime::spawn` と Win32 SendMessage の非同期問題の先例
+- プロジェクトメモリ: Listener Leak パターン — async タスクの deps 管理の先例
+- Google Drive API v3 ドキュメント: レート制限 100 requests / 100 seconds / user
+- Workbox ドキュメント: precache + `skipWaiting` + `clientsClaim` の動作
+- MDN Web Docs: `createImageBitmap()` + Canvas API による画像リサイズ
+- Next.js 14 App Router ドキュメント: SSR と `'use client'` の動作（`window` アクセスの落とし穴）
 
 ---
 
-*Pitfalls research for: iPhone連携 (VAPID/APNs + Google Drive + Hono + PWA Service Worker)*
-*Researched: 2026-03-23*
+*Pitfalls research for: iPhone→PC双方向同期 (Drive polling + PWA image + Rust async)*
+*Researched: 2026-03-29*

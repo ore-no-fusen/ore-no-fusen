@@ -1,163 +1,208 @@
-# Stack Research
+# Technology Stack
 
-**Domain:** iPhone連携追加 (Hono API + Web Push VAPID + APNs + Google Drive API + PWA)
-**Researched:** 2026-03-23
-**Confidence:** MEDIUM (WebSearch/WebFetch unavailable; based on official package metadata knowledge + existing codebase analysis)
+**Project:** 俺の付箋 — iPhone→PC 送信機能追加マイルストーン
+**Researched:** 2026-03-29
+**Confidence:** HIGH (package.json / Cargo.toml 直接参照 + 公式ドキュメント + WebSearch検証)
 
 ---
 
-## Context: What Already Exists
+## Context: 既存スタック（変更不要）
 
-This is an **additive milestone** to an existing working stack. Do not change or migrate existing packages.
+このマイルストーンは**追加のみ**。既存パッケージを変更・移植しない。
 
-| Already Present | Version | Status |
-|----------------|---------|--------|
-| next-pwa | ^5.6.0 | ALREADY INSTALLED — but see warning below |
+| 既存 | バージョン | 状態 |
+|------|-----------|------|
 | next | ^14.2.5 | Active |
 | react / react-dom | ^18.3.1 | Active |
-| typescript | ^5.5.3 | Active |
-| tauri v2 | 2.9.5 | Active |
-| base64 (Rust) | 0.22 | Active |
-| tokio (Rust) | 1 | Active |
+| mermaid | ^11.12.3 | **既にインストール済み** — 追加不要 |
+| next-pwa | ^5.6.0 | Active（Vercel上で動作確認済み） |
+| tokio | 1 (features: ["rt"]) | Active — timeフィーチャー追加が必要 |
+| reqwest | 0.12 (features: ["json", "rustls-tls", "multipart"]) | Active — 追加不要 |
+| base64 | 0.22 | Active |
+| serde_json | 1.0 | Active |
 
 ---
 
-## Recommended Stack Additions
+## 新機能ごとの必要スタック
 
-### Core Technologies
+### 1. Mermaid図レンダリング（PWA /viewer）
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| hono | ^4.6.x | API ルーティング基盤（Push通知・Drive連携エンドポイント） | Next.js App Router の `[[...route]]/route.ts` パターンで既存API Routeと共存可能。Vercel Edge Runtime対応。web-push処理を集約する唯一の追加サーバー層。 |
-| web-push | ^3.6.x | VAPID署名生成・APNs/FCM Push通知送信 | Node.js標準のVAPID実装。APNs HTTP/2をVAPID経由で叩ける（Apple公式対応）。iPhone Safari 16.4+ で動作確認済み。 |
-| @google-cloud/local-auth または googleapis | ^6.x (local-auth) / ^144.x (googleapis) | Google Drive APIクライアント | **シングルユーザー前提のため `googleapis` を使い OAuth2Client を直接構成する**。`@googleapis/drive` (モジュラー版) は bundle size が小さいがVercel Node.js Runtimeでは差が小さく、型補完の充実した `googleapis` で十分。 |
+**結論: 新規インストール不要。`mermaid@^11.12.3` は既にインストール済み。**
 
-### Supporting Libraries
+| 対応 | 内容 | 理由 |
+|------|------|------|
+| 使用API | `mermaid.render(id, definition)` → `{ svg }` を返す | v11 の正式 async API。DOM を直接書き換えない |
+| SSR回避 | `next/dynamic(() => import('./MermaidBlock'), { ssr: false })` | mermaid は `window` に依存するためSSRで失敗する |
+| 初期化 | `mermaid.initialize({ startOnLoad: false })` を useEffect 内で1回実行 | startOnLoad: true のままだと全 `.mermaid` クラス要素を自動走査してしまう |
+| バンドル | mermaid は約 2MB超の大型ライブラリ。dynamic import + ssr:false により PWA の初期バンドルから除外される | /viewer ページのみで読み込まれる |
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| @hono/node-server | 不要 | (参考: スタンドアロンNode用) | Vercel上ではNode Server不要。Honoの`handle`をApp Routeにexportするだけ |
-| jose | ^5.x | VAPID用 ES256 JWT署名 (web-push内包だが直接使う場合) | web-pushパッケージが内部で依存するため**直接インストール不要** |
-| @types/web-push | ^3.6.x | web-push の TypeScript型定義 | devDependencyとして必須 |
-
-### Rust追加クレート (src-tauri/Cargo.toml)
-
-| Crate | Version | Purpose | Why |
-|-------|---------|---------|-----|
-| reqwest | { version = "0.12", features = ["json"] } | Hono APIエンドポイントへのHTTPリクエスト（「iPhoneに送る」コマンド） | tokioは既存。async/awaitで`invoke`ハンドラからVercel APIを叩くだけ。TLSはrustlsではなくデフォルトのnative-tlsを使用（Windows互換） |
-
-**注意**: VAPID暗号化はすべてHono(TypeScript)側で処理する。RustにはHTTPリクエストのみを担わせる。これはPROJECT.mdの方針どおり。
-
----
-
-## Installation
-
-```bash
-# Core additions (Hono + Push + Google Drive)
-npm install hono web-push googleapis
-
-# Dev dependencies
-npm install -D @types/web-push
-```
-
-```toml
-# src-tauri/Cargo.toml に追加
-reqwest = { version = "0.12", features = ["json", "native-tls"] }
-```
-
----
-
-## Critical Warning: next-pwa
-
-**`next-pwa@5.6.0` は既にインストール済みだが問題がある。**
-
-- `next-pwa` (nus3/next-pwa) はメンテナンス停止済み。Next.js 14 App Routerで動作不安定の報告あり。
-- 現在の `next.config.mjs` では `IS_TAURI_BUILD !== 'true'` の場合のみService Workerを登録している。
-- iPhone Safari PWA のために**Service Workerが必要**なので、現状の `next-pwa` が正常動作するか検証が必要。
-
-**推奨対応:**
-```
-現状の next-pwa@5.6.0 が Vercel上で動作するなら そのまま使う（最小修正の原則）。
-動作しない場合のみ @ducanh2912/next-pwa@^10.x に移行する
-（同一APIで next-pwa のメンテ継続版）。
-```
-
-**Service Worker の push イベントハンドラ**は `next-pwa` の `sw.ts` カスタムエントリポイントまたは `public/sw.js` に手動で追記する。パッケージの置き換えではなくファイル追記で済む。
-
----
-
-## Hono Integration Pattern
-
-Next.js App Router 内に Hono を追加する標準パターン:
-
-```
-app/
-  api/
-    feedback/route.ts     ← 既存。変更しない
-    push/
-      [[...route]]/
-        route.ts          ← Hono をここにマウント
-```
+**実装パターン（HIGH confidence — mermaid公式ドキュメント + React実装例複数一致）:**
 
 ```typescript
-// app/api/push/[[...route]]/route.ts
-import { Hono } from 'hono'
-import { handle } from 'hono/vercel'
+// app/viewer/MermaidBlock.tsx  ('use client' + dynamic importで使う)
+'use client';
+import { useEffect, useRef } from 'react';
+import mermaid from 'mermaid';
 
-const app = new Hono().basePath('/api/push')
-// ... ルート定義
-export const GET = handle(app)
-export const POST = handle(app)
+mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+
+export function MermaidBlock({ definition }: { definition: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const id = `mermaid-${Math.random().toString(36).slice(2)}`;
+    mermaid.render(id, definition).then(({ svg }) => {
+      if (ref.current) ref.current.innerHTML = svg;
+    });
+  }, [definition]);
+
+  return <div ref={ref} />;
+}
 ```
 
-`IS_TAURI_BUILD === 'true'` のとき `output: 'export'` になるため、Tauri buildではこのルートは存在しない。Tauri側は `reqwest` で `https://ore-no-fusen.vercel.app/api/push/...` を直接叩く。
+SimpleNoteBody.tsx の中でこのコンポーネントをインポートする際は、
+`````````text
+const MermaidBlock = dynamic(() => import('./MermaidBlock').then(m => ({ default: m.MermaidBlock })), { ssr: false });
+`````````
+のパターンで取り込む。
+
+**代替ライブラリを使わない理由:**
+
+| 代替 | 却下理由 |
+|------|---------|
+| react-x-mermaid | mermaid を内包した wrapper。既に mermaid が入っているため二重管理になる |
+| @mermaid-js/mermaid-react | 非公式。mermaid 本体 API で十分 |
+| mermaid-to-svg (Node.js server-side) | サーバー不要のPWAクライアント描画には不適 |
 
 ---
 
-## Alternatives Considered
+### 2. 画像アップロード/キャプチャ（PWA）
 
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| hono | Next.js Route Handler直接実装 | エンドポイントが1-2個ならRoute Handlerで十分。3個以上になるとHonoの型安全ルーティングが有利 |
-| web-push | APNs HTTP/2を直接実装 (node-apn等) | APNsのみを対象にする場合。VAPIDはWeb標準なのでweb-pushの方が将来Android対応も容易 |
-| googleapis | @googleapis/drive (モジュラー) | Vercel Edge Runtimeを使う場合はモジュラー版必須。Node.js Runtimeなら差は小さい |
-| reqwest (Rust) | Tauri HTTP plugin | tauri-plugin-http を使う選択肢もあるが、Rust側で直接reqwestを使う方がコントロールしやすく、plugin依存を増やさない |
+**結論: 新規ライブラリ不要。ブラウザ標準API（FileReader + fetch）で完結。**
+
+| 対応 | 方法 | 理由 |
+|------|------|------|
+| カメラ/ライブラリ選択 | `<input type="file" accept="image/*" capture="environment">` | iPhone Safari PWA で動作確認済みの唯一の標準手段 |
+| リサイズ | Canvas API（`drawImage` + `toDataURL('image/jpeg', 0.7)`） | 新規ライブラリなしで実現。JPEG 70% 品質で 1MB 以下に圧縮 |
+| Drive送信形式 | base64 data URL をそのまま Markdown に埋め込み（`![alt](data:image/jpeg;base64,...)`） | 既存 SimpleNoteBody.tsx が `data:` URI を img タグで表示する実装済み。Drive の fusen_note.json の body フィールドに含める |
+| サイズ上限 | Drive multipart upload の推奨上限は 5MB。base64 は元サイズの約1.33倍。Canvas リサイズで元画像を ~750KB 以下に収めれば安全 | HIGH confidence — Google Drive 公式ドキュメント |
+
+**サイズガイドライン（MEDIUM confidence — Google Drive 公式 + 実装慣例）:**
+
+- Canvas resize: 最大長辺 1200px に収める
+- JPEG品質: 0.7（約70%）
+- 目標: base64 encode 後のJSON全体が 4MB 以下
+- Drive multipart limit: 5MB（メタデータ + ファイル合計）
+
+**何を追加しないか:**
+
+| 避けるもの | 理由 |
+|----------|------|
+| Blob URL + Drive メディアファイル個別アップロード | fusen_note.json の body に含める現行設計と競合。Drive file ID の管理が増える |
+| sharp（サーバーサイドリサイズ） | iPhone PWA はサーバーに頼らずクライアントで完結させる設計 |
+| Compressor.js / browser-image-compression | Canvas API で十分。依存増加を避ける |
 
 ---
 
-## What NOT to Use
+### 3. Drive ポーリング（Rust側）
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| next-auth | シングルユーザー前提。Googleログインを複雑なsession管理なしで実装できる | googleapis の OAuth2Client に refresh_token を.envに直書きして使う |
-| firebase-admin / FCM | APNs直接送信(VAPID経由)で十分。Firebaseの依存追加はオーバーキル | web-push |
-| @tauri-apps/plugin-http | reqwestを直接使う方がシンプル。pluginを増やすとCapabilities設定が複雑になる | reqwest クレート直接 |
-| workbox直接設定 | next-pwa が内部でworkboxをラップしている。直接触ると競合する | next-pwa のカスタムSWエントリポイント経由でpushイベントを追記 |
+**結論: 新規クレート不要。tokio の `time` フィーチャー追加のみ必要。**
+
+現在の Cargo.toml:
+```toml
+tokio = { version = "1", features = ["rt"] }
+```
+
+必要な変更:
+```toml
+tokio = { version = "1", features = ["rt", "time"] }
+```
+
+`tokio::time::interval` は `time` フィーチャーで提供される。現在 `rt` のみで `time` が含まれていないため、`interval` を使うとコンパイルエラーになる（HIGH confidence — Cargo.toml 直接確認）。
+
+**ポーリングパターン（tokio + reqwest、追加クレートなし）:**
+
+```rust
+tokio::spawn(async move {
+    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(30));
+    loop {
+        ticker.tick().await;
+        // reqwest で Drive API を叩く（既存クライアント再利用）
+    }
+});
+```
+
+reqwest 0.12 + rustls-tls + multipart は既にインストール済みで Drive API の multipart upload に対応している（HIGH confidence — Cargo.toml 直接確認）。
 
 ---
 
-## Version Compatibility
+### 4. Drive ファイル一覧/履歴（iPhoneノートリスト）
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| hono@4.6.x | next@14.2.5 | App Router `handle()` パターンは Next.js 13.2+ から対応 |
-| web-push@3.6.x | Node.js 18+ | Vercel Functions は Node.js 20 デフォルト。互換 |
-| googleapis@144.x | TypeScript 5.x | 型定義内蔵。@types/googleapis 不要 |
-| reqwest@0.12 | tokio@1 (既存) | async対応。Cargo.toml の tokio features に `rt-multi-thread` が必要な場合あり（現状確認要） |
-| @ducanh2912/next-pwa@10.x | next@14.2.5 | next-pwa@5.6.0 が動かない場合の代替。API互換 |
+**結論: 新規クレート・ライブラリ不要。**
+
+- Drive API `GET /drive/v3/files?q=name+contains+'fusen_'` を fetch（PWA側）または reqwest（Rust側）で叩くだけ
+- serde_json 1.0（既存）でJSON解析
+- フロント側は既存の `downloadFromDrive` ヘルパー（viewer/page.tsx）を拡張する形で実装可能
+
+---
+
+## 変更サマリー
+
+### package.json — 追加なし
+
+mermaid は既にインストール済み。追加インストール不要。
+
+### Cargo.toml — 1行変更のみ
+
+```toml
+# 変更前
+tokio = { version = "1", features = ["rt"] }
+
+# 変更後
+tokio = { version = "1", features = ["rt", "time"] }
+```
+
+それ以外の Rust クレートは追加不要。
+
+---
+
+## バージョン互換性
+
+| Package/Crate | 既存バージョン | 新機能との互換性 |
+|---------------|-------------|----------------|
+| mermaid | ^11.12.3（最新 11.13.0） | `mermaid.render()` API は v10+ から安定。v11 で async に変更済み。互換あり |
+| tokio | 1 | `time` フィーチャー追加は後方互換。既存コードに影響なし |
+| reqwest | 0.12 (rustls-tls + multipart) | Drive API multipart upload に対応済み。変更不要 |
+| next-pwa | ^5.6.0 | dynamic import の動作に影響なし |
+| next | ^14.2.5 | `next/dynamic` + `ssr: false` パターンは 13.2+ から対応。互換あり |
+
+---
+
+## 何を追加しないか（重要）
+
+| 追加しない | 理由 |
+|-----------|------|
+| react-mermaid / react-x-mermaid 等の wrapper ライブラリ | mermaid 本体が既にある。wrapper は mermaid を内包するため二重になる |
+| browser-image-compression / Compressor.js | Canvas API で代替可能。依存増加のデメリットが大きい |
+| sharp | サーバーサイド専用。PWAクライアントでは使えない |
+| googleapis（npm） | /viewer は Drive API を直接 fetch で叩く設計（googleapis クライアントライブラリ不要） |
+| hono 追加エンドポイント | 既存 /api/auth/token, /api/auth/refresh で十分。iPhone→PC 送信に新規サーバーAPIは不要 |
+| 新規 Rust クレート | reqwest + tokio(time) + serde_json の組み合わせで全てのDrive操作が賄える |
 
 ---
 
 ## Sources
 
-- 既存 `package.json` / `Cargo.toml` の確認 (HIGH confidence — ファイル直接参照)
-- `.planning/PROJECT.md` の設計方針 (HIGH confidence — プロジェクト確定済み)
-- `next.config.mjs` の `output: 'export'` / IS_TAURI_BUILD フラグ (HIGH confidence — ファイル直接参照)
-- Hono公式 App Router統合パターン — training data (MEDIUM confidence — バージョン要確認)
-- web-push npm パッケージ VAPIDサポート — training data (MEDIUM confidence)
-- next-pwa@5.6.0 メンテ状況 / @ducanh2912/next-pwa — training data (MEDIUM confidence — 導入前に npm で最新版確認推奨)
+- `package.json`（直接確認）— HIGH confidence
+- `src-tauri/Cargo.toml`（直接確認）— HIGH confidence
+- `app/viewer/SimpleNoteBody.tsx`（直接確認 — data: URI 処理済みを確認）— HIGH confidence
+- mermaid 公式 Usage ドキュメント: https://mermaid.js.org/config/usage.html — HIGH confidence
+- mermaid npm: https://www.npmjs.com/package/mermaid（最新 11.13.0 確認）— HIGH confidence
+- Google Drive Upload 公式: https://developers.google.com/drive/api/guides/manage-uploads — HIGH confidence
+- Mermaid React パターン（複数ソース一致）: https://rendazhang.medium.com/why-mermaid-charts-disappear-in-react-and-how-to-fix-it-351545ef1ebc — MEDIUM confidence
+- tokio time feature: https://tokio.rs/ — HIGH confidence
 
 ---
 
-*Stack research for: iPhone連携 (Hono + Web Push + Google Drive + PWA)*
-*Researched: 2026-03-23*
+*Stack research for: iPhone→PC 送信機能追加マイルストーン*
+*Researched: 2026-03-29*

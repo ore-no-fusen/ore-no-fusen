@@ -1,43 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: iPhone連携
+milestone: v3.0
+milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-03-28T22:12:39.166Z"
-last_activity: 2026-03-23 — v2.0 ロードマップ作成完了
-progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 17
-  completed_plans: 17
----
-
----
-gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: iPhone連携
-status: ready_to_plan
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-03-29T00:00:00.000Z"
-last_activity: 2026-03-29 — Phase 05 完了（A〜Cフロー実機確認済み）
-progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 17
-  completed_plans: 17
----
-
----
-gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: iPhone連携
-status: ready_to_plan
-last_updated: "2026-03-23T00:00:00Z"
+last_updated: "2026-03-29T00:00:00Z"
+last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 8
+  total_plans: 0
   completed_plans: 0
 ---
 
@@ -48,47 +19,55 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** すぐ書けて、そこに残る。それだけ確実に動く。
-**Current focus:** v3.0 iPhone→PC送信 — 要件定義中
+**Current focus:** v3.0 iPhone→PC送信 — Phase 6 計画待ち
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 6（未開始）
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-29 — Milestone v3.0 started
+Status: Ready to plan
+Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
+
+**Progress:**
+```
+Phase 6 [          ] 0%
+Phase 7 [          ] 0%
+Overall [          ] 0%
+```
 
 ## Performance Metrics
 
-**Velocity:**
-- Total plans completed: 7 (v1.0 milestone)
+**v3.0 Velocity:**
+- Total plans completed: 0
 - Average duration: —
-- Total execution time: —
 
-**By Phase (v1.0):**
+**By Phase (v3.0):**
 
 | Phase | Plans | Status |
 |-------|-------|--------|
-| 1. コードレビュー | 3/3 | Complete |
-| 2. バグ修正 | 2/2 | Complete |
-| 3. 確認・検証 | 2/2 | Complete |
-| Phase 04-hono-api-kiban P01 | 5 | 2 tasks | 5 files |
-| Phase 04-hono-api-kiban P02 | 8 | 1 tasks | 2 files |
-| Phase 04-hono-api-kiban P03 | 1 | 1 tasks | 2 files |
-| Phase 04-hono-api-kiban P04 | 3 | 2 tasks | 1 files |
-| Phase 04-hono-api-kiban P05 | 20 | 1 tasks | 4 files |
-| Phase 04-hono-api-kiban P01 | 9min | 2 tasks | 2 files |
-| Phase 04-hono-api-kiban P02 | 6min | 1 tasks | 3 files |
-| Phase 04-hono-api-kiban P03 | 10min | 1 tasks | 3 files |
-| Phase 04-hono-api-kiban P04 | 8min | 2 tasks | 1 files |
-| Phase 04-hono-api-kiban P05 | 10 | 2 tasks | 1 files |
-| Phase 05-iphone-pwa-rust-soshin P00 | 8 | 3 tasks | 3 files |
-| Phase 05-iphone-pwa-rust-soshin P01 | 9 | 3 tasks | 4 files |
-| Phase 05-iphone-pwa-rust-soshin P02 | 12 | 1 tasks | 1 files |
-| Phase 05-iphone-pwa-rust-soshin P03 | 5 | 1 tasks | 1 files |
+| 6. iPhone送信UI | 0/? | Not started |
+| 7. PC受信 | 0/? | Not started |
+
+**Previous milestone (v2.0) for reference:**
+
+| Phase | Plans | Status |
+|-------|-------|--------|
+| 4. Rust バックエンド（Drive+APNs） | 5/5 | Complete |
+| 5. iPhone PWA + Rust送信 | 5/5 | Complete |
 
 ## Accumulated Context
 
 ### Decisions
+
+- v3.0: iPhone→PC 送信は Drive の「最新1件キュー」方式（fusen_from_iphone.json）で実装
+- v3.0: 履歴は別ファイル fusen_iphone_notes.json に分離（最新50件上限）
+- v3.0: ポーリング間隔は30秒（Drive API quota の 0.3% 以下に収める）
+- v3.0: polling loop は AppState Mutex に触れない（emit のみ。ノート作成は page.tsx listener 経由）
+- v3.0: Mermaid は既存 mermaid@^11.12.3 を dynamic import で使用（新規パッケージ不要）
+- v3.0: 画像は Canvas API でリサイズ後 base64 → Markdown 画像として body に埋め込む（新規ライブラリ不要）
+- v3.0: Cargo.toml の tokio に `time` フィーチャーを追加（tokio::time::interval 使用のため）
+- v3.0: viewer/page.tsx の step 型に 'write' と 'list' を追加（既存 useEffect deps は変更しない）
+- v3.0: 重複防止は2段構え — LAST_IPHONE_NOTE_ID（プロセスメモリ）+ received_at マーク（Drive上）
 
 - v2.0: Hono を Next.js 内に統合（新サーバー不要・Vercel同居）
 - v2.0: VAPID処理をHono側に（Rustクレート7個 → reqwest 1個のみ）
@@ -126,14 +105,13 @@ Last activity: 2026-03-29 — Milestone v3.0 started
 
 ### Blockers/Concerns
 
-- next-pwa@5.6.0 の `customWorkerSrc` が Next.js 14 で動作するか確認が必要（Phase 4 開始前）
-- iOS 17/18 の Web Push 変更点を Apple Developer Documentation で確認（Phase 5 前）
+なし（v3.0 はアーキテクチャ調査完了済み。Phase 6 から即実装開始可能）
 
 ## Session Continuity
 
-Last session: 2026-03-23T11:25:46.273Z
-Stopped at: Completed 05-03-PLAN.md
-Resume file: None
+Last session: 2026-03-29
+Stopped at: v3.0 ロードマップ作成完了
+Resume file: None — next action: `/gsd:plan-phase 6`
 
 ### Quick Tasks Completed
 

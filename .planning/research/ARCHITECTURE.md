@@ -1,46 +1,45 @@
-# Architecture Patterns — iPhone連携 (Hono + Web Push + Google Drive)
+# Architecture Patterns — iPhone→PC付箋送信
 
-**Project:** 俺の付箋 v2.0
-**Domain:** Desktop sticky note app adding iPhone lock-screen push via Vercel-hosted API
-**Researched:** 2026-03-23
-**Confidence:** HIGH (primary sources: project's own PLAN_web_iphone.md, docs/ARCHITECTURE_DESIGN_v1.1.md, source code)
+**Project:** 俺の付箋 v2.1
+**Domain:** Desktop sticky note app — adding reverse channel (iPhone → PC note creation)
+**Researched:** 2026-03-29
+**Confidence:** HIGH (primary sources: existing source code — gdrive.rs, lib.rs, viewer/page.tsx, state.rs)
 
 ---
 
 ## Recommended Architecture
 
 ```
-[PC: Tauri/Rust]
-  │  invoke('fusen_send_to_iphone', { path })
-  │    → Rust reads note file (storage::read_note)
-  │    → reqwest POST /api/v1/notes/push  { title, body, tags }
+[iPhone: Safari PWA /viewer]
+  新しい step: 'write'
+  │  テキスト入力 → 「PC に送る」ボタン
+  │    → uploadToDrive(accessToken, 'fusen_from_iphone.json', { id, body, sent_at })
+  │    → uploadToDrive(accessToken, 'fusen_iphone_notes.json', append entry)
   ▼
-[Vercel: Hono inside Next.js App Router]
-  app/api/v1/[[...route]]/route.ts   ← Hono catch-all entry
-  │
-  ├─ POST /api/v1/subscribe          ← iPhone PWA calls this once
-  │    → write fusen_push_config.json to Google Drive
-  │
-  ├─ POST /api/v1/notes/push         ← Rust calls this on "iPhoneに送る"
-  │    → write fusen_note.json to Google Drive
-  │    → read fusen_push_config.json from Google Drive
-  │    → VAPID sign + AES-128-GCM encrypt (web-push npm package)
-  │    → HTTPS POST to APNs endpoint from push subscription
-  │
-  └─ GET /api/v1/notes/latest        ← iPhone PWA calls after notification tap
-       → read fusen_note.json from Google Drive
-       → return JSON to PWA viewer
-  ▼
-[APNs]  →  [iPhone: Safari PWA installed to Home Screen]
-              Service Worker (public/sw.js)
-                push event → self.registration.showNotification(...)
-                notificationclick → clients.openWindow('/viewer')
-              /viewer page (app/viewer/page.tsx)
-                fetch /api/v1/notes/latest → render note body
-
 [Google Drive (BYOS)]
-  fusen_push_config.json   ← subscription endpoint + VAPID keys, written by iPhone
-  fusen_note.json          ← latest note content, written by Hono on each push
+  fusen_from_iphone.json    ← "未受信の最新1件" として機能するキュー
+                               { id: string, body: string, sent_at: string }
+                               PC受信後は { id, body, sent_at, received_at } に更新 (confirmed)
+  fusen_iphone_notes.json   ← iPhone側の履歴リスト
+                               [ { id, body, sent_at }, ... ]  (最新50件上限)
+
+[PC: Rust background polling task]
+  setup() 内で tokio::spawn
+  │  loop {
+  │    interval.tick().await  (30秒間隔)
+  │    download fusen_from_iphone.json
+  │    if id != last_seen_id:
+  │      emit "fusen:note_from_iphone" { body }
+  │      last_seen_id = id
+  │      upload fusen_from_iphone.json with received_at (重複防止マーク)
+  │  }
+  ▼
+[PC: page.tsx listener]
+  listen('fusen:note_from_iphone', async (event) => {
+    invoke('fusen_create_note', { folderPath, context: 'from-iphone' })
+    invoke('fusen_save_note', { path, body: event.payload.body })
+    openNoteWindow(path)
+  })
 ```
 
 ---
@@ -51,326 +50,310 @@
 
 | Component | Responsibility | Location |
 |-----------|---------------|----------|
-| Rust AppState | Single source of truth for all note state | `src-tauri/src/state.rs` |
-| storage::read_note | Read .md file + parse frontmatter | `src-tauri/src/storage.rs` |
-| lib.rs tauri commands | All `fusen_*` Tauri invoke handlers | `src-tauri/src/lib.rs` |
-| useStickyNoteContextMenu.ts | Right-click menu builder | `app/hooks/useStickyNoteContextMenu.ts` |
-| app/api/notes.ts | Tauri invoke wrappers (client-side only) | `app/api/notes.ts` |
-| app/api/window.ts | Tauri window geometry helpers | `app/api/window.ts` |
-| app/api/feedback.ts | Sentry/feedback helpers | `app/api/feedback.ts` |
-| app/api/tags.ts | Tag invoke wrappers | `app/api/tags.ts` |
+| AppState (Rust) | Single source of truth | `src-tauri/src/state.rs` |
+| gdrive::upload_json | Drive への JSON 書き込み | `src-tauri/src/gdrive.rs` |
+| gdrive::download_json | Drive からの JSON 読み込み | `src-tauri/src/gdrive.rs` |
+| gdrive::get_access_token | OAuth refresh token → access token | `src-tauri/src/gdrive.rs` |
+| lib.rs setup() | アプリ初期化・プラグイン登録 | `src-tauri/src/lib.rs` (末尾 `.setup()` ブロック) |
+| page.tsx OrchestratorContent | Tauri イベントリスナー登録・ノート作成 | `app/page.tsx` |
+| viewer/page.tsx | iPhone PWA ステップUI | `app/viewer/page.tsx` |
+| fusen_create_note | ノートファイル生成 + AppState更新 | `src-tauri/src/lib.rs` |
+| fusen_save_note | ノートボディ保存 | `src-tauri/src/lib.rs` |
 
-Note: `app/api/*.ts` files are NOT HTTP routes — they are TypeScript modules that wrap Tauri's `invoke()`. They do not conflict with the new Hono HTTP routes under `app/api/v1/`.
+### Modified — 最小変更のみ
 
-### New — Phase 1 (Hono + Push API)
+| Component | 変更内容 | リスク |
+|-----------|---------|--------|
+| `app/viewer/page.tsx` | step 型に `'write'` と `'list'` を追加。`step === 'ready'` レンダー内にボタンを追加 | LOW — 既存ステップに影響しない |
+| `src-tauri/src/lib.rs` | `setup()` ブロック末尾に `tokio::spawn(polling_loop(...))` を1ブロック追加 | LOW — 追記のみ |
+| `app/page.tsx` | `listen('fusen:note_from_iphone', ...)` を既存の listen ブロック群に1件追加 | LOW — 既存リスナーと独立 |
 
-| Component | Responsibility | Location |
-|-----------|---------------|----------|
-| Hono entry | Route all /api/v1/* requests | `app/api/v1/[[...route]]/route.ts` |
-| subscribe handler | Accept Push Subscription, write to Drive | `app/api/v1/handlers/subscribe.ts` |
-| push handler | Write note JSON to Drive + send APNs push | `app/api/v1/handlers/push.ts` |
-| latest handler | Read note JSON from Drive, return to PWA | `app/api/v1/handlers/latest.ts` |
-| Google Drive wrapper | Authenticated Drive file read/write | `lib/gdrive.ts` |
-| web-push wrapper | VAPID keygen, sign, encrypt | `lib/webpush.ts` |
+### New — 新規ファイルなし、Drive上の新規ファイルのみ
 
-### New — Phase 2 (Rust command + PWA)
-
-| Component | Responsibility | Location |
-|-----------|---------------|----------|
-| fusen_send_to_iphone | Rust: read note, POST to Hono | `src-tauri/src/lib.rs` (append) |
-| reqwest dependency | HTTP client for Rust | `src-tauri/Cargo.toml` (append) |
-| ctx_send_to_iphone | Enable existing menu item + add action | `app/hooks/useStickyNoteContextMenu.ts` (1-line change) |
-| Service Worker | Push receive + showNotification | `public/sw.js` (new) |
-| PWA manifest | Home screen install metadata | `public/manifest.json` (new) |
-| Viewer page | Display latest note after notification tap | `app/viewer/page.tsx` (new) |
+| Drive ファイル | 役割 | 書き手 | 読み手 |
+|---------------|------|--------|--------|
+| `fusen_from_iphone.json` | PC向け1件キュー | iPhone PWA | Rust polling |
+| `fusen_iphone_notes.json` | iPhone側履歴（最新50件） | iPhone PWA | iPhone PWA (`'list'` step) |
 
 ---
 
 ## Data Flow
 
-### Hono Integration with Next.js App Router
-
-Next.js App Router supports a catch-all route segment `[[...route]]` that handles any path under a prefix. Hono's `handle()` export maps directly to Next.js `GET`, `POST`, etc. named exports.
-
-```typescript
-// app/api/v1/[[...route]]/route.ts
-import { Hono } from 'hono'
-import { handle } from 'hono/vercel'
-import { subscribeHandler } from '../handlers/subscribe'
-import { pushHandler } from '../handlers/push'
-import { latestHandler } from '../handlers/latest'
-
-export const runtime = 'nodejs'  // NOT 'edge' — googleapis requires Node.js runtime
-
-const app = new Hono().basePath('/api/v1')
-
-app.post('/subscribe', subscribeHandler)
-app.post('/notes/push', pushHandler)
-app.get('/notes/latest', latestHandler)
-
-export const GET = handle(app)
-export const POST = handle(app)
-```
-
-The `basePath('/api/v1')` call is required so Hono's internal routing correctly strips the prefix. Without it, routes registered as `/subscribe` would not match the actual URL `/api/v1/subscribe`.
-
-**Runtime constraint:** `googleapis` requires Node.js APIs (`fs`, `http2`) and cannot run in the Vercel Edge Runtime. `export const runtime = 'nodejs'` must be set explicitly.
-
-**Conflict check with existing `app/api/*.ts` files:** None. The existing files (`notes.ts`, `window.ts`, `tags.ts`, `feedback.ts`) are plain TypeScript modules, not `route.ts` files. Next.js only treats `route.ts` as an HTTP route handler. There is zero conflict.
-
-### PC → Hono → APNs data flow (step by step)
+### iPhone → Drive → PC (詳細フロー)
 
 ```
-1. User right-clicks sticky note
-   → useStickyNoteContextMenu.ts: ctx_send_to_iphone action fires
-   → invoke('fusen_send_to_iphone', { path: selectedFile.path })
+1. iPhone: step='ready' の画面で「メモを書く」ボタンをタップ
+   → step を 'write' に変更
 
-2. Rust: fusen_send_to_iphone (lib.rs, new command)
-   → storage::read_note(path)  [already exists]
-   → extract first line as title, full body, tags from NoteMeta
-   → reqwest::Client::new()
-       .post("https://ore-no-fusen.vercel.app/api/v1/notes/push")
-       .json(&payload)
-       .send().await
-   → return Ok(()) or Err(message)
+2. iPhone: step='write' でテキスト入力 → 「PCに送る」ボタン
+   → uuid = crypto.randomUUID()
+   → uploadToDrive(accessToken, 'fusen_from_iphone.json', {
+       id: uuid,
+       body: inputText,
+       sent_at: new Date().toISOString()
+     })
+   → fusen_iphone_notes.json に { id, body, sent_at } を先頭追加（最新50件）
+   → step を 'list' に変更（送信済み確認）
 
-3. Hono: POST /api/v1/notes/push (push.ts handler)
-   → write fusen_note.json to Google Drive (lib/gdrive.ts)
-   → read fusen_push_config.json from Google Drive
-     → if not found: return 200 { ok: false, reason: "no_subscription" }
-   → webpush.sendNotification(subscription, notificationPayload)  (lib/webpush.ts)
-     → internally: VAPID sign + AES-128-GCM encrypt + HTTPS POST to APNs endpoint
-   → return 200 { ok: true }
+3. PC: Rust polling loop (30秒間隔)
+   a. get_access_token(&client).await  // 期限切れなら自動リフレッシュ
+      → エラー時: eprintln してスキップ（パニックしない）
+   b. download_json(&client, &token, "fusen_from_iphone.json").await
+      → ファイルなし（初回）: スキップ
+      → エラー: eprintln してスキップ
+   c. id = value["id"].as_str()
+      last = LAST_IPHONE_NOTE_ID.lock().unwrap()
+      if id == last { continue }  // 同一ノートなら無視（重複防止）
+   d. *last = id.to_string()  // 記録更新
+   e. app_handle.emit("fusen:note_from_iphone", { body: value["body"] })
+   f. received_at を付けて upload_json("fusen_from_iphone.json", confirmed_value)
+      // 上書きにより「受信済み」マークをつける
 
-4. APNs → iPhone
-   → Service Worker push event fires
-   → sw.js: self.registration.showNotification('俺の付箋', { body, data: { url: '/viewer' } })
-   → Lock screen notification appears
-
-5. User taps notification
-   → notificationclick: clients.openWindow('/viewer')
-   → app/viewer/page.tsx: fetch('/api/v1/notes/latest')
-   → Hono: GET /api/v1/notes/latest → read fusen_note.json from Drive → return JSON
-   → viewer renders note body
+4. PC: page.tsx listener
+   a. listen('fusen:note_from_iphone') が発火
+   b. invoke('fusen_create_note', { folderPath, context: 'from-iphone' })
+   c. invoke('fusen_save_note', { path: newNote.meta.path, body: payload.body })
+   d. 既存の createNote フローと同じ: openNoteWindow(newNote.meta.path)
 ```
 
-### iPhone → Hono subscription flow (one-time setup)
+### viewer step machine (変更後)
 
 ```
-1. User opens https://ore-no-fusen.vercel.app on iPhone Safari
-   → app/viewer/page.tsx detects no existing subscription
-   → shows 4-step setup guide
-
-2. User taps "Add to Home Screen" (Safari share sheet)
-   → PWA installed, Service Worker registered
-
-3. User taps "Allow notifications" in PWA
-   → navigator.serviceWorker.ready
-   → registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: VAPID_PUBLIC_KEY })
-   → Push Subscription object returned { endpoint, keys: { p256dh, auth } }
-
-4. PWA: fetch POST /api/v1/subscribe with subscription JSON
-   → Hono: subscribe.ts handler writes fusen_push_config.json to Google Drive
-   → Done. PC can now push to this iPhone.
+既存:  banner → login → push → ready → note
+追加:           ↑                ↓       ↓
+               push          write → list
+                               ↑       ↓
+                               └───────┘ (戻るボタン)
 ```
+
+- `'write'`: テキストエリア + 「PCに送る」ボタン + 「戻る」ボタン
+- `'list'`: 直近の送信履歴（fusen_iphone_notes.json から読み込み）+ 「書く」ボタン
+- `'ready'` から `'write'` への遷移: 「書く」ボタン追加
+- `'note'` は既存のまま（PC→iPhone受信表示）
 
 ---
 
 ## Patterns to Follow
 
-### Pattern 1: Hono handler as plain async function
+### Pattern 1: polling loop — Rust static Mutex で重複防止
 
-Each handler is a standalone `async (c: Context) => Response` function, co-located with its logic. Do not use Hono's class-based patterns.
+`last_seen_id` を `std::sync::Mutex<String>` として `lib.rs` のモジュールレベルに置く。`tokio::Mutex` ではなく標準の `Mutex` を使う（非同期コンテキスト内でも `.lock().unwrap()` できるが、await 中にホールドしない）。
 
-```typescript
-// app/api/v1/handlers/push.ts
-import type { Context } from 'hono'
-import { writeFileToDrive, readFileFromDrive } from '../../../lib/gdrive'
-import { sendWebPush } from '../../../lib/webpush'
+```rust
+// src-tauri/src/lib.rs — モジュールレベルに追加
+static LAST_IPHONE_NOTE_ID: std::sync::Mutex<String> =
+    std::sync::Mutex::new(String::new());
 
-export async function pushHandler(c: Context) {
-  const { title, body, tags } = await c.req.json()
-  await writeFileToDrive('fusen_note.json', { title, body, tags, sent_at: new Date().toISOString() })
-  const config = await readFileFromDrive('fusen_push_config.json')
-  if (!config) return c.json({ ok: false, reason: 'no_subscription' })
-  await sendWebPush(config, { title: '俺の付箋', body: title, data: { url: '/viewer' } })
-  return c.json({ ok: true })
+async fn iphone_note_polling_loop(
+    app: tauri::AppHandle,
+    state: std::sync::Arc<std::sync::Mutex<AppState>>,
+) {
+    let client = reqwest::Client::new();
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+    loop {
+        interval.tick().await;
+        let token = match gdrive::get_access_token(&client).await {
+            Ok(t) => t,
+            Err(e) => { eprintln!("[iphone_poll] token error: {}", e); continue; }
+        };
+        let value = match gdrive::download_json(&client, &token, "fusen_from_iphone.json").await {
+            Ok(v) => v,
+            Err(_) => continue, // ファイル未作成 or ネットワーク障害 → スキップ
+        };
+        let id = match value["id"].as_str() {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        {
+            let mut last = LAST_IPHONE_NOTE_ID.lock().unwrap_or_else(|p| p.into_inner());
+            if *last == id { continue; }
+            *last = id.clone();
+        }
+        let body = value["body"].as_str().unwrap_or("").to_string();
+        let _ = app.emit("fusen:note_from_iphone", serde_json::json!({ "body": body }));
+        // received_at を付けて上書き（重複防止の念押し）
+        let mut confirmed = value.clone();
+        confirmed["received_at"] = serde_json::Value::String(
+            chrono::Utc::now().to_rfc3339()
+        );
+        let _ = gdrive::upload_json(&client, &token, "fusen_from_iphone.json", &confirmed).await;
+    }
 }
 ```
 
-### Pattern 2: Google Drive file access with service account or OAuth refresh token
+setup() 末尾（`logger::log_info("アプリの初期化が完了しました")` の直前）に以下を追加:
 
-The server (Vercel) accesses Drive using a stored OAuth refresh token (not a service account). This avoids sharing Drive with any Google account other than the owner.
+```rust
+let poll_app = app.handle().clone();
+let poll_state = /* Arc<Mutex<AppState>> */ ;
+tokio::spawn(async move {
+    iphone_note_polling_loop(poll_app, poll_state).await;
+});
+```
+
+**注意**: `setup()` は `&mut App` を受け取るためクロージャ内から `app.state()` で `State` が取れる。ただし `State<'_, Mutex<AppState>>` は `'_` ライフタイムのため `tokio::spawn` に渡せない。`app.handle().state::<Mutex<AppState>>()` で `Arc` 的に clone して渡す方が安全。または polling loop が state に触れる必要がなければ（本フローでは polling はイベント emit のみで state 変更は JS 側に任せるので）state 引数自体が不要。
+
+### Pattern 2: iPhone PWA — uploadToDrive は既存関数をそのまま利用
+
+`viewer/page.tsx` 内の `uploadToDrive(accessToken, fileName, data)` が既に実装済み。`fusen_from_iphone.json` と `fusen_iphone_notes.json` への書き込みも同関数を呼ぶだけ。新規実装ゼロ。
+
+### Pattern 3: fusen_iphone_notes.json の履歴管理
+
+上書き前に `downloadFromDrive` で既存配列を読み込み、先頭に追加して最新50件にトリム。Drive が存在しない場合は空配列から開始。
 
 ```typescript
-// lib/gdrive.ts — key shape
-import { google } from 'googleapis'
+// viewer/page.tsx — 「PCに送る」ボタンハンドラ内
+const id = crypto.randomUUID();
+const entry = { id, body: inputText, sent_at: new Date().toISOString() };
 
-const auth = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET
-)
-auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN })
-const drive = google.drive({ version: 'v3', auth })
+// 1. キューファイル更新
+await uploadToDrive(accessToken!, 'fusen_from_iphone.json', entry);
+
+// 2. 履歴ファイル更新（取得失敗は無視）
+const existing: typeof entry[] = await downloadFromDrive(accessToken!, 'fusen_iphone_notes.json')
+  .catch(() => []);
+const updated = [entry, ...existing].slice(0, 50);
+await uploadToDrive(accessToken!, 'fusen_iphone_notes.json', updated);
 ```
 
-File operations: `drive.files.list` to find by name + `drive.files.update` / `drive.files.create` for write. `drive.files.get` with `alt: 'media'` for read.
+### Pattern 4: PC offline / ポーリング失敗時の挙動
 
-### Pattern 3: reqwest in Rust — minimal, tokio-aware
+polling loop は `continue` でスキップするだけ。再試行は次の 30 秒 tick に任せる。`fusen_from_iphone.json` は「最後の1件」として Drive に残り続けるため、PC が起動してさえいれば最終的に受信される。`received_at` の付与が完了しない場合（PC クラッシュ等）は次回起動後の最初の poll で再受信が発生し得るが、`LAST_IPHONE_NOTE_ID` はプロセスメモリのためリセットされている。これを許容するか、`received_at` の有無でフィルタするかは実装判断。**推奨: received_at フィルタを入れる（後述 PITFALLS 参照）**。
 
-Use `reqwest` with `rustls-tls` (avoids OpenSSL on Windows). The existing `tokio` dependency in Cargo.toml makes `reqwest`'s async runtime compatible.
+### Pattern 5: page.tsx への listener 追加
 
-```toml
-# src-tauri/Cargo.toml addition
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
-```
+既存の `listen('fusen:create_note_from_tray', ...)` と同じパターンで追加。`isMainWindow` ガードを必ずつける。
 
-The `fusen_send_to_iphone` command is `async fn`, which Tauri's macro handles via the existing tokio runtime. No additional runtime setup needed.
-
-### Pattern 4: Service Worker push event — keep minimal
-
-`public/sw.js` needs only three event handlers: `install`, `activate`, `push`, `notificationclick`. It must NOT use ES module syntax (`import`) — service workers require classic script format or bundled output.
-
-```javascript
-// public/sw.js
-self.addEventListener('push', (event) => {
-  const data = event.data?.json() ?? {}
-  event.waitUntil(
-    self.registration.showNotification(data.title || '俺の付箋', {
-      body: data.body,
-      icon: '/icons/128x128.png',
-      data: { url: data.data?.url || '/viewer' }
-    })
-  )
-})
-
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
-  event.waitUntil(clients.openWindow(event.notification.data.url))
-})
+```typescript
+// app/page.tsx — 既存 listen ブロック群に追加
+useEffect(() => {
+  if (!isMainWindow) return;
+  let unlisten: (() => void) | undefined;
+  const promise = listen('fusen:note_from_iphone', async (event: any) => {
+    const body: string = event.payload?.body ?? '';
+    if (!body.trim()) return;
+    const fp = folderPathRef.current || await invoke<string | null>('get_base_path');
+    if (!fp) return;
+    try {
+      const newNote = await invoke<any>('fusen_create_note', {
+        folderPath: fp,
+        context: 'from-iphone',
+      });
+      await invoke('fusen_save_note', {
+        path: newNote.meta.path,
+        body,
+        frontmatter: newNote.frontmatter,
+      });
+      // 既存の openNoteWindow を再利用
+      openNoteWindow(newNote.meta.path);
+    } catch (e) {
+      console.error('[iphone_note] create failed:', e);
+    }
+  });
+  promise.then((fn) => { unlisten = fn; });
+  return () => { promise.then((fn) => fn()); };
+}, [isMainWindow]);
 ```
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Edge Runtime for googleapis
+### Anti-Pattern 1: fusen_from_iphone.json を「リスト」として使う
 
-**What:** Setting `export const runtime = 'edge'` on the Hono catch-all route.
-**Why bad:** `googleapis` uses Node.js built-ins (`fs`, `http2`, `crypto`). Edge Runtime has none of these. The build will fail or runtime will error silently.
-**Instead:** Always `export const runtime = 'nodejs'` in `app/api/v1/[[...route]]/route.ts`.
+**何が起きるか:** Drive への読み書きコストが上がり、polling で配列全体を差分比較する必要が生じる。
+**代わりに:** 「最新1件キュー」として使う。`id` フィールドで重複を検出。履歴は別ファイル `fusen_iphone_notes.json` に分離。
 
-### Anti-Pattern 2: Calling web-push with APNs endpoint directly (without VAPID)
+### Anti-Pattern 2: polling interval を短くしすぎる (< 15秒)
 
-**What:** Constructing a raw HTTPS/2 POST to `api.push.apple.com` yourself.
-**Why bad:** APNs push from Web Push subscriptions requires the RFC 8292 VAPID JWT header and RFC 8291 message encryption. `web-push` npm package handles both correctly.
-**Instead:** Use `webpush.sendNotification(subscription, payload)` where `subscription` is the full object from `pushManager.subscribe()`.
+**何が起きるか:** Google Drive API は 1000 req/100s の quota。30秒間隔は 1日 2880 req ≒ quota の 0.3%。15秒以下にすると quota を浪費し、他の Drive 操作（push 送信等）に影響する。
+**代わりに:** 30秒を基本とする。将来 WebSocket や Server-Sent Events への移行余地を設計上残す。
 
-### Anti-Pattern 3: Storing push subscription in Vercel env vars or server memory
+### Anti-Pattern 3: polling loop で AppState の Mutex をホールドしたまま await する
 
-**What:** Saving the iPhone's push subscription in a Vercel environment variable or in-process memory.
-**Why bad:** Vercel functions are stateless and ephemeral. Memory is lost between invocations. Env vars cannot be updated at runtime.
-**Instead:** Use Google Drive as the persistence layer (`fusen_push_config.json`). This is already the project's BYOS design decision.
+**何が起きるか:** Mutex を保持したまま `.await` するとデッドロックの温床になる（他の Tauri command が同じ Mutex を取得しようとすると詰まる）。
+**代わりに:** polling loop は AppState に一切触れない。`emit` でフロントエンドに渡し、ノート作成は既存の `fusen_create_note` command 経由で行う（Mutex は command ハンドラ内で短時間取得・解放される）。
 
-### Anti-Pattern 4: Modifying existing app/api/*.ts files
+### Anti-Pattern 4: viewer/page.tsx の step に 'write' を追加する際、既存フローの useEffect 依存配列を変更する
 
-**What:** Renaming or wrapping the existing `app/api/notes.ts`, `window.ts`, `tags.ts` into Hono.
-**Why bad:** These files are client-side TypeScript modules wrapping `invoke()`. They have no HTTP surface. Touching them gains nothing and risks breaking Tauri invoke wiring.
-**Instead:** Leave them unchanged. Hono lives exclusively under `app/api/v1/`.
+**何が起きるか:** 初期化 useEffect が再実行され、OAuth コールバック処理等が二重に走る。
+**代わりに:** `step` state の初期値は変更せず、'ready' step のレンダー内にボタンだけ追加する。step 遷移はボタンの `onClick` から `setStep('write')` を呼ぶだけ。useEffect の deps は変更しない。
 
-### Anti-Pattern 5: next-pwa generating sw.js overwriting the custom one
+### Anti-Pattern 5: fusen_save_note の frontmatter 引数を省略する
 
-**What:** `next-pwa` is already configured in `next.config.mjs` with `dest: "public"`. It generates a `sw.js` in `public/`.
-**Why bad:** `next-pwa` will overwrite `public/sw.js` on every build, erasing the custom push event handler.
-**Instead:** Configure `next-pwa` to use a different filename or extend the generated worker. Options:
-  - Set `customWorkerSrc: 'service_worker'` and put custom logic in `worker/index.ts` (next-pwa merges this).
-  - Or name the custom file `public/push-sw.js` and register it manually from the PWA viewer page, bypassing next-pwa's auto-register.
+**何が起きるか:** `fusen_save_note` は frontmatter + body を合体して書き込む。frontmatter を渡さないと空になり、既存の付箋管理機能（タグ・色・日付）が壊れる。
+**代わりに:** `fusen_create_note` の返り値 `newNote.frontmatter` をそのまま渡す。
 
 ---
 
-## Integration Points with Existing Codebase
+## Integration Points (新規 vs 修正 — 明示)
 
-### Modified files (minimal changes only)
+### 修正が必要なファイル（2件）
 
-| File | Change | Risk |
-|------|--------|------|
-| `src-tauri/Cargo.toml` | Add `reqwest = { version = "0.12", features = ["json", "rustls-tls"] }` | LOW — additive only |
-| `src-tauri/src/lib.rs` | Append new `fusen_send_to_iphone` async command + register in `generate_handler![]` | LOW — additive only |
-| `app/hooks/useStickyNoteContextMenu.ts` | Change `enabled: false` to `enabled: true` on `ctx_send_to_iphone` item; add `invoke('fusen_send_to_iphone', ...)` in action | LOW — already scaffolded |
+| ファイル | 変更内容 | 変更箇所 | 行数目安 |
+|---------|---------|---------|---------|
+| `src-tauri/src/lib.rs` | `iphone_note_polling_loop` 非同期関数を追加 + `setup()` 末尾で `tokio::spawn` | `setup()` ブロックの `logger::log_info("アプリの初期化が完了しました")` 直前に1ブロック追加 | +40行 |
+| `app/viewer/page.tsx` | step 型に `'write'` `'list'` 追加 + 'ready' step に「書く」ボタン追加 + 'write' step UI + 'list' step UI | step 型定義 1箇所 + JSX 内 3ブロック追加 | +60行 |
 
-### New files (no existing code touched)
+### 修正が必要なファイル（1件・軽微）
 
-| File | Description |
-|------|-------------|
-| `app/api/v1/[[...route]]/route.ts` | Hono entry point |
-| `app/api/v1/handlers/subscribe.ts` | Subscribe endpoint |
-| `app/api/v1/handlers/push.ts` | Push note endpoint |
-| `app/api/v1/handlers/latest.ts` | Latest note read endpoint |
-| `lib/gdrive.ts` | Google Drive API wrapper |
-| `lib/webpush.ts` | VAPID / web-push wrapper |
-| `public/sw.js` | Service Worker (see next-pwa conflict note above) |
-| `public/manifest.json` | PWA manifest |
-| `app/viewer/page.tsx` | Note viewer + setup guide |
-| `.env.local` | Local secrets (never committed) |
+| ファイル | 変更内容 | 変更箇所 | 行数目安 |
+|---------|---------|---------|---------|
+| `app/page.tsx` | `listen('fusen:note_from_iphone', ...)` を追加 | 既存 listen ブロック群の末尾 | +25行 |
+
+### 新規ファイル不要
+
+Drive 上のファイル（`fusen_from_iphone.json`, `fusen_iphone_notes.json`）は実行時に自動生成される。既存の `uploadToDrive` / `upload_json` が対応済み。
 
 ---
 
-## Build Order (Phase Dependencies)
+## Build Order
 
 ```
-Phase 1: Hono + Push API foundation (no Rust changes, no UI changes)
-  Step 1.1  npm install hono web-push googleapis
-  Step 1.2  lib/gdrive.ts — Drive wrapper with OAuth refresh token
-  Step 1.3  lib/webpush.ts — VAPID keygen + sendNotification wrapper
-  Step 1.4  app/api/v1/[[...route]]/route.ts — Hono entry (nodejs runtime)
-  Step 1.5  app/api/v1/handlers/subscribe.ts
-  Step 1.6  app/api/v1/handlers/push.ts
-  Step 1.7  app/api/v1/handlers/latest.ts
-  Step 1.8  .env.local + Vercel env vars
-  Step 1.9  Verify: curl POST /api/v1/subscribe returns 200
+Phase 1: Drive ← iPhone 書き込み（PCなしで検証可能）
+  Step 1.1  viewer/page.tsx: step 型に 'write' 追加
+  Step 1.2  viewer/page.tsx: 'ready' step に「書く」ボタン追加
+  Step 1.3  viewer/page.tsx: 'write' step UI (テキスト入力 + 送信ボタン)
+  Step 1.4  viewer/page.tsx: 送信ハンドラ — fusen_from_iphone.json と fusen_iphone_notes.json 書き込み
+  Step 1.5  Verify: iPhone 実機で「書く」→ Drive に fusen_from_iphone.json が作成されることを確認
 
-Phase 2: iPhone PWA + Rust send command (depends on Phase 1 API being live)
-  Step 2.1  public/manifest.json (no build blocker, can be done anytime)
-  Step 2.2  public/sw.js (resolve next-pwa conflict first)
-  Step 2.3  app/viewer/page.tsx — setup guide + note viewer
-  Step 2.4  Cargo.toml: reqwest addition
-  Step 2.5  lib.rs: fusen_send_to_iphone command
-  Step 2.6  useStickyNoteContextMenu.ts: enable ctx_send_to_iphone
-  Step 2.7  Verify: end-to-end on real iPhone
+Phase 2: PC polling（Phase 1 完了後でないと検証できない）
+  Step 2.1  lib.rs: LAST_IPHONE_NOTE_ID static Mutex を追加
+  Step 2.2  lib.rs: iphone_note_polling_loop 関数を追加
+  Step 2.3  lib.rs: setup() 末尾で tokio::spawn
+  Step 2.4  page.tsx: listen('fusen:note_from_iphone', ...) を追加
+  Step 2.5  Verify: iPhoneで送信 → 30秒以内にPCに付箋ウィンドウが開くことを確認
 
-Ordering rationale:
-- Phase 1 before Phase 2 because Rust command POSTs to the Hono endpoint.
-  Testing Rust send without the API live means no observable result.
-- lib/gdrive.ts before handlers because both push and subscribe handlers import it.
-- lib/webpush.ts before push handler because push handler calls sendNotification.
-- manifest.json before sw.js because browser shows install prompt only when manifest is valid.
-- sw.js before viewer page because viewer page triggers subscription via Service Worker.
-- Cargo.toml + lib.rs before useStickyNoteContextMenu.ts change because the menu action
-  invokes the Rust command — enabling the menu item before the command exists would
-  produce a runtime error visible to the user.
+Phase 3: iPhone 履歴表示（Phase 1 完了後に追加可能）
+  Step 3.1  viewer/page.tsx: 'list' step UI (fusen_iphone_notes.json からの履歴表示)
+  Step 3.2  Verify: 送信後に 'list' step で履歴が表示されることを確認
 ```
+
+**順序の根拠:**
+- Phase 1 が先: Drive 書き込みが動作しないと polling の検証が不可能。
+- Phase 2 が Phase 1 依存: ファイルが存在しないと `download_json` が毎回エラーを返すだけで動作確認できない。
+- Phase 3 は Phase 1 と独立: 履歴表示は fusen_iphone_notes.json を読むだけで、PC との通信に依存しない。
 
 ---
 
 ## Scalability Considerations
 
-This is a single-user system (BYOS design). Scalability in the traditional sense is not a concern. The relevant operational constraints are:
+シングルユーザー設計のため従来の scalability は不要。関連する運用上の制約:
 
-| Concern | Current scope | Implication |
-|---------|--------------|-------------|
-| Google Drive API quota | 1000 requests/100s per user | Single user sends notes manually — nowhere near limit |
-| Vercel function timeout | 10s on free tier | googleapis + web-push chain should complete in < 2s |
-| APNs delivery guarantee | Best-effort; retries not automatic | No retry logic needed for v2.0; note is in Drive as fallback |
-| Push subscription expiry | APNs endpoint can expire (rare) | User re-visits viewer page to re-subscribe; no auto-recovery needed for v2.0 |
-| next-pwa sw.js conflict | Build-time overwrite risk | Must resolve before first Vercel deploy of Phase 2 |
+| 関心事 | 現在のスコープ | 含意 |
+|--------|--------------|------|
+| Drive API quota | 1000 req/100s | 30秒 poll = 2880 req/day。push 送信と合わせても quota の < 1% |
+| polling 中のトークン期限切れ | `get_access_token` が自動 refresh | 問題なし。refresh 失敗時は `continue` でスキップ |
+| PC 未起動時のノート消失 | `fusen_from_iphone.json` はファイルが残る | 再起動後の最初の poll で受信。ただし `received_at` フィルタがないと再起動のたびに重複受信 |
+| Drive ファイル競合 | iPhone が送信中に PC が上書き | 実用上問題なし（シングルユーザー。送信 → 受信のシーケンシャルな使い方） |
 
 ---
 
 ## Sources
 
-- `PLAN_web_iphone.md` — Project's own implementation plan (HIGH confidence, authored by maintainer)
-- `docs/ARCHITECTURE_DESIGN_v1.1.md` — Architecture design doc v1.1 (HIGH confidence)
-- `app/hooks/useStickyNoteContextMenu.ts` — Existing `ctx_send_to_iphone` stub (source code)
-- `next.config.mjs` — Confirms `next-pwa` is active with `dest: "public"` (source code)
-- `src-tauri/Cargo.toml` — Confirms `tokio` already present, no `reqwest` yet (source code)
-- `package.json` — Confirms `hono`, `web-push`, `googleapis` not yet installed (source code)
+- `src-tauri/src/gdrive.rs` — `upload_json`, `download_json`, `get_access_token` のシグネチャ（ソースコード）
+- `src-tauri/src/lib.rs` — `setup()` ブロック構造、既存 `tokio::spawn` パターン、`LAST_VISIBILITY_MS` static Mutex パターン（ソースコード）
+- `app/viewer/page.tsx` — 既存 step machine、`uploadToDrive` 実装（ソースコード）
+- `app/page.tsx` — 既存 `listen` パターン、`fusen_create_note` / `fusen_save_note` 呼び出し例（ソースコード）
+- `src-tauri/src/state.rs` — `AppState`, `Note`, `NoteMeta` 型定義（ソースコード）
+- `.planning/PROJECT.md` — v2.0 完了状態の確認（プロジェクトドキュメント）
