@@ -65,7 +65,7 @@ async function uploadToDrive(
     form.append('metadata', new Blob([updateMeta], { type: 'application/json' }));
     form.append('file', fileBlob);
     await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&addParents=root`,
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -354,7 +354,11 @@ export default function ViewerPage() {
     setIsHistoryLoading(true);
     downloadFromDrive(accessToken, 'fusen_iphone_notes.json')
       .then((data) => setHistoryNotes((data.notes ?? []).slice(0, 10)))
-      .catch(() => setHistoryNotes([]))
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes('not found')) setErrorMessage('履歴の読み込みに失敗: ' + msg);
+        setHistoryNotes([]);
+      })
       .finally(() => setIsHistoryLoading(false));
   }, [step, accessToken]);
 
