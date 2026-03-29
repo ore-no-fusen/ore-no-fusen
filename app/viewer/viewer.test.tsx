@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { SimpleNoteBody } from './SimpleNoteBody';
+import { resizeImageToBase64, insertAtCursor } from './page';
 
 // Wave 1 で実装される — Plan 02 完了まで TODO
 // import ViewerPage from './page';
@@ -51,6 +52,7 @@ beforeEach(() => {
       toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,mock'),
     },
   });
+  HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/jpeg;base64,mock');
 });
 
 describe('ViewerPage — 非standalone 時はバナーをレンダリングする', () => {
@@ -123,8 +125,40 @@ describe('SEND-02: iPhoneに置いておく', () => {
 });
 
 describe('SEND-03: 画像添付', () => {
-  it.todo('resizeImageToBase64 が Canvas API を使って base64 文字列を返す');
-  it.todo('画像選択後にカーソル位置に ![](data:...) が挿入される');
+  it('resizeImageToBase64 が Canvas API を使って base64 文字列を返す', async () => {
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:mock');
+    URL.revokeObjectURL = vi.fn();
+
+    const originalImage = global.Image;
+    (global as any).Image = class {
+      width = 1600;
+      height = 1200;
+      set src(_: string) {
+        setTimeout(() => (this as any).onload?.(), 0);
+      }
+    };
+
+    const file = new File([''], 'test.jpg', { type: 'image/jpeg' });
+    const result = await resizeImageToBase64(file, 800);
+
+    expect(result).toMatch(/^data:image\/jpeg/);
+
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+    (global as any).Image = originalImage;
+  });
+
+  it('insertAtCursor がカーソル位置に文字列を挿入して新しい value を返す', () => {
+    const textarea = document.createElement('textarea');
+    textarea.value = 'hello world';
+    textarea.selectionStart = 5;
+    textarea.selectionEnd = 5;
+
+    const result = insertAtCursor(textarea, '![](data:image/jpeg;base64,abc)');
+    expect(result).toBe('hello![](data:image/jpeg;base64,abc) world');
+  });
 });
 
 describe('SEND-04: Mermaid挿入', () => {

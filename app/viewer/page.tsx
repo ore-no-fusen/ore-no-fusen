@@ -168,7 +168,7 @@ async function saveToHistory(token: string, note: IphoneNote): Promise<void> {
 }
 
 // 画像をリサイズして base64 文字列に変換
-function resizeImageToBase64(file: File, maxWidth = 800): Promise<string> {
+export function resizeImageToBase64(file: File, maxWidth = 800): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -188,7 +188,7 @@ function resizeImageToBase64(file: File, maxWidth = 800): Promise<string> {
 }
 
 // テキストエリアのカーソル位置に文字列を挿入
-function insertAtCursor(el: HTMLTextAreaElement, insertion: string): string {
+export function insertAtCursor(el: HTMLTextAreaElement, insertion: string): string {
   const { selectionStart, selectionEnd, value } = el;
   const newValue =
     value.slice(0, selectionStart) + insertion + value.slice(selectionEnd);
