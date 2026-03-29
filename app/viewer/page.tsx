@@ -48,13 +48,17 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 const APP_FOLDER_NAME = 'ore-no-fusen';
 
-async function getAppFolderId(accessToken: string): Promise<string> {
+async function getAppFolderId(accessToken: string): Promise<string | null> {
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=name='${APP_FOLDER_NAME}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
-  if (data.files?.[0]?.id) return data.files[0].id;
+  if (data.files?.[0]?.id) return data.files[0].id as string;
+  if (data.error) {
+    console.warn('[Drive] folder search error:', data.error.message);
+    return null;
+  }
   // フォルダが存在しない場合は作成
   const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
@@ -62,7 +66,11 @@ async function getAppFolderId(accessToken: string): Promise<string> {
     body: JSON.stringify({ name: APP_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }),
   });
   const created = await createRes.json();
-  return created.id;
+  if (created.error) {
+    console.warn('[Drive] folder create error:', created.error.message);
+    return null;
+  }
+  return created.id as string;
 }
 
 async function uploadToDrive(
@@ -71,8 +79,10 @@ async function uploadToDrive(
   data: object
 ) {
   const folderId = await getAppFolderId(accessToken);
+  const parentId = folderId ?? 'root';
+  const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
   const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'+and+'${folderId}'+in+parents+and+trashed=false`,
+    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const searchData = await searchRes.json();
@@ -84,7 +94,7 @@ async function uploadToDrive(
     const form = new FormData();
     form.append('metadata', new Blob([updateMeta], { type: 'application/json' }));
     form.append('file', fileBlob);
-    await fetch(
+    const patchRes = await fetch(
       `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
       {
         method: 'PATCH',
@@ -92,12 +102,13 @@ async function uploadToDrive(
         body: form,
       }
     );
+    if (!patchRes.ok) throw new Error(`Drive PATCH failed: ${patchRes.status}`);
   } else {
-    const createMeta = JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [folderId] });
+    const createMeta = JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [parentId] });
     const form = new FormData();
     form.append('metadata', new Blob([createMeta], { type: 'application/json' }));
     form.append('file', fileBlob);
-    await fetch(
+    const postRes = await fetch(
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
       {
         method: 'POST',
@@ -105,13 +116,15 @@ async function uploadToDrive(
         body: form,
       }
     );
+    if (!postRes.ok) throw new Error(`Drive POST failed: ${postRes.status}`);
   }
 }
 
 async function downloadFromDrive(accessToken: string, fileName: string) {
   const folderId = await getAppFolderId(accessToken);
+  const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
   const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'+and+'${folderId}'+in+parents+and+trashed=false`,
+    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const searchData = await searchRes.json();
