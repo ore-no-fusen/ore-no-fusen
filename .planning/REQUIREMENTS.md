@@ -7,19 +7,19 @@
 
 ### iPhone送信（SEND）
 
-- [ ] **SEND-01**: iPhoneでテキストを入力して「PCに送る」で付箋をDriveに送信できる
-- [ ] **SEND-02**: 「iPhoneに置いておく」で下書きとしてiPhone履歴に保存できる（PCには送らない）
-- [ ] **SEND-03**: 画像追加ボタンでカメラ/ライブラリから写真を付箋に添付できる（Canvas圧縮→Markdown画像）
-- [ ] **SEND-04**: Mermaidボタンでコード入力欄+プレビューを開き、本文に ```mermaid ブロックとして挿入できる
+- [x] **SEND-01**: iPhoneでテキストを入力して「PCに送る」で付箋をDriveに送信できる
+- [x] **SEND-02**: 「iPhoneに置いておく」で下書きとしてiPhone履歴に保存できる（PCには送らない）
+- [x] **SEND-03**: 画像追加ボタンでカメラ/ライブラリから写真を付箋に添付できる（Canvas圧縮→Markdown画像）
+- [x] **SEND-04**: Mermaidボタンでコード入力欄+プレビューを開き、本文に ```mermaid ブロックとして挿入できる
 
 ### iPhone履歴（HIST）
 
-- [ ] **HIST-01**: 送信後に送信済み+下書きの履歴リストを表示できる（最新10件、sent/draft 区別）
-- [ ] **HIST-02**: 履歴から下書きを選んで編集・送信できる
+- [x] **HIST-01**: 送信後に送信済み+下書きの履歴リストを表示できる（最新10件、sent/draft 区別）
+- [x] **HIST-02**: 履歴から下書きを選んで編集・送信できる
 
 ### Mermaidレンダリング（REND）
 
-- [ ] **REND-01**: viewer内で ```mermaid コードブロックを図（SVG）として描画できる
+- [x] **REND-01**: viewer内で ```mermaid コードブロックを図（SVG）として描画できる
 
 ### PC受信（POLL）
 
@@ -47,13 +47,13 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEND-01 | Phase 6 | Pending |
-| SEND-02 | Phase 6 | Pending |
-| SEND-03 | Phase 6 | Pending |
-| SEND-04 | Phase 6 | Pending |
-| HIST-01 | Phase 6 | Pending |
-| HIST-02 | Phase 6 | Pending |
-| REND-01 | Phase 6 | Pending |
+| SEND-01 | Phase 6 | Complete |
+| SEND-02 | Phase 6 | Complete |
+| SEND-03 | Phase 6 | Complete |
+| SEND-04 | Phase 6 | Complete |
+| HIST-01 | Phase 6 | Complete |
+| HIST-02 | Phase 6 | Complete |
+| REND-01 | Phase 6 | Complete |
 | POLL-01 | Phase 7 | Pending |
 | POLL-02 | Phase 7 | Pending |
 | POLL-03 | Phase 7 | Pending |
