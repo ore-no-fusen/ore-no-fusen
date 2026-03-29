@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { SimpleNoteBody } from './SimpleNoteBody';
-import { resizeImageToBase64, insertAtCursor, formatRelativeTime } from './page';
+import { resizeImageToBase64, insertAtCursor, formatRelativeTime } from './utils';
 
 // Wave 1 で実装される — Plan 02 完了まで TODO
 // import ViewerPage from './page';
