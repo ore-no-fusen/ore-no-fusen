@@ -10,6 +10,24 @@ import { SimpleNoteBody } from './SimpleNoteBody';
 // Wave 1 で実装される — Plan 02 完了まで TODO
 // import ViewerPage from './page';
 
+// mermaid モック（jsdom は mermaid を描画できない）
+vi.mock('mermaid', () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn().mockResolvedValue({ svg: '<svg>mock</svg>' }),
+  },
+}));
+
+// Phase 6 型定義
+type IphoneNote = {
+  id: string;
+  status: 'sent' | 'draft';
+  title: string;
+  body: string;
+  created_at: string;
+  sent_at?: string;
+};
+
 // matchMedia モック（jsdom は matchMedia を持たない）
 beforeEach(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -24,6 +42,14 @@ beforeEach(() => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     })),
+  });
+
+  // Canvas API モック（jsdom は Canvas を持たない）
+  HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
+    drawImage: vi.fn(),
+    canvas: {
+      toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,mock'),
+    },
   });
 });
 
@@ -78,4 +104,48 @@ describe('SimpleNoteBody', () => {
     expect(container.textContent).toContain('行1');
     expect(container.textContent).toContain('行3');
   });
+});
+
+// ============================================================
+// Phase 6: iPhone→PC送信 テストスタブ (Wave 0)
+// Wave 1〜3 の実装後に GREEN になること
+// ============================================================
+
+describe('SEND-01: PCに送る', () => {
+  it.todo('「PCに送る」を押すと uploadToDrive が fusen_from_iphone.json に正しいペイロードで呼ばれる');
+  it.todo('送信成功後に body/title がクリアされる');
+  it.todo('送信中はボタンが「送信中...」になり disabled になる');
+});
+
+describe('SEND-02: iPhoneに置いておく', () => {
+  it.todo('「iPhoneに置いておく」を押すと uploadToDrive が fusen_iphone_notes.json に status:"draft" で呼ばれる');
+  it.todo('下書き保存後に list ステップに遷移する');
+});
+
+describe('SEND-03: 画像添付', () => {
+  it.todo('resizeImageToBase64 が Canvas API を使って base64 文字列を返す');
+  it.todo('画像選択後にカーソル位置に ![](data:...) が挿入される');
+});
+
+describe('SEND-04: Mermaid挿入', () => {
+  it.todo('Mermaidボタンでモーダルが開く');
+  it.todo('プレビューボタンで mermaid.render() が呼ばれる');
+  it.todo('挿入ボタンでカーソル位置に ```mermaid ブロックが挿入される');
+});
+
+describe('HIST-01: 履歴表示', () => {
+  it.todo('listステップで fusen_iphone_notes.json の最新10件が表示される');
+  it.todo('sent/draft バッジが正しく表示される');
+  it.todo('履歴ファイルが存在しない（初回）場合は空リストが表示される');
+});
+
+describe('HIST-02: 下書き編集', () => {
+  it.todo('draft アイテムをタップすると write ステップに遷移する');
+  it.todo('write ステップに遷移後、下書きの title と body が復元される');
+});
+
+describe('REND-01: Mermaidレンダリング', () => {
+  it.todo('SimpleNoteBody が ```mermaid ブロックを検出して mermaid.render() を呼ぶ');
+  it.todo('SVG が DOM に挿入される');
+  it.todo('複数の mermaid ブロックがある場合、それぞれユニーク ID で描画される');
 });
