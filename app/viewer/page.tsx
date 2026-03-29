@@ -167,6 +167,39 @@ async function saveToHistory(token: string, note: IphoneNote): Promise<void> {
   await uploadWithAutoRefresh(token, 'fusen_iphone_notes.json', { notes: updated });
 }
 
+// 画像をリサイズして base64 文字列に変換
+function resizeImageToBase64(file: File, maxWidth = 800): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// テキストエリアのカーソル位置に文字列を挿入
+function insertAtCursor(el: HTMLTextAreaElement, insertion: string): string {
+  const { selectionStart, selectionEnd, value } = el;
+  const newValue =
+    value.slice(0, selectionStart) + insertion + value.slice(selectionEnd);
+  requestAnimationFrame(() => {
+    const pos = selectionStart + insertion.length;
+    el.selectionStart = pos;
+    el.selectionEnd = pos;
+  });
+  return newValue;
+}
+
 // Drive ダウンロード（トークン期限切れ時に自動リフレッシュ）
 function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: string }> {
   return downloadFromDrive(token, 'fusen_note.json').catch(() =>
@@ -194,6 +227,12 @@ export default function ViewerPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [swReady, setSwReady] = useState(false);
+  const [writeTitle, setWriteTitle] = useState('');
+  const [writeBody, setWriteBody] = useState('');
+  const [sendSuccess, setSendSuccess] = useState(false);
+  const [showMermaidModal, setShowMermaidModal] = useState(false);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // iOS Safari は navigator.standalone で判定、他は matchMedia
@@ -451,6 +490,157 @@ export default function ViewerPage() {
             {errorMessage && (
               <p className="text-red-600 text-sm mt-2">{errorMessage}</p>
             )}
+          </div>
+        )}
+
+        {step === 'write' && (
+          <div className="flex flex-col min-h-[100dvh] bg-white">
+            {/* ヘッダー */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <button
+                className="text-blue-600 text-sm font-medium"
+                onClick={() => setStep('list')}
+              >
+                📋 履歴
+              </button>
+              <span className="font-semibold text-gray-900">書く</span>
+              <div className="w-12" />
+            </div>
+
+            {/* タイトル入力 */}
+            <input
+              type="text"
+              placeholder="タイトル（任意）"
+              value={writeTitle}
+              onChange={(e) => setWriteTitle(e.target.value)}
+              className="px-4 py-3 border-b border-gray-100 text-base outline-none"
+            />
+
+            {/* 本文テキストエリア */}
+            <textarea
+              ref={textareaRef}
+              placeholder="メモを書く..."
+              value={writeBody}
+              onChange={(e) => setWriteBody(e.target.value)}
+              className="flex-1 px-4 py-3 text-base outline-none resize-none"
+            />
+
+            {/* 添付ツールバー */}
+            <div className="flex gap-3 px-4 py-2 border-t border-gray-100">
+              <button
+                className="text-2xl"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="画像を追加"
+              >
+                📷
+              </button>
+              <button
+                className="text-sm font-medium text-blue-600 border border-blue-300 rounded px-3 py-1"
+                onClick={() => setShowMermaidModal(true)}
+              >
+                Mermaid
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file || !textareaRef.current) return;
+                  try {
+                    const base64 = await resizeImageToBase64(file);
+                    const insertion = `![](${base64})`;
+                    const newBody = insertAtCursor(textareaRef.current, insertion);
+                    setWriteBody(newBody);
+                  } catch {
+                    setErrorMessage('画像の処理に失敗しました');
+                  } finally {
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </div>
+
+            {/* 成功メッセージ */}
+            {sendSuccess && (
+              <p className="text-center text-green-600 text-sm py-1">送信しました！</p>
+            )}
+            {errorMessage && (
+              <p className="text-center text-red-600 text-sm py-1">{errorMessage}</p>
+            )}
+
+            {/* アクションボタン */}
+            <div className="flex gap-3 px-4 py-4 border-t border-gray-200">
+              <button
+                className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-700 font-medium disabled:opacity-40"
+                disabled={isLoading}
+                onClick={async () => {
+                  if (!accessToken) return;
+                  setIsLoading(true);
+                  setErrorMessage(null);
+                  try {
+                    const note: IphoneNote = {
+                      id: crypto.randomUUID(),
+                      status: 'draft',
+                      title: writeTitle,
+                      body: writeBody,
+                      created_at: new Date().toISOString(),
+                    };
+                    await saveToHistory(accessToken, note);
+                    setStep('list');
+                  } catch (err: unknown) {
+                    setErrorMessage('保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+              >
+                iPhoneに置いておく
+              </button>
+              <button
+                className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
+                disabled={isLoading}
+                onClick={async () => {
+                  if (!accessToken) return;
+                  setIsLoading(true);
+                  setErrorMessage(null);
+                  setSendSuccess(false);
+                  try {
+                    const noteId = crypto.randomUUID();
+                    const sentAt = new Date().toISOString();
+                    await uploadWithAutoRefresh(accessToken, 'fusen_from_iphone.json', {
+                      id: noteId,
+                      title: writeTitle,
+                      body: writeBody,
+                      sent_at: sentAt,
+                    });
+                    const note: IphoneNote = {
+                      id: noteId,
+                      status: 'sent',
+                      title: writeTitle,
+                      body: writeBody,
+                      created_at: sentAt,
+                      sent_at: sentAt,
+                    };
+                    await saveToHistory(accessToken, note);
+                    setWriteTitle('');
+                    setWriteBody('');
+                    setSendSuccess(true);
+                    setTimeout(() => setSendSuccess(false), 3000);
+                  } catch (err: unknown) {
+                    setErrorMessage('送信に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+              >
+                {isLoading ? '送信中...' : 'PCに送る'}
+              </button>
+            </div>
+
+            {/* Mermaid モーダル（Plan 04 が実装） */}
+            {showMermaidModal && null}
           </div>
         )}
 
