@@ -32,6 +32,7 @@ function startOAuth(challenge: string) {
     code_challenge: challenge,
     code_challenge_method: 'S256',
     access_type: 'offline',
+    prompt: 'consent',
   });
   window.location.href =
     'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
