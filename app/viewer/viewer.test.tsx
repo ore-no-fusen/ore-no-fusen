@@ -162,9 +162,16 @@ describe('SEND-03: 画像添付', () => {
 });
 
 describe('SEND-04: Mermaid挿入', () => {
-  it.todo('Mermaidボタンでモーダルが開く');
-  it.todo('プレビューボタンで mermaid.render() が呼ばれる');
-  it.todo('挿入ボタンでカーソル位置に ```mermaid ブロックが挿入される');
+  it('insertAtCursor が ```mermaid ブロックを正しく挿入できる', () => {
+    const textarea = document.createElement('textarea');
+    textarea.value = '前のテキスト';
+    textarea.selectionStart = 4;
+    textarea.selectionEnd = 4;
+    const block = '```mermaid\ngraph TD\n  A-->B\n```';
+    const result = insertAtCursor(textarea, block);
+    expect(result).toContain('```mermaid');
+    expect(result).toContain('graph TD');
+  });
 });
 
 describe('HIST-01: 履歴表示', () => {

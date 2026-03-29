@@ -231,6 +231,11 @@ export default function ViewerPage() {
   const [writeBody, setWriteBody] = useState('');
   const [sendSuccess, setSendSuccess] = useState(false);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
+  const [mermaidCode, setMermaidCode] = useState('');
+  const [mermaidPreviewSvg, setMermaidPreviewSvg] = useState<string | null>(null);
+  const [mermaidPreviewError, setMermaidPreviewError] = useState<string | null>(null);
+  const [isMermaidRendering, setIsMermaidRendering] = useState(false);
+  const mermaidPreviewRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -639,8 +644,90 @@ export default function ViewerPage() {
               </button>
             </div>
 
-            {/* Mermaid モーダル（Plan 04 が実装） */}
-            {showMermaidModal && null}
+            {/* Mermaid モーダル */}
+            {showMermaidModal && (
+              <div className="fixed inset-0 z-50 flex flex-col bg-white">
+                {/* モーダルヘッダー */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                  <button
+                    className="text-gray-500 text-lg font-medium"
+                    onClick={() => {
+                      setShowMermaidModal(false);
+                      setMermaidCode('');
+                      setMermaidPreviewSvg(null);
+                      setMermaidPreviewError(null);
+                    }}
+                  >
+                    ✕
+                  </button>
+                  <span className="font-semibold text-gray-900">Mermaid</span>
+                  <button
+                    className="text-blue-600 text-sm font-medium disabled:opacity-40"
+                    disabled={isMermaidRendering || !mermaidCode.trim()}
+                    onClick={async () => {
+                      setIsMermaidRendering(true);
+                      setMermaidPreviewError(null);
+                      try {
+                        const { default: mermaid } = await import('mermaid');
+                        mermaid.initialize({ startOnLoad: false });
+                        const id = `mermaid-preview-${Date.now()}`;
+                        const { svg } = await mermaid.render(id, mermaidCode);
+                        setMermaidPreviewSvg(svg);
+                      } catch (err: unknown) {
+                        setMermaidPreviewError('構文エラー: ' + (err instanceof Error ? err.message : String(err)));
+                        setMermaidPreviewSvg(null);
+                      } finally {
+                        setIsMermaidRendering(false);
+                      }
+                    }}
+                  >
+                    {isMermaidRendering ? '描画中...' : 'プレビュー'}
+                  </button>
+                </div>
+
+                {/* コード入力 */}
+                <textarea
+                  className="flex-1 px-4 py-3 text-sm font-mono outline-none resize-none border-b border-gray-100"
+                  placeholder={'graph TD\n  A-->B'}
+                  value={mermaidCode}
+                  onChange={(e) => {
+                    setMermaidCode(e.target.value);
+                    setMermaidPreviewSvg(null);
+                  }}
+                />
+
+                {/* プレビュー領域 */}
+                {mermaidPreviewSvg && (
+                  <div
+                    ref={mermaidPreviewRef}
+                    className="px-4 py-3 overflow-auto"
+                    dangerouslySetInnerHTML={{ __html: mermaidPreviewSvg }}
+                  />
+                )}
+                {mermaidPreviewError && (
+                  <p className="px-4 py-2 text-red-600 text-sm">{mermaidPreviewError}</p>
+                )}
+
+                {/* 挿入ボタン */}
+                <div className="px-4 py-4 border-t border-gray-200">
+                  <button
+                    className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
+                    disabled={!mermaidCode.trim()}
+                    onClick={() => {
+                      if (!textareaRef.current) return;
+                      const block = `\`\`\`mermaid\n${mermaidCode}\n\`\`\``;
+                      const newBody = insertAtCursor(textareaRef.current, block);
+                      setWriteBody(newBody);
+                      setShowMermaidModal(false);
+                      setMermaidCode('');
+                      setMermaidPreviewSvg(null);
+                    }}
+                  >
+                    挿入
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
