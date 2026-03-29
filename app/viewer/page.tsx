@@ -187,6 +187,16 @@ export function resizeImageToBase64(file: File, maxWidth = 800): Promise<string>
   });
 }
 
+// 相対時刻フォーマット（例: '3分前'）
+export function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const rtf = new Intl.RelativeTimeFormat('ja', { numeric: 'always' });
+  if (diff < 60_000) return rtf.format(-Math.floor(diff / 1000), 'seconds');
+  if (diff < 3_600_000) return rtf.format(-Math.floor(diff / 60_000), 'minutes');
+  if (diff < 86_400_000) return rtf.format(-Math.floor(diff / 3_600_000), 'hours');
+  return rtf.format(-Math.floor(diff / 86_400_000), 'days');
+}
+
 // テキストエリアのカーソル位置に文字列を挿入
 export function insertAtCursor(el: HTMLTextAreaElement, insertion: string): string {
   const { selectionStart, selectionEnd, value } = el;
