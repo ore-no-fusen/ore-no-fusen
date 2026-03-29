@@ -45,19 +45,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-23)
+See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** すぐ書けて、そこに残る。それだけ確実に動く。
-**Current focus:** v3.0 iPhone→PC送信 — Phase 6 計画待ち
+**Current focus:** v3.0 iPhone→PC送信 — 要件定義中
 
 ## Current Position
 
-Phase: — (v2.0完了・v3.0未開始)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Between milestones
-Last activity: 2026-03-29 — v2.0 iPhone連携 完了・アーカイブ済み
-
-Progress: [████████████████████] 100% (v2.0 全5フェーズ完了)
+Status: Defining requirements
+Last activity: 2026-03-29 — Milestone v3.0 started
 
 ## Performance Metrics
 

@@ -26,6 +26,17 @@ v2.0 マイルストーンで Google Drive + APNs を使ったPC→iPhone送信�
 - **通信（Web）**: Google Drive API + APNs（VAPID）
 - **テスト**: Vitest（33件）+ Playwright E2E（13件）
 
+## Current Milestone: v3.0 iPhone→PC送信
+
+**Goal:** iPhoneで書いたメモ・写真・MermaidをPCに送ると、30秒以内に新規付箋ウィンドウが開く
+
+**Target features:**
+- iPhoneからテキスト入力 → 「PCに送る」で付箋がPCに届く
+- PCが30秒間隔でDriveをポーリングして自動受信・新規ウィンドウ表示
+- iPhone側の送信履歴リスト（最新50件）
+- 写真添付（Canvas APIでリサイズ + base64 → Markdown画像）
+- Mermaid図のレンダリング（viewer内で描画）
+
 ## Requirements
 
 ### Validated
@@ -43,7 +54,11 @@ v2.0 マイルストーンで Google Drive + APNs を使ったPC→iPhone送信�
 
 ### Active
 
-（次マイルストーンで定義）
+- [ ] iPhoneからPC宛に付箋テキストを送信できる（Drive経由）
+- [ ] PC側でDriveポーリングして自動受信・新規付箋ウィンドウを開く
+- [ ] iPhone送信履歴リストを表示できる
+- [ ] 写真をMarkdown画像として送信できる
+- [ ] viewer内でMermaid図をレンダリングできる
 
 ### Out of Scope
 
@@ -76,4 +91,4 @@ v2.0 マイルストーンで Google Drive + APNs を使ったPC→iPhone送信�
 | jsonwebtoken 9 を採用 | cmake不要でES256対応 | ✓ Good |
 
 ---
-*Last updated: 2026-03-29 after v2.0 milestone complete*
+*Last updated: 2026-03-29 after v3.0 milestone started*
