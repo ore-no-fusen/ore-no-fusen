@@ -134,7 +134,7 @@ export default function LandingPage() {
                             {/* 入力フォーム (最重要UI) */}
                             <div className="bg-white/80 p-5 sm:p-7 rounded-2xl shadow-lg border border-[#C8B89A]/80 mb-8 backdrop-blur-md transform transition-all hover:-translate-y-1 hover:shadow-xl duration-300">
                                 <label className="block text-sm font-bold text-[#4A6730] mb-3 text-left flex items-center gap-2">
-                                    まず1行書いてみてください。
+                                    <span className="text-lg">💡</span> まず1行書いてみてください。
                                 </label>
                                 <div className="relative">
                                     <input
