@@ -263,43 +263,61 @@ function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: 
 }
 
 // ---------------------------------------------------------------------------
-// IndexedDB — 下書き画像をiPhone内にローカル保存
+// IndexedDB — 下書き（テキスト＋画像）をiPhone内にローカル保存
 // ---------------------------------------------------------------------------
 
-function openDraftImagesDB(): Promise<IDBDatabase> {
+type DraftRecord = {
+  id: string;
+  title: string;
+  body: string;
+  created_at: string;
+  images: { fileName: string; blob: Blob }[];
+};
+
+function openDraftsDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('fusen-draft-images', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('images');
+    const req = indexedDB.open('fusen-drafts', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('drafts');
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function saveDraftImages(noteId: string, images: { fileName: string; blob: Blob }[]): Promise<void> {
-  const db = await openDraftImagesDB();
+async function saveDraft(draft: DraftRecord): Promise<void> {
+  const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('images', 'readwrite');
-    tx.objectStore('images').put(images, noteId);
+    const tx = db.transaction('drafts', 'readwrite');
+    tx.objectStore('drafts').put(draft, draft.id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 }
 
-async function loadDraftImages(noteId: string): Promise<{ fileName: string; blob: Blob }[] | null> {
-  const db = await openDraftImagesDB();
+async function loadAllDrafts(): Promise<DraftRecord[]> {
+  const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('images', 'readonly');
-    const req = tx.objectStore('images').get(noteId);
+    const tx = db.transaction('drafts', 'readonly');
+    const req = tx.objectStore('drafts').getAll();
+    req.onsuccess = () => resolve(req.result ?? []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function loadDraft(id: string): Promise<DraftRecord | null> {
+  const db = await openDraftsDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('drafts', 'readonly');
+    const req = tx.objectStore('drafts').get(id);
     req.onsuccess = () => resolve(req.result ?? null);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function deleteDraftImages(noteId: string): Promise<void> {
-  const db = await openDraftImagesDB();
+async function deleteDraft(id: string): Promise<void> {
+  const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('images', 'readwrite');
-    tx.objectStore('images').delete(noteId);
+    const tx = db.transaction('drafts', 'readwrite');
+    tx.objectStore('drafts').delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -472,14 +490,24 @@ export default function ViewerPage() {
   }, []);
 
   useEffect(() => {
-    if (step !== 'list' || !accessToken) return;
+    if (step !== 'list') return;
     setIsHistoryLoading(true);
-    downloadFromDrive(accessToken, 'fusen_iphone_notes.json')
-      .then((data) => setHistoryNotes((data.notes ?? []).slice(0, 10)))
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes('not found')) setErrorMessage('履歴の読み込みに失敗: ' + msg);
-        setHistoryNotes([]);
+    const draftsPromise = loadAllDrafts().catch(() => [] as DraftRecord[]);
+    const sentPromise = accessToken
+      ? downloadFromDrive(accessToken, 'fusen_iphone_notes.json')
+          .then((data) => (data.notes ?? []) as IphoneNote[])
+          .catch(() => [] as IphoneNote[])
+      : Promise.resolve([] as IphoneNote[]);
+    Promise.all([draftsPromise, sentPromise])
+      .then(([drafts, sentNotes]) => {
+        const draftNotes: IphoneNote[] = drafts.map((d) => ({
+          id: d.id, title: d.title, body: d.body,
+          status: 'draft' as const, created_at: d.created_at,
+        }));
+        const merged = [...draftNotes, ...sentNotes]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 20);
+        setHistoryNotes(merged);
       })
       .finally(() => setIsHistoryLoading(false));
   }, [step, accessToken]);
@@ -705,22 +733,17 @@ export default function ViewerPage() {
                 className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-700 font-medium disabled:opacity-40"
                 disabled={isLoading}
                 onClick={async () => {
-                  if (!accessToken) return;
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
                     const draftId = currentDraftId ?? crypto.randomUUID();
-                    if (attachedImages.length > 0) {
-                      await saveDraftImages(draftId, attachedImages.map((img) => ({ fileName: img.fileName, blob: img.file })));
-                    }
-                    const note: IphoneNote = {
+                    await saveDraft({
                       id: draftId,
-                      status: 'draft',
                       title: writeTitle,
                       body: writeBody,
                       created_at: new Date().toISOString(),
-                    };
-                    await saveToHistory(accessToken, note);
+                      images: attachedImages.map((img) => ({ fileName: img.fileName, blob: img.file })),
+                    });
                     attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
                     setAttachedImages([]);
                     setCurrentDraftId(null);
@@ -769,7 +792,7 @@ export default function ViewerPage() {
                     attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
                     setAttachedImages([]);
                     if (currentDraftId) {
-                      await deleteDraftImages(currentDraftId).catch(() => {});
+                      await deleteDraft(currentDraftId).catch(() => {});
                       setCurrentDraftId(null);
                     }
                     setSendSuccess(true);
@@ -907,9 +930,9 @@ export default function ViewerPage() {
                         setWriteTitle(note.title);
                         setWriteBody(note.body);
                         setCurrentDraftId(note.id);
-                        const saved = await loadDraftImages(note.id).catch(() => null);
-                        if (saved && saved.length > 0) {
-                          setAttachedImages(saved.map(({ fileName, blob }) => ({
+                        const draft = await loadDraft(note.id).catch(() => null);
+                        if (draft && draft.images.length > 0) {
+                          setAttachedImages(draft.images.map(({ fileName, blob }) => ({
                             file: new File([blob], fileName, { type: 'image/jpeg' }),
                             preview: URL.createObjectURL(blob),
                             fileName,
