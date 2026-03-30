@@ -285,7 +285,7 @@ export default function ViewerPage() {
   const [swReady, setSwReady] = useState(false);
   const [writeTitle, setWriteTitle] = useState('');
   const [writeBody, setWriteBody] = useState('');
-  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string; fileName: string }[]>([]);
   const [sendSuccess, setSendSuccess] = useState(false);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -605,14 +605,15 @@ export default function ViewerPage() {
             {/* 添付画像サムネイル */}
             {attachedImages.length > 0 && (
               <div className="flex flex-wrap gap-2 px-4 py-2 border-t border-gray-100">
-                {attachedImages.map((fname, i) => (
+                {attachedImages.map((img, i) => (
                   <div key={i} className="relative">
-                    <div className="w-16 h-16 object-cover rounded bg-gray-100 flex items-center justify-center text-xs text-gray-500 overflow-hidden text-center p-1">
-                      {fname.replace('fusen_img_', '').replace('.jpg', '')}
-                    </div>
+                    <img src={img.preview} className="w-16 h-16 object-cover rounded" alt="" />
                     <button
                       className="absolute -top-1 -right-1 w-5 h-5 bg-gray-600 text-white rounded-full text-xs leading-none"
-                      onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
+                      onClick={() => {
+                        URL.revokeObjectURL(img.preview);
+                        setAttachedImages((prev) => prev.filter((_, j) => j !== i));
+                      }}
                     >×</button>
                   </div>
                 ))}
@@ -639,19 +640,13 @@ export default function ViewerPage() {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={async (e) => {
+                onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   const fileName = `fusen_img_${Date.now()}.jpg`;
-                  if (!accessToken) { setErrorMessage('ログインが必要です'); return; }
-                  try {
-                    await uploadImageWithAutoRefresh(accessToken, file, fileName);
-                    setAttachedImages((prev) => [...prev, fileName]);
-                  } catch (err) {
-                    setErrorMessage('画像のアップロードに失敗しました: ' + (err instanceof Error ? err.message : String(err)));
-                  } finally {
-                    e.target.value = '';
-                  }
+                  const preview = URL.createObjectURL(file);
+                  setAttachedImages((prev) => [...prev, { file, preview, fileName }]);
+                  e.target.value = '';
                 }}
               />
             </div>
@@ -674,7 +669,10 @@ export default function ViewerPage() {
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
-                    const fullBody = writeBody + attachedImages.map((fname) => `\n![](${fname})`).join('');
+                    for (const img of attachedImages) {
+                      await uploadImageWithAutoRefresh(accessToken, img.file, img.fileName);
+                    }
+                    const fullBody = writeBody + attachedImages.map((img) => `\n![](${img.fileName})`).join('');
                     const note: IphoneNote = {
                       id: crypto.randomUUID(),
                       status: 'draft',
@@ -683,6 +681,7 @@ export default function ViewerPage() {
                       created_at: new Date().toISOString(),
                     };
                     await saveToHistory(accessToken, note);
+                    attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
                     setAttachedImages([]);
                     setStep('list');
                   } catch (err: unknown) {
@@ -705,7 +704,10 @@ export default function ViewerPage() {
                   try {
                     const noteId = crypto.randomUUID();
                     const sentAt = new Date().toISOString();
-                    const fullBody = writeBody + attachedImages.map((fname) => `\n![](${fname})`).join('');
+                    for (const img of attachedImages) {
+                      await uploadImageWithAutoRefresh(accessToken, img.file, img.fileName);
+                    }
+                    const fullBody = writeBody + attachedImages.map((img) => `\n![](${img.fileName})`).join('');
                     await uploadWithAutoRefresh(accessToken, 'fusen_from_iphone.json', {
                       id: noteId,
                       title: writeTitle,
@@ -723,6 +725,7 @@ export default function ViewerPage() {
                     await saveToHistory(accessToken, note);
                     setWriteTitle('');
                     setWriteBody('');
+                    attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
                     setAttachedImages([]);
                     setSendSuccess(true);
                     setTimeout(() => setSendSuccess(false), 3000);
