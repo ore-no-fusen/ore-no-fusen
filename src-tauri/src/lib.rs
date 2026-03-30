@@ -1391,9 +1391,9 @@ async fn fusen_download_iphone_images(
         return Ok(body);
     }
 
-    // images ディレクトリを作成
-    let images_dir = Path::new(&folder_path).join("images");
-    std::fs::create_dir_all(&images_dir).map_err(|e| e.to_string())?;
+    // assets ディレクトリを作成（PC貼り付け画像と統一）
+    let assets_dir = Path::new(&folder_path).join("assets");
+    std::fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
 
     // Drive接続・トークン取得
     let client = reqwest::Client::new();
@@ -1403,14 +1403,13 @@ async fn fusen_download_iphone_images(
     // 各画像をダウンロードしてローカル保存
     let mut rewritten = body.clone();
     for filename in &filenames {
-        let local_path = images_dir.join(filename);
+        let local_path = assets_dir.join(filename);
 
         // 既存ファイルはスキップ（冪等）
         if local_path.exists() {
-            let abs_path = local_path.to_string_lossy().into_owned();
             rewritten = rewritten.replace(
                 &format!("![]({filename})"),
-                &format!("![]({abs_path})"),
+                &format!("![](assets/{filename})"),
             );
             continue;
         }
@@ -1419,14 +1418,13 @@ async fn fusen_download_iphone_images(
             Ok(bytes) => {
                 std::fs::write(&local_path, &bytes)
                     .map_err(|e| format!("画像保存失敗 {}: {}", filename, e))?;
-                let abs_path = local_path.to_string_lossy().into_owned();
                 rewritten = rewritten.replace(
                     &format!("![]({filename})"),
-                    &format!("![]({abs_path})"),
+                    &format!("![](assets/{filename})"),
                 );
             }
             Err(e) => {
-                logger::log_info(&format!("[images] download failed {}: {}", filename, e));
+                logger::log_info(&format!("[assets] download failed {}: {}", filename, e));
                 // ダウンロード失敗した画像はそのまま残す（表示エラーになるが致命的ではない）
             }
         }
