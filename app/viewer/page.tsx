@@ -669,15 +669,11 @@ export default function ViewerPage() {
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
-                    for (const img of attachedImages) {
-                      await uploadImageWithAutoRefresh(accessToken, img.file, img.fileName);
-                    }
-                    const fullBody = writeBody + attachedImages.map((img) => `\n![](${img.fileName})`).join('');
                     const note: IphoneNote = {
                       id: crypto.randomUUID(),
                       status: 'draft',
                       title: writeTitle,
-                      body: stripBase64Images(fullBody),
+                      body: writeBody,
                       created_at: new Date().toISOString(),
                     };
                     await saveToHistory(accessToken, note);
