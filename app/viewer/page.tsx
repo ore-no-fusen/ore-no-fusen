@@ -8,6 +8,16 @@ import { formatRelativeTime, insertAtCursor } from './utils';
 // ヘルパー関数
 // ---------------------------------------------------------------------------
 
+function buildImageFileName(title: string, index: number): string {
+  const now = new Date();
+  const date = now.toLocaleDateString('sv').replace(/-/g, '');
+  const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+  const ctx = title.trim().replace(/[^\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f]/g, '').slice(0, 10);
+  return ctx
+    ? `fusen_img_${date}_${time}_${ctx}_${index}.jpg`
+    : `fusen_img_${date}_${time}_${index}.jpg`;
+}
+
 async function generatePKCE() {
   const verifier =
     crypto.randomUUID().replace(/-/g, '') +
@@ -604,7 +614,7 @@ export default function ViewerPage() {
                     const subJson = sub.toJSON();
                     const endpoint = subJson?.endpoint as string;
                     const keys = subJson?.keys;
-                    await uploadToDrive(accessToken!, 'fusen_push_config.json', {
+                    await uploadWithAutoRefresh(accessToken!, 'fusen_push_config.json', {
                       endpoint,
                       keys,
                     });
@@ -612,7 +622,14 @@ export default function ViewerPage() {
                     setStep('write');
                   } catch (err: unknown) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    setErrorMessage('通知設定に失敗しました: ' + msg);
+                    if (msg === 'session expired') {
+                      localStorage.removeItem('viewer_access_token');
+                      localStorage.removeItem('viewer_refresh_token');
+                      setErrorMessage('セッションが切れました。再度ログインしてください。');
+                      setStep('login');
+                    } else {
+                      setErrorMessage('通知設定に失敗しました: ' + msg);
+                    }
                   } finally {
                     setIsLoading(false);
                   }
@@ -711,9 +728,13 @@ export default function ViewerPage() {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  const fileName = `fusen_img_${Date.now()}.jpg`;
+                  const fileName = buildImageFileName(writeTitle, attachedImages.length + 1);
                   const preview = URL.createObjectURL(file);
                   setAttachedImages((prev) => [...prev, { file, preview, fileName }]);
+                  if (textareaRef.current) {
+                    const newBody = insertAtCursor(textareaRef.current, `![](${fileName})`);
+                    setWriteBody(newBody);
+                  }
                   e.target.value = '';
                 }}
               />
@@ -765,14 +786,30 @@ export default function ViewerPage() {
                   setIsLoading(true);
                   setErrorMessage(null);
                   setSendSuccess(false);
+                  // 送信前にトークンの有効期限を確認し、切れていたら自動更新
+                  let token = accessToken;
+                  const expiresAt = parseInt(localStorage.getItem('viewer_expires_at') || '0');
+                  if (Date.now() > expiresAt - 5 * 60 * 1000) {
+                    const newToken = await refreshAccessToken();
+                    if (!newToken) {
+                      localStorage.removeItem('viewer_access_token');
+                      localStorage.removeItem('viewer_refresh_token');
+                      setErrorMessage('セッションが切れました。再度ログインしてください。');
+                      setStep('login');
+                      setIsLoading(false);
+                      return;
+                    }
+                    token = newToken;
+                    setAccessToken(newToken);
+                  }
                   try {
                     const noteId = crypto.randomUUID();
                     const sentAt = new Date().toISOString();
                     for (const img of attachedImages) {
-                      await uploadImageWithAutoRefresh(accessToken, img.file, img.fileName);
+                      await uploadImageWithAutoRefresh(token, img.file, img.fileName);
                     }
                     const fullBody = writeBody + attachedImages.map((img) => `\n![](${img.fileName})`).join('');
-                    await uploadWithAutoRefresh(accessToken, 'fusen_from_iphone.json', {
+                    await uploadWithAutoRefresh(token, 'fusen_from_iphone.json', {
                       id: noteId,
                       title: writeTitle,
                       body: fullBody,
@@ -786,7 +823,7 @@ export default function ViewerPage() {
                       created_at: sentAt,
                       sent_at: sentAt,
                     };
-                    await saveToHistory(accessToken, note);
+                    await saveToHistory(token, note);
                     setWriteTitle('');
                     setWriteBody('');
                     attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
@@ -798,7 +835,15 @@ export default function ViewerPage() {
                     setSendSuccess(true);
                     setTimeout(() => setSendSuccess(false), 3000);
                   } catch (err: unknown) {
-                    setErrorMessage('送信に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+                    const msg = err instanceof Error ? err.message : String(err);
+                    if (msg === 'session expired') {
+                      localStorage.removeItem('viewer_access_token');
+                      localStorage.removeItem('viewer_refresh_token');
+                      setErrorMessage('セッションが切れました。再度ログインしてください。');
+                      setStep('login');
+                    } else {
+                      setErrorMessage('送信に失敗しました: ' + msg);
+                    }
                   } finally {
                     setIsLoading(false);
                   }

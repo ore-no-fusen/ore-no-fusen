@@ -441,6 +441,36 @@ pub async fn download_binary(
     Ok(bytes.to_vec())
 }
 
+/// Drive からファイルを削除する（ファイルが存在しない場合は無視）
+pub async fn delete_file_by_name(
+    client: &Client,
+    access_token: &str,
+    filename: &str,
+) -> Result<(), String> {
+    let q = format!("name='{}' and trashed=false", filename);
+    let resp: DriveFileList = client
+        .get("https://www.googleapis.com/drive/v3/files")
+        .bearer_auth(access_token)
+        .query(&[("q", q.as_str()), ("fields", "files(id)")])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let file_id = match resp.files.into_iter().next() {
+        Some(f) => f.id,
+        None => return Ok(()), // 存在しなければ無視
+    };
+    client
+        .delete(format!("https://www.googleapis.com/drive/v3/files/{}", file_id))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// push_config を Drive からダウンロードして AppState.pro_config に設定する
 pub async fn poll_push_config(
     client: &Client,

@@ -1506,9 +1506,22 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     let body  = data.get("body").and_then(|v| v.as_str()).unwrap_or("");
     let context = build_context(title, body);
 
-    // 7. received_at を Drive に非同期で書き戻す
+    // 7. received_at を Drive に書き戻す＋画像ファイルを削除
     let mut updated = data.clone();
     updated["received_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
+    // body 内の ![](fusen_img_*.jpg) を抽出
+    let image_names: Vec<String> = {
+        let mut names = Vec::new();
+        let mut search = body;
+        while let Some(start) = search.find("![](fusen_img_") {
+            let rest = &search[start + 4..]; // "fusen_img_..." の先頭
+            if let Some(end) = rest.find(')') {
+                names.push(rest[..end].to_string());
+            }
+            search = &search[start + 1..];
+        }
+        names
+    };
     {
         let client2 = client.clone();
         let token2  = token.clone();
@@ -1516,6 +1529,9 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             let _ = gdrive::upload_json(
                 &client2, &token2, "fusen_from_iphone.json", &updated,
             ).await;
+            for name in image_names {
+                let _ = gdrive::delete_file_by_name(&client2, &token2, &name).await;
+            }
         });
     }
 
