@@ -1366,6 +1366,75 @@ async fn fusen_send_to_iphone(
 
 // --- iPhone受信 ---
 
+/// iPhoneからの body 内の画像参照（fusen_img_*.* パターン）を
+/// Drive からダウンロードしてローカル保存し、絶対パスに書き換えた body を返す
+#[tauri::command]
+async fn fusen_download_iphone_images(
+    folder_path: String,
+    body: String,
+) -> Result<String, String> {
+    use std::path::Path;
+
+    // 画像ファイル名を抽出: ![](fusen_img_XXX.ext) → ["fusen_img_XXX.ext", ...]
+    let re = regex::Regex::new(r"!\[\]\((fusen_img_[^)]+)\)")
+        .map_err(|e| e.to_string())?;
+
+    let filenames: Vec<String> = re
+        .captures_iter(&body)
+        .filter_map(|cap| cap.get(1))
+        .map(|m| m.as_str().to_string())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if filenames.is_empty() {
+        return Ok(body);
+    }
+
+    // images ディレクトリを作成
+    let images_dir = Path::new(&folder_path).join("images");
+    std::fs::create_dir_all(&images_dir).map_err(|e| e.to_string())?;
+
+    // Drive接続・トークン取得
+    let client = reqwest::Client::new();
+    let token = gdrive::get_access_token(&client).await
+        .map_err(|e| format!("Drive未接続: {}", e))?;
+
+    // 各画像をダウンロードしてローカル保存
+    let mut rewritten = body.clone();
+    for filename in &filenames {
+        let local_path = images_dir.join(filename);
+
+        // 既存ファイルはスキップ（冪等）
+        if local_path.exists() {
+            let abs_path = local_path.to_string_lossy().into_owned();
+            rewritten = rewritten.replace(
+                &format!("![]({filename})"),
+                &format!("![]({abs_path})"),
+            );
+            continue;
+        }
+
+        match gdrive::download_binary(&client, &token, filename).await {
+            Ok(bytes) => {
+                std::fs::write(&local_path, &bytes)
+                    .map_err(|e| format!("画像保存失敗 {}: {}", filename, e))?;
+                let abs_path = local_path.to_string_lossy().into_owned();
+                rewritten = rewritten.replace(
+                    &format!("![]({filename})"),
+                    &format!("![]({abs_path})"),
+                );
+            }
+            Err(e) => {
+                logger::log_info(&format!("[images] download failed {}: {}", filename, e));
+                // ダウンロード失敗した画像はそのまま残す（表示エラーになるが致命的ではない）
+            }
+        }
+    }
+
+    Ok(rewritten)
+}
+
 fn build_context(title: &str, body: &str) -> String {
     if !title.is_empty() {
         return title.to_string();
@@ -1558,6 +1627,7 @@ pub fn run() {
             fusen_oauth_connect,
             fusen_check_pro_setup,
             fusen_send_to_iphone,
+            fusen_download_iphone_images,
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);

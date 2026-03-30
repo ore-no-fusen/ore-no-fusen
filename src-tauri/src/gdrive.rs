@@ -399,6 +399,48 @@ pub async fn download_json(
     serde_json::from_slice(&body).map_err(|e| e.to_string())
 }
 
+/// Drive からバイナリファイルをダウンロードして Vec<u8> で返す
+/// ファイル未存在時: Err("File not found: {filename}")
+/// 検索スコープ: Drive 全体（download_json と同じ実装方針）
+pub async fn download_binary(
+    client: &Client,
+    access_token: &str,
+    filename: &str,
+) -> Result<Vec<u8>, String> {
+    let q = format!("name='{}' and trashed=false", filename);
+    let resp: DriveFileList = client
+        .get("https://www.googleapis.com/drive/v3/files")
+        .bearer_auth(access_token)
+        .query(&[("q", q.as_str()), ("fields", "files(id)")])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let file_id = resp
+        .files
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("File not found: {}", filename))?
+        .id;
+
+    let bytes = client
+        .get(format!(
+            "https://www.googleapis.com/drive/v3/files/{}?alt=media",
+            file_id
+        ))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(bytes.to_vec())
+}
+
 /// push_config を Drive からダウンロードして AppState.pro_config に設定する
 pub async fn poll_push_config(
     client: &Client,

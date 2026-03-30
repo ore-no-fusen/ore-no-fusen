@@ -997,9 +997,14 @@ function OrchestratorContent() {
             'fusen_create_note',
             { folderPath, context }
           );
+          // 画像参照をローカルパスに解決（画像なしの場合は body がそのまま返る）
+          const resolvedBody = await invoke<string>('fusen_download_iphone_images', {
+            folderPath,
+            body: body || '',
+          });
           await invoke('fusen_save_note', {
             path: newNote.meta.path,
-            body: body || '',
+            body: resolvedBody,
             frontmatterRaw: newNote.frontmatter || '',
             allowRename: false,
           });
