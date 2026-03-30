@@ -991,16 +991,18 @@ function OrchestratorContent() {
     const promise = listen<{ title: string; body: string; context: string }>(
       'fusen:note_from_iphone',
       async (event) => {
-        const { body, context } = event.payload;
+        const { title, body, context } = event.payload;
         try {
           const newNote = await invoke<{ body: string; frontmatter: string; meta: { path: string } }>(
             'fusen_create_note',
             { folderPath, context }
           );
+          // タイトルがある場合は見出しとして本文先頭に追加
+          const titlePrefix = title ? `# ${title}\n\n` : '';
           // 画像参照をローカルパスに解決（画像なしの場合は body がそのまま返る）
           const resolvedBody = await invoke<string>('fusen_download_iphone_images', {
             folderPath,
-            body: body || '',
+            body: titlePrefix + (body || ''),
           });
           await invoke('fusen_save_note', {
             path: newNote.meta.path,
