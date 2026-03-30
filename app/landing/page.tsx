@@ -143,8 +143,8 @@ export default function LandingPage() {
                                         value={inputValue}
                                         onChange={(e) => setInputValue(e.target.value)}
                                         onKeyDown={handleKeyDown}
-                                        placeholder="ここに書いてみてください... (Enterで保存)"
-                                        className="w-full text-lg sm:text-xl py-5 pl-5 pr-24 bg-[#FDFBF7] border-2 border-[#8BAF7C] rounded-xl focus:outline-none focus:border-[#5C7A3E] focus:ring-4 focus:ring-[#8BAF7C]/30 transition-all font-medium text-[#2C1F0E] placeholder:text-[#A89878] shadow-inner"
+                                        placeholder="ここに書いてみてください..."
+                                        className="w-full text-lg sm:text-xl py-5 pl-5 pr-36 bg-[#FDFBF7] border-2 border-[#8BAF7C] rounded-xl focus:outline-none focus:border-[#5C7A3E] focus:ring-4 focus:ring-[#8BAF7C]/30 transition-all font-medium text-[#2C1F0E] placeholder:text-[#A89878] shadow-inner"
                                         autoComplete="off"
                                     />
                                     <button
@@ -158,6 +158,7 @@ export default function LandingPage() {
 
                             {/* CTAボタン */}
                             <div className="flex flex-col items-center lg:items-start gap-2">
+                                <p className="text-sm text-[#8A7055] font-medium">ダウンロード不要で体験できます</p>
                                 <Link
                                     href={downloadUrl}
                                     target="_blank"
@@ -173,9 +174,6 @@ export default function LandingPage() {
                                     <Download className="w-5 h-5" />
                                     今すぐ付箋を使う（無料）
                                 </Link>
-                                <p className="text-sm text-[#8A7055] font-medium mt-1">
-                                    ダウンロード不要で体験できます
-                                </p>
                             </div>
                         </div>
 
@@ -296,7 +294,7 @@ export default function LandingPage() {
                         {/* 復活したポエム */}
                         <div className="inline-block text-left pl-6 py-2 border-l-4 border-[#8BAF7C]/70 mb-8">
                             <p className="text-lg sm:text-xl text-[#6A5540] mb-3 leading-relaxed font-medium">
-                                人は太古から、大事なことを壁に貼ってきた。<br />
+                                人は太古から、大事なことは、壁に描いてきた。<br />
                                 ラスコーから続く習慣を、デスクトップへ。
                             </p>
                             <p className="text-sm sm:text-base text-[#8A7055] font-medium">
