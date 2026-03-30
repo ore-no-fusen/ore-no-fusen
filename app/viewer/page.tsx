@@ -183,10 +183,6 @@ type IphoneNote = {
   sent_at?: string;
 };
 
-// 履歴保存用：base64画像を「![画像]」に置換してサイズを削減
-function stripBase64Images(body: string): string {
-  return body.replace(/!\[\]\(data:[^)]+\)/g, '![画像]');
-}
 
 // Drive 書き込み（トークン期限切れ時に自動リフレッシュ）
 async function uploadWithAutoRefresh(
@@ -669,11 +665,15 @@ export default function ViewerPage() {
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
+                    for (const img of attachedImages) {
+                      await uploadImageWithAutoRefresh(accessToken, img.file, img.fileName);
+                    }
+                    const fullBody = writeBody + attachedImages.map((img) => `\n![](${img.fileName})`).join('');
                     const note: IphoneNote = {
                       id: crypto.randomUUID(),
                       status: 'draft',
                       title: writeTitle,
-                      body: writeBody,
+                      body: fullBody,
                       created_at: new Date().toISOString(),
                     };
                     await saveToHistory(accessToken, note);
@@ -714,7 +714,7 @@ export default function ViewerPage() {
                       id: noteId,
                       status: 'sent',
                       title: writeTitle,
-                      body: stripBase64Images(fullBody),
+                      body: writeBody,
                       created_at: sentAt,
                       sent_at: sentAt,
                     };
