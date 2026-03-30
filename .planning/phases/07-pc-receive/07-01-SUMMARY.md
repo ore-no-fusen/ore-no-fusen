@@ -59,7 +59,7 @@ completed: 2026-03-30
 - **Duration:** 35 min
 - **Started:** 2026-03-30T00:00:00Z
 - **Completed:** 2026-03-30T00:35:00Z
-- **Tasks:** 2/3（タスク3はcheckpoint:human-verify）
+- **Tasks:** 3/3（タスク3：実機検証完了）
 - **Files modified:** 5
 
 ## Accomplishments
@@ -75,7 +75,7 @@ completed: 2026-03-30
 
 1. **タスク1: Rustポーリングループとtauri-plugin-notification追加** - `f5b8511` (feat)
 2. **タスク2: JS受信リスナーと赤ドットUI追加** - `3306523` (feat)
-3. **タスク3: 実機確認チェックポイント** - 実機検証待ち
+3. **タスク3: 実機確認チェックポイント** - 実機検証完了（iPhoneから付箋が重複なく画面右上に表示されることを確認）
 
 ## Files Created/Modified
 - `src-tauri/Cargo.toml` - tokio time feature追加、tauri-plugin-notification追加
@@ -105,8 +105,9 @@ None - no external service configuration required.
 
 - cargo check エラーゼロ確認済み
 - npx tsc --noEmit エラーゼロ確認済み
-- タスク3（実機確認チェックポイント）での実機テストが完了すれば v3.0 マイルストーン達成
-- 実機テスト手順：Drive上にfusen_from_iphone.jsonを配置→30秒以内に右上付箋ウィンドウ表示を確認
+- タスク3の実機テスト完了：iPhoneからの付箋が重複なく画面右上に表示されることを実機で確認済み
+- v3.0 マイルストーン（iPhone→PC送信）の全要件（POLL-01/02/03）達成
+- Phase 6（iPhone送信UI）の06-05完了後でv3.0全体完成となる
 
 ---
 *Phase: 07-pc-receive*
