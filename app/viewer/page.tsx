@@ -263,6 +263,49 @@ function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: 
 }
 
 // ---------------------------------------------------------------------------
+// IndexedDB — 下書き画像をiPhone内にローカル保存
+// ---------------------------------------------------------------------------
+
+function openDraftImagesDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('fusen-draft-images', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('images');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveDraftImages(noteId: string, images: { fileName: string; blob: Blob }[]): Promise<void> {
+  const db = await openDraftImagesDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('images', 'readwrite');
+    tx.objectStore('images').put(images, noteId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadDraftImages(noteId: string): Promise<{ fileName: string; blob: Blob }[] | null> {
+  const db = await openDraftImagesDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('images', 'readonly');
+    const req = tx.objectStore('images').get(noteId);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function deleteDraftImages(noteId: string): Promise<void> {
+  const db = await openDraftImagesDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('images', 'readwrite');
+    tx.objectStore('images').delete(noteId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
 // ---------------------------------------------------------------------------
 
@@ -282,6 +325,7 @@ export default function ViewerPage() {
   const [writeTitle, setWriteTitle] = useState('');
   const [writeBody, setWriteBody] = useState('');
   const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string; fileName: string }[]>([]);
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState(false);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -665,8 +709,12 @@ export default function ViewerPage() {
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
+                    const draftId = currentDraftId ?? crypto.randomUUID();
+                    if (attachedImages.length > 0) {
+                      await saveDraftImages(draftId, attachedImages.map((img) => ({ fileName: img.fileName, blob: img.file })));
+                    }
                     const note: IphoneNote = {
-                      id: crypto.randomUUID(),
+                      id: draftId,
                       status: 'draft',
                       title: writeTitle,
                       body: writeBody,
@@ -675,6 +723,7 @@ export default function ViewerPage() {
                     await saveToHistory(accessToken, note);
                     attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
                     setAttachedImages([]);
+                    setCurrentDraftId(null);
                     setStep('list');
                   } catch (err: unknown) {
                     setErrorMessage('保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -719,6 +768,10 @@ export default function ViewerPage() {
                     setWriteBody('');
                     attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
                     setAttachedImages([]);
+                    if (currentDraftId) {
+                      await deleteDraftImages(currentDraftId).catch(() => {});
+                      setCurrentDraftId(null);
+                    }
                     setSendSuccess(true);
                     setTimeout(() => setSendSuccess(false), 3000);
                   } catch (err: unknown) {
@@ -849,10 +902,21 @@ export default function ViewerPage() {
                           ? 'cursor-pointer active:bg-gray-50'
                           : 'cursor-default'
                       }`}
-                      onClick={() => {
+                      onClick={async () => {
                         if (note.status !== 'draft') return;
                         setWriteTitle(note.title);
                         setWriteBody(note.body);
+                        setCurrentDraftId(note.id);
+                        const saved = await loadDraftImages(note.id).catch(() => null);
+                        if (saved && saved.length > 0) {
+                          setAttachedImages(saved.map(({ fileName, blob }) => ({
+                            file: new File([blob], fileName, { type: 'image/jpeg' }),
+                            preview: URL.createObjectURL(blob),
+                            fileName,
+                          })));
+                        } else {
+                          setAttachedImages([]);
+                        }
                         setStep('write');
                       }}
                     >
