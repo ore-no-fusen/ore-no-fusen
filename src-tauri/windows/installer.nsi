@@ -44,18 +44,37 @@ Section "Install"
   ; アンインストーラを生成
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
-  ; --- ショートカット作成 ---
-  CreateShortcut "$SMPROGRAMS\ore-no-fusen {{{version}}}.lnk" "$INSTDIR\ore-no-fusen.exe"
-  CreateShortcut "$DESKTOP\ore-no-fusen {{{version}}}.lnk" "$INSTDIR\ore-no-fusen.exe"
+  ; --- 旧バージョン名ショートカットを削除（バージョンなし名に統一するため）---
+  FindFirst $0 $1 "$DESKTOP\ore-no-fusen *.lnk"
+  loop_desktop:
+    StrCmp $1 "" done_desktop
+    Delete "$DESKTOP\$1"
+    FindNext $0 $1
+    Goto loop_desktop
+  done_desktop:
+  FindClose $0
+
+  FindFirst $0 $1 "$SMPROGRAMS\ore-no-fusen *.lnk"
+  loop_smprog:
+    StrCmp $1 "" done_smprog
+    Delete "$SMPROGRAMS\$1"
+    FindNext $0 $1
+    Goto loop_smprog
+  done_smprog:
+  FindClose $0
+
+  ; --- ショートカット作成（バージョンなし・固定名）---
+  CreateShortcut "$SMPROGRAMS\ore-no-fusen.lnk" "$INSTDIR\ore-no-fusen.exe"
+  CreateShortcut "$DESKTOP\ore-no-fusen.lnk" "$INSTDIR\ore-no-fusen.exe"
 SectionEnd
 
 Section "Uninstall"
   ; ★ アンインストール時にファイルを削除
   Delete "$INSTDIR\ore-no-fusen.exe"
-  
+
   ; ショートカットを削除
-  Delete "$SMPROGRAMS\ore-no-fusen {{{version}}}.lnk"
-  Delete "$DESKTOP\ore-no-fusen {{{version}}}.lnk"
+  Delete "$SMPROGRAMS\ore-no-fusen.lnk"
+  Delete "$DESKTOP\ore-no-fusen.lnk"
 
   ; アンインストーラー自身を削除
   Delete "$INSTDIR\uninstall.exe"
