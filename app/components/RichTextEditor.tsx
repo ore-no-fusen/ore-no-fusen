@@ -22,7 +22,7 @@ import ResizableImage from './ResizableImage';
 // Helper to resolve relative path (same as in StickyNote)
 const resolvePath = (baseFile: string, relativePath: string) => {
     if (!baseFile) return relativePath;
-    if (/^[a-zA-Z]:\\|^\\\\|^http/.test(relativePath)) return relativePath;
+    if (/^[a-zA-Z]:\\|^\\\\|^http|^data:/.test(relativePath)) return relativePath;
 
     // Extract directory - support both \ and /
     const lastSlash = Math.max(baseFile.lastIndexOf('\\'), baseFile.lastIndexOf('/'));

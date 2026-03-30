@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>viewer フロー v3.0</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      padding: 32px 28px;
+      color: #222;
+    }
+    h1 { font-size: 20px; font-weight: bold; margin-bottom: 24px; }
+    h2 { font-size: 15px; font-weight: bold; margin: 36px 0 16px; border-bottom: 2px solid #ddd; padding-bottom: 6px; }
+
+    .mermaid { background: #fff; border-radius: 10px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow-x: auto; }
+    .mermaid svg { max-width: 100%; }
+
+    .note-box {
+      background: #f0fdf4;
+      border: 1.5px solid #86efac;
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 13px;
+      margin-top: 16px;
+      color: #166534;
+      line-height: 1.7;
+    }
+    .note-box p { margin: 0; }
+
+    /* 画面レイアウト */
+    .screens {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .screen {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.10);
+      padding: 0;
+      width: 180px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .screen-title {
+      font-size: 12px;
+      font-weight: bold;
+      color: #555;
+      padding: 8px 12px 6px;
+      border-bottom: 1px solid #eee;
+    }
+    .screen-body { padding: 10px 12px; }
+
+    /* write画面 */
+    .tab-bar { display: flex; gap: 0; margin-bottom: 8px; }
+    .tab { flex: 1; text-align: center; font-size: 11px; padding: 5px 0; border: 1px solid #ddd; cursor: pointer; }
+    .tab.active { background: #3b5bdb; color: #fff; border-color: #3b5bdb; }
+    .tab:first-child { border-radius: 6px 0 0 6px; }
+    .tab:last-child  { border-radius: 0 6px 6px 0; }
+    .input-box {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 6px;
+      width: 100%;
+    }
+    .textarea-box {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 11px;
+      color: #999;
+      height: 48px;
+      margin-bottom: 6px;
+      width: 100%;
+    }
+    .tool-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tool-btn { font-size: 11px; padding: 3px 8px; border: 1px solid #ccc; border-radius: 5px; background: #f9f9f9; }
+    .btn-row { display: flex; gap: 6px; }
+    .btn-iphone { flex: 1; font-size: 10px; padding: 5px 0; background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; text-align: center; color: #166534; }
+    .btn-pc { flex: 1; font-size: 10px; padding: 5px 0; background: #2563eb; border-radius: 6px; text-align: center; color: #fff; }
+
+    /* list画面 */
+    .list-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .back-btn { font-size: 11px; padding: 2px 7px; border: 1px solid #ccc; border-radius: 5px; background: #f5f5f5; }
+    .list-title { font-size: 12px; font-weight: bold; }
+    .list-item { border: 1px solid #eee; border-radius: 6px; padding: 6px 8px; margin-bottom: 5px; font-size: 11px; }
+    .list-item-title { font-weight: bold; margin-bottom: 2px; }
+    .badge-sent  { display: inline-block; background: #dbeafe; color: #1d4ed8; font-size: 10px; padding: 1px 5px; border-radius: 8px; }
+    .badge-draft { display: inline-block; background: #fef9c3; color: #854d0e; font-size: 10px; padding: 1px 5px; border-radius: 8px; }
+    .list-meta { font-size: 10px; color: #999; margin-top: 2px; }
+    .list-footer { font-size: 10px; color: #999; text-align: center; margin-top: 4px; }
+
+    /* note画面 */
+    .note-header { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee; }
+    .note-content { font-size: 12px; line-height: 1.7; margin-bottom: 10px; }
+    .btn-dismiss { width: 100%; font-size: 11px; padding: 6px 0; background: #1f2937; border-radius: 6px; text-align: center; color: #fff; }
+    .dismiss-note { font-size: 10px; color: #999; margin-top: 4px; text-align: center; }
+
+    hr { border: none; border-top: 1px solid #ddd; margin: 32px 0; }
+  </style>
+</head>
+<body>
+
+<h1>📱 viewer フロー（v3.0 最終案）</h1>
+
+<!-- 遷移図 -->
+<div class="mermaid">
+flowchart TD
+    A([🏠 PWAアイコンタップ]) --> Q{ログイン済み？}
+    B([🔔 ロック画面通知タップ]) --> NOTE["note 📖\n付箋を読む"]
+
+    Q -- "No（初回）" --> LOGIN[login]
+    LOGIN --> PUSH[push]
+    PUSH --> WRITE
+
+    Q -- Yes --> WRITE["write ✏️\n書く画面（ホーム）"]
+
+    NOTE -- "消す\n（通知を閉じる）" --> WRITE
+
+    WRITE -- "iPhoneに置いておく" --> LIST["list 📋\n履歴一覧"]
+    WRITE -- "PCに送る" --> LIST
+    LIST -- "下書きタップ" --> WRITE
+
+    style WRITE fill:#d1fae5,stroke:#6ee7b7
+    style LIST  fill:#dbeafe,stroke:#93c5fd
+    style NOTE  fill:#ede9fe,stroke:#c4b5fd
+    style LOGIN fill:#f1f5f9,stroke:#cbd5e1
+    style PUSH  fill:#f1f5f9,stroke:#cbd5e1
+</div>
+
+<div class="note-box">
+  <p>✅ <strong>writeがホーム</strong> — ログイン済みなら常にwrite画面から始まる</p>
+  <p>✅ <strong>noteを「消す」</strong> → 通知を閉じてからwrite画面へ遷移</p>
+  <p>✅ <strong>画像はカーソル位置に挿入</strong> — 📷タップで選択した画像を本文の好きな場所に挿入（<code>![](fusen_img_...)</code>）</p>
+  <p>✅ <strong>トークン自動更新</strong> — 「PCに送る」前に期限を確認・期限切れなら自動リフレッシュ。session expired時はlogin画面へ遷移</p>
+  <p>✅ <strong>下書きはローカル保存</strong> — IndexedDB使用・Drive不使用。テキスト+画像Blobをそのまま保持</p>
+</div>
+
+<hr>
+
+<!-- 画面レイアウト -->
+<h2>画面レイアウト</h2>
+<div class="screens">
+
+  <!-- write -->
+  <div>
+    <div style="font-size:12px;font-weight:bold;margin-bottom:8px;color:#555;">書く画面（write）＝ホーム</div>
+    <div class="screen">
+      <div class="screen-body">
+        <div class="tab-bar">
+          <div class="tab active">履歴</div>
+          <div class="tab" style="color:#3b5bdb;font-weight:bold;">書く</div>
+        </div>
+        <div class="input-box">タイトル（任意）</div>
+        <div class="textarea-box">本文...<br><span style="font-size:9px;color:#888;">![](fusen_img_...)</span></div>
+        <div class="tool-row">
+          <div class="tool-btn">📷</div>
+          <div class="tool-btn">Mermaid</div>
+        </div>
+        <div class="btn-row">
+          <div class="btn-iphone">iPhoneに置いておく</div>
+          <div class="btn-pc">PCに送る</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- list -->
+  <div>
+    <div style="font-size:12px;font-weight:bold;margin-bottom:8px;color:#555;">履歴画面（list）</div>
+    <div class="screen">
+      <div class="screen-body">
+        <div class="list-header">
+          <div class="back-btn">←戻る</div>
+          <div class="list-title">履歴</div>
+        </div>
+        <div class="list-item">
+          <div class="list-item-title">明日の予定</div>
+          <div><span class="badge-sent">送信済み</span></div>
+          <div class="list-meta">3分前</div>
+        </div>
+        <div class="list-item">
+          <div class="list-item-title">買い物リスト</div>
+          <div><span class="badge-draft">下書き</span></div>
+          <div class="list-meta">1時間前</div>
+        </div>
+        <div class="list-item">
+          <div class="list-item-title">会議メモ</div>
+          <div><span class="badge-sent">送信済み</span></div>
+          <div class="list-meta">昨日</div>
+        </div>
+        <div class="list-footer">最新10件</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- note -->
+  <div>
+    <div style="font-size:12px;font-weight:bold;margin-bottom:8px;color:#555;">付箋を読む（note）</div>
+    <div class="screen">
+      <div class="screen-body">
+        <div class="note-header">PCから届いた付箋</div>
+        <div class="note-content">
+          買い物リスト<br>
+          ・牛乳<br>
+          ・卵<br>
+          ・パン
+        </div>
+        <div class="btn-dismiss">消す</div>
+        <div class="dismiss-note">「消す」→ 通知を閉じてwriteへ</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default' });
+</script>
+</body>
+</html>
