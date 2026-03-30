@@ -34,7 +34,7 @@ See: `.planning/milestones/v2.0-ROADMAP.md`
 **Milestone Goal:** iPhoneで書いたメモ・写真・MermaidをPCに送ると、30秒以内に新規付箋ウィンドウが開く
 
 - [ ] **Phase 6: iPhone送信UI** — iPhoneで書いてDriveに送れる状態（PCなしで検証可能）
-- [x] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態 (completed 2026-03-30)
+- [ ] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態（07-01完了・07-02実装中）
 
 ---
 
@@ -67,7 +67,11 @@ Plans:
   1. PC起動中にiPhoneで「PCに送る」を押すと、30秒以内に新規付箋ウィンドウが自動で開く
   2. 開いた付箋にiPhoneで入力したテキストが（画像・Mermaid含む）正確に入っている
   3. 同じノートを2回受信しない（PC再起動後も received_at マークにより重複が防止される）
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [x] 07-01-PLAN.md — Wave 1: Rustポーリングループ・JS受信リスナー・赤ドットUI（POLL-01, POLL-02, POLL-03）
+- [ ] 07-02-PLAN.md — Wave 2: 画像を Drive ファイルとして管理しローカル保存（POLL-02 拡張）
 
 ---
 
@@ -80,5 +84,5 @@ Plans:
 | 3. 確認・検証 | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 4. Rust バックエンド（Drive+APNs） | v2.0 | 5/5 | Complete | 2026-03-23 |
 | 5. iPhone PWA + Rust送信 | v2.0 | 5/5 | Complete | 2026-03-29 |
-| 6. iPhone送信UI | 4/5 | In Progress|  | — |
-| 7. PC受信 | 1/1 | Complete   | 2026-03-30 | — |
+| 6. iPhone送信UI | v3.0 | 4/5 | In Progress | — |
+| 7. PC受信 | v3.0 | 1/2 | In Progress | — |
