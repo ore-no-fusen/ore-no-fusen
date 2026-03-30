@@ -154,11 +154,11 @@ export default function LandingPage() {
                                         保存 (Enter ⏎)
                                     </button>
                                 </div>
+                                <p className="text-xs text-[#A89878] mt-2 text-right">ダウンロード不要で体験できます</p>
                             </div>
 
                             {/* CTAボタン */}
-                            <div className="flex flex-col items-center lg:items-start gap-2">
-                                <p className="text-sm text-[#8A7055] font-medium">ダウンロード不要で体験できます</p>
+                            <div className="flex flex-col items-center lg:items-start gap-2 mt-4">
                                 <Link
                                     href={downloadUrl}
                                     target="_blank"
