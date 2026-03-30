@@ -11,8 +11,8 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Download } from 'lucide-react';
-import { useRef } from 'react';
+import { Download, Send } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
 
 // ジブリ風カラーパレット
 // 背景: #EDE4D3 (羊皮紙)
@@ -27,10 +27,63 @@ export default function LandingPage() {
     const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
     const downloadUrl = `https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v${version}/ore-no-fusen_${version}_x64-setup.exe`;
     const videoRef = useRef<HTMLVideoElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // 体験用付箋ステート
+    const [demoNotes, setDemoNotes] = useState<{ id: number; text: string; color: string; rotation: number; topPos: number; leftPos: number }[]>([]);
+    const [inputValue, setInputValue] = useState('');
+
+    const demoColors = ['#EDD87A', '#A8C890', '#9DC0D0', '#D4A48A'];
+
+    const addDemoNote = () => {
+        if (inputValue.trim() === '') return;
+        
+        // 解析用
+        if (typeof window !== 'undefined' && 'gtag' in window) {
+            (window as any).gtag('event', 'demo_input', {
+                event_category: 'engagement',
+            });
+        }
+        
+        const topPos = 10 + Math.random() * 40; 
+        const leftPos = 10 + Math.random() * 40;
+
+        const newNote = {
+            id: Date.now(),
+            text: inputValue,
+            color: demoColors[demoNotes.length % demoColors.length],
+            rotation: Math.random() * 8 - 4,
+            topPos,
+            leftPos
+        };
+        setDemoNotes((prev) => [newNote, ...prev].slice(0, 5));
+        setInputValue('');
+        
+        // 送信後も続けて書けるようにフォーカスを維持
+        if (inputRef.current) {
+            inputRef.current.focus();
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        // 日本語入力（IME）の変換確定のEnterでは送信しない
+        if (e.nativeEvent.isComposing) return;
+        
+        if (e.key === 'Enter') {
+            addDemoNote();
+        }
+    };
+
+    // ページロード時に自動フォーカス
+    useEffect(() => {
+        if (inputRef.current) {
+            inputRef.current.focus();
+        }
+    }, []);
 
     return (
         <div
-            className="min-h-screen text-[#2C1F0E]"
+            className="min-h-screen text-[#2C1F0E] overflow-x-hidden"
             style={{
                 backgroundColor: '#EDE4D3',
                 fontFamily: "'Helvetica Neue', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif",
@@ -54,9 +107,9 @@ export default function LandingPage() {
                 </Link>
             </nav>
 
-            {/* ヒーローセクション */}
-            <section className="relative overflow-hidden py-20 sm:py-28 px-6">
-                {/* 薄い点描模様（手描き感） */}
+            {/* 新・体験型ヒーローセクション */}
+            <section className="relative overflow-hidden py-16 sm:py-24 px-6 min-h-[85vh] flex items-center">
+                {/* 薄い点描模様 */}
                 <div className="absolute inset-0 opacity-[0.04]"
                     style={{
                         backgroundImage: 'radial-gradient(circle, #5C7A3E 1px, transparent 1px)',
@@ -64,52 +117,44 @@ export default function LandingPage() {
                     }}
                 />
 
-                {/* 葉っぱ風装飾（左上） */}
-                <div className="absolute top-10 left-8 opacity-10 pointer-events-none select-none"
-                    style={{ fontSize: '5rem', transform: 'rotate(-20deg)' }}>
-                    🍃
-                </div>
-                <div className="absolute bottom-16 right-10 opacity-10 pointer-events-none select-none"
-                    style={{ fontSize: '4rem', transform: 'rotate(15deg)' }}>
-                    🌿
-                </div>
+                <div className="relative max-w-6xl mx-auto w-full">
+                    <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
 
-                <div className="relative max-w-5xl mx-auto">
-                    <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
-
-                        {/* 左：テキスト */}
-                        <div className="flex-1 text-center lg:text-left">
-                            {/* 手書き風バッジ */}
-                            <div className="inline-block px-3 py-1 bg-[#8BAF7C]/20 text-[#4A6B35] text-xs font-semibold rounded-full border border-[#8BAF7C]/40 mb-6">
-                                無料・オープンソース
-                            </div>
-
-                            <h1 className="text-4xl sm:text-5xl lg:text-[3.4rem] font-bold leading-snug tracking-tight mb-6 text-[#2C1F0E]">
-                                大事なことは、
+                        {/* 左：体験入力エリア */}
+                        <div className="flex-1 w-full text-center lg:text-left z-30">
+                            <h1 className="text-4xl sm:text-5xl lg:text-[4rem] font-extrabold leading-tight tracking-tight mb-5 text-[#2C1F0E] drop-shadow-sm">
+                                思考を1秒で貼る
                                 <br />
-                                <span className="text-[#5C7A3E]">貼っておけばいい。</span>
+                                <span className="text-[#5C7A3E]">付箋アプリ</span>
                             </h1>
+                            <p className="text-lg sm:text-xl text-[#6A5540] mb-8 font-medium">
+                                開いてすぐ書ける・自動保存・デスクトップ常駐
+                            </p>
 
-                            {/* 哲学的一節 */}
-                            <div className="mb-8 pl-4 border-l-2 border-[#8BAF7C]/50 text-left">
-                                <p className="text-sm text-[#7A6A50] leading-loose">
-                                    人は太古から、大事なことを壁に貼ってきた。
-                                    <br />
-                                    ラスコーから続く習慣を、デスクトップへ。
-                                </p>
-                                <p className="text-xs text-[#9A8878] mt-2 italic tracking-wide">
-                                    ── 本能は変わらない。形が変わった。
-                                </p>
+                            {/* 入力フォーム (最重要UI) */}
+                            <div className="bg-white/80 p-5 sm:p-7 rounded-2xl shadow-lg border border-[#C8B89A]/80 mb-8 backdrop-blur-md transform transition-all hover:-translate-y-1 hover:shadow-xl duration-300">
+                                <div className="relative">
+                                    <input
+                                        ref={inputRef}
+                                        type="text"
+                                        value={inputValue}
+                                        onChange={(e) => setInputValue(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder="ここに書いてみてください... (Enterで保存)"
+                                        className="w-full text-lg sm:text-xl py-5 pl-5 pr-24 bg-[#FDFBF7] border-2 border-[#8BAF7C] rounded-xl focus:outline-none focus:border-[#5C7A3E] focus:ring-4 focus:ring-[#8BAF7C]/30 transition-all font-medium text-[#2C1F0E] placeholder:text-[#A89878] shadow-inner"
+                                        autoComplete="off"
+                                    />
+                                    <button
+                                        onClick={addDemoNote}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#5C7A3E] bg-[#F4F9F1] hover:bg-[#E8F0E4] px-4 py-2.5 rounded-lg border-2 border-[#8BAF7C]/60 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center gap-1"
+                                    >
+                                        保存 (Enter ⏎)
+                                    </button>
+                                </div>
                             </div>
 
-                            <p className="text-lg sm:text-xl text-[#6A5540] mb-3 leading-relaxed">
-                                デスクトップに貼れる付箋アプリ
-                            </p>
-                            <p className="text-sm text-[#9A8470] mb-10">
-                                Markdownで書けて、自動保存。<br className="sm:hidden" />ワンクリックで、すぐ書ける。
-                            </p>
-
-                            <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start items-center">
+                            {/* CTAボタン */}
+                            <div className="flex flex-col items-center lg:items-start gap-2">
                                 <Link
                                     href={downloadUrl}
                                     target="_blank"
@@ -117,95 +162,74 @@ export default function LandingPage() {
                                         if (typeof window !== 'undefined' && 'gtag' in window) {
                                             (window as any).gtag('event', 'download_click', {
                                                 event_category: 'engagement',
-                                                event_label: 'github_release'
                                             });
                                         }
                                     }}
-                                    className="flex items-center gap-2 px-7 py-3.5 bg-[#5C7A3E] hover:bg-[#4A6730] text-[#F5EDD8] rounded-sm font-semibold text-base shadow-[2px_3px_10px_rgba(92,122,62,0.35)] hover:shadow-[2px_4px_14px_rgba(92,122,62,0.45)] transition-all duration-200"
+                                    className="flex items-center justify-center gap-3 px-8 py-4 bg-[#5C7A3E] hover:bg-[#4A6730] text-[#F5EDD8] rounded-xl font-bold text-lg shadow-[0_6px_20px_rgba(92,122,62,0.35)] hover:shadow-[0_8px_25px_rgba(92,122,62,0.5)] transition-all duration-300 w-full sm:w-auto hover:-translate-y-0.5"
                                 >
-                                    <Download className="w-4 h-4" />
-                                    無料ダウンロード
+                                    <Download className="w-5 h-5" />
+                                    今すぐ付箋を使う（無料）
                                 </Link>
-
-                                <Link
-                                    href="#features"
-                                    className="px-6 py-3.5 border border-[#B8A888] hover:border-[#8A7860] text-[#7A6A50] hover:text-[#4A3A28] rounded-sm font-medium text-base transition-colors"
-                                >
-                                    機能を見る
-                                </Link>
+                                <p className="text-sm text-[#8A7055] font-medium mt-1">
+                                    ダウンロード不要で体験できます
+                                </p>
                             </div>
-
-                            <p className="text-xs text-[#A89878] mt-5">
-                                Windows 10/11 対応 · v{process.env.NEXT_PUBLIC_APP_VERSION}
-                            </p>
                         </div>
 
-                        {/* 右：付箋クラスター */}
-                        <div className="flex-1 relative h-80 sm:h-96 w-full max-w-sm">
+                        {/* 右：付箋ビジュアル（動的） */}
+                        <div className="flex-1 relative h-[380px] sm:h-[480px] w-full max-w-lg mx-auto z-20">
+                            {/* デスクトップ見立ての枠 */}
+                            <div className="absolute inset-0 bg-[#D8CEBA]/40 rounded-3xl border border-[#C8B89A]/60 shadow-inner overflow-hidden">
+                                
+                                {/* 成功体験の付箋（DOM生成） */}
+                                {demoNotes.map((note, idx) => (
+                                    <div
+                                        key={note.id}
+                                        className="absolute w-44 sm:w-56 rounded-sm shadow-xl transition-all duration-500 ease-out transform"
+                                        style={{
+                                            backgroundColor: note.color,
+                                            top: `${note.topPos}%`,
+                                            left: `${note.leftPos}%`,
+                                            zIndex: 100 + demoNotes.length - idx,
+                                            animation: `popIn_${note.id} 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards`,
+                                        }}
+                                    >
+                                        <div className="h-3 rounded-t-sm" style={{ backgroundColor: 'rgba(0,0,0,0.06)' }} />
+                                        <div className="p-4 sm:p-5 min-h-[100px] flex flex-col justify-between">
+                                            <p className="text-base font-semibold text-[#2C1F0E] break-words whitespace-pre-wrap leading-relaxed">
+                                                {note.text}
+                                            </p>
+                                        </div>
+                                        <style dangerouslySetInnerHTML={{ __html: `
+                                            @keyframes popIn_${note.id} {
+                                                0% { opacity: 0; transform: scale(0.5) translateY(40px) rotate(0deg); }
+                                                100% { opacity: 1; transform: scale(1) translateY(0) rotate(${note.rotation}deg); }
+                                            }
+                                        `}} />
+                                    </div>
+                                ))}
 
-                            {/* 付箋1: 黄色（古紙） */}
-                            <div className="absolute top-2 left-6 w-48 rounded-sm -rotate-2 z-20"
-                                style={{
-                                    backgroundColor: '#EDD87A',
-                                    boxShadow: '3px 5px 16px rgba(0,0,0,0.18)',
-                                }}>
-                                <div className="h-3 rounded-t-sm" style={{ backgroundColor: '#D9C060' }} />
-                                <div className="p-4">
-                                    {/* テープ */}
-                                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-10 h-4 rounded-sm opacity-60"
-                                        style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880', transform: 'translateX(-50%) rotate(1deg)' }} />
-                                    <p className="text-sm font-medium text-[#3A2C00] leading-relaxed">
-                                        MTG の議題<br />
-                                        <span className="text-xs text-[#6A5200]">・来週の方向性<br />・予算確認</span>
-                                    </p>
+                                {/* 初期状態のガイド・ビジュアル */}
+                                <div className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${demoNotes.length > 0 ? 'opacity-0' : 'opacity-100 flex items-center justify-center'}`}>
+                                    <div className="text-center text-[#8A7055] z-10 px-4">
+                                        <div className="text-5xl mb-4 animate-bounce">✨</div>
+                                        <p className="font-bold text-lg">左の枠に入力して<br/>Enterを押してください</p>
+                                    </div>
+                                    
+                                    {/* 背景にある薄い既存の付箋モック（雰囲気作り） */}
+                                    <div className="absolute top-10 left-4 w-40 rounded-sm -rotate-6 opacity-30 shadow-md" style={{ backgroundColor: '#EDD87A'}}>
+                                        <div className="h-2 rounded-t-sm bg-black/5" />
+                                        <div className="p-4 h-24"></div>
+                                    </div>
+                                    <div className="absolute bottom-10 right-4 w-44 rounded-sm rotate-3 opacity-30 shadow-md" style={{ backgroundColor: '#A8C890'}}>
+                                        <div className="h-2 rounded-t-sm bg-black/5" />
+                                        <div className="p-4 h-24"></div>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* 付箋2: 森の緑 */}
-                            <div className="absolute top-14 right-2 w-44 rounded-sm rotate-1 z-10"
-                                style={{
-                                    backgroundColor: '#A8C890',
-                                    boxShadow: '3px 5px 16px rgba(0,0,0,0.15)',
-                                }}>
-                                <div className="h-3 rounded-t-sm" style={{ backgroundColor: '#8BAF75' }} />
-                                <div className="p-4">
-                                    <p className="text-sm font-medium text-[#1E3A10] leading-relaxed">
-                                        買うもの<br />
-                                        <span className="text-xs text-[#2E5A20]">□ 牛乳<br />□ コーヒー ✓<br />□ A4ノート</span>
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* 付箋3: ナウシカのローブ色（テラコッタ） */}
-                            <div className="absolute bottom-20 left-0 w-40 rounded-sm -rotate-1 z-20"
-                                style={{
-                                    backgroundColor: '#D4A48A',
-                                    boxShadow: '3px 5px 16px rgba(0,0,0,0.15)',
-                                }}>
-                                <div className="h-3 rounded-t-sm" style={{ backgroundColor: '#BC8A70' }} />
-                                <div className="p-4">
-                                    <p className="text-sm font-medium text-[#3A1A08] leading-relaxed">
-                                        ⚡ 今日中に！<br />
-                                        <span className="text-xs text-[#6A3010]">報告書を送る</span>
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* 付箋4: 空の青 */}
-                            <div className="absolute bottom-6 right-6 w-44 rounded-sm rotate-2 z-10"
-                                style={{
-                                    backgroundColor: '#9DC0D0',
-                                    boxShadow: '3px 5px 16px rgba(0,0,0,0.14)',
-                                }}>
-                                <div className="h-3 rounded-t-sm" style={{ backgroundColor: '#7AAFC0' }} />
-                                <div className="p-4">
-                                    <p className="text-sm font-medium text-[#102030] leading-relaxed">
-                                        アイデアメモ<br />
-                                        <span className="text-xs text-[#204050]">もっとシンプルに<br />→ 付箋ぽく？</span>
-                                    </p>
-                                </div>
                             </div>
                         </div>
+
                     </div>
                 </div>
             </section>
@@ -260,11 +284,24 @@ export default function LandingPage() {
             {/* 主要機能セクション */}
             <section id="features" className="py-20 sm:py-24 px-6" style={{ backgroundColor: '#EDE4D3' }}>
                 <div className="max-w-5xl mx-auto">
-                    <div className="text-center mb-14">
-                        <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
-                            壁に残す、という本能の、最新版
+                    <div className="text-center mb-16">
+                        <h2 className="text-4xl sm:text-5xl font-extrabold text-[#3A2C18] mb-10 leading-tight tracking-tight">
+                            大事なことは、<br />
+                            <span className="text-[#5C7A3E]">貼っておけばいい。</span>
                         </h2>
-                        <p className="text-[#8A7055]">シンプルだけど、こだわってます</p>
+                        
+                        {/* 復活したポエム */}
+                        <div className="inline-block text-left pl-6 py-2 border-l-4 border-[#8BAF7C]/70 mb-8">
+                            <p className="text-lg sm:text-xl text-[#6A5540] mb-3 leading-relaxed font-medium">
+                                人は太古から、大事なことを壁に貼ってきた。<br />
+                                ラスコーから続く習慣を、デスクトップへ。
+                            </p>
+                            <p className="text-sm sm:text-base text-[#8A7055] font-medium">
+                                ── 本能は変わらない。形が変わった。
+                            </p>
+                        </div>
+
+                        <p className="text-[#5C7A3E] font-bold text-lg mt-4 w-full text-center">壁に残す、という本能の、最新版</p>
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-7">
@@ -294,9 +331,9 @@ export default function LandingPage() {
                         >
                             <div className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5" style={{ backgroundColor: '#8BAF75' }} />
                             <div className="text-2xl mb-3">🖊️</div>
-                            <h3 className="text-lg font-bold text-[#1E3A10] mb-2">Markdownで書ける</h3>
+                            <h3 className="text-lg font-bold text-[#1E3A10] mb-2">強調できる</h3>
                             <p className="text-sm text-[#2E5A20] leading-relaxed">
-                                見出し・リスト・チェックボックス・画像まで対応。書きながら見た目が確認できるWYSIWYG。
+                                Markdown記法に対応。太字やリスト、チェックボックスを使い分けて、大事な思考を整理・強調。
                             </p>
                         </div>
 
@@ -310,9 +347,9 @@ export default function LandingPage() {
                         >
                             <div className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5" style={{ backgroundColor: '#7AAFC0' }} />
                             <div className="text-2xl mb-3">📌</div>
-                            <h3 className="text-lg font-bold text-[#102030] mb-2">デスクトップに残る</h3>
+                            <h3 className="text-lg font-bold text-[#102030] mb-2">そこに残る</h3>
                             <p className="text-sm text-[#204050] leading-relaxed">
-                                ピン留めで最前面固定。タグで整理して、必要なものだけを目の前に置ける。
+                                常に最前面へピン留め可能。タグで整理して、必要な情報だけをいつもの場所に置いておけます。
                             </p>
                         </div>
                     </div>
@@ -320,9 +357,9 @@ export default function LandingPage() {
                     {/* サブ機能 */}
                     <div className="grid sm:grid-cols-3 gap-4 mt-8">
                         {[
-                            { emoji: '🔍', text: '全文検索（正規表現対応）' },
-                            { emoji: '🔒', text: 'データはすべてローカル保存' },
-                            { emoji: '🖼️', text: '画像の貼り付け・蛍光ペン対応' },
+                            { emoji: '📱', text: 'iPhoneなどスマホとの連携' },
+                            { emoji: '🖼️', text: 'クリップボードから画像貼り付け' },
+                            { emoji: '📊', text: 'Mermaidでフローチャート変換' },
                         ].map((item) => (
                             <div key={item.text}
                                 className="flex items-center gap-3 px-4 py-3 rounded-sm border text-sm text-[#6A5540]"
