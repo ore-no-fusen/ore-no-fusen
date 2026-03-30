@@ -144,6 +144,7 @@ function OrchestratorContent() {
 
   const [folderPath, setFolderPath] = useState<string>('');
   const folderPathRef = useRef<string>(''); // [FIX] スロットル用にRefでも保持
+  const [iphoneDriveDisconnected, setIphoneDriveDisconnected] = useState(false);
   const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
   const readyPoolWindowsRef = useRef<Set<string>>(new Set()); // リスナー登録完了済みのプールウィンドウ
   const [files, setFiles] = useState<NoteMeta[]>([]);
@@ -983,6 +984,65 @@ function OrchestratorContent() {
     return () => { if (unlisten) unlisten(); };
   }, [isMainWindow]);
 
+  // [iPhone受信] iPhoneから付箋受信 → 新規付箋ウィンドウを右上に開く (POLL-02)
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen<{ title: string; body: string; context: string }>(
+      'fusen:note_from_iphone',
+      async (event) => {
+        const { body, context } = event.payload;
+        try {
+          const newNote = await invoke<{ body: string; frontmatter: string; meta: { path: string } }>(
+            'fusen_create_note',
+            { folderPath, context }
+          );
+          await invoke('fusen_save_note', {
+            path: newNote.meta.path,
+            body: body || '',
+            frontmatterRaw: newNote.frontmatter || '',
+            allowRename: false,
+          });
+          playCreateSound();
+          const sw = window.screen.width;
+          await openNoteWindow(
+            newNote.meta.path,
+            { x: sw - 430, y: 50, width: 400, height: 350 },
+            false
+          );
+        } catch (e) {
+          console.error('[iphone] 付箋作成失敗:', e);
+        }
+      }
+    );
+    promise.then((u) => { unlisten = u; });
+    return () => {
+      if (unlisten) unlisten();
+      else promise.then((u) => u());
+    };
+  }, [isMainWindow, openNoteWindow, folderPath]);
+
+  // [iPhone受信] Drive接続状態 → 赤ドット制御
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlistenDisconnected: (() => void) | undefined;
+    let unlistenConnected: (() => void) | undefined;
+    const p1 = listen('fusen:drive_disconnected', () => {
+      setIphoneDriveDisconnected(true);
+    });
+    const p2 = listen('fusen:drive_connected', () => {
+      setIphoneDriveDisconnected(false);
+    });
+    p1.then((u) => { unlistenDisconnected = u; });
+    p2.then((u) => { unlistenConnected = u; });
+    return () => {
+      if (unlistenDisconnected) unlistenDisconnected();
+      else p1.then((u) => u());
+      if (unlistenConnected) unlistenConnected();
+      else p2.then((u) => u());
+    };
+  }, [isMainWindow]);
+
   // UC-01: セットアップチェック
   useEffect(() => {
     async function checkSetup() {
@@ -1321,7 +1381,7 @@ function OrchestratorContent() {
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
   if (setupRequired || isSettingsOpen) {
-    return <SettingsPage defaultTab={setupRequired ? 'general' : settingsDefaultTab} onClose={async () => {
+    return <SettingsPage defaultTab={setupRequired ? 'general' : settingsDefaultTab} iphoneDriveDisconnected={iphoneDriveDisconnected} onClose={async () => {
       // 設定画面を閉じる時の処理
       setIsSettingsOpen(false);
 

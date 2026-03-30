@@ -28,9 +28,10 @@ import { Switch } from "@/components/ui/switch"
 type SettingsPageProps = {
     onClose?: () => void;
     defaultTab?: string;
+    iphoneDriveDisconnected?: boolean;
 }
 
-export default function SettingsPage({ onClose, defaultTab }: SettingsPageProps) {
+export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnected }: SettingsPageProps) {
     const [activeSection, setActiveSection] = useState(defaultTab ?? "general")
 
     // ★ここで「倉庫番」を呼び出し！
@@ -87,7 +88,7 @@ export default function SettingsPage({ onClose, defaultTab }: SettingsPageProps)
             case "about":
                 return <AboutSection t={t} />
             case "iphone":
-                return <IphoneSection t={t} />
+                return <IphoneSection t={t} iphoneDriveDisconnected={iphoneDriveDisconnected ?? false} />
             case "feedback":
                 return <FeedbackSection t={t} />
             default:
@@ -129,6 +130,7 @@ export default function SettingsPage({ onClose, defaultTab }: SettingsPageProps)
                         label="iPhone連携"
                         isActive={activeSection === "iphone"}
                         onClick={() => setActiveSection("iphone")}
+                        badge={iphoneDriveDisconnected}
                     />
                     <SidebarItem
                         icon={<Info className="mr-3 h-4 w-4" />}
@@ -269,7 +271,15 @@ export default function SettingsPage({ onClose, defaultTab }: SettingsPageProps)
 // --- 以下、各セクションの部品 ---
 // ※設定データを受け取れるように改造しました
 
-function SidebarItem({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) {
+function SidebarItem({
+  icon, label, isActive, onClick, badge
+}: {
+  icon: React.ReactNode;
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+  badge?: boolean;
+}) {
     return (
         <Button
             variant={isActive ? "secondary" : "ghost"}
@@ -277,7 +287,10 @@ function SidebarItem({ icon, label, isActive, onClick }: { icon: React.ReactNode
             onClick={onClick}
         >
             {icon}
-            {label}
+            <span className="flex-1 text-left">{label}</span>
+            {badge && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
+            )}
         </Button>
     )
 }
@@ -889,7 +902,10 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
 }
 
 // --- iPhone連携セクション ---
-function IphoneSection({ t }: { t: (key: any) => string }) {
+function IphoneSection({ t, iphoneDriveDisconnected }: {
+  t: (key: any) => string;
+  iphoneDriveDisconnected: boolean;
+}) {
     const [status, setStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading')
     const [isConnecting, setIsConnecting] = useState(false)
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -933,7 +949,12 @@ function IphoneSection({ t }: { t: (key: any) => string }) {
             <Separator />
 
             <div className="rounded-lg border p-6 space-y-4">
-                <h3 className="font-semibold text-gray-800">Googleドライブ接続</h3>
+                <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-800">Googleドライブ接続</h3>
+                    {iphoneDriveDisconnected && (
+                        <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" title="Driveに接続されていません" />
+                    )}
+                </div>
                 <p className="text-sm text-gray-500">PCとiPhoneのデータ中継にGoogleドライブを使用します。</p>
 
                 {status === 'loading' && (
