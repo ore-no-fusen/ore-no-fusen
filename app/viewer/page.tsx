@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { SimpleNoteBody } from './SimpleNoteBody';
-import { resizeImageToBase64, formatRelativeTime, insertAtCursor } from './utils';
+import { formatRelativeTime, insertAtCursor } from './utils';
 
 // ---------------------------------------------------------------------------
 // ヘルパー関数
@@ -200,6 +200,48 @@ async function uploadWithAutoRefresh(
     const newToken = await refreshAccessToken();
     if (!newToken) throw new Error('session expired');
     await uploadToDrive(newToken, fileName, data);
+  }
+}
+
+// 画像ファイルを Drive にアップロードしてファイル名を返す
+async function uploadImageToDrive(
+  accessToken: string,
+  file: File,
+  fileName: string
+): Promise<void> {
+  const folderId = await getAppFolderId(accessToken);
+  const parentId = folderId ?? 'root';
+  const metadata = JSON.stringify({
+    name: fileName,
+    mimeType: file.type || 'image/jpeg',
+    parents: [parentId],
+  });
+  const form = new FormData();
+  form.append('metadata', new Blob([metadata], { type: 'application/json' }));
+  form.append('file', file);
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    }
+  );
+  if (!res.ok) throw new Error(`Drive image upload failed: ${res.status}`);
+}
+
+// uploadImageToDrive のトークン期限切れ対応ラッパー
+async function uploadImageWithAutoRefresh(
+  token: string,
+  file: File,
+  fileName: string
+): Promise<void> {
+  try {
+    await uploadImageToDrive(token, file, fileName);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    await uploadImageToDrive(newToken, file, fileName);
   }
 }
 
@@ -563,9 +605,11 @@ export default function ViewerPage() {
             {/* 添付画像サムネイル */}
             {attachedImages.length > 0 && (
               <div className="flex flex-wrap gap-2 px-4 py-2 border-t border-gray-100">
-                {attachedImages.map((b64, i) => (
+                {attachedImages.map((fname, i) => (
                   <div key={i} className="relative">
-                    <img src={b64} className="w-16 h-16 object-cover rounded" alt="" />
+                    <div className="w-16 h-16 object-cover rounded bg-gray-100 flex items-center justify-center text-xs text-gray-500 overflow-hidden text-center p-1">
+                      {fname.replace('fusen_img_', '').replace('.jpg', '')}
+                    </div>
                     <button
                       className="absolute -top-1 -right-1 w-5 h-5 bg-gray-600 text-white rounded-full text-xs leading-none"
                       onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
@@ -598,11 +642,13 @@ export default function ViewerPage() {
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
+                  const fileName = `fusen_img_${Date.now()}.jpg`;
+                  if (!accessToken) { setErrorMessage('ログインが必要です'); return; }
                   try {
-                    const base64 = await resizeImageToBase64(file);
-                    setAttachedImages((prev) => [...prev, base64]);
-                  } catch {
-                    setErrorMessage('画像の処理に失敗しました');
+                    await uploadImageWithAutoRefresh(accessToken, file, fileName);
+                    setAttachedImages((prev) => [...prev, fileName]);
+                  } catch (err) {
+                    setErrorMessage('画像のアップロードに失敗しました: ' + (err instanceof Error ? err.message : String(err)));
                   } finally {
                     e.target.value = '';
                   }
@@ -628,7 +674,7 @@ export default function ViewerPage() {
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
-                    const fullBody = writeBody + attachedImages.map((b64) => `\n![](${b64})`).join('');
+                    const fullBody = writeBody + attachedImages.map((fname) => `\n![](${fname})`).join('');
                     const note: IphoneNote = {
                       id: crypto.randomUUID(),
                       status: 'draft',
@@ -659,7 +705,7 @@ export default function ViewerPage() {
                   try {
                     const noteId = crypto.randomUUID();
                     const sentAt = new Date().toISOString();
-                    const fullBody = writeBody + attachedImages.map((b64) => `\n![](${b64})`).join('');
+                    const fullBody = writeBody + attachedImages.map((fname) => `\n![](${fname})`).join('');
                     await uploadWithAutoRefresh(accessToken, 'fusen_from_iphone.json', {
                       id: noteId,
                       title: writeTitle,
