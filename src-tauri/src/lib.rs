@@ -670,6 +670,9 @@ static LAST_VISIBILITY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 /// 1枚目の付箋昇格（promote）には一切影響しない。
 static LAST_POOL_CREATE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+static LAST_IPHONE_NOTE_ID: std::sync::Mutex<Option<String>> =
+    std::sync::Mutex::new(None);
+
 pub fn can_do_visibility_op() -> bool {
     use std::sync::atomic::Ordering;
     let now = std::time::SystemTime::now()
@@ -1361,6 +1364,117 @@ async fn fusen_send_to_iphone(
     Ok(())
 }
 
+// --- iPhone受信 ---
+
+fn build_context(title: &str, body: &str) -> String {
+    if !title.is_empty() {
+        return title.to_string();
+    }
+    let first_line = body.lines().next().unwrap_or("").trim();
+    if !first_line.is_empty() {
+        return first_line.chars().take(10).collect();
+    }
+    chrono::Local::now().format("%H:%M").to_string()
+}
+
+#[derive(Clone, serde::Serialize)]
+struct IphoneNotePayload {
+    title: String,
+    body: String,
+    context: String,
+}
+
+async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
+    // 1. access_token 取得（失敗 = Drive未接続）
+    let token = match gdrive::get_access_token(client).await {
+        Ok(t) => {
+            let _ = app.emit("fusen:drive_connected", ());
+            t
+        }
+        Err(_) => {
+            let _ = app.emit("fusen:drive_disconnected", ());
+            return;
+        }
+    };
+
+    // 2. fusen_from_iphone.json をダウンロード
+    let data = match gdrive::download_json(client, &token, "fusen_from_iphone.json").await {
+        Err(e) if e.contains("File not found") => return, // 静かにスキップ
+        Err(e) => {
+            logger::log_info(&format!("[poll] Drive download error: {}", e));
+            return;
+        }
+        Ok(d) => d,
+    };
+
+    // 3. received_at チェック（PC再起動後も有効）
+    if data.get("received_at").and_then(|v| v.as_str()).is_some() {
+        return;
+    }
+
+    // 4. id チェック（id がなければ sent_at を代替）
+    let note_id = data
+        .get("id")
+        .and_then(|v| v.as_str())
+        .or_else(|| data.get("sent_at").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+
+    {
+        let last = LAST_IPHONE_NOTE_ID
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if last.as_deref() == Some(&note_id) {
+            return;
+        }
+    }
+
+    // 5. 新着 → LAST_IPHONE_NOTE_ID 更新
+    *LAST_IPHONE_NOTE_ID
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = Some(note_id);
+
+    // 6. コンテキスト名決定
+    let title = data.get("title").and_then(|v| v.as_str()).unwrap_or("");
+    let body  = data.get("body").and_then(|v| v.as_str()).unwrap_or("");
+    let context = build_context(title, body);
+
+    // 7. received_at を Drive に非同期で書き戻す
+    let mut updated = data.clone();
+    updated["received_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
+    {
+        let client2 = client.clone();
+        let token2  = token.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = gdrive::upload_json(
+                &client2, &token2, "fusen_from_iphone.json", &updated,
+            ).await;
+        });
+    }
+
+    // 8. Windows トースト通知
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = app
+            .notification()
+            .builder()
+            .title("iPhoneから付箋")
+            .body(&context)
+            .show();
+    }
+
+    // 9. JS にemit（JS側でfusen_create_note → openNoteWindow を実行）
+    let _ = app.emit(
+        "fusen:note_from_iphone",
+        IphoneNotePayload {
+            title: title.to_string(),
+            body: body.to_string(),
+            context,
+        },
+    );
+}
+
 // --- Entry Point ---
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1513,6 +1627,7 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_shell::init())?;
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             app.handle().plugin(tauri_plugin_process::init())?;
+            app.handle().plugin(tauri_plugin_notification::init())?;
             
             if let Some(win) = app.get_webview_window("main") {
                 // 古いPWA (ServiceWorker) のキャッシュを強制クリアする
@@ -1600,6 +1715,21 @@ pub fn run() {
                 }
             }
             
+            // iPhone受信: バックグラウンドポーリングループ（30秒間隔）
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let client = reqwest::Client::new();
+                    let mut interval =
+                        tokio::time::interval(std::time::Duration::from_secs(30));
+                    interval.tick().await; // 起動直後の即時tickを捨てる
+                    loop {
+                        interval.tick().await;
+                        poll_iphone_note(&client, &app_handle).await;
+                    }
+                });
+            }
+
             logger::log_info("アプリの初期化が完了しました");
             Ok(())
         })
