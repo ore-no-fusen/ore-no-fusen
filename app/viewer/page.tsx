@@ -808,7 +808,7 @@ export default function ViewerPage() {
                     for (const img of attachedImages) {
                       await uploadImageWithAutoRefresh(token, img.file, img.fileName);
                     }
-                    const fullBody = writeBody + attachedImages.map((img) => `\n![](${img.fileName})`).join('');
+                    const fullBody = writeBody;
                     await uploadWithAutoRefresh(token, 'fusen_from_iphone.json', {
                       id: noteId,
                       title: writeTitle,
