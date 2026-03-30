@@ -23,9 +23,9 @@
 
 ### PC受信（POLL）
 
-- [ ] **POLL-01**: PCがDriveを30秒間隔でポーリングして新着iPhoneノートを検出できる
-- [ ] **POLL-02**: 新着ノートをPC側で自動的に新規付箋ウィンドウとして開ける
-- [ ] **POLL-03**: 重複受信防止（received_atマーク＋last_seen_idによるスキップ）
+- [x] **POLL-01**: PCがDriveを30秒間隔でポーリングして新着iPhoneノートを検出できる
+- [x] **POLL-02**: 新着ノートをPC側で自動的に新規付箋ウィンドウとして開ける
+- [x] **POLL-03**: 重複受信防止（received_atマーク＋last_seen_idによるスキップ）
 
 ## Future Requirements
 
@@ -54,9 +54,9 @@
 | HIST-01 | Phase 6 | Complete |
 | HIST-02 | Phase 6 | Complete |
 | REND-01 | Phase 6 | Complete |
-| POLL-01 | Phase 7 | Pending |
-| POLL-02 | Phase 7 | Pending |
-| POLL-03 | Phase 7 | Pending |
+| POLL-01 | Phase 7 | Complete |
+| POLL-02 | Phase 7 | Complete |
+| POLL-03 | Phase 7 | Complete |
 
 **Coverage:**
 - v3.0 requirements: 10 total

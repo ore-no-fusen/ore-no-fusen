@@ -34,7 +34,7 @@ See: `.planning/milestones/v2.0-ROADMAP.md`
 **Milestone Goal:** iPhoneで書いたメモ・写真・MermaidをPCに送ると、30秒以内に新規付箋ウィンドウが開く
 
 - [ ] **Phase 6: iPhone送信UI** — iPhoneで書いてDriveに送れる状態（PCなしで検証可能）
-- [ ] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態
+- [x] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態 (completed 2026-03-30)
 
 ---
 
@@ -81,4 +81,4 @@ Plans:
 | 4. Rust バックエンド（Drive+APNs） | v2.0 | 5/5 | Complete | 2026-03-23 |
 | 5. iPhone PWA + Rust送信 | v2.0 | 5/5 | Complete | 2026-03-29 |
 | 6. iPhone送信UI | 4/5 | In Progress|  | — |
-| 7. PC受信 | v3.0 | 0/? | Not started | — |
+| 7. PC受信 | 1/1 | Complete   | 2026-03-30 | — |
