@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 07-pc-receive-02-PLAN.md
-last_updated: "2026-03-30T09:23:26.783Z"
+stopped_at: Completed 08-iphone-note-app-01-PLAN.md
+last_updated: "2026-03-31T10:09:12.761Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 11
+  completed_plans: 8
+  percent: 73
 ---
 
 ---
@@ -45,7 +45,7 @@ Status: Ready to plan
 Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
 
 **Progress:**
-[██████████] 100%
+[███████░░░] 73%
 Phase 6 [          ] 0%
 Phase 7 [          ] 0%
 Overall [          ] 0%
@@ -76,6 +76,7 @@ Overall [          ] 0%
 | Phase 06-iphone-send-ui P04 | 12 | 2 tasks | 3 files |
 | Phase 07-pc-receive P01 | 35 | 2 tasks | 5 files |
 | Phase 07-pc-receive P02 | 25 | 2 tasks | 4 files |
+| Phase 08-iphone-note-app P01 | 25 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -131,6 +132,8 @@ Overall [          ] 0%
 - [Phase 07-pc-receive]: received_atの書き戻しはtauri::async_runtime::spawnで非同期実行（ポーリングをブロックしない）
 - [Phase 07-pc-receive]: Drive画像分離: iPhone側はuploadImageToDriveでバイナリアップロード、bodyにはfusen_img_TIMESTAMP.jpgのファイル名参照のみ格納
 - [Phase 07-pc-receive]: PC側fusen_download_iphone_imagesコマンドでregex検出→Driveダウンロード→ローカル保存→絶対パス書き換え（既存ファイルはスキップ）
+- [Phase 08-iphone-note-app]: contenteditable基盤: node.after() を parentNode.insertBefore() で代替（TypeScript Node型対応）
+- [Phase 08-iphone-note-app]: list→write 遷移の下書き復元は setTimeout 50ms 後に hydrateEditor を呼ぶ（editorRef マウント待ち）
 
 ### Pending Todos
 
@@ -142,8 +145,8 @@ Overall [          ] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-30T09:23:26.778Z
-Stopped at: Completed 07-pc-receive-02-PLAN.md
+Last session: 2026-03-31T10:09:12.755Z
+Stopped at: Completed 08-iphone-note-app-01-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed

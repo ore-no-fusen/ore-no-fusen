@@ -73,6 +73,25 @@ Plans:
 - [x] 07-01-PLAN.md — Wave 1: Rustポーリングループ・JS受信リスナー・赤ドットUI（POLL-01, POLL-02, POLL-03）
 - [ ] 07-02-PLAN.md — Wave 2: 画像を Drive ファイルとして管理しローカル保存（POLL-02 拡張）
 
+### Phase 8: iPhoneノートアプリ化
+**Goal**: iPhoneでノートの作成・編集・一覧・PCへの送信が付箋アプリと同等の操作感でできる
+**Depends on**: Phase 6・7（viewer/page.tsx・app/page.tsx 稼働済み）
+**Requirements**: IPHONE-UI-01, IPHONE-UI-02, IPHONE-UI-03, IPHONE-UI-04, IPHONE-UI-05, IPHONE-UI-06
+**Success Criteria** (what must be TRUE):
+  1. 書く画面にタイトル入力欄がなく、1行目が自動的にタイトル/ファイル名になる
+  2. ヘッダー右に 📷 🔷 ☑ 🏷️ が並び、PC編集モードのツールバーと同スタイル（min-w-[32px]、hover:bg-gray-100）
+  3. 📷→アルバム選択→トリミングモーダル（ドラッグで範囲指定）→「貼り付け」でカーソル位置にミニ画像がインライン表示
+  4. 🔷でMermaidを入力・挿入するとカーソル位置にレンダリング済み図がインライン表示
+  5. 一覧に下書き・送信済みの両方が表示され、どちらもタップして編集・再送信できる
+  6. タグを追加でき「PCに送る」でPC側の付箋にも反映される
+**Plans**: 4 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Wave 1: contenteditable基盤（型変更・state変更・ヘルパー関数5つ・write UI差し替え）
+- [ ] 08-02-PLAN.md — Wave 2: ヘッダーツールバー（📷🔷☑）+ CropModal + Mermaidインライン挿入
+- [ ] 08-03-PLAN.md — Wave 3: タグUI（🏷️）+ 送信payload拡張 + PC受信タグ適用
+- [ ] 08-04-PLAN.md — Wave 4: 一覧から送信済み・下書き編集対応
+
 ---
 
 ## Progress
