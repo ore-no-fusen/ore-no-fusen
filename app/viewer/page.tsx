@@ -1061,35 +1061,19 @@ export default function ViewerPage() {
               </div>
             )}
 
-            {/* 添付ツールバー */}
-            <div className="flex gap-3 px-4 py-2 border-t border-gray-100">
-              <button
-                className="text-2xl"
-                onClick={() => fileInputRef.current?.click()}
-                aria-label="画像を追加"
-              >
-                📷
-              </button>
-              <button
-                className="text-sm font-medium text-blue-600 border border-blue-300 rounded px-3 py-1"
-                onClick={() => setShowMermaidModal(true)}
-              >
-                Mermaid
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setCropFile(file);
-                  setShowCropModal(true);
-                  e.target.value = '';
-                }}
-              />
-            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setCropFile(file);
+                setShowCropModal(true);
+                e.target.value = '';
+              }}
+            />
 
             {/* 成功メッセージ */}
             {sendSuccess && (
@@ -1187,7 +1171,7 @@ export default function ViewerPage() {
                       tags: writeTags,
                     };
                     await saveToHistory(token, note);
-                    editorRef.current.innerHTML = '';
+                    if (editorRef.current) editorRef.current.innerHTML = '';
                     setImageBlobs(new Map());
                     setWriteTags([]);
                     setShowTagBar(false);
@@ -1238,8 +1222,14 @@ export default function ViewerPage() {
                   img.style.cssText = 'max-height:80px;border-radius:4px;margin:2px 0;display:block;';
                   if (editorRef.current) {
                     editorRef.current.focus();
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount > 0 && editorRef.current.contains(sel.anchorNode)) {
+                      insertNodeAtCursor(img);
+                    } else {
+                      editorRef.current.appendChild(img);
+                      editorRef.current.appendChild(document.createTextNode('\n'));
+                    }
                   }
-                  insertNodeAtCursor(img);
                   setShowCropModal(false);
                   setCropFile(null);
                 }}
