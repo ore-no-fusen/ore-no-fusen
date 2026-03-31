@@ -1368,31 +1368,41 @@ export default function ViewerPage() {
                   {historyNotes.map((note) => (
                     <li
                       key={note.id}
-                      className={`px-4 py-3 border-b border-gray-100 ${
-                        note.status === 'draft'
-                          ? 'cursor-pointer active:bg-gray-50'
-                          : 'cursor-default'
-                      }`}
+                      className="px-4 py-3 border-b border-gray-100 cursor-pointer active:bg-gray-50"
                       onClick={async () => {
-                        if (note.status !== 'draft') return;
-                        setCurrentDraftId(note.id);
-                        const draft = await loadDraft(note.id).catch(() => null);
-                        const newBlobMap = new Map<string, File>();
-                        if (draft && draft.images.length > 0) {
-                          for (const { fileName, blob } of draft.images) {
-                            newBlobMap.set(fileName, new File([blob], fileName, { type: 'image/jpeg' }));
+                        if (!editorRef.current) return;
+
+                        if (note.status === 'draft') {
+                          // 下書き: IndexedDB から取得して画像blobを復元
+                          const draft = await loadDraft(note.id).catch(() => null);
+                          const blobMap = new Map<string, File>();
+                          if (draft?.images && draft.images.length > 0) {
+                            for (const { fileName, blob } of draft.images) {
+                              blobMap.set(fileName, new File([blob], fileName, { type: 'image/jpeg' }));
+                            }
                           }
+                          setImageBlobs(blobMap);
+                          // 1行目がタイトルになるように "# title\nbody" 形式に組み立て
+                          const fullText = note.title
+                            ? `# ${note.title}\n\n${note.body ?? ''}`
+                            : (note.body ?? '');
+                          hydrateEditor(editorRef.current, fullText, blobMap);
+                          setCurrentDraftId(note.id);
+                          setWriteTags(note.tags ?? []);
+                          setShowTagBar((note.tags ?? []).length > 0);
+                        } else {
+                          // 送信済み: テキストのみ復元（画像blobなし）
+                          const emptyBlobMap = new Map<string, File>();
+                          setImageBlobs(emptyBlobMap);
+                          const fullText = note.title
+                            ? `# ${note.title}\n\n${note.body ?? ''}`
+                            : (note.body ?? '');
+                          hydrateEditor(editorRef.current, fullText, emptyBlobMap);
+                          setCurrentDraftId(null);  // 新規送信扱い
+                          setWriteTags(note.tags ?? []);
+                          setShowTagBar((note.tags ?? []).length > 0);
                         }
-                        setImageBlobs(newBlobMap);
-                        setWriteTags(draft?.tags ?? []);
                         setStep('write');
-                        // editorRef は step 変更後にマウントされるため setTimeout で hydrate
-                        setTimeout(() => {
-                          if (editorRef.current && draft) {
-                            const fullText = draft.title ? `${draft.title}\n${draft.body}` : draft.body;
-                            hydrateEditor(editorRef.current, fullText, newBlobMap);
-                          }
-                        }, 50);
                       }}
                     >
                       <div className="flex items-center gap-2 mb-1">
