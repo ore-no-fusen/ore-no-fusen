@@ -1514,10 +1514,11 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     // 7. received_at を Drive に書き戻す＋画像ファイルを削除
     let mut updated = data.clone();
     updated["received_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
-    // body 内の ![](fusen_img_*.jpg) を抽出
+    // title + body 内の ![](fusen_img_*.jpg) を抽出
+    let combined = format!("{} {}", title, body);
     let image_names: Vec<String> = {
         let mut names = Vec::new();
-        let mut search = body;
+        let mut search = combined.as_str();
         while let Some(start) = search.find("![](fusen_img_") {
             let rest = &search[start + 4..]; // "fusen_img_..." の先頭
             if let Some(end) = rest.find(')') {

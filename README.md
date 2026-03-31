@@ -16,6 +16,7 @@ Markdownで書ける、美しい付箋アプリ
 
 </div>
 
+---
 # Ore-no-Fusen
 
 The fastest way to capture thoughts.
@@ -40,7 +41,6 @@ Ore-no-Fusen is designed as a fast thinking canvas where ideas can appear the mo
 
 ---
 
----
 
 ## ✨ 特徴
 
