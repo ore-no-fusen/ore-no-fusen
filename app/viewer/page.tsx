@@ -1264,14 +1264,19 @@ export default function ViewerPage() {
                     className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
                     disabled={!mermaidCode.trim()}
                     onClick={() => {
-                      if (mermaidPreviewSvg) {
-                        const div = document.createElement('div');
-                        div.setAttribute('data-mermaid-code', mermaidCode);
-                        div.innerHTML = mermaidPreviewSvg;
-                        div.style.cssText = 'background:#f3f4f6;padding:4px 8px;border-radius:4px;margin:4px 0;';
-                        insertNodeAtCursor(div);
+                      if (!mermaidCode.trim()) return;
+                      if (mermaidPreviewSvg && editorRef.current) {
+                        // SVG をインライン挿入
+                        const wrapper = document.createElement('div');
+                        wrapper.setAttribute('data-mermaid-code', mermaidCode);
+                        wrapper.style.cssText = 'display:block;margin:4px 0;max-width:100%;overflow-x:auto;';
+                        wrapper.innerHTML = mermaidPreviewSvg;
+                        editorRef.current.focus();
+                        insertNodeAtCursor(wrapper);
                       } else {
-                        insertTextAtCursor(`\`\`\`mermaid\n${mermaidCode}\n\`\`\``);
+                        // プレビューなしの場合はコードテキストを挿入
+                        const block = `\`\`\`mermaid\n${mermaidCode}\n\`\`\``;
+                        insertTextAtCursor(block);
                       }
                       setShowMermaidModal(false);
                       setMermaidCode('');
