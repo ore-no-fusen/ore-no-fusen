@@ -1183,8 +1183,10 @@ export default function ViewerPage() {
                     setSendSuccess(true);
                     setTimeout(() => setSendSuccess(false), 3000);
                   } catch (err: unknown) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    if (msg === 'session expired') {
+                    const msg = err instanceof Error
+                      ? (err.stack ? err.stack.split('\n').slice(0, 3).join(' | ') : err.message)
+                      : String(err);
+                    if (msg.includes('session expired')) {
                       localStorage.removeItem('viewer_access_token');
                       localStorage.removeItem('viewer_refresh_token');
                       setErrorMessage('セッションが切れました。再度ログインしてください。');
