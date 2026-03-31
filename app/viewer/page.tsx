@@ -18,6 +18,133 @@ function buildImageFileName(title: string, index: number): string {
     : `fusen_img_${date}_${time}_${index}.jpg`;
 }
 
+// contenteditable div の innerHTML を Markdown 文字列に変換
+function serializeEditor(el: HTMLDivElement): string {
+  // div[data-mermaid-code] → ```mermaid\ncode\n```
+  // img[data-filename] → ![](filename)
+  // その他テキスト・改行 → そのまま
+  const clone = el.cloneNode(true) as HTMLDivElement;
+  // mermaid ブロックを置換
+  clone.querySelectorAll<HTMLElement>('[data-mermaid-code]').forEach((node) => {
+    const code = node.getAttribute('data-mermaid-code') ?? '';
+    const text = document.createTextNode(`\`\`\`mermaid\n${code}\n\`\`\``);
+    node.replaceWith(text);
+  });
+  // img を Markdown 画像記法に置換
+  clone.querySelectorAll<HTMLImageElement>('img[data-filename]').forEach((img) => {
+    const filename = img.getAttribute('data-filename') ?? '';
+    const text = document.createTextNode(`![](${filename})`);
+    img.replaceWith(text);
+  });
+  // innerHTML から改行を復元（div → \n、br → \n）
+  // innerText を使うと \n が付く
+  return clone.innerText ?? clone.textContent ?? '';
+}
+
+// Markdown の1行目をタイトル、残りをbodyとして分離
+// 1行目の # プレフィックスは除去
+function extractTitleBody(text: string): { title: string; body: string } {
+  const lines = text.split('\n');
+  const firstLine = lines[0].replace(/^#\s*/, '').trim();
+  const rest = lines.slice(1).join('\n').replace(/^\n+/, '');
+  return { title: firstLine, body: rest };
+}
+
+// contenteditable のカーソル位置にテキストを挿入
+function insertTextAtCursor(text: string): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(text);
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.setEndAfter(node);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// contenteditable のカーソル位置に DOM ノードを挿入
+function insertNodeAtCursor(node: Node): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  range.insertNode(node);
+  const after = document.createTextNode('\n');
+  if (node.parentNode) {
+    node.parentNode.insertBefore(after, node.nextSibling);
+  }
+  range.setStartAfter(after);
+  range.setEndAfter(after);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// Markdown 文字列を contenteditable DOM に復元
+// blobMap: fileName → File（画像の ObjectURL 生成用）
+// Mermaid は初回はコードテキストとして表示（再レンダリングしない）
+function hydrateEditor(
+  el: HTMLDivElement,
+  markdown: string,
+  blobMap: Map<string, File>
+): void {
+  // まず空にする
+  el.innerHTML = '';
+  // 段落ごとに処理
+  const lines = markdown.split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // ```mermaid ブロック検出
+    if (line.startsWith('```mermaid')) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // closing ```
+      const code = codeLines.join('\n');
+      const div = document.createElement('div');
+      div.setAttribute('data-mermaid-code', code);
+      div.textContent = `[Mermaid: ${code.slice(0, 30)}...]`;
+      div.style.cssText = 'background:#f3f4f6;padding:4px 8px;border-radius:4px;font-size:12px;color:#6b7280;margin:4px 0;';
+      el.appendChild(div);
+      el.appendChild(document.createElement('br'));
+      continue;
+    }
+    // 画像記法 ![](filename) 検出
+    const imgMatch = line.match(/^!\[\]\(([^)]+)\)$/);
+    if (imgMatch) {
+      const filename = imgMatch[1];
+      const file = blobMap.get(filename);
+      if (file) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.setAttribute('data-filename', filename);
+        img.style.cssText = 'max-height:80px;border-radius:4px;margin:2px 0;';
+        el.appendChild(img);
+        el.appendChild(document.createElement('br'));
+      } else {
+        // blob がない場合（sent note）はテキストとして表示
+        const span = document.createElement('span');
+        span.textContent = line;
+        el.appendChild(span);
+        el.appendChild(document.createElement('br'));
+      }
+      i++;
+      continue;
+    }
+    // 通常テキスト行
+    const span = document.createElement('span');
+    span.textContent = line;
+    el.appendChild(span);
+    el.appendChild(document.createElement('br'));
+    i++;
+  }
+}
+
 async function generatePKCE() {
   const verifier =
     crypto.randomUUID().replace(/-/g, '') +
