@@ -191,6 +191,7 @@ type IphoneNote = {
   body: string;
   created_at: string;
   sent_at?: string;
+  tags?: string[];
 };
 
 
@@ -282,6 +283,7 @@ type DraftRecord = {
   body: string;
   created_at: string;
   images: { fileName: string; blob: Blob }[];
+  tags?: string[];
 };
 
 function openDraftsDB(): Promise<IDBDatabase> {
@@ -350,9 +352,13 @@ export default function ViewerPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [swReady, setSwReady] = useState(false);
-  const [writeTitle, setWriteTitle] = useState('');
-  const [writeBody, setWriteBody] = useState('');
-  const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string; fileName: string }[]>([]);
+  const editorRef = React.useRef<HTMLDivElement>(null);
+  const [imageBlobs, setImageBlobs] = useState<Map<string, File>>(new Map());
+  const [writeTags, setWriteTags] = useState<string[]>([]);
+  const [showTagBar, setShowTagBar] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [showCropModal, setShowCropModal] = useState(false);
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState(false);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
@@ -363,7 +369,6 @@ export default function ViewerPage() {
   const [mermaidPreviewError, setMermaidPreviewError] = useState<string | null>(null);
   const [isMermaidRendering, setIsMermaidRendering] = useState(false);
   const mermaidPreviewRef = React.useRef<HTMLDivElement>(null);
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
