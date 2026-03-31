@@ -988,10 +988,10 @@ function OrchestratorContent() {
   useEffect(() => {
     if (!isMainWindow) return;
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ title: string; body: string; context: string }>(
+    const promise = listen<{ title: string; body: string; context: string; tags?: string[] }>(
       'fusen:note_from_iphone',
       async (event) => {
-        const { title, body, context } = event.payload;
+        const { title, body, context, tags } = event.payload;
         try {
           const newNote = await invoke<{ body: string; frontmatter: string; meta: { path: string } }>(
             'fusen_create_note',
@@ -1010,6 +1010,12 @@ function OrchestratorContent() {
             frontmatterRaw: newNote.frontmatter || '',
             allowRename: false,
           });
+          // タグ適用（tags が配列で存在する場合）
+          if (tags && tags.length > 0) {
+            for (const tag of tags) {
+              await invoke('fusen_add_tag', { path: newNote.meta.path, tag }).catch(() => {});
+            }
+          }
           playCreateSound();
           const sw = window.screen.width;
           await openNoteWindow(
