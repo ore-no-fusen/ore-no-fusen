@@ -801,41 +801,15 @@ export default function ViewerPage() {
               <div className="w-12" />
             </div>
 
-            {/* タイトル入力 */}
-            <input
-              type="text"
-              placeholder="タイトル（任意）"
-              value={writeTitle}
-              onChange={(e) => setWriteTitle(e.target.value)}
-              className="px-4 py-3 border-b border-gray-100 text-base outline-none"
+            {/* contenteditable エディタ */}
+            <div
+              ref={editorRef}
+              contentEditable="true"
+              suppressContentEditableWarning
+              className="flex-1 px-4 py-3 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none"
+              data-placeholder="メモを書く..."
+              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
             />
-
-            {/* 本文テキストエリア */}
-            <textarea
-              ref={textareaRef}
-              placeholder="メモを書く..."
-              value={writeBody}
-              onChange={(e) => setWriteBody(e.target.value)}
-              className="flex-1 px-4 py-3 text-base outline-none resize-none"
-            />
-
-            {/* 添付画像サムネイル */}
-            {attachedImages.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-4 py-2 border-t border-gray-100">
-                {attachedImages.map((img, i) => (
-                  <div key={i} className="relative">
-                    <img src={img.preview} className="w-16 h-16 object-cover rounded" alt="" />
-                    <button
-                      className="absolute -top-1 -right-1 w-5 h-5 bg-gray-600 text-white rounded-full text-xs leading-none"
-                      onClick={() => {
-                        URL.revokeObjectURL(img.preview);
-                        setAttachedImages((prev) => prev.filter((_, j) => j !== i));
-                      }}
-                    >×</button>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {/* 添付ツールバー */}
             <div className="flex gap-3 px-4 py-2 border-t border-gray-100">
@@ -858,15 +832,6 @@ export default function ViewerPage() {
                 accept="image/*"
                 className="hidden"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const fileName = buildImageFileName(writeTitle, attachedImages.length + 1);
-                  const preview = URL.createObjectURL(file);
-                  setAttachedImages((prev) => [...prev, { file, preview, fileName }]);
-                  if (textareaRef.current) {
-                    const newBody = insertAtCursor(textareaRef.current, `![](${fileName})`);
-                    setWriteBody(newBody);
-                  }
                   e.target.value = '';
                 }}
               />
@@ -886,19 +851,25 @@ export default function ViewerPage() {
                 className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-700 font-medium disabled:opacity-40"
                 disabled={isLoading}
                 onClick={async () => {
+                  if (!editorRef.current) return;
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
+                    const rawText = serializeEditor(editorRef.current);
+                    const { title, body } = extractTitleBody(rawText);
                     const draftId = currentDraftId ?? crypto.randomUUID();
+                    const imagesArr = Array.from(imageBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
                     await saveDraft({
                       id: draftId,
-                      title: writeTitle,
-                      body: writeBody,
+                      title,
+                      body,
                       created_at: new Date().toISOString(),
-                      images: attachedImages.map((img) => ({ fileName: img.fileName, blob: img.file })),
+                      images: imagesArr,
+                      tags: writeTags,
                     });
-                    attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
-                    setAttachedImages([]);
+                    editorRef.current.innerHTML = '';
+                    setImageBlobs(new Map());
+                    setWriteTags([]);
                     setCurrentDraftId(null);
                     setStep('list');
                   } catch (err: unknown) {
@@ -914,7 +885,7 @@ export default function ViewerPage() {
                 className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
                 disabled={isLoading}
                 onClick={async () => {
-                  if (!accessToken) return;
+                  if (!accessToken || !editorRef.current) return;
                   setIsLoading(true);
                   setErrorMessage(null);
                   setSendSuccess(false);
@@ -935,31 +906,34 @@ export default function ViewerPage() {
                     setAccessToken(newToken);
                   }
                   try {
+                    const rawText = serializeEditor(editorRef.current);
+                    const { title, body: extractedBody } = extractTitleBody(rawText);
                     const noteId = crypto.randomUUID();
                     const sentAt = new Date().toISOString();
-                    for (const img of attachedImages) {
-                      await uploadImageWithAutoRefresh(token, img.file, img.fileName);
+                    for (const [fileName, file] of imageBlobs.entries()) {
+                      await uploadImageWithAutoRefresh(token, file, fileName);
                     }
-                    const fullBody = writeBody;
+                    const fullBody = extractedBody;
                     await uploadWithAutoRefresh(token, 'fusen_from_iphone.json', {
                       id: noteId,
-                      title: writeTitle,
+                      title,
                       body: fullBody,
                       sent_at: sentAt,
+                      tags: writeTags,
                     });
                     const note: IphoneNote = {
                       id: noteId,
                       status: 'sent',
-                      title: writeTitle,
-                      body: writeBody,
+                      title,
+                      body: fullBody,
                       created_at: sentAt,
                       sent_at: sentAt,
+                      tags: writeTags,
                     };
                     await saveToHistory(token, note);
-                    setWriteTitle('');
-                    setWriteBody('');
-                    attachedImages.forEach((img) => URL.revokeObjectURL(img.preview));
-                    setAttachedImages([]);
+                    editorRef.current.innerHTML = '';
+                    setImageBlobs(new Map());
+                    setWriteTags([]);
                     if (currentDraftId) {
                       await deleteDraft(currentDraftId).catch(() => {});
                       setCurrentDraftId(null);
@@ -1055,10 +1029,15 @@ export default function ViewerPage() {
                     className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
                     disabled={!mermaidCode.trim()}
                     onClick={() => {
-                      if (!textareaRef.current) return;
-                      const block = `\`\`\`mermaid\n${mermaidCode}\n\`\`\``;
-                      const newBody = insertAtCursor(textareaRef.current, block);
-                      setWriteBody(newBody);
+                      if (mermaidPreviewSvg) {
+                        const div = document.createElement('div');
+                        div.setAttribute('data-mermaid-code', mermaidCode);
+                        div.innerHTML = mermaidPreviewSvg;
+                        div.style.cssText = 'background:#f3f4f6;padding:4px 8px;border-radius:4px;margin:4px 0;';
+                        insertNodeAtCursor(div);
+                      } else {
+                        insertTextAtCursor(`\`\`\`mermaid\n${mermaidCode}\n\`\`\``);
+                      }
                       setShowMermaidModal(false);
                       setMermaidCode('');
                       setMermaidPreviewSvg(null);
@@ -1104,20 +1083,24 @@ export default function ViewerPage() {
                       }`}
                       onClick={async () => {
                         if (note.status !== 'draft') return;
-                        setWriteTitle(note.title);
-                        setWriteBody(note.body);
                         setCurrentDraftId(note.id);
                         const draft = await loadDraft(note.id).catch(() => null);
+                        const newBlobMap = new Map<string, File>();
                         if (draft && draft.images.length > 0) {
-                          setAttachedImages(draft.images.map(({ fileName, blob }) => ({
-                            file: new File([blob], fileName, { type: 'image/jpeg' }),
-                            preview: URL.createObjectURL(blob),
-                            fileName,
-                          })));
-                        } else {
-                          setAttachedImages([]);
+                          for (const { fileName, blob } of draft.images) {
+                            newBlobMap.set(fileName, new File([blob], fileName, { type: 'image/jpeg' }));
+                          }
                         }
+                        setImageBlobs(newBlobMap);
+                        setWriteTags(draft?.tags ?? []);
                         setStep('write');
+                        // editorRef は step 変更後にマウントされるため setTimeout で hydrate
+                        setTimeout(() => {
+                          if (editorRef.current && draft) {
+                            const fullText = draft.title ? `${draft.title}\n${draft.body}` : draft.body;
+                            hydrateEditor(editorRef.current, fullText, newBlobMap);
+                          }
+                        }, 50);
                       }}
                     >
                       <div className="flex items-center gap-2 mb-1">
