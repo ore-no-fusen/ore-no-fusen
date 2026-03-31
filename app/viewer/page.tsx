@@ -1000,6 +1000,16 @@ export default function ViewerPage() {
                 >
                   ☑
                 </button>
+                <button
+                  className={`min-w-[32px] px-2 py-1 rounded text-sm ${
+                    showTagBar ? 'bg-gray-200 text-gray-900' : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                  onClick={() => setShowTagBar((prev) => !prev)}
+                  aria-label="タグ"
+                  title="タグ"
+                >
+                  🏷️
+                </button>
               </div>
             </div>
 
@@ -1012,6 +1022,44 @@ export default function ViewerPage() {
               data-placeholder="メモを書く..."
               style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
             />
+
+            {/* タグバー */}
+            {showTagBar && (
+              <div className="px-4 py-2 border-t border-gray-100 flex flex-wrap gap-2 items-center">
+                {writeTags.map((tag, i) => (
+                  <span
+                    key={i}
+                    className="flex items-center gap-1 bg-blue-100 text-blue-800 text-sm rounded-full px-3 py-1"
+                  >
+                    {tag}
+                    <button
+                      className="text-blue-500 hover:text-blue-700 leading-none"
+                      onClick={() => setWriteTags((prev) => prev.filter((_, j) => j !== i))}
+                      aria-label={`タグ ${tag} を削除`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && tagInput.trim()) {
+                      e.preventDefault();
+                      const newTag = tagInput.trim();
+                      if (!writeTags.includes(newTag)) {
+                        setWriteTags((prev) => [...prev, newTag]);
+                      }
+                      setTagInput('');
+                    }
+                  }}
+                  placeholder="タグを入力（Enter で追加）"
+                  className="text-sm outline-none border-b border-gray-300 focus:border-blue-400 min-w-[120px] flex-1"
+                />
+              </div>
+            )}
 
             {/* 添付ツールバー */}
             <div className="flex gap-3 px-4 py-2 border-t border-gray-100">
@@ -1076,6 +1124,8 @@ export default function ViewerPage() {
                     editorRef.current.innerHTML = '';
                     setImageBlobs(new Map());
                     setWriteTags([]);
+                    setShowTagBar(false);
+                    setTagInput('');
                     setCurrentDraftId(null);
                     setStep('list');
                   } catch (err: unknown) {
@@ -1140,6 +1190,8 @@ export default function ViewerPage() {
                     editorRef.current.innerHTML = '';
                     setImageBlobs(new Map());
                     setWriteTags([]);
+                    setShowTagBar(false);
+                    setTagInput('');
                     if (currentDraftId) {
                       await deleteDraft(currentDraftId).catch(() => {});
                       setCurrentDraftId(null);
