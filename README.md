@@ -1,3 +1,21 @@
+# 俺の付箋
+
+<div align="center">
+
+![Ore-no-Fusen Desktop](public/screenshots/ScreenShot_OreNoFusen.png)
+
+**デスクトップに、思考を貼り付けよう**
+
+Markdownで書ける、美しい付箋アプリ
+
+[![GitHub release](https://img.shields.io/github/v/release/ore-no-fusen/ore-no-fusen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
+[![License](https://img.shields.io/github/license/ore-no-fusen/ore-no-fusen?style=flat-square)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
+
+[ダウンロード](#-インストール) • [ドキュメント](docs/USER_GUIDE.md) • [FAQ](docs/FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app)
+
+</div>
+
 # Ore-no-Fusen
 
 The fastest way to capture thoughts.
@@ -21,24 +39,6 @@ Capture thoughts instantly without interrupting your thinking.
 Ore-no-Fusen is designed as a fast thinking canvas where ideas can appear the moment they come to mind.
 
 ---
-
-# 俺の付箋
-
-<div align="center">
-
-![Ore-no-Fusen Desktop](public/screenshots/ScreenShot_OreNoFusen.png)
-
-**デスクトップに、思考を貼り付けよう**
-
-Markdownで書ける、美しい付箋アプリ
-
-[![GitHub release](https://img.shields.io/github/v/release/ore-no-fusen/ore-no-fusen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-[![License](https://img.shields.io/github/license/ore-no-fusen/ore-no-fusen?style=flat-square)](LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-
-[ダウンロード](#-インストール) • [ドキュメント](docs/USER_GUIDE.md) • [FAQ](docs/FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app)
-
-</div>
 
 ---
 
