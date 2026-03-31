@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 08-iphone-note-app-03-PLAN.md
-last_updated: "2026-03-31T20:04:49.648Z"
+stopped_at: Completed 08-iphone-note-app-04-PLAN.md
+last_updated: "2026-03-31T20:13:21.216Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
+  percent: 100
 ---
 
 ---
@@ -45,7 +45,7 @@ Status: Ready to plan
 Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
 
 **Progress:**
-[█████████░] 91%
+[██████████] 100%
 Phase 6 [          ] 0%
 Phase 7 [          ] 0%
 Overall [          ] 0%
@@ -79,6 +79,7 @@ Overall [          ] 0%
 | Phase 08-iphone-note-app P01 | 25 | 3 tasks | 1 files |
 | Phase 08-iphone-note-app P02 | 8 | 2 tasks | 1 files |
 | Phase 08-iphone-note-app P03 | 15 | 2 tasks | 2 files |
+| Phase 08-iphone-note-app P04 | 5 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,8 @@ Overall [          ] 0%
 - [Phase 08-iphone-note-app]: CropModal は ViewerPage の外側 (ファイルスコープ) に定義 — React コンポーネントとして再レンダリングを独立させる
 - [Phase 08-iphone-note-app]: Mermaid 挿入: mermaidPreviewSvg && editorRef.current の2条件チェック — focus() を確実に呼ぶ
 - [Phase 08-iphone-note-app]: fusen_add_tag は既存コマンドを tags 配列ループで再利用（新規Rustコード不要）
+- [Phase 08-iphone-note-app]: 一覧の li className を条件分岐から固定 cursor-pointer に変更（全件タップ可能）
+- [Phase 08-iphone-note-app]: sent note タップ時は currentDraftId=null で新規送信扱い（重複送信防止）
 
 ### Pending Todos
 
@@ -150,8 +153,8 @@ Overall [          ] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-31T20:04:49.641Z
-Stopped at: Completed 08-iphone-note-app-03-PLAN.md
+Last session: 2026-03-31T20:13:21.209Z
+Stopped at: Completed 08-iphone-note-app-04-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
