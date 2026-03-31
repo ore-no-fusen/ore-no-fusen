@@ -1449,6 +1449,7 @@ struct IphoneNotePayload {
     title: String,
     body: String,
     context: String,
+    tags: Vec<String>,
 }
 
 async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
@@ -1505,6 +1506,10 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     let title = data.get("title").and_then(|v| v.as_str()).unwrap_or("");
     let body  = data.get("body").and_then(|v| v.as_str()).unwrap_or("");
     let context = build_context(title, body);
+    let tags: Vec<String> = data.get("tags")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
 
     // 7. received_at を Drive に書き戻す＋画像ファイルを削除
     let mut updated = data.clone();
@@ -1554,6 +1559,7 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             title: title.to_string(),
             body: body.to_string(),
             context,
+            tags,
         },
     );
 }
