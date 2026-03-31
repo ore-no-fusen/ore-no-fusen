@@ -1126,6 +1126,10 @@ export default function ViewerPage() {
                 disabled={isLoading}
                 onClick={async () => {
                   if (!accessToken || !editorRef.current) return;
+                  // setIsLoading より前に取得（isLoading=true でエディタがアンマウントされるため）
+                  const rawText = serializeEditor(editorRef.current);
+                  const capturedTags = [...writeTags];
+                  const capturedBlobs = new Map(imageBlobs);
                   setIsLoading(true);
                   setErrorMessage(null);
                   setSendSuccess(false);
@@ -1146,11 +1150,10 @@ export default function ViewerPage() {
                     setAccessToken(newToken);
                   }
                   try {
-                    const rawText = serializeEditor(editorRef.current);
                     const { title, body: extractedBody } = extractTitleBody(rawText);
                     const noteId = crypto.randomUUID();
                     const sentAt = new Date().toISOString();
-                    for (const [fileName, file] of imageBlobs.entries()) {
+                    for (const [fileName, file] of capturedBlobs.entries()) {
                       await uploadImageWithAutoRefresh(token, file, fileName);
                     }
                     const fullBody = extractedBody;
@@ -1159,7 +1162,7 @@ export default function ViewerPage() {
                       title,
                       body: fullBody,
                       sent_at: sentAt,
-                      tags: writeTags,
+                      tags: capturedTags,
                     });
                     const note: IphoneNote = {
                       id: noteId,
@@ -1168,7 +1171,7 @@ export default function ViewerPage() {
                       body: fullBody,
                       created_at: sentAt,
                       sent_at: sentAt,
-                      tags: writeTags,
+                      tags: capturedTags,
                     };
                     await saveToHistory(token, note);
                     if (editorRef.current) editorRef.current.innerHTML = '';
