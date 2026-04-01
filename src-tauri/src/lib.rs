@@ -1270,9 +1270,10 @@ async fn fusen_send_to_iphone(
         let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
         (t, rest.trim_start_matches('\n').to_string())
     } else {
-        let file_title = path.split(['/', '\\']).last().unwrap_or("note")
-            .trim_end_matches(".md").to_string();
-        (file_title, body.clone())
+        // #なし: 1行目をタイトル、残りをbodyとして使用
+        let t = first_line.trim().to_string();
+        let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
+        (t, rest.trim_start_matches('\n').to_string())
     };
 
     // Drive用: ローカル画像を base64 data URI に変換（iPhoneで表示できるよう）

@@ -997,12 +997,10 @@ function OrchestratorContent() {
             'fusen_create_note',
             { folderPath, context }
           );
-          // タイトルがある場合は見出しとして本文先頭に追加
-          const titlePrefix = title ? `# ${title}\n\n` : '';
           // 画像参照をローカルパスに解決（画像なしの場合は body がそのまま返る）
           const resolvedBody = await invoke<string>('fusen_download_iphone_images', {
             folderPath,
-            body: titlePrefix + (body || ''),
+            body: body || '',
           });
           await invoke('fusen_save_note', {
             path: newNote.meta.path,
