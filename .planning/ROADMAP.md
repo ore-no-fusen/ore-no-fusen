@@ -36,7 +36,7 @@ See: `.planning/milestones/v2.0-ROADMAP.md`
 - [ ] **Phase 6: iPhone送信UI** — iPhoneで書いてDriveに送れる状態（PCなしで検証可能）
 - [x] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態（07-01完了・07-02実装中） (completed 2026-03-30)
 - [x] **Phase 8: iPhoneノートアプリ化** — contenteditable・画像・タグ・一覧 (completed 2026-04-01)
-- [ ] **Phase 9: iPhone付箋管理** — 一覧から作成・編集・保存・削除、PCへの送信も可能
+- [x] **Phase 9: iPhone付箋管理** — 一覧から作成・編集・保存・削除、PCへの送信も可能 (completed 2026-04-01)
 
 ---
 
@@ -117,7 +117,7 @@ Plans:
 **Goal:** [To be planned]
 **Requirements**: TBD
 **Depends on:** Phase 9
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] TBD (run /gsd:plan-phase 10 to break down)
