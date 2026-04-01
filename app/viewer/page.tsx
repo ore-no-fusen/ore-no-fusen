@@ -1404,12 +1404,12 @@ export default function ViewerPage() {
                             }
                           }
                           const fullText = note.title
-                            ? `# ${note.title}\n\n${note.body ?? ''}`
+                            ? (note.body ? `${note.title}\n\n${note.body}` : note.title)
                             : (note.body ?? '');
                           setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
                         } else {
                           const fullText = note.title
-                            ? `# ${note.title}\n\n${note.body ?? ''}`
+                            ? (note.body ? `${note.title}\n\n${note.body}` : note.title)
                             : (note.body ?? '');
                           setPendingHydrate({ markdown: fullText, blobMap: new Map(), draftId: null, tags: note.tags ?? [] });
                         }
