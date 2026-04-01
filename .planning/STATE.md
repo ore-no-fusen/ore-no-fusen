@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 09-iphone-fusen-kanri-01-PLAN.md
-last_updated: "2026-04-01T09:57:19.557Z"
+stopped_at: Completed 09-iphone-fusen-kanri-02-PLAN.md
+last_updated: "2026-04-01T18:48:07.060Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 14
-  completed_plans: 12
-  percent: 86
+  completed_plans: 13
+  percent: 93
 ---
 
 ---
@@ -61,7 +61,7 @@ Status: Ready to plan
 Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
 
 **Progress:**
-[█████████░] 86%
+[█████████░] 93%
 Phase 6 [          ] 0%
 Phase 7 [          ] 0%
 Overall [          ] 0%
@@ -97,6 +97,7 @@ Overall [          ] 0%
 | Phase 08-iphone-note-app P03 | 15 | 2 tasks | 2 files |
 | Phase 08-iphone-note-app P04 | 5 | 1 tasks | 1 files |
 | Phase 09-iphone-fusen-kanri P01 | 10 | 2 tasks | 2 files |
+| Phase 09-iphone-fusen-kanri P02 | 5 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -161,6 +162,7 @@ Overall [          ] 0%
 - [Phase 08-iphone-note-app]: sent note タップ時は currentDraftId=null で新規送信扱い（重複送信防止）
 - [Phase 09-iphone-fusen-kanri]: pendingHydrate pattern: state holds markdown+blobMap+draftId+tags; useEffect with 50ms timeout applies to editorRef after write step mounts
 - [Phase 09-iphone-fusen-kanri]: list li onClick no longer checks editorRef.current — removes bug where list step always returned early (editorRef always null there)
+- [Phase 09-iphone-fusen-kanri]: list ヘッダーを独立管理画面化（「← 戻る」削除、「一覧」＋「＋」ボタン追加）
 
 ### Roadmap Evolution
 
@@ -176,8 +178,8 @@ Overall [          ] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-01T09:57:19.551Z
-Stopped at: Completed 09-iphone-fusen-kanri-01-PLAN.md
+Last session: 2026-04-01T18:48:07.054Z
+Stopped at: Completed 09-iphone-fusen-kanri-02-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
