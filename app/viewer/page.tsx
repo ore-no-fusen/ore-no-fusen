@@ -20,25 +20,27 @@ function buildImageFileName(title: string, index: number): string {
 
 // contenteditable div の innerHTML を Markdown 文字列に変換
 function serializeEditor(el: HTMLDivElement): string {
-  // div[data-mermaid-code] → ```mermaid\ncode\n```
-  // img[data-filename] → ![](filename)
-  // その他テキスト・改行 → そのまま
-  const clone = el.cloneNode(true) as HTMLDivElement;
-  // mermaid ブロックを置換
-  clone.querySelectorAll<HTMLElement>('[data-mermaid-code]').forEach((node) => {
-    const code = node.getAttribute('data-mermaid-code') ?? '';
-    const text = document.createTextNode(`\`\`\`mermaid\n${code}\n\`\`\``);
-    node.replaceWith(text);
-  });
-  // img を Markdown 画像記法に置換
-  clone.querySelectorAll<HTMLImageElement>('img[data-filename]').forEach((img) => {
-    const filename = img.getAttribute('data-filename') ?? '';
-    const text = document.createTextNode(`![](${filename})`);
-    img.replaceWith(text);
-  });
-  // innerHTML から改行を復元（div → \n、br → \n）
-  // innerText を使うと \n が付く
-  return clone.innerText ?? clone.textContent ?? '';
+  // デタッチDOMでは innerText == textContent（改行なし）になるため、
+  // カスタムウォーカーで br/div を \n に変換する
+  function walk(node: Node, isRoot: boolean): string {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+    if (!(node instanceof Element)) return '';
+    // mermaid ブロック
+    const mermaidCode = node.getAttribute('data-mermaid-code');
+    if (mermaidCode != null) return `\`\`\`mermaid\n${mermaidCode}\n\`\`\``;
+    // 画像
+    if (node.tagName === 'IMG') {
+      const fn = node.getAttribute('data-filename');
+      return fn ? `![](${fn})` : '';
+    }
+    // br → 改行
+    if (node.tagName === 'BR') return '\n';
+    // div（ルート以外）→ ブロック要素として先頭に改行
+    const children = Array.from(node.childNodes).map((c) => walk(c, false)).join('');
+    if (node.tagName === 'DIV' && !isRoot) return '\n' + children;
+    return children;
+  }
+  return walk(el, true).replace(/\n+$/, '');
 }
 
 // Markdown の1行目をタイトル、残りをbodyとして分離
@@ -1129,7 +1131,8 @@ export default function ViewerPage() {
                       images: imagesArr,
                       tags: writeTags,
                     });
-                    editorRef.current.innerHTML = '';
+                    // editorRef.current は isLoading=true でアンマウント済みのため触らない
+                    // （次回 write 表示時に hydrateEditor がクリアする）
                     setImageBlobs(new Map());
                     setWriteTags([]);
                     setShowTagBar(false);
