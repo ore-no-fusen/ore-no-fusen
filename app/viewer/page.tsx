@@ -1464,10 +1464,19 @@ export default function ViewerPage() {
           </div>
         )}
 
-        {step === 'note' && noteData && (
+        {step === 'note' && noteData && (() => {
+          const bodyLines = noteData.body.split('\n');
+          const firstLine = bodyLines[0] ?? '';
+          const noteTitle = firstLine.startsWith('#')
+            ? firstLine.replace(/^#+\s*/, '').trim()
+            : noteData.title;
+          const noteBody = firstLine.startsWith('#')
+            ? bodyLines.slice(1).join('\n').replace(/^\n+/, '')
+            : noteData.body;
+          return (
           <div>
-            <h1 className="text-xl font-bold">{noteData.title}</h1>
-            <SimpleNoteBody body={noteData.body} />
+            <h1 className="text-xl font-bold">{noteTitle}</h1>
+            <SimpleNoteBody body={noteBody} />
             <button
               className="mt-6 px-4 py-2 bg-gray-200 text-gray-700 rounded"
               onClick={() => {
@@ -1485,7 +1494,8 @@ export default function ViewerPage() {
               <p className="text-red-600 text-sm mt-2">{errorMessage}</p>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {step === 'banner' && isStandalone && (
           <div className="text-center">
