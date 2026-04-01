@@ -1390,7 +1390,7 @@ export default function ViewerPage() {
                   {historyNotes.map((note) => (
                     <li
                       key={note.id}
-                      className="px-4 py-3 border-b border-gray-100 cursor-pointer active:bg-gray-50"
+                      className="px-4 py-3 border-b border-gray-100 cursor-pointer active:bg-gray-50 flex items-center gap-2"
                       onClick={async () => {
                         if (note.status === 'draft') {
                           const draft = await loadDraft(note.id).catch(() => null);
@@ -1413,23 +1413,46 @@ export default function ViewerPage() {
                         setStep('write');
                       }}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className={`text-sm font-semibold px-2 py-0.5 rounded ${
-                            note.status === 'sent'
-                              ? 'bg-blue-500 text-white'
-                              : 'bg-yellow-400 text-gray-900'
-                          }`}
-                        >
-                          {note.status === 'sent' ? '送信済み' : '下書き'}
-                        </span>
-                        <span className="text-sm text-gray-500">
-                          {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
-                        </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`text-sm font-semibold px-2 py-0.5 rounded ${
+                              note.status === 'sent'
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-yellow-400 text-gray-900'
+                            }`}
+                          >
+                            {note.status === 'sent' ? '送信済み' : '下書き'}
+                          </span>
+                          <span className="text-sm text-gray-500">
+                            {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 truncate">
+                          {(note.title || note.body).slice(0, 20) || '（空のメモ）'}
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-700 truncate">
-                        {(note.title || note.body).slice(0, 20) || '（空のメモ）'}
-                      </p>
+                      {note.status === 'draft' && (
+                        <button
+                          className="p-2 text-gray-400 hover:text-red-500 flex-shrink-0"
+                          aria-label="削除"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setIsLoading(true);
+                            try {
+                              await deleteDraft(note.id);
+                              const updated = await loadAllDrafts();
+                              setHistoryNotes(updated.map((d) => ({ ...d, status: 'draft' as const })));
+                            } catch {
+                              // エラー無視（即削除）
+                            } finally {
+                              setIsLoading(false);
+                            }
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
