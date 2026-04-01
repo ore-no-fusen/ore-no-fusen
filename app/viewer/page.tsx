@@ -321,6 +321,13 @@ type IphoneNote = {
   tags?: string[];
 };
 
+type PendingHydrate = {
+  markdown: string;
+  blobMap: Map<string, File>;
+  draftId: string | null;
+  tags: string[];
+};
+
 
 // Drive 書き込み（トークン期限切れ時に自動リフレッシュ）
 async function uploadWithAutoRefresh(
@@ -674,6 +681,7 @@ export default function ViewerPage() {
   const [isMermaidRendering, setIsMermaidRendering] = useState(false);
   const mermaidPreviewRef = React.useRef<HTMLDivElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
 
   useEffect(() => {
     // iOS Safari は navigator.standalone で判定、他は matchMedia
@@ -830,6 +838,22 @@ export default function ViewerPage() {
       })
       .finally(() => setIsHistoryLoading(false));
   }, [step, accessToken]);
+
+  // pendingHydrate: list→write 遷移後に editorRef がマウントされてから hydrateEditor を呼ぶ
+  useEffect(() => {
+    if (!pendingHydrate) return;
+    const run = () => {
+      if (!editorRef.current) return;
+      hydrateEditor(editorRef.current, pendingHydrate.markdown, pendingHydrate.blobMap);
+      setImageBlobs(pendingHydrate.blobMap);
+      setCurrentDraftId(pendingHydrate.draftId);
+      setWriteTags(pendingHydrate.tags);
+      setShowTagBar(pendingHydrate.tags.length > 0);
+      setPendingHydrate(null);
+    };
+    const t = setTimeout(run, 50);
+    return () => clearTimeout(t);
+  }, [pendingHydrate]);
 
   // ローディング表示
   if (isLoading) {
@@ -1365,10 +1389,7 @@ export default function ViewerPage() {
                       key={note.id}
                       className="px-4 py-3 border-b border-gray-100 cursor-pointer active:bg-gray-50"
                       onClick={async () => {
-                        if (!editorRef.current) return;
-
                         if (note.status === 'draft') {
-                          // 下書き: IndexedDB から取得して画像blobを復元
                           const draft = await loadDraft(note.id).catch(() => null);
                           const blobMap = new Map<string, File>();
                           if (draft?.images && draft.images.length > 0) {
@@ -1376,26 +1397,15 @@ export default function ViewerPage() {
                               blobMap.set(fileName, new File([blob], fileName, { type: 'image/jpeg' }));
                             }
                           }
-                          setImageBlobs(blobMap);
-                          // 1行目がタイトルになるように "# title\nbody" 形式に組み立て
                           const fullText = note.title
                             ? `# ${note.title}\n\n${note.body ?? ''}`
                             : (note.body ?? '');
-                          hydrateEditor(editorRef.current, fullText, blobMap);
-                          setCurrentDraftId(note.id);
-                          setWriteTags(note.tags ?? []);
-                          setShowTagBar((note.tags ?? []).length > 0);
+                          setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
                         } else {
-                          // 送信済み: テキストのみ復元（画像blobなし）
-                          const emptyBlobMap = new Map<string, File>();
-                          setImageBlobs(emptyBlobMap);
                           const fullText = note.title
                             ? `# ${note.title}\n\n${note.body ?? ''}`
                             : (note.body ?? '');
-                          hydrateEditor(editorRef.current, fullText, emptyBlobMap);
-                          setCurrentDraftId(null);  // 新規送信扱い
-                          setWriteTags(note.tags ?? []);
-                          setShowTagBar((note.tags ?? []).length > 0);
+                          setPendingHydrate({ markdown: fullText, blobMap: new Map(), draftId: null, tags: note.tags ?? [] });
                         }
                         setStep('write');
                       }}
