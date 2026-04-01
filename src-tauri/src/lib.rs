@@ -1260,15 +1260,25 @@ async fn fusen_send_to_iphone(
     } else {
         note.clone()
     };
-    // Drive用: ローカル画像を base64 data URI に変換（iPhoneで表示できるよう）
     let note_dir = std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new("."));
-    let body_rich = embed_local_images(&body, note_dir);
-    // Push通知用: ローカル画像パスを [画像] に置換（Web Push 4KB制限対応）
-    let body_push = strip_local_images(&body);
-
     let sent_at = chrono::Utc::now().to_rfc3339();
-    let title = path.split(['/', '\\']).last().unwrap_or("note")
-        .trim_end_matches(".md").to_string();
+
+    // body先頭行が#見出しならタイトルとして抽出し、body_contentから除去
+    let first_line = body.lines().next().unwrap_or("");
+    let (title, body_content) = if first_line.starts_with('#') {
+        let t = first_line.trim_start_matches('#').trim().to_string();
+        let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
+        (t, rest.trim_start_matches('\n').to_string())
+    } else {
+        let file_title = path.split(['/', '\\']).last().unwrap_or("note")
+            .trim_end_matches(".md").to_string();
+        (file_title, body.clone())
+    };
+
+    // Drive用: ローカル画像を base64 data URI に変換（iPhoneで表示できるよう）
+    let body_rich = embed_local_images(&body_content, note_dir);
+    // Push通知用: ローカル画像パスを [画像] に置換（Web Push 4KB制限対応）
+    let body_push = strip_local_images(&body_content);
 
     let note_json_drive = serde_json::json!({
         "title": title,
