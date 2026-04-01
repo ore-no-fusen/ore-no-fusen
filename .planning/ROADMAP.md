@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 品質改善** — Phases 1-3 (shipped 2026-03-23)
 - ✅ **v2.0 iPhone連携** — Phases 4-5 (shipped 2026-03-29)
-- 📋 **v3.0 iPhone→PC送信** — Phases 6-7 (planned)
+- 📋 **v3.0 iPhone→PC送信** — Phases 6-9 (planned)
 
 ## Phases
 
@@ -34,7 +34,9 @@ See: `.planning/milestones/v2.0-ROADMAP.md`
 **Milestone Goal:** iPhoneで書いたメモ・写真・MermaidをPCに送ると、30秒以内に新規付箋ウィンドウが開く
 
 - [ ] **Phase 6: iPhone送信UI** — iPhoneで書いてDriveに送れる状態（PCなしで検証可能）
-- [x] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態（07-01完了・07-02実装中） (completed 2026-03-30)
+- [x] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態（07-01完了・07-02実装中） (completed 2026-03-30)
+- [x] **Phase 8: iPhoneノートアプリ化** — contenteditable・画像・タグ・一覧 (completed 2026-04-01)
+- [ ] **Phase 9: iPhone付箋管理** — 一覧から作成・編集・保存・削除、PCへの送信も可能
 
 ---
 
@@ -74,6 +76,7 @@ Plans:
 - [ ] 07-02-PLAN.md — Wave 2: 画像を Drive ファイルとして管理しローカル保存（POLL-02 拡張）
 
 ### Phase 8: iPhoneノートアプリ化
+**Status**: COMPLETE (2026-04-01)
 **Goal**: iPhoneでノートの作成・編集・一覧・PCへの送信が付箋アプリと同等の操作感でできる
 **Depends on**: Phase 6・7（viewer/page.tsx・app/page.tsx 稼働済み）
 **Requirements**: IPHONE-UI-01, IPHONE-UI-02, IPHONE-UI-03, IPHONE-UI-04, IPHONE-UI-05, IPHONE-UI-06
@@ -87,10 +90,27 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Wave 1: contenteditable基盤（型変更・state変更・ヘルパー関数5つ・write UI差し替え）
-- [ ] 08-02-PLAN.md — Wave 2: ヘッダーツールバー（📷🔷☑）+ CropModal + Mermaidインライン挿入
-- [ ] 08-03-PLAN.md — Wave 3: タグUI（🏷️）+ 送信payload拡張 + PC受信タグ適用
-- [ ] 08-04-PLAN.md — Wave 4: 一覧から送信済み・下書き編集対応
+- [x] 08-01-PLAN.md — Wave 1: contenteditable基盤（型変更・state変更・ヘルパー関数5つ・write UI差し替え）
+- [x] 08-02-PLAN.md — Wave 2: ヘッダーツールバー（📷🔷☑）+ CropModal + Mermaidインライン挿入
+- [x] 08-03-PLAN.md — Wave 3: タグUI（🏷️）+ 送信payload拡張 + PC受信タグ適用
+- [x] 08-04-PLAN.md — Wave 4: 一覧から送信済み・下書き編集対応
+### Phase 9: iPhone付箋管理
+**Goal**: iPhoneを単体の付箋アプリとして使えるようにする（一覧から作成・編集・保存・削除）、PCへの送信も引き続き可能
+**Depends on**: Phase 8（viewer/page.tsx の contenteditable エディタ稼働済み）
+**Requirements**: IPHONE-MGT-01, IPHONE-MGT-02, IPHONE-MGT-03, IPHONE-MGT-04, IPHONE-MGT-05
+**Success Criteria** (what must be TRUE):
+  1. 一覧（下書き・送信済み）からノートをタップするとエディタに内容が正しく読み込まれる（現バグ修正）
+  2. エディタで編集後「iPhoneに置いておく」を押すと、既存下書きは上書き保存・新規は新規作成される
+  3. 一覧画面に「＋」ボタンがあり、タップするとエディタをクリアして新規作成モードで開く
+  4. 一覧から付箋を削除できる（IndexedDBから削除、一覧から消える）
+  5. 「PCに送る」は引き続き動作し、iPhone内の付箋をPCに送信できる
+**Plans**: 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Wave 1: バグ修正（pendingHydrate）一覧→エディタ読み込み（IPHONE-MGT-01）
+- [ ] 09-02-PLAN.md — Wave 2: 一覧リニューアル（＋ボタン・削除・「履歴」→「一覧」）+ 保存フロー（IPHONE-MGT-02, 03, 04）
+- [ ] 09-03-PLAN.md — Wave 3: 送信フロー維持確認・全フロー統合検証（IPHONE-MGT-05）
+
 
 ---
 
