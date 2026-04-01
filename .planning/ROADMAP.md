@@ -112,6 +112,16 @@ Plans:
 - [ ] 09-03-PLAN.md — Wave 3: 送信フロー維持確認・全フロー統合検証（IPHONE-MGT-05）
 
 
+### Phase 10: PCから来たノートを一覧に追加
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 9
+**Plans:** 1/3 plans executed
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 10 to break down)
+
 ---
 
 ## Progress

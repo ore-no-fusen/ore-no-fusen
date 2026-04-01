@@ -996,7 +996,7 @@ export default function ViewerPage() {
                 className="text-blue-600 text-sm font-medium"
                 onClick={() => setStep('list')}
               >
-                📋 履歴
+                📋 一覧
               </button>
               <span className="font-semibold text-gray-900">書く</span>
               <div className="flex justify-end items-center gap-0 p-1">
@@ -1366,14 +1366,17 @@ export default function ViewerPage() {
           <div className="flex flex-col min-h-[100dvh] bg-white">
             {/* ヘッダー */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <span className="font-semibold text-gray-900">一覧</span>
               <button
-                className="text-blue-600 text-sm font-medium"
-                onClick={() => setStep('write')}
+                className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-lg font-medium"
+                aria-label="新規作成"
+                onClick={() => {
+                  setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
+                  setStep('write');
+                }}
               >
-                ← 戻る
+                ＋
               </button>
-              <span className="font-semibold text-gray-900">履歴</span>
-              <div className="w-12" />
             </div>
 
             {/* コンテンツ */}
@@ -1381,7 +1384,7 @@ export default function ViewerPage() {
               {isHistoryLoading ? (
                 <p className="text-center text-gray-400 py-8 text-sm">読み込み中...</p>
               ) : historyNotes.length === 0 ? (
-                <p className="text-center text-gray-400 py-8 text-sm">まだ履歴がありません</p>
+                <p className="text-center text-gray-400 py-8 text-sm">付箋がありません。＋で新規作成</p>
               ) : (
                 <ul>
                   {historyNotes.map((note) => (
