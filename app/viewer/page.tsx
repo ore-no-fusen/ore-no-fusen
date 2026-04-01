@@ -831,7 +831,7 @@ export default function ViewerPage() {
       .then(([drafts, sentNotes]) => {
         const draftNotes: IphoneNote[] = drafts.map((d) => ({
           id: d.id, title: d.title, body: d.body,
-          status: 'draft' as const, created_at: d.created_at,
+          status: 'draft' as const, created_at: d.created_at, tags: d.tags,
         }));
         const merged = [...draftNotes, ...sentNotes]
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
