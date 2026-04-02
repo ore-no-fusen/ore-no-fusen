@@ -19,12 +19,21 @@ function buildImageFileName(title: string, index: number): string {
 }
 
 // contenteditable div の innerHTML を Markdown 文字列に変換
-function serializeEditor(el: HTMLDivElement): string {
+export function serializeEditor(el: HTMLDivElement): string {
   // デタッチDOMでは innerText == textContent（改行なし）になるため、
   // カスタムウォーカーで br/div を \n に変換する
   function walk(node: Node, isRoot: boolean): string {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
     if (!(node instanceof Element)) return '';
+    // チェックボックス行（data-checkbox-line を持つ wrapper span）
+    if (node instanceof Element && node.hasAttribute('data-checkbox-line')) {
+      const cb = node.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+      const text = Array.from(node.childNodes)
+        .filter((c) => c.nodeType === Node.TEXT_NODE)
+        .map((c) => c.textContent ?? '')
+        .join('');
+      return `- [${cb?.checked ? 'x' : ' '}] ${text}`;
+    }
     // mermaid ブロック
     const mermaidCode = node.getAttribute('data-mermaid-code');
     if (mermaidCode != null) return `\`\`\`mermaid\n${mermaidCode}\n\`\`\``;
@@ -86,7 +95,7 @@ function insertNodeAtCursor(node: Node): void {
 // Markdown 文字列を contenteditable DOM に復元
 // blobMap: fileName → File（画像の ObjectURL 生成用）
 // Mermaid は初回はコードテキストとして表示（再レンダリングしない）
-function hydrateEditor(
+export function hydrateEditor(
   el: HTMLDivElement,
   markdown: string,
   blobMap: Map<string, File>
@@ -135,6 +144,26 @@ function hydrateEditor(
         el.appendChild(span);
         el.appendChild(document.createElement('br'));
       }
+      i++;
+      continue;
+    }
+    // チェックボックス行 - [ ] / - [x]
+    const checkMatch = line.match(/^- \[([ x])\] (.*)$/);
+    if (checkMatch) {
+      const checked = checkMatch[1] === 'x';
+      const text = checkMatch[2];
+      const wrapper = document.createElement('span');
+      wrapper.setAttribute('data-checkbox-line', '');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = checked;
+      cb.style.cssText = 'margin-right:4px;pointer-events:auto;vertical-align:middle;';
+      cb.addEventListener('mousedown', (e) => e.preventDefault());
+      const textNode = document.createTextNode(text);
+      wrapper.appendChild(cb);
+      wrapper.appendChild(textNode);
+      el.appendChild(wrapper);
+      el.appendChild(document.createElement('br'));
       i++;
       continue;
     }
@@ -1020,7 +1049,33 @@ export default function ViewerPage() {
                 </button>
                 <button
                   className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-sm"
-                  onClick={() => insertTextAtCursor('- [ ] ')}
+                  onClick={() => {
+                    const sel = window.getSelection();
+                    if (!sel || sel.rangeCount === 0) {
+                      editorRef.current?.focus();
+                      insertTextAtCursor('- [ ] ');
+                      return;
+                    }
+                    const range = sel.getRangeAt(0);
+                    // カーソルが editorRef 外にある場合は focus してカーソルを確保
+                    if (!editorRef.current?.contains(range.commonAncestorContainer)) {
+                      editorRef.current?.focus();
+                      insertTextAtCursor('- [ ] ');
+                      return;
+                    }
+                    // カーソルのある行の親ノード（editorRef 直下の span/div）を特定
+                    let node: Node = range.startContainer;
+                    while (node.parentNode && !node.parentNode.isEqualNode(editorRef.current)) {
+                      node = node.parentNode;
+                    }
+                    // 行頭に Range をセットして挿入
+                    const headRange = document.createRange();
+                    headRange.setStart(node, 0);
+                    headRange.setEnd(node, 0);
+                    sel.removeAllRanges();
+                    sel.addRange(headRange);
+                    insertTextAtCursor('- [ ] ');
+                  }}
                   aria-label="チェックボックスを追加"
                   title="チェックボックス"
                 >
