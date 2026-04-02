@@ -216,6 +216,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 const APP_FOLDER_NAME = 'ore-no-fusen';
+let cachedFolderId: string | null = null;
 
 // タグ永続化ヘルパー
 export function loadKnownTags(): string[] {
@@ -233,12 +234,16 @@ export function mergeKnownTags(newTags: string[]): void {
 }
 
 async function getAppFolderId(accessToken: string): Promise<string | null> {
+  if (cachedFolderId !== null) return cachedFolderId;
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=name='${APP_FOLDER_NAME}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
-  if (data.files?.[0]?.id) return data.files[0].id as string;
+  if (data.files?.[0]?.id) {
+    cachedFolderId = data.files[0].id as string;
+    return cachedFolderId;
+  }
   if (data.error) {
     console.warn('[Drive] folder search error:', data.error.message);
     return null;
@@ -254,7 +259,8 @@ async function getAppFolderId(accessToken: string): Promise<string | null> {
     console.warn('[Drive] folder create error:', created.error.message);
     return null;
   }
-  return created.id as string;
+  cachedFolderId = created.id as string;
+  return cachedFolderId;
 }
 
 async function uploadToDrive(
@@ -1300,17 +1306,12 @@ export default function ViewerPage() {
                     const { title, body: extractedBody } = extractTitleBody(rawText);
                     const noteId = crypto.randomUUID();
                     const sentAt = new Date().toISOString();
-                    for (const [fileName, file] of capturedBlobs.entries()) {
-                      await uploadImageWithAutoRefresh(token, file, fileName);
-                    }
+                    await Promise.all(
+                      Array.from(capturedBlobs.entries()).map(([fileName, file]) =>
+                        uploadImageWithAutoRefresh(token, file, fileName)
+                      )
+                    );
                     const fullBody = extractedBody;
-                    await uploadWithAutoRefresh(token, 'fusen_from_iphone.json', {
-                      id: noteId,
-                      title,
-                      body: fullBody,
-                      sent_at: sentAt,
-                      tags: capturedTags,
-                    });
                     const note: IphoneNote = {
                       id: noteId,
                       status: 'sent',
@@ -1320,7 +1321,16 @@ export default function ViewerPage() {
                       sent_at: sentAt,
                       tags: capturedTags,
                     };
-                    await saveToHistory(token, note);
+                    await Promise.all([
+                      uploadWithAutoRefresh(token, 'fusen_from_iphone.json', {
+                        id: noteId,
+                        title,
+                        body: fullBody,
+                        sent_at: sentAt,
+                        tags: capturedTags,
+                      }),
+                      saveToHistory(token, note),
+                    ]);
                     if (editorRef.current) editorRef.current.innerHTML = '';
                     setImageBlobs(new Map());
                     setWriteTags([]);
