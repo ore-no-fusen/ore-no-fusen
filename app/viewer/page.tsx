@@ -725,6 +725,9 @@ export default function ViewerPage() {
   const [showCropModal, setShowCropModal] = useState(false);
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState(false);
+  const [isSendingInBackground, setIsSendingInBackground] = useState(false);
+  const [backgroundSendSuccess, setBackgroundSendSuccess] = useState(false);
+  const [backgroundSendError, setBackgroundSendError] = useState<string | null>(null);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
@@ -942,6 +945,22 @@ export default function ViewerPage() {
   // standalone → ステップUI / 全文表示
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900">
+      {/* バックグラウンド送信トースト */}
+      {isSendingInBackground && (
+        <div className="fixed top-4 right-4 bg-blue-500 text-white text-sm px-3 py-2 rounded shadow z-50">
+          送信中...
+        </div>
+      )}
+      {backgroundSendSuccess && (
+        <div className="fixed top-4 right-4 bg-green-500 text-white text-sm px-3 py-2 rounded shadow z-50">
+          送信しました ✓
+        </div>
+      )}
+      {backgroundSendError && (
+        <div className="fixed top-4 right-4 bg-red-500 text-white text-sm px-3 py-2 rounded shadow z-50">
+          {backgroundSendError}
+        </div>
+      )}
       <div className="max-w-prose mx-auto w-full">
         {step === 'login' && (
           <div className="flex flex-col items-center gap-4">
@@ -1275,91 +1294,99 @@ export default function ViewerPage() {
               </button>
               <button
                 className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
-                disabled={isLoading}
-                onClick={async () => {
+                disabled={isSendingInBackground}
+                onClick={() => {
                   if (!accessToken || !editorRef.current) return;
-                  // setIsLoading より前に取得（isLoading=true でエディタがアンマウントされるため）
+                  // クリア前にデータをキャプチャ
                   const rawText = serializeEditor(editorRef.current);
                   const capturedTags = [...writeTags];
                   const capturedBlobs = new Map(imageBlobs);
-                  setIsLoading(true);
-                  setErrorMessage(null);
-                  setSendSuccess(false);
-                  // 送信前にトークンの有効期限を確認し、切れていたら自動更新
-                  let token = accessToken;
-                  const expiresAt = parseInt(localStorage.getItem('viewer_expires_at') || '0');
-                  if (Date.now() > expiresAt - 5 * 60 * 1000) {
-                    const newToken = await refreshAccessToken();
-                    if (!newToken) {
-                      localStorage.removeItem('viewer_access_token');
-                      localStorage.removeItem('viewer_refresh_token');
-                      setErrorMessage('セッションが切れました。再度ログインしてください。');
-                      setStep('login');
-                      setIsLoading(false);
-                      return;
-                    }
-                    token = newToken;
-                    setAccessToken(newToken);
+                  const capturedDraftId = currentDraftId;
+                  const capturedToken = accessToken;
+                  // UIを即クリア
+                  editorRef.current.innerHTML = '';
+                  setImageBlobs(new Map());
+                  setWriteTags([]);
+                  setShowTagBar(false);
+                  setTagInput('');
+                  setCurrentDraftId(null);
+                  if (capturedDraftId) {
+                    deleteDraft(capturedDraftId).catch(() => {});
                   }
-                  try {
-                    mergeKnownTags(capturedTags);
-                    const { title, body: extractedBody } = extractTitleBody(rawText);
-                    const noteId = crypto.randomUUID();
-                    const sentAt = new Date().toISOString();
-                    await Promise.all(
-                      Array.from(capturedBlobs.entries()).map(([fileName, file]) =>
-                        uploadImageWithAutoRefresh(token, file, fileName)
-                      )
-                    );
-                    const fullBody = extractedBody;
-                    const note: IphoneNote = {
-                      id: noteId,
-                      status: 'sent',
-                      title,
-                      body: fullBody,
-                      created_at: sentAt,
-                      sent_at: sentAt,
-                      tags: capturedTags,
-                    };
-                    await Promise.all([
-                      uploadWithAutoRefresh(token, 'fusen_from_iphone.json', {
+                  // バックグラウンド送信開始
+                  setIsSendingInBackground(true);
+                  setBackgroundSendError(null);
+                  (async () => {
+                    try {
+                      // トークン有効期限確認・自動更新
+                      let token = capturedToken;
+                      const expiresAt = parseInt(localStorage.getItem('viewer_expires_at') || '0');
+                      if (Date.now() > expiresAt - 5 * 60 * 1000) {
+                        const newToken = await refreshAccessToken();
+                        if (!newToken) {
+                          localStorage.removeItem('viewer_access_token');
+                          localStorage.removeItem('viewer_refresh_token');
+                          setIsSendingInBackground(false);
+                          setBackgroundSendError('セッションが切れました。再度ログインしてください。');
+                          setTimeout(() => setBackgroundSendError(null), 5000);
+                          setStep('login');
+                          return;
+                        }
+                        token = newToken;
+                        setAccessToken(newToken);
+                      }
+                      mergeKnownTags(capturedTags);
+                      const { title, body: extractedBody } = extractTitleBody(rawText);
+                      const noteId = crypto.randomUUID();
+                      const sentAt = new Date().toISOString();
+                      await Promise.all(
+                        Array.from(capturedBlobs.entries()).map(([fileName, file]) =>
+                          uploadImageWithAutoRefresh(token, file, fileName)
+                        )
+                      );
+                      const fullBody = extractedBody;
+                      const note: IphoneNote = {
                         id: noteId,
+                        status: 'sent',
                         title,
                         body: fullBody,
+                        created_at: sentAt,
                         sent_at: sentAt,
                         tags: capturedTags,
-                      }),
-                      saveToHistory(token, note),
-                    ]);
-                    if (editorRef.current) editorRef.current.innerHTML = '';
-                    setImageBlobs(new Map());
-                    setWriteTags([]);
-                    setShowTagBar(false);
-                    setTagInput('');
-                    if (currentDraftId) {
-                      await deleteDraft(currentDraftId).catch(() => {});
-                      setCurrentDraftId(null);
+                      };
+                      await Promise.all([
+                        uploadWithAutoRefresh(token, 'fusen_from_iphone.json', {
+                          id: noteId,
+                          title,
+                          body: fullBody,
+                          sent_at: sentAt,
+                          tags: capturedTags,
+                        }),
+                        saveToHistory(token, note),
+                      ]);
+                      setIsSendingInBackground(false);
+                      setBackgroundSendSuccess(true);
+                      setTimeout(() => setBackgroundSendSuccess(false), 3000);
+                    } catch (err: unknown) {
+                      const msg = err instanceof Error
+                        ? (err.stack ? err.stack.split('\n').slice(0, 3).join(' | ') : err.message)
+                        : String(err);
+                      setIsSendingInBackground(false);
+                      if (msg.includes('session expired')) {
+                        localStorage.removeItem('viewer_access_token');
+                        localStorage.removeItem('viewer_refresh_token');
+                        setBackgroundSendError('セッションが切れました。再度ログインしてください。');
+                        setTimeout(() => setBackgroundSendError(null), 5000);
+                        setStep('login');
+                      } else {
+                        setBackgroundSendError('送信失敗: ' + msg);
+                        setTimeout(() => setBackgroundSendError(null), 5000);
+                      }
                     }
-                    setSendSuccess(true);
-                    setTimeout(() => setSendSuccess(false), 3000);
-                  } catch (err: unknown) {
-                    const msg = err instanceof Error
-                      ? (err.stack ? err.stack.split('\n').slice(0, 3).join(' | ') : err.message)
-                      : String(err);
-                    if (msg.includes('session expired')) {
-                      localStorage.removeItem('viewer_access_token');
-                      localStorage.removeItem('viewer_refresh_token');
-                      setErrorMessage('セッションが切れました。再度ログインしてください。');
-                      setStep('login');
-                    } else {
-                      setErrorMessage('送信に失敗しました: ' + msg);
-                    }
-                  } finally {
-                    setIsLoading(false);
-                  }
+                  })();
                 }}
               >
-                {isLoading ? '送信中...' : 'PCに送る'}
+                {isSendingInBackground ? '送信中...' : 'PCに送る'}
               </button>
             </div>
 
