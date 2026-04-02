@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 10-pc-notes-to-list-02-PLAN.md
-last_updated: "2026-04-02T23:39:39.225Z"
+stopped_at: "Completed 10-pc-notes-to-list-03-PLAN.md (checkpoint:human-verify)"
+last_updated: "2026-04-02T23:47:30.386Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 17
-  completed_plans: 16
-  percent: 94
+  completed_plans: 17
+  percent: 100
 ---
 
 ---
@@ -61,7 +61,7 @@ Status: Ready to plan
 Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
 
 **Progress:**
-[█████████░] 94%
+[██████████] 100%
 Phase 6 [          ] 0%
 Phase 7 [          ] 0%
 Overall [          ] 0%
@@ -170,6 +170,8 @@ Overall [          ] 0%
 - [Phase 10-pc-notes-to-list]: serializeEditor/hydrateEditor exported via export keyword on existing module-scope functions (no file split needed)
 - [Phase 10-pc-notes-to-list]: data-checkbox-line attribute on wrapper span enables clean DOM walk identification in serializeEditor
 - [Phase 10-pc-notes-to-list]: loadKnownTags/mergeKnownTags module-scope export pattern enables vitest testing without component mounting
+- [Phase 10-pc-notes-to-list]: 「PCに送る」onClick は同期関数で即クリア→async IIFE キックのノンブロッキングパターンを採用
+- [Phase 10-pc-notes-to-list]: cachedFolderId モジュール変数でセッション内 Drive フォルダID キャッシュ（getAppFolderId 冗長呼び出し排除）
 
 ### Roadmap Evolution
 
@@ -185,8 +187,8 @@ Overall [          ] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-02T23:39:39.219Z
-Stopped at: Completed 10-pc-notes-to-list-02-PLAN.md
+Last session: 2026-04-02T23:47:25.312Z
+Stopped at: Completed 10-pc-notes-to-list-03-PLAN.md (checkpoint:human-verify)
 Resume file: None
 
 ### Quick Tasks Completed
