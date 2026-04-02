@@ -217,6 +217,21 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 const APP_FOLDER_NAME = 'ore-no-fusen';
 
+// タグ永続化ヘルパー
+export function loadKnownTags(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem('fusen_known_tags') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+export function mergeKnownTags(newTags: string[]): void {
+  const known = loadKnownTags();
+  const merged = Array.from(new Set([...known, ...newTags]));
+  localStorage.setItem('fusen_known_tags', JSON.stringify(merged));
+}
+
 async function getAppFolderId(accessToken: string): Promise<string | null> {
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=name='${APP_FOLDER_NAME}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,

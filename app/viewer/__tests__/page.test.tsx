@@ -2,8 +2,8 @@
  * Phase 09 — IPHONE-MGT-01〜04 テストスタブ
  * 実装完了後に TODO を実際のアサーションに置き換える
  */
-import { describe, it, expect, vi } from 'vitest';
-import { hydrateEditor, serializeEditor } from '../page';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { hydrateEditor, serializeEditor, loadKnownTags, mergeKnownTags } from '../page';
 
 // テスト用ラッパー（export された関数を直接使用）
 function hydrateEditorForTest(el: HTMLDivElement, markdown: string, blobMap: Map<string, File>) {
@@ -92,4 +92,32 @@ describe('REQ-CB-SERIALIZE: serializeEditor チェックボックス逆変換', 
 
 describe('REQ-CB-TOGGLE: チェックボックストグル', () => {
   it.todo('iOS Safari での click イベントで checked 状態が変わる（実機確認）');
+});
+
+describe('REQ-TAG-PERSIST: タグ永続化', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('loadKnownTags は空のとき [] を返す', () => {
+    expect(loadKnownTags()).toEqual([]);
+  });
+  it('loadKnownTags は保存済みタグを返す', () => {
+    localStorage.setItem('fusen_known_tags', JSON.stringify(['仕事', '買い物']));
+    expect(loadKnownTags()).toEqual(['仕事', '買い物']);
+  });
+  it('mergeKnownTags は重複なくマージする', () => {
+    localStorage.setItem('fusen_known_tags', JSON.stringify(['仕事']));
+    mergeKnownTags(['仕事', '買い物']);
+    expect(loadKnownTags()).toEqual(['仕事', '買い物']);
+  });
+  it('mergeKnownTags は空配列でも既存タグを保持する', () => {
+    localStorage.setItem('fusen_known_tags', JSON.stringify(['仕事']));
+    mergeKnownTags([]);
+    expect(loadKnownTags()).toEqual(['仕事']);
+  });
+});
+
+describe('REQ-TAG-SUGGEST: タグサジェスト', () => {
+  it.todo('tagInput が空のとき全 knownTags（最大10件）が候補として表示される');
+  it.todo('tagInput に入力すると knownTags の includes フィルタリング結果が表示される');
+  it.todo('候補タグをタップすると writeTags に追加され tagInput がクリアされる');
 });
