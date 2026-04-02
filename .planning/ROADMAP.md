@@ -112,15 +112,17 @@ Plans:
 - [ ] 09-03-PLAN.md — Wave 3: 送信フロー維持確認・全フロー統合検証（IPHONE-MGT-05）
 
 
-### Phase 10: PCから来たノートを一覧に追加
+### Phase 10: iPhone UX改善 + 送信高速化
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** チェックボックスの行頭挿入・インタラクティブトグル・タグサジェスト・送信高速化（5秒以内）を実現する
+**Requirements**: REQ-CB-LINE, REQ-CB-TOGGLE, REQ-CB-SERIALIZE, REQ-CB-HYDRATE, REQ-TAG-SUGGEST, REQ-TAG-PERSIST, REQ-FOLDER-CACHE, REQ-SEND-PARALLEL, REQ-RUST-INTERVAL
 **Depends on:** Phase 9
-**Plans:** 3/3 plans complete
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 10 to break down)
+- [ ] 10-01-PLAN.md — Wave 1: チェックボックス行頭挿入 + インタラクティブ変換（REQ-CB-*）
+- [ ] 10-02-PLAN.md — Wave 1: タグサジェストUI + 永続化（REQ-TAG-*）（並列実行可）
+- [ ] 10-03-PLAN.md — Wave 2: 送信高速化（キャッシュ・並列化・ポーリング5秒）（REQ-FOLDER-CACHE, REQ-SEND-PARALLEL, REQ-RUST-INTERVAL）
 
 ---
 
