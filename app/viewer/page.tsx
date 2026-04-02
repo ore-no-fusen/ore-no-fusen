@@ -714,6 +714,7 @@ export default function ViewerPage() {
   const [writeTags, setWriteTags] = useState<string[]>([]);
   const [showTagBar, setShowTagBar] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [knownTags, setKnownTags] = useState<string[]>([]);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [showCropModal, setShowCropModal] = useState(false);
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
@@ -1100,7 +1101,12 @@ export default function ViewerPage() {
                   className={`min-w-[32px] px-2 py-1 rounded text-sm ${
                     showTagBar ? 'bg-gray-200 text-gray-900' : 'hover:bg-gray-100 text-gray-700'
                   }`}
-                  onClick={() => setShowTagBar((prev) => !prev)}
+                  onClick={() => {
+                    if (!showTagBar) {
+                      setKnownTags(loadKnownTags());
+                    }
+                    setShowTagBar((prev) => !prev);
+                  }}
                   aria-label="タグ"
                   title="タグ"
                 >
@@ -1154,6 +1160,48 @@ export default function ViewerPage() {
                   placeholder="タグを入力（Enter で追加）"
                   className="text-sm outline-none border-b border-gray-300 focus:border-blue-400 min-w-[120px] flex-1"
                 />
+                {/* サジェスト候補 */}
+                {(() => {
+                  const filtered = knownTags
+                    .filter((t) => !writeTags.includes(t) && t.includes(tagInput))
+                    .slice(0, 10);
+                  if (filtered.length === 0) return null;
+                  return (
+                    <div className="w-full flex flex-wrap gap-1 mt-1">
+                      {filtered.map((t) => (
+                        <span
+                          key={t}
+                          className="flex items-center gap-0.5 bg-gray-100 text-gray-700 text-xs rounded-full pl-2 pr-1 py-0.5"
+                        >
+                          <button
+                            type="button"
+                            className="hover:text-blue-700"
+                            onClick={() => {
+                              if (!writeTags.includes(t)) {
+                                setWriteTags((prev) => [...prev, t]);
+                              }
+                              setTagInput('');
+                            }}
+                          >
+                            {t}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-gray-400 hover:text-red-500 leading-none"
+                            aria-label={`候補 ${t} を削除`}
+                            onClick={() => {
+                              const updated = knownTags.filter((k) => k !== t);
+                              localStorage.setItem('fusen_known_tags', JSON.stringify(updated));
+                              setKnownTags(updated);
+                            }}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -1193,6 +1241,7 @@ export default function ViewerPage() {
                     const { title, body } = extractTitleBody(rawText);
                     const draftId = currentDraftId ?? crypto.randomUUID();
                     const imagesArr = Array.from(imageBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
+                    mergeKnownTags(writeTags);
                     await saveDraft({
                       id: draftId,
                       title,
@@ -1247,6 +1296,7 @@ export default function ViewerPage() {
                     setAccessToken(newToken);
                   }
                   try {
+                    mergeKnownTags(capturedTags);
                     const { title, body: extractedBody } = extractTitleBody(rawText);
                     const noteId = crypto.randomUUID();
                     const sentAt = new Date().toISOString();
