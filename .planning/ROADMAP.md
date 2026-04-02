@@ -117,7 +117,7 @@ Plans:
 **Goal:** チェックボックスの行頭挿入・インタラクティブトグル・タグサジェスト・送信高速化（5秒以内）を実現する
 **Requirements**: REQ-CB-LINE, REQ-CB-TOGGLE, REQ-CB-SERIALIZE, REQ-CB-HYDRATE, REQ-TAG-SUGGEST, REQ-TAG-PERSIST, REQ-FOLDER-CACHE, REQ-SEND-PARALLEL, REQ-RUST-INTERVAL
 **Depends on:** Phase 9
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 10-01-PLAN.md — Wave 1: チェックボックス行頭挿入 + インタラクティブ変換（REQ-CB-*）
