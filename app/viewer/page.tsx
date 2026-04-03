@@ -963,31 +963,22 @@ export default function ViewerPage() {
                 <button
                   className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-sm"
                   onClick={() => {
+                    const editor = editorRef.current;
+                    if (!editor) return;
                     const sel = window.getSelection();
-                    if (!sel || sel.rangeCount === 0) {
-                      editorRef.current?.focus();
-                      insertTextAtCursor('- [ ] ');
-                      return;
+                    if (!sel || sel.rangeCount === 0 || !editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                      editor.focus();
                     }
-                    const range = sel.getRangeAt(0);
-                    // カーソルが editorRef 外にある場合は focus してカーソルを確保
-                    if (!editorRef.current?.contains(range.commonAncestorContainer)) {
-                      editorRef.current?.focus();
-                      insertTextAtCursor('- [ ] ');
-                      return;
-                    }
-                    // カーソルのある行の親ノード（editorRef 直下の span/div）を特定
-                    let node: Node = range.startContainer;
-                    while (node.parentNode && !node.parentNode.isEqualNode(editorRef.current)) {
-                      node = node.parentNode;
-                    }
-                    // 行頭に Range をセットして挿入
-                    const headRange = document.createRange();
-                    headRange.setStart(node, 0);
-                    headRange.setEnd(node, 0);
-                    sel.removeAllRanges();
-                    sel.addRange(headRange);
-                    insertTextAtCursor('- [ ] ');
+                    // チェックボックスDOMを直接挿入（即タップ可能）
+                    const wrapper = document.createElement('span');
+                    wrapper.setAttribute('data-checkbox-line', '');
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.style.cssText = 'margin-right:4px;pointer-events:auto;vertical-align:middle;';
+                    cb.addEventListener('mousedown', (e) => e.preventDefault());
+                    wrapper.appendChild(cb);
+                    wrapper.appendChild(document.createTextNode(''));
+                    insertNodeAtCursor(wrapper);
                   }}
                   aria-label="チェックボックスを追加"
                   title="チェックボックス"
