@@ -966,24 +966,20 @@ export default function ViewerPage() {
                     const editor = editorRef.current;
                     if (!editor) return;
                     const sel = window.getSelection();
-                    // カーソルがエディタ外なら先頭に挿入
                     if (!sel || sel.rangeCount === 0 || !editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
                       editor.focus();
                     }
-                    // カーソルのある行の editorRef 直下ノードを特定して行頭に Range をセット
+                    // カーソルのある行の editorRef 直下ノードを特定
                     const currentSel = window.getSelection();
+                    let lineNode: Node | null = null;
                     if (currentSel && currentSel.rangeCount > 0) {
                       let node: Node = currentSel.getRangeAt(0).startContainer;
                       while (node.parentNode && node.parentNode !== editor) {
                         node = node.parentNode;
                       }
-                      const headRange = document.createRange();
-                      headRange.setStart(node, 0);
-                      headRange.setEnd(node, 0);
-                      currentSel.removeAllRanges();
-                      currentSel.addRange(headRange);
+                      if (node.parentNode === editor) lineNode = node;
                     }
-                    // チェックボックスDOMを行頭に挿入（即タップ可能）
+                    // チェックボックス wrapper を作成
                     const wrapper = document.createElement('span');
                     wrapper.setAttribute('data-checkbox-line', '');
                     const cb = document.createElement('input');
@@ -991,8 +987,28 @@ export default function ViewerPage() {
                     cb.style.cssText = 'margin-right:4px;pointer-events:auto;vertical-align:middle;';
                     cb.addEventListener('mousedown', (e) => e.preventDefault());
                     wrapper.appendChild(cb);
-                    wrapper.appendChild(document.createTextNode(''));
-                    insertNodeAtCursor(wrapper);
+                    if (lineNode && lineNode.parentNode === editor && lineNode.nodeName !== 'BR') {
+                      // 既存行ノードの子を wrapper に移動（テキストを保持したまま置き換え）
+                      while (lineNode.firstChild) {
+                        wrapper.appendChild(lineNode.firstChild);
+                      }
+                      editor.replaceChild(wrapper, lineNode);
+                    } else {
+                      // 空行または新規: wrapper + br を追加
+                      wrapper.appendChild(document.createTextNode(''));
+                      if (lineNode) {
+                        editor.insertBefore(wrapper, lineNode);
+                      } else {
+                        editor.appendChild(wrapper);
+                        editor.appendChild(document.createElement('br'));
+                      }
+                    }
+                    // カーソルを wrapper 末尾に配置
+                    const range = document.createRange();
+                    range.selectNodeContents(wrapper);
+                    range.collapse(false);
+                    currentSel?.removeAllRanges();
+                    currentSel?.addRange(range);
                   }}
                   aria-label="チェックボックスを追加"
                   title="チェックボックス"
