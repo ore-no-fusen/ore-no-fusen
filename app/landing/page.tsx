@@ -37,15 +37,15 @@ export default function LandingPage() {
 
     const addDemoNote = () => {
         if (inputValue.trim() === '') return;
-        
+
         // 解析用
         if (typeof window !== 'undefined' && 'gtag' in window) {
             (window as any).gtag('event', 'demo_input', {
                 event_category: 'engagement',
             });
         }
-        
-        const topPos = 10 + Math.random() * 40; 
+
+        const topPos = 10 + Math.random() * 40;
         const leftPos = 10 + Math.random() * 40;
 
         const newNote = {
@@ -58,7 +58,7 @@ export default function LandingPage() {
         };
         setDemoNotes((prev) => [newNote, ...prev].slice(0, 5));
         setInputValue('');
-        
+
         // 送信後も続けて書けるようにフォーカスを維持
         if (inputRef.current) {
             inputRef.current.focus();
@@ -68,7 +68,7 @@ export default function LandingPage() {
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         // 日本語入力（IME）の変換確定のEnterでは送信しない
         if (e.nativeEvent.isComposing) return;
-        
+
         if (e.key === 'Enter') {
             addDemoNote();
         }
@@ -181,7 +181,7 @@ export default function LandingPage() {
                         <div className="flex-1 relative h-[380px] sm:h-[480px] w-full max-w-lg mx-auto z-20">
                             {/* デスクトップ見立ての枠 */}
                             <div className="absolute inset-0 bg-[#D8CEBA]/40 rounded-3xl border border-[#C8B89A]/60 shadow-inner overflow-hidden">
-                                
+
                                 {/* 成功体験の付箋（DOM生成） */}
                                 {demoNotes.map((note, idx) => (
                                     <div
@@ -201,7 +201,8 @@ export default function LandingPage() {
                                                 {note.text}
                                             </p>
                                         </div>
-                                        <style dangerouslySetInnerHTML={{ __html: `
+                                        <style dangerouslySetInnerHTML={{
+                                            __html: `
                                             @keyframes popIn_${note.id} {
                                                 0% { opacity: 0; transform: scale(0.5) translateY(40px) rotate(0deg); }
                                                 100% { opacity: 1; transform: scale(1) translateY(0) rotate(${note.rotation}deg); }
@@ -214,15 +215,15 @@ export default function LandingPage() {
                                 <div className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${demoNotes.length > 0 ? 'opacity-0' : 'opacity-100 flex items-center justify-center'}`}>
                                     <div className="text-center text-[#8A7055] z-10 px-4">
                                         <div className="text-5xl mb-4 animate-bounce">✨</div>
-                                        <p className="font-bold text-lg">左の枠に入力して<br/>Enterを押してください</p>
+                                        <p className="font-bold text-lg">左の枠に入力して<br />Enterを押してください</p>
                                     </div>
-                                    
+
                                     {/* 背景にある薄い既存の付箋モック（雰囲気作り） */}
-                                    <div className="absolute top-10 left-4 w-40 rounded-sm -rotate-6 opacity-30 shadow-md" style={{ backgroundColor: '#EDD87A'}}>
+                                    <div className="absolute top-10 left-4 w-40 rounded-sm -rotate-6 opacity-30 shadow-md" style={{ backgroundColor: '#EDD87A' }}>
                                         <div className="h-2 rounded-t-sm bg-black/5" />
                                         <div className="p-4 h-24"></div>
                                     </div>
-                                    <div className="absolute bottom-10 right-4 w-44 rounded-sm rotate-3 opacity-30 shadow-md" style={{ backgroundColor: '#A8C890'}}>
+                                    <div className="absolute bottom-10 right-4 w-44 rounded-sm rotate-3 opacity-30 shadow-md" style={{ backgroundColor: '#A8C890' }}>
                                         <div className="h-2 rounded-t-sm bg-black/5" />
                                         <div className="p-4 h-24"></div>
                                     </div>
@@ -290,7 +291,7 @@ export default function LandingPage() {
                             大事なことは、<br />
                             <span className="text-[#5C7A3E]">貼っておけばいい。</span>
                         </h2>
-                        
+
                         {/* 復活したポエム */}
                         <div className="inline-block text-left pl-6 py-2 border-l-4 border-[#8BAF7C]/70 mb-8">
                             <p className="text-lg sm:text-xl text-[#6A5540] mb-3 leading-relaxed font-medium">
@@ -318,8 +319,9 @@ export default function LandingPage() {
                             <div className="text-2xl mb-3">✏️</div>
                             <h3 className="text-lg font-bold text-[#3A2C00] mb-2">すぐ書ける</h3>
                             <p className="text-sm text-[#6A5200] leading-relaxed">
-                                ワンクリックでクリックした場所から入力開始。自動保存で手間なし。
-                            </p>
+                                ワンクリックでクリックした場所から入力開始。
+                                付箋は0.5秒以内に起動。
+                                ※エクセルの起動って遅いですよね。イヤ、絶対！                    </p>
                         </div>
 
                         {/* カード2: 森の緑 */}
@@ -334,7 +336,8 @@ export default function LandingPage() {
                             <div className="text-2xl mb-3">🖊️</div>
                             <h3 className="text-lg font-bold text-[#1E3A10] mb-2">強調できる</h3>
                             <p className="text-sm text-[#2E5A20] leading-relaxed">
-                                Markdown記法に対応。太字やリスト、チェックボックスを使い分けて、大事な思考を整理・強調。
+                                赤文字やスクショ、写真へのペン入れで
+                                視覚的に強調したいポイントを表現可能。
                             </p>
                         </div>
 
@@ -350,7 +353,8 @@ export default function LandingPage() {
                             <div className="text-2xl mb-3">📌</div>
                             <h3 className="text-lg font-bold text-[#102030] mb-2">そこに残る</h3>
                             <p className="text-sm text-[#204050] leading-relaxed">
-                                常に最前面へピン留め可能。タグで整理して、必要な情報だけをいつもの場所に置いておけます。
+                                常に最前面へピン留め可能。（ライバルはおにぎりです）
+                                タグで整理して、必要な情報だけをいつもの場所に置いておけます。
                             </p>
                         </div>
                     </div>
@@ -358,7 +362,7 @@ export default function LandingPage() {
                     {/* サブ機能 */}
                     <div className="grid sm:grid-cols-3 gap-4 mt-8">
                         {[
-                            { emoji: '📱', text: 'iPhoneなどスマホとの連携' },
+                            { emoji: '📱', text: 'iPhoneとの連携' },
                             { emoji: '🖼️', text: 'クリップボードから画像貼り付け' },
                             { emoji: '📊', text: 'Mermaidでフローチャート変換' },
                         ].map((item) => (

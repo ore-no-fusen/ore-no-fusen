@@ -11,9 +11,10 @@ flowchart TD
     D --> E{pre-commit hook\nHusky}
 
     subgraph hook [pre-commit で自動実行]
-        E1["1) Vitest 単体テスト"]
-        E2["2) Playwright E2Eテスト"]
-        E1 --> E2
+        E0["1) TypeScript型チェック<br/>tsc --noEmit"]
+        E1["2) Vitest 単体テスト"]
+        E2["3) Playwright E2Eテスト"]
+        E0 --> E1 --> E2
     end
     E --- hook
 

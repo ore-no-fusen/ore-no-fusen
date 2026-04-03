@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>viewer フロー v3.0</title>
+  <title>viewer フロー v5.0</title>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,46 +57,39 @@
     .screen-body { padding: 10px 12px; }
 
     /* write画面 */
-    .tab-bar { display: flex; gap: 0; margin-bottom: 8px; }
-    .tab { flex: 1; text-align: center; font-size: 11px; padding: 5px 0; border: 1px solid #ddd; cursor: pointer; }
-    .tab.active { background: #3b5bdb; color: #fff; border-color: #3b5bdb; }
-    .tab:first-child { border-radius: 6px 0 0 6px; }
-    .tab:last-child  { border-radius: 0 6px 6px 0; }
-    .input-box {
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      padding: 5px 8px;
-      font-size: 11px;
-      color: #999;
-      margin-bottom: 6px;
-      width: 100%;
-    }
+    .write-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #eee; }
+    .write-header-left { font-size: 11px; color: #3b5bdb; font-weight: bold; }
+    .write-header-center { font-size: 12px; font-weight: bold; color: #111; }
+    .write-header-icons { display: flex; gap: 2px; }
+    .icon-btn { font-size: 13px; padding: 2px 4px; border-radius: 4px; }
     .textarea-box {
       border: 1px solid #ddd;
       border-radius: 6px;
       padding: 5px 8px;
       font-size: 11px;
       color: #999;
-      height: 48px;
+      height: 56px;
       margin-bottom: 6px;
       width: 100%;
     }
-    .tool-row { display: flex; gap: 6px; margin-bottom: 8px; }
-    .tool-btn { font-size: 11px; padding: 3px 8px; border: 1px solid #ccc; border-radius: 5px; background: #f9f9f9; }
-    .btn-row { display: flex; gap: 6px; }
-    .btn-iphone { flex: 1; font-size: 10px; padding: 5px 0; background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; text-align: center; color: #166534; }
+    .btn-row { display: flex; gap: 6px; margin-top: 6px; }
+    .btn-iphone { flex: 1; font-size: 10px; padding: 5px 0; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px; text-align: center; color: #374151; }
     .btn-pc { flex: 1; font-size: 10px; padding: 5px 0; background: #2563eb; border-radius: 6px; text-align: center; color: #fff; }
 
     /* list画面 */
     .list-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .back-btn { font-size: 11px; padding: 2px 7px; border: 1px solid #ccc; border-radius: 5px; background: #f5f5f5; }
-    .list-title { font-size: 12px; font-weight: bold; }
-    .list-item { border: 1px solid #eee; border-radius: 6px; padding: 6px 8px; margin-bottom: 5px; font-size: 11px; }
+    .list-title { font-size: 12px; font-weight: bold; flex: 1; }
+    .add-btn { font-size: 14px; padding: 1px 7px; border: 1px solid #3b5bdb; border-radius: 5px; background: #eef2ff; color: #3b5bdb; cursor: pointer; }
+    .list-item { border: 1px solid #eee; border-radius: 6px; padding: 6px 8px; margin-bottom: 5px; font-size: 11px; display: flex; align-items: flex-start; gap: 4px; }
+    .list-item-body { flex: 1; }
     .list-item-title { font-weight: bold; margin-bottom: 2px; }
+    .delete-btn { font-size: 13px; color: #ccc; padding: 0 2px; cursor: pointer; flex-shrink: 0; }
     .badge-sent  { display: inline-block; background: #dbeafe; color: #1d4ed8; font-size: 10px; padding: 1px 5px; border-radius: 8px; }
     .badge-draft { display: inline-block; background: #fef9c3; color: #854d0e; font-size: 10px; padding: 1px 5px; border-radius: 8px; }
     .list-meta { font-size: 10px; color: #999; margin-top: 2px; }
     .list-footer { font-size: 10px; color: #999; text-align: center; margin-top: 4px; }
+    .list-empty { font-size: 11px; color: #aaa; text-align: center; padding: 16px 0; }
 
     /* note画面 */
     .note-header { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee; }
@@ -109,31 +102,35 @@
 </head>
 <body>
 
-<h1>📱 viewer フロー（v3.0 最終案）</h1>
+<h1>📱 viewer フロー（v5.0 Phase 10: iPhone UX改善 + 送信高速化）</h1>
 
 <!-- 遷移図 -->
 <div class="mermaid">
 flowchart TD
     A([🏠 PWAアイコンタップ]) --> Q{ログイン済み？}
-    B([🔔 ロック画面通知タップ]) --> NOTE["note 📖\n付箋を読む"]
+    B([🔔 ロック画面通知タップ]) --> NOTE["note 📖\n付箋を読む\n（PCから届いた）"]
 
     Q -- "No（初回）" --> LOGIN[login]
     LOGIN --> PUSH[push]
     PUSH --> WRITE
 
-    Q -- Yes --> WRITE["write ✏️\n書く画面（ホーム）"]
+    Q -- Yes --> WRITE["write ✏️\n書く画面（ホーム）\n─────────────\n☑ 行頭チェックボックス\n☑ タップでON/OFF切替\n🏷️ タグサジェスト候補表示"]
 
     NOTE -- "消す\n（通知を閉じる）" --> WRITE
 
-    WRITE -- "iPhoneに置いておく" --> LIST["list 📋\n履歴一覧"]
-    WRITE -- "PCに送る" --> LIST
-    LIST -- "下書きタップ" --> WRITE
+    WRITE -- "iPhoneに置いておく\n（新規 or 上書き保存）\n＋タグをlocalStorageに保存" --> LIST["list 📋\n一覧\n下書き・送信済み"]
+    WRITE -- "PCに送る ★ノンブロッキング\n① 即エディタクリア→次の操作可\n② バックグラウンドで送信\n③ 完了/失敗をトーストで通知" --> TOAST["🔔 トースト通知\n送信中... / 送信しました ✓\n（右上に表示）"]
+    TOAST -. "送信完了後\n（非同期）" .-> LIST
+
+    LIST -- "ノートタップ（編集）" --> WRITE
+    LIST -- "＋ボタン（新規作成）" --> WRITE
 
     style WRITE fill:#d1fae5,stroke:#6ee7b7
     style LIST  fill:#dbeafe,stroke:#93c5fd
     style NOTE  fill:#ede9fe,stroke:#c4b5fd
     style LOGIN fill:#f1f5f9,stroke:#cbd5e1
     style PUSH  fill:#f1f5f9,stroke:#cbd5e1
+    style TOAST fill:#fef9c3,stroke:#fcd34d
 </div>
 
 <div class="note-box">
@@ -142,6 +139,16 @@ flowchart TD
   <p>✅ <strong>画像はカーソル位置に挿入</strong> — 📷タップで選択した画像を本文の好きな場所に挿入（<code>![](fusen_img_...)</code>）</p>
   <p>✅ <strong>トークン自動更新</strong> — 「PCに送る」前に期限を確認・期限切れなら自動リフレッシュ。session expired時はlogin画面へ遷移</p>
   <p>✅ <strong>下書きはローカル保存</strong> — IndexedDB使用・Drive不使用。テキスト+画像Blobをそのまま保持</p>
+  <p>✅ <strong>一覧から編集</strong> — ノートタップで内容をエディタに読み込む（pendingHydrate経由）</p>
+  <p>✅ <strong>＋ボタンで新規作成</strong> — エディタをクリア・currentDraftId=nullにしてwrite画面へ</p>
+  <p>✅ <strong>削除</strong> — 各ノートの🗑️タップで即削除（確認ダイアログなし）→ IndexedDB削除 → 一覧を再取得</p>
+  <p>✅ <strong>保存分岐</strong> — 「iPhoneに置いておく」: currentDraftIdがあれば上書き（put）、なければ新規作成（add）</p>
+  <p>✅ <strong>送信後クリーン</strong> — 「PCに送る」成功後、currentDraftIdの下書きをIndexedDBから削除</p>
+  <hr style="border:none;border-top:1px solid #86efac;margin:10px 0;">
+  <p>🆕 <strong>【Phase 10】チェックボックス行頭挿入</strong> — ☑ボタンをタップすると、カーソル位置に関わらず<strong>行頭</strong>に <code>- [ ] </code> を挿入する</p>
+  <p>🆕 <strong>【Phase 10】チェックボックスをタップでON/OFF</strong> — 編集中に <code>- [ ] </code> / <code>- [x] </code> が実際のチェックボックスとしてレンダリングされ、タップで切り替え可能</p>
+  <p>🆕 <strong>【Phase 10】タグサジェスト</strong> — 🏷️ボタンをタップすると過去に使ったタグが候補として表示される。タップで即追加、入力すると絞り込まれる。使用タグは <code>fusen_known_tags</code>（localStorage）に自動保存</p>
+  <p>🆕 <strong>【Phase 10】ノンブロッキック送信</strong> — 「PCに送る」を押した瞬間にエディタがクリアされ次の操作が可能。送信はバックグラウンドで実行され、完了・失敗を右上トーストで通知。Drive API もキャッシュ＋並列化で高速化</p>
 </div>
 
 <hr>
@@ -155,19 +162,40 @@ flowchart TD
     <div style="font-size:12px;font-weight:bold;margin-bottom:8px;color:#555;">書く画面（write）＝ホーム</div>
     <div class="screen">
       <div class="screen-body">
-        <div class="tab-bar">
-          <div class="tab active">履歴</div>
-          <div class="tab" style="color:#3b5bdb;font-weight:bold;">書く</div>
+        <div class="write-header">
+          <div class="write-header-left">📋 一覧</div>
+          <div class="write-header-center">書く</div>
+          <div class="write-header-icons">
+            <span class="icon-btn">📷</span>
+            <span class="icon-btn">🔷</span>
+            <span class="icon-btn">☑</span>
+            <span class="icon-btn">🏷️</span>
+          </div>
         </div>
-        <div class="input-box">タイトル（任意）</div>
-        <div class="textarea-box">本文...<br><span style="font-size:9px;color:#888;">![](fusen_img_...)</span></div>
-        <div class="tool-row">
-          <div class="tool-btn">📷</div>
-          <div class="tool-btn">Mermaid</div>
+        <div class="textarea-box">
+          買い物リスト<br>
+          <span style="color:#333;">☑ 牛乳</span><br>
+          <span style="color:#999;">☐ 卵</span><br>
+          <span style="font-size:9px;color:#888;">← チェックボックスをタップでON/OFF</span>
+        </div>
+        <!-- タグバー -->
+        <div style="border:1px solid #e5e7eb;border-radius:6px;padding:5px 7px;margin-bottom:5px;font-size:10px;">
+          <span style="background:#dbeafe;color:#1d4ed8;border-radius:8px;padding:1px 6px;margin-right:3px;">仕事 ×</span>
+          <input type="text" placeholder="タグを入力..." style="border:none;outline:none;font-size:10px;width:70px;"/>
+          <div style="margin-top:4px;display:flex;gap:3px;flex-wrap:wrap;align-items:center;">
+            <span style="background:#f3f4f6;color:#374151;font-size:9px;border-radius:8px;padding:1px 5px;display:inline-flex;gap:2px;">買い物 <span style="color:#aaa;">×</span></span>
+            <span style="background:#f3f4f6;color:#374151;font-size:9px;border-radius:8px;padding:1px 5px;display:inline-flex;gap:2px;">メモ <span style="color:#aaa;">×</span></span>
+            <span style="background:#f3f4f6;color:#374151;font-size:9px;border-radius:8px;padding:1px 5px;display:inline-flex;gap:2px;">ToDo <span style="color:#aaa;">×</span></span>
+            <span style="font-size:8px;color:#9ca3af;">← タップで追加 / ×で候補削除</span>
+          </div>
         </div>
         <div class="btn-row">
           <div class="btn-iphone">iPhoneに置いておく</div>
           <div class="btn-pc">PCに送る</div>
+        </div>
+        <!-- 送信中トースト -->
+        <div style="margin-top:6px;background:#3b82f6;color:#fff;font-size:9px;border-radius:5px;padding:3px 7px;text-align:center;">
+          送信しました ✓（右上トースト）
         </div>
       </div>
     </div>
@@ -175,29 +203,54 @@ flowchart TD
 
   <!-- list -->
   <div>
-    <div style="font-size:12px;font-weight:bold;margin-bottom:8px;color:#555;">履歴画面（list）</div>
+    <div style="font-size:12px;font-weight:bold;margin-bottom:8px;color:#555;">一覧画面（list）</div>
     <div class="screen">
       <div class="screen-body">
         <div class="list-header">
           <div class="back-btn">←戻る</div>
-          <div class="list-title">履歴</div>
+          <div class="list-title">一覧</div>
+          <div class="add-btn">＋</div>
         </div>
         <div class="list-item">
-          <div class="list-item-title">明日の予定</div>
-          <div><span class="badge-sent">送信済み</span></div>
-          <div class="list-meta">3分前</div>
+          <div class="list-item-body">
+            <div class="list-item-title">明日の予定</div>
+            <div><span class="badge-sent">送信済み</span></div>
+            <div class="list-meta">3分前</div>
+          </div>
+          <div class="delete-btn">🗑️</div>
         </div>
         <div class="list-item">
-          <div class="list-item-title">買い物リスト</div>
-          <div><span class="badge-draft">下書き</span></div>
-          <div class="list-meta">1時間前</div>
+          <div class="list-item-body">
+            <div class="list-item-title">買い物リスト</div>
+            <div><span class="badge-draft">下書き</span></div>
+            <div class="list-meta">1時間前</div>
+          </div>
+          <div class="delete-btn">🗑️</div>
         </div>
         <div class="list-item">
-          <div class="list-item-title">会議メモ</div>
-          <div><span class="badge-sent">送信済み</span></div>
-          <div class="list-meta">昨日</div>
+          <div class="list-item-body">
+            <div class="list-item-title">会議メモ</div>
+            <div><span class="badge-sent">送信済み</span></div>
+            <div class="list-meta">昨日</div>
+          </div>
+          <div class="delete-btn">🗑️</div>
         </div>
-        <div class="list-footer">最新10件</div>
+        <div class="list-footer">最新20件</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- list（空状態） -->
+  <div>
+    <div style="font-size:12px;font-weight:bold;margin-bottom:8px;color:#555;">一覧（空状態）</div>
+    <div class="screen">
+      <div class="screen-body">
+        <div class="list-header">
+          <div class="back-btn">←戻る</div>
+          <div class="list-title">一覧</div>
+          <div class="add-btn">＋</div>
+        </div>
+        <div class="list-empty">付箋がありません。<br>＋で新規作成</div>
       </div>
     </div>
   </div>
