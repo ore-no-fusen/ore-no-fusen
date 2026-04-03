@@ -1,1 +1,1 @@
-npm test && npm run test:e2e
+npx tsc --noEmit && npm test && npm run test:e2e
