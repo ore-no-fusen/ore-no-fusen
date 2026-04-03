@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: "Completed 10-pc-notes-to-list-03-PLAN.md (checkpoint:human-verify)"
-last_updated: "2026-04-02T23:47:30.386Z"
+stopped_at: "Completed 10-pc-notes-to-list-03-PLAN.md"
+last_updated: "2026-04-03T00:00:00Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 5

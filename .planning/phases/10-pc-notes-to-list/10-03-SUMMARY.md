@@ -98,9 +98,9 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- 実機（iPhone Safari）での動作確認が必要（checkpoint:human-verify）
-- 確認項目: タップ直後エディタクリア・トースト表示・画像付き送信・2回目送信（キャッシュ）
-- 承認後 Phase 10 完了
+- 実機（iPhone Safari）での動作確認 **承認済み**（checkpoint:human-verify APPROVED）
+- Phase 10 の全 3 プラン完了。iPhone UX 改善（チェックボックス・タグサジェスト）と送信高速化がすべて実装済み。
+- 次のフェーズへ進める状態。
 
 ---
 *Phase: 10-pc-notes-to-list*
