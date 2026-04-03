@@ -966,10 +966,24 @@ export default function ViewerPage() {
                     const editor = editorRef.current;
                     if (!editor) return;
                     const sel = window.getSelection();
+                    // カーソルがエディタ外なら先頭に挿入
                     if (!sel || sel.rangeCount === 0 || !editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
                       editor.focus();
                     }
-                    // チェックボックスDOMを直接挿入（即タップ可能）
+                    // カーソルのある行の editorRef 直下ノードを特定して行頭に Range をセット
+                    const currentSel = window.getSelection();
+                    if (currentSel && currentSel.rangeCount > 0) {
+                      let node: Node = currentSel.getRangeAt(0).startContainer;
+                      while (node.parentNode && node.parentNode !== editor) {
+                        node = node.parentNode;
+                      }
+                      const headRange = document.createRange();
+                      headRange.setStart(node, 0);
+                      headRange.setEnd(node, 0);
+                      currentSel.removeAllRanges();
+                      currentSel.addRange(headRange);
+                    }
+                    // チェックボックスDOMを行頭に挿入（即タップ可能）
                     const wrapper = document.createElement('span');
                     wrapper.setAttribute('data-checkbox-line', '');
                     const cb = document.createElement('input');
