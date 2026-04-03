@@ -90,8 +90,10 @@ export function hydrateEditor(
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = checked;
+      cb.setAttribute('contenteditable', 'false');
       cb.style.cssText = 'margin-right:4px;pointer-events:auto;vertical-align:middle;';
       cb.addEventListener('mousedown', (e) => e.preventDefault());
+      cb.addEventListener('click', (e) => e.stopPropagation());
       const textNode = document.createTextNode(text);
       wrapper.appendChild(cb);
       wrapper.appendChild(textNode);

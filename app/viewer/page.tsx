@@ -984,8 +984,10 @@ export default function ViewerPage() {
                     wrapper.setAttribute('data-checkbox-line', '');
                     const cb = document.createElement('input');
                     cb.type = 'checkbox';
+                    cb.setAttribute('contenteditable', 'false');
                     cb.style.cssText = 'margin-right:4px;pointer-events:auto;vertical-align:middle;';
                     cb.addEventListener('mousedown', (e) => e.preventDefault());
+                    cb.addEventListener('click', (e) => e.stopPropagation());
                     wrapper.appendChild(cb);
                     if (lineNode && lineNode.parentNode === editor && lineNode.nodeName !== 'BR') {
                       // 既存行ノードの子を wrapper に移動（テキストを保持したまま置き換え）
