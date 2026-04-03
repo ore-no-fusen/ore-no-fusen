@@ -3,7 +3,7 @@
  * 実装完了後に TODO を実際のアサーションに置き換える
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { hydrateEditor, serializeEditor, loadKnownTags, mergeKnownTags } from '../page';
+import { hydrateEditor, serializeEditor, loadKnownTags, mergeKnownTags } from '../editor-helpers';
 
 // テスト用ラッパー（export された関数を直接使用）
 function hydrateEditorForTest(el: HTMLDivElement, markdown: string, blobMap: Map<string, File>) {
