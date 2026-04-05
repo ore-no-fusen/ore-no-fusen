@@ -164,7 +164,25 @@ export const translations = {
         'settings.feedback.successDesc': "貴重なご意見ありがとうございます。開発の参考にさせていただきます。",
         'settings.feedback.sendAnother': "続けて送る",
         'settings.feedback.errorEmpty': "内容を入力してください。",
-        'settings.feedback.errorSend': "送信に失敗しました。"
+        'settings.feedback.errorSend': "送信に失敗しました。",
+
+        // PWA (iPhone Viewer)
+        'pwa.loginTitle': "PCに付箋を送る",
+        'pwa.loginDesc': "Googleアカウントでログインすると、スマホからPCのデスクトップに直接付箋を送れるようになります。",
+        'pwa.loginButton': "Googleでログイン",
+        'pwa.loginSuccess': "ログイン済",
+        'pwa.logoutButton': "ログアウト",
+        'pwa.homeButton': "戻る",
+        'pwa.sendToPc': "PCに置く",
+        'pwa.saveLocal': "iPhoneにおいておく",
+        'pwa.listTitle': "一覧",
+        'pwa.newNote': "新しい付箋を書く",
+        'pwa.statusSent': "送信済み",
+        'pwa.statusDraft': "下書き",
+        'pwa.emptyList': "付箋がありません。＋で新規作成",
+        'pwa.deleteNote': "消す",
+        'pwa.saving': "保存中...",
+        'pwa.sending': "送信中..."
     },
     en: {
         // Settings - Sidebar
@@ -313,7 +331,25 @@ export const translations = {
         'settings.feedback.successDesc': "Thank you for your feedback.",
         'settings.feedback.sendAnother': "Send another",
         'settings.feedback.errorEmpty': "Please enter a message.",
-        'settings.feedback.errorSend': "Failed to send."
+        'settings.feedback.errorSend': "Failed to send.",
+
+        // PWA (iPhone Viewer)
+        'pwa.loginTitle': "Send Notes to PC",
+        'pwa.loginDesc': "Log in with your Google account to send sticky notes directly from your phone to your PC desktop.",
+        'pwa.loginButton': "Sign in with Google",
+        'pwa.loginSuccess': "Signed in",
+        'pwa.logoutButton': "Sign out",
+        'pwa.homeButton': "Back",
+        'pwa.sendToPc': "Send to PC",
+        'pwa.saveLocal': "Save Locally",
+        'pwa.listTitle': "Notes",
+        'pwa.newNote': "New Note",
+        'pwa.statusSent': "Sent",
+        'pwa.statusDraft': "Draft",
+        'pwa.emptyList': "No notes. Tap + to create.",
+        'pwa.deleteNote': "Delete",
+        'pwa.saving': "Saving...",
+        'pwa.sending': "Sending..."
     }
 } as const;
 

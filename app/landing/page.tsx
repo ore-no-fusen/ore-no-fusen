@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Download } from 'lucide-react';
+import { Download, Globe } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 
 // ジブリ風カラーパレット（維持）
@@ -25,6 +25,17 @@ import { useState, useEffect, useRef } from 'react';
 export default function LandingPage() {
     const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
     const downloadUrl = `https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v${version}/ore-no-fusen_${version}_x64-setup.exe`;
+
+    const [lang, setLang] = useState<'ja' | 'en'>('ja');
+
+    useEffect(() => {
+        const browserLang = navigator.language;
+        if (!browserLang.toLowerCase().startsWith('ja')) {
+            setLang('en');
+        }
+    }, []);
+
+    const isEn = lang === 'en';
 
     // PC→iPhone 連携アニメーション
     const noteTexts = ['買い物リスト', 'MTGのアジェンダ', 'アイデアメモ', '今日やること'];
@@ -91,17 +102,28 @@ export default function LandingPage() {
         >
             {/* ナビゲーション */}
             <nav className="px-6 py-5 flex justify-between items-center border-b border-[#C8B89A]/40">
-                <div className="text-xl font-bold tracking-wide text-[#2C1F0E]">俺の付箋</div>
-                <Link
-                    href="https://github.com/ore-no-fusen/ore-no-fusen"
-                    target="_blank"
-                    className="flex items-center gap-2 text-sm text-[#7A6A50] hover:text-[#2C1F0E] transition-colors px-3 py-1.5 rounded border border-[#C8B89A]/60 hover:border-[#C8B89A]"
-                >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
-                    </svg>
-                    GitHub
-                </Link>
+                <div className="text-xl font-bold tracking-wide text-[#2C1F0E]">
+                    {isEn ? 'FUSEN' : '俺の付箋'}
+                </div>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => setLang(isEn ? 'ja' : 'en')}
+                        className="flex items-center gap-1.5 text-sm text-[#7A6A50] hover:text-[#5C7A3E] transition-colors font-medium border border-[#C8B89A] px-2.5 py-1 rounded-full bg-white/50"
+                    >
+                        <Globe className="w-4 h-4" />
+                        {isEn ? 'English' : '日本語'}
+                    </button>
+                    <Link
+                        href="https://github.com/ore-no-fusen/ore-no-fusen"
+                        target="_blank"
+                        className="flex items-center gap-2 text-sm text-[#7A6A50] hover:text-[#2C1F0E] transition-colors px-3 py-1.5 rounded border border-[#C8B89A]/60 hover:border-[#C8B89A]"
+                    >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+                        </svg>
+                        GitHub
+                    </Link>
+                </div>
             </nav>
 
             {/* ==============================
@@ -128,21 +150,37 @@ export default function LandingPage() {
                                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-6 text-[#5C7A3E]"
                                 style={{ backgroundColor: '#D8EAC8', border: '1px solid #8BAF7C' }}
                             >
-                                📱 Win + iPhone ユーザーへ
+                                {isEn ? "📱 For Win + iPhone Users" : "📱 Win + iPhone ユーザーへ"}
                             </div>
 
                             {/* H1 */}
                             <h1 className="text-4xl sm:text-5xl lg:text-[4.2rem] font-extrabold leading-tight tracking-tight mb-5 text-[#2C1F0E] drop-shadow-sm">
-                                Macじゃなくていい。
-                                <br />
-                                <span className="text-[#5C7A3E]">繋がればいい。</span>
+                                {isEn ? (
+                                    <>
+                                        The solution for everyone <br />
+                                        using <span className="text-[#5C7A3E]">iPhone & Windows.</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        Macじゃなくていい。<br />
+                                        <span className="text-[#5C7A3E]">繋がればいい。</span>
+                                    </>
+                                )}
                             </h1>
 
                             {/* サブコピー */}
                             <p className="text-lg sm:text-xl text-[#6A5540] mb-8 font-medium leading-relaxed">
-                                PCで書いて、iPhoneへ届く。
-                                <br className="sm:hidden" />
-                                iPhoneで書いて、PCに残る。
+                                {isEn ? (
+                                    <>
+                                        Write on PC, reaches your iPhone.<br className="sm:hidden" />
+                                        Write on iPhone, stays on your PC.
+                                    </>
+                                ) : (
+                                    <>
+                                        PCで書いて、iPhoneへ届く。<br className="sm:hidden" />
+                                        iPhoneで書いて、PCに残る。
+                                    </>
+                                )}
                             </p>
 
                             {/* ターゲット共感チェックリスト */}
@@ -172,7 +210,7 @@ export default function LandingPage() {
                             </div>
 
                             {/* CTA */}
-                            <div className="flex flex-col items-center lg:items-start gap-2">
+                            <div className="flex flex-col items-center lg:items-start gap-2 mt-8">
                                 <Link
                                     href={downloadUrl}
                                     target="_blank"
@@ -180,10 +218,10 @@ export default function LandingPage() {
                                     className="flex items-center justify-center gap-3 px-8 py-4 bg-[#5C7A3E] hover:bg-[#4A6730] text-[#F5EDD8] rounded-xl font-bold text-lg shadow-[0_6px_20px_rgba(92,122,62,0.35)] hover:shadow-[0_8px_25px_rgba(92,122,62,0.5)] transition-all duration-300 w-full sm:w-auto hover:-translate-y-0.5"
                                 >
                                     <Download className="w-5 h-5" />
-                                    Windowsに入れる（無料）
+                                    {isEn ? "Download for Windows (Free)" : "Windowsに入れる（無料）"}
                                 </Link>
                                 <p className="text-xs text-[#9A8468]">
-                                    Windows 10/11 · 無料 · データはローカル保存
+                                    {isEn ? "Windows 10/11 · Free · 100% Local Storage" : "Windows 10/11 · 無料 · データはローカル保存"}
                                 </p>
                             </div>
                         </div>

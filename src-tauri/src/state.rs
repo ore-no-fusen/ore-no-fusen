@@ -74,7 +74,16 @@ pub struct Settings {
     pub sound_enabled: bool,
 }
 
-fn default_language() -> String { "ja".to_string() }
+fn default_language() -> String { 
+    // ロケールを取得（デフォルトフォールバックとして "ja"）
+    let locale = sys_locale::get_locale().unwrap_or_else(|| "ja".to_string());
+    // "ja", "ja-JP" など日本語であれば "ja"、それ以外（英語、中国語、欧州言語など）は全て "en"
+    if locale.to_lowercase().starts_with("ja") {
+        "ja".to_string()
+    } else {
+        "en".to_string()
+    }
+}
 fn default_font_size() -> f64 { 16.0 }
 fn default_sound_enabled() -> bool { true }
 fn default_auto_start() -> bool { true }

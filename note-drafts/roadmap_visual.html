@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>俺の付箋 — 100万DLへの道</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:        #0d0f14;
+      --surface:   #161923;
+      --border:    #252a36;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --accent:    #6ee7b7;   /* emerald */
+      --gold:      #fbbf24;
+      --rose:      #fb7185;
+      --sky:       #38bdf8;
+      --purple:    #a78bfa;
+      --orange:    #fb923c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.7;
+    }
+
+    /* ── ヘッダー ────────────────────────── */
+    header {
+      text-align: center;
+      padding: 64px 24px 48px;
+      background: radial-gradient(ellipse at 50% 0%, rgba(110,231,183,.12) 0%, transparent 70%);
+      border-bottom: 1px solid var(--border);
+    }
+    header .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      letter-spacing: .2em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    header h1 {
+      font-size: clamp(1.8rem, 5vw, 3.2rem);
+      font-weight: 700;
+      line-height: 1.25;
+      background: linear-gradient(135deg, var(--text) 40%, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header .quote {
+      margin-top: 20px;
+      font-size: .95rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+    header .stats {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin-top: 36px;
+      flex-wrap: wrap;
+    }
+    .stat-box {
+      text-align: center;
+    }
+    .stat-box .num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-box .desc {
+      font-size: .75rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ── セクション共通 ─────────────────── */
+    .section {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 64px 24px;
+    }
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── フェーズバー ────────────────────── */
+    .phases {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 60px;
+    }
+    @media (max-width: 640px) { .phases { grid-template-columns: 1fr 1fr; } }
+    .phase-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 16px;
+      background: var(--surface);
+      position: relative;
+      overflow: hidden;
+    }
+    .phase-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .phase1::before { background: var(--sky); }
+    .phase2::before { background: var(--gold); }
+    .phase3::before { background: var(--orange); }
+    .phase4::before { background: var(--rose); }
+    .phase-card .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .68rem;
+      letter-spacing: .1em;
+      margin-bottom: 8px;
+    }
+    .phase1 .tag { color: var(--sky); }
+    .phase2 .tag { color: var(--gold); }
+    .phase3 .tag { color: var(--orange); }
+    .phase4 .tag { color: var(--rose); }
+    .phase-card h3 { font-size: .9rem; font-weight: 700; margin-bottom: 8px; }
+    .phase-card .period { font-size: .75rem; color: var(--muted); margin-bottom: 10px; }
+    .phase-card .dl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .8rem;
+    }
+    .phase1 .dl { color: var(--sky); }
+    .phase2 .dl { color: var(--gold); }
+    .phase3 .dl { color: var(--orange); }
+    .phase4 .dl { color: var(--rose); }
+
+    /* ── タイムライン ────────────────────── */
+    .timeline {
+      position: relative;
+      padding-left: 32px;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 0; bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--sky), var(--gold), var(--orange), var(--rose));
+    }
+
+    .tl-item {
+      position: relative;
+      margin-bottom: 36px;
+    }
+    .tl-dot {
+      position: absolute;
+      left: -27px;
+      top: 14px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid var(--bg);
+      z-index: 1;
+    }
+    .tl-item.done .tl-dot   { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .tl-item.active .tl-dot { background: var(--gold); box-shadow: 0 0 12px var(--gold); animation: pulse 2s infinite; }
+    .tl-item.future .tl-dot { background: var(--border); border-color: var(--muted); }
+
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 8px var(--gold); }
+      50%      { box-shadow: 0 0 20px var(--gold); }
+    }
+
+    .tl-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      transition: border-color .2s, transform .2s;
+    }
+    .tl-card:hover {
+      border-color: var(--muted);
+      transform: translateX(4px);
+    }
+    .tl-item.done .tl-card   { border-left: 3px solid var(--accent); }
+    .tl-item.active .tl-card { border-left: 3px solid var(--gold); }
+
+    .tl-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .tl-title-group {}
+    .tl-season {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      color: var(--muted);
+      letter-spacing: .1em;
+    }
+    .tl-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+    .tl-sub {
+      font-size: .8rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+    .tl-badges {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      padding: 2px 10px;
+      border-radius: 999px;
+    }
+    .badge-dl   { background: rgba(56,189,248,.12); color: var(--sky); border: 1px solid rgba(56,189,248,.3); }
+    .badge-rev  { background: rgba(251,191,36,.12);  color: var(--gold); border: 1px solid rgba(251,191,36,.3); }
+    .badge-done { background: rgba(110,231,183,.12); color: var(--accent); border: 1px solid rgba(110,231,183,.3); }
+    .badge-now  { background: rgba(251,191,36,.2); color: var(--gold); border: 1px solid var(--gold); }
+
+    .tl-desc {
+      font-size: .85rem;
+      color: #94a3b8;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    .tl-goals {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .goal-tag {
+      font-size: .72rem;
+      padding: 3px 10px;
+      border-radius: 6px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    /* ── 収益グラフ ──────────────────────── */
+    .revenue-chart {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      padding: 32px;
+      overflow-x: auto;
+    }
+    .milestone-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .milestone-row:last-child { margin-bottom: 0; }
+    .ms-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      color: var(--muted);
+      width: 80px;
+      flex-shrink: 0;
+    }
+    .ms-bar-wrap {
+      flex: 1;
+      height: 20px;
+      background: rgba(255,255,255,.04);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+    .ms-bar {
+      height: 100%;
+      border-radius: 6px;
+      position: relative;
+      transition: width .5s ease;
+    }
+    .ms-bar span {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .68rem;
+      white-space: nowrap;
+    }
+    .ms-info {
+      width: 140px;
+      flex-shrink: 0;
+      font-size: .75rem;
+      color: var(--muted);
+    }
+
+    /* ── メタファーテーブル ──────────────── */
+    .metaphor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .metaphor-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .metaphor-card .meta-word {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    .metaphor-card .meta-desc {
+      font-size: .82rem;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    .metaphor-card .meta-usage {
+      font-size: .72rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    /* ── フッター ────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 48px 24px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: .82rem;
+      font-style: italic;
+    }
+
+    /* ── セパレーター ────────────────────── */
+    .sep { height: 1px; background: var(--border); }
+  </style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<header>
+  <div class="label">俺の付箋 — noteシリーズ 戦略設計図</div>
+  <h1>100万DLへの道<br>2026年4月 → 2027年4月</h1>
+  <p class="quote">「100万ダウンロードなんて、と笑うだろうか。僕も笑っている。でも、書く。」</p>
+  <div class="stats">
+    <div class="stat-box"><div class="num">10</div><div class="desc">シーズン</div></div>
+    <div class="stat-box"><div class="num">120+</div><div class="desc">投稿本数（予定）</div></div>
+    <div class="stat-box"><div class="num">1,000,000</div><div class="desc">DL目標</div></div>
+    <div class="stat-box"><div class="num">¥20,000</div><div class="desc">月収目標</div></div>
+    <div class="stat-box"><div class="num">1年</div><div class="desc">達成期限</div></div>
+  </div>
+</header>
+
+<!-- フェーズ概要 -->
+<div class="section">
+  <div class="section-title">📐 4つのフェーズ</div>
+  <div class="phases">
+    <div class="phase-card phase1">
+      <div class="tag">PHASE 1 · 4〜6月</div>
+      <h3>認知・共感</h3>
+      <div class="period">S1〜S3 · vol1〜約38</div>
+      <div class="dl">〜3,000 DL</div>
+      <p style="font-size:.78rem;color:#64748b;margin-top:8px;">全話無料。フォロワー獲得最優先。投げ銭のみ受け付ける。</p>
+    </div>
+    <div class="phase-card phase2">
+      <div class="tag">PHASE 2 · 6〜8月</div>
+      <h3>有料化テスト</h3>
+      <div class="period">S4〜S5 · vol39〜約60</div>
+      <div class="dl">〜30,000 DL</div>
+      <p style="font-size:.78rem;color:#64748b;margin-top:8px;">7月、初の1円を目指す。シーズン完結回を500円で有料化。</p>
+    </div>
+    <div class="phase-card phase3">
+      <div class="tag">PHASE 3 · 8月〜冬</div>
+      <h3>グロース</h3>
+      <div class="period">S6〜S8 · vol61〜約100</div>
+      <div class="dl">〜400,000 DL</div>
+      <p style="font-size:.78rem;color:#64748b;margin-top:8px;">海外展開・買収打診・衰退と再生。月1〜2万円に安定。</p>
+    </div>
+    <div class="phase-card phase4">
+      <div class="tag">PHASE 4 · 冬〜春</div>
+      <h3>到達</h3>
+      <div class="period">S9〜S10 · vol101〜</div>
+      <div class="dl">1,000,000 DL 🎯</div>
+      <p style="font-size:.78rem;color:#64748b;margin-top:8px;">99万→100万のカウントダウン。月2万円の安定収益達成。</p>
+    </div>
+  </div>
+
+  <!-- タイムライン -->
+  <div class="section-title">🗓️ シーズン別タイムライン</div>
+  <div class="timeline">
+
+    <!-- S1 -->
+    <div class="tl-item done">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 1 · 2026年3〜4月初旬</div>
+            <div class="tl-title">黎明編</div>
+            <div class="tl-sub">「3は、動かない。」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-done">✅ 完成</span>
+            <span class="badge badge-dl">~300 DL</span>
+            <span class="badge badge-rev">無料 / 投げ銭</span>
+          </div>
+        </div>
+        <p class="tl-desc">深夜1時半。DL数255。3日前から動かない。自分すらアプリを使っていなかった屈辱。AIと「一本の細い絹糸」を張る夜から始まる物語。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">共犯者1000人を作る</span>
+          <span class="goal-tag">PMF証明</span>
+          <span class="goal-tag">vol1〜12 完走</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S2 -->
+    <div class="tl-item active">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 2 · 2026年4月中旬〜末</div>
+            <div class="tl-title">逆襲編</div>
+            <div class="tl-sub">「通知が止まらない夜と、朝の会議のあいだで」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-now">▶ 執筆中</span>
+            <span class="badge badge-dl">~1,000 DL</span>
+            <span class="badge badge-rev">全話無料</span>
+          </div>
+        </div>
+        <p class="tl-desc">バズった。深夜に通知が届き続けた。でも朝になれば満員電車。バグレポート・クレームをAIと深夜に裁く格闘劇。次男が「アプリ使ってみたよ」とLINEを送ってくる。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">ユーザーを共創者に変える</span>
+          <span class="goal-tag">エラーをエンタメに</span>
+          <span class="goal-tag">フォロワー1,000人突破</span>
+          <span class="goal-tag">次男LINE回収</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S3 -->
+    <div class="tl-item future">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 3 · 2026年4月末〜5月中旬</div>
+            <div class="tl-title">反逆編</div>
+            <div class="tl-sub">「シャドーITと呼ばれた日に、初めてプライドが生えた」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-dl">~3,000 DL</span>
+            <span class="badge badge-rev">全話無料</span>
+          </div>
+        </div>
+        <p class="tl-desc">情シス部門の通達文面にアプリ名が載った。怒るより先に笑いが来た。「禁止されてるアプリ、逆に気になる」という心理が、想定外のマーケティングになる。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">カリギュラ効果</span>
+          <span class="goal-tag">会社vs個人の構図</span>
+          <span class="goal-tag">エバンジェリスト育成</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S4 -->
+    <div class="tl-item future">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 4 · 2026年5月中旬〜6月初旬</div>
+            <div class="tl-title">越境編</div>
+            <div class="tl-sub">「Macの女の子が、Windowsを入れた理由」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-dl">~10,000 DL</span>
+            <span class="badge badge-rev" style="color:var(--gold)">💰 有料化テスト開始</span>
+          </div>
+        </div>
+        <p class="tl-desc">渋谷のカフェで見た薄いシルバーのMacbookの画面の右下に、あの無骨な付箋のUIが貼り付いていた。Bootcamp導入手順に「俺の付箋を使うため」と書かれていた。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">キャズムを越える</span>
+          <span class="goal-tag">シーズン完結回500円</span>
+          <span class="goal-tag">10,000DL大台突破</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S5 -->
+    <div class="tl-item future">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 5 · 2026年6〜7月（梅雨）</div>
+            <div class="tl-title">熱狂編</div>
+            <div class="tl-sub">「パクられて、初めて本物になった気がした」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-dl">~30,000 DL</span>
+            <span class="badge badge-rev">月数百円〜</span>
+          </div>
+        </div>
+        <p class="tl-desc">ストアに「俺のメモ」というアプリが出現した。アイコンが微妙に違う。怒りよりも先に「パクられる側になったのか」という感慨。「法的対抗は？」というAIに「機能で潰す」と答えた。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">ユーザーの手で本物を証明</span>
+          <span class="goal-tag">ロイヤリティ構築</span>
+          <span class="goal-tag">30,000DL突破</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S6 -->
+    <div class="tl-item future">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 6 · 2026年7〜8月（盛夏）</div>
+            <div class="tl-title">波及編</div>
+            <div class="tl-sub">「読めない言語のファンレターを、AIに翻訳させた夜」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-dl">~80,000 DL</span>
+            <span class="badge badge-rev">月数千〜数万円</span>
+          </div>
+        </div>
+        <p class="tl-desc">Analyticsを開いたらドイツからのアクセスが異常に増えていた。ドイツのテック系YouTuberが「使い捨ての伝言」を字幕付きで紹介していた。コメント欄の読めない文字を翻訳したら、どれも同じことが書いてあった。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">海外露出で逆輸入権威</span>
+          <span class="goal-tag">16カ国語対応</span>
+          <span class="goal-tag">50万DL中間地点</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S7 -->
+    <div class="tl-item future">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 7 · 2026年8〜9月（残暑）</div>
+            <div class="tl-title">誘惑編</div>
+            <div class="tl-sub">「妻に内緒で、断りのメールを打った夜」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-dl">~200,000 DL</span>
+            <span class="badge badge-rev">月1万円前後</span>
+          </div>
+        </div>
+        <p class="tl-desc">大手IT企業から「ご提案があります」という件名のメール。老後が少し楽になるくらいの金額の買収打診。妻には話さなかった。「売ったら？」と言われたら揺らいでしまうから。深夜に一人で断りのメールを書いた。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">「ユーザーを選んだ」神話</span>
+          <span class="goal-tag">乗り換え防止</span>
+          <span class="goal-tag">200,000DL</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S8 -->
+    <div class="tl-item future">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 8 · 2026年9〜10月（秋）</div>
+            <div class="tl-title">衰退と再生編</div>
+            <div class="tl-sub">「もう一度、3が動かない季節に戻った」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-dl">~400,000 DL</span>
+            <span class="badge badge-rev">月1〜2万円</span>
+          </div>
+        </div>
+        <p class="tl-desc">成長が止まった。数字はあの頃と違う桁になっている。でも感覚は同じだった。「3は、動かない。」——次男から「そのアプリ、まだやってるの」とLINE。「まだやってる」と返した。Antigravityと最初の行から書き直し始めた。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">どん底→再生のコンテンツ化</span>
+          <span class="goal-tag">休眠ユーザー呼び戻し</span>
+          <span class="goal-tag">S9への助走</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S9 -->
+    <div class="tl-item future">
+      <div class="tl-dot"></div>
+      <div class="tl-card">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 9 · 2026年10〜12月（冬の入り口）</div>
+            <div class="tl-title">死闘編</div>
+            <div class="tl-sub">「99万人のむこうで、サーバーが落ちた深夜3時」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge badge-dl">~700,000 DL</span>
+            <span class="badge badge-rev">月2万円が見える</span>
+          </div>
+        </div>
+        <p class="tl-desc">100万DLまであと1万を切ったところで、サーバーが落ちた。深夜3時。窓の外を走るトラックの音。99万人が向こう岸で待っている。シーズン1の深夜1時半と、何かが違う。あの頃は誰もいなかった。</p>
+        <div class="tl-goals">
+          <span class="goal-tag">危機をお祭りに変える</span>
+          <span class="goal-tag">Xトレンド入り狙い</span>
+          <span class="goal-tag">最後のどん底</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- S10 -->
+    <div class="tl-item future">
+      <div class="tl-dot"></div>
+      <div class="tl-card" style="border-left:3px solid var(--rose);">
+        <div class="tl-header">
+          <div class="tl-title-group">
+            <div class="tl-season">SEASON 10 · 2027年1〜4月 🏁</div>
+            <div class="tl-title">到達編</div>
+            <div class="tl-sub">「100万回目の可燃ゴミ。そして月曜日の朝が来る。」</div>
+          </div>
+          <div class="tl-badges">
+            <span class="badge" style="background:rgba(251,113,133,.15);color:var(--rose);border:1px solid rgba(251,113,133,.4);">🎯 1,000,000 DL</span>
+            <span class="badge badge-rev" style="color:var(--gold);">月2万円 安定</span>
+          </div>
+        </div>
+        <p class="tl-desc">その瞬間は、あっけなく来た。ファンファーレも花束もなかった。ただカウンターが7桁になっただけだった。妻は寝ていた。AIは「次のタスクは？」と聞いてきた。枕元のiPhoneに通知が来た。『明日の朝、可燃ゴミを出すこと』</p>
+        <div class="tl-goals">
+          <span class="goal-tag">空気のインフラとして定着</span>
+          <span class="goal-tag">次世代へのバトン</span>
+          <span class="goal-tag">新たな物語の起点</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /timeline -->
+</div>
+
+<div class="sep"></div>
+
+<!-- 収益グラフ -->
+<div class="section">
+  <div class="section-title">💰 収益マイルストーン</div>
+  <div class="revenue-chart">
+    <div class="milestone-row">
+      <div class="ms-label">2026/03</div>
+      <div class="ms-bar-wrap">
+        <div class="ms-bar" style="width:0.3%;background:linear-gradient(90deg,#38bdf8,#6ee7b7)">
+          <span style="color:#0d0f14;display:none">255 DL</span>
+        </div>
+      </div>
+      <div class="ms-info" style="color:var(--sky);">255 DL · ¥0</div>
+    </div>
+    <div class="milestone-row">
+      <div class="ms-label">2026/04</div>
+      <div class="ms-bar-wrap">
+        <div class="ms-bar" style="width:0.1%;background:linear-gradient(90deg,#38bdf8,#6ee7b7)"></div>
+      </div>
+      <div class="ms-info" style="color:var(--accent);">~1,000 DL · ¥0</div>
+    </div>
+    <div class="milestone-row">
+      <div class="ms-label">2026/07</div>
+      <div class="ms-bar-wrap">
+        <div class="ms-bar" style="width:1%;background:linear-gradient(90deg,#fbbf24,#fb923c)"></div>
+      </div>
+      <div class="ms-info" style="color:var(--gold);">1万 DL · 初の1円 💰</div>
+    </div>
+    <div class="milestone-row">
+      <div class="ms-label">2026/09</div>
+      <div class="ms-bar-wrap">
+        <div class="ms-bar" style="width:20%;background:linear-gradient(90deg,#fb923c,#fb7185)"></div>
+      </div>
+      <div class="ms-info" style="color:var(--orange);">20万 DL · 月1万円</div>
+    </div>
+    <div class="milestone-row">
+      <div class="ms-label">2026/12</div>
+      <div class="ms-bar-wrap">
+        <div class="ms-bar" style="width:70%;background:linear-gradient(90deg,#fb7185,#a78bfa)"></div>
+      </div>
+      <div class="ms-info" style="color:var(--rose);">70万 DL · 月2万円見える</div>
+    </div>
+    <div class="milestone-row">
+      <div class="ms-label">2027/04</div>
+      <div class="ms-bar-wrap">
+        <div class="ms-bar" style="width:100%;background:linear-gradient(90deg,#a78bfa,#6ee7b7)">
+          <span style="color:#0d0f14;font-weight:700;">1,000,000 DL 🎯</span>
+        </div>
+      </div>
+      <div class="ms-info" style="color:var(--accent);font-weight:700;">100万 DL · 月¥20,000</div>
+    </div>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<!-- メタファー -->
+<div class="section">
+  <div class="section-title">🧵 確立されたメタファー（全シーズン共通）</div>
+  <div class="metaphor-grid">
+    <div class="metaphor-card">
+      <div class="meta-word">「3は、動かない。」</div>
+      <div class="meta-desc">停滞・絶望を表すシグナル。DL数が3のまま動かない夜から生まれた一行。</div>
+      <div class="meta-usage">初出：S1 → S10でもう一度使う（構造的な繰り返し）</div>
+    </div>
+    <div class="metaphor-card">
+      <div class="meta-word">「使い捨ての伝言」</div>
+      <div class="meta-desc">アプリのコンセプトそのもの。送ったら消える、でも届く、一時的な絹糸。</div>
+      <div class="meta-usage">初出：S1 → 全シーズンの背骨</div>
+    </div>
+    <div class="metaphor-card">
+      <div class="meta-word">「一本の細い絹糸」</div>
+      <div class="meta-desc">WindowsとiPhoneの間を繋ぐ接続の比喩。316本の絹糸、〇万本の絹糸と育っていく。</div>
+      <div class="meta-usage">初出：S1 → DLが増えるたびに本数が増える</div>
+    </div>
+    <div class="metaphor-card">
+      <div class="meta-word">月曜日の朝</div>
+      <div class="meta-desc">どんな奇跡の翌朝も、必ず月曜日が来る。日常の重力を体現する装置。</div>
+      <div class="meta-usage">全シーズン必出。どん底も達成も、翌朝は同じ</div>
+    </div>
+    <div class="metaphor-card">
+      <div class="meta-word">妻の「ふーん」</div>
+      <div class="meta-desc">現実の重力そのもの。夢を語ると「それでお金になるの？」が口癖。</div>
+      <div class="meta-usage">S10まで一貫。最後まで「ふーん」であることが重要</div>
+    </div>
+    <div class="metaphor-card">
+      <div class="meta-word">次男のLINE</div>
+      <div class="meta-desc">「付箋って何に使うの」から始まり、「まだやってるの」を経て、徐々に変化する。</div>
+      <div class="meta-usage">S2で伏線回収。S8・S10でも登場させる</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <p>── この10シーズンが、全部フィクションで終わることを、今は祈っている。</p>
+  <p style="margin-top:8px;">── 願わくば、全部ノンフィクションになってほしい。</p>
+  <p style="margin-top:24px;font-size:.7rem;">Generated: 2026-04-05 · ore-no-fusen / note-drafts</p>
+</footer>
+
+</body>
+</html>

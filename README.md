@@ -1,23 +1,25 @@
-# 俺の付箋
+# FUSEN (My Sticky Notes)
 
 <div align="center">
 
+*Read this in other languages: **English** | [日本語](README.ja.md)*
+
 ![Ore-no-Fusen Desktop](public/screenshots/ScreenShot_OreNoFusen.png)
 
-**デスクトップに、思考を貼り付けよう**
+**Pin your thoughts to your desktop.**
 
-Markdownで書ける、美しい付箋アプリ
+A beautiful sticky notes app with Markdown support.
 
 [![GitHub release](https://img.shields.io/github/v/release/ore-no-fusen/ore-no-fusen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 [![License](https://img.shields.io/github/license/ore-no-fusen/ore-no-fusen?style=flat-square)](LICENSE)
 [![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 
-[ダウンロード](#-インストール) • [ドキュメント](docs/USER_GUIDE.md) • [FAQ](docs/FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app)
+[Download](#-installation) • [Documentation](docs/USER_GUIDE.md) • [FAQ](docs/FAQ.md) • [Landing Page](https://ore-no-fusen.vercel.app)
 
 </div>
 
 ---
-# Ore-no-Fusen
+# FUSEN
 
 The fastest way to capture thoughts.
 
@@ -37,207 +39,203 @@ Or download from:
 
 Capture thoughts instantly without interrupting your thinking.
 
-Ore-no-Fusen is designed as a fast thinking canvas where ideas can appear the moment they come to mind.
+FUSEN is designed as a fast thinking canvas where ideas can appear the moment they come to mind.
 
 ---
 
 
-## ✨ 特徴
+## ✨ Features
 
-### 🎯 シンプルで強力
+### 🎯 Simple yet Powerful
 
-- **Markdownサポート** - 見出し、リスト、コードブロック、表、Mermaid図、画像など豊富な記法をサポート
-- **ワンクリック編集** - クリックした場所からすぐ入力開始。自動保存で手間なし
-- **フローティングフォーマットバー** - テキスト選択時に自動表示。太字・見出し・リスト・チェックボックスをワンクリックで
-- **タグ・アーカイブ** - 付箋を整理して管理。フォルダ構造で見やすく
-- **全文検索** - 正規表現対応の全文検索で瞬時に発見。該当行に自動ジャンプ・ハイライト
-- **最前面固定（ピン留め）** - 📌ボタンで他のウィンドウの手前に常に表示
-- **システムトレイ統合** - 常駐して、いつでもアクセス可能
-- **自動起動** - システム起動時に自動で立ち上がる
-- **効果音** - 心地よいフィードバックで快適な操作感
+- **Markdown Support** - Supports headings, lists, code blocks, tables, Mermaid diagrams, images, and more.
+- **One-click Edit** - Click anywhere to start typing immediately. Auto-saves so you never lose your thoughts.
+- **Floating Format Bar** - Appears automatically when text is selected. Click to format bold, headings, lists, and checkboxes.
+- **Tags & Archives** - Organize your sticky notes. Folder structure for easy viewing.
+- **Full-Text Search** - Find statements instantly with regular expression support. Auto-jumps and highlights the matching lines.
+- **Pin to Top** - Always display in front of other windows using the 📌 button.
+- **System Tray Integration** - Resides in the system tray for instant access anytime.
+- **Auto-Start** - Starts automatically on system boot.
+- **Sound Effects** - Comfortable feedback for a pleasant user experience.
 
-### 🔒 プライバシー重視
+### 🔒 Privacy Focused
 
-- **完全ローカル** - データは全てローカルに保存。クラウド不要
-- **オフライン動作** - インターネット接続不要で動作
-- **オープンソース** - コードは全て公開。安心して使える
-
----
-
-## 📸 スクリーンショット
-
-![メイン画面](public/screenshots/ScreenShot_OreNoFusen.jpg)
+- **100% Local** - All data is saved locally on your device. No cloud storage is required.
+- **Offline Capable** - Works without an internet connection.
+- **Open Source** - Code is fully available. Use it with peace of mind.
 
 ---
 
-## 📥 インストール
+## 📸 Screenshots
 
-### 一般ユーザー向け（推奨）
+![Main Screen](public/screenshots/ScreenShot_OreNoFusen.jpg)
 
-1. [Releases ページ](https://github.com/ore-no-fusen/ore-no-fusen/releases)を開く
-2. 最新版の **`ore-no-fusen_x.x.x_x64-setup.exe`** をダウンロード
-3. ダウンロードしたファイルをダブルクリックしてインストール
-4. インストール完了後、スタートメニューから「俺の付箋」を起動
+---
 
-**システム要件:**
+## 📥 Installation
+
+### For General Users (Recommended)
+
+1. Go to the [Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
+2. Download the latest **`ore-no-fusen_x.x.x_x64-setup.exe`**.
+3. Double-click the downloaded file to install.
+4. After installation, launch "俺の付箋" (FUSEN) from the Start menu.
+
+**System Requirements:**
 - OS: Windows 10/11 (64-bit)
-- 容量: 約 100MB
-- メモリ: 4GB以上推奨
+- Disk Space: Approx. 100MB
+- Memory: 4GB+ recommended
 
-詳しいインストール手順は[ユーザーガイド](docs/USER_GUIDE.md#インストール)をご覧ください。
+For detailed instructions, see the [User Guide](docs/USER_GUIDE.md#インストール) (Currently in Japanese).
 
-### ⚠️ インストール時の「SmartScreen」警告について
+### ⚠️ About "SmartScreen" Warning During Installation
 
-インストール時に「**Windows によって PC が保護されました**」という画面が表示される場合があります。
+During installation, you might see a screen saying "**Windows protected your PC**".
 
-**これは何？**  
-SmartScreen とは、Windows に搭載されたセキュリティ機能です。ダウンロード数が少ないアプリや、有料の「コード署名証明書」を持たないアプリに対して自動的に警告を表示します。ウイルスを検出したわけではありません。
+**What is this?**  
+SmartScreen is a Windows security feature. It automatically displays a warning for apps with low download counts or apps that don't have a paid "code signing certificate." It does not mean a virus was detected.
 
-**対処方法:**
+**How to resolve:**
 
-1. 「詳細情報」をクリック
-2. 「実行」ボタンが表示されるのでクリック
+1. Click on "More info".
+2. A "Run anyway" button will appear. Click it.
 
-これで通常通りインストールできます。
+You can then proceed with the installation normally.
 
-> 💡 **ご安心ください** — ore-no-fusen はオープンソースです。ソースコードは [GitHub](https://github.com/ore-no-fusen/ore-no-fusen) で全て公開されており、誰でも内容を確認できます。
+> 💡 **Rest assured** — FUSEN is open source. The entire source code is available on [GitHub](https://github.com/ore-no-fusen/ore-no-fusen) for anyone to review.
 
-詳しいインストール手順は[ユーザーガイド](docs/USER_GUIDE.md#インストール)をご覧ください。
+### For Developers
 
-### 開発者向け
+#### Prerequisites
+- Node.js 18+
+- Rust (Install via [rustup](https://rustup.rs/))
 
-#### 前提条件
-- Node.js 18以上
-- Rust（[rustup](https://rustup.rs/)からインストール）
+#### Setup Instructions
 
-#### セットアップ手順
-
-1. リポジトリをクローン：
+1. Clone the repository:
 ```bash
 git clone https://github.com/ore-no-fusen/ore-no-fusen.git
 cd ore-no-fusen
 ```
 
-2. 依存関係をインストール：
+2. Install dependencies:
 ```bash
 npm install
 ```
 
-3. 開発モードで起動：
+3. Run in development mode:
 ```bash
 npm run tauri dev
 ```
 
-4. プロダクションビルド：
+4. Production build:
 ```bash
 npm run tauri build
 ```
 
-ビルド成果物は `src-tauri\target\release\bundle\nsis\` に生成されます。
+Build artifacts will be generated in `src-tauri\target\release\bundle\nsis\`.
 
 ---
 
-## 🎯 使い方
+## 🎯 Usage
 
-### 基本操作
+### Basic Operations
 
-1. **付箋を作成** - システムトレイのアイコンを右クリック → 「新しい付箋」
-2. **編集** - 付箋をダブルクリック
-3. **検索** - `Ctrl+F` で検索ウィンドウを開く
-4. **タグ付け** - 付箋の内容に `#タグ名` を記述
+1. **Create a Sticky Note** - Right-click the system tray icon → "New Note"
+2. **Edit** - Double-click a note
+3. **Search** - Press `Ctrl+F` to open the search window
+4. **Tagging** - Write `#tagname` within a note to automatically tag it
 
-詳しい使い方は[ユーザーガイド](docs/USER_GUIDE.md)をご覧ください。
+For detailed usage, please see the [User Guide](docs/USER_GUIDE.md).
 
-### Markdownの例
+### Markdown Example
 
 ```markdown
-# 今日のタスク
+# Today's Tasks
 
-## 重要
-- [ ] プレゼン資料作成
-- [x] メール返信
+## Important
+- [ ] Prepare presentation slides
+- [x] Reply to emails
 
-## メモ
-**締切**: 2026/02/15
-*担当*: 山田さん
+## Notes
+**Deadline**: 2026/02/15
+*Assignee*: Alex
 
-| 項目 | 状態 |
+| Item | Status |
 |------|------|
-| 資料 | 作成中 |
-| 確認 | 待ち  |
+| Slides | In Progress |
+| Review | Pending |
 
-#仕事 #重要
+#work #important
 ```
 
 ---
 
-## 💡 ユースケース
+## 💡 Use Cases
 
-### 📝 タスク管理
-チェックリストとタグで、日々のタスクを整理。完了したタスクはアーカイブへ。
+### 📝 Task Management
+Organize your daily tasks with checklists and tags. Move completed tasks to the archive.
 
-### 💭 アイデアメモ
-思いついたアイデアを即座にメモ。Markdownで構造化して整理。
+### 💭 Idea Capture
+Jot down ideas the moment you have them. Structure and organize them with Markdown.
 
-### 📚 学習ノート
-学習内容をタグで分類。検索機能で復習も簡単。
+### 📚 Study Notes
+Categorize what you learn with tags. Easily review using the search feature.
 
-### 🔖 リンク集
-よく使うリンクを付箋に保存。タグで分類して管理。
+### 🔖 Link Collection
+Save frequently used links on sticky notes. Group them using tags.
 
 ---
 
-## 🛠️ 技術スタック
+## 🛠️ Technology Stack
 
-### フロントエンド
+### Frontend
 - **Next.js 14** (App Router)
 - **React 18**
 - **TypeScript**
 - **Tailwind CSS**
-- **CodeMirror 6** (Markdownエディタ)
+- **CodeMirror 6** (Markdown Editor)
 
-### バックエンド
-- **Tauri 2.x** (デスクトップアプリフレームワーク)
-- **Rust** (高速・安全なバックエンド)
+### Backend
+- **Tauri 2.x** (Desktop App Framework)
+- **Rust** (Fast & Secure Backend)
 
-### アーキテクチャ
-- **DOD (Data-Oriented Design)** - データ中心設計
-- **Effect Pattern** - 副作用の明示的な管理
-- **AppState (SSOT)** - 単一の信頼できる情報源
-
----
-
-## 📖 ドキュメント
-
-- [ユーザーガイド](docs/USER_GUIDE.md) - 詳しい使い方
-- [FAQ](docs/FAQ.md) - よくある質問
-- [開発ルール](AG_RULES.md) - 開発者向けルール
+### Architecture
+- **DOD (Data-Oriented Design)** - Data-centric architecture
+- **Effect Pattern** - Explicit management of side effects
+- **AppState (SSOT)** - Single source of truth
 
 ---
 
-## 🤝 コントリビューション
+## 📖 Documentation
 
-Issue、Pull Requestを歓迎します！
-
-1. このリポジトリをフォーク
-2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
-4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
-5. Pull Requestを作成
-
-詳しくは[CONTRIBUTING.md](CONTRIBUTING.md)をご覧ください（作成予定）。
+- [User Guide](docs/USER_GUIDE.md) - Detailed instructions (JA)
+- [FAQ](docs/FAQ.md) - Frequently asked questions (JA)
+- [Development Rules](AG_RULES.md) - Guidelines for developers
 
 ---
 
-## 📝 ライセンス
+## 🤝 Contributing
 
-MIT License - 詳細は[LICENSE](LICENSE)をご覧ください。
+Issues and Pull Requests are welcome!
+
+1. Fork this repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
-## 🙏 謝辞
+## 📝 License
 
-ore-no-fusenは以下のオープンソースプロジェクトを使用しています:
+MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgements
+
+FUSEN uses the following open-source projects:
 
 - [Tauri](https://tauri.app/)
 - [Next.js](https://nextjs.org/)
@@ -247,17 +245,17 @@ ore-no-fusenは以下のオープンソースプロジェクトを使用して�
 
 ---
 
-## 📞 サポート
+## 📞 Support
 
-- **バグ報告**: [GitHub Issues](https://github.com/ore-no-fusen/ore-no-fusen/issues)
-- **機能リクエスト**: [GitHub Discussions](https://github.com/ore-no-fusen/ore-no-fusen/discussions)
-- **質問**: [FAQ](docs/FAQ.md)
+- **Bug Reports**: [GitHub Issues](https://github.com/ore-no-fusen/ore-no-fusen/issues)
+- **Feature Requests**: [GitHub Discussions](https://github.com/ore-no-fusen/ore-no-fusen/discussions)
+- **Questions**: [FAQ](docs/FAQ.md)
 
 ---
 
 <div align="center">
 
-**ore-no-fusenで、思考整理をもっと楽しく** 🎉
+**Make organizing thoughts more fun with FUSEN** 🎉
 
 Made with ❤️ by ONF Studios
 

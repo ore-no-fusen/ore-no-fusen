@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { SimpleNoteBody } from './SimpleNoteBody';
 import { formatRelativeTime, insertAtCursor } from './utils';
+import { getTranslation, type Language } from '@/lib/i18n';
 
 // ---------------------------------------------------------------------------
 // ヘルパー関数
@@ -332,7 +333,7 @@ function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: 
 }
 
 // ---------------------------------------------------------------------------
-// IndexedDB — 下書き（テキスト＋画像）をiPhone内にローカル保存
+// IndexedDB — {t('pwa.statusDraft')}（テキスト＋画像）をiPhone内にローカル保存
 // ---------------------------------------------------------------------------
 
 type DraftRecord = {
@@ -575,6 +576,15 @@ function CropModal({ file, onCancel, onCrop }: CropModalProps) {
 // ---------------------------------------------------------------------------
 
 export default function ViewerPage() {
+  const [lang, setLang] = useState<Language>('ja');
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const browserLang = navigator.language.startsWith('ja') ? 'ja' : 'en';
+      setLang(browserLang);
+    }
+  }, []);
+  const t = getTranslation(lang);
+
   const [isStandalone, setIsStandalone] = useState(false);
   const [step, setStep] = useState<
     'banner' | 'login' | 'push' | 'ready' | 'write' | 'list' | 'note'
@@ -820,7 +830,7 @@ export default function ViewerPage() {
       {/* バックグラウンド送信トースト */}
       {isSendingInBackground && (
         <div className="fixed top-4 right-4 bg-blue-500 text-white text-sm px-3 py-2 rounded shadow z-50">
-          送信中...
+          {t('pwa.sending')}
         </div>
       )}
       {backgroundSendSuccess && (
@@ -836,7 +846,8 @@ export default function ViewerPage() {
       <div className="max-w-prose mx-auto w-full">
         {step === 'login' && (
           <div className="flex flex-col items-center gap-4">
-            <p className="text-gray-700">セットアップ ステップ 1 / 2</p>
+            <p className="text-gray-700">{t('pwa.loginTitle')}</p>
+            <p className="text-gray-500 text-sm max-w-sm text-center mt-2">{t('pwa.loginDesc')}</p>
             {!swReady && (
               <p className="text-gray-500 text-sm">SW準備中...</p>
             )}
@@ -849,7 +860,7 @@ export default function ViewerPage() {
                 startOAuth(challenge);
               }}
             >
-              Googleでログイン
+              {t('pwa.loginButton')}
             </button>
             {errorMessage && (
               <p className="text-red-600 text-sm">{errorMessage}</p>
@@ -929,7 +940,7 @@ export default function ViewerPage() {
                   }
                 }}
               >
-                {isLoading ? '処理中...' : '通知を許可する'}
+                {isLoading ? t('pwa.saving') : '通知を許可する'}
               </button>
             )}
             {errorMessage && (
@@ -957,9 +968,9 @@ export default function ViewerPage() {
                 className="text-blue-600 text-sm font-medium"
                 onClick={() => setStep('list')}
               >
-                📋 一覧
+                📋 {t('pwa.listTitle')}
               </button>
-              <span className="font-semibold text-gray-900">書く</span>
+              <span className="font-semibold text-gray-900">{t('pwa.newNote')}</span>
               <div className="flex justify-end items-center gap-0 p-1">
                 <button
                   className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-sm"
@@ -1326,7 +1337,7 @@ export default function ViewerPage() {
                   })();
                 }}
               >
-                {isSendingInBackground ? '送信中...' : 'PCに送る'}
+                {isSendingInBackground ? t('pwa.sending') : 'PCに送る'}
               </button>
             </div>
 
@@ -1466,7 +1477,7 @@ export default function ViewerPage() {
           <div className="flex flex-col min-h-[100dvh] bg-white">
             {/* ヘッダー */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-              <span className="font-semibold text-gray-900">一覧</span>
+              <span className="font-semibold text-gray-900">{t('pwa.listTitle')}</span>
               <button
                 className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-lg font-medium"
                 aria-label="新規作成"
@@ -1484,7 +1495,7 @@ export default function ViewerPage() {
               {isHistoryLoading ? (
                 <p className="text-center text-gray-400 py-8 text-sm">読み込み中...</p>
               ) : historyNotes.length === 0 ? (
-                <p className="text-center text-gray-400 py-8 text-sm">付箋がありません。＋で新規作成</p>
+                <p className="text-center text-gray-400 py-8 text-sm">{t('pwa.emptyList')}</p>
               ) : (
                 <ul>
                   {historyNotes.map((note) => (
@@ -1522,7 +1533,7 @@ export default function ViewerPage() {
                                 : 'bg-yellow-400 text-gray-900'
                             }`}
                           >
-                            {note.status === 'sent' ? '送信済み' : '下書き'}
+                            {note.status === 'sent' ? t('pwa.statusSent') : t('pwa.statusDraft')}
                           </span>
                           <span className="text-sm text-gray-500">
                             {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
@@ -1585,7 +1596,7 @@ export default function ViewerPage() {
                 setStep('write');
               }}
             >
-              消す
+              {t('pwa.deleteNote')}
             </button>
             {errorMessage && (
               <p className="text-red-600 text-sm mt-2">{errorMessage}</p>
