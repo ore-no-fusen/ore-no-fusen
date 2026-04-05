@@ -962,7 +962,11 @@ const StickyNote = memo(function StickyNote() {
         if (lineIndex < 0 || lineIndex >= lines.length) return;
 
         const line = lines[lineIndex];
-        const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
+
+        // [GUARD] 画像行（![]() 形式）は絶対に変更しない
+        if (/!\[.*?\]\(.*?\)/.test(line)) return;
+
+        const taskMatch = line.match(/^([-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
 
         if (taskMatch) {
             const isChecked = taskMatch[2].toLowerCase() === 'x';
@@ -982,6 +986,10 @@ const StickyNote = memo(function StickyNote() {
     const handleImageResize = (newScale: number, baseOffset: number, originalText: string) => {
         if (!content) return;
 
+        // [GUARD] スケール値の安全検証（ResizableImage 側でもクランプ済みだが二重防衛）
+        const safeScale = Math.min(5.0, Math.max(0.1, newScale));
+        if (!isFinite(safeScale)) return;
+
         const targetStr = content.substring(baseOffset, baseOffset + originalText.length);
         if (targetStr !== originalText) return;
 
@@ -990,10 +998,14 @@ const StickyNote = memo(function StickyNote() {
 
         const rawAlt = match[1];
         const url = match[2];
-        const altParts = rawAlt.split('|');
-        const realAlt = altParts[0];
+        // [GUARD] URLが空の場合は書き込みを中断
+        if (!url.trim()) return;
 
-        const newMarkdown = `![${realAlt}|${newScale}](${url})`;
+        // alt テキスト部分のみ取り出す（| より前）
+        const altParts = rawAlt.split('|');
+        const realAlt = altParts[0]; // 空文字列でも問題ない
+
+        const newMarkdown = `![${realAlt}|${safeScale}](${url})`;
         const before = content.substring(0, baseOffset);
         const after = content.substring(baseOffset + originalText.length);
 

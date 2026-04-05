@@ -521,6 +521,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
             for (let i = lineStart; i <= lineEnd; i++) {
                 const line = state.doc.line(i);
+                // [GUARD] 画像行は絶対に変更しない
+                if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                 if (allHave) {
                     changes.push({ from: line.from, to: line.from + 2 });
                 } else {
@@ -552,6 +554,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
             for (let i = lineStart; i <= lineEnd; i++) {
                 const line = state.doc.line(i);
+                // [GUARD] 画像行は絶対に変更しない
+                if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                 if (allHave) {
                     changes.push({ from: line.from, to: line.from + 2 });
                 } else if (!line.text.startsWith('- ')) {
@@ -581,6 +585,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
             for (let i = lineStart; i <= lineEnd; i++) {
                 const line = state.doc.line(i);
+                // [GUARD] 画像行は絶対に変更しない
+                if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                 if (allHave) {
                     changes.push({ from: line.from, to: line.from + 6 });
                 } else if (!line.text.startsWith('- [ ] ')) {
@@ -958,6 +964,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 }
                                 for (let i = lineStart; i <= lineEnd; i++) {
                                     const line = state.doc.line(i);
+                                    // [GUARD] 画像行は絶対に変更しない
+                                    if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                                     if (allHave) {
                                         changes.push({ from: line.from, to: line.from + 2 });
                                     } else if (!line.text.startsWith('# ')) {
@@ -983,6 +991,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 }
                                 for (let i = lineStart; i <= lineEnd; i++) {
                                     const line = state.doc.line(i);
+                                    // [GUARD] 画像行は絶対に変更しない
+                                    if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                                     if (allHave) {
                                         changes.push({ from: line.from, to: line.from + 2 });
                                     } else if (!line.text.startsWith('- ')) {
@@ -1008,6 +1018,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 }
                                 for (let i = lineStart; i <= lineEnd; i++) {
                                     const line = state.doc.line(i);
+                                    // [GUARD] 画像行は絶対に変更しない
+                                    if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                                     if (allHave) {
                                         changes.push({ from: line.from, to: line.from + 6 });
                                     } else if (!line.text.startsWith('- [ ] ')) {

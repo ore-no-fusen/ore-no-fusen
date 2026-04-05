@@ -14,7 +14,11 @@ function toggleCheckboxInContent(content: string, lineIndex: number): string | n
     if (lineIndex < 0 || lineIndex >= lines.length) return null;
 
     const line = lines[lineIndex];
-    const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
+
+    // [GUARD] 画像行（![]() 形式）は絶対に変更しない
+    if (/!\[.*?\]\(.*?\)/.test(line)) return null;
+
+    const taskMatch = line.match(/^([-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
 
     if (taskMatch) {
         const isChecked = taskMatch[2].toLowerCase() === 'x';
@@ -105,5 +109,31 @@ describe('チェックボックストグル機能', () => {
         expect(result).toContain('- [x] 完了した機能'); // 変わらない
         expect(result).toContain('- [x] 未完了の機能'); // トグルされる
         expect(result).toContain('- [ ] もう一つの未完了'); // 変わらない
+    });
+
+    //
+    // 画像行保護の回帰テスト
+    //
+
+    it('回帰テスト: 画像行（![]()形式）はトグルしない', () => {
+        const content = `メモ
+![](assets/fusen_img_sample.jpg)
+![|0.5](assets/fusen_img_sample2.jpg)`;
+
+        // 画像行へのトグル操作は null を返す（変更しない）
+        expect(toggleCheckboxInContent(content, 1)).toBeNull();
+        expect(toggleCheckboxInContent(content, 2)).toBeNull();
+    });
+
+    it('回帰テスト: 画像行を含むリストでも他の行は正常にトグルできる', () => {
+        const content = `- [ ] タスク
+![](assets/sample.jpg)
+- [ ] 別タスク`;
+
+        // タスク行はトグルできる
+        expect(toggleCheckboxInContent(content, 0)).toContain('- [x] タスク');
+        expect(toggleCheckboxInContent(content, 2)).toContain('- [x] 別タスク');
+        // 画像行は変更しない
+        expect(toggleCheckboxInContent(content, 1)).toBeNull();
     });
 });

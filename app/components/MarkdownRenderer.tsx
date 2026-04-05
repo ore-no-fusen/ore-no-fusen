@@ -298,7 +298,8 @@ export default function MarkdownRenderer({
             let scale: number | undefined = undefined;
             if (altParts.length > 1) {
                 const s = parseFloat(altParts[1]);
-                if (!isNaN(s)) scale = s;
+                // [GUARD] 極端な値（0.1未満 or 5.0超）は表示時にもクランプ
+                if (!isNaN(s) && isFinite(s)) scale = Math.min(5.0, Math.max(0.1, s));
             }
 
             // singleLinePreview 時は ResizableImage を描画しない

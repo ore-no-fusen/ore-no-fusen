@@ -114,13 +114,16 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
 
         // Commit change as scale
         if (currentWidth && naturalWidthRef.current > 0) {
-            const newScale = currentWidth / naturalWidthRef.current;
+            const rawScale = currentWidth / naturalWidthRef.current;
             // Round to 2 decimals for cleanliness
-            const roundedScale = Math.round(newScale * 100) / 100;
-            if (roundedScale !== scale) {
-                onResizeEnd(roundedScale);
+            const roundedScale = Math.round(rawScale * 100) / 100;
+            // [GUARD] 極端な値を防ぐ: スケールは 0.1〜5.0 の範囲に制限
+            const clampedScale = Math.min(5.0, Math.max(0.1, roundedScale));
+            if (clampedScale !== scale) {
+                onResizeEnd(clampedScale);
             }
         }
+        // naturalWidthRef が 0 の場合は書き込みをスキップ（画像未ロード状態）
     };
 
     return (
