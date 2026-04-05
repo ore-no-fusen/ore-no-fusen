@@ -1580,11 +1580,22 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     }
 
     // 9. JS にemit（JS側でfusen_create_note → openNoteWindow を実行）
+    // [B案] iPhone側はtitle/bodyを分離して通知最適化しているが、
+    //       PC側の付箋は1行目も重要な情報（ファイル名のもとにもなる）なので
+    //       ここで再結合してから渡す。iPhone側のロジックは一切変更しない。
+    let pc_body = if title.is_empty() {
+        body.to_string()
+    } else if body.is_empty() {
+        title.to_string()
+    } else {
+        format!("{}\n{}", title, body)
+    };
+
     let _ = app.emit(
         "fusen:note_from_iphone",
         IphoneNotePayload {
             title: title.to_string(),
-            body: body.to_string(),
+            body: pc_body,
             context,
             tags,
         },
