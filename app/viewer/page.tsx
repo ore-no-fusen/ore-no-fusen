@@ -891,10 +891,27 @@ export default function ViewerPage() {
                     const subJson = sub.toJSON();
                     const endpoint = subJson?.endpoint as string;
                     const keys = subJson?.keys;
+                    // デバイスIDを生成・永続化（このデバイスを一意に識別するため）
+                    let deviceId = localStorage.getItem('viewer_device_id');
+                    if (!deviceId) {
+                      deviceId = crypto.randomUUID();
+                      localStorage.setItem('viewer_device_id', deviceId);
+                    }
+                    // 既存デバイスリストを取得してupsert（新スキーマ対応、旧スキーマは自動移行）
+                    const existing = await downloadFromDrive(accessToken!, 'fusen_push_config.json')
+                      .catch(() => ({}));
+                    const existingDevices: any[] = existing?.devices ?? (
+                      // 旧スキーマ（endpoint直下）があれば移行する
+                      existing?.endpoint ? [{ device_id: 'legacy', endpoint: existing.endpoint, keys: existing.keys, registered_at: new Date().toISOString() }] : []
+                    );
+                    const updatedDevices = [
+                      ...existingDevices.filter((d: any) => d.device_id !== deviceId),
+                      { device_id: deviceId, endpoint, keys, registered_at: new Date().toISOString() },
+                    ];
                     await uploadWithAutoRefresh(accessToken!, 'fusen_push_config.json', {
-                      endpoint,
-                      keys,
+                      devices: updatedDevices,
                     });
+
                     localStorage.setItem('viewer_push_done', 'true');
                     setStep('write');
                   } catch (err: unknown) {

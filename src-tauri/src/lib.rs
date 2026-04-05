@@ -1173,7 +1173,7 @@ async fn fusen_check_pro_setup(
     match gdrive::poll_push_config(&client, &state).await {
         Ok(_) => {
             let guard = state.lock().unwrap_or_else(|p| p.into_inner());
-            Ok(guard.pro_config.is_some())
+            Ok(!guard.pro_configs.is_empty())
         }
         Err(_) => Ok(false),
     }
@@ -1353,24 +1353,39 @@ async fn fusen_send_to_iphone(
         }
     });
 
-    // 5. キャッシュ済み pro_config を取得（なければ Drive から再取得）
-    let pro_config = {
+    // 5. キャッシュ済み pro_configs を取得（なければ Drive から再取得）
+    let pro_configs = {
         let guard = state.lock().unwrap_or_else(|p| p.into_inner());
-        guard.pro_config.clone()
+        guard.pro_configs.clone()
     };
-    let pro_config = match pro_config {
-        Some(c) => c,
-        None => {
-            gdrive::poll_push_config(&client, &state).await?;
-            let guard = state.lock().unwrap_or_else(|p| p.into_inner());
-            guard.pro_config.clone()
-                .ok_or_else(|| "push_config not found in Google Drive. Please set up the iPhone app first.".to_string())?
+    let pro_configs = if !pro_configs.is_empty() {
+        pro_configs
+    } else {
+        gdrive::poll_push_config(&client, &state).await?;
+        let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        let configs = guard.pro_configs.clone();
+        if configs.is_empty() {
+            return Err("push_config not found in Google Drive. Please set up the iPhone app first.".to_string());
         }
+        configs
     };
 
-    // 6. Web Push 送信
+    // 6. Web Push 全デバイスに順次送信（1台でも届けばOK）
     let plaintext = serde_json::to_string(&note_json_push).map_err(|e| e.to_string())?;
-    webpush::send_web_push(&client, &pro_config, &plaintext).await?;
+    let mut send_errors: Vec<String> = Vec::new();
+    for config in &pro_configs {
+        match webpush::send_web_push(&client, config, &plaintext).await {
+            Ok(_) => {},
+            Err(e) => {
+                eprintln!("[webpush] デバイスへの送信エラー: {}", e);
+                send_errors.push(e);
+            }
+        }
+    }
+    // 全デバイスが失敗した場合のみエラーとする
+    if !pro_configs.is_empty() && send_errors.len() == pro_configs.len() {
+        return Err(format!("全デバイスへの送信が失敗しました: {}", send_errors.join(", ")));
+    }
 
     Ok(())
 }

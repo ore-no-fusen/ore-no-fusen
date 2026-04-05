@@ -41,6 +41,15 @@ struct DriveFile {
 
 #[derive(Deserialize)]
 struct PushConfigJson {
+    // 新スキーマ: devices 配列
+    devices: Option<Vec<DeviceEntry>>,
+    // 旧スキーマ後方互換: endpoint 直下
+    endpoint: Option<String>,
+    keys: Option<PushConfigKeys>,
+}
+
+#[derive(Deserialize)]
+struct DeviceEntry {
     endpoint: String,
     keys: PushConfigKeys,
 }
@@ -471,7 +480,9 @@ pub async fn delete_file_by_name(
     Ok(())
 }
 
-/// push_config を Drive からダウンロードして AppState.pro_config に設定する
+/// push_config を Drive からダウンロードして AppState.pro_configs に設定する
+/// 新スキーマ: { "devices": [...] }
+/// 旧スキーマ後方互換: { "endpoint": "...", "keys": {...} }
 pub async fn poll_push_config(
     client: &Client,
     state: &Mutex<AppState>,
@@ -482,16 +493,28 @@ pub async fn poll_push_config(
     let config: PushConfigJson = serde_json::from_value(value)
         .map_err(|e| format!("push_config parse error: {}", e))?;
 
-    let pro_config = ProConfig {
-        push_endpoint: config.endpoint,
-        p256dh: config.keys.p256dh,
-        auth: config.keys.auth,
+    let pro_configs: Vec<ProConfig> = if let Some(devices) = config.devices {
+        // 新スキーマ: devices 配列
+        devices.into_iter().map(|d| ProConfig {
+            push_endpoint: d.endpoint,
+            p256dh: d.keys.p256dh,
+            auth: d.keys.auth,
+        }).collect()
+    } else if let (Some(endpoint), Some(keys)) = (config.endpoint, config.keys) {
+        // 旧スキーマ後方互換: 単一デバイスとして扱う
+        vec![ProConfig {
+            push_endpoint: endpoint,
+            p256dh: keys.p256dh,
+            auth: keys.auth,
+        }]
+    } else {
+        return Err("push_config: デバイス情報が見つかりませんでした".to_string());
     };
 
     state
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .pro_config = Some(pro_config);
+        .pro_configs = pro_configs;
 
     Ok(())
 }

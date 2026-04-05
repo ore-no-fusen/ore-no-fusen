@@ -44,8 +44,8 @@ pub struct AppState {
     pub active_tags: Vec<String>,
     /// Alt+Tabに表示する付箋ウィンドウのラベル（最後にフォーカスされたもの）
     pub last_alt_tab_window: Option<String>,
-    /// Pro機能の設定（Web Push サブスクリプション情報）
-    pub pro_config: Option<ProConfig>,
+    /// Pro機能の設定（Web Push サブスクリプション情報・マルチデバイス対応）
+    pub pro_configs: Vec<ProConfig>,
 }
 
 // Phase 4: Pro機能設定構造体
