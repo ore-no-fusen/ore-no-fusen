@@ -1266,14 +1266,42 @@ export default function ViewerPage() {
                         sent_at: sentAt,
                         tags: capturedTags,
                       };
+                      // --- キュー配列方式: read-modify-write ---
+                      // 既存データを読み込む（存在しない場合や旧スキーマは自動変換）
+                      const existing = await downloadFromDrive(token, 'fusen_from_iphone.json').catch(() => null);
+                      let currentItems: any[] = [];
+                      if (existing) {
+                        if (Array.isArray(existing.items)) {
+                          // 新スキーマ
+                          currentItems = existing.items;
+                        } else if (existing.id && !existing.received_at) {
+                          // 旧スキーマ（未処理の単一アイテム）→ キューに変換して引き継ぐ
+                          currentItems = [{
+                            id: existing.id,
+                            title: existing.title ?? '',
+                            body: existing.body ?? '',
+                            sent_at: existing.sent_at ?? sentAt,
+                            tags: existing.tags ?? [],
+                          }];
+                        }
+                        // 旧スキーマで received_at がある場合は処理済み → 捨てる（空配列のまま）
+                      }
+                      // 処理済みアイテムは最新5件まで保持（ファイル肥大化防止）
+                      const processed = currentItems
+                        .filter((item: any) => item.received_at)
+                        .slice(-5);
+                      const pending = currentItems.filter((item: any) => !item.received_at);
+                      // 新しいアイテムを末尾に追加
+                      const newItem = {
+                        id: noteId,
+                        title,
+                        body: fullBody,
+                        sent_at: sentAt,
+                        tags: capturedTags,
+                      };
+                      const updatedItems = [...processed, ...pending, newItem];
                       await Promise.all([
-                        uploadWithAutoRefresh(token, 'fusen_from_iphone.json', {
-                          id: noteId,
-                          title,
-                          body: fullBody,
-                          sent_at: sentAt,
-                          tags: capturedTags,
-                        }),
+                        uploadWithAutoRefresh(token, 'fusen_from_iphone.json', { items: updatedItems }),
                         saveToHistory(token, note),
                       ]);
                       setIsSendingInBackground(false);

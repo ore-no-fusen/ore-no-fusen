@@ -535,8 +535,9 @@ mod tests {
     fn test_push_config_json_parses_to_pro_config() {
         let json_str = r#"{"endpoint":"https://api.push.apple.com/3/device/ABC","keys":{"p256dh":"BNcR","auth":"tBy8"},"created_at":"2026-01-01T00:00:00Z"}"#;
         let config: PushConfigJson = serde_json::from_str(json_str).unwrap();
-        assert_eq!(config.endpoint, "https://api.push.apple.com/3/device/ABC");
-        assert_eq!(config.keys.p256dh, "BNcR");
-        assert_eq!(config.keys.auth, "tBy8");
+        assert_eq!(config.endpoint.unwrap(), "https://api.push.apple.com/3/device/ABC");
+        let keys = config.keys.unwrap();
+        assert_eq!(keys.p256dh, "BNcR");
+        assert_eq!(keys.auth, "tBy8");
     }
 }

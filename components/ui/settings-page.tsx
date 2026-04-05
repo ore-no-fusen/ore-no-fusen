@@ -902,6 +902,31 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
 }
 
 // --- iPhone連携セクション ---
+const PWA_URL = 'https://ore-no-fusen.vercel.app/viewer'
+
+function QrCodeCanvas({ url }: { url: string }) {
+    const canvasRef = React.useRef<HTMLCanvasElement>(null)
+
+    React.useEffect(() => {
+        if (!canvasRef.current) return
+        import('qrcode').then((QRCode) => {
+            QRCode.toCanvas(canvasRef.current!, url, {
+                width: 160,
+                margin: 2,
+                color: { dark: '#1a1a1a', light: '#ffffff' },
+            })
+        }).catch(console.error)
+    }, [url])
+
+    return (
+        <canvas
+            ref={canvasRef}
+            className="rounded-lg border border-gray-200 shadow-sm"
+            style={{ width: 160, height: 160 }}
+        />
+    )
+}
+
 function IphoneSection({ t, iphoneDriveDisconnected }: {
   t: (key: any) => string;
   iphoneDriveDisconnected: boolean;
@@ -909,6 +934,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
     const [status, setStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading')
     const [isConnecting, setIsConnecting] = useState(false)
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
+    const [copied, setCopied] = useState(false)
 
     useEffect(() => {
         const check = async () => {
@@ -940,6 +966,13 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
         }
     }
 
+    const handleCopy = () => {
+        navigator.clipboard.writeText(PWA_URL).then(() => {
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        })
+    }
+
     return (
         <div className="space-y-6">
             <div className="mb-8">
@@ -948,6 +981,56 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             </div>
             <Separator />
 
+            {/* --- PWA QRコードパネル --- */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
+                <h3 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
+                    <Smartphone className="h-4 w-4 text-slate-500" />
+                    iPhoneでPWAを開く
+                </h3>
+                <p className="text-xs text-gray-500 mb-4">
+                    iPhoneのSafariでQRコードを読み取るか、URLをコピーして開いてください。
+                </p>
+                <div className="flex items-start gap-6">
+                    {/* QRコード */}
+                    <div className="flex-shrink-0">
+                        <QrCodeCanvas url={PWA_URL} />
+                    </div>
+                    {/* URL + コピー */}
+                    <div className="flex flex-col justify-center gap-3 min-w-0">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">PWA アドレス</span>
+                            <code className="text-sm font-mono text-gray-700 bg-white border border-gray-200 rounded px-3 py-2 break-all">
+                                {PWA_URL}
+                            </code>
+                        </div>
+                        <button
+                            onClick={handleCopy}
+                            className={`flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                                copied
+                                    ? 'border-green-300 bg-green-50 text-green-700'
+                                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                            {copied ? (
+                                <>
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                    コピーしました
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                    URLをコピー
+                                </>
+                            )}
+                        </button>
+                        <p className="text-xs text-gray-400">
+                            ①SafariでURLを開く → ②「ホーム画面に追加」→ ③ログイン
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* --- Google Drive接続パネル --- */}
             <div className="rounded-lg border p-6 space-y-4">
                 <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-gray-800">Googleドライブ接続</h3>
@@ -996,9 +1079,10 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 <div className="rounded-lg border p-6 space-y-2 bg-gray-50">
                     <h3 className="font-semibold text-gray-700 text-sm">セットアップ手順</h3>
                     <ol className="text-sm text-gray-500 space-y-1 list-decimal list-inside">
-                        <li>上の「Googleドライブに接続」ボタンをクリック</li>
-                        <li>ブラウザでGoogleアカウントにログイン</li>
-                        <li>iPhoneのSafariでPWAを開いてセットアップを完了</li>
+                        <li>上のQRコードをiPhoneのカメラで読み取る（またはURLをコピー）</li>
+                        <li>SafariでPWAを開き「ホーム画面に追加」</li>
+                        <li>上の「Googleドライブに接続」ボタンをクリックし、Googleアカウントにログイン</li>
+                        <li>iPhoneのPWAでもGoogleアカウントにログインしてセットアップを完了</li>
                         <li>付箋を右クリック →「iPhoneに送る」</li>
                     </ol>
                 </div>

@@ -670,8 +670,8 @@ static LAST_VISIBILITY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 /// 1枚目の付箋昇格（promote）には一切影響しない。
 static LAST_POOL_CREATE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-static LAST_IPHONE_NOTE_ID: std::sync::Mutex<Option<String>> =
-    std::sync::Mutex::new(None);
+static LAST_IPHONE_NOTE_IDS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
 pub fn can_do_visibility_op() -> bool {
     use std::sync::atomic::Ordering;
@@ -1501,105 +1501,136 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         Ok(d) => d,
     };
 
-    // 3. received_at チェック（PC再起動後も有効）
-    if data.get("received_at").and_then(|v| v.as_str()).is_some() {
+    // 3. items 配列を取得（旧スキーマは自動変換して後方互換を維持）
+    let items: Vec<serde_json::Value> = if let Some(arr) = data.get("items").and_then(|v| v.as_array()) {
+        // 新スキーマ: { "items": [...] }
+        arr.clone()
+    } else if data.get("id").and_then(|v| v.as_str()).is_some() {
+        // 旧スキーマ: { "id": "...", "title": "...", ... }
+        vec![data.clone()]
+    } else {
+        return; // 不明なフォーマット
+    };
+
+    // 4. 未処理アイテム（received_at なし）を抽出
+    let pending_indices: Vec<usize> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| item.get("received_at").and_then(|v| v.as_str()).is_none())
+        .map(|(idx, _)| idx)
+        .collect();
+
+    if pending_indices.is_empty() {
         return;
     }
 
-    // 4. id チェック（id がなければ sent_at を代替）
-    let note_id = data
-        .get("id")
-        .and_then(|v| v.as_str())
-        .or_else(|| data.get("sent_at").and_then(|v| v.as_str()))
-        .unwrap_or("")
-        .to_string();
+    // 5. 既処理IDセットで重複をフィルタリング
+    let new_indices: Vec<usize> = {
+        let known_ids = LAST_IPHONE_NOTE_IDS.lock().unwrap_or_else(|p| p.into_inner());
+        pending_indices
+            .into_iter()
+            .filter(|&idx| {
+                let note_id = items[idx].get("id").and_then(|v| v.as_str()).unwrap_or("");
+                !known_ids.contains(note_id)
+            })
+            .collect()
+    };
 
+    if new_indices.is_empty() {
+        return;
+    }
+
+    // 6. 処理済みIDセットに追加
     {
-        let last = LAST_IPHONE_NOTE_ID
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        if last.as_deref() == Some(&note_id) {
-            return;
+        let mut known_ids = LAST_IPHONE_NOTE_IDS.lock().unwrap_or_else(|p| p.into_inner());
+        for &idx in &new_indices {
+            let note_id = items[idx].get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            known_ids.insert(note_id);
         }
     }
 
-    // 5. 新着 → LAST_IPHONE_NOTE_ID 更新
-    *LAST_IPHONE_NOTE_ID
-        .lock()
-        .unwrap_or_else(|p| p.into_inner()) = Some(note_id);
+    // 7. 各アイテムを処理（emit + 通知）、画像名を収集
+    let received_at_str = chrono::Utc::now().to_rfc3339();
+    let new_indices_set: std::collections::HashSet<usize> = new_indices.iter().copied().collect();
+    let mut all_image_names: Vec<String> = Vec::new();
 
-    // 6. コンテキスト名決定
-    let title = data.get("title").and_then(|v| v.as_str()).unwrap_or("");
-    let body  = data.get("body").and_then(|v| v.as_str()).unwrap_or("");
-    let context = build_context(title, body);
-    let tags: Vec<String> = data.get("tags")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
-        .unwrap_or_default();
+    for &idx in &new_indices {
+        let item = &items[idx];
+        let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let body  = item.get("body").and_then(|v| v.as_str()).unwrap_or("");
+        let context = build_context(title, body);
+        let tags: Vec<String> = item.get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
 
-    // 7. received_at を Drive に書き戻す＋画像ファイルを削除
-    let mut updated = data.clone();
-    updated["received_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
-    // title + body 内の ![](fusen_img_*.jpg) を抽出
-    let combined = format!("{} {}", title, body);
-    let image_names: Vec<String> = {
-        let mut names = Vec::new();
+        // 画像ファイル名を収集
+        let combined = format!("{} {}", title, body);
         let mut search = combined.as_str();
         while let Some(start) = search.find("![](fusen_img_") {
-            let rest = &search[start + 4..]; // "fusen_img_..." の先頭
+            let rest = &search[start + 4..];
             if let Some(end) = rest.find(')') {
-                names.push(rest[..end].to_string());
+                all_image_names.push(rest[..end].to_string());
             }
             search = &search[start + 1..];
         }
-        names
-    };
-    {
-        let client2 = client.clone();
-        let token2  = token.clone();
-        tauri::async_runtime::spawn(async move {
-            let _ = gdrive::upload_json(
-                &client2, &token2, "fusen_from_iphone.json", &updated,
-            ).await;
-            for name in image_names {
-                let _ = gdrive::delete_file_by_name(&client2, &token2, &name).await;
+
+        // Windows トースト通知
+        #[cfg(desktop)]
+        {
+            use tauri_plugin_notification::NotificationExt;
+            let _ = app
+                .notification()
+                .builder()
+                .title("iPhoneから付箋")
+                .body(&context)
+                .show();
+        }
+
+        // JS に emit（JS側が fusen_create_note → openNoteWindow を実行）
+        // title/body を再結合してPC側に渡す（iPhone側ロジックは変更しない）
+        let pc_body = if title.is_empty() {
+            body.to_string()
+        } else if body.is_empty() {
+            title.to_string()
+        } else {
+            format!("{}\n{}", title, body)
+        };
+
+        let _ = app.emit(
+            "fusen:note_from_iphone",
+            IphoneNotePayload {
+                title: title.to_string(),
+                body: pc_body,
+                context,
+                tags,
+            },
+        );
+    }
+
+    // 8. received_at を付与した items 配列を Drive に書き戻す（非同期）
+    let updated_items: Vec<serde_json::Value> = items
+        .into_iter()
+        .enumerate()
+        .map(|(idx, mut item)| {
+            if new_indices_set.contains(&idx) {
+                item["received_at"] = serde_json::json!(received_at_str);
             }
-        });
-    }
+            item
+        })
+        .collect();
 
-    // 8. Windows トースト通知
-    #[cfg(desktop)]
-    {
-        use tauri_plugin_notification::NotificationExt;
-        let _ = app
-            .notification()
-            .builder()
-            .title("iPhoneから付箋")
-            .body(&context)
-            .show();
-    }
-
-    // 9. JS にemit（JS側でfusen_create_note → openNoteWindow を実行）
-    // [B案] iPhone側はtitle/bodyを分離して通知最適化しているが、
-    //       PC側の付箋は1行目も重要な情報（ファイル名のもとにもなる）なので
-    //       ここで再結合してから渡す。iPhone側のロジックは一切変更しない。
-    let pc_body = if title.is_empty() {
-        body.to_string()
-    } else if body.is_empty() {
-        title.to_string()
-    } else {
-        format!("{}\n{}", title, body)
-    };
-
-    let _ = app.emit(
-        "fusen:note_from_iphone",
-        IphoneNotePayload {
-            title: title.to_string(),
-            body: pc_body,
-            context,
-            tags,
-        },
-    );
+    let updated_data = serde_json::json!({ "items": updated_items });
+    let client2 = client.clone();
+    let token2  = token.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = gdrive::upload_json(
+            &client2, &token2, "fusen_from_iphone.json", &updated_data,
+        ).await;
+        for name in all_image_names {
+            let _ = gdrive::delete_file_by_name(&client2, &token2, &name).await;
+        }
+    });
 }
 
 // --- Entry Point ---
