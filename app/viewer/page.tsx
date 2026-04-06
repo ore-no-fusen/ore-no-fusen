@@ -311,15 +311,6 @@ async function uploadImageWithAutoRefresh(
   }
 }
 
-// iPhone 履歴への追記（最新50件上限、ID重複排除）
-async function saveToHistory(token: string, note: IphoneNote): Promise<void> {
-  const existing: IphoneNote[] = await downloadFromDrive(token, 'fusen_iphone_notes.json')
-    .then((data) => data.notes ?? [])
-    .catch(() => []);
-  const filtered = existing.filter((n) => n.id !== note.id);
-  const updated = [note, ...filtered].slice(0, 50);
-  await uploadWithAutoRefresh(token, 'fusen_iphone_notes.json', { notes: updated });
-}
 
 // 画像をリサイズして base64 文字列に変換
 // Drive ダウンロード（トークン期限切れ時に自動リフレッシュ）
@@ -1401,10 +1392,8 @@ export default function ViewerPage() {
                         tags: capturedTags,
                       };
                       const updatedItems = [...processed, ...pending, newItem];
-                      await Promise.all([
-                        uploadWithAutoRefresh(token, 'fusen_from_iphone.json', { items: updatedItems }),
-                        saveToHistory(token, note),
-                      ]);
+                      await uploadWithAutoRefresh(token, 'fusen_from_iphone.json', { items: updatedItems });
+                      // await saveToHistory(token, note);
                       setIsSendingInBackground(false);
                       setBackgroundSendSuccess(true);
                       setTimeout(() => setBackgroundSendSuccess(false), 3000);

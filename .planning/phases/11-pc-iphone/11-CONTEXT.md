@@ -36,7 +36,8 @@ PCから「iPhoneに送る」で送信されたノートを、iPhone側でIndexe
 - 通知タップ時の処理（`?note=<id>` 受信後）:
   1. `fusen_note.json` から `received_at` が null の全件（未読）を取得
   2. 全件を IndexedDB に一括保存（上書き方式）
-  3. `setStep('list')` で一覧へ遷移
+  3. `?note=<id>` で特定されたノートを `pendingHydrate` で write ステップに直接表示
+  - 他の未読ノートは IndexedDB に保存済みのため、一覧から確認できる
 
 ### PC受信ノートの一覧表示・操作
 - 一覧で「PC受信」バッジ（水色）表示（`status: 'received_pc'`）

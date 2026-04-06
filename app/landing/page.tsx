@@ -37,8 +37,14 @@ export default function LandingPage() {
 
     const isEn = lang === 'en';
 
+    useEffect(() => {
+        document.title = isEn ? 'FUSEN' : '俺の付箋（OreNoFusen）';
+    }, [isEn]);
+
     // PC→iPhone 連携アニメーション
-    const noteTexts = ['買い物リスト', 'MTGのアジェンダ', 'アイデアメモ', '今日やること'];
+    const noteTexts = isEn 
+        ? ['Shopping List', 'MTG Agenda', 'Idea Memo', 'To-Do Today']
+        : ['買い物リスト', 'MTGのアジェンダ', 'アイデアメモ', '今日やること'];
     const [noteIdx, setNoteIdx] = useState(0);
     const [iphoneNotes, setIphoneNotes] = useState<string[]>([]);
     const [isFlying, setIsFlying] = useState(false);
@@ -186,14 +192,19 @@ export default function LandingPage() {
                             {/* ターゲット共感チェックリスト */}
                             <div className="bg-white/70 p-5 rounded-2xl border border-[#C8B89A]/70 backdrop-blur-md mb-8 text-left shadow-md">
                                 <p className="text-xs font-bold text-[#8A7055] mb-3 uppercase tracking-widest">
-                                    こんな人に刺さります
+                                    {isEn ? "This is exactly for you:" : "こんな人に刺さります"}
                                 </p>
-                                {[
+                                {(isEn ? [
+                                    'Love iPhone, but use a Windows PC.',
+                                    'Want to use Apple Notes, but on Windows...',
+                                    'Notion is too complex. OneNote is too heavy.',
+                                    'Looking for something just right.',
+                                ] : [
                                     'iPhoneは好き。でもPCはWindows派。',
                                     'Appleメモ使いたいけど、Windowsだから...',
                                     'Notionは大げさ。OneNoteは重い。',
                                     'なんかちょうどいいやつ、ないかな。',
-                                ].map((text) => (
+                                ]).map((text) => (
                                     <div
                                         key={text}
                                         className="flex items-center gap-2.5 py-1.5 text-sm text-[#5A4030]"
@@ -205,7 +216,7 @@ export default function LandingPage() {
                                     </div>
                                 ))}
                                 <p className="text-sm font-bold text-[#5C7A3E] mt-3 pt-3 border-t border-[#C8B89A]/50">
-                                    ── それ、全部あなたのことです。
+                                    {isEn ? "── Yes, we are talking about you." : "── それ、全部あなたのことです。"}
                                 </p>
                             </div>
 
@@ -245,7 +256,7 @@ export default function LandingPage() {
                                             <div className="w-2.5 h-2.5 rounded-full bg-[#E8D070]/70" />
                                             <div className="w-2.5 h-2.5 rounded-full bg-[#70C870]/70" />
                                             <span className="text-[10px] text-[#8A7050] ml-1 font-medium">
-                                                俺の付箋
+                                                {isEn ? "FUSEN" : "俺の付箋"}
                                             </span>
                                         </div>
                                         {/* 付箋エリア */}
@@ -266,9 +277,7 @@ export default function LandingPage() {
                                                     style={{ backgroundColor: '#8BAF75' }}
                                                 />
                                                 <p className="text-[10px] font-semibold text-[#1E3A10]">
-                                                    会議メモ
-                                                    <br />
-                                                    14:00〜
+                                                    {isEn ? <>Meeting<br />2:00 PM</> : <>会議メモ<br />14:00〜</>}
                                                 </p>
                                             </div>
                                             <div
@@ -286,7 +295,7 @@ export default function LandingPage() {
                                                     style={{ backgroundColor: '#7AAFC0' }}
                                                 />
                                                 <p className="text-[10px] font-semibold text-[#102030]">
-                                                    読書メモ
+                                                    {isEn ? "Reading Notes" : "読書メモ"}
                                                 </p>
                                             </div>
                                             {/* フライング付箋（iPhoneへ飛ぶ） */}
@@ -329,9 +338,7 @@ export default function LandingPage() {
                                         ⇄
                                     </div>
                                     <div className="text-[9px] text-[#A89878] text-center leading-tight font-medium">
-                                        自動
-                                        <br />
-                                        同期
+                                        {isEn ? <>Auto<br />Sync</> : <>自動<br />同期</>}
                                     </div>
                                 </div>
 
@@ -371,7 +378,7 @@ export default function LandingPage() {
                                         >
                                             <div className="px-2 py-1.5">
                                                 <p className="text-[9px] font-bold text-[#5C4430] mb-2 pl-0.5">
-                                                    俺の付箋
+                                                    {isEn ? "FUSEN" : "俺の付箋"}
                                                 </p>
                                                 {iphoneNotes.map((note, i) => (
                                                     <div
@@ -397,9 +404,7 @@ export default function LandingPage() {
                                                 ))}
                                                 {iphoneNotes.length === 0 && (
                                                     <p className="text-[9px] text-[#A89878] text-center mt-6 leading-relaxed">
-                                                        PCから
-                                                        <br />
-                                                        届きます
+                                                        {isEn ? <>Arrives<br />from PC</> : <>PCから<br />届きます</>}
                                                     </p>
                                                 )}
                                             </div>
@@ -434,15 +439,46 @@ export default function LandingPage() {
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-12">
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
-                            こんな使い方
+                            {isEn ? "How to use" : "こんな使い方"}
                         </h2>
                         <p className="text-[#8A7055]">
-                            Win + iPhone の組み合わせで、こんなことができます
+                            {isEn ? "What you can do with Win + iPhone" : "Win + iPhone の組み合わせで、こんなことができます"}
                         </p>
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-6">
-                        {[
+                        {(isEn ? [
+                            {
+                                emoji: '🖥️',
+                                scene: 'Working on PC',
+                                title: 'When an idea strikes at work',
+                                desc: 'Write on a desktop sticky note. It reaches your iPhone instantly.',
+                                color: '#EDD87A',
+                                topColor: '#D9C060',
+                                textColor: '#3A2C00',
+                                rotation: '-rotate-1',
+                            },
+                            {
+                                emoji: '📱',
+                                scene: 'On the go',
+                                title: 'Take notes on the go',
+                                desc: 'Jot down ideas on your iPhone commuting. They are stuck to your PC desktop when you get home.',
+                                color: '#A8C890',
+                                topColor: '#8BAF75',
+                                textColor: '#1E3A10',
+                                rotation: 'rotate-1',
+                            },
+                            {
+                                emoji: '📌',
+                                scene: 'Always visible',
+                                title: 'Keep them where you see them',
+                                desc: "Stays on your PC screen. Doesn't disappear. Lightweight. No need to open Notion.",
+                                color: '#9DC0D0',
+                                topColor: '#7AAFC0',
+                                textColor: '#102030',
+                                rotation: '-rotate-1',
+                            },
+                        ] : [
                             {
                                 emoji: '🖥️',
                                 scene: 'PC作業中',
@@ -473,7 +509,7 @@ export default function LandingPage() {
                                 textColor: '#102030',
                                 rotation: '-rotate-1',
                             },
-                        ].map((item) => (
+                        ]).map((item) => (
                             <div
                                 key={item.title}
                                 className={`${item.rotation} p-6 rounded-sm hover:rotate-0 transition-all duration-200 cursor-default`}
@@ -528,9 +564,9 @@ export default function LandingPage() {
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-10">
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
-                            まず1行、書いてみてください
+                            {isEn ? "Try writing just one line." : "まず1行、書いてみてください"}
                         </h2>
-                        <p className="text-[#8A7055]">ダウンロード不要。ここで体験できます。</p>
+                        <p className="text-[#8A7055]">{isEn ? "No download required. Try it here." : "ダウンロード不要。ここで体験できます。"}</p>
                     </div>
 
                     <div className="flex flex-col lg:flex-row items-start gap-8">
@@ -538,7 +574,7 @@ export default function LandingPage() {
                         <div className="w-full lg:w-80 flex-shrink-0">
                             <div className="bg-white/80 p-5 sm:p-6 rounded-2xl shadow-lg border border-[#C8B89A]/80 backdrop-blur-md">
                                 <label className="block text-sm font-bold text-[#4A6730] mb-3 flex items-center gap-2">
-                                    <span className="text-lg">💡</span> 思ったことを書く
+                                    <span className="text-lg">💡</span> {isEn ? "Write your thoughts" : "思ったことを書く"}
                                 </label>
                                 <div className="relative">
                                     <input
@@ -547,7 +583,7 @@ export default function LandingPage() {
                                         value={inputValue}
                                         onChange={(e) => setInputValue(e.target.value)}
                                         onKeyDown={handleDemoKeyDown}
-                                        placeholder="ここに書いてみてください..."
+                                        placeholder={isEn ? "Write something here..." : "ここに書いてみてください..."}
                                         className="w-full text-base py-4 pl-4 pr-28 bg-[#FDFBF7] border-2 border-[#8BAF7C] rounded-xl focus:outline-none focus:border-[#5C7A3E] focus:ring-4 focus:ring-[#8BAF7C]/30 transition-all font-medium text-[#2C1F0E] placeholder:text-[#A89878] shadow-inner"
                                         autoComplete="off"
                                     />
@@ -555,10 +591,10 @@ export default function LandingPage() {
                                         onClick={addDemoNote}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-[#5C7A3E] bg-[#F4F9F1] hover:bg-[#E8F0E4] px-3 py-2 rounded-lg border-2 border-[#8BAF7C]/60 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95"
                                     >
-                                        貼る ⏎
+                                        {isEn ? "Stick ⏎" : "貼る ⏎"}
                                     </button>
                                 </div>
-                                <p className="text-xs text-[#A89878] mt-2 text-right">Enterでも貼れます</p>
+                                <p className="text-xs text-[#A89878] mt-2 text-right">{isEn ? "Press Enter to stick" : "Enterでも貼れます"}</p>
                             </div>
                         </div>
 
@@ -595,7 +631,7 @@ export default function LandingPage() {
                                 <div className={`absolute inset-0 transition-opacity duration-700 ${demoNotes.length > 0 ? 'opacity-0 pointer-events-none' : 'opacity-100 flex items-center justify-center'}`}>
                                     <div className="text-center text-[#8A7055] px-4">
                                         <div className="text-4xl mb-3 animate-bounce">✨</div>
-                                        <p className="font-bold">左の入力欄に書いてEnter！</p>
+                                        <p className="font-bold">{isEn ? "✨ Write on the left and hit Enter!" : "左の入力欄に書いてEnter！"}</p>
                                     </div>
                                 </div>
                             </div>
@@ -626,26 +662,70 @@ export default function LandingPage() {
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-16">
                         <h2 className="text-4xl sm:text-5xl font-extrabold text-[#3A2C18] mb-8 leading-tight tracking-tight">
-                            大事なことは、
-                            <br />
-                            <span className="text-[#5C7A3E]">貼っておけばいい。</span>
+                            {isEn ? (
+                                <>
+                                    Keep important things<br />
+                                    <span className="text-[#5C7A3E]">within sight.</span>
+                                </>
+                            ) : (
+                                <>
+                                    大事なことは、<br />
+                                    <span className="text-[#5C7A3E]">貼っておけばいい。</span>
+                                </>
+                            )}
                         </h2>
 
                         {/* ポエム */}
                         <div className="inline-block text-left pl-6 py-2 border-l-4 border-[#8BAF7C]/70 mb-4">
                             <p className="text-lg sm:text-xl text-[#6A5540] mb-3 leading-relaxed font-medium">
-                                人は太古から、大事なことは、壁に描いてきた。
-                                <br />
-                                ラスコーから続く習慣を、デスクトップへ。
+                                {isEn ? (
+                                    <>
+                                        Since ancient times, people have drawn important things on walls.<br />
+                                        Bringing the habit from Lascaux to your desktop.
+                                    </>
+                                ) : (
+                                    <>
+                                        人は太古から、大事なことは、壁に描いてきた。<br />
+                                        ラスコーから続く習慣を、デスクトップへ。
+                                    </>
+                                )}
                             </p>
                             <p className="text-sm sm:text-base text-[#8A7055] font-medium">
-                                ── 本能は変わらない。形が変わった。
+                                {isEn ? "── Instincts haven't changed. The form has." : "── 本能は変わらない。形が変わった。"}
                             </p>
                         </div>
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-7">
-                        {[
+                        {(isEn ? [
+                            {
+                                color: '#EDD87A',
+                                topColor: '#D9C060',
+                                rotation: '-rotate-1',
+                                emoji: '🔗',
+                                title: 'Connect Win ↔ iPhone',
+                                text: 'Notes written on PC reach iPhone. Notes written on iPhone stay on PC. The experience you envied from Apple Notes.',
+                                textColor: '#3A2C00',
+                            },
+                            {
+                                color: '#A8C890',
+                                topColor: '#8BAF75',
+                                rotation: 'rotate-1',
+                                emoji: '⚡',
+                                title: 'Fast. Incredible Fast.',
+                                text: '0.5s startup. Auto-save. Built to never interrupt your thoughts. Stop waiting for Excel to open.',
+                                textColor: '#1E3A10',
+                            },
+                            {
+                                color: '#9DC0D0',
+                                topColor: '#7AAFC0',
+                                rotation: '-rotate-1',
+                                emoji: '🔒',
+                                title: 'Light. Safe. Local.',
+                                text: 'Data stays on your PC. No cloud needed. Works offline. Your privacy is yours.',
+                                textColor: '#102030',
+                            },
+                        ] : [
                             {
                                 color: '#EDD87A',
                                 topColor: '#D9C060',
@@ -673,7 +753,7 @@ export default function LandingPage() {
                                 text: 'データはPC上に保存。クラウド不要。オフライン動作。プライバシーはあなたのもの。',
                                 textColor: '#102030',
                             },
-                        ].map((item) => (
+                        ]).map((item) => (
                             <div
                                 key={item.title}
                                 className={`${item.rotation} p-6 rounded-sm hover:rotate-0 transition-all duration-200 cursor-default`}
@@ -705,14 +785,21 @@ export default function LandingPage() {
 
                     {/* サブ機能グリッド */}
                     <div className="grid sm:grid-cols-3 gap-4 mt-8">
-                        {[
+                        {(isEn ? [
+                            { emoji: '🖊️', text: 'Markdown Support' },
+                            { emoji: '🔍', text: 'Full-text Search (Regex)' },
+                            { emoji: '📊', text: 'Flowcharts with Mermaid' },
+                            { emoji: '🖼️', text: 'Paste Images from Clipboard' },
+                            { emoji: '📌', text: 'Pin to Top' },
+                            { emoji: '🏷️', text: 'Tags & Archive Management' },
+                        ] : [
                             { emoji: '🖊️', text: 'Markdown対応' },
                             { emoji: '🔍', text: '全文検索（正規表現）' },
                             { emoji: '📊', text: 'Mermaidでフローチャート' },
                             { emoji: '🖼️', text: 'クリップボードから画像貼り付け' },
                             { emoji: '📌', text: '最前面固定（ピン留め）' },
                             { emoji: '🏷️', text: 'タグ・アーカイブ管理' },
-                        ].map((item) => (
+                        ]).map((item) => (
                             <div
                                 key={item.text}
                                 className="flex items-center gap-3 px-4 py-3 rounded-sm border text-sm text-[#6A5540]"
@@ -744,9 +831,9 @@ export default function LandingPage() {
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-12">
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
-                            こんな感じです
+                            {isEn ? "Here's how it looks" : "こんな感じです"}
                         </h2>
-                        <p className="text-[#8A7055]">デスクトップに、ちゃんと馴染みます</p>
+                        <p className="text-[#8A7055]">{isEn ? "Blends perfectly with your desktop" : "デスクトップに、ちゃんと馴染みます"}</p>
                     </div>
 
                     <div className="relative">
@@ -795,9 +882,17 @@ export default function LandingPage() {
             <section className="py-16 px-6" style={{ backgroundColor: '#EDE4D3' }}>
                 <div className="max-w-4xl mx-auto text-center">
                     <h2 className="text-2xl font-bold text-[#2C1F0E] mb-8">
-                        はじめまして、付箋の精霊、オレノフです。
-                        <br />
-                        「安心してください。付いてますよ。」
+                        {isEn ? (
+                            <>
+                                Meet ORENOF, the Sticky Note Spirit.<br />
+                                "Don't worry, I'm sticking around."
+                            </>
+                        ) : (
+                            <>
+                                はじめまして、付箋の精霊、オレノフです。<br />
+                                「安心してください。付いてますよ。」
+                            </>
+                        )}
                     </h2>
                     <div className="relative inline-block">
                         {/* テープ装飾 */}
@@ -864,10 +959,10 @@ export default function LandingPage() {
                         />
 
                         <h2 className="text-2xl font-bold text-[#2C1F0E] mb-2">
-                            まず入れてみてください
+                            {isEn ? "Give it a try first" : "まず入れてみてください"}
                         </h2>
                         <p className="text-sm text-[#7A6200] mb-7">
-                            無料・インストール1分・データはローカル保存
+                            {isEn ? "Free · 1-min install · Local Storage" : "無料・インストール1分・データはローカル保存"}
                         </p>
                         <Link
                             href={downloadUrl}
@@ -880,11 +975,11 @@ export default function LandingPage() {
                             }}
                         >
                             <Download className="w-4 h-4" />
-                            ダウンロード（Windows）
+                            {isEn ? "Download for Windows" : "ダウンロード（Windows）"}
                         </Link>
                     </div>
 
-                    <p className="text-sm text-[#9A8468] mb-6">Windows 10/11 (64-bit) · 約100MB</p>
+                    <p className="text-sm text-[#9A8468] mb-6">{isEn ? "Windows 10/11 (64-bit) · ~100MB" : "Windows 10/11 (64-bit) · 約100MB"}</p>
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center text-sm">
                         <Link
@@ -892,14 +987,14 @@ export default function LandingPage() {
                             target="_blank"
                             className="text-[#5C7A3E] hover:text-[#3A5020] transition-colors"
                         >
-                            📖 GitHubを見る
+                            📖 {isEn ? "View on GitHub" : "GitHubを見る"}
                         </Link>
                         <Link
                             href="https://x.com/uchikiman"
                             target="_blank"
                             className="text-[#5C7A3E] hover:text-[#3A5020] transition-colors"
                         >
-                            💬 フィードバックを送る
+                            💬 {isEn ? "Send Feedback" : "フィードバックを送る"}
                         </Link>
                     </div>
                 </div>
@@ -925,7 +1020,7 @@ export default function LandingPage() {
                             target="_blank"
                             className="hover:text-[#5A4830] transition-colors"
                         >
-                            ドキュメント
+                            {isEn ? "Documentation" : "ドキュメント"}
                         </Link>
                     </div>
                 </div>
