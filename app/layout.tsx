@@ -72,7 +72,9 @@ export default function RootLayout({
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', 'G-MGPKF0MQH4');
+            gtag('config', 'G-MGPKF0MQH4', {
+              send_page_view: !new URLSearchParams(location.search).has('path')
+            });
           `}
         </Script>
         <Analytics /> 
