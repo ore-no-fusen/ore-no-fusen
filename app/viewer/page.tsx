@@ -844,7 +844,8 @@ export default function ViewerPage() {
       .then(([drafts, sentNotes]) => {
         const draftNotes: IphoneNote[] = drafts.map((d) => ({
           id: d.id, title: d.title, body: d.body,
-          status: 'draft' as const, created_at: d.created_at, tags: d.tags,
+          status: d.received_pc ? ('received_pc' as const) : ('draft' as const),
+          created_at: d.created_at, tags: d.tags,
         }));
         const merged = [...draftNotes, ...sentNotes]
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -1580,7 +1581,7 @@ export default function ViewerPage() {
                       key={note.id}
                       className="px-4 py-3 border-b border-gray-100 cursor-pointer active:bg-gray-50 flex items-center gap-2"
                       onClick={async () => {
-                        if (note.status === 'draft') {
+                        if (note.status === 'draft' || note.status === 'received_pc') {
                           const draft = await loadDraft(note.id).catch(() => null);
                           const blobMap = new Map<string, File>();
                           if (draft?.images && draft.images.length > 0) {
@@ -1607,10 +1608,16 @@ export default function ViewerPage() {
                             className={`text-sm font-semibold px-2 py-0.5 rounded ${
                               note.status === 'sent'
                                 ? 'bg-blue-500 text-white'
+                                : note.status === 'received_pc'
+                                ? 'bg-blue-100 text-blue-700'
                                 : 'bg-yellow-400 text-gray-900'
                             }`}
                           >
-                            {note.status === 'sent' ? t('pwa.statusSent') : t('pwa.statusDraft')}
+                            {note.status === 'sent'
+                              ? t('pwa.statusSent')
+                              : note.status === 'received_pc'
+                              ? 'PC受信'
+                              : t('pwa.statusDraft')}
                           </span>
                           <span className="text-sm text-gray-500">
                             {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
@@ -1620,7 +1627,7 @@ export default function ViewerPage() {
                           {(note.title || note.body).slice(0, 20) || '（空のメモ）'}
                         </p>
                       </div>
-                      {note.status === 'draft' && (
+                      {(note.status === 'draft' || note.status === 'received_pc') && (
                         <button
                           className="p-2 text-gray-400 hover:text-red-500 flex-shrink-0"
                           aria-label="削除"
@@ -1630,7 +1637,10 @@ export default function ViewerPage() {
                             try {
                               await deleteDraft(note.id);
                               const updated = await loadAllDrafts();
-                              setHistoryNotes(updated.map((d) => ({ ...d, status: 'draft' as const })));
+                              setHistoryNotes(updated.map((d) => ({
+                                ...d,
+                                status: d.received_pc ? ('received_pc' as const) : ('draft' as const),
+                              })));
                             } catch {
                               // エラー無視（即削除）
                             } finally {
@@ -1664,17 +1674,31 @@ export default function ViewerPage() {
             <SimpleNoteBody body={noteBody} />
             <button
               className="mt-6 px-4 py-2 bg-gray-200 text-gray-700 rounded"
-              onClick={() => {
+              onClick={async () => {
+                // 1. 全通知クローズ（タグ指定なし → 全件）
                 navigator.serviceWorker.ready.then((reg) => {
-                  reg.getNotifications({ tag: 'fusen' }).then((notifications) => {
-                    notifications.forEach((n) => n.close());
-                  });
+                  reg.getNotifications().then((ns) => ns.forEach((n) => n.close()));
                 });
-                setStep('write');
+                // 2. Drive の fusen_note.json 全 items に received_at を付けて書き戻す
+                if (accessToken) {
+                  try {
+                    const data = await downloadFromDrive(accessToken, 'fusen_note.json');
+                    const items = (Array.isArray(data?.items) ? data.items : []).map(
+                      (item: FusenNoteItem) => ({
+                        ...item,
+                        received_at: item.received_at ?? new Date().toISOString(),
+                      })
+                    );
+                    await uploadWithAutoRefresh(accessToken, 'fusen_note.json', { items });
+                  } catch { /* エラーは無視 */ }
+                }
+                // 3. list へ
+                setStep('list');
               }}
             >
-              {t('pwa.deleteNote')}
+              通知を消して一覧へ
             </button>
+            <p className="text-sm text-gray-400 mt-1">→ 一覧に履歴として残ります</p>
             {errorMessage && (
               <p className="text-red-600 text-sm mt-2">{errorMessage}</p>
             )}
