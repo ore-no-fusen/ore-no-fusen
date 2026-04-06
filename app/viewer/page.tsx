@@ -238,7 +238,7 @@ async function refreshAccessToken(): Promise<string | null> {
 
 type IphoneNote = {
   id: string;
-  status: 'sent' | 'draft';
+  status: 'sent' | 'draft' | 'received_pc';
   title: string;
   body: string;
   created_at: string;
@@ -332,6 +332,37 @@ function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: 
   );
 }
 
+type FusenNoteItem = {
+  id: string;
+  title: string;
+  body: string;
+  sent_at: string;
+  received_at: string | null;
+};
+
+async function downloadFusenNoteItems(token: string): Promise<FusenNoteItem[]> {
+  const data = await downloadFromDrive(token, 'fusen_note.json').catch(() =>
+    refreshAccessToken().then((t) => {
+      if (!t) throw new Error('session expired');
+      return downloadFromDrive(t, 'fusen_note.json');
+    })
+  );
+  if (Array.isArray(data?.items)) {
+    return data.items.filter((item: FusenNoteItem) => item.received_at == null);
+  }
+  // 旧スキーマ（単体オブジェクト）互換
+  if (data?.title || data?.body) {
+    return [{
+      id: data.sent_at ?? 'legacy',
+      title: data.title ?? '',
+      body: data.body ?? '',
+      sent_at: data.sent_at ?? '',
+      received_at: null,
+    }];
+  }
+  return [];
+}
+
 // ---------------------------------------------------------------------------
 // IndexedDB — {t('pwa.statusDraft')}（テキスト＋画像）をiPhone内にローカル保存
 // ---------------------------------------------------------------------------
@@ -343,6 +374,7 @@ type DraftRecord = {
   created_at: string;
   images: { fileName: string; blob: Blob }[];
   tags?: string[];
+  received_pc?: true;
 };
 
 function openDraftsDB(): Promise<IDBDatabase> {
@@ -707,10 +739,33 @@ export default function ViewerPage() {
       }
       setAccessToken(token);
       setIsLoading(true);
-      downloadWithAutoRefresh(token)
-        .then((data) => {
-          setNoteData(data);
-          setStep('note');
+      downloadFusenNoteItems(token)
+        .then(async (items) => {
+          // 全未読を IndexedDB に一括保存
+          for (const item of items) {
+            await saveDraft({
+              id: item.id,
+              title: item.title,
+              body: item.body,
+              created_at: item.sent_at,
+              images: [],
+              tags: [],
+              received_pc: true,
+            });
+          }
+          // タップされた note_id のノートを write に直接表示
+          const tappedId = new URLSearchParams(window.location.search).get('note');
+          const tapped = items.find((item) => item.id === tappedId) ?? items[0];
+          if (tapped) {
+            const titleLine = tapped.title ? `# ${tapped.title}\n\n` : '';
+            setPendingHydrate({
+              markdown: titleLine + tapped.body,
+              blobMap: new Map(),
+              draftId: tapped.id,
+              tags: [],
+            });
+          }
+          setStep('write');
         })
         .catch(() => {
           localStorage.removeItem('viewer_access_token');
@@ -727,10 +782,32 @@ export default function ViewerPage() {
       localStorage.removeItem('pending_note');
       setAccessToken(token);
       setIsLoading(true);
-      downloadWithAutoRefresh(token)
-        .then((data) => {
-          setNoteData(data);
-          setStep('note');
+      downloadFusenNoteItems(token)
+        .then(async (items) => {
+          // 全未読を IndexedDB に一括保存
+          for (const item of items) {
+            await saveDraft({
+              id: item.id,
+              title: item.title,
+              body: item.body,
+              created_at: item.sent_at,
+              images: [],
+              tags: [],
+              received_pc: true,
+            });
+          }
+          // pending_note の note_id のノートを write に直接表示
+          const tapped = items.find((item) => item.id === pendingNote) ?? items[0];
+          if (tapped) {
+            const titleLine = tapped.title ? `# ${tapped.title}\n\n` : '';
+            setPendingHydrate({
+              markdown: titleLine + tapped.body,
+              blobMap: new Map(),
+              draftId: tapped.id,
+              tags: [],
+            });
+          }
+          setStep('write');
         })
         .catch(() => {
           localStorage.removeItem('viewer_access_token');
