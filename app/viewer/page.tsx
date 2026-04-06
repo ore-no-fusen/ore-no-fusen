@@ -765,10 +765,6 @@ export default function ViewerPage() {
               tags: [],
             });
           }
-          // 通知を自動クローズ
-          navigator.serviceWorker.ready.then((reg) => {
-            reg.getNotifications().then((ns) => ns.forEach((n) => n.close()));
-          });
           setStep('write');
         })
         .catch(() => {
@@ -811,10 +807,6 @@ export default function ViewerPage() {
               tags: [],
             });
           }
-          // 通知を自動クローズ
-          navigator.serviceWorker.ready.then((reg) => {
-            reg.getNotifications().then((ns) => ns.forEach((n) => n.close()));
-          });
           setStep('write');
         })
         .catch(() => {
@@ -1639,6 +1631,24 @@ export default function ViewerPage() {
                           {(note.title || note.body).slice(0, 20) || '（空のメモ）'}
                         </p>
                       </div>
+                      {note.status === 'received_pc' && (
+                        <button
+                          className="p-2 text-gray-400 hover:text-blue-500 flex-shrink-0"
+                          aria-label="通知を削除"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const reg = await navigator.serviceWorker.ready;
+                              const ns = await reg.getNotifications({ tag: 'fusen-' + note.id });
+                              ns.forEach((n) => n.close());
+                            } catch {
+                              // エラー無視
+                            }
+                          }}
+                        >
+                          🔕
+                        </button>
+                      )}
                       {(note.status === 'draft' || note.status === 'received_pc') && (
                         <button
                           className="p-2 text-gray-400 hover:text-red-500 flex-shrink-0"
@@ -1648,6 +1658,12 @@ export default function ViewerPage() {
                             setIsLoading(true);
                             try {
                               await deleteDraft(note.id);
+                              // received_pc の場合は通知も閉じる
+                              if (note.status === 'received_pc') {
+                                const reg = await navigator.serviceWorker.ready;
+                                const ns = await reg.getNotifications({ tag: 'fusen-' + note.id });
+                                ns.forEach((n) => n.close());
+                              }
                               const updated = await loadAllDrafts();
                               setHistoryNotes(updated.map((d) => ({
                                 ...d,
