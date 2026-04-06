@@ -185,7 +185,7 @@ function OrchestratorContent() {
           await win.center();
           await win.show();
           await win.setFocus();
-        } else if (!isCheckingSetup) {
+        } else if (!isCheckingSetup && !showUpdateDialog) {
           await win.setSize(new LogicalSize(240, 300));
           await win.center();
         }
@@ -194,7 +194,7 @@ function OrchestratorContent() {
       }
     };
     resize();
-  }, [setupRequired, isSettingsOpen, isCheckingSetup]);
+  }, [setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog]);
 
   // 自動アップデート確認（メインウィンドウのみ・起動後に実行）
   useEffect(() => {
