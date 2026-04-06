@@ -6,11 +6,12 @@ self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
   const title = data.title || '俺の付箋';
   const body = data.body || '';
+  const id = data.id ?? 'unknown';
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      tag: 'fusen',
-      data: { title, body },
+      tag: 'fusen-' + id,
+      data: { id, title, body },
       icon: '/icon-192.png',
       badge: '/icon-192.png',
     })
@@ -18,16 +19,16 @@ self.addEventListener('push', (event) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
-  const { title, body } = event.notification.data || {};
+  const { id, title, body } = event.notification.data || {};
   event.notification.close();
-  const targetUrl = self.location.origin + '/viewer?note=1';
+  const targetUrl = self.location.origin + '/viewer?note=' + (id ?? 'unknown');
   event.waitUntil(
     Promise.all([
       // 通知を即復活（消す意思がないなら残り続ける）
       self.registration.showNotification(title, {
         body,
-        tag: 'fusen',
-        data: { title, body },
+        tag: 'fusen-' + (id ?? 'unknown'),
+        data: { id, title, body },
         icon: '/icon-192.png',
         badge: '/icon-192.png',
       }),
