@@ -765,6 +765,10 @@ export default function ViewerPage() {
               tags: [],
             });
           }
+          // 通知を自動クローズ
+          navigator.serviceWorker.ready.then((reg) => {
+            reg.getNotifications().then((ns) => ns.forEach((n) => n.close()));
+          });
           setStep('write');
         })
         .catch(() => {
@@ -807,6 +811,10 @@ export default function ViewerPage() {
               tags: [],
             });
           }
+          // 通知を自動クローズ
+          navigator.serviceWorker.ready.then((reg) => {
+            reg.getNotifications().then((ns) => ns.forEach((n) => n.close()));
+          });
           setStep('write');
         })
         .catch(() => {
