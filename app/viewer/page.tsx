@@ -1673,11 +1673,15 @@ export default function ViewerPage() {
                                 setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
                               } else {
                                 await deleteDraft(note.id);
-                                // received_pc の場合は通知も閉じる
                                 if (note.status === 'received_pc') {
+                                  // Drive の fusen_note.json からも削除
+                                  const driveData = await downloadFromDrive(accessToken!, 'fusen_note.json').catch(() => ({ items: [] }));
+                                  const updatedItems = (driveData.items ?? []).filter((item: { id: string }) => item.id !== note.id);
+                                  await uploadWithAutoRefresh(accessToken!, 'fusen_note.json', { items: updatedItems });
+                                  // 通知も閉じる
                                   const reg = await navigator.serviceWorker.ready;
-                                  const ns = await reg.getNotifications({ tag: 'fusen-' + note.id });
-                                  ns.forEach((n) => n.close());
+                                  reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
+                                  setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
                                 }
                                 const updatedDrafts = await loadAllDrafts();
                                 setHistoryNotes((prev) => {
