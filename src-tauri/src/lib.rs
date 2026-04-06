@@ -1262,6 +1262,7 @@ async fn fusen_send_to_iphone(
     };
     let note_dir = std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new("."));
     let sent_at = chrono::Utc::now().to_rfc3339();
+    let note_id = uuid::Uuid::new_v4().to_string();
 
     // body先頭行が#見出しならタイトルとして抽出し、body_contentから除去
     let first_line = body.lines().next().unwrap_or("");
@@ -1282,12 +1283,15 @@ async fn fusen_send_to_iphone(
     let body_push = strip_local_images(&body_content);
 
     let note_json_drive = serde_json::json!({
+        "id": note_id.clone(),
         "title": title,
         "body": body_rich,
         "tags": [],
-        "sent_at": sent_at
+        "sent_at": sent_at,
+        "received_at": null
     });
     let note_json_push = serde_json::json!({
+        "id": note_id,
         "title": title,
         "body": body_push,
         "tags": [],
@@ -1343,12 +1347,22 @@ async fn fusen_send_to_iphone(
         }
     }
 
-    // 4. Google Drive に fusen_note.json をアップロード（バックグラウンド）
+    // 4. Google Drive に fusen_note.json をアップロード（バックグラウンド・read-modify-write 配列追加）
     // トーストを遅らせないよう await しない。Viewer が開くまでに完了すれば十分。
     let bg_client = client.clone();
     let bg_token = access_token.clone();
     tokio::spawn(async move {
-        if let Err(e) = gdrive::upload_json(&bg_client, &bg_token, "fusen_note.json", &note_json_drive).await {
+        let mut items: Vec<serde_json::Value> = match gdrive::download_json(&bg_client, &bg_token, "fusen_note.json").await {
+            Ok(v) => v["items"].as_array().cloned().unwrap_or_default(),
+            Err(_) => vec![],
+        };
+        items.push(note_json_drive);
+        if items.len() > 20 {
+            let start = items.len() - 20;
+            items = items[start..].to_vec();
+        }
+        let data = serde_json::json!({ "items": items });
+        if let Err(e) = gdrive::upload_json(&bg_client, &bg_token, "fusen_note.json", &data).await {
             eprintln!("[iphone] Drive upload error: {}", e);
         }
     });
