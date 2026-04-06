@@ -129,7 +129,7 @@ Plans:
 **Goal:** PCからiPhoneに送ったノートを、通知を消した後も一覧から閲覧・編集できるようにする。複数通知は取り違えない。
 **Requirements**: P11-SCHEMA, P11-WORKER, P11-SAVE, P11-LIST, P11-DISMISS
 **Depends on:** Phase 10
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 - [ ] 11-01-PLAN.md — Wave 0: テストスタブ先行作成（P11-01〜04）
