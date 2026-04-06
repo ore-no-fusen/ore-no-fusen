@@ -1649,7 +1649,7 @@ export default function ViewerPage() {
                           🔕
                         </button>
                       )}
-                      {(note.status === 'draft' || note.status === 'received_pc') && (
+                      {(note.status === 'draft' || note.status === 'received_pc' || note.status === 'sent') && (
                         <button
                           className="p-2 text-gray-400 hover:text-red-500 flex-shrink-0"
                           aria-label="削除"
@@ -1657,18 +1657,30 @@ export default function ViewerPage() {
                             e.stopPropagation();
                             setIsLoading(true);
                             try {
-                              await deleteDraft(note.id);
-                              // received_pc の場合は通知も閉じる
-                              if (note.status === 'received_pc') {
-                                const reg = await navigator.serviceWorker.ready;
-                                const ns = await reg.getNotifications({ tag: 'fusen-' + note.id });
-                                ns.forEach((n) => n.close());
+                              if (note.status === 'sent') {
+                                // Drive の fusen_iphone_notes.json から削除
+                                const data = await downloadFromDrive(accessToken!, 'fusen_iphone_notes.json').catch(() => ({ notes: [] }));
+                                const updated = (data.notes ?? []).filter((n: IphoneNote) => n.id !== note.id);
+                                await uploadWithAutoRefresh(accessToken!, 'fusen_iphone_notes.json', { notes: updated });
+                                setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
+                              } else {
+                                await deleteDraft(note.id);
+                                // received_pc の場合は通知も閉じる
+                                if (note.status === 'received_pc') {
+                                  const reg = await navigator.serviceWorker.ready;
+                                  const ns = await reg.getNotifications({ tag: 'fusen-' + note.id });
+                                  ns.forEach((n) => n.close());
+                                }
+                                const updatedDrafts = await loadAllDrafts();
+                                setHistoryNotes((prev) => {
+                                  const sentNotes = prev.filter((n) => n.status === 'sent');
+                                  const draftNotes = updatedDrafts.map((d) => ({
+                                    ...d,
+                                    status: d.received_pc ? ('received_pc' as const) : ('draft' as const),
+                                  }));
+                                  return [...draftNotes, ...sentNotes].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 20);
+                                });
                               }
-                              const updated = await loadAllDrafts();
-                              setHistoryNotes(updated.map((d) => ({
-                                ...d,
-                                status: d.received_pc ? ('received_pc' as const) : ('draft' as const),
-                              })));
                             } catch {
                               // エラー無視（即削除）
                             } finally {
