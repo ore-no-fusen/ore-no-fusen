@@ -366,6 +366,7 @@ type DraftRecord = {
   images: { fileName: string; blob: Blob }[];
   tags?: string[];
   received_pc?: true;
+  sent_at?: string;
 };
 
 function openDraftsDB(): Promise<IDBDatabase> {
@@ -831,11 +832,6 @@ export default function ViewerPage() {
     if (step !== 'list') return;
     setIsHistoryLoading(true);
     const draftsPromise = loadAllDrafts().catch(() => [] as DraftRecord[]);
-    const sentPromise = accessToken
-      ? downloadFromDrive(accessToken, 'fusen_iphone_notes.json')
-          .then((data) => (data.notes ?? []) as IphoneNote[])
-          .catch(() => [] as IphoneNote[])
-      : Promise.resolve([] as IphoneNote[]);
     // アクティブな通知 ID をサービスワーカー経由で取得
     navigator.serviceWorker.ready.then((reg) => {
       const channel = new MessageChannel();
@@ -843,20 +839,20 @@ export default function ViewerPage() {
       reg.active?.postMessage({ type: 'GET_NOTIFICATIONS' }, [channel.port2]);
     }).catch(() => {});
 
-    Promise.all([draftsPromise, sentPromise])
-      .then(([drafts, sentNotes]) => {
+    draftsPromise
+      .then((drafts) => {
         const draftNotes: IphoneNote[] = drafts.map((d) => ({
           id: d.id, title: d.title, body: d.body,
-          status: d.received_pc ? ('received_pc' as const) : ('draft' as const),
+          status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
           created_at: d.created_at, tags: d.tags,
         }));
-        const merged = [...draftNotes, ...sentNotes]
+        const merged = draftNotes
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 20);
         setHistoryNotes(merged);
       })
       .finally(() => setIsHistoryLoading(false));
-  }, [step, accessToken]);
+  }, [step]);
 
   // pendingHydrate: list→write 遷移後に editorRef がマウントされてから hydrateEditor を呼ぶ
   useEffect(() => {
@@ -1314,9 +1310,6 @@ export default function ViewerPage() {
                   setShowTagBar(false);
                   setTagInput('');
                   setCurrentDraftId(null);
-                  if (capturedDraftId) {
-                    deleteDraft(capturedDraftId).catch(() => {});
-                  }
                   // バックグラウンド送信開始
                   setIsSendingInBackground(true);
                   setBackgroundSendError(null);
@@ -1393,7 +1386,16 @@ export default function ViewerPage() {
                       };
                       const updatedItems = [...processed, ...pending, newItem];
                       await uploadWithAutoRefresh(token, 'fusen_from_iphone.json', { items: updatedItems });
-                      // await saveToHistory(token, note);
+                      // 送信済みとして IndexedDB に保存（sent_at をセット）
+                      await saveDraft({
+                        id: capturedDraftId ?? noteId,
+                        title,
+                        body: fullBody,
+                        created_at: sentAt,
+                        images: [],
+                        tags: capturedTags,
+                        sent_at: sentAt,
+                      });
                       setIsSendingInBackground(false);
                       setBackgroundSendSuccess(true);
                       setTimeout(() => setBackgroundSendSuccess(false), 3000);
@@ -1655,10 +1657,7 @@ export default function ViewerPage() {
                             setIsLoading(true);
                             try {
                               if (note.status === 'sent') {
-                                // Drive の fusen_iphone_notes.json から削除
-                                const data = await downloadFromDrive(accessToken!, 'fusen_iphone_notes.json').catch(() => ({ notes: [] }));
-                                const updated = (data.notes ?? []).filter((n: IphoneNote) => n.id !== note.id);
-                                await uploadWithAutoRefresh(accessToken!, 'fusen_iphone_notes.json', { notes: updated });
+                                await deleteDraft(note.id);
                                 setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
                               } else {
                                 await deleteDraft(note.id);
@@ -1673,14 +1672,16 @@ export default function ViewerPage() {
                                   setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
                                 }
                                 const updatedDrafts = await loadAllDrafts();
-                                setHistoryNotes((prev) => {
-                                  const sentNotes = prev.filter((n) => n.status === 'sent');
-                                  const draftNotes = updatedDrafts.map((d) => ({
-                                    ...d,
-                                    status: d.received_pc ? ('received_pc' as const) : ('draft' as const),
-                                  }));
-                                  return [...draftNotes, ...sentNotes].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 20);
-                                });
+                                setHistoryNotes(
+                                  updatedDrafts
+                                    .map((d) => ({
+                                      id: d.id, title: d.title, body: d.body,
+                                      status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
+                                      created_at: d.created_at, tags: d.tags,
+                                    }))
+                                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                                    .slice(0, 20)
+                                );
                               }
                             } catch {
                               // エラー無視（即削除）
