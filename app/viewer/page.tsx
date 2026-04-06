@@ -1639,8 +1639,7 @@ export default function ViewerPage() {
                             e.stopPropagation();
                             try {
                               const reg = await navigator.serviceWorker.ready;
-                              const ns = await reg.getNotifications({ tag: 'fusen-' + note.id });
-                              ns.forEach((n) => n.close());
+                              reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
                             } catch {
                               // エラー無視
                             }

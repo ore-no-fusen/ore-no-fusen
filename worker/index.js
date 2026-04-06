@@ -18,6 +18,13 @@ self.addEventListener('push', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'CLOSE_NOTIFICATION') {
+    self.registration.getNotifications({ tag: event.data.tag })
+      .then((ns) => ns.forEach((n) => n.close()));
+  }
+});
+
 self.addEventListener('notificationclick', (event) => {
   const { id, title, body } = event.notification.data || {};
   event.notification.close();
