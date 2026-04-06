@@ -644,6 +644,7 @@ export default function ViewerPage() {
   const [backgroundSendError, setBackgroundSendError] = useState<string | null>(null);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [activeNotifIds, setActiveNotifIds] = useState<string[]>([]);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const [mermaidCode, setMermaidCode] = useState('');
   const [mermaidPreviewSvg, setMermaidPreviewSvg] = useState<string | null>(null);
@@ -844,6 +845,13 @@ export default function ViewerPage() {
           .then((data) => (data.notes ?? []) as IphoneNote[])
           .catch(() => [] as IphoneNote[])
       : Promise.resolve([] as IphoneNote[]);
+    // アクティブな通知 ID をサービスワーカー経由で取得
+    navigator.serviceWorker.ready.then((reg) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (e) => setActiveNotifIds(e.data.ids ?? []);
+      reg.active?.postMessage({ type: 'GET_NOTIFICATIONS' }, [channel.port2]);
+    }).catch(() => {});
+
     Promise.all([draftsPromise, sentPromise])
       .then(([drafts, sentNotes]) => {
         const draftNotes: IphoneNote[] = drafts.map((d) => ({
@@ -1631,7 +1639,7 @@ export default function ViewerPage() {
                           {(note.title || note.body).slice(0, 20) || '（空のメモ）'}
                         </p>
                       </div>
-                      {note.status === 'received_pc' && (
+                      {note.status === 'received_pc' && activeNotifIds.includes(note.id) && (
                         <button
                           className="p-2 text-gray-400 hover:text-blue-500 flex-shrink-0"
                           aria-label="通知を削除"
@@ -1640,6 +1648,7 @@ export default function ViewerPage() {
                             try {
                               const reg = await navigator.serviceWorker.ready;
                               reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
+                              setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
                             } catch {
                               // エラー無視
                             }
