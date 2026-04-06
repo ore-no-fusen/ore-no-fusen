@@ -273,3 +273,28 @@ describe('REND-01: Mermaidレンダリング', () => {
     expect(container.querySelectorAll('div').length).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ============================================================
+// Phase 11: PC→iPhone受信履歴保存
+// ============================================================
+
+describe('P11-01: DraftRecord received_pc フラグ', () => {
+  it.todo('received_pc: true を持つ DraftRecord を saveDraft で保存できる');
+  it.todo('保存した DraftRecord を loadAllDrafts で取得すると received_pc が true になっている');
+});
+
+describe('P11-02: IphoneNote.status received_pc マッピング', () => {
+  it.todo('received_pc: true の DraftRecord は IphoneNote.status が received_pc になる');
+  it.todo('received_pc が undefined の DraftRecord は IphoneNote.status が draft になる');
+});
+
+describe('P11-03: fusen_note.json 配列スキーマ互換', () => {
+  it.todo('items 配列スキーマで received_at が null の件のみフィルタして返す');
+  it.todo('旧スキーマ（title/body 直接）は 1 件の配列として互換処理する');
+  it.todo('items が空配列の場合は空配列を返す');
+});
+
+describe('P11-04: worker 通知タグ fusen-<id>', () => {
+  it.todo('push イベントで data.id が存在する場合 tag が fusen-<id> になる');
+  it.todo('push イベントで data.id が undefined の場合 tag が fusen-unknown になる');
+});
