@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: iPhone→PC送信
 status: ready_to_plan
-stopped_at: Completed 11-pc-iphone-02-PLAN.md
-last_updated: "2026-04-06T12:46:10.253Z"
+stopped_at: Completed 11-pc-iphone-03-PLAN.md
+last_updated: "2026-04-06T16:17:45.024Z"
 last_activity: 2026-03-29 — v3.0 ロードマップ作成完了
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 21
-  completed_plans: 19
-  percent: 90
+  completed_plans: 20
+  percent: 95
 ---
 
 ---
@@ -93,7 +93,7 @@ Status: Ready to plan
 Last activity: 2026-03-29 — v3.0 ロードマップ作成完了
 
 **Progress:**
-[█████████░] 90%
+[██████████] 95%
 Phase 6 [          ] 0%
 Phase 7 [          ] 0%
 Overall [          ] 0%
@@ -135,6 +135,7 @@ Overall [          ] 0%
 | Phase 10-pc-notes-to-list P02 | 15 | 2 tasks | 2 files |
 | Phase 11-pc-iphone P01 | 5 | 1 tasks | 1 files |
 | Phase 11-pc-iphone P02 | 10 | 2 tasks | 2 files |
+| Phase 11-pc-iphone P03 | 382 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -209,6 +210,9 @@ Overall [          ] 0%
 - [Phase 11-pc-iphone]: Wave 0 パターン: Nyquist ルール準拠で Phase 11 全要件(P11-01~04)のテストスタブを実装前に定義
 - [Phase 11-pc-iphone]: fusen_note.json を { items: [...] } 配列構造に移行。旧形式は空配列にフォールバック（後方互換）
 - [Phase 11-pc-iphone]: 通知タグを 'fusen-<uuid>' にし複数ノートを独立表示可能にする（worker/index.js）
+- [Phase 11-pc-iphone]: downloadFusenNoteItems は items 配列スキーマと旧スキーマ（単体 title/body）の両方に対応
+- [Phase 11-pc-iphone]: 通知タップ後は note ステップを経由せず write ステップに直接遷移（pendingHydrate パターン）
+- [Phase 11-pc-iphone]: 「通知を消して一覧へ」ボタンで received_at を全 items に書き戻して Drive を更新する
 
 ### Roadmap Evolution
 
@@ -226,8 +230,8 @@ Overall [          ] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-06T12:46:10.247Z
-Stopped at: Completed 11-pc-iphone-02-PLAN.md
+Last session: 2026-04-06T16:17:45.017Z
+Stopped at: Completed 11-pc-iphone-03-PLAN.md
 Resume file: None
 
 ### Quick Tasks Completed
