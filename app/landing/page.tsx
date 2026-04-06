@@ -885,7 +885,7 @@ export default function LandingPage() {
                         {isEn ? (
                             <>
                                 Meet ORENOF, the Sticky Note Spirit.<br />
-                                "Don't worry, I'm sticking around."
+                                &quot;Don&apos;t worry, I&apos;m sticking around.&quot;
                             </>
                         ) : (
                             <>
