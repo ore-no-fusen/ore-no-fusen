@@ -124,6 +124,29 @@ Plans:
 - [x] 10-02-PLAN.md — Wave 1: タグサジェストUI + 永続化（REQ-TAG-*）（並列実行可）
 - [x] 10-03-PLAN.md — Wave 2: 送信高速化（キャッシュ・並列化・ノンブロッキング）（REQ-FOLDER-CACHE, REQ-SEND-PARALLEL, REQ-SEND-NONBLOCKING）
 
+### Phase 11: PC→iPhone受信履歴保存
+
+**Goal:** PCからiPhoneに送ったノートを、通知を消した後も一覧から閲覧・編集できるようにする。複数通知は取り違えない。
+**Requirements**: P11-SCHEMA, P11-WORKER, P11-SAVE, P11-LIST, P11-DISMISS
+**Depends on:** Phase 10
+**Plans:** 4 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Wave 0: テストスタブ先行作成（P11-01〜04）
+- [ ] 11-02-PLAN.md — Wave 1: Rust 配列スキーマ化 + worker.js 通知タグ変更（P11-SCHEMA, P11-WORKER）
+- [ ] 11-03-PLAN.md — Wave 1: JS 受信フロー + 一覧表示 + ボタン変更（P11-SAVE, P11-LIST, P11-DISMISS）
+- [ ] 11-04-PLAN.md — Wave 2: 統合検証（checkpoint:human-verify）
+
+### Phase 12: チェックボックスTODO一覧インライントグル
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 12 to break down)
+
 ---
 
 ## Progress
