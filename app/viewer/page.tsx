@@ -821,6 +821,10 @@ export default function ViewerPage() {
     // 通常フロー（セットアップ）
     if (token) {
       setAccessToken(token);
+      const resetPush = new URLSearchParams(window.location.search).get('reset_push');
+      if (resetPush === '1') {
+        localStorage.removeItem('viewer_push_done');
+      }
       if (localStorage.getItem('viewer_push_done') === 'true') {
         setStep('write');
       } else {
