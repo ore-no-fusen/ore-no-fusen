@@ -287,3 +287,113 @@ erDiagram
     NOTE_DATA }|..|{ TAG : "配列としてタグを持つ"
     NOTE_DATA ||--|| HDD : "1つのファイル(.md)として保存"
 ```
+
+---
+
+## Google Drive ファイル仕様
+
+Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕様。
+**Drive はすべて中継所**であり、大本データは PC ローカル（Markdown ファイル）または iPhone ローカル（IndexedDB）にある。Drive にしか存在しないデータはない。
+
+### ファイル一覧
+
+| ファイル名 | 役割 | 書き込み側 | 読み込み側 |
+|---|---|---|---|
+| `notes_to_iphone.json` | PC→iPhone 送信キュー | PC アプリ | iPhone viewer |
+| `notes_from_iphone.json` | iPhone→PC 送信キュー | iPhone viewer | PC アプリ（30秒ポーリング） |
+| `push_devices.json` | iPhone のプッシュ通知デバイス登録情報 | iPhone viewer（初回セットアップ時） | PC アプリ |
+| `push_keys.json` | Web Push 用 VAPID 鍵ペア | PC アプリ（初回起動時に生成） | PC アプリ（別PCへの引き継ぎ用） |
+
+---
+
+### notes_to_iphone.json
+
+PC から iPhone に送った付箋データのキュー。
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid-v4",
+      "title": "付箋のタイトル（frontmatter の title）",
+      "body": "本文（ローカル画像は base64 data URI に変換済み）",
+      "sent_at": "2026-04-08T10:00:00Z",
+      "received_at": "2026-04-08T10:01:00Z"
+    }
+  ]
+}
+```
+
+- `received_at`: iPhone viewer が受信した時刻。未受信アイテムは `received_at` なし
+- ローカル画像: iPhone で表示できるよう base64 data URI に埋め込み済み
+- **件数制限**: 最新 20 件のみ保持。超えた場合は古い順に削除（PC アプリ側で制御）
+- **削除タイミング**: iPhone viewer でアイテムを「削除」すると Drive からも削除される
+
+---
+
+### notes_from_iphone.json
+
+iPhone から PC に送った付箋データのキュー。
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid-v4",
+      "title": "タイトル",
+      "body": "本文（画像参照は fusen_img_*.jpg 形式）",
+      "sent_at": "2026-04-08T10:00:00Z",
+      "received_at": "2026-04-08T10:01:00Z",
+      "tags": ["タグ1", "タグ2"]
+    }
+  ]
+}
+```
+
+- `received_at`: PC アプリが受信した時刻。未受信アイテムは `received_at` なし
+- 画像: Drive に別途アップロードされた `fusen_img_*.jpg` を参照。PC 受信後にローカル保存し Drive から削除される
+- **件数制限**: なし（iPhone viewer 側で管理）
+- **旧スキーマ互換**: `{ "id": "...", "title": "...", "body": "..." }` の単一オブジェクト形式も読める
+
+---
+
+### push_devices.json
+
+iPhone の Web Push サブスクリプション情報。複数デバイス対応。
+
+```json
+{
+  "devices": [
+    {
+      "endpoint": "https://api.push.apple.com/3/device/...",
+      "keys": {
+        "p256dh": "base64url...",
+        "auth": "base64url..."
+      },
+      "created_at": "2026-04-08T10:00:00Z"
+    }
+  ]
+}
+```
+
+- **件数制限**: なし（デバイスを追加するたびに upsert）
+- **旧スキーマ互換**: `{ "endpoint": "...", "keys": {...} }` の単一デバイス形式も読める
+
+---
+
+### push_keys.json
+
+VAPID（Voluntary Application Server Identification）鍵ペア。Web Push の送信元認証に使用。
+
+```json
+{
+  "public_key_b64url": "base64url...",
+  "private_key_b64url": "base64url...",
+  "subject": "mailto:ore-no-fusen@example.com"
+}
+```
+
+- PC ローカル（`%LOCALAPPDATA%/ore-no-fusen/push_keys.json`）にも同じ内容を保存
+- Drive は別 PC への引き継ぎ用バックアップとして機能
+- **再生成**: ローカルに鍵がない PC は Drive からダウンロード。Drive にもなければ新規生成して Drive にアップ
+- 鍵が変わると iPhone の `push_devices.json` が無効になるため、基本的に再生成しない
