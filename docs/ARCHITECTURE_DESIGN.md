@@ -293,22 +293,25 @@ erDiagram
 ## Google Drive ファイル仕様
 
 Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕様。
-**Drive はすべて中継所**であり、大本データは PC ローカル（Markdown ファイル）または iPhone ローカル（IndexedDB）にある。Drive にしか存在しないデータはない。
 
-### ファイル一覧
-
-| ファイル名 | 役割 | 書き込み側 | 読み込み側 |
-|---|---|---|---|
-| `notes_to_iphone.json` | PC→iPhone 送信キュー | PC アプリ | iPhone viewer |
-| `notes_from_iphone.json` | iPhone→PC 送信キュー | iPhone viewer | PC アプリ（30秒ポーリング） |
-| `push_devices.json` | iPhone のプッシュ通知デバイス登録情報 | iPhone viewer（初回セットアップ時） | PC アプリ |
-| `push_keys.json` | Web Push 用 VAPID 鍵ペア | PC アプリ（初回起動時に生成） | PC アプリ（別PCへの引き継ぎ用） |
+**Drive はすべて中継所。** 大本データは PC ローカル（Markdown ファイル）または iPhone ローカル（IndexedDB）にある。Drive にしか存在しないデータはない。全ファイルを削除しても本体データは失われない。
 
 ---
 
-### notes_to_iphone.json
+### ライフサイクル一覧
 
-PC から iPhone に送った付箋データのキュー。
+| ファイル名 | 何のデータか | いつ作られるか | どこで作られるか | いつ消されるか | 消えた場合の影響 |
+|---|---|---|---|---|---|
+| `notes_to_iphone.json` | PC→iPhone 送信キュー（最新20件） | PC から「iPhoneに送る」を実行したとき | PC アプリ | iPhone viewer でアイテムを削除したとき（アイテム単位） | 次の「iPhoneに送る」実行時に再作成。未受信データは消える |
+| `notes_from_iphone.json` | iPhone→PC 送信キュー | iPhone viewer で「PCに送る」を実行したとき | iPhone viewer | （自動削除なし・アイテムに received_at が付くのみ） | 次の「PCに送る」実行時に再作成。未受信データは消える |
+| `push_devices.json` | iPhone のプッシュ通知デバイス登録情報 | iPhone viewer で初回セットアップを完了したとき | iPhone viewer | （自動削除なし） | PC からプッシュ通知が届かなくなる。iPhone で再セットアップすれば復元 |
+| `push_keys.json` | VAPID 鍵ペア（プッシュ通知の送信元認証鍵） | PC アプリが Google 連携を設定したとき（初回のみ） | PC アプリ | （自動削除なし） | PC 再起動時に新規生成される。**鍵が変わると push_devices.json が無効になる**ため iPhone で再セットアップが必要 |
+
+---
+
+### データ構造
+
+#### notes_to_iphone.json
 
 ```json
 {
@@ -324,16 +327,11 @@ PC から iPhone に送った付箋データのキュー。
 }
 ```
 
-- `received_at`: iPhone viewer が受信した時刻。未受信アイテムは `received_at` なし
-- ローカル画像: iPhone で表示できるよう base64 data URI に埋め込み済み
-- **件数制限**: 最新 20 件のみ保持。超えた場合は古い順に削除（PC アプリ側で制御）
-- **削除タイミング**: iPhone viewer でアイテムを「削除」すると Drive からも削除される
+- `received_at` は iPhone viewer が受信した時刻。未受信アイテムは `received_at` なし
+- ローカル画像は iPhone で表示できるよう base64 data URI に埋め込み済み
+- 件数制限: 最新 20 件のみ保持（PC アプリが送信時に超過分を削除）
 
----
-
-### notes_from_iphone.json
-
-iPhone から PC に送った付箋データのキュー。
+#### notes_from_iphone.json
 
 ```json
 {
@@ -350,16 +348,11 @@ iPhone から PC に送った付箋データのキュー。
 }
 ```
 
-- `received_at`: PC アプリが受信した時刻。未受信アイテムは `received_at` なし
-- 画像: Drive に別途アップロードされた `fusen_img_*.jpg` を参照。PC 受信後にローカル保存し Drive から削除される
-- **件数制限**: なし（iPhone viewer 側で管理）
-- **旧スキーマ互換**: `{ "id": "...", "title": "...", "body": "..." }` の単一オブジェクト形式も読める
+- `received_at` は PC アプリが受信した時刻。未受信アイテムは `received_at` なし
+- 画像は Drive に別途アップロードされた `fusen_img_*.jpg` を参照。PC 受信後にローカル保存し Drive から削除
+- 旧スキーマ互換: `{ "id": "...", "title": "...", "body": "..." }` の単一オブジェクト形式も読める
 
----
-
-### push_devices.json
-
-iPhone の Web Push サブスクリプション情報。複数デバイス対応。
+#### push_devices.json
 
 ```json
 {
@@ -376,19 +369,27 @@ iPhone の Web Push サブスクリプション情報。複数デバイス対応
 }
 ```
 
-- **件数制限**: なし（デバイスを追加するたびに upsert）
-- **旧スキーマ互換**: `{ "endpoint": "...", "keys": {...} }` の単一デバイス形式も読める
+- デバイスを追加するたびに upsert（件数制限なし）
+- 旧スキーマ互換: `{ "endpoint": "...", "keys": {...} }` の単一デバイス形式も読める
+
+#### push_keys.json
+
+```json
+{
+  "public_key_b64url": "base64url...",
+  "private_key_b64url": "base64url...",
+  "subject": "mailto:ore-no-fusen@example.com"
+}
+```
+
+- PC ローカル（`%LOCALAPPDATA%/ore-no-fusen/push_keys.json`）にも同じ内容を保存
+- Drive は別 PC への引き継ぎ用バックアップ。ローカルに鍵がない PC は Drive からダウンロードする
 
 ---
 
-### push_keys.json
+### 重要: VAPID 鍵はユーザーごとに異なる（開発者の鍵ではない）
 
-VAPID（Voluntary Application Server Identification）鍵ペア。Web Push の送信元認証に使用。
-
-#### 重要: VAPID 鍵はユーザーごとに異なる（開発者の鍵ではない）
-
-一般的な Web サービスでは VAPID 鍵は開発者が1サービスに1セット持ち、全ユーザーへの通知に使う。
-**俺の付箋はこの設計を採用していない。**
+一般的な Web サービスでは VAPID 鍵は開発者が1サービスに1セット持つ。**俺の付箋はこの設計を採用していない。**
 
 | | 一般的な Web サービス | 俺の付箋 |
 |---|---|---|
@@ -400,16 +401,3 @@ VAPID（Voluntary Application Server Identification）鍵ペア。Web Push の�
 - 中央サーバーが存在しないため、開発者はユーザーの通知内容を知ることができない
 - ユーザーのデータはユーザー自身の Google Drive のみを経由する
 - 開発者のサーバー障害や運用停止がユーザーの通知機能に影響しない
-
-```json
-{
-  "public_key_b64url": "base64url...",
-  "private_key_b64url": "base64url...",
-  "subject": "mailto:ore-no-fusen@example.com"
-}
-```
-
-- PC ローカル（`%LOCALAPPDATA%/ore-no-fusen/push_keys.json`）にも同じ内容を保存
-- Drive は別 PC への引き継ぎ用バックアップとして機能
-- **再生成**: ローカルに鍵がない PC は Drive からダウンロード。Drive にもなければ新規生成して Drive にアップ
-- 鍵が変わると iPhone の `push_devices.json` が無効になるため、基本的に再生成しない
