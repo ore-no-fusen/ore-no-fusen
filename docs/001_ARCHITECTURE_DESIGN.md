@@ -1,7 +1,7 @@
 # 俺の付箋 - アーキテクチャ・設計仕様 (Architecture & Design Specifications)
 
 本ドキュメントは、アプリケーションの主要な動作フローやシステム間連携のブロック図・シーケンス図をまとめた設計資料です。
-各機能の詳細な要求仕様については `俺の付箋_要求仕様_v2.0.md` を参照してください。
+各機能の詳細な要求仕様については `007_REQUIREMENTS_v2.0.md` を参照してください。
 
 ---
 
@@ -21,6 +21,10 @@
   - [5.1 ライフサイクル一覧](#51-ライフサイクル一覧)
   - [5.2 データ構造](#52-データ構造)
   - [5.3 VAPID 鍵設計について](#53-vapid-鍵設計について)
+- [6. iPhone連携フロー](#6-iphone連携フロー)
+  - [6.1 PC→iPhone 送信フロー（v2.0）](#61-pciphone-送信フローv20)
+  - [6.2 iPhone→PC 送信フロー（v3.0）](#62-iphonepc-送信フローv30)
+  - [6.3 viewer 画面遷移](#63-viewer-画面遷移)
 
 ---
 
@@ -29,6 +33,7 @@
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-04-08 | 初版。Google Drive ファイル仕様・ライフサイクル表・VAPID鍵設計意図を含む。以降はこのファイルを唯一の設計書として更新する |
+| 1.1 | 2026-04-08 | セクション6追加。iPhone連携フロー（PC→iPhone v2.0 / iPhone→PC v3.0 / viewer画面遷移）を iphone_01〜04 HTML設計書よりマージ |
 
 ---
 
@@ -428,3 +433,294 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 - 中央サーバーが存在しないため、開発者はユーザーの通知内容を知ることができない
 - ユーザーのデータはユーザー自身の Google Drive のみを経由する
 - 開発者のサーバー障害や運用停止がユーザーの通知機能に影響しない
+
+---
+
+## 6. iPhone連携フロー
+
+### 6.1 PC→iPhone 送信フロー（v2.0）
+
+PC 側から付箋を送り、iPhone のロック画面に通知として届けるまでの全体シーケンス。
+
+#### A. 初回セットアップ（Safari で1回だけ）
+
+```mermaid
+sequenceDiagram
+    participant U as ユーザー
+    participant Safari as iPhone Safari
+    participant PWA as PWA /viewer
+    participant SW as Service Worker
+    participant API as Next.js API
+    participant Drive as Google Drive
+
+    U->>Safari: ①URLを入力してアクセス
+    Safari->>PWA: ②ページ読み込み
+    PWA-->>U: ③「ホーム画面に追加」バナー表示
+    U->>U: ④Safari共有→ホーム画面に追加
+    U->>PWA: ⑤ホーム画面アイコンからPWA起動
+
+    PWA->>SW: ⑥register('/sw.js')
+    SW-->>PWA: ⑦ready (swReady=true)
+    PWA-->>U: ⑧「Googleでログイン」ボタン表示
+
+    U->>PWA: ⑨ログインボタンタップ
+    PWA->>PWA: ⑩PKCE生成・verifierをlocalStorageに保存
+    PWA->>Safari: ⑪Google OAuth画面へリダイレクト
+    U->>Safari: ⑫Googleアカウントを許可
+    Safari->>PWA: ⑬/viewer?code=xxx にリダイレクト
+
+    PWA->>API: ⑭POST /api/auth/token
+    API->>API: ⑮Google token endpoint（client_secret使用）
+    API-->>PWA: ⑯access_token
+    PWA->>PWA: ⑰access_tokenをlocalStorageに保存
+    PWA-->>U: ⑱「通知を許可する」ボタン表示
+
+    U->>PWA: ⑲通知を許可するボタンタップ
+    PWA->>U: ⑳「通知を許可しますか？」プロンプト
+    U->>PWA: ㉑許可
+    PWA->>SW: ㉒pushManager.subscribe()
+    SW-->>PWA: ㉓PushSubscription(endpoint,p256dh,auth)
+    PWA->>Drive: ㉔fusen_push_config.json を保存
+    PWA-->>U: ㉕設定完了！PCから送信できます
+```
+
+#### B. PC側の準備（Tauriアプリ起動時）
+
+```mermaid
+sequenceDiagram
+    participant PC as PC Tauri
+    participant Drive as Google Drive
+
+    PC->>Drive: ㉖fusen_push_config.json をポーリング
+    Drive-->>PC: ㉗endpoint + p256dh + auth
+    PC->>PC: ㉘AppStateにキャッシュ
+```
+
+#### C. 付箋を送る（日常利用）
+
+```mermaid
+sequenceDiagram
+    participant U as ユーザー
+    participant PC as PC Tauri
+    participant Drive as Google Drive
+    participant API as Next.js API
+    participant APNs as APNs
+    participant PWA as PWA /viewer
+
+    U->>PC: ㉙付箋を右クリック→「iPhoneに送る」
+    PC->>Drive: ㉚fusen_note.json を保存
+    PC->>API: ㉛POST /api/push
+    API->>APNs: ㉜Web Push（VAPID認証）
+    APNs->>U: ㉝ロック画面に通知
+
+    U->>U: ㉞通知をタップ
+    U->>PWA: ㉟PWA起動（?note=xxx）
+    PWA->>PWA: ㊱localStorageからaccess_token取得
+    PWA->>Drive: ㊲fusen_note.json をダウンロード
+    Drive-->>PWA: ㊳title と body
+    PWA-->>U: ㊴メモ内容を全画面表示
+```
+
+---
+
+### 6.2 iPhone→PC 送信フロー（v3.0）
+
+iPhone viewer で書いた内容を Google Drive 経由で PC に送り、自動的に新規付箋として開くまでのフロー。全要件10件・Phase 6〜7 完了済み（2026-03-31）。
+
+#### 要件一覧
+
+| ID | カテゴリ | 要件 | Phase |
+|---|---|---|---|
+| SEND-01 | 送信 | iPhoneでテキストを入力して「PCに送る」で付箋をDriveに送信できる | 6 |
+| SEND-02 | 送信 | 「iPhoneに置いておく」で下書きとしてiPhone履歴に保存できる（PCには送らない） | 6 |
+| SEND-03 | 送信 | 画像追加ボタンでカメラ/ライブラリから写真を付箋に添付できる（Driveアップロード・カーソル位置に挿入） | 6 |
+| SEND-04 | 送信 | Mermaidボタンでコード入力欄+プレビューを開き、本文に ` ```mermaid ` ブロックとして挿入できる | 6 |
+| HIST-01 | 履歴 | 送信後に送信済み+下書きの履歴リストを表示できる（最新10件、sent/draft 区別） | 6 |
+| HIST-02 | 履歴 | 履歴から下書きを選んで編集・送信できる | 6 |
+| REND-01 | 描画 | viewer内で ` ```mermaid ` コードブロックを図（SVG）として描画できる | 6 |
+| POLL-01 | PC受信 | PCがDriveを30秒間隔でポーリングして新着iPhoneノートを検出できる | 7 |
+| POLL-02 | PC受信 | 新着ノートをPC側で自動的に新規付箋ウィンドウとして開ける | 7 |
+| POLL-03 | PC受信 | 重複受信防止（received_atマーク＋last_seen_idによるスキップ） | 7 |
+
+#### 全体フロー（iPhone → Drive → PC）
+
+```mermaid
+sequenceDiagram
+    participant U as ユーザー(iPhone)
+    participant V as viewer/page.tsx
+    participant D as Google Drive
+    participant R as Rust polling
+    participant P as page.tsx(PC)
+
+    note over U,P: Phase 6 — iPhone側
+
+    U->>V: 「書く」タップ (step: ready → write)
+    U->>V: テキスト / 画像 / Mermaid を入力
+    U->>V: 「PCに送る」ボタン
+    V->>D: fusen_from_iphone.json {id, body, sent_at}
+    V->>D: fusen_iphone_notes.json [{...new}, ...old].slice(0,10)
+    V->>V: step: list に遷移（履歴表示）
+
+    note over U,P: Phase 7 — PC受信
+
+    loop 30秒ごと
+        R->>D: fusen_from_iphone.json を取得
+        D-->>R: {id, body, sent_at}
+        R->>R: id == last_seen_id ? skip : 処理
+        R->>R: last_seen_id を更新
+        R->>D: received_at を付けて上書き（重複防止）
+        R->>P: emit "fusen:note_from_iphone" {body}
+    end
+
+    P->>P: fusen_create_note(folderPath, 'from-iphone')
+    P->>P: fusen_save_note(path, body)
+    P->>P: openNoteWindow(path)
+    P->>U: PCに新規付箋ウィンドウが開く
+```
+
+#### Phase 6 詳細 — iPhone送信UI
+
+```mermaid
+sequenceDiagram
+    participant U as ユーザー(iPhone)
+    participant V as viewer/page.tsx
+    participant C as Canvas API
+    participant M as mermaid.render()
+    participant D as Google Drive
+
+    note over U,D: SEND-01 テキスト送信
+    U->>V: 「書く」タップ (step: ready → write)
+    U->>V: テキスト入力
+    U->>V: 「PCに送る」ボタン
+    V->>V: viewer_expires_at 確認（期限切れなら /api/auth/refresh で自動更新）
+    V->>D: 各画像ファイルをDriveにアップロード（uploadImageWithAutoRefresh）
+    V->>D: uploadWithAutoRefresh('fusen_from_iphone.json', {id, title, body, sent_at})
+    V->>D: uploadWithAutoRefresh('fusen_iphone_notes.json', [新entry, ...].slice(0,10))
+    V->>V: step: list に遷移
+
+    note over U,D: SEND-02 下書き保存
+    U->>V: 「iPhoneに置いておく」ボタン
+    V->>V: IndexedDB(fusen-drafts)にテキスト+画像をローカル保存（Drive不使用）
+    V->>V: step: list に遷移
+
+    note over U,D: SEND-03 画像添付
+    U->>V: 📷ボタンタップ
+    V->>V: input[type=file] 選択
+    V->>V: buildImageFileName(title, index) でファイル名生成
+    V->>V: insertAtCursor() でカーソル位置に![](fileName)を挿入
+    V->>V: attachedImages に{file, preview, fileName}を追加
+
+    note over U,D: SEND-04 Mermaid挿入
+    U->>V: Mermaidボタン
+    V->>V: Mermaidコード入力欄を展開
+    U->>V: コード入力
+    V->>M: mermaid.render(id, code)
+    M-->>V: SVGプレビュー
+    U->>V: 「挿入」ボタン
+    V->>V: ```mermaidブロックを本文に追加
+
+    note over U,D: HIST-01/02 履歴表示・下書き編集
+    V->>V: IndexedDB から下書き一覧を取得
+    V->>D: downloadFromDrive('fusen_iphone_notes.json')（送信済み）
+    D-->>V: 最新10件
+    V->>V: 下書き+送信済みをマージして最新20件・sent/draft を色分けして表示
+    U->>V: 下書きをタップ
+    V->>V: step: write に遷移（既存テキストで初期化）
+
+    note over U,D: REND-01 Mermaid描画
+    V->>V: body内の```mermaidブロックを検出
+    V->>M: mermaid.render(id, definition)
+    M-->>V: SVG
+    V->>U: 図として表示
+```
+
+**実装メモ（Phase 6）**:
+- 変更ファイル: `app/viewer/page.tsx`（step型に 'write'/'list'/'note' 追加）
+- 新規ファイル: `app/viewer/SimpleNoteBody.tsx`（Mermaid図描画コンポーネント）
+- 下書き保存: IndexedDB（`fusen-drafts`）にテキスト+画像BlobをiPhoneローカルに保存。Drive不使用
+- 画像ファイル名: `fusen_img_YYYYMMDD_HHMMSS_コンテキスト_N.jpg`（buildImageFileName()）
+- トークン自動更新: 送信前に `viewer_expires_at` 確認 → 期限切れなら `/api/auth/refresh` で更新
+
+#### Phase 7 詳細 — PC受信（Rust polling）
+
+```mermaid
+sequenceDiagram
+    participant S as setup() [lib.rs]
+    participant L as iphone_note_polling_loop
+    participant D as Google Drive
+    participant E as app.emit()
+    participant P as page.tsx listener
+    participant N as 付箋ウィンドウ
+
+    note over S,N: POLL-01 ポーリング開始
+    S->>L: tokio::spawn(iphone_note_polling_loop)
+
+    loop 30秒ごと (tokio::time::interval)
+        L->>D: get_access_token() — 期限切れなら自動refresh
+        D-->>L: access_token
+        L->>D: download_json('fusen_from_iphone.json')
+        D-->>L: {id, body, sent_at, [received_at]}
+
+        alt received_at あり（受信済み）
+            L->>L: スキップ（重複防止）
+        else id == last_seen_id
+            L->>L: スキップ（重複防止）
+        else 新着ノート
+            L->>L: LAST_IPHONE_NOTE_ID を更新
+            L->>D: upload_json('fusen_from_iphone.json', +received_at)
+            L->>D: body内の![](fusen_img_*.jpg)を解析してDriveから画像削除
+            L->>E: emit("fusen:note_from_iphone", {title, body, context})
+        end
+    end
+
+    note over P,N: POLL-02 PC側で付箋ウィンドウを開く
+    E->>P: fusen:note_from_iphone イベント受信 {title, body, context}
+    P->>P: invoke('fusen_create_note', {folderPath, context})
+    P->>P: invoke('fusen_save_note', {path, body, frontmatter})
+    P->>N: openNoteWindow(path, {x: screen.width-430, y:50, w:400, h:350}, false)
+    N->>N: 新規付箋ウィンドウが画面右上に開く
+```
+
+**実装メモ（Phase 7）**:
+- 変更ファイル: `src-tauri/src/lib.rs`（poll_iphone_note() + LAST_IPHONE_NOTE_ID + setup()内spawn）
+- 変更ファイル: `src-tauri/src/gdrive.rs`（delete_file_by_name() 追加）
+- 変更ファイル: `app/page.tsx`（fusen:note_from_iphone / fusen:drive_disconnected / drive_connected リスナー）
+- Cargo.toml: `tokio features = ["rt", "time"]` + `tauri-plugin-notification = "2"`
+- POLL-03: received_atフィルタ + LAST_IPHONE_NOTE_ID static Mutex で二重受信防止
+
+---
+
+### 6.3 viewer 画面遷移
+
+iPhone viewer（`app/viewer/page.tsx`）の画面状態遷移図。
+
+```mermaid
+flowchart TD
+    A([PWAアイコンタップ]) --> Q{ログイン済み？}
+    B([ロック画面通知タップ]) --> SW["SW処理\nDrive DL → 全未読を IndexedDB 一括保存\nタップしたノートを write に表示"]
+    SW --> WRITE
+
+    Q -- "No（初回）" --> LOGIN[login]
+    LOGIN --> PUSH[push]
+    PUSH --> WRITE
+
+    Q -- Yes --> WRITE["write\n書く画面（ホーム）\n─────────────\nチェックボックスON/OFF\nタグサジェスト"]
+
+    WRITE -- "iPhoneに置いておく" --> LIST
+    WRITE -- "PCに送る（ノンブロッキング）" --> TOAST["トースト通知"]
+    TOAST -. "完了後" .-> LIST
+    WRITE -- "一覧" --> LIST
+
+    LIST["list\n一覧（時系列）\nPC受信 / 下書き / 送信済み\nチェックボックス付きはインラインでトグル"]
+    LIST -- "ノートタップ（draft / sent / received_pc）" --> WRITE
+    LIST -- "＋" --> WRITE
+```
+
+**画面状態の説明**:
+
+| 画面 | 説明 |
+|---|---|
+| `login` | 初回のみ。Google OAuth でログイン |
+| `push` | 初回のみ。プッシュ通知の許可を取得 |
+| `write` | **ホーム画面**。テキスト・画像・Mermaid 入力。ログイン済みなら常にここから始まる |
+| `list` | 履歴一覧。PC受信（水色）/ 下書き（黄）/ 送信済み（青）をバッジで区別。チェックボックスはインラインでトグル可能 |
