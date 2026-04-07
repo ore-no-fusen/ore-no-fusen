@@ -519,7 +519,7 @@ pub async fn poll_push_config(
     state: &Mutex<AppState>,
 ) -> Result<(), String> {
     let token = get_access_token(client).await?;
-    let value = download_json(client, &token, PUSH_CONFIG_FILE).await?;
+    let value = download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json").await?;
 
     let config: PushConfigJson = serde_json::from_value(value)
         .map_err(|e| format!("push_config parse error: {}", e))?;
