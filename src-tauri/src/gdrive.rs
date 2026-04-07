@@ -16,9 +16,9 @@ use crate::state::{AppState, ProConfig};
 
 // ------ 定数 ------
 const FOLDER_NAME: &str = "ore-no-fusen";
-const PUSH_CONFIG_FILE: &str = "fusen_push_config.json";
+const PUSH_CONFIG_FILE: &str = "push_devices.json";
 #[allow(dead_code)]
-const NOTE_FILE: &str = "fusen_note.json";
+const NOTE_FILE: &str = "notes_to_iphone.json";
 const TOKEN_FILE: &str = "gdrive_token.json";
 
 // ------ 型定義 ------
@@ -406,6 +406,37 @@ pub async fn download_json(
         .map_err(|e| e.to_string())?;
 
     serde_json::from_slice(&body).map_err(|e| e.to_string())
+}
+
+/// 新ファイル名で試み、見つからなければ旧ファイル名にフォールバックして移行する
+/// 旧ファイルが見つかった場合は新名でアップロードして以降は新名で読まれるようにする
+pub async fn download_json_with_migration(
+    client: &Client,
+    access_token: &str,
+    new_name: &str,
+    old_name: &str,
+) -> Result<serde_json::Value, String> {
+    match download_json(client, access_token, new_name).await {
+        Ok(v) => Ok(v),
+        Err(e) if e.contains("File not found") => {
+            // 旧ファイル名で試みる
+            match download_json(client, access_token, old_name).await {
+                Ok(v) => {
+                    // 新名に移行（バックグラウンド・失敗しても無視）
+                    let c2 = client.clone();
+                    let t2 = access_token.to_string();
+                    let n2 = new_name.to_string();
+                    let v2 = v.clone();
+                    tokio::spawn(async move {
+                        let _ = upload_json(&c2, &t2, &n2, &v2).await;
+                    });
+                    Ok(v)
+                }
+                Err(_) => Err(format!("File not found: {}", new_name)),
+            }
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Drive からバイナリファイルをダウンロードして Vec<u8> で返す

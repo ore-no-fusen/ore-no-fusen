@@ -46,9 +46,9 @@ pub fn get_vapid_key_path() -> PathBuf {
     if let Some(base_dirs) = BaseDirs::new() {
         base_dirs.data_local_dir()
             .join("ore-no-fusen")
-            .join("vapid_keys.json")
+            .join("push_keys.json")
     } else {
-        PathBuf::from("ore-no-fusen/vapid_keys.json")
+        PathBuf::from("ore-no-fusen/push_keys.json")
     }
 }
 
@@ -253,7 +253,7 @@ mod tests {
     fn test_vapid_key_path_returns_ore_no_fusen_dir() {
         let path = get_vapid_key_path();
         assert!(path.to_string_lossy().contains("ore-no-fusen"));
-        assert!(path.to_string_lossy().ends_with("vapid_keys.json"));
+        assert!(path.to_string_lossy().ends_with("push_keys.json"));
     }
 
     #[test]

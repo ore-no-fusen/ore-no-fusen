@@ -1312,7 +1312,7 @@ async fn fusen_send_to_iphone(
                 let bg_client_v = client.clone();
                 let bg_token_v = access_token.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = gdrive::upload_json(&bg_client_v, &bg_token_v, "vapid_keys.json", &value).await {
+                    if let Err(e) = gdrive::upload_json(&bg_client_v, &bg_token_v, "push_keys.json", &value).await {
                         eprintln!("[vapid] Drive upload error: {}", e);
                     }
                 });
@@ -1320,7 +1320,7 @@ async fn fusen_send_to_iphone(
         }
     } else {
         // 別PC: Drive からダウンロードしてローカルに保存
-        match gdrive::download_json(&client, &access_token, "vapid_keys.json").await {
+        match gdrive::download_json_with_migration(&client, &access_token, "push_keys.json", "vapid_keys.json").await {
             Ok(value) => {
                 if let Ok(json) = serde_json::to_string_pretty(&value) {
                     if let Some(parent) = vk_path.parent() {
@@ -1337,7 +1337,7 @@ async fn fusen_send_to_iphone(
                         let bg_client_v = client.clone();
                         let bg_token_v = access_token.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = gdrive::upload_json(&bg_client_v, &bg_token_v, "vapid_keys.json", &value).await {
+                            if let Err(e) = gdrive::upload_json(&bg_client_v, &bg_token_v, "push_keys.json", &value).await {
                                 eprintln!("[vapid] Drive upload error (new keys): {}", e);
                             }
                         });
@@ -1347,12 +1347,12 @@ async fn fusen_send_to_iphone(
         }
     }
 
-    // 4. Google Drive に fusen_note.json をアップロード（バックグラウンド・read-modify-write 配列追加）
+    // 4. Google Drive に notes_to_iphone.json をアップロード（バックグラウンド・read-modify-write 配列追加）
     // トーストを遅らせないよう await しない。Viewer が開くまでに完了すれば十分。
     let bg_client = client.clone();
     let bg_token = access_token.clone();
     tokio::spawn(async move {
-        let mut items: Vec<serde_json::Value> = match gdrive::download_json(&bg_client, &bg_token, "fusen_note.json").await {
+        let mut items: Vec<serde_json::Value> = match gdrive::download_json_with_migration(&bg_client, &bg_token, "notes_to_iphone.json", "fusen_note.json").await {
             Ok(v) => v["items"].as_array().cloned().unwrap_or_default(),
             Err(_) => vec![],
         };
@@ -1362,7 +1362,7 @@ async fn fusen_send_to_iphone(
             items = items[start..].to_vec();
         }
         let data = serde_json::json!({ "items": items });
-        if let Err(e) = gdrive::upload_json(&bg_client, &bg_token, "fusen_note.json", &data).await {
+        if let Err(e) = gdrive::upload_json(&bg_client, &bg_token, "notes_to_iphone.json", &data).await {
             eprintln!("[iphone] Drive upload error: {}", e);
         }
     });
@@ -1505,8 +1505,8 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         }
     };
 
-    // 2. fusen_from_iphone.json をダウンロード
-    let data = match gdrive::download_json(client, &token, "fusen_from_iphone.json").await {
+    // 2. notes_from_iphone.json をダウンロード（旧名: fusen_from_iphone.json から自動移行）
+    let data = match gdrive::download_json_with_migration(client, &token, "notes_from_iphone.json", "fusen_from_iphone.json").await {
         Err(e) if e.contains("File not found") => return, // 静かにスキップ
         Err(e) => {
             logger::log_info(&format!("[poll] Drive download error: {}", e));
@@ -1639,7 +1639,7 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     let token2  = token.clone();
     tauri::async_runtime::spawn(async move {
         let _ = gdrive::upload_json(
-            &client2, &token2, "fusen_from_iphone.json", &updated_data,
+            &client2, &token2, "notes_from_iphone.json", &updated_data,
         ).await;
         for name in all_image_names {
             let _ = gdrive::delete_file_by_name(&client2, &token2, &name).await;

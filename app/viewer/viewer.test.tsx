@@ -123,7 +123,7 @@ describe('SimpleNoteBody', () => {
 // ============================================================
 
 describe('SEND-01: PCに送る', () => {
-  it.todo('「PCに送る」を押すと uploadToDrive が fusen_from_iphone.json に正しいペイロードで呼ばれる');
+  it.todo('「PCに送る」を押すと uploadToDrive が notes_from_iphone.json に正しいペイロードで呼ばれる');
   it.todo('送信成功後に body/title がクリアされる');
   it.todo('送信中はボタンが「送信中...」になり disabled になる');
 });
@@ -327,7 +327,7 @@ describe('P11-02: IphoneNote.status received_pc マッピング', () => {
   });
 });
 
-describe('P11-03: fusen_note.json 配列スキーマ互換', () => {
+describe('P11-03: notes_to_iphone.json 配列スキーマ互換', () => {
   // downloadFusenNoteItems のロジックをインライン検証
   function parseFusenNoteItems(data: unknown): FusenNoteItem[] {
     if (Array.isArray((data as { items?: unknown[] })?.items)) {

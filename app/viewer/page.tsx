@@ -105,6 +105,13 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 const APP_FOLDER_NAME = 'ore-no-fusen';
 let cachedFolderId: string | null = null;
 
+// 旧ファイル名 → 新ファイル名の移行マップ
+const LEGACY_FILE_NAMES: Record<string, string> = {
+  'notes_to_iphone.json': 'notes_to_iphone.json',
+  'push_devices.json': 'push_devices.json',
+  'notes_from_iphone.json': 'notes_from_iphone.json',
+};
+
 
 async function getAppFolderId(accessToken: string): Promise<string | null> {
   if (cachedFolderId !== null) return cachedFolderId;
@@ -191,7 +198,28 @@ async function downloadFromDrive(accessToken: string, fileName: string) {
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const searchData = await searchRes.json();
-  const fileId = searchData.files?.[0]?.id;
+  let fileId = searchData.files?.[0]?.id;
+
+  // 新ファイル名で見つからなければ旧ファイル名にフォールバック（移行対応）
+  if (!fileId && LEGACY_FILE_NAMES[fileName]) {
+    const legacyName = LEGACY_FILE_NAMES[fileName];
+    const legacyRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${legacyName}'${folderQuery}+and+trashed=false`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const legacyData = await legacyRes.json();
+    fileId = legacyData.files?.[0]?.id;
+    if (fileId) {
+      const content = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      ).then(r => r.json());
+      // 新名に移行（バックグラウンド・失敗しても無視）
+      uploadToDrive(accessToken, fileName, content).catch(() => {});
+      return content;
+    }
+  }
+
   if (!fileId) throw new Error(`${fileName} not found in Drive`);
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
@@ -315,10 +343,10 @@ async function uploadImageWithAutoRefresh(
 // 画像をリサイズして base64 文字列に変換
 // Drive ダウンロード（トークン期限切れ時に自動リフレッシュ）
 function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: string }> {
-  return downloadFromDrive(token, 'fusen_note.json').catch(() =>
+  return downloadFromDrive(token, 'notes_to_iphone.json').catch(() =>
     refreshAccessToken().then((newToken) => {
       if (!newToken) throw new Error('session expired');
-      return downloadFromDrive(newToken, 'fusen_note.json');
+      return downloadFromDrive(newToken, 'notes_to_iphone.json');
     })
   );
 }
@@ -332,10 +360,10 @@ type FusenNoteItem = {
 };
 
 async function downloadFusenNoteItems(token: string): Promise<FusenNoteItem[]> {
-  const data = await downloadFromDrive(token, 'fusen_note.json').catch(() =>
+  const data = await downloadFromDrive(token, 'notes_to_iphone.json').catch(() =>
     refreshAccessToken().then((t) => {
       if (!t) throw new Error('session expired');
-      return downloadFromDrive(t, 'fusen_note.json');
+      return downloadFromDrive(t, 'notes_to_iphone.json');
     })
   );
   if (Array.isArray(data?.items)) {
@@ -986,7 +1014,7 @@ export default function ViewerPage() {
                       localStorage.setItem('viewer_device_id', deviceId);
                     }
                     // 既存デバイスリストを取得してupsert（新スキーマ対応、旧スキーマは自動移行）
-                    const existing = await downloadFromDrive(accessToken!, 'fusen_push_config.json')
+                    const existing = await downloadFromDrive(accessToken!, 'push_devices.json')
                       .catch(() => ({}));
                     const existingDevices: any[] = existing?.devices ?? (
                       // 旧スキーマ（endpoint直下）があれば移行する
@@ -996,7 +1024,7 @@ export default function ViewerPage() {
                       ...existingDevices.filter((d: any) => d.device_id !== deviceId),
                       { device_id: deviceId, endpoint, keys, registered_at: new Date().toISOString() },
                     ];
-                    await uploadWithAutoRefresh(accessToken!, 'fusen_push_config.json', {
+                    await uploadWithAutoRefresh(accessToken!, 'push_devices.json', {
                       devices: updatedDevices,
                     });
 
@@ -1353,7 +1381,7 @@ export default function ViewerPage() {
                       };
                       // --- キュー配列方式: read-modify-write ---
                       // 既存データを読み込む（存在しない場合や旧スキーマは自動変換）
-                      const existing = await downloadFromDrive(token, 'fusen_from_iphone.json').catch(() => null);
+                      const existing = await downloadFromDrive(token, 'notes_from_iphone.json').catch(() => null);
                       let currentItems: any[] = [];
                       if (existing) {
                         if (Array.isArray(existing.items)) {
@@ -1385,7 +1413,7 @@ export default function ViewerPage() {
                         tags: capturedTags,
                       };
                       const updatedItems = [...processed, ...pending, newItem];
-                      await uploadWithAutoRefresh(token, 'fusen_from_iphone.json', { items: updatedItems });
+                      await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: updatedItems });
                       // 送信済みとして IndexedDB に保存（sent_at をセット）
                       await saveDraft({
                         id: capturedDraftId ?? noteId,
@@ -1662,10 +1690,10 @@ export default function ViewerPage() {
                               } else {
                                 await deleteDraft(note.id);
                                 if (note.status === 'received_pc') {
-                                  // Drive の fusen_note.json からも削除
-                                  const driveData = await downloadFromDrive(accessToken!, 'fusen_note.json').catch(() => ({ items: [] }));
+                                  // Drive の notes_to_iphone.json からも削除
+                                  const driveData = await downloadFromDrive(accessToken!, 'notes_to_iphone.json').catch(() => ({ items: [] }));
                                   const updatedItems = (driveData.items ?? []).filter((item: { id: string }) => item.id !== note.id);
-                                  await uploadWithAutoRefresh(accessToken!, 'fusen_note.json', { items: updatedItems });
+                                  await uploadWithAutoRefresh(accessToken!, 'notes_to_iphone.json', { items: updatedItems });
                                   // 通知も閉じる
                                   const reg = await navigator.serviceWorker.ready;
                                   reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
@@ -1721,17 +1749,17 @@ export default function ViewerPage() {
                 navigator.serviceWorker.ready.then((reg) => {
                   reg.getNotifications().then((ns) => ns.forEach((n) => n.close()));
                 });
-                // 2. Drive の fusen_note.json 全 items に received_at を付けて書き戻す
+                // 2. Drive の notes_to_iphone.json 全 items に received_at を付けて書き戻す
                 if (accessToken) {
                   try {
-                    const data = await downloadFromDrive(accessToken, 'fusen_note.json');
+                    const data = await downloadFromDrive(accessToken, 'notes_to_iphone.json');
                     const items = (Array.isArray(data?.items) ? data.items : []).map(
                       (item: FusenNoteItem) => ({
                         ...item,
                         received_at: item.received_at ?? new Date().toISOString(),
                       })
                     );
-                    await uploadWithAutoRefresh(accessToken, 'fusen_note.json', { items });
+                    await uploadWithAutoRefresh(accessToken, 'notes_to_iphone.json', { items });
                   } catch { /* エラーは無視 */ }
                 }
                 // 3. list へ
