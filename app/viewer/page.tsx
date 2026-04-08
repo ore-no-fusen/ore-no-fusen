@@ -1663,7 +1663,7 @@ export default function ViewerPage() {
                           {thumbnailUrls.get(note.id) && (
                             <img src={thumbnailUrls.get(note.id)} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
                           )}
-                          <p className="text-sm text-gray-700 line-clamp-3">
+                          <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
                             {((note.title || (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').trim().slice(0, 60)) || '（空のメモ）'}
                           </p>
                         </div>
