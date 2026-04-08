@@ -31,16 +31,18 @@ flowchart TD
 
     subgraph cmd [Claude が .claude/skills/do-release.md を読んで実行]
         R1["1) 新バージョンをユーザーに確認"]
-        R2["2) 3ファイルを一括更新<br/>package.json / tauri.conf.json / Cargo.toml"]
-        R3["3) git commit<br/>chore: バージョンを vX.X.X に更新"]
-        R4["4) git tag vX.X.X"]
+        R2["2) develop → main にマージ"]
+        R3["3) 3ファイルを一括更新<br/>package.json / tauri.conf.json / Cargo.toml"]
+        R4["4) git commit<br/>chore: バージョンを vX.X.X に更新"]
         R5["5) git push origin main"]
-        R6["6) git push origin vX.X.X<br/>🚫 --tags 禁止（理由は下の注意事項参照）"]
-        R1 --> R2 --> R3 --> R4 --> R5 --> R6
+        R6["6) git tag vX.X.X"]
+        R7["7) git push origin vX.X.X<br/>🚫 --tags 禁止（理由は下の注意事項参照）"]
+        R8["8) develop に戻す<br/>git checkout develop<br/>git merge main"]
+        R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8
     end
     REL --- cmd
 
-    R6 --> J["GitHub Actions 起動"]
+    R7 --> J["GitHub Actions 起動"]
 
     subgraph actions [GitHub Actions: release.yml]
         J1["1) npm ci"]

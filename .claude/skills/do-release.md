@@ -68,7 +68,15 @@ git push origin vNEW_VERSION
 - ⚠️ `--tags` は使わない（複数タグ同時プッシュでCDが起動しないことがある）
 - ⚠️ `gh release create` は使わない（tauri-action が自動で作成する）
 
-### Step 10: 完了報告
+### Step 10: develop に戻す
+main のバージョン更新を develop に取り込み、開発ブランチに戻る：
+```
+git checkout develop
+git merge main
+```
+
+### Step 11: 完了報告
 - push されたタグ（`vNEW_VERSION`）とブランチを報告する
+- 現在のブランチが `develop` であることを報告する
 - GitHub Actions が15〜25分でビルド・署名・リリースを行うことをユーザーに伝える
 - GitHub Actions のステータスは `https://github.com/ore-no-fusen/ore-no-fusen/actions` で確認できることを伝える
