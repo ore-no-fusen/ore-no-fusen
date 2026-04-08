@@ -1078,11 +1078,11 @@ export default function ViewerPage() {
         )}
 
         {step === 'write' && (
-          <div className="flex flex-col min-h-[100dvh] bg-white">
+          <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
             {/* ヘッダー */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-200 shadow-sm">
               <button
-                className="text-blue-600 text-sm font-medium"
+                className="text-blue-600 text-sm font-semibold"
                 onClick={() => setStep('list')}
               >
                 📋 {t('pwa.listTitle')}
@@ -1090,7 +1090,7 @@ export default function ViewerPage() {
               <span className="font-semibold text-gray-900">{t('pwa.newNote')}</span>
               <div className="flex justify-end items-center gap-0 p-1">
                 <button
-                  className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-sm"
+                  className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
                   onClick={() => fileInputRef.current?.click()}
                   aria-label="画像を追加"
                   title="画像"
@@ -1098,7 +1098,7 @@ export default function ViewerPage() {
                   📷
                 </button>
                 <button
-                  className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-sm"
+                  className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
                   onClick={() => setShowMermaidModal(true)}
                   aria-label="Mermaidを追加"
                   title="Mermaid"
@@ -1106,7 +1106,7 @@ export default function ViewerPage() {
                   🔷
                 </button>
                 <button
-                  className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-sm"
+                  className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
                   onClick={() => {
                     const editor = editorRef.current;
                     if (!editor) return;
@@ -1163,8 +1163,8 @@ export default function ViewerPage() {
                   ☑
                 </button>
                 <button
-                  className={`min-w-[32px] px-2 py-1 rounded text-sm ${
-                    showTagBar ? 'bg-gray-200 text-gray-900' : 'hover:bg-gray-100 text-gray-700'
+                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
+                    showTagBar ? 'bg-gray-200 text-gray-900' : 'hover:bg-gray-100 active:bg-gray-200 text-gray-600'
                   }`}
                   onClick={() => {
                     if (!showTagBar) {
@@ -1185,7 +1185,7 @@ export default function ViewerPage() {
               ref={editorRef}
               contentEditable="true"
               suppressContentEditableWarning
-              className="flex-1 px-4 py-3 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none"
+              className="flex-1 mx-3 mt-3 mb-2 px-4 py-4 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none bg-white rounded-2xl shadow-sm"
               data-placeholder="メモを書く..."
               style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
             />
@@ -1293,9 +1293,9 @@ export default function ViewerPage() {
             )}
 
             {/* アクションボタン */}
-            <div className="flex gap-3 px-4 py-4 border-t border-gray-200">
+            <div className="flex gap-3 px-4 py-4 bg-[#F2F2F7]">
               <button
-                className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40 transition-transform active:scale-95"
+                className="flex-1 py-3 rounded-xl bg-white border-2 border-blue-500 text-blue-600 font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-sm"
                 disabled={isLoading}
                 onClick={async () => {
                   if (!editorRef.current) return;
@@ -1332,7 +1332,7 @@ export default function ViewerPage() {
                 新規付箋
               </button>
               <button
-                className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40 transition-transform active:scale-95"
+                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-md"
                 disabled={isSendingInBackground}
                 onClick={() => {
                   if (!accessToken || !editorRef.current) return;
@@ -1595,9 +1595,9 @@ export default function ViewerPage() {
         )}
 
         {step === 'list' && (
-          <div className="flex flex-col min-h-[100dvh] bg-white">
+          <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
             {/* ヘッダー */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 bg-white shadow-sm">
               <span className="font-semibold text-gray-900">{t('pwa.listTitle')}</span>
               <button
                 className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-lg font-medium"
@@ -1618,11 +1618,11 @@ export default function ViewerPage() {
               ) : historyNotes.length === 0 ? (
                 <p className="text-center text-gray-400 py-8 text-sm">{t('pwa.emptyList')}</p>
               ) : (
-                <ul>
+                <ul className="divide-y divide-gray-100 bg-white mx-3 rounded-2xl shadow-sm overflow-hidden mb-3">
                   {historyNotes.map((note) => (
                     <li
                       key={note.id}
-                      className="border-b border-gray-100 cursor-pointer active:bg-gray-50 flex items-stretch gap-0 overflow-hidden"
+                      className="cursor-pointer active:bg-gray-50 flex items-stretch gap-0 overflow-hidden transition-colors"
                       onClick={async () => {
                         const draft = await loadDraft(note.id).catch(() => null);
                         const blobMap = new Map<string, File>();
