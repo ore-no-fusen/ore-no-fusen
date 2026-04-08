@@ -276,7 +276,7 @@ type IphoneNote = {
 
 type PendingHydrate = {
   markdown: string;
-  blobMap: Map<string, File>;
+  blobMap: Map<string, Blob>;
   draftId: string | null;
   tags: string[];
 };
@@ -300,7 +300,7 @@ async function uploadWithAutoRefresh(
 // 画像ファイルを Drive にアップロードしてファイル名を返す
 async function uploadImageToDrive(
   accessToken: string,
-  file: File,
+  file: Blob,
   fileName: string
 ): Promise<void> {
   const folderId = await getAppFolderId(accessToken);
@@ -327,7 +327,7 @@ async function uploadImageToDrive(
 // uploadImageToDrive のトークン期限切れ対応ラッパー
 async function uploadImageWithAutoRefresh(
   token: string,
-  file: File,
+  file: Blob,
   fileName: string
 ): Promise<void> {
   try {
@@ -650,7 +650,7 @@ export default function ViewerPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [swReady, setSwReady] = useState(false);
   const editorRef = React.useRef<HTMLDivElement>(null);
-  const [imageBlobs, setImageBlobs] = useState<Map<string, File>>(new Map());
+  const [imageBlobs, setImageBlobs] = useState<Map<string, Blob>>(new Map());
   const [writeTags, setWriteTags] = useState<string[]>([]);
   const [showTagBar, setShowTagBar] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -676,7 +676,7 @@ export default function ViewerPage() {
   const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
   const autoSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentDraftIdRef = React.useRef<string | null>(null);
-  const imageBlobsRef = React.useRef<Map<string, File>>(new Map());
+  const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
   const writeTagsRef = React.useRef<string[]>([]);
 
   useEffect(() => {
@@ -1495,9 +1495,7 @@ export default function ViewerPage() {
                       setBackgroundSendSuccess(true);
                       setTimeout(() => setBackgroundSendSuccess(false), 3000);
                     } catch (err: unknown) {
-                      const msg = err instanceof Error
-                        ? (err.stack ? err.stack.split('\n').slice(0, 3).join(' | ') : err.message)
-                        : String(err);
+                      const msg = err instanceof Error ? (err.message || String(err)) : String(err);
                       setIsSendingInBackground(false);
                       if (msg.includes('session expired')) {
                         localStorage.removeItem('viewer_access_token');
@@ -1680,10 +1678,10 @@ export default function ViewerPage() {
                       className="cursor-pointer bg-white rounded-2xl shadow-sm active:bg-gray-50 flex items-stretch gap-0 overflow-hidden transition-colors"
                       onClick={async () => {
                         const draft = await loadDraft(note.id).catch(() => null);
-                        const blobMap = new Map<string, File>();
+                        const blobMap = new Map<string, Blob>();
                         if (draft?.images && draft.images.length > 0) {
                           for (const { fileName, blob } of draft.images) {
-                            blobMap.set(fileName, new File([blob], fileName, { type: 'image/jpeg' }));
+                            blobMap.set(fileName, blob);
                           }
                         }
                         const fullText = note.title

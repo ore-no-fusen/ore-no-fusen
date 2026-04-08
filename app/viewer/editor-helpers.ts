@@ -34,7 +34,7 @@ export function serializeEditor(el: HTMLDivElement): string {
 export function hydrateEditor(
   el: HTMLDivElement,
   markdown: string,
-  blobMap: Map<string, File>
+  blobMap: Map<string, Blob>
 ): void {
   el.innerHTML = '';
   const lines = markdown.split('\n');
