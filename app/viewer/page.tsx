@@ -1106,9 +1106,9 @@ export default function ViewerPage() {
         {step === 'write' && (
           <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
             {/* ヘッダー */}
-            <div className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-200 shadow-sm">
+            <div className="flex items-center px-2 py-2 bg-white border-b border-gray-200 shadow-sm gap-1">
               <button
-                className="text-blue-600 text-sm font-semibold"
+                className="text-blue-600 text-sm font-semibold px-2 py-2 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors"
                 onClick={async () => {
                   if (editorRef.current) {
                     const rawText = serializeEditor(editorRef.current);
@@ -1122,11 +1122,12 @@ export default function ViewerPage() {
                   }
                   setStep('list');
                 }}
+                aria-label="一覧"
               >
                 📋 {t('pwa.listTitle')}
               </button>
-              <span className="font-semibold text-gray-900">{t('pwa.newNote')}</span>
-              <div className="flex justify-end items-center gap-0 p-1">
+              <div className="flex-1" />
+              <div className="flex items-center gap-0 p-1">
                 <button
                   className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
                   onClick={() => fileInputRef.current?.click()}
@@ -1651,10 +1652,10 @@ export default function ViewerPage() {
         {step === 'list' && (
           <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
             {/* ヘッダー */}
-            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 bg-white shadow-sm">
-              <span className="font-semibold text-gray-900">{t('pwa.listTitle')}</span>
+            <div className="flex items-center px-2 py-2 border-b border-gray-200 bg-white shadow-sm">
+              <div className="flex-1" />
               <button
-                className="min-w-[32px] px-2 py-1 hover:bg-gray-100 text-gray-700 rounded text-lg font-medium"
+                className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-blue-600 rounded-xl text-2xl font-light transition-colors"
                 aria-label="新規作成"
                 onClick={() => {
                   setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
