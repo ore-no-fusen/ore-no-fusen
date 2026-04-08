@@ -1637,9 +1637,22 @@ export default function ViewerPage() {
                       }}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-start gap-2">
+                          {thumbnailUrls.get(note.id) && (
+                            <img src={thumbnailUrls.get(note.id)} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
+                          )}
+                          <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
+                            {(((note.title ? note.title + '\n' : '') + (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').replace(/\n\n+/g, '\n').trim().slice(0, 120)) || '（空のメモ）'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">
+                            {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
+                          </span>
                           <span
-                            className={`text-sm font-semibold px-2 py-0.5 rounded ${
+                            className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
                               note.status === 'sent'
                                 ? 'bg-blue-500 text-white'
                                 : note.status === 'received_pc'
@@ -1653,82 +1666,73 @@ export default function ViewerPage() {
                               ? 'PC受信'
                               : t('pwa.statusDraft')}
                           </span>
-                          <span className="text-sm text-gray-500">
-                            {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
-                          </span>
                         </div>
-                        <div className="flex items-start gap-2">
-                          {thumbnailUrls.get(note.id) && (
-                            <img src={thumbnailUrls.get(note.id)} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
-                          )}
-                          <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
-                            {(((note.title ? note.title + '\n' : '') + (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').replace(/\n\n+/g, '\n').trim().slice(0, 120)) || '（空のメモ）'}
-                          </p>
-                        </div>
-                      </div>
-                      {note.status === 'received_pc' && activeNotifIds.includes(note.id) && (
-                        <button
-                          className="p-2 text-gray-400 hover:text-blue-500 flex-shrink-0"
-                          aria-label="通知を削除"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              const reg = await navigator.serviceWorker.ready;
-                              reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
-                              setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
-                            } catch {
-                              // エラー無視
-                            }
-                          }}
-                        >
-                          🔕
-                        </button>
-                      )}
-                      {(note.status === 'draft' || note.status === 'received_pc' || note.status === 'sent') && (
-                        <button
-                          className="p-2 text-gray-400 hover:text-red-500 flex-shrink-0"
-                          aria-label="削除"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            setIsLoading(true);
-                            try {
-                              if (note.status === 'sent') {
-                                await deleteDraft(note.id);
-                                setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
-                              } else {
-                                await deleteDraft(note.id);
-                                if (note.status === 'received_pc') {
-                                  // Drive の notes_to_iphone.json からも削除
-                                  const driveData = await downloadFromDrive(accessToken!, 'notes_to_iphone.json').catch(() => ({ items: [] }));
-                                  const updatedItems = (driveData.items ?? []).filter((item: { id: string }) => item.id !== note.id);
-                                  await uploadWithAutoRefresh(accessToken!, 'notes_to_iphone.json', { items: updatedItems });
-                                  // 通知も閉じる
+                        <div className="flex items-center gap-0">
+                          {note.status === 'received_pc' && activeNotifIds.includes(note.id) && (
+                            <button
+                              className="p-2 text-gray-400 hover:text-blue-500"
+                              aria-label="通知を削除"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
                                   const reg = await navigator.serviceWorker.ready;
                                   reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
                                   setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
+                                } catch {
+                                  // エラー無視
                                 }
-                                const updatedDrafts = await loadAllDrafts();
-                                setHistoryNotes(
-                                  updatedDrafts
-                                    .map((d) => ({
-                                      id: d.id, title: d.title, body: d.body,
-                                      status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
-                                      created_at: d.created_at, tags: d.tags,
-                                    }))
-                                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                                    .slice(0, 20)
-                                );
-                              }
-                            } catch {
-                              // エラー無視（即削除）
-                            } finally {
-                              setIsLoading(false);
-                            }
-                          }}
-                        >
-                          🗑️
-                        </button>
-                      )}
+                              }}
+                            >
+                              🔕
+                            </button>
+                          )}
+                          {(note.status === 'draft' || note.status === 'received_pc' || note.status === 'sent') && (
+                            <button
+                              className="p-2 text-gray-400 hover:text-red-500"
+                              aria-label="削除"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setIsLoading(true);
+                                try {
+                                  if (note.status === 'sent') {
+                                    await deleteDraft(note.id);
+                                    setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
+                                  } else {
+                                    await deleteDraft(note.id);
+                                    if (note.status === 'received_pc') {
+                                      // Drive の notes_to_iphone.json からも削除
+                                      const driveData = await downloadFromDrive(accessToken!, 'notes_to_iphone.json').catch(() => ({ items: [] }));
+                                      const updatedItems = (driveData.items ?? []).filter((item: { id: string }) => item.id !== note.id);
+                                      await uploadWithAutoRefresh(accessToken!, 'notes_to_iphone.json', { items: updatedItems });
+                                      // 通知も閉じる
+                                      const reg = await navigator.serviceWorker.ready;
+                                      reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
+                                      setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
+                                    }
+                                    const updatedDrafts = await loadAllDrafts();
+                                    setHistoryNotes(
+                                      updatedDrafts
+                                        .map((d) => ({
+                                          id: d.id, title: d.title, body: d.body,
+                                          status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
+                                          created_at: d.created_at, tags: d.tags,
+                                        }))
+                                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                                        .slice(0, 20)
+                                    );
+                                  }
+                                } catch {
+                                  // エラー無視（即削除）
+                                } finally {
+                                  setIsLoading(false);
+                                }
+                              }}
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </li>
                   ))}
                 </ul>
