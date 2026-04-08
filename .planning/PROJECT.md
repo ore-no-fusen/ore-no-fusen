@@ -3,7 +3,7 @@
 ## What This Is
 
 デスクトップ付箋アプリ（Tauri v2 + Next.js 14）。付箋をデスクトップに貼り、すぐ書いてそこに残す。
-v2.0 マイルストーンで Google Drive + APNs を使ったPC→iPhone送信を実装。PCの付箋を右クリック一発でiPhoneのロック画面に送れる。
+v2.0 でPC→iPhone通知、v3.0 でiPhone→PC双方向送信を実装。v4.0 ではiPhone上の任意のメモをロック画面に自由に出す/消すコントロールを追加。
 
 ## Core Value
 
@@ -26,16 +26,16 @@ v2.0 マイルストーンで Google Drive + APNs を使ったPC→iPhone送信�
 - **通信（Web）**: Google Drive API + APNs（VAPID）
 - **テスト**: Vitest（33件）+ Playwright E2E（13件）
 
-## Current Milestone: v3.0 iPhone→PC送信
+## Current Milestone: v4.0 ロック画面コントロール
 
-**Goal:** iPhoneで書いたメモ・写真・MermaidをPCに送ると、30秒以内に新規付箋ウィンドウが開く
+**Goal:** iPhoneの一覧にある任意のメモをロック画面に自由に出す/消すを自分でコントロールできる
 
 **Target features:**
-- iPhoneからテキスト入力 → 「PCに送る」で付箋がPCに届く
-- PCが30秒間隔でDriveをポーリングして自動受信・新規ウィンドウ表示
-- iPhone側の送信履歴リスト（最新50件）
-- 写真添付（Canvas APIでリサイズ + base64 → Markdown画像）
-- Mermaid図のレンダリング（viewer内で描画）
+- 一覧の全メモに🔔ボタン追加（タップでロック画面への表示トグル）
+- エディタのヘッダーツールバーにも同じ🔔ボタン追加
+- 複数のメモを同時にロック画面に表示可能（各メモを別通知として管理）
+- 「ロック中」状態をIndexedDBに永続化（アプリ再起動後も維持）
+- アプリ起動時にロック中メモの通知を自動再表示
 
 ## Requirements
 
@@ -54,11 +54,13 @@ v2.0 マイルストーンで Google Drive + APNs を使ったPC→iPhone送信�
 
 ### Active
 
-- [ ] iPhoneからPC宛に付箋テキストを送信できる（Drive経由）
-- [ ] PC側でDriveポーリングして自動受信・新規付箋ウィンドウを開く
-- [ ] iPhone送信履歴リストを表示できる
-- [ ] 写真をMarkdown画像として送信できる
-- [ ] viewer内でMermaid図をレンダリングできる
+- [ ] 一覧の任意のメモをロック画面に表示できる（🔔ボタン）
+- [ ] ロック画面に表示中のメモを一覧から消せる（🔔再タップ）
+- [ ] ロック画面表示状態を一覧で視覚的に識別できる
+- [ ] 複数のメモを同時にロック画面に表示できる
+- [ ] ロック中状態がアプリ再起動後も保持される
+- [ ] エディタのヘッダーにもロック画面トグルボタンがある
+- [ ] アプリ起動時にロック中メモの通知を自動再表示できる
 
 ### Out of Scope
 
@@ -91,4 +93,4 @@ v2.0 マイルストーンで Google Drive + APNs を使ったPC→iPhone送信�
 | jsonwebtoken 9 を採用 | cmake不要でES256対応 | ✓ Good |
 
 ---
-*Last updated: 2026-03-29 after v3.0 milestone started*
+*Last updated: 2026-04-09 after v4.0 milestone started*

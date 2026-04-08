@@ -1,68 +1,60 @@
-# Requirements: 俺の付箋
+# Requirements: 俺の付箋 v4.0
 
-**Defined:** 2026-03-29
+**Defined:** 2026-04-09
 **Core Value:** すぐ書けて、そこに残る。それだけ確実に動く。
 
-## v3.0 Requirements
+## v4.0 Requirements
 
-### iPhone送信（SEND）
+### ロック画面コントロール
 
-- [x] **SEND-01**: iPhoneでテキストを入力して「PCに送る」で付箋をDriveに送信できる
-- [x] **SEND-02**: 「iPhoneに置いておく」で下書きとしてiPhone履歴に保存できる（PCには送らない）
-- [x] **SEND-03**: 画像追加ボタンでカメラ/ライブラリから写真を付箋に添付できる（Canvas圧縮→Markdown画像）
-- [x] **SEND-04**: Mermaidボタンでコード入力欄+プレビューを開き、本文に ```mermaid ブロックとして挿入できる
+- [ ] **LOCK-01**: ユーザーは一覧の任意のメモをタップひとつでロック画面に通知として表示できる
+- [ ] **LOCK-02**: ユーザーは一覧から、ロック画面に表示中のメモを消せる（通知が消える）
+- [ ] **LOCK-03**: ロック画面に表示中のメモは一覧で視覚的に識別できる（アイコン強調など）
+- [ ] **LOCK-04**: 複数のメモを同時にロック画面に表示できる（各メモが独立した通知として出る）
+- [ ] **LOCK-05**: ロック画面表示状態はアプリを閉じても保持される（IndexedDB永続化）
 
-### iPhone履歴（HIST）
+### エディタ連携
 
-- [x] **HIST-01**: 送信後に送信済み+下書きの履歴リストを表示できる（最新10件、sent/draft 区別）
-- [x] **HIST-02**: 履歴から下書きを選んで編集・送信できる
+- [ ] **EDIT-01**: エディタのヘッダーツールバーにもロック画面トグルボタンがある
+- [ ] **EDIT-02**: エディタ上のボタンは現在のロック状態を反映して表示される（ON/OFF視覚化）
 
-### Mermaidレンダリング（REND）
+### 再起動時の復元
 
-- [x] **REND-01**: viewer内で ```mermaid コードブロックを図（SVG）として描画できる
+- [ ] **RESUME-01**: アプリ起動時にIndexedDBのロック中メモを読み取り、通知を自動で再表示できる
 
-### PC受信（POLL）
+## v2 Requirements（将来）
 
-- [x] **POLL-01**: PCがDriveを30秒間隔でポーリングして新着iPhoneノートを検出できる
-- [x] **POLL-02**: 新着ノートをPC側で自動的に新規付箋ウィンドウとして開ける
-- [x] **POLL-03**: 重複受信防止（received_atマーク＋last_seen_idによるスキップ）
+### 拡張
 
-## Future Requirements
-
-（v4.0以降で検討）
-
-### 双方向同期
-- iPhoneからPC付箋を編集・更新できる — 競合解決が必要で工数大
+- **EXT-01**: ロック画面通知に本文の先頭N文字を表示できる（リッチ通知）
+- **EXT-02**: ロック画面通知をタップするとPWAが開いてそのメモにジャンプする
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Android対応 | シングルユーザー・iPhone前提のため当面不要 |
-| ユーザー認証（複数ユーザー） | シングルユーザー前提のため不要 |
-| リアルタイム同期（WebSocket/SSE） | Drive polling で代替。Vercel無料枠の制約もあり |
-| iPhoneからPC付箋の編集 | 双方向同期は競合解決が必要。v4.0以降 |
+| APNsサーバープッシュによるロック表示 | iPhone側ローカル通知で十分。サーバー負荷・費用増を避ける |
+| Android対応 | シングルユーザー・iPhone前提 |
+| PCデスクトップからのロック操作 | iPhone側の機能として完結させる |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEND-01 | Phase 6 | Complete |
-| SEND-02 | Phase 6 | Complete |
-| SEND-03 | Phase 6 | Complete |
-| SEND-04 | Phase 6 | Complete |
-| HIST-01 | Phase 6 | Complete |
-| HIST-02 | Phase 6 | Complete |
-| REND-01 | Phase 6 | Complete |
-| POLL-01 | Phase 7 | Complete |
-| POLL-02 | Phase 7 | Complete |
-| POLL-03 | Phase 7 | Complete |
+| LOCK-01 | Phase 13 | Pending |
+| LOCK-02 | Phase 13 | Pending |
+| LOCK-03 | Phase 13 | Pending |
+| LOCK-04 | Phase 13 | Pending |
+| LOCK-05 | Phase 13 | Pending |
+| EDIT-01 | Phase 14 | Pending |
+| EDIT-02 | Phase 14 | Pending |
+| RESUME-01 | Phase 14 | Pending |
 
 **Coverage:**
-- v3.0 requirements: 10 total
-- Mapped to phases: 10
+- v4.0 requirements: 8 total
+- Mapped to phases: 8
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 after roadmap creation*
+*Requirements defined: 2026-04-09*
+*Last updated: 2026-04-09 after initial definition*
