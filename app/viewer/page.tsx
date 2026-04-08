@@ -674,6 +674,10 @@ export default function ViewerPage() {
   const mermaidPreviewRef = React.useRef<HTMLDivElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
+  const autoSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentDraftIdRef = React.useRef<string | null>(null);
+  const imageBlobsRef = React.useRef<Map<string, File>>(new Map());
+  const writeTagsRef = React.useRef<string[]>([]);
 
   useEffect(() => {
     // iOS Safari は navigator.standalone で判定、他は matchMedia
@@ -893,6 +897,28 @@ export default function ViewerPage() {
       .finally(() => setIsHistoryLoading(false));
     return () => { thumbUrls.forEach((u) => URL.revokeObjectURL(u)); };
   }, [step]);
+
+  // refs を state と同期（visibilitychange ハンドラで最新値を参照するため）
+  useEffect(() => { currentDraftIdRef.current = currentDraftId; }, [currentDraftId]);
+  useEffect(() => { imageBlobsRef.current = imageBlobs; }, [imageBlobs]);
+  useEffect(() => { writeTagsRef.current = writeTags; }, [writeTags]);
+
+  // visibilitychange: アプリがバックグラウンドになった瞬間に保存
+  useEffect(() => {
+    const handleHide = () => {
+      if (document.visibilityState !== 'hidden') return;
+      if (!editorRef.current) return;
+      const rawText = serializeEditor(editorRef.current);
+      if (!rawText.trim()) return;
+      const { title, body } = extractTitleBody(rawText);
+      const draftId = currentDraftIdRef.current ?? crypto.randomUUID();
+      currentDraftIdRef.current = draftId;
+      const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fn, f]) => ({ fileName: fn, blob: f }));
+      saveDraft({ id: draftId, title, body, created_at: new Date().toISOString(), images: imagesArr, tags: writeTagsRef.current }).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', handleHide);
+    return () => document.removeEventListener('visibilitychange', handleHide);
+  }, []);
 
   // pendingHydrate: list→write 遷移後に editorRef がマウントされてから hydrateEditor を呼ぶ
   useEffect(() => {
@@ -1200,6 +1226,22 @@ export default function ViewerPage() {
               className="flex-1 mx-3 mt-3 mb-2 px-4 py-4 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none bg-white rounded-2xl shadow-sm"
               data-placeholder="メモを書く..."
               style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+              onInput={() => {
+                if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+                autoSaveTimerRef.current = setTimeout(async () => {
+                  if (!editorRef.current) return;
+                  const rawText = serializeEditor(editorRef.current);
+                  if (!rawText.trim()) return;
+                  const { title, body } = extractTitleBody(rawText);
+                  const draftId = currentDraftIdRef.current ?? crypto.randomUUID();
+                  if (!currentDraftIdRef.current) {
+                    currentDraftIdRef.current = draftId;
+                    setCurrentDraftId(draftId);
+                  }
+                  const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fn, f]) => ({ fileName: fn, blob: f }));
+                  await saveDraft({ id: draftId, title, body, created_at: new Date().toISOString(), images: imagesArr, tags: writeTagsRef.current }).catch(() => {});
+                }, 3000);
+              }}
             />
 
             {/* タグバー */}
