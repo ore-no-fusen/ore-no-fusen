@@ -460,7 +460,7 @@ function CropModal({ file, onCancel, onCrop }: CropModalProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [imgEl, setImgEl] = React.useState<HTMLImageElement | null>(null);
   // クロップ矩形: 画像座標系 (0〜1 の正規化)
-  const [crop, setCrop] = React.useState({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+  const [crop, setCrop] = React.useState({ x: 0, y: 0, w: 1, h: 1 });
   const dragging = React.useRef<{ type: 'move' | 'tl'|'tr'|'bl'|'br'|'t'|'b'|'l'|'r'; startX: number; startY: number; startCrop: typeof crop } | null>(null);
 
   // 画像を読み込んで canvas に描画
