@@ -1620,7 +1620,7 @@ export default function ViewerPage() {
                   {historyNotes.map((note) => (
                     <li
                       key={note.id}
-                      className="px-4 py-3 border-b border-gray-100 cursor-pointer active:bg-gray-50 flex items-center gap-2"
+                      className="border-b border-gray-100 cursor-pointer active:bg-gray-50 flex items-stretch gap-0 overflow-hidden"
                       onClick={async () => {
                         const draft = await loadDraft(note.id).catch(() => null);
                         const blobMap = new Map<string, File>();
@@ -1636,7 +1636,8 @@ export default function ViewerPage() {
                         setStep('write');
                       }}
                     >
-                      <div className="flex-1 min-w-0">
+                      <div className={`w-1 flex-shrink-0 ${note.status === 'sent' ? 'bg-blue-500' : note.status === 'received_pc' ? 'bg-blue-300' : 'bg-yellow-400'}`} />
+                      <div className="flex-1 min-w-0 px-3 py-3">
                         <div className="flex items-start gap-2">
                           {thumbnailUrls.get(note.id) && (
                             <img src={thumbnailUrls.get(note.id)} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
@@ -1646,18 +1647,15 @@ export default function ViewerPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-400">
-                            {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
-                          </span>
+                      <div className="flex flex-col items-end justify-between py-2 pr-2 flex-shrink-0">
+                        <div className="flex flex-col items-end gap-0.5">
                           <span
-                            className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                            className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
                               note.status === 'sent'
                                 ? 'bg-blue-500 text-white'
                                 : note.status === 'received_pc'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-yellow-400 text-gray-900'
+                                ? 'bg-blue-100 text-blue-600'
+                                : 'bg-yellow-400 text-gray-800'
                             }`}
                           >
                             {note.status === 'sent'
@@ -1665,6 +1663,9 @@ export default function ViewerPage() {
                               : note.status === 'received_pc'
                               ? 'PC受信'
                               : t('pwa.statusDraft')}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
                           </span>
                         </div>
                         <div className="flex items-center gap-0">
