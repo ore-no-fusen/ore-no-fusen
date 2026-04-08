@@ -1332,10 +1332,11 @@ export default function ViewerPage() {
                 新規付箋
               </button>
               <button
-                className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
+                className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40 transition-transform active:scale-95"
                 disabled={isSendingInBackground}
                 onClick={() => {
                   if (!accessToken || !editorRef.current) return;
+                  new Audio('/sounds/save.wav').play().catch(() => {});
                   // クリア前にデータをキャプチャ
                   const rawText = serializeEditor(editorRef.current);
                   const capturedTags = [...writeTags];
