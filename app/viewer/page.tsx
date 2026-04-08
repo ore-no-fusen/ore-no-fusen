@@ -1664,7 +1664,7 @@ export default function ViewerPage() {
                             <img src={thumbnailUrls.get(note.id)} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
                           )}
                           <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
-                            {(((note.title ? note.title + '\n' : '') + (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').trim().slice(0, 120)) || '（空のメモ）'}
+                            {(((note.title ? note.title + '\n' : '') + (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').replace(/\n\n+/g, '\n').trim().slice(0, 120)) || '（空のメモ）'}
                           </p>
                         </div>
                       </div>
