@@ -664,6 +664,7 @@ export default function ViewerPage() {
   const [backgroundSendError, setBackgroundSendError] = useState<string | null>(null);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [thumbnailUrls, setThumbnailUrls] = useState<Map<string, string>>(new Map());
   const [activeNotifIds, setActiveNotifIds] = useState<string[]>([]);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const [mermaidCode, setMermaidCode] = useState('');
@@ -867,6 +868,7 @@ export default function ViewerPage() {
       reg.active?.postMessage({ type: 'GET_NOTIFICATIONS' }, [channel.port2]);
     }).catch(() => {});
 
+    let thumbUrls: string[] = [];
     draftsPromise
       .then((drafts) => {
         const draftNotes: IphoneNote[] = drafts.map((d) => ({
@@ -878,8 +880,18 @@ export default function ViewerPage() {
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 20);
         setHistoryNotes(merged);
+        const thumbMap = new Map<string, string>();
+        for (const d of drafts) {
+          if (d.images && d.images.length > 0) {
+            const url = URL.createObjectURL(d.images[0].blob);
+            thumbMap.set(d.id, url);
+            thumbUrls.push(url);
+          }
+        }
+        setThumbnailUrls(thumbMap);
       })
       .finally(() => setIsHistoryLoading(false));
+    return () => { thumbUrls.forEach((u) => URL.revokeObjectURL(u)); };
   }, [step]);
 
   // pendingHydrate: list→write 遷移後に editorRef がマウントされてから hydrateEditor を呼ぶ
@@ -1420,7 +1432,7 @@ export default function ViewerPage() {
                         title,
                         body: fullBody,
                         created_at: sentAt,
-                        images: [],
+                        images: Array.from(capturedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
                         tags: capturedTags,
                         sent_at: sentAt,
                       });
@@ -1612,24 +1624,17 @@ export default function ViewerPage() {
                       key={note.id}
                       className="px-4 py-3 border-b border-gray-100 cursor-pointer active:bg-gray-50 flex items-center gap-2"
                       onClick={async () => {
-                        if (note.status === 'draft' || note.status === 'received_pc') {
-                          const draft = await loadDraft(note.id).catch(() => null);
-                          const blobMap = new Map<string, File>();
-                          if (draft?.images && draft.images.length > 0) {
-                            for (const { fileName, blob } of draft.images) {
-                              blobMap.set(fileName, new File([blob], fileName, { type: 'image/jpeg' }));
-                            }
+                        const draft = await loadDraft(note.id).catch(() => null);
+                        const blobMap = new Map<string, File>();
+                        if (draft?.images && draft.images.length > 0) {
+                          for (const { fileName, blob } of draft.images) {
+                            blobMap.set(fileName, new File([blob], fileName, { type: 'image/jpeg' }));
                           }
-                          const fullText = note.title
-                            ? (note.body ? `${note.title}\n\n${note.body}` : note.title)
-                            : (note.body ?? '');
-                          setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
-                        } else {
-                          const fullText = note.title
-                            ? (note.body ? `${note.title}\n\n${note.body}` : note.title)
-                            : (note.body ?? '');
-                          setPendingHydrate({ markdown: fullText, blobMap: new Map(), draftId: null, tags: note.tags ?? [] });
                         }
+                        const fullText = note.title
+                          ? (note.body ? `${note.title}\n\n${note.body}` : note.title)
+                          : (note.body ?? '');
+                        setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
                         setStep('write');
                       }}
                     >
@@ -1654,9 +1659,14 @@ export default function ViewerPage() {
                             {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-700 truncate">
-                          {(note.title || note.body).slice(0, 20) || '（空のメモ）'}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          {thumbnailUrls.get(note.id) && (
+                            <img src={thumbnailUrls.get(note.id)} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
+                          )}
+                          <p className="text-sm text-gray-700 line-clamp-3">
+                            {((note.title || (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').trim().slice(0, 60)) || '（空のメモ）'}
+                          </p>
+                        </div>
                       </div>
                       {note.status === 'received_pc' && activeNotifIds.includes(note.id) && (
                         <button

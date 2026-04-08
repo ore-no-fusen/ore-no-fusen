@@ -4,10 +4,15 @@
 
 ```mermaid
 flowchart TD
-    A["① ソース修正"] --> B["② ローカルビルドで動作確認<br/>npm run tauri build"]
+    A["① ソース修正<br/>（develop ブランチで）"] --> B2["② git push origin develop<br/>Vercel Preview URL 自動生成"]
+    B2 --> B3["③ iPhone で動作確認<br/>Vercel Preview URL を Safari で開く"]
+    B3 --> C2{問題あり?}
+    C2 -->|あり| A
+    C2 -->|なし| MRG["④ main にマージ<br/>git checkout main<br/>git merge develop"]
+    MRG --> B["⑤ ローカルビルドで動作確認<br/>npm run tauri build"]
     B --> C{問題あり?}
     C -->|あり| A
-    C -->|なし| D["③ git commit"]
+    C -->|なし| D["⑥ git commit"]
     D --> E{pre-commit hook\nHusky}
 
     subgraph hook [pre-commit で自動実行]
@@ -48,6 +53,31 @@ flowchart TD
     J --- actions
 
     J5 --> K["✅ GitHubリリースページに<br/>署名付きインストーラーが出現"]
+```
+
+## develop ブランチと Vercel Preview
+
+開発は `develop` ブランチで行い、iPhone での動作確認は Vercel Preview URL を使う。
+
+```bash
+# develop ブランチで作業
+git checkout develop
+
+# 修正後、push するだけで Vercel Preview URL が自動生成される
+git push origin develop
+```
+
+Vercel のダッシュボード（vercel.com）または push 後のコメントに以下のような URL が表示される：
+```
+https://ore-no-fusen-git-develop-xxx.vercel.app/viewer
+```
+
+iPhone の Safari でこの URL を開いて動作確認する。
+
+確認が取れたら main にマージしてリリースへ進む：
+```bash
+git checkout main
+git merge develop
 ```
 
 ## ローカルビルド（動作確認用・署名なし）

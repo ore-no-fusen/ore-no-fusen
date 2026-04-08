@@ -28,11 +28,20 @@ RequestExecutionLevel user
 ; --- 日本語 ---
 !insertmacro MUI_LANGUAGE "Japanese"
 
+; --- 英語 ---
+!insertmacro MUI_LANGUAGE "English"
+
 LangString MUI_TEXT_WELCOME_INFO_TEXT ${LANG_JAPANESE} \
 "ore-no-fusen をダウンロードいただき、ありがとうございます。$\r$\n$\r$\n思考を、デスクトップに貼り付けましょう。$\r$\n$\r$\n「インストール」をクリックしてインストールを開始してください。"
 
+LangString MUI_TEXT_WELCOME_INFO_TEXT ${LANG_ENGLISH} \
+"Thank you for downloading ore-no-fusen.$\r$\n$\r$\nPaste your thoughts onto the desktop.$\r$\n$\r$\nClick Install to begin the installation."
+
 LangString MUI_TEXT_FINISH_INFO_TEXT ${LANG_JAPANESE} \
 "インストールが完了しました。$\r$\n$\r$\nさっそく最初の付箋を作成しましょう。"
+
+LangString MUI_TEXT_FINISH_INFO_TEXT ${LANG_ENGLISH} \
+"Installation is complete.$\r$\n$\r$\nCreate your first sticky note now."
 
 Section "Install"
   ; インストールディレクトリを設定

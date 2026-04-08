@@ -62,7 +62,8 @@
       "nsis": {
         "displayLanguageSelector": false,
         "languages": [
-          "Japanese"
+          "Japanese",
+          "English"
         ],
         "template": "windows/installer.nsi",
         "installerIcon": "icons/icon.ico",

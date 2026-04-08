@@ -50,6 +50,11 @@ export default function LandingPage() {
     const [isFlying, setIsFlying] = useState(false);
 
     useEffect(() => {
+        setIphoneNotes([]);
+        setNoteIdx(0);
+    }, [isEn]);
+
+    useEffect(() => {
         const timer = setInterval(() => {
             setIsFlying(true);
             setTimeout(() => {
