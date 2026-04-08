@@ -1083,7 +1083,19 @@ export default function ViewerPage() {
             <div className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-200 shadow-sm">
               <button
                 className="text-blue-600 text-sm font-semibold"
-                onClick={() => setStep('list')}
+                onClick={async () => {
+                  if (editorRef.current) {
+                    const rawText = serializeEditor(editorRef.current);
+                    if (rawText.trim()) {
+                      const { title, body } = extractTitleBody(rawText);
+                      const draftId = currentDraftId ?? crypto.randomUUID();
+                      const imagesArr = Array.from(imageBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
+                      await saveDraft({ id: draftId, title, body, created_at: new Date().toISOString(), images: imagesArr, tags: writeTags }).catch(() => {});
+                      setCurrentDraftId(draftId);
+                    }
+                  }
+                  setStep('list');
+                }}
               >
                 📋 {t('pwa.listTitle')}
               </button>
