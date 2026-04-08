@@ -4,7 +4,8 @@
 
 - ✅ **v1.0 品質改善** — Phases 1-3 (shipped 2026-03-23)
 - ✅ **v2.0 iPhone連携** — Phases 4-5 (shipped 2026-03-29)
-- 📋 **v3.0 iPhone→PC送信** — Phases 6-9 (planned)
+- 📋 **v3.0 iPhone→PC送信** — Phases 6-12 (planned)
+- 📋 **v4.0 ロック画面コントロール** — Phases 13-14 (planned)
 
 ## Phases
 
@@ -37,6 +38,16 @@ See: `.planning/milestones/v2.0-ROADMAP.md`
 - [x] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態（07-01完了・07-02実装中） (completed 2026-03-30)
 - [x] **Phase 8: iPhoneノートアプリ化** — contenteditable・画像・タグ・一覧 (completed 2026-04-01)
 - [x] **Phase 9: iPhone付箋管理** — 一覧から作成・編集・保存・削除、PCへの送信も可能 (completed 2026-04-01)
+- [ ] **Phase 10: iPhone UX改善 + 送信高速化** — チェックボックス・タグサジェスト・5秒以内送信
+- [ ] **Phase 11: PC→iPhone受信履歴保存** — 通知消去後も一覧で閲覧・編集
+- [ ] **Phase 12: チェックボックスTODO一覧インライントグル** — TBD
+
+### 📋 v4.0 ロック画面コントロール
+
+**Milestone Goal:** iPhoneの一覧にある任意のメモをロック画面に自由に出す/消すを自分でコントロールできる
+
+- [ ] **Phase 13: ロック画面コントロール基盤** — 一覧の🔔ボタンでロック画面への表示トグル・複数メモ同時表示・IndexedDB永続化
+- [ ] **Phase 14: エディタ連携 + 再起動復元** — エディタヘッダーの🔔ボタン・ロック状態反映・アプリ起動時の通知自動再表示
 
 ---
 
@@ -94,6 +105,7 @@ Plans:
 - [x] 08-02-PLAN.md — Wave 2: ヘッダーツールバー（📷🔷☑）+ CropModal + Mermaidインライン挿入
 - [x] 08-03-PLAN.md — Wave 3: タグUI（🏷️）+ 送信payload拡張 + PC受信タグ適用
 - [x] 08-04-PLAN.md — Wave 4: 一覧から送信済み・下書き編集対応
+
 ### Phase 9: iPhone付箋管理
 **Goal**: iPhoneを単体の付箋アプリとして使えるようにする（一覧から作成・編集・保存・削除）、PCへの送信も引き続き可能
 **Depends on**: Phase 8（viewer/page.tsx の contenteditable エディタ稼働済み）
@@ -147,6 +159,28 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 12 to break down)
 
+### Phase 13: ロック画面コントロール基盤
+**Goal**: iPhoneの一覧から任意のメモをロック画面に表示でき、複数メモを独立した通知として同時管理できる
+**Depends on**: Phase 12
+**Requirements**: LOCK-01, LOCK-02, LOCK-03, LOCK-04, LOCK-05
+**Success Criteria** (what must be TRUE):
+  1. 一覧の各メモ行に🔔ボタンがあり、タップするとiPhoneのロック画面に通知として表示される
+  2. ロック画面に表示中のメモの🔔ボタンを再タップすると、ロック画面の通知が消える
+  3. ロック画面に表示中のメモは一覧で🔔アイコンが強調表示（ON状態）で視覚的に識別できる
+  4. 2件以上のメモを同時にロック画面に表示でき、それぞれが独立した通知として存在する
+  5. アプリを閉じて再度開いても、ロック中だったメモの🔔状態が一覧に復元されている
+**Plans**: TBD
+
+### Phase 14: エディタ連携 + 再起動復元
+**Goal**: エディタ画面からもロック画面トグルを操作でき、アプリ起動時にロック中メモの通知が自動再表示される
+**Depends on**: Phase 13
+**Requirements**: EDIT-01, EDIT-02, RESUME-01
+**Success Criteria** (what must be TRUE):
+  1. エディタのヘッダーツールバーに🔔ボタンがあり、タップでロック画面への表示をトグルできる
+  2. エディタの🔔ボタンは現在のロック状態を反映し、ON/OFFが視覚的に区別できる（一覧側と状態が一致する）
+  3. アプリを完全終了して再起動すると、IndexedDBに保存されたロック中メモの通知がロック画面に自動表示される
+**Plans**: TBD
+
 ---
 
 ## Progress
@@ -159,4 +193,11 @@ Plans:
 | 4. Rust バックエンド（Drive+APNs） | v2.0 | 5/5 | Complete | 2026-03-23 |
 | 5. iPhone PWA + Rust送信 | v2.0 | 5/5 | Complete | 2026-03-29 |
 | 6. iPhone送信UI | v3.0 | 4/5 | In Progress | — |
-| 7. PC受信 | 2/2 | Complete   | 2026-03-30 | — |
+| 7. PC受信 | v3.0 | 2/2 | Complete | 2026-03-30 |
+| 8. iPhoneノートアプリ化 | v3.0 | 4/4 | Complete | 2026-04-01 |
+| 9. iPhone付箋管理 | v3.0 | 0/3 | Not started | — |
+| 10. iPhone UX改善 + 送信高速化 | v3.0 | 3/3 | Complete | 2026-04-03 |
+| 11. PC→iPhone受信履歴保存 | v3.0 | 0/4 | Not started | — |
+| 12. チェックボックスTODO一覧インライントグル | v3.0 | 0/0 | Not started | — |
+| 13. ロック画面コントロール基盤 | v4.0 | 0/0 | Not started | — |
+| 14. エディタ連携 + 再起動復元 | v4.0 | 0/0 | Not started | — |
