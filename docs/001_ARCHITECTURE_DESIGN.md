@@ -34,6 +34,7 @@
 |---|---|---|
 | 1.0 | 2026-04-08 | 初版。Google Drive ファイル仕様・ライフサイクル表・VAPID鍵設計意図を含む。以降はこのファイルを唯一の設計書として更新する |
 | 1.1 | 2026-04-08 | セクション6追加。iPhone連携フロー（PC→iPhone v2.0 / iPhone→PC v3.0 / viewer画面遷移）を iphone_01〜04 HTML設計書よりマージ |
+| 1.2 | 2026-04-08 | 6.2・6.3 を実装に合わせて更新。「iPhoneに置いておく」→「新規付箋」ボタン名変更。バッジ色を保存済み（グレー）・PC受信（薄藍）・送信済み（薄青）に変更 |
 
 ---
 
@@ -532,7 +533,7 @@ iPhone viewer で書いた内容を Google Drive 経由で PC に送り、自動
 | ID | カテゴリ | 要件 | Phase |
 |---|---|---|---|
 | SEND-01 | 送信 | iPhoneでテキストを入力して「PCに送る」で付箋をDriveに送信できる | 6 |
-| SEND-02 | 送信 | 「iPhoneに置いておく」で下書きとしてiPhone履歴に保存できる（PCには送らない） | 6 |
+| SEND-02 | 送信 | 「新規付箋」で現在の内容を保存し、白紙エディタで継続入力できる（PCには送らない） | 6 |
 | SEND-03 | 送信 | 画像追加ボタンでカメラ/ライブラリから写真を付箋に添付できる（Driveアップロード・カーソル位置に挿入） | 6 |
 | SEND-04 | 送信 | Mermaidボタンでコード入力欄+プレビューを開き、本文に ` ```mermaid ` ブロックとして挿入できる | 6 |
 | HIST-01 | 履歴 | 送信後に送信済み+下書きの履歴リストを表示できる（最新10件、sent/draft 区別） | 6 |
@@ -598,10 +599,10 @@ sequenceDiagram
     V->>D: uploadWithAutoRefresh('fusen_iphone_notes.json', [新entry, ...].slice(0,10))
     V->>V: step: list に遷移
 
-    note over U,D: SEND-02 下書き保存
-    U->>V: 「iPhoneに置いておく」ボタン
+    note over U,D: SEND-02 新規付箋（保存して継続）
+    U->>V: 「新規付箋」ボタン
     V->>V: IndexedDB(fusen-drafts)にテキスト+画像をローカル保存（Drive不使用）
-    V->>V: step: list に遷移
+    V->>V: 白紙エディタで継続入力（step: write のまま）
 
     note over U,D: SEND-03 画像添付
     U->>V: 📷ボタンタップ
@@ -706,12 +707,12 @@ flowchart TD
 
     Q -- Yes --> WRITE["write\n書く画面（ホーム）\n─────────────\nチェックボックスON/OFF\nタグサジェスト"]
 
-    WRITE -- "iPhoneに置いておく" --> LIST
+    WRITE -- "新規付箋（保存して白紙エディタへ）" --> WRITE
     WRITE -- "PCに送る（ノンブロッキング）" --> TOAST["トースト通知"]
     TOAST -. "完了後" .-> LIST
     WRITE -- "一覧" --> LIST
 
-    LIST["list\n一覧（時系列）\nPC受信 / 下書き / 送信済み\nチェックボックス付きはインラインでトグル"]
+    LIST["list\n一覧（時系列）\nPC受信 / 保存済み / 送信済み\nチェックボックス付きはインラインでトグル"]
     LIST -- "ノートタップ（draft / sent / received_pc）" --> WRITE
     LIST -- "＋" --> WRITE
 ```
@@ -723,4 +724,4 @@ flowchart TD
 | `login` | 初回のみ。Google OAuth でログイン |
 | `push` | 初回のみ。プッシュ通知の許可を取得 |
 | `write` | **ホーム画面**。テキスト・画像・Mermaid 入力。ログイン済みなら常にここから始まる |
-| `list` | 履歴一覧。PC受信（水色）/ 下書き（黄）/ 送信済み（青）をバッジで区別。チェックボックスはインラインでトグル可能 |
+| `list` | 履歴一覧。PC受信（薄藍）/ 保存済み（グレー）/ 送信済み（薄青）をバッジで区別。チェックボックスはインラインでトグル可能 |
