@@ -779,7 +779,7 @@ export default function ViewerPage() {
           const tappedId = new URLSearchParams(window.location.search).get('note');
           const tapped = items.find((item) => item.id === tappedId) ?? items[0];
           if (tapped) {
-            const titleLine = tapped.title ? `# ${tapped.title}\n\n` : '';
+            const titleLine = tapped.title ? `${tapped.title}\n` : '';
             setPendingHydrate({
               markdown: titleLine + tapped.body,
               blobMap: new Map(),
@@ -821,7 +821,7 @@ export default function ViewerPage() {
           // pending_note の note_id のノートを write に直接表示
           const tapped = items.find((item) => item.id === pendingNote) ?? items[0];
           if (tapped) {
-            const titleLine = tapped.title ? `# ${tapped.title}\n\n` : '';
+            const titleLine = tapped.title ? `${tapped.title}\n` : '';
             setPendingHydrate({
               markdown: titleLine + tapped.body,
               blobMap: new Map(),
