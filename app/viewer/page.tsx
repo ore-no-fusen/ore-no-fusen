@@ -1632,7 +1632,7 @@ export default function ViewerPage() {
                           }
                         }
                         const fullText = note.title
-                          ? (note.body ? `${note.title}\n\n${note.body}` : note.title)
+                          ? (note.body ? `${note.title}\n${note.body}` : note.title)
                           : (note.body ?? '');
                         setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
                         setStep('write');
