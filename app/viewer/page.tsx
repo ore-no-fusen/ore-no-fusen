@@ -1659,12 +1659,12 @@ export default function ViewerPage() {
                             {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-start gap-2">
                           {thumbnailUrls.get(note.id) && (
                             <img src={thumbnailUrls.get(note.id)} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
                           )}
                           <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
-                            {((note.title || (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').trim().slice(0, 60)) || '（空のメモ）'}
+                            {(((note.title ? note.title + '\n' : '') + (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').trim().slice(0, 120)) || '（空のメモ）'}
                           </p>
                         </div>
                       </div>
