@@ -1315,14 +1315,12 @@ export default function ViewerPage() {
                       images: imagesArr,
                       tags: writeTags,
                     });
-                    // editorRef.current は isLoading=true でアンマウント済みのため触らない
-                    // （次回 write 表示時に hydrateEditor がクリアする）
                     setImageBlobs(new Map());
                     setWriteTags([]);
                     setShowTagBar(false);
                     setTagInput('');
                     setCurrentDraftId(null);
-                    setStep('list');
+                    setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
                   } catch (err: unknown) {
                     setErrorMessage('保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
                   } finally {
@@ -1330,7 +1328,7 @@ export default function ViewerPage() {
                   }
                 }}
               >
-                iPhoneに置いておく
+                新規付箋
               </button>
               <button
                 className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
