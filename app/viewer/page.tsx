@@ -1693,7 +1693,6 @@ export default function ViewerPage() {
                         setStep('write');
                       }}
                     >
-                      <div className={`w-1 flex-shrink-0 ${note.status === 'sent' ? 'bg-blue-500' : note.status === 'received_pc' ? 'bg-blue-300' : 'bg-yellow-400'}`} />
                       <div className="flex-1 min-w-0 px-3 py-3">
                         <div className="flex items-start gap-2">
                           {thumbnailUrls.get(note.id) && (
@@ -1709,10 +1708,10 @@ export default function ViewerPage() {
                           <span
                             className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
                               note.status === 'sent'
-                                ? 'bg-blue-500 text-white'
-                                : note.status === 'received_pc'
                                 ? 'bg-blue-100 text-blue-600'
-                                : 'bg-yellow-400 text-gray-800'
+                                : note.status === 'received_pc'
+                                ? 'bg-indigo-50 text-indigo-500'
+                                : 'bg-gray-100 text-gray-500'
                             }`}
                           >
                             {note.status === 'sent'
