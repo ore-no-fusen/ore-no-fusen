@@ -1106,9 +1106,9 @@ export default function ViewerPage() {
         {step === 'write' && (
           <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
             {/* ヘッダー */}
-            <div className="flex items-center px-2 py-2 bg-white border-b border-gray-200 shadow-sm gap-1">
+            <div className="flex items-center px-4 py-3 bg-[#F2F2F7] gap-1">
               <button
-                className="text-blue-600 text-sm font-semibold px-2 py-2 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                className="text-blue-500 text-sm font-medium px-2 py-2 rounded-xl hover:bg-gray-200 active:bg-gray-300 transition-colors"
                 onClick={async () => {
                   if (editorRef.current) {
                     const rawText = serializeEditor(editorRef.current);
@@ -1224,8 +1224,8 @@ export default function ViewerPage() {
               ref={editorRef}
               contentEditable="true"
               suppressContentEditableWarning
-              className="flex-1 mx-3 mt-3 mb-2 px-4 py-4 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none bg-white rounded-2xl shadow-sm"
-              data-placeholder="メモを書く..."
+              className="flex-1 mx-4 mt-1 mb-2 px-4 py-4 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none bg-white rounded-2xl shadow-sm"
+              data-placeholder="メモを入力..."
               style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
               onInput={() => {
                 if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -1348,9 +1348,9 @@ export default function ViewerPage() {
             )}
 
             {/* アクションボタン */}
-            <div className="flex gap-3 px-4 py-4 bg-[#F2F2F7]">
+            <div className="flex flex-col gap-3 px-4 py-4 bg-[#F2F2F7]">
               <button
-                className="flex-1 py-3 rounded-xl bg-white border-2 border-blue-500 text-blue-600 font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-sm"
+                className="w-full py-4 rounded-2xl bg-white text-gray-800 font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-sm text-base"
                 disabled={isLoading}
                 onClick={async () => {
                   if (!editorRef.current) return;
@@ -1387,7 +1387,7 @@ export default function ViewerPage() {
                 新規付箋
               </button>
               <button
-                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-md"
+                className="w-full py-4 rounded-2xl bg-blue-500 text-white font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-md text-base"
                 disabled={isSendingInBackground}
                 onClick={() => {
                   if (!accessToken || !editorRef.current) return;
@@ -1652,10 +1652,10 @@ export default function ViewerPage() {
         {step === 'list' && (
           <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
             {/* ヘッダー */}
-            <div className="flex items-center px-2 py-2 border-b border-gray-200 bg-white shadow-sm">
-              <div className="flex-1" />
+            <div className="flex items-center px-5 pt-6 pb-2 bg-[#F2F2F7]">
+              <span className="text-3xl font-bold text-gray-900 flex-1">メモ</span>
               <button
-                className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-blue-600 rounded-xl text-2xl font-light transition-colors"
+                className="w-11 h-11 flex items-center justify-center bg-blue-500 text-white rounded-full text-2xl font-light shadow-md active:scale-95 transition-transform"
                 aria-label="新規作成"
                 onClick={() => {
                   setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
@@ -1673,11 +1673,11 @@ export default function ViewerPage() {
               ) : historyNotes.length === 0 ? (
                 <p className="text-center text-gray-400 py-8 text-sm">{t('pwa.emptyList')}</p>
               ) : (
-                <ul className="divide-y divide-gray-100 bg-white mx-3 rounded-2xl shadow-sm overflow-hidden mb-3">
+                <ul className="flex flex-col gap-2 px-3 pb-3">
                   {historyNotes.map((note) => (
                     <li
                       key={note.id}
-                      className="cursor-pointer active:bg-gray-50 flex items-stretch gap-0 overflow-hidden transition-colors"
+                      className="cursor-pointer bg-white rounded-2xl shadow-sm active:bg-gray-50 flex items-stretch gap-0 overflow-hidden transition-colors"
                       onClick={async () => {
                         const draft = await loadDraft(note.id).catch(() => null);
                         const blobMap = new Map<string, File>();
