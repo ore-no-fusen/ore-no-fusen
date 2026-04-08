@@ -1295,10 +1295,11 @@ export default function ViewerPage() {
             {/* アクションボタン */}
             <div className="flex gap-3 px-4 py-4 border-t border-gray-200">
               <button
-                className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-700 font-medium disabled:opacity-40"
+                className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40 transition-transform active:scale-95"
                 disabled={isLoading}
                 onClick={async () => {
                   if (!editorRef.current) return;
+                  new Audio('/sounds/create.wav').play().catch(() => {});
                   setIsLoading(true);
                   setErrorMessage(null);
                   try {
