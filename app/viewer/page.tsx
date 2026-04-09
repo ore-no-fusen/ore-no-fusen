@@ -1873,9 +1873,29 @@ export default function ViewerPage() {
                                 try {
                                   if (note.status === 'sent') {
                                     await deleteDraft(note.id);
+                                    // ロック中メモの通知を解除
+                                    if (lockedNoteIds.includes(note.id)) {
+                                      try {
+                                        const reg = await navigator.serviceWorker.ready;
+                                        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
+                                        setLockedNoteIds(prev => prev.filter(id => id !== note.id));
+                                      } catch {
+                                        // エラー無視（削除自体は成功している）
+                                      }
+                                    }
                                     setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
                                   } else {
                                     await deleteDraft(note.id);
+                                    // ロック中メモの通知を解除
+                                    if (lockedNoteIds.includes(note.id)) {
+                                      try {
+                                        const reg = await navigator.serviceWorker.ready;
+                                        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
+                                        setLockedNoteIds(prev => prev.filter(id => id !== note.id));
+                                      } catch {
+                                        // エラー無視（削除自体は成功している）
+                                      }
+                                    }
                                     if (note.status === 'received_pc') {
                                       // Drive の notes_to_iphone.json からも削除
                                       const driveData = await downloadFromDrive(accessToken!, 'notes_to_iphone.json').catch(() => ({ items: [] }));
