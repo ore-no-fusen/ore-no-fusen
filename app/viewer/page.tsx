@@ -395,6 +395,7 @@ type DraftRecord = {
   tags?: string[];
   received_pc?: true;
   sent_at?: string;
+  locked?: true;
 };
 
 function openDraftsDB(): Promise<IDBDatabase> {
@@ -666,6 +667,8 @@ export default function ViewerPage() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<string, string>>(new Map());
   const [activeNotifIds, setActiveNotifIds] = useState<string[]>([]);
+  const [lockedNoteIds, setLockedNoteIds] = useState<string[]>([]);
+  const [isLockPermissionPending, setIsLockPermissionPending] = useState(false);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const [mermaidCode, setMermaidCode] = useState('');
   const [mermaidPreviewSvg, setMermaidPreviewSvg] = useState<string | null>(null);
@@ -935,6 +938,90 @@ export default function ViewerPage() {
     const t = setTimeout(run, 50);
     return () => clearTimeout(t);
   }, [pendingHydrate]);
+
+  const handleLockToggle = async (e: React.MouseEvent, note: IphoneNote) => {
+    e.stopPropagation();
+    const isLocked = lockedNoteIds.includes(note.id);
+
+    // 楽観的更新
+    if (isLocked) {
+      setLockedNoteIds(prev => prev.filter(id => id !== note.id));
+    } else {
+      setLockedNoteIds(prev => [...prev, note.id]);
+    }
+
+    try {
+      if (isLocked) {
+        // ロック解除: 通知を閉じてDB更新
+        const reg = await navigator.serviceWorker.ready;
+        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
+        const draft = await loadDraft(note.id);
+        if (draft) {
+          const { locked, ...rest } = draft;
+          await saveDraft(rest as DraftRecord);
+        }
+      } else {
+        // ロック ON: 権限確認→通知表示→DB更新
+        if (Notification.permission === 'default') {
+          setIsLockPermissionPending(true);
+          const result = await Notification.requestPermission();
+          setIsLockPermissionPending(false);
+          if (result !== 'granted') {
+            setLockedNoteIds(prev => prev.filter(id => id !== note.id));
+            setErrorMessage('通知権限が必要です。設定から有効にしてください');
+            return;
+          }
+        } else if (Notification.permission === 'denied') {
+          setLockedNoteIds(prev => prev.filter(id => id !== note.id));
+          setErrorMessage('通知権限が必要です。設定から有効にしてください');
+          return;
+        }
+
+        // 通知タイトル・body の生成
+        const rawTitle = note.title || '';
+        const rawBody = note.body || '';
+        const notifTitle = rawTitle
+          ? rawTitle.replace(/^#\s*/, '')
+          : rawBody.slice(0, 20) || '（無題）';
+        const notifBody = rawTitle
+          ? rawBody.slice(0, 40)
+          : rawBody.slice(20, 60);
+
+        // SW 経由で通知表示（new Notification() はモバイルで動かない）
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification(notifTitle, {
+          body: notifBody,
+          tag: `fusen-lock-${note.id}`,
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+        });
+
+        // DB に locked: true を保存
+        const draft = await loadDraft(note.id);
+        if (draft) {
+          await saveDraft({ ...draft, locked: true });
+        } else {
+          // received_pc 等で draft が null の場合: 最小レコードを生成して保存
+          await saveDraft({
+            id: note.id,
+            title: note.title || '',
+            body: note.body || '',
+            created_at: note.created_at || new Date().toISOString(),
+            images: [],
+            tags: note.tags,
+            locked: true,
+          });
+        }
+      }
+    } catch {
+      // 失敗時はロールバック
+      if (isLocked) {
+        setLockedNoteIds(prev => [...prev, note.id]);
+      } else {
+        setLockedNoteIds(prev => prev.filter(id => id !== note.id));
+      }
+    }
+  };
 
   // ローディング表示
   if (isLoading) {
