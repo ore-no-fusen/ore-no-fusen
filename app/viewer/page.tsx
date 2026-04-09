@@ -919,6 +919,7 @@ export default function ViewerPage() {
               await reg.showNotification(notifTitle, {
                 body: notifBody,
                 tag: `fusen-lock-${d.id}`,
+                data: { id: d.id, title: notifTitle, body: notifBody },
                 icon: '/icon-192.png',
                 badge: '/icon-192.png',
               });
@@ -1021,6 +1022,7 @@ export default function ViewerPage() {
         await reg.showNotification(notifTitle, {
           body: notifBody,
           tag: `fusen-lock-${note.id}`,
+          data: { id: note.id, title: notifTitle, body: notifBody },
           icon: '/icon-192.png',
           badge: '/icon-192.png',
         });
