@@ -669,6 +669,7 @@ export default function ViewerPage() {
   const [activeNotifIds, setActiveNotifIds] = useState<string[]>([]);
   const [lockedNoteIds, setLockedNoteIds] = useState<string[]>([]);
   const [isLockPermissionPending, setIsLockPermissionPending] = useState(false);
+  const hasRestoredLockRef = React.useRef(false);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const [mermaidCode, setMermaidCode] = useState('');
   const [mermaidPreviewSvg, setMermaidPreviewSvg] = useState<string | null>(null);
@@ -901,9 +902,10 @@ export default function ViewerPage() {
         const lockedIds = drafts.filter(d => d.locked).map(d => d.id);
         setLockedNoteIds(lockedIds);
 
-        // 通知を再発火（権限が granted の場合のみ）
+        // 通知を再発火（権限が granted かつ初回のみ）
         // 起動時に permission リクエストしてはいけない（iOS 制約）
-        if (lockedIds.length > 0 && Notification.permission === 'granted') {
+        if (!hasRestoredLockRef.current && lockedIds.length > 0 && Notification.permission === 'granted') {
+          hasRestoredLockRef.current = true;
           navigator.serviceWorker.ready.then(async (reg) => {
             for (const d of drafts.filter(d => d.locked)) {
               const rawTitle = d.title || '';
