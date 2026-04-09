@@ -9,9 +9,9 @@
 
 - [ ] **LOCK-01**: ユーザーは一覧の任意のメモをタップひとつでロック画面に通知として表示できる
 - [ ] **LOCK-02**: ユーザーは一覧から、ロック画面に表示中のメモを消せる（通知が消える）
-- [ ] **LOCK-03**: ロック画面に表示中のメモは一覧で視覚的に識別できる（アイコン強調など）
-- [ ] **LOCK-04**: 複数のメモを同時にロック画面に表示できる（各メモが独立した通知として出る）
-- [ ] **LOCK-05**: ロック画面表示状態はアプリを閉じても保持される（IndexedDB永続化）
+- [x] **LOCK-03**: ロック画面に表示中のメモは一覧で視覚的に識別できる（アイコン強調など）
+- [x] **LOCK-04**: 複数のメモを同時にロック画面に表示できる（各メモが独立した通知として出る）
+- [x] **LOCK-05**: ロック画面表示状態はアプリを閉じても保持される（IndexedDB永続化）
 
 ### エディタ連携
 
@@ -43,9 +43,9 @@
 |-------------|-------|--------|
 | LOCK-01 | Phase 13 | Pending |
 | LOCK-02 | Phase 13 | Pending |
-| LOCK-03 | Phase 13 | Pending |
-| LOCK-04 | Phase 13 | Pending |
-| LOCK-05 | Phase 13 | Pending |
+| LOCK-03 | Phase 13 | Complete |
+| LOCK-04 | Phase 13 | Complete |
+| LOCK-05 | Phase 13 | Complete |
 | EDIT-01 | Phase 14 | Pending |
 | EDIT-02 | Phase 14 | Pending |
 | RESUME-01 | Phase 14 | Pending |
