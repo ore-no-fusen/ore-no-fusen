@@ -1810,6 +1810,14 @@ export default function ViewerPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-0">
+                          <button
+                            className={`p-2 ${lockedNoteIds.includes(note.id) ? 'text-blue-500' : 'text-gray-400'} hover:text-blue-500`}
+                            aria-label={lockedNoteIds.includes(note.id) ? 'ロック解除' : 'ロック画面に表示'}
+                            disabled={isLockPermissionPending}
+                            onClick={(e) => handleLockToggle(e, note)}
+                          >
+                            🔔
+                          </button>
                           {note.status === 'received_pc' && activeNotifIds.includes(note.id) && (
                             <button
                               className="p-2 text-gray-400 hover:text-blue-500"
