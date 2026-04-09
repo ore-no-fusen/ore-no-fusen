@@ -1253,13 +1253,19 @@ async fn fusen_send_to_iphone(
     };
 
     // 2. frontmatter を除去して body を取り出し、Drive用／Push用に変換
-    let body = if note.starts_with("---") {
-        note[3..].find("---")
-            .map(|end| note[3 + end + 3..].trim_start_matches('\n').to_string())
-            .unwrap_or_else(|| note.clone())
+    let (frontmatter, body) = if note.starts_with("---") {
+        let fm_end = note[3..].find("---").map(|end| 3 + end + 3).unwrap_or(0);
+        if fm_end > 0 {
+            let fm = &note[..fm_end];
+            let b = note[fm_end..].trim_start_matches('\n').to_string();
+            (fm.to_string(), b)
+        } else {
+            (String::new(), note.clone())
+        }
     } else {
-        note.clone()
+        (String::new(), note.clone())
     };
+    let (_, _, _, _, _, _, note_tags, _) = logic::extract_meta_from_content(&frontmatter);
     let note_dir = std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new("."));
     let sent_at = chrono::Utc::now().to_rfc3339();
     let note_id = uuid::Uuid::new_v4().to_string();
@@ -1286,7 +1292,7 @@ async fn fusen_send_to_iphone(
         "id": note_id.clone(),
         "title": title,
         "body": body_rich,
-        "tags": [],
+        "tags": note_tags,
         "sent_at": sent_at,
         "received_at": null
     });
@@ -1294,7 +1300,7 @@ async fn fusen_send_to_iphone(
         "id": note_id,
         "title": title,
         "body": body_push,
-        "tags": [],
+        "tags": note_tags,
         "sent_at": sent_at
     });
 
