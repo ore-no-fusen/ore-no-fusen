@@ -35,6 +35,7 @@
 | 1.0 | 2026-04-08 | 初版。Google Drive ファイル仕様・ライフサイクル表・VAPID鍵設計意図を含む。以降はこのファイルを唯一の設計書として更新する |
 | 1.1 | 2026-04-08 | セクション6追加。iPhone連携フロー（PC→iPhone v2.0 / iPhone→PC v3.0 / viewer画面遷移）を iphone_01〜04 HTML設計書よりマージ |
 | 1.2 | 2026-04-08 | 6.2・6.3 を実装に合わせて更新。「iPhoneに置いておく」→「新規付箋」ボタン名変更。バッジ色を保存済み（グレー）・PC受信（薄藍）・送信済み（薄青）に変更 |
+| 1.3 | 2026-04-10 | 1.1「画面とソースファイルの対応」追加（PC マルチウィンドウ構造・iPhone PWA 構成）。4.1「iPhone側データ構造」追加（DraftRecord / IphoneNote / FusenNoteItem）。notes_to_iphone.json に tags フィールド追記 |
 
 ---
 
@@ -126,6 +127,41 @@ graph LR
 
     classDef default fill:#2d3436,stroke:#81ecec,stroke-width:4px,color:#fff,font-size:28px;
     classDef cluster fill:#2d3436,stroke:#a29bfe,stroke-width:4px,color:#fff,font-size:32px;
+```
+
+---
+
+## 1.1 画面とソースファイルの対応
+
+本アプリは Next.js App Router を使っており、URL パスごとに `page.tsx` が分かれている。
+
+| 画面 | URL | ソースファイル | 実行環境 |
+|------|-----|---------------|---------|
+| メインウィンドウ（トレイ・設定・検索） | `/` | `app/page.tsx` | PC（Tauri WebView） |
+| 付箋ウィンドウ 1枚ごと | `/` と同じ URL（別 WebView ウィンドウ） | `app/components/StickyNote.tsx` | PC（Tauri マルチウィンドウ） |
+| iPhone PWA | `/viewer` | `app/viewer/page.tsx` | iPhone Safari（PWA） |
+
+### PC のマルチウィンドウの仕組み
+
+```
+Tauri 起動
+  └── メインウィンドウ (app/page.tsx)
+        ├── 付箋A用 WebviewWindow → StickyNote.tsx を読み込む
+        ├── 付箋B用 WebviewWindow → StickyNote.tsx を読み込む
+        └── 付箋C用 WebviewWindow → StickyNote.tsx を読み込む
+```
+
+- Tauri が付箋1枚ごとに `WebviewWindow` を生成する
+- 各ウィンドウは独立したプロセスで `StickyNote.tsx` を表示する
+- ウィンドウ間の状態同期は Rust `AppState` と Tauri イベント経由で行う（フロントエンドに状態を持たない）
+
+### iPhone PWA の構成
+
+```
+/viewer (app/viewer/page.tsx)  ← 約2000行・全画面を1ファイルで管理
+  ├── SimpleNoteBody.tsx        ← 一覧カードの本文表示（Mermaid図含む）
+  ├── editor-helpers.ts         ← 編集画面のヘルパー関数
+  └── utils.ts                  ← 共通ユーティリティ
 ```
 
 ---
@@ -323,6 +359,68 @@ erDiagram
 
 ---
 
+## 4.1 iPhone側データ構造
+
+iPhone PWA（`app/viewer/page.tsx`）で扱うデータ型の一覧。
+
+### DraftRecord — iPhone ローカル保存データ（IndexedDB）
+
+iPhone 内の IndexedDB（`fusen-drafts` ストア）に保存される。Drive は使わない。
+
+```ts
+type DraftRecord = {
+  id: string;            // ノートID（UUID）
+  title: string;         // タイトル（例: "# 買い物リスト"）
+  body: string;          // 本文（Markdown）
+  created_at: string;    // 作成日時（ISO 8601 例: "2026-04-10T14:30:00.000Z"）
+  images: {
+    fileName: string;    // 例: "fusen_img_20260410_143000_メモ_1.jpg"
+    blob: Blob;          // 画像の生データ（iPhoneローカルのみ。Driveには送信時にアップロード）
+  }[];
+  tags?: string[];       // タグ（例: ["仕事", "メモ"]）
+  received_pc?: true;    // PCから受信したメモに付くフラグ
+  sent_at?: string;      // PCに送信した日時（ISO 8601）
+  locked?: true;         // 🔔ロック画面に表示中（Phase 13）
+};
+```
+
+**ISO 8601** とは日時の国際標準フォーマット。`new Date().toISOString()` で得られる `"2026-04-10T14:30:00.000Z"` 形式。末尾の `Z` は UTC（世界標準時）を表す。
+
+### IphoneNote — 一覧画面の表示用データ
+
+`DraftRecord`（IndexedDB）と Drive の送信済みデータをマージして画面に表示するための型。保存はしない。
+
+```ts
+type IphoneNote = {
+  id: string;
+  status: 'sent'        // PCに送信済み
+        | 'draft'       // 下書き（未送信）
+        | 'received_pc' // PCから受信
+  title: string;
+  body: string;
+  created_at: string;   // ISO 8601
+  sent_at?: string;     // ISO 8601
+  tags?: string[];
+};
+```
+
+### FusenNoteItem — Google Drive 経由で PC→iPhone に届くデータ
+
+`notes_to_iphone.json` の各アイテム。PC が送信し、iPhone が受け取る。
+
+```ts
+type FusenNoteItem = {
+  id: string;
+  title: string;
+  body: string;
+  tags: string[];            // PC付箋のタグ（frontmatterから取得）
+  sent_at: string;           // PCが送った日時（ISO 8601）
+  received_at: string | null; // iPhoneが受け取った日時（null = 未受信）
+};
+```
+
+---
+
 ## 5. Google Drive ファイル仕様
 
 Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕様。
@@ -353,6 +451,7 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
       "id": "uuid-v4",
       "title": "付箋のタイトル（frontmatter の title）",
       "body": "本文（ローカル画像は base64 data URI に変換済み）",
+      "tags": ["タグ1", "タグ2"],
       "sent_at": "2026-04-08T10:00:00Z",
       "received_at": "2026-04-08T10:01:00Z"
     }
@@ -361,6 +460,7 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 ```
 
 - `received_at` は iPhone viewer が受信した時刻。未受信アイテムは `received_at` なし
+- `tags` は PC 付箋の frontmatter から取得（Phase 13 で追加）
 - ローカル画像は iPhone で表示できるよう base64 data URI に埋め込み済み
 - 件数制限: 最新 20 件のみ保持（PC アプリが送信時に超過分を削除）
 
