@@ -182,34 +182,11 @@ test('[LOCK-05] DraftRecord の locked フィールドが saveDraft/loadDraft �
 // ============================================================
 async function setupWithSwMock(page: import('@playwright/test').Page, notes: object[]) {
   await page.addInitScript((notesArg: object[]) => {
-    // Service Worker registration モック
+    // Service Worker の showNotification 呼び出しを記録するスパイを window に設置
+    // navigator.serviceWorker はモックしない（getRegistration が undefined でクラッシュするため）
+    // 代わりに navigator.serviceWorker.ready.then() の showNotification を差し替える
     const swNotifCalls: { title: string; options: Record<string, unknown> }[] = [];
     (window as unknown as Record<string, unknown>).__swNotifCalls = swNotifCalls;
-
-    const mockReg = {
-      showNotification: (title: string, options: Record<string, unknown>) => {
-        swNotifCalls.push({ title, options });
-        return Promise.resolve();
-      },
-      getNotifications: (_opts?: unknown) => Promise.resolve([]),
-    };
-
-    Object.defineProperty(navigator, 'serviceWorker', {
-      value: {
-        ready: Promise.resolve(mockReg),
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        controller: null,
-      },
-      configurable: true,
-      writable: true,
-    });
-
-    // Notification.permission = 'granted' に固定
-    Object.defineProperty(Notification, 'permission', {
-      get: () => 'granted',
-      configurable: true,
-    });
 
     // standalone モード
     Object.defineProperty(window, 'matchMedia', {
@@ -226,8 +203,26 @@ async function setupWithSwMock(page: import('@playwright/test').Page, notes: obj
       }),
     });
 
+    // Notification.permission = 'granted' に固定
+    Object.defineProperty(Notification, 'permission', {
+      get: () => 'granted',
+      configurable: true,
+    });
+
     localStorage.setItem('viewer_access_token', 'dummy-token');
     localStorage.setItem('viewer_push_done', 'true');
+
+    // ServiceWorkerRegistration.showNotification をスパイに差し替え
+    // ready 解決後に呼ばれるため、prototype を上書きする
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        const orig = reg.showNotification.bind(reg);
+        reg.showNotification = (title: string, options: NotificationOptions) => {
+          swNotifCalls.push({ title, options: options as Record<string, unknown> });
+          return orig(title, options);
+        };
+      }).catch(() => {});
+    }
 
     // IndexedDB にメモを投入
     const openReq = indexedDB.open('fusen-drafts', 1);
