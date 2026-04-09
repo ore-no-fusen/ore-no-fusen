@@ -896,6 +896,33 @@ export default function ViewerPage() {
           }
         }
         setThumbnailUrls(thumbMap);
+
+        // ロック状態を復元: locked === true のメモIDを lockedNoteIds に反映
+        const lockedIds = drafts.filter(d => d.locked).map(d => d.id);
+        setLockedNoteIds(lockedIds);
+
+        // 通知を再発火（権限が granted の場合のみ）
+        // 起動時に permission リクエストしてはいけない（iOS 制約）
+        if (lockedIds.length > 0 && Notification.permission === 'granted') {
+          navigator.serviceWorker.ready.then(async (reg) => {
+            for (const d of drafts.filter(d => d.locked)) {
+              const rawTitle = d.title || '';
+              const rawBody = d.body || '';
+              const notifTitle = rawTitle
+                ? rawTitle.replace(/^#\s*/, '')
+                : rawBody.slice(0, 20) || '（無題）';
+              const notifBody = rawTitle
+                ? rawBody.slice(0, 40)
+                : rawBody.slice(20, 60);
+              await reg.showNotification(notifTitle, {
+                body: notifBody,
+                tag: `fusen-lock-${d.id}`,
+                icon: '/icon-192.png',
+                badge: '/icon-192.png',
+              });
+            }
+          }).catch(() => {});
+        }
       })
       .finally(() => setIsHistoryLoading(false));
     return () => { thumbUrls.forEach((u) => URL.revokeObjectURL(u)); };
