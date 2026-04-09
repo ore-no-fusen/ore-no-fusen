@@ -205,5 +205,5 @@ Plans:
 | 10. iPhone UX改善 + 送信高速化 | v3.0 | 3/3 | Complete | 2026-04-03 |
 | 11. PC→iPhone受信履歴保存 | v3.0 | 0/4 | Not started | — |
 | 12. チェックボックスTODO一覧インライントグル | v3.0 | 0/0 | Not started | — |
-| 13. ロック画面コントロール基盤 | 1/4 | In Progress|  | — |
+| 13. ロック画面コントロール基盤 | 2/4 | In Progress|  | — |
 | 14. エディタ連携 + 再起動復元 | v4.0 | 0/0 | Not started | — |
