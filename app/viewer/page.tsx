@@ -784,16 +784,28 @@ export default function ViewerPage() {
             });
           }
           // タップされた note_id のノートを write に直接表示
+          // Drive にない場合（ローカル下書きのロック通知など）は IndexedDB を確認
           const tappedId = new URLSearchParams(window.location.search).get('note');
-          const tapped = items.find((item) => item.id === tappedId) ?? items[0];
-          if (tapped) {
-            const titleLine = tapped.title ? `${tapped.title}\n` : '';
+          const tappedFromDrive = items.find((item) => item.id === tappedId);
+          if (tappedFromDrive) {
+            const titleLine = tappedFromDrive.title ? `${tappedFromDrive.title}\n` : '';
             setPendingHydrate({
-              markdown: titleLine + tapped.body,
+              markdown: titleLine + tappedFromDrive.body,
               blobMap: new Map(),
-              draftId: tapped.id,
+              draftId: tappedFromDrive.id,
               tags: [],
             });
+          } else if (tappedId) {
+            const draft = await loadDraft(tappedId);
+            if (draft) {
+              const titleLine = draft.title ? `${draft.title}\n` : '';
+              setPendingHydrate({
+                markdown: titleLine + draft.body,
+                blobMap: new Map(),
+                draftId: draft.id,
+                tags: draft.tags ?? [],
+              });
+            }
           }
           setStep('write');
         })
@@ -827,15 +839,27 @@ export default function ViewerPage() {
             });
           }
           // pending_note の note_id のノートを write に直接表示
-          const tapped = items.find((item) => item.id === pendingNote) ?? items[0];
-          if (tapped) {
-            const titleLine = tapped.title ? `${tapped.title}\n` : '';
+          // Drive にない場合は IndexedDB を確認
+          const tappedFromDrive = items.find((item) => item.id === pendingNote);
+          if (tappedFromDrive) {
+            const titleLine = tappedFromDrive.title ? `${tappedFromDrive.title}\n` : '';
             setPendingHydrate({
-              markdown: titleLine + tapped.body,
+              markdown: titleLine + tappedFromDrive.body,
               blobMap: new Map(),
-              draftId: tapped.id,
+              draftId: tappedFromDrive.id,
               tags: [],
             });
+          } else {
+            const draft = await loadDraft(pendingNote);
+            if (draft) {
+              const titleLine = draft.title ? `${draft.title}\n` : '';
+              setPendingHydrate({
+                markdown: titleLine + draft.body,
+                blobMap: new Map(),
+                draftId: draft.id,
+                tags: draft.tags ?? [],
+              });
+            }
           }
           setStep('write');
         })
