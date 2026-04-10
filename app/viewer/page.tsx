@@ -758,6 +758,8 @@ export default function ViewerPage() {
     }
 
     // 通知タップ（?note= あり）
+    // メモは必ず IndexedDB にある（ローカル下書き or 一覧で受信済み）
+    // Drive は見ない。Drive ダウンロードは一覧を開いたときに行う。
     if (params.get('note')) {
       if (!token) {
         generatePKCE().then(({ verifier, challenge }) => {
@@ -768,53 +770,19 @@ export default function ViewerPage() {
         return;
       }
       setAccessToken(token);
-      setIsLoading(true);
-      downloadFusenNoteItems(token)
-        .then(async (items) => {
-          // 全未読を IndexedDB に一括保存
-          for (const item of items) {
-            await saveDraft({
-              id: item.id,
-              title: item.title,
-              body: item.body,
-              created_at: item.sent_at,
-              images: [],
-              tags: [],
-              received_pc: true,
-            });
-          }
-          // タップされた note_id のノートを write に直接表示
-          // Drive にない場合（ローカル下書きのロック通知など）は IndexedDB を確認
-          const tappedId = new URLSearchParams(window.location.search).get('note');
-          const tappedFromDrive = items.find((item) => item.id === tappedId);
-          if (tappedFromDrive) {
-            const titleLine = tappedFromDrive.title ? `${tappedFromDrive.title}\n` : '';
-            setPendingHydrate({
-              markdown: titleLine + tappedFromDrive.body,
-              blobMap: new Map(),
-              draftId: tappedFromDrive.id,
-              tags: [],
-            });
-          } else if (tappedId) {
-            const draft = await loadDraft(tappedId);
-            if (draft) {
-              const titleLine = draft.title ? `${draft.title}\n` : '';
-              setPendingHydrate({
-                markdown: titleLine + draft.body,
-                blobMap: new Map(),
-                draftId: draft.id,
-                tags: draft.tags ?? [],
-              });
-            }
-          }
-          setStep('write');
-        })
-        .catch(() => {
-          localStorage.removeItem('viewer_access_token');
-          setErrorMessage('セッションが切れました。再度ログインしてください。');
-          setStep('login');
-        })
-        .finally(() => setIsLoading(false));
+      const tappedId = params.get('note')!;
+      loadDraft(tappedId).then((draft) => {
+        if (draft) {
+          const titleLine = draft.title ? `${draft.title}\n` : '';
+          setPendingHydrate({
+            markdown: titleLine + draft.body,
+            blobMap: new Map(),
+            draftId: draft.id,
+            tags: draft.tags ?? [],
+          });
+        }
+        setStep('write');
+      });
       return;
     }
 
@@ -823,52 +791,18 @@ export default function ViewerPage() {
     if (pendingNote && token) {
       localStorage.removeItem('pending_note');
       setAccessToken(token);
-      setIsLoading(true);
-      downloadFusenNoteItems(token)
-        .then(async (items) => {
-          // 全未読を IndexedDB に一括保存
-          for (const item of items) {
-            await saveDraft({
-              id: item.id,
-              title: item.title,
-              body: item.body,
-              created_at: item.sent_at,
-              images: [],
-              tags: [],
-              received_pc: true,
-            });
-          }
-          // pending_note の note_id のノートを write に直接表示
-          // Drive にない場合は IndexedDB を確認
-          const tappedFromDrive = items.find((item) => item.id === pendingNote);
-          if (tappedFromDrive) {
-            const titleLine = tappedFromDrive.title ? `${tappedFromDrive.title}\n` : '';
-            setPendingHydrate({
-              markdown: titleLine + tappedFromDrive.body,
-              blobMap: new Map(),
-              draftId: tappedFromDrive.id,
-              tags: [],
-            });
-          } else {
-            const draft = await loadDraft(pendingNote);
-            if (draft) {
-              const titleLine = draft.title ? `${draft.title}\n` : '';
-              setPendingHydrate({
-                markdown: titleLine + draft.body,
-                blobMap: new Map(),
-                draftId: draft.id,
-                tags: draft.tags ?? [],
-              });
-            }
-          }
-          setStep('write');
-        })
-        .catch(() => {
-          localStorage.removeItem('viewer_access_token');
-          setErrorMessage('セッションが切れました。再度ログインしてください。');
-          setStep('login');
-        })
-        .finally(() => setIsLoading(false));
+      loadDraft(pendingNote).then((draft) => {
+        if (draft) {
+          const titleLine = draft.title ? `${draft.title}\n` : '';
+          setPendingHydrate({
+            markdown: titleLine + draft.body,
+            blobMap: new Map(),
+            draftId: draft.id,
+            tags: draft.tags ?? [],
+          });
+        }
+        setStep('write');
+      });
       return;
     }
 
