@@ -6,6 +6,7 @@
 - ✅ **v2.0 iPhone連携** — Phases 4-5 (shipped 2026-03-29)
 - 📋 **v3.0 iPhone→PC送信** — Phases 6-12 (planned)
 - 📋 **v4.0 ロック画面コントロール** — Phases 13-14 (planned)
+- 📋 **v5.0 iPhone PWA 安定化** — Phases 15-18 (planned)
 
 ## Phases
 
@@ -30,24 +31,26 @@ See: `.planning/milestones/v2.0-ROADMAP.md`
 
 </details>
 
-### 📋 v3.0 iPhone→PC送信
+<details>
+<summary>✅ v3.0 iPhone→PC送信 (Phases 6-12) — CLOSED 2026-04-10</summary>
 
-**Milestone Goal:** iPhoneで書いたメモ・写真・MermaidをPCに送ると、30秒以内に新規付箋ウィンドウが開く
+- [x] Phase 6: iPhone送信UI — closed
+- [x] Phase 7: PC受信 — completed 2026-03-30
+- [x] Phase 8: iPhoneノートアプリ化 — completed 2026-04-01
+- [x] Phase 9: iPhone付箋管理 — closed
+- [x] Phase 10: iPhone UX改善 + 送信高速化 — completed 2026-04-03
+- [x] Phase 11: PC→iPhone受信履歴保存 — closed
+- [x] Phase 12: チェックボックスTODO一覧インライントグル — closed
 
-- [ ] **Phase 6: iPhone送信UI** — iPhoneで書いてDriveに送れる状態（PCなしで検証可能）
-- [x] **Phase 7: PC受信** — DriveポーリングでPCに自動着信する状態（07-01完了・07-02実装中） (completed 2026-03-30)
-- [x] **Phase 8: iPhoneノートアプリ化** — contenteditable・画像・タグ・一覧 (completed 2026-04-01)
-- [x] **Phase 9: iPhone付箋管理** — 一覧から作成・編集・保存・削除、PCへの送信も可能 (completed 2026-04-01)
-- [ ] **Phase 10: iPhone UX改善 + 送信高速化** — チェックボックス・タグサジェスト・5秒以内送信
-- [ ] **Phase 11: PC→iPhone受信履歴保存** — 通知消去後も一覧で閲覧・編集
-- [ ] **Phase 12: チェックボックスTODO一覧インライントグル** — TBD
+</details>
 
-### 📋 v4.0 ロック画面コントロール
+<details>
+<summary>✅ v4.0 ロック画面コントロール (Phases 13-14) — CLOSED 2026-04-10</summary>
 
-**Milestone Goal:** iPhoneの一覧にある任意のメモをロック画面に自由に出す/消すを自分でコントロールできる
+- [x] Phase 13: ロック画面コントロール基盤 — closed (実装済み、v5.0で統合)
+- [x] Phase 14: エディタ連携 + 再起動復元 — deferred to Phase 18
 
-- [ ] **Phase 13: ロック画面コントロール基盤** — 一覧の🔔ボタンでロック画面への表示トグル・複数メモ同時表示・IndexedDB永続化
-- [ ] **Phase 14: エディタ連携 + 再起動復元** — エディタヘッダーの🔔ボタン・ロック状態反映・アプリ起動時の通知自動再表示
+</details>
 
 ---
 
@@ -178,11 +181,58 @@ Plans:
 - [ ] 13-04-PLAN.md — Wave 4: iPhone 実機検証チェックポイント（LOCK-01〜05）
 
 ### Phase 14: エディタ連携 + 再起動復元
+**Status**: DEFERRED — Phase 18 に移動（viewer/page.tsx 分割完了後に実施）
 **Goal**: エディタ画面からもロック画面トグルを操作でき、アプリ起動時にロック中メモの通知が自動再表示される
 **Depends on**: Phase 13
 **Requirements**: EDIT-01, EDIT-02, RESUME-01
+**Plans**: → Phase 18 で実施
+
+---
+
+### 📋 v5.0 iPhone PWA 安定化
+
+**Milestone Goal:** viewer/page.tsx の根本的なバグを修正し、コンポーネントを正しく分割して、継続的に壊れない土台を作る
+
+### Phase 15: コード整理（lib 抽出・死んだコード削除）
+**Goal**: viewer/page.tsx から型定義・DB操作・Drive操作を lib/ に切り出し、死んだコードを削除する
+**Depends on**: Phase 13
+**Requirements**: CLEAN-01, CLEAN-02
 **Success Criteria** (what must be TRUE):
-  1. エディタのヘッダーツールバーに🔔ボタンがあり、タップでロック画面への表示をトグルできる
+  1. `types.ts` に DraftRecord / IphoneNote 等の型定義が移動し、page.tsx から import されている
+  2. `lib/indexeddb.ts` に openDraftsDB / saveDraft / loadAllDrafts / loadDraft / deleteDraft が移動している
+  3. `lib/drive.ts` に Drive API 操作関数が移動している
+  4. `noteData` state・`step='note'`・`downloadWithAutoRefresh` 等の死んだコードが削除されている
+  5. E2E テスト（13件）が引き続き全パスする
+**Plans**: TBD
+
+### Phase 16: バグ修正（画像消失・URL変化未検知・ロック状態ズレ）
+**Goal**: 一覧↔編集往復で画像が消えるバグ、通知タップで別メモが開くバグ、ロック状態の二重管理ズレを修正する
+**Depends on**: Phase 15
+**Requirements**: FIX-01, FIX-02, FIX-03
+**Success Criteria** (what must be TRUE):
+  1. 一覧→編集→一覧→編集を繰り返しても添付画像が消えず正しく表示される（FIX-01）
+  2. メモAを開いている状態でメモBの通知をタップすると、メモBの内容が正しく開く（FIX-02）
+  3. 一覧のベルアイコンが IndexedDB の locked フィールドのみを信頼源とし、SW の activeNotifIds に依存しない（FIX-03）
+**Plans**: TBD
+
+### Phase 17: コンポーネント分割（WriteScreen / ListScreen / SetupScreens）
+**Goal**: 1925行の viewer/page.tsx を薄いルーター（100行以内）+ 3つの画面コンポーネント + hooks/ + lib/ に分割する
+**Depends on**: Phase 16
+**Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-04
+**Success Criteria** (what must be TRUE):
+  1. `screens/WriteScreen.tsx` が独立し、編集画面の責務だけを持つ（ARCH-01）
+  2. `screens/ListScreen.tsx` が独立し、一覧画面の責務だけを持つ（ARCH-02）
+  3. `screens/SetupScreens.tsx` が独立し、banner/login/push 画面を担う（ARCH-03）
+  4. `hooks/useAuth.ts`・`hooks/useDrafts.ts`・`hooks/useLock.ts` に状態管理が分離されている（ARCH-04）
+  5. E2E テスト（13件）が引き続き全パスし、iPhone 実機で動作確認できる
+**Plans**: TBD
+
+### Phase 18: エディタ連携 + 再起動復元（旧 Phase 14）
+**Goal**: エディタ画面からもロック画面トグルを操作でき、アプリ起動時にロック中メモの通知が自動再表示される
+**Depends on**: Phase 17
+**Requirements**: LOCK-06, LOCK-07, LOCK-08
+**Success Criteria** (what must be TRUE):
+  1. エディタ（WriteScreen）のヘッダーツールバーに🔔ボタンがあり、タップでロック画面への表示をトグルできる
   2. エディタの🔔ボタンは現在のロック状態を反映し、ON/OFFが視覚的に区別できる（一覧側と状態が一致する）
   3. アプリを完全終了して再起動すると、IndexedDBに保存されたロック中メモの通知がロック画面に自動表示される
 **Plans**: TBD
@@ -191,19 +241,23 @@ Plans:
 
 ## Progress
 
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 1. コードレビュー | v1.0 | 3/3 | Complete | 2026-03-23 |
-| 2. バグ修正 | v1.0 | 2/2 | Complete | 2026-03-23 |
-| 3. 確認・検証 | v1.0 | 2/2 | Complete | 2026-03-23 |
-| 4. Rust バックエンド（Drive+APNs） | v2.0 | 5/5 | Complete | 2026-03-23 |
-| 5. iPhone PWA + Rust送信 | v2.0 | 5/5 | Complete | 2026-03-29 |
-| 6. iPhone送信UI | v3.0 | 4/5 | In Progress | — |
-| 7. PC受信 | v3.0 | 2/2 | Complete | 2026-03-30 |
-| 8. iPhoneノートアプリ化 | v3.0 | 4/4 | Complete | 2026-04-01 |
-| 9. iPhone付箋管理 | v3.0 | 0/3 | Not started | — |
-| 10. iPhone UX改善 + 送信高速化 | v3.0 | 3/3 | Complete | 2026-04-03 |
-| 11. PC→iPhone受信履歴保存 | v3.0 | 0/4 | Not started | — |
-| 12. チェックボックスTODO一覧インライントグル | v3.0 | 0/0 | Not started | — |
-| 13. ロック画面コントロール基盤 | 3/4 | In Progress|  | — |
-| 14. エディタ連携 + 再起動復元 | v4.0 | 0/0 | Not started | — |
+| Phase | Milestone | Status | Completed |
+|-------|-----------|--------|-----------|
+| 1. コードレビュー | v1.0 | Complete | 2026-03-23 |
+| 2. バグ修正 | v1.0 | Complete | 2026-03-23 |
+| 3. 確認・検証 | v1.0 | Complete | 2026-03-23 |
+| 4. Rust バックエンド（Drive+APNs） | v2.0 | Complete | 2026-03-23 |
+| 5. iPhone PWA + Rust送信 | v2.0 | Complete | 2026-03-29 |
+| 6. iPhone送信UI | v3.0 | Closed | 2026-04-10 |
+| 7. PC受信 | v3.0 | Complete | 2026-03-30 |
+| 8. iPhoneノートアプリ化 | v3.0 | Complete | 2026-04-01 |
+| 9. iPhone付箋管理 | v3.0 | Closed | 2026-04-10 |
+| 10. iPhone UX改善 + 送信高速化 | v3.0 | Complete | 2026-04-03 |
+| 11. PC→iPhone受信履歴保存 | v3.0 | Closed | 2026-04-10 |
+| 12. チェックボックスTODO一覧インライントグル | v3.0 | Closed | 2026-04-10 |
+| 13. ロック画面コントロール基盤 | v4.0 | Closed | 2026-04-10 |
+| 14. エディタ連携 + 再起動復元 | v4.0 | Deferred → Phase 18 | — |
+| **15. コード整理（lib 抽出・死んだコード削除）** | **v5.0** | **Not started** | — |
+| **16. バグ修正（画像・URL・ロック状態）** | **v5.0** | **Not started** | — |
+| **17. コンポーネント分割** | **v5.0** | **Not started** | — |
+| **18. エディタ連携 + 再起動復元** | **v5.0** | **Not started** | — |
