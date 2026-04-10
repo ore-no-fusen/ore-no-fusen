@@ -4,6 +4,18 @@ import React, { useState, useEffect } from 'react';
 import { SimpleNoteBody } from './SimpleNoteBody';
 import { formatRelativeTime, insertAtCursor } from './utils';
 import { getTranslation, type Language } from '@/lib/i18n';
+import type { IphoneNote, PendingHydrate, DraftRecord, CropModalProps } from './types';
+import { openDraftsDB, saveDraft, loadAllDrafts, loadDraft, deleteDraft } from './lib/indexeddb';
+import {
+  APP_FOLDER_NAME,
+  getAppFolderId,
+  uploadToDrive,
+  downloadFromDrive,
+  refreshAccessToken,
+  uploadWithAutoRefresh,
+  uploadImageToDrive,
+  uploadImageWithAutoRefresh,
+} from './lib/drive';
 
 // ---------------------------------------------------------------------------
 // ヘルパー関数
@@ -102,246 +114,16 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
-const APP_FOLDER_NAME = 'ore-no-fusen';
-let cachedFolderId: string | null = null;
-
-// 旧ファイル名 → 新ファイル名の移行マップ
-const LEGACY_FILE_NAMES: Record<string, string> = {
-  'notes_to_iphone.json': 'notes_to_iphone.json',
-  'push_devices.json': 'push_devices.json',
-  'notes_from_iphone.json': 'notes_from_iphone.json',
-};
 
 
-async function getAppFolderId(accessToken: string): Promise<string | null> {
-  if (cachedFolderId !== null) return cachedFolderId;
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${APP_FOLDER_NAME}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const data = await res.json();
-  if (data.files?.[0]?.id) {
-    cachedFolderId = data.files[0].id as string;
-    return cachedFolderId;
-  }
-  if (data.error) {
-    console.warn('[Drive] folder search error:', data.error.message);
-    return null;
-  }
-  // フォルダが存在しない場合は作成
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: APP_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }),
-  });
-  const created = await createRes.json();
-  if (created.error) {
-    console.warn('[Drive] folder create error:', created.error.message);
-    return null;
-  }
-  cachedFolderId = created.id as string;
-  return cachedFolderId;
-}
-
-async function uploadToDrive(
-  accessToken: string,
-  fileName: string,
-  data: object
-) {
-  const folderId = await getAppFolderId(accessToken);
-  const parentId = folderId ?? 'root';
-  const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
-  const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const searchData = await searchRes.json();
-  const fileId = searchData.files?.[0]?.id;
-  const body = JSON.stringify(data);
-  const fileBlob = new Blob([body], { type: 'application/json' });
-  if (fileId) {
-    const updateMeta = JSON.stringify({ name: fileName, mimeType: 'application/json' });
-    const form = new FormData();
-    form.append('metadata', new Blob([updateMeta], { type: 'application/json' }));
-    form.append('file', fileBlob);
-    const patchRes = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
-      {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: form,
-      }
-    );
-    if (!patchRes.ok) throw new Error(`Drive PATCH failed: ${patchRes.status}`);
-  } else {
-    const createMeta = JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [parentId] });
-    const form = new FormData();
-    form.append('metadata', new Blob([createMeta], { type: 'application/json' }));
-    form.append('file', fileBlob);
-    const postRes = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: form,
-      }
-    );
-    if (!postRes.ok) throw new Error(`Drive POST failed: ${postRes.status}`);
-  }
-}
-
-async function downloadFromDrive(accessToken: string, fileName: string) {
-  const folderId = await getAppFolderId(accessToken);
-  const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
-  const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const searchData = await searchRes.json();
-  let fileId = searchData.files?.[0]?.id;
-
-  // 新ファイル名で見つからなければ旧ファイル名にフォールバック（移行対応）
-  if (!fileId && LEGACY_FILE_NAMES[fileName]) {
-    const legacyName = LEGACY_FILE_NAMES[fileName];
-    const legacyRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${legacyName}'${folderQuery}+and+trashed=false`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    const legacyData = await legacyRes.json();
-    fileId = legacyData.files?.[0]?.id;
-    if (fileId) {
-      const content = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      ).then(r => r.json());
-      // 新名に移行（バックグラウンド・失敗しても無視）
-      uploadToDrive(accessToken, fileName, content).catch(() => {});
-      return content;
-    }
-  }
-
-  if (!fileId) throw new Error(`${fileName} not found in Drive`);
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }
-  );
-  return res.json();
-}
-
-// ---------------------------------------------------------------------------
-// リフレッシュトークンでアクセストークンを更新する
-// ---------------------------------------------------------------------------
-
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem('viewer_refresh_token');
-  if (!refreshToken) return null;
-
-  const res = await fetch('/api/auth/refresh', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
-
-  if (!res.ok) {
-    localStorage.removeItem('viewer_refresh_token');
-    return null;
-  }
-
-  const data = await res.json();
-  const newToken = data.access_token;
-  if (!newToken) return null;
-
-  localStorage.setItem('viewer_access_token', newToken);
-  if (data.expires_in) {
-    localStorage.setItem('viewer_expires_at', String(Date.now() + data.expires_in * 1000));
-  }
-  return newToken;
-}
-
-// ---------------------------------------------------------------------------
-// Phase 6 型定義
-// ---------------------------------------------------------------------------
-
-type IphoneNote = {
-  id: string;
-  status: 'sent' | 'draft' | 'received_pc';
-  title: string;
-  body: string;
-  created_at: string;
-  sent_at?: string;
-  tags?: string[];
-};
-
-type PendingHydrate = {
-  markdown: string;
-  blobMap: Map<string, Blob>;
-  draftId: string | null;
-  tags: string[];
-};
 
 
-// Drive 書き込み（トークン期限切れ時に自動リフレッシュ）
-async function uploadWithAutoRefresh(
-  token: string,
-  fileName: string,
-  data: object
-): Promise<void> {
-  try {
-    await uploadToDrive(token, fileName, data);
-  } catch {
-    const newToken = await refreshAccessToken();
-    if (!newToken) throw new Error('session expired');
-    await uploadToDrive(newToken, fileName, data);
-  }
-}
 
-// 画像ファイルを Drive にアップロードしてファイル名を返す
-async function uploadImageToDrive(
-  accessToken: string,
-  file: Blob,
-  fileName: string
-): Promise<void> {
-  const folderId = await getAppFolderId(accessToken);
-  const parentId = folderId ?? 'root';
-  const metadata = JSON.stringify({
-    name: fileName,
-    mimeType: file.type || 'image/jpeg',
-    parents: [parentId],
-  });
-  const form = new FormData();
-  form.append('metadata', new Blob([metadata], { type: 'application/json' }));
-  form.append('file', file);
-  const res = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
-      body: form,
-    }
-  );
-  if (!res.ok) throw new Error(`Drive image upload failed: ${res.status}`);
-}
-
-// uploadImageToDrive のトークン期限切れ対応ラッパー
-async function uploadImageWithAutoRefresh(
-  token: string,
-  file: Blob,
-  fileName: string
-): Promise<void> {
-  try {
-    await uploadImageToDrive(token, file, fileName);
-  } catch {
-    const newToken = await refreshAccessToken();
-    if (!newToken) throw new Error('session expired');
-    await uploadImageToDrive(newToken, file, fileName);
-  }
-}
 
 
 // 画像をリサイズして base64 文字列に変換
 // Drive ダウンロード（トークン期限切れ時に自動リフレッシュ）
+// TODO(Phase 15-03): downloadWithAutoRefresh は dead code — 削除予定
 function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: string }> {
   return downloadFromDrive(token, 'notes_to_iphone.json').catch(() =>
     refreshAccessToken().then((newToken) => {
@@ -351,111 +133,11 @@ function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: 
   );
 }
 
-type FusenNoteItem = {
-  id: string;
-  title: string;
-  body: string;
-  sent_at: string;
-  received_at: string | null;
-};
-
-async function downloadFusenNoteItems(token: string): Promise<FusenNoteItem[]> {
-  const data = await downloadFromDrive(token, 'notes_to_iphone.json').catch(() =>
-    refreshAccessToken().then((t) => {
-      if (!t) throw new Error('session expired');
-      return downloadFromDrive(t, 'notes_to_iphone.json');
-    })
-  );
-  if (Array.isArray(data?.items)) {
-    return data.items.filter((item: FusenNoteItem) => item.received_at == null);
-  }
-  // 旧スキーマ（単体オブジェクト）互換
-  if (data?.title || data?.body) {
-    return [{
-      id: data.sent_at ?? 'legacy',
-      title: data.title ?? '',
-      body: data.body ?? '',
-      sent_at: data.sent_at ?? '',
-      received_at: null,
-    }];
-  }
-  return [];
-}
-
-// ---------------------------------------------------------------------------
-// IndexedDB — {t('pwa.statusDraft')}（テキスト＋画像）をiPhone内にローカル保存
-// ---------------------------------------------------------------------------
-
-type DraftRecord = {
-  id: string;
-  title: string;
-  body: string;
-  created_at: string;
-  images: { fileName: string; blob: Blob }[];
-  tags?: string[];
-  received_pc?: true;
-  sent_at?: string;
-  locked?: true;
-};
-
-function openDraftsDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('fusen-drafts', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('drafts');
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function saveDraft(draft: DraftRecord): Promise<void> {
-  const db = await openDraftsDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('drafts', 'readwrite');
-    tx.objectStore('drafts').put(draft, draft.id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function loadAllDrafts(): Promise<DraftRecord[]> {
-  const db = await openDraftsDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('drafts', 'readonly');
-    const req = tx.objectStore('drafts').getAll();
-    req.onsuccess = () => resolve(req.result ?? []);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function loadDraft(id: string): Promise<DraftRecord | null> {
-  const db = await openDraftsDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('drafts', 'readonly');
-    const req = tx.objectStore('drafts').get(id);
-    req.onsuccess = () => resolve(req.result ?? null);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function deleteDraft(id: string): Promise<void> {
-  const db = await openDraftsDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('drafts', 'readwrite');
-    tx.objectStore('drafts').delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
 
 // ---------------------------------------------------------------------------
 // CropModal: Canvas API + touch/mouse でクロップ矩形を操作
 // ---------------------------------------------------------------------------
 
-type CropModalProps = {
-  file: File;
-  onCancel: () => void;
-  onCrop: (blob: Blob) => void;
-};
 
 function CropModal({ file, onCancel, onCrop }: CropModalProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -1859,10 +1541,6 @@ export default function ViewerPage() {
                                       }
                                     }
                                     if (note.status === 'received_pc') {
-                                      // Drive の notes_to_iphone.json からも削除
-                                      const driveData = await downloadFromDrive(accessToken!, 'notes_to_iphone.json').catch(() => ({ items: [] }));
-                                      const updatedItems = (driveData.items ?? []).filter((item: { id: string }) => item.id !== note.id);
-                                      await uploadWithAutoRefresh(accessToken!, 'notes_to_iphone.json', { items: updatedItems });
                                       // 通知も閉じる
                                       const reg = await navigator.serviceWorker.ready;
                                       reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
@@ -1900,54 +1578,7 @@ export default function ViewerPage() {
           </div>
         )}
 
-        {step === 'note' && noteData && (() => {
-          const bodyLines = noteData.body.split('\n');
-          const firstLine = bodyLines[0] ?? '';
-          const noteTitle = firstLine.startsWith('#')
-            ? firstLine.replace(/^#+\s*/, '').trim()
-            : noteData.title;
-          const noteBody = firstLine.startsWith('#')
-            ? bodyLines.slice(1).join('\n').replace(/^\n+/, '')
-            : noteData.body;
-          return (
-          <div>
-            <h1 className="text-xl font-bold">{noteTitle}</h1>
-            <SimpleNoteBody body={noteBody} />
-            <button
-              className="mt-6 px-4 py-2 bg-gray-200 text-gray-700 rounded"
-              onClick={async () => {
-                // 1. 全通知クローズ（タグ指定なし → 全件）
-                navigator.serviceWorker.ready.then((reg) => {
-                  reg.getNotifications().then((ns) => ns.forEach((n) => n.close()));
-                });
-                // 2. Drive の notes_to_iphone.json 全 items に received_at を付けて書き戻す
-                if (accessToken) {
-                  try {
-                    const data = await downloadFromDrive(accessToken, 'notes_to_iphone.json');
-                    const items = (Array.isArray(data?.items) ? data.items : []).map(
-                      (item: FusenNoteItem) => ({
-                        ...item,
-                        received_at: item.received_at ?? new Date().toISOString(),
-                      })
-                    );
-                    await uploadWithAutoRefresh(accessToken, 'notes_to_iphone.json', { items });
-                  } catch { /* エラーは無視 */ }
-                }
-                // 3. list へ
-                setStep('list');
-              }}
-            >
-              通知を消して一覧へ
-            </button>
-            <p className="text-sm text-gray-400 mt-1">→ 一覧に履歴として残ります</p>
-            {errorMessage && (
-              <p className="text-red-600 text-sm mt-2">{errorMessage}</p>
-            )}
-          </div>
-          );
-        })()}
-
-        {step === 'banner' && isStandalone && (
+{step === 'banner' && isStandalone && (
           <div className="text-center">
             <p className="text-gray-500">読み込み中...</p>
           </div>

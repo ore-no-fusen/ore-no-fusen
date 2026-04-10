@@ -1,0 +1,223 @@
+// app/viewer/lib/drive.ts
+// Google Drive API 操作関数。'use client' / import React は不要。
+// refreshAccessToken は localStorage を使うためブラウザ環境前提。
+
+export const APP_FOLDER_NAME = 'ore-no-fusen';
+let cachedFolderId: string | null = null;
+
+/** テスト用: フォルダIDキャッシュをリセットする */
+export function resetCachedFolderId() {
+  cachedFolderId = null;
+}
+
+
+// 旧ファイル名 → 新ファイル名の移行マップ
+const LEGACY_FILE_NAMES: Record<string, string> = {
+  'notes_to_iphone.json': 'notes_to_iphone.json',
+  'push_devices.json': 'push_devices.json',
+  'notes_from_iphone.json': 'notes_from_iphone.json',
+};
+
+export async function getAppFolderId(accessToken: string): Promise<string | null> {
+  if (cachedFolderId !== null) return cachedFolderId;
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='${APP_FOLDER_NAME}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await res.json();
+  if (data.files?.[0]?.id) {
+    cachedFolderId = data.files[0].id as string;
+    return cachedFolderId;
+  }
+  if (data.error) {
+    console.warn('[Drive] folder search error:', data.error.message);
+    return null;
+  }
+  // フォルダが存在しない場合は作成
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: APP_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }),
+  });
+  const created = await createRes.json();
+  if (created.error) {
+    console.warn('[Drive] folder create error:', created.error.message);
+    return null;
+  }
+  cachedFolderId = created.id as string;
+  return cachedFolderId;
+}
+
+export async function uploadToDrive(
+  accessToken: string,
+  fileName: string,
+  data: object
+) {
+  const folderId = await getAppFolderId(accessToken);
+  const parentId = folderId ?? 'root';
+  const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const searchData = await searchRes.json();
+  const fileId = searchData.files?.[0]?.id;
+  const body = JSON.stringify(data);
+  const fileBlob = new Blob([body], { type: 'application/json' });
+  if (fileId) {
+    const updateMeta = JSON.stringify({ name: fileName, mimeType: 'application/json' });
+    const form = new FormData();
+    form.append('metadata', new Blob([updateMeta], { type: 'application/json' }));
+    form.append('file', fileBlob);
+    const patchRes = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form,
+      }
+    );
+    if (!patchRes.ok) throw new Error(`Drive PATCH failed: ${patchRes.status}`);
+  } else {
+    const createMeta = JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [parentId] });
+    const form = new FormData();
+    form.append('metadata', new Blob([createMeta], { type: 'application/json' }));
+    form.append('file', fileBlob);
+    const postRes = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form,
+      }
+    );
+    if (!postRes.ok) throw new Error(`Drive POST failed: ${postRes.status}`);
+  }
+}
+
+export async function downloadFromDrive(accessToken: string, fileName: string) {
+  const folderId = await getAppFolderId(accessToken);
+  const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const searchData = await searchRes.json();
+  let fileId = searchData.files?.[0]?.id;
+
+  // 新ファイル名で見つからなければ旧ファイル名にフォールバック（移行対応）
+  if (!fileId && LEGACY_FILE_NAMES[fileName]) {
+    const legacyName = LEGACY_FILE_NAMES[fileName];
+    const legacyRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${legacyName}'${folderQuery}+and+trashed=false`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const legacyData = await legacyRes.json();
+    fileId = legacyData.files?.[0]?.id;
+    if (fileId) {
+      const content = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      ).then(r => r.json());
+      // 新名に移行（バックグラウンド・失敗しても無視）
+      uploadToDrive(accessToken, fileName, content).catch(() => {});
+      return content;
+    }
+  }
+
+  if (!fileId) throw new Error(`${fileName} not found in Drive`);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// リフレッシュトークンでアクセストークンを更新する
+// ---------------------------------------------------------------------------
+
+export async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('viewer_refresh_token');
+  if (!refreshToken) return null;
+
+  const res = await fetch('/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  if (!res.ok) {
+    localStorage.removeItem('viewer_refresh_token');
+    return null;
+  }
+
+  const data = await res.json();
+  const newToken = data.access_token;
+  if (!newToken) return null;
+
+  localStorage.setItem('viewer_access_token', newToken);
+  if (data.expires_in) {
+    localStorage.setItem('viewer_expires_at', String(Date.now() + data.expires_in * 1000));
+  }
+  return newToken;
+}
+
+// Drive 書き込み（トークン期限切れ時に自動リフレッシュ）
+export async function uploadWithAutoRefresh(
+  token: string,
+  fileName: string,
+  data: object
+): Promise<void> {
+  try {
+    await uploadToDrive(token, fileName, data);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    await uploadToDrive(newToken, fileName, data);
+  }
+}
+
+// 画像ファイルを Drive にアップロードしてファイル名を返す
+export async function uploadImageToDrive(
+  accessToken: string,
+  file: Blob,
+  fileName: string
+): Promise<void> {
+  const folderId = await getAppFolderId(accessToken);
+  const parentId = folderId ?? 'root';
+  const metadata = JSON.stringify({
+    name: fileName,
+    mimeType: file.type || 'image/jpeg',
+    parents: [parentId],
+  });
+  const form = new FormData();
+  form.append('metadata', new Blob([metadata], { type: 'application/json' }));
+  form.append('file', file);
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    }
+  );
+  if (!res.ok) throw new Error(`Drive image upload failed: ${res.status}`);
+}
+
+// uploadImageToDrive のトークン期限切れ対応ラッパー
+export async function uploadImageWithAutoRefresh(
+  token: string,
+  file: Blob,
+  fileName: string
+): Promise<void> {
+  try {
+    await uploadImageToDrive(token, file, fileName);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    await uploadImageToDrive(newToken, file, fileName);
+  }
+}
