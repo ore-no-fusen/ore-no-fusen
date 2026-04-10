@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>viewer/page.tsx 再設計書</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f4f8;
+  padding: 40px 32px;
+  color: #1a202c;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+h1 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; margin-top: 48px;
+     padding-bottom: 8px; border-bottom: 2px solid #e2e8f0;
+     display: flex; align-items: center; gap: 8px; }
+.lead { font-size: 14px; color: #64748b; margin-bottom: 48px; }
+
+.card {
+  background: white; border-radius: 14px; padding: 28px 32px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07); margin-bottom: 20px;
+}
+.card h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+
+/* ===== BUG LIST ===== */
+.bug-item {
+  border-radius: 10px; padding: 16px 20px; margin-bottom: 12px;
+  border-left: 4px solid;
+}
+.bug-item h4 { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.bug-item p  { font-size: 12px; line-height: 1.8; }
+code {
+  font-family: ui-monospace, monospace;
+  background: rgba(0,0,0,0.06);
+  padding: 1px 5px; border-radius: 4px; font-size: 11px;
+}
+.bug-critical { background: #fef2f2; border-color: #ef4444; }
+.bug-critical h4 { color: #991b1b; }
+.bug-med      { background: #fff7ed; border-color: #f97316; }
+.bug-med h4   { color: #9a3412; }
+.bug-low      { background: #fefce8; border-color: #eab308; }
+.bug-low h4   { color: #713f12; }
+
+/* ===== FILE TREE ===== */
+.tree {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 2;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 12px;
+  padding: 24px 28px;
+}
+.tree .dir   { color: #7dd3fc; font-weight: 700; }
+.tree .file  { color: #86efac; }
+.tree .new   { color: #fde047; }
+.tree .note  { color: #94a3b8; font-style: italic; }
+.tree .dead  { color: #f87171; text-decoration: line-through; }
+
+/* ===== RULE BOXES ===== */
+.rule {
+  border-radius: 10px; padding: 16px 20px; margin-bottom: 12px;
+  display: flex; gap: 14px; align-items: flex-start;
+}
+.rule-num {
+  font-size: 20px; font-weight: 900; min-width: 32px;
+  line-height: 1.2;
+}
+.rule-body h4 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.rule-body p  { font-size: 12px; line-height: 1.8; color: #475569; }
+.rule-body code { font-size: 11px; }
+.rule-green  { background: #f0fdf4; border: 1.5px solid #86efac; }
+.rule-green .rule-num { color: #15803d; }
+.rule-blue   { background: #eff6ff; border: 1.5px solid #93c5fd; }
+.rule-blue .rule-num  { color: #1d4ed8; }
+.rule-purple { background: #fdf4ff; border: 1.5px solid #e9d5ff; }
+.rule-purple .rule-num { color: #6d28d9; }
+.rule-orange { background: #fff7ed; border: 1.5px solid #fdba74; }
+.rule-orange .rule-num { color: #c2410c; }
+
+/* ===== FLOW ARROWS ===== */
+.flow {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 0; margin-bottom: 16px;
+}
+.fnode {
+  border-radius: 8px; padding: 8px 14px; font-size: 12px;
+  text-align: center; min-width: 80px;
+}
+.fnode strong { display: block; font-weight: 700; font-size: 12px; }
+.fnode span   { font-size: 10px; color: #64748b; }
+.fn-idb    { background: #fff7ed; border: 1.5px solid #fdba74; }
+.fn-sw     { background: #f1f5f9; border: 1.5px solid #94a3b8; }
+.fn-screen { background: #eff6ff; border: 1.5px solid #93c5fd; }
+.fn-apns   { background: #fdf4ff; border: 1.5px solid #d8b4fe; }
+.fn-drive  { background: #fefce8; border: 1.5px solid #fde047; }
+.farr { font-size: 18px; color: #94a3b8; padding: 0 8px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
+.farr small { font-size: 9px; color: #94a3b8; white-space: nowrap; }
+
+/* ===== COMPARISON TABLE ===== */
+.compare {
+  width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px;
+}
+.compare th {
+  padding: 10px 14px; font-weight: 700; text-align: left;
+}
+.compare td { padding: 10px 14px; border-top: 1px solid #f1f5f9; vertical-align: top; }
+.compare .bad  { color: #991b1b; }
+.compare .good { color: #14532d; font-weight: 600; }
+.compare tr:hover td { background: #f8fafc; }
+
+/* ===== BADGE ===== */
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px; margin-left: 6px; }
+.badge-bug  { background: #fee2e2; color: #7f1d1d; border: 1px solid #fca5a5; }
+.badge-fix  { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+.badge-new  { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+.badge-del  { background: #fef9c3; color: #713f12; border: 1px solid #fde047; }
+
+/* ===== STEP TABLE ===== */
+.steps { display: flex; flex-direction: column; gap: 0; }
+.step-row {
+  display: flex; gap: 0; align-items: stretch;
+}
+.step-n {
+  min-width: 36px; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #475569;
+}
+.step-content {
+  border-left: 3px solid #e2e8f0; padding: 12px 16px; flex: 1;
+  font-size: 12px; line-height: 1.8;
+}
+.step-content strong { font-size: 13px; display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<h1>🛠 viewer/page.tsx 再設計書</h1>
+<p class="lead">1925行の巨大コンポーネントを正しく分割し、バグの根本原因を取り除く</p>
+
+
+<!-- ============================================================
+     1. 現状の問題
+     ============================================================ -->
+<h2>🐛 1. 現状の問題（バグの根本原因）</h2>
+
+<div class="card">
+
+  <div class="bug-item bug-critical">
+    <h4>🔴 致命的: 画像が一覧↔編集の往復で壊れる</h4>
+    <p>
+      <strong>原因:</strong> ドラフトをIndexedDBから読み込む際、<code>blobMap: new Map()</code> として空で渡している。
+      つまり画像Blobはインメモリから消える（IndexedDBには残っているが読み込んでいない）。<br>
+      <strong>場所:</strong> <code>loadDraft(id).then(draft =&gt; setPendingHydrate({ blobMap: new Map() }))</code>（742行・764行）<br>
+      <strong>修正方針:</strong> ドラフト読み込み時に <code>images</code> を blobMap に変換して渡す。
+    </p>
+  </div>
+
+  <div class="bug-item bug-critical">
+    <h4>🔴 致命的: ロック通知を押すと違うデータが出る（可能性）</h4>
+    <p>
+      <strong>原因:</strong> すでに <code>write</code> 画面でメモAを開いている状態で、ロック通知（メモB）をタップすると、
+      アプリが再起動せずURLだけ変わる。初期 <code>useEffect([], [])</code> は再実行されないため、メモBのデータが読み込まれない。<br>
+      <strong>場所:</strong> <code>useEffect(..., [])</code>（656行） — 初回マウント時のみ実行<br>
+      <strong>修正方針:</strong> URLの <code>?note=</code> を購読し、変化したときに再ロードする。
+    </p>
+  </div>
+
+  <div class="bug-item bug-med">
+    <h4>🟠 中: ロック状態の二重管理</h4>
+    <p>
+      <code>lockedNoteIds</code>（IndexedDBから読む）と <code>activeNotifIds</code>（SWから読む）の2つがある。
+      どちらがONかによってベルのUIが変わるが、タイミングによってズレが生じ、
+      ベルがONなのに通知が出ていない・逆の状態になる。<br>
+      <strong>修正方針:</strong> <code>lockedNoteIds</code>（IndexedDB）を唯一の真実とする。<code>activeNotifIds</code> は廃止。
+    </p>
+  </div>
+
+  <div class="bug-item bug-med">
+    <h4>🟠 中: list useEffectが毎回BlobURLを作り直す</h4>
+    <p>
+      <code>useEffect([step])</code> に依存しているため、<code>step</code> が変わるたびに
+      サムネイルのBlob URLを全件作り直す。write→list→write→listで4回実行される。
+      CleanupでrevokeしているがタイミングによってはUI上に壊れた画像が一瞬表示される。<br>
+      <strong>修正方針:</strong> ListScreenを独立コンポーネントにする。マウント時のみ実行。
+    </p>
+  </div>
+
+  <div class="bug-item bug-low">
+    <h4>🟡 軽微: 死んだコード・型</h4>
+    <p>
+      <code>noteData</code> state、<code>step='note'</code>、<code>downloadWithAutoRefresh</code>（notes_to_iphone.json固定）が残っている。
+      コードを読む人を混乱させる。削除対象。
+    </p>
+  </div>
+
+  <div class="bug-item bug-low">
+    <h4>🟡 軽微: 30個の state が1コンポーネントに同居</h4>
+    <p>
+      認証・編集・一覧・ロック・画像・Mermaid・タグ・トースト通知の state が全部
+      <code>ViewerPage()</code> に入っている。1つの state 変化が無関係な再レンダリングを起こす。
+    </p>
+  </div>
+
+</div>
+
+
+<!-- ============================================================
+     2. 設計ルール（動かない原則）
+     ============================================================ -->
+<h2>📐 2. 設計ルール（変えない原則）</h2>
+
+<div class="card">
+
+  <div class="rule rule-orange">
+    <div class="rule-num">①</div>
+    <div class="rule-body">
+      <h4>IndexedDB が唯一の真実</h4>
+      <p>
+        メモの内容・画像・タグ・locked状態 は <strong>すべて IndexedDB が正しい</strong>。
+        メモリ上の state は IndexedDB の「表示用キャッシュ」にすぎない。
+        画面遷移が起きたら IndexedDB から再読み込みする。state を source of truth にしない。
+      </p>
+    </div>
+  </div>
+
+  <div class="rule rule-green">
+    <div class="rule-num">②</div>
+    <div class="rule-body">
+      <h4>画像 Blob は IndexedDB から毎回読む</h4>
+      <p>
+        <code>URL.createObjectURL()</code> で作った URL は「表示のためだけ」に使い、
+        使い終わったら <code>revokeObjectURL()</code> する。
+        コンポーネント間で Blob URL を state 経由で渡さない。
+        編集画面に遷移するときは、必ず IndexedDB の <code>images</code> から blobMap を作り直す。
+      </p>
+    </div>
+  </div>
+
+  <div class="rule rule-blue">
+    <div class="rule-num">③</div>
+    <div class="rule-body">
+      <h4>URL パラメータは購読する</h4>
+      <p>
+        <code>?note=id</code> はロック通知タップでいつでも変化しうる。
+        初回 <code>useEffect([], [])</code> だけでなく、<code>popstate</code> イベントと
+        <code>visibilitychange</code> でアプリがフォアグラウンドに戻ったときにも確認する。
+        これで「すでに開いているときに別の通知をタップ」が正しく動く。
+      </p>
+    </div>
+  </div>
+
+  <div class="rule rule-purple">
+    <div class="rule-num">④</div>
+    <div class="rule-body">
+      <h4>ロック状態は IndexedDB のみ。SW は「実行係」</h4>
+      <p>
+        <code>lockedNoteIds</code> を IndexedDB の <code>locked === true</code> から作る。
+        <code>activeNotifIds</code>（SWからのGET_NOTIFICATIONS）は廃止する。
+        SW は「通知を出す/消す」だけの実行係。状態を管理しない。
+      </p>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ============================================================
+     3. 新しいファイル構成
+     ============================================================ -->
+<h2>📁 3. 新しいファイル構成</h2>
+
+<div class="card">
+  <div class="tree">
+<span class="dir">app/viewer/</span><br>
+│<br>
+├── <span class="file">page.tsx</span>          <span class="note">← 薄いルーター。URLを読んで画面を切り替えるだけ（100行以内）</span><br>
+│<br>
+├── <span class="dir">screens/</span><br>
+│   ├── <span class="new">SetupScreens.tsx</span>   <span class="note">← banner / login / push の3画面（認証フロー）</span><br>
+│   ├── <span class="new">WriteScreen.tsx</span>    <span class="note">← メモ編集画面（エディタ・画像・タグ・Mermaid）</span><br>
+│   └── <span class="new">ListScreen.tsx</span>     <span class="note">← 一覧画面（ドラフト・ロックボタン・削除）</span><br>
+│<br>
+├── <span class="dir">hooks/</span><br>
+│   ├── <span class="new">useAuth.ts</span>         <span class="note">← accessToken・refreshToken管理・OAuth フロー</span><br>
+│   ├── <span class="new">useDrafts.ts</span>       <span class="note">← IndexedDB CRUD（loadAll / load / save / delete）</span><br>
+│   └── <span class="new">useLock.ts</span>         <span class="note">← ロック状態管理（IndexedDB ← 唯一の真実）</span><br>
+│<br>
+├── <span class="dir">lib/</span><br>
+│   ├── <span class="file">indexeddb.ts</span>      <span class="note">← DB操作の純粋関数（今の openDraftsDB / saveDraft など）</span><br>
+│   ├── <span class="file">drive.ts</span>          <span class="note">← Drive API 操作（今の uploadToDrive / downloadFromDrive など）</span><br>
+│   └── <span class="new">sw-bridge.ts</span>       <span class="note">← SW との通信（showNotification / closeNotification）</span><br>
+│<br>
+├── <span class="file">types.ts</span>             <span class="note">← DraftRecord / IphoneNote などの型定義</span><br>
+├── <span class="file">editor-helpers.ts</span>    <span class="note">← そのまま維持</span><br>
+├── <span class="file">utils.ts</span>             <span class="note">← そのまま維持</span><br>
+├── <span class="file">SimpleNoteBody.tsx</span>   <span class="note">← そのまま維持</span><br>
+└── <span class="dead">（旧 page.tsx の中に埋まっていた関数群）</span>  <span class="note">← 各 lib/ に移動</span>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     4. バグ修正の設計
+     ============================================================ -->
+<h2>🔧 4. バグ修正の設計</h2>
+
+<div class="card">
+  <h3>バグ①修正: 画像が壊れる → ドラフト読み込み時に Blob も一緒に渡す</h3>
+
+  <table class="compare">
+    <tr>
+      <th style="background:#fef2f2;color:#991b1b;width:50%">❌ 今</th>
+      <th style="background:#f0fdf4;color:#14532d;width:50%">✅ 修正後</th>
+    </tr>
+    <tr>
+      <td>
+        <code>loadDraft(id)</code> でテキストだけ読む<br>
+        <code class="bad">blobMap: new Map()</code> ← 空<br>
+        → write画面に遷移すると画像が消える
+      </td>
+      <td>
+        <code>loadDraft(id)</code> でテキストと <code>images</code> を読む<br>
+        <code class="good">blobMap: new Map(images.map(i =&gt; [i.fileName, i.blob]))</code><br>
+        → 画像が正しく復元される
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>バグ②修正: 別の通知をタップしても反映されない → URL変化を監視する</h3>
+
+  <div class="flow">
+    <div class="fnode fn-screen"><strong>通知タップ</strong><span>?note=B</span></div>
+    <div class="farr"><span>→</span><small>URL変化</small></div>
+    <div class="fnode fn-screen"><strong>visibilitychange</strong><span>フォアグラウンドへ</span></div>
+    <div class="farr"><span>→</span><small>URLを確認</small></div>
+    <div class="fnode fn-idb"><strong>loadDraft(B)</strong><span>Blobも含む</span></div>
+    <div class="farr"><span>→</span><small>セット</small></div>
+    <div class="fnode fn-screen"><strong>WriteScreen</strong><span>Bのデータ表示</span></div>
+  </div>
+
+  <p style="font-size:12px;color:#475569;line-height:1.8">
+    <code>visibilitychange</code>（アプリが前面に来たとき）と <code>popstate</code>（URLが変わったとき）を
+    <code>page.tsx</code> のルーターで購読する。<code>?note=</code> が変わっていれば WriteScreen に新しい ID を渡す。
+    WriteScreen は ID が変わったら IndexedDB から再読み込みする。
+  </p>
+</div>
+
+<div class="card">
+  <h3>バグ③修正: ロック状態の二重管理 → IndexedDB のみに統一</h3>
+
+  <table class="compare">
+    <tr>
+      <th style="background:#fef2f2;color:#991b1b;width:50%">❌ 今</th>
+      <th style="background:#f0fdf4;color:#14532d;width:50%">✅ 修正後</th>
+    </tr>
+    <tr>
+      <td>
+        <code class="bad">lockedNoteIds</code>（IndexedDB由来）<br>
+        <code class="bad">activeNotifIds</code>（SW由来）<br>
+        → 2つがズレるとUI がおかしくなる
+      </td>
+      <td>
+        <code class="good">lockedNoteIds</code>（IndexedDB のみ）<br>
+        <code class="bad">activeNotifIds</code> → <strong>廃止</strong><br>
+        → ズレる要素がゼロになる
+      </td>
+    </tr>
+    <tr>
+      <td>
+        ベルON: <code>lockedNoteIds.includes(id) || activeNotifIds.includes(id)</code>
+      </td>
+      <td>
+        ベルON: <code>lockedNoteIds.includes(id)</code> のみ
+      </td>
+    </tr>
+  </table>
+</div>
+
+
+<!-- ============================================================
+     5. 実装ステップ
+     ============================================================ -->
+<h2>🗓 5. 実装ステップ（順番が重要）</h2>
+
+<div class="card">
+  <div class="steps">
+
+    <div class="step-row">
+      <div class="step-n">1</div>
+      <div class="step-content" style="border-color:#ef4444">
+        <strong>🔴 types.ts / lib/indexeddb.ts / lib/drive.ts を抽出</strong>
+        型定義・DB操作・Drive操作を page.tsx から切り出して別ファイルへ。<br>
+        <em>page.tsx の動作は変えない。抽出のみ。テスト不要（移動するだけ）。</em>
+      </div>
+    </div>
+
+    <div class="step-row">
+      <div class="step-n">2</div>
+      <div class="step-content" style="border-color:#f97316">
+        <strong>🟠 バグ①修正: loadDraft 時に Blob も読む</strong>
+        <code>loadDraftWithBlobs(id)</code> 関数を作る。blobMap を空で渡している2箇所を修正。<br>
+        <em>実機確認ポイント: 一覧→編集→一覧→編集で画像が消えないこと。</em>
+      </div>
+    </div>
+
+    <div class="step-row">
+      <div class="step-n">3</div>
+      <div class="step-content" style="border-color:#f97316">
+        <strong>🟠 バグ②修正: URL変化の検知を追加</strong>
+        <code>visibilitychange</code> でフォアグラウンド復帰時に <code>?note=</code> を確認。<br>
+        <em>実機確認ポイント: メモAを開いた状態でメモBの通知をタップ→メモBが開くこと。</em>
+      </div>
+    </div>
+
+    <div class="step-row">
+      <div class="step-n">4</div>
+      <div class="step-content" style="border-color:#eab308">
+        <strong>🟡 バグ③修正: activeNotifIds を廃止</strong>
+        ベルUIの判定を <code>lockedNoteIds</code> のみに統一。<code>GET_NOTIFICATIONS</code> 呼び出しを削除。<br>
+        <em>実機確認ポイント: ベルのON/OFF状態が正確に表示されること。</em>
+      </div>
+    </div>
+
+    <div class="step-row">
+      <div class="step-n">5</div>
+      <div class="step-content" style="border-color:#94a3b8">
+        <strong>⚫ 死んだコードの削除</strong>
+        <code>noteData</code> state・<code>step='note'</code>・<code>downloadWithAutoRefresh</code>（既に無参照）を削除。<br>
+        <em>E2Eテストで確認。実機不要。</em>
+      </div>
+    </div>
+
+    <div class="step-row">
+      <div class="step-n">6</div>
+      <div class="step-content" style="border-color:#3b82f6">
+        <strong>🔵 コンポーネント分割（ステップ1〜5完了後）</strong>
+        WriteScreen / ListScreen / SetupScreens に分割。page.tsx をルーターのみにする。<br>
+        <em>外から見た動作は変えない。E2Eテスト + 実機確認。</em>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================
+     6. 今回やらないこと
+     ============================================================ -->
+<h2>🚫 6. 今回やらないこと（スコープ外）</h2>
+
+<div class="card">
+  <table class="compare">
+    <tr><th>やらないこと</th><th>理由</th></tr>
+    <tr>
+      <td>Workbox / オフライン対応</td>
+      <td>まずバグを直す。オフラインは別フェーズ。</td>
+    </tr>
+    <tr>
+      <td>PC側のDrive書き込み削除</td>
+      <td>Rust 変更が必要。影響大。今回はiPhone側のみ。</td>
+    </tr>
+    <tr>
+      <td>Phase 14（エディタの🔔ボタン）</td>
+      <td>バグ修正＋分割が終わってから実装する。</td>
+    </tr>
+    <tr>
+      <td>新機能の追加</td>
+      <td>今回は「壊れているものを直す」のみ。</td>
+    </tr>
+  </table>
+</div>
+
+
+<!-- ============================================================
+     7. 確認事項
+     ============================================================ -->
+<h2>✅ 7. 実施前の確認事項</h2>
+
+<div class="card" style="background:#fffbeb;border:2px solid #fde047">
+  <p style="font-size:13px;line-height:2;color:#713f12">
+    <strong>この設計で進める前に確認させてください。</strong><br><br>
+    1️⃣ ステップ2〜4のバグ修正は、<strong>コンポーネント分割の前に先にやる</strong>方針でよいですか？（動くものを保ちながら直す）<br>
+    2️⃣ 実機確認は各ステップ（2・3・4）ごとに1回デプロイして確認する形でよいですか？<br>
+       それとも2〜4をまとめて1回でデプロイしますか？<br>
+    3️⃣ コンポーネント分割（ステップ6）は今回含めますか？今やると変更量が大きくなります。
+  </p>
+</div>
+
+<p style="margin-top:40px;font-size:11px;color:#94a3b8;text-align:right">作成: Claude Sonnet 4.6 / 2026-04-10</p>
+
+</body>
+</html>

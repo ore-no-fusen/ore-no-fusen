@@ -1,47 +1,60 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: iPhone→PC送信
-status: executing
-last_updated: "2026-04-09T11:01:00.000Z"
-last_activity: 2026-04-09 — 13-03 完了（起動時ロック復元 + 削除時ロック解除 + LOCK-04/05 テスト GREEN）
+milestone: v5.0
+milestone_name: iPhone PWA 安定化
+status: defining_requirements
+last_updated: "2026-04-10T00:00:00.000Z"
+last_activity: 2026-04-10 — v5.0 マイルストーン開始（要件定義完了、ロードマップ作成待ち）
 progress:
-  total_phases: 9
-  completed_phases: 5
-  total_plans: 25
-  completed_plans: 23
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-09)
+See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** すぐ書けて、そこに残る。それだけ確実に動く。
-**Current focus:** v4.0 ロック画面コントロール — Phase 13 実行中（13-03 完了）
+**Current focus:** v5.0 iPhone PWA 安定化 — 要件定義完了、次は /gsd:plan-phase 15
 
 ## Current Position
 
-Phase: 13-rokku-gamen-kontororu-kiban
-Plan: 03（完了）
-Status: In Progress — 次のアクション: 13-04-PLAN.md 実行
-Last activity: 2026-04-09 — 13-03 完了（起動時ロック復元 + 削除時ロック解除 + LOCK-04/05 テスト GREEN）
+Phase: Not started
+Plan: —
+Status: Defining requirements → ロードマップ作成待ち
+Last activity: 2026-04-10 — v5.0 マイルストーン開始
+
+## Phases（予定）
+
+| Phase | 内容 | 要件 | deploy必要 |
+|-------|------|------|-----------|
+| 15 | コード整理（lib/分離・死んだコード削除） | CLEAN-01, CLEAN-02 | 不要 |
+| 16 | バグ修正3件 | FIX-01, FIX-02, FIX-03 | ✅ 実機確認 |
+| 17 | コンポーネント分割 | ARCH-01〜04 | ✅ 実機確認 |
+| 18 | ロック機能完成（エディタ🔔・再起動復元） | LOCK-06〜08 | ✅ 実機確認 |
 
 ## Accumulated Context
 
-### Decisions
+### 設計書
+- `docs/viewer-redesign.html` — バグ根本原因と修正方針の詳細
+- `docs/system-overview.html` — システム全体データフロー図
+- `docs/pwa-data-flow.html` — iPhone PWA 内部フロー図
 
-- v4.0: ロック画面表示はService Worker `registration.showNotification()` で実装（APNs不要・iPhone側から直接）
-- v4.0: 通知タグは `fusen-lock-<noteId>` で管理（複数同時表示・個別削除に対応）
-- v4.0: ロック中状態はIndexedDB `fusen-drafts` の新規ストアか既存メタデータに永続化
-- v4.0: ボタン配置は一覧行 + エディタヘッダーの両方
-- v4.0: Phase 13 で基盤（LOCK-01〜05）、Phase 14 でエディタ連携 + 再起動復元（EDIT-01〜02, RESUME-01）
-- [Phase 13-rokku-gamen-kontororu-kiban]: テストスタブは test.skip() を使用（pre-commit フックの test:e2e がブロックするため）
-- [Phase 13-rokku-gamen-kontororu-kiban]: テストファイルは e2e/ に配置（playwright.config.ts の testDir: ./e2e に準拠）
-- [Phase 13-rokku-gamen-kontororu-kiban]: Bell button shown on ALL note cards regardless of status; activeNotifIds and lockedNoteIds kept separate to avoid tag prefix collision
-- [Phase 13-rokku-gamen-kontororu-kiban]: Startup permission check uses Notification.permission without requestPermission() (iOS constraint)
-- [Phase 13-rokku-gamen-kontororu-kiban]: LOCK-04 implemented as pure unit test; LOCK-05 as E2E with IndexedDB injection
+### 重要な決定事項（v5.0）
+- IndexedDB が唯一の真実。state は表示用キャッシュにすぎない
+- 画像Blobはドラフト読み込み時に必ずIndexedDBから再構築する（空blobMap禁止）
+- `activeNotifIds`（SWのGET_NOTIFICATIONS由来）を廃止し、`lockedNoteIds`（IndexedDB由来）のみに統一
+- URL `?note=` の変化を `visibilitychange` で監視する（初回useEffectのみでは不足）
+- Phase 14 の EDIT-01/02/RESUME-01 はこのマイルストーン（Phase 18）で完結させる
+
+### 前マイルストーンから引き継ぎ
+- v4.0 Phase 13 完了（LOCK-01〜05 すべて実装済み・実機確認済み）
+- Phase 14 は v5.0 の Phase 18 として実装する
+- Phase 11/12（v3.0）は未完だが優先度を下げて v5.0 後に再検討
 
 ### Pending Todos
 
