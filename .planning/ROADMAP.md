@@ -203,7 +203,12 @@ Plans:
   3. `lib/drive.ts` に Drive API 操作関数が移動している
   4. `noteData` state・`step='note'`・`downloadWithAutoRefresh` 等の死んだコードが削除されている
   5. E2E テスト（13件）が引き続き全パスする
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — Wave 0: テストスタブ先行作成（lib/indexeddb.test.ts, lib/drive.test.ts）（CLEAN-02）
+- [ ] 15-02-PLAN.md — Wave 1: types.ts / lib/indexeddb.ts / lib/drive.ts 作成 + page.tsx import 切り替え（CLEAN-02）
+- [ ] 15-03-PLAN.md — Wave 2: dead code 削除（noteData / step='note' / downloadWithAutoRefresh）+ E2E 全件確認（CLEAN-01）
 
 ### Phase 16: バグ修正（画像消失・URL変化未検知・ロック状態ズレ）
 **Goal**: 一覧↔編集往復で画像が消えるバグ、通知タップで別メモが開くバグ、ロック状態の二重管理ズレを修正する
@@ -244,7 +249,7 @@ Plans:
 | Phase | Milestone | Status | Completed |
 |-------|-----------|--------|-----------|
 | 1. コードレビュー | v1.0 | Complete | 2026-03-23 |
-| 2. バグ修正 | v1.0 | Complete | 2026-03-23 |
+| 2. バグ修正| v1.0 | Complete | 2026-03-23 |
 | 3. 確認・検証 | v1.0 | Complete | 2026-03-23 |
 | 4. Rust バックエンド（Drive+APNs） | v2.0 | Complete | 2026-03-23 |
 | 5. iPhone PWA + Rust送信 | v2.0 | Complete | 2026-03-29 |
