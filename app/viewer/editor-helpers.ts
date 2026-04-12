@@ -125,3 +125,12 @@ export function mergeKnownTags(newTags: string[]): void {
   const merged = Array.from(new Set([...known, ...newTags]));
   localStorage.setItem('fusen_known_tags', JSON.stringify(merged));
 }
+
+// Markdown の1行目をタイトル、残りをbodyとして分離
+// 1行目の # プレフィックスは除去
+export function extractTitleBody(text: string): { title: string; body: string } {
+  const lines = text.split('\n');
+  const firstLine = lines[0].replace(/^#\s*/, '').trim();
+  const rest = lines.slice(1).join('\n').replace(/^\n+/, '');
+  return { title: firstLine, body: rest };
+}

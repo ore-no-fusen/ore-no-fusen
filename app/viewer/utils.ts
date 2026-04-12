@@ -37,3 +37,45 @@ export function insertAtCursor(el: HTMLTextAreaElement, insertion: string): stri
   });
   return newValue;
 }
+
+/** 画像ファイル名を生成する（日付・時刻・タイトルコンテキストを含む） */
+export function buildImageFileName(title: string, index: number): string {
+  const now = new Date();
+  const date = now.toLocaleDateString('sv').replace(/-/g, '');
+  const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+  const ctx = title.trim().replace(/[^\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f]/g, '').slice(0, 10);
+  return ctx
+    ? `fusen_img_${date}_${time}_${ctx}_${index}.jpg`
+    : `fusen_img_${date}_${time}_${index}.jpg`;
+}
+
+/** contenteditable のカーソル位置にテキストを挿入 */
+export function insertTextAtCursor(text: string): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(text);
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.setEndAfter(node);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/** contenteditable のカーソル位置に DOM ノードを挿入 */
+export function insertNodeAtCursor(node: Node): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  range.insertNode(node);
+  const after = document.createTextNode('\n');
+  if (node.parentNode) {
+    node.parentNode.insertBefore(after, node.nextSibling);
+  }
+  range.setStartAfter(after);
+  range.setEndAfter(after);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}

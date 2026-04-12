@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>iPhone PWA データフロー図</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f4f8;
+  padding: 40px 32px;
+  color: #1a202c;
+}
+h1 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+.lead { font-size: 14px; color: #64748b; margin-bottom: 48px; }
+
+/* ========== SECTION TITLE ========== */
+.sec-title {
+  font-size: 16px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 24px; margin-top: 56px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+/* ========== DIAGRAM CANVAS ========== */
+.diagram {
+  position: relative;
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  overflow: visible;
+}
+
+/* ========== SCREEN CARD ========== */
+.screen {
+  background: #eff6ff;
+  border: 2.5px solid #3b82f6;
+  border-radius: 14px;
+  padding: 14px 18px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 110px;
+  text-align: center;
+}
+.screen .icon { font-size: 28px; line-height: 1; }
+.screen .name { font-size: 12px; font-weight: 700; color: #1e40af; }
+.screen .desc { font-size: 10px; color: #60a5fa; }
+
+/* ========== DATA STORE CARD ========== */
+.store {
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 110px;
+  text-align: center;
+}
+.store-idb  { background: #fefce8; border: 2.5px solid #eab308; }
+.store-drive{ background: #f0fdf4; border: 2.5px solid #22c55e; }
+.store-ls   { background: #faf5ff; border: 2.5px solid #a855f7; }
+.store-sw   { background: #f1f5f9; border: 2.5px solid #64748b; }
+.store .icon { font-size: 28px; line-height: 1; }
+.store .name { font-size: 12px; font-weight: 700; }
+.store-idb  .name  { color: #713f12; }
+.store-drive .name { color: #14532d; }
+.store-ls   .name  { color: #4c1d95; }
+.store-sw   .name  { color: #334155; }
+.store .desc { font-size: 10px; color: #94a3b8; }
+
+/* ========== FLOW ROW ========== */
+.flow-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: nowrap;
+}
+.arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+.arrow .line {
+  width: 40px; height: 2px;
+  background: #94a3b8;
+  position: relative;
+}
+.arrow .line::after {
+  content: '';
+  position: absolute;
+  right: -1px; top: -4px;
+  border: 5px solid transparent;
+  border-left: 8px solid #94a3b8;
+}
+.arrow .alabel {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 4px;
+  white-space: nowrap;
+  background: white;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.arrow-down {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+.arrow-down .vline {
+  width: 2px; height: 32px;
+  background: #94a3b8;
+  position: relative;
+}
+.arrow-down .vline::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: -4px;
+  border: 5px solid transparent;
+  border-top: 8px solid #94a3b8;
+}
+.arrow-down .alabel {
+  font-size: 10px; color: #64748b;
+  background: white; padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* ========== SECTION 1: SCREENS ========== */
+.screens-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+/* ========== SECTION 2: NOTIFICATION FLOW ========== */
+.notif-flow {
+  display: grid;
+  grid-template-columns: 1fr 48px 1fr 48px 1fr 48px 1fr;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 32px;
+}
+.step-box {
+  border-radius: 12px;
+  padding: 14px 12px;
+  text-align: center;
+}
+.step-box .icon { font-size: 32px; display: block; margin-bottom: 6px; }
+.step-box .title { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.step-box .detail { font-size: 10px; color: #64748b; line-height: 1.5; }
+.step-screen { background: #eff6ff; border: 2px solid #93c5fd; }
+.step-sw     { background: #f1f5f9; border: 2px solid #94a3b8; }
+.step-os     { background: #fdf2f8; border: 2px solid #f0abfc; }
+.grid-arrow  {
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 4px;
+  font-size: 20px; color: #94a3b8;
+}
+.grid-arrow .ga-label { font-size: 10px; color: #64748b; text-align: center; }
+
+/* ========== BUG / FIX PANEL ========== */
+.panel {
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+.panel-bug { background: #fff7ed; border: 2px solid #f97316; }
+.panel-fix { background: #f0fdf4; border: 2px solid #22c55e; }
+.panel h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.panel-bug h3 { color: #c2410c; }
+.panel-fix h3 { color: #15803d; }
+
+.lookup-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.lookup-box {
+  border-radius: 10px;
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 12px;
+  min-width: 120px;
+}
+.lookup-drive { background: #f0fdf4; border: 2px solid #22c55e; color: #14532d; }
+.lookup-idb   { background: #fefce8; border: 2px solid #eab308; color: #713f12; }
+.lookup-empty { background: #fef2f2; border: 2px dashed #fca5a5; color: #991b1b; }
+.lookup-ok    { background: #f0fdf4; border: 2px solid #4ade80; color: #166534; }
+
+.lookup-box .licon { font-size: 24px; display: block; margin-bottom: 4px; }
+.lookup-box .lname { font-weight: 700; }
+.lookup-box .lsub  { font-size: 10px; opacity: 0.8; margin-top: 2px; }
+
+.fat-arrow {
+  font-size: 24px; color: #94a3b8;
+  flex-shrink: 0;
+}
+.fat-arrow-red   { color: #f87171; }
+.fat-arrow-green { color: #4ade80; }
+
+/* ========== DATA STORE TABLE ========== */
+.idb-schema {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+}
+.idb-schema th {
+  background: #fefce8; border: 1px solid #fde047;
+  padding: 7px 12px; text-align: left; font-weight: 700; color: #713f12;
+}
+.idb-schema td {
+  border: 1px solid #fef9c3; padding: 7px 12px; background: white;
+}
+.idb-schema .key-row td { background: #fefce8; font-weight: 600; }
+code {
+  font-family: ui-monospace, monospace;
+  background: rgba(0,0,0,0.06);
+  padding: 1px 5px; border-radius: 4px; font-size: 11px;
+}
+.tag { display:inline-block; font-size:10px; font-weight:700; padding:1px 7px; border-radius:99px; }
+.tag-idb   { background:#fef9c3; color:#713f12; }
+.tag-drive { background:#dcfce7; color:#14532d; }
+.tag-fix   { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
+.tag-bug   { background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; }
+
+/* ========== WRITE/LIST DETAIL ========== */
+.rw-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+.rw-card {
+  border-radius: 12px;
+  padding: 16px;
+}
+.rw-card h4 { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+.rw-card ul { padding-left: 16px; font-size: 12px; line-height: 1.9; }
+.rw-write { background: #eff6ff; border: 2px solid #93c5fd; }
+.rw-write h4 { color: #1e40af; }
+.rw-list  { background: #f0fdf4; border: 2px solid #86efac; }
+.rw-list  h4 { color: #14532d; }
+</style>
+</head>
+<body>
+
+<h1>📱 iPhone PWA — どの画面がどこのデータを使うか</h1>
+<p class="lead">app/viewer/page.tsx のデータフロー図</p>
+
+<!-- =====================================================
+     SECTION 1: 画面一覧
+     ===================================================== -->
+<div class="sec-title">
+  <span>📺</span> 1. 画面（step）の種類
+</div>
+
+<div class="diagram">
+  <div class="screens-row">
+    <div class="screen">
+      <span class="icon">🏠</span>
+      <span class="name">banner</span>
+      <span class="desc">ホーム追加案内</span>
+    </div>
+    <div style="font-size:24px;color:#cbd5e1;align-self:center">→</div>
+    <div class="screen">
+      <span class="icon">🔑</span>
+      <span class="name">login</span>
+      <span class="desc">Googleログイン</span>
+    </div>
+    <div style="font-size:24px;color:#cbd5e1;align-self:center">→</div>
+    <div class="screen">
+      <span class="icon">🔔</span>
+      <span class="name">push</span>
+      <span class="desc">通知設定</span>
+    </div>
+    <div style="font-size:24px;color:#cbd5e1;align-self:center">→</div>
+    <div class="screen" style="border-color:#2563eb;background:#dbeafe">
+      <span class="icon">✏️</span>
+      <span class="name" style="color:#1d4ed8">write</span>
+      <span class="desc">メモ編集</span>
+    </div>
+    <div style="font-size:24px;color:#cbd5e1;align-self:center">⇄</div>
+    <div class="screen" style="border-color:#2563eb;background:#dbeafe">
+      <span class="icon">📋</span>
+      <span class="name" style="color:#1d4ed8">list</span>
+      <span class="desc">メモ一覧</span>
+    </div>
+  </div>
+  <p style="font-size:12px;color:#94a3b8;margin-top:16px">※ banner → login → push は初回セットアップのみ。通常は write ↔ list を行き来する。</p>
+</div>
+
+
+<!-- =====================================================
+     SECTION 2: データストア
+     ===================================================== -->
+<div class="sec-title">
+  <span>💾</span> 2. データの保存場所
+</div>
+
+<div class="diagram">
+  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:stretch">
+
+    <div class="store store-idb" style="flex:1;min-width:160px">
+      <span class="icon">🗄️</span>
+      <span class="name">IndexedDB</span>
+      <span class="desc">fusen-drafts</span>
+      <div style="margin-top:12px;font-size:11px;color:#78350f;line-height:1.8;text-align:left;width:100%">
+        ✏️ 書いたメモ（下書き）<br>
+        🔒 ロック中フラグ<br>
+        🖼 添付画像<br>
+        🏷 タグ
+      </div>
+      <div style="margin-top:8px">
+        <span class="tag tag-idb">iPhoneのみ・クラウド不使用</span>
+      </div>
+    </div>
+
+    <div class="store store-drive" style="flex:1;min-width:160px">
+      <span class="icon">☁️</span>
+      <span class="name">Google Drive</span>
+      <span class="desc">notes_to_iphone.json</span>
+      <div style="margin-top:12px;font-size:11px;color:#14532d;line-height:1.8;text-align:left;width:100%">
+        📤 PCから送ったメモ<br>
+        🖼 送信済み画像ファイル<br>
+        📱 プッシュデバイス情報
+      </div>
+      <div style="margin-top:8px">
+        <span class="tag tag-drive">PC↔iPhone の橋渡し</span>
+      </div>
+    </div>
+
+    <div class="store store-ls" style="flex:1;min-width:160px">
+      <span class="icon">🔐</span>
+      <span class="name">localStorage</span>
+      <span class="desc">ブラウザ保存</span>
+      <div style="margin-top:12px;font-size:11px;color:#4c1d95;line-height:1.8;text-align:left;width:100%">
+        🎫 access_token<br>
+        ♻️ refresh_token<br>
+        ⏰ expires_at<br>
+        ✅ push_done フラグ
+      </div>
+      <div style="margin-top:8px">
+        <span class="tag" style="background:#ede9fe;color:#4c1d95">認証情報</span>
+      </div>
+    </div>
+
+    <div class="store store-sw" style="flex:1;min-width:160px">
+      <span class="icon">⚙️</span>
+      <span class="name">Service Worker</span>
+      <span class="desc">バックグラウンド処理</span>
+      <div style="margin-top:12px;font-size:11px;color:#334155;line-height:1.8;text-align:left;width:100%">
+        🔔 通知の表示・管理<br>
+        📲 PCからのPush受信<br>
+        🖱 通知タップの処理
+      </div>
+      <div style="margin-top:8px">
+        <span class="tag" style="background:#e2e8f0;color:#334155">バックグラウンド</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- =====================================================
+     SECTION 3: write / list 画面の読み書き
+     ===================================================== -->
+<div class="sec-title">
+  <span>🔄</span> 3. write / list 画面 — 何を読んで何に書くか
+</div>
+
+<div class="diagram">
+  <div class="rw-grid">
+
+    <div class="rw-card rw-write">
+      <h4>✏️ write 画面（メモ編集）</h4>
+      <ul>
+        <li><strong>読む：</strong>IndexedDB <code>loadDraft(id)</code></li>
+        <li><strong>書く：</strong>IndexedDB <code>saveDraft()</code></li>
+        <li>タイミング①：バックグラウンドに移行したとき</li>
+        <li>タイミング②：「一覧」ボタンを押したとき</li>
+        <li>タイミング③：3秒自動保存タイマー</li>
+      </ul>
+    </div>
+
+    <div class="rw-card rw-list">
+      <h4>📋 list 画面（一覧）</h4>
+      <ul>
+        <li><strong>読む：</strong>IndexedDB <code>loadAllDrafts()</code></li>
+        <li><strong>削除：</strong>IndexedDB <code>deleteDraft(id)</code></li>
+        <li><strong>🔔 ON：</strong>Service Worker で通知を表示</li>
+        <li><strong>🔔 OFF：</strong>Service Worker で通知を閉じる</li>
+        <li><strong>PCに送る：</strong>Drive に書き込み → IndexedDB 削除</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- visual flow -->
+  <div style="margin-top:28px;display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap">
+
+    <div class="screen" style="min-width:90px">
+      <span class="icon">✏️</span>
+      <span class="name">write</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
+      <div style="font-size:11px;color:#64748b;margin-bottom:2px">読む</div>
+      <div style="width:60px;height:2px;background:#eab308;position:relative">
+        <div style="position:absolute;left:-8px;top:-4px;border:5px solid transparent;border-right:8px solid #eab308"></div>
+      </div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">書く→</div>
+    </div>
+
+    <div class="store store-idb" style="min-width:100px;padding:10px 14px">
+      <span class="icon">🗄️</span>
+      <span class="name">IndexedDB</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
+      <div style="font-size:11px;color:#64748b;margin-bottom:2px">読む→</div>
+      <div style="width:60px;height:2px;background:#eab308;position:relative">
+        <div style="position:absolute;right:-8px;top:-4px;border:5px solid transparent;border-left:8px solid #eab308"></div>
+      </div>
+    </div>
+
+    <div class="screen" style="min-width:90px">
+      <span class="icon">📋</span>
+      <span class="name">list</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
+      <div style="font-size:11px;color:#22c55e;margin-bottom:2px">PCに送る→</div>
+      <div style="width:60px;height:2px;background:#22c55e;position:relative">
+        <div style="position:absolute;right:-8px;top:-4px;border:5px solid transparent;border-left:8px solid #22c55e"></div>
+      </div>
+    </div>
+
+    <div class="store store-drive" style="min-width:100px;padding:10px 14px">
+      <span class="icon">☁️</span>
+      <span class="name">Drive</span>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- =====================================================
+     SECTION 4: 通知タップのフロー（バグ詳細）
+     ===================================================== -->
+<div class="sec-title">
+  <span>🐛</span> 4. ロック通知タップ → メモ表示のフロー
+</div>
+
+<div class="diagram">
+
+  <!-- step-by-step -->
+  <div class="notif-flow">
+
+    <div class="step-box step-screen">
+      <span class="icon">📋</span>
+      <span class="title">list 画面</span>
+      <span class="detail">🔔ボタンをタップ<br>locked=true を保存<br>SW に通知を依頼</span>
+    </div>
+
+    <div class="grid-arrow">
+      <span>→</span>
+      <span class="ga-label">通知表示</span>
+    </div>
+
+    <div class="step-box step-os">
+      <span class="icon">📵</span>
+      <span class="title">ロック画面</span>
+      <span class="detail">OS の通知として表示<br>data.id にメモIDが入っている</span>
+    </div>
+
+    <div class="grid-arrow">
+      <span>→</span>
+      <span class="ga-label">タップ</span>
+    </div>
+
+    <div class="step-box step-sw">
+      <span class="icon">⚙️</span>
+      <span class="title">Service Worker</span>
+      <span class="detail">notificationclick<br>data.id を読む<br>/viewer?note=<b>id</b> へ移動</span>
+    </div>
+
+    <div class="grid-arrow">
+      <span>→</span>
+      <span class="ga-label">URLで起動</span>
+    </div>
+
+    <div class="step-box step-screen">
+      <span class="icon">✏️</span>
+      <span class="title">write 画面</span>
+      <span class="detail">メモを表示したい！<br>どこを探す？</span>
+    </div>
+
+  </div>
+
+  <!-- BUG -->
+  <div class="panel panel-bug">
+    <h3>🐛 修正前のバグ — なぜ新規画面が開いたか</h3>
+
+    <div class="lookup-row">
+      <div style="font-size:13px;font-weight:600;color:#c2410c">?note=id を受け取ったとき、探す場所が…</div>
+    </div>
+
+    <div class="lookup-row" style="margin-top:16px">
+      <div class="lookup-box lookup-drive">
+        <span class="licon">☁️</span>
+        <span class="lname">① Drive だけを検索</span>
+        <span class="lsub">PC→iPhone 送信メモ<br>notes_to_iphone.json</span>
+      </div>
+      <div class="fat-arrow fat-arrow-red">→</div>
+      <div class="lookup-box lookup-empty">
+        <span class="licon">❌</span>
+        <span class="lname">見つからない</span>
+        <span class="lsub">ロック通知のメモは<br>ローカル下書きなので<br>Driveに存在しない</span>
+      </div>
+      <div class="fat-arrow fat-arrow-red">→</div>
+      <div class="lookup-box" style="background:#fef2f2;border:2px solid #fca5a5;color:#7f1d1d">
+        <span class="licon">📄</span>
+        <span class="lname">空の新規画面</span>
+        <span class="lsub">setPendingHydrate が<br>呼ばれない</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIX -->
+  <div class="panel panel-fix">
+    <h3>✅ 修正後 — Drive になければ IndexedDB も探す</h3>
+
+    <div class="lookup-row" style="margin-top:8px">
+      <div class="lookup-box lookup-drive">
+        <span class="licon">☁️</span>
+        <span class="lname">① Drive を検索</span>
+        <span class="lsub">PC送信メモなら<br>ここで見つかる</span>
+      </div>
+      <div class="fat-arrow" style="color:#94a3b8">→</div>
+      <div style="font-size:12px;color:#64748b;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 12px;text-align:center">
+        見つからない場合<br>↓
+      </div>
+      <div class="fat-arrow" style="color:#94a3b8">→</div>
+      <div class="lookup-box lookup-idb">
+        <span class="licon">🗄️</span>
+        <span class="lname">② IndexedDB を検索</span>
+        <span class="lsub">ローカル下書きは<br>ここに保存されている</span>
+      </div>
+      <div class="fat-arrow fat-arrow-green">→</div>
+      <div class="lookup-box lookup-ok">
+        <span class="licon">📝</span>
+        <span class="lname">正しいメモを表示</span>
+        <span class="lsub">setPendingHydrate<br>で内容をロード</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- =====================================================
+     SECTION 5: IndexedDB の中身
+     ===================================================== -->
+<div class="sec-title">
+  <span>🗄️</span> 5. IndexedDB に保存されるメモの形（DraftRecord）
+</div>
+
+<div class="diagram">
+  <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- visual record card -->
+    <div style="background:#fefce8;border:2px solid #eab308;border-radius:14px;padding:20px 24px;min-width:220px">
+      <div style="font-weight:700;font-size:13px;color:#713f12;margin-bottom:14px">📦 DraftRecord（1件分）</div>
+      <table style="font-size:12px;border-collapse:collapse;width:100%">
+        <tr><td style="padding:4px 8px;background:#fef9c3;border-radius:4px;margin-bottom:2px;display:block;margin-bottom:4px"><code>id</code> 一意キー</td></tr>
+        <tr><td style="padding:4px 8px;display:block;margin-bottom:4px"><code>title</code> タイトル</td></tr>
+        <tr><td style="padding:4px 8px;display:block;margin-bottom:4px"><code>body</code> 本文（Markdown）</td></tr>
+        <tr><td style="padding:4px 8px;display:block;margin-bottom:4px"><code>created_at</code> 作成日時</td></tr>
+        <tr><td style="padding:4px 8px;display:block;margin-bottom:4px"><code>images[]</code> 添付画像</td></tr>
+        <tr><td style="padding:4px 8px;display:block;margin-bottom:4px"><code>tags[]</code> タグ</td></tr>
+        <tr><td style="padding:4px 8px;background:#fef3c7;border-radius:4px;display:block;margin-bottom:4px"><code>locked?</code> 🔒 ロック中フラグ</td></tr>
+        <tr><td style="padding:4px 8px;display:block;margin-bottom:4px"><code>received_pc?</code> PC受信フラグ</td></tr>
+        <tr><td style="padding:4px 8px;display:block"><code>sent_at?</code> PC送信日時</td></tr>
+      </table>
+    </div>
+
+    <!-- status types -->
+    <div style="flex:1;min-width:220px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:14px">メモの種類（statusで判断）</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="background:#eff6ff;border:2px solid #93c5fd;border-radius:10px;padding:12px 16px;font-size:12px">
+          <div style="font-weight:700;color:#1e40af;margin-bottom:4px">✏️ draft（下書き）</div>
+          <div style="color:#475569">sent_at なし・received_pc なし<br>→ iPhoneで書いて保存中</div>
+        </div>
+        <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:10px;padding:12px 16px;font-size:12px">
+          <div style="font-weight:700;color:#14532d;margin-bottom:4px">📥 received_pc（PC受信）</div>
+          <div style="color:#475569">received_pc = true<br>→ PCから届いたメモ</div>
+        </div>
+        <div style="background:#f8fafc;border:2px solid #cbd5e1;border-radius:10px;padding:12px 16px;font-size:12px">
+          <div style="font-weight:700;color:#334155;margin-bottom:4px">📤 sent（送信済み）</div>
+          <div style="color:#475569">sent_at あり<br>→ iPhoneからPCに送ったメモ</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- locked explanation -->
+    <div style="flex:1;min-width:220px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:14px">🔒 locked フラグの動き</div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        <div style="background:#eff6ff;border:2px solid #93c5fd;border-radius:10px 10px 0 0;padding:12px 16px;font-size:12px">
+          <div style="font-weight:700;color:#1d4ed8;margin-bottom:4px">🔔 ボタン ON</div>
+          <div style="color:#475569">IndexedDB: locked = <code>true</code><br>SW: showNotification() 実行</div>
+        </div>
+        <div style="text-align:center;padding:4px;background:#f8fafc;border-left:2px solid #93c5fd;border-right:2px solid #93c5fd;font-size:18px;color:#94a3b8">↕</div>
+        <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:0 0 10px 10px;padding:12px 16px;font-size:12px">
+          <div style="font-weight:700;color:#991b1b;margin-bottom:4px">🔕 ボタン OFF / 削除</div>
+          <div style="color:#475569">IndexedDB: locked = <code>false</code><br>SW: CLOSE_NOTIFICATION 送信</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<p style="margin-top:32px;font-size:11px;color:#94a3b8;text-align:right">生成: Claude Sonnet 4.6 / 2026-04-10</p>
+
+</body>
+</html>

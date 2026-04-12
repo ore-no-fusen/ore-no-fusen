@@ -1,310 +1,27 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { SimpleNoteBody } from './SimpleNoteBody';
-import { formatRelativeTime, insertAtCursor } from './utils';
+import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor } from './utils';
 import { getTranslation, type Language } from '@/lib/i18n';
-import type { IphoneNote, PendingHydrate, DraftRecord, CropModalProps } from './types';
-import { openDraftsDB, saveDraft, loadAllDrafts, loadDraft, deleteDraft } from './lib/indexeddb';
+import type { IphoneNote, PendingHydrate, DraftRecord } from './types';
+import { NoteListStep } from './NoteListStep';
+import { PushStep } from './PushStep';
+import { WriteStep } from './WriteStep';
+import { saveDraft, loadAllDrafts, loadDraft, deleteDraft } from './lib/indexeddb';
+import { useAutoSave } from './hooks/useAutoSave';
+import { useVisibilitySave } from './hooks/useVisibilitySave';
+import { useLockToggle } from './hooks/useLockToggle';
+import { useBackgroundSend } from './hooks/useBackgroundSend';
+import { useAppInit } from './hooks/useAppInit';
+import { useNoteList } from './hooks/useNoteList';
 import {
-  APP_FOLDER_NAME,
-  getAppFolderId,
-  uploadToDrive,
   downloadFromDrive,
   refreshAccessToken,
   uploadWithAutoRefresh,
-  uploadImageToDrive,
   uploadImageWithAutoRefresh,
 } from './lib/drive';
-
-// ---------------------------------------------------------------------------
-// ヘルパー関数
-// ---------------------------------------------------------------------------
-
-import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags } from './editor-helpers';
-
-function buildImageFileName(title: string, index: number): string {
-  const now = new Date();
-  const date = now.toLocaleDateString('sv').replace(/-/g, '');
-  const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
-  const ctx = title.trim().replace(/[^\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f]/g, '').slice(0, 10);
-  return ctx
-    ? `fusen_img_${date}_${time}_${ctx}_${index}.jpg`
-    : `fusen_img_${date}_${time}_${index}.jpg`;
-}
-
-
-// Markdown の1行目をタイトル、残りをbodyとして分離
-// 1行目の # プレフィックスは除去
-function extractTitleBody(text: string): { title: string; body: string } {
-  const lines = text.split('\n');
-  const firstLine = lines[0].replace(/^#\s*/, '').trim();
-  const rest = lines.slice(1).join('\n').replace(/^\n+/, '');
-  return { title: firstLine, body: rest };
-}
-
-// contenteditable のカーソル位置にテキストを挿入
-function insertTextAtCursor(text: string): void {
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return;
-  const range = sel.getRangeAt(0);
-  range.deleteContents();
-  const node = document.createTextNode(text);
-  range.insertNode(node);
-  range.setStartAfter(node);
-  range.setEndAfter(node);
-  sel.removeAllRanges();
-  sel.addRange(range);
-}
-
-// contenteditable のカーソル位置に DOM ノードを挿入
-function insertNodeAtCursor(node: Node): void {
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return;
-  const range = sel.getRangeAt(0);
-  range.deleteContents();
-  range.insertNode(node);
-  const after = document.createTextNode('\n');
-  if (node.parentNode) {
-    node.parentNode.insertBefore(after, node.nextSibling);
-  }
-  range.setStartAfter(after);
-  range.setEndAfter(after);
-  sel.removeAllRanges();
-  sel.addRange(range);
-}
-
-
-async function generatePKCE() {
-  const verifier =
-    crypto.randomUUID().replace(/-/g, '') +
-    crypto.randomUUID().replace(/-/g, '');
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(verifier)
-  );
-  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-  return { verifier, challenge };
-}
-
-function startOAuth(challenge: string) {
-  const params = new URLSearchParams({
-    client_id: process.env.NEXT_PUBLIC_GDRIVE_CLIENT_ID!,
-    redirect_uri: window.location.origin + '/viewer',
-    response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/drive.file',
-    code_challenge: challenge,
-    code_challenge_method: 'S256',
-    access_type: 'offline',
-    prompt: 'consent',
-  });
-  window.location.href =
-    'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
-}
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
-}
-
-
-
-
-
-
-
-
-// 画像をリサイズして base64 文字列に変換
-// Drive ダウンロード（トークン期限切れ時に自動リフレッシュ）
-// TODO(Phase 15-03): downloadWithAutoRefresh は dead code — 削除予定
-function downloadWithAutoRefresh(token: string): Promise<{ title: string; body: string }> {
-  return downloadFromDrive(token, 'notes_to_iphone.json').catch(() =>
-    refreshAccessToken().then((newToken) => {
-      if (!newToken) throw new Error('session expired');
-      return downloadFromDrive(newToken, 'notes_to_iphone.json');
-    })
-  );
-}
-
-
-// ---------------------------------------------------------------------------
-// CropModal: Canvas API + touch/mouse でクロップ矩形を操作
-// ---------------------------------------------------------------------------
-
-
-function CropModal({ file, onCancel, onCrop }: CropModalProps) {
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [imgEl, setImgEl] = React.useState<HTMLImageElement | null>(null);
-  // クロップ矩形: 画像座標系 (0〜1 の正規化)
-  const [crop, setCrop] = React.useState({ x: 0, y: 0, w: 1, h: 1 });
-  const dragging = React.useRef<{ type: 'move' | 'tl'|'tr'|'bl'|'br'|'t'|'b'|'l'|'r'; startX: number; startY: number; startCrop: typeof crop } | null>(null);
-
-  // 画像を読み込んで canvas に描画
-  React.useEffect(() => {
-    const img = new Image();
-    img.onload = () => {
-      setImgEl(img);
-    };
-    img.src = URL.createObjectURL(file);
-    return () => URL.revokeObjectURL(img.src);
-  }, [file]);
-
-  React.useEffect(() => {
-    if (!imgEl || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    // canvas サイズ = 表示サイズに合わせる
-    const maxW = Math.min(window.innerWidth - 32, 400);
-    const scale = maxW / imgEl.naturalWidth;
-    canvas.width = imgEl.naturalWidth * scale;
-    canvas.height = imgEl.naturalHeight * scale;
-    // 画像描画
-    ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
-    // クロップ矩形描画
-    const rx = crop.x * canvas.width;
-    const ry = crop.y * canvas.height;
-    const rw = crop.w * canvas.width;
-    const rh = crop.h * canvas.height;
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.clearRect(rx, ry, rw, rh);
-    ctx.drawImage(imgEl, rx / scale, ry / scale, rw / scale, rh / scale, rx, ry, rw, rh);
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(rx, ry, rw, rh);
-    // 4隅ハンドル
-    const hs = 12;
-    ctx.fillStyle = '#3b82f6';
-    [[rx, ry],[rx+rw-hs, ry],[rx, ry+rh-hs],[rx+rw-hs, ry+rh-hs]].forEach(([hx, hy]) => {
-      ctx.fillRect(hx, hy, hs, hs);
-    });
-  }, [imgEl, crop]);
-
-  function getRelativePos(e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) {
-    const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-    return {
-      nx: (clientX - rect.left) / rect.width,
-      ny: (clientY - rect.top) / rect.height,
-    };
-  }
-
-  function hitHandle(nx: number, ny: number): 'tl'|'tr'|'bl'|'br'|'move'|null {
-    const hs = 0.04; // normalized handle size
-    const { x, y, w, h } = crop;
-    if (Math.abs(nx - x) < hs && Math.abs(ny - y) < hs) return 'tl';
-    if (Math.abs(nx - (x+w)) < hs && Math.abs(ny - y) < hs) return 'tr';
-    if (Math.abs(nx - x) < hs && Math.abs(ny - (y+h)) < hs) return 'bl';
-    if (Math.abs(nx - (x+w)) < hs && Math.abs(ny - (y+h)) < hs) return 'br';
-    if (nx > x && nx < x+w && ny > y && ny < y+h) return 'move';
-    return null;
-  }
-
-  function onPointerDown(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
-    if (!canvasRef.current) return;
-    const { nx, ny } = getRelativePos(e, canvasRef.current);
-    const type = hitHandle(nx, ny);
-    if (!type) return;
-    dragging.current = { type, startX: nx, startY: ny, startCrop: { ...crop } };
-  }
-
-  function onPointerMove(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
-    if (!dragging.current || !canvasRef.current) return;
-    const { nx, ny } = getRelativePos(e, canvasRef.current);
-    const dx = nx - dragging.current.startX;
-    const dy = ny - dragging.current.startY;
-    const sc = dragging.current.startCrop;
-    let { x, y, w, h } = sc;
-    const minSize = 0.05;
-    if (dragging.current.type === 'move') {
-      x = Math.max(0, Math.min(1 - w, sc.x + dx));
-      y = Math.max(0, Math.min(1 - h, sc.y + dy));
-    } else if (dragging.current.type === 'tl') {
-      x = Math.min(sc.x + dx, sc.x + sc.w - minSize);
-      y = Math.min(sc.y + dy, sc.y + sc.h - minSize);
-      w = sc.w - (x - sc.x);
-      h = sc.h - (y - sc.y);
-    } else if (dragging.current.type === 'tr') {
-      y = Math.min(sc.y + dy, sc.y + sc.h - minSize);
-      w = Math.max(minSize, sc.w + dx);
-      h = sc.h - (y - sc.y);
-    } else if (dragging.current.type === 'bl') {
-      x = Math.min(sc.x + dx, sc.x + sc.w - minSize);
-      w = sc.w - (x - sc.x);
-      h = Math.max(minSize, sc.h + dy);
-    } else if (dragging.current.type === 'br') {
-      w = Math.max(minSize, sc.w + dx);
-      h = Math.max(minSize, sc.h + dy);
-    }
-    // 境界クランプ
-    x = Math.max(0, x);
-    y = Math.max(0, y);
-    w = Math.min(w, 1 - x);
-    h = Math.min(h, 1 - y);
-    setCrop({ x, y, w, h });
-  }
-
-  function onPointerUp() {
-    dragging.current = null;
-  }
-
-  function handleCrop() {
-    if (!imgEl) return;
-    const offscreen = document.createElement('canvas');
-    const sx = crop.x * imgEl.naturalWidth;
-    const sy = crop.y * imgEl.naturalHeight;
-    const sw = crop.w * imgEl.naturalWidth;
-    const sh = crop.h * imgEl.naturalHeight;
-    // 長辺 800px に収める
-    const maxDim = 800;
-    const scale = Math.min(1, maxDim / Math.max(sw, sh));
-    offscreen.width = sw * scale;
-    offscreen.height = sh * scale;
-    const ctx = offscreen.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, offscreen.width, offscreen.height);
-    offscreen.toBlob(
-      (blob) => { if (blob) onCrop(blob); },
-      'image/jpeg',
-      0.85
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-900">
-        <button className="text-gray-300 text-sm" onClick={onCancel}>キャンセル</button>
-        <span className="text-white font-semibold text-sm">トリミング</span>
-        <button className="text-blue-400 text-sm font-medium" onClick={handleCrop}>貼り付け</button>
-      </div>
-      <div className="flex-1 flex items-center justify-center p-4">
-        <canvas
-          ref={canvasRef}
-          className="touch-none max-w-full"
-          style={{ cursor: 'crosshair' }}
-          onMouseDown={onPointerDown}
-          onMouseMove={onPointerMove}
-          onMouseUp={onPointerUp}
-          onTouchStart={onPointerDown}
-          onTouchMove={onPointerMove}
-          onTouchEnd={onPointerUp}
-        />
-      </div>
-      <p className="text-center text-gray-400 text-xs pb-4">
-        ドラッグで範囲を調整 / 隅のハンドルでリサイズ
-      </p>
-    </div>
-  );
-}
+import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
+import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from './editor-helpers';
 
 // ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
@@ -325,10 +42,6 @@ export default function ViewerPage() {
     'banner' | 'login' | 'push' | 'ready' | 'write' | 'list' | 'note'
   >('banner');
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [noteData, setNoteData] = useState<{
-    title: string;
-    body: string;
-  } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [swReady, setSwReady] = useState(false);
@@ -341,257 +54,42 @@ export default function ViewerPage() {
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [showCropModal, setShowCropModal] = useState(false);
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
-  const [sendSuccess, setSendSuccess] = useState(false);
-  const [isSendingInBackground, setIsSendingInBackground] = useState(false);
-  const [backgroundSendSuccess, setBackgroundSendSuccess] = useState(false);
-  const [backgroundSendError, setBackgroundSendError] = useState<string | null>(null);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<string, string>>(new Map());
   const [activeNotifIds, setActiveNotifIds] = useState<string[]>([]);
-  const [lockedNoteIds, setLockedNoteIds] = useState<string[]>([]);
-  const [isLockPermissionPending, setIsLockPermissionPending] = useState(false);
   const hasRestoredLockRef = React.useRef(false);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
-  const [mermaidCode, setMermaidCode] = useState('');
-  const [mermaidPreviewSvg, setMermaidPreviewSvg] = useState<string | null>(null);
-  const [mermaidPreviewError, setMermaidPreviewError] = useState<string | null>(null);
-  const [isMermaidRendering, setIsMermaidRendering] = useState(false);
-  const mermaidPreviewRef = React.useRef<HTMLDivElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
-  const autoSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentDraftIdRef = React.useRef<string | null>(null);
   const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
   const writeTagsRef = React.useRef<string[]>([]);
 
-  useEffect(() => {
-    // iOS Safari は navigator.standalone で判定、他は matchMedia
-    const standalone =
-      (navigator as any).standalone === true ||
-      window.matchMedia('(display-mode: standalone)').matches;
-    setIsStandalone(standalone);
-
-    // SW を登録し、ready になったら swReady=true にする
-    // タイムアウト（8秒）後は強制的に true にして先に進む
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistration('/').then((reg) => {
-        if (!reg) {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' });
-        }
-      });
-      const swTimeout = setTimeout(() => setSwReady(true), 8000);
-      navigator.serviceWorker.ready.then(() => {
-        clearTimeout(swTimeout);
-        setSwReady(true);
-      });
-    } else {
-      // SW非対応ブラウザでも先に進む
-      setSwReady(true);
-    }
-
-    if (!standalone) return; // バナー表示のみ
-
-    const params = new URLSearchParams(window.location.search);
-
-    // accessToken 調達: localStorage → localStorage → 再認証
-    let token = localStorage.getItem('viewer_access_token');
-
-    // OAuth コールバック（?code= あり）
-    if (params.get('code')) {
-      const code = params.get('code')!;
-      const verifier = localStorage.getItem('pkce_verifier');
-      if (!verifier) {
-        setErrorMessage('セッションが切れました。再度ログインしてください。');
-        setStep('login');
-        return;
-      }
-      setIsLoading(true);
-      fetch('/api/auth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code,
-          redirect_uri: window.location.origin + '/viewer',
-          code_verifier: verifier,
-        }),
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          const t = data.access_token;
-          if (!t) throw new Error('access_token missing');
-          localStorage.setItem('viewer_access_token', t);
-          if (data.refresh_token) {
-            localStorage.setItem('viewer_refresh_token', data.refresh_token);
-          }
-          if (data.expires_in) {
-            localStorage.setItem('viewer_expires_at', String(Date.now() + data.expires_in * 1000));
-          }
-          setAccessToken(t);
-          window.history.replaceState({}, '', '/viewer');
-          setStep('push');
-        })
-        .catch((err) => {
-          setErrorMessage('ログインに失敗しました: ' + err.message);
-          setStep('login');
-        })
-        .finally(() => setIsLoading(false));
-      return;
-    }
-
-    // 通知タップ（?note= あり）
-    // メモは必ず IndexedDB にある（ローカル下書き or 一覧で受信済み）
-    // Drive は見ない。Drive ダウンロードは一覧を開いたときに行う。
-    if (params.get('note')) {
-      if (!token) {
-        generatePKCE().then(({ verifier, challenge }) => {
-          localStorage.setItem('pkce_verifier', verifier);
-          localStorage.setItem('pending_note', params.get('note')!);
-          startOAuth(challenge);
-        });
-        return;
-      }
-      setAccessToken(token);
-      const tappedId = params.get('note')!;
-      loadDraft(tappedId).then((draft) => {
-        if (draft) {
-          const titleLine = draft.title ? `${draft.title}\n` : '';
-          setPendingHydrate({
-            markdown: titleLine + draft.body,
-            blobMap: new Map(),
-            draftId: draft.id,
-            tags: draft.tags ?? [],
-          });
-        }
-        setStep('write');
-      });
-      return;
-    }
-
-    // OAuth 再リダイレクト後の pending_note 処理
-    const pendingNote = localStorage.getItem('pending_note');
-    if (pendingNote && token) {
-      localStorage.removeItem('pending_note');
-      setAccessToken(token);
-      loadDraft(pendingNote).then((draft) => {
-        if (draft) {
-          const titleLine = draft.title ? `${draft.title}\n` : '';
-          setPendingHydrate({
-            markdown: titleLine + draft.body,
-            blobMap: new Map(),
-            draftId: draft.id,
-            tags: draft.tags ?? [],
-          });
-        }
-        setStep('write');
-      });
-      return;
-    }
-
-    // 通常フロー（セットアップ）
-    if (token) {
-      setAccessToken(token);
-      const resetPush = new URLSearchParams(window.location.search).get('reset_push');
-      if (resetPush === '1') {
-        localStorage.removeItem('viewer_push_done');
-      }
-      if (localStorage.getItem('viewer_push_done') === 'true') {
-        setStep('write');
-      } else {
-        setStep('push');
-      }
-    } else {
-      setStep('login');
-    }
-  }, []);
-
-  useEffect(() => {
-    if (step !== 'list') return;
-    setIsHistoryLoading(true);
-    const draftsPromise = loadAllDrafts().catch(() => [] as DraftRecord[]);
-    // アクティブな通知 ID をサービスワーカー経由で取得
-    navigator.serviceWorker.ready.then((reg) => {
-      const channel = new MessageChannel();
-      channel.port1.onmessage = (e) => setActiveNotifIds(e.data.ids ?? []);
-      reg.active?.postMessage({ type: 'GET_NOTIFICATIONS' }, [channel.port2]);
-    }).catch(() => {});
-
-    let thumbUrls: string[] = [];
-    draftsPromise
-      .then((drafts) => {
-        const draftNotes: IphoneNote[] = drafts.map((d) => ({
-          id: d.id, title: d.title, body: d.body,
-          status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
-          created_at: d.created_at, tags: d.tags,
-        }));
-        const merged = draftNotes
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 20);
-        setHistoryNotes(merged);
-        const thumbMap = new Map<string, string>();
-        for (const d of drafts) {
-          if (d.images && d.images.length > 0) {
-            const url = URL.createObjectURL(d.images[0].blob);
-            thumbMap.set(d.id, url);
-            thumbUrls.push(url);
-          }
-        }
-        setThumbnailUrls(thumbMap);
-
-        // ロック状態を復元: locked === true のメモIDを lockedNoteIds に反映
-        const lockedIds = drafts.filter(d => d.locked).map(d => d.id);
-        setLockedNoteIds(lockedIds);
-
-        // 通知を再発火（権限が granted かつ初回のみ）
-        // 起動時に permission リクエストしてはいけない（iOS 制約）
-        if (!hasRestoredLockRef.current && lockedIds.length > 0 && Notification.permission === 'granted') {
-          hasRestoredLockRef.current = true;
-          navigator.serviceWorker.ready.then(async (reg) => {
-            for (const d of drafts.filter(d => d.locked)) {
-              const rawTitle = d.title || '';
-              const rawBody = d.body || '';
-              const notifTitle = rawTitle
-                ? rawTitle.replace(/^#\s*/, '')
-                : rawBody.slice(0, 20) || '（無題）';
-              const notifBody = rawTitle
-                ? rawBody.slice(0, 40)
-                : rawBody.slice(20, 60);
-              await reg.showNotification(notifTitle, {
-                body: notifBody,
-                tag: `fusen-lock-${d.id}`,
-                data: { id: d.id, title: notifTitle, body: notifBody },
-                icon: '/icon-192.png',
-                badge: '/icon-192.png',
-              });
-            }
-          }).catch(() => {});
-        }
-      })
-      .finally(() => setIsHistoryLoading(false));
-    return () => { thumbUrls.forEach((u) => URL.revokeObjectURL(u)); };
-  }, [step]);
+  // アプリ初期化（SW登録・OAuth・ステップ遷移）
+  useAppInit({
+    setIsStandalone,
+    setSwReady,
+    setStep,
+    setAccessToken,
+    setIsLoading,
+    setErrorMessage,
+    setPendingHydrate,
+  });
 
   // refs を state と同期（visibilitychange ハンドラで最新値を参照するため）
   useEffect(() => { currentDraftIdRef.current = currentDraftId; }, [currentDraftId]);
   useEffect(() => { imageBlobsRef.current = imageBlobs; }, [imageBlobs]);
   useEffect(() => { writeTagsRef.current = writeTags; }, [writeTags]);
 
-  // visibilitychange: アプリがバックグラウンドになった瞬間に保存
-  useEffect(() => {
-    const handleHide = () => {
-      if (document.visibilityState !== 'hidden') return;
-      if (!editorRef.current) return;
-      const rawText = serializeEditor(editorRef.current);
-      if (!rawText.trim()) return;
-      const { title, body } = extractTitleBody(rawText);
-      const draftId = currentDraftIdRef.current ?? crypto.randomUUID();
-      currentDraftIdRef.current = draftId;
-      const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fn, f]) => ({ fileName: fn, blob: f }));
-      saveDraft({ id: draftId, title, body, created_at: new Date().toISOString(), images: imagesArr, tags: writeTagsRef.current }).catch(() => {});
-    };
-    document.addEventListener('visibilitychange', handleHide);
-    return () => document.removeEventListener('visibilitychange', handleHide);
-  }, []);
+  // visibilitychange: バックグラウンドになった瞬間に保存
+  useVisibilitySave({ editorRef, currentDraftIdRef, imageBlobsRef, writeTagsRef });
+
+  // onInput 自動保存
+  const handleEditorInput = useAutoSave(
+    { editorRef, currentDraftIdRef, imageBlobsRef, writeTagsRef },
+    { setCurrentDraftId }
+  );
 
   // pendingHydrate: list→write 遷移後に editorRef がマウントされてから hydrateEditor を呼ぶ
   useEffect(() => {
@@ -605,92 +103,81 @@ export default function ViewerPage() {
       setShowTagBar(pendingHydrate.tags.length > 0);
       setPendingHydrate(null);
     };
-    const t = setTimeout(run, 50);
-    return () => clearTimeout(t);
+    const timer = setTimeout(run, 50);
+    return () => clearTimeout(timer);
   }, [pendingHydrate]);
 
-  const handleLockToggle = async (e: React.MouseEvent, note: IphoneNote) => {
-    e.stopPropagation();
-    const isLocked = lockedNoteIds.includes(note.id);
+  const {
+    lockedNoteIds,
+    setLockedNoteIds,
+    initLockedNoteIds,
+    isLockPermissionPending,
+    handleLockToggle,
+  } = useLockToggle({ onError: (msg) => setErrorMessage(msg) });
 
-    // 楽観的更新
-    if (isLocked) {
-      setLockedNoteIds(prev => prev.filter(id => id !== note.id));
-    } else {
-      setLockedNoteIds(prev => [...prev, note.id]);
-    }
+  // step === 'list' になったとき一覧ロード
+  useNoteList({
+    step,
+    hasRestoredLockRef,
+    setHistoryNotes,
+    setIsHistoryLoading,
+    setThumbnailUrls,
+    setActiveNotifIds,
+    initLockedNoteIds,
+  });
 
+  const {
+    isSendingInBackground,
+    backgroundSendSuccess,
+    backgroundSendError,
+    sendToPC,
+  } = useBackgroundSend({
+    accessToken,
+    onTokenRefreshed: (newToken) => setAccessToken(newToken),
+    onSessionExpired: () => setStep('login'),
+  });
+
+  // メモ削除ハンドラ
+  const handleDeleteNote = async (note: IphoneNote) => {
+    setIsLoading(true);
     try {
-      if (isLocked) {
-        // ロック解除: 通知を閉じてDB更新
-        const reg = await navigator.serviceWorker.ready;
-        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
-        const draft = await loadDraft(note.id);
-        if (draft) {
-          const { locked, ...rest } = draft;
-          await saveDraft(rest as DraftRecord);
+      await deleteDraft(note.id);
+      // ロック中メモの通知を解除
+      if (lockedNoteIds.includes(note.id)) {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
+          setLockedNoteIds((prev) => prev.filter((id) => id !== note.id));
+        } catch {
+          // エラー無視（削除自体は成功している）
         }
+      }
+      if (note.status === 'received_pc') {
+        // 通知を閉じる
+        const reg = await navigator.serviceWorker.ready;
+        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
+        setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
+      }
+      if (note.status === 'sent') {
+        // sent は楽観的にリストから除去するだけ
+        setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
       } else {
-        // ロック ON: 権限確認→通知表示→DB更新
-        if (Notification.permission === 'default') {
-          setIsLockPermissionPending(true);
-          const result = await Notification.requestPermission();
-          setIsLockPermissionPending(false);
-          if (result !== 'granted') {
-            setLockedNoteIds(prev => prev.filter(id => id !== note.id));
-            setErrorMessage('通知権限が必要です。設定から有効にしてください');
-            return;
-          }
-        } else if (Notification.permission === 'denied') {
-          setLockedNoteIds(prev => prev.filter(id => id !== note.id));
-          setErrorMessage('通知権限が必要です。設定から有効にしてください');
-          return;
-        }
-
-        // 通知タイトル・body の生成
-        const rawTitle = note.title || '';
-        const rawBody = note.body || '';
-        const notifTitle = rawTitle
-          ? rawTitle.replace(/^#\s*/, '')
-          : rawBody.slice(0, 20) || '（無題）';
-        const notifBody = rawTitle
-          ? rawBody.slice(0, 40)
-          : rawBody.slice(20, 60);
-
-        // SW 経由で通知表示（new Notification() はモバイルで動かない）
-        const reg = await navigator.serviceWorker.ready;
-        await reg.showNotification(notifTitle, {
-          body: notifBody,
-          tag: `fusen-lock-${note.id}`,
-          data: { id: note.id, title: notifTitle, body: notifBody },
-          icon: '/icon-192.png',
-          badge: '/icon-192.png',
-        });
-
-        // DB に locked: true を保存
-        const draft = await loadDraft(note.id);
-        if (draft) {
-          await saveDraft({ ...draft, locked: true });
-        } else {
-          // received_pc 等で draft が null の場合: 最小レコードを生成して保存
-          await saveDraft({
-            id: note.id,
-            title: note.title || '',
-            body: note.body || '',
-            created_at: note.created_at || new Date().toISOString(),
-            images: [],
-            tags: note.tags,
-            locked: true,
-          });
-        }
+        const updatedDrafts = await loadAllDrafts();
+        setHistoryNotes(
+          updatedDrafts
+            .map((d) => ({
+              id: d.id, title: d.title, body: d.body,
+              status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
+              created_at: d.created_at, tags: d.tags,
+            }))
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 20)
+        );
       }
     } catch {
-      // 失敗時はロールバック
-      if (isLocked) {
-        setLockedNoteIds(prev => [...prev, note.id]);
-      } else {
-        setLockedNoteIds(prev => prev.filter(id => id !== note.id));
-      }
+      // エラー無視（削除失敗）
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -725,7 +212,7 @@ export default function ViewerPage() {
     );
   }
 
-  // standalone → ステップUI / 全文表示
+  // standalone → ステップUI
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900">
       {/* バックグラウンド送信トースト */}
@@ -770,84 +257,16 @@ export default function ViewerPage() {
         )}
 
         {step === 'push' && (
-          <div className="flex flex-col items-center gap-4">
-            <p className="text-gray-700">セットアップ ステップ 2 / 2</p>
-            {!swReady ? (
-              <p className="text-gray-500 text-sm">SW準備中...</p>
-            ) : (
-              <button
-                className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium disabled:opacity-50"
-                disabled={isLoading}
-                onClick={async () => {
-                  try {
-                    setIsLoading(true);
-                    const perm = await Notification.requestPermission();
-                    if (perm !== 'granted') {
-                      setErrorMessage('通知を許可してください');
-                      setIsLoading(false);
-                      return;
-                    }
-                    const reg = await navigator.serviceWorker.ready;
-                    const existingSub = await reg.pushManager.getSubscription();
-                    if (existingSub) await existingSub.unsubscribe();
-                    const vapidKey = urlBase64ToUint8Array(
-                      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-                    );
-                    const sub = await reg.pushManager.subscribe({
-                      userVisibleOnly: true,
-                      applicationServerKey: vapidKey.buffer.slice(
-                        vapidKey.byteOffset,
-                        vapidKey.byteOffset + vapidKey.byteLength
-                      ) as ArrayBuffer,
-                    });
-                    const subJson = sub.toJSON();
-                    const endpoint = subJson?.endpoint as string;
-                    const keys = subJson?.keys;
-                    // デバイスIDを生成・永続化（このデバイスを一意に識別するため）
-                    let deviceId = localStorage.getItem('viewer_device_id');
-                    if (!deviceId) {
-                      deviceId = crypto.randomUUID();
-                      localStorage.setItem('viewer_device_id', deviceId);
-                    }
-                    // 既存デバイスリストを取得してupsert（新スキーマ対応、旧スキーマは自動移行）
-                    const existing = await downloadFromDrive(accessToken!, 'push_devices.json')
-                      .catch(() => ({}));
-                    const existingDevices: any[] = existing?.devices ?? (
-                      // 旧スキーマ（endpoint直下）があれば移行する
-                      existing?.endpoint ? [{ device_id: 'legacy', endpoint: existing.endpoint, keys: existing.keys, registered_at: new Date().toISOString() }] : []
-                    );
-                    const updatedDevices = [
-                      ...existingDevices.filter((d: any) => d.device_id !== deviceId),
-                      { device_id: deviceId, endpoint, keys, registered_at: new Date().toISOString() },
-                    ];
-                    await uploadWithAutoRefresh(accessToken!, 'push_devices.json', {
-                      devices: updatedDevices,
-                    });
-
-                    localStorage.setItem('viewer_push_done', 'true');
-                    setStep('write');
-                  } catch (err: unknown) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    if (msg === 'session expired') {
-                      localStorage.removeItem('viewer_access_token');
-                      localStorage.removeItem('viewer_refresh_token');
-                      setErrorMessage('セッションが切れました。再度ログインしてください。');
-                      setStep('login');
-                    } else {
-                      setErrorMessage('通知設定に失敗しました: ' + msg);
-                    }
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}
-              >
-                {isLoading ? t('pwa.saving') : '通知を許可する'}
-              </button>
-            )}
-            {errorMessage && (
-              <p className="text-red-600 text-sm">{errorMessage}</p>
-            )}
-          </div>
+          <PushStep
+            swReady={swReady}
+            isLoading={isLoading}
+            errorMessage={errorMessage}
+            accessToken={accessToken}
+            t={t}
+            setIsLoading={setIsLoading}
+            setErrorMessage={setErrorMessage}
+            setStep={setStep}
+          />
         )}
 
         {step === 'ready' && (
@@ -862,723 +281,78 @@ export default function ViewerPage() {
         )}
 
         {step === 'write' && (
-          <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
-            {/* ヘッダー */}
-            <div className="flex items-center px-4 py-3 bg-[#F2F2F7] gap-1">
-              <button
-                className="text-blue-500 text-sm font-medium px-2 py-2 rounded-xl hover:bg-gray-200 active:bg-gray-300 transition-colors"
-                onClick={async () => {
-                  if (editorRef.current) {
-                    const rawText = serializeEditor(editorRef.current);
-                    if (rawText.trim()) {
-                      const { title, body } = extractTitleBody(rawText);
-                      const draftId = currentDraftId ?? crypto.randomUUID();
-                      const imagesArr = Array.from(imageBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
-                      await saveDraft({ id: draftId, title, body, created_at: new Date().toISOString(), images: imagesArr, tags: writeTags }).catch(() => {});
-                      setCurrentDraftId(draftId);
-                    }
-                  }
-                  setStep('list');
-                }}
-                aria-label="一覧"
-              >
-                📋 {t('pwa.listTitle')}
-              </button>
-              <div className="flex-1" />
-              <div className="flex items-center gap-0 p-1">
-                <button
-                  className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="画像を追加"
-                  title="画像"
-                >
-                  📷
-                </button>
-                <button
-                  className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
-                  onClick={() => setShowMermaidModal(true)}
-                  aria-label="Mermaidを追加"
-                  title="Mermaid"
-                >
-                  🔷
-                </button>
-                <button
-                  className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
-                  onClick={() => {
-                    const editor = editorRef.current;
-                    if (!editor) return;
-                    const sel = window.getSelection();
-                    if (!sel || sel.rangeCount === 0 || !editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-                      editor.focus();
-                    }
-                    // カーソルのある行の editorRef 直下ノードを特定
-                    const currentSel = window.getSelection();
-                    let lineNode: Node | null = null;
-                    if (currentSel && currentSel.rangeCount > 0) {
-                      let node: Node = currentSel.getRangeAt(0).startContainer;
-                      while (node.parentNode && node.parentNode !== editor) {
-                        node = node.parentNode;
-                      }
-                      if (node.parentNode === editor) lineNode = node;
-                    }
-                    // チェックボックス wrapper を作成
-                    const wrapper = document.createElement('span');
-                    wrapper.setAttribute('data-checkbox-line', '');
-                    const cb = document.createElement('input');
-                    cb.type = 'checkbox';
-                    cb.setAttribute('contenteditable', 'false');
-                    cb.style.cssText = 'margin-right:4px;pointer-events:auto;vertical-align:middle;';
-                    cb.addEventListener('mousedown', (e) => e.preventDefault());
-                    cb.addEventListener('click', (e) => e.stopPropagation());
-                    wrapper.appendChild(cb);
-                    if (lineNode && lineNode.parentNode === editor && lineNode.nodeName !== 'BR') {
-                      // 既存行ノードの子を wrapper に移動（テキストを保持したまま置き換え）
-                      while (lineNode.firstChild) {
-                        wrapper.appendChild(lineNode.firstChild);
-                      }
-                      editor.replaceChild(wrapper, lineNode);
-                    } else {
-                      // 空行または新規: wrapper + br を追加
-                      wrapper.appendChild(document.createTextNode(''));
-                      if (lineNode) {
-                        editor.insertBefore(wrapper, lineNode);
-                      } else {
-                        editor.appendChild(wrapper);
-                        editor.appendChild(document.createElement('br'));
-                      }
-                    }
-                    // カーソルを wrapper 末尾に配置
-                    const range = document.createRange();
-                    range.selectNodeContents(wrapper);
-                    range.collapse(false);
-                    currentSel?.removeAllRanges();
-                    currentSel?.addRange(range);
-                  }}
-                  aria-label="チェックボックスを追加"
-                  title="チェックボックス"
-                >
-                  ☑
-                </button>
-                <button
-                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
-                    showTagBar ? 'bg-gray-200 text-gray-900' : 'hover:bg-gray-100 active:bg-gray-200 text-gray-600'
-                  }`}
-                  onClick={() => {
-                    if (!showTagBar) {
-                      setKnownTags(loadKnownTags());
-                    }
-                    setShowTagBar((prev) => !prev);
-                  }}
-                  aria-label="タグ"
-                  title="タグ"
-                >
-                  🏷️
-                </button>
-              </div>
-            </div>
-
-            {/* contenteditable エディタ */}
-            <div
-              ref={editorRef}
-              contentEditable="true"
-              suppressContentEditableWarning
-              className="flex-1 mx-4 mt-1 mb-2 px-4 py-4 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none bg-white rounded-2xl shadow-sm"
-              data-placeholder="メモを入力..."
-              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-              onInput={() => {
-                if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-                autoSaveTimerRef.current = setTimeout(async () => {
-                  if (!editorRef.current) return;
-                  const rawText = serializeEditor(editorRef.current);
-                  if (!rawText.trim()) return;
-                  const { title, body } = extractTitleBody(rawText);
-                  const draftId = currentDraftIdRef.current ?? crypto.randomUUID();
-                  if (!currentDraftIdRef.current) {
-                    currentDraftIdRef.current = draftId;
-                    setCurrentDraftId(draftId);
-                  }
-                  const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fn, f]) => ({ fileName: fn, blob: f }));
-                  await saveDraft({ id: draftId, title, body, created_at: new Date().toISOString(), images: imagesArr, tags: writeTagsRef.current }).catch(() => {});
-                }, 3000);
-              }}
-            />
-
-            {/* タグバー */}
-            {showTagBar && (
-              <div className="px-4 py-2 border-t border-gray-100 flex flex-wrap gap-2 items-center">
-                {writeTags.map((tag, i) => (
-                  <span
-                    key={i}
-                    className="flex items-center gap-1 bg-blue-100 text-blue-800 text-sm rounded-full px-3 py-1"
-                  >
-                    {tag}
-                    <button
-                      className="text-blue-500 hover:text-blue-700 leading-none"
-                      onClick={() => setWriteTags((prev) => prev.filter((_, j) => j !== i))}
-                      aria-label={`タグ ${tag} を削除`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if ((e.key === 'Enter' || e.key === ' ') && tagInput.trim()) {
-                      e.preventDefault();
-                      const newTag = tagInput.trim();
-                      if (!writeTags.includes(newTag)) {
-                        setWriteTags((prev) => [...prev, newTag]);
-                      }
-                      setTagInput('');
-                    }
-                  }}
-                  placeholder="タグを入力（Enter で追加）"
-                  className="text-sm outline-none border-b border-gray-300 focus:border-blue-400 min-w-[120px] flex-1"
-                />
-                {/* サジェスト候補 */}
-                {(() => {
-                  const filtered = knownTags
-                    .filter((t) => !writeTags.includes(t) && t.includes(tagInput))
-                    .slice(0, 10);
-                  if (filtered.length === 0) return null;
-                  return (
-                    <div className="w-full flex flex-wrap gap-1 mt-1">
-                      {filtered.map((t) => (
-                        <span
-                          key={t}
-                          className="flex items-center gap-0.5 bg-gray-100 text-gray-700 text-xs rounded-full pl-2 pr-1 py-0.5"
-                        >
-                          <button
-                            type="button"
-                            className="hover:text-blue-700"
-                            onClick={() => {
-                              if (!writeTags.includes(t)) {
-                                setWriteTags((prev) => [...prev, t]);
-                              }
-                              setTagInput('');
-                            }}
-                          >
-                            {t}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-gray-400 hover:text-red-500 leading-none"
-                            aria-label={`候補 ${t} を削除`}
-                            onClick={() => {
-                              const updated = knownTags.filter((k) => k !== t);
-                              localStorage.setItem('fusen_known_tags', JSON.stringify(updated));
-                              setKnownTags(updated);
-                            }}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setCropFile(file);
-                setShowCropModal(true);
-                e.target.value = '';
-              }}
-            />
-
-            {/* 成功メッセージ */}
-            {sendSuccess && (
-              <p className="text-center text-green-600 text-sm py-1">送信しました！</p>
-            )}
-            {errorMessage && (
-              <p className="text-center text-red-600 text-sm py-1">{errorMessage}</p>
-            )}
-
-            {/* アクションボタン */}
-            <div className="flex flex-col gap-3 px-4 py-4 bg-[#F2F2F7]">
-              <button
-                className="w-full py-4 rounded-2xl bg-white text-gray-800 font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-sm text-base"
-                disabled={isLoading}
-                onClick={async () => {
-                  if (!editorRef.current) return;
-                  new Audio('/sounds/create.wav').play().catch(() => {});
-                  setIsLoading(true);
-                  setErrorMessage(null);
-                  try {
-                    const rawText = serializeEditor(editorRef.current);
-                    const { title, body } = extractTitleBody(rawText);
-                    const draftId = currentDraftId ?? crypto.randomUUID();
-                    const imagesArr = Array.from(imageBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
-                    mergeKnownTags(writeTags);
-                    await saveDraft({
-                      id: draftId,
-                      title,
-                      body,
-                      created_at: new Date().toISOString(),
-                      images: imagesArr,
-                      tags: writeTags,
-                    });
-                    setImageBlobs(new Map());
-                    setWriteTags([]);
-                    setShowTagBar(false);
-                    setTagInput('');
-                    setCurrentDraftId(null);
-                    setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
-                  } catch (err: unknown) {
-                    setErrorMessage('保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}
-              >
-                新規付箋
-              </button>
-              <button
-                className="w-full py-4 rounded-2xl bg-blue-500 text-white font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-md text-base"
-                disabled={isSendingInBackground}
-                onClick={() => {
-                  if (!accessToken || !editorRef.current) return;
-                  new Audio('/sounds/save.wav').play().catch(() => {});
-                  // クリア前にデータをキャプチャ
-                  const rawText = serializeEditor(editorRef.current);
-                  const capturedTags = [...writeTags];
-                  const capturedBlobs = new Map(imageBlobs);
-                  const capturedDraftId = currentDraftId;
-                  const capturedToken = accessToken;
-                  // UIを即クリア
-                  editorRef.current.innerHTML = '';
-                  setImageBlobs(new Map());
-                  setWriteTags([]);
-                  setShowTagBar(false);
-                  setTagInput('');
-                  setCurrentDraftId(null);
-                  // バックグラウンド送信開始
-                  setIsSendingInBackground(true);
-                  setBackgroundSendError(null);
-                  (async () => {
-                    try {
-                      // トークン有効期限確認・自動更新
-                      let token = capturedToken;
-                      const expiresAt = parseInt(localStorage.getItem('viewer_expires_at') || '0');
-                      if (Date.now() > expiresAt - 5 * 60 * 1000) {
-                        const newToken = await refreshAccessToken();
-                        if (!newToken) {
-                          localStorage.removeItem('viewer_access_token');
-                          localStorage.removeItem('viewer_refresh_token');
-                          setIsSendingInBackground(false);
-                          setBackgroundSendError('セッションが切れました。再度ログインしてください。');
-                          setTimeout(() => setBackgroundSendError(null), 5000);
-                          setStep('login');
-                          return;
-                        }
-                        token = newToken;
-                        setAccessToken(newToken);
-                      }
-                      mergeKnownTags(capturedTags);
-                      const { title, body: extractedBody } = extractTitleBody(rawText);
-                      const noteId = crypto.randomUUID();
-                      const sentAt = new Date().toISOString();
-                      await Promise.all(
-                        Array.from(capturedBlobs.entries()).map(([fileName, file]) =>
-                          uploadImageWithAutoRefresh(token, file, fileName)
-                        )
-                      );
-                      const fullBody = extractedBody;
-                      const note: IphoneNote = {
-                        id: noteId,
-                        status: 'sent',
-                        title,
-                        body: fullBody,
-                        created_at: sentAt,
-                        sent_at: sentAt,
-                        tags: capturedTags,
-                      };
-                      // --- キュー配列方式: read-modify-write ---
-                      // 既存データを読み込む（存在しない場合や旧スキーマは自動変換）
-                      const existing = await downloadFromDrive(token, 'notes_from_iphone.json').catch(() => null);
-                      let currentItems: any[] = [];
-                      if (existing) {
-                        if (Array.isArray(existing.items)) {
-                          // 新スキーマ
-                          currentItems = existing.items;
-                        } else if (existing.id && !existing.received_at) {
-                          // 旧スキーマ（未処理の単一アイテム）→ キューに変換して引き継ぐ
-                          currentItems = [{
-                            id: existing.id,
-                            title: existing.title ?? '',
-                            body: existing.body ?? '',
-                            sent_at: existing.sent_at ?? sentAt,
-                            tags: existing.tags ?? [],
-                          }];
-                        }
-                        // 旧スキーマで received_at がある場合は処理済み → 捨てる（空配列のまま）
-                      }
-                      // 処理済みアイテムは最新5件まで保持（ファイル肥大化防止）
-                      const processed = currentItems
-                        .filter((item: any) => item.received_at)
-                        .slice(-5);
-                      const pending = currentItems.filter((item: any) => !item.received_at);
-                      // 新しいアイテムを末尾に追加
-                      const newItem = {
-                        id: noteId,
-                        title,
-                        body: fullBody,
-                        sent_at: sentAt,
-                        tags: capturedTags,
-                      };
-                      const updatedItems = [...processed, ...pending, newItem];
-                      await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: updatedItems });
-                      // 送信済みとして IndexedDB に保存（sent_at をセット）
-                      await saveDraft({
-                        id: capturedDraftId ?? noteId,
-                        title,
-                        body: fullBody,
-                        created_at: sentAt,
-                        images: Array.from(capturedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
-                        tags: capturedTags,
-                        sent_at: sentAt,
-                      });
-                      setIsSendingInBackground(false);
-                      setBackgroundSendSuccess(true);
-                      setTimeout(() => setBackgroundSendSuccess(false), 3000);
-                    } catch (err: unknown) {
-                      const msg = err instanceof Error ? (err.message || String(err)) : String(err);
-                      setIsSendingInBackground(false);
-                      if (msg.includes('session expired')) {
-                        localStorage.removeItem('viewer_access_token');
-                        localStorage.removeItem('viewer_refresh_token');
-                        setBackgroundSendError('セッションが切れました。再度ログインしてください。');
-                        setTimeout(() => setBackgroundSendError(null), 5000);
-                        setStep('login');
-                      } else {
-                        setBackgroundSendError('送信失敗: ' + msg);
-                        setTimeout(() => setBackgroundSendError(null), 5000);
-                      }
-                    }
-                  })();
-                }}
-              >
-                {isSendingInBackground ? t('pwa.sending') : 'PCに送る'}
-              </button>
-            </div>
-
-            {/* クロップモーダル */}
-            {showCropModal && cropFile && (
-              <CropModal
-                file={cropFile}
-                onCancel={() => {
-                  setShowCropModal(false);
-                  setCropFile(null);
-                }}
-                onCrop={(croppedBlob) => {
-                  const title = editorRef.current
-                    ? extractTitleBody(serializeEditor(editorRef.current)).title
-                    : '';
-                  const fileName = buildImageFileName(title, imageBlobs.size + 1);
-                  const file = new File([croppedBlob], fileName, { type: 'image/jpeg' });
-                  setImageBlobs((prev) => new Map(prev).set(fileName, file));
-                  const img = document.createElement('img');
-                  img.src = URL.createObjectURL(croppedBlob);
-                  img.setAttribute('data-filename', fileName);
-                  img.style.cssText = 'max-height:80px;border-radius:4px;margin:2px 0;display:block;';
-                  if (editorRef.current) {
-                    editorRef.current.focus();
-                    const sel = window.getSelection();
-                    if (sel && sel.rangeCount > 0 && editorRef.current.contains(sel.anchorNode)) {
-                      insertNodeAtCursor(img);
-                    } else {
-                      editorRef.current.appendChild(img);
-                      editorRef.current.appendChild(document.createTextNode('\n'));
-                    }
-                  }
-                  setShowCropModal(false);
-                  setCropFile(null);
-                }}
-              />
-            )}
-
-            {/* Mermaid モーダル */}
-            {showMermaidModal && (
-              <div className="fixed inset-0 z-50 flex flex-col bg-white">
-                {/* モーダルヘッダー */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-                  <button
-                    className="text-gray-500 text-lg font-medium"
-                    onClick={() => {
-                      setShowMermaidModal(false);
-                      setMermaidCode('');
-                      setMermaidPreviewSvg(null);
-                      setMermaidPreviewError(null);
-                    }}
-                  >
-                    ✕
-                  </button>
-                  <span className="font-semibold text-gray-900">Mermaid</span>
-                  <button
-                    className="text-blue-600 text-sm font-medium disabled:opacity-40"
-                    disabled={isMermaidRendering || !mermaidCode.trim()}
-                    onClick={async () => {
-                      setIsMermaidRendering(true);
-                      setMermaidPreviewError(null);
-                      try {
-                        const { default: mermaid } = await import('mermaid');
-                        mermaid.initialize({ startOnLoad: false });
-                        const id = `mermaid-preview-${Date.now()}`;
-                        const { svg } = await mermaid.render(id, mermaidCode);
-                        setMermaidPreviewSvg(svg);
-                      } catch (err: unknown) {
-                        setMermaidPreviewError('構文エラー: ' + (err instanceof Error ? err.message : String(err)));
-                        setMermaidPreviewSvg(null);
-                      } finally {
-                        setIsMermaidRendering(false);
-                      }
-                    }}
-                  >
-                    {isMermaidRendering ? '描画中...' : 'プレビュー'}
-                  </button>
-                </div>
-
-                {/* コード入力 */}
-                <textarea
-                  className="flex-1 px-4 py-3 text-sm font-mono outline-none resize-none border-b border-gray-100"
-                  placeholder={'graph TD\n  A-->B'}
-                  value={mermaidCode}
-                  onChange={(e) => {
-                    setMermaidCode(e.target.value);
-                    setMermaidPreviewSvg(null);
-                  }}
-                />
-
-                {/* プレビュー領域 */}
-                {mermaidPreviewSvg && (
-                  <div
-                    ref={mermaidPreviewRef}
-                    className="px-4 py-3 overflow-auto"
-                    dangerouslySetInnerHTML={{ __html: mermaidPreviewSvg }}
-                  />
-                )}
-                {mermaidPreviewError && (
-                  <p className="px-4 py-2 text-red-600 text-sm">{mermaidPreviewError}</p>
-                )}
-
-                {/* 挿入ボタン */}
-                <div className="px-4 py-4 border-t border-gray-200">
-                  <button
-                    className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-40"
-                    disabled={!mermaidCode.trim()}
-                    onClick={() => {
-                      if (!mermaidCode.trim()) return;
-                      if (mermaidPreviewSvg && editorRef.current) {
-                        // SVG をインライン挿入
-                        const wrapper = document.createElement('div');
-                        wrapper.setAttribute('data-mermaid-code', mermaidCode);
-                        wrapper.style.cssText = 'display:block;margin:4px 0;max-width:100%;overflow-x:auto;';
-                        wrapper.innerHTML = mermaidPreviewSvg;
-                        editorRef.current.focus();
-                        insertNodeAtCursor(wrapper);
-                      } else {
-                        // プレビューなしの場合はコードテキストを挿入
-                        const block = `\`\`\`mermaid\n${mermaidCode}\n\`\`\``;
-                        insertTextAtCursor(block);
-                      }
-                      setShowMermaidModal(false);
-                      setMermaidCode('');
-                      setMermaidPreviewSvg(null);
-                    }}
-                  >
-                    挿入
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <WriteStep
+            editorRef={editorRef}
+            fileInputRef={fileInputRef}
+            showTagBar={showTagBar}
+            tagInput={tagInput}
+            writeTags={writeTags}
+            knownTags={knownTags}
+            imageBlobs={imageBlobs}
+            showCropModal={showCropModal}
+            cropFile={cropFile}
+            showMermaidModal={showMermaidModal}
+            backgroundSendSuccess={backgroundSendSuccess}
+            errorMessage={errorMessage}
+            isLoading={isLoading}
+            isSendingInBackground={isSendingInBackground}
+            currentDraftId={currentDraftId}
+            accessToken={accessToken}
+            t={t}
+            setStep={setStep}
+            setShowTagBar={setShowTagBar}
+            setTagInput={setTagInput}
+            setWriteTags={setWriteTags}
+            setKnownTags={setKnownTags}
+            setImageBlobs={setImageBlobs}
+            setShowCropModal={setShowCropModal}
+            setCropFile={setCropFile}
+            setShowMermaidModal={setShowMermaidModal}
+            setErrorMessage={setErrorMessage}
+            setIsLoading={setIsLoading}
+            setCurrentDraftId={setCurrentDraftId}
+            setPendingHydrate={setPendingHydrate}
+            handleEditorInput={handleEditorInput}
+            sendToPC={sendToPC}
+          />
         )}
 
         {step === 'list' && (
-          <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
-            {/* ヘッダー */}
-            <div className="flex items-center px-5 pt-6 pb-2 bg-[#F2F2F7]">
-              <span className="text-3xl font-bold text-gray-900 flex-1">メモ</span>
-              <button
-                className="w-11 h-11 flex items-center justify-center bg-blue-500 text-white rounded-full text-2xl font-light shadow-md active:scale-95 transition-transform"
-                aria-label="新規作成"
-                onClick={() => {
-                  setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
-                  setStep('write');
-                }}
-              >
-                ＋
-              </button>
-            </div>
-
-            {/* コンテンツ */}
-            <div className="flex-1 overflow-y-auto">
-              {isHistoryLoading ? (
-                <p className="text-center text-gray-400 py-8 text-sm">読み込み中...</p>
-              ) : historyNotes.length === 0 ? (
-                <p className="text-center text-gray-400 py-8 text-sm">{t('pwa.emptyList')}</p>
-              ) : (
-                <ul className="flex flex-col gap-2 px-3 pb-3">
-                  {historyNotes.map((note) => (
-                    <li
-                      key={note.id}
-                      className="cursor-pointer bg-white rounded-2xl shadow-sm active:bg-gray-50 flex items-stretch gap-0 overflow-hidden transition-colors"
-                      onClick={async () => {
-                        const draft = await loadDraft(note.id).catch(() => null);
-                        const blobMap = new Map<string, Blob>();
-                        if (draft?.images && draft.images.length > 0) {
-                          for (const { fileName, blob } of draft.images) {
-                            blobMap.set(fileName, blob);
-                          }
-                        }
-                        const fullText = note.title
-                          ? (note.body ? `${note.title}\n${note.body}` : note.title)
-                          : (note.body ?? '');
-                        setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
-                        setStep('write');
-                      }}
-                    >
-                      <div className="flex-1 min-w-0 px-3 py-3">
-                        <div className="flex items-start gap-2">
-                          {thumbnailUrls.get(note.id) && (
-                            <img src={thumbnailUrls.get(note.id)} alt="" className="w-10 h-10 object-cover rounded flex-shrink-0" />
-                          )}
-                          <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
-                            {(((note.title ? note.title + '\n' : '') + (note.body ?? '')).replace(/!\[.*?\]\(.*?\)/g, '').replace(/\n\n+/g, '\n').trim().slice(0, 120)) || '（空のメモ）'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end justify-between py-2 pr-2 flex-shrink-0">
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span
-                            className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${
-                              note.status === 'sent'
-                                ? 'bg-blue-100 text-blue-600'
-                                : note.status === 'received_pc'
-                                ? 'bg-indigo-50 text-indigo-500'
-                                : 'bg-gray-100 text-gray-500'
-                            }`}
-                          >
-                            {note.status === 'sent'
-                              ? t('pwa.statusSent')
-                              : note.status === 'received_pc'
-                              ? 'PC受信'
-                              : t('pwa.statusDraft')}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {note.created_at ? (() => { try { return formatRelativeTime(note.created_at); } catch { return ''; } })() : ''}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-0">
-                          <button
-                            className={`p-2 ${lockedNoteIds.includes(note.id) ? 'text-blue-500' : 'text-gray-400'} hover:text-blue-500`}
-                            aria-label={lockedNoteIds.includes(note.id) ? 'ロック解除' : 'ロック画面に表示'}
-                            disabled={isLockPermissionPending}
-                            onClick={(e) => handleLockToggle(e, note)}
-                          >
-                            🔔
-                          </button>
-                          {note.status === 'received_pc' && activeNotifIds.includes(note.id) && (
-                            <button
-                              className="p-2 text-gray-400 hover:text-blue-500"
-                              aria-label="通知を削除"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  const reg = await navigator.serviceWorker.ready;
-                                  reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
-                                  setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
-                                } catch {
-                                  // エラー無視
-                                }
-                              }}
-                            >
-                              🔕
-                            </button>
-                          )}
-                          {(note.status === 'draft' || note.status === 'received_pc' || note.status === 'sent') && (
-                            <button
-                              className="p-2 text-gray-400 hover:text-red-500"
-                              aria-label="削除"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                setIsLoading(true);
-                                try {
-                                  if (note.status === 'sent') {
-                                    await deleteDraft(note.id);
-                                    // ロック中メモの通知を解除
-                                    if (lockedNoteIds.includes(note.id)) {
-                                      try {
-                                        const reg = await navigator.serviceWorker.ready;
-                                        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
-                                        setLockedNoteIds(prev => prev.filter(id => id !== note.id));
-                                      } catch {
-                                        // エラー無視（削除自体は成功している）
-                                      }
-                                    }
-                                    setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
-                                  } else {
-                                    await deleteDraft(note.id);
-                                    // ロック中メモの通知を解除
-                                    if (lockedNoteIds.includes(note.id)) {
-                                      try {
-                                        const reg = await navigator.serviceWorker.ready;
-                                        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
-                                        setLockedNoteIds(prev => prev.filter(id => id !== note.id));
-                                      } catch {
-                                        // エラー無視（削除自体は成功している）
-                                      }
-                                    }
-                                    if (note.status === 'received_pc') {
-                                      // 通知も閉じる
-                                      const reg = await navigator.serviceWorker.ready;
-                                      reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
-                                      setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
-                                    }
-                                    const updatedDrafts = await loadAllDrafts();
-                                    setHistoryNotes(
-                                      updatedDrafts
-                                        .map((d) => ({
-                                          id: d.id, title: d.title, body: d.body,
-                                          status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
-                                          created_at: d.created_at, tags: d.tags,
-                                        }))
-                                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                                        .slice(0, 20)
-                                    );
-                                  }
-                                } catch {
-                                  // エラー無視（即削除）
-                                } finally {
-                                  setIsLoading(false);
-                                }
-                              }}
-                            >
-                              🗑️
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
+          <NoteListStep
+            notes={historyNotes}
+            isLoading={isHistoryLoading}
+            thumbnailUrls={thumbnailUrls}
+            lockedNoteIds={lockedNoteIds}
+            activeNotifIds={activeNotifIds}
+            isLockPermissionPending={isLockPermissionPending}
+            t={t}
+            onNew={() => {
+              setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
+              setStep('write');
+            }}
+            onOpen={async (note) => {
+              const draft = await loadDraft(note.id).catch(() => null);
+              const blobMap = new Map<string, Blob>();
+              if (draft?.images && draft.images.length > 0) {
+                for (const { fileName, blob } of draft.images) {
+                  blobMap.set(fileName, blob);
+                }
+              }
+              const fullText = note.title
+                ? (note.body ? `${note.title}\n${note.body}` : note.title)
+                : (note.body ?? '');
+              setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
+              setStep('write');
+            }}
+            onDelete={handleDeleteNote}
+            onLockToggle={handleLockToggle}
+            onDismissNotif={(noteId) =>
+              setActiveNotifIds((prev) => prev.filter((id) => id !== noteId))
+            }
+          />
         )}
 
-{step === 'banner' && isStandalone && (
+        {step === 'banner' && isStandalone && (
           <div className="text-center">
             <p className="text-gray-500">読み込み中...</p>
           </div>

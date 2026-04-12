@@ -1,3 +1,29 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Architecture Design Preview</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 1100px; margin: auto; background: #0f1117; color: #e2e8f0; line-height: 1.6; }
+        pre { background: #1e2432; padding: 16px; border-radius: 8px; overflow-x: auto; border: 1px solid #2d3748; }
+        code { font-family: Consolas, monospace; background: #1e2432; padding: 2px 6px; border-radius: 4px; color: #fbbf24; font-size: 0.9em; }
+        pre code { background: none; padding: 0; color: inherit; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 24px; }
+        th, td { border: 1px solid #2d3748; padding: 12px; text-align: left; font-size: 0.95em; }
+        th { background: #1e2432; color: #94a3b8; }
+        a { color: #60a5fa; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        h1, h2 { color: #7dd3fc; border-bottom: 1px solid #2d3748; padding-bottom: 8px; margin-top: 40px; }
+        h3 { color: #a78bfa; margin-top: 32px; }
+        .mermaid { background: #1e2432; padding: 16px; border-radius: 8px; border: 1px solid #2d3748; margin: 24px 0; text-align: center; }
+        blockquote { border-left: 4px solid #3b82f6; margin: 0; padding-left: 16px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div id="content"></div>
+    <script id="markdown-data" type="text/markdown">
 # 俺の付箋 - アーキテクチャ・設計仕様 (Architecture & Design Specifications)
 
 本ドキュメントは、アプリケーションの主要な動作フローやシステム間連携のブロック図・シーケンス図をまとめた設計資料です。
@@ -928,3 +954,26 @@ graph TD
     A3["Stepルーティング (props渡し)"]
   end
 ```
+
+    </script>
+    <script>
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+        
+        const renderer = new marked.Renderer();
+        const originalCode = renderer.code.bind(renderer);
+        renderer.code = function(code, language, isEscaped) {
+            if (language === 'mermaid') {
+                return '<div class="mermaid">' + code + '</div>';
+            }
+            return originalCode(code, language, isEscaped);
+        };
+        
+        marked.setOptions({ renderer: renderer });
+        
+        const mdText = document.getElementById('markdown-data').textContent;
+        document.getElementById('content').innerHTML = marked.parse(mdText);
+        
+        mermaid.run();
+    </script>
+</body>
+</html>
