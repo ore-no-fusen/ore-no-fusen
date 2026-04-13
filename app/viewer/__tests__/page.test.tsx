@@ -3,7 +3,7 @@
  * 実装完了後に TODO を実際のアサーションに置き換える
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { hydrateEditor, serializeEditor, loadKnownTags, mergeKnownTags } from '../editor-helpers';
+import { hydrateEditor, serializeEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from '../editor-helpers';
 
 // テスト用ラッパー（export された関数を直接使用）
 function hydrateEditorForTest(el: HTMLDivElement, markdown: string, blobMap: Map<string, File>) {
@@ -154,4 +154,79 @@ describe('REQ-TAG-SUGGEST: タグサジェスト', () => {
   it.todo('tagInput が空のとき全 knownTags（最大10件）が候補として表示される');
   it.todo('tagInput に入力すると knownTags の includes フィルタリング結果が表示される');
   it.todo('候補タグをタップすると writeTags に追加され tagInput がクリアされる');
+});
+
+describe('REQ-IMG-SERIALIZE: hydrateEditor → serializeEditor ラウンドトリップ', () => {
+  it('blobMap 画像: hydrate → serialize でファイル名が保持される', () => {
+    const el = document.createElement('div');
+    const blob = new Blob(['dummy'], { type: 'image/jpeg' });
+    hydrateEditorForTest(el, '![](photo.jpg)', new Map([['photo.jpg', blob as File]]));
+    const result = serializeEditorForTest(el);
+    expect(result).toBe('![](photo.jpg)');
+  });
+
+  it('data: URI 画像: hydrate → serialize で data URI が保持される（編集保存時に消えない）', () => {
+    const el = document.createElement('div');
+    hydrateEditorForTest(el, '![](data:image/jpeg;base64,abc123)', new Map());
+    const result = serializeEditorForTest(el);
+    expect(result).toContain('data:image/jpeg;base64,abc123');
+  });
+
+  it('alt text あり data: URI 画像: hydrate → serialize で data URI が保持される', () => {
+    const el = document.createElement('div');
+    hydrateEditorForTest(el, '![image|0.1](data:image/png;base64,abc123)', new Map());
+    const result = serializeEditorForTest(el);
+    expect(result).toContain('data:image/png;base64,abc123');
+  });
+});
+
+describe('REQ-MERMAID-HYDRATE: mermaid ブロック変換', () => {
+  it('```mermaid ブロックを data-mermaid-code 属性付き div に変換する', () => {
+    const el = document.createElement('div');
+    hydrateEditorForTest(el, '```mermaid\ngraph TD\nA --> B\n```', new Map());
+    const div = el.querySelector('[data-mermaid-code]');
+    expect(div).not.toBeNull();
+    expect(div!.getAttribute('data-mermaid-code')).toBe('graph TD\nA --> B');
+  });
+
+  it('mermaid ブロック: hydrate → serialize でコードが保持される', () => {
+    const el = document.createElement('div');
+    hydrateEditorForTest(el, '```mermaid\ngraph TD\nA --> B\n```', new Map());
+    const result = serializeEditorForTest(el);
+    expect(result).toContain('```mermaid');
+    expect(result).toContain('graph TD\nA --> B');
+    expect(result).toContain('```');
+  });
+});
+
+describe('REQ-EXTRACT-TITLE: extractTitleBody', () => {
+  it('# プレフィックスありの1行目をタイトルとして分離する', () => {
+    const { title, body } = extractTitleBody('# タイトル\n本文');
+    expect(title).toBe('タイトル');
+    expect(body).toBe('本文');
+  });
+
+  it('# プレフィックスなしの1行目もタイトルになる', () => {
+    const { title, body } = extractTitleBody('タイトル\n本文');
+    expect(title).toBe('タイトル');
+    expect(body).toBe('本文');
+  });
+
+  it('1行だけのとき body は空文字', () => {
+    const { title, body } = extractTitleBody('# タイトルのみ');
+    expect(title).toBe('タイトルのみ');
+    expect(body).toBe('');
+  });
+
+  it('空文字のとき title も body も空文字', () => {
+    const { title, body } = extractTitleBody('');
+    expect(title).toBe('');
+    expect(body).toBe('');
+  });
+
+  it('タイトルと本文の間の空行は body に含まれない', () => {
+    const { title, body } = extractTitleBody('# タイトル\n\n本文');
+    expect(title).toBe('タイトル');
+    expect(body).toBe('本文');
+  });
 });
