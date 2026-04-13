@@ -70,8 +70,13 @@ export function hydrateEditor(
       continue;
     }
     // 画像記法 ![任意](filename) 検出（alt textあり・なし両方対応）
+    if (line.includes('![') || line.includes('data:')) {
+      console.log('[hydrateEditor] img candidate line:', JSON.stringify(line));
+      console.log('[hydrateEditor] charCodes(last5):', [...line.slice(-5)].map(c => c.charCodeAt(0)));
+    }
     const imgMatch = line.match(/^!\[[^\]]*\]\(([^)]+)\)$/);
     if (imgMatch) {
+      console.log('[hydrateEditor] imgMatch filename:', imgMatch[1].slice(0, 60));
       const filename = imgMatch[1];
       const file = blobMap.get(filename);
       if (file) {
