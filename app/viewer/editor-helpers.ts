@@ -70,13 +70,8 @@ export function hydrateEditor(
       continue;
     }
     // 画像記法 ![任意](filename) 検出（alt textあり・なし両方対応）
-    if (line.includes('![') || line.includes('data:')) {
-      console.log('[hydrateEditor] img candidate line:', JSON.stringify(line));
-      console.log('[hydrateEditor] charCodes(last5):', [...line.slice(-5)].map(c => c.charCodeAt(0)));
-    }
     const imgMatch = line.match(/^!\[[^\]]*\]\(([^)]+)\)$/);
     if (imgMatch) {
-      console.log('[hydrateEditor] imgMatch filename:', imgMatch[1].slice(0, 60));
       const filename = imgMatch[1];
       const file = blobMap.get(filename);
       if (file) {
@@ -100,6 +95,17 @@ export function hydrateEditor(
         el.appendChild(span);
         el.appendChild(document.createElement('br'));
       }
+      i++;
+      continue;
+    }
+    // 画像記法に似ているが正規表現にマッチしなかった行（デバッグ用）
+    if (line.includes('![')) {
+      const codes = [...line.slice(-5)].map(c => c.charCodeAt(0));
+      const dbg = document.createElement('span');
+      dbg.style.cssText = 'color:red;font-size:10px;word-break:break-all;display:block;';
+      dbg.textContent = `[DBG] len=${line.length} last5codes=${JSON.stringify(codes)} line=${line.slice(0, 80)}`;
+      el.appendChild(dbg);
+      el.appendChild(document.createElement('br'));
       i++;
       continue;
     }
