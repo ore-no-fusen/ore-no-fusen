@@ -69,8 +69,8 @@ export function hydrateEditor(
       el.appendChild(document.createElement('br'));
       continue;
     }
-    // 画像記法 ![任意](filename) 検出（alt textあり・なし両方対応）
-    const imgMatch = line.match(/^!\[[^\]]*\]\(([^)]+)\)$/);
+    // 画像記法 ![任意](filename) 検出（alt textあり・なし両方対応、先頭の空白を許容）
+    const imgMatch = line.match(/^\s*!\[[^\]]*\]\(([^)]+)\)\s*$/);
     if (imgMatch) {
       const filename = imgMatch[1];
       const file = blobMap.get(filename);
@@ -95,17 +95,6 @@ export function hydrateEditor(
         el.appendChild(span);
         el.appendChild(document.createElement('br'));
       }
-      i++;
-      continue;
-    }
-    // 画像記法に似ているが正規表現にマッチしなかった行（デバッグ用）
-    if (line.includes('![')) {
-      const codes = [...line.slice(-5)].map(c => c.charCodeAt(0));
-      const dbg = document.createElement('span');
-      dbg.style.cssText = 'color:red;font-size:10px;word-break:break-all;display:block;';
-      dbg.textContent = `[DBG] len=${line.length} last5codes=${JSON.stringify(codes)} line=${line.slice(0, 80)}`;
-      el.appendChild(dbg);
-      el.appendChild(document.createElement('br'));
       i++;
       continue;
     }
