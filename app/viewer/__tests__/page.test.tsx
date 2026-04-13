@@ -55,6 +55,32 @@ describe('REQ-CB-LINE: チェックボックス行頭挿入', () => {
   it.todo('行頭挿入: insertCheckboxAtLineStart が editorRef 直下の先頭ノードに - [ ]  を挿入する');
 });
 
+describe('REQ-IMG-HYDRATE: hydrateEditor 画像変換', () => {
+  it('blobMap にあるファイル名は blob URL の img になる', () => {
+    const el = document.createElement('div');
+    const blob = new Blob(['dummy'], { type: 'image/jpeg' });
+    hydrateEditorForTest(el, '![](photo.jpg)', new Map([['photo.jpg', blob as File]]));
+    const img = el.querySelector('img') as HTMLImageElement;
+    expect(img).not.toBeNull();
+    expect(img.src).toMatch(/^blob:/);
+  });
+
+  it('data: URI はそのまま img.src になる（PC→iPhone送信）', () => {
+    const el = document.createElement('div');
+    hydrateEditorForTest(el, '![](data:image/jpeg;base64,abc123)', new Map());
+    const img = el.querySelector('img') as HTMLImageElement;
+    expect(img).not.toBeNull();
+    expect(img.src).toContain('data:image/jpeg');
+  });
+
+  it('blobMap にもない通常パスはテキストのまま残る', () => {
+    const el = document.createElement('div');
+    hydrateEditorForTest(el, '![](assets/photo.jpg)', new Map());
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.textContent).toContain('![](assets/photo.jpg)');
+  });
+});
+
 describe('REQ-CB-HYDRATE: hydrateEditor チェックボックス変換', () => {
   it('- [ ] text を data-checkbox-line span + unchecked input に変換する', () => {
     const el = document.createElement('div');
