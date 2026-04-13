@@ -207,6 +207,20 @@ export async function uploadImageToDrive(
   if (!res.ok) throw new Error(`Drive image upload failed: ${res.status}`);
 }
 
+// Drive 読み込み（トークン期限切れ時に自動リフレッシュ）
+export async function downloadWithAutoRefresh(
+  token: string,
+  fileName: string
+): Promise<unknown> {
+  try {
+    return await downloadFromDrive(token, fileName);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    return await downloadFromDrive(newToken, fileName);
+  }
+}
+
 // uploadImageToDrive のトークン期限切れ対応ラッパー
 export async function uploadImageWithAutoRefresh(
   token: string,

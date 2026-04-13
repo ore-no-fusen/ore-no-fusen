@@ -16,6 +16,7 @@ import { useAppInit } from './hooks/useAppInit';
 import { useNoteList } from './hooks/useNoteList';
 import {
   downloadFromDrive,
+  downloadWithAutoRefresh,
   refreshAccessToken,
   uploadWithAutoRefresh,
   uploadImageWithAutoRefresh,
@@ -39,7 +40,7 @@ export default function ViewerPage() {
 
   const [isStandalone, setIsStandalone] = useState(false);
   const [step, setStep] = useState<
-    'banner' | 'login' | 'push' | 'ready' | 'write' | 'list' | 'note'
+    'banner' | 'login' | 'push' | 'ready' | 'write' | 'list'
   >('banner');
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -115,9 +116,10 @@ export default function ViewerPage() {
     handleLockToggle,
   } = useLockToggle({ onError: (msg) => setErrorMessage(msg) });
 
-  // step === 'list' になったとき一覧ロード
+  // step === 'list' になったとき一覧ロード（Drive → IndexedDB → UI）
   useNoteList({
     step,
+    accessToken,
     hasRestoredLockRef,
     setHistoryNotes,
     setIsHistoryLoading,
@@ -141,7 +143,20 @@ export default function ViewerPage() {
   const handleDeleteNote = async (note: IphoneNote) => {
     setIsLoading(true);
     try {
+      // received_pc の場合: Drive再取得 → 対象削除 → Upload → IndexedDB削除（順序厳守）
+      if (note.status === 'received_pc' && accessToken) {
+        try {
+          const raw = await downloadWithAutoRefresh(accessToken, 'notes_to_iphone.json') as { items?: unknown[] };
+          const items = (Array.isArray(raw.items) ? raw.items : []) as { id: string }[];
+          const updated = items.filter((n) => n.id !== note.id);
+          await uploadWithAutoRefresh(accessToken, 'notes_to_iphone.json', { items: updated });
+        } catch {
+          // Drive 更新失敗 → IndexedDB 削除は続行
+        }
+      }
+
       await deleteDraft(note.id);
+
       // ロック中メモの通知を解除
       if (lockedNoteIds.includes(note.id)) {
         try {
@@ -149,17 +164,17 @@ export default function ViewerPage() {
           reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
           setLockedNoteIds((prev) => prev.filter((id) => id !== note.id));
         } catch {
-          // エラー無視（削除自体は成功している）
+          // エラー無視
         }
       }
       if (note.status === 'received_pc') {
-        // 通知を閉じる
-        const reg = await navigator.serviceWorker.ready;
-        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
+        } catch { /* ignore */ }
         setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
       }
       if (note.status === 'sent') {
-        // sent は楽観的にリストから除去するだけ
         setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
       } else {
         const updatedDrafts = await loadAllDrafts();
@@ -343,6 +358,21 @@ export default function ViewerPage() {
                 : (note.body ?? '');
               setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
               setStep('write');
+
+              // received_pc の既読を Drive にバックグラウンドで記録（遷移を待たない）
+              if (note.status === 'received_pc' && accessToken) {
+                const token = accessToken;
+                downloadWithAutoRefresh(token, 'notes_to_iphone.json')
+                  .then((raw) => {
+                    const data = raw as { items?: unknown[] };
+                    const items = (Array.isArray(data.items) ? data.items : []) as { id: string; received_at?: string | null }[];
+                    const updated = items.map((n) =>
+                      n.id === note.id ? { ...n, received_at: new Date().toISOString() } : n
+                    );
+                    return uploadWithAutoRefresh(token, 'notes_to_iphone.json', { items: updated });
+                  })
+                  .catch(() => {}); // 失敗しても次回同期で整合
+              }
             }}
             onDelete={handleDeleteNote}
             onLockToggle={handleLockToggle}

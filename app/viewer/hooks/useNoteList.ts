@@ -1,16 +1,19 @@
 'use client';
 
 import { useEffect } from 'react';
-import { loadAllDrafts } from '../lib/indexeddb';
+import { loadAllDrafts, saveDraft } from '../lib/indexeddb';
+import { downloadWithAutoRefresh } from '../lib/drive';
 import type { IphoneNote, DraftRecord } from '../types';
 
 // ---------------------------------------------------------------------------
 // useNoteList
 // step === 'list' になったとき一覧・サムネイル・ロック状態をロードするフック
+// Drive → IndexedDB → UI の一方向同期。UIは IndexedDB のみ参照（SSOT）。
 // ---------------------------------------------------------------------------
 
 type UseNoteListOptions = {
   step: string;
+  accessToken: string | null;
   hasRestoredLockRef: React.MutableRefObject<boolean>;
   setHistoryNotes: (notes: IphoneNote[]) => void;
   setIsHistoryLoading: (v: boolean) => void;
@@ -21,6 +24,7 @@ type UseNoteListOptions = {
 
 export function useNoteList({
   step,
+  accessToken,
   hasRestoredLockRef,
   setHistoryNotes,
   setIsHistoryLoading,
@@ -31,7 +35,6 @@ export function useNoteList({
   useEffect(() => {
     if (step !== 'list') return;
     setIsHistoryLoading(true);
-    const draftsPromise = loadAllDrafts().catch(() => [] as DraftRecord[]);
 
     // アクティブな通知 ID をサービスワーカー経由で取得
     navigator.serviceWorker.ready.then((reg) => {
@@ -41,17 +44,84 @@ export function useNoteList({
     }).catch(() => {});
 
     let thumbUrls: string[] = [];
-    draftsPromise
-      .then((drafts) => {
-        const draftNotes: IphoneNote[] = drafts.map((d) => ({
-          id: d.id, title: d.title, body: d.body,
-          status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
-          created_at: d.created_at, tags: d.tags,
-        }));
-        const merged = draftNotes
+
+    const draftsPromise = loadAllDrafts().catch(() => [] as DraftRecord[]);
+
+    // ロック通知は IndexedDB のデータで即時処理（Drive fetch を待たない）
+    draftsPromise.then((localDrafts) => {
+      const lockedIds = localDrafts.filter((d) => d.locked).map((d) => d.id);
+      initLockedNoteIds(lockedIds);
+
+      if (!hasRestoredLockRef.current && lockedIds.length > 0 && Notification.permission === 'granted') {
+        hasRestoredLockRef.current = true;
+        navigator.serviceWorker.ready.then(async (reg) => {
+          for (const d of localDrafts.filter((d) => d.locked)) {
+            const rawTitle = d.title || '';
+            const rawBody = d.body || '';
+            const notifTitle = rawTitle
+              ? rawTitle.replace(/^#\s*/, '')
+              : rawBody.slice(0, 20) || '（無題）';
+            const notifBody = rawTitle
+              ? rawBody.slice(0, 40)
+              : rawBody.slice(20, 60);
+            await reg.showNotification(notifTitle, {
+              body: notifBody,
+              tag: `fusen-lock-${d.id}`,
+              data: { id: d.id, title: notifTitle, body: notifBody },
+              icon: '/icon-192.png',
+              badge: '/icon-192.png',
+            });
+          }
+        }).catch(() => {});
+      }
+    });
+
+    // Drive から notes_to_iphone.json を取得してマージ（失敗時は IndexedDB のみで続行）
+    const drivePromise: Promise<DraftRecord[]> = accessToken
+      ? downloadWithAutoRefresh(accessToken, 'notes_to_iphone.json')
+          .then((raw) => {
+            const data = raw as { items?: unknown[] };
+            const items = Array.isArray(data.items) ? data.items : [];
+            return items.map((item: any) => ({
+              id: item.id as string,
+              title: item.title ?? '',
+              body: item.body ?? '',
+              created_at: item.sent_at ?? new Date().toISOString(),
+              images: [],
+              tags: Array.isArray(item.tags) ? item.tags : [],
+              received_pc: true as const,
+            } satisfies DraftRecord));
+          })
+          .catch(() => [] as DraftRecord[])
+      : Promise.resolve([] as DraftRecord[]);
+
+    Promise.all([draftsPromise, drivePromise])
+      .then(async ([localDrafts, driveItems]) => {
+        // id をキーに Map でマージ（IndexedDB 優先、不足分を Drive で補完）
+        const merged = new Map<string, DraftRecord>();
+        for (const d of localDrafts) merged.set(d.id, d);
+        const toSave: DraftRecord[] = [];
+        for (const item of driveItems) {
+          if (!merged.has(item.id)) {
+            merged.set(item.id, item);
+            toSave.push(item);
+          }
+        }
+
+        // 不足分を IndexedDB に保存（取りこぼし補完）
+        await Promise.all(toSave.map((d) => saveDraft(d).catch(() => {})));
+
+        const drafts = Array.from(merged.values());
+
+        const notes: IphoneNote[] = drafts
+          .map((d) => ({
+            id: d.id, title: d.title, body: d.body,
+            status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
+            created_at: d.created_at, tags: d.tags,
+          }))
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 20);
-        setHistoryNotes(merged);
+        setHistoryNotes(notes);
 
         const thumbMap = new Map<string, string>();
         for (const d of drafts) {
@@ -62,35 +132,6 @@ export function useNoteList({
           }
         }
         setThumbnailUrls(thumbMap);
-
-        // ロック状態を復元: locked === true のメモIDを lockedNoteIds に反映
-        const lockedIds = drafts.filter((d) => d.locked).map((d) => d.id);
-        initLockedNoteIds(lockedIds);
-
-        // 通知を再発火（権限が granted かつ初回のみ）
-        // 起動時に permission リクエストしてはいけない（iOS 制約）
-        if (!hasRestoredLockRef.current && lockedIds.length > 0 && Notification.permission === 'granted') {
-          hasRestoredLockRef.current = true;
-          navigator.serviceWorker.ready.then(async (reg) => {
-            for (const d of drafts.filter((d) => d.locked)) {
-              const rawTitle = d.title || '';
-              const rawBody = d.body || '';
-              const notifTitle = rawTitle
-                ? rawTitle.replace(/^#\s*/, '')
-                : rawBody.slice(0, 20) || '（無題）';
-              const notifBody = rawTitle
-                ? rawBody.slice(0, 40)
-                : rawBody.slice(20, 60);
-              await reg.showNotification(notifTitle, {
-                body: notifBody,
-                tag: `fusen-lock-${d.id}`,
-                data: { id: d.id, title: notifTitle, body: notifBody },
-                icon: '/icon-192.png',
-                badge: '/icon-192.png',
-              });
-            }
-          }).catch(() => {});
-        }
       })
       .finally(() => setIsHistoryLoading(false));
 
