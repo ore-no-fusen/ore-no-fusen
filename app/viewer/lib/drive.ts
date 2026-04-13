@@ -5,7 +5,12 @@
 export const APP_FOLDER_NAME = 'ore-no-fusen';
 let cachedFolderId: string | null = null;
 
-/** テスト用: フォルダIDキャッシュをリセットする */
+/**
+ * 責務: モジュールレベルのフォルダ ID キャッシュをリセットする（テスト用）
+ * 入力: なし
+ * 出力: なし
+ * 副作用: cachedFolderId モジュール変数を null に書き込む
+ */
 export function resetCachedFolderId() {
   cachedFolderId = null;
 }
@@ -18,6 +23,12 @@ const LEGACY_FILE_NAMES: Record<string, string> = {
   'notes_from_iphone.json': 'notes_from_iphone.json',
 };
 
+/**
+ * 責務: ore-no-fusen フォルダの Drive ファイル ID を取得する（なければ作成してキャッシュ）
+ * 入力: accessToken: string
+ * 出力: Promise<string | null>（エラー時は null）
+ * 副作用: Google Drive API 呼び出し、cachedFolderId モジュール変数を更新する
+ */
 export async function getAppFolderId(accessToken: string): Promise<string | null> {
   if (cachedFolderId !== null) return cachedFolderId;
   const res = await fetch(
@@ -48,6 +59,12 @@ export async function getAppFolderId(accessToken: string): Promise<string | null
   return cachedFolderId;
 }
 
+/**
+ * 責務: JSON オブジェクトを Drive の指定ファイル名で保存する（存在すれば上書き、なければ新規作成）
+ * 入力: accessToken: string, fileName: string, data: object
+ * 出力: Promise<void>
+ * 副作用: Google Drive API 呼び出し（PATCH または POST）
+ */
 export async function uploadToDrive(
   accessToken: string,
   fileName: string,
@@ -95,6 +112,12 @@ export async function uploadToDrive(
   }
 }
 
+/**
+ * 責務: Drive から指定ファイルを JSON としてダウンロードする（旧ファイル名への自動フォールバックあり）
+ * 入力: accessToken: string, fileName: string
+ * 出力: Promise<unknown>（JSON パース済みオブジェクト）
+ * 副作用: Google Drive API 呼び出し、旧名ファイルが見つかった場合は新名への移行アップロードをバックグラウンドで行う
+ */
 export async function downloadFromDrive(accessToken: string, fileName: string) {
   const folderId = await getAppFolderId(accessToken);
   const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
@@ -139,6 +162,12 @@ export async function downloadFromDrive(accessToken: string, fileName: string) {
 // リフレッシュトークンでアクセストークンを更新する
 // ---------------------------------------------------------------------------
 
+/**
+ * 責務: リフレッシュトークンを使ってアクセストークンを更新する
+ * 入力: なし
+ * 出力: Promise<string | null>（失敗またはリフレッシュトークンなしの場合は null）
+ * 副作用: localStorage 読み取り（viewer_refresh_token）・書き込み（viewer_access_token, viewer_expires_at）、/api/auth/refresh を呼び出す
+ */
 export async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = localStorage.getItem('viewer_refresh_token');
   if (!refreshToken) return null;
@@ -165,7 +194,12 @@ export async function refreshAccessToken(): Promise<string | null> {
   return newToken;
 }
 
-// Drive 書き込み（トークン期限切れ時に自動リフレッシュ）
+/**
+ * 責務: JSON を Drive にアップロードする（トークン期限切れ時に自動リフレッシュ）
+ * 入力: token: string, fileName: string, data: object
+ * 出力: Promise<void>
+ * 副作用: Google Drive API 呼び出し、期限切れ時に refreshAccessToken を呼び出す
+ */
 export async function uploadWithAutoRefresh(
   token: string,
   fileName: string,
@@ -180,7 +214,12 @@ export async function uploadWithAutoRefresh(
   }
 }
 
-// 画像ファイルを Drive にアップロードしてファイル名を返す
+/**
+ * 責務: 画像 Blob を Google Drive にアップロードする（multipart）
+ * 入力: accessToken: string, file: Blob, fileName: string
+ * 出力: Promise<void>
+ * 副作用: Google Drive API 呼び出し（POST multipart）
+ */
 export async function uploadImageToDrive(
   accessToken: string,
   file: Blob,
@@ -207,7 +246,12 @@ export async function uploadImageToDrive(
   if (!res.ok) throw new Error(`Drive image upload failed: ${res.status}`);
 }
 
-// Drive 読み込み（トークン期限切れ時に自動リフレッシュ）
+/**
+ * 責務: Drive からファイルをダウンロードする（トークン期限切れ時に自動リフレッシュ）
+ * 入力: token: string, fileName: string
+ * 出力: Promise<unknown>（JSON パース済みオブジェクト）
+ * 副作用: Google Drive API 呼び出し、期限切れ時に refreshAccessToken を呼び出す
+ */
 export async function downloadWithAutoRefresh(
   token: string,
   fileName: string
@@ -221,7 +265,12 @@ export async function downloadWithAutoRefresh(
   }
 }
 
-// uploadImageToDrive のトークン期限切れ対応ラッパー
+/**
+ * 責務: 画像を Drive にアップロードする（トークン期限切れ時に自動リフレッシュ）
+ * 入力: token: string, file: Blob, fileName: string
+ * 出力: Promise<void>
+ * 副作用: Google Drive API 呼び出し、期限切れ時に refreshAccessToken を呼び出す
+ */
 export async function uploadImageWithAutoRefresh(
   token: string,
   file: Blob,

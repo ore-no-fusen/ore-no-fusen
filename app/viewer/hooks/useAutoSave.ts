@@ -18,7 +18,10 @@ type AutoSaveCallbacks = {
 };
 
 /**
- * 3秒のデバウンスで IndexedDB に下書き保存する onInput ハンドラを返す。
+ * 責務: contenteditable の onInput に対して3秒デバウンスで IndexedDB に自動保存するハンドラを返す
+ * 入力: refs（editorRef, currentDraftIdRef, imageBlobsRef, writeTagsRef）, callbacks（setCurrentDraftId）
+ * 出力: () => void（onInput ハンドラ）
+ * 副作用: setTimeout/clearTimeout、IndexedDB 書き込み（saveDraft）、新規下書き時に currentDraftIdRef を更新する
  */
 export function useAutoSave(
   refs: AutoSaveRefs,

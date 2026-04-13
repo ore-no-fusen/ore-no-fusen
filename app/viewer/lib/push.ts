@@ -16,8 +16,10 @@ type SubscribeOptions = {
 };
 
 /**
- * Push 通知の許可取得・購読・デバイス登録・Drive への保存を行う。
- * 「通知を許可する」ボタンの onClick から呼び出す。
+ * 責務: Push 通知の許可取得・購読・デバイス登録・Drive への保存を行う
+ * 入力: SubscribeOptions（accessToken, setIsLoading, setErrorMessage, setStep）
+ * 出力: Promise<void>
+ * 副作用: Notification 権限リクエスト、ServiceWorker 購読、localStorage 書き込み（viewer_device_id, viewer_push_done）、Drive 読み書き（push_devices.json）
  */
 export async function subscribePush({
   accessToken,

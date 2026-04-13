@@ -43,6 +43,12 @@ type UseBackgroundSendReturn = {
   sendToPC: (payload: SendPayload) => void;
 };
 
+/**
+ * 責務: 「PCに送る」バックグラウンド送信の状態管理と sendToPC 関数を提供するカスタムフック
+ * 入力: UseBackgroundSendOptions（accessToken, onTokenRefreshed, onSessionExpired）
+ * 出力: UseBackgroundSendReturn（isSendingInBackground, backgroundSendSuccess, backgroundSendError, sendToPC）
+ * 副作用: React state の初期化（useState）
+ */
 export function useBackgroundSend({
   accessToken,
   onTokenRefreshed,
@@ -52,6 +58,12 @@ export function useBackgroundSend({
   const [backgroundSendSuccess, setBackgroundSendSuccess] = useState(false);
   const [backgroundSendError, setBackgroundSendError] = useState<string | null>(null);
 
+  /**
+   * 責務: テキスト・タグ・画像を Drive に送信して IndexedDB に sent として保存する
+   * 入力: SendPayload（rawText, tags, blobs, draftId）
+   * 出力: なし（結果は isSendingInBackground 等の state に反映）
+   * 副作用: Drive API 呼び出し（画像アップロード・JSON 更新）、IndexedDB 書き込み（saveDraft）、localStorage 読み書き（トークン）
+   */
   const sendToPC = ({ rawText, tags, blobs, draftId }: SendPayload) => {
     if (!accessToken) return;
     setIsSendingInBackground(true);

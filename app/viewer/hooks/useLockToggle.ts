@@ -27,14 +27,32 @@ type UseLockToggleReturn = {
   handleLockToggle: (e: React.MouseEvent, note: IphoneNote) => Promise<void>;
 };
 
+/**
+ * 責務: ノートのロック（ロック画面への通知固定）ON/OFF を管理するカスタムフック
+ * 入力: UseLockToggleOptions（onError）
+ * 出力: UseLockToggleReturn（lockedNoteIds, setLockedNoteIds, initLockedNoteIds, isLockPermissionPending, handleLockToggle）
+ * 副作用: React state の初期化（useState）
+ */
 export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleReturn {
   const [lockedNoteIds, setLockedNoteIds] = useState<string[]>([]);
   const [isLockPermissionPending, setIsLockPermissionPending] = useState(false);
 
+  /**
+   * 責務: 一覧ロード後に lockedNoteIds を外部から初期設定する
+   * 入力: ids: string[]
+   * 出力: なし
+   * 副作用: setLockedNoteIds を呼ぶ
+   */
   const initLockedNoteIds = (ids: string[]) => {
     setLockedNoteIds(ids);
   };
 
+  /**
+   * 責務: ロックボタンのクリックでノートのロック状態を切り替える
+   * 入力: e: React.MouseEvent, note: IphoneNote
+   * 出力: Promise<void>
+   * 副作用: ServiceWorker 通知表示・解除、IndexedDB 書き込み（saveDraft）、Notification 権限リクエスト
+   */
   const handleLockToggle = async (e: React.MouseEvent, note: IphoneNote) => {
     e.stopPropagation();
     const isLocked = lockedNoteIds.includes(note.id);

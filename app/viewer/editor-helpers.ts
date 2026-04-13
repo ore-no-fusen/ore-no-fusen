@@ -1,4 +1,9 @@
-// contenteditable div の innerHTML を Markdown 文字列に変換
+/**
+ * 責務: contenteditable div の DOM ツリーを Markdown 文字列に変換する
+ * 入力: el: HTMLDivElement（contenteditable ルート）
+ * 出力: string（末尾改行除去済み Markdown）
+ * 副作用: なし
+ */
 export function serializeEditor(el: HTMLDivElement): string {
   function walk(node: Node, isRoot: boolean): string {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
@@ -30,7 +35,12 @@ export function serializeEditor(el: HTMLDivElement): string {
   return walk(el, true).replace(/\n+$/, '');
 }
 
-// Markdown 文字列を contenteditable DOM に復元
+/**
+ * 責務: Markdown 文字列を contenteditable DOM に復元する
+ * 入力: el: HTMLDivElement, markdown: string, blobMap: Map<string, Blob>（ローカル画像）
+ * 出力: なし（el.innerHTML を書き換える）
+ * 副作用: el.innerHTML を破壊的に書き換える、blobMap ヒット時に URL.createObjectURL を呼ぶ
+ */
 export function hydrateEditor(
   el: HTMLDivElement,
   markdown: string,
@@ -119,7 +129,12 @@ export function hydrateEditor(
   }
 }
 
-// タグ永続化ヘルパー
+/**
+ * 責務: localStorage から既知タグ一覧を読み込む
+ * 入力: なし
+ * 出力: string[]（パース失敗時は []）
+ * 副作用: localStorage 読み取り（fusen_known_tags）
+ */
 export function loadKnownTags(): string[] {
   try {
     return JSON.parse(localStorage.getItem('fusen_known_tags') || '[]');
@@ -128,14 +143,24 @@ export function loadKnownTags(): string[] {
   }
 }
 
+/**
+ * 責務: 新タグを既知タグに重複なくマージして localStorage に保存する
+ * 入力: newTags: string[]
+ * 出力: なし
+ * 副作用: localStorage 書き込み（fusen_known_tags）
+ */
 export function mergeKnownTags(newTags: string[]): void {
   const known = loadKnownTags();
   const merged = Array.from(new Set([...known, ...newTags]));
   localStorage.setItem('fusen_known_tags', JSON.stringify(merged));
 }
 
-// Markdown の1行目をタイトル、残りをbodyとして分離
-// 1行目の # プレフィックスは除去
+/**
+ * 責務: Markdown テキストの1行目をタイトル、残りを body に分離する
+ * 入力: text: string（先頭行の # プレフィックスは除去される）
+ * 出力: { title: string; body: string }
+ * 副作用: なし
+ */
 export function extractTitleBody(text: string): { title: string; body: string } {
   const lines = text.split('\n');
   const firstLine = lines[0].replace(/^#\s*/, '').trim();

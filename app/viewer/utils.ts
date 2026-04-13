@@ -1,3 +1,9 @@
+/**
+ * 責務: 画像ファイルを最大幅でリサイズして JPEG base64 data URI に変換する
+ * 入力: file: File, maxWidth: number（デフォルト 800px）
+ * 出力: Promise<string>（data:image/jpeg;base64,... 形式）
+ * 副作用: Canvas DOM 要素を生成・破棄する
+ */
 export function resizeImageToBase64(file: File, maxWidth = 800): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -17,6 +23,12 @@ export function resizeImageToBase64(file: File, maxWidth = 800): Promise<string>
   });
 }
 
+/**
+ * 責務: ISO 日時文字列を「3分前」などの相対時刻表現（日本語）に変換する
+ * 入力: isoString: string（ISO 8601 形式）
+ * 出力: string（日本語相対時刻）
+ * 副作用: なし
+ */
 export function formatRelativeTime(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
   const rtf = new Intl.RelativeTimeFormat('ja', { numeric: 'always' });
@@ -26,6 +38,12 @@ export function formatRelativeTime(isoString: string): string {
   return rtf.format(-Math.floor(diff / 86_400_000), 'days');
 }
 
+/**
+ * 責務: textarea のカーソル位置にテキストを挿入し新しい value を返す
+ * 入力: el: HTMLTextAreaElement, insertion: string
+ * 出力: string（挿入後の新しい value）
+ * 副作用: requestAnimationFrame でカーソル位置を挿入後に移動する
+ */
 export function insertAtCursor(el: HTMLTextAreaElement, insertion: string): string {
   const { selectionStart, selectionEnd, value } = el;
   const newValue =
@@ -38,7 +56,12 @@ export function insertAtCursor(el: HTMLTextAreaElement, insertion: string): stri
   return newValue;
 }
 
-/** 画像ファイル名を生成する（日付・時刻・タイトルコンテキストを含む） */
+/**
+ * 責務: 日付・時刻・タイトルを含む画像ファイル名を生成する
+ * 入力: title: string（コンテキスト用）, index: number（連番）
+ * 出力: string（例: fusen_img_20260101_120000_タイトル_0.jpg）
+ * 副作用: なし
+ */
 export function buildImageFileName(title: string, index: number): string {
   const now = new Date();
   const date = now.toLocaleDateString('sv').replace(/-/g, '');
@@ -49,7 +72,12 @@ export function buildImageFileName(title: string, index: number): string {
     : `fusen_img_${date}_${time}_${index}.jpg`;
 }
 
-/** contenteditable のカーソル位置にテキストを挿入 */
+/**
+ * 責務: contenteditable のカーソル位置にテキストノードを挿入する
+ * 入力: text: string
+ * 出力: なし
+ * 副作用: window.getSelection() のカーソル位置を変更する
+ */
 export function insertTextAtCursor(text: string): void {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
@@ -63,7 +91,12 @@ export function insertTextAtCursor(text: string): void {
   sel.addRange(range);
 }
 
-/** contenteditable のカーソル位置に DOM ノードを挿入 */
+/**
+ * 責務: contenteditable のカーソル位置に DOM ノードを挿入する（直後に改行テキストノードも挿入）
+ * 入力: node: Node
+ * 出力: なし
+ * 副作用: window.getSelection() のカーソル位置を変更する
+ */
 export function insertNodeAtCursor(node: Node): void {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;

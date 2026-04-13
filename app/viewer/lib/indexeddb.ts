@@ -3,6 +3,12 @@
 
 import type { DraftRecord } from '../types';
 
+/**
+ * 責務: fusen-drafts IndexedDB を開く（未作成なら drafts オブジェクトストアを作成する）
+ * 入力: なし
+ * 出力: Promise<IDBDatabase>
+ * 副作用: IndexedDB を開く（初回はスキーマ作成）
+ */
 export function openDraftsDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open('fusen-drafts', 1);
@@ -12,6 +18,12 @@ export function openDraftsDB(): Promise<IDBDatabase> {
   });
 }
 
+/**
+ * 責務: 下書きレコードを IndexedDB に保存する（id キーで upsert）
+ * 入力: draft: DraftRecord
+ * 出力: Promise<void>
+ * 副作用: IndexedDB 書き込み（fusen-drafts / drafts）
+ */
 export async function saveDraft(draft: DraftRecord): Promise<void> {
   const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
@@ -22,6 +34,12 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
   });
 }
 
+/**
+ * 責務: IndexedDB の全下書きを取得する
+ * 入力: なし
+ * 出力: Promise<DraftRecord[]>
+ * 副作用: IndexedDB 読み取り（fusen-drafts / drafts）
+ */
 export async function loadAllDrafts(): Promise<DraftRecord[]> {
   const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
@@ -32,6 +50,12 @@ export async function loadAllDrafts(): Promise<DraftRecord[]> {
   });
 }
 
+/**
+ * 責務: 指定 id の下書きを IndexedDB から取得する
+ * 入力: id: string
+ * 出力: Promise<DraftRecord | null>（存在しない場合は null）
+ * 副作用: IndexedDB 読み取り（fusen-drafts / drafts）
+ */
 export async function loadDraft(id: string): Promise<DraftRecord | null> {
   const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
@@ -42,6 +66,12 @@ export async function loadDraft(id: string): Promise<DraftRecord | null> {
   });
 }
 
+/**
+ * 責務: 指定 id の下書きを IndexedDB から削除する
+ * 入力: id: string
+ * 出力: Promise<void>
+ * 副作用: IndexedDB 書き込み（fusen-drafts / drafts）
+ */
 export async function deleteDraft(id: string): Promise<void> {
   const db = await openDraftsDB();
   return new Promise((resolve, reject) => {

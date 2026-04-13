@@ -31,6 +31,12 @@ function MermaidBlock({ code, index }: { code: string; index: number }) {
   return <div ref={containerRef} className="my-4 overflow-auto" />;
 }
 
+/**
+ * 責務: ノート一覧の各行に表示するノート本文プレビューを描画する（Mermaid ブロックを視覚化）
+ * 入力: { body: string }
+ * 出力: JSX.Element
+ * 副作用: 内部 useEffect で Mermaid SVG レンダリングを行う
+ */
 export function SimpleNoteBody({ body }: { body: string }) {
   // テキストを「Mermaidブロック」と「その他」に分割する正規表現
   const mermaidRe = /```mermaid\n([\s\S]*?)```/g;

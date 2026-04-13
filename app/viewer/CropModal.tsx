@@ -7,6 +7,12 @@ import type { CropModalProps } from './types';
 // CropModal: Canvas API + touch/mouse でクロップ矩形を操作
 // ---------------------------------------------------------------------------
 
+/**
+ * 責務: 画像クロップモーダルを描画する（Canvas でリサイズ・クロップして Blob を返す）
+ * 入力: CropModalProps（file, onCancel, onCrop）
+ * 出力: JSX.Element
+ * 副作用: Canvas で toBlob() を呼び出す
+ */
 export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [imgEl, setImgEl] = React.useState<HTMLImageElement | null>(null);

@@ -9,6 +9,12 @@ import type { TranslationKey } from '@/lib/i18n';
 // NoteListStep: メモ一覧画面（step === 'list'）
 // ---------------------------------------------------------------------------
 
+/**
+ * 責務: ノート一覧画面を描画する（新規作成・開く・削除・ロック・通知表示）
+ * 入力: NoteListStepProps
+ * 出力: JSX.Element
+ * 副作用: なし（コールバックは親から注入）
+ */
 export function NoteListStep({
   notes,
   isLoading,

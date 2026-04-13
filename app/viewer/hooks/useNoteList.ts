@@ -22,6 +22,12 @@ type UseNoteListOptions = {
   initLockedNoteIds: (ids: string[]) => void;
 };
 
+/**
+ * 責務: step === 'list' のとき Drive → IndexedDB → UI の一方向同期でノート一覧・サムネイル・ロック状態をロードする
+ * 入力: UseNoteListOptions（step, accessToken, hasRestoredLockRef, setHistoryNotes, setIsHistoryLoading, setThumbnailUrls, setActiveNotifIds, initLockedNoteIds）
+ * 出力: なし
+ * 副作用: Drive API 呼び出し（notes_to_iphone.json）、IndexedDB 読み書き（loadAllDrafts/saveDraft）、ServiceWorker 通知表示・取得、URL.createObjectURL
+ */
 export function useNoteList({
   step,
   accessToken,

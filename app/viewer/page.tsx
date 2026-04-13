@@ -28,6 +28,12 @@ import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractT
 // ViewerPage コンポーネント
 // ---------------------------------------------------------------------------
 
+/**
+ * 責務: PWA ルートコンポーネント。ステップ（banner/login/push/write/list）に応じた画面を描画する
+ * 入力: なし（ページコンポーネント）
+ * 出力: JSX.Element
+ * 副作用: 複数のカスタムフックが状態・副作用を管理（useAppInit, useAutoSave, useVisibilitySave, useNoteList 等）
+ */
 export default function ViewerPage() {
   const [lang, setLang] = useState<Language>('ja');
   useEffect(() => {

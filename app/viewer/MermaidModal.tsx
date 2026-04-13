@@ -7,6 +7,12 @@ import type { MermaidModalProps } from './types';
 // MermaidModal: Mermaid コードの入力・プレビュー・挿入
 // ---------------------------------------------------------------------------
 
+/**
+ * 責務: Mermaid コードの入力・プレビュー・挿入モーダルを描画する
+ * 入力: MermaidModalProps（onCancel, onInsert）
+ * 出力: JSX.Element
+ * 副作用: mermaid ライブラリを呼び出してプレビュー SVG を生成する
+ */
 export function MermaidModal({ onCancel, onInsert }: MermaidModalProps) {
   const [mermaidCode, setMermaidCode] = React.useState('');
   const [previewSvg, setPreviewSvg] = React.useState<string | null>(null);

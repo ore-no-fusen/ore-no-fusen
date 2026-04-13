@@ -14,8 +14,10 @@ type VisibilitySaveRefs = {
 };
 
 /**
- * visibilitychange イベントで hidden になった瞬間に IndexedDB へ保存する。
- * useEffect を内包しているので、呼ぶだけでよい。
+ * 責務: アプリがバックグラウンドになった瞬間に現在の編集内容を IndexedDB に保存する
+ * 入力: refs（editorRef, currentDraftIdRef, imageBlobsRef, writeTagsRef）
+ * 出力: なし
+ * 副作用: visibilitychange イベントリスナーを登録・解除する、IndexedDB 書き込み（saveDraft）
  */
 export function useVisibilitySave(refs: VisibilitySaveRefs): void {
   React.useEffect(() => {

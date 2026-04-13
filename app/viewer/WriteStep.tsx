@@ -56,6 +56,12 @@ type WriteStepProps = {
   sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; draftId: string | null }) => void;
 };
 
+/**
+ * 責務: ノート編集画面（contenteditable エディタ・タグ入力・画像添付・PC 送信）を描画する
+ * 入力: WriteStepProps（editorRef, fileInputRef, 各 state と callback）
+ * 出力: JSX.Element
+ * 副作用: なし（コールバックは親から注入）
+ */
 export function WriteStep({
   editorRef,
   fileInputRef,

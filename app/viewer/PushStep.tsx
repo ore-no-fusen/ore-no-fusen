@@ -19,6 +19,12 @@ type PushStepProps = {
   setStep: (step: 'login' | 'write') => void;
 };
 
+/**
+ * 責務: Push 通知許可セットアップ画面を描画する
+ * 入力: PushStepProps（swReady, isLoading, errorMessage, accessToken, t, 各 callback）
+ * 出力: JSX.Element
+ * 副作用: なし（subscribePush の呼び出しは onClick ハンドラ経由）
+ */
 export function PushStep({
   swReady,
   isLoading,

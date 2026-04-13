@@ -22,6 +22,12 @@ type UseAppInitOptions = {
   setPendingHydrate: (v: PendingHydrate | null) => void;
 };
 
+/**
+ * 責務: アプリ起動時の初期化処理（SW 登録・OAuth コールバック・ステップ遷移）を行うカスタムフック
+ * 入力: UseAppInitOptions（setIsStandalone, setSwReady, setStep, setAccessToken, setIsLoading, setErrorMessage, setPendingHydrate）
+ * 出力: なし
+ * 副作用: ServiceWorker 登録、localStorage 読み書き（トークン・PKCE）、/api/auth/token 呼び出し、IndexedDB 読み取り（loadDraft）
+ */
 export function useAppInit({
   setIsStandalone,
   setSwReady,
