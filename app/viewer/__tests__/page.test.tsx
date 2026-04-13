@@ -79,6 +79,14 @@ describe('REQ-IMG-HYDRATE: hydrateEditor 画像変換', () => {
     expect(el.querySelector('img')).toBeNull();
     expect(el.textContent).toContain('![](assets/photo.jpg)');
   });
+
+  it('alt text あり（![image|0.1]）の data: URI も img になる', () => {
+    const el = document.createElement('div');
+    hydrateEditorForTest(el, '![image|0.1](data:image/png;base64,abc123)', new Map());
+    const img = el.querySelector('img') as HTMLImageElement;
+    expect(img).not.toBeNull();
+    expect(img.src).toContain('data:image/png');
+  });
 });
 
 describe('REQ-CB-HYDRATE: hydrateEditor チェックボックス変換', () => {

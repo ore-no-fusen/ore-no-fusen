@@ -59,8 +59,8 @@ export function hydrateEditor(
       el.appendChild(document.createElement('br'));
       continue;
     }
-    // 画像記法 ![](filename) 検出
-    const imgMatch = line.match(/^!\[\]\(([^)]+)\)$/);
+    // 画像記法 ![任意](filename) 検出（alt textあり・なし両方対応）
+    const imgMatch = line.match(/^!\[[^\]]*\]\(([^)]+)\)$/);
     if (imgMatch) {
       const filename = imgMatch[1];
       const file = blobMap.get(filename);
