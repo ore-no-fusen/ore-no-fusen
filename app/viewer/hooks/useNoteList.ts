@@ -2,8 +2,9 @@
 
 import { useEffect } from 'react';
 import { loadAllDrafts, saveDraft } from '../lib/indexeddb';
-import { downloadWithAutoRefresh, uploadWithAutoRefresh } from '../lib/drive';
+import { downloadWithAutoRefresh, uploadWithAutoRefresh, downloadBinaryWithAutoRefresh } from '../lib/drive';
 import type { IphoneNote, DraftRecord } from '../types';
+import { nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
 // useNoteList
@@ -92,7 +93,7 @@ export function useNoteList({
               id: item.id as string,
               title: item.title ?? '',
               body: item.body ?? '',
-              created_at: item.sent_at ?? new Date().toISOString(),
+              created_at: item.sent_at ?? nowJST(),
               images: [],
               tags: Array.isArray(item.tags) ? item.tags : [],
               received_pc: true as const,
@@ -107,17 +108,38 @@ export function useNoteList({
         const merged = new Map<string, DraftRecord>();
         for (const d of localDrafts) merged.set(d.id, d);
         const toSave: DraftRecord[] = [];
+        // received_pc ノートの fusen_img_* 画像を Drive からダウンロードして images に保存
+        const downloadImagesForItem = async (item: DraftRecord): Promise<DraftRecord> => {
+          if (!accessToken) return item;
+          const imgRe = /!\[[^\]]*\]\((fusen_img_[^)]+)\)/g;
+          const fileNames: string[] = [];
+          let m: RegExpExecArray | null;
+          imgRe.lastIndex = 0;
+          while ((m = imgRe.exec(item.body)) !== null) fileNames.push(m[1]);
+          if (fileNames.length === 0) return item;
+          const images = await Promise.all(
+            fileNames.map(async (fileName) => {
+              try {
+                const blob = await downloadBinaryWithAutoRefresh(accessToken, fileName);
+                return { fileName, blob };
+              } catch {
+                return null;
+              }
+            })
+          );
+          return { ...item, images: images.filter((x): x is { fileName: string; blob: Blob } => x !== null) };
+        };
+
         for (const item of driveItems) {
           const existing = merged.get(item.id);
           if (!existing) {
-            merged.set(item.id, item);
-            toSave.push(item);
+            const withImages = await downloadImagesForItem(item);
+            merged.set(withImages.id, withImages);
+            toSave.push(withImages);
           } else if (item.received_pc && existing.body !== item.body) {
-            // SW が push 受信時に保存した body_push（画像なし）を
-            // Drive の body_rich（base64 data URI 入り）で上書きする
-            const updated = { ...existing, body: item.body };
-            merged.set(item.id, updated);
-            toSave.push(updated);
+            const withImages = await downloadImagesForItem({ ...existing, body: item.body });
+            merged.set(withImages.id, withImages);
+            toSave.push(withImages);
           }
         }
 

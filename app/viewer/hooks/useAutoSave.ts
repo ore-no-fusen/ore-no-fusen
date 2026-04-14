@@ -1,6 +1,7 @@
 import React from 'react';
 import { serializeEditor, extractTitleBody } from '../editor-helpers';
 import { saveDraft } from '../lib/indexeddb';
+import { nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
 // useAutoSave: contenteditable の onInput 自動保存ロジック
@@ -46,7 +47,7 @@ export function useAutoSave(
         id: draftId,
         title,
         body,
-        created_at: new Date().toISOString(),
+        created_at: nowJST(),
         images: imagesArr,
         tags: refs.writeTagsRef.current ?? [],
       }).catch(() => {});

@@ -1179,48 +1179,51 @@ async fn fusen_check_pro_setup(
     }
 }
 
-/// body 中のローカル画像パスを base64 data URI に変換する（Drive用）
+/// body 中のローカル画像パスを Drive にアップロードして fusen_img_*.ext 参照に変換する
 /// note_dir: ノートファイルのディレクトリ（相対パス解決に使用）
-fn embed_local_images(body: &str, note_dir: &std::path::Path) -> String {
+async fn upload_local_images_to_drive(
+    client: &reqwest::Client,
+    access_token: &str,
+    body: &str,
+    note_dir: &std::path::Path,
+) -> String {
     let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
-    re.replace_all(body, |caps: &regex::Captures| {
+    let mut result = body.to_string();
+    for caps in re.captures_iter(body) {
+        let full = caps[0].to_string();
         let alt = &caps[1];
         let raw_path = &caps[2];
-        // http:// / https:// / data: は変換しない
-        if raw_path.starts_with("http://") || raw_path.starts_with("https://") || raw_path.starts_with("data:") {
-            return caps[0].to_string();
+        if raw_path.starts_with("http://") || raw_path.starts_with("https://") || raw_path.starts_with("data:") || raw_path.starts_with("fusen_img_") {
+            continue;
         }
-        // 絶対パスか相対パスかを判定して解決
         let resolved = if raw_path.len() >= 2 && raw_path.chars().nth(1) == Some(':') {
-            // 絶対パス (C:\...)
             std::path::PathBuf::from(raw_path.replace('/', "\\"))
         } else if raw_path.starts_with("\\\\") {
-            // UNCパス
             std::path::PathBuf::from(raw_path.to_string())
         } else {
-            // 相対パス: ノートファイルのディレクトリ基準で解決
             note_dir.join(raw_path.replace('/', std::path::MAIN_SEPARATOR_STR))
         };
-        match std::fs::read(&resolved) {
-            Ok(bytes) => {
-                let ext = std::path::Path::new(&resolved).extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("png")
-                    .to_lowercase();
-                let mime = match ext.as_str() {
-                    "jpg" | "jpeg" => "image/jpeg",
-                    "gif" => "image/gif",
-                    "webp" => "image/webp",
-                    "bmp" => "image/bmp",
-                    _ => "image/png",
-                };
-                use base64::Engine as _;
-                let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                format!("![{}](data:{};base64,{})", alt, mime, encoded)
-            }
-            Err(_) => caps[0].to_string(), // 読み込み失敗時はそのまま残す
+        let bytes = match std::fs::read(&resolved) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let ext = std::path::Path::new(&resolved).extension()
+            .and_then(|e| e.to_str()).unwrap_or("png").to_lowercase();
+        let mime = match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            "bmp" => "image/bmp",
+            _ => "image/png",
+        };
+        let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let uid = &uuid::Uuid::new_v4().to_string()[..8];
+        let filename = format!("fusen_img_{}_{}.{}", ts, uid, ext);
+        if gdrive::upload_binary(client, access_token, &filename, bytes, mime).await.is_ok() {
+            result = result.replace(&full, &format!("![{}]({})", alt, filename));
         }
-    }).into_owned()
+    }
+    result
 }
 
 /// body 中のローカル画像パスを [画像] に置換する（Web Push 4KB制限対応）
@@ -1283,10 +1286,14 @@ async fn fusen_send_to_iphone(
         (t, rest.trim_start_matches('\n').to_string())
     };
 
-    // Drive用: ローカル画像を base64 data URI に変換（iPhoneで表示できるよう）
-    let body_rich = embed_local_images(&body_content, note_dir);
     // Push通知用: ローカル画像パスを [画像] に置換（Web Push 4KB制限対応）
     let body_push = strip_local_images(&body_content);
+
+    // 3. access_token 取得
+    let access_token = gdrive::get_access_token(&client).await?;
+
+    // Drive用: ローカル画像を Drive にアップロードして fusen_img_* 参照に変換
+    let body_rich = upload_local_images_to_drive(&client, &access_token, &body_content, note_dir).await;
 
     let note_json_drive = serde_json::json!({
         "id": note_id.clone(),
@@ -1303,9 +1310,6 @@ async fn fusen_send_to_iphone(
         "tags": note_tags,
         "sent_at": sent_at
     });
-
-    // 3. access_token 取得
-    let access_token = gdrive::get_access_token(&client).await?;
 
     // 3a. VAPID鍵を Drive と同期
     // ローカルに鍵がある（元のPC）→ そのまま使い、Drive にバックグラウンドアップ（別PC共有用）
@@ -1433,13 +1437,15 @@ async fn fusen_download_iphone_images(
         .into_iter()
         .collect();
 
+    // assets ディレクトリを作成（PC貼り付け画像と統一）
+    let assets_dir = Path::new(&folder_path).join("assets");
+    std::fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
+
     if filenames.is_empty() {
         return Ok(body);
     }
 
-    // assets ディレクトリを作成（PC貼り付け画像と統一）
-    let assets_dir = Path::new(&folder_path).join("assets");
-    std::fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
+    let mut rewritten = body.clone();
 
     // Drive接続・トークン取得
     let client = reqwest::Client::new();
@@ -1447,7 +1453,6 @@ async fn fusen_download_iphone_images(
         .map_err(|e| format!("Drive未接続: {}", e))?;
 
     // 各画像をダウンロードしてローカル保存
-    let mut rewritten = body.clone();
     for filename in &filenames {
         let local_path = assets_dir.join(filename);
 

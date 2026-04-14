@@ -92,6 +92,17 @@ export function insertTextAtCursor(text: string): void {
 }
 
 /**
+ * 責務: 現在時刻を日本時間（JST, +09:00）の ISO 8601 文字列で返す
+ * 出力: string（例: "2026-04-15T14:30:00.000+09:00"）
+ * 副作用: なし
+ */
+export function nowJST(): string {
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().replace('Z', '+09:00');
+}
+
+/**
  * 責務: contenteditable のカーソル位置に DOM ノードを挿入する（直後に改行テキストノードも挿入）
  * 入力: node: Node
  * 出力: なし

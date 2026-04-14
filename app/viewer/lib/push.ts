@@ -2,6 +2,7 @@
 
 import { downloadFromDrive, uploadWithAutoRefresh } from '../lib/drive';
 import { urlBase64ToUint8Array } from '../lib/auth';
+import { nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
 // usePushSubscribe（フックではなく純粋なユーティリティ関数）
@@ -63,12 +64,12 @@ export async function subscribePush({
     const existingDevices: any[] = existing?.devices ?? (
       // 旧スキーマ（endpoint直下）があれば移行する
       existing?.endpoint
-        ? [{ device_id: 'legacy', endpoint: existing.endpoint, keys: existing.keys, registered_at: new Date().toISOString() }]
+        ? [{ device_id: 'legacy', endpoint: existing.endpoint, keys: existing.keys, registered_at: nowJST() }]
         : []
     );
     const updatedDevices = [
       ...existingDevices.filter((d: any) => d.device_id !== deviceId),
-      { device_id: deviceId, endpoint, keys, registered_at: new Date().toISOString() },
+      { device_id: deviceId, endpoint, keys, registered_at: nowJST() },
     ];
     await uploadWithAutoRefresh(accessToken, 'push_devices.json', { devices: updatedDevices });
 

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { IphoneNote, DraftRecord } from '../types';
 import { saveDraft, loadDraft } from '../lib/indexeddb';
+import { nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
 // useLockToggle
@@ -121,7 +122,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
             id: note.id,
             title: note.title || '',
             body: note.body || '',
-            created_at: note.created_at || new Date().toISOString(),
+            created_at: note.created_at || nowJST(),
             images: [],
             tags: note.tags,
             locked: true,

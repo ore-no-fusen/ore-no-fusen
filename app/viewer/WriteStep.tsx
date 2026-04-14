@@ -7,6 +7,7 @@ import {
   buildImageFileName,
   insertTextAtCursor,
   insertNodeAtCursor,
+  nowJST,
 } from './utils';
 import { saveDraft } from './lib/indexeddb';
 import { serializeEditor, extractTitleBody, mergeKnownTags, loadKnownTags } from './editor-helpers';
@@ -109,7 +110,7 @@ export function WriteStep({
                 const { title, body } = extractTitleBody(rawText);
                 const draftId = currentDraftId ?? crypto.randomUUID();
                 const imagesArr = Array.from(imageBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
-                await saveDraft({ id: draftId, title, body, created_at: new Date().toISOString(), images: imagesArr, tags: writeTags }).catch(() => {});
+                await saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
                 setCurrentDraftId(draftId);
               }
             }
@@ -351,7 +352,7 @@ export function WriteStep({
                 id: draftId,
                 title,
                 body,
-                created_at: new Date().toISOString(),
+                created_at: nowJST(),
                 images: imagesArr,
                 tags: writeTags,
               });

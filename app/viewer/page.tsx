@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor } from './utils';
+import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor, nowJST } from './utils';
 import { getTranslation, type Language } from '@/lib/i18n';
 import type { IphoneNote, PendingHydrate, DraftRecord } from './types';
 import { NoteListStep } from './NoteListStep';
@@ -393,7 +393,7 @@ export default function ViewerPage() {
                     const data = raw as { items?: unknown[] };
                     const items = (Array.isArray(data.items) ? data.items : []) as { id: string; received_at?: string | null }[];
                     const updated = items.map((n) =>
-                      n.id === note.id ? { ...n, received_at: new Date().toISOString() } : n
+                      n.id === note.id ? { ...n, received_at: nowJST() } : n
                     );
                     return uploadWithAutoRefresh(token, 'notes_to_iphone.json', { items: updated });
                   })

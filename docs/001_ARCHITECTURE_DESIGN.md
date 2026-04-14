@@ -23,6 +23,9 @@
   - [5.3 VAPID 鍵設計について](#53-vapid-鍵設計について)
 - [6. iPhone連携フロー](#6-iphone連携フロー)
   - [6.1 PC→iPhone 送信フロー（v2.0）](#61-pciphone-送信フローv20)
+    - [A. 初回セットアップ](#a-初回セットアップsafariで1回だけ)
+    - [B. PC側の準備](#b-pc側の準備tauriアプリ起動時)
+    - [C. 付箋を送る（日常利用）](#c-付箋を送る日常利用)
   - [6.2 iPhone→PC 送信フロー（v3.0）](#62-iphonepc-送信フローv30)
   - [6.3 viewer 画面遷移](#63-viewer-画面遷移)
 
@@ -36,35 +39,28 @@
 | 1.1 | 2026-04-08 | セクション6追加。iPhone連携フロー（PC→iPhone v2.0 / iPhone→PC v3.0 / viewer画面遷移）を iphone_01〜04 HTML設計書よりマージ |
 | 1.2 | 2026-04-08 | 6.2・6.3 を実装に合わせて更新。「iPhoneに置いておく」→「新規付箋」ボタン名変更。バッジ色を保存済み（グレー）・PC受信（薄藍）・送信済み（薄青）に変更 |
 | 1.3 | 2026-04-10 | 1.1「画面とソースファイルの対応」追加（PC マルチウィンドウ構造・iPhone PWA 構成）。4.1「iPhone側データ構造」追加（DraftRecord / IphoneNote / FusenNoteItem）。notes_to_iphone.json に tags フィールド追記 |
+| 1.4 | 2026-04-15 | 6.1C を現在の実装に合わせて更新。Service Worker が push 受信後に Drive から body_rich を取得・IndexedDB 保存するフローを追加。通知タップ時は IndexedDB から読む設計に変更 |
+| 1.5 | 2026-04-15 | 実装メモ（Phase 6/7）・③責務変化図・6.2全体フロー図を削除。セクション0を表に変換。タイムスタンプをUTC→JST（+09:00）に変更 |
 
 ---
 
 ## 0. 技術スタック (Technology Stack)
 
-本アプリケーションは、パフォーマンスとクロスプラットフォーム対応（主にWindows最適化）を両立させるため、以下の技術を選定・活用しています。
-
-### 0.1 アプリケーション基盤
-- **フレームワーク**: Tauri v2
-  - クロスプラットフォームGUI構築フレームワーク。WebviewとRustバックエンドの連携を担当。
-
-### 0.2 フロントエンド (UI / UX)
-- **コア**: React 18 / Next.js 14 (App Router)
-- **言語**: TypeScript
-- **スタイリング**: Tailwind CSS
-- **UIコンポーネント**: Radix UI (Headless UIによるアクセシビリティ確保)
-- **アイコン**: Lucide React
-- **エディタ実装**: CodeMirror 6 (マークダウンハイライト、検索等の高度なテキスト操作)
-
-### 0.3 バックエンド (Core Logic)
-- **言語**: Rust (Edition 2021)
-- **クリップボード連携**: `arboard` (画像等データの取得)
-- **音声再生**: `rodio` (UIサウンド、通知音の提供)
-- **OSネイティブ操作**: `windows` (Win32 API連携)、`tauri-plugin-os`, `tauri-plugin-global-shortcut`
-- **データ永続化**: ファイルシステム (`std::fs`, `serde` によるJSON/Markdown直書き)
-
-### 0.4 テスト・品質保証
-- **フロントエンド・ロジックテスト**: Vitest (V8 Coverage)
-- **E2E（UI結合）テスト**: Playwright
+| カテゴリ | 技術 | 用途 |
+|---|---|---|
+| アプリ基盤 | Tauri v2 | クロスプラットフォームGUI。WebviewとRustバックエンドの連携 |
+| フロントエンド | React 18 / Next.js 14 (App Router) | UI構築・ルーティング |
+| フロントエンド | TypeScript | 型安全な開発 |
+| フロントエンド | Tailwind CSS | スタイリング |
+| フロントエンド | Radix UI | Headless UIコンポーネント |
+| フロントエンド | CodeMirror 6 | Markdownエディタ（ハイライト・検索） |
+| バックエンド | Rust (Edition 2021) | コアロジック |
+| バックエンド | arboard | クリップボード連携（画像取得） |
+| バックエンド | rodio | UIサウンド・通知音 |
+| バックエンド | windows / tauri-plugin-os | Win32 API・OSネイティブ操作 |
+| バックエンド | std::fs + serde | ファイルシステム永続化（JSON/Markdown） |
+| テスト | Vitest | フロントエンド・ロジックテスト |
+| テスト | Playwright | E2E（UI結合）テスト |
 
 ---
 
@@ -372,7 +368,7 @@ type DraftRecord = {
   id: string;            // ノートID（UUID）
   title: string;         // タイトル（例: "# 買い物リスト"）
   body: string;          // 本文（Markdown）
-  created_at: string;    // 作成日時（ISO 8601 例: "2026-04-10T14:30:00.000Z"）
+  created_at: string;    // 作成日時（ISO 8601 例: "2026-04-10T14:30:00.000+09:00"）
   images: {
     fileName: string;    // 例: "fusen_img_20260410_143000_メモ_1.jpg"
     blob: Blob;          // 画像の生データ（iPhoneローカルのみ。Driveには送信時にアップロード）
@@ -384,7 +380,7 @@ type DraftRecord = {
 };
 ```
 
-**ISO 8601** とは日時の国際標準フォーマット。`new Date().toISOString()` で得られる `"2026-04-10T14:30:00.000Z"` 形式。末尾の `Z` は UTC（世界標準時）を表す。
+**ISO 8601** とは日時の国際標準フォーマット。末尾の `Z` は UTC（世界標準時）、`+09:00` は JST（日本標準時）を表す。現在は `nowJST()`（`app/viewer/utils.ts`）で JST 固定。**世界対応時は `nowJST()` をタイムゾーン対応の関数に差し替えるだけでよい。**
 
 ### IphoneNote — 一覧画面の表示用データ
 
@@ -606,20 +602,37 @@ sequenceDiagram
     participant Drive as Google Drive
     participant API as Next.js API
     participant APNs as APNs
-    participant PWA as PWA /viewer
+    participant SW as Service Worker
+    participant IDB as IndexedDB (fusen-drafts)
+    participant Meta as IndexedDB (fusen-meta)
+    participant Viewer as PWA /viewer
 
-    U->>PC: ㉙付箋を右クリック→「iPhoneに送る」
-    PC->>Drive: ㉚fusen_note.json を保存
-    PC->>API: ㉛POST /api/push
-    API->>APNs: ㉜Web Push（VAPID認証）
-    APNs->>U: ㉝ロック画面に通知
+    rect rgb(235,245,255)
+        note over U,API: PC から送信時
+        U->>PC: ㉙付箋を右クリック→「iPhoneに送る」
+        PC->>Drive: ㉚notes_to_iphone.json に body_rich を保存（画像あり）
+        PC->>API: ㉛POST /api/push（body_push = テキストのみ）
+        API->>APNs: ㉜Web Push（VAPID認証）
+        APNs->>SW: ㉝push イベント
+    end
 
-    U->>U: ㉞通知をタップ
-    U->>PWA: ㉟PWA起動（?note=xxx）
-    PWA->>PWA: ㊱localStorageからaccess_token取得
-    PWA->>Drive: ㊲fusen_note.json をダウンロード
-    Drive-->>PWA: ㊳title と body
-    PWA-->>U: ㊴メモ内容を全画面表示
+    rect rgb(235,245,255)
+        note over SW,IDB: push 受信時（バックグラウンド）
+        SW->>Meta: ㉞access_token を取得
+        SW->>Drive: ㉟notes_to_iphone.json をダウンロード
+        Drive-->>SW: ㊱body_rich（画像マークダウン含む）
+        SW->>IDB: ㊲body_rich で保存（id, title, body）
+        SW->>U: ㊳ロック画面に通知を表示
+    end
+
+    rect rgb(235,245,255)
+        note over U,Viewer: 通知タップ時
+        U->>SW: ㊴通知をタップ
+        SW->>Viewer: ㊵/viewer?note=id を開く（通知を再表示して消えないように）
+        Viewer->>IDB: ㊶body_rich を読む
+        IDB-->>Viewer: ㊷title と body_rich（画像あり）
+        Viewer-->>U: ㊸メモ内容を全画面表示
+    end
 ```
 
 ---
@@ -642,42 +655,6 @@ iPhone viewer で書いた内容を Google Drive 経由で PC に送り、自動
 | POLL-01 | PC受信 | PCがDriveを30秒間隔でポーリングして新着iPhoneノートを検出できる | 7 |
 | POLL-02 | PC受信 | 新着ノートをPC側で自動的に新規付箋ウィンドウとして開ける | 7 |
 | POLL-03 | PC受信 | 重複受信防止（received_atマーク＋last_seen_idによるスキップ） | 7 |
-
-#### 全体フロー（iPhone → Drive → PC）
-
-```mermaid
-sequenceDiagram
-    participant U as ユーザー(iPhone)
-    participant V as viewer/page.tsx
-    participant D as Google Drive
-    participant R as Rust polling
-    participant P as page.tsx(PC)
-
-    note over U,P: Phase 6 — iPhone側
-
-    U->>V: 「書く」タップ (step: ready → write)
-    U->>V: テキスト / 画像 / Mermaid を入力
-    U->>V: 「PCに送る」ボタン
-    V->>D: fusen_from_iphone.json {id, body, sent_at}
-    V->>D: fusen_iphone_notes.json [{...new}, ...old].slice(0,10)
-    V->>V: step: list に遷移（履歴表示）
-
-    note over U,P: Phase 7 — PC受信
-
-    loop 30秒ごと
-        R->>D: fusen_from_iphone.json を取得
-        D-->>R: {id, body, sent_at}
-        R->>R: id == last_seen_id ? skip : 処理
-        R->>R: last_seen_id を更新
-        R->>D: received_at を付けて上書き（重複防止）
-        R->>P: emit "fusen:note_from_iphone" {body}
-    end
-
-    P->>P: fusen_create_note(folderPath, 'from-iphone')
-    P->>P: fusen_save_note(path, body)
-    P->>P: openNoteWindow(path)
-    P->>U: PCに新規付箋ウィンドウが開く
-```
 
 #### Phase 6 詳細 — iPhone送信UI
 
@@ -735,13 +712,6 @@ sequenceDiagram
     V->>U: 図として表示
 ```
 
-**実装メモ（Phase 6）**:
-- 変更ファイル: `app/viewer/page.tsx`（step型に 'write'/'list'/'note' 追加）
-- 新規ファイル: `app/viewer/SimpleNoteBody.tsx`（Mermaid図描画コンポーネント）
-- 下書き保存: IndexedDB（`fusen-drafts`）にテキスト+画像BlobをiPhoneローカルに保存。Drive不使用
-- 画像ファイル名: `fusen_img_YYYYMMDD_HHMMSS_コンテキスト_N.jpg`（buildImageFileName()）
-- トークン自動更新: 送信前に `viewer_expires_at` 確認 → 期限切れなら `/api/auth/refresh` で更新
-
 #### Phase 7 詳細 — PC受信（Rust polling）
 
 ```mermaid
@@ -781,13 +751,6 @@ sequenceDiagram
     P->>N: openNoteWindow(path, {x: screen.width-430, y:50, w:400, h:350}, false)
     N->>N: 新規付箋ウィンドウが画面右上に開く
 ```
-
-**実装メモ（Phase 7）**:
-- 変更ファイル: `src-tauri/src/lib.rs`（poll_iphone_note() + LAST_IPHONE_NOTE_ID + setup()内spawn）
-- 変更ファイル: `src-tauri/src/gdrive.rs`（delete_file_by_name() 追加）
-- 変更ファイル: `app/page.tsx`（fusen:note_from_iphone / fusen:drive_disconnected / drive_connected リスナー）
-- Cargo.toml: `tokio features = ["rt", "time"]` + `tauri-plugin-notification = "2"`
-- POLL-03: received_atフィルタ + LAST_IPHONE_NOTE_ID static Mutex で二重受信防止
 
 ---
 
@@ -906,25 +869,3 @@ graph LR
   VISSAVE -->|保存| IDB
 ```
 
-#### ③ `page.tsx` の責務の変化 (Before / After)
-
-```mermaid
-graph TD
-  subgraph BEFORE["❌ 旧 page.tsx (モノリス期)"]
-    B1["状態管理 (useState)"]
-    B2["UI/JSX (全ステップ)"]
-    B3["OAuth・SW登録"]
-    B4["Drive通信"]
-    B5["IndexedDB操作"]
-    B6["Push通知購読"]
-    B7["ロック管理"]
-    B8["自動保存"]
-    B9["画像処理"]
-  end
-
-  subgraph AFTER["✅ 新 page.tsx (オーケストレーター)"]
-    A1["状態管理 (useState)"]
-    A2["各 hook への状態引き渡し"]
-    A3["Stepルーティング (props渡し)"]
-  end
-```

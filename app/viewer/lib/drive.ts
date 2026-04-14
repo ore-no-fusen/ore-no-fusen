@@ -293,3 +293,33 @@ export async function uploadImageWithAutoRefresh(
     await uploadImageToDrive(newToken, file, fileName);
   }
 }
+
+/**
+ * 責務: Drive からバイナリファイル（画像）を Blob としてダウンロードする
+ */
+async function downloadBinaryFromDrive(accessToken: string, fileName: string): Promise<Blob> {
+  const folderId = await getAppFolderId(accessToken);
+  const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const searchData = await searchRes.json();
+  const fileId = searchData.files?.[0]?.id;
+  if (!fileId) throw new Error(`${fileName} not found in Drive`);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  return res.blob();
+}
+
+export async function downloadBinaryWithAutoRefresh(token: string, fileName: string): Promise<Blob> {
+  try {
+    return await downloadBinaryFromDrive(token, fileName);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    return await downloadBinaryFromDrive(newToken, fileName);
+  }
+}

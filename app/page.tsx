@@ -534,10 +534,11 @@ function OrchestratorContent() {
           const physOffset = sourceMeta ? Math.round(30 * sourceMeta.scale) : 0;
           const targetPhysX = sourceMeta ? sourceMeta.physX + physOffset : undefined;
           const targetPhysY = sourceMeta ? sourceMeta.physY + physOffset : undefined;
-          // サイズを物理ピクセルで計算。sourceMeta がない場合は pool window 自身の scale を取得する。
+          // サイズを物理ピクセルで計算。sourceMeta がない場合はメインウィンドウの scale を取得する。
+          // プールウィンドウは非表示で別モニタにいる可能性があるため scaleFactor() が不正確になる。
           let sizeScale = sourceMeta?.scale;
           if (sizeScale === undefined) {
-            try { sizeScale = await poolWindow.scaleFactor(); } catch (_) { sizeScale = 1.0; }
+            try { sizeScale = await getCurrentWindow().scaleFactor(); } catch (_) { sizeScale = 1.0; }
           }
           const targetPhysWidth = Math.round(400 * sizeScale);
           const targetPhysHeight = Math.round(300 * sizeScale);

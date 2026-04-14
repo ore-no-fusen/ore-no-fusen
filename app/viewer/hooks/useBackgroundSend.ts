@@ -8,6 +8,7 @@ import {
   refreshAccessToken,
 } from '../lib/drive';
 import { saveDraft } from '../lib/indexeddb';
+import { nowJST } from '../utils';
 import { extractTitleBody, mergeKnownTags } from '../editor-helpers';
 import type { IphoneNote } from '../types';
 
@@ -90,13 +91,15 @@ export function useBackgroundSend({
         }
 
         mergeKnownTags(tags);
+
+        const mergedBlobs = new Map(blobs);
         const { title, body: extractedBody } = extractTitleBody(rawText);
         const noteId = crypto.randomUUID();
-        const sentAt = new Date().toISOString();
+        const sentAt = nowJST();
 
         // 画像を並列アップロード
         await Promise.all(
-          Array.from(blobs.entries()).map(([fileName, file]) =>
+          Array.from(mergedBlobs.entries()).map(([fileName, file]) =>
             uploadImageWithAutoRefresh(token, file, fileName)
           )
         );
@@ -147,7 +150,7 @@ export function useBackgroundSend({
           title,
           body: fullBody,
           created_at: sentAt,
-          images: Array.from(blobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
+          images: Array.from(mergedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
           tags,
           sent_at: sentAt,
         });

@@ -2,6 +2,12 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
+/** 現在時刻を日本時間（JST, +09:00）の ISO 8601 文字列で返す */
+function nowJST() {
+  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().replace('Z', '+09:00');
+}
+
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
   const title = data.title || '俺の付箋';
@@ -80,7 +86,7 @@ function saveToIndexedDB(id, title, body) {
     req.onsuccess = () => {
       const tx = req.result.transaction('drafts', 'readwrite');
       tx.objectStore('drafts').put(
-        { id, title, body, created_at: new Date().toISOString(), images: [], received_pc: true },
+        { id, title, body, created_at: nowJST(), images: [], received_pc: true },
         id
       );
       tx.oncomplete = () => resolve();

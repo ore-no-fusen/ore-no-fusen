@@ -369,6 +369,54 @@ pub async fn upload_json(
     Ok(())
 }
 
+/// バイナリファイル（画像等）を Drive にアップロード（存在すれば更新、なければ新規作成）
+pub async fn upload_binary(
+    client: &Client,
+    access_token: &str,
+    filename: &str,
+    bytes: Vec<u8>,
+    mime_type: &str,
+) -> Result<(), String> {
+    let folder_id = ensure_folder(client, access_token).await?;
+
+    if let Some(file_id) = find_file(client, access_token, &folder_id, filename).await? {
+        client
+            .patch(format!(
+                "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=multipart",
+                file_id
+            ))
+            .bearer_auth(access_token)
+            .multipart(
+                reqwest::multipart::Form::new()
+                    .part("metadata", reqwest::multipart::Part::text(
+                        serde_json::json!({"name": filename}).to_string()
+                    ).mime_str("application/json").map_err(|e| e.to_string())?)
+                    .part("file", reqwest::multipart::Part::bytes(bytes)
+                        .mime_str(mime_type).map_err(|e| e.to_string())?)
+            )
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        let metadata = serde_json::json!({ "name": filename, "parents": [folder_id] });
+        client
+            .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+            .bearer_auth(access_token)
+            .multipart(
+                reqwest::multipart::Form::new()
+                    .part("metadata", reqwest::multipart::Part::text(metadata.to_string())
+                        .mime_str("application/json").map_err(|e| e.to_string())?)
+                    .part("file", reqwest::multipart::Part::bytes(bytes)
+                        .mime_str(mime_type).map_err(|e| e.to_string())?)
+            )
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 /// Drive から JSON ファイルをダウンロードして serde_json::Value で返す
 /// フォルダを指定せず Drive 全体から名前で検索する（PWA はルート直下に保存するため）
 pub async fn download_json(

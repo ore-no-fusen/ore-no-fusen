@@ -1,6 +1,7 @@
 import React from 'react';
 import { serializeEditor, extractTitleBody } from '../editor-helpers';
 import { saveDraft } from '../lib/indexeddb';
+import { nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
 // useVisibilitySave: アプリがバックグラウンドになった瞬間に保存
@@ -36,7 +37,7 @@ export function useVisibilitySave(refs: VisibilitySaveRefs): void {
         id: draftId,
         title,
         body,
-        created_at: new Date().toISOString(),
+        created_at: nowJST(),
         images: imagesArr,
         tags: refs.writeTagsRef.current ?? [],
       }).catch(() => {});

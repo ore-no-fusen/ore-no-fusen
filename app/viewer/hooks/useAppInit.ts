@@ -131,20 +131,12 @@ export function useAppInit({
         if (draft) {
           const titleLine = draft.title ? `${draft.title}\n` : '';
           let body = draft.body;
-          // received_pc ノートは Drive から body_rich を取得（SW の保存が通知タップより遅い race condition 対策）
-          if (draft.received_pc) {
-            try {
-              const raw = await downloadWithAutoRefresh(token, 'notes_to_iphone.json') as { items?: { id: string; body?: string }[] };
-              const items = Array.isArray(raw.items) ? raw.items : [];
-              const driveItem = items.find((n) => n.id === tappedId);
-              if (driveItem?.body) body = driveItem.body;
-            } catch {
-              // Drive 取得失敗 → IndexedDB の body で続行
-            }
-          }
+          const blobMap = new Map<string, Blob>(
+            (draft.images ?? []).map(({ fileName, blob }) => [fileName, blob])
+          );
           setPendingHydrate({
             markdown: titleLine + body,
-            blobMap: new Map(),
+            blobMap,
             draftId: draft.id,
             tags: draft.tags ?? [],
           });
@@ -163,19 +155,12 @@ export function useAppInit({
         if (draft) {
           const titleLine = draft.title ? `${draft.title}\n` : '';
           let body = draft.body;
-          if (draft.received_pc) {
-            try {
-              const raw = await downloadWithAutoRefresh(token, 'notes_to_iphone.json') as { items?: { id: string; body?: string }[] };
-              const items = Array.isArray(raw.items) ? raw.items : [];
-              const driveItem = items.find((n) => n.id === pendingNote);
-              if (driveItem?.body) body = driveItem.body;
-            } catch {
-              // Drive 取得失敗 → IndexedDB の body で続行
-            }
-          }
+          const blobMap = new Map<string, Blob>(
+            (draft.images ?? []).map(({ fileName, blob }) => [fileName, blob])
+          );
           setPendingHydrate({
             markdown: titleLine + body,
-            blobMap: new Map(),
+            blobMap,
             draftId: draft.id,
             tags: draft.tags ?? [],
           });
