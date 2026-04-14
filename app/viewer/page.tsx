@@ -101,9 +101,29 @@ export default function ViewerPage() {
   // pendingHydrate: list→write 遷移後に editorRef がマウントされてから hydrateEditor を呼ぶ
   useEffect(() => {
     if (!pendingHydrate) return;
-    const run = () => {
+    const run = async () => {
       if (!editorRef.current) return;
-      hydrateEditor(editorRef.current, pendingHydrate.markdown, pendingHydrate.blobMap);
+      const el = editorRef.current;
+      hydrateEditor(el, pendingHydrate.markdown, pendingHydrate.blobMap);
+      // mermaid ブロックをレンダリング（PC送信ノートの ```mermaid...``` を SVG に変換）
+      const mermaidDivs = Array.from(el.querySelectorAll<HTMLElement>('[data-mermaid-code]'));
+      if (mermaidDivs.length > 0) {
+        try {
+          const { default: mermaid } = await import('mermaid');
+          mermaid.initialize({ startOnLoad: false });
+          for (let idx = 0; idx < mermaidDivs.length; idx++) {
+            const div = mermaidDivs[idx];
+            const code = div.getAttribute('data-mermaid-code') ?? '';
+            try {
+              const { svg } = await mermaid.render(`mermaid-h-${idx}-${Date.now()}`, code);
+              if (el.contains(div)) {
+                div.innerHTML = svg;
+                div.style.cssText = 'display:block;margin:4px 0;max-width:100%;overflow-x:auto;';
+              }
+            } catch { /* レンダリング失敗はプレースホルダのまま */ }
+          }
+        } catch { /* mermaid import 失敗 */ }
+      }
       setImageBlobs(pendingHydrate.blobMap);
       setCurrentDraftId(pendingHydrate.draftId);
       setWriteTags(pendingHydrate.tags);

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { loadDraft, saveAuthToken } from '../lib/indexeddb';
+import { downloadWithAutoRefresh } from '../lib/drive';
 import { generatePKCE, startOAuth } from '../lib/auth';
 import type { PendingHydrate } from '../types';
 
@@ -126,11 +127,23 @@ export function useAppInit({
       }
       setAccessToken(token);
       const tappedId = params.get('note')!;
-      loadDraft(tappedId).then((draft) => {
+      loadDraft(tappedId).then(async (draft) => {
         if (draft) {
           const titleLine = draft.title ? `${draft.title}\n` : '';
+          let body = draft.body;
+          // received_pc ノートは Drive から body_rich を取得（SW の保存が通知タップより遅い race condition 対策）
+          if (draft.received_pc) {
+            try {
+              const raw = await downloadWithAutoRefresh(token, 'notes_to_iphone.json') as { items?: { id: string; body?: string }[] };
+              const items = Array.isArray(raw.items) ? raw.items : [];
+              const driveItem = items.find((n) => n.id === tappedId);
+              if (driveItem?.body) body = driveItem.body;
+            } catch {
+              // Drive 取得失敗 → IndexedDB の body で続行
+            }
+          }
           setPendingHydrate({
-            markdown: titleLine + draft.body,
+            markdown: titleLine + body,
             blobMap: new Map(),
             draftId: draft.id,
             tags: draft.tags ?? [],
@@ -146,11 +159,22 @@ export function useAppInit({
     if (pendingNote && token) {
       localStorage.removeItem('pending_note');
       setAccessToken(token);
-      loadDraft(pendingNote).then((draft) => {
+      loadDraft(pendingNote).then(async (draft) => {
         if (draft) {
           const titleLine = draft.title ? `${draft.title}\n` : '';
+          let body = draft.body;
+          if (draft.received_pc) {
+            try {
+              const raw = await downloadWithAutoRefresh(token, 'notes_to_iphone.json') as { items?: { id: string; body?: string }[] };
+              const items = Array.isArray(raw.items) ? raw.items : [];
+              const driveItem = items.find((n) => n.id === pendingNote);
+              if (driveItem?.body) body = driveItem.body;
+            } catch {
+              // Drive 取得失敗 → IndexedDB の body で続行
+            }
+          }
           setPendingHydrate({
-            markdown: titleLine + draft.body,
+            markdown: titleLine + body,
             blobMap: new Map(),
             draftId: draft.id,
             tags: draft.tags ?? [],

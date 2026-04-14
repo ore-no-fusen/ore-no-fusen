@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { loadAllDrafts, saveDraft } from '../lib/indexeddb';
-import { downloadWithAutoRefresh } from '../lib/drive';
+import { downloadWithAutoRefresh, uploadWithAutoRefresh } from '../lib/drive';
 import type { IphoneNote, DraftRecord } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -123,6 +123,11 @@ export function useNoteList({
 
         // 不足分を IndexedDB に保存（取りこぼし補完）
         await Promise.all(toSave.map((d) => saveDraft(d).catch(() => {})));
+
+        // IndexedDB への保存完了 → Drive から削除（受信済みデータは不要）
+        if (driveItems.length > 0 && accessToken) {
+          uploadWithAutoRefresh(accessToken, 'notes_to_iphone.json', { items: [] }).catch(() => {});
+        }
 
         const drafts = Array.from(merged.values());
 
