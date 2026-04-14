@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { loadDraft } from '../lib/indexeddb';
+import { loadDraft, saveAuthToken } from '../lib/indexeddb';
 import { generatePKCE, startOAuth } from '../lib/auth';
 import type { PendingHydrate } from '../types';
 
@@ -99,6 +99,7 @@ export function useAppInit({
           if (data.expires_in) {
             localStorage.setItem('viewer_expires_at', String(Date.now() + data.expires_in * 1000));
           }
+          saveAuthToken(t).catch(() => {}); // SW が push 時に参照するため IndexedDB にも保存
           setAccessToken(t);
           window.history.replaceState({}, '', '/viewer');
           setStep('push');

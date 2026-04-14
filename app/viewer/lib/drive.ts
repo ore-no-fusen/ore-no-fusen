@@ -191,6 +191,15 @@ export async function refreshAccessToken(): Promise<string | null> {
   if (data.expires_in) {
     localStorage.setItem('viewer_expires_at', String(Date.now() + data.expires_in * 1000));
   }
+  // SW が push 時に参照するため IndexedDB にも保存
+  try {
+    const req = indexedDB.open('fusen-meta', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('meta');
+    req.onsuccess = () => {
+      const tx = req.result.transaction('meta', 'readwrite');
+      tx.objectStore('meta').put(newToken, 'access_token');
+    };
+  } catch { /* 無視 */ }
   return newToken;
 }
 
