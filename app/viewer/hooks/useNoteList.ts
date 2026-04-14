@@ -103,14 +103,21 @@ export function useNoteList({
 
     Promise.all([draftsPromise, drivePromise])
       .then(async ([localDrafts, driveItems]) => {
-        // id をキーに Map でマージ（IndexedDB 優先、不足分を Drive で補完）
+        // id をキーに Map でマージ（IndexedDB 優先、ただし received_pc は Drive の body_rich で上書き）
         const merged = new Map<string, DraftRecord>();
         for (const d of localDrafts) merged.set(d.id, d);
         const toSave: DraftRecord[] = [];
         for (const item of driveItems) {
-          if (!merged.has(item.id)) {
+          const existing = merged.get(item.id);
+          if (!existing) {
             merged.set(item.id, item);
             toSave.push(item);
+          } else if (item.received_pc && existing.body !== item.body) {
+            // SW が push 受信時に保存した body_push（画像なし）を
+            // Drive の body_rich（base64 data URI 入り）で上書きする
+            const updated = { ...existing, body: item.body };
+            merged.set(item.id, updated);
+            toSave.push(updated);
           }
         }
 
