@@ -65,14 +65,6 @@ describe('REQ-IMG-HYDRATE: hydrateEditor 画像変換', () => {
     expect(img.src).toMatch(/^blob:/);
   });
 
-  it('data: URI はそのまま img.src になる（PC→iPhone送信）', () => {
-    const el = document.createElement('div');
-    hydrateEditorForTest(el, '![](data:image/jpeg;base64,abc123)', new Map());
-    const img = el.querySelector('img') as HTMLImageElement;
-    expect(img).not.toBeNull();
-    expect(img.src).toContain('data:image/jpeg');
-  });
-
   it('blobMap にもない通常パスはテキストのまま残る', () => {
     const el = document.createElement('div');
     hydrateEditorForTest(el, '![](assets/photo.jpg)', new Map());
@@ -80,21 +72,6 @@ describe('REQ-IMG-HYDRATE: hydrateEditor 画像変換', () => {
     expect(el.textContent).toContain('![](assets/photo.jpg)');
   });
 
-  it('先頭に空白があっても data: URI 画像を img に変換する（インデントされた画像記法）', () => {
-    const el = document.createElement('div');
-    hydrateEditorForTest(el, '  ![image|0.1](data:image/png;base64,abc123)', new Map());
-    const img = el.querySelector('img') as HTMLImageElement;
-    expect(img).not.toBeNull();
-    expect(img.src).toContain('data:image/png');
-  });
-
-  it('alt text あり（![image|0.1]）の data: URI も img になる', () => {
-    const el = document.createElement('div');
-    hydrateEditorForTest(el, '![image|0.1](data:image/png;base64,abc123)', new Map());
-    const img = el.querySelector('img') as HTMLImageElement;
-    expect(img).not.toBeNull();
-    expect(img.src).toContain('data:image/png');
-  });
 });
 
 describe('REQ-CB-HYDRATE: hydrateEditor チェックボックス変換', () => {

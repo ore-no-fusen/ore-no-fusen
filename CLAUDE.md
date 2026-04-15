@@ -1,59 +1,92 @@
-# Claude 作業ルール
+# CLAUDE.md
 
-## 1. 修正前に説明する
-コード変更前に必ず説明する。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## コマンド
+
+```bash
+npm run dev          # 開発サーバー起動（port 3002）
+npm test             # ユニットテスト（vitest）
+npm run test:watch   # ウォッチモード
+npm run test:e2e     # E2Eテスト（要: devサーバー起動済み、port 3003）
+npm run lint         # ESLint
+npm run tauri dev    # Tauriアプリ起動（デスクトップ）
+npm run tauri build  # Tauriビルド
+```
+
+単一テスト実行: `npx vitest run app/viewer/__tests__/page.test.tsx`
+
+---
+
+## アーキテクチャ
+
+**デスクトップアプリ（Tauri v2）**
+- Frontend: Next.js 14 / React 18（`app/`）
+- Backend: Rust（`src-tauri/src/`）
+- 通信: `invoke()` で frontend → Rust、`emit()` で Rust → frontend
+
+**iPhone PWA**（`app/viewer/`）
+- Google Drive 経由でデータ同期
+- Service Worker（`worker/index.js`）が push 受信時に Drive から body + 画像を取得して IndexedDB に保存
+- 表示時は IndexedDB のみ参照。Drive は見ない
+
+**データフロー**
+```
+PC → Drive（notes_to_iphone.json + fusen_img_*.jpg）→ SW が受信・IndexedDB 保存 → Viewer 表示
+iPhone → Drive（notes_from_iphone.json + 画像）→ PC が受信・付箋として開く
+```
+
+**状態管理の鉄則**
+- 唯一の状態は Rust `AppState`
+- フロントエンドは state を持たない。変更は必ず Rust 経由
+
+**マルチウィンドウ**
+- 各付箋は独立した Tauri window
+- 同期は Rust backend + Tauri event 経由のみ
+
+---
+
+## 作業ルール
+
+### 修正前に必ず説明する
 1. 不具合の場所
 2. 根本原因
 3. 影響範囲
 4. 最小の修正方法
-ユーザーの確認後に修正する。
----
-## 2. 最小修正
-- 不要なリファクタリング禁止
-- 問題を解決する最小変更のみ
-- 無関係なコードは変更しない
----
-## 3. 出力ルール
-- 長い説明は禁止
-- 結論 → 根拠 → 修正
-- 必要なコードのみ提示
-- 調査ログは出力しない
-- 不要な思考ログを出さない
----
-## 4. 調査ルール
-- 必要なファイルのみ読む
-- 不要なフォルダは探索しない
-- 大量ファイル読み込み禁止
-主に読む場所
-app/components  
-app/hooks  
-app/utils  
-src-tauri/src  
----
-## 5. プロジェクト構造
-Frontend  
-React components in `app/`
-Backend  
-Rust commands in `src-tauri/src/`
-Communication  
-Tauri `invoke()` between frontend and Rust backend
----
-## 6. 状態管理
-唯一の状態
-Rust `AppState`
-フロントエンドで状態を持たない。
-状態変更は必ず Rust backend 経由。
----
-## 7. マルチウィンドウ
-このアプリは **Tauri multi-window app**
-各付箋は独立 window。
-状態同期方法
-- Rust backend
-- Tauri event
----
-## 8. 設計書（シーケンス図・仕様書）の扱い
-設計書は「参考」ではなく「仕様」である。
 
-- **実装前**: 実装するコードがシーケンス図の何番に対応するか確認してから書く
-- **順序厳守**: ステップNの動作確認が取れてからステップN+1を実装する。実機テストが必要なステップは結果が出るまで次へ進まない
-- **疑問は事前に**: 設計に不明点があれば実装前にユーザーに確認する。実装しながら気づいて修正するのは禁止
+ユーザーの確認後に修正する。
+
+### 最小修正
+- 不要なリファクタリング禁止
+- 無関係なコードは変更しない
+
+### 出力ルール
+- 結論 → 根拠 → 修正の順
+- 調査ログ・思考ログは出力しない
+
+### 調査ルール
+主に読む場所: `app/components` `app/hooks` `app/utils` `src-tauri/src`
+必要なファイルのみ読む。大量読み込み禁止。
+
+### 設計書の扱い
+設計書（`docs/`）は「参考」でなく「仕様」。
+- 実装前にシーケンス図の何番に対応するか確認する
+- 設計に不明点があれば実装前に確認する（実装しながら修正禁止）
+
+---
+
+## ベテランプログラマの心得
+
+| 原則 | 内容 |
+|------|------|
+| 一度に一つ変える | 複数変更を同時にしない。原因特定が困難になる |
+| 動くコードを壊すな | 変更前に何が動いているか把握する |
+| ソースとテストはセット | ソース変更と同時にテストも修正・削除する |
+| デッドコードは即削除 | コメントアウトも残さない。履歴は git にある |
+| リソースは解放する | DBに保存したら元（Drive等）から削除する |
+| 設計書は現実と一致させる | コードが真実。ずれたら即更新 |
+| 目的を理解してから動く | 「なぜ」が分かれば「何をすべきか」が見える |
+| 推測で実装しない | 分からなければ実装前に確認する |
+| YAGNI | 今必要でない機能は作らない |
+| DRY | 同じロジックを複数箇所に書かない |
+| Fail fast | エラーは早期に検出・報告する |
