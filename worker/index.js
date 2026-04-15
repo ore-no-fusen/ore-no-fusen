@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.3';
+const SW_VERSION = '2.9.4';
 
 self.addEventListener('activate', () => {
   swLog(`SW起動 version=${SW_VERSION}`);
@@ -14,16 +14,28 @@ function nowJST() {
   return jst.toISOString().replace('Z', '+09:00');
 }
 
-/** デバッグログを IndexedDB（fusen-logs）に追記する */
+/** デバッグログを IndexedDB（fusen-logs）に追記する（fire-and-forget） */
 function swLog(msg) {
-  try {
-    const req = indexedDB.open('fusen-logs', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
-    req.onsuccess = () => {
-      const tx = req.result.transaction('logs', 'readwrite');
-      tx.objectStore('logs').add({ t: nowJST(), msg });
-    };
-  } catch (e) { /* ログ失敗は無視 */ }
+  swLogAsync(msg).catch(() => {});
+}
+
+/** デバッグログを IndexedDB（fusen-logs）に追記する（Promise版 - event.waitUntil 内で使用） */
+function swLogAsync(msg) {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('fusen-logs', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+      req.onsuccess = () => {
+        const tx = req.result.transaction('logs', 'readwrite');
+        tx.objectStore('logs').add({ t: nowJST(), msg });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      };
+      req.onerror = () => resolve();
+    } catch (e) {
+      resolve();
+    }
+  });
 }
 
 self.addEventListener('push', (event) => {
@@ -208,10 +220,10 @@ self.addEventListener('message', (event) => {
 self.addEventListener('notificationclick', (event) => {
   const { id, title, body } = event.notification.data || {};
   event.notification.close();
-  swLog(`notificationclick id=${id}`);
   const targetUrl = self.location.origin + '/viewer?note=' + (id ?? 'unknown');
   event.waitUntil(
     Promise.all([
+      swLogAsync(`notificationclick id=${id}`),
       // 通知を即復活（消す意思がないなら残り続ける）
       self.registration.showNotification(title, {
         body,
@@ -222,16 +234,17 @@ self.addEventListener('notificationclick', (event) => {
       }),
       // Viewer を開く
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-        swLog(`clients=${clientList.length}件`);
-        for (const client of clientList) {
-          if (client.url.includes('/viewer') && 'focus' in client) {
-            swLog(`navigate送信 url=${client.url}`);
-            client.navigate(targetUrl);
-            return client.focus();
+        return swLogAsync(`clients=${clientList.length}件`).then(() => {
+          for (const client of clientList) {
+            if (client.url.includes('/viewer') && 'focus' in client) {
+              swLogAsync(`navigate url=${client.url}`);
+              client.navigate(targetUrl);
+              return client.focus();
+            }
           }
-        }
-        swLog(`openWindow: ${targetUrl}`);
-        return clients.openWindow(targetUrl);
+          swLogAsync(`openWindow targetUrl=${targetUrl}`);
+          return clients.openWindow(targetUrl);
+        });
       }),
     ])
   );
