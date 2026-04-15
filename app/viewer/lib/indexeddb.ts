@@ -101,6 +101,27 @@ function openMetaDB(): Promise<IDBDatabase> {
  * 出力: Promise<void>
  * 副作用: IndexedDB 書き込み（fusen-meta / meta）
  */
+/** pending_open: SW が通知表示時に記録。ページ起動時に確認してノートを自動表示する（iOS で notificationclick が発火しない場合の代替） */
+export async function loadPendingOpen(): Promise<{ id: string; t: number } | null> {
+  const db = await openMetaDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction('meta', 'readonly');
+    const req = tx.objectStore('meta').get('pending_open');
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => resolve(null);
+  });
+}
+
+export async function clearPendingOpen(): Promise<void> {
+  const db = await openMetaDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction('meta', 'readwrite');
+    tx.objectStore('meta').delete('pending_open');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  });
+}
+
 export async function saveAuthToken(token: string): Promise<void> {
   const db = await openMetaDB();
   return new Promise((resolve) => {

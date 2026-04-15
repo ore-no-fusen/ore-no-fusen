@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { loadDraft, saveAuthToken } from '../lib/indexeddb';
+import { loadDraft, saveAuthToken, loadPendingOpen, clearPendingOpen } from '../lib/indexeddb';
 import { generatePKCE, startOAuth } from '../lib/auth';
 import type { PendingHydrate } from '../types';
 
@@ -155,18 +155,36 @@ export function useAppInit({
       return;
     }
 
-    // 通常フロー（セットアップ）
+    // iOS で notificationclick が発火しない場合の代替: pending_open を確認
+    // SW が通知表示時に記録。5分以内なら自動でノートを開く
     if (token) {
       setAccessToken(token);
-      const resetPush = new URLSearchParams(window.location.search).get('reset_push');
-      if (resetPush === '1') {
-        localStorage.removeItem('viewer_push_done');
-      }
-      if (localStorage.getItem('viewer_push_done') === 'true') {
-        setStep('write');
-      } else {
-        setStep('push');
-      }
+      (async () => {
+        const pending = await loadPendingOpen().catch(() => null);
+        if (pending && Date.now() - pending.t < 5 * 60 * 1000) {
+          await clearPendingOpen().catch(() => {});
+          const draft = await loadDraft(pending.id).catch(() => null);
+          if (draft) {
+            const titleLine = draft.title ? `${draft.title}\n` : '';
+            const images = draft.images ?? [];
+            const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
+            setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+          }
+          setStep('write');
+          return;
+        }
+
+        // 通常フロー（セットアップ）
+        const resetPush = new URLSearchParams(window.location.search).get('reset_push');
+        if (resetPush === '1') {
+          localStorage.removeItem('viewer_push_done');
+        }
+        if (localStorage.getItem('viewer_push_done') === 'true') {
+          setStep('write');
+        } else {
+          setStep('push');
+        }
+      })();
     } else {
       setStep('login');
     }
