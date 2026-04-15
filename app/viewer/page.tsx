@@ -25,6 +25,11 @@ import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
 import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from './editor-helpers';
 
 // ---------------------------------------------------------------------------
+// PWAバージョン（SW_VERSION と必ず同じ番号にする）
+// ---------------------------------------------------------------------------
+const PAGE_VERSION = '2.9.1';
+
+// ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
 // ---------------------------------------------------------------------------
 
@@ -168,6 +173,20 @@ export default function ViewerPage() {
     };
     document.addEventListener('visibilitychange', handleHide);
     return () => document.removeEventListener('visibilitychange', handleHide);
+  }, []);
+
+  // ページ起動ログ（バージョン確認用）
+  useEffect(() => {
+    try {
+      const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      const t = jst.toISOString().replace('Z', '+09:00');
+      const req = indexedDB.open('fusen-logs', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+      req.onsuccess = () => {
+        const tx = req.result.transaction('logs', 'readwrite');
+        tx.objectStore('logs').add({ t, msg: `[page] 起動 v${PAGE_VERSION}` });
+      };
+    } catch { /* 無視 */ }
   }, []);
 
   // SW から OPEN_NOTE メッセージを受信したときにノートを開く（iOS で client.navigate() が効かない場合の代替）

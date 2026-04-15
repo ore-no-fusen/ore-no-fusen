@@ -2,6 +2,12 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
+const SW_VERSION = '2.9.1';
+
+self.addEventListener('activate', () => {
+  swLog(`SW起動 version=${SW_VERSION}`);
+});
+
 /** 現在時刻を日本時間（JST, +09:00）の ISO 8601 文字列で返す */
 function nowJST() {
   const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -188,6 +194,7 @@ self.addEventListener('message', (event) => {
 self.addEventListener('notificationclick', (event) => {
   const { id, title, body } = event.notification.data || {};
   event.notification.close();
+  swLog(`notificationclick id=${id}`);
   const targetUrl = self.location.origin + '/viewer?note=' + (id ?? 'unknown');
   event.waitUntil(
     Promise.all([
@@ -201,13 +208,15 @@ self.addEventListener('notificationclick', (event) => {
       }),
       // Viewer を開く
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        swLog(`clients=${clientList.length}件`);
         for (const client of clientList) {
           if (client.url.includes('/viewer') && 'focus' in client) {
-            // iOS Safari では client.navigate() が動作しないため postMessage を使う
+            swLog(`postMessage送信 url=${client.url}`);
             client.postMessage({ type: 'OPEN_NOTE', id });
             return client.focus();
           }
         }
+        swLog(`openWindow: ${targetUrl}`);
         return clients.openWindow(targetUrl);
       }),
     ])
