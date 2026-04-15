@@ -1805,7 +1805,14 @@ pub fn run() {
             }
             
             if cfg!(debug_assertions) {
-                app.handle().plugin(tauri_plugin_log::Builder::default().timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal).build())?;
+                app.handle().plugin(
+                    tauri_plugin_log::Builder::default()
+                        .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                        .level(log::LevelFilter::Warn)
+                        .level_for("reqwest", log::LevelFilter::Warn)
+                        .level_for("hyper", log::LevelFilter::Warn)
+                        .build()
+                )?;
             }
             
             app.handle().plugin(tauri_plugin_shell::init())?;

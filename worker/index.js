@@ -120,7 +120,7 @@ function saveToIndexedDB(id, title, body, images) {
     req.onsuccess = () => {
       const tx = req.result.transaction('drafts', 'readwrite');
       tx.objectStore('drafts').put(
-        { id, title, body, created_at: nowJST(), images: images ?? [], received_pc: true },
+        { id, title, body, created_at: nowJST(), images: images ?? [], received_pc: true, locked: true },
         id
       );
       tx.oncomplete = () => resolve();

@@ -20,14 +20,12 @@ export function NoteListStep({
   isLoading,
   thumbnailUrls,
   lockedNoteIds,
-  activeNotifIds,
   isLockPermissionPending,
   t,
   onNew,
   onOpen,
   onDelete,
   onLockToggle,
-  onDismissNotif,
 }: NoteListStepProps) {
   return (
     <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
@@ -110,25 +108,6 @@ export function NoteListStep({
                     >
                       🔔
                     </button>
-                    {/* 通知削除ボタン */}
-                    {note.status === 'received_pc' && activeNotifIds.includes(note.id) && (
-                      <button
-                        className="p-2 text-gray-400 hover:text-blue-500"
-                        aria-label="通知を削除"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            const reg = await navigator.serviceWorker.ready;
-                            reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
-                            onDismissNotif(note.id);
-                          } catch {
-                            // エラー無視
-                          }
-                        }}
-                      >
-                        🔕
-                      </button>
-                    )}
                     {/* 削除ボタン */}
                     {(note.status === 'draft' || note.status === 'received_pc' || note.status === 'sent') && (
                       <button

@@ -19,13 +19,12 @@ type UseNoteListOptions = {
   setHistoryNotes: (notes: IphoneNote[]) => void;
   setIsHistoryLoading: (v: boolean) => void;
   setThumbnailUrls: (map: Map<string, string>) => void;
-  setActiveNotifIds: (ids: string[]) => void;
   initLockedNoteIds: (ids: string[]) => void;
 };
 
 /**
  * 責務: step === 'list' のとき Drive → IndexedDB → UI の一方向同期でノート一覧・サムネイル・ロック状態をロードする
- * 入力: UseNoteListOptions（step, accessToken, hasRestoredLockRef, setHistoryNotes, setIsHistoryLoading, setThumbnailUrls, setActiveNotifIds, initLockedNoteIds）
+ * 入力: UseNoteListOptions（step, accessToken, hasRestoredLockRef, setHistoryNotes, setIsHistoryLoading, setThumbnailUrls, initLockedNoteIds）
  * 出力: なし
  * 副作用: Drive API 呼び出し（notes_to_iphone.json）、IndexedDB 読み書き（loadAllDrafts/saveDraft）、ServiceWorker 通知表示・取得、URL.createObjectURL
  */
@@ -36,19 +35,11 @@ export function useNoteList({
   setHistoryNotes,
   setIsHistoryLoading,
   setThumbnailUrls,
-  setActiveNotifIds,
   initLockedNoteIds,
 }: UseNoteListOptions): void {
   useEffect(() => {
     if (step !== 'list') return;
     setIsHistoryLoading(true);
-
-    // アクティブな通知 ID をサービスワーカー経由で取得
-    navigator.serviceWorker.ready.then((reg) => {
-      const channel = new MessageChannel();
-      channel.port1.onmessage = (e) => setActiveNotifIds(e.data.ids ?? []);
-      reg.active?.postMessage({ type: 'GET_NOTIFICATIONS' }, [channel.port2]);
-    }).catch(() => {});
 
     let thumbUrls: string[] = [];
 
@@ -73,7 +64,7 @@ export function useNoteList({
               : rawBody.slice(20, 60);
             await reg.showNotification(notifTitle, {
               body: notifBody,
-              tag: `fusen-lock-${d.id}`,
+              tag: `fusen-${d.id}`,
               data: { id: d.id, title: notifTitle, body: notifBody },
               icon: '/icon-192.png',
               badge: '/icon-192.png',

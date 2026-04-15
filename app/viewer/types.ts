@@ -49,7 +49,6 @@ export type NoteListStepProps = {
   isLoading: boolean;
   thumbnailUrls: Map<string, string>;
   lockedNoteIds: string[];
-  activeNotifIds: string[];
   isLockPermissionPending: boolean;
   /** i18n 翻訳関数 */
   t: (key: TranslationKey) => string;
@@ -57,5 +56,4 @@ export type NoteListStepProps = {
   onOpen: (note: IphoneNote) => void;
   onDelete: (note: IphoneNote) => void;
   onLockToggle: (e: React.MouseEvent, note: IphoneNote) => void;
-  onDismissNotif: (noteId: string) => void;
 };

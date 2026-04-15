@@ -64,7 +64,6 @@ export default function ViewerPage() {
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<string, string>>(new Map());
-  const [activeNotifIds, setActiveNotifIds] = useState<string[]>([]);
   const hasRestoredLockRef = React.useRef(false);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -150,7 +149,6 @@ export default function ViewerPage() {
     setHistoryNotes,
     setIsHistoryLoading,
     setThumbnailUrls,
-    setActiveNotifIds,
     initLockedNoteIds,
   });
 
@@ -183,23 +181,6 @@ export default function ViewerPage() {
 
       await deleteDraft(note.id);
 
-      // ロック中メモの通知を解除
-      if (lockedNoteIds.includes(note.id)) {
-        try {
-          const reg = await navigator.serviceWorker.ready;
-          reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
-          setLockedNoteIds((prev) => prev.filter((id) => id !== note.id));
-        } catch {
-          // エラー無視
-        }
-      }
-      if (note.status === 'received_pc') {
-        try {
-          const reg = await navigator.serviceWorker.ready;
-          reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: 'fusen-' + note.id });
-        } catch { /* ignore */ }
-        setActiveNotifIds((prev) => prev.filter((id) => id !== note.id));
-      }
       if (note.status === 'sent') {
         setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
       } else {
@@ -364,7 +345,6 @@ export default function ViewerPage() {
             isLoading={isHistoryLoading}
             thumbnailUrls={thumbnailUrls}
             lockedNoteIds={lockedNoteIds}
-            activeNotifIds={activeNotifIds}
             isLockPermissionPending={isLockPermissionPending}
             t={t}
             onNew={() => {
@@ -402,9 +382,6 @@ export default function ViewerPage() {
             }}
             onDelete={handleDeleteNote}
             onLockToggle={handleLockToggle}
-            onDismissNotif={(noteId) =>
-              setActiveNotifIds((prev) => prev.filter((id) => id !== noteId))
-            }
           />
         )}
 

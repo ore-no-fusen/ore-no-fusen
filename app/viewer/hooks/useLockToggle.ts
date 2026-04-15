@@ -69,7 +69,8 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
       if (isLocked) {
         // ロック解除: 通知を閉じてDB更新
         const reg = await navigator.serviceWorker.ready;
-        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` });
+        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-${note.id}` });
+        reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` }); // 旧タグ互換
         const draft = await loadDraft(note.id);
         if (draft) {
           const { locked, ...rest } = draft;
@@ -106,7 +107,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
         const reg = await navigator.serviceWorker.ready;
         await reg.showNotification(notifTitle, {
           body: notifBody,
-          tag: `fusen-lock-${note.id}`,
+          tag: `fusen-${note.id}`,
           data: { id: note.id, title: notifTitle, body: notifBody },
           icon: '/icon-192.png',
           badge: '/icon-192.png',
