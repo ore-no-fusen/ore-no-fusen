@@ -203,7 +203,8 @@ self.addEventListener('notificationclick', (event) => {
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
         for (const client of clientList) {
           if (client.url.includes('/viewer') && 'focus' in client) {
-            client.navigate(targetUrl);
+            // iOS Safari では client.navigate() が動作しないため postMessage を使う
+            client.postMessage({ type: 'OPEN_NOTE', id });
             return client.focus();
           }
         }

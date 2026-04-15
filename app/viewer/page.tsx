@@ -170,6 +170,41 @@ export default function ViewerPage() {
     return () => document.removeEventListener('visibilitychange', handleHide);
   }, []);
 
+  // SW から OPEN_NOTE メッセージを受信したときにノートを開く（iOS で client.navigate() が効かない場合の代替）
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    const pageLog = (msg: string) => {
+      try {
+        const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+        const t = jst.toISOString().replace('Z', '+09:00');
+        const req = indexedDB.open('fusen-logs', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+        req.onsuccess = () => {
+          const tx = req.result.transaction('logs', 'readwrite');
+          tx.objectStore('logs').add({ t, msg });
+        };
+      } catch { /* ログ失敗は無視 */ }
+    };
+    const handler = async (event: MessageEvent) => {
+      if (event.data?.type !== 'OPEN_NOTE' || !event.data.id) return;
+      const noteId = event.data.id as string;
+      pageLog(`[page] OPEN_NOTE受信 id=${noteId}`);
+      const draft = await loadDraft(noteId).catch(() => null);
+      if (draft) {
+        const images = draft.images ?? [];
+        pageLog(`[page] draft取得成功 images=${images.length}件`);
+        const titleLine = draft.title ? `${draft.title}\n` : '';
+        const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }: { fileName: string; blob: Blob }) => [fileName, blob]));
+        setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+      } else {
+        pageLog(`[page] draft取得失敗 id=${noteId}`);
+      }
+      setStep('write');
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, []);
+
   // step === 'list' になったとき一覧ロード（Drive → IndexedDB → UI）
   useNoteList({
     step,
@@ -443,7 +478,10 @@ function DebugLogView() {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 text-green-400 text-xs font-mono p-4 overflow-y-auto z-50">
       <div className="flex justify-between mb-2">
-        <span className="text-white font-bold">SW Debug Log</span>
+        <div className="flex items-center gap-3">
+          <button className="text-blue-400" onClick={() => window.history.back()}>← 戻る</button>
+          <span className="text-white font-bold">SW Debug Log</span>
+        </div>
         <button className="text-red-400" onClick={() => {
           indexedDB.deleteDatabase('fusen-logs');
           setLogs([]);
