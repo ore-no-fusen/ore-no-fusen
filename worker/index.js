@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.4';
+const SW_VERSION = '2.9.5';
 
 self.addEventListener('activate', () => {
   swLog(`SW起動 version=${SW_VERSION}`);
@@ -68,7 +68,8 @@ self.addEventListener('push', (event) => {
     return saveToIndexedDB(id, title, bodyPush, []);
   }).then(() => {
     // iOS で notificationclick が発火しない場合の保険: 次回ページ起動時に自動表示
-    savePendingOpen(id);
+    return savePendingOpen(id);
+  }).then(() => {
     swLog('通知表示');
     return self.registration.showNotification(title, {
       body: bodyPush,
@@ -82,16 +83,21 @@ self.addEventListener('push', (event) => {
   event.waitUntil(flow);
 });
 
-/** 次回ページ起動時に開くノート ID を fusen-meta に保存する */
+/** 次回ページ起動時に開くノート ID を fusen-meta に保存する（Promise版） */
 function savePendingOpen(id) {
-  try {
-    const req = indexedDB.open('fusen-meta', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('meta');
-    req.onsuccess = () => {
-      const tx = req.result.transaction('meta', 'readwrite');
-      tx.objectStore('meta').put({ id, t: Date.now() }, 'pending_open');
-    };
-  } catch (e) { /* 無視 */ }
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('fusen-meta', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('meta');
+      req.onsuccess = () => {
+        const tx = req.result.transaction('meta', 'readwrite');
+        tx.objectStore('meta').put({ id, t: Date.now() }, 'pending_open');
+        tx.oncomplete = () => { swLogAsync(`pending_open保存 id=${id}`).then(resolve); };
+        tx.onerror = () => resolve();
+      };
+      req.onerror = () => resolve();
+    } catch (e) { resolve(); }
+  });
 }
 
 /** fusen-meta DB からアクセストークンを取得する */

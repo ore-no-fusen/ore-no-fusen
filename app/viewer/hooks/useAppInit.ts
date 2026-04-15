@@ -2,6 +2,19 @@
 
 import { useEffect } from 'react';
 import { loadDraft, saveAuthToken, loadPendingOpen, clearPendingOpen } from '../lib/indexeddb';
+
+function pageLog(msg: string) {
+  try {
+    const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const t = jst.toISOString().replace('Z', '+09:00');
+    const req = indexedDB.open('fusen-logs', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+    req.onsuccess = () => {
+      const tx = req.result.transaction('logs', 'readwrite');
+      tx.objectStore('logs').add({ t, msg });
+    };
+  } catch { /* 無視 */ }
+}
 import { generatePKCE, startOAuth } from '../lib/auth';
 import type { PendingHydrate } from '../types';
 
@@ -161,9 +174,11 @@ export function useAppInit({
       setAccessToken(token);
       (async () => {
         const pending = await loadPendingOpen().catch(() => null);
+        pageLog(`pending_open確認: ${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
         if (pending && Date.now() - pending.t < 5 * 60 * 1000) {
           await clearPendingOpen().catch(() => {});
           const draft = await loadDraft(pending.id).catch(() => null);
+          pageLog(`pending draft: ${draft ? '取得成功' : '取得失敗'}`);
           if (draft) {
             const titleLine = draft.title ? `${draft.title}\n` : '';
             const images = draft.images ?? [];
