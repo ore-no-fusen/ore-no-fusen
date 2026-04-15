@@ -8,37 +8,58 @@ function nowJST() {
   return jst.toISOString().replace('Z', '+09:00');
 }
 
+/** デバッグログを IndexedDB（fusen-logs）に追記する */
+function swLog(msg) {
+  try {
+    const req = indexedDB.open('fusen-logs', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+    req.onsuccess = () => {
+      const tx = req.result.transaction('logs', 'readwrite');
+      tx.objectStore('logs').add({ t: nowJST(), msg });
+    };
+  } catch (e) { /* ログ失敗は無視 */ }
+}
+
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
   const title = data.title || '俺の付箋';
   const bodyPush = data.body || '';
   const id = data.id ?? 'unknown';
+  swLog(`push受信 id=${id} title=${title}`);
 
-  // Drive から body_rich と画像を取得して IndexedDB に保存する
-  const saveRich = loadTokenFromMeta().then((token) => {
+  // Drive から body_rich と画像を取得して IndexedDB に保存してから通知を表示する（直列）
+  const flow = loadTokenFromMeta().then((token) => {
+    swLog(`token=${token ? 'あり' : 'なし'}`);
     if (!token) return saveToIndexedDB(id, title, bodyPush, []);
     return fetchBodyRichFromDrive(token, id).then((richBody) => {
+      swLog(`body_rich=${richBody ? '取得成功' : 'なし'}`);
       const body = richBody || bodyPush;
       return downloadImagesFromDrive(token, body).then((images) => {
+        swLog(`画像=${images.length}件`);
         return saveToIndexedDB(id, title, body, images).then(() => {
+          swLog('IndexedDB保存完了');
           deleteImagesFromDrive(token, images);
         });
       });
-    }).catch(() => saveToIndexedDB(id, title, bodyPush, []));
-  }).catch(() => saveToIndexedDB(id, title, bodyPush, []));
+    }).catch((e) => {
+      swLog(`Drive取得失敗: ${e}`);
+      return saveToIndexedDB(id, title, bodyPush, []);
+    });
+  }).catch((e) => {
+    swLog(`token取得失敗: ${e}`);
+    return saveToIndexedDB(id, title, bodyPush, []);
+  }).then(() => {
+    swLog('通知表示');
+    return self.registration.showNotification(title, {
+      body: bodyPush,
+      tag: 'fusen-' + id,
+      data: { id, title, body: bodyPush },
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+    });
+  });
 
-  event.waitUntil(
-    Promise.all([
-      self.registration.showNotification(title, {
-        body: bodyPush,
-        tag: 'fusen-' + id,
-        data: { id, title, body: bodyPush },
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
-      }),
-      saveRich,
-    ])
-  );
+  event.waitUntil(flow);
 });
 
 /** fusen-meta DB からアクセストークンを取得する */

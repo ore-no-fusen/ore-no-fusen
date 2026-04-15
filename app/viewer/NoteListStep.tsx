@@ -5,6 +5,9 @@ import { formatRelativeTime } from './utils';
 import type { NoteListStepProps } from './types';
 import type { TranslationKey } from '@/lib/i18n';
 
+// --- デバッグ用: 不要になったら下の1行を削除し、ヘッダーの🐛ボタンも削除する ---
+const SHOW_DEBUG = true;
+
 // ---------------------------------------------------------------------------
 // NoteListStep: メモ一覧画面（step === 'list'）
 // ---------------------------------------------------------------------------
@@ -32,6 +35,15 @@ export function NoteListStep({
       {/* ヘッダー */}
       <div className="flex items-center px-5 pt-6 pb-2 bg-[#F2F2F7]">
         <span className="text-3xl font-bold text-gray-900 flex-1">メモ</span>
+        {SHOW_DEBUG && (
+          <button
+            className="w-9 h-9 flex items-center justify-center text-gray-400 text-lg mr-1"
+            aria-label="デバッグログ"
+            onClick={() => window.location.href = '/viewer?debug=1'}
+          >
+            🐛
+          </button>
+        )}
         <button
           className="w-11 h-11 flex items-center justify-center bg-blue-500 text-white rounded-full text-2xl font-light shadow-md active:scale-95 transition-transform"
           aria-label="新規作成"

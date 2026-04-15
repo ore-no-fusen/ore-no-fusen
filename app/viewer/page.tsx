@@ -141,6 +141,35 @@ export default function ViewerPage() {
     handleLockToggle,
   } = useLockToggle({ onError: (msg) => setErrorMessage(msg) });
 
+  // バックグラウンド移行時に locked ノートの通知を再表示（iOS はフォアグラウンド中に showNotification が効かないため）
+  useEffect(() => {
+    const handleHide = async () => {
+      if (document.visibilityState !== 'hidden') return;
+      if (Notification.permission !== 'granted') return;
+      const { loadAllDrafts } = await import('./lib/indexeddb');
+      const drafts = await loadAllDrafts().catch(() => []);
+      const locked = drafts.filter((d) => d.locked);
+      if (locked.length === 0) return;
+      const reg = await navigator.serviceWorker.ready.catch(() => null);
+      if (!reg) return;
+      for (const d of locked) {
+        const rawTitle = d.title || '';
+        const rawBody = d.body || '';
+        const notifTitle = rawTitle ? rawTitle.replace(/^#\s*/, '') : rawBody.slice(0, 20) || '（無題）';
+        const notifBody = rawTitle ? rawBody.slice(0, 40) : rawBody.slice(20, 60);
+        await reg.showNotification(notifTitle, {
+          body: notifBody,
+          tag: `fusen-${d.id}`,
+          data: { id: d.id, title: notifTitle, body: notifBody },
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', handleHide);
+    return () => document.removeEventListener('visibilitychange', handleHide);
+  }, []);
+
   // step === 'list' になったとき一覧ロード（Drive → IndexedDB → UI）
   useNoteList({
     step,
@@ -390,7 +419,40 @@ export default function ViewerPage() {
             <p className="text-gray-500">読み込み中...</p>
           </div>
         )}
+
+        {/* デバッグログ表示（?debug=1 のときのみ） */}
+        {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1' && (
+          <DebugLogView />
+        )}
       </div>
+    </div>
+  );
+}
+
+function DebugLogView() {
+  const [logs, setLogs] = React.useState<{ t: string; msg: string }[]>([]);
+  useEffect(() => {
+    const req = indexedDB.open('fusen-logs', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+    req.onsuccess = () => {
+      const tx = req.result.transaction('logs', 'readonly');
+      const all = tx.objectStore('logs').getAll();
+      all.onsuccess = () => setLogs((all.result as { t: string; msg: string }[]).reverse());
+    };
+  }, []);
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-80 text-green-400 text-xs font-mono p-4 overflow-y-auto z-50">
+      <div className="flex justify-between mb-2">
+        <span className="text-white font-bold">SW Debug Log</span>
+        <button className="text-red-400" onClick={() => {
+          indexedDB.deleteDatabase('fusen-logs');
+          setLogs([]);
+        }}>クリア</button>
+      </div>
+      {logs.length === 0 && <p className="text-gray-500">ログなし</p>}
+      {logs.map((l, i) => (
+        <div key={i}><span className="text-gray-500">{l.t.slice(11, 19)}</span> {l.msg}</div>
+      ))}
     </div>
   );
 }
