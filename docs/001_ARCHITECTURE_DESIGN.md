@@ -41,6 +41,7 @@
 | 1.3 | 2026-04-10 | 1.1「画面とソースファイルの対応」追加（PC マルチウィンドウ構造・iPhone PWA 構成）。4.1「iPhone側データ構造」追加（DraftRecord / IphoneNote / FusenNoteItem）。notes_to_iphone.json に tags フィールド追記 |
 | 1.4 | 2026-04-15 | 6.1C を現在の実装に合わせて更新。Service Worker が push 受信後に Drive から body_rich を取得・IndexedDB 保存するフローを追加。通知タップ時は IndexedDB から読む設計に変更 |
 | 1.5 | 2026-04-15 | 実装メモ（Phase 6/7）・③責務変化図・6.2全体フロー図を削除。セクション0を表に変換。タイムスタンプをUTC→JST（+09:00）に変更 |
+| 1.6 | 2026-04-15 | 6.1C push受信フローを更新。SW が body_rich 取得後に fusen_img_* 画像 Blob もダウンロードして IndexedDB に保存。通知タップ時は Drive アクセスなしで表示完結 |
 
 ---
 
@@ -621,17 +622,19 @@ sequenceDiagram
         SW->>Meta: ㉞access_token を取得
         SW->>Drive: ㉟notes_to_iphone.json をダウンロード
         Drive-->>SW: ㊱body_rich（画像マークダウン含む）
-        SW->>IDB: ㊲body_rich で保存（id, title, body）
-        SW->>U: ㊳ロック画面に通知を表示
+        SW->>Drive: ㊲fusen_img_*.jpg をダウンロード（body内の全画像）
+        Drive-->>SW: ㊳画像 Blob
+        SW->>IDB: ㊴body_rich + images（Blob配列）で保存（id, title, body, images）
+        SW->>U: ㊵ロック画面に通知を表示
     end
 
     rect rgb(235,245,255)
         note over U,Viewer: 通知タップ時
-        U->>SW: ㊴通知をタップ
-        SW->>Viewer: ㊵/viewer?note=id を開く（通知を再表示して消えないように）
-        Viewer->>IDB: ㊶body_rich を読む
-        IDB-->>Viewer: ㊷title と body_rich（画像あり）
-        Viewer-->>U: ㊸メモ内容を全画面表示
+        U->>SW: ㊶通知をタップ
+        SW->>Viewer: ㊷/viewer?note=id を開く（通知を再表示して消えないように）
+        Viewer->>IDB: ㊸body_rich + images を読む
+        IDB-->>Viewer: ㊹title・body_rich・images Blob
+        Viewer-->>U: ㊺メモ内容を全画面表示（Drive アクセスなし）
     end
 ```
 

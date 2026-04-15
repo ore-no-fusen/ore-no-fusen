@@ -14,13 +14,18 @@ self.addEventListener('push', (event) => {
   const bodyPush = data.body || '';
   const id = data.id ?? 'unknown';
 
-  // Drive から body_rich を取得して IndexedDB に保存する
+  // Drive から body_rich と画像を取得して IndexedDB に保存する
   const saveRich = loadTokenFromMeta().then((token) => {
-    if (!token) return saveToIndexedDB(id, title, bodyPush);
-    return fetchBodyRichFromDrive(token, id)
-      .then((richBody) => saveToIndexedDB(id, title, richBody || bodyPush))
-      .catch(() => saveToIndexedDB(id, title, bodyPush));
-  }).catch(() => saveToIndexedDB(id, title, bodyPush));
+    if (!token) return saveToIndexedDB(id, title, bodyPush, []);
+    return fetchBodyRichFromDrive(token, id).then((richBody) => {
+      const body = richBody || bodyPush;
+      return downloadImagesFromDrive(token, body).then((images) => {
+        return saveToIndexedDB(id, title, body, images).then(() => {
+          deleteImagesFromDrive(token, images);
+        });
+      });
+    }).catch(() => saveToIndexedDB(id, title, bodyPush, []));
+  }).catch(() => saveToIndexedDB(id, title, bodyPush, []));
 
   event.waitUntil(
     Promise.all([
@@ -53,12 +58,7 @@ function loadTokenFromMeta() {
 
 /** Drive の notes_to_iphone.json から指定 id の body_rich を取得する */
 function fetchBodyRichFromDrive(token, noteId) {
-  // まず ore-no-fusen フォルダを探す
-  return fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='ore-no-fusen'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  ).then((r) => r.json()).then((folderData) => {
-    const folderId = folderData.files?.[0]?.id;
+  return getAppFolderId(token).then((folderId) => {
     const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
     return fetch(
       `https://www.googleapis.com/drive/v3/files?q=name='notes_to_iphone.json'${folderQuery}+and+trashed=false`,
@@ -78,15 +78,49 @@ function fetchBodyRichFromDrive(token, noteId) {
   });
 }
 
+/** ore-no-fusen フォルダの ID を取得する */
+function getAppFolderId(token) {
+  return fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='ore-no-fusen'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  ).then((r) => r.json()).then((d) => d.files?.[0]?.id ?? null).catch(() => null);
+}
+
+/** body 内の fusen_img_* をすべて Drive からダウンロードして Blob 配列で返す */
+function downloadImagesFromDrive(token, body) {
+  const re = /!\[[^\]]*\]\((fusen_img_[^)]+)\)/g;
+  const fileNames = [];
+  let m;
+  while ((m = re.exec(body)) !== null) fileNames.push(m[1]);
+  if (fileNames.length === 0) return Promise.resolve([]);
+  return getAppFolderId(token).then((folderId) => {
+    const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+    return Promise.all(fileNames.map((fileName) =>
+      fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then((r) => r.json())
+        .then((d) => {
+          const fileId = d.files?.[0]?.id;
+          if (!fileId) return null;
+          return fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          ).then((r) => r.blob()).then((blob) => ({ fileName, blob })).catch(() => null);
+        }).catch(() => null)
+    ));
+  }).then((results) => results.filter(Boolean)).catch(() => []);
+}
+
 /** fusen-drafts IndexedDB に保存する */
-function saveToIndexedDB(id, title, body) {
+function saveToIndexedDB(id, title, body, images) {
   return new Promise((resolve) => {
     const req = indexedDB.open('fusen-drafts', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('drafts');
     req.onsuccess = () => {
       const tx = req.result.transaction('drafts', 'readwrite');
       tx.objectStore('drafts').put(
-        { id, title, body, created_at: nowJST(), images: [], received_pc: true },
+        { id, title, body, created_at: nowJST(), images: images ?? [], received_pc: true },
         id
       );
       tx.oncomplete = () => resolve();
@@ -94,6 +128,27 @@ function saveToIndexedDB(id, title, body) {
     };
     req.onerror = () => resolve();
   });
+}
+
+/** IndexedDB 保存済みの fusen_img_* を Drive から削除する（fire-and-forget） */
+function deleteImagesFromDrive(token, images) {
+  if (!images || images.length === 0) return;
+  getAppFolderId(token).then((folderId) => {
+    const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+    for (const { fileName } of images) {
+      fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then((r) => r.json()).then((d) => {
+        const fileId = d.files?.[0]?.id;
+        if (fileId) {
+          fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`,
+            { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+          ).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+  }).catch(() => {});
 }
 
 self.addEventListener('message', (event) => {

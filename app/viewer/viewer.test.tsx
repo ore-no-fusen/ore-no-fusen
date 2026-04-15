@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { SimpleNoteBody } from './SimpleNoteBody';
-import { resizeImageToBase64, insertAtCursor, formatRelativeTime } from './utils';
+import { insertAtCursor, formatRelativeTime } from './utils';
 
 // Wave 1 で実装される — Plan 02 完了まで TODO
 // import ViewerPage from './page';
@@ -134,31 +134,6 @@ describe('SEND-02: iPhoneに置いておく', () => {
 });
 
 describe('SEND-03: 画像添付', () => {
-  it('resizeImageToBase64 が Canvas API を使って base64 文字列を返す', async () => {
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
-    URL.createObjectURL = vi.fn().mockReturnValue('blob:mock');
-    URL.revokeObjectURL = vi.fn();
-
-    const originalImage = global.Image;
-    (global as any).Image = class {
-      width = 1600;
-      height = 1200;
-      set src(_: string) {
-        setTimeout(() => (this as any).onload?.(), 0);
-      }
-    };
-
-    const file = new File([''], 'test.jpg', { type: 'image/jpeg' });
-    const result = await resizeImageToBase64(file, 800);
-
-    expect(result).toMatch(/^data:image\/jpeg/);
-
-    URL.createObjectURL = originalCreateObjectURL;
-    URL.revokeObjectURL = originalRevokeObjectURL;
-    (global as any).Image = originalImage;
-  });
-
   it('insertAtCursor がカーソル位置に文字列を挿入して新しい value を返す', () => {
     const textarea = document.createElement('textarea');
     textarea.value = 'hello world';

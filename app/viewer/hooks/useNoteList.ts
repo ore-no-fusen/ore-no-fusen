@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { loadAllDrafts, saveDraft } from '../lib/indexeddb';
-import { downloadWithAutoRefresh, uploadWithAutoRefresh, downloadBinaryWithAutoRefresh } from '../lib/drive';
+import { downloadWithAutoRefresh, uploadWithAutoRefresh, downloadBinaryWithAutoRefresh, deleteFileFromDrive } from '../lib/drive';
 import type { IphoneNote, DraftRecord } from '../types';
 import { nowJST } from '../utils';
 
@@ -130,13 +130,23 @@ export function useNoteList({
           return { ...item, images: images.filter((x): x is { fileName: string; blob: Blob } => x !== null) };
         };
 
+        const hasMissingImages = (d: DraftRecord): boolean => {
+          const imgRe = /!\[[^\]]*\]\((fusen_img_[^)]+)\)/g;
+          const savedNames = new Set((d.images ?? []).map((i) => i.fileName));
+          let m: RegExpExecArray | null;
+          while ((m = imgRe.exec(d.body)) !== null) {
+            if (!savedNames.has(m[1])) return true;
+          }
+          return false;
+        };
+
         for (const item of driveItems) {
           const existing = merged.get(item.id);
           if (!existing) {
             const withImages = await downloadImagesForItem(item);
             merged.set(withImages.id, withImages);
             toSave.push(withImages);
-          } else if (item.received_pc && existing.body !== item.body) {
+          } else if (item.received_pc && (existing.body !== item.body || hasMissingImages(existing))) {
             const withImages = await downloadImagesForItem({ ...existing, body: item.body });
             merged.set(withImages.id, withImages);
             toSave.push(withImages);
@@ -145,6 +155,14 @@ export function useNoteList({
 
         // 不足分を IndexedDB に保存（取りこぼし補完）
         await Promise.all(toSave.map((d) => saveDraft(d).catch(() => {})));
+
+        // IndexedDB 保存済み画像を Drive から削除（リソース解放）
+        if (accessToken) {
+          const savedFileNames = toSave.flatMap((d) => (d.images ?? []).map((i) => i.fileName));
+          for (const fileName of savedFileNames) {
+            deleteFileFromDrive(accessToken, fileName).catch(() => {});
+          }
+        }
 
         // IndexedDB への保存完了 → Drive から削除（受信済みデータは不要）
         if (driveItems.length > 0 && accessToken) {

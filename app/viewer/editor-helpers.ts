@@ -81,14 +81,6 @@ export function hydrateEditor(
         img.style.cssText = 'max-height:80px;border-radius:4px;margin:2px 0;';
         el.appendChild(img);
         el.appendChild(document.createElement('br'));
-      } else if (filename.startsWith('data:')) {
-        // PCから送られた base64 data URI 画像
-        const img = document.createElement('img');
-        img.src = filename;
-        img.setAttribute('data-filename', filename);
-        img.style.cssText = 'max-height:80px;border-radius:4px;margin:2px 0;';
-        el.appendChild(img);
-        el.appendChild(document.createElement('br'));
       } else {
         const span = document.createElement('span');
         span.textContent = line;

@@ -323,3 +323,19 @@ export async function downloadBinaryWithAutoRefresh(token: string, fileName: str
     return await downloadBinaryFromDrive(newToken, fileName);
   }
 }
+
+export async function deleteFileFromDrive(accessToken: string, fileName: string): Promise<void> {
+  const folderId = await getAppFolderId(accessToken);
+  const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}'${folderQuery}+and+trashed=false`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const searchData = await searchRes.json();
+  const fileId = searchData.files?.[0]?.id;
+  if (!fileId) return;
+  await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+}

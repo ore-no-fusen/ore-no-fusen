@@ -2,8 +2,6 @@
 
 import { useEffect } from 'react';
 import { loadDraft, saveAuthToken } from '../lib/indexeddb';
-import { downloadWithAutoRefresh, downloadBinaryWithAutoRefresh } from '../lib/drive';
-import { saveDraft } from '../lib/indexeddb';
 import { generatePKCE, startOAuth } from '../lib/auth';
 import type { PendingHydrate } from '../types';
 
@@ -128,32 +126,12 @@ export function useAppInit({
       }
       setAccessToken(token);
       const tappedId = params.get('note')!;
-      loadDraft(tappedId).then(async (draft) => {
+      loadDraft(tappedId).then((draft) => {
         if (draft) {
           const titleLine = draft.title ? `${draft.title}\n` : '';
-          let body = draft.body;
-          let images = draft.images ?? [];
-          // received_pc: Drive から最新 body と画像を取得（SW保存はpush用の[画像]のみ）
-          if (draft.received_pc) {
-            try {
-              const raw = await downloadWithAutoRefresh(token, 'notes_to_iphone.json') as { items?: { id: string; body?: string }[] };
-              const driveItem = (raw.items ?? []).find((n) => n.id === tappedId);
-              if (driveItem?.body) {
-                body = driveItem.body;
-                const imgRe = /!\[[^\]]*\]\((fusen_img_[^)]+)\)/g;
-                const fileNames: string[] = [];
-                let m: RegExpExecArray | null;
-                while ((m = imgRe.exec(body)) !== null) fileNames.push(m[1]);
-                images = (await Promise.all(fileNames.map(async (fileName) => {
-                  try { return { fileName, blob: await downloadBinaryWithAutoRefresh(token, fileName) }; }
-                  catch { return null; }
-                }))).filter((x): x is { fileName: string; blob: Blob } => x !== null);
-                await saveDraft({ ...draft, body, images }).catch(() => {});
-              }
-            } catch { /* Drive 取得失敗 → IndexedDB の body で続行 */ }
-          }
+          const images = draft.images ?? [];
           const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
-          setPendingHydrate({ markdown: titleLine + body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+          setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
         }
         setStep('write');
       });
@@ -165,31 +143,12 @@ export function useAppInit({
     if (pendingNote && token) {
       localStorage.removeItem('pending_note');
       setAccessToken(token);
-      loadDraft(pendingNote).then(async (draft) => {
+      loadDraft(pendingNote).then((draft) => {
         if (draft) {
           const titleLine = draft.title ? `${draft.title}\n` : '';
-          let body = draft.body;
-          let images = draft.images ?? [];
-          if (draft.received_pc) {
-            try {
-              const raw = await downloadWithAutoRefresh(token, 'notes_to_iphone.json') as { items?: { id: string; body?: string }[] };
-              const driveItem = (raw.items ?? []).find((n) => n.id === pendingNote);
-              if (driveItem?.body) {
-                body = driveItem.body;
-                const imgRe = /!\[[^\]]*\]\((fusen_img_[^)]+)\)/g;
-                const fileNames: string[] = [];
-                let m: RegExpExecArray | null;
-                while ((m = imgRe.exec(body)) !== null) fileNames.push(m[1]);
-                images = (await Promise.all(fileNames.map(async (fileName) => {
-                  try { return { fileName, blob: await downloadBinaryWithAutoRefresh(token, fileName) }; }
-                  catch { return null; }
-                }))).filter((x): x is { fileName: string; blob: Blob } => x !== null);
-                await saveDraft({ ...draft, body, images }).catch(() => {});
-              }
-            } catch { /* Drive 取得失敗 → IndexedDB の body で続行 */ }
-          }
+          const images = draft.images ?? [];
           const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
-          setPendingHydrate({ markdown: titleLine + body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+          setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
         }
         setStep('write');
       });

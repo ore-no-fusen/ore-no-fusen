@@ -1,29 +1,4 @@
 /**
- * 責務: 画像ファイルを最大幅でリサイズして JPEG base64 data URI に変換する
- * 入力: file: File, maxWidth: number（デフォルト 800px）
- * 出力: Promise<string>（data:image/jpeg;base64,... 形式）
- * 副作用: Canvas DOM 要素を生成・破棄する
- */
-export function resizeImageToBase64(file: File, maxWidth = 800): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const scale = Math.min(1, maxWidth / img.width);
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL('image/jpeg', 0.7));
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-/**
  * 責務: ISO 日時文字列を「3分前」などの相対時刻表現（日本語）に変換する
  * 入力: isoString: string（ISO 8601 形式）
  * 出力: string（日本語相対時刻）
