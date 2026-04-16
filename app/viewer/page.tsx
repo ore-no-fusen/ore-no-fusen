@@ -27,7 +27,7 @@ import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractT
 // ---------------------------------------------------------------------------
 // PWAバージョン（SW_VERSION と必ず同じ番号にする）
 // ---------------------------------------------------------------------------
-const PAGE_VERSION = '2.9.5';
+const PAGE_VERSION = '2.9.6';
 
 // ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
@@ -145,6 +145,27 @@ export default function ViewerPage() {
     isLockPermissionPending,
     handleLockToggle,
   } = useLockToggle({ onError: (msg) => setErrorMessage(msg) });
+
+  // フォアグラウンド復帰時に pending_open を確認してノートを開く（通知タップ対応）
+  useEffect(() => {
+    const handleVisible = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const { loadPendingOpen, clearPendingOpen, loadDraft } = await import('./lib/indexeddb');
+      const pending = await loadPendingOpen().catch(() => null);
+      if (!pending || Date.now() - pending.t >= 5 * 60 * 1000) return;
+      await clearPendingOpen().catch(() => {});
+      const draft = await loadDraft(pending.id).catch(() => null);
+      if (draft) {
+        const titleLine = draft.title ? `${draft.title}\n` : '';
+        const images = draft.images ?? [];
+        const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }: { fileName: string; blob: Blob }) => [fileName, blob]));
+        setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+      }
+      setStep('write');
+    };
+    document.addEventListener('visibilitychange', handleVisible);
+    return () => document.removeEventListener('visibilitychange', handleVisible);
+  }, []);
 
   // バックグラウンド移行時に locked ノートの通知を再表示（iOS はフォアグラウンド中に showNotification が効かないため）
   useEffect(() => {
