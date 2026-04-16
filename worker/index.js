@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.7';
+const SW_VERSION = '2.9.10';
 
 self.addEventListener('activate', () => {
   swLog(`SW起動 version=${SW_VERSION}`);
@@ -147,21 +147,29 @@ function downloadImagesFromDrive(token, body) {
   }).then((results) => results.filter(Boolean)).catch(() => []);
 }
 
-/** fusen-drafts IndexedDB に保存する */
+/** fusen-drafts IndexedDB に保存する（Blob → ArrayBuffer 変換でiOS互換） */
 function saveToIndexedDB(id, title, body, images) {
-  return new Promise((resolve) => {
-    const req = indexedDB.open('fusen-drafts', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('drafts');
-    req.onsuccess = () => {
-      const tx = req.result.transaction('drafts', 'readwrite');
-      tx.objectStore('drafts').put(
-        { id, title, body, created_at: nowJST(), images: images ?? [], received_pc: true, locked: true },
-        id
-      );
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    };
-    req.onerror = () => resolve();
+  const imagePromises = (images || []).map(({ fileName, blob }) =>
+    (blob && blob.arrayBuffer ? blob.arrayBuffer() : Promise.resolve(null))
+      .then((ab) => ab ? { fileName, data: ab, type: blob.type || 'image/jpeg' } : null)
+      .catch(() => null)
+  );
+  return Promise.all(imagePromises).then((processed) => {
+    const validImages = processed.filter(Boolean);
+    return new Promise((resolve) => {
+      const req = indexedDB.open('fusen-drafts', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('drafts');
+      req.onsuccess = () => {
+        const tx = req.result.transaction('drafts', 'readwrite');
+        tx.objectStore('drafts').put(
+          { id, title, body, created_at: nowJST(), images: validImages, received_pc: true, locked: true },
+          id
+        );
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      };
+      req.onerror = () => resolve();
+    });
   });
 }
 
@@ -199,6 +207,22 @@ self.addEventListener('message', (event) => {
   }
 });
 
+/** IndexedDB（fusen-drafts）でノートの locked フラグを確認する */
+function checkIsLocked(id) {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('fusen-drafts', 1);
+      req.onsuccess = () => {
+        const tx = req.result.transaction('drafts', 'readonly');
+        const r = tx.objectStore('drafts').get(id);
+        r.onsuccess = () => resolve(r.result?.locked === true);
+        r.onerror = () => resolve(false);
+      };
+      req.onerror = () => resolve(false);
+    } catch (e) { resolve(false); }
+  });
+}
+
 self.addEventListener('notificationclick', (event) => {
   const { id, title, body } = event.notification.data || {};
   event.notification.close();
@@ -206,21 +230,24 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     Promise.all([
       swLogAsync(`notificationclick id=${id}`),
-      // 通知を即復活（消す意思がないなら残り続ける）
-      self.registration.showNotification(title, {
-        body,
-        tag: 'fusen-' + (id ?? 'unknown'),
-        data: { id, title, body },
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
+      // 🔔ON（locked=true）なら再表示、🔔OFF（locked=false）なら再表示しない
+      checkIsLocked(id).then((isLocked) => {
+        swLogAsync(`notificationclick locked=${isLocked}`);
+        if (!isLocked) return;
+        return self.registration.showNotification(title, {
+          body,
+          tag: 'fusen-' + (id ?? 'unknown'),
+          data: { id, title, body },
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+        });
       }),
-      // Viewer を開く
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
         return swLogAsync(`clients=${clientList.length}件`).then(() => {
           for (const client of clientList) {
             if (client.url.includes('/viewer') && 'focus' in client) {
-              swLogAsync(`navigate url=${client.url}`);
-              client.navigate(targetUrl);
+              swLogAsync(`postMessage OPEN_NOTE id=${id}`);
+              client.postMessage({ type: 'OPEN_NOTE', id });
               return client.focus();
             }
           }

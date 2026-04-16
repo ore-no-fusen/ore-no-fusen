@@ -24,11 +24,33 @@ export function openDraftsDB(): Promise<IDBDatabase> {
  * 出力: Promise<void>
  * 副作用: IndexedDB 書き込み（fusen-drafts / drafts）
  */
+/** Blob → ArrayBuffer に変換（iOS IndexedDB で Blob が再シリアライズ不可のため） */
+async function serializeImages(images: { fileName: string; blob: Blob }[]): Promise<unknown[]> {
+  return Promise.all(images.map(async (img: any) => {
+    if (img.blob instanceof Blob) {
+      const data = await img.blob.arrayBuffer().catch(() => null);
+      return data ? { fileName: img.fileName, data, type: img.blob.type || 'image/jpeg' } : null;
+    }
+    return img; // すでに ArrayBuffer 形式
+  })).then((r) => r.filter(Boolean));
+}
+
+/** ArrayBuffer → Blob に変換（読み込み時） */
+function deserializeImages(images: unknown[]): { fileName: string; blob: Blob }[] {
+  return (images || []).map((img: any) => {
+    if (img.data instanceof ArrayBuffer) {
+      return { fileName: img.fileName, blob: new Blob([img.data], { type: img.type || 'image/jpeg' }) };
+    }
+    return img; // Blob 形式（後方互換）
+  });
+}
+
 export async function saveDraft(draft: DraftRecord): Promise<void> {
+  const images = await serializeImages(draft.images || []);
   const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readwrite');
-    tx.objectStore('drafts').put(draft, draft.id);
+    tx.objectStore('drafts').put({ ...draft, images }, draft.id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -45,7 +67,10 @@ export async function loadAllDrafts(): Promise<DraftRecord[]> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readonly');
     const req = tx.objectStore('drafts').getAll();
-    req.onsuccess = () => resolve(req.result ?? []);
+    req.onsuccess = () => {
+      const drafts = (req.result ?? []).map((d: any) => ({ ...d, images: deserializeImages(d.images || []) }));
+      resolve(drafts);
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -61,7 +86,11 @@ export async function loadDraft(id: string): Promise<DraftRecord | null> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readonly');
     const req = tx.objectStore('drafts').get(id);
-    req.onsuccess = () => resolve(req.result ?? null);
+    req.onsuccess = () => {
+      const d = req.result ?? null;
+      if (!d) { resolve(null); return; }
+      resolve({ ...d, images: deserializeImages(d.images || []) });
+    };
     req.onerror = () => reject(req.error);
   });
 }

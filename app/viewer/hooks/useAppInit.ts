@@ -175,7 +175,7 @@ export function useAppInit({
       (async () => {
         const pending = await loadPendingOpen().catch(() => null);
         pageLog(`pending_open確認: ${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
-        if (pending && Date.now() - pending.t < 5 * 60 * 1000) {
+        if (pending && Date.now() - pending.t < 30 * 60 * 1000) {
           await clearPendingOpen().catch(() => {});
           const draft = await loadDraft(pending.id).catch(() => null);
           pageLog(`pending draft: ${draft ? '取得成功' : '取得失敗'}`);
