@@ -195,12 +195,6 @@ function deleteImagesFromDrive(token, images) {
 }
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'GET_NOTIFICATIONS') {
-    self.registration.getNotifications().then((ns) => {
-      const ids = ns.map((n) => n.tag.replace('fusen-', ''));
-      event.ports[0].postMessage({ ids });
-    });
-  }
   if (event.data?.type === 'CLOSE_NOTIFICATION') {
     self.registration.getNotifications({ tag: event.data.tag })
       .then((ns) => ns.forEach((n) => n.close()));

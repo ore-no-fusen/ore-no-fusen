@@ -139,8 +139,11 @@ export function useNoteList({
             toSave.push(withImages);
           } else if (item.received_pc && (existing.body !== item.body || hasMissingImages(existing))) {
             const withImages = await downloadImagesForItem({ ...existing, body: item.body });
-            merged.set(withImages.id, withImages);
-            toSave.push(withImages);
+            // Drive から画像ダウンロード失敗時（SW削除済み）は既存のblobを保持
+            const finalImages = withImages.images.length > 0 ? withImages.images : existing.images;
+            const final = { ...withImages, images: finalImages };
+            merged.set(final.id, final);
+            toSave.push(final);
           }
         }
 

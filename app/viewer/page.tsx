@@ -169,43 +169,6 @@ export default function ViewerPage() {
     return () => document.removeEventListener('visibilitychange', handleVisible);
   }, []);
 
-  // バックグラウンド移行時に locked ノートの通知を再表示（iOS はフォアグラウンド中に showNotification が効かないため）
-  useEffect(() => {
-    const handleHide = async () => {
-      if (document.visibilityState !== 'hidden') return;
-      if (Notification.permission !== 'granted') return;
-      const { loadAllDrafts } = await import('./lib/indexeddb');
-      const drafts = await loadAllDrafts().catch(() => []);
-      const locked = drafts.filter((d) => d.locked);
-      if (locked.length === 0) return;
-      const reg = await navigator.serviceWorker.ready.catch(() => null);
-      if (!reg) return;
-      // すでに通知センターにある通知は再表示しない（重複防止）
-      const existingIds = await new Promise<string[]>((resolve) => {
-        if (!reg.active) { resolve([]); return; }
-        const channel = new MessageChannel();
-        channel.port1.onmessage = (e) => resolve(e.data.ids ?? []);
-        reg.active.postMessage({ type: 'GET_NOTIFICATIONS' }, [channel.port2]);
-        setTimeout(() => resolve([]), 1000);
-      });
-      for (const d of locked) {
-        if (existingIds.includes(d.id)) continue;
-        const rawTitle = d.title || '';
-        const rawBody = d.body || '';
-        const notifTitle = rawTitle ? rawTitle.replace(/^#\s*/, '') : rawBody.slice(0, 20) || '（無題）';
-        const notifBody = rawTitle ? rawBody.slice(0, 40) : rawBody.slice(20, 60);
-        await reg.showNotification(notifTitle, {
-          body: notifBody,
-          tag: `fusen-${d.id}`,
-          data: { id: d.id, title: notifTitle, body: notifBody },
-          icon: '/icon-192.png',
-          badge: '/icon-192.png',
-        });
-      }
-    };
-    document.addEventListener('visibilitychange', handleHide);
-    return () => document.removeEventListener('visibilitychange', handleHide);
-  }, []);
 
   // ページ起動ログ（バージョン確認用）
   useEffect(() => {

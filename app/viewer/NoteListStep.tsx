@@ -113,12 +113,12 @@ export function NoteListStep({
                   <div className="flex items-center gap-0">
                     {/* ロックボタン */}
                     <button
-                      className={`p-2 ${lockedNoteIds.includes(note.id) ? 'text-blue-500' : 'text-gray-400'} hover:text-blue-500`}
+                      className="p-2"
                       aria-label={lockedNoteIds.includes(note.id) ? 'ロック解除' : 'ロック画面に表示'}
                       disabled={isLockPermissionPending}
                       onClick={(e) => onLockToggle(e, note)}
                     >
-                      🔔
+                      {lockedNoteIds.includes(note.id) ? '🔔' : '🔕'}
                     </button>
                     {/* 削除ボタン */}
                     {(note.status === 'draft' || note.status === 'received_pc' || note.status === 'sent') && (
