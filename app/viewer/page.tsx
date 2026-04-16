@@ -152,11 +152,11 @@ export default function ViewerPage() {
       if (document.visibilityState !== 'visible') return;
       const { loadPendingOpen, clearPendingOpen, loadDraft } = await import('./lib/indexeddb');
       const pending = await loadPendingOpen().catch(() => null);
-      pageLog(`visibilitychange: pending=${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
+      console.log(`[page] visibilitychange: pending=${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
       if (!pending || Date.now() - pending.t >= 30 * 60 * 1000) return;
       await clearPendingOpen().catch(() => {});
       const draft = await loadDraft(pending.id).catch(() => null);
-      pageLog(`visibilitychange draft: ${draft ? `images=${draft.images?.length ?? 0}件 blobs=${draft.images?.filter((i: { fileName: string; blob: Blob }) => i.blob != null).length ?? 0}件` : 'なし'}`);
+      console.log(`[page] visibilitychange draft: ${draft ? `images=${draft.images?.length ?? 0}件 blobs=${draft.images?.filter((i: { fileName: string; blob: Blob }) => i.blob != null).length ?? 0}件` : 'なし'}`);
       if (draft) {
         const titleLine = draft.title ? `${draft.title}\n` : '';
         const images = draft.images ?? [];
