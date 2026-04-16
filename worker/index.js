@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.6';
+const SW_VERSION = '2.9.7';
 
 self.addEventListener('activate', () => {
   swLog(`SW起動 version=${SW_VERSION}`);
@@ -42,30 +42,28 @@ self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
   const title = data.title || '俺の付箋';
   const bodyPush = data.body || '';
+  const bodyRich = data.body_rich || bodyPush;
   const id = data.id ?? 'unknown';
   swLog(`push受信 id=${id} title=${title}`);
 
-  // Drive から body_rich と画像を取得して IndexedDB に保存してから通知を表示する（直列）
+  // body_rich はPushペイロードに含まれている（Driveフェッチ不要）
+  // 画像ファイル（fusen_img_*）のみDriveからダウンロードして IndexedDB に保存する
   const flow = loadTokenFromMeta().then((token) => {
     swLog(`token=${token ? 'あり' : 'なし'}`);
-    if (!token) return saveToIndexedDB(id, title, bodyPush, []);
-    return fetchBodyRichFromDrive(token, id).then((richBody) => {
-      swLog(`body_rich=${richBody ? '取得成功' : 'なし'}`);
-      const body = richBody || bodyPush;
-      return downloadImagesFromDrive(token, body).then((images) => {
-        swLog(`画像=${images.length}件`);
-        return saveToIndexedDB(id, title, body, images).then(() => {
-          swLog('IndexedDB保存完了');
-          deleteImagesFromDrive(token, images);
-        });
+    if (!token) return saveToIndexedDB(id, title, bodyRich, []);
+    return downloadImagesFromDrive(token, bodyRich).then((images) => {
+      swLog(`画像=${images.length}件`);
+      return saveToIndexedDB(id, title, bodyRich, images).then(() => {
+        swLog('IndexedDB保存完了');
+        deleteImagesFromDrive(token, images);
       });
     }).catch((e) => {
-      swLog(`Drive取得失敗: ${e}`);
-      return saveToIndexedDB(id, title, bodyPush, []);
+      swLog(`画像ダウンロード失敗: ${e}`);
+      return saveToIndexedDB(id, title, bodyRich, []);
     });
   }).catch((e) => {
     swLog(`token取得失敗: ${e}`);
-    return saveToIndexedDB(id, title, bodyPush, []);
+    return saveToIndexedDB(id, title, bodyRich, []);
   }).then(() => {
     // iOS で notificationclick が発火しない場合の保険: 次回ページ起動時に自動表示
     return savePendingOpen(id);
@@ -112,28 +110,6 @@ function loadTokenFromMeta() {
       r.onerror = () => resolve(null);
     };
     req.onerror = () => resolve(null);
-  });
-}
-
-/** Drive の notes_to_iphone.json から指定 id の body_rich を取得する */
-function fetchBodyRichFromDrive(token, noteId) {
-  return getAppFolderId(token).then((folderId) => {
-    const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
-    return fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='notes_to_iphone.json'${folderQuery}+and+trashed=false`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    ).then((r) => r.json());
-  }).then((searchData) => {
-    const fileId = searchData.files?.[0]?.id;
-    if (!fileId) return null;
-    return fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    ).then((r) => r.json());
-  }).then((driveData) => {
-    const items = driveData?.items ?? [];
-    const item = items.find((i) => i.id === noteId);
-    return item?.body ?? null;
   });
 }
 

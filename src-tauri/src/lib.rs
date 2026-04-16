@@ -1307,6 +1307,7 @@ async fn fusen_send_to_iphone(
         "id": note_id,
         "title": title,
         "body": body_push,
+        "body_rich": body_rich,
         "tags": note_tags,
         "sent_at": sent_at
     });
