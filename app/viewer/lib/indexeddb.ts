@@ -45,12 +45,17 @@ function deserializeImages(images: unknown[]): { fileName: string; blob: Blob }[
   });
 }
 
+function nowJSTLocal(): string {
+  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().replace('Z', '+09:00');
+}
+
 function logToFusenLogs(msg: string): void {
   try {
     const req = indexedDB.open('fusen-logs', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
     req.onsuccess = () => {
-      const t = new Date().toISOString();
+      const t = nowJSTLocal();
       const tx = req.result.transaction('logs', 'readwrite');
       tx.objectStore('logs').add({ t, msg });
     };
@@ -66,11 +71,15 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
     const getReq = tx.objectStore('drafts').get(draft.id);
     getReq.onsuccess = () => {
       const existing = getReq.result;
-      if (existing?.locked && !draft.locked) {
+      // locked=true が明示的に false にされた場合（intentional unlock）はそのまま通す。
+      // unlocked=undefined（Drive マージなど locked を知らないコードパス）の場合は保護する。
+      if (existing?.locked && draft.locked === undefined) {
         const stack = new Error().stack?.split('\n').slice(1, 4).join(' | ') ?? '';
-        logToFusenLogs(`[saveDraft] locked消失 id=${draft.id.slice(0, 8)} | ${stack}`);
+        logToFusenLogs(`[saveDraft] locked保護 id=${draft.id.slice(0, 8)} | ${stack}`);
+        tx.objectStore('drafts').put({ ...draft, locked: true, images }, draft.id);
+      } else {
+        tx.objectStore('drafts').put({ ...draft, images }, draft.id);
       }
-      tx.objectStore('drafts').put({ ...draft, images }, draft.id);
     };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);

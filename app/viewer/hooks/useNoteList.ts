@@ -53,7 +53,8 @@ export function useNoteList({
         const req = indexedDB.open('fusen-logs', 1);
         req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
         req.onsuccess = () => {
-          const t = new Date().toISOString();
+          const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+          const t = jst.toISOString().replace('Z', '+09:00');
           const tx = req.result.transaction('logs', 'readwrite');
           tx.objectStore('logs').add({ t, msg: `[noteList] initLockedNoteIds count=${lockedIds.length} ids=${lockedIds.map(id => id.slice(0,8)).join(',')}` });
         };

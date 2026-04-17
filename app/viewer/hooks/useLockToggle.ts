@@ -10,7 +10,8 @@ function notifLog(msg: string): void {
     const req = indexedDB.open('fusen-logs', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
     req.onsuccess = () => {
-      const t = new Date().toISOString();
+      const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      const t = jst.toISOString().replace('Z', '+09:00');
       const tx = req.result.transaction('logs', 'readwrite');
       tx.objectStore('logs').add({ t, msg: `[lock] ${msg}` });
     };
@@ -98,8 +99,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
         reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` }); // 旧タグ互換
         const draft = await loadDraft(note.id);
         if (draft) {
-          const { locked, ...rest } = draft;
-          await saveDraft(rest as DraftRecord);
+          await saveDraft({ ...draft, locked: false });
         }
         notifLog(`unlock完了 id=${note.id.slice(0,8)}`);
       } else {
