@@ -29,7 +29,7 @@ export type DraftRecord = {
   tags?: string[];
   received_pc?: true;
   sent_at?: string;
-  locked?: true;
+  locked?: boolean;
 };
 
 export type CropModalProps = {
