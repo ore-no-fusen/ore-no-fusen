@@ -57,7 +57,10 @@ pub fn import_files(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
                 let body = extract_body_without_frontmatter(&content);
                 
                 // 3. 1行目を取得してcontextを生成
-                let first_line = body.lines().next().unwrap_or("imported").trim();
+                let first_line = body.lines()
+                    .map(|l| l.trim())
+                    .find(|l| !l.is_empty() && !l.starts_with("!["))
+                    .unwrap_or("imported");
                 let safe_context = logic::sanitize_context(first_line);
                 let context = if safe_context.is_empty() { 
                     "imported".to_string() 
@@ -167,7 +170,10 @@ fn migrate_to_frontmatter(path: &PathBuf, content: &str, folder_path: &str) -> R
         return Err(path.clone());
     }
 
-    let first_line = content.lines().next().unwrap_or("note").trim();
+    let first_line = content.lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty() && !l.starts_with("!["))
+        .unwrap_or("note");
     let safe_context = logic::sanitize_context(first_line);
     let context = if safe_context.is_empty() { "note".to_string() } else { safe_context };
 

@@ -160,9 +160,25 @@ export function WriteStep({
                 }
                 if (node.parentNode === editor) lineNode = node;
               }
+              // すでにチェックボックス行なら解除（toggle off）
+              if (lineNode instanceof Element && lineNode.hasAttribute('data-checkbox-line')) {
+                const text = (lineNode.textContent ?? '').trimStart();
+                const div = document.createElement('div');
+                div.textContent = text;
+                editor.replaceChild(div, lineNode);
+                const next = div.nextSibling;
+                if (next && next.nodeName === 'BR') editor.removeChild(next);
+                const range = document.createRange();
+                range.selectNodeContents(div);
+                range.collapse(false);
+                currentSel?.removeAllRanges();
+                currentSel?.addRange(range);
+                return;
+              }
               // チェックボックス wrapper を作成
               const wrapper = document.createElement('span');
               wrapper.setAttribute('data-checkbox-line', '');
+              wrapper.style.cssText = 'display:block;';
               const cb = document.createElement('input');
               cb.type = 'checkbox';
               cb.setAttribute('contenteditable', 'false');
@@ -172,15 +188,25 @@ export function WriteStep({
               wrapper.appendChild(cb);
               if (lineNode && lineNode.parentNode === editor && lineNode.nodeName !== 'BR') {
                 // 既存行ノードの子を wrapper に移動（テキストを保持したまま置き換え）
-                while (lineNode.firstChild) {
-                  wrapper.appendChild(lineNode.firstChild);
+                if (lineNode.nodeType === Node.TEXT_NODE) {
+                  // テキストノードが直接 editor の子の場合（カーソルが行の途中にあるとき）
+                  wrapper.appendChild(document.createTextNode(lineNode.textContent ?? ''));
+                } else {
+                  while (lineNode.firstChild) {
+                    wrapper.appendChild(lineNode.firstChild);
+                  }
                 }
                 editor.replaceChild(wrapper, lineNode);
+                // 後続に <br> がなければ追加（行分離のため）
+                if (!wrapper.nextSibling || (wrapper.nextSibling as Element).nodeName !== 'BR') {
+                  editor.insertBefore(document.createElement('br'), wrapper.nextSibling);
+                }
               } else {
                 // 空行または新規: wrapper + br を追加
                 wrapper.appendChild(document.createTextNode(''));
                 if (lineNode) {
                   editor.insertBefore(wrapper, lineNode);
+                  editor.insertBefore(document.createElement('br'), wrapper.nextSibling);
                 } else {
                   editor.appendChild(wrapper);
                   editor.appendChild(document.createElement('br'));
@@ -426,7 +452,21 @@ export function WriteStep({
               editorRef.current.focus();
               const sel = window.getSelection();
               if (sel && sel.rangeCount > 0 && editorRef.current.contains(sel.anchorNode)) {
-                insertNodeAtCursor(img);
+                // カーソルがチェックボックス行内なら行の後ろに挿入（行内に入ると serialize 時に無視される）
+                let node: Node | null = sel.anchorNode;
+                let checkboxSpan: Element | null = null;
+                while (node && node !== editorRef.current) {
+                  if (node instanceof Element && node.hasAttribute('data-checkbox-line')) {
+                    checkboxSpan = node;
+                    break;
+                  }
+                  node = node.parentNode;
+                }
+                if (checkboxSpan) {
+                  checkboxSpan.parentNode!.insertBefore(img, checkboxSpan.nextSibling);
+                } else {
+                  insertNodeAtCursor(img);
+                }
               } else {
                 editorRef.current.appendChild(img);
                 editorRef.current.appendChild(document.createTextNode('\n'));

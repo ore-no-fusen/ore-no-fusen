@@ -27,7 +27,7 @@ import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractT
 // ---------------------------------------------------------------------------
 // PWAバージョン（SW_VERSION と必ず同じ番号にする）
 // ---------------------------------------------------------------------------
-const PAGE_VERSION = '2.9.10';
+const PAGE_VERSION = '2.9.13';
 
 // ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
@@ -50,6 +50,7 @@ export default function ViewerPage() {
   const t = getTranslation(lang);
 
   const [isStandalone, setIsStandalone] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const [step, setStep] = useState<
     'banner' | 'login' | 'push' | 'ready' | 'write' | 'list'
   >('banner');
@@ -76,6 +77,8 @@ export default function ViewerPage() {
   const currentDraftIdRef = React.useRef<string | null>(null);
   const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
   const writeTagsRef = React.useRef<string[]>([]);
+
+  useEffect(() => { setIsMounted(true); }, []);
 
   // アプリ初期化（SW登録・OAuth・ステップ遷移）
   useAppInit({
@@ -243,6 +246,7 @@ export default function ViewerPage() {
 
   // メモ削除ハンドラ
   const handleDeleteNote = async (note: IphoneNote) => {
+    new Audio('/sounds/delete.wav').play().catch(() => {});
     setIsLoading(true);
     try {
       // received_pc の場合: Drive再取得 → 対象削除 → Upload → IndexedDB削除（順序厳守）
@@ -291,22 +295,27 @@ export default function ViewerPage() {
   }
 
   // 非standalone → ホーム画面追加バナー
-  if (!isStandalone) {
+  if (isMounted && !isStandalone) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 max-w-sm w-full">
-          <h1 className="text-lg font-bold mb-3">ホーム画面に追加してください</h1>
-          <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-            <li>
-              Safari の共有アイコン（↑）をタップ
-            </li>
-            <li>
-              「ホーム画面に追加」を選択
-            </li>
-          </ol>
-          <p className="mt-3 text-sm text-gray-500">
-            インストール後にセットアップを完了してください
-          </p>
+      <div className="min-h-screen bg-[#F2F2F7] px-4 py-8 overflow-y-auto max-w-sm mx-auto">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">ホーム画面に追加してください</h1>
+        <p className="text-gray-500 text-sm mb-6">以下の手順でiPhoneのホーム画面に追加すると、アプリとして使えます。</p>
+
+        <div className="flex flex-col gap-6">
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <p className="font-semibold text-gray-800 mb-3">STEP 1 — 画面下の「・・・」→「共有」をタップ</p>
+            <img src="/banner-step1.png" alt="共有をタップ" className="w-full rounded-xl" />
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <p className="font-semibold text-gray-800 mb-3">STEP 2 — 「ホーム画面に追加」を選択</p>
+            <img src="/banner-step2.png" alt="ホーム画面に追加を選択" className="w-full rounded-xl" />
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <p className="font-semibold text-gray-800 mb-3">STEP 3 — 右上の「追加」をタップ</p>
+            <img src="/banner-step3.png" alt="追加をタップ" className="w-full rounded-xl" />
+          </div>
         </div>
       </div>
     );
@@ -333,9 +342,9 @@ export default function ViewerPage() {
       )}
       <div className="max-w-prose mx-auto w-full">
         {step === 'login' && (
-          <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-4 w-full max-w-sm">
             <p className="text-gray-700">{t('pwa.loginTitle')}</p>
-            <p className="text-gray-500 text-sm max-w-sm text-center mt-2">{t('pwa.loginDesc')}</p>
+            <p className="text-gray-500 text-sm text-center">{t('pwa.loginDesc')}</p>
             {!swReady && (
               <p className="text-gray-500 text-sm">SW準備中...</p>
             )}
@@ -353,6 +362,13 @@ export default function ViewerPage() {
             {errorMessage && (
               <p className="text-red-600 text-sm">{errorMessage}</p>
             )}
+            <div className="w-full mt-2 bg-yellow-50 border border-yellow-200 rounded-2xl p-4">
+              <p className="text-sm font-semibold text-gray-700 mb-3">ログイン中に以下の画面が出たら「続行」を押してください</p>
+              <div className="flex flex-col gap-3">
+                <img src="/login-step1.png" alt="確認されていません画面" className="w-full rounded-xl" />
+                <img src="/login-step2.png" alt="アクセス確認画面" className="w-full rounded-xl" />
+              </div>
+            </div>
           </div>
         )}
 

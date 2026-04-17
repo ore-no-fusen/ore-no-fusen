@@ -28,9 +28,20 @@ export function serializeEditor(el: HTMLDivElement): string {
     // br → 改行
     if (node.tagName === 'BR') return '\n';
     // div（ルート以外）→ ブロック要素として先頭に改行
-    const children = Array.from(node.childNodes).map((c) => walk(c, false)).join('');
-    if (node.tagName === 'DIV' && !isRoot) return '\n' + children;
-    return children;
+    if (node.tagName === 'DIV' && !isRoot) {
+      const children = Array.from(node.childNodes).map((c) => walk(c, false)).join('');
+      return '\n' + children;
+    }
+    // root: 子要素を順に結合し、改行が途切れる箇所を補完する
+    let result = '';
+    for (const child of Array.from(node.childNodes)) {
+      const r = walk(child, false);
+      if (r && !r.startsWith('\n') && result && !result.endsWith('\n')) {
+        result += '\n';
+      }
+      result += r;
+    }
+    return result;
   }
   return walk(el, true).replace(/\n+$/, '');
 }
@@ -69,10 +80,11 @@ export function hydrateEditor(
       el.appendChild(document.createElement('br'));
       continue;
     }
-    // 画像記法 ![任意](filename) 検出（alt textあり・なし両方対応、先頭の空白を許容）
-    const imgMatch = line.match(/^\s*!\[[^\]]*\]\(([^)]+)\)\s*$/);
+    // 画像記法 ![任意](filename) 検出（alt textあり・なし両方対応、先頭の空白を許容、後続テキストあり・なし両方対応）
+    const imgMatch = line.match(/^\s*!\[[^\]]*\]\(([^)]+)\)(.*)$/);
     if (imgMatch) {
       const filename = imgMatch[1];
+      const trailingText = imgMatch[2].trim();
       const file = blobMap.get(filename);
       if (file) {
         const img = document.createElement('img');
@@ -80,6 +92,11 @@ export function hydrateEditor(
         img.setAttribute('data-filename', filename);
         img.style.cssText = 'max-height:80px;border-radius:4px;margin:2px 0;';
         el.appendChild(img);
+        if (trailingText) {
+          const span = document.createElement('span');
+          span.textContent = trailingText;
+          el.appendChild(span);
+        }
         el.appendChild(document.createElement('br'));
       } else {
         const span = document.createElement('span');
@@ -156,6 +173,10 @@ export function mergeKnownTags(newTags: string[]): void {
 export function extractTitleBody(text: string): { title: string; body: string } {
   const lines = text.split('\n');
   const firstLine = lines[0].replace(/^#\s*/, '').trim();
+  // 1行目が画像参照の場合はタイトルなしで全体をbodyに（画像がタイトル扱いになるのを防ぐ）
+  if (/^!\[/.test(firstLine)) {
+    return { title: '', body: text.replace(/^\n+/, '') };
+  }
   const rest = lines.slice(1).join('\n').replace(/^\n+/, '');
   return { title: firstLine, body: rest };
 }

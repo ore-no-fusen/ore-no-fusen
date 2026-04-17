@@ -75,7 +75,7 @@ export function useAppInit({
       setSwReady(true);
     }
 
-    if (!standalone) return; // バナー表示のみ
+    // if (!standalone) return; // 開発中は無効化
 
     const params = new URLSearchParams(window.location.search);
 

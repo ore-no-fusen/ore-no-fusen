@@ -58,6 +58,8 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
     e.stopPropagation();
     const isLocked = lockedNoteIds.includes(note.id);
 
+    new Audio(isLocked ? '/sounds/bell_off.wav' : '/sounds/bell_on.wav').play().catch(() => {});
+
     // 楽観的更新
     if (isLocked) {
       setLockedNoteIds((prev) => prev.filter((id) => id !== note.id));

@@ -197,7 +197,10 @@ pub fn handle_save_note(
 
     // Parse current filename to get fixed params (seq, created)
     let (seq, created_date, old_context) = parse_filename(&filename);
-    let first_line = body.lines().next().unwrap_or("").trim();
+    let first_line = body.lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty() && !l.starts_with("!["))
+        .unwrap_or("");
 
     // Find old meta for comparison
     let old_meta = state.notes.iter().find(|n| n.path == current_path).cloned();
