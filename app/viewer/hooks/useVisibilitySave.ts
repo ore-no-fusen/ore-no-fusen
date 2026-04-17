@@ -1,6 +1,6 @@
 import React from 'react';
 import { serializeEditor, extractTitleBody } from '../editor-helpers';
-import { saveDraft } from '../lib/indexeddb';
+import { saveDraft, loadDraft } from '../lib/indexeddb';
 import { nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
@@ -33,14 +33,17 @@ export function useVisibilitySave(refs: VisibilitySaveRefs): void {
       const imagesArr = Array.from((refs.imageBlobsRef.current ?? new Map()).entries()).map(
         ([fn, f]) => ({ fileName: fn, blob: f })
       );
-      saveDraft({
-        id: draftId,
-        title,
-        body,
-        created_at: nowJST(),
-        images: imagesArr,
-        tags: refs.writeTagsRef.current ?? [],
-      }).catch(() => {});
+      loadDraft(draftId).catch(() => null).then((existing) => {
+        saveDraft({
+          id: draftId,
+          title,
+          body,
+          created_at: nowJST(),
+          images: imagesArr,
+          tags: refs.writeTagsRef.current ?? [],
+          ...(existing?.locked ? { locked: true as const } : {}),
+        }).catch(() => {});
+      });
     };
     document.addEventListener('visibilitychange', handleHide);
     return () => document.removeEventListener('visibilitychange', handleHide);
