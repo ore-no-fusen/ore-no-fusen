@@ -116,6 +116,9 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
 
         // SW 経由で通知表示（new Notification() はモバイルで動かない）
         const reg = await navigator.serviceWorker.ready;
+        // 同じノートの既存通知を閉じてから表示（重複防止）
+        const existing = await reg.getNotifications();
+        existing.forEach((n) => { if (n.data?.id === note.id) n.close(); });
         await reg.showNotification(notifTitle, {
           body: notifBody,
           tag: `fusen-${note.id}`,

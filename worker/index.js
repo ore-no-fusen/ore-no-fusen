@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.14';
+const SW_VERSION = '2.9.15';
 
 self.addEventListener('activate', () => {
   swLog(`SW起動 version=${SW_VERSION}`);
@@ -67,6 +67,11 @@ self.addEventListener('push', (event) => {
   }).then(() => {
     // iOS で notificationclick が発火しない場合の保険: 次回ページ起動時に自動表示
     return savePendingOpen(id);
+  }).then(() => {
+    // 同じノートの既存通知を閉じてから表示（重複防止）
+    return self.registration.getNotifications().then((ns) => {
+      ns.forEach((n) => { if (n.data?.id === id) n.close(); });
+    });
   }).then(() => {
     swLog('通知表示');
     return self.registration.showNotification(title, {
