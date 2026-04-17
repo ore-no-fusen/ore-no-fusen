@@ -45,12 +45,33 @@ function deserializeImages(images: unknown[]): { fileName: string; blob: Blob }[
   });
 }
 
+function logToFusenLogs(msg: string): void {
+  try {
+    const req = indexedDB.open('fusen-logs', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+    req.onsuccess = () => {
+      const t = new Date().toISOString();
+      const tx = req.result.transaction('logs', 'readwrite');
+      tx.objectStore('logs').add({ t, msg });
+    };
+  } catch { /* ignore */ }
+}
+
 export async function saveDraft(draft: DraftRecord): Promise<void> {
   const images = await serializeImages(draft.images || []);
+  // 既存レコードのlocked状態と比較してログ出力
   const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readwrite');
-    tx.objectStore('drafts').put({ ...draft, images }, draft.id);
+    const getReq = tx.objectStore('drafts').get(draft.id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (existing?.locked && !draft.locked) {
+        const stack = new Error().stack?.split('\n').slice(1, 4).join(' | ') ?? '';
+        logToFusenLogs(`[saveDraft] locked消失 id=${draft.id.slice(0, 8)} | ${stack}`);
+      }
+      tx.objectStore('drafts').put({ ...draft, images }, draft.id);
+    };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });

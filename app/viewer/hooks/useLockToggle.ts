@@ -5,6 +5,18 @@ import type { IphoneNote, DraftRecord } from '../types';
 import { saveDraft, loadDraft } from '../lib/indexeddb';
 import { nowJST } from '../utils';
 
+function notifLog(msg: string): void {
+  try {
+    const req = indexedDB.open('fusen-logs', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+    req.onsuccess = () => {
+      const t = new Date().toISOString();
+      const tx = req.result.transaction('logs', 'readwrite');
+      tx.objectStore('logs').add({ t, msg: `[lock] ${msg}` });
+    };
+  } catch { /* ignore */ }
+}
+
 // ---------------------------------------------------------------------------
 // useLockToggle
 // ロック（ロック画面への通知固定表示）の ON/OFF を管理するカスタムフック
@@ -57,6 +69,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
   const handleLockToggle = async (e: React.MouseEvent, note: IphoneNote) => {
     e.stopPropagation();
     const isLocked = lockedNoteIds.includes(note.id);
+    notifLog(`toggle id=${note.id.slice(0,8)} isLocked=${isLocked}`);
 
     new Audio(isLocked ? '/sounds/bell_off.wav' : '/sounds/bell_on.wav').play().catch(() => {});
 
@@ -70,6 +83,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
     try {
       if (isLocked) {
         // ロック解除: 通知を閉じてDB更新
+        notifLog(`unlock開始 id=${note.id.slice(0,8)}`);
         const reg = await navigator.serviceWorker.ready;
         // iOS では n.close() だけでは通知センターから消えないため、
         // 同じ tag で silent な通知に上書きしてから close する
@@ -87,8 +101,10 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
           const { locked, ...rest } = draft;
           await saveDraft(rest as DraftRecord);
         }
+        notifLog(`unlock完了 id=${note.id.slice(0,8)}`);
       } else {
         // ロック ON: 権限確認 → 通知表示 → DB更新
+        notifLog(`lock開始 id=${note.id.slice(0,8)} permission=${Notification.permission}`);
         if (Notification.permission === 'default') {
           setIsLockPermissionPending(true);
           const result = await Notification.requestPermission();
@@ -118,6 +134,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
         const reg = await navigator.serviceWorker.ready;
         // 同じノートの既存通知を閉じてから表示（重複防止）
         const existing = await reg.getNotifications();
+        notifLog(`既存通知数=${existing.length} id=${note.id.slice(0,8)}`);
         existing.forEach((n) => { if (n.data?.id === note.id) n.close(); });
         await reg.showNotification(notifTitle, {
           body: notifBody,
@@ -126,9 +143,11 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
           icon: '/icon-192.png',
           badge: '/icon-192.png',
         });
+        notifLog(`showNotification完了 title=${notifTitle}`);
 
         // DB に locked: true を保存
         const draft = await loadDraft(note.id);
+        notifLog(`loadDraft結果 locked=${draft?.locked ?? 'null'}`);
         if (draft) {
           await saveDraft({ ...draft, locked: true });
         } else {
@@ -143,8 +162,10 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
             locked: true,
           });
         }
+        notifLog(`lock完了 id=${note.id.slice(0,8)}`);
       }
-    } catch {
+    } catch (err) {
+      notifLog(`エラー: ${err}`);
       // 失敗時はロールバック
       if (isLocked) {
         setLockedNoteIds((prev) => [...prev, note.id]);

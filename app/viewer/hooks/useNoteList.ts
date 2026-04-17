@@ -48,6 +48,16 @@ export function useNoteList({
     // ロック通知は IndexedDB のデータで即時処理（Drive fetch を待たない）
     draftsPromise.then((localDrafts) => {
       const lockedIds = localDrafts.filter((d) => d.locked).map((d) => d.id);
+      // ロック状態ログ
+      try {
+        const req = indexedDB.open('fusen-logs', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
+        req.onsuccess = () => {
+          const t = new Date().toISOString();
+          const tx = req.result.transaction('logs', 'readwrite');
+          tx.objectStore('logs').add({ t, msg: `[noteList] initLockedNoteIds count=${lockedIds.length} ids=${lockedIds.map(id => id.slice(0,8)).join(',')}` });
+        };
+      } catch { /* ignore */ }
       initLockedNoteIds(lockedIds);
 
       if (!hasRestoredLockRef.current && lockedIds.length > 0 && Notification.permission === 'granted') {
