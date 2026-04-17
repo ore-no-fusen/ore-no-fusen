@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.13';
+const SW_VERSION = '2.9.14';
 
 self.addEventListener('activate', () => {
   swLog(`SW起動 version=${SW_VERSION}`);
@@ -41,7 +41,7 @@ function swLogAsync(msg) {
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
   const title = data.title || '俺の付箋';
-  const bodyPush = data.body || '';
+  const bodyPush = (data.body || '').replace(/!\[.*?\]\(.*?\)/g, '').trim();
   const bodyRich = data.body_rich || bodyPush;
   const id = data.id ?? 'unknown';
   swLog(`push受信 id=${id} title=${title}`);
