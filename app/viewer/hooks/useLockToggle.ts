@@ -86,15 +86,6 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
         // ロック解除: 通知を閉じてDB更新
         notifLog(`unlock開始 id=${note.id.slice(0,8)}`);
         const reg = await navigator.serviceWorker.ready;
-        // iOS では n.close() だけでは通知センターから消えないため、
-        // 同じ tag で silent な通知に上書きしてから close する
-        try {
-          await reg.showNotification('', {
-            tag: `fusen-${note.id}`,
-            silent: true,
-            data: { id: note.id },
-          } as NotificationOptions);
-        } catch { /* silent 未対応環境は無視 */ }
         reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-${note.id}` });
         reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag: `fusen-lock-${note.id}` }); // 旧タグ互換
         const draft = await loadDraft(note.id);
