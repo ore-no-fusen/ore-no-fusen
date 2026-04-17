@@ -106,7 +106,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
 
         // 通知タイトル・body の生成
         const rawTitle = note.title || '';
-        const rawBody = note.body || '';
+        const rawBody = (note.body || '').replace(/!\[.*?\]\(.*?\)/g, '').trim();
         const notifTitle = rawTitle
           ? rawTitle.replace(/^#\s*/, '')
           : rawBody.slice(0, 20) || '（無題）';
