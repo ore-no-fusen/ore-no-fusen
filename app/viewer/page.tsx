@@ -70,7 +70,6 @@ export default function ViewerPage() {
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<string, string>>(new Map());
-  const hasRestoredLockRef = React.useRef(false);
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
@@ -226,7 +225,6 @@ export default function ViewerPage() {
   useNoteList({
     step,
     accessToken,
-    hasRestoredLockRef,
     setHistoryNotes,
     setIsHistoryLoading,
     setThumbnailUrls,

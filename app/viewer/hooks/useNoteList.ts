@@ -15,7 +15,6 @@ import { nowJST } from '../utils';
 type UseNoteListOptions = {
   step: string;
   accessToken: string | null;
-  hasRestoredLockRef: React.MutableRefObject<boolean>;
   setHistoryNotes: (notes: IphoneNote[]) => void;
   setIsHistoryLoading: (v: boolean) => void;
   setThumbnailUrls: (map: Map<string, string>) => void;
@@ -24,14 +23,13 @@ type UseNoteListOptions = {
 
 /**
  * 責務: step === 'list' のとき Drive → IndexedDB → UI の一方向同期でノート一覧・サムネイル・ロック状態をロードする
- * 入力: UseNoteListOptions（step, accessToken, hasRestoredLockRef, setHistoryNotes, setIsHistoryLoading, setThumbnailUrls, initLockedNoteIds）
+ * 入力: UseNoteListOptions（step, accessToken, setHistoryNotes, setIsHistoryLoading, setThumbnailUrls, initLockedNoteIds）
  * 出力: なし
- * 副作用: Drive API 呼び出し（notes_to_iphone.json）、IndexedDB 読み書き（loadAllDrafts/saveDraft）、ServiceWorker 通知表示・取得、URL.createObjectURL
+ * 副作用: Drive API 呼び出し（notes_to_iphone.json）、IndexedDB 読み書き（loadAllDrafts/saveDraft）、URL.createObjectURL
  */
 export function useNoteList({
   step,
   accessToken,
-  hasRestoredLockRef,
   setHistoryNotes,
   setIsHistoryLoading,
   setThumbnailUrls,
@@ -60,29 +58,6 @@ export function useNoteList({
         };
       } catch { /* ignore */ }
       initLockedNoteIds(lockedIds);
-
-      if (!hasRestoredLockRef.current && lockedIds.length > 0 && Notification.permission === 'granted') {
-        hasRestoredLockRef.current = true;
-        navigator.serviceWorker.ready.then(async (reg) => {
-          for (const d of localDrafts.filter((d) => d.locked)) {
-            const rawTitle = d.title || '';
-            const rawBody = d.body || '';
-            const notifTitle = rawTitle
-              ? rawTitle.replace(/^#\s*/, '')
-              : rawBody.slice(0, 20) || '（無題）';
-            const notifBody = rawTitle
-              ? rawBody.slice(0, 40)
-              : rawBody.slice(20, 60);
-            await reg.showNotification(notifTitle, {
-              body: notifBody,
-              tag: `fusen-${d.id}`,
-              data: { id: d.id, title: notifTitle, body: notifBody },
-              icon: '/icon-192.png',
-              badge: '/icon-192.png',
-            });
-          }
-        }).catch(() => {});
-      }
     });
 
     // Drive から notes_to_iphone.json を取得してマージ（失敗時は IndexedDB のみで続行）
