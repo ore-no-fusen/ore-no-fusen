@@ -11,11 +11,6 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
-describe('useStickyNoteContextMenu — ctx_send_to_iphone', () => {
-  it.todo('ctx_send_to_iphone メニュー項目が enabled: true になっている');
-  it.todo('ctx_send_to_iphone の action が invoke("fusen_send_to_iphone", { path }) を呼ぶ');
-  it.todo('selectedFile が null のとき invoke は呼ばれない');
-});
 
 // Placeholder: vitest が 0 failures で終わるための空テスト
 it('Wave 0 スタブが読み込める', () => {

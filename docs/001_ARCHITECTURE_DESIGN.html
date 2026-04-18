@@ -440,9 +440,8 @@ type FusenNoteItem = {
   id: string;
   title: string;
   body: string;
-  tags: string[];            // PC付箋のタグ（frontmatterから取得）
-  sent_at: string;           // PCが送った日時（ISO 8601）
-  received_at: string | null; // iPhoneが受け取った日時（null = 未受信）
+  tags: string[];   // PC付箋のタグ（frontmatterから取得）
+  sent_at: string;  // PCが送った日時（ISO 8601）
 };
 ```
 
@@ -462,7 +461,7 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 
 | ファイル名 | 何のデータか | いつ作られるか | どこで作られるか | いつ消されるか | 消えた場合の影響 |
 |---|---|---|---|---|---|
-| `notes_to_iphone.json` | PC→iPhone 送信キュー（最新20件） | PC から「iPhoneに送る」を実行したとき | PC アプリ | iPhone viewer でアイテムを削除したとき（アイテム単位） | 次の「iPhoneに送る」実行時に再作成。未受信データは消える |
+| `notes_to_iphone.json` | PC→iPhone 未処理キュー（最新20件） | PC から「iPhoneに送る」を実行したとき | PC アプリ | iPhone が受信してIndexedDBに保存後、ファイルごと削除 | 次の「iPhoneに送る」実行時に再作成。未受信データは消える |
 | `notes_from_iphone.json` | iPhone→PC 未処理キュー | iPhone viewer で「PCに送る」を実行したとき | iPhone viewer | PC が受信処理したアイテムは即削除（未処理分のみ残る） | 次の「PCに送る」実行時に再作成。未受信データは消える |
 | `push_devices.json` | iPhone のプッシュ通知デバイス登録情報 | iPhone viewer で初回セットアップを完了したとき | iPhone viewer | （自動削除なし） | PC からプッシュ通知が届かなくなる。iPhone で再セットアップすれば復元 |
 | `push_keys.json` | VAPID 鍵ペア（プッシュ通知の送信元認証鍵） | PC アプリが Google 連携を設定したとき（初回のみ） | PC アプリ | （自動削除なし） | PC ローカルにも同じ鍵があるため通常は復元される。**鍵が変わることは、ほぼ、実運用上はない**（OS再インストール後にDriveも誤削除した場合のみ）。万一変わった場合は push_devices.json が無効になるため iPhone で再セットアップが必要 |
@@ -477,7 +476,7 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 |------|------|
 | **役割** | PC → iPhone 未処理キュー |
 | **書く** | PC アプリ（「iPhoneに送る」実行時） |
-| **消す** | iPhone（ユーザーが通知/リストから削除したとき、アイテム単位） |
+| **消す** | iPhone（受信してIndexedDBに保存後、ファイルごと削除） |
 | **保持上限** | 最新 20 件（PC が超過分を削除） |
 
 ```json
@@ -488,15 +487,13 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
       "title": "付箋のタイトル（frontmatter の title）",
       "body": "本文（ローカル画像は base64 data URI に変換済み）",
       "tags": ["タグ1", "タグ2"],
-      "sent_at": "2026-04-08T10:00:00Z",
-      "received_at": "2026-04-08T10:01:00Z"
+      "sent_at": "2026-04-08T10:00:00Z"
     }
   ]
 }
 ```
 
 - `sent_at`: PC が送った日時
-- `received_at`: iPhone が通知を受け取った日時（未受信は null）
 - `tags` は PC 付箋の frontmatter から取得
 - ローカル画像は iPhone で表示できるよう base64 data URI に埋め込み済み
 

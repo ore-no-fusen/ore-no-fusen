@@ -460,20 +460,6 @@ export default function ViewerPage() {
               setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
               setStep('write');
 
-              // received_pc の既読を Drive にバックグラウンドで記録（遷移を待たない）
-              if (note.status === 'received_pc' && accessToken) {
-                const token = accessToken;
-                downloadWithAutoRefresh(token, 'notes_to_iphone.json')
-                  .then((raw) => {
-                    const data = raw as { items?: unknown[] };
-                    const items = (Array.isArray(data.items) ? data.items : []) as { id: string; received_at?: string | null }[];
-                    const updated = items.map((n) =>
-                      n.id === note.id ? { ...n, received_at: nowJST() } : n
-                    );
-                    return uploadWithAutoRefresh(token, 'notes_to_iphone.json', { items: updated });
-                  })
-                  .catch(() => {}); // 失敗しても次回同期で整合
-              }
             }}
             onDelete={handleDeleteNote}
             onLockToggle={handleLockToggle}

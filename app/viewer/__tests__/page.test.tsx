@@ -29,31 +29,6 @@ vi.mock('idb', () => ({
   }),
 }));
 
-describe('IPHONE-MGT-01: pendingHydrate バグ修正', () => {
-  it.todo('list の li onClick が setPendingHydrate を呼び、editorRef.current に依存しない');
-  it.todo('pendingHydrate が非 null のとき useEffect が 50ms 後に hydrateEditor を呼ぶ');
-  it.todo('pendingHydrate が null のとき useEffect は何もしない');
-});
-
-describe('IPHONE-MGT-02: 保存フロー（上書き vs 新規）', () => {
-  it.todo('currentDraftId が存在する場合、同じ ID で saveDraft が呼ばれる（上書き）');
-  it.todo('currentDraftId が null の場合、新しい UUID で saveDraft が呼ばれる（新規）');
-});
-
-describe('IPHONE-MGT-03: 一覧 ＋ボタン', () => {
-  it.todo('＋ボタンクリック後、setPendingHydrate({ markdown: "", draftId: null }) が呼ばれる');
-  it.todo('＋ボタンクリック後、write 画面がエディタ空状態で開く（前のノートの内容が残らない）');
-});
-
-describe('IPHONE-MGT-04: 下書き削除', () => {
-  it.todo('削除ボタンクリックで deleteDraft(note.id) が呼ばれる');
-  it.todo('削除後に loadAllDrafts() が呼ばれて historyNotes が更新される');
-  it.todo('削除ボタンクリックで li の onClick（編集遷移）が発火しない（stopPropagation）');
-});
-
-describe('REQ-CB-LINE: チェックボックス行頭挿入', () => {
-  it.todo('行頭挿入: insertCheckboxAtLineStart が editorRef 直下の先頭ノードに - [ ]  を挿入する');
-});
 
 describe('REQ-IMG-HYDRATE: hydrateEditor 画像変換', () => {
   it('blobMap にあるファイル名は blob URL の img になる', () => {
@@ -109,9 +84,6 @@ describe('REQ-CB-SERIALIZE: serializeEditor チェックボックス逆変換', 
   });
 });
 
-describe('REQ-CB-TOGGLE: チェックボックストグル', () => {
-  it.todo('iOS Safari での click イベントで checked 状態が変わる（実機確認）');
-});
 
 describe('REQ-TAG-PERSIST: タグ永続化', () => {
   beforeEach(() => localStorage.clear());
@@ -135,11 +107,6 @@ describe('REQ-TAG-PERSIST: タグ永続化', () => {
   });
 });
 
-describe('REQ-TAG-SUGGEST: タグサジェスト', () => {
-  it.todo('tagInput が空のとき全 knownTags（最大10件）が候補として表示される');
-  it.todo('tagInput に入力すると knownTags の includes フィルタリング結果が表示される');
-  it.todo('候補タグをタップすると writeTags に追加され tagInput がクリアされる');
-});
 
 describe('REQ-IMG-SERIALIZE: hydrateEditor → serializeEditor ラウンドトリップ', () => {
   it('blobMap 画像: hydrate → serialize でファイル名が保持される', () => {

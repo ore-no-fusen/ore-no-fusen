@@ -144,9 +144,9 @@ export function useNoteList({
           }
         }
 
-        // IndexedDB への保存完了 → Drive から削除（受信済みデータは不要）
+        // IndexedDB への保存完了 → Drive から削除
         if (driveItems.length > 0 && accessToken) {
-          uploadWithAutoRefresh(accessToken, 'notes_to_iphone.json', { items: [] }).catch(() => {});
+          deleteFileFromDrive(accessToken, 'notes_to_iphone.json').catch(() => {});
         }
 
         const drafts = Array.from(merged.values());

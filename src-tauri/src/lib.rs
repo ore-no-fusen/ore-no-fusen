@@ -1654,13 +1654,18 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         .map(|(_, item)| item)
         .collect();
 
-    let updated_data = serde_json::json!({ "items": updated_items });
     let client2 = client.clone();
     let token2  = token.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = gdrive::upload_json(
-            &client2, &token2, "notes_from_iphone.json", &updated_data,
-        ).await;
+        if updated_items.is_empty() {
+            // 未処理アイテムが残っていなければファイルごと削除
+            let _ = gdrive::delete_file_by_name(&client2, &token2, "notes_from_iphone.json").await;
+        } else {
+            let updated_data = serde_json::json!({ "items": updated_items });
+            let _ = gdrive::upload_json(
+                &client2, &token2, "notes_from_iphone.json", &updated_data,
+            ).await;
+        }
         for name in all_image_names {
             let _ = gdrive::delete_file_by_name(&client2, &token2, &name).await;
         }

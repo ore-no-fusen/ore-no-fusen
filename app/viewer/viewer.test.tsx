@@ -35,7 +35,6 @@ type FusenNoteItem = {
   title: string;
   body: string;
   sent_at: string;
-  received_at: string | null;
 };
 
 // matchMedia モック（jsdom は matchMedia を持たない）
@@ -64,16 +63,7 @@ beforeEach(() => {
   HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/jpeg;base64,mock');
 });
 
-describe('ViewerPage — 非standalone 時はバナーをレンダリングする', () => {
-  // display-mode: standalone の検出テスト
-  it.todo('matchMedia display-mode: standalone が false の場合、ホーム画面追加バナーが表示される');
-  it.todo('matchMedia display-mode: standalone が true の場合、バナーは表示されない');
-  it.todo('standalone + ?code= パラメータなし の場合、Googleでログインボタンが表示される');
-});
 
-describe('ServiceWorker push handler', () => {
-  it.todo('showNotification が push イベントで呼ばれる（worker.test.js で検証）');
-});
 
 // Placeholder: vitest が 0 failures で終わるための空テスト
 it('Wave 0 スタブが読み込める', () => {
@@ -122,16 +112,7 @@ describe('SimpleNoteBody', () => {
 // Wave 1〜3 の実装後に GREEN になること
 // ============================================================
 
-describe('SEND-01: PCに送る', () => {
-  it.todo('「PCに送る」を押すと uploadToDrive が notes_from_iphone.json に正しいペイロードで呼ばれる');
-  it.todo('送信成功後に body/title がクリアされる');
-  it.todo('送信中はボタンが「送信中...」になり disabled になる');
-});
 
-describe('SEND-02: iPhoneに置いておく', () => {
-  it.todo('「iPhoneに置いておく」を押すと uploadToDrive が fusen_iphone_notes.json に status:"draft" で呼ばれる');
-  it.todo('下書き保存後に list ステップに遷移する');
-});
 
 describe('SEND-03: 画像添付', () => {
   it('insertAtCursor がカーソル位置に文字列を挿入して新しい value を返す', () => {
@@ -303,10 +284,10 @@ describe('P11-02: IphoneNote.status received_pc マッピング', () => {
 });
 
 describe('P11-03: notes_to_iphone.json 配列スキーマ互換', () => {
-  // downloadFusenNoteItems のロジックをインライン検証
+  // Drive設計原則: Driveにあるものは全て未処理。received_at フィルタは不要
   function parseFusenNoteItems(data: unknown): FusenNoteItem[] {
     if (Array.isArray((data as { items?: unknown[] })?.items)) {
-      return ((data as { items: FusenNoteItem[] }).items).filter((item) => item.received_at == null);
+      return (data as { items: FusenNoteItem[] }).items;
     }
     // 旧スキーマ（単体オブジェクト）互換
     const d = data as { title?: string; body?: string; sent_at?: string };
@@ -316,21 +297,20 @@ describe('P11-03: notes_to_iphone.json 配列スキーマ互換', () => {
         title: d.title ?? '',
         body: d.body ?? '',
         sent_at: d.sent_at ?? '',
-        received_at: null,
       }];
     }
     return [];
   }
 
-  it('items 配列スキーマで received_at が null の件のみフィルタして返す', () => {
+  it('items 配列スキーマで全件返す', () => {
     const data = {
       items: [
-        { id: '1', title: 'A', body: 'B', sent_at: '', received_at: null },
-        { id: '2', title: 'C', body: 'D', sent_at: '', received_at: '2026-01-01T00:00:00Z' },
+        { id: '1', title: 'A', body: 'B', sent_at: '' },
+        { id: '2', title: 'C', body: 'D', sent_at: '' },
       ],
     };
     const result = parseFusenNoteItems(data);
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
     expect(result[0].id).toBe('1');
   });
 
@@ -339,7 +319,6 @@ describe('P11-03: notes_to_iphone.json 配列スキーマ互換', () => {
     const result = parseFusenNoteItems(data);
     expect(result).toHaveLength(1);
     expect(result[0].title).toBe('旧タイトル');
-    expect(result[0].received_at).toBeNull();
   });
 
   it('items が空配列の場合は空配列を返す', () => {
@@ -349,7 +328,3 @@ describe('P11-03: notes_to_iphone.json 配列スキーマ互換', () => {
   });
 });
 
-describe('P11-04: worker 通知タグ fusen-<id>', () => {
-  it.todo('push イベントで data.id が存在する場合 tag が fusen-<id> になる');
-  it.todo('push イベントで data.id が undefined の場合 tag が fusen-unknown になる');
-});
