@@ -857,6 +857,17 @@ fn show_context_menu(
 
 
 
+// 付箋ウィンドウ（main以外）がフォーカスされているか確認
+#[tauri::command]
+async fn fusen_is_sticky_note_focused(app: tauri::AppHandle) -> bool {
+    for (label, window) in app.webview_windows() {
+        if label != "main" && window.is_focused().unwrap_or(false) {
+            return true;
+        }
+    }
+    false
+}
+
 // [NEW] ウィンドウをAlt+Tab/タスクビューから除外する（WS_EX_TOOLWINDOW適用）
 #[tauri::command]
 async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
@@ -1732,6 +1743,7 @@ pub fn run() {
             fusen_search_notes, // [NEW] 全文検索
             clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
             clipboard::fusen_save_annotated_image,
+            fusen_is_sticky_note_focused,
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             fusen_create_pool_window, // [NEW] プールウィンドウ生成

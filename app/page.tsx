@@ -359,7 +359,7 @@ function OrchestratorContent() {
   }, []);
 
   // ウィンドウ生成
-  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean }, isNew?: boolean) => {
+  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
 
     // [AGDP] ターミナルとコンソールの両方にログ出力
@@ -441,16 +441,24 @@ function OrchestratorContent() {
             }
           });
           win.once('tauri://created', async () => {
-            console.log(`[openNoteWindow] Window created: ${label}. Applying tool window style.`);
-            await win.setFocus();
-            // [NEW] Alt+Tab/タスクビューから除外するためWS_EX_TOOLWINDOWを適用
-            try {
-              await invoke('fusen_make_tool_window');
-            } catch (e) {
-              console.warn('[openNoteWindow] Failed to apply tool window style:', e);
+            console.log(`[openNoteWindow] Window created: ${label}. fromIphone=${fromIphone}`);
+            if (fromIphone) {
+              // iPhone受信ウィンドウ: Alt+Tab窓として登録（フォーカスはすでに渡し済み）
+              try {
+                await invoke('fusen_set_as_alt_tab_window', { label });
+              } catch (e) {
+                console.warn('[openNoteWindow] Failed to set as alt-tab window:', e);
+              }
+            } else {
+              await win.setFocus();
+              try {
+                await invoke('fusen_make_tool_window');
+              } catch (e) {
+                console.warn('[openNoteWindow] Failed to apply tool window style:', e);
+              }
             }
           });
-          await win.setFocus();
+          if (!fromIphone) await win.setFocus();
 
         } finally { unmarkWindowInProgress(label); }
       } catch (e) { console.error(`Failed to open window:`, e); unmarkWindowInProgress(label); }
@@ -1020,7 +1028,8 @@ function OrchestratorContent() {
           await openNoteWindow(
             newNote.meta.path,
             { x: sw - 430, y: 50, width: 400, height: 350 },
-            false
+            false,
+            true  // fromIphone: Alt+Tab窓として登録する
           );
         } catch (e) {
           console.error('[iphone] 付箋作成失敗:', e);
