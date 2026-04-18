@@ -25,11 +25,6 @@ import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
 import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from './editor-helpers';
 
 // ---------------------------------------------------------------------------
-// PWAバージョン（SW_VERSION と必ず同じ番号にする）
-// ---------------------------------------------------------------------------
-const PAGE_VERSION = '2.9.18';
-
-// ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
 // ---------------------------------------------------------------------------
 
@@ -192,7 +187,7 @@ export default function ViewerPage() {
       req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
       req.onsuccess = () => {
         const tx = req.result.transaction('logs', 'readwrite');
-        tx.objectStore('logs').add({ t, msg: `[page] 起動 v${PAGE_VERSION}` });
+        tx.objectStore('logs').add({ t, msg: `[page] 起動` });
       };
     } catch { /* 無視 */ }
   }, []);
@@ -327,7 +322,7 @@ export default function ViewerPage() {
           </div>
         </div>
         <div className="text-center text-gray-300 text-[10px] mt-4">
-          app {PAGE_VERSION}
+          v{swVersion ?? '---'}
         </div>
       </div>
     );
@@ -338,7 +333,7 @@ export default function ViewerPage() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900">
       {/* バージョン固定表示 */}
       <div className="fixed bottom-1 right-2 text-gray-300 text-[10px] z-40 pointer-events-none">
-        app {PAGE_VERSION} / sw {swVersion ?? '---'}
+        v{swVersion ?? '---'}
       </div>
       {/* バックグラウンド送信トースト */}
       {isSendingInBackground && (
