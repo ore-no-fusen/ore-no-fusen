@@ -144,8 +144,8 @@ export function useNoteList({
           }
         }
 
-        // IndexedDB への保存完了 → Drive から削除
-        if (driveItems.length > 0 && accessToken) {
+        // フォールバックで実際に補完した場合のみ Drive から削除
+        if (toSave.length > 0 && accessToken) {
           deleteFileFromDrive(accessToken, 'notes_to_iphone.json').catch(() => {});
         }
 
@@ -174,5 +174,5 @@ export function useNoteList({
       .finally(() => setIsHistoryLoading(false));
 
     return () => { thumbUrls.forEach((u) => URL.revokeObjectURL(u)); };
-  }, [step]);
+  }, [step, accessToken]);
 }

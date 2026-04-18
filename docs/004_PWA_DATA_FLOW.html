@@ -392,6 +392,7 @@ code {
         <li>タイミング①：バックグラウンドに移行したとき</li>
         <li>タイミング②：「一覧」ボタンを押したとき</li>
         <li>タイミング③：3秒自動保存タイマー</li>
+        <li><strong>PCに送る：</strong>Drive に書き込み → IndexedDB 削除</li>
       </ul>
     </div>
 
@@ -402,55 +403,70 @@ code {
         <li><strong>削除：</strong>IndexedDB <code>deleteDraft(id)</code></li>
         <li><strong>🔔 ON：</strong>Service Worker で通知を表示</li>
         <li><strong>🔔 OFF：</strong>Service Worker で通知を閉じる</li>
-        <li><strong>PCに送る：</strong>Drive に書き込み → IndexedDB 削除</li>
+        <li><strong>フォールバック（Push 未着時のみ）：</strong>Drive の <code>notes_to_iphone.json</code> を読んで IndexedDB に補完 → Drive を削除</li>
       </ul>
     </div>
 
   </div>
 
   <!-- visual flow -->
-  <div style="margin-top:28px;display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap">
+  <div style="margin-top:28px;display:flex;flex-direction:column;align-items:center;gap:16px">
 
-    <div class="screen" style="min-width:90px">
-      <span class="icon">✏️</span>
-      <span class="name">write</span>
-    </div>
+    <!-- 上段：write ↔ IDB ↔ list -->
+    <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;justify-content:center">
 
-    <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
-      <div style="font-size:11px;color:#64748b;margin-bottom:2px">読む</div>
-      <div style="width:60px;height:2px;background:#eab308;position:relative">
-        <div style="position:absolute;left:-8px;top:-4px;border:5px solid transparent;border-right:8px solid #eab308"></div>
+      <div class="screen" style="min-width:90px">
+        <span class="icon">✏️</span>
+        <span class="name">write</span>
       </div>
-      <div style="font-size:11px;color:#64748b;margin-top:2px">書く→</div>
-    </div>
 
-    <div class="store store-idb" style="min-width:100px;padding:10px 14px">
-      <span class="icon">🗄️</span>
-      <span class="name">IndexedDB</span>
-    </div>
-
-    <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
-      <div style="font-size:11px;color:#64748b;margin-bottom:2px">読む→</div>
-      <div style="width:60px;height:2px;background:#eab308;position:relative">
-        <div style="position:absolute;right:-8px;top:-4px;border:5px solid transparent;border-left:8px solid #eab308"></div>
+      <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
+        <div style="font-size:11px;color:#64748b;margin-bottom:2px">読む</div>
+        <div style="width:60px;height:2px;background:#eab308;position:relative">
+          <div style="position:absolute;left:-8px;top:-4px;border:5px solid transparent;border-right:8px solid #eab308"></div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">書く→</div>
       </div>
-    </div>
 
-    <div class="screen" style="min-width:90px">
-      <span class="icon">📋</span>
-      <span class="name">list</span>
-    </div>
-
-    <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
-      <div style="font-size:11px;color:#22c55e;margin-bottom:2px">PCに送る→</div>
-      <div style="width:60px;height:2px;background:#22c55e;position:relative">
-        <div style="position:absolute;right:-8px;top:-4px;border:5px solid transparent;border-left:8px solid #22c55e"></div>
+      <div class="store store-idb" style="min-width:100px;padding:10px 14px">
+        <span class="icon">🗄️</span>
+        <span class="name">IndexedDB</span>
       </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
+        <div style="font-size:11px;color:#64748b;margin-bottom:2px">読む→</div>
+        <div style="width:60px;height:2px;background:#eab308;position:relative">
+          <div style="position:absolute;right:-8px;top:-4px;border:5px solid transparent;border-left:8px solid #eab308"></div>
+        </div>
+      </div>
+
+      <div class="screen" style="min-width:90px">
+        <span class="icon">📋</span>
+        <span class="name">list</span>
+      </div>
+
     </div>
 
-    <div class="store store-drive" style="min-width:100px;padding:10px 14px">
-      <span class="icon">☁️</span>
-      <span class="name">Drive</span>
+    <!-- 下段：write → Drive -->
+    <div style="display:flex;align-items:center;gap:0;justify-content:center">
+
+      <div class="screen" style="min-width:90px;opacity:0.3">
+        <span class="icon">✏️</span>
+        <span class="name">write</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;padding:0 16px">
+        <div style="font-size:11px;color:#22c55e;margin-bottom:2px">PCに送る→</div>
+        <div style="width:60px;height:2px;background:#22c55e;position:relative">
+          <div style="position:absolute;right:-8px;top:-4px;border:5px solid transparent;border-left:8px solid #22c55e"></div>
+        </div>
+      </div>
+
+      <div class="store store-drive" style="min-width:100px;padding:10px 14px">
+        <span class="icon">☁️</span>
+        <span class="name">Drive</span>
+      </div>
+
     </div>
 
   </div>
@@ -458,15 +474,14 @@ code {
 
 
 <!-- =====================================================
-     SECTION 4: 通知タップのフロー（バグ詳細）
+     SECTION 4: 通知タップのフロー
      ===================================================== -->
 <div class="sec-title">
-  <span>🐛</span> 4. ロック通知タップ → メモ表示のフロー
+  <span>🔔</span> 4. ロック通知タップ → メモ表示のフロー
 </div>
 
 <div class="diagram">
 
-  <!-- step-by-step -->
   <div class="notif-flow">
 
     <div class="step-box step-screen">
@@ -494,78 +509,20 @@ code {
     <div class="step-box step-sw">
       <span class="icon">⚙️</span>
       <span class="title">Service Worker</span>
-      <span class="detail">notificationclick<br>data.id を読む<br>/viewer?note=<b>id</b> へ移動</span>
+      <span class="detail">notificationclick<br>data.id を読む<br>postMessage OPEN_NOTE</span>
     </div>
 
     <div class="grid-arrow">
       <span>→</span>
-      <span class="ga-label">URLで起動</span>
+      <span class="ga-label">起動</span>
     </div>
 
     <div class="step-box step-screen">
       <span class="icon">✏️</span>
       <span class="title">write 画面</span>
-      <span class="detail">メモを表示したい！<br>どこを探す？</span>
+      <span class="detail">IndexedDB から id で検索<br>→ メモを表示</span>
     </div>
 
-  </div>
-
-  <!-- BUG -->
-  <div class="panel panel-bug">
-    <h3>🐛 修正前のバグ — なぜ新規画面が開いたか</h3>
-
-    <div class="lookup-row">
-      <div style="font-size:13px;font-weight:600;color:#c2410c">?note=id を受け取ったとき、探す場所が…</div>
-    </div>
-
-    <div class="lookup-row" style="margin-top:16px">
-      <div class="lookup-box lookup-drive">
-        <span class="licon">☁️</span>
-        <span class="lname">① Drive だけを検索</span>
-        <span class="lsub">PC→iPhone 送信メモ<br>notes_to_iphone.json</span>
-      </div>
-      <div class="fat-arrow fat-arrow-red">→</div>
-      <div class="lookup-box lookup-empty">
-        <span class="licon">❌</span>
-        <span class="lname">見つからない</span>
-        <span class="lsub">ロック通知のメモは<br>ローカル下書きなので<br>Driveに存在しない</span>
-      </div>
-      <div class="fat-arrow fat-arrow-red">→</div>
-      <div class="lookup-box" style="background:#fef2f2;border:2px solid #fca5a5;color:#7f1d1d">
-        <span class="licon">📄</span>
-        <span class="lname">空の新規画面</span>
-        <span class="lsub">setPendingHydrate が<br>呼ばれない</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- FIX -->
-  <div class="panel panel-fix">
-    <h3>✅ 修正後 — Drive になければ IndexedDB も探す</h3>
-
-    <div class="lookup-row" style="margin-top:8px">
-      <div class="lookup-box lookup-drive">
-        <span class="licon">☁️</span>
-        <span class="lname">① Drive を検索</span>
-        <span class="lsub">PC送信メモなら<br>ここで見つかる</span>
-      </div>
-      <div class="fat-arrow" style="color:#94a3b8">→</div>
-      <div style="font-size:12px;color:#64748b;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 12px;text-align:center">
-        見つからない場合<br>↓
-      </div>
-      <div class="fat-arrow" style="color:#94a3b8">→</div>
-      <div class="lookup-box lookup-idb">
-        <span class="licon">🗄️</span>
-        <span class="lname">② IndexedDB を検索</span>
-        <span class="lsub">ローカル下書きは<br>ここに保存されている</span>
-      </div>
-      <div class="fat-arrow fat-arrow-green">→</div>
-      <div class="lookup-box lookup-ok">
-        <span class="licon">📝</span>
-        <span class="lname">正しいメモを表示</span>
-        <span class="lsub">setPendingHydrate<br>で内容をロード</span>
-      </div>
-    </div>
   </div>
 
 </div>
@@ -635,7 +592,70 @@ code {
   </div>
 </div>
 
-<p style="margin-top:32px;font-size:11px;color:#94a3b8;text-align:right">生成: Claude Sonnet 4.6 / 2026-04-10</p>
+<!-- =====================================================
+     SECTION 6: PC→iPhone 書き込みフロー
+     ===================================================== -->
+<div class="sec-title">
+  <span>📤</span> 6. PC → iPhone 書き込みフロー（3ケース）
+</div>
+
+<div class="diagram">
+  <p style="font-size:13px;color:#475569;margin-bottom:24px">
+    PC アプリは必ず ① Drive に <code>notes_to_iphone.json</code> を書いてから ② APNs Push を送る。
+    Drive はフォールバック用キュー（Push が届かなかった場合の補完）。処理済みは即削除する。
+  </p>
+
+  <!-- ケース1 -->
+  <div style="margin-bottom:40px">
+    <div style="font-weight:700;font-size:14px;color:#1e40af;margin-bottom:16px">ケース1：1件・画像なし（正常）</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px">
+      <div class="step-box step-screen" style="min-width:90px"><span class="icon">🖥</span><span class="title">PC アプリ</span></div>
+      <div class="grid-arrow"><span>→</span><span class="ga-label">①Drive書き込み<br>notes_to_iphone.json<br>に {id} を追記</span></div>
+      <div class="step-box step-sw" style="min-width:90px"><span class="icon">☁️</span><span class="title">Drive</span></div>
+      <div class="grid-arrow"><span>→</span><span class="ga-label">②APNs Push<br>{id,title,body_rich}</span></div>
+      <div class="step-box step-sw" style="min-width:90px"><span class="icon">⚙️</span><span class="title">Service Worker</span><span class="detail">IDBに保存<br>↓<br>Drive から<br>id を削除<br>（空→ファイル削除）</span></div>
+    </div>
+  </div>
+
+  <!-- ケース2 -->
+  <div style="margin-bottom:40px">
+    <div style="font-weight:700;font-size:14px;color:#1e40af;margin-bottom:16px">ケース2：1件・画像あり（正常）</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px">
+      <div class="step-box step-screen" style="min-width:90px"><span class="icon">🖥</span><span class="title">PC アプリ</span></div>
+      <div class="grid-arrow"><span>→</span><span class="ga-label">①Drive書き込み<br>fusen_img_*.jpg<br>notes_to_iphone.json</span></div>
+      <div class="step-box step-sw" style="min-width:90px"><span class="icon">☁️</span><span class="title">Drive</span></div>
+      <div class="grid-arrow"><span>→</span><span class="ga-label">②APNs Push<br>{id,title,body_rich}</span></div>
+      <div class="step-box step-sw" style="min-width:90px"><span class="icon">⚙️</span><span class="title">Service Worker</span><span class="detail">画像をDLして<br>IDBに保存<br>↓<br>fusen_img_*削除<br>id を削除</span></div>
+    </div>
+  </div>
+
+  <!-- ケース3 -->
+  <div>
+    <div style="font-weight:700;font-size:14px;color:#c2410c;margin-bottom:16px">ケース3：2件・電源オフ中（フォールバック）</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;font-size:12px">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="step-box step-screen" style="min-width:90px"><span class="icon">🖥</span><span class="title">PC アプリ</span><span class="detail">1件目送信<br>2件目送信</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;justify-content:center;padding:0 8px">
+        <div style="font-size:11px;color:#64748b">①Drive: [{id:1}]→[{id:1},{id:2}]</div>
+        <div style="font-size:11px;color:#64748b">②APNs: 1件目→2件目で上書き</div>
+        <div style="font-size:18px;color:#94a3b8">→</div>
+      </div>
+      <div class="step-box step-sw" style="min-width:90px"><span class="icon">⚙️</span><span class="title">Service Worker</span><span class="detail">2件目のみ受信<br>IDBに{id:2}保存<br>↓<br>Drive: [{id:1}]が残る</span></div>
+      <div style="display:flex;flex-direction:column;gap:4px;justify-content:center;padding:0 8px">
+        <div style="font-size:11px;color:#64748b">list画面を開いたとき</div>
+        <div style="font-size:18px;color:#94a3b8">→</div>
+      </div>
+      <div class="step-box step-screen" style="min-width:90px"><span class="icon">📋</span><span class="title">list 画面</span><span class="detail">Driveから{id:1}読む<br>IDBに補完<br>↓<br>Drive削除</span></div>
+    </div>
+    <div style="margin-top:16px;background:#fff7ed;border:1.5px solid #fb923c;border-radius:10px;padding:12px 16px;font-size:12px;color:#9a3412">
+      <strong>APNs の制限：</strong>電源オフ中に複数件送ると最新1件のみ保持される。
+      取りこぼしたメモは Drive に残るため、list 画面を開いたときに補完する。
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:32px;font-size:11px;color:#94a3b8;text-align:right">生成: Claude Sonnet 4.6 / 2026-04-10、更新: 2026-04-18</p>
 
 </body>
 </html>

@@ -331,7 +331,7 @@ code {
       <div class="step-node sn-sw">
         <span class="sn-icon">⚙️</span>
         <span class="sn-name">Service Worker</span>
-        <span class="sn-desc">①通知を表示<br>②IndexedDBに保存<br><span style="color:#22c55e;font-size:9px">★ 今日追加</span></span>
+        <span class="sn-desc">①通知を表示<br>②IndexedDBに保存<br>③Drive から該当IDを削除</span>
       </div>
 
       <div class="step-arrow">
@@ -346,16 +346,10 @@ code {
       </div>
     </div>
 
-    <div class="note note-yellow">
-      <strong>⚠️ Drive への書き込みがまだ残っている（PC側）</strong><br>
-      PC アプリは今も <code>notes_to_iphone.json</code> を Drive に書いてから APNs Push を送っている。<br>
-      SW が IndexedDB に保存するようになった今、<strong>iPhone 側は Drive を読まなくてもよくなった</strong>（今日の修正）。<br>
-      ただし PC 側が Drive 書き込みを止めていないため、Drive コストはまだゼロではない。
-    </div>
-
-    <div class="note note-blue" style="margin-top:10px">
-      <strong>💡 理想の姿（将来）</strong><br>
-      PC → APNs Push のみ（Drive 書き込みなし）。ただし APNs payload サイズ上限は <strong>4KB</strong>。長いメモは Drive フォールバックが必要。
+    <div class="note note-blue">
+      <strong>💡 フォールバック（Push 通知が届かなかった場合）</strong><br>
+      電源オフ中に複数件送ると APNs は最新 1 件のみ保持する。取りこぼしたメモは
+      <code>notes_to_iphone.json</code> に残るため、list 画面を開いたときに IndexedDB に補完してから Drive を削除する。
     </div>
   </div>
 
@@ -500,97 +494,11 @@ code {
       </div>
     </div>
 
-    <!-- アプリ再起動 -->
-    <div style="font-size:12px;font-weight:700;color:#6b21a8;margin-top:20px;margin-bottom:10px">
-      アプリ再起動したとき
-      <span class="badge badge-pending" style="margin-left:8px">⏳ Phase 14 未実装</span>
-    </div>
-    <div class="step-row">
-      <div class="step-node sn-iphone">
-        <span class="sn-icon">🔁</span>
-        <span class="sn-name">アプリ起動</span>
-        <span class="sn-desc">list useEffect</span>
-      </div>
-
-      <div class="step-arrow"><span>→</span></div>
-
-      <div class="step-node sn-idb">
-        <span class="sn-icon">🗄️</span>
-        <span class="sn-name">IndexedDB</span>
-        <span class="sn-desc">locked=true の<br>メモを全取得</span>
-      </div>
-
-      <div class="step-arrow"><span>→</span></div>
-
-      <div class="step-node sn-pending">
-        <span class="sn-icon">⚙️</span>
-        <span class="sn-name">SW に通知再発火</span>
-        <span class="sn-desc">showNotification()<br>を再度呼ぶ</span>
-      </div>
-
-      <div class="step-arrow"><span>→</span></div>
-
-      <div class="step-node" style="background:#fdf4ff;border:1.5px dashed #d8b4fe;min-width:90px;padding:10px 14px;border-radius:10px;text-align:center;opacity:0.75">
-        <span class="sn-icon">📵</span>
-        <span class="sn-name" style="display:block;font-weight:700;color:#701a75;font-size:11px;margin-bottom:2px">ロック画面復元</span>
-        <span class="sn-desc" style="display:block;font-size:11px;color:#94a3b8">再起動しても<br>通知が残る</span>
-      </div>
-    </div>
 
   </div>
 
 </div>
 
-
-<!-- =====================================================
-     SECTION 4: 残作業まとめ
-     ===================================================== -->
-<div class="sec-title"><span>📋</span> 今の状態と残り作業</div>
-
-<div class="diagram">
-  <div style="display:flex;flex-direction:column;gap:12px">
-
-    <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:16px 20px">
-      <div style="font-weight:800;font-size:13px;color:#14532d;margin-bottom:10px">✅ 完了している機能</div>
-      <div style="font-size:12px;line-height:2;color:#166534">
-        ✔ iPhone でメモを書いて PC に送る（Drive 経由）<br>
-        ✔ PC からメモを iPhone に送る（Drive + APNs Push）<br>
-        ✔ ロック画面に通知として貼り付ける・消す<br>
-        ✔ 複数メモを同時にロック画面表示<br>
-        ✔ アプリを閉じても locked 状態を記憶（IndexedDB）<br>
-        ✔ 通知タップ → IndexedDB からメモ表示（Drive 不使用）<span style="background:#dbeafe;color:#1e40af;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:6px;font-weight:700">今日</span>
-      </div>
-    </div>
-
-    <div style="background:#fefce8;border:2px solid #fde047;border-radius:12px;padding:16px 20px">
-      <div style="font-weight:800;font-size:13px;color:#713f12;margin-bottom:10px">⏳ Phase 14 — 残り3件（小さい）</div>
-      <div style="font-size:12px;line-height:2;color:#78350f">
-        □ EDIT-01/02: エディタ画面にも 🔔 ボタンを追加（一覧と状態を同期）<br>
-        □ RESUME-01: アプリ起動時にロック中メモの通知を自動再表示<br>
-        <span style="color:#92400e;font-size:11px">→ いずれも viewer/page.tsx のみの変更。実機テスト1回で完結できる。</span>
-      </div>
-    </div>
-
-    <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:12px;padding:16px 20px">
-      <div style="font-weight:800;font-size:13px;color:#7f1d1d;margin-bottom:10px">⚠️ Drive が残っている箇所（PC 側）</div>
-      <div style="font-size:12px;line-height:2;color:#7f1d1d">
-        PC アプリが <code>notes_to_iphone.json</code> を Drive に書いているコードはまだある。<br>
-        iPhone 側は今日の修正で Drive を読まなくなったが、PC 側の書き込みは残ったまま。<br>
-        <span style="color:#991b1b;font-size:11px">→ 消すには PC 側（Rust）の変更が必要。影響大きめなので別途判断が必要。</span>
-      </div>
-    </div>
-
-    <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:12px;padding:16px 20px">
-      <div style="font-weight:800;font-size:13px;color:#334155;margin-bottom:10px">💬 今後の方向性（未決定）</div>
-      <div style="font-size:12px;line-height:2;color:#475569">
-        □ Workbox 導入 → オフラインでもアプリシェルが開く<br>
-        □ PC→iPhone の Drive 書き込みを削除 → APNs のみに（4KB 制限あり）<br>
-        □ Phase 12（チェックボックスTODO一覧）は要否未定<br>
-      </div>
-    </div>
-
-  </div>
-</div>
 
 
 <p style="margin-top:40px;font-size:11px;color:#94a3b8;text-align:right">生成: Claude Sonnet 4.6 / 2026-04-10</p>

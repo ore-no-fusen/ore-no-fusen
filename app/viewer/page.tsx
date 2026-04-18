@@ -18,7 +18,6 @@ import {
   downloadFromDrive,
   downloadWithAutoRefresh,
   refreshAccessToken,
-  uploadWithAutoRefresh,
   uploadImageWithAutoRefresh,
 } from './lib/drive';
 import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
@@ -253,18 +252,6 @@ export default function ViewerPage() {
     new Audio('/sounds/delete.wav').play().catch(() => {});
     setIsLoading(true);
     try {
-      // received_pc の場合: Drive再取得 → 対象削除 → Upload → IndexedDB削除（順序厳守）
-      if (note.status === 'received_pc' && accessToken) {
-        try {
-          const raw = await downloadWithAutoRefresh(accessToken, 'notes_to_iphone.json') as { items?: unknown[] };
-          const items = (Array.isArray(raw.items) ? raw.items : []) as { id: string }[];
-          const updated = items.filter((n) => n.id !== note.id);
-          await uploadWithAutoRefresh(accessToken, 'notes_to_iphone.json', { items: updated });
-        } catch {
-          // Drive 更新失敗 → IndexedDB 削除は続行
-        }
-      }
-
       await deleteDraft(note.id);
 
       if (note.status === 'sent') {

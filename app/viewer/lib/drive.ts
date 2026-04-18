@@ -324,7 +324,7 @@ export async function downloadBinaryWithAutoRefresh(token: string, fileName: str
   }
 }
 
-export async function deleteFileFromDrive(accessToken: string, fileName: string): Promise<void> {
+async function deleteFileFromDriveInternal(accessToken: string, fileName: string): Promise<void> {
   const folderId = await getAppFolderId(accessToken);
   const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
   const searchRes = await fetch(
@@ -338,4 +338,14 @@ export async function deleteFileFromDrive(accessToken: string, fileName: string)
     `https://www.googleapis.com/drive/v3/files/${fileId}`,
     { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } }
   );
+}
+
+export async function deleteFileFromDrive(accessToken: string, fileName: string): Promise<void> {
+  try {
+    await deleteFileFromDriveInternal(accessToken, fileName);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) return;
+    await deleteFileFromDriveInternal(newToken, fileName);
+  }
 }

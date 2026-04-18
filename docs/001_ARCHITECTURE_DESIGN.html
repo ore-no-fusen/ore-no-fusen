@@ -62,7 +62,7 @@
 | 1.1 | 2026-04-08 | セクション6追加。iPhone連携フロー（PC→iPhone v2.0 / iPhone→PC v3.0 / viewer画面遷移）を iphone_01〜04 HTML設計書よりマージ |
 | 1.2 | 2026-04-08 | 6.2・6.3 を実装に合わせて更新。「iPhoneに置いておく」→「新規付箋」ボタン名変更。バッジ色を保存済み（グレー）・PC受信（薄藍）・送信済み（薄青）に変更 |
 | 1.3 | 2026-04-10 | 1.1「画面とソースファイルの対応」追加（PC マルチウィンドウ構造・iPhone PWA 構成）。4.1「iPhone側データ構造」追加（DraftRecord / IphoneNote / FusenNoteItem）。notes_to_iphone.json に tags フィールド追記 |
-| 1.4 | 2026-04-12 | バグ修正: PCから送った付箋がiPhone一覧に表示されない問題を修正。`useNoteList` に Drive同期を追加（`notes_to_iphone.json` → IndexedDB → UI の一方向フローを確立）。`drive.ts` に `downloadWithAutoRefresh` 追加。削除・既読時の Drive更新順序を修正（再取得→更新→Upload→IndexedDB削除） |
+| 1.4 | 2026-04-12 | `notes_to_iphone.json` → IndexedDB → UI の一方向フローを確立。`drive.ts` に `downloadWithAutoRefresh` 追加 |
 
 ---
 

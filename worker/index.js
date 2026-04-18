@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.25';
+const SW_VERSION = '2.9.26';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -61,6 +61,7 @@ self.addEventListener('push', (event) => {
       return saveToIndexedDB(id, title, bodyRich, images).then(() => {
         swLog('IndexedDB保存完了');
         deleteImagesFromDrive(token, images);
+        removeIdFromNotesToIphone(token, id);
       });
     }).catch((e) => {
       swLog(`画像ダウンロード失敗: ${e}`);
@@ -181,6 +182,42 @@ function saveToIndexedDB(id, title, body, images) {
       req.onerror = () => resolve();
     });
   });
+}
+
+/** notes_to_iphone.json から指定IDを除いて更新する（fire-and-forget）
+ *  配列が空になったらファイルごと削除する */
+function removeIdFromNotesToIphone(token, id) {
+  getAppFolderId(token).then((folderId) => {
+    const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+    return fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='notes_to_iphone.json'${folderQuery}+and+trashed=false`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).then((r) => r.json()).then((d) => {
+      const fileId = d.files?.[0]?.id;
+      if (!fileId) return;
+      return fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then((r) => r.json()).then((json) => {
+        const items = Array.isArray(json.items) ? json.items : [];
+        const updated = items.filter((item) => item.id !== id);
+        if (updated.length === items.length) return;
+        if (updated.length === 0) {
+          return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`,
+            { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+          );
+        }
+        return fetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+          {
+            method: 'PATCH',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: updated }),
+          }
+        );
+      });
+    });
+  }).catch((e) => swLog(`notes_to_iphone削除失敗: ${e}`));
 }
 
 /** IndexedDB 保存済みの fusen_img_* を Drive から削除する（fire-and-forget） */
