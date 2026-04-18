@@ -583,11 +583,11 @@ sequenceDiagram
 
     U->>Safari: ①URLを入力してアクセス
     Safari->>PWA: ②ページ読み込み
-    PWA-->>U: ③「ホーム画面に追加」バナー表示
+    PWA-->>U: ③step:banner（ホーム画面追加手順を案内）
     U->>U: ④Safari共有→ホーム画面に追加
-    U->>PWA: ⑤ホーム画面アイコンからPWA起動
+    U->>PWA: ⑤ホーム画面アイコンからPWA起動（standalone=true）
 
-    PWA->>SW: ⑥register('/sw.js')
+    PWA->>SW: ⑥register('/sw.js')（skipWaiting済み：次回起動で即最新版に切替）
     SW-->>PWA: ⑦ready (swReady=true)
     PWA-->>U: ⑧「Googleでログイン」ボタン表示
 
@@ -682,7 +682,7 @@ sequenceDiagram
 
     note over U,P: Phase 6 — iPhone側
 
-    U->>V: 「書く」タップ (step: ready → write)
+    U->>V: 「書く」タップ (step: list → write)
     U->>V: テキスト / 画像 / Mermaid を入力
     U->>V: 「PCに送る」ボタン
     V->>D: fusen_from_iphone.json {id, body, sent_at}
@@ -717,7 +717,7 @@ sequenceDiagram
     participant D as Google Drive
 
     note over U,D: SEND-01 テキスト送信
-    U->>V: 「書く」タップ (step: ready → write)
+    U->>V: 「書く」タップ (step: list → write)
     U->>V: テキスト入力
     U->>V: 「PCに送る」ボタン
     V->>V: viewer_expires_at 確認（期限切れなら /api/auth/refresh で自動更新）

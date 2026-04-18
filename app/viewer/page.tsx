@@ -58,6 +58,7 @@ export default function ViewerPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [swReady, setSwReady] = useState(false);
+  const [swVersion, setSwVersion] = useState<string | null>(null);
   const editorRef = React.useRef<HTMLDivElement>(null);
   const [imageBlobs, setImageBlobs] = useState<Map<string, Blob>>(new Map());
   const [writeTags, setWriteTags] = useState<string[]>([]);
@@ -78,6 +79,16 @@ export default function ViewerPage() {
   const writeTagsRef = React.useRef<string[]>([]);
 
   useEffect(() => { setIsMounted(true); }, []);
+
+  // SWバージョン取得
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'SW_VERSION') setSwVersion(e.data.version);
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    navigator.serviceWorker.controller?.postMessage({ type: 'GET_VERSION' });
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, []);
 
   // アプリ初期化（SW登録・OAuth・ステップ遷移）
   useAppInit({
@@ -295,7 +306,7 @@ export default function ViewerPage() {
   // 非standalone → ホーム画面追加バナー
   if (isMounted && !isStandalone) {
     return (
-      <div className="min-h-screen bg-[#F2F2F7] px-4 py-8 overflow-y-auto max-w-sm mx-auto">
+      <div className="min-h-screen bg-[#F2F2F7] px-4 py-8 overflow-y-auto max-w-sm mx-auto relative">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">ホーム画面に追加してください</h1>
         <p className="text-gray-500 text-sm mb-6">以下の手順でiPhoneのホーム画面に追加すると、アプリとして使えます。</p>
 
@@ -315,6 +326,9 @@ export default function ViewerPage() {
             <img src="/banner-step3.png" alt="追加をタップ" className="w-full rounded-xl" />
           </div>
         </div>
+        <div className="text-center text-gray-300 text-[10px] mt-4">
+          app {PAGE_VERSION}
+        </div>
       </div>
     );
   }
@@ -322,6 +336,10 @@ export default function ViewerPage() {
   // standalone → ステップUI
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900">
+      {/* バージョン固定表示 */}
+      <div className="fixed bottom-1 right-2 text-gray-300 text-[10px] z-40 pointer-events-none">
+        app {PAGE_VERSION} / sw {swVersion ?? '---'}
+      </div>
       {/* バックグラウンド送信トースト */}
       {isSendingInBackground && (
         <div className="fixed top-4 right-4 bg-blue-500 text-white text-sm px-3 py-2 rounded shadow z-50">
@@ -383,16 +401,6 @@ export default function ViewerPage() {
           />
         )}
 
-        {step === 'ready' && (
-          <div className="text-center">
-            <p className="text-gray-700">
-              PCから付箋が送られたらここに表示されます
-            </p>
-            {errorMessage && (
-              <p className="text-red-600 text-sm mt-2">{errorMessage}</p>
-            )}
-          </div>
-        )}
 
         {step === 'write' && (
           <WriteStep
@@ -494,6 +502,7 @@ export default function ViewerPage() {
 
 function DebugLogView() {
   const [logs, setLogs] = React.useState<{ t: string; msg: string }[]>([]);
+  const [swVersion, setSwVersion] = React.useState<string | null>(null);
   useEffect(() => {
     const req = indexedDB.open('fusen-logs', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
@@ -502,6 +511,12 @@ function DebugLogView() {
       const all = tx.objectStore('logs').getAll();
       all.onsuccess = () => setLogs((all.result as { t: string; msg: string }[]).reverse());
     };
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'SW_VERSION') setSwVersion(e.data.version);
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    navigator.serviceWorker.controller?.postMessage({ type: 'GET_VERSION' });
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
   }, []);
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 text-green-400 text-xs font-mono p-4 overflow-y-auto z-50">
@@ -509,6 +524,7 @@ function DebugLogView() {
         <div className="flex items-center gap-3">
           <button className="text-blue-400" onClick={() => window.history.back()}>← 戻る</button>
           <span className="text-white font-bold">SW Debug Log</span>
+          <span className="text-yellow-400">SW: {swVersion ?? '---'}</span>
         </div>
         <button className="text-red-400" onClick={() => {
           indexedDB.deleteDatabase('fusen-logs');

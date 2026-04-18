@@ -4,8 +4,13 @@
 
 const SW_VERSION = '2.9.18';
 
-self.addEventListener('activate', () => {
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
   swLog(`SW起動 version=${SW_VERSION}`);
+  event.waitUntil(clients.claim());
 });
 
 /** 現在時刻を日本時間（JST, +09:00）の ISO 8601 文字列で返す */
@@ -203,6 +208,9 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'CLOSE_NOTIFICATION') {
     self.registration.getNotifications({ tag: event.data.tag })
       .then((ns) => ns.forEach((n) => n.close()));
+  }
+  if (event.data?.type === 'GET_VERSION') {
+    event.source?.postMessage({ type: 'SW_VERSION', version: SW_VERSION });
   }
 });
 

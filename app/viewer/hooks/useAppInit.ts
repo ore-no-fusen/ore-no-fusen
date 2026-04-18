@@ -23,7 +23,7 @@ import type { PendingHydrate } from '../types';
 // アプリ起動時の初期化処理（SW登録・OAuth コールバック・ステップ遷移）
 // ---------------------------------------------------------------------------
 
-type Step = 'banner' | 'login' | 'push' | 'ready' | 'write' | 'list';
+type Step = 'banner' | 'login' | 'push' | 'write' | 'list';
 
 type UseAppInitOptions = {
   setIsStandalone: (v: boolean) => void;
