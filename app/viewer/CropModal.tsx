@@ -15,6 +15,7 @@ import type { CropModalProps } from './types';
  */
 export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
   const [imgEl, setImgEl] = React.useState<HTMLImageElement | null>(null);
   // クロップ矩形: 画像座標系 (0〜1 の正規化)
   const [crop, setCrop] = React.useState({ x: 0, y: 0, w: 1, h: 1 });
@@ -35,9 +36,13 @@ export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    // canvas サイズ = 表示サイズに合わせる
+    // canvas サイズ = コンテナの実寸に合わせる（機種差・セーフエリア差を吸収）
+    const containerH = containerRef.current?.clientHeight ?? window.innerHeight - 120;
     const maxW = Math.min(window.innerWidth - 32, 400);
-    const scale = maxW / imgEl.naturalWidth;
+    const maxH = containerH - 32; // p-4 の上下パディング分
+    const scaleW = maxW / imgEl.naturalWidth;
+    const scaleH = maxH / imgEl.naturalHeight;
+    const scale = Math.min(scaleW, scaleH);
     canvas.width = imgEl.naturalWidth * scale;
     canvas.height = imgEl.naturalHeight * scale;
     // 画像描画
@@ -54,10 +59,10 @@ export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
     ctx.strokeStyle = '#3b82f6';
     ctx.lineWidth = 2;
     ctx.strokeRect(rx, ry, rw, rh);
-    // 4隅ハンドル（下2つは操作しやすいよう hs*5 分上に移動）
+    // 4隅ハンドル
     const hs = 12;
     ctx.fillStyle = '#3b82f6';
-    [[rx, ry],[rx+rw-hs, ry],[rx, ry+rh-hs*5],[rx+rw-hs, ry+rh-hs*5]].forEach(([hx, hy]) => {
+    [[rx, ry],[rx+rw-hs, ry],[rx, ry+rh-hs],[rx+rw-hs, ry+rh-hs]].forEach(([hx, hy]) => {
       ctx.fillRect(hx, hy, hs, hs);
     });
   }, [imgEl, crop]);
@@ -77,8 +82,8 @@ export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
     const { x, y, w, h } = crop;
     if (Math.abs(nx - x) < hs && Math.abs(ny - y) < hs) return 'tl';
     if (Math.abs(nx - (x+w)) < hs && Math.abs(ny - y) < hs) return 'tr';
-    if (Math.abs(nx - x) < hs*2 && Math.abs(ny - (y+h-hs*4)) < hs*2) return 'bl';
-    if (Math.abs(nx - (x+w)) < hs*2 && Math.abs(ny - (y+h-hs*4)) < hs*2) return 'br';
+    if (Math.abs(nx - x) < hs && Math.abs(ny - (y+h)) < hs) return 'bl';
+    if (Math.abs(nx - (x+w)) < hs && Math.abs(ny - (y+h)) < hs) return 'br';
     if (nx > x && nx < x+w && ny > y && ny < y+h) return 'move';
     return null;
   }
@@ -160,7 +165,7 @@ export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
         <span className="text-white font-semibold text-sm">トリミング</span>
         <button className="text-blue-400 text-sm font-medium" onClick={handleCrop}>貼り付け</button>
       </div>
-      <div className="flex-1 flex items-center justify-center p-4">
+      <div ref={containerRef} className="flex-1 flex items-center justify-center p-4">
         <canvas
           ref={canvasRef}
           className="touch-none max-w-full"
