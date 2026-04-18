@@ -30,7 +30,7 @@ const nextConfig = {
 const pwaConfig = withPWA({
   dest: "public",
   register: process.env.IS_TAURI_BUILD !== 'true',
-  skipWaiting: true,
+  skipWaiting: false,
   disable: process.env.NODE_ENV === 'development' || process.env.IS_TAURI_BUILD === 'true',
   // カスタム SW ソース — next-pwa が Workbox sw.js に merge する（上書き衝突回避）
   customWorkerDir: 'worker',
