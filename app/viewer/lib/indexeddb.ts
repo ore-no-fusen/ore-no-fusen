@@ -37,11 +37,14 @@ async function serializeImages(images: { fileName: string; blob: Blob }[]): Prom
 
 /** ArrayBuffer → Blob に変換（読み込み時） */
 function deserializeImages(images: unknown[]): { fileName: string; blob: Blob }[] {
-  return (images || []).map((img: any) => {
+  return (images || []).flatMap((img: any) => {
     if (img.data instanceof ArrayBuffer) {
-      return { fileName: img.fileName, blob: new Blob([img.data], { type: img.type || 'image/jpeg' }) };
+      const blob = new Blob([img.data], { type: img.type || 'image/jpeg' });
+      return blob.size > 0 ? [{ fileName: img.fileName, blob }] : [];
     }
-    return img; // Blob 形式（後方互換）
+    // 旧Blob形式: iOS SW更新後に無効化（size=0）されている場合は除外
+    if (img.blob instanceof Blob && img.blob.size > 0) return [img];
+    return [];
   });
 }
 
