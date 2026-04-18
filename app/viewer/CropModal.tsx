@@ -54,10 +54,10 @@ export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
     ctx.strokeStyle = '#3b82f6';
     ctx.lineWidth = 2;
     ctx.strokeRect(rx, ry, rw, rh);
-    // 4隅ハンドル（下2つは操作しやすいよう hs 分上に移動）
+    // 4隅ハンドル（下2つは操作しやすいよう hs*3 分上に移動）
     const hs = 12;
     ctx.fillStyle = '#3b82f6';
-    [[rx, ry],[rx+rw-hs, ry],[rx, ry+rh-hs*2],[rx+rw-hs, ry+rh-hs*2]].forEach(([hx, hy]) => {
+    [[rx, ry],[rx+rw-hs, ry],[rx, ry+rh-hs*3],[rx+rw-hs, ry+rh-hs*3]].forEach(([hx, hy]) => {
       ctx.fillRect(hx, hy, hs, hs);
     });
   }, [imgEl, crop]);
@@ -77,8 +77,8 @@ export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
     const { x, y, w, h } = crop;
     if (Math.abs(nx - x) < hs && Math.abs(ny - y) < hs) return 'tl';
     if (Math.abs(nx - (x+w)) < hs && Math.abs(ny - y) < hs) return 'tr';
-    if (Math.abs(nx - x) < hs && Math.abs(ny - (y+h-hs)) < hs) return 'bl';
-    if (Math.abs(nx - (x+w)) < hs && Math.abs(ny - (y+h-hs)) < hs) return 'br';
+    if (Math.abs(nx - x) < hs && Math.abs(ny - (y+h-hs*2)) < hs) return 'bl';
+    if (Math.abs(nx - (x+w)) < hs && Math.abs(ny - (y+h-hs*2)) < hs) return 'br';
     if (nx > x && nx < x+w && ny > y && ny < y+h) return 'move';
     return null;
   }
