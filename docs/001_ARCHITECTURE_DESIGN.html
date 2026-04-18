@@ -454,6 +454,8 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 
 **Drive はすべて中継所。** 大本データは PC ローカル（Markdown ファイル）または iPhone ローカル（IndexedDB）にある。Drive にしか存在しないデータはない。全ファイルを削除しても本体データは失われない。
 
+**Drive設計原則: 存在 = 未処理。** Drive にあるデータは「まだ届いていない」ことを意味する。受け取った側は処理後に即削除する。「処理済み」を示すフラグは不要——なければ処理済み、あれば未処理、それだけ。この原則から、データ構造や削除タイミングは自然に決まる。
+
 ---
 
 ### 5.1 ライフサイクル一覧
@@ -461,7 +463,7 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 | ファイル名 | 何のデータか | いつ作られるか | どこで作られるか | いつ消されるか | 消えた場合の影響 |
 |---|---|---|---|---|---|
 | `notes_to_iphone.json` | PC→iPhone 送信キュー（最新20件） | PC から「iPhoneに送る」を実行したとき | PC アプリ | iPhone viewer でアイテムを削除したとき（アイテム単位） | 次の「iPhoneに送る」実行時に再作成。未受信データは消える |
-| `notes_from_iphone.json` | iPhone→PC 送信キュー | iPhone viewer で「PCに送る」を実行したとき | iPhone viewer | （自動削除なし・アイテムに received_at が付くのみ） | 次の「PCに送る」実行時に再作成。未受信データは消える |
+| `notes_from_iphone.json` | iPhone→PC 未処理キュー | iPhone viewer で「PCに送る」を実行したとき | iPhone viewer | PC が受信処理したアイテムは即削除（未処理分のみ残る） | 次の「PCに送る」実行時に再作成。未受信データは消える |
 | `push_devices.json` | iPhone のプッシュ通知デバイス登録情報 | iPhone viewer で初回セットアップを完了したとき | iPhone viewer | （自動削除なし） | PC からプッシュ通知が届かなくなる。iPhone で再セットアップすれば復元 |
 | `push_keys.json` | VAPID 鍵ペア（プッシュ通知の送信元認証鍵） | PC アプリが Google 連携を設定したとき（初回のみ） | PC アプリ | （自動削除なし） | PC ローカルにも同じ鍵があるため通常は復元される。**鍵が変わることは、ほぼ、実運用上はない**（OS再インストール後にDriveも誤削除した場合のみ）。万一変わった場合は push_devices.json が無効になるため iPhone で再セットアップが必要 |
 
@@ -470,6 +472,13 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 ### 5.2 データ構造
 
 #### notes_to_iphone.json
+
+| 項目 | 内容 |
+|------|------|
+| **役割** | PC → iPhone 未処理キュー |
+| **書く** | PC アプリ（「iPhoneに送る」実行時） |
+| **消す** | iPhone（ユーザーが通知/リストから削除したとき、アイテム単位） |
+| **保持上限** | 最新 20 件（PC が超過分を削除） |
 
 ```json
 {
@@ -486,12 +495,19 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 }
 ```
 
-- `received_at` は iPhone viewer が受信した時刻。未受信アイテムは `received_at` なし
-- `tags` は PC 付箋の frontmatter から取得（Phase 13 で追加）
+- `sent_at`: PC が送った日時
+- `received_at`: iPhone が通知を受け取った日時（未受信は null）
+- `tags` は PC 付箋の frontmatter から取得
 - ローカル画像は iPhone で表示できるよう base64 data URI に埋め込み済み
-- 件数制限: 最新 20 件のみ保持（PC アプリが送信時に超過分を削除）
 
 #### notes_from_iphone.json
+
+| 項目 | 内容 |
+|------|------|
+| **役割** | iPhone → PC 未処理キュー |
+| **書く** | iPhone viewer（「PCに送る」実行時） |
+| **消す** | PC アプリ（受信・処理後に即削除） |
+| **添付画像** | `fusen_img_*.jpg` も同様。PC 受信後に即削除 |
 
 ```json
 {
@@ -501,15 +517,13 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
       "title": "タイトル",
       "body": "本文（画像参照は fusen_img_*.jpg 形式）",
       "sent_at": "2026-04-08T10:00:00Z",
-      "received_at": "2026-04-08T10:01:00Z",
       "tags": ["タグ1", "タグ2"]
     }
   ]
 }
 ```
 
-- `received_at` は PC アプリが受信した時刻。未受信アイテムは `received_at` なし
-- 画像は Drive に別途アップロードされた `fusen_img_*.jpg` を参照。PC 受信後にローカル保存し Drive から削除
+- `sent_at`: iPhone が送った日時
 - 旧スキーマ互換: `{ "id": "...", "title": "...", "body": "..." }` の単一オブジェクト形式も読める
 
 #### push_devices.json
@@ -692,11 +706,11 @@ sequenceDiagram
     note over U,P: Phase 7 — PC受信
 
     loop 30秒ごと
-        R->>D: fusen_from_iphone.json を取得
-        D-->>R: {id, body, sent_at}
-        R->>R: id == last_seen_id ? skip : 処理
-        R->>R: last_seen_id を更新
-        R->>D: received_at を付けて上書き（重複防止）
+        R->>D: notes_from_iphone.json を取得
+        D-->>R: {items: [{id, body, sent_at, ...}]}
+        R->>R: 処理済みIDセットで重複チェック → 新着のみ処理
+        R->>D: 処理済みアイテムを除いた未処理分のみ書き戻す
+        R->>D: body内の fusen_img_*.jpg を Drive から削除
         R->>P: emit "fusen:note_from_iphone" {body}
     end
 
@@ -786,17 +800,15 @@ sequenceDiagram
     loop 30秒ごと (tokio::time::interval)
         L->>D: get_access_token() — 期限切れなら自動refresh
         D-->>L: access_token
-        L->>D: download_json('fusen_from_iphone.json')
-        D-->>L: {id, body, sent_at, [received_at]}
+        L->>D: download_json('notes_from_iphone.json')
+        D-->>L: {items: [{id, title, body, sent_at, tags}]}
 
-        alt received_at あり（受信済み）
-            L->>L: スキップ（重複防止）
-        else id == last_seen_id
+        alt 処理済みIDセットに含まれる
             L->>L: スキップ（重複防止）
         else 新着ノート
-            L->>L: LAST_IPHONE_NOTE_ID を更新
-            L->>D: upload_json('fusen_from_iphone.json', +received_at)
-            L->>D: body内の![](fusen_img_*.jpg)を解析してDriveから画像削除
+            L->>L: LAST_IPHONE_NOTE_IDS に追加
+            L->>D: 処理済みアイテムを除いた未処理分のみ書き戻す
+            L->>D: body内の fusen_img_*.jpg を Drive から削除
             L->>E: emit("fusen:note_from_iphone", {title, body, context})
         end
     end
@@ -814,7 +826,7 @@ sequenceDiagram
 - 変更ファイル: `src-tauri/src/gdrive.rs`（delete_file_by_name() 追加）
 - 変更ファイル: `app/page.tsx`（fusen:note_from_iphone / fusen:drive_disconnected / drive_connected リスナー）
 - Cargo.toml: `tokio features = ["rt", "time"]` + `tauri-plugin-notification = "2"`
-- POLL-03: received_atフィルタ + LAST_IPHONE_NOTE_ID static Mutex で二重受信防止
+- POLL-03: 処理済みIDセット（LAST_IPHONE_NOTE_IDS）による重複防止。Drive設計原則に従い received_at フラグは使わない
 
 ---
 

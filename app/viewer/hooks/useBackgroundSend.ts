@@ -135,13 +135,9 @@ export function useBackgroundSend({
           }
           // 旧スキーマで received_at がある場合は処理済み → 捨てる（空配列のまま）
         }
-        // 処理済みアイテムは最新5件まで保持（ファイル肥大化防止）
-        const processed = currentItems.filter((item: any) => item.received_at).slice(-5);
-        const pending = currentItems.filter((item: any) => !item.received_at);
-
         // 新しいアイテムを末尾に追加
         const newItem = { id: noteId, title, body: fullBody, sent_at: sentAt, tags };
-        const updatedItems = [...processed, ...pending, newItem];
+        const updatedItems = [...currentItems, newItem];
         await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: updatedItems });
 
         // 送信済みとして IndexedDB に保存（sent_at をセット）

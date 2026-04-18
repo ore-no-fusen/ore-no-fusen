@@ -1587,7 +1587,6 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     }
 
     // 7. 各アイテムを処理（emit + 通知）、画像名を収集
-    let received_at_str = chrono::Utc::now().to_rfc3339();
     let new_indices_set: std::collections::HashSet<usize> = new_indices.iter().copied().collect();
     let mut all_image_names: Vec<String> = Vec::new();
 
@@ -1645,16 +1644,14 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         );
     }
 
-    // 8. received_at を付与した items 配列を Drive に書き戻す（非同期）
+    // 8. 未処理アイテムのみ Drive に書き戻す（処理済みは捨てる）
     let updated_items: Vec<serde_json::Value> = items
         .into_iter()
         .enumerate()
-        .map(|(idx, mut item)| {
-            if new_indices_set.contains(&idx) {
-                item["received_at"] = serde_json::json!(received_at_str);
-            }
-            item
+        .filter(|(idx, item)| {
+            !new_indices_set.contains(idx) && item.get("received_at").is_none()
         })
+        .map(|(_, item)| item)
         .collect();
 
     let updated_data = serde_json::json!({ "items": updated_items });
