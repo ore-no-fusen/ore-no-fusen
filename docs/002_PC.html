@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>俺の付箋 — PC アプリ設計</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f4f8;
+  padding: 40px 32px;
+  color: #1a202c;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ===== NAV ===== */
+.nav { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
+.nav a, .nav span {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 2px solid;
+}
+.nav-current { background: #1e40af; border-color: #1e40af; color: white; }
+.nav-link { background: white; border-color: #93c5fd; color: #1e40af; }
+.nav-link:hover { background: #eff6ff; }
+
+/* ===== HEADER ===== */
+h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+.lead { font-size: 14px; color: #64748b; margin-bottom: 8px; }
+.version-row { font-size: 11px; color: #94a3b8; margin-bottom: 48px; }
+
+/* ===== SECTION TITLE ===== */
+.sec-title {
+  font-size: 16px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 24px; margin-top: 56px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+/* ===== CARD ===== */
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  margin-bottom: 20px;
+}
+
+/* ===== 目次 ===== */
+.toc {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 40px;
+  display: inline-block;
+  min-width: 280px;
+}
+.toc-title { font-size: 12px; font-weight: 800; color: #475569; margin-bottom: 12px; letter-spacing: 0.05em; }
+.toc ol { padding-left: 20px; }
+.toc li { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
+.toc ul { padding-left: 16px; margin-top: 4px; list-style: none; }
+.toc ul li { margin-bottom: 3px; color: #64748b; }
+.toc ul li::before { content: "– "; }
+.toc a { color: #1e40af; text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+/* ===== MERMAID ===== */
+.mermaid {
+  background: #1e2432;
+  border-radius: 12px;
+  padding: 24px;
+  margin: 16px 0;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+/* ===== 画面カード ===== */
+.screen-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+@media (max-width: 700px) { .screen-grid { grid-template-columns: 1fr; } }
+
+.screen-card {
+  border-radius: 12px;
+  padding: 20px 22px;
+}
+.screen-card h3 {
+  font-size: 14px; font-weight: 800;
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.screen-card p { font-size: 12px; line-height: 1.7; color: #475569; }
+.screen-card .file-ref {
+  margin-top: 10px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  background: rgba(0,0,0,0.06);
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+  color: #334155;
+}
+
+.sc-main   { background: #eff6ff; border: 2px solid #93c5fd; }
+.sc-main h3 { color: #1e40af; }
+.sc-note   { background: #f0fdf4; border: 2px solid #86efac; }
+.sc-note h3 { color: #14532d; }
+
+/* ===== モジュール表 ===== */
+.module-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.module-table th, .module-table td {
+  border: 1px solid #e2e8f0;
+  padding: 9px 14px;
+  text-align: left;
+  vertical-align: top;
+}
+.module-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+.module-table td { color: #1a202c; line-height: 1.6; }
+code {
+  font-family: ui-monospace, monospace;
+  background: rgba(0,0,0,0.06);
+  padding: 1px 5px; border-radius: 4px; font-size: 11px;
+}
+
+/* ===== NOTE ===== */
+.note {
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  margin-top: 14px;
+  line-height: 1.7;
+}
+.note-blue   { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e40af; }
+.note-yellow { background: #fefce8; border-left: 4px solid #eab308; color: #713f12; }
+.note-green  { background: #f0fdf4; border-left: 4px solid #22c55e; color: #14532d; }
+.note-red    { background: #fef2f2; border-left: 4px solid #f87171; color: #7f1d1d; }
+
+/* ===== SUBSECTION ===== */
+.subsec {
+  font-size: 14px; font-weight: 700;
+  color: #334155;
+  margin: 28px 0 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+
+/* ===== 改版履歴 ===== */
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 12px;
+}
+.history-table th, .history-table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  text-align: left;
+}
+.history-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+</style>
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav class="nav">
+  <a class="nav-link" href="001_OVERVIEW.html">001 全体像</a>
+  <span class="nav-current">002 PC側</span>
+  <a class="nav-link" href="003_IPHONE.html">003 iPhone連携</a>
+</nav>
+
+<!-- ===== HEADER ===== -->
+<h1>② PC アプリ 設計書</h1>
+<p class="lead">画面構成・モジュール構造・データ構造・データフロー</p>
+<p class="version-row">設計書 v1.0 / 2026-04-19</p>
+
+<!-- ===== 目次 ===== -->
+<nav class="toc">
+  <div class="toc-title">目次</div>
+  <ol>
+    <li><a href="#sec1">画面構成</a>
+      <ul>
+        <li><a href="#sec1-window">1.1 ウィンドウ生成の仕組み</a></li>
+      </ul>
+    </li>
+    <li><a href="#sec2">モジュール構造</a>
+      <ul>
+        <li><a href="#sec2-fe">2.1 フロントエンド（TypeScript / React）</a></li>
+        <li><a href="#sec2-be">2.2 バックエンド（Rust）</a></li>
+      </ul>
+    </li>
+    <li><a href="#sec3">データ構造</a>
+      <ul>
+        <li><a href="#sec3-note">3.1 付箋データ</a></li>
+        <li><a href="#sec3-settings">3.2 設定データ</a></li>
+        <li><a href="#sec3-class">3.3 クラス図</a></li>
+      </ul>
+    </li>
+    <li><a href="#sec4">データフロー</a>
+      <ul>
+        <li><a href="#seq1">4.1 アプリ起動</a></li>
+        <li><a href="#seq2">4.2 付箋の保存・自動リネーム</a></li>
+        <li><a href="#seq3">4.3 画像キャプチャ</a></li>
+        <li><a href="#seq4">4.4 全文検索</a></li>
+        <li><a href="#seq5">4.5 iPhone への送信</a></li>
+        <li><a href="#seq6">4.6 iPhone からの受信</a></li>
+      </ul>
+    </li>
+    <li><a href="#sec5">UI インタラクション</a>
+      <ul>
+        <li><a href="#sec5-mode">5.1 モード定義</a></li>
+        <li><a href="#sec5-area">5.2 操作領域の定義</a></li>
+        <li><a href="#sec5-matrix">5.3 インタラクション・マトリックス</a></li>
+      </ul>
+    </li>
+    <li><a href="#history">改版履歴</a></li>
+  </ol>
+</nav>
+
+
+<!-- =====================================================
+     1. 画面構成
+     ===================================================== -->
+<div id="sec1" class="sec-title"><span>🖥</span> 1. 画面構成</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">PCアプリはメインウィンドウ1枚＋付箋ウィンドウN枚のマルチウィンドウ構成です。</p>
+
+<div class="card">
+  <div class="note note-blue" style="margin-bottom:24px">
+    PC アプリは Tauri のマルチウィンドウ構造。メインウィンドウ1枚 ＋ 付箋ウィンドウ N 枚が独立して動く。ウィンドウ間の状態共有は Rust の <code>AppState</code> のみを通す。フロントエンドに状態を持たない。
+  </div>
+
+  <div class="screen-grid">
+
+    <div class="screen-card sc-main">
+      <h3>🏠 メインウィンドウ</h3>
+      <p>アプリの司令塔。ユーザーには見えないことが多い（トレイ常駐）。<br><br>
+        ・起動時に付箋ウィンドウを生成・配置する<br>
+        ・設定画面・検索オーバーレイを表示する<br>
+        ・トレイアイコンのイベントを受け取る<br>
+        ・iPhone からの受信（ポーリング）を担当する
+      </p>
+      <span class="file-ref">app/page.tsx</span>
+    </div>
+
+    <div class="screen-card sc-note">
+      <h3>📝 付箋ウィンドウ（N 枚）</h3>
+      <p>付箋1枚ごとに独立した <code>WebviewWindow</code>。<br><br>
+        ・テキスト編集（RichTextEditor）<br>
+        ・最小化（たたむ）・ピン留め・色変更<br>
+        ・右クリックメニュー（iPhone送信・アーカイブ等）<br>
+        ・画像キャプチャ・リンク挿入
+      </p>
+      <span class="file-ref">app/components/StickyNote.tsx</span>
+    </div>
+
+  </div>
+
+  <!-- ウィンドウ構造図 -->
+  <div id="sec1-window" class="subsec">1.1 ウィンドウ生成の仕組み</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">付箋1枚ごとに独立したTauriウィンドウが生成される仕組みを図示します。</p>
+  <div class="mermaid">
+graph TD
+    classDef main fill:#1e3a5f,stroke:#60a5fa,color:#bfdbfe,stroke-width:2px
+    classDef note fill:#14532d,stroke:#4ade80,color:#bbf7d0,stroke-width:2px
+    classDef rust fill:#3d1a00,stroke:#fb923c,color:#fed7aa,stroke-width:2px
+
+    Rust["Tauri 起動<br/>(main.rs)"]:::rust
+    Main["メインウィンドウ<br/>app/page.tsx"]:::main
+    A["付箋ウィンドウ A<br/>StickyNote.tsx"]:::note
+    B["付箋ウィンドウ B<br/>StickyNote.tsx"]:::note
+    C["付箋ウィンドウ C<br/>StickyNote.tsx"]:::note
+    State["AppState (Rust)<br/>唯一の状態"]:::rust
+
+    Rust --> Main
+    Main -->|"WebviewWindow生成"| A
+    Main -->|"WebviewWindow生成"| B
+    Main -->|"WebviewWindow生成"| C
+    A <-.->|"invoke / emit"| State
+    B <-.->|"invoke / emit"| State
+    C <-.->|"invoke / emit"| State
+    Main <-.->|"invoke / emit"| State
+  </div>
+
+  <div class="note note-yellow">
+    <strong>状態管理の鉄則：</strong>ウィンドウ間で直接通信しない。付箋 A が何かを変えたいとき → Rust <code>AppState</code> を更新 → Tauri <code>emit()</code> で全ウィンドウに通知。フロントエンドは表示するだけ。
+  </div>
+</div>
+
+
+<!-- =====================================================
+     2. モジュール構造（誰が誰を使うか）
+     ===================================================== -->
+<div id="sec2" class="sec-title"><span>🗂</span> 2. モジュール構造</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">フロントエンド（TypeScript/React）とバックエンド（Rust）の2層構成です。</p>
+
+<div class="card">
+
+  <div id="sec2-fe" class="subsec">2.1 フロントエンド（TypeScript / React）</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">付箋ウィンドウを構成する主要コンポーネント・フック・ユーティリティの依存関係を示します。</p>
+  <div class="mermaid">
+graph LR
+    classDef page  fill:#1e3a5f,stroke:#60a5fa,color:#bfdbfe,stroke-width:2px
+    classDef hook  fill:#1a1a5f,stroke:#a78bfa,color:#ddd6fe,stroke-width:2px
+    classDef comp  fill:#14532d,stroke:#4ade80,color:#bbf7d0,stroke-width:2px
+    classDef rust  fill:#3d1a00,stroke:#fb923c,color:#fed7aa,stroke-width:2px
+
+    StickyNote["StickyNote.tsx"]:::page
+
+    subgraph Hooks ["app/hooks/"]
+        WM["useWindowManager.ts<br/>（執事長）"]:::hook
+        Sync["useWindowSync.ts"]:::hook
+        Ctrl["useWindowControls.ts"]:::hook
+        Ev["useWindowEvents.ts"]:::hook
+        Menu["useStickyNoteContextMenu.ts"]:::hook
+        Short["useGlobalEvents.ts"]:::hook
+    end
+
+    subgraph Components ["app/components/"]
+        Editor["RichTextEditor.tsx"]:::comp
+        Float["FloatingFormatBar.tsx"]:::comp
+        Md["MarkdownRenderer.tsx"]:::comp
+    end
+
+    Rust["Rust Backend<br/>(invoke / emit)"]:::rust
+
+    StickyNote --> WM
+    WM --> Sync
+    WM --> Ctrl
+    WM --> Ev
+    StickyNote --> Menu
+    StickyNote --> Short
+    StickyNote --> Editor
+    StickyNote --> Float
+    StickyNote --> Md
+
+    Sync -.->|invoke| Rust
+    Ctrl -.->|invoke| Rust
+    Menu -.->|invoke| Rust
+    Short -.->|invoke| Rust
+  </div>
+
+  <div id="sec2-be" class="subsec">2.2 バックエンド（Rust）</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">TauriコマンドとAppStateを中心とするRust側モジュールの役割を一覧します。</p>
+  <table class="module-table">
+    <thead>
+      <tr>
+        <th>ファイル</th>
+        <th>役割</th>
+        <th>主な責務</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>main.rs</code></td>
+        <td>エントリポイント</td>
+        <td>Tauri アプリ起動・プラグイン登録・シングルインスタンス制御</td>
+      </tr>
+      <tr>
+        <td><code>lib.rs</code></td>
+        <td>invoke ハンドラ定義</td>
+        <td>フロントエンドから呼ばれる全コマンドをここで宣言。処理は各モジュールに委譲</td>
+      </tr>
+      <tr>
+        <td><code>state.rs</code></td>
+        <td>AppState（唯一の状態）</td>
+        <td>ノート一覧・設定・VAPID鍵・デバイス情報をメモリ上で保持。Mutex で排他制御</td>
+      </tr>
+      <tr>
+        <td><code>settings.rs</code></td>
+        <td>設定管理</td>
+        <td>base_path・言語・フォントサイズ等を <code>settings.json</code> に読み書き</td>
+      </tr>
+      <tr>
+        <td><code>logic.rs</code></td>
+        <td>付箋ビジネスロジック</td>
+        <td>ノート作成・保存・リネーム・アーカイブ・削除・タグ管理</td>
+      </tr>
+      <tr>
+        <td><code>storage.rs</code></td>
+        <td>ファイル I/O</td>
+        <td>Markdown ファイルの読み書き・frontmatter パース</td>
+      </tr>
+      <tr>
+        <td><code>tray.rs</code></td>
+        <td>トレイアイコン</td>
+        <td>トレイメニュー生成・全表示/全隠し・クリックイベント処理</td>
+      </tr>
+      <tr>
+        <td><code>webpush.rs</code></td>
+        <td>プッシュ通知送信</td>
+        <td>VAPID 鍵生成・APNs/FCM への Web Push 送信</td>
+      </tr>
+      <tr>
+        <td><code>gdrive.rs</code></td>
+        <td>Google Drive 連携</td>
+        <td>Drive ファイルの読み書き・ポーリング（iPhone からの受信検出）</td>
+      </tr>
+      <tr>
+        <td><code>capture.rs</code></td>
+        <td>画像キャプチャ</td>
+        <td>Snipping Tool 起動・クリップボード画像を assets/ に保存</td>
+      </tr>
+      <tr>
+        <td><code>clipboard.rs</code></td>
+        <td>クリップボード</td>
+        <td>テキスト・画像のクリップボード読み書き</td>
+      </tr>
+      <tr>
+        <td><code>sound.rs</code></td>
+        <td>効果音</td>
+        <td>保存音・通知音などの再生</td>
+      </tr>
+      <tr>
+        <td><code>import.rs</code></td>
+        <td>ファイルインポート</td>
+        <td>外部 Markdown ファイルを Vault に取り込む</td>
+      </tr>
+      <tr>
+        <td><code>logger.rs</code></td>
+        <td>ログ</td>
+        <td>デバッグログの出力管理</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<!-- =====================================================
+     3. データ構造
+     ===================================================== -->
+<div id="sec3" class="sec-title"><span>📦</span> 3. データ構造</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">付箋ファイル・設定ファイル・モジュール依存の3種類のデータ構造を定義します。</p>
+
+<div class="card">
+
+  <div id="sec3-note" class="subsec">3.1 付箋データ（Markdown ファイル = frontmatter + 本文）</div>
+  <p style="font-size:12px;color:#64748b;margin-bottom:12px">付箋1枚 = Markdown ファイル1枚。PC ローカルのファイルシステムが正。Drive は中継所に過ぎない。</p>
+
+  <table class="module-table">
+    <thead>
+      <tr><th>フィールド</th><th>型</th><th>意味</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>path</code></td><td>string</td><td>ファイルパス（実質的な主キー）</td></tr>
+      <tr><td><code>content</code></td><td>string</td><td>本文テキスト（Markdown）</td></tr>
+      <tr><td><code>context</code></td><td>string</td><td>コンテキスト名（ファイル名。本文1行目から自動生成）</td></tr>
+      <tr><td><code>updated</code></td><td>string</td><td>最終更新日時</td></tr>
+      <tr><td><code>x, y</code></td><td>number</td><td>画面上の位置座標</td></tr>
+      <tr><td><code>width, height</code></td><td>number</td><td>ウィンドウサイズ</td></tr>
+      <tr><td><code>background_color</code></td><td>string</td><td>付箋の背景色</td></tr>
+      <tr><td><code>always_on_top</code></td><td>boolean</td><td>最前面固定（ピン留め）</td></tr>
+      <tr><td><code>folded</code></td><td>boolean</td><td>折りたたみ状態（最小化）</td></tr>
+      <tr><td><code>seq</code></td><td>number</td><td>重なり順（Z-index 相当）</td></tr>
+      <tr><td><code>tags</code></td><td>string[]</td><td>タグ一覧</td></tr>
+    </tbody>
+  </table>
+
+  <div id="sec3-settings" class="subsec">3.2 設定データ（<code>settings.json</code>）</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">settings.json で管理するアプリ全体の設定項目5点を定義します。</p>
+  <table class="module-table">
+    <thead>
+      <tr><th>フィールド</th><th>型</th><th>意味</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>base_path</code></td><td>string</td><td>Vault フォルダのパス（未設定なら初回セットアップ画面）</td></tr>
+      <tr><td><code>language</code></td><td>string</td><td>表示言語</td></tr>
+      <tr><td><code>auto_start</code></td><td>boolean</td><td>OS 起動時に自動起動するか</td></tr>
+      <tr><td><code>font_size</code></td><td>number</td><td>基本フォントサイズ</td></tr>
+      <tr><td><code>sound_enabled</code></td><td>boolean</td><td>効果音 ON/OFF</td></tr>
+    </tbody>
+  </table>
+
+  <div id="sec3-class" class="subsec">3.3 クラス図（依存関係）</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">主要モジュール間の依存関係をMermaidクラス図で示します。</p>
+  <div class="mermaid">
+classDiagram
+    direction LR
+
+    class AppState {
+        +Vec~NoteMeta~ notes
+        +Settings settings
+        +Option~VapidKeys~ vapid_keys
+        +Vec~PushDevice~ push_devices
+    }
+
+    class NoteMeta {
+        +String path
+        +String context
+        +String updated
+        +f64 x, y, width, height
+        +bool always_on_top
+        +bool folded
+        +Vec~String~ tags
+    }
+
+    class Settings {
+        +String base_path
+        +String language
+        +bool auto_start
+        +u32 font_size
+        +bool sound_enabled
+    }
+
+    class VapidKeys {
+        +String public_key_b64url
+        +String private_key_b64url
+        +String subject
+    }
+
+    class PushDevice {
+        +String endpoint
+        +String p256dh
+        +String auth
+        +String created_at
+    }
+
+    AppState "1" *-- "*" NoteMeta : 保持
+    AppState "1" *-- "1" Settings : 保持
+    AppState "1" *-- "0..1" VapidKeys : 保持
+    AppState "1" *-- "*" PushDevice : 保持
+  </div>
+</div>
+
+
+<!-- =====================================================
+     4. データフロー（シーケンス図）
+     ===================================================== -->
+<div id="sec4" class="sec-title"><span>🔄</span> 4. データフロー</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">アプリ起動から保存・画像・検索・iPhone連携まで6つのシーケンス図を示します。</p>
+
+<!-- 4.1 起動 -->
+<div class="card">
+  <div id="seq1" class="subsec">4.1 アプリ起動</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">起動時にファイルシステムから付箋一覧を読み込むフローです。</p>
+  <div class="mermaid">
+sequenceDiagram
+    participant User as ユーザー
+    participant Rust as Rust (main.rs)
+    participant Page as page.tsx
+    participant Win as 付箋ウィンドウ
+
+    User->>Rust: アプリ起動
+    Rust->>Page: WebView 初期化完了
+    Page->>Rust: fusen_get_state()
+    Rust->>Rust: settings.json + Vault スキャン
+    Rust-->>Page: AppState（ノート一覧）
+
+    alt base_path 未設定
+        Page->>Page: セットアップ画面表示 (900x630)
+        User->>Page: フォルダ選択
+        Page->>Rust: setup_first_launch()
+    else 設定済み
+        Page->>Page: ダッシュボード表示 (240x300)
+    end
+
+    loop 前回開いていた各ノート
+        Page->>Win: WebviewWindow 生成 (x, y, width, height)
+    end
+  </div>
+</div>
+
+<!-- 4.2 保存・自動リネーム -->
+<div class="card">
+  <div id="seq2" class="subsec">4.2 付箋の保存・自動リネーム</div>
+  <p style="font-size:12px;color:#64748b;margin-bottom:12px">本文の1行目をファイル名（context）として自動採用する。800ms のデバウンスで連続入力に追従。</p>
+  <div class="mermaid">
+sequenceDiagram
+    participant Editor as RichTextEditor
+    participant Logic as logic.rs
+    participant FS as ファイルシステム
+
+    Editor->>Editor: テキスト変更
+    Editor->>Logic: 800ms デバウンス後に発火
+    Logic->>Logic: 1行目からファイル名生成
+    Logic->>FS: rename() 実行
+    FS-->>Logic: 新しいパスを返す
+    Logic->>Editor: path 更新通知
+  </div>
+</div>
+
+<!-- 4.3 画像キャプチャ -->
+<div class="card">
+  <div id="seq3" class="subsec">4.3 画像キャプチャ</div>
+  <p style="font-size:12px;color:#64748b;margin-bottom:12px">OS 内蔵の Snipping Tool を呼び出し、撮影された画像を Vault の <code>assets/</code> に自動保存する。</p>
+  <div class="mermaid">
+sequenceDiagram
+    participant User as ユーザー
+    participant Fusen as 付箋ウィンドウ
+    participant Snip as Snipping Tool
+    participant FS as assets/ フォルダ
+
+    User->>Fusen: 📷 ボタンをクリック
+    Fusen->>Fusen: 全付箋を一時非表示
+    Fusen->>Snip: 起動
+    User->>Snip: 範囲選択して撮影
+    Snip->>Snip: クリップボードに画像をコピー
+    Fusen->>FS: assets/ へ画像ファイルとして保存
+    Fusen->>Fusen: Markdown に画像リンクを挿入
+    Fusen->>Fusen: 全付箋を再表示
+  </div>
+</div>
+
+<!-- 4.4 全文検索 -->
+<div class="card">
+  <div id="seq4" class="subsec">4.4 全文検索</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">キーワードをリアルタイムで全付箋から検索するフローです。</p>
+  <div class="mermaid">
+sequenceDiagram
+    participant User as ユーザー
+    participant Page as page.tsx
+    participant Search as SearchOverlay
+    participant Rust as Rust
+    participant Target as 付箋ウィンドウ
+
+    User->>Page: Ctrl+F / トレイ「検索」
+    Page->>Page: 検索オーバーレイ表示 (550x450)
+    User->>Search: キーワード入力 + Enter
+    Search->>Rust: fusen_search_notes("keyword")
+    Rust->>Rust: Vault 内 .md ファイルを全文 Grep
+    Rust-->>Search: SearchHit[]（ファイルパス・行番号）
+    Search->>User: 結果リスト表示
+    User->>Search: 結果をクリック
+    Search->>Target: emit('fusen:scroll_to_line', {path, line, query})
+    Target->>Target: 該当行にスクロール＋ハイライト
+  </div>
+</div>
+
+<!-- 4.5 iPhone への送信 -->
+<div class="card">
+  <div id="seq5" class="subsec">4.5 iPhone への送信（PC → iPhone）</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">PCの付箋内容をWeb Pushでiphone通知として届けるフローです。</p>
+  <div class="mermaid">
+sequenceDiagram
+    participant User as ユーザー
+    participant PC as PC アプリ
+    participant Drive as Google Drive
+    participant Push as APNs / FCM
+    participant iPhone as iPhone SW
+
+    User->>PC: 右クリック →「iPhone に送る」
+    PC->>Drive: notes_to_iphone.json を書き込み
+    PC->>Push: Web Push 送信（VAPID 認証）
+    Push->>iPhone: 通知を配信
+    iPhone->>Drive: notes_to_iphone.json を取得
+    iPhone->>iPhone: IndexedDB に保存
+    iPhone->>Drive: notes_to_iphone.json を削除
+    iPhone->>User: 通知表示
+  </div>
+  <div class="note note-blue">
+    <strong>Drive 設計原則：</strong>送信後 Drive に JSON が残っている = まだ iPhone が受け取っていない。受け取ったら即削除。
+  </div>
+</div>
+
+<!-- 4.6 iPhone からの受信 -->
+<div class="card">
+  <div id="seq6" class="subsec">4.6 iPhone からの受信（iPhone → PC）</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">iPhoneから送られたメモをPCアプリで付箋として受け取るフローです。</p>
+  <div class="mermaid">
+sequenceDiagram
+    participant Drive as Google Drive
+    participant Rust as gdrive.rs (30秒ポーリング)
+    participant Page as page.tsx
+    participant Win as 新規付箋ウィンドウ
+
+    loop 30秒ごと
+        Rust->>Drive: notes_from_iphone.json を確認
+        alt 新着あり
+            Drive-->>Rust: ノートデータ + 画像ファイル名
+            Rust->>Page: emit('fusen:from_iphone', data)
+            Page->>Win: 新規 WebviewWindow 生成
+            Rust->>Drive: 処理済みアイテムを削除
+            Rust->>Drive: 画像ファイル (fusen_img_*.jpg) を削除
+        else 新着なし
+            Rust->>Rust: 何もしない
+        end
+    end
+  </div>
+  <div class="note note-green">
+    <strong>重複受信防止：</strong><code>last_seen_id</code> でスキップ。Drive に残っていても同じ ID は2度開かない。
+  </div>
+</div>
+
+
+<!-- =====================================================
+     5. UI インタラクション
+     ===================================================== -->
+<div id="sec5" class="sec-title"><span>🖱</span> 5. UI インタラクション</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">付箋ウィンドウの操作領域・モード・マウス挙動を定義します。</p>
+
+<div class="card">
+  <div class="note note-blue" style="margin-bottom:24px">
+    付箋ウィンドウには <strong>表示モード（閲覧中）</strong> と <strong>編集モード（執筆中）</strong> の2状態がある。
+    クリックした場所と現在のモードの組み合わせで動作が決まる。
+  </div>
+
+  <div id="sec5-mode" class="subsec">5.1 モード定義</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">表示・編集・ロックの3モードとその遷移条件を定義します。</p>
+  <table class="module-table">
+    <thead><tr><th>モード</th><th>状態</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>表示モード（閲覧中）</strong></td>
+        <td>Markdown としてレンダリング済みの付箋を読んでいる状態</td>
+      </tr>
+      <tr>
+        <td><strong>編集モード（執筆中）</strong></td>
+        <td>カーソルが点滅し文字を書き込める状態。背景が半透明の白になる</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="mermaid" style="margin-top:16px">
+stateDiagram-v2
+    [*] --> ViewingMode : 表示モード
+    ViewingMode --> EditingMode : ダブルクリック（本文・余白・フッタ）
+    EditingMode --> ViewingMode : 編集終了（ウィンドウ外 or フッタクリック）
+  </div>
+
+  <div id="sec5-area" class="subsec">5.2 操作領域の定義</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">付箋ウィンドウをエディタ本文・余白(A)・フッタ(B)の3エリアに分けて操作を割り当てます。</p>
+
+  <!-- 付箋ウィンドウ図解 -->
+  <div style="display:flex; justify-content:center; margin:16px 0 24px;">
+    <svg width="420" height="310" viewBox="0 0 420 310" xmlns="http://www.w3.org/2000/svg" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+
+      <!-- ウィンドウ外枠 -->
+      <rect x="10" y="10" width="320" height="280" rx="10" ry="10"
+            fill="white" stroke="#94a3b8" stroke-width="2"/>
+
+      <!-- ヘッダー領域 -->
+      <rect x="10" y="10" width="320" height="40" rx="10" ry="10"
+            fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/>
+      <rect x="10" y="36" width="320" height="14" fill="#e2e8f0"/>
+      <text x="170" y="35" text-anchor="middle" font-size="12" font-weight="700" fill="#475569">ヘッダー領域</text>
+      <text x="170" y="48" text-anchor="middle" font-size="10" fill="#94a3b8">（ドラッグでウィンドウ移動）</text>
+
+      <!-- エディタ外枠 -->
+      <rect x="20" y="54" width="300" height="170" rx="4"
+            fill="#fafafa" stroke="#cbd5e1" stroke-width="1.5"/>
+
+      <!-- エディタ本文エリア（テキスト部分） -->
+      <rect x="20" y="54" width="180" height="170" rx="4"
+            fill="#eff6ff" stroke="none"/>
+      <rect x="20" y="54" width="180" height="170"
+            fill="none" stroke="#93c5fd" stroke-width="1" stroke-dasharray="4,3"/>
+
+      <!-- テキスト行のダミー -->
+      <rect x="28" y="70" width="120" height="8" rx="3" fill="#3b82f6" opacity="0.6"/>
+      <rect x="28" y="86" width="155" height="8" rx="3" fill="#3b82f6" opacity="0.6"/>
+      <rect x="28" y="102" width="90" height="8" rx="3" fill="#3b82f6" opacity="0.6"/>
+      <!-- カーソル -->
+      <line x1="122" y1="100" x2="122" y2="114" stroke="#1e40af" stroke-width="2"/>
+      <!-- 空行 -->
+      <rect x="28" y="134" width="0" height="8" rx="3" fill="#3b82f6" opacity="0.3"/>
+
+      <!-- エディタ余白（A）ラベルエリア -->
+      <rect x="200" y="54" width="120" height="170"
+            fill="#fef9c3" stroke="none"/>
+      <rect x="200" y="54" width="120" height="170"
+            fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3"/>
+
+      <!-- (A)ラベル -->
+      <text x="260" y="108" text-anchor="middle" font-size="13" font-weight="800" fill="#92400e">(A)</text>
+      <text x="260" y="124" text-anchor="middle" font-size="11" fill="#92400e">エディタ余白</text>
+      <text x="260" y="139" text-anchor="middle" font-size="10" fill="#b45309">（ドラッグ→ウィンドウ移動）</text>
+      <text x="260" y="152" text-anchor="middle" font-size="10" fill="#b45309">（DBクリック→編集開始）</text>
+
+      <!-- エディタ本文ラベル -->
+      <text x="110" y="108" text-anchor="middle" font-size="12" font-weight="800" fill="#1e40af">エディタ本文</text>
+      <text x="110" y="123" text-anchor="middle" font-size="10" fill="#3b82f6">（テキスト・リンク）</text>
+
+      <!-- フッタ領域 -->
+      <rect x="20" y="224" width="300" height="56" rx="4"
+            fill="#fdf4ff" stroke="#d8b4fe" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="170" y="249" text-anchor="middle" font-size="13" font-weight="800" fill="#6b21a8">(B) フッタ領域</text>
+      <text x="170" y="265" text-anchor="middle" font-size="10" fill="#7c3aed">文字が存在しない下部の空間（エディタ外）</text>
+      <text x="170" y="278" text-anchor="middle" font-size="10" fill="#7c3aed">クリック→編集終了 / DBクリック→文末から編集開始</text>
+
+      <!-- 凡例 -->
+      <rect x="345" y="54" width="14" height="14" rx="3" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+      <text x="364" y="65" font-size="11" fill="#1e40af">エディタ本文</text>
+      <rect x="345" y="76" width="14" height="14" rx="3" fill="#fef9c3" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="364" y="87" font-size="11" fill="#92400e">(A) 余白</text>
+      <rect x="345" y="98" width="14" height="14" rx="3" fill="#fdf4ff" stroke="#d8b4fe" stroke-width="1.5"/>
+      <text x="364" y="109" font-size="11" fill="#6b21a8">(B) フッタ</text>
+
+    </svg>
+  </div>
+
+  <table class="module-table">
+    <thead><tr><th>領域</th><th>場所</th><th>ユーザーの意図</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>エディタ本文</strong></td>
+        <td>文字・リンクが実際に存在する場所</td>
+        <td>「ここを直接操作・書き換えたい」</td>
+      </tr>
+      <tr>
+        <td><strong>(A) エディタ余白</strong></td>
+        <td>文字の右側・左側に広がる枠線内の空白</td>
+        <td>「この行の続きや近くから書き込みたい」</td>
+      </tr>
+      <tr>
+        <td><strong>(B) フッタ領域</strong></td>
+        <td>最後の行より下にある何もない空間（エディタ外）</td>
+        <td>「一番下から追記したい」または「編集を終わらせたい」</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div id="sec5-matrix" class="subsec">5.3 インタラクション・マトリックス</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">エリア × 操作の組み合わせで起きる動作を一覧にまとめます。</p>
+
+  <p style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">🖱 ワンクリック</p>
+  <table class="module-table">
+    <thead><tr><th>クリックした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
+    <tbody>
+      <tr><td>エディタ本文</td><td>何もしない（ドラッグ準備）</td><td>カーソル移動（その文字へ）</td></tr>
+      <tr><td>(A) エディタ余白</td><td>何もしない（ドラッグ準備）</td><td>カーソル移動（最近傍の文字へ）</td></tr>
+      <tr><td>(B) フッタ領域</td><td>何もしない（ドラッグ準備）</td><td><strong>編集終了</strong></td></tr>
+      <tr><td>リンク</td><td><strong>リンクを開く</strong></td><td>カーソル移動</td></tr>
+      <tr><td>ウィンドウ外</td><td>フォーカス解除</td><td><strong>編集終了</strong>（保存して表示モードへ）</td></tr>
+    </tbody>
+  </table>
+
+  <p style="font-size:12px;font-weight:700;color:#334155;margin:20px 0 6px">🖱🖱 ダブルクリック</p>
+  <table class="module-table">
+    <thead><tr><th>クリックした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
+    <tbody>
+      <tr><td>エディタ本文</td><td><strong>編集開始</strong>（クリックした文字から）</td><td>単語選択</td></tr>
+      <tr><td>(A) エディタ余白</td><td><strong>編集開始</strong>（最近傍の文字から）</td><td>—</td></tr>
+      <tr><td>(B) フッタ領域</td><td><strong>編集開始</strong>（文末から）</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <p style="font-size:12px;font-weight:700;color:#334155;margin:20px 0 6px">✋ ドラッグ（押しっぱなしで移動）</p>
+  <table class="module-table">
+    <thead><tr><th>ドラッグした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
+    <tbody>
+      <tr><td>エディタ本文</td><td>🪟 ウィンドウ移動</td><td>📝 テキスト範囲選択</td></tr>
+      <tr><td>(A) エディタ余白</td><td>🪟 ウィンドウ移動</td><td>🪟 ウィンドウ移動</td></tr>
+      <tr><td>(B) フッタ領域</td><td>🪟 ウィンドウ移動</td><td>🪟 ウィンドウ移動</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note note-yellow" style="margin-top:16px">
+    <strong>右クリック：</strong>表示モードでは閲覧用メニュー（削除・色変更等）、編集モードでは編集用メニュー（コピー・貼り付け等）が開く。<br>
+    <strong>Ctrl + クリック：</strong>編集モード中でもリンクを強制的に開く。
+  </div>
+</div>
+
+
+<!-- =====================================================
+     改版履歴
+     ===================================================== -->
+<div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
+
+<div class="card">
+  <table class="history-table">
+    <thead>
+      <tr><th>バージョン</th><th>日付</th><th>変更内容</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1.0</td>
+        <td>2026-04-19</td>
+        <td>新規作成。旧 001_ARCHITECTURE_DESIGN.html のPC側内容（構造図・クラス図・シーケンス図・ER図）を統合・整理</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p style="margin-top:40px;font-size:11px;color:#94a3b8;text-align:right">俺の付箋 設計書 002 / 2026-04-19</p>
+
+</body>
+</html>

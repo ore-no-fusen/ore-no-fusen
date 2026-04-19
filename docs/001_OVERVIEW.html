@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>俺の付箋 — システム全体像</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f4f8;
+  padding: 40px 32px;
+  color: #1a202c;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ===== NAV ===== */
+.nav {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+.nav a {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 2px solid;
+}
+.nav .nav-current {
+  background: #1e40af;
+  border-color: #1e40af;
+  color: white;
+}
+.nav .nav-link {
+  background: white;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+.nav .nav-link:hover { background: #eff6ff; }
+
+/* ===== HEADER ===== */
+h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+.lead { font-size: 14px; color: #64748b; margin-bottom: 8px; }
+.version-row { font-size: 11px; color: #94a3b8; margin-bottom: 48px; }
+
+/* ===== SECTION TITLE ===== */
+.sec-title {
+  font-size: 16px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 24px; margin-top: 56px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+/* ===== CARD ===== */
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  margin-bottom: 20px;
+}
+
+/* ===== 目次 ===== */
+.toc {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 40px;
+  display: inline-block;
+  min-width: 260px;
+}
+.toc-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #475569;
+  margin-bottom: 12px;
+  letter-spacing: 0.05em;
+}
+.toc ol { padding-left: 20px; }
+.toc li { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
+.toc a { color: #1e40af; text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+/* ===== Mermaid ===== */
+.mermaid {
+  background: #1e2432;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 28px;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+/* ===== 登場人物 ===== */
+.actors {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.actor {
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  min-width: 130px;
+  max-width: 160px;
+}
+.actor .a-icon  { font-size: 32px; line-height: 1; }
+.actor .a-name  { font-size: 13px; font-weight: 800; margin-top: 4px; }
+.actor .a-sub   { font-size: 11px; color: #64748b; line-height: 1.4; }
+.actor .a-owner { font-size: 10px; font-weight: 700; margin-top: 6px; padding: 2px 8px; border-radius: 99px; }
+
+/* 色区分 */
+.actor-user { background: #eff6ff; border: 2.5px solid #3b82f6; }
+.actor-user .a-name { color: #1e40af; }
+.actor-user .a-owner { background: #dbeafe; color: #1e40af; }
+
+.actor-dev  { background: #f0fdf4; border: 2.5px solid #22c55e; }
+.actor-dev  .a-name { color: #14532d; }
+.actor-dev  .a-owner { background: #dcfce7; color: #14532d; }
+
+.actor-ext  { background: #fefce8; border: 2.5px solid #eab308; }
+.actor-ext  .a-name { color: #713f12; }
+.actor-ext  .a-owner { background: #fef9c3; color: #713f12; }
+
+.legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.legend-dot {
+  width: 14px; height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.dot-user { background: #3b82f6; }
+.dot-dev  { background: #22c55e; }
+.dot-ext  { background: #eab308; }
+
+/* ===== 技術スタック ===== */
+.stack-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 700px) {
+  .stack-grid { grid-template-columns: 1fr; }
+}
+.stack-block {
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+.stack-block h3 {
+  font-size: 14px;
+  font-weight: 800;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stack-pc     { background: #eff6ff; border: 2px solid #93c5fd; }
+.stack-pc h3  { color: #1e40af; }
+.stack-iphone { background: #f0fdf4; border: 2px solid #86efac; }
+.stack-iphone h3 { color: #14532d; }
+
+.stack-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.stack-label {
+  font-weight: 700;
+  color: #475569;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.stack-value { color: #1a202c; line-height: 1.5; }
+code {
+  font-family: ui-monospace, monospace;
+  background: rgba(0,0,0,0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+/* ===== フロー図 ===== */
+.flow-section {
+  border-radius: 12px;
+  padding: 22px 26px;
+  margin-bottom: 16px;
+}
+.flow-section h3 {
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.flow-1 { background: #eff6ff; border: 2px solid #93c5fd; }
+.flow-1 h3 { color: #1e40af; }
+.flow-2 { background: #f0fdf4; border: 2px solid #86efac; }
+.flow-2 h3 { color: #14532d; }
+.flow-3 { background: #fdf4ff; border: 2px solid #e9d5ff; }
+.flow-3 h3 { color: #6b21a8; }
+
+.step-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+}
+.step-node {
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 11px;
+  text-align: center;
+  min-width: 88px;
+  flex-shrink: 0;
+}
+.step-node .sn-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+.step-node .sn-name { font-weight: 700; display: block; margin-bottom: 2px; }
+.step-node .sn-desc { color: #64748b; line-height: 1.4; display: block; font-size: 10px; }
+
+.sn-pc     { background: #dbeafe; border: 1.5px solid #93c5fd; }
+.sn-pc .sn-name { color: #1e40af; }
+.sn-drive  { background: #fefce8; border: 1.5px solid #fde047; }
+.sn-drive .sn-name { color: #713f12; }
+.sn-push   { background: #fdf4ff; border: 1.5px solid #d8b4fe; }
+.sn-push .sn-name { color: #6b21a8; }
+.sn-sw     { background: #f1f5f9; border: 1.5px solid #94a3b8; }
+.sn-sw .sn-name { color: #334155; }
+.sn-idb    { background: #fff7ed; border: 1.5px solid #fdba74; }
+.sn-idb .sn-name { color: #7c2d12; }
+.sn-iphone { background: #f0fdf4; border: 1.5px solid #86efac; }
+.sn-iphone .sn-name { color: #14532d; }
+
+.step-arrow {
+  padding: 0 8px;
+  font-size: 16px;
+  color: #94a3b8;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.step-arrow .sa-label {
+  font-size: 9px;
+  color: #94a3b8;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+/* ===== NOTE ===== */
+.note {
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  margin-top: 14px;
+  line-height: 1.7;
+}
+.note-blue   { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e40af; }
+.note-yellow { background: #fefce8; border-left: 4px solid #eab308; color: #713f12; }
+.note-green  { background: #f0fdf4; border-left: 4px solid #22c55e; color: #14532d; }
+
+/* ===== Vercel 表 ===== */
+.vercel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 16px;
+}
+.vercel-table th, .vercel-table td {
+  border: 1px solid #e2e8f0;
+  padding: 10px 14px;
+  text-align: left;
+}
+.vercel-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+.vercel-table td { color: #1a202c; }
+.ok  { color: #14532d; font-weight: 700; }
+.ng  { color: #991b1b; font-weight: 700; }
+
+/* ===== 改版履歴 ===== */
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 12px;
+}
+.history-table th, .history-table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  text-align: left;
+}
+.history-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+</style>
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav class="nav">
+  <span class="nav-current">001 全体像</span>
+  <a class="nav-link" href="002_PC.html">002 PC側</a>
+  <a class="nav-link" href="003_IPHONE.html">003 iPhone連携</a>
+</nav>
+
+<!-- ===== HEADER ===== -->
+<h1>俺の付箋 — システム全体像</h1>
+<p class="lead">登場人物・技術スタック・データフロー概要</p>
+<p class="version-row">設計書 v1.0 / 2026-04-19</p>
+
+<!-- ===== 設計書シリーズ案内 ===== -->
+<div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 12px rgba(0,0,0,0.07);margin-bottom:32px">
+  <div style="font-size:11px;font-weight:800;color:#475569;letter-spacing:0.05em;margin-bottom:14px">この設計書シリーズについて</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead>
+      <tr>
+        <th style="background:#f8fafc;padding:8px 14px;text-align:left;font-weight:700;color:#475569;border:1px solid #e2e8f0">文書</th>
+        <th style="background:#f8fafc;padding:8px 14px;text-align:left;font-weight:700;color:#475569;border:1px solid #e2e8f0">担当範囲</th>
+        <th style="background:#f8fafc;padding:8px 14px;text-align:left;font-weight:700;color:#475569;border:1px solid #e2e8f0">主な内容</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="background:#eff6ff">
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#1e40af;white-space:nowrap">001 全体像（本文書）</td>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0">システム全体</td>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;color:#475569">登場人物・技術スタック・3つのデータフロー概要・Vercelが必要な理由</td>
+      </tr>
+      <tr>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#1e40af;white-space:nowrap"><a href="002_PC.html" style="color:#1e40af">002 PC側</a></td>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0">Tauri アプリ</td>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;color:#475569">画面構成・モジュール構造（React / Rust）・データ構造・シーケンス図（6本）</td>
+      </tr>
+      <tr>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#14532d;white-space:nowrap"><a href="003_IPHONE.html" style="color:#14532d">003 iPhone連携</a></td>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0">iPhone PWA</td>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;color:#475569">画面構成（5画面）・モジュール構造・データ構造（IndexedDB / Drive）・シーケンス図（4本）</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== 目次 ===== -->
+<nav class="toc">
+  <div class="toc-title">目次</div>
+  <ol>
+    <li><a href="#sec1">登場人物</a></li>
+    <li><a href="#sec2">技術スタック</a></li>
+    <li><a href="#sec3">データフロー概要（3つのフロー）</a></li>
+    <li><a href="#sec4">なぜ Vercel が必要か</a></li>
+    <li><a href="#history">改版履歴</a></li>
+  </ol>
+</nav>
+
+
+<!-- =====================================================
+     1. 登場人物
+     ===================================================== -->
+<div id="sec1" class="sec-title"><span>👥</span> 1. 登場人物</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">以下7つの登場人物でこのアプリは構成されています。</p>
+
+<div class="card">
+  <!-- 関係図 -->
+  <div class="mermaid">
+graph TB
+    classDef user fill:#1e3a5f,stroke:#60a5fa,color:#bfdbfe,stroke-width:2px
+    classDef dev  fill:#14532d,stroke:#4ade80,color:#bbf7d0,stroke-width:2px
+    classDef ext  fill:#78350f,stroke:#fbbf24,color:#fef3c7,stroke-width:2px
+
+    PC["① PC アプリ<br/>Tauri + Rust<br/>（ユーザーのPC）"]:::user
+    Drive["④ Google Drive<br/>ユーザー自身のドライブ<br/>（開発者はアクセス不可）"]:::user
+    Vercel["⑤ Vercel<br/>開発者がデプロイした<br/>Webサーバー"]:::dev
+    OAuth["⑥ Google OAuth2<br/>Googleのログイン基盤<br/>（Google社が運営）"]:::ext
+    Push["⑦ APNs / FCM<br/>AppleとGoogleの<br/>通知配信サーバー"]:::ext
+
+    subgraph iPhone ["② iPhone / iPad（ユーザーの端末）"]
+        PWA["Safari PWA<br/>viewer/page.tsx"]:::user
+        SW["③ Service Worker<br/>バックグラウンド常駐"]:::user
+    end
+
+    PWA -->|"ログイン・トークン更新を依頼"| Vercel
+    Vercel -->|"client_secretを使って<br/>Googleに認証を依頼"| OAuth
+    OAuth -.->|"access_token（Drive操作許可証）"| PWA
+
+    PWA <-->|"ノート・画像ファイル"| Drive
+    SW <-->|"ノート取得・削除"| Drive
+    PC <-->|"ノート・デバイス登録情報"| Drive
+
+    PC -->|"通知を送るよう依頼"| Push
+    Push -->|"通知をiPhoneに配信"| SW
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot dot-user"></div>ユーザーの資産（開発者はアクセスできない）</div>
+    <div class="legend-item"><div class="legend-dot dot-dev"></div>開発者が提供するサービス</div>
+    <div class="legend-item"><div class="legend-dot dot-ext"></div>外部インフラ（Apple・Google 等が運営）</div>
+  </div>
+
+  <!-- 1段目：ユーザーが直接触るもの -->
+  <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:10px;letter-spacing:0.05em">ユーザーが直接使うもの</div>
+  <div class="actors" style="justify-content:center;margin-bottom:24px">
+
+    <div class="actor actor-user" style="min-width:180px;max-width:220px">
+      <span style="font-size:18px;font-weight:900;color:#3b82f6">①</span>
+      <span class="a-icon">🖥</span>
+      <span class="a-name">PC アプリ</span>
+      <span class="a-sub">Tauri + Rust<br>ユーザーのPC上で動く</span>
+      <span class="a-owner">ユーザー所有</span>
+    </div>
+
+    <div class="actor actor-user" style="min-width:180px;max-width:220px">
+      <span style="font-size:18px;font-weight:900;color:#3b82f6">②</span>
+      <span class="a-icon">📱</span>
+      <span class="a-name">iPhone / iPad</span>
+      <span class="a-sub">Safari PWA<br>ホーム画面に追加</span>
+      <span class="a-owner">ユーザー所有</span>
+    </div>
+
+  </div>
+
+  <!-- 2段目：裏側で動く仕組み -->
+  <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:10px;letter-spacing:0.05em">裏側で動く仕組み</div>
+  <div class="actors" style="justify-content:center">
+
+    <div class="actor actor-user">
+      <span style="font-size:18px;font-weight:900;color:#3b82f6">③</span>
+      <span class="a-icon">⚙️</span>
+      <span class="a-name">Service Worker</span>
+      <span class="a-sub">iPhone 内部で動く<br>バックグラウンドプログラム</span>
+      <span class="a-owner">ユーザー所有</span>
+    </div>
+
+    <div class="actor actor-user">
+      <span style="font-size:18px;font-weight:900;color:#3b82f6">④</span>
+      <span class="a-icon">☁️</span>
+      <span class="a-name">Google Drive</span>
+      <span class="a-sub">PC↔iPhone の<br>データ中継所</span>
+      <span class="a-owner">ユーザー所有</span>
+    </div>
+
+    <div class="actor actor-dev">
+      <span style="font-size:18px;font-weight:900;color:#22c55e">⑤</span>
+      <span class="a-icon">🌐</span>
+      <span class="a-name">Vercel</span>
+      <span class="a-sub">Next.js API Routes<br>開発者がデプロイ</span>
+      <span class="a-owner">開発者提供</span>
+    </div>
+
+    <div class="actor actor-ext">
+      <span style="font-size:18px;font-weight:900;color:#eab308">⑥</span>
+      <span class="a-icon">🔑</span>
+      <span class="a-name">Google OAuth2</span>
+      <span class="a-sub">Drive 操作許可証<br>（access_token）を発行</span>
+      <span class="a-owner">Google 社</span>
+    </div>
+
+    <div class="actor actor-ext">
+      <span style="font-size:18px;font-weight:900;color:#eab308">⑦</span>
+      <span class="a-icon">📡</span>
+      <span class="a-name">APNs / FCM</span>
+      <span class="a-sub">Apple / Google の<br>通知配信サーバー</span>
+      <span class="a-owner">Apple / Google 社</span>
+    </div>
+
+  </div>
+
+  <!-- 登場人物の役割一覧 -->
+  <table class="vercel-table" style="margin-top:28px">
+    <thead>
+      <tr>
+        <th>登場人物</th>
+        <th>一言で言うと</th>
+        <th>何のために使うか</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>① 🖥 PC アプリ</strong></td>
+        <td>デスクトップ付箋アプリ</td>
+        <td>付箋の表示・編集・保存。iPhone に通知付きで送信。iPhone から受け取って付箋を開く</td>
+      </tr>
+      <tr>
+        <td><strong>② 📱 iPhone PWA</strong></td>
+        <td>ホーム画面に追加した Web アプリ</td>
+        <td>PC からのノートを受け取り閲覧。メモを書いて PC に送る</td>
+      </tr>
+      <tr>
+        <td><strong>③ ⚙️ Service Worker</strong></td>
+        <td>iPhone の常駐プログラム</td>
+        <td>アプリを閉じていても Push を受信してノートを保存・通知表示。IndexedDB がデータの唯一の保存場所</td>
+      </tr>
+      <tr>
+        <td><strong>④ ☁️ Google Drive</strong></td>
+        <td>PC と iPhone の中継所</td>
+        <td>ノートデータを一時的に置く場所。処理したら即削除。開発者はアクセス不可</td>
+      </tr>
+      <tr>
+        <td><strong>⑤ 🌐 Vercel</strong></td>
+        <td>開発者が置いた Web サーバー</td>
+        <td>iPhone PWA を配信。<code>client_secret</code> をブラウザに渡さず保護するための認証 API を置く</td>
+      </tr>
+      <tr>
+        <td><strong>⑥ 🔑 Google OAuth2</strong></td>
+        <td>Drive の鍵を発行する仕組み</td>
+        <td>ユーザーが自分の Drive を読み書きするための <code>access_token</code> を取得する</td>
+      </tr>
+      <tr>
+        <td><strong>⑦ 📡 APNs / FCM</strong></td>
+        <td>通知配信サーバー</td>
+        <td>PC からの「通知してください」を受け取り iPhone に届ける。APNs は iPhone/Mac、FCM は Chrome/Android</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<!-- =====================================================
+     2. 技術スタック
+     ===================================================== -->
+<div id="sec2" class="sec-title"><span>🛠</span> 2. 技術スタック</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">PCアプリ・PWA・共有インフラの3層に分けて使用技術を整理します。</p>
+
+<div class="card">
+  <div class="stack-grid">
+
+    <div class="stack-block stack-pc">
+      <h3>🖥 PC アプリ</h3>
+      <div class="stack-row">
+        <span class="stack-label">フレームワーク</span>
+        <span class="stack-value">Tauri v2（WebView + Rust バックエンド）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">UI</span>
+        <span class="stack-value">Next.js 14 / React 18 / TypeScript / Tailwind CSS</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">エディタ</span>
+        <span class="stack-value">CodeMirror 6（Markdown ハイライト・検索）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">バックエンド</span>
+        <span class="stack-value">Rust（AppState・ファイル I/O・Win32 API）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">データ保存</span>
+        <span class="stack-value">ファイルシステム（JSON / Markdown）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">テスト</span>
+        <span class="stack-value">Vitest（ユニット）/ Playwright（E2E）</span>
+      </div>
+    </div>
+
+    <div class="stack-block stack-iphone">
+      <h3>📱 iPhone PWA（Vercel 配信）</h3>
+      <div class="stack-row">
+        <span class="stack-label">ページ</span>
+        <span class="stack-value">Next.js 14 App Router（<code>app/viewer/page.tsx</code>）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">配信</span>
+        <span class="stack-value">Vercel（Next.js API Routes も同居）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">バックグラウンド</span>
+        <span class="stack-value">Service Worker（<code>worker/index.js</code>）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">ローカルDB</span>
+        <span class="stack-value">IndexedDB（<code>fusen-drafts</code>）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">認証</span>
+        <span class="stack-value">Google OAuth2（Vercel API 経由）</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-label">通知</span>
+        <span class="stack-value">Web Push / APNs / FCM</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- =====================================================
+     3. 全体データフロー概要
+     ===================================================== -->
+<div id="sec3" class="sec-title"><span>🔄</span> 3. データフロー概要（3つのフロー）</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">PCアプリ・iPhone・Driveを結ぶ3つのデータの流れを概観します。</p>
+
+<div class="card">
+
+  <!-- フロー① PC → iPhone -->
+  <div class="flow-section flow-1">
+    <h3>➡️ フロー① PC → iPhone（メモを受け取る）</h3>
+    <div class="step-row">
+      <div class="step-node sn-pc">
+        <span class="sn-icon">🖥</span>
+        <span class="sn-name">PC アプリ</span>
+        <span class="sn-desc">「iPhoneに送る」</span>
+      </div>
+      <div class="step-arrow">
+        <span>→</span>
+        <span class="sa-label">書き込み</span>
+      </div>
+      <div class="step-node sn-drive">
+        <span class="sn-icon">☁️</span>
+        <span class="sn-name">Drive</span>
+        <span class="sn-desc"><code>notes_to_iphone.json</code></span>
+      </div>
+      <div class="step-arrow">
+        <span>＋</span>
+      </div>
+      <div class="step-node sn-push">
+        <span class="sn-icon">📡</span>
+        <span class="sn-name">APNs</span>
+        <span class="sn-desc">Push 送信</span>
+      </div>
+      <div class="step-arrow">
+        <span>→</span>
+        <span class="sa-label">バックグラウンド受信</span>
+      </div>
+      <div class="step-node sn-sw">
+        <span class="sn-icon">⚙️</span>
+        <span class="sn-name">Service Worker</span>
+        <span class="sn-desc">Drive取得→IndexedDB保存→通知表示</span>
+      </div>
+      <div class="step-arrow">
+        <span>→</span>
+        <span class="sa-label">タップ</span>
+      </div>
+      <div class="step-node sn-iphone">
+        <span class="sn-icon">📱</span>
+        <span class="sn-name">iPhone PWA</span>
+        <span class="sn-desc">IndexedDBから表示</span>
+      </div>
+    </div>
+    <div class="note note-blue">
+      <strong>フォールバック：</strong>電源オフ中に複数件送ると APNs は最新1件のみ保持。list 画面を開いたとき <code>notes_to_iphone.json</code> に残っているものを IndexedDB に補完してから Drive を削除する。
+    </div>
+  </div>
+
+  <!-- フロー② iPhone → PC -->
+  <div class="flow-section flow-2">
+    <h3>⬅️ フロー② iPhone → PC（メモを送る）</h3>
+    <div class="step-row">
+      <div class="step-node sn-iphone">
+        <span class="sn-icon">📱</span>
+        <span class="sn-name">iPhone PWA</span>
+        <span class="sn-desc">「PCに送る」</span>
+      </div>
+      <div class="step-arrow">
+        <span>→</span>
+        <span class="sa-label">書き込み</span>
+      </div>
+      <div class="step-node sn-drive">
+        <span class="sn-icon">☁️</span>
+        <span class="sn-name">Drive</span>
+        <span class="sn-desc"><code>notes_from_iphone.json</code><br>+ 画像ファイル</span>
+      </div>
+      <div class="step-arrow">
+        <span>→</span>
+        <span class="sa-label">30秒ポーリング</span>
+      </div>
+      <div class="step-node sn-pc">
+        <span class="sn-icon">🖥</span>
+        <span class="sn-name">PC アプリ</span>
+        <span class="sn-desc">新着検出→新規付箋として開く</span>
+      </div>
+    </div>
+    <div class="note note-green">
+      <strong>Drive 設計原則：</strong>Drive にあるものは全て未処理キュー。受信処理が完了したら即削除。残っていたら削除 API 失敗の残骸。
+    </div>
+  </div>
+
+  <!-- フロー③ ロック -->
+  <div class="flow-section flow-3">
+    <h3>🔒 フロー③ ロック画面コントロール（iPhone 内部）</h3>
+    <div class="step-row">
+      <div class="step-node sn-iphone">
+        <span class="sn-icon">📋</span>
+        <span class="sn-name">一覧画面</span>
+        <span class="sn-desc">🔔ボタンタップ</span>
+      </div>
+      <div class="step-arrow">
+        <span>→</span>
+      </div>
+      <div class="step-node sn-idb">
+        <span class="sn-icon">🗄️</span>
+        <span class="sn-name">IndexedDB</span>
+        <span class="sn-desc">locked = true</span>
+      </div>
+      <div class="step-arrow">
+        <span>→</span>
+      </div>
+      <div class="step-node sn-sw">
+        <span class="sn-icon">⚙️</span>
+        <span class="sn-name">Service Worker</span>
+        <span class="sn-desc">showNotification()<br>tag: fusen-lock-XXX</span>
+      </div>
+      <div class="step-arrow">
+        <span>→</span>
+      </div>
+      <div class="step-node" style="background:#fdf4ff;border:1.5px solid #e9d5ff;min-width:88px;padding:10px 12px;border-radius:10px;text-align:center">
+        <span class="sn-icon" style="font-size:20px;display:block;margin-bottom:4px">📵</span>
+        <span class="sn-name" style="font-weight:700;color:#6b21a8;font-size:11px;display:block;margin-bottom:2px">ロック画面</span>
+        <span style="font-size:10px;color:#64748b;display:block;line-height:1.4">通知として常駐<br>消すまで残る</span>
+      </div>
+    </div>
+    <div class="note" style="background:#fdf4ff;border-left:4px solid #c084fc;color:#6b21a8;border-radius:10px;padding:12px 16px;font-size:12px;margin-top:14px;line-height:1.7">
+      Drive を使わない。iPhone 内部（IndexedDB ↔ Service Worker）だけで完結するフロー。
+    </div>
+  </div>
+
+</div>
+
+
+<!-- =====================================================
+     4. なぜ Vercel が必要か
+     ===================================================== -->
+<div id="sec4" class="sec-title"><span>🔐</span> 4. なぜ Vercel が必要か</div>
+<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">Google OAuth2 の client_secret を安全に保護するためにVercelが必要な理由を説明します。</p>
+
+<div class="card">
+  <p style="font-size:13px;line-height:1.8;margin-bottom:16px">
+    <strong>守っている対象：開発者（アプリ作者）のアプリ自体。</strong>ユーザーの秘密情報ではない。
+  </p>
+  <p style="font-size:13px;line-height:1.8;margin-bottom:20px">
+    <code>client_secret</code> は開発者が Google Cloud Console で発行した「このアプリが本物であることを証明する鍵」。
+    漏れると開発者のアプリが停止・悪用されるリスクがある。
+    iPhone のコードに埋め込むと Safari DevTools で誰でも読めてしまう。
+  </p>
+
+  <table class="vercel-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th><code>client_secret</code> の場所</th>
+        <th>問題</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="ng">✕ iPhone 直接</td>
+        <td>iPhone のコードに埋め込む</td>
+        <td>Safari DevTools でユーザーが読める → 開発者のアプリが悪用される</td>
+      </tr>
+      <tr>
+        <td class="ok">✔ Vercel 経由</td>
+        <td>Vercel の環境変数に置く</td>
+        <td>iPhone（Safari）には届かない。Vercel のサーバー内だけで使われる</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note note-yellow" style="margin-top:16px">
+    iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</code> を呼ぶだけ。<code>client_secret</code> は一切 iPhone に渡らない。
+  </div>
+</div>
+
+
+<!-- =====================================================
+     改版履歴
+     ===================================================== -->
+<div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
+
+<div class="card">
+  <table class="history-table">
+    <thead>
+      <tr><th>バージョン</th><th>日付</th><th>変更内容</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1.0</td>
+        <td>2026-04-19</td>
+        <td>設計書を 001/002/003 に再編。本ファイル（001）は全体像を担当。旧 001_ARCHITECTURE_DESIGN・003_SYSTEM_OVERVIEW の該当部分を統合</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<p style="margin-top:40px;font-size:11px;color:#94a3b8;text-align:right">俺の付箋 設計書 001 / 2026-04-19</p>
+
+</body>
+</html>
