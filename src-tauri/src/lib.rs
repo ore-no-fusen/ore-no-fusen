@@ -1677,15 +1677,22 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         if updated_items.is_empty() {
             // 未処理アイテムが残っていなければファイルごと削除
-            let _ = gdrive::delete_file_by_name(&client2, &token2, "notes_from_iphone.json").await;
+            match gdrive::delete_file_by_name(&client2, &token2, "notes_from_iphone.json").await {
+                Ok(_) => logger::log_info("[poll] notes_from_iphone.json deleted"),
+                Err(e) => logger::log_info(&format!("[poll] notes_from_iphone.json delete error: {}", e)),
+            }
         } else {
             let updated_data = serde_json::json!({ "items": updated_items });
             let _ = gdrive::upload_json(
                 &client2, &token2, "notes_from_iphone.json", &updated_data,
             ).await;
         }
+        logger::log_info(&format!("[poll] deleting {} image(s): {:?}", all_image_names.len(), all_image_names));
         for name in all_image_names {
-            let _ = gdrive::delete_file_by_name(&client2, &token2, &name).await;
+            match gdrive::delete_file_by_name(&client2, &token2, &name).await {
+                Ok(_) => logger::log_info(&format!("[poll] image deleted: {}", name)),
+                Err(e) => logger::log_info(&format!("[poll] image delete error {}: {}", name, e)),
+            }
         }
     });
 }
