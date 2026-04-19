@@ -180,6 +180,8 @@ export default function ViewerPage() {
       setStep('write');
     };
     document.addEventListener('visibilitychange', handleVisible);
+    // 起動直後も確認（clients.openWindow で新規タブが開かれた場合、visibilitychange は発火しない）
+    handleVisible();
     return () => document.removeEventListener('visibilitychange', handleVisible);
   }, []);
 
