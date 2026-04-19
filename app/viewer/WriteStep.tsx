@@ -160,6 +160,14 @@ export function WriteStep({
                 }
                 if (node.parentNode === editor) lineNode = node;
               }
+              // IMGノードはテキストを持たないため、次の兄弟（trailing text span）を使う
+              // 例: ![](img.jpg)text → <img><span>text</span> の構造でカーソルがimgに落ちるケース
+              if (lineNode && lineNode.nodeName === 'IMG') {
+                const next = lineNode.nextSibling;
+                if (next && next.nodeName !== 'BR') {
+                  lineNode = next;
+                }
+              }
               // すでにチェックボックス行なら解除（toggle off）
               if (lineNode instanceof Element && lineNode.hasAttribute('data-checkbox-line')) {
                 const text = (lineNode.textContent ?? '').trimStart();
