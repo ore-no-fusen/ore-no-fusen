@@ -390,15 +390,15 @@ graph TB
     classDef dev  fill:#14532d,stroke:#4ade80,color:#bbf7d0,stroke-width:2px
     classDef ext  fill:#78350f,stroke:#fbbf24,color:#fef3c7,stroke-width:2px
 
-    PC["① PC アプリ<br/>Tauri + Rust<br/>（ユーザーのPC）"]:::user
-    Drive["④ Google Drive<br/>ユーザー自身のドライブ<br/>（開発者はアクセス不可）"]:::user
-    Vercel["⑤ Vercel<br/>開発者がデプロイした<br/>Webサーバー"]:::dev
-    OAuth["⑥ Google OAuth2<br/>Googleのログイン基盤<br/>（Google社が運営）"]:::ext
-    Push["⑦ APNs / FCM<br/>AppleとGoogleの<br/>通知配信サーバー"]:::ext
+    PC["1⃣ PC アプリ<br/>Tauri + Rust<br/>（ユーザーのPC）"]:::user
+    Drive["4⃣ Google Drive<br/>ユーザー自身のドライブ<br/>（開発者はアクセス不可）"]:::user
+    Vercel["5⃣ Vercel<br/>開発者がデプロイした<br/>Webサーバー"]:::dev
+    OAuth["6⃣ Google OAuth2<br/>Googleのログイン基盤<br/>（Google社が運営）"]:::ext
+    Push["7⃣ APNs / FCM<br/>AppleとGoogleの<br/>通知配信サーバー"]:::ext
 
-    subgraph iPhone ["② iPhone / iPad（ユーザーの端末）"]
+    subgraph iPhone ["2⃣ iPhone / iPad（ユーザーの端末）"]
         PWA["Safari PWA<br/>viewer/page.tsx"]:::user
-        SW["③ Service Worker<br/>バックグラウンド常駐"]:::user
+        SW["3⃣ Service Worker<br/>バックグラウンド常駐"]:::user
     end
 
     PWA -->|"ログイン・トークン更新を依頼"| Vercel
@@ -412,6 +412,7 @@ graph TB
     PC -->|"通知を送るよう依頼"| Push
     Push -->|"通知をiPhoneに配信"| SW
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 1-1　システム全体関係図</p>
 
   <div class="legend">
     <div class="legend-item"><div class="legend-dot dot-user"></div>ユーザーの資産（開発者はアクセスできない）</div>
@@ -424,7 +425,7 @@ graph TB
   <div class="actors" style="justify-content:center;margin-bottom:24px">
 
     <div class="actor actor-user" style="min-width:180px;max-width:220px">
-      <span style="font-size:18px;font-weight:900;color:#3b82f6">①</span>
+      <span style="font-size:18px;font-weight:900;color:#3b82f6">1⃣</span>
       <span class="a-icon">🖥</span>
       <span class="a-name">PC アプリ</span>
       <span class="a-sub">Tauri + Rust<br>ユーザーのPC上で動く</span>
@@ -432,7 +433,7 @@ graph TB
     </div>
 
     <div class="actor actor-user" style="min-width:180px;max-width:220px">
-      <span style="font-size:18px;font-weight:900;color:#3b82f6">②</span>
+      <span style="font-size:18px;font-weight:900;color:#3b82f6">2⃣</span>
       <span class="a-icon">📱</span>
       <span class="a-name">iPhone / iPad</span>
       <span class="a-sub">Safari PWA<br>ホーム画面に追加</span>
@@ -446,7 +447,7 @@ graph TB
   <div class="actors" style="justify-content:center">
 
     <div class="actor actor-user">
-      <span style="font-size:18px;font-weight:900;color:#3b82f6">③</span>
+      <span style="font-size:18px;font-weight:900;color:#3b82f6">3⃣</span>
       <span class="a-icon">⚙️</span>
       <span class="a-name">Service Worker</span>
       <span class="a-sub">iPhone 内部で動く<br>バックグラウンドプログラム</span>
@@ -454,7 +455,7 @@ graph TB
     </div>
 
     <div class="actor actor-user">
-      <span style="font-size:18px;font-weight:900;color:#3b82f6">④</span>
+      <span style="font-size:18px;font-weight:900;color:#3b82f6">4⃣</span>
       <span class="a-icon">☁️</span>
       <span class="a-name">Google Drive</span>
       <span class="a-sub">PC↔iPhone の<br>データ中継所</span>
@@ -462,7 +463,7 @@ graph TB
     </div>
 
     <div class="actor actor-dev">
-      <span style="font-size:18px;font-weight:900;color:#22c55e">⑤</span>
+      <span style="font-size:18px;font-weight:900;color:#22c55e">5⃣</span>
       <span class="a-icon">🌐</span>
       <span class="a-name">Vercel</span>
       <span class="a-sub">Next.js API Routes<br>開発者がデプロイ</span>
@@ -470,7 +471,7 @@ graph TB
     </div>
 
     <div class="actor actor-ext">
-      <span style="font-size:18px;font-weight:900;color:#eab308">⑥</span>
+      <span style="font-size:18px;font-weight:900;color:#eab308">6⃣</span>
       <span class="a-icon">🔑</span>
       <span class="a-name">Google OAuth2</span>
       <span class="a-sub">Drive 操作許可証<br>（access_token）を発行</span>
@@ -478,7 +479,7 @@ graph TB
     </div>
 
     <div class="actor actor-ext">
-      <span style="font-size:18px;font-weight:900;color:#eab308">⑦</span>
+      <span style="font-size:18px;font-weight:900;color:#eab308">7⃣</span>
       <span class="a-icon">📡</span>
       <span class="a-name">APNs / FCM</span>
       <span class="a-sub">Apple / Google の<br>通知配信サーバー</span>
@@ -488,7 +489,8 @@ graph TB
   </div>
 
   <!-- 登場人物の役割一覧 -->
-  <table class="vercel-table" style="margin-top:28px">
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 1-1　登場人物の役割一覧</p>
+  <table class="vercel-table" style="margin-top:4px">
     <thead>
       <tr>
         <th>登場人物</th>
@@ -498,37 +500,37 @@ graph TB
     </thead>
     <tbody>
       <tr>
-        <td><strong>① 🖥 PC アプリ</strong></td>
+        <td><strong>1⃣ 🖥 PC アプリ</strong></td>
         <td>デスクトップ付箋アプリ</td>
         <td>付箋の表示・編集・保存。iPhone に通知付きで送信。iPhone から受け取って付箋を開く</td>
       </tr>
       <tr>
-        <td><strong>② 📱 iPhone PWA</strong></td>
+        <td><strong>2⃣ 📱 iPhone PWA</strong></td>
         <td>ホーム画面に追加した Web アプリ</td>
         <td>PC からのノートを受け取り閲覧。メモを書いて PC に送る</td>
       </tr>
       <tr>
-        <td><strong>③ ⚙️ Service Worker</strong></td>
+        <td><strong>3⃣ ⚙️ Service Worker</strong></td>
         <td>iPhone の常駐プログラム</td>
         <td>アプリを閉じていても Push を受信してノートを保存・通知表示。IndexedDB がデータの唯一の保存場所</td>
       </tr>
       <tr>
-        <td><strong>④ ☁️ Google Drive</strong></td>
+        <td><strong>4⃣ ☁️ Google Drive</strong></td>
         <td>PC と iPhone の中継所</td>
         <td>ノートデータを一時的に置く場所。処理したら即削除。開発者はアクセス不可</td>
       </tr>
       <tr>
-        <td><strong>⑤ 🌐 Vercel</strong></td>
+        <td><strong>5⃣ 🌐 Vercel</strong></td>
         <td>開発者が置いた Web サーバー</td>
         <td>iPhone PWA を配信。<code>client_secret</code> をブラウザに渡さず保護するための認証 API を置く</td>
       </tr>
       <tr>
-        <td><strong>⑥ 🔑 Google OAuth2</strong></td>
+        <td><strong>6⃣ 🔑 Google OAuth2</strong></td>
         <td>Drive の鍵を発行する仕組み</td>
         <td>ユーザーが自分の Drive を読み書きするための <code>access_token</code> を取得する</td>
       </tr>
       <tr>
-        <td><strong>⑦ 📡 APNs / FCM</strong></td>
+        <td><strong>7⃣ 📡 APNs / FCM</strong></td>
         <td>通知配信サーバー</td>
         <td>PC からの「通知してください」を受け取り iPhone に届ける。APNs は iPhone/Mac、FCM は Chrome/Android</td>
       </tr>
@@ -755,6 +757,7 @@ graph TB
     iPhone のコードに埋め込むと Safari DevTools で誰でも読めてしまう。
   </p>
 
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 1-2　Vercel の要否比較</p>
   <table class="vercel-table">
     <thead>
       <tr>

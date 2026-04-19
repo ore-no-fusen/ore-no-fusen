@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.30';
+const SW_VERSION = '2.9.31';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -173,7 +173,7 @@ function saveToIndexedDB(id, title, body, images) {
       req.onsuccess = () => {
         const tx = req.result.transaction('drafts', 'readwrite');
         tx.objectStore('drafts').put(
-          { id, title, body, created_at: nowJST(), images: validImages, received_pc: true, locked: false },
+          { id, title, body, created_at: nowJST(), images: validImages, received_pc: true, locked: true },
           id
         );
         tx.oncomplete = () => resolve();

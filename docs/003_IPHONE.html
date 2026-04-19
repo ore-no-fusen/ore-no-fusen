@@ -236,7 +236,7 @@ code {
 </nav>
 
 <!-- ===== HEADER ===== -->
-<h1>③ iPhone PWA 設計書</h1>
+<h1>003 iPhone PWA 設計書</h1>
 <p class="lead">画面構成・モジュール構造・データ構造・データフロー</p>
 <p class="version-row">設計書 v1.0 / 2026-04-19</p>
 
@@ -475,8 +475,9 @@ flowchart LR
     PWA -->|"トークンあり + 通知設定済み"| List
     PWA -->|"通知タップ / pending_open"| Write
   </div>
-
-  <table class="module-table" style="margin-top:16px">
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 12px;letter-spacing:0.03em">図 3-1　起動時の画面遷移ルール</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-1　起動時の遷移条件</p>
+  <table class="module-table" style="margin-top:4px">
     <thead>
       <tr><th>起動時の状態</th><th>遷移先</th></tr>
     </thead>
@@ -560,9 +561,11 @@ graph LR
     BgSend --> Drive
     Push --> Drive
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 16px;letter-spacing:0.03em">図 3-2　フロントエンドモジュール構成</p>
 
   <div id="sec2-sw" class="subsec">2.2 Service Worker（worker/index.js）</div>
-  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">push受信・notificationclick等を処理するSWのイベントハンドラ4点を一覧します。</p>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 6px 0">push受信・notificationclick等を処理するSWのイベントハンドラ4点を一覧します。</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-2　Service Worker イベントハンドラ一覧</p>
   <table class="module-table">
     <thead>
       <tr><th>イベント</th><th>処理内容</th></tr>
@@ -602,10 +605,11 @@ graph LR
 
   <div id="sec2-server" class="subsec">2.3 サーバーサイド（Vercel API Routes）</div>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">Google OAuth2 の client_secret を保護するVercel APIエンドポイント3点を説明します。</p>
-  <div class="note note-blue" style="margin-bottom:16px">
+  <div class="note note-blue" style="margin-bottom:12px">
     Google OAuth の <code>client_secret</code>（秘密鍵）をブラウザ（iPhone）に渡さないため、
     トークン交換・更新の処理だけ Vercel のサーバーサイドに置く。iPhone は Vercel 経由でのみトークンを取得できる。
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-3　Vercel API Routes 一覧</p>
   <table class="module-table">
     <thead>
       <tr><th>ファイル</th><th>役割</th></tr>
@@ -643,6 +647,7 @@ graph LR
 
     <div class="store-card store-idb">
       <h4>🗄 fusen-drafts（ノートデータ）</h4>
+      <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-4　fusen-drafts スキーマ</p>
       <table class="module-table" style="font-size:11px">
         <thead><tr><th>フィールド</th><th>型</th><th>意味</th></tr></thead>
         <tbody>
@@ -660,6 +665,7 @@ graph LR
 
     <div class="store-card store-idb">
       <h4>🗄 fusen-meta（メタ情報）</h4>
+      <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-5　fusen-meta スキーマ</p>
       <table class="module-table" style="font-size:11px">
         <thead><tr><th>キー</th><th>意味</th></tr></thead>
         <tbody>
@@ -670,6 +676,7 @@ graph LR
       </table>
 
       <h4 style="margin-top:16px">🗄 fusen-logs（デバッグログ）</h4>
+      <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-6　fusen-logs スキーマ</p>
       <table class="module-table" style="font-size:11px">
         <thead><tr><th>フィールド</th><th>意味</th></tr></thead>
         <tbody>
@@ -685,6 +692,7 @@ graph LR
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">セッション管理に使うlocalStorageのキーと値の一覧です。</p>
   <div class="store-card store-ls" style="max-width:600px">
     <h4>🔑 認証・設定フラグ</h4>
+    <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-7　localStorage キー一覧</p>
     <table class="module-table" style="font-size:11px">
       <thead><tr><th>キー</th><th>意味</th></tr></thead>
       <tbody>
@@ -699,10 +707,11 @@ graph LR
 
   <div id="sec3-drive" class="subsec">3.3 Google Drive ファイル</div>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">PCとiPhone間の中継に使うDriveファイルの種類と書き込み/削除責務を説明します。</p>
-  <div class="note note-green" style="margin-bottom:16px">
+  <div class="note note-green" style="margin-bottom:12px">
     <strong>Drive 設計原則：Drive にあるものは全て未処理キュー。処理済みは即削除。</strong>
     状態フィールド（received_at 等）は不要。残っていたら削除 API 失敗の残骸。
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-8　Google Drive ファイル一覧</p>
   <table class="module-table">
     <thead>
       <tr><th>ファイル名</th><th>書き込み</th><th>読み取り・削除</th><th>意味</th></tr>
@@ -750,16 +759,16 @@ graph LR
   <div class="mermaid">
 sequenceDiagram
     actor UserPhone as ユーザー（iPhone）
-    box ② iPhone PWA
-        participant PWA as ② iPhone PWA
+    box iPhone PWA
+        participant PWA as 2⃣ iPhone PWA
     end
-    box ⑤ Vercel / ⑥ Google OAuth2
-        participant Vercel as ⑤ Vercel
-        participant OAuth as ⑥ Google OAuth2
+    box Vercel / Google OAuth2
+        participant Vercel as 5⃣ Vercel
+        participant OAuth as 6⃣ Google OAuth2
     end
-    box ④ Google Drive / ③ Service Worker
-        participant Drive as ④ Google Drive
-        participant SW as ③ Service Worker
+    box Google Drive / Service Worker
+        participant Drive as 4⃣ Google Drive
+        participant SW as 3⃣ Service Worker
     end
 
     Note over UserPhone: Safariで /viewer を開く
@@ -781,6 +790,7 @@ sequenceDiagram
     PWA->>Drive: push_devices.json に端末情報を upsert
     PWA->>UserPhone: ✅ セットアップ完了 → list 画面へ
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 3-3　アプリ起動シーケンス（初回：インストール → 認証 → 通知許可）</p>
 </div>
 
 <!-- 4.2 PC→iPhone受信 -->
@@ -792,18 +802,18 @@ sequenceDiagram
   <div class="mermaid">
 sequenceDiagram
     actor UserPC as ユーザー（PC）
-    box ① PC アプリ
-        participant PC as ① PC アプリ
+    box PC アプリ
+        participant PC as 1⃣ PC アプリ
     end
-    box ④ Google Drive / ⑦ APNs
-        participant Drive as ④ Google Drive
-        participant APNs as ⑦ APNs / FCM
+    box Google Drive / APNs
+        participant Drive as 4⃣ Google Drive
+        participant APNs as 7⃣ APNs / FCM
     end
-    box ③ Service Worker
-        participant SW as ③ Service Worker
+    box Service Worker
+        participant SW as 3⃣ Service Worker
     end
-    box ② iPhone PWA
-        participant PWA as ② iPhone PWA
+    box iPhone PWA
+        participant PWA as 2⃣ iPhone PWA
     end
     actor UserPhone as ユーザー（iPhone）
 
@@ -826,9 +836,14 @@ sequenceDiagram
     PWA->>UserPhone: write画面でノートを表示 ✅
     Note over UserPhone: 📖 内容を確認できた
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 3-4　PC → iPhone 受信シーケンス</p>
   <div class="note note-blue">
     <strong>body_rich：</strong>Markdown 本文（画像タグ含む）は Push ペイロードに直接含まれる。
     Drive へのフェッチは画像バイナリのダウンロードのみ。JSON の再取得は不要。
+  </div>
+  <div class="note note-yellow">
+    <strong>ユーザー体験の全体像（<a href="000_REQUIREMENTS.html#sec9">REQ_IP_05</a>）：</strong>
+    このフローは ① の送信〜初回表示のみ。通知をタップした後も再通知されロック画面から消えない体験（②③）、および OFF 操作（④）は 4.4 を参照。
   </div>
 </div>
 
@@ -841,14 +856,14 @@ sequenceDiagram
   <div class="mermaid">
 sequenceDiagram
     actor UserPC as ユーザー（PC）
-    box ① PC アプリ
-        participant PC as ① PC アプリ
+    box PC アプリ
+        participant PC as 1⃣ PC アプリ
     end
-    box ④ Google Drive
-        participant Drive as ④ Google Drive
+    box Google Drive
+        participant Drive as 4⃣ Google Drive
     end
-    box ② iPhone PWA
-        participant PWA as ② iPhone PWA
+    box iPhone PWA
+        participant PWA as 2⃣ iPhone PWA
     end
     actor UserPhone as ユーザー（iPhone）
 
@@ -867,6 +882,7 @@ sequenceDiagram
     PC->>UserPC: 新規付箋ウィンドウが開く ✅
     Note over UserPC: 📝 内容を確認できた
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 3-5　iPhone → PC 送信シーケンス</p>
   <div class="note note-green">
     <strong>「iPhoneに置いておく」との違い：</strong>Drive を使わない。テキスト＋画像を IndexedDB のみに保存。PC への送信は発生しない。
   </div>
@@ -874,21 +890,33 @@ sequenceDiagram
 
 <!-- 4.4 ロックだぜ -->
 <div class="card">
-  <div id="seq4" class="subsec">4.4 ロックだぜ ON/OFF</div>
+  <div id="seq4" class="subsec">4.4 ロックだぜ ON/OFF と再通知サイクル（<a href="000_REQUIREMENTS.html#sec9">REQ_IP_05</a>）</div>
   <p style="font-size:12px;color:#64748b;margin-bottom:12px">
-    ノートをiPhoneのロック画面に通知として表示し続ける機能。一覧画面の 🔔 ボタンで切り替える。
+    「消す意思がないかぎりロック画面から消えない」体験を実現する ON/OFF 操作と、タップ後の再通知サイクル。
+    ユーザー体験の手順は ①〜⑥ で示す（REQ_IP_05 の①〜④に対応）。
   </p>
   <div class="mermaid">
 sequenceDiagram
     actor UserPhone as ユーザー（iPhone）
-    box ② iPhone PWA
-        participant PWA as ② iPhone PWA（list画面）
+    box iPhone PWA
+        participant PWA as 2⃣ iPhone PWA（list画面）
     end
-    box ③ Service Worker
-        participant SW as ③ Service Worker
+    box Service Worker
+        participant SW as 3⃣ Service Worker
     end
 
-    UserPhone->>PWA: 🔔 ボタンをタップ
+    Note over SW,UserPhone: ①〜③ 常駐サイクル（locked: true が前提）
+
+    SW->>UserPhone: ① 🔔 ロック画面に通知を表示（push受信時）
+    UserPhone->>SW: ② 通知をタップ（notificationclick）
+    SW->>SW: IndexedDB で locked 確認 → true
+    SW->>UserPhone: 🔔 通知を再表示（ロック画面から消えない）
+    SW->>PWA: OPEN_NOTE メッセージ または openWindow
+    PWA->>UserPhone: ③ 付箋の内容を表示
+    Note over SW,UserPhone: ④ ①〜③ を繰り返す
+
+    Note over PWA,UserPhone: ⑤ ユーザーが明示的に OFF にする
+    UserPhone->>PWA: 🔔 ボタンをタップ（list画面）
     alt locked: false → ON にする
         PWA->>PWA: IndexedDB に locked: true を保存
         PWA->>SW: showNotification（通知を出す）
@@ -896,13 +924,18 @@ sequenceDiagram
     else locked: true → OFF にする
         PWA->>PWA: IndexedDB に locked: false を保存
         PWA->>SW: getNotifications → close()
-        SW->>UserPhone: 🔕 ロック画面の通知が消える
+        SW->>UserPhone: ⑥ 🔕 ロック画面の通知が消える
     end
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 3-6　ロック画面常駐サイクル（ON/OFF と再通知）</p>
   <div class="note note-yellow">
     <strong>通知を消せるのは SW だけ：</strong>一度表示した通知を非表示にするには
     <code>registration.getNotifications()</code> で取得して <code>n.close()</code> を呼ぶ必要がある。
     <code>useLockToggle</code> は SW へのメッセージ送信でこれを実現する。
+  </div>
+  <div class="note note-blue">
+    <strong>locked の初期値：</strong>push 受信時に IndexedDB へ保存するとき <code>locked: true</code> で保存する（SW の <code>saveToIndexedDB</code>）。
+    これにより、ユーザーが 🔔 ボタンを操作する前から ①〜③ のサイクルが有効になる。
   </div>
 </div>
 
@@ -918,6 +951,11 @@ sequenceDiagram
       <tr><th>バージョン</th><th>日付</th><th>変更内容</th></tr>
     </thead>
     <tbody>
+      <tr>
+        <td>1.1</td>
+        <td>2026-04-20</td>
+        <td>4.4 にロック画面常駐体験（REQ_IP_05）の再通知サイクル（①②③④）を追加。4.2 に REQ_IP_05 への参照を追加</td>
+      </tr>
       <tr>
         <td>1.0</td>
         <td>2026-04-19</td>

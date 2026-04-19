@@ -186,7 +186,7 @@ code {
 </nav>
 
 <!-- ===== HEADER ===== -->
-<h1>② PC アプリ 設計書</h1>
+<h1>002 PC アプリ 設計書</h1>
 <p class="lead">画面構成・モジュール構造・データ構造・データフロー</p>
 <p class="version-row">設計書 v1.0 / 2026-04-19</p>
 
@@ -296,6 +296,7 @@ graph TD
     C <-.->|"invoke / emit"| State
     Main <-.->|"invoke / emit"| State
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-1　ウィンドウ生成の仕組み</p>
 
   <div class="note note-yellow">
     <strong>状態管理の鉄則：</strong>ウィンドウ間で直接通信しない。付箋 A が何かを変えたいとき → Rust <code>AppState</code> を更新 → Tauri <code>emit()</code> で全ウィンドウに通知。フロントエンドは表示するだけ。
@@ -354,9 +355,11 @@ graph LR
     Menu -.->|invoke| Rust
     Short -.->|invoke| Rust
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 16px;letter-spacing:0.03em">図 2-2　フロントエンドモジュール構成</p>
 
   <div id="sec2-be" class="subsec">2.2 バックエンド（Rust）</div>
-  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">TauriコマンドとAppStateを中心とするRust側モジュールの役割を一覧します。</p>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 6px 0">TauriコマンドとAppStateを中心とするRust側モジュールの役割を一覧します。</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-1　バックエンドモジュール一覧（Rust）</p>
   <table class="module-table">
     <thead>
       <tr>
@@ -450,8 +453,8 @@ graph LR
 <div class="card">
 
   <div id="sec3-note" class="subsec">3.1 付箋データ（Markdown ファイル = frontmatter + 本文）</div>
-  <p style="font-size:12px;color:#64748b;margin-bottom:12px">付箋1枚 = Markdown ファイル1枚。PC ローカルのファイルシステムが正。Drive は中継所に過ぎない。</p>
-
+  <p style="font-size:12px;color:#64748b;margin-bottom:8px">付箋1枚 = Markdown ファイル1枚。PC ローカルのファイルシステムが正。Drive は中継所に過ぎない。</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-2　付箋データ構造（Markdown frontmatter）</p>
   <table class="module-table">
     <thead>
       <tr><th>フィールド</th><th>型</th><th>意味</th></tr>
@@ -472,7 +475,8 @@ graph LR
   </table>
 
   <div id="sec3-settings" class="subsec">3.2 設定データ（<code>settings.json</code>）</div>
-  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">settings.json で管理するアプリ全体の設定項目5点を定義します。</p>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 6px 0">settings.json で管理するアプリ全体の設定項目5点を定義します。</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-3　設定データ構造（settings.json）</p>
   <table class="module-table">
     <thead>
       <tr><th>フィールド</th><th>型</th><th>意味</th></tr>
@@ -535,6 +539,7 @@ classDiagram
     AppState "1" *-- "0..1" VapidKeys : 保持
     AppState "1" *-- "*" PushDevice : 保持
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-3　クラス図（主要モジュール依存関係）</p>
 </div>
 
 
@@ -573,6 +578,7 @@ sequenceDiagram
         Page->>Win: WebviewWindow 生成 (x, y, width, height)
     end
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-4　アプリ起動シーケンス</p>
 </div>
 
 <!-- 4.2 保存・自動リネーム -->
@@ -592,6 +598,7 @@ sequenceDiagram
     FS-->>Logic: 新しいパスを返す
     Logic->>Editor: path 更新通知
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-5　付箋の保存・自動リネームシーケンス</p>
 </div>
 
 <!-- 4.3 画像キャプチャ -->
@@ -614,6 +621,7 @@ sequenceDiagram
     Fusen->>Fusen: Markdown に画像リンクを挿入
     Fusen->>Fusen: 全付箋を再表示
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-6　画像キャプチャシーケンス</p>
 </div>
 
 <!-- 4.4 全文検索 -->
@@ -639,6 +647,7 @@ sequenceDiagram
     Search->>Target: emit('fusen:scroll_to_line', {path, line, query})
     Target->>Target: 該当行にスクロール＋ハイライト
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-7　全文検索シーケンス</p>
 </div>
 
 <!-- 4.5 iPhone への送信 -->
@@ -662,6 +671,7 @@ sequenceDiagram
     iPhone->>Drive: notes_to_iphone.json を削除
     iPhone->>User: 通知表示
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-8　iPhone への送信シーケンス（PC → iPhone）</p>
   <div class="note note-blue">
     <strong>Drive 設計原則：</strong>送信後 Drive に JSON が残っている = まだ iPhone が受け取っていない。受け取ったら即削除。
   </div>
@@ -691,6 +701,7 @@ sequenceDiagram
         end
     end
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-9　iPhone からの受信シーケンス（iPhone → PC）</p>
   <div class="note note-green">
     <strong>重複受信防止：</strong><code>last_seen_id</code> でスキップ。Drive に残っていても同じ ID は2度開かない。
   </div>
@@ -711,6 +722,7 @@ sequenceDiagram
 
   <div id="sec5-mode" class="subsec">5.1 モード定義</div>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">表示・編集・ロックの3モードとその遷移条件を定義します。</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-4　モード定義</p>
   <table class="module-table">
     <thead><tr><th>モード</th><th>状態</th></tr></thead>
     <tbody>
@@ -731,12 +743,14 @@ stateDiagram-v2
     ViewingMode --> EditingMode : ダブルクリック（本文・余白・フッタ）
     EditingMode --> ViewingMode : 編集終了（ウィンドウ外 or フッタクリック）
   </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-10　モード遷移図</p>
 
   <div id="sec5-area" class="subsec">5.2 操作領域の定義</div>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">付箋ウィンドウをエディタ本文・余白(A)・フッタ(B)の3エリアに分けて操作を割り当てます。</p>
 
   <!-- 付箋ウィンドウ図解 -->
-  <div style="display:flex; justify-content:center; margin:16px 0 24px;">
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:16px 0 4px;letter-spacing:0.03em">図 2-11　付箋ウィンドウの操作領域</p>
+  <div style="display:flex; justify-content:center; margin:0 0 24px;">
     <svg width="420" height="310" viewBox="0 0 420 310" xmlns="http://www.w3.org/2000/svg" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 
       <!-- ウィンドウ外枠 -->
@@ -803,6 +817,7 @@ stateDiagram-v2
     </svg>
   </div>
 
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-5　操作領域の定義</p>
   <table class="module-table">
     <thead><tr><th>領域</th><th>場所</th><th>ユーザーの意図</th></tr></thead>
     <tbody>
@@ -828,6 +843,7 @@ stateDiagram-v2
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">エリア × 操作の組み合わせで起きる動作を一覧にまとめます。</p>
 
   <p style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">🖱 ワンクリック</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-6　ワンクリック操作マトリックス</p>
   <table class="module-table">
     <thead><tr><th>クリックした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
     <tbody>
@@ -840,6 +856,7 @@ stateDiagram-v2
   </table>
 
   <p style="font-size:12px;font-weight:700;color:#334155;margin:20px 0 6px">🖱🖱 ダブルクリック</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-7　ダブルクリック操作マトリックス</p>
   <table class="module-table">
     <thead><tr><th>クリックした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
     <tbody>
@@ -850,6 +867,7 @@ stateDiagram-v2
   </table>
 
   <p style="font-size:12px;font-weight:700;color:#334155;margin:20px 0 6px">✋ ドラッグ（押しっぱなしで移動）</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-8　ドラッグ操作マトリックス</p>
   <table class="module-table">
     <thead><tr><th>ドラッグした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
     <tbody>

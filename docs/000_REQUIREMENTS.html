@@ -959,6 +959,30 @@ code {
 
 <div class="req-card new">
   <div class="req-header">
+    <span class="req-id new">[REQ_IP_05]</span>
+    <span class="req-title">iPhoneロック画面常駐体験</span>
+  </div>
+  <div class="req-row">
+    <span class="req-label">要求</span>
+    <span class="req-text">ユーザーは、PC で送った付箋が iPhone のロック画面に「消す意思がないかぎり」ずっと残り続け、タップすれば内容を確認でき、確認後もロック画面から消えないという体験を得たい。</span>
+  </div>
+  <div class="req-row">
+    <span class="req-label why">理由</span>
+    <span class="req-text">紙の付箋は「剥がすまで目に入る場所にある」。この体験を iPhone のロック画面で再現することで、「そこに残る」というプロダクトの本質をモバイルでも実現する。</span>
+  </div>
+  <div class="req-row">
+    <span class="req-label spec">仕様</span>
+    <ul class="spec-list">
+      <li><span class="spec-id">SPEC-IP-05-01</span> ① PC から送信すると、iPhone のロック画面に通知が表示され、ポップアップが出る。このとき通知常駐（🔔）は ON のまま。</li>
+      <li><span class="spec-id">SPEC-IP-05-02</span> ② ポップアップをタップすると PWA が開き付箋の内容が表示される。表示後、通知を再表示してロック画面から消えない状態を維持する。</li>
+      <li><span class="spec-id">SPEC-IP-05-03</span> ③ ①② のサイクルは、ユーザーが明示的に通知を OFF にするまで繰り返す。</li>
+      <li><span class="spec-id">SPEC-IP-05-04</span> ④ ユーザーが list 画面の 🔔 ボタンで通知を OFF にすると、ロック画面からも通知が消え、以降ポップアップもしない。</li>
+    </ul>
+  </div>
+</div>
+
+<div class="req-card new">
+  <div class="req-header">
     <span class="req-id new">[REQ_IP_04]</span>
     <span class="req-title">iPhone PWA の認証と持続可能性</span>
   </div>
@@ -991,7 +1015,12 @@ code {
   </thead>
   <tbody>
     <tr>
-      <td><strong>v3.0</strong></td>
+      <td><strong>v3.1</strong></td>
+      <td>2026-04-20</td>
+      <td>REQ_IP_05「iPhoneロック画面常駐体験」追加（①PCから送信→ロック画面表示 ②タップ→内容確認後も再通知 ③繰り返し ④OFF操作で消灯）</td>
+    </tr>
+    <tr>
+      <td>v3.0</td>
       <td>2026-04-19</td>
       <td>HTML化・iPhone連携要件（REQ_IP_01〜04）追加・REQ_NF_03を「完全ローカル」から「ユーザー自身のGoogle Driveのみ使用」に修正・REQ_LF_05アラーム追加・ショートカット更新（Ctrl+B/H/L/Shift+C/Shift+H）</td>
     </tr>
