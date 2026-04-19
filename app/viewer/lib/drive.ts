@@ -334,10 +334,13 @@ async function deleteFileFromDriveInternal(accessToken: string, fileName: string
   const searchData = await searchRes.json();
   const fileId = searchData.files?.[0]?.id;
   if (!fileId) return;
-  await fetch(
+  const deleteRes = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}`,
     { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } }
   );
+  if (!deleteRes.ok && deleteRes.status !== 404) {
+    throw new Error(`Drive DELETE failed: ${deleteRes.status}`);
+  }
 }
 
 export async function deleteFileFromDrive(accessToken: string, fileName: string): Promise<void> {

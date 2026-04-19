@@ -144,8 +144,8 @@ export function useNoteList({
           }
         }
 
-        // フォールバックで実際に補完した場合のみ Drive から削除
-        if (toSave.length > 0 && accessToken) {
+        // Drive から読めた場合は全件処理済みとして削除
+        if (driveItems.length > 0 && accessToken) {
           deleteFileFromDrive(accessToken, 'notes_to_iphone.json').catch(() => {});
         }
 

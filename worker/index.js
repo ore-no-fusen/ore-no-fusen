@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.26';
+const SW_VERSION = '2.9.27';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -61,7 +61,7 @@ self.addEventListener('push', (event) => {
       return saveToIndexedDB(id, title, bodyRich, images).then(() => {
         swLog('IndexedDB保存完了');
         deleteImagesFromDrive(token, images);
-        removeIdFromNotesToIphone(token, id);
+        return removeIdFromNotesToIphone(token, id);
       });
     }).catch((e) => {
       swLog(`画像ダウンロード失敗: ${e}`);
@@ -173,7 +173,7 @@ function saveToIndexedDB(id, title, body, images) {
       req.onsuccess = () => {
         const tx = req.result.transaction('drafts', 'readwrite');
         tx.objectStore('drafts').put(
-          { id, title, body, created_at: nowJST(), images: validImages, received_pc: true, locked: true },
+          { id, title, body, created_at: nowJST(), images: validImages, received_pc: true, locked: false },
           id
         );
         tx.oncomplete = () => resolve();
