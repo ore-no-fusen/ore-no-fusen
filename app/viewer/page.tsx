@@ -21,6 +21,7 @@ import {
   uploadImageWithAutoRefresh,
 } from './lib/drive';
 import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
+import { silentReRegisterIfNeeded } from './lib/push';
 import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from './editor-helpers';
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,12 @@ export default function ViewerPage() {
     setErrorMessage,
     setPendingHydrate,
   });
+
+  // ログイン後: Drive から自分のデバイスが消えていたら静かに再登録
+  useEffect(() => {
+    if (!accessToken) return;
+    silentReRegisterIfNeeded(accessToken).catch(() => {});
+  }, [accessToken]);
 
   // refs を state と同期（visibilitychange ハンドラで最新値を参照するため）
   useEffect(() => { currentDraftIdRef.current = currentDraftId; }, [currentDraftId]);
@@ -318,10 +325,6 @@ export default function ViewerPage() {
   // standalone → ステップUI
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900">
-      {/* バージョン固定表示 */}
-      <div className="fixed bottom-1 right-2 text-gray-300 text-[10px] z-40 pointer-events-none">
-        v{swVersion ?? '---'}
-      </div>
       {/* バックグラウンド送信トースト */}
       {isSendingInBackground && (
         <div className="fixed top-4 right-4 bg-blue-500 text-white text-sm px-3 py-2 rounded shadow z-50">
@@ -448,8 +451,13 @@ export default function ViewerPage() {
               setStep('write');
 
             }}
+            swVersion={swVersion}
             onDelete={handleDeleteNote}
             onLockToggle={handleLockToggle}
+            onReRegisterPush={() => {
+              localStorage.removeItem('viewer_push_done');
+              setStep('push');
+            }}
           />
         )}
 

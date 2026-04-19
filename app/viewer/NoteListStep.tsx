@@ -25,10 +25,12 @@ export function NoteListStep({
   lockedNoteIds,
   isLockPermissionPending,
   t,
+  swVersion,
   onNew,
   onOpen,
   onDelete,
   onLockToggle,
+  onReRegisterPush,
 }: NoteListStepProps) {
   return (
     <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
@@ -54,7 +56,7 @@ export function NoteListStep({
       </div>
 
       {/* コンテンツ */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {isLoading ? (
           <p className="text-center text-gray-400 py-8 text-sm">読み込み中...</p>
         ) : notes.length === 0 ? (
@@ -139,6 +141,17 @@ export function NoteListStep({
             ))}
           </ul>
         )}
+      </div>
+
+      {/* フッター */}
+      <div className="px-5 py-3 border-t border-gray-200 bg-[#F2F2F7] flex items-center justify-between">
+        <button
+          className="text-xs text-gray-400 hover:text-blue-500 active:text-blue-600 py-1 transition-colors"
+          onClick={onReRegisterPush}
+        >
+          🔔 通知デバイスを再登録する
+        </button>
+        <span className="text-xs text-gray-300 font-mono">SW {swVersion ?? '---'}</span>
       </div>
     </div>
   );

@@ -17,6 +17,48 @@ type SubscribeOptions = {
 };
 
 /**
+ * 責務: Drive の push_devices.json に自デバイスが存在しなければ静かに再登録する
+ * 入力: accessToken
+ * 出力: Promise<void>（エラーは握りつぶす）
+ * 副作用: Drive 読み書き（push_devices.json）。step・UI は変更しない
+ */
+export async function silentReRegisterIfNeeded(accessToken: string): Promise<void> {
+  const deviceId = localStorage.getItem('viewer_device_id');
+  if (!deviceId) return; // 一度も登録していない端末
+
+  const existing = await downloadFromDrive(accessToken, 'push_devices.json').catch(() => ({}));
+  const devices: any[] = existing?.devices ?? [];
+  if (devices.some((d: any) => d.device_id === deviceId)) return; // 登録済み
+
+  // push subscription がまだ有効かチェック（unsubscribe/subscribe はしない）
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return; // subscription 自体がない場合は手動登録が必要
+
+  const subJson = sub.toJSON();
+  const endpoint = subJson?.endpoint;
+  const keys = subJson?.keys;
+  if (!endpoint || !keys) return;
+
+  const updatedDevices = [
+    ...devices,
+    { device_id: deviceId, endpoint, keys, registered_at: nowJST(), device_name: detectDeviceName() },
+  ];
+  await uploadWithAutoRefresh(accessToken, 'push_devices.json', { devices: updatedDevices });
+  console.log('[push] silently re-registered device:', deviceId);
+}
+
+function detectDeviceName(): string {
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/iPad/.test(ua)) return 'iPad';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Macintosh/.test(ua)) return 'Mac';
+  if (/Windows/.test(ua)) return 'Windows PC';
+  return 'Unknown';
+}
+
+/**
  * 責務: Push 通知の許可取得・購読・デバイス登録・Drive への保存を行う
  * 入力: SubscribeOptions（accessToken, setIsLoading, setErrorMessage, setStep）
  * 出力: Promise<void>
@@ -69,7 +111,7 @@ export async function subscribePush({
     );
     const updatedDevices = [
       ...existingDevices.filter((d: any) => d.device_id !== deviceId),
-      { device_id: deviceId, endpoint, keys, registered_at: nowJST() },
+      { device_id: deviceId, endpoint, keys, registered_at: nowJST(), device_name: detectDeviceName() },
     ];
     await uploadWithAutoRefresh(accessToken, 'push_devices.json', { devices: updatedDevices });
 

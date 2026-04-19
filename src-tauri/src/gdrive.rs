@@ -50,8 +50,21 @@ struct PushConfigJson {
 
 #[derive(Deserialize)]
 struct DeviceEntry {
+    device_id: Option<String>,
     endpoint: String,
+    #[allow(dead_code)]
     keys: PushConfigKeys,
+    registered_at: Option<String>,
+    device_name: Option<String>,
+}
+
+/// フロントエンドに返すデバイス情報
+#[derive(Serialize, Clone)]
+pub struct PushDeviceInfo {
+    pub device_id: String,
+    pub endpoint: String,
+    pub registered_at: String,
+    pub device_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -596,6 +609,41 @@ pub async fn poll_push_config(
         .pro_configs = pro_configs;
 
     Ok(())
+}
+
+/// Drive から push_devices.json を読み込み、デバイス一覧を返す
+pub async fn list_push_devices(client: &Client) -> Result<Vec<PushDeviceInfo>, String> {
+    let token = get_access_token(client).await?;
+    let value = download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json").await?;
+
+    let config: PushConfigJson = serde_json::from_value(value)
+        .map_err(|e| format!("push_config parse error: {}", e))?;
+
+    let devices = config.devices.unwrap_or_default();
+    Ok(devices.into_iter().enumerate().map(|(i, d)| PushDeviceInfo {
+        device_id: d.device_id.unwrap_or_else(|| format!("device_{}", i)),
+        endpoint: d.endpoint,
+        registered_at: d.registered_at.unwrap_or_default(),
+        device_name: d.device_name,
+    }).collect())
+}
+
+/// push_devices.json から特定デバイスを削除して Drive に書き戻す
+pub async fn delete_push_device(client: &Client, device_id: &str) -> Result<(), String> {
+    let token = get_access_token(client).await?;
+    let mut value = download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json").await?;
+
+    if let Some(devices) = value.get_mut("devices").and_then(|d| d.as_array_mut()) {
+        devices.retain(|d| d.get("device_id").and_then(|id| id.as_str()) != Some(device_id));
+    }
+
+    upload_json(client, &token, PUSH_CONFIG_FILE, &value).await
+}
+
+/// push_devices.json の全デバイスを削除して Drive に書き戻す
+pub async fn delete_all_push_devices(client: &Client) -> Result<(), String> {
+    let token = get_access_token(client).await?;
+    upload_json(client, &token, PUSH_CONFIG_FILE, &serde_json::json!({"devices": []})).await
 }
 
 // ------ Unit Tests ------

@@ -1190,6 +1190,24 @@ async fn fusen_check_pro_setup(
     }
 }
 
+#[tauri::command]
+async fn fusen_list_push_devices() -> Result<Vec<gdrive::PushDeviceInfo>, String> {
+    let client = reqwest::Client::new();
+    gdrive::list_push_devices(&client).await
+}
+
+#[tauri::command]
+async fn fusen_delete_push_device(device_id: String) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    gdrive::delete_push_device(&client, &device_id).await
+}
+
+#[tauri::command]
+async fn fusen_delete_all_push_devices() -> Result<(), String> {
+    let client = reqwest::Client::new();
+    gdrive::delete_all_push_devices(&client).await
+}
+
 /// body 中のローカル画像パスを Drive にアップロードして fusen_img_*.ext 参照に変換する
 /// note_dir: ノートファイルのディレクトリ（相対パス解決に使用）
 async fn upload_local_images_to_drive(
@@ -1755,6 +1773,9 @@ pub fn run() {
             fusen_backup,
             fusen_oauth_connect,
             fusen_check_pro_setup,
+            fusen_list_push_devices,
+            fusen_delete_push_device,
+            fusen_delete_all_push_devices,
             fusen_send_to_iphone,
             fusen_download_iphone_images,
         ])

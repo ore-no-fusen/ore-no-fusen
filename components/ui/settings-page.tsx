@@ -901,6 +901,29 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
     )
 }
 
+// --- デバイス管理 ---
+type PushDevice = {
+    device_id: string;
+    endpoint: string;
+    registered_at: string;
+    device_name?: string;
+}
+
+function endpointLabel(endpoint: string): string {
+    if (endpoint.includes('web.push.apple.com')) return 'Apple (Safari)'
+    if (endpoint.includes('fcm.googleapis.com') || endpoint.includes('fcm.google.com') || endpoint.includes('push.googleapis.com')) return 'Google (Chrome)'
+    return 'Other'
+}
+
+function formatDate(iso: string): string {
+    if (!iso) return '不明'
+    try {
+        return new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    } catch {
+        return iso
+    }
+}
+
 // --- iPhone連携セクション ---
 const PWA_URL = 'https://ore-no-fusen.vercel.app/viewer'
 
@@ -911,7 +934,7 @@ function QrCodeCanvas({ url }: { url: string }) {
         if (!canvasRef.current) return
         import('qrcode').then((QRCode) => {
             QRCode.toCanvas(canvasRef.current!, url, {
-                width: 160,
+                width: 120,
                 margin: 2,
                 color: { dark: '#1a1a1a', light: '#ffffff' },
             })
@@ -922,7 +945,7 @@ function QrCodeCanvas({ url }: { url: string }) {
         <canvas
             ref={canvasRef}
             className="rounded-lg border border-gray-200 shadow-sm"
-            style={{ width: 160, height: 160 }}
+            style={{ width: 120, height: 120 }}
         />
     )
 }
@@ -935,6 +958,23 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
     const [isConnecting, setIsConnecting] = useState(false)
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
+    const [devices, setDevices] = useState<PushDevice[] | null>(null)
+    const [devicesLoading, setDevicesLoading] = useState(false)
+    const [deletingId, setDeletingId] = useState<string | null>(null)
+
+    const loadDevices = async () => {
+        setDevicesLoading(true)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const list = await invoke<PushDevice[]>('fusen_list_push_devices')
+            setDevices(list)
+        } catch (e) {
+            console.error('[devices]', e)
+            setDevices([])
+        } finally {
+            setDevicesLoading(false)
+        }
+    }
 
     useEffect(() => {
         const check = async () => {
@@ -942,6 +982,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 const { invoke } = await import('@tauri-apps/api/core')
                 const ok = await invoke<boolean>('fusen_check_pro_setup')
                 setStatus(ok ? 'connected' : 'disconnected')
+                if (ok) loadDevices()
             } catch {
                 setStatus('disconnected')
             }
@@ -999,7 +1040,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                     <div className="flex flex-col justify-center gap-3 min-w-0">
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">PWA アドレス</span>
-                            <code className="text-sm font-mono text-gray-700 bg-white border border-gray-200 rounded px-3 py-2 break-all">
+                            <code className="text-sm font-mono text-gray-700 bg-white border border-gray-200 rounded px-3 py-2 whitespace-nowrap overflow-x-auto block">
                                 {PWA_URL}
                             </code>
                         </div>
@@ -1072,6 +1113,91 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 <div className="rounded-lg border border-green-200 bg-green-50 p-6">
                     <p className="text-sm text-green-700 font-medium">✅ iPhoneへの送信が有効です</p>
                     <p className="text-sm text-green-600 mt-1">付箋を右クリック →「iPhoneに送る」で送信できます。</p>
+                </div>
+            )}
+
+            {/* --- デバイス管理パネル --- */}
+            {status === 'connected' && (
+                <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-gray-800 text-sm">通知デバイス管理</h3>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={loadDevices}
+                                disabled={devicesLoading}
+                                className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1"
+                            >
+                                {devicesLoading ? '読み込み中...' : '更新'}
+                            </button>
+                            {devices && devices.length > 0 && (
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm('全デバイスを削除しますか？\niPhoneで再登録が必要になります。')) return
+                                        setDevicesLoading(true)
+                                        try {
+                                            const { invoke } = await import('@tauri-apps/api/core')
+                                            await invoke('fusen_delete_all_push_devices')
+                                            setDevices([])
+                                        } catch (e) {
+                                            alert('削除に失敗しました: ' + String(e))
+                                        } finally {
+                                            setDevicesLoading(false)
+                                        }
+                                    }}
+                                    className="text-xs text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-1"
+                                >
+                                    全て削除
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <p className="text-xs text-gray-400">通知の送信先デバイス一覧です。不要なデバイスを削除できます。</p>
+
+                    {devicesLoading && (
+                        <p className="text-xs text-gray-400">読み込み中...</p>
+                    )}
+
+                    {!devicesLoading && devices !== null && devices.length === 0 && (
+                        <p className="text-xs text-gray-400">登録デバイスなし。iPhoneのPWAで通知を有効にしてください。</p>
+                    )}
+
+                    {!devicesLoading && devices && devices.length > 0 && (
+                        <div className="space-y-2">
+                            {devices.map((d) => (
+                                <div key={d.device_id} className="flex items-center justify-between rounded-md border border-gray-100 bg-gray-50 px-3 py-2 gap-2">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-medium text-gray-700">
+                                                {d.device_name ?? endpointLabel(d.endpoint)}
+                                            </span>
+                                            <span className="text-xs text-gray-400 truncate max-w-[100px]">
+                                                {endpointLabel(d.endpoint)}
+                                            </span>
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-0.5">{formatDate(d.registered_at)}</div>
+                                    </div>
+                                    <button
+                                        disabled={deletingId === d.device_id}
+                                        onClick={async () => {
+                                            setDeletingId(d.device_id)
+                                            try {
+                                                const { invoke } = await import('@tauri-apps/api/core')
+                                                await invoke('fusen_delete_push_device', { deviceId: d.device_id })
+                                                setDevices(prev => prev ? prev.filter(x => x.device_id !== d.device_id) : prev)
+                                            } catch (e) {
+                                                alert('削除に失敗しました: ' + String(e))
+                                            } finally {
+                                                setDeletingId(null)
+                                            }
+                                        }}
+                                        className="text-xs text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-40"
+                                    >
+                                        {deletingId === d.device_id ? '削除中...' : '削除'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 
