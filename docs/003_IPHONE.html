@@ -594,7 +594,11 @@ graph LR
       </tr>
       <tr>
         <td><code>notificationclick</code></td>
-        <td>通知をタップ → アプリを前面に出して <code>?note=ID</code> で write 画面を開く。</td>
+        <td>
+          通知をタップ → <code>locked</code> 確認 → true なら再通知・アプリを前面に出す。<br>
+          <strong style="color:#f59e0b">⚠️ iOS では発火しない（既知の制約）。</strong>
+          タップ後の再通知は <code>page.tsx</code> の <code>pending_open</code> フローが代替する（4.4 参照）。
+        </td>
       </tr>
     </tbody>
   </table>
@@ -895,11 +899,19 @@ sequenceDiagram
     「消す意思がないかぎりロック画面から消えない」体験を実現する ON/OFF 操作と、タップ後の再通知サイクル。
     ユーザー体験の手順は ①〜⑥ で示す（REQ_IP_05 の①〜④に対応）。
   </p>
+
+  <div class="note note-yellow" style="margin-bottom:16px">
+    <strong>iOS の制約：</strong><code>notificationclick</code> イベントは iOS では発火しない（既知の仕様制約）。
+    そのため「タップ → 再通知」を SW で直接処理できない。
+    代わりに push 受信時に <code>pending_open</code> を記録しておき、
+    アプリ復帰時に <code>page.tsx</code> が <code>locked: true</code> を確認して再通知する。
+  </div>
+
   <div class="mermaid">
 sequenceDiagram
     actor UserPhone as ユーザー（iPhone）
     box iPhone PWA
-        participant PWA as 2⃣ iPhone PWA（list画面）
+        participant PWA as 2⃣ page.tsx
     end
     box Service Worker
         participant SW as 3⃣ Service Worker
@@ -907,35 +919,51 @@ sequenceDiagram
 
     Note over SW,UserPhone: ①〜③ 常駐サイクル（locked: true が前提）
 
-    SW->>UserPhone: ① 🔔 ロック画面に通知を表示（push受信時）
-    UserPhone->>SW: ② 通知をタップ（notificationclick）
-    SW->>SW: IndexedDB で locked 確認 → true
+    SW->>SW: push 受信 → IndexedDB 保存（locked: true）
+    SW->>SW: pending_open &#123;id&#125; を fusen-meta に保存
+    SW->>UserPhone: ① 🔔 ロック画面に通知を表示
+
+    UserPhone->>PWA: ② 通知をタップ → iOS がアプリを直接起動
+    Note over UserPhone,PWA: notificationclick は発火しない（iOS 制約）
+    PWA->>PWA: visibilitychange 発火
+    PWA->>PWA: pending_open 確認 → id あり・30 分以内
+    PWA->>PWA: pending_open 削除
+    PWA->>PWA: IndexedDB から draft 取得 → locked === true
+    PWA->>SW: reg.showNotification()
     SW->>UserPhone: 🔔 通知を再表示（ロック画面から消えない）
-    SW->>PWA: OPEN_NOTE メッセージ または openWindow
-    PWA->>UserPhone: ③ 付箋の内容を表示
-    Note over SW,UserPhone: ④ ①〜③ を繰り返す
+    PWA->>UserPhone: ③ 付箋の内容を表示（write 画面）
+
+    Note over SW,UserPhone: ④ ①〜③ を繰り返す（タップのたびに再通知）
 
     Note over PWA,UserPhone: ⑤ ユーザーが明示的に OFF にする
-    UserPhone->>PWA: 🔔 ボタンをタップ（list画面）
-    alt locked: false → ON にする
-        PWA->>PWA: IndexedDB に locked: true を保存
-        PWA->>SW: showNotification（通知を出す）
-        SW->>UserPhone: 🔔 ロック画面に通知が常駐する
-    else locked: true → OFF にする
+    UserPhone->>PWA: 🔔 ボタンをタップ（list 画面）
+    alt 🔕 OFF にする（locked: true → false）
         PWA->>PWA: IndexedDB に locked: false を保存
         PWA->>SW: getNotifications → close()
         SW->>UserPhone: ⑥ 🔕 ロック画面の通知が消える
+    else 🔔 ON にする（locked: false → true）
+        PWA->>PWA: IndexedDB に locked: true を保存
+        PWA->>SW: showNotification()
+        SW->>UserPhone: 🔔 ロック画面に常駐再開
     end
   </div>
-  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 3-6　ロック画面常駐サイクル（ON/OFF と再通知）</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 12px;letter-spacing:0.03em">図 3-6　ロック画面常駐サイクル（ON/OFF と再通知の実装フロー）</p>
+
+  <div class="note note-blue">
+    <strong>pending_open の役割：</strong>SW は push 受信時に通知を表示する直前に
+    <code>fusen-meta</code> へ <code>&#123;id, t&#125;</code> を保存する。
+    これが「直近の通知 ID の痕跡」となり、アプリ復帰時に
+    <code>page.tsx</code> が「通知からの起動である」と判断できる唯一の根拠になる。
+    30 分で失効。読んだら即削除。
+  </div>
+  <div class="note note-green">
+    <strong>locked の初期値：</strong>push 受信時の IndexedDB 保存で <code>locked: true</code> を設定する（SW の <code>saveToIndexedDB</code>）。
+    ユーザーが 🔔 ボタンを押す前から ①〜③ のサイクルが自動で有効になる。
+  </div>
   <div class="note note-yellow">
-    <strong>通知を消せるのは SW だけ：</strong>一度表示した通知を非表示にするには
+    <strong>通知を消せるのは SW だけ：</strong>表示済みの通知を非表示にするには
     <code>registration.getNotifications()</code> で取得して <code>n.close()</code> を呼ぶ必要がある。
     <code>useLockToggle</code> は SW へのメッセージ送信でこれを実現する。
-  </div>
-  <div class="note note-blue">
-    <strong>locked の初期値：</strong>push 受信時に IndexedDB へ保存するとき <code>locked: true</code> で保存する（SW の <code>saveToIndexedDB</code>）。
-    これにより、ユーザーが 🔔 ボタンを操作する前から ①〜③ のサイクルが有効になる。
   </div>
 </div>
 
@@ -951,6 +979,11 @@ sequenceDiagram
       <tr><th>バージョン</th><th>日付</th><th>変更内容</th></tr>
     </thead>
     <tbody>
+      <tr>
+        <td>1.2</td>
+        <td>2026-04-20</td>
+        <td>4.4 の再通知フローを実態に合わせて修正。iOS では notificationclick が発火しないため pending_open + page.tsx が再通知を担う仕組みを図入りで明記。2.2 の notificationclick 説明に iOS 制約を追記</td>
+      </tr>
       <tr>
         <td>1.1</td>
         <td>2026-04-20</td>
