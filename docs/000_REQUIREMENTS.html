@@ -93,6 +93,8 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
 .badge-001 { background: #dbeafe; color: #1e40af; }
 .badge-002 { background: #dbeafe; color: #1e40af; }
 .badge-003 { background: #dcfce7; color: #14532d; }
+.badge-004 { background: #f3e8ff; color: #6b21a8; }
+.badge-005 { background: #fee2e2; color: #991b1b; }
 
 /* ===== REQUIREMENT CARD ===== */
 .req-card {
@@ -166,6 +168,29 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   flex-shrink: 0;
 }
 
+/* ===== 実装済みバッジ ===== */
+.req-id.done { background: #dcfce7; color: #065f46; }
+.req-card.done { border-left-color: #22c55e; }
+.impl-badge {
+  font-size: 10px; font-weight: 800;
+  background: #22c55e; color: white;
+  border-radius: 99px; padding: 2px 8px;
+  margin-left: 8px; vertical-align: middle;
+}
+
+/* ===== 読む順序ボックス ===== */
+.read-order {
+  background: #fefce8;
+  border: 1.5px solid #fbbf24;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 32px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.read-order strong { color: #92400e; }
+.read-order .note-text { color: #78350f; font-size: 12px; margin-top: 8px; }
+
 /* ===== 改版履歴 ===== */
 .history-table {
   width: 100%;
@@ -201,10 +226,13 @@ code {
 
 <!-- NAV -->
 <div class="nav">
+  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
   <span class="nav-current">000 要求仕様</span>
   <a href="001_OVERVIEW.html" class="nav-link">001 全体像</a>
   <a href="002_PC.html" class="nav-link">002 PC アプリ</a>
   <a href="003_IPHONE.html" class="nav-link">003 iPhone PWA</a>
+  <a href="004_TEST.html" class="nav-link">004 テスト設計</a>
+  <a href="005_GLOSSARY.html" class="nav-link">005 用語集</a>
 </div>
 
 <!-- HEADER -->
@@ -238,8 +266,31 @@ code {
       <td><a href="003_IPHONE.html">iPhone PWA 設計</a></td>
       <td>画面構成・Service Worker・IndexedDB・シーケンス図</td>
     </tr>
+    <tr>
+      <td><span class="doc-badge badge-004">004</span></td>
+      <td><a href="004_TEST.html">テスト設計書</a></td>
+      <td>テスト戦略・Vitest / Playwright / cargo test 一覧・カバレッジ外領域</td>
+    </tr>
+    <tr>
+      <td><span class="doc-badge badge-005">005</span></td>
+      <td><a href="005_GLOSSARY.html">用語集</a></td>
+      <td>設計書全体に登場する専門用語・略語をカテゴリ別に解説（７カテゴリ·２９語）</td>
+    </tr>
   </tbody>
 </table>
+
+<!-- 読む順序 -->
+<div class="read-order">
+  <strong>📖 読む順序</strong>：
+  <span style="background:#ede9fe;color:#4c1d95;font-weight:700;border-radius:99px;padding:2px 8px;">000</span>
+  要求仕様書（本ファイル）→
+  <a href="001_OVERVIEW.html" style="color:#1e40af;font-weight:700;">001</a> システム全体像 →
+  <a href="002_PC.html" style="color:#1e40af;font-weight:700;">002</a> PC アプリ設計 →
+  <a href="003_IPHONE.html" style="color:#14532d;font-weight:700;">003</a> iPhone PWA 設計 →
+  <a href="004_TEST.html" style="color:#6b21a8;font-weight:700;">004</a> テスト設計 →
+  <a href="005_GLOSSARY.html" style="color:#991b1b;font-weight:700;">005</a> 用語集
+  <div class="note-text">⚠️ <strong>000（要求仕様書）</strong> は「なぜ作るか・何を作るか」を定義する文書です。<strong>001〜003（設計書）</strong> は「どう作るか」を定義する別の文書群です。初めて読む方は000から順に読むことを推奨します。</div>
+</div>
 
 <!-- TOC -->
 <div class="toc">
@@ -408,10 +459,10 @@ code {
   </div>
 </div>
 
-<div class="req-card new">
+<div class="req-card done">
   <div class="req-header">
-    <span class="req-id new">[REQ_LF_05]</span>
-    <span class="req-title">アラーム機能</span>
+    <span class="req-id done">[REQ_LF_05]</span>
+    <span class="req-title">アラーム機能 <span class="impl-badge">✓ 実装済み v2.9.0</span></span>
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -1011,20 +1062,23 @@ code {
 
 <table class="history-table">
   <thead>
-    <tr><th>バージョン</th><th>日付</th><th>変更内容</th></tr>
+    <tr><th>No</th><th>バージョン</th><th>日付</th><th>変更内容</th></tr>
   </thead>
   <tbody>
     <tr>
+      <td>1</td>
       <td><strong>v3.1</strong></td>
       <td>2026-04-20</td>
       <td>REQ_IP_05「iPhoneロック画面常駐体験」追加（①PCから送信→ロック画面表示 ②タップ→内容確認後も再通知 ③繰り返し ④OFF操作で消灯）</td>
     </tr>
     <tr>
+      <td>2</td>
       <td>v3.0</td>
       <td>2026-04-19</td>
       <td>HTML化・iPhone連携要件（REQ_IP_01〜04）追加・REQ_NF_03を「完全ローカル」から「ユーザー自身のGoogle Driveのみ使用」に修正・REQ_LF_05アラーム追加・ショートカット更新（Ctrl+B/H/L/Shift+C/Shift+H）</td>
     </tr>
     <tr>
+      <td>3</td>
       <td>v2.0</td>
       <td>2026-02-22</td>
       <td>ベータリリース時の初版（Markdown形式）</td>

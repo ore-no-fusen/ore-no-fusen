@@ -230,9 +230,13 @@ code {
 
 <!-- ===== NAV ===== -->
 <nav class="nav">
+  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
+  <a class="nav-link" href="000_REQUIREMENTS.html">000 要求仕様</a>
   <a class="nav-link" href="001_OVERVIEW.html">001 全体像</a>
   <a class="nav-link" href="002_PC.html">002 PC側</a>
   <span class="nav-current">003 iPhone連携</span>
+  <a class="nav-link" href="004_TEST.html">004 テスト設計</a>
+  <a class="nav-link" href="005_GLOSSARY.html">005 用語集</a>
 </nav>
 
 <!-- ===== HEADER ===== -->
@@ -269,9 +273,17 @@ code {
         <li><a href="#seq1">4.1 アプリ起動（初回）</a></li>
         <li><a href="#seq2">4.2 PC → iPhone 受信（Service Worker）</a></li>
         <li><a href="#seq3">4.3 iPhone → PC 送信</a></li>
-        <li><a href="#seq4">4.4 ロックだぜ ON/OFF</a></li>
+        <li><a href="#seq4">4.4 ロック画面に表示 ON/OFF</a></li>
       </ul>
     </li>
+    <li><a href="#sec5">5. UI インタラクション</a>
+      <ul>
+        <li><a href="#sec5-mode">5.1 画面モード定義</a></li>
+        <li><a href="#sec5-ops">5.2 各モードの操作一覧</a></li>
+        <li><a href="#sec5-matrix">5.3 インタラクション・マトリックス</a></li>
+      </ul>
+    </li>
+    <li><a href="#recovery">6. エラーハンドリング・リカバリ方針</a></li>
     <li><a href="#history">改版履歴</a></li>
   </ol>
 </nav>
@@ -404,7 +416,7 @@ code {
       <dt>表示条件</dt>
       <dd>トークンあり + <code>viewer_push_done=true</code>（通常の起動時）</dd>
       <dt>操作</dt>
-      <dd>＋ → write（新規）<br>メモタップ → write（編集）<br>🔔 → ロックだぜ ON/OFF<br>🗑️ → メモ削除</dd>
+      <dd>＋ → write（新規）<br>メモタップ → write（編集）<br>🔔 → ロック画面に表示 ON/OFF<br>🗑️ → メモ削除</dd>
       <dt>バージョン表示</dt>
       <dd><code>app x.x.x / ServiceWorker x.x.x</code>（右下固定）</dd>
     </dl>
@@ -479,16 +491,16 @@ flowchart LR
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-1　起動時の遷移条件</p>
   <table class="module-table" style="margin-top:4px">
     <thead>
-      <tr><th>起動時の状態</th><th>遷移先</th></tr>
+      <tr><th style="width:44px;text-align:center">No</th><th>起動時の状態</th><th>遷移先</th></tr>
     </thead>
     <tbody>
-      <tr><td>非 standalone（Safariで開いた）</td><td>banner</td></tr>
-      <tr><td>URL に <code>?code=</code>（OAuthコールバック）</td><td>Vercel でトークン取得 → push</td></tr>
-      <tr><td>URL に <code>?note=</code>（通知タップで起動）</td><td>IndexedDB からノート読み込み → write</td></tr>
-      <tr><td>token あり・pending_open あり（30分以内）</td><td>IndexedDB からノート読み込み → write</td></tr>
-      <tr><td>token あり・<code>viewer_push_done=true</code></td><td>list（通常起動）</td></tr>
-      <tr><td>token あり・push 未設定</td><td>push（通知セットアップ）</td></tr>
-      <tr><td>token なし</td><td>login</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td>非 standalone（Safariで開いた）</td><td>banner</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td>URL に <code>?code=</code>（OAuthコールバック）</td><td>Vercel でトークン取得 → push</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td>URL に <code>?note=</code>（通知タップで起動）</td><td>IndexedDB からノート読み込み → write</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">4</td><td>token あり・pending_open あり（30分以内）</td><td>IndexedDB からノート読み込み → write</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">5</td><td>token あり・<code>viewer_push_done=true</code></td><td>list（通常起動）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">6</td><td>token あり・push 未設定</td><td>push（通知セットアップ）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">7</td><td>token なし</td><td>login</td></tr>
     </tbody>
   </table>
 
@@ -522,7 +534,7 @@ graph LR
     subgraph Hooks ["viewer/hooks/"]
         Init["useAppInit.ts<br/>起動時初期化"]:::hook
         NoteList["useNoteList.ts<br/>Drive→IndexedDB 同期"]:::hook
-        Lock["useLockToggle.ts<br/>ロックだぜ ON/OFF"]:::hook
+        Lock["useLockToggle.ts<br/>ロック画面に表示 ON/OFF"]:::hook
         AutoSave["useAutoSave.ts<br/>800ms 自動保存"]:::hook
         VisSave["useVisibilitySave.ts<br/>BG遷移時保存"]:::hook
         BgSend["useBackgroundSend.ts<br/>PCへ送信"]:::hook
@@ -568,18 +580,21 @@ graph LR
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-2　Service Worker イベントハンドラ一覧</p>
   <table class="module-table">
     <thead>
-      <tr><th>イベント</th><th>処理内容</th></tr>
+      <tr><th style="width:44px;text-align:center">No</th><th>イベント</th><th>処理内容</th></tr>
     </thead>
     <tbody>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">1</td>
         <td><code>install</code></td>
         <td><code>skipWaiting()</code> 呼び出し。新バージョンを即時有効化。</td>
       </tr>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">2</td>
         <td><code>activate</code></td>
         <td><code>clients.claim()</code> でページの制御を取得。SW バージョンをログに記録。</td>
       </tr>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">3</td>
         <td><code>push</code></td>
         <td>
           ① Push ペイロード（title / body_rich / id）を取得<br>
@@ -593,6 +608,7 @@ graph LR
         </td>
       </tr>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">4</td>
         <td><code>notificationclick</code></td>
         <td>
           通知をタップ → <code>locked</code> 確認 → true なら再通知・アプリを前面に出す。<br>
@@ -616,14 +632,16 @@ graph LR
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-3　Vercel API Routes 一覧</p>
   <table class="module-table">
     <thead>
-      <tr><th>ファイル</th><th>役割</th></tr>
+      <tr><th style="width:44px;text-align:center">No</th><th>ファイル</th><th>役割</th></tr>
     </thead>
     <tbody>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">1</td>
         <td><code>app/api/auth/token/route.ts</code></td>
         <td>OAuth 認証コード → アクセストークン＋リフレッシュトークン交換。初回ログイン時のみ呼ばれる。</td>
       </tr>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">2</td>
         <td><code>app/api/auth/refresh/route.ts</code></td>
         <td>リフレッシュトークン → 新しいアクセストークン取得。Drive API 呼び出し時にトークン期限切れを検出したら自動呼び出し。</td>
       </tr>
@@ -653,16 +671,16 @@ graph LR
       <h4>🗄 fusen-drafts（ノートデータ）</h4>
       <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-4　fusen-drafts スキーマ</p>
       <table class="module-table" style="font-size:11px">
-        <thead><tr><th>フィールド</th><th>型</th><th>意味</th></tr></thead>
+        <thead><tr><th style="width:44px;text-align:center">No</th><th>フィールド</th><th>型</th><th>意味</th></tr></thead>
         <tbody>
-          <tr><td><code>id</code></td><td>string</td><td>主キー（UUID）</td></tr>
-          <tr><td><code>title</code></td><td>string</td><td>ノートタイトル</td></tr>
-          <tr><td><code>body</code></td><td>string</td><td>本文（Markdown）</td></tr>
-          <tr><td><code>images</code></td><td>Blob[]</td><td>添付画像（バイナリ）</td></tr>
-          <tr><td><code>imageFileNames</code></td><td>string[]</td><td>画像ファイル名</td></tr>
-          <tr><td><code>locked</code></td><td>boolean</td><td>ロックだぜ ON なら true</td></tr>
-          <tr><td><code>created_at</code></td><td>string</td><td>作成日時（JST ISO 8601）</td></tr>
-          <tr><td><code>updated_at</code></td><td>string</td><td>最終更新日時</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td><code>id</code></td><td>string</td><td>主キー（UUID）</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>title</code></td><td>string</td><td>ノートタイトル</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td><code>body</code></td><td>string</td><td>本文（Markdown）</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">4</td><td><code>images</code></td><td>Blob[]</td><td>添付画像（バイナリ）</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">5</td><td><code>imageFileNames</code></td><td>string[]</td><td>画像ファイル名</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">6</td><td><code>locked</code></td><td>boolean</td><td>ロック画面に表示が ON なら true</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">7</td><td><code>created_at</code></td><td>string</td><td>作成日時（JST ISO 8601）</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">8</td><td><code>updated_at</code></td><td>string</td><td>最終更新日時</td></tr>
         </tbody>
       </table>
     </div>
@@ -671,21 +689,21 @@ graph LR
       <h4>🗄 fusen-meta（メタ情報）</h4>
       <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-5　fusen-meta スキーマ</p>
       <table class="module-table" style="font-size:11px">
-        <thead><tr><th>キー</th><th>意味</th></tr></thead>
+        <thead><tr><th style="width:44px;text-align:center">No</th><th>キー</th><th>意味</th></tr></thead>
         <tbody>
-          <tr><td><code>access_token</code></td><td>Google Drive アクセストークン（SW が参照）</td></tr>
-          <tr><td><code>pending_open</code></td><td>次回起動時に開くノート ID（SW → page.tsx の引き渡し）</td></tr>
-          <tr><td><code>pending_open_time</code></td><td>pending_open の記録時刻（30分で失効）</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td><code>access_token</code></td><td>Google Drive アクセストークン（SW が参照）</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>pending_open</code></td><td>次回起動時に開くノート ID（SW → page.tsx の引き渡し）</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td><code>pending_open_time</code></td><td>pending_open の記録時刻（30分で失効）</td></tr>
         </tbody>
       </table>
 
       <h4 style="margin-top:16px">🗄 fusen-logs（デバッグログ）</h4>
       <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-6　fusen-logs スキーマ</p>
       <table class="module-table" style="font-size:11px">
-        <thead><tr><th>フィールド</th><th>意味</th></tr></thead>
+        <thead><tr><th style="width:44px;text-align:center">No</th><th>フィールド</th><th>意味</th></tr></thead>
         <tbody>
-          <tr><td><code>t</code></td><td>タイムスタンプ（JST）</td></tr>
-          <tr><td><code>msg</code></td><td>ログメッセージ</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td><code>t</code></td><td>タイムスタンプ（JST）</td></tr>
+          <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>msg</code></td><td>ログメッセージ</td></tr>
         </tbody>
       </table>
     </div>
@@ -698,13 +716,13 @@ graph LR
     <h4>🔑 認証・設定フラグ</h4>
     <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-7　localStorage キー一覧</p>
     <table class="module-table" style="font-size:11px">
-      <thead><tr><th>キー</th><th>意味</th></tr></thead>
+      <thead><tr><th style="width:44px;text-align:center">No</th><th>キー</th><th>意味</th></tr></thead>
       <tbody>
-        <tr><td><code>viewer_access_token</code></td><td>Google API アクセストークン</td></tr>
-        <tr><td><code>viewer_refresh_token</code></td><td>リフレッシュトークン（Vercel API 経由で更新）</td></tr>
-        <tr><td><code>viewer_expires_at</code></td><td>アクセストークンの有効期限（ms）</td></tr>
-        <tr><td><code>viewer_push_done</code></td><td><code>"true"</code> なら通知設定済み → list へ直行</td></tr>
-        <tr><td><code>viewer_pkce_verifier</code></td><td>OAuth PKCE の code_verifier（認証中のみ存在）</td></tr>
+        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td><code>viewer_access_token</code></td><td>Google API アクセストークン</td></tr>
+        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>viewer_refresh_token</code></td><td>リフレッシュトークン（Vercel API 経由で更新）</td></tr>
+        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td><code>viewer_expires_at</code></td><td>アクセストークンの有効期限（ms）</td></tr>
+        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">4</td><td><code>viewer_push_done</code></td><td><code>"true"</code> なら通知設定済み → list へ直行</td></tr>
+        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">5</td><td><code>viewer_pkce_verifier</code></td><td>OAuth PKCE の code_verifier（認証中のみ存在）</td></tr>
       </tbody>
     </table>
   </div>
@@ -718,28 +736,32 @@ graph LR
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-8　Google Drive ファイル一覧</p>
   <table class="module-table">
     <thead>
-      <tr><th>ファイル名</th><th>書き込み</th><th>読み取り・削除</th><th>意味</th></tr>
+      <tr><th style="width:44px;text-align:center">No</th><th>ファイル名</th><th>書き込み</th><th>読み取り・削除</th><th>意味</th></tr>
     </thead>
     <tbody>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">1</td>
         <td><code>notes_to_iphone.json</code></td>
         <td>PC（gdrive.rs）</td>
         <td>iPhone SW（push受信時）</td>
         <td>PC → iPhone 未処理キュー。SW が受信して IndexedDB に保存後、当該 ID を除いて書き戻す（または全削除）。</td>
       </tr>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">2</td>
         <td><code>notes_from_iphone.json</code></td>
         <td>iPhone（useBackgroundSend）</td>
         <td>PC（gdrive.rs 30秒ポーリング）</td>
         <td>iPhone → PC 未処理キュー。PC 受信後は処理済みアイテムを除いた残りのみ書き戻す。</td>
       </tr>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">3</td>
         <td><code>fusen_img_*.jpg</code></td>
         <td>iPhone（useBackgroundSend）または PC（gdrive.rs）</td>
         <td>受信側が処理後に削除</td>
         <td>添付画像ファイル。ファイル名規則: <code>fusen_img_YYYYMMDD_HHMMSS_コンテキスト_N.jpg</code></td>
       </tr>
       <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">4</td>
         <td><code>push_devices.json</code></td>
         <td>iPhone（lib/push.ts）が upsert</td>
         <td>PC（webpush.rs）が読んで全端末へ Push 送信</td>
@@ -892,9 +914,9 @@ sequenceDiagram
   </div>
 </div>
 
-<!-- 4.4 ロックだぜ -->
+<!-- 4.4 ロック画面に表示 -->
 <div class="card">
-  <div id="seq4" class="subsec">4.4 ロックだぜ ON/OFF と再通知サイクル（<a href="000_REQUIREMENTS.html#sec9">REQ_IP_05</a>）</div>
+  <div id="seq4" class="subsec">4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="000_REQUIREMENTS.html#sec9">REQ_IP_05</a>）</div>
   <p style="font-size:12px;color:#64748b;margin-bottom:12px">
     「消す意思がないかぎりロック画面から消えない」体験を実現する ON/OFF 操作と、タップ後の再通知サイクル。
     ユーザー体験の手順は ①〜⑥ で示す（REQ_IP_05 の①〜④に対応）。
@@ -967,6 +989,135 @@ sequenceDiagram
   </div>
 </div>
 
+<!-- =====================================================
+     5. UI インタラクション
+     ===================================================== -->
+<div id="sec5" class="sec-title"><span>📡</span> 5. UI インタラクション</div>
+
+<div class="card">
+  <div class="note note-blue" style="margin-bottom:20px">
+    iPhone PWA は「リストモード」と「ライトモード」の 2 画面構成をベースに、タップ・アイコン操作で全機能にアクセスできる。
+  </div>
+
+  <div id="sec5-mode" class="subsec">5.1 画面モード定義</div>
+  <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">リスト・ライトの 2 モードとその遷移条件を定義します。</p>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-5　モード定義</p>
+  <table class="module-table">
+    <thead><tr><th style="width:44px;text-align:center">No</th><th>モード</th><th>状態</th><th>遷移トリガー</th></tr></thead>
+    <tbody>
+      <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">1</td>
+        <td><strong>リストモード</strong></td>
+        <td>Drive から同期した付箋を一覧表示している状態</td>
+        <td>アプリ起動後の初期画面</td>
+      </tr>
+      <tr>
+        <td style="text-align:center;color:#94a3b8;font-weight:700">2</td>
+        <td><strong>ライトモード</strong></td>
+        <td>1 枚の付箋を全画面で編集している状態（800ms 自動保存）</td>
+        <td>付箋タップ or ＋ボタン</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="mermaid" style="margin-top:16px">
+stateDiagram-v2
+    [*] --&gt; ListMode : リストモード
+    ListMode --&gt; WriteMode : 付箋タップ / +ボタン
+    WriteMode --&gt; ListMode : ← 戻る（保存確定）
+  </div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 20px;letter-spacing:0.03em">図 3-8　画面モード遷移図</p>
+
+  <div id="sec5-ops" class="subsec">5.2 各モードの操作一覧</div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-6　リストモードの操作</p>
+  <table class="module-table">
+    <thead><tr><th style="width:44px;text-align:center">No</th><th>操作</th><th>対象</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td>タップ</td><td>付箋アイテム</td><td>ライトモードへ遷移</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td>🔔 タップ</td><td>ロック画面に表示ボタン</td><td><code>locked</code> フラグの ON/OFF 切り替え</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td>🗑️ タップ</td><td>削除ボタン</td><td>確認ダイアログ → Drive から削除</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">4</td><td>＋ タップ</td><td>新規ボタン</td><td>空のライトモードへ遷移</td></tr>
+    </tbody>
+  </table>
+
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:12px 0 4px;letter-spacing:0.03em">表 3-7　ライトモードの操作</p>
+  <table class="module-table">
+    <thead><tr><th style="width:44px;text-align:center">No</th><th>操作</th><th>対象</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td>文字入力</td><td>エディタ</td><td>800ms debounce で自動保存</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td>画像貼り付け</td><td>エディタ</td><td>IndexedDB に保存・プレビュー表示</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td>← タップ</td><td>戻るボタン</td><td>リストモードへ遷移（保存確定）</td></tr>
+    </tbody>
+  </table>
+
+  <div id="sec5-matrix" class="subsec">5.3 インタラクション・マトリックス</div>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-8　操作×モード・マトリックス</p>
+  <table class="module-table">
+    <thead><tr><th style="width:44px;text-align:center">No</th><th>操作</th><th>リストモード</th><th>ライトモード</th></tr></thead>
+    <tbody>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td>タップ</td><td>ライトモードへ</td><td>-</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td>🔔</td><td>locked ON/OFF</td><td>-</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td>🗑️</td><td>削除確認ダイアログ</td><td>-</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">4</td><td>文字入力</td><td>-</td><td>自動保存</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">5</td><td>← 戻る</td><td>-</td><td>リストモードへ</td></tr>
+    </tbody>
+  </table>
+</div>
+
+
+<!-- =====================================================
+     エラーハンドリング・リカバリ方針
+     ===================================================== -->
+<div id="recovery" class="sec-title"><span>⚠️</span> 6. エラーハンドリング・リカバリ方針</div>
+
+<div class="card">
+  <div class="note note-blue" style="margin-bottom:20px">
+    各エラーケースの実施状況。<span style="color:#dc2626;font-weight:700">⚠️ 未実施</span> は現時点での課題。
+  </div>
+  <div class="subsec">🔄 Drive API 失敗（PC 側 / gdrive.rs）</div>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    PC アプリが Drive API 呼び出しに失敗した場合、<code>Err(String)</code> を返して Tauri コマンド経由でフロントエンドにエラーを通知する。
+    アクセストークンは期限到来の 60 秒前に <code>gdrive.rs</code> が自動リフレッシュする。
+    リフレッシュ失敗時は「Googleの認証が切れました。設定画面から再接続してください。」というメッセージを返す。
+    <strong>フロントエンドでのエラーダイアログ表示は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>（エラーはコンソールに出力されるのみ）。</strong>
+  </p>
+  <div class="subsec">📱 Drive API 失敗（iPhone 側）</div>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    Drive API 呼び出しが失敗した場合、エラーを <code>fusen-logs</code>（IndexedDB）に記録する。
+    アクセストークンが切れていれば Vercel API 経由で自動リフレッシュして再試行する。
+    リフレッシュも失敗した場合は localStorage と IndexedDB からトークンを削除し、ログイン画面を表示する。
+    <strong>UI上のエラーフィードバック（トースト表示等）は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。</strong>
+  </p>
+  <div class="subsec">🔖 認証切れ（iPhone 側）</div>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    アクセストークンの期限切れを検出した場合、Vercel API <code>/api/auth/refresh</code> でトークンを自動更新する。
+    リフレッシュトークンも失効していた場合はトークンを削除してログイン画面を表示する（実施済み）。
+  </p>
+  <div class="subsec">🔔 Service Worker の更新</div>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    <code>skipWaiting()</code> + <code>clients.claim()</code> で新しい SW が即時有効化される。バグ修正版をリリースした際に古い SW が動き続けることはない。
+  </p>
+  <div class="subsec">📲 Push 配信失敗（iPhone 側）</div>
+  <p style="font-size:13px;color:#374151">
+    SW 内での Push 処理（Drive 書き込み・IndexedDB 保存）が失敗した場合、<code>fusen-logs</code> に記録する。
+    なお、Push 配信自体の失敗リトライは <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。配信失敗時はユーザーに通知が届かないまま終了する。
+  </p>
+  <div class="subsec">🔔 Web Push 送信失敗（PC → iPhone）</div>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    APNs / FCM へのプッシュ送信が失敗した場合（201 以外のステータス）、エラーコードを含む <code>Err</code> を返す。
+    <strong>リトライは <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。</strong>送信失敗時は iPhone に通知が届かないまま終了する。
+  </p>
+  <div class="subsec">💾 付箋ファイルの書き込み失敗（PC 内部）</div>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    付箋内容の保存はアトミック書き込み（一時ファイル書き込み → rename）で行い、途中クラッシュによるデータ破損を防ぐ（実施済み）。
+    ファイルシステムエラーが発生した場合は Tauri コマンドのエラーとして返却する。
+  </p>
+  <div class="subsec">🔁 PC アプリ再起動時の復元</div>
+  <p style="font-size:13px;color:#374151">
+    起動時に Vault フォルダを全スキャンして付箋ウィンドウを再生成するため、アプリが異常終了した場合でも次回起動時に自動復元される（実施済み）。
+    ただし終了直前の未保存内容は失われる可能性がある（保存タイミングは blur 時 or デバウンス 800ms 後）。
+  </p>
+</div>
 
 <!-- =====================================================
      改版履歴

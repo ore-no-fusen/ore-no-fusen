@@ -322,9 +322,13 @@ code {
 
 <!-- ===== NAV ===== -->
 <nav class="nav">
+  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
+  <a class="nav-link" href="000_REQUIREMENTS.html">000 要求仕様</a>
   <span class="nav-current">001 全体像</span>
   <a class="nav-link" href="002_PC.html">002 PC側</a>
   <a class="nav-link" href="003_IPHONE.html">003 iPhone連携</a>
+  <a class="nav-link" href="004_TEST.html">004 テスト設計</a>
+  <a class="nav-link" href="005_GLOSSARY.html">005 用語集</a>
 </nav>
 
 <!-- ===== HEADER ===== -->
@@ -338,6 +342,7 @@ code {
   <table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead>
       <tr>
+        <th style="background:#f8fafc;padding:8px 14px;text-align:left;font-weight:700;color:#475569;border:1px solid #e2e8f0">No</th>
         <th style="background:#f8fafc;padding:8px 14px;text-align:left;font-weight:700;color:#475569;border:1px solid #e2e8f0">文書</th>
         <th style="background:#f8fafc;padding:8px 14px;text-align:left;font-weight:700;color:#475569;border:1px solid #e2e8f0">担当範囲</th>
         <th style="background:#f8fafc;padding:8px 14px;text-align:left;font-weight:700;color:#475569;border:1px solid #e2e8f0">主な内容</th>
@@ -345,16 +350,19 @@ code {
     </thead>
     <tbody>
       <tr style="background:#eff6ff">
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#1e40af;white-space:nowrap">1</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#1e40af;white-space:nowrap">001 全体像（本文書）</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0">システム全体</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0;color:#475569">登場人物・技術スタック・3つのデータフロー概要・Vercelが必要な理由</td>
       </tr>
       <tr>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0">2</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#1e40af;white-space:nowrap"><a href="002_PC.html" style="color:#1e40af">002 PC側</a></td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0">Tauri アプリ</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0;color:#475569">画面構成・モジュール構造（React / Rust）・データ構造・シーケンス図（6本）</td>
       </tr>
       <tr>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0">3</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#14532d;white-space:nowrap"><a href="003_IPHONE.html" style="color:#14532d">003 iPhone連携</a></td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0">iPhone PWA</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0;color:#475569">画面構成（5画面）・モジュール構造・データ構造（IndexedDB / Drive）・シーケンス図（4本）</td>
@@ -371,6 +379,7 @@ code {
     <li><a href="#sec2">技術スタック</a></li>
     <li><a href="#sec3">データフロー概要（3つのフロー）</a></li>
     <li><a href="#sec4">なぜ Vercel が必要か</a></li>
+    <li><a href="#recovery">エラーハンドリング・リカバリ方針</a></li>
     <li><a href="#history">改版履歴</a></li>
   </ol>
 </nav>
@@ -493,6 +502,7 @@ graph TB
   <table class="vercel-table" style="margin-top:4px">
     <thead>
       <tr>
+        <th>No</th>
         <th>登場人物</th>
         <th>一言で言うと</th>
         <th>何のために使うか</th>
@@ -500,36 +510,43 @@ graph TB
     </thead>
     <tbody>
       <tr>
+        <td>1</td>
         <td><strong>1⃣ 🖥 PC アプリ</strong></td>
         <td>デスクトップ付箋アプリ</td>
         <td>付箋の表示・編集・保存。iPhone に通知付きで送信。iPhone から受け取って付箋を開く</td>
       </tr>
       <tr>
+        <td>2</td>
         <td><strong>2⃣ 📱 iPhone PWA</strong></td>
         <td>ホーム画面に追加した Web アプリ</td>
         <td>PC からのノートを受け取り閲覧。メモを書いて PC に送る</td>
       </tr>
       <tr>
+        <td>3</td>
         <td><strong>3⃣ ⚙️ Service Worker</strong></td>
         <td>iPhone の常駐プログラム</td>
         <td>アプリを閉じていても Push を受信してノートを保存・通知表示。IndexedDB がデータの唯一の保存場所</td>
       </tr>
       <tr>
+        <td>4</td>
         <td><strong>4⃣ ☁️ Google Drive</strong></td>
         <td>PC と iPhone の中継所</td>
         <td>ノートデータを一時的に置く場所。処理したら即削除。開発者はアクセス不可</td>
       </tr>
       <tr>
+        <td>5</td>
         <td><strong>5⃣ 🌐 Vercel</strong></td>
         <td>開発者が置いた Web サーバー</td>
         <td>iPhone PWA を配信。<code>client_secret</code> をブラウザに渡さず保護するための認証 API を置く</td>
       </tr>
       <tr>
+        <td>6</td>
         <td><strong>6⃣ 🔑 Google OAuth2</strong></td>
         <td>Drive の鍵を発行する仕組み</td>
         <td>ユーザーが自分の Drive を読み書きするための <code>access_token</code> を取得する</td>
       </tr>
       <tr>
+        <td>7</td>
         <td><strong>7⃣ 📡 APNs / FCM</strong></td>
         <td>通知配信サーバー</td>
         <td>PC からの「通知してください」を受け取り iPhone に届ける。APNs は iPhone/Mac、FCM は Chrome/Android</td>
@@ -761,6 +778,7 @@ graph TB
   <table class="vercel-table">
     <thead>
       <tr>
+        <th>No</th>
         <th></th>
         <th><code>client_secret</code> の場所</th>
         <th>問題</th>
@@ -768,11 +786,13 @@ graph TB
     </thead>
     <tbody>
       <tr>
+        <td>1</td>
         <td class="ng">✕ iPhone 直接</td>
         <td>iPhone のコードに埋め込む</td>
         <td>Safari DevTools でユーザーが読める → 開発者のアプリが悪用される</td>
       </tr>
       <tr>
+        <td>2</td>
         <td class="ok">✔ Vercel 経由</td>
         <td>Vercel の環境変数に置く</td>
         <td>iPhone（Safari）には届かない。Vercel のサーバー内だけで使われる</td>
@@ -787,6 +807,23 @@ graph TB
 
 
 <!-- =====================================================
+     エラーハンドリング・リカバリ方針
+     ===================================================== -->
+<div id="recovery" class="sec-title"><span>⚠️</span> 5. エラーハンドリング・リカバリ方針</div>
+
+<div class="card">
+  <p style="font-size:13px;color:#374151;line-height:1.8;margin-bottom:16px">
+    エラーは極力ログに記録し、リカバリは次回起動時の自動復元を基本とする。
+    Drive API 失敗・Push 配信失敗・認証切れ・ファイル書き込み失敗の詳細な対処方針は
+    iPhone 連携設計書（<a href="003_IPHONE.html#recovery" style="color:#2563eb">003 — エラーハンドリング・リカバリ方針</a>）を参照。
+  </p>
+  <div class="note note-yellow" style="margin:0">
+    <strong>⚠️ 未実施の主な課題：</strong>Push 送信失敗時のリトライ、フロントエンドへのエラーフィードバック（ダイアログ・トースト表示）。
+  </div>
+</div>
+
+
+<!-- =====================================================
      改版履歴
      ===================================================== -->
 <div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
@@ -794,10 +831,11 @@ graph TB
 <div class="card">
   <table class="history-table">
     <thead>
-      <tr><th>バージョン</th><th>日付</th><th>変更内容</th></tr>
+      <tr><th>No</th><th>バージョン</th><th>日付</th><th>変更内容</th></tr>
     </thead>
     <tbody>
       <tr>
+        <td>1</td>
         <td>1.0</td>
         <td>2026-04-19</td>
         <td>設計書を 001/002/003 に再編。本ファイル（001）は全体像を担当。旧 001_ARCHITECTURE_DESIGN・003_SYSTEM_OVERVIEW の該当部分を統合</td>

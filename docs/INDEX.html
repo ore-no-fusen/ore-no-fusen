@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>俺の付箋 — 設計書ポータル</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f4f8;
+  padding: 40px 32px;
+  color: #1a202c;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ===== HEADER ===== */
+.portal-header {
+  margin-bottom: 48px;
+}
+.portal-tag {
+  display: inline-block;
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #6d28d9;
+  background: #ede9fe;
+  border-radius: 99px;
+  padding: 3px 10px;
+  margin-bottom: 10px;
+}
+h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; }
+.lead { font-size: 14px; color: #64748b; }
+
+/* ===== DOC GRID ===== */
+.doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+/* ===== DOC CARD ===== */
+.doc-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  overflow: hidden;
+}
+.doc-card-header {
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.doc-badge {
+  display: inline-block;
+  font-size: 11px; font-weight: 800;
+  border-radius: 6px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+.badge-000 { background: #ede9fe; color: #4c1d95; }
+.badge-001 { background: #dbeafe; color: #1e40af; }
+.badge-002 { background: #dbeafe; color: #1e40af; }
+.badge-003 { background: #dcfce7; color: #14532d; }
+.badge-004 { background: #f3e8ff; color: #6b21a8; }
+.badge-005 { background: #fee2e2; color: #991b1b; }
+
+.doc-card-title {
+  flex: 1;
+}
+.doc-card-title a {
+  font-size: 15px; font-weight: 700;
+  color: #1a202c;
+  text-decoration: none;
+}
+.doc-card-title a:hover { color: #2563eb; text-decoration: underline; }
+.doc-subtitle {
+  font-size: 11px; color: #94a3b8;
+  margin-top: 3px;
+}
+
+/* ===== TOC LIST ===== */
+.toc-list {
+  padding: 16px 24px 20px;
+}
+.toc-section {
+  margin-bottom: 12px;
+}
+.toc-sec-link {
+  display: block;
+  font-size: 13px; font-weight: 700;
+  color: #334155;
+  text-decoration: none;
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+.toc-sec-link:hover { color: #2563eb; }
+.toc-sub-list {
+  padding-left: 16px;
+  border-left: 2px solid #e2e8f0;
+  margin-left: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toc-sub-link {
+  font-size: 11px; color: #64748b;
+  text-decoration: none;
+  line-height: 1.7;
+}
+.toc-sub-link:hover { color: #2563eb; }
+.toc-divider {
+  height: 1px; background: #f1f5f9;
+  margin: 10px 0;
+}
+
+/* ===== 000 special: categories ===== */
+.req-cat-list {
+  padding-left: 16px;
+  border-left: 2px solid #e2e8f0;
+  margin-left: 4px;
+}
+.req-cat-link {
+  display: block;
+  font-size: 11px; color: #64748b;
+  text-decoration: none;
+  line-height: 1.8;
+}
+.req-cat-link:hover { color: #4c1d95; }
+
+/* ===== カテゴリリスト（005用） ===== */
+.cat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  padding-left: 4px;
+}
+.cat-link {
+  font-size: 11px; color: #64748b;
+  text-decoration: none;
+  line-height: 1.8;
+}
+.cat-link:hover { color: #991b1b; }
+</style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<div class="portal-header">
+  <div class="portal-tag">DESIGN DOCS PORTAL</div>
+  <h1>俺の付箋 設計書</h1>
+  <p class="lead">000〜005 の全ドキュメント・全セクション一覧。各リンクから該当箇所へ直接ジャンプできます。</p>
+</div>
+
+<!-- ===== DOCUMENT GRID ===== -->
+<div class="doc-grid">
+
+  <!-- ===== 000 ===== -->
+  <div class="doc-card">
+    <div class="doc-card-header">
+      <span class="doc-badge badge-000">000</span>
+      <div class="doc-card-title">
+        <a href="000_REQUIREMENTS.html">要求仕様書</a>
+        <div class="doc-subtitle">プロダクトが満たすべき機能・非機能要件（USDM 形式）</div>
+      </div>
+    </div>
+    <div class="toc-list">
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec1">1. 全体概要</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec2">2. ライフサイクル要求</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec3">3. データ管理要求</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec4">4. 編集・表示要求</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec5">5. ウィンドウ要求</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec6">6. UI/UX 仕様</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec7">7. インターフェース仕様</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec8">8. 機能要求</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="000_REQUIREMENTS.html#sec9">9. iPhone アプリ要求</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 001 ===== -->
+  <div class="doc-card">
+    <div class="doc-card-header">
+      <span class="doc-badge badge-001">001</span>
+      <div class="doc-card-title">
+        <a href="001_OVERVIEW.html">システム全体像</a>
+        <div class="doc-subtitle">登場人物・技術スタック・全体データフロー・Vercel の役割</div>
+      </div>
+    </div>
+    <div class="toc-list">
+      <div class="toc-section">
+        <a class="toc-sec-link" href="001_OVERVIEW.html#sec1">1. 登場人物</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="001_OVERVIEW.html#sec2">2. 技術スタック</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="001_OVERVIEW.html#sec3">3. データフロー概要（3つのフロー）</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="001_OVERVIEW.html#sec4">4. なぜ Vercel が必要か</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="001_OVERVIEW.html#recovery">5. エラーハンドリング・リカバリ方針</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 002 ===== -->
+  <div class="doc-card">
+    <div class="doc-card-header">
+      <span class="doc-badge badge-002">002</span>
+      <div class="doc-card-title">
+        <a href="002_PC.html">PC アプリ設計</a>
+        <div class="doc-subtitle">画面構成・モジュール・データ構造・シーケンス図・UI 仕様</div>
+      </div>
+    </div>
+    <div class="toc-list">
+      <div class="toc-section">
+        <a class="toc-sec-link" href="002_PC.html#sec1">1. 画面構成</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="002_PC.html#sec1-window">1.1 ウィンドウの仕組み</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="002_PC.html#sec2">2. 実装構成</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="002_PC.html#sec2-fe">2.1 フロントエンド（TypeScript / React）</a>
+          <a class="toc-sub-link" href="002_PC.html#sec2-be">2.2 バックエンド（Rust）</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="002_PC.html#sec3">3. データ構造</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="002_PC.html#sec3-note">3.1 付箋データ</a>
+          <a class="toc-sub-link" href="002_PC.html#sec3-settings">3.2 設定データ</a>
+          <a class="toc-sub-link" href="002_PC.html#sec3-class">3.3 クラス図</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="002_PC.html#sec4">4. データフロー</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="002_PC.html#seq1">4.1 アプリ起動</a>
+          <a class="toc-sub-link" href="002_PC.html#seq2">4.2 付箋の保存・通知</a>
+          <a class="toc-sub-link" href="002_PC.html#seq3">4.3 画像キャプチャ</a>
+          <a class="toc-sub-link" href="002_PC.html#seq4">4.4 全画面</a>
+          <a class="toc-sub-link" href="002_PC.html#seq5">4.5 iPhone への送信</a>
+          <a class="toc-sub-link" href="002_PC.html#seq6">4.6 iPhone からの受信</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="002_PC.html#sec5">5. UI インタラクション</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="002_PC.html#sec5-mode">5.1 モード定義</a>
+          <a class="toc-sub-link" href="002_PC.html#sec5-area">5.2 操作領域の定義</a>
+          <a class="toc-sub-link" href="002_PC.html#sec5-matrix">5.3 インタラクション・マトリックス</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 003 ===== -->
+  <div class="doc-card">
+    <div class="doc-card-header">
+      <span class="doc-badge badge-003">003</span>
+      <div class="doc-card-title">
+        <a href="003_IPHONE.html">iPhone PWA 設計</a>
+        <div class="doc-subtitle">画面構成・Service Worker・IndexedDB・シーケンス図</div>
+      </div>
+    </div>
+    <div class="toc-list">
+      <div class="toc-section">
+        <a class="toc-sec-link" href="003_IPHONE.html#sec1">1. 画面構成</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="003_IPHONE.html#sec1-screens">1.1 各画面の概要</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#sec1-transition">1.2 画面の遷移フロー</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="003_IPHONE.html#sec2">2. 実装構成</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="003_IPHONE.html#sec2-fe">2.1 フロントエンド（TypeScript / React）</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#sec2-sw">2.2 Service Worker</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#sec2-server">2.3 サーバーサイド（Vercel API Routes）</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="003_IPHONE.html#sec3">3. データ構造</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="003_IPHONE.html#sec3-idb">3.1 IndexedDB</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#sec3-ls">3.2 localStorage</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#sec3-drive">3.3 Google Drive ファイル</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="003_IPHONE.html#sec4">4. データフロー</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="003_IPHONE.html#seq1">4.1 アプリ起動（初回）</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#seq2">4.2 PC → iPhone 受信</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#seq3">4.3 iPhone → PC 送信</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#seq4">4.4 ロック画面に表示 ON/OFF</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="003_IPHONE.html#sec5">5. UI インタラクション</a>
+        <div class="toc-sub-list">
+          <a class="toc-sub-link" href="003_IPHONE.html#sec5-mode">5.1 画面モード定義</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#sec5-ops">5.2 各モードの操作一覧</a>
+          <a class="toc-sub-link" href="003_IPHONE.html#sec5-matrix">5.3 インタラクション・マトリックス</a>
+        </div>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="003_IPHONE.html#recovery">6. エラーハンドリング・リカバリ方針</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 004 ===== -->
+  <div class="doc-card">
+    <div class="doc-card-header">
+      <span class="doc-badge badge-004">004</span>
+      <div class="doc-card-title">
+        <a href="004_TEST.html">テスト設計書</a>
+        <div class="doc-subtitle">テスト戦略・テストファイル一覧・実行方法・カバレッジ外領域</div>
+      </div>
+    </div>
+    <div class="toc-list">
+      <div class="toc-section">
+        <a class="toc-sec-link" href="004_TEST.html#sec1">1. テスト戦略（ピラミッド）</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="004_TEST.html#sec2">2. ユニットテスト一覧（Vitest）</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="004_TEST.html#sec3">3. E2Eテスト一覧（Playwright）</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="004_TEST.html#sec4">4. テスト実行方法</a>
+      </div>
+      <div class="toc-section">
+        <a class="toc-sec-link" href="004_TEST.html#sec5">5. カバレッジ外の領域</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 005 ===== -->
+  <div class="doc-card">
+    <div class="doc-card-header">
+      <span class="doc-badge badge-005">005</span>
+      <div class="doc-card-title">
+        <a href="005_GLOSSARY.html">用語集</a>
+        <div class="doc-subtitle">設計書全体に登場する専門用語・略語（7カテゴリ・38語）</div>
+      </div>
+    </div>
+    <div class="toc-list">
+      <div class="cat-grid">
+        <a class="cat-link" href="005_GLOSSARY.html#sec-auth">🔑 認証・セキュリティ</a>
+        <a class="cat-link" href="005_GLOSSARY.html#sec-push">🔔 Push 通知</a>
+        <a class="cat-link" href="005_GLOSSARY.html#sec-browser">🌐 ブラウザ技術</a>
+        <a class="cat-link" href="005_GLOSSARY.html#sec-fw">🛠️ フレームワーク</a>
+        <a class="cat-link" href="005_GLOSSARY.html#sec-design">📐 設計用語</a>
+        <a class="cat-link" href="005_GLOSSARY.html#sec-drive">☁️ Google Drive API</a>
+        <a class="cat-link" href="005_GLOSSARY.html#sec-data">📄 データ形式</a>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /doc-grid -->
+
+</body>
+</html>
