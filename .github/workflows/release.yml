@@ -54,3 +54,4 @@ jobs:
         with:
           identifier: ONFStudios.OreNoFusen
           token: ${{ secrets.WINGET_TOKEN }}
+          max-versions-to-keep: '0'
