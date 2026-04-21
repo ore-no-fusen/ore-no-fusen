@@ -33,7 +33,6 @@
 
 ## 目次
 
-- [登場人物（システム全体の構成要素）](#登場人物)
 - [改版履歴](#改版履歴)
 - [0. 技術スタック](#0-技術スタック-technology-stack)
 - [1. 構造図](#1-構造図-architecture-diagram)
@@ -63,75 +62,7 @@
 | 1.1 | 2026-04-08 | セクション6追加。iPhone連携フロー（PC→iPhone v2.0 / iPhone→PC v3.0 / viewer画面遷移）を iphone_01〜04 HTML設計書よりマージ |
 | 1.2 | 2026-04-08 | 6.2・6.3 を実装に合わせて更新。「iPhoneに置いておく」→「新規付箋」ボタン名変更。バッジ色を保存済み（グレー）・PC受信（薄藍）・送信済み（薄青）に変更 |
 | 1.3 | 2026-04-10 | 1.1「画面とソースファイルの対応」追加（PC マルチウィンドウ構造・iPhone PWA 構成）。4.1「iPhone側データ構造」追加（DraftRecord / IphoneNote / FusenNoteItem）。notes_to_iphone.json に tags フィールド追記 |
-| 1.4 | 2026-04-12 | `notes_to_iphone.json` → IndexedDB → UI の一方向フローを確立。`drive.ts` に `downloadWithAutoRefresh` 追加 |
-| 1.5 | 2026-04-19 | 「登場人物と役割」セクション新設。Vercel を登場人物として明記。全体構成図（Mermaid）追加 |
-
----
-
-## 登場人物（システム全体の構成要素）
-
-本アプリは複数のサービスが連携して動作する。まず「誰のものか」を区別しておく。
-
-> 🔵 **ユーザーの資産** — ユーザー自身が所有・管理するもの。開発者はアクセスできない
-> 🟢 **開発者が提供するサービス** — 開発者がデプロイ・運営している。ソースコードは公開
-> 🟡 **外部インフラ** — Apple・Google など第三者が運営するサービス。開発者もユーザーも所有しない
-
-```mermaid
-graph TB
-    classDef user fill:#1e3a5f,stroke:#60a5fa,color:#bfdbfe,stroke-width:2px
-    classDef dev  fill:#14532d,stroke:#4ade80,color:#bbf7d0,stroke-width:2px
-    classDef ext  fill:#78350f,stroke:#fbbf24,color:#fef3c7,stroke-width:2px
-
-    PC["🔵 PC アプリ<br/>Tauri + Rust<br/>（ユーザーのPC）"]:::user
-    iPhone["🔵 iPhone / iPad<br/>Safari PWA<br/>（ユーザーの端末）"]:::user
-    Drive["🔵 Google Drive<br/>ユーザー自身のドライブ<br/>（開発者はアクセス不可）"]:::user
-
-    Vercel["🟢 Vercel<br/>開発者がデプロイした<br/>Webサーバー"]:::dev
-
-    OAuth["🟡 Google OAuth2<br/>Googleのログイン基盤<br/>（Google社が運営）"]:::ext
-    Push["🟡 APNs / FCM<br/>AppleとGoogleの<br/>通知配信サーバー"]:::ext
-
-    iPhone -->|"ログイン・トークン更新を依頼"| Vercel
-    Vercel -->|"client_secretを使って<br/>Googleに認証を依頼"| OAuth
-    OAuth -.->|"access_token（Drive操作許可証）"| iPhone
-
-    iPhone <-->|"ノート・画像ファイル"| Drive
-    PC <-->|"ノート・デバイス登録情報"| Drive
-
-    PC -->|"通知を送るよう依頼"| Push
-    Push -->|"通知をiPhoneに配信"| iPhone
-```
-
----
-
-### 各登場人物の詳細
-
-| | 登場人物 | 一言で言うと | 何のために使うか | 誰が所有 |
-|---|---|---|---|---|
-| 🔵 | **PC アプリ**<br/>（Tauri + Rust） | ユーザーが使うデスクトップアプリ | 付箋の表示・編集・保存。iPhone に通知付きで送信。iPhone から受け取って付箋を開く | ユーザー |
-| 🔵 | **iPhone / iPad**<br/>（Safari PWA） | ホーム画面に追加した Webアプリ | PC から届いたノートを通知で受け取り・閲覧。iPhone 上でメモを書いて PC に送る | ユーザー |
-| 🔵 | **Service Worker**<br/>（iPhone 内部） | iPhone の Safari が裏で動かすプログラム | アプリを閉じていても Push を受信してノートを保存・通知表示できる。iPhoneのローカルDB（IndexedDB）がデータの唯一の保存場所 | ユーザー |
-| 🔵 | **Google Drive**<br/>（ユーザー自身のドライブ） | PC と iPhone のデータ受け渡し場所 | PC から iPhone へ、iPhone から PC へのノートデータを一時的に置く中継所。処理したら即削除。開発者はこのドライブを見られない | ユーザー |
-| 🟢 | **Vercel**<br/>（Next.js API Routes） | 開発者がデプロイした Web サーバー | iPhone PWA のページを配信。Google ログイン時の秘密鍵（`client_secret`）をブラウザに渡さず保護するための中継 API を置く | 開発者 |
-| 🟡 | **Google OAuth2**<br/>（Google社が運営） | 「あなたは誰か」を確認し Drive の操作許可を発行するGoogle の仕組み | ユーザーが自分の Google Drive を読み書きするための「許可証（access_token）」を取得するために使う。直接 iPhone から呼ばず Vercel 経由で呼ぶ | Google社 |
-| 🟡 | **APNs**<br/>（Apple社が運営） | Apple の通知配信サーバー。Push Notification service の略 | PC → iPhone への通知を届ける専用サーバー。「通知してください」という依頼を受け取り、iPhone に届ける | Apple社 |
-| 🟡 | **FCM**<br/>（Google社が運営） | Google の通知配信サーバー。Firebase Cloud Messaging の略 | APNs の Chrome / Android 版。PC Chrome や Android 端末への通知はこちら経由 | Google社 |
-
----
-
-### なぜ Vercel が必要か（`client_secret` の保護）
-
-**守っている対象：開発者（アプリ作者）**。ユーザーの秘密鍵ではない。
-
-`client_secret` は開発者が Google Cloud Console で発行した「このアプリが本物であることを証明する鍵」。
-ユーザーのパスワードや個人情報とは無関係。漏れると開発者のアプリが停止・悪用されるリスクがある。
-
-| | `client_secret` の場所 | 問題 |
-|---|---|---|
-| ❌ iPhone 直接 | iPhone のコードに埋め込む | iPhone の Safari Dev Tools でユーザーが読める → 開発者のアプリが悪用される |
-| ✅ Vercel 経由 | Vercel の環境変数に置く | iPhone（Safari）には届かない。Vercel のサーバー内だけで使われる |
-
-iPhone は Vercel の `/api/auth/token`・`/api/auth/refresh` を呼ぶだけ。`client_secret` は一切 iPhone に渡らない。
+| 1.4 | 2026-04-12 | バグ修正: PCから送った付箋がiPhone一覧に表示されない問題を修正。`useNoteList` に Drive同期を追加（`notes_to_iphone.json` → IndexedDB → UI の一方向フローを確立）。`drive.ts` に `downloadWithAutoRefresh` 追加。削除・既読時の Drive更新順序を修正（再取得→更新→Upload→IndexedDB削除） |
 
 ---
 
@@ -509,8 +440,9 @@ type FusenNoteItem = {
   id: string;
   title: string;
   body: string;
-  tags: string[];   // PC付箋のタグ（frontmatterから取得）
-  sent_at: string;  // PCが送った日時（ISO 8601）
+  tags: string[];            // PC付箋のタグ（frontmatterから取得）
+  sent_at: string;           // PCが送った日時（ISO 8601）
+  received_at: string | null; // iPhoneが受け取った日時（null = 未受信）
 };
 ```
 
@@ -522,16 +454,14 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 
 **Drive はすべて中継所。** 大本データは PC ローカル（Markdown ファイル）または iPhone ローカル（IndexedDB）にある。Drive にしか存在しないデータはない。全ファイルを削除しても本体データは失われない。
 
-**Drive設計原則: 存在 = 未処理。** Drive にあるデータは「まだ届いていない」ことを意味する。受け取った側は処理後に即削除する。「処理済み」を示すフラグは不要——なければ処理済み、あれば未処理、それだけ。この原則から、データ構造や削除タイミングは自然に決まる。
-
 ---
 
 ### 5.1 ライフサイクル一覧
 
 | ファイル名 | 何のデータか | いつ作られるか | どこで作られるか | いつ消されるか | 消えた場合の影響 |
 |---|---|---|---|---|---|
-| `notes_to_iphone.json` | PC→iPhone 未処理キュー（最新20件） | PC から「iPhoneに送る」を実行したとき | PC アプリ | iPhone が受信してIndexedDBに保存後、ファイルごと削除 | 次の「iPhoneに送る」実行時に再作成。未受信データは消える |
-| `notes_from_iphone.json` | iPhone→PC 未処理キュー | iPhone viewer で「PCに送る」を実行したとき | iPhone viewer | PC が受信処理したアイテムは即削除（未処理分のみ残る） | 次の「PCに送る」実行時に再作成。未受信データは消える |
+| `notes_to_iphone.json` | PC→iPhone 送信キュー（最新20件） | PC から「iPhoneに送る」を実行したとき | PC アプリ | iPhone viewer でアイテムを削除したとき（アイテム単位） | 次の「iPhoneに送る」実行時に再作成。未受信データは消える |
+| `notes_from_iphone.json` | iPhone→PC 送信キュー | iPhone viewer で「PCに送る」を実行したとき | iPhone viewer | （自動削除なし・アイテムに received_at が付くのみ） | 次の「PCに送る」実行時に再作成。未受信データは消える |
 | `push_devices.json` | iPhone のプッシュ通知デバイス登録情報 | iPhone viewer で初回セットアップを完了したとき | iPhone viewer | （自動削除なし） | PC からプッシュ通知が届かなくなる。iPhone で再セットアップすれば復元 |
 | `push_keys.json` | VAPID 鍵ペア（プッシュ通知の送信元認証鍵） | PC アプリが Google 連携を設定したとき（初回のみ） | PC アプリ | （自動削除なし） | PC ローカルにも同じ鍵があるため通常は復元される。**鍵が変わることは、ほぼ、実運用上はない**（OS再インストール後にDriveも誤削除した場合のみ）。万一変わった場合は push_devices.json が無効になるため iPhone で再セットアップが必要 |
 
@@ -541,13 +471,6 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
 
 #### notes_to_iphone.json
 
-| 項目 | 内容 |
-|------|------|
-| **役割** | PC → iPhone 未処理キュー |
-| **書く** | PC アプリ（「iPhoneに送る」実行時） |
-| **消す** | iPhone（受信してIndexedDBに保存後、ファイルごと削除） |
-| **保持上限** | 最新 20 件（PC が超過分を削除） |
-
 ```json
 {
   "items": [
@@ -556,24 +479,19 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
       "title": "付箋のタイトル（frontmatter の title）",
       "body": "本文（ローカル画像は base64 data URI に変換済み）",
       "tags": ["タグ1", "タグ2"],
-      "sent_at": "2026-04-08T10:00:00Z"
+      "sent_at": "2026-04-08T10:00:00Z",
+      "received_at": "2026-04-08T10:01:00Z"
     }
   ]
 }
 ```
 
-- `sent_at`: PC が送った日時
-- `tags` は PC 付箋の frontmatter から取得
+- `received_at` は iPhone viewer が受信した時刻。未受信アイテムは `received_at` なし
+- `tags` は PC 付箋の frontmatter から取得（Phase 13 で追加）
 - ローカル画像は iPhone で表示できるよう base64 data URI に埋め込み済み
+- 件数制限: 最新 20 件のみ保持（PC アプリが送信時に超過分を削除）
 
 #### notes_from_iphone.json
-
-| 項目 | 内容 |
-|------|------|
-| **役割** | iPhone → PC 未処理キュー |
-| **書く** | iPhone viewer（「PCに送る」実行時） |
-| **消す** | PC アプリ（受信・処理後に即削除） |
-| **添付画像** | `fusen_img_*.jpg` も同様。PC 受信後に即削除 |
 
 ```json
 {
@@ -583,13 +501,15 @@ Drive の `ore-no-fusen` フォルダ内に置かれる JSON ファイルの仕�
       "title": "タイトル",
       "body": "本文（画像参照は fusen_img_*.jpg 形式）",
       "sent_at": "2026-04-08T10:00:00Z",
+      "received_at": "2026-04-08T10:01:00Z",
       "tags": ["タグ1", "タグ2"]
     }
   ]
 }
 ```
 
-- `sent_at`: iPhone が送った日時
+- `received_at` は PC アプリが受信した時刻。未受信アイテムは `received_at` なし
+- 画像は Drive に別途アップロードされた `fusen_img_*.jpg` を参照。PC 受信後にローカル保存し Drive から削除
 - 旧スキーマ互換: `{ "id": "...", "title": "...", "body": "..." }` の単一オブジェクト形式も読める
 
 #### push_devices.json
@@ -663,11 +583,11 @@ sequenceDiagram
 
     U->>Safari: ①URLを入力してアクセス
     Safari->>PWA: ②ページ読み込み
-    PWA-->>U: ③step:banner（ホーム画面追加手順を案内）
+    PWA-->>U: ③「ホーム画面に追加」バナー表示
     U->>U: ④Safari共有→ホーム画面に追加
-    U->>PWA: ⑤ホーム画面アイコンからPWA起動（standalone=true）
+    U->>PWA: ⑤ホーム画面アイコンからPWA起動
 
-    PWA->>SW: ⑥register('/sw.js')（skipWaiting済み：次回起動で即最新版に切替）
+    PWA->>SW: ⑥register('/sw.js')
     SW-->>PWA: ⑦ready (swReady=true)
     PWA-->>U: ⑧「Googleでログイン」ボタン表示
 
@@ -762,7 +682,7 @@ sequenceDiagram
 
     note over U,P: Phase 6 — iPhone側
 
-    U->>V: 「書く」タップ (step: list → write)
+    U->>V: 「書く」タップ (step: ready → write)
     U->>V: テキスト / 画像 / Mermaid を入力
     U->>V: 「PCに送る」ボタン
     V->>D: fusen_from_iphone.json {id, body, sent_at}
@@ -772,11 +692,11 @@ sequenceDiagram
     note over U,P: Phase 7 — PC受信
 
     loop 30秒ごと
-        R->>D: notes_from_iphone.json を取得
-        D-->>R: {items: [{id, body, sent_at, ...}]}
-        R->>R: 処理済みIDセットで重複チェック → 新着のみ処理
-        R->>D: 処理済みアイテムを除いた未処理分のみ書き戻す
-        R->>D: body内の fusen_img_*.jpg を Drive から削除
+        R->>D: fusen_from_iphone.json を取得
+        D-->>R: {id, body, sent_at}
+        R->>R: id == last_seen_id ? skip : 処理
+        R->>R: last_seen_id を更新
+        R->>D: received_at を付けて上書き（重複防止）
         R->>P: emit "fusen:note_from_iphone" {body}
     end
 
@@ -797,7 +717,7 @@ sequenceDiagram
     participant D as Google Drive
 
     note over U,D: SEND-01 テキスト送信
-    U->>V: 「書く」タップ (step: list → write)
+    U->>V: 「書く」タップ (step: ready → write)
     U->>V: テキスト入力
     U->>V: 「PCに送る」ボタン
     V->>V: viewer_expires_at 確認（期限切れなら /api/auth/refresh で自動更新）
@@ -866,15 +786,17 @@ sequenceDiagram
     loop 30秒ごと (tokio::time::interval)
         L->>D: get_access_token() — 期限切れなら自動refresh
         D-->>L: access_token
-        L->>D: download_json('notes_from_iphone.json')
-        D-->>L: {items: [{id, title, body, sent_at, tags}]}
+        L->>D: download_json('fusen_from_iphone.json')
+        D-->>L: {id, body, sent_at, [received_at]}
 
-        alt 処理済みIDセットに含まれる
+        alt received_at あり（受信済み）
+            L->>L: スキップ（重複防止）
+        else id == last_seen_id
             L->>L: スキップ（重複防止）
         else 新着ノート
-            L->>L: LAST_IPHONE_NOTE_IDS に追加
-            L->>D: 処理済みアイテムを除いた未処理分のみ書き戻す
-            L->>D: body内の fusen_img_*.jpg を Drive から削除
+            L->>L: LAST_IPHONE_NOTE_ID を更新
+            L->>D: upload_json('fusen_from_iphone.json', +received_at)
+            L->>D: body内の![](fusen_img_*.jpg)を解析してDriveから画像削除
             L->>E: emit("fusen:note_from_iphone", {title, body, context})
         end
     end
@@ -892,7 +814,7 @@ sequenceDiagram
 - 変更ファイル: `src-tauri/src/gdrive.rs`（delete_file_by_name() 追加）
 - 変更ファイル: `app/page.tsx`（fusen:note_from_iphone / fusen:drive_disconnected / drive_connected リスナー）
 - Cargo.toml: `tokio features = ["rt", "time"]` + `tauri-plugin-notification = "2"`
-- POLL-03: 処理済みIDセット（LAST_IPHONE_NOTE_IDS）による重複防止。Drive設計原則に従い received_at フラグは使わない
+- POLL-03: received_atフィルタ + LAST_IPHONE_NOTE_ID static Mutex で二重受信防止
 
 ---
 
@@ -1058,3 +980,6 @@ graph TD
     </script>
 </body>
 </html>
+
+
+

@@ -1,6 +1,4 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
+<!DOCTYPE html><html lang="ja"><head>
 <meta charset="UTF-8">
 <title>俺の付箋 — システム全体像</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -23,7 +21,7 @@ body {
   margin-bottom: 40px;
   flex-wrap: wrap;
 }
-.nav a {
+.nav a, .nav span.nav-current {
   display: inline-block;
   padding: 6px 16px;
   border-radius: 99px;
@@ -37,6 +35,7 @@ body {
   border-color: #1e40af;
   color: white;
 }
+.nav .nav-index { border-color: #6d28d9; color: #6d28d9; }
 .nav .nav-link {
   background: white;
   border-color: #93c5fd;
@@ -76,6 +75,8 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   margin-bottom: 40px;
   display: inline-block;
   min-width: 260px;
+  column-count: 2;
+  column-gap: 32px;
 }
 .toc-title {
   font-size: 12px;
@@ -84,8 +85,8 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   margin-bottom: 12px;
   letter-spacing: 0.05em;
 }
-.toc ol { padding-left: 20px; }
-.toc li { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
+
+
 .toc a { color: #1e40af; text-decoration: none; }
 .toc a:hover { text-decoration: underline; }
 
@@ -316,30 +317,52 @@ code {
   text-align: left;
 }
 .history-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+.vercel-table th:nth-child(1),
+.vercel-table td:nth-child(1),
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) { width: 44px; text-align: center; color: #94a3b8; font-weight: 700; }
+.series-table th:nth-child(1),
+.series-table td:nth-child(1) { width: 44px; text-align: center; color: #94a3b8; font-weight: 700; }
+
+.toc-title { column-span: all; margin-bottom: 16px; }
+
+
+
+
+
+.toc-list { column-count: 3; column-gap: 32px; font-size: 13px; line-height: 1.6; }
+@media (max-width: 1024px) { .toc-list { column-count: 2; } }
+@media (max-width: 768px) { .toc-list { column-count: 1; } }
+.toc-l1 { margin-bottom: 8px; font-weight: 700; break-inside: avoid; }
+.toc-l2 { margin-bottom: 6px; margin-left: 16px; font-weight: normal; break-inside: avoid; }
+.toc-l3 { margin-bottom: 6px; margin-left: 32px; font-size: 12px; color: #475569; break-inside: avoid; }
+.toc-item a { color: #4c1d95; text-decoration: none; }
+.toc-item a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
 <!-- ===== NAV ===== -->
 <nav class="nav">
-  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
+  <a href="INDEX.html" class="nav-link nav-index">📋 INDEX</a>
   <a class="nav-link" href="000_REQUIREMENTS.html">000 要求仕様</a>
-  <span class="nav-current">001 全体像</span>
-  <a class="nav-link" href="002_PC.html">002 PC側</a>
-  <a class="nav-link" href="003_IPHONE.html">003 iPhone連携</a>
+  <span class="nav-current">001 システム全体像</span>
+  <a class="nav-link" href="002_PC.html">002 PCローカル・UI設計</a>
+  <a class="nav-link" href="003_IPHONE.html">003 クラウド同期・iPhone設計</a>
   <a class="nav-link" href="004_TEST.html">004 テスト設計</a>
   <a class="nav-link" href="005_GLOSSARY.html">005 用語集</a>
+  <a class="nav-link" href="006_4PLUS1_ARCHITECTURE.html">006 4+1 Viewアーキテクチャ</a>
 </nav>
 
 <!-- ===== HEADER ===== -->
 <h1>俺の付箋 — システム全体像</h1>
-<p class="lead">登場人物・技術スタック・データフロー概要</p>
+<p class="lead">登場人物・技術スタック・データフロー・Vercelの役割</p>
 <p class="version-row">設計書 v1.0 / 2026-04-19</p>
 
 <!-- ===== 設計書シリーズ案内 ===== -->
 <div style="background:white;border-radius:16px;padding:24px 32px;box-shadow:0 2px 12px rgba(0,0,0,0.07);margin-bottom:32px">
   <div style="font-size:11px;font-weight:800;color:#475569;letter-spacing:0.05em;margin-bottom:14px">この設計書シリーズについて</div>
-  <table style="width:100%;border-collapse:collapse;font-size:12px">
+  <table class="series-table" style="width:100%;border-collapse:collapse;font-size:12px">
     <thead>
       <tr>
         <th style="background:#f8fafc;padding:8px 14px;text-align:left;font-weight:700;color:#475569;border:1px solid #e2e8f0">No</th>
@@ -357,13 +380,13 @@ code {
       </tr>
       <tr>
         <td style="padding:9px 14px;border:1px solid #e2e8f0">2</td>
-        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#1e40af;white-space:nowrap"><a href="002_PC.html" style="color:#1e40af">002 PC側</a></td>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#1e40af;white-space:nowrap"><a href="002_PC.html" style="color:#1e40af">002 PCローカル・UI設計</a></td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0">Tauri アプリ</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0;color:#475569">画面構成・モジュール構造（React / Rust）・データ構造・シーケンス図（6本）</td>
       </tr>
       <tr>
         <td style="padding:9px 14px;border:1px solid #e2e8f0">3</td>
-        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#14532d;white-space:nowrap"><a href="003_IPHONE.html" style="color:#14532d">003 iPhone連携</a></td>
+        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#14532d;white-space:nowrap"><a href="003_IPHONE.html" style="color:#14532d">003 クラウド同期・iPhone設計</a></td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0">iPhone PWA</td>
         <td style="padding:9px 14px;border:1px solid #e2e8f0;color:#475569">画面構成（5画面）・モジュール構造・データ構造（IndexedDB / Drive）・シーケンス図（4本）</td>
       </tr>
@@ -374,21 +397,25 @@ code {
 <!-- ===== 目次 ===== -->
 <nav class="toc">
   <div class="toc-title">目次</div>
-  <ol>
-    <li><a href="#sec1">登場人物</a></li>
-    <li><a href="#sec2">技術スタック</a></li>
-    <li><a href="#sec3">データフロー概要（3つのフロー）</a></li>
-    <li><a href="#sec4">なぜ Vercel が必要か</a></li>
-    <li><a href="#recovery">エラーハンドリング・リカバリ方針</a></li>
-    <li><a href="#history">改版履歴</a></li>
-  </ol>
+  <div class="toc-list">
+    <div class="toc-item toc-l1"><a href="#sec1">1 登場人物</a></div>
+    <div class="toc-item toc-l1"><a href="#sec2">2 技術スタック</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-1">2.1 PC アプリ</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-2">2.2 iPhone PWA（Vercel 配信）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec3">3 データフロー概要（3つのフロー）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-1">3.1 ️ フロー① PC → iPhone（メモを受け取る）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-2">3.2 ⬅️ フロー② iPhone → PC（メモを送る）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-3">3.3 フロー③ ロック画面コントロール（iPhone 内部）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec4">4 なぜ Vercel が必要か</a></div>
+    <div class="toc-item toc-l1"><a href="#history">5 改版履歴</a></div>
+  </div>
 </nav>
 
 
 <!-- =====================================================
      1. 登場人物
      ===================================================== -->
-<div id="sec1" class="sec-title"><span>👥</span> 1. 登場人物</div>
+<div id="sec1" class="sec-title"><span>👥</span>1 登場人物</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">以下7つの登場人物でこのアプリは構成されています。</p>
 
 <div class="card">
@@ -399,27 +426,27 @@ graph TB
     classDef dev  fill:#14532d,stroke:#4ade80,color:#bbf7d0,stroke-width:2px
     classDef ext  fill:#78350f,stroke:#fbbf24,color:#fef3c7,stroke-width:2px
 
-    PC["1⃣ PC アプリ<br/>Tauri + Rust<br/>（ユーザーのPC）"]:::user
-    Drive["4⃣ Google Drive<br/>ユーザー自身のドライブ<br/>（開発者はアクセス不可）"]:::user
-    Vercel["5⃣ Vercel<br/>開発者がデプロイした<br/>Webサーバー"]:::dev
-    OAuth["6⃣ Google OAuth2<br/>Googleのログイン基盤<br/>（Google社が運営）"]:::ext
-    Push["7⃣ APNs / FCM<br/>AppleとGoogleの<br/>通知配信サーバー"]:::ext
+    PC["1⃣ PC アプリ<br>Tauri + Rust<br>（ユーザーのPC）"]:::user
+    Drive["4⃣ Google Drive<br>ユーザー自身のドライブ<br>（開発者はアクセス不可）"]:::user
+    Vercel["5⃣ Vercel<br>開発者がデプロイした<br>Webサーバー"]:::dev
+    OAuth["6⃣ Google OAuth2<br>Googleのログイン基盤<br>（Google社が運営）"]:::ext
+    Push["7⃣ APNs / FCM<br>AppleとGoogleの<br>通知配信サーバー"]:::ext
 
     subgraph iPhone ["2⃣ iPhone / iPad（ユーザーの端末）"]
-        PWA["Safari PWA<br/>viewer/page.tsx"]:::user
-        SW["3⃣ Service Worker<br/>バックグラウンド常駐"]:::user
+        PWA["Safari PWA<br>viewer/page.tsx"]:::user
+        SW["3⃣ Service Worker<br>バックグラウンド常駐"]:::user
     end
 
-    PWA -->|"ログイン・トークン更新を依頼"| Vercel
-    Vercel -->|"client_secretを使って<br/>Googleに認証を依頼"| OAuth
-    OAuth -.->|"access_token（Drive操作許可証）"| PWA
+    PWA --&gt;|"ログイン・トークン更新を依頼"| Vercel
+    Vercel --&gt;|"client_secretを使って<br>Googleに認証を依頼"| OAuth
+    OAuth -.-&gt;|"access_token（Drive操作許可証）"| PWA
 
-    PWA <-->|"ノート・画像ファイル"| Drive
-    SW <-->|"ノート取得・削除"| Drive
-    PC <-->|"ノート・デバイス登録情報"| Drive
+    PWA &lt;--&gt;|"ノート・画像ファイル"| Drive
+    SW &lt;--&gt;|"ノート取得・削除"| Drive
+    PC &lt;--&gt;|"ノート・デバイス登録情報"| Drive
 
-    PC -->|"通知を送るよう依頼"| Push
-    Push -->|"通知をiPhoneに配信"| SW
+    PC --&gt;|"通知を送るよう依頼"| Push
+    Push --&gt;|"通知をiPhoneに配信"| SW
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 1-1　システム全体関係図</p>
 
@@ -559,14 +586,14 @@ graph TB
 <!-- =====================================================
      2. 技術スタック
      ===================================================== -->
-<div id="sec2" class="sec-title"><span>🛠</span> 2. 技術スタック</div>
+<div id="sec2" class="sec-title"><span>🛠</span>2 技術スタック</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">PCアプリ・PWA・共有インフラの3層に分けて使用技術を整理します。</p>
 
 <div class="card">
   <div class="stack-grid">
 
     <div class="stack-block stack-pc">
-      <h3>🖥 PC アプリ</h3>
+      <h3 id="sec2-1">2.1 🖥 PC アプリ</h3>
       <div class="stack-row">
         <span class="stack-label">フレームワーク</span>
         <span class="stack-value">Tauri v2（WebView + Rust バックエンド）</span>
@@ -594,7 +621,7 @@ graph TB
     </div>
 
     <div class="stack-block stack-iphone">
-      <h3>📱 iPhone PWA（Vercel 配信）</h3>
+      <h3 id="sec2-2">2.2 📱 iPhone PWA（Vercel 配信）</h3>
       <div class="stack-row">
         <span class="stack-label">ページ</span>
         <span class="stack-value">Next.js 14 App Router（<code>app/viewer/page.tsx</code>）</span>
@@ -628,14 +655,14 @@ graph TB
 <!-- =====================================================
      3. 全体データフロー概要
      ===================================================== -->
-<div id="sec3" class="sec-title"><span>🔄</span> 3. データフロー概要（3つのフロー）</div>
+<div id="sec3" class="sec-title"><span>🔄</span>3 データフロー概要（3つのフロー）</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">PCアプリ・iPhone・Driveを結ぶ3つのデータの流れを概観します。</p>
 
 <div class="card">
 
   <!-- フロー① PC → iPhone -->
   <div class="flow-section flow-1">
-    <h3>➡️ フロー① PC → iPhone（メモを受け取る）</h3>
+    <h3 id="sec3-1">3.1 ➡️ フロー① PC → iPhone（メモを受け取る）</h3>
     <div class="step-row">
       <div class="step-node sn-pc">
         <span class="sn-icon">🖥</span>
@@ -685,7 +712,7 @@ graph TB
 
   <!-- フロー② iPhone → PC -->
   <div class="flow-section flow-2">
-    <h3>⬅️ フロー② iPhone → PC（メモを送る）</h3>
+    <h3 id="sec3-2">3.2 ⬅️ フロー② iPhone → PC（メモを送る）</h3>
     <div class="step-row">
       <div class="step-node sn-iphone">
         <span class="sn-icon">📱</span>
@@ -718,7 +745,7 @@ graph TB
 
   <!-- フロー③ ロック -->
   <div class="flow-section flow-3">
-    <h3>🔒 フロー③ ロック画面コントロール（iPhone 内部）</h3>
+    <h3 id="sec3-3">3.3 🔒 フロー③ ロック画面コントロール（iPhone 内部）</h3>
     <div class="step-row">
       <div class="step-node sn-iphone">
         <span class="sn-icon">📋</span>
@@ -761,7 +788,7 @@ graph TB
 <!-- =====================================================
      4. なぜ Vercel が必要か
      ===================================================== -->
-<div id="sec4" class="sec-title"><span>🔐</span> 4. なぜ Vercel が必要か</div>
+<div id="sec4" class="sec-title"><span>🔐</span>4 なぜ Vercel が必要か</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">Google OAuth2 の client_secret を安全に保護するためにVercelが必要な理由を説明します。</p>
 
 <div class="card">
@@ -806,27 +833,8 @@ graph TB
 </div>
 
 
-<!-- =====================================================
-     エラーハンドリング・リカバリ方針
-     ===================================================== -->
-<div id="recovery" class="sec-title"><span>⚠️</span> 5. エラーハンドリング・リカバリ方針</div>
 
-<div class="card">
-  <p style="font-size:13px;color:#374151;line-height:1.8;margin-bottom:16px">
-    エラーは極力ログに記録し、リカバリは次回起動時の自動復元を基本とする。
-    Drive API 失敗・Push 配信失敗・認証切れ・ファイル書き込み失敗の詳細な対処方針は
-    iPhone 連携設計書（<a href="003_IPHONE.html#recovery" style="color:#2563eb">003 — エラーハンドリング・リカバリ方針</a>）を参照。
-  </p>
-  <div class="note note-yellow" style="margin:0">
-    <strong>⚠️ 未実施の主な課題：</strong>Push 送信失敗時のリトライ、フロントエンドへのエラーフィードバック（ダイアログ・トースト表示）。
-  </div>
-</div>
-
-
-<!-- =====================================================
-     改版履歴
-     ===================================================== -->
-<div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
+<div id="history" class="sec-title"><span>📋</span>5 改版履歴</div>
 
 <div class="card">
   <table class="history-table">
@@ -847,5 +855,6 @@ graph TB
 
 <p style="margin-top:40px;font-size:11px;color:#94a3b8;text-align:right">俺の付箋 設計書 001 / 2026-04-19</p>
 
-</body>
-</html>
+
+
+</body></html>

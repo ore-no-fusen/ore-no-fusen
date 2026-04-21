@@ -1,6 +1,4 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
+<!DOCTYPE html><html lang="ja"><head>
 <meta charset="UTF-8">
 <title>俺の付箋 — PC アプリ設計</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -18,7 +16,7 @@ body {
 
 /* ===== NAV ===== */
 .nav { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
-.nav a, .nav span {
+.nav a, .nav span.nav-current {
   display: inline-block;
   padding: 6px 16px;
   border-radius: 99px;
@@ -28,6 +26,7 @@ body {
   border: 2px solid;
 }
 .nav-current { background: #1e40af; border-color: #1e40af; color: white; }
+.nav-index { border-color: #6d28d9; color: #6d28d9; }
 .nav-link { background: white; border-color: #93c5fd; color: #1e40af; }
 .nav-link:hover { background: #eff6ff; }
 
@@ -63,13 +62,15 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   margin-bottom: 40px;
   display: inline-block;
   min-width: 280px;
+  column-count: 2;
+  column-gap: 32px;
 }
 .toc-title { font-size: 12px; font-weight: 800; color: #475569; margin-bottom: 12px; letter-spacing: 0.05em; }
-.toc ol { padding-left: 20px; }
-.toc li { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
-.toc ul { padding-left: 16px; margin-top: 4px; list-style: none; }
-.toc ul li { margin-bottom: 3px; color: #64748b; }
-.toc ul li::before { content: "– "; }
+
+
+
+
+
 .toc a { color: #1e40af; text-decoration: none; }
 .toc a:hover { text-decoration: underline; }
 
@@ -174,72 +175,87 @@ code {
   text-align: left;
 }
 .history-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+.module-table th:nth-child(1),
+.module-table td:nth-child(1),
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) { width: 44px; text-align: center; color: #94a3b8; font-weight: 700; }
+
+.toc-title { column-span: all; margin-bottom: 16px; }
+
+
+
+
+
+.toc-list { column-count: 3; column-gap: 32px; font-size: 13px; line-height: 1.6; }
+@media (max-width: 1024px) { .toc-list { column-count: 2; } }
+@media (max-width: 768px) { .toc-list { column-count: 1; } }
+.toc-l1 { margin-bottom: 8px; font-weight: 700; break-inside: avoid; }
+.toc-l2 { margin-bottom: 6px; margin-left: 16px; font-weight: normal; break-inside: avoid; }
+.toc-l3 { margin-bottom: 6px; margin-left: 32px; font-size: 12px; color: #475569; break-inside: avoid; }
+.toc-item a { color: #4c1d95; text-decoration: none; }
+.toc-item a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
 <!-- ===== NAV ===== -->
 <nav class="nav">
-  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
+  <a href="INDEX.html" class="nav-link nav-index">📋 INDEX</a>
   <a class="nav-link" href="000_REQUIREMENTS.html">000 要求仕様</a>
-  <a class="nav-link" href="001_OVERVIEW.html">001 全体像</a>
-  <span class="nav-current">002 PC側</span>
-  <a class="nav-link" href="003_IPHONE.html">003 iPhone連携</a>
+  <a class="nav-link" href="001_OVERVIEW.html">001 システム全体像</a>
+  <span class="nav-current">002 PCローカル・UI設計</span>
+  <a class="nav-link" href="003_IPHONE.html">003 クラウド同期・iPhone設計</a>
   <a class="nav-link" href="004_TEST.html">004 テスト設計</a>
   <a class="nav-link" href="005_GLOSSARY.html">005 用語集</a>
+  <a class="nav-link" href="006_4PLUS1_ARCHITECTURE.html">006 4+1 Viewアーキテクチャ</a>
 </nav>
 
 <!-- ===== HEADER ===== -->
-<h1>002 PC アプリ 設計書</h1>
+<h1>俺の付箋 — PCローカル・UI設計</h1>
 <p class="lead">画面構成・モジュール構造・データ構造・データフロー</p>
 <p class="version-row">設計書 v1.0 / 2026-04-19</p>
 
 <!-- ===== 目次 ===== -->
 <nav class="toc">
   <div class="toc-title">目次</div>
-  <ol>
-    <li><a href="#sec1">画面構成</a>
-      <ul>
-        <li><a href="#sec1-window">1.1 ウィンドウ生成の仕組み</a></li>
-      </ul>
-    </li>
-    <li><a href="#sec2">モジュール構造</a>
-      <ul>
-        <li><a href="#sec2-fe">2.1 フロントエンド（TypeScript / React）</a></li>
-        <li><a href="#sec2-be">2.2 バックエンド（Rust）</a></li>
-      </ul>
-    </li>
-    <li><a href="#sec3">データ構造</a>
-      <ul>
-        <li><a href="#sec3-note">3.1 付箋データ</a></li>
-        <li><a href="#sec3-settings">3.2 設定データ</a></li>
-        <li><a href="#sec3-class">3.3 クラス図</a></li>
-      </ul>
-    </li>
-    <li><a href="#sec4">データフロー</a>
-      <ul>
-        <li><a href="#seq1">4.1 アプリ起動</a></li>
-        <li><a href="#seq2">4.2 付箋の保存・自動リネーム</a></li>
-        <li><a href="#seq3">4.3 画像キャプチャ</a></li>
-        <li><a href="#seq4">4.4 全文検索</a></li>
-      </ul>
-    </li>
-    <li><a href="#sec5">UI インタラクション</a>
-      <ul>
-        <li><a href="#sec5-mode">5.1 モード定義</a></li>
-        <li><a href="#sec5-area">5.2 操作領域の定義</a></li>
-        <li><a href="#sec5-matrix">5.3 インタラクション・マトリックス</a></li>
-      </ul>
-    </li>
-    <li><a href="#history">改版履歴</a></li>
-  </ol>
+  <div class="toc-list">
+    <div class="toc-item toc-l1"><a href="#sec1">1 画面構成</a></div>
+    <div class="toc-item toc-l2"><a href="#sec1-1">1.1 メインウィンドウ</a></div>
+    <div class="toc-item toc-l2"><a href="#sec1-2">1.2 付箋ウィンドウ（N 枚）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec1-window">1.3 ウィンドウ生成の仕組み</a></div>
+    <div class="toc-item toc-l1"><a href="#sec2">2 モジュール構造</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-fe">2.1 フロントエンド（TypeScript / React）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-be">2.2 バックエンド（Rust）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec3">3 データ構造</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-note">3.1 付箋データ（Markdown ファイル = frontmatter + 本文）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-settings">3.2 設定データ（settings.json）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-class">3.3 クラス図（依存関係）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec4">4 データフロー</a></div>
+    <div class="toc-item toc-l2"><a href="#seq1">4.1 アプリ起動</a></div>
+    <div class="toc-item toc-l2"><a href="#seq2">4.2 付箋の保存・自動リネーム</a></div>
+    <div class="toc-item toc-l2"><a href="#seq3">4.3 画像キャプチャ</a></div>
+    <div class="toc-item toc-l2"><a href="#seq4">4.4 全文検索</a></div>
+    <div class="toc-item toc-l1"><a href="#sec5">5 UI インタラクション</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-mode">5.1 モード定義</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-area">5.2 操作領域の定義</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-matrix">5.3 インタラクション・マトリックス</a></div>
+    <div class="toc-item toc-l3"><a href="#sec5-0-1">5.3.1 ワンクリック</a></div>
+    <div class="toc-item toc-l3"><a href="#sec5-0-2">5.3.2 ダブルクリック</a></div>
+    <div class="toc-item toc-l3"><a href="#sec5-0-3">5.3.3 ドラッグ（押しっぱなしで移動）</a></div>
+    <div class="toc-item toc-l1"><a href="#recovery">6 エラーハンドリング・リカバリ方針</a></div>
+    <div class="toc-item toc-l2"><a href="#sec6-1">6.1 ローカルファイルとリカバリ</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-1">6.1.1 保存時のパス喪失保護（増殖バグ回避）</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-2">6.1.2 アトミック書き込みによるファイル破損防止</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-3">6.1.3 PC アプリ再起動時の状態復元</a></div>
+    <div class="toc-item toc-l1"><a href="#history">7 改版履歴</a></div>
+  </div>
 </nav>
 
 
 <!-- =====================================================
      1. 画面構成
      ===================================================== -->
-<div id="sec1" class="sec-title"><span>🖥</span> 1. 画面構成</div>
+<div id="sec1" class="sec-title"><span>🖥</span>1 画面構成</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">PCアプリはメインウィンドウ1枚＋付箋ウィンドウN枚のマルチウィンドウ構成です。</p>
 
 <div class="card">
@@ -250,7 +266,7 @@ code {
   <div class="screen-grid">
 
     <div class="screen-card sc-main">
-      <h3>🏠 メインウィンドウ</h3>
+      <h3 id="sec1-1">1.1 🏠 メインウィンドウ</h3>
       <p>アプリの司令塔。ユーザーには見えないことが多い（トレイ常駐）。<br><br>
         ・起動時に付箋ウィンドウを生成・配置する<br>
         ・設定画面・検索オーバーレイを表示する<br>
@@ -261,7 +277,7 @@ code {
     </div>
 
     <div class="screen-card sc-note">
-      <h3>📝 付箋ウィンドウ（N 枚）</h3>
+      <h3 id="sec1-2">1.2 📝 付箋ウィンドウ（N 枚）</h3>
       <p>付箋1枚ごとに独立した <code>WebviewWindow</code>。<br><br>
         ・テキスト編集（RichTextEditor）<br>
         ・最小化（たたむ）・ピン留め・色変更<br>
@@ -274,7 +290,7 @@ code {
   </div>
 
   <!-- ウィンドウ構造図 -->
-  <div id="sec1-window" class="subsec">1.1 ウィンドウ生成の仕組み</div>
+  <h3 id="sec1-window" class="subsec">1.3 ウィンドウ生成の仕組み</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">付箋1枚ごとに独立したTauriウィンドウが生成される仕組みを図示します。</p>
   <div class="mermaid">
 graph TD
@@ -282,21 +298,21 @@ graph TD
     classDef note fill:#14532d,stroke:#4ade80,color:#bbf7d0,stroke-width:2px
     classDef rust fill:#3d1a00,stroke:#fb923c,color:#fed7aa,stroke-width:2px
 
-    Rust["Tauri 起動<br/>(main.rs)"]:::rust
-    Main["メインウィンドウ<br/>app/page.tsx"]:::main
-    A["付箋ウィンドウ A<br/>StickyNote.tsx"]:::note
-    B["付箋ウィンドウ B<br/>StickyNote.tsx"]:::note
-    C["付箋ウィンドウ C<br/>StickyNote.tsx"]:::note
-    State["AppState (Rust)<br/>唯一の状態"]:::rust
+    Rust["Tauri 起動<br>(main.rs)"]:::rust
+    Main["メインウィンドウ<br>app/page.tsx"]:::main
+    A["付箋ウィンドウ A<br>StickyNote.tsx"]:::note
+    B["付箋ウィンドウ B<br>StickyNote.tsx"]:::note
+    C["付箋ウィンドウ C<br>StickyNote.tsx"]:::note
+    State["AppState (Rust)<br>唯一の状態"]:::rust
 
-    Rust --> Main
-    Main -->|"WebviewWindow生成"| A
-    Main -->|"WebviewWindow生成"| B
-    Main -->|"WebviewWindow生成"| C
-    A <-.->|"invoke / emit"| State
-    B <-.->|"invoke / emit"| State
-    C <-.->|"invoke / emit"| State
-    Main <-.->|"invoke / emit"| State
+    Rust --&gt; Main
+    Main --&gt;|"WebviewWindow生成"| A
+    Main --&gt;|"WebviewWindow生成"| B
+    Main --&gt;|"WebviewWindow生成"| C
+    A &lt;-.-&gt;|"invoke / emit"| State
+    B &lt;-.-&gt;|"invoke / emit"| State
+    C &lt;-.-&gt;|"invoke / emit"| State
+    Main &lt;-.-&gt;|"invoke / emit"| State
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-1　ウィンドウ生成の仕組み</p>
 
@@ -309,12 +325,12 @@ graph TD
 <!-- =====================================================
      2. モジュール構造（誰が誰を使うか）
      ===================================================== -->
-<div id="sec2" class="sec-title"><span>🗂</span> 2. モジュール構造</div>
+<div id="sec2" class="sec-title"><span>🗂</span>2 モジュール構造</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">フロントエンド（TypeScript/React）とバックエンド（Rust）の2層構成です。</p>
 
 <div class="card">
 
-  <div id="sec2-fe" class="subsec">2.1 フロントエンド（TypeScript / React）</div>
+  <h3 id="sec2-fe" class="subsec">2.1 フロントエンド（TypeScript / React）</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">付箋ウィンドウを構成する主要コンポーネント・フック・ユーティリティの依存関係を示します。</p>
   <div class="mermaid">
 graph LR
@@ -325,56 +341,56 @@ graph LR
     %% 線は3pxにして矢印を目立たせる
     linkStyle default stroke:#81ecec,stroke-width:3px;
     
-    Root("【俺の付箋】<br/>(App)")
+    Root("【俺の付箋】<br>(App)")
     
-    subgraph Frontend ["<span style='white-space:nowrap'>フロントエンド</span>"]
+    subgraph Frontend ["<span style="white-space:nowrap">フロントエンド</span>"]
         direction LR
-        StickyNote("【StickyNote】<br/>StickyNote.tsx")
+        StickyNote("【StickyNote】<br>StickyNote.tsx")
         
-        StickyNote --> Hooks("【Hooks】<br/>app/hooks/")
+        StickyNote --&gt; Hooks("【Hooks】<br>app/hooks/")
         
-        Hooks --> WM("【執事長】<br/>useWindowManager.ts")
-        WM --> Sync("【同期】<br/>useWindowSync.ts")
-        WM --> Control("【操作】<br/>useWindowControls.ts")
-        WM --> Event("【監視】<br/>useWindowEvents.ts")
+        Hooks --&gt; WM("【執事長】<br>useWindowManager.ts")
+        WM --&gt; Sync("【同期】<br>useWindowSync.ts")
+        WM --&gt; Control("【操作】<br>useWindowControls.ts")
+        WM --&gt; Event("【監視】<br>useWindowEvents.ts")
         
-        Hooks --> Menu("【右クリック】<br/>useStickyNoteContextMenu.ts")
-        Hooks --> Shortcuts("【ショートカット】<br/>useGlobalEvents.ts")
+        Hooks --&gt; Menu("【右クリック】<br>useStickyNoteContextMenu.ts")
+        Hooks --&gt; Shortcuts("【ショートカット】<br>useGlobalEvents.ts")
         
-        StickyNote --> Render("【Components】<br/>app/components/")
+        StickyNote --&gt; Render("【Components】<br>app/components/")
         
-        Render --> Render_React("【React】<br/>MarkdownRenderer.tsxなど")
-        Render --> Render_Editor("【Editor】<br/>RichTextEditor.tsx")
+        Render --&gt; Render_React("【React】<br>MarkdownRenderer.tsxなど")
+        Render --&gt; Render_Editor("【Editor】<br>RichTextEditor.tsx")
     end
     
     %% ダミー接続
     Frontend ~~~ Backend
 
-    subgraph Backend ["<span style='white-space:nowrap'>バックエンド</span>"]
+    subgraph Backend ["<span style="white-space:nowrap">バックエンド</span>"]
         direction TB
-        Tauri("【大家】<br/>src-tauri/src/")
+        Tauri("【大家】<br>src-tauri/src/")
         
-        Tauri --> Files("【ファイル】<br/>lib.rs / main.rs")
-        Tauri --> Settings("【設定】<br/>settings.rs")
-        Tauri --> Logic("【ロジック】<br/>logic.rs")
+        Tauri --&gt; Files("【ファイル】<br>lib.rs / main.rs")
+        Tauri --&gt; Settings("【設定】<br>settings.rs")
+        Tauri --&gt; Logic("【ロジック】<br>logic.rs")
     end
 
-    %% 全体の接続：普通の矢印(-->)に変更して、必ず色が出るようにする
-    Root --> StickyNote
-    Root --> Tauri
+    %% 全体の接続：普通の矢印(--&gt;)に変更して、必ず色が出るようにする
+    Root --&gt; StickyNote
+    Root --&gt; Tauri
     
     %% 点線矢印
-    Sync -.-> Tauri
-    Control -.-> Tauri
-    Menu -.-> Tauri
-    Shortcuts -.-> Tauri
+    Sync -.-&gt; Tauri
+    Control -.-&gt; Tauri
+    Menu -.-&gt; Tauri
+    Shortcuts -.-&gt; Tauri
 
     classDef default fill:#2d3436,stroke:#81ecec,stroke-width:4px,color:#fff,font-size:13px;
     classDef cluster fill:#2d3436,stroke:#a29bfe,stroke-width:4px,color:#fff,font-size:13px;
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 16px;letter-spacing:0.03em">図 2-2　フロントエンドモジュール構成</p>
 
-  <div id="sec2-be" class="subsec">2.2 バックエンド（Rust）</div>
+  <h3 id="sec2-be" class="subsec">2.2 バックエンド（Rust）</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 6px 0">TauriコマンドとAppStateを中心とするRust側モジュールの役割を一覧します。</p>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-1　バックエンドモジュール一覧（Rust）</p>
   <table class="module-table">
@@ -479,12 +495,12 @@ graph LR
 <!-- =====================================================
      3. データ構造
      ===================================================== -->
-<div id="sec3" class="sec-title"><span>📦</span> 3. データ構造</div>
+<div id="sec3" class="sec-title"><span>📦</span>3 データ構造</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">付箋ファイル・設定ファイル・モジュール依存の3種類のデータ構造を定義します。</p>
 
 <div class="card">
 
-  <div id="sec3-note" class="subsec">3.1 付箋データ（Markdown ファイル = frontmatter + 本文）</div>
+  <h3 id="sec3-note" class="subsec">3.1 付箋データ（Markdown ファイル = frontmatter + 本文）</h3>
   <p style="font-size:12px;color:#64748b;margin-bottom:8px">付箋1枚 = Markdown ファイル1枚。PC ローカルのファイルシステムが正。Drive は中継所に過ぎない。</p>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-2　付箋データ構造（Markdown frontmatter）</p>
   <table class="module-table">
@@ -506,7 +522,7 @@ graph LR
     </tbody>
   </table>
 
-  <div id="sec3-settings" class="subsec">3.2 設定データ（<code>settings.json</code>）</div>
+  <h3 id="sec3-settings" class="subsec">3.2 設定データ（<code>settings.json</code>）</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 6px 0">settings.json で管理するアプリ全体の設定項目5点を定義します。</p>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-3　設定データ構造（settings.json）</p>
   <table class="module-table">
@@ -522,7 +538,7 @@ graph LR
     </tbody>
   </table>
 
-  <div id="sec3-class" class="subsec">3.3 クラス図（依存関係）</div>
+  <h3 id="sec3-class" class="subsec">3.3 クラス図（依存関係）</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">主要モジュール間の依存関係をMermaidクラス図で示します。</p>
   <div class="mermaid">
 classDiagram
@@ -557,8 +573,8 @@ classDiagram
 
     %% 意味を線の上に書く
     WindowManager "1" *-- "*" StickyNote : 管理する(持ち主)
-    StickyNote ..> TauriBackend : 使う(保存/読込)
-    WindowManager ..> TauriBackend : 使う(命令)
+    StickyNote ..&gt; TauriBackend : 使う(保存/読込)
+    WindowManager ..&gt; TauriBackend : 使う(命令)
 
     %% Rust側のデータ構造（AppState = 唯一の状態管理）
     class AppState {
@@ -611,12 +627,12 @@ classDiagram
 <!-- =====================================================
      4. データフロー（シーケンス図）
      ===================================================== -->
-<div id="sec4" class="sec-title"><span>🔄</span> 4. データフロー</div>
+<div id="sec4" class="sec-title"><span>🔄</span>4 データフロー</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">アプリ起動から保存・画像・検索・iPhone連携まで6つのシーケンス図を示します。</p>
 
 <!-- 4.1 起動 -->
 <div class="card">
-  <div id="seq1" class="subsec">4.1 アプリ起動</div>
+  <h3 id="seq1" class="subsec">4.1 アプリ起動</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">起動時にファイルシステムから付箋一覧を読み込むフローです。</p>
   <div class="mermaid">
 sequenceDiagram
@@ -625,22 +641,22 @@ sequenceDiagram
     participant Page as page.tsx
     participant Win as 付箋ウィンドウ
 
-    User->>Rust: アプリ起動
-    Rust->>Page: WebView 初期化完了
-    Page->>Rust: fusen_get_state()
-    Rust->>Rust: settings.json + Vault スキャン
-    Rust-->>Page: AppState（ノート一覧）
+    User-&gt;&gt;Rust: アプリ起動
+    Rust-&gt;&gt;Page: WebView 初期化完了
+    Page-&gt;&gt;Rust: fusen_get_state()
+    Rust-&gt;&gt;Rust: settings.json + Vault スキャン
+    Rust--&gt;&gt;Page: AppState（ノート一覧）
 
     alt base_path 未設定
-        Page->>Page: セットアップ画面表示 (900x630)
-        User->>Page: フォルダ選択
-        Page->>Rust: setup_first_launch()
+        Page-&gt;&gt;Page: セットアップ画面表示 (900x630)
+        User-&gt;&gt;Page: フォルダ選択
+        Page-&gt;&gt;Rust: setup_first_launch()
     else 設定済み
-        Page->>Page: ダッシュボード表示 (240x300)
+        Page-&gt;&gt;Page: ダッシュボード表示 (240x300)
     end
 
     loop 前回開いていた各ノート
-        Page->>Win: WebviewWindow 生成 (x, y, width, height)
+        Page-&gt;&gt;Win: WebviewWindow 生成 (x, y, width, height)
     end
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-4　アプリ起動シーケンス</p>
@@ -648,7 +664,7 @@ sequenceDiagram
 
 <!-- 4.2 保存・自動リネーム -->
 <div class="card">
-  <div id="seq2" class="subsec">4.2 付箋の保存・自動リネーム</div>
+  <h3 id="seq2" class="subsec">4.2 付箋の保存・自動リネーム</h3>
   <p style="font-size:12px;color:#64748b;margin-bottom:12px">本文の1行目をファイル名（context）として自動採用する。800ms のデバウンスで連続入力に追従。</p>
   <div class="mermaid">
 sequenceDiagram
@@ -656,19 +672,19 @@ sequenceDiagram
     participant Logic as logic.rs
     participant FS as ファイルシステム
 
-    Editor->>Editor: テキスト変更
-    Editor->>Logic: 800ms デバウンス後に発火
-    Logic->>Logic: 1行目からファイル名生成
-    Logic->>FS: rename() 実行
-    FS-->>Logic: 新しいパスを返す
-    Logic->>Editor: path 更新通知
+    Editor-&gt;&gt;Editor: テキスト変更
+    Editor-&gt;&gt;Logic: 800ms デバウンス後に発火
+    Logic-&gt;&gt;Logic: 1行目からファイル名生成
+    Logic-&gt;&gt;FS: rename() 実行
+    FS--&gt;&gt;Logic: 新しいパスを返す
+    Logic-&gt;&gt;Editor: path 更新通知
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-5　付箋の保存・自動リネームシーケンス</p>
 </div>
 
 <!-- 4.3 画像キャプチャ -->
 <div class="card">
-  <div id="seq3" class="subsec">4.3 画像キャプチャ</div>
+  <h3 id="seq3" class="subsec">4.3 画像キャプチャ</h3>
   <p style="font-size:12px;color:#64748b;margin-bottom:12px">OS 内蔵の Snipping Tool を呼び出し、撮影された画像を Vault の <code>assets/</code> に自動保存する。</p>
   <div class="mermaid">
 sequenceDiagram
@@ -677,21 +693,21 @@ sequenceDiagram
     participant Snip as Snipping Tool
     participant FS as assets/ フォルダ
 
-    User->>Fusen: 📷 ボタンをクリック
-    Fusen->>Fusen: 全付箋を一時非表示
-    Fusen->>Snip: 起動
-    User->>Snip: 範囲選択して撮影
-    Snip->>Snip: クリップボードに画像をコピー
-    Fusen->>FS: assets/ へ画像ファイルとして保存
-    Fusen->>Fusen: Markdown に画像リンクを挿入
-    Fusen->>Fusen: 全付箋を再表示
+    User-&gt;&gt;Fusen: 📷 ボタンをクリック
+    Fusen-&gt;&gt;Fusen: 全付箋を一時非表示
+    Fusen-&gt;&gt;Snip: 起動
+    User-&gt;&gt;Snip: 範囲選択して撮影
+    Snip-&gt;&gt;Snip: クリップボードに画像をコピー
+    Fusen-&gt;&gt;FS: assets/ へ画像ファイルとして保存
+    Fusen-&gt;&gt;Fusen: Markdown に画像リンクを挿入
+    Fusen-&gt;&gt;Fusen: 全付箋を再表示
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-6　画像キャプチャシーケンス</p>
 </div>
 
 <!-- 4.4 全文検索 -->
 <div class="card">
-  <div id="seq4" class="subsec">4.4 全文検索</div>
+  <h3 id="seq4" class="subsec">4.4 全文検索</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">キーワードをリアルタイムで全付箋から検索するフローです。</p>
   <div class="mermaid">
 sequenceDiagram
@@ -701,16 +717,16 @@ sequenceDiagram
     participant Rust as Rust
     participant Target as 付箋ウィンドウ
 
-    User->>Page: Ctrl+F / トレイ「検索」
-    Page->>Page: 検索オーバーレイ表示 (550x450)
-    User->>Search: キーワード入力 + Enter
-    Search->>Rust: fusen_search_notes("keyword")
-    Rust->>Rust: Vault 内 .md ファイルを全文 Grep
-    Rust-->>Search: SearchHit[]（ファイルパス・行番号）
-    Search->>User: 結果リスト表示
-    User->>Search: 結果をクリック
-    Search->>Target: emit('fusen:scroll_to_line', {path, line, query})
-    Target->>Target: 該当行にスクロール＋ハイライト
+    User-&gt;&gt;Page: Ctrl+F / トレイ「検索」
+    Page-&gt;&gt;Page: 検索オーバーレイ表示 (550x450)
+    User-&gt;&gt;Search: キーワード入力 + Enter
+    Search-&gt;&gt;Rust: fusen_search_notes("keyword")
+    Rust-&gt;&gt;Rust: Vault 内 .md ファイルを全文 Grep
+    Rust--&gt;&gt;Search: SearchHit[]（ファイルパス・行番号）
+    Search-&gt;&gt;User: 結果リスト表示
+    User-&gt;&gt;Search: 結果をクリック
+    Search-&gt;&gt;Target: emit('fusen:scroll_to_line', {path, line, query})
+    Target-&gt;&gt;Target: 該当行にスクロール＋ハイライト
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-7　全文検索シーケンス</p>
 </div>
@@ -719,7 +735,7 @@ sequenceDiagram
 <!-- =====================================================
      5. UI インタラクション
      ===================================================== -->
-<div id="sec5" class="sec-title"><span>🖱</span> 5. UI インタラクション</div>
+<div id="sec5" class="sec-title"><span>🖱</span>5 UI インタラクション</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">付箋ウィンドウの操作領域・モード・マウス挙動を定義します。</p>
 
 <div class="card">
@@ -728,7 +744,7 @@ sequenceDiagram
     クリックした場所と現在のモードの組み合わせで動作が決まる。
   </div>
 
-  <div id="sec5-mode" class="subsec">5.1 モード定義</div>
+  <h3 id="sec5-mode" class="subsec">5.1 モード定義</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">表示・編集の2モードとその遷移条件を定義します。</p>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-4　モード定義</p>
   <table class="module-table">
@@ -749,13 +765,13 @@ sequenceDiagram
 
   <div class="mermaid" style="margin-top:16px">
 stateDiagram-v2
-    [*] --> ViewingMode : 表示モード
-    ViewingMode --> EditingMode : ダブルクリック（本文・余白・フッタ）
-    EditingMode --> ViewingMode : 編集終了（ウィンドウ外 or フッタクリック）
+    [*] --&gt; ViewingMode : 表示モード
+    ViewingMode --&gt; EditingMode : ダブルクリック（本文・余白・フッタ）
+    EditingMode --&gt; ViewingMode : 編集終了（ウィンドウ外 or フッタクリック）
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 2-8　モード遷移図</p>
 
-  <div id="sec5-area" class="subsec">5.2 操作領域の定義</div>
+  <h3 id="sec5-area" class="subsec">5.2 操作領域の定義</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">付箋ウィンドウをエディタ本文・余白(A)・フッタ(B)の3エリアに分けて操作を割り当てます。</p>
 
   <!-- 付箋ウィンドウ図解 -->
@@ -764,40 +780,33 @@ stateDiagram-v2
     <svg width="420" height="310" viewBox="0 0 420 310" xmlns="http://www.w3.org/2000/svg" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 
       <!-- ウィンドウ外枠 -->
-      <rect x="10" y="10" width="320" height="280" rx="10" ry="10"
-            fill="white" stroke="#94a3b8" stroke-width="2"/>
+      <rect x="10" y="10" width="320" height="280" rx="10" ry="10" fill="white" stroke="#94a3b8" stroke-width="2"></rect>
 
       <!-- ヘッダー領域 -->
-      <rect x="10" y="10" width="320" height="40" rx="10" ry="10"
-            fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/>
-      <rect x="10" y="36" width="320" height="14" fill="#e2e8f0"/>
+      <rect x="10" y="10" width="320" height="40" rx="10" ry="10" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"></rect>
+      <rect x="10" y="36" width="320" height="14" fill="#e2e8f0"></rect>
       <text x="170" y="35" text-anchor="middle" font-size="12" font-weight="700" fill="#475569">ヘッダー領域</text>
       <text x="170" y="48" text-anchor="middle" font-size="10" fill="#94a3b8">（ドラッグでウィンドウ移動）</text>
 
       <!-- エディタ外枠 -->
-      <rect x="20" y="54" width="300" height="170" rx="4"
-            fill="#fafafa" stroke="#cbd5e1" stroke-width="1.5"/>
+      <rect x="20" y="54" width="300" height="170" rx="4" fill="#fafafa" stroke="#cbd5e1" stroke-width="1.5"></rect>
 
       <!-- エディタ本文エリア（テキスト部分） -->
-      <rect x="20" y="54" width="180" height="170" rx="4"
-            fill="#eff6ff" stroke="none"/>
-      <rect x="20" y="54" width="180" height="170"
-            fill="none" stroke="#93c5fd" stroke-width="1" stroke-dasharray="4,3"/>
+      <rect x="20" y="54" width="180" height="170" rx="4" fill="#eff6ff" stroke="none"></rect>
+      <rect x="20" y="54" width="180" height="170" fill="none" stroke="#93c5fd" stroke-width="1" stroke-dasharray="4,3"></rect>
 
       <!-- テキスト行のダミー -->
-      <rect x="28" y="70" width="120" height="8" rx="3" fill="#3b82f6" opacity="0.6"/>
-      <rect x="28" y="86" width="155" height="8" rx="3" fill="#3b82f6" opacity="0.6"/>
-      <rect x="28" y="102" width="90" height="8" rx="3" fill="#3b82f6" opacity="0.6"/>
+      <rect x="28" y="70" width="120" height="8" rx="3" fill="#3b82f6" opacity="0.6"></rect>
+      <rect x="28" y="86" width="155" height="8" rx="3" fill="#3b82f6" opacity="0.6"></rect>
+      <rect x="28" y="102" width="90" height="8" rx="3" fill="#3b82f6" opacity="0.6"></rect>
       <!-- カーソル -->
-      <line x1="122" y1="100" x2="122" y2="114" stroke="#1e40af" stroke-width="2"/>
+      <line x1="122" y1="100" x2="122" y2="114" stroke="#1e40af" stroke-width="2"></line>
       <!-- 空行 -->
-      <rect x="28" y="134" width="0" height="8" rx="3" fill="#3b82f6" opacity="0.3"/>
+      <rect x="28" y="134" width="0" height="8" rx="3" fill="#3b82f6" opacity="0.3"></rect>
 
       <!-- エディタ余白（A）ラベルエリア -->
-      <rect x="200" y="54" width="120" height="170"
-            fill="#fef9c3" stroke="none"/>
-      <rect x="200" y="54" width="120" height="170"
-            fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3"/>
+      <rect x="200" y="54" width="120" height="170" fill="#fef9c3" stroke="none"></rect>
+      <rect x="200" y="54" width="120" height="170" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3"></rect>
 
       <!-- (A)ラベル -->
       <text x="260" y="108" text-anchor="middle" font-size="13" font-weight="800" fill="#92400e">(A)</text>
@@ -810,18 +819,17 @@ stateDiagram-v2
       <text x="110" y="123" text-anchor="middle" font-size="10" fill="#3b82f6">（テキスト・リンク）</text>
 
       <!-- フッタ領域 -->
-      <rect x="20" y="224" width="300" height="56" rx="4"
-            fill="#fdf4ff" stroke="#d8b4fe" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <rect x="20" y="224" width="300" height="56" rx="4" fill="#fdf4ff" stroke="#d8b4fe" stroke-width="1.5" stroke-dasharray="5,3"></rect>
       <text x="170" y="249" text-anchor="middle" font-size="13" font-weight="800" fill="#6b21a8">(B) フッタ領域</text>
       <text x="170" y="265" text-anchor="middle" font-size="10" fill="#7c3aed">文字が存在しない下部の空間（エディタ外）</text>
       <text x="170" y="278" text-anchor="middle" font-size="10" fill="#7c3aed">クリック→編集終了 / DBクリック→文末から編集開始</text>
 
       <!-- 凡例 -->
-      <rect x="345" y="54" width="14" height="14" rx="3" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+      <rect x="345" y="54" width="14" height="14" rx="3" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"></rect>
       <text x="364" y="65" font-size="11" fill="#1e40af">エディタ本文</text>
-      <rect x="345" y="76" width="14" height="14" rx="3" fill="#fef9c3" stroke="#fbbf24" stroke-width="1.5"/>
+      <rect x="345" y="76" width="14" height="14" rx="3" fill="#fef9c3" stroke="#fbbf24" stroke-width="1.5"></rect>
       <text x="364" y="87" font-size="11" fill="#92400e">(A) 余白</text>
-      <rect x="345" y="98" width="14" height="14" rx="3" fill="#fdf4ff" stroke="#d8b4fe" stroke-width="1.5"/>
+      <rect x="345" y="98" width="14" height="14" rx="3" fill="#fdf4ff" stroke="#d8b4fe" stroke-width="1.5"></rect>
       <text x="364" y="109" font-size="11" fill="#6b21a8">(B) フッタ</text>
 
     </svg>
@@ -852,10 +860,10 @@ stateDiagram-v2
     </tbody>
   </table>
 
-  <div id="sec5-matrix" class="subsec">5.3 インタラクション・マトリックス</div>
+  <h3 id="sec5-matrix" class="subsec">5.3 インタラクション・マトリックス</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">エリア × 操作の組み合わせで起きる動作を一覧にまとめます。</p>
 
-  <p style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">🖱 ワンクリック</p>
+  <h4 id="sec5-0-1" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">5.3.1 🖱 ワンクリック</h4>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-6　ワンクリック操作マトリックス</p>
   <table class="module-table">
     <thead><tr><th>No</th><th>クリックした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
@@ -868,7 +876,7 @@ stateDiagram-v2
     </tbody>
   </table>
 
-  <p style="font-size:12px;font-weight:700;color:#334155;margin:20px 0 6px">🖱🖱 ダブルクリック</p>
+  <h4 id="sec5-0-2" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:20px 0 6px">5.3.2 🖱🖱 ダブルクリック</h4>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-7　ダブルクリック操作マトリックス</p>
   <table class="module-table">
     <thead><tr><th>No</th><th>クリックした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
@@ -879,7 +887,7 @@ stateDiagram-v2
     </tbody>
   </table>
 
-  <p style="font-size:12px;font-weight:700;color:#334155;margin:20px 0 6px">✋ ドラッグ（押しっぱなしで移動）</p>
+  <h4 id="sec5-0-3" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:20px 0 6px">5.3.3 ✋ ドラッグ（押しっぱなしで移動）</h4>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 2-8　ドラッグ操作マトリックス</p>
   <table class="module-table">
     <thead><tr><th>No</th><th>ドラッグした場所</th><th>表示モード</th><th>編集モード</th></tr></thead>
@@ -901,9 +909,40 @@ stateDiagram-v2
 
 
 <!-- =====================================================
+     エラーハンドリング・リカバリ方針
+     ===================================================== -->
+<div id="recovery" class="sec-title"><span>⚠️</span>6 エラーハンドリング・リカバリ方針</div>
+
+<div class="card">
+  <div class="note note-blue" style="margin-bottom:20px">
+    各エラーケースの実施状況。<span style="color:#dc2626;font-weight:700">⚠️ 未実施</span> は現時点での課題。
+  </div>
+
+  <h3 id="sec6-1" class="subsec">6.1 ローカルファイルとリカバリ</h3>
+
+  <h4 id="sec6-0-1" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.1.1 保存時のパス喪失保護（増殖バグ回避）</h4>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    ユーザーが手動でファイルを移動・削除した場合や、リネーム処理が直前に行われた場合、古いパスに対する自動保存（ジオメトリ変更など）が発火すると古い名前でファイルが復活してしまう（増殖バグ）。<br>
+    これを防ぐため、<code>logic.rs</code> の保存処理では<strong>「上書き対象のファイルパスが物理的に存在するか（<code>!current_path_obj.exists()</code>）」をチェック</strong>し、存在しない場合は保存処理をブロック（<code>Err</code> 返却）してトレースログを出力する保護機構を備えている（実施済み）。
+  </p>
+
+  <h4 id="sec6-0-2" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.1.2 アトミック書き込みによるファイル破損防止</h4>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    付箋内容の保存は、一時ファイルへの書き込み完了後に元のファイルへ <code>rename</code> するアトミック書き込みで行う。これにより、保存処理中の予期せぬ電源断やクラッシュによるデータ欠損・破損を完全に防ぐ（実施済み）。<br>
+    ファイルシステムエラー（書き込み権限なし等）が発生した場合は、保存を中止し Tauri コマンドのエラーとして返却する。
+  </p>
+
+  <h4 id="sec6-0-3" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.1.3 PC アプリ再起動時の状態復元</h4>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    起動時に Vault フォルダを全スキャン（フロントマター解析）して付箋ウィンドウを再生成するため、アプリが異常終了した場合でも次回起動時にファイルの状態から自動復元される（実施済み）。<br>
+    ただし、終了直前の「メモリ上にしか存在しない未保存の内容」は失われる（保存タイミングは blur 時またはデバウンス 800ms 経過後）。
+  </p>
+</div>
+
+<!-- =====================================================
      改版履歴
      ===================================================== -->
-<div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
+<div id="history" class="sec-title"><span>📋</span>7 改版履歴</div>
 
 <div class="card">
   <table class="history-table">
@@ -923,5 +962,6 @@ stateDiagram-v2
 
 <p style="margin-top:40px;font-size:11px;color:#94a3b8;text-align:right">俺の付箋 設計書 002 / 2026-04-19</p>
 
-</body>
-</html>
+
+
+</body></html>

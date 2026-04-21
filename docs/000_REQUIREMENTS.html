@@ -1,8 +1,6 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
+<!DOCTYPE html><html lang="ja"><head>
 <meta charset="UTF-8">
-<title>俺の付箋 — 要求仕様書</title>
+<title>俺の付箋 — 要求仕様</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -16,7 +14,7 @@ body {
 
 /* ===== NAV ===== */
 .nav { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
-.nav a, .nav span {
+.nav a, .nav span.nav-current {
   display: inline-block;
   padding: 6px 16px;
   border-radius: 99px;
@@ -26,6 +24,7 @@ body {
   border: 2px solid;
 }
 .nav-current { background: #4c1d95; border-color: #4c1d95; color: white; }
+.nav-index { border-color: #6d28d9; color: #6d28d9; }
 .nav-link { background: white; border-color: #93c5fd; color: #1e40af; }
 .nav-link:hover { background: #eff6ff; }
 
@@ -52,10 +51,12 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   margin-bottom: 40px;
   display: inline-block;
   min-width: 320px;
+  column-count: 2;
+  column-gap: 32px;
 }
 .toc-title { font-size: 12px; font-weight: 800; color: #475569; margin-bottom: 12px; letter-spacing: 0.05em; }
-.toc ol { padding-left: 20px; }
-.toc li { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
+
+
 .toc a { color: #6d28d9; text-decoration: none; }
 .toc a:hover { text-decoration: underline; }
 
@@ -211,6 +212,10 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
 }
 .history-table td { padding: 10px 16px; border-bottom: 1px solid #f8fafc; }
 .history-table tr:last-child td { border-bottom: none; }
+.series-table th:nth-child(1),
+.series-table td:nth-child(1),
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) { width: 44px; text-align: center; color: #94a3b8; font-weight: 700; }
 
 code {
   background: #f1f5f9;
@@ -220,105 +225,101 @@ code {
   font-family: "Consolas", "Menlo", monospace;
   color: #0f172a;
 }
+
+.toc-title { column-span: all; margin-bottom: 16px; }
+
+
+
+
+
+.toc-list { column-count: 3; column-gap: 32px; font-size: 13px; line-height: 1.6; }
+@media (max-width: 1024px) { .toc-list { column-count: 2; } }
+@media (max-width: 768px) { .toc-list { column-count: 1; } }
+.toc-l1 { margin-bottom: 8px; font-weight: 700; break-inside: avoid; }
+.toc-l2 { margin-bottom: 6px; margin-left: 16px; font-weight: normal; break-inside: avoid; }
+.toc-l3 { margin-bottom: 6px; margin-left: 32px; font-size: 12px; color: #475569; break-inside: avoid; }
+.toc-item a { color: #4c1d95; text-decoration: none; }
+.toc-item a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
 <!-- NAV -->
-<div class="nav">
-  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
+<nav class="nav">
+  <a href="INDEX.html" class="nav-link nav-index">📋 INDEX</a>
   <span class="nav-current">000 要求仕様</span>
-  <a href="001_OVERVIEW.html" class="nav-link">001 全体像</a>
-  <a href="002_PC.html" class="nav-link">002 PC アプリ</a>
-  <a href="003_IPHONE.html" class="nav-link">003 iPhone PWA</a>
+  <a href="001_OVERVIEW.html" class="nav-link">001 システム全体像</a>
+  <a href="002_PC.html" class="nav-link">002 PCローカル・UI設計</a>
+  <a href="003_IPHONE.html" class="nav-link">003 クラウド同期・iPhone設計</a>
   <a href="004_TEST.html" class="nav-link">004 テスト設計</a>
   <a href="005_GLOSSARY.html" class="nav-link">005 用語集</a>
-</div>
+  <a href="006_4PLUS1_ARCHITECTURE.html" class="nav-link">006 4+1 Viewアーキテクチャ</a>
+</nav>
 
 <!-- HEADER -->
-<h1>俺の付箋 — 要求仕様書</h1>
-<div class="lead">プロダクトが満たすべき要件を USDM 形式（要求 → 理由 → 仕様）で定義する</div>
+<h1>俺の付箋 — 要求仕様</h1>
+<div class="lead">機能要件・非機能要件・USDM</div>
 <div class="version-row">v3.0 &nbsp;|&nbsp; 2026-04-19 &nbsp;|&nbsp; USDM (Universal Specification Describing Manner)</div>
 
-<!-- 設計書シリーズ -->
-<table class="series-table">
-  <thead>
-    <tr><th>No.</th><th>タイトル</th><th>内容</th></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><span class="doc-badge badge-000">000</span></td>
-      <td><strong>要求仕様書</strong>（本ファイル）</td>
-      <td>プロダクトが満たすべき機能・非機能要件（USDM形式）</td>
-    </tr>
-    <tr>
-      <td><span class="doc-badge badge-001">001</span></td>
-      <td><a href="001_OVERVIEW.html">システム全体像</a></td>
-      <td>登場人物・技術スタック・全体データフロー・Vercelの役割</td>
-    </tr>
-    <tr>
-      <td><span class="doc-badge badge-002">002</span></td>
-      <td><a href="002_PC.html">PC アプリ設計</a></td>
-      <td>画面構成・モジュール・データ構造・シーケンス図・UI仕様</td>
-    </tr>
-    <tr>
-      <td><span class="doc-badge badge-003">003</span></td>
-      <td><a href="003_IPHONE.html">iPhone PWA 設計</a></td>
-      <td>画面構成・Service Worker・IndexedDB・シーケンス図</td>
-    </tr>
-    <tr>
-      <td><span class="doc-badge badge-004">004</span></td>
-      <td><a href="004_TEST.html">テスト設計書</a></td>
-      <td>テスト戦略・Vitest / Playwright / cargo test 一覧・カバレッジ外領域</td>
-    </tr>
-    <tr>
-      <td><span class="doc-badge badge-005">005</span></td>
-      <td><a href="005_GLOSSARY.html">用語集</a></td>
-      <td>設計書全体に登場する専門用語・略語をカテゴリ別に解説（７カテゴリ·２９語）</td>
-    </tr>
-  </tbody>
-</table>
-
-<!-- 読む順序 -->
-<div class="read-order">
-  <strong>📖 読む順序</strong>：
-  <span style="background:#ede9fe;color:#4c1d95;font-weight:700;border-radius:99px;padding:2px 8px;">000</span>
-  要求仕様書（本ファイル）→
-  <a href="001_OVERVIEW.html" style="color:#1e40af;font-weight:700;">001</a> システム全体像 →
-  <a href="002_PC.html" style="color:#1e40af;font-weight:700;">002</a> PC アプリ設計 →
-  <a href="003_IPHONE.html" style="color:#14532d;font-weight:700;">003</a> iPhone PWA 設計 →
-  <a href="004_TEST.html" style="color:#6b21a8;font-weight:700;">004</a> テスト設計 →
-  <a href="005_GLOSSARY.html" style="color:#991b1b;font-weight:700;">005</a> 用語集
-  <div class="note-text">⚠️ <strong>000（要求仕様書）</strong> は「なぜ作るか・何を作るか」を定義する文書です。<strong>001〜003（設計書）</strong> は「どう作るか」を定義する別の文書群です。初めて読む方は000から順に読むことを推奨します。</div>
-</div>
 
 <!-- TOC -->
 <div class="toc">
   <div class="toc-title">目次</div>
-  <ol>
-    <li><a href="#sec1">全体概要</a></li>
-    <li><a href="#sec2">ライフサイクル要件</a></li>
-    <li><a href="#sec3">データ管理要件</a></li>
-    <li><a href="#sec4">編集・表示要件</a></li>
-    <li><a href="#sec5">検索・整理要件</a></li>
-    <li><a href="#sec6">UI/UX 仕様</a></li>
-    <li><a href="#sec7">インターフェース仕様</a></li>
-    <li><a href="#sec8">非機能要件</a></li>
-    <li><a href="#sec9">iPhone 連携要件</a></li>
-    <li><a href="#history">改版履歴</a></li>
-  </ol>
+  <div class="toc-list">
+    <div class="toc-item toc-l1"><a href="#sec1">1 全体概要</a></div>
+    <div class="toc-item toc-l2"><a href="#sec1-1">1.1 製品定義</a></div>
+    <div class="toc-item toc-l2"><a href="#sec1-2">1.2 品質保証</a></div>
+    <div class="toc-item toc-l1"><a href="#sec2">2 ライフサイクル要件</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-1">2.1 アプリケーションの常駐と起動</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-2">2.2 初回セットアップ</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-3">2.3 新規付箋の作成</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-4">2.4 アプリケーションの終了</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-5">2.5 アラーム機能</a></div>
+    <div class="toc-item toc-l1"><a href="#sec3">3 データ管理要件</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-1">3.1 Markdown 形式での保存</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-2">3.2 メタデータの管理</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-3">3.3 ファイル名の自動同期</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-4">3.4 変更の自動保存</a></div>
+    <div class="toc-item toc-l1"><a href="#sec4">4 編集・表示要件</a></div>
+    <div class="toc-item toc-l2"><a href="#sec4-1">4.1 リッチテキスト編集</a></div>
+    <div class="toc-item toc-l2"><a href="#sec4-2">4.2 画像の取り込み</a></div>
+    <div class="toc-item toc-l1"><a href="#sec5">5 検索・整理要件</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-1">5.1 全文検索</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-2">5.2 タグによるコンテキスト切り替え</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-3">5.3 不要メモの整理（アーカイブ・削除）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec6">6 UI/UX 仕様</a></div>
+    <div class="toc-item toc-l2"><a href="#sec6-1">6.1 ウィンドウデザイン・外観</a></div>
+    <div class="toc-item toc-l2"><a href="#sec6-2">6.2 コンテキストメニュー</a></div>
+    <div class="toc-item toc-l2"><a href="#sec6-3">6.3 効果音</a></div>
+    <div class="toc-item toc-l1"><a href="#sec7">7 インターフェース仕様</a></div>
+    <div class="toc-item toc-l2"><a href="#sec7-1">7.1 フロントエンド–バックエンド間通信</a></div>
+    <div class="toc-item toc-l2"><a href="#sec7-2">7.2 設定の永続化</a></div>
+    <div class="toc-item toc-l1"><a href="#sec8">8 非機能要件</a></div>
+    <div class="toc-item toc-l2"><a href="#sec8-1">8.1 キーボードショートカット操作</a></div>
+    <div class="toc-item toc-l2"><a href="#sec8-2">8.2 マルチモニター・環境変動対応</a></div>
+    <div class="toc-item toc-l2"><a href="#sec8-3">8.3 セキュリティ・プライバシー</a></div>
+    <div class="toc-item toc-l2"><a href="#sec8-4">8.4 パフォーマンス・リソース制約</a></div>
+    <div class="toc-item toc-l2"><a href="#sec8-5">8.5 多言語化・i18n 要件</a></div>
+    <div class="toc-item toc-l1"><a href="#sec9">9 iPhone 連携要件</a></div>
+    <div class="toc-item toc-l2"><a href="#sec9-1">9.1 PC → iPhone 送信（プッシュ通知）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec9-2">9.2 iPhone → PC 送信</a></div>
+    <div class="toc-item toc-l2"><a href="#sec9-3">9.3 通知の常駐（ロックだぜ）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec9-4">9.4 iPhoneロック画面常駐体験</a></div>
+    <div class="toc-item toc-l2"><a href="#sec9-5">9.5 iPhone PWA の認証と持続可能性</a></div>
+    <div class="toc-item toc-l1"><a href="#history">10 改版履歴</a></div>
+  </div>
 </div>
 
 <!-- =====================================================
      1. 全体概要
      ===================================================== -->
-<div id="sec1" class="sec-title"><span>📋</span> 1. 全体概要</div>
+<div id="sec1" class="sec-title"><span>📋</span>1 全体概要</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">このプロダクトが何者で、どの品質基準を満たすかを定義します。</p>
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_OV_01]</span>
-    <span class="req-title">製品定義</span>
+    <span class="req-title" id="sec1-1">1.1 製品定義</span><span class="req-id">[REQ_OV_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -341,8 +342,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_OV_02]</span>
-    <span class="req-title">品質保証</span>
+    <span class="req-title" id="sec1-2">1.2 品質保証</span><span class="req-id">[REQ_OV_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -364,13 +365,13 @@ code {
 <!-- =====================================================
      2. ライフサイクル要件
      ===================================================== -->
-<div id="sec2" class="sec-title"><span>🔄</span> 2. ライフサイクル要件</div>
+<div id="sec2" class="sec-title"><span>🔄</span>2 ライフサイクル要件</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">アプリの起動・終了・作成・削除など、付箋のライフサイクル全体を定義します。</p>
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_LF_01]</span>
-    <span class="req-title">アプリケーションの常駐と起動</span>
+    <span class="req-title" id="sec2-1">2.1 アプリケーションの常駐と起動</span><span class="req-id">[REQ_LF_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -393,8 +394,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_LF_02]</span>
-    <span class="req-title">初回セットアップ</span>
+    <span class="req-title" id="sec2-2">2.2 初回セットアップ</span><span class="req-id">[REQ_LF_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -416,8 +417,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_LF_03]</span>
-    <span class="req-title">新規付箋の作成</span>
+    <span class="req-title" id="sec2-3">2.3 新規付箋の作成</span><span class="req-id">[REQ_LF_03]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -439,8 +440,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_LF_04]</span>
-    <span class="req-title">アプリケーションの終了</span>
+    <span class="req-title" id="sec2-4">2.4 アプリケーションの終了</span><span class="req-id">[REQ_LF_04]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -461,8 +462,8 @@ code {
 
 <div class="req-card done">
   <div class="req-header">
-    <span class="req-id done">[REQ_LF_05]</span>
-    <span class="req-title">アラーム機能 <span class="impl-badge">✓ 実装済み v2.9.0</span></span>
+    <span class="req-title" id="sec2-5">2.5 アラーム機能 <span class="impl-badge">✓ 実装済み v2.9.0</span></span><span class="req-id done">[REQ_LF_05]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -485,13 +486,13 @@ code {
 <!-- =====================================================
      3. データ管理要件
      ===================================================== -->
-<div id="sec3" class="sec-title"><span>💾</span> 3. データ管理要件</div>
+<div id="sec3" class="sec-title"><span>💾</span>3 データ管理要件</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">付箋データの保存形式・メタデータ・自動保存の仕組みを定義します。</p>
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_DT_01]</span>
-    <span class="req-title">Markdown 形式での保存</span>
+    <span class="req-title" id="sec3-1">3.1 Markdown 形式での保存</span><span class="req-id">[REQ_DT_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -512,8 +513,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_DT_02]</span>
-    <span class="req-title">メタデータの管理</span>
+    <span class="req-title" id="sec3-2">3.2 メタデータの管理</span><span class="req-id">[REQ_DT_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -534,8 +535,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_DT_03]</span>
-    <span class="req-title">ファイル名の自動同期</span>
+    <span class="req-title" id="sec3-3">3.3 ファイル名の自動同期</span><span class="req-id">[REQ_DT_03]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -557,8 +558,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_DT_04]</span>
-    <span class="req-title">変更の自動保存</span>
+    <span class="req-title" id="sec3-4">3.4 変更の自動保存</span><span class="req-id">[REQ_DT_04]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -580,13 +581,13 @@ code {
 <!-- =====================================================
      4. 編集・表示要件
      ===================================================== -->
-<div id="sec4" class="sec-title"><span>✏️</span> 4. 編集・表示要件</div>
+<div id="sec4" class="sec-title"><span>✏️</span>4 編集・表示要件</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">付箋の編集体験と表示機能を定義します。</p>
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_ED_01]</span>
-    <span class="req-title">リッチテキスト編集</span>
+    <span class="req-title" id="sec4-1">4.1 リッチテキスト編集</span><span class="req-id">[REQ_ED_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -610,8 +611,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_ED_02]</span>
-    <span class="req-title">画像の取り込み</span>
+    <span class="req-title" id="sec4-2">4.2 画像の取り込み</span><span class="req-id">[REQ_ED_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -634,13 +635,13 @@ code {
 <!-- =====================================================
      5. 検索・整理要件
      ===================================================== -->
-<div id="sec5" class="sec-title"><span>🔍</span> 5. 検索・整理要件</div>
+<div id="sec5" class="sec-title"><span>🔍</span>5 検索・整理要件</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">付箋の検索・タグ管理・アーカイブ・削除を定義します。</p>
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_OR_01]</span>
-    <span class="req-title">全文検索</span>
+    <span class="req-title" id="sec5-1">5.1 全文検索</span><span class="req-id">[REQ_OR_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -663,8 +664,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_OR_02]</span>
-    <span class="req-title">タグによるコンテキスト切り替え</span>
+    <span class="req-title" id="sec5-2">5.2 タグによるコンテキスト切り替え</span><span class="req-id">[REQ_OR_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -686,8 +687,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_OR_03]</span>
-    <span class="req-title">不要メモの整理（アーカイブ・削除）</span>
+    <span class="req-title" id="sec5-3">5.3 不要メモの整理（アーカイブ・削除）</span><span class="req-id">[REQ_OR_03]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -709,13 +710,13 @@ code {
 <!-- =====================================================
      6. UI/UX 仕様
      ===================================================== -->
-<div id="sec6" class="sec-title"><span>🎨</span> 6. UI/UX 仕様</div>
+<div id="sec6" class="sec-title"><span>🎨</span>6 UI/UX 仕様</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">付箋ウィンドウの外観・コンテキストメニュー・効果音を定義します。</p>
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_UI_01]</span>
-    <span class="req-title">ウィンドウデザイン・外観</span>
+    <span class="req-title" id="sec6-1">6.1 ウィンドウデザイン・外観</span><span class="req-id">[REQ_UI_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -737,8 +738,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_UI_02]</span>
-    <span class="req-title">コンテキストメニュー</span>
+    <span class="req-title" id="sec6-2">6.2 コンテキストメニュー</span><span class="req-id">[REQ_UI_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -757,8 +758,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_UI_03]</span>
-    <span class="req-title">効果音</span>
+    <span class="req-title" id="sec6-3">6.3 効果音</span><span class="req-id">[REQ_UI_03]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -776,13 +777,13 @@ code {
 <!-- =====================================================
      7. インターフェース仕様
      ===================================================== -->
-<div id="sec7" class="sec-title"><span>🔌</span> 7. インターフェース仕様</div>
+<div id="sec7" class="sec-title"><span>🔌</span>7 インターフェース仕様</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">フロントエンド↔バックエンド間の通信と設定永続化の仕様を定義します。</p>
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_IF_01]</span>
-    <span class="req-title">フロントエンド–バックエンド間通信</span>
+    <span class="req-title" id="sec7-1">7.1 フロントエンド–バックエンド間通信</span><span class="req-id">[REQ_IF_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -804,8 +805,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_IF_02]</span>
-    <span class="req-title">設定の永続化</span>
+    <span class="req-title" id="sec7-2">7.2 設定の永続化</span><span class="req-id">[REQ_IF_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -827,13 +828,13 @@ code {
 <!-- =====================================================
      8. 非機能要件
      ===================================================== -->
-<div id="sec8" class="sec-title"><span>⚙️</span> 8. 非機能要件</div>
+<div id="sec8" class="sec-title"><span>⚙️</span>8 非機能要件</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">ショートカット・マルチモニター・セキュリティ・パフォーマンス・多言語化を定義します。</p>
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_NF_01]</span>
-    <span class="req-title">キーボードショートカット操作</span>
+    <span class="req-title" id="sec8-1">8.1 キーボードショートカット操作</span><span class="req-id">[REQ_NF_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -857,8 +858,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_NF_02]</span>
-    <span class="req-title">マルチモニター・環境変動対応</span>
+    <span class="req-title" id="sec8-2">8.2 マルチモニター・環境変動対応</span><span class="req-id">[REQ_NF_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -875,8 +876,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_NF_03]</span>
-    <span class="req-title">セキュリティ・プライバシー</span>
+    <span class="req-title" id="sec8-3">8.3 セキュリティ・プライバシー</span><span class="req-id">[REQ_NF_03]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -895,8 +896,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_NF_04]</span>
-    <span class="req-title">パフォーマンス・リソース制約</span>
+    <span class="req-title" id="sec8-4">8.4 パフォーマンス・リソース制約</span><span class="req-id">[REQ_NF_04]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -913,8 +914,8 @@ code {
 
 <div class="req-card">
   <div class="req-header">
-    <span class="req-id">[REQ_NF_05]</span>
-    <span class="req-title">多言語化・i18n 要件</span>
+    <span class="req-title" id="sec8-5">8.5 多言語化・i18n 要件</span><span class="req-id">[REQ_NF_05]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -933,13 +934,13 @@ code {
 <!-- =====================================================
      9. iPhone 連携要件
      ===================================================== -->
-<div id="sec9" class="sec-title"><span>📱</span> 9. iPhone 連携要件</div>
+<div id="sec9" class="sec-title"><span>📱</span>9 iPhone 連携要件</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v3.0で追加。</p>
 
 <div class="req-card new">
   <div class="req-header">
-    <span class="req-id new">[REQ_IP_01]</span>
-    <span class="req-title">PC → iPhone 送信（プッシュ通知）</span>
+    <span class="req-title" id="sec9-1">9.1 PC → iPhone 送信（プッシュ通知）</span><span class="req-id new">[REQ_IP_01]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -963,8 +964,8 @@ code {
 
 <div class="req-card new">
   <div class="req-header">
-    <span class="req-id new">[REQ_IP_02]</span>
-    <span class="req-title">iPhone → PC 送信</span>
+    <span class="req-title" id="sec9-2">9.2 iPhone → PC 送信</span><span class="req-id new">[REQ_IP_02]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -987,8 +988,8 @@ code {
 
 <div class="req-card new">
   <div class="req-header">
-    <span class="req-id new">[REQ_IP_03]</span>
-    <span class="req-title">通知の常駐（ロックだぜ）</span>
+    <span class="req-title" id="sec9-3">9.3 通知の常駐（ロックだぜ）</span><span class="req-id new">[REQ_IP_03]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -1010,8 +1011,8 @@ code {
 
 <div class="req-card new">
   <div class="req-header">
-    <span class="req-id new">[REQ_IP_05]</span>
-    <span class="req-title">iPhoneロック画面常駐体験</span>
+    <span class="req-title" id="sec9-4">9.4 iPhoneロック画面常駐体験</span><span class="req-id new">[REQ_IP_05]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -1034,8 +1035,8 @@ code {
 
 <div class="req-card new">
   <div class="req-header">
-    <span class="req-id new">[REQ_IP_04]</span>
-    <span class="req-title">iPhone PWA の認証と持続可能性</span>
+    <span class="req-title" id="sec9-5">9.5 iPhone PWA の認証と持続可能性</span><span class="req-id new">[REQ_IP_04]</span>
+    
   </div>
   <div class="req-row">
     <span class="req-label">要求</span>
@@ -1058,7 +1059,7 @@ code {
 <!-- =====================================================
      改版履歴
      ===================================================== -->
-<div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
+<div id="history" class="sec-title"><span>📋</span>10 改版履歴</div>
 
 <table class="history-table">
   <thead>
@@ -1087,5 +1088,6 @@ code {
 </table>
 
 <div style="height:80px"></div>
-</body>
-</html>
+
+
+</body></html>

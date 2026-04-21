@@ -1,6 +1,4 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
+<!DOCTYPE html><html lang="ja"><head>
 <meta charset="UTF-8">
 <title>俺の付箋 — iPhone PWA 設計</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -18,7 +16,7 @@ body {
 
 /* ===== NAV ===== */
 .nav { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
-.nav a, .nav span {
+.nav a, .nav span.nav-current {
   display: inline-block;
   padding: 6px 16px;
   border-radius: 99px;
@@ -28,6 +26,7 @@ body {
   border: 2px solid;
 }
 .nav-current { background: #14532d; border-color: #14532d; color: white; }
+.nav-index { border-color: #6d28d9; color: #6d28d9; }
 .nav-link { background: white; border-color: #93c5fd; color: #1e40af; }
 .nav-link:hover { background: #eff6ff; }
 
@@ -63,13 +62,15 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   margin-bottom: 40px;
   display: inline-block;
   min-width: 280px;
+  column-count: 2;
+  column-gap: 32px;
 }
 .toc-title { font-size: 12px; font-weight: 800; color: #475569; margin-bottom: 12px; letter-spacing: 0.05em; }
-.toc ol { padding-left: 20px; }
-.toc li { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
-.toc ul { padding-left: 16px; margin-top: 4px; list-style: none; }
-.toc ul li { margin-bottom: 3px; color: #64748b; }
-.toc ul li::before { content: "– "; }
+
+
+
+
+
 .toc a { color: #1e40af; text-decoration: none; }
 .toc a:hover { text-decoration: underline; }
 
@@ -200,6 +201,10 @@ code {
   text-align: left;
 }
 .history-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+.module-table th:nth-child(1),
+.module-table td:nth-child(1),
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) { width: 44px; text-align: center; color: #94a3b8; font-weight: 700; }
 
 /* ===== データ構造 ===== */
 .store-grid {
@@ -224,75 +229,90 @@ code {
 .store-ls h4  { color: #4c1d95; }
 .store-drive  { background: #f0fdf4; border: 1.5px solid #22c55e; }
 .store-drive h4 { color: #14532d; }
+
+.toc-title { column-span: all; margin-bottom: 16px; }
+
+
+
+
+
+.toc-list { column-count: 3; column-gap: 32px; font-size: 13px; line-height: 1.6; }
+@media (max-width: 1024px) { .toc-list { column-count: 2; } }
+@media (max-width: 768px) { .toc-list { column-count: 1; } }
+.toc-l1 { margin-bottom: 8px; font-weight: 700; break-inside: avoid; }
+.toc-l2 { margin-bottom: 6px; margin-left: 16px; font-weight: normal; break-inside: avoid; }
+.toc-l3 { margin-bottom: 6px; margin-left: 32px; font-size: 12px; color: #475569; break-inside: avoid; }
+.toc-item a { color: #4c1d95; text-decoration: none; }
+.toc-item a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
 <!-- ===== NAV ===== -->
 <nav class="nav">
-  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
+  <a href="INDEX.html" class="nav-link nav-index">📋 INDEX</a>
   <a class="nav-link" href="000_REQUIREMENTS.html">000 要求仕様</a>
-  <a class="nav-link" href="001_OVERVIEW.html">001 全体像</a>
-  <a class="nav-link" href="002_PC.html">002 PC側</a>
-  <span class="nav-current">003 iPhone連携</span>
+  <a class="nav-link" href="001_OVERVIEW.html">001 システム全体像</a>
+  <a class="nav-link" href="002_PC.html">002 PCローカル・UI設計</a>
+  <span class="nav-current">003 クラウド同期・iPhone設計</span>
   <a class="nav-link" href="004_TEST.html">004 テスト設計</a>
   <a class="nav-link" href="005_GLOSSARY.html">005 用語集</a>
+  <a class="nav-link" href="006_4PLUS1_ARCHITECTURE.html">006 4+1 Viewアーキテクチャ</a>
 </nav>
 
 <!-- ===== HEADER ===== -->
-<h1>003 iPhone PWA 設計書</h1>
-<p class="lead">画面構成・モジュール構造・データ構造・データフロー</p>
+<h1>俺の付箋 — クラウド同期・iPhone設計</h1>
+<p class="lead">画面構成・Service Worker・データ構造・データフロー</p>
 <p class="version-row">設計書 v1.0 / 2026-04-19</p>
 
 <!-- ===== 目次 ===== -->
 <nav class="toc">
   <div class="toc-title">目次</div>
-  <ol>
-    <li><a href="#sec1">画面構成</a>
-      <ul>
-        <li><a href="#sec1-screens">1.1 各画面の役割</a></li>
-        <li><a href="#sec1-transition">1.2 起動時の遷移ルール</a></li>
-      </ul>
-    </li>
-    <li><a href="#sec2">モジュール構造</a>
-      <ul>
-        <li><a href="#sec2-fe">2.1 フロントエンド（TypeScript / React）</a></li>
-        <li><a href="#sec2-sw">2.2 Service Worker（worker/index.js）</a></li>
-        <li><a href="#sec2-server">2.3 サーバーサイド（Vercel API）</a></li>
-      </ul>
-    </li>
-    <li><a href="#sec3">データ構造</a>
-      <ul>
-        <li><a href="#sec3-idb">3.1 IndexedDB</a></li>
-        <li><a href="#sec3-ls">3.2 localStorage</a></li>
-        <li><a href="#sec3-drive">3.3 Google Drive ファイル</a></li>
-      </ul>
-    </li>
-    <li><a href="#sec4">データフロー</a>
-      <ul>
-        <li><a href="#seq1">4.1 アプリ起動（初回）</a></li>
-        <li><a href="#seq2">4.2 PC → iPhone 受信（Service Worker）</a></li>
-        <li><a href="#seq3">4.3 iPhone → PC 送信</a></li>
-        <li><a href="#seq4">4.4 ロック画面に表示 ON/OFF</a></li>
-      </ul>
-    </li>
-    <li><a href="#sec5">5. UI インタラクション</a>
-      <ul>
-        <li><a href="#sec5-mode">5.1 画面モード定義</a></li>
-        <li><a href="#sec5-ops">5.2 各モードの操作一覧</a></li>
-        <li><a href="#sec5-matrix">5.3 インタラクション・マトリックス</a></li>
-      </ul>
-    </li>
-    <li><a href="#recovery">6. エラーハンドリング・リカバリ方針</a></li>
-    <li><a href="#history">改版履歴</a></li>
-  </ol>
+  <div class="toc-list">
+    <div class="toc-item toc-l1"><a href="#sec1">1 画面構成</a></div>
+    <div class="toc-item toc-l2"><a href="#sec1-screens">1.1 各画面の役割</a></div>
+    <div class="toc-item toc-l2"><a href="#sec1-transition">1.2 起動時の遷移ルール</a></div>
+    <div class="toc-item toc-l1"><a href="#sec2">2 モジュール構造</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-fe">2.1 フロントエンド（TypeScript / React）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-sw">2.2 Service Worker（worker/index.js）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec2-server">2.3 サーバーサイド（Vercel API Routes）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec3">3 データ構造</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-idb">3.1 IndexedDB</a></div>
+    <div class="toc-item toc-l3"><a href="#sec3-0-1">3.1.1 fusen-drafts（ノートデータ）</a></div>
+    <div class="toc-item toc-l3"><a href="#sec3-0-2">3.1.2 fusen-meta（メタ情報）</a></div>
+    <div class="toc-item toc-l3"><a href="#sec3-0-3">3.1.3 fusen-logs（デバッグログ）</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-ls">3.2 localStorage</a></div>
+    <div class="toc-item toc-l3"><a href="#sec3-0-4">3.2.1 認証・設定フラグ</a></div>
+    <div class="toc-item toc-l2"><a href="#sec3-drive">3.3 Google Drive ファイル</a></div>
+    <div class="toc-item toc-l1"><a href="#sec4">4 データフロー</a></div>
+    <div class="toc-item toc-l2"><a href="#seq1">4.1 アプリ起動（初回：Safari でインストール → Google ログイン → 通知許可）</a></div>
+    <div class="toc-item toc-l2"><a href="#seq2">4.2 PC → iPhone 受信（ユーザー体験 + 内部処理）</a></div>
+    <div class="toc-item toc-l2"><a href="#seq3">4.3 iPhone → PC 送信（ユーザー体験 + 内部処理）</a></div>
+    <div class="toc-item toc-l2"><a href="#seq4">4.4 ロック画面に表示 ON/OFF と再通知サイクル（REQ_IP_05）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec5">5 UI インタラクション</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-mode">5.1 画面モード定義</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-ops">5.2 各モードの操作一覧</a></div>
+    <div class="toc-item toc-l2"><a href="#sec5-matrix">5.3 インタラクション・マトリックス</a></div>
+    <div class="toc-item toc-l1"><a href="#recovery">6 エラーハンドリング・リカバリ方針</a></div>
+    <div class="toc-item toc-l2"><a href="#sec6-1">6.1 通信・認証エラー</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-1">6.1.1 Drive API エラーとトークン自動更新</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-2">6.1.2 認証切れ時のフォールバック</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-3">6.1.3 PCアプリ側での Drive API 失敗（gdrive.rs）</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-4">6.1.4 PCからの Web Push 送信失敗</a></div>
+    <div class="toc-item toc-l2"><a href="#sec6-2">6.2 バックグラウンド処理・リカバリ</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-5">6.2.1 Push 受信時のフォールバック（画像DL失敗時）</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-6">6.2.2 デバッグログの運用方針（fusen-logs）</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-7">6.2.3 iOS特有の制約とリカバリサイクル</a></div>
+    <div class="toc-item toc-l3"><a href="#sec6-0-8">6.2.4 Service Worker の更新</a></div>
+    <div class="toc-item toc-l1"><a href="#history">7 改版履歴</a></div>
+  </div>
 </nav>
 
 
 <!-- =====================================================
      1. 画面構成
      ===================================================== -->
-<div id="sec1" class="sec-title"><span>📱</span> 1. 画面構成</div>
+<div id="sec1" class="sec-title"><span>📱</span>1 画面構成</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">iPhone PWA は step state で切り替わる5画面の単一ページアプリです。</p>
 
 <div class="card">
@@ -302,7 +322,7 @@ code {
     URLバーなしのネイティブアプリ風で動作する（PWA起動時）。
   </div>
 
-  <div id="sec1-screens" class="subsec">1.1 各画面の役割</div>
+  <h3 id="sec1-screens" class="subsec">1.1 各画面の役割</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">banner・login・push・list・write の5画面それぞれの表示条件と役割を説明します。</p>
 
   <!-- インストール案内 -->
@@ -460,7 +480,7 @@ code {
   </div>
 
   <!-- 遷移図 -->
-  <div id="sec1-transition" class="subsec">1.2 起動時の遷移ルール</div>
+  <h3 id="sec1-transition" class="subsec">1.2 起動時の遷移ルール</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">PWA起動時にどの画面から始まるかを決める4つのルールを定義します。</p>
 
   <div class="mermaid">
@@ -470,22 +490,22 @@ flowchart LR
     classDef screen fill:#1e3a5f,stroke:#60a5fa,color:#bfdbfe,stroke-width:2px
 
     Safari["Safari で開く"]:::safari
-    PWA["PWA 起動<br/>（ホーム画面アイコン）"]:::pwa
+    PWA["PWA 起動<br>（ホーム画面アイコン）"]:::pwa
 
-    Banner["banner<br/>ホーム追加案内"]:::screen
-    Login["login<br/>Google認証"]:::screen
-    Push["push<br/>通知設定"]:::screen
-    List["list<br/>ノート一覧"]:::screen
-    Write["write<br/>編集"]:::screen
+    Banner["banner<br>ホーム追加案内"]:::screen
+    Login["login<br>Google認証"]:::screen
+    Push["push<br>通知設定"]:::screen
+    List["list<br>ノート一覧"]:::screen
+    Write["write<br>編集"]:::screen
 
-    Safari --> Banner
-    PWA -->|"トークンなし"| Login
-    PWA -->|"OAuthコールバック ?code="| Login
-    Login --> Push
-    Push --> List
-    List <--> Write
-    PWA -->|"トークンあり + 通知設定済み"| List
-    PWA -->|"通知タップ / pending_open"| Write
+    Safari --&gt; Banner
+    PWA --&gt;|"トークンなし"| Login
+    PWA --&gt;|"OAuthコールバック ?code="| Login
+    Login --&gt; Push
+    Push --&gt; List
+    List &lt;--&gt; Write
+    PWA --&gt;|"トークンあり + 通知設定済み"| List
+    PWA --&gt;|"通知タップ / pending_open"| Write
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 12px;letter-spacing:0.03em">図 3-1　起動時の画面遷移ルール</p>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-1　起動時の遷移条件</p>
@@ -515,12 +535,12 @@ flowchart LR
 <!-- =====================================================
      2. モジュール構造
      ===================================================== -->
-<div id="sec2" class="sec-title"><span>🗂</span> 2. モジュール構造</div>
+<div id="sec2" class="sec-title"><span>🗂</span>2 モジュール構造</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">フロントエンド・Service Worker・Vercel API の3層構成です。</p>
 
 <div class="card">
 
-  <div id="sec2-fe" class="subsec">2.1 フロントエンド（TypeScript / React）</div>
+  <h3 id="sec2-fe" class="subsec">2.1 フロントエンド（TypeScript / React）</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">画面を構成する主要コンポーネント・フック9点の依存関係を示します。</p>
   <div class="mermaid">
 graph LR
@@ -532,19 +552,19 @@ graph LR
     Page["viewer/page.tsx"]:::page
 
     subgraph Hooks ["viewer/hooks/"]
-        Init["useAppInit.ts<br/>起動時初期化"]:::hook
-        NoteList["useNoteList.ts<br/>Drive→IndexedDB 同期"]:::hook
-        Lock["useLockToggle.ts<br/>ロック画面に表示 ON/OFF"]:::hook
-        AutoSave["useAutoSave.ts<br/>800ms 自動保存"]:::hook
-        VisSave["useVisibilitySave.ts<br/>BG遷移時保存"]:::hook
-        BgSend["useBackgroundSend.ts<br/>PCへ送信"]:::hook
+        Init["useAppInit.ts<br>起動時初期化"]:::hook
+        NoteList["useNoteList.ts<br>Drive→IndexedDB 同期"]:::hook
+        Lock["useLockToggle.ts<br>ロック画面に表示 ON/OFF"]:::hook
+        AutoSave["useAutoSave.ts<br>800ms 自動保存"]:::hook
+        VisSave["useVisibilitySave.ts<br>BG遷移時保存"]:::hook
+        BgSend["useBackgroundSend.ts<br>PCへ送信"]:::hook
     end
 
     subgraph Lib ["viewer/lib/"]
-        Drive["drive.ts<br/>Drive API ラッパー"]:::lib
-        IDB["indexeddb.ts<br/>fusen-drafts 読み書き"]:::lib
-        Auth["auth.ts<br/>PKCE / OAuth"]:::lib
-        Push["push.ts<br/>Push 登録"]:::lib
+        Drive["drive.ts<br>Drive API ラッパー"]:::lib
+        IDB["indexeddb.ts<br>fusen-drafts 読み書き"]:::lib
+        Auth["auth.ts<br>PKCE / OAuth"]:::lib
+        Push["push.ts<br>Push 登録"]:::lib
     end
 
     subgraph Comps ["viewer/"]
@@ -553,29 +573,29 @@ graph LR
         PushStep["PushStep.tsx"]:::comp
     end
 
-    Page --> Init
-    Page --> NoteList
-    Page --> Lock
-    Page --> AutoSave
-    Page --> VisSave
-    Page --> BgSend
-    Page --> NoteListStep
-    Page --> WriteStep
-    Page --> PushStep
+    Page --&gt; Init
+    Page --&gt; NoteList
+    Page --&gt; Lock
+    Page --&gt; AutoSave
+    Page --&gt; VisSave
+    Page --&gt; BgSend
+    Page --&gt; NoteListStep
+    Page --&gt; WriteStep
+    Page --&gt; PushStep
 
-    Init --> IDB
-    Init --> Auth
-    NoteList --> Drive
-    NoteList --> IDB
-    Lock --> IDB
-    AutoSave --> IDB
-    VisSave --> IDB
-    BgSend --> Drive
-    Push --> Drive
+    Init --&gt; IDB
+    Init --&gt; Auth
+    NoteList --&gt; Drive
+    NoteList --&gt; IDB
+    Lock --&gt; IDB
+    AutoSave --&gt; IDB
+    VisSave --&gt; IDB
+    BgSend --&gt; Drive
+    Push --&gt; Drive
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 16px;letter-spacing:0.03em">図 3-2　フロントエンドモジュール構成</p>
 
-  <div id="sec2-sw" class="subsec">2.2 Service Worker（worker/index.js）</div>
+  <h3 id="sec2-sw" class="subsec">2.2 Service Worker（worker/index.js）</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 6px 0">push受信・notificationclick等を処理するSWのイベントハンドラ4点を一覧します。</p>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-2　Service Worker イベントハンドラ一覧</p>
   <table class="module-table">
@@ -623,7 +643,7 @@ graph LR
     PC の Chrome で PWA を開き、DevTools → Application → IndexedDB → fusen-logs で確認できる。
   </div>
 
-  <div id="sec2-server" class="subsec">2.3 サーバーサイド（Vercel API Routes）</div>
+  <h3 id="sec2-server" class="subsec">2.3 サーバーサイド（Vercel API Routes）</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">Google OAuth2 の client_secret を保護するVercel APIエンドポイント3点を説明します。</p>
   <div class="note note-blue" style="margin-bottom:12px">
     Google OAuth の <code>client_secret</code>（秘密鍵）をブラウザ（iPhone）に渡さないため、
@@ -653,7 +673,7 @@ graph LR
 <!-- =====================================================
      3. データ構造
      ===================================================== -->
-<div id="sec3" class="sec-title"><span>📦</span> 3. データ構造</div>
+<div id="sec3" class="sec-title"><span>📦</span>3 データ構造</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">IndexedDB・localStorage・Google Drive の3か所にデータを分散して保存します。</p>
 
 <div class="card">
@@ -663,12 +683,12 @@ graph LR
     Drive は中継所（未処理キュー）に過ぎない。Drive に残っているものは「まだ処理していない」を意味する。処理済みは即削除。
   </div>
 
-  <div id="sec3-idb" class="subsec">3.1 IndexedDB</div>
+  <h3 id="sec3-idb" class="subsec">3.1 IndexedDB</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3ストアを定義します。</p>
   <div class="store-grid">
 
     <div class="store-card store-idb">
-      <h4>🗄 fusen-drafts（ノートデータ）</h4>
+      <h4 id="sec3-0-1">3.1.1 🗄 fusen-drafts（ノートデータ）</h4>
       <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-4　fusen-drafts スキーマ</p>
       <table class="module-table" style="font-size:11px">
         <thead><tr><th style="width:44px;text-align:center">No</th><th>フィールド</th><th>型</th><th>意味</th></tr></thead>
@@ -686,7 +706,7 @@ graph LR
     </div>
 
     <div class="store-card store-idb">
-      <h4>🗄 fusen-meta（メタ情報）</h4>
+      <h4 id="sec3-0-2">3.1.2 🗄 fusen-meta（メタ情報）</h4>
       <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-5　fusen-meta スキーマ</p>
       <table class="module-table" style="font-size:11px">
         <thead><tr><th style="width:44px;text-align:center">No</th><th>キー</th><th>意味</th></tr></thead>
@@ -697,7 +717,7 @@ graph LR
         </tbody>
       </table>
 
-      <h4 style="margin-top:16px">🗄 fusen-logs（デバッグログ）</h4>
+      <h4 id="sec3-0-3" style="margin-top:16px">3.1.3 🗄 fusen-logs（デバッグログ）</h4>
       <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-6　fusen-logs スキーマ</p>
       <table class="module-table" style="font-size:11px">
         <thead><tr><th style="width:44px;text-align:center">No</th><th>フィールド</th><th>意味</th></tr></thead>
@@ -710,10 +730,10 @@ graph LR
 
   </div>
 
-  <div id="sec3-ls" class="subsec">3.2 localStorage</div>
+  <h3 id="sec3-ls" class="subsec">3.2 localStorage</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">セッション管理に使うlocalStorageのキーと値の一覧です。</p>
   <div class="store-card store-ls" style="max-width:600px">
-    <h4>🔑 認証・設定フラグ</h4>
+    <h4 id="sec3-0-4">3.2.1 🔑 認証・設定フラグ</h4>
     <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-7　localStorage キー一覧</p>
     <table class="module-table" style="font-size:11px">
       <thead><tr><th style="width:44px;text-align:center">No</th><th>キー</th><th>意味</th></tr></thead>
@@ -727,7 +747,7 @@ graph LR
     </table>
   </div>
 
-  <div id="sec3-drive" class="subsec">3.3 Google Drive ファイル</div>
+  <h3 id="sec3-drive" class="subsec">3.3 Google Drive ファイル</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">PCとiPhone間の中継に使うDriveファイルの種類と書き込み/削除責務を説明します。</p>
   <div class="note note-green" style="margin-bottom:12px">
     <strong>Drive 設計原則：Drive にあるものは全て未処理キュー。処理済みは即削除。</strong>
@@ -775,12 +795,12 @@ graph LR
 <!-- =====================================================
      4. データフロー（シーケンス図）
      ===================================================== -->
-<div id="sec4" class="sec-title"><span>🔄</span> 4. データフロー</div>
+<div id="sec4" class="sec-title"><span>🔄</span>4 データフロー</div>
 <p style="font-size:13px;color:#64748b;margin:0 0 20px 0">起動・PC→iPhone受信・iPhone→PC送信・通知ON/OFFの4つのシーケンス図を示します。</p>
 
 <!-- 4.1 初回起動 -->
 <div class="card">
-  <div id="seq1" class="subsec">4.1 アプリ起動（初回：Safari でインストール → Google ログイン → 通知許可）</div>
+  <h3 id="seq1" class="subsec">4.1 アプリ起動（初回：Safari でインストール → Google ログイン → 通知許可）</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">初回起動（Safari→インストール→ログイン→通知許可）の全ステップを示します。</p>
   <div class="mermaid">
 sequenceDiagram
@@ -798,30 +818,30 @@ sequenceDiagram
     end
 
     Note over UserPhone: Safariで /viewer を開く
-    UserPhone->>PWA: Safari でURL直接アクセス（非standalone）
-    PWA->>UserPhone: banner 画面（ホーム追加案内）
-    UserPhone->>PWA: ホーム画面に追加 → アイコンで起動（standalone）
+    UserPhone-&gt;&gt;PWA: Safari でURL直接アクセス（非standalone）
+    PWA-&gt;&gt;UserPhone: banner 画面（ホーム追加案内）
+    UserPhone-&gt;&gt;PWA: ホーム画面に追加 → アイコンで起動（standalone）
     Note over UserPhone: tokenなし → login 表示
-    UserPhone->>PWA: 「Googleでログイン」ボタン
-    PWA->>OAuth: PKCE OAuth リダイレクト
-    OAuth->>PWA: ?code=... コールバック
-    PWA->>Vercel: POST /api/auth/token
-    Vercel->>OAuth: トークン交換
-    OAuth-->>Vercel: access_token + refresh_token
-    Vercel-->>PWA: トークン返却 → localStorage に保存
+    UserPhone-&gt;&gt;PWA: 「Googleでログイン」ボタン
+    PWA-&gt;&gt;OAuth: PKCE OAuth リダイレクト
+    OAuth-&gt;&gt;PWA: ?code=... コールバック
+    PWA-&gt;&gt;Vercel: POST /api/auth/token
+    Vercel-&gt;&gt;OAuth: トークン交換
+    OAuth--&gt;&gt;Vercel: access_token + refresh_token
+    Vercel--&gt;&gt;PWA: トークン返却 → localStorage に保存
     Note over UserPhone: → push 画面へ
-    UserPhone->>PWA: 「通知を許可する」ボタン
-    PWA->>SW: Service Worker 登録 + Push サブスクリプション取得
-    SW-->>PWA: endpoint + keys
-    PWA->>Drive: push_devices.json に端末情報を upsert
-    PWA->>UserPhone: ✅ セットアップ完了 → list 画面へ
+    UserPhone-&gt;&gt;PWA: 「通知を許可する」ボタン
+    PWA-&gt;&gt;SW: Service Worker 登録 + Push サブスクリプション取得
+    SW--&gt;&gt;PWA: endpoint + keys
+    PWA-&gt;&gt;Drive: push_devices.json に端末情報を upsert
+    PWA-&gt;&gt;UserPhone: ✅ セットアップ完了 → list 画面へ
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 3-3　アプリ起動シーケンス（初回：インストール → 認証 → 通知許可）</p>
 </div>
 
 <!-- 4.2 PC→iPhone受信 -->
 <div class="card">
-  <div id="seq2" class="subsec">4.2 PC → iPhone 受信（ユーザー体験 + 内部処理）</div>
+  <h3 id="seq2" class="subsec">4.2 PC → iPhone 受信（ユーザー体験 + 内部処理）</h3>
   <p style="font-size:12px;color:#64748b;margin-bottom:12px">
     PCで「iPhoneに送る」を押した瞬間から、iPhoneのロック画面に通知が出て、ユーザーがタップして内容を確認するまでの全体フロー。
   </p>
@@ -844,22 +864,22 @@ sequenceDiagram
     actor UserPhone as ユーザー（iPhone）
 
     Note over UserPC: 📝 付箋を見ている
-    UserPC->>PC: 右クリック →「iPhoneに送る」
-    PC->>Drive: notes_to_iphone.json を書き込み
-    PC->>Drive: fusen_img_*.jpg を書き込み（添付画像）
-    PC->>APNs: Web Push 送信（VAPID 認証）
+    UserPC-&gt;&gt;PC: 右クリック →「iPhoneに送る」
+    PC-&gt;&gt;Drive: notes_to_iphone.json を書き込み
+    PC-&gt;&gt;Drive: fusen_img_*.jpg を書き込み（添付画像）
+    PC-&gt;&gt;APNs: Web Push 送信（VAPID 認証）
     Note over UserPC: ✅ 送信完了（PC側の操作はここまで）
 
-    APNs->>SW: Push 受信（iPhoneを起こす）
-    SW->>Drive: fusen_img_*.jpg をダウンロード
-    SW->>SW: ノートを IndexedDB に保存
-    SW->>Drive: 送信済みファイルを削除
-    SW->>UserPhone: 🔔 ロック画面に通知を表示
+    APNs-&gt;&gt;SW: Push 受信（iPhoneを起こす）
+    SW-&gt;&gt;Drive: fusen_img_*.jpg をダウンロード
+    SW-&gt;&gt;SW: ノートを IndexedDB に保存
+    SW-&gt;&gt;Drive: 送信済みファイルを削除
+    SW-&gt;&gt;UserPhone: 🔔 ロック画面に通知を表示
 
     Note over UserPhone: 📵 ロック画面で通知が見える
-    UserPhone->>PWA: 通知をタップ
-    PWA->>SW: IndexedDB からノートデータを読み込み
-    PWA->>UserPhone: write画面でノートを表示 ✅
+    UserPhone-&gt;&gt;PWA: 通知をタップ
+    PWA-&gt;&gt;SW: IndexedDB からノートデータを読み込み
+    PWA-&gt;&gt;UserPhone: write画面でノートを表示 ✅
     Note over UserPhone: 📖 内容を確認できた
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 3-4　PC → iPhone 受信シーケンス</p>
@@ -875,7 +895,7 @@ sequenceDiagram
 
 <!-- 4.3 iPhone→PC送信 -->
 <div class="card">
-  <div id="seq3" class="subsec">4.3 iPhone → PC 送信（ユーザー体験 + 内部処理）</div>
+  <h3 id="seq3" class="subsec">4.3 iPhone → PC 送信（ユーザー体験 + 内部処理）</h3>
   <p style="font-size:12px;color:#64748b;margin-bottom:12px">
     iPhoneのwrite画面で「PCに送る」を押した瞬間から、PCに新しい付箋が開くまでの全体フロー。
   </p>
@@ -894,18 +914,18 @@ sequenceDiagram
     actor UserPhone as ユーザー（iPhone）
 
     Note over UserPhone: ✏️ メモを書いている
-    UserPhone->>PWA: 「PCに送る」ボタン
-    PWA->>Drive: fusen_img_*.jpg をアップロード（添付がある場合）
-    PWA->>Drive: notes_from_iphone.json に追記
-    PWA->>UserPhone: ✅ 送信完了 → list 画面へ
+    UserPhone-&gt;&gt;PWA: 「PCに送る」ボタン
+    PWA-&gt;&gt;Drive: fusen_img_*.jpg をアップロード（添付がある場合）
+    PWA-&gt;&gt;Drive: notes_from_iphone.json に追記
+    PWA-&gt;&gt;UserPhone: ✅ 送信完了 → list 画面へ
     Note over UserPhone: 📋 iPhoneの操作はここまで
 
     Note over Drive,PC: ⚙️ 30秒ポーリングで自動検出
-    PC->>Drive: notes_from_iphone.json を確認
-    Drive-->>PC: 新着データ + 画像ファイル名
-    PC->>Drive: 処理済みアイテムを削除
-    PC->>Drive: fusen_img_*.jpg を削除
-    PC->>UserPC: 新規付箋ウィンドウが開く ✅
+    PC-&gt;&gt;Drive: notes_from_iphone.json を確認
+    Drive--&gt;&gt;PC: 新着データ + 画像ファイル名
+    PC-&gt;&gt;Drive: 処理済みアイテムを削除
+    PC-&gt;&gt;Drive: fusen_img_*.jpg を削除
+    PC-&gt;&gt;UserPC: 新規付箋ウィンドウが開く ✅
     Note over UserPC: 📝 内容を確認できた
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 0;letter-spacing:0.03em">図 3-5　iPhone → PC 送信シーケンス</p>
@@ -916,7 +936,7 @@ sequenceDiagram
 
 <!-- 4.4 ロック画面に表示 -->
 <div class="card">
-  <div id="seq4" class="subsec">4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="000_REQUIREMENTS.html#sec9">REQ_IP_05</a>）</div>
+  <h3 id="seq4" class="subsec">4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="000_REQUIREMENTS.html#sec9">REQ_IP_05</a>）</h3>
   <p style="font-size:12px;color:#64748b;margin-bottom:12px">
     「消す意思がないかぎりロック画面から消えない」体験を実現する ON/OFF 操作と、タップ後の再通知サイクル。
     ユーザー体験の手順は ①〜⑥ で示す（REQ_IP_05 の①〜④に対応）。
@@ -941,39 +961,39 @@ sequenceDiagram
 
     Note over SW,UserPhone: ①〜③ 常駐サイクル（locked: true が前提）
 
-    SW->>SW: push 受信 → IndexedDB 保存（locked: true）
-    SW->>SW: pending_open &#123;id&#125; を fusen-meta に保存
-    SW->>UserPhone: ① 🔔 ロック画面に通知を表示
+    SW-&gt;&gt;SW: push 受信 → IndexedDB 保存（locked: true）
+    SW-&gt;&gt;SW: pending_open {id} を fusen-meta に保存
+    SW-&gt;&gt;UserPhone: ① 🔔 ロック画面に通知を表示
 
-    UserPhone->>PWA: ② 通知をタップ → iOS がアプリを直接起動
+    UserPhone-&gt;&gt;PWA: ② 通知をタップ → iOS がアプリを直接起動
     Note over UserPhone,PWA: notificationclick は発火しない（iOS 制約）
-    PWA->>PWA: visibilitychange 発火
-    PWA->>PWA: pending_open 確認 → id あり・30 分以内
-    PWA->>PWA: pending_open 削除
-    PWA->>PWA: IndexedDB から draft 取得 → locked === true
-    PWA->>SW: reg.showNotification()
-    SW->>UserPhone: 🔔 通知を再表示（ロック画面から消えない）
-    PWA->>UserPhone: ③ 付箋の内容を表示（write 画面）
+    PWA-&gt;&gt;PWA: visibilitychange 発火
+    PWA-&gt;&gt;PWA: pending_open 確認 → id あり・30 分以内
+    PWA-&gt;&gt;PWA: pending_open 削除
+    PWA-&gt;&gt;PWA: IndexedDB から draft 取得 → locked === true
+    PWA-&gt;&gt;SW: reg.showNotification()
+    SW-&gt;&gt;UserPhone: 🔔 通知を再表示（ロック画面から消えない）
+    PWA-&gt;&gt;UserPhone: ③ 付箋の内容を表示（write 画面）
 
     Note over SW,UserPhone: ④ ①〜③ を繰り返す（タップのたびに再通知）
 
     Note over PWA,UserPhone: ⑤ ユーザーが明示的に OFF にする
-    UserPhone->>PWA: 🔔 ボタンをタップ（list 画面）
+    UserPhone-&gt;&gt;PWA: 🔔 ボタンをタップ（list 画面）
     alt 🔕 OFF にする（locked: true → false）
-        PWA->>PWA: IndexedDB に locked: false を保存
-        PWA->>SW: getNotifications → close()
-        SW->>UserPhone: ⑥ 🔕 ロック画面の通知が消える
+        PWA-&gt;&gt;PWA: IndexedDB に locked: false を保存
+        PWA-&gt;&gt;SW: getNotifications → close()
+        SW-&gt;&gt;UserPhone: ⑥ 🔕 ロック画面の通知が消える
     else 🔔 ON にする（locked: false → true）
-        PWA->>PWA: IndexedDB に locked: true を保存
-        PWA->>SW: showNotification()
-        SW->>UserPhone: 🔔 ロック画面に常駐再開
+        PWA-&gt;&gt;PWA: IndexedDB に locked: true を保存
+        PWA-&gt;&gt;SW: showNotification()
+        SW-&gt;&gt;UserPhone: 🔔 ロック画面に常駐再開
     end
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 12px;letter-spacing:0.03em">図 3-6　ロック画面常駐サイクル（ON/OFF と再通知の実装フロー）</p>
 
   <div class="note note-blue">
     <strong>pending_open の役割：</strong>SW は push 受信時に通知を表示する直前に
-    <code>fusen-meta</code> へ <code>&#123;id, t&#125;</code> を保存する。
+    <code>fusen-meta</code> へ <code>{id, t}</code> を保存する。
     これが「直近の通知 ID の痕跡」となり、アプリ復帰時に
     <code>page.tsx</code> が「通知からの起動である」と判断できる唯一の根拠になる。
     30 分で失効。読んだら即削除。
@@ -992,14 +1012,14 @@ sequenceDiagram
 <!-- =====================================================
      5. UI インタラクション
      ===================================================== -->
-<div id="sec5" class="sec-title"><span>📡</span> 5. UI インタラクション</div>
+<div id="sec5" class="sec-title"><span>📡</span>5 UI インタラクション</div>
 
 <div class="card">
   <div class="note note-blue" style="margin-bottom:20px">
     iPhone PWA は「リストモード」と「ライトモード」の 2 画面構成をベースに、タップ・アイコン操作で全機能にアクセスできる。
   </div>
 
-  <div id="sec5-mode" class="subsec">5.1 画面モード定義</div>
+  <h3 id="sec5-mode" class="subsec">5.1 画面モード定義</h3>
   <p style="font-size:13px;color:#64748b;margin:4px 0 14px 0">リスト・ライトの 2 モードとその遷移条件を定義します。</p>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-9　モード定義</p>
   <table class="module-table">
@@ -1028,7 +1048,7 @@ stateDiagram-v2
   </div>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;text-align:center;margin:6px 0 20px;letter-spacing:0.03em">図 3-7　画面モード遷移図</p>
 
-  <div id="sec5-ops" class="subsec">5.2 各モードの操作一覧</div>
+  <h3 id="sec5-ops" class="subsec">5.2 各モードの操作一覧</h3>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-10　リストモードの操作</p>
   <table class="module-table">
     <thead><tr><th style="width:44px;text-align:center">No</th><th>操作</th><th>対象</th><th>結果</th></tr></thead>
@@ -1050,7 +1070,7 @@ stateDiagram-v2
     </tbody>
   </table>
 
-  <div id="sec5-matrix" class="subsec">5.3 インタラクション・マトリックス</div>
+  <h3 id="sec5-matrix" class="subsec">5.3 インタラクション・マトリックス</h3>
   <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:0 0 4px;letter-spacing:0.03em">表 3-12　操作×モード・マトリックス</p>
   <table class="module-table">
     <thead><tr><th style="width:44px;text-align:center">No</th><th>操作</th><th>リストモード</th><th>ライトモード</th></tr></thead>
@@ -1068,61 +1088,69 @@ stateDiagram-v2
 <!-- =====================================================
      エラーハンドリング・リカバリ方針
      ===================================================== -->
-<div id="recovery" class="sec-title"><span>⚠️</span> 6. エラーハンドリング・リカバリ方針</div>
+<div id="recovery" class="sec-title"><span>⚠️</span>6 エラーハンドリング・リカバリ方針</div>
 
 <div class="card">
   <div class="note note-blue" style="margin-bottom:20px">
     各エラーケースの実施状況。<span style="color:#dc2626;font-weight:700">⚠️ 未実施</span> は現時点での課題。
   </div>
-  <div class="subsec">🔄 Drive API 失敗（PC 側 / gdrive.rs）</div>
+
+  <h3 id="sec6-1" class="subsec">6.1 通信・認証エラー</h3>
+
+  <h4 id="sec6-0-1" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.1.1 Drive API エラーとトークン自動更新</h4>
   <p style="font-size:13px;color:#374151;margin-bottom:14px">
-    PC アプリが Drive API 呼び出しに失敗した場合、<code>Err(String)</code> を返して Tauri コマンド経由でフロントエンドにエラーを通知する。
-    アクセストークンは期限到来の 60 秒前に <code>gdrive.rs</code> が自動リフレッシュする。
-    リフレッシュ失敗時は「Googleの認証が切れました。設定画面から再接続してください。」というメッセージを返す。
-    <strong>フロントエンドでのエラーダイアログ表示は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>（エラーはコンソールに出力されるのみ）。</strong>
-  </p>
-  <div class="subsec">📱 Drive API 失敗（iPhone 側）</div>
-  <p style="font-size:13px;color:#374151;margin-bottom:14px">
-    Drive API 呼び出しが失敗した場合、エラーを <code>fusen-logs</code>（IndexedDB）に記録する。
-    アクセストークンが切れていれば Vercel API 経由で自動リフレッシュして再試行する。
-    リフレッシュも失敗した場合は localStorage と IndexedDB からトークンを削除し、ログイン画面を表示する。
+    Drive API 呼び出し（ダウンロードやアップロード）が失敗した場合、<code>drive.ts</code> 内の <code>downloadWithAutoRefresh</code> 等によりトークンの自動リフレッシュが試行される（実施済み）。<br>
+    リフレッシュにも失敗した場合は例外がスローされ、呼び出し元の React コンポーネント側でキャッチされる。
     <strong>UI上のエラーフィードバック（トースト表示等）は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。</strong>
   </p>
-  <div class="subsec">🔖 認証切れ（iPhone 側）</div>
+
+  <h4 id="sec6-0-2" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.1.2 認証切れ時のフォールバック</h4>
   <p style="font-size:13px;color:#374151;margin-bottom:14px">
-    アクセストークンの期限切れを検出した場合、Vercel API <code>/api/auth/refresh</code> でトークンを自動更新する。
-    リフレッシュトークンも失効していた場合はトークンを削除してログイン画面を表示する（実施済み）。
+    トークンリフレッシュ（Vercel API <code>/api/auth/refresh</code>）が 4xx 等で失敗し、リフレッシュトークン自体が失効していると判定された場合、<code>localStorage</code> からトークン情報を破棄し <code>null</code> を返す。<br>
+    これによりアプリは未認証状態とみなされ、自動的にログイン画面（<code>login</code> ステップ）へフォールバックする（実施済み）。
   </p>
-  <div class="subsec">🔔 Service Worker の更新</div>
+  <h4 id="sec6-0-3" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.1.3 PCアプリ側での Drive API 失敗（gdrive.rs）</h4>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    PC アプリ（Rust）が Drive API 呼び出しに失敗した場合、<code>Err(String)</code> を返して Tauri コマンド経由でPCフロントエンドにエラーを通知する。<br>
+    PC側のアクセストークンは期限到来の 60 秒前に自動リフレッシュされ、失敗時は「Googleの認証が切れました」と返す。
+    <strong>PCフロントエンドでのエラーダイアログ表示（トースト等）は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。</strong>
+  </p>
+
+  <h4 id="sec6-0-4" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.1.4 PCからの Web Push 送信失敗</h4>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    PC アプリから APNs / FCM へのプッシュ送信が失敗した場合（201 以外の HTTP ステータス）、エラーコードを含む <code>Err</code> を返す。<br>
+    <strong>PC側での送信失敗時の自動リトライ機構は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。</strong>送信失敗時は iPhone に通知が届かないまま終了する。
+  </p>
+  <h3 id="sec6-2" class="subsec">6.2 バックグラウンド処理・リカバリ</h3>
+
+  <h4 id="sec6-0-5" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.2.1 Push 受信時のフォールバック（画像DL失敗時）</h4>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    Service Worker (<code>worker/index.js</code>) 内での Push 受信処理では、画像（<code>fusen_img_*</code>）の Drive ダウンロードがネットワークエラー等で失敗した場合でも<strong>処理を中断しない</strong>フェイルセーフ機構がある。<br>
+    画像取得に失敗した場合でも、テキスト本文のみを IndexedDB（<code>fusen-drafts</code>）に保存し、ユーザーへの OS 通知を確実に表示する（実施済み）。
+  </p>
+  
+  <h4 id="sec6-0-6" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.2.2 デバッグログの運用方針（fusen-logs）</h4>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    UIを持たない Service Worker 内で発生した処理結果やエラー（トークン取得失敗、画像保存失敗など）は、IndexedDB の <code>fusen-logs</code> ストアに対して <code>fire-and-forget</code> で記録される（実施済み）。<br>
+    後から Chrome DevTools 等で内部状態や Push 受信時のエラー原因を追跡できるようになっている。
+  </p>
+
+  <h4 id="sec6-0-7" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.2.3 iOS特有の制約とリカバリサイクル</h4>
+  <p style="font-size:13px;color:#374151;margin-bottom:14px">
+    iOS の PWA 環境では、バックグラウンドでの通知タップ時（<code>notificationclick</code> イベント）が正常に発火しない・あるいは Web API へのアクセスが制限されるケースがある。<br>
+    この制限に対するリカバリとして、通知受信時に次回開くべきノート ID を IndexedDB に保存（<code>pending_open</code>）し、次にユーザーがアプリを開いた際（<code>page.tsx</code> マウント時）に自動的にそのノートを表示するサイクルを構築している（実施済み）。
+  </p>
+  
+  <h4 id="sec6-0-8" class="subsec" style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 6px">6.2.4 Service Worker の更新</h4>
   <p style="font-size:13px;color:#374151;margin-bottom:14px">
     <code>skipWaiting()</code> + <code>clients.claim()</code> で新しい SW が即時有効化される。バグ修正版をリリースした際に古い SW が動き続けることはない。
-  </p>
-  <div class="subsec">📲 Push 配信失敗（iPhone 側）</div>
-  <p style="font-size:13px;color:#374151">
-    SW 内での Push 処理（Drive 書き込み・IndexedDB 保存）が失敗した場合、<code>fusen-logs</code> に記録する。
-    なお、Push 配信自体の失敗リトライは <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。配信失敗時はユーザーに通知が届かないまま終了する。
-  </p>
-  <div class="subsec">🔔 Web Push 送信失敗（PC → iPhone）</div>
-  <p style="font-size:13px;color:#374151;margin-bottom:14px">
-    APNs / FCM へのプッシュ送信が失敗した場合（201 以外のステータス）、エラーコードを含む <code>Err</code> を返す。
-    <strong>リトライは <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。</strong>送信失敗時は iPhone に通知が届かないまま終了する。
-  </p>
-  <div class="subsec">💾 付箋ファイルの書き込み失敗（PC 内部）</div>
-  <p style="font-size:13px;color:#374151;margin-bottom:14px">
-    付箋内容の保存はアトミック書き込み（一時ファイル書き込み → rename）で行い、途中クラッシュによるデータ破損を防ぐ（実施済み）。
-    ファイルシステムエラーが発生した場合は Tauri コマンドのエラーとして返却する。
-  </p>
-  <div class="subsec">🔁 PC アプリ再起動時の復元</div>
-  <p style="font-size:13px;color:#374151">
-    起動時に Vault フォルダを全スキャンして付箋ウィンドウを再生成するため、アプリが異常終了した場合でも次回起動時に自動復元される（実施済み）。
-    ただし終了直前の未保存内容は失われる可能性がある（保存タイミングは blur 時 or デバウンス 800ms 後）。
   </p>
 </div>
 
 <!-- =====================================================
      改版履歴
      ===================================================== -->
-<div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
+<div id="history" class="sec-title"><span>📋</span>7 改版履歴</div>
 
 <div class="card">
   <table class="history-table">
@@ -1149,5 +1177,6 @@ stateDiagram-v2
   </table>
 </div>
 
-</body>
-</html>
+
+
+</body></html>

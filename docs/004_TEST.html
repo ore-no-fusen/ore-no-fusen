@@ -1,8 +1,6 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
+<!DOCTYPE html><html lang="ja"><head>
 <meta charset="UTF-8">
-<title>俺の付箋 — テスト設計書</title>
+<title>俺の付箋 — テスト設計</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -16,7 +14,7 @@ body {
 
 /* ===== NAV ===== */
 .nav { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
-.nav a, .nav span {
+.nav a, .nav span.nav-current {
   display: inline-block;
   padding: 6px 16px;
   border-radius: 99px;
@@ -26,6 +24,7 @@ body {
   border: 2px solid;
 }
 .nav-current { background: #7c3aed; border-color: #7c3aed; color: white; }
+.nav-index { border-color: #6d28d9; color: #6d28d9; }
 .nav-link { background: white; border-color: #93c5fd; color: #1e40af; }
 .nav-link:hover { background: #eff6ff; }
 
@@ -61,10 +60,12 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   margin-bottom: 40px;
   display: inline-block;
   min-width: 280px;
+  column-count: 2;
+  column-gap: 32px;
 }
 .toc-title { font-size: 12px; font-weight: 800; color: #475569; margin-bottom: 12px; letter-spacing: 0.05em; }
-.toc ol { padding-left: 20px; }
-.toc li { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
+
+
 .toc a { color: #6d28d9; text-decoration: none; }
 .toc a:hover { text-decoration: underline; }
 
@@ -168,44 +169,64 @@ code {
   text-align: left;
 }
 .history-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+.test-table th:nth-child(1),
+.test-table td:nth-child(1),
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) { width: 44px; text-align: center; color: #94a3b8; font-weight: 700; }
+
+.toc-title { column-span: all; margin-bottom: 16px; }
+
+
+
+
+
+.toc-list { column-count: 3; column-gap: 32px; font-size: 13px; line-height: 1.6; }
+@media (max-width: 1024px) { .toc-list { column-count: 2; } }
+@media (max-width: 768px) { .toc-list { column-count: 1; } }
+.toc-l1 { margin-bottom: 8px; font-weight: 700; break-inside: avoid; }
+.toc-l2 { margin-bottom: 6px; margin-left: 16px; font-weight: normal; break-inside: avoid; }
+.toc-l3 { margin-bottom: 6px; margin-left: 32px; font-size: 12px; color: #475569; break-inside: avoid; }
+.toc-item a { color: #4c1d95; text-decoration: none; }
+.toc-item a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
 <!-- ===== NAV ===== -->
 <nav class="nav">
-  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
+  <a href="INDEX.html" class="nav-link nav-index">📋 INDEX</a>
   <a class="nav-link" href="000_REQUIREMENTS.html">000 要求仕様</a>
-  <a class="nav-link" href="001_OVERVIEW.html">001 全体像</a>
-  <a class="nav-link" href="002_PC.html">002 PC側</a>
-  <a class="nav-link" href="003_IPHONE.html">003 iPhone連携</a>
+  <a class="nav-link" href="001_OVERVIEW.html">001 システム全体像</a>
+  <a class="nav-link" href="002_PC.html">002 PCローカル・UI設計</a>
+  <a class="nav-link" href="003_IPHONE.html">003 クラウド同期・iPhone設計</a>
   <span class="nav-current">004 テスト設計</span>
   <a class="nav-link" href="005_GLOSSARY.html">005 用語集</a>
+  <a class="nav-link" href="006_4PLUS1_ARCHITECTURE.html">006 4+1 Viewアーキテクチャ</a>
 </nav>
 
 <!-- ===== HEADER ===== -->
-<h1>004 テスト設計書</h1>
-<p class="lead">テスト戦略・テストファイル一覧・実行方法・カバレッジ外領域</p>
+<h1>俺の付箋 — テスト設計</h1>
+<p class="lead">テスト戦略・テスト対象一覧・実行方法・カバレッジ外領域</p>
 <p class="version-row">設計書 v1.0 / 2026-04-20</p>
 
 <!-- ===== 目次 ===== -->
 <nav class="toc">
   <div class="toc-title">目次</div>
-  <ol>
-    <li><a href="#sec1">テスト戦略（ピラミッド）</a></li>
-    <li><a href="#sec2">ユニットテスト一覧</a></li>
-    <li><a href="#sec3">E2Eテスト一覧</a></li>
-    <li><a href="#sec4">テスト実行方法</a></li>
-    <li><a href="#sec5">カバレッジ外の領域</a></li>
-    <li><a href="#history">改版履歴</a></li>
-  </ol>
+  <div class="toc-list">
+    <div class="toc-item toc-l1"><a href="#sec1">1 テスト戦略（ピラミッド）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec2">2 ユニットテスト一覧（Vitest）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec3">3 E2Eテスト一覧（Playwright）</a></div>
+    <div class="toc-item toc-l1"><a href="#sec4">4 テスト実行方法</a></div>
+    <div class="toc-item toc-l1"><a href="#sec5">5 カバレッジ外の領域</a></div>
+    <div class="toc-item toc-l1"><a href="#history">6 改版履歴</a></div>
+  </div>
 </nav>
 
 
 <!-- =====================================================
      1. テスト戦略
      ===================================================== -->
-<div id="sec1" class="sec-title"><span>🧪</span> 1. テスト戦略（ピラミッド）</div>
+<div id="sec1" class="sec-title"><span>🧪</span>1 テスト戦略（ピラミッド）</div>
 
 <div class="card">
   <p style="font-size:13px;color:#64748b;margin-bottom:20px">
@@ -239,7 +260,7 @@ code {
 <!-- =====================================================
      2. ユニットテスト一覧
      ===================================================== -->
-<div id="sec2" class="sec-title"><span>⚡</span> 2. ユニットテスト一覧（Vitest）</div>
+<div id="sec2" class="sec-title"><span>⚡</span>2 ユニットテスト一覧（Vitest）</div>
 
 <div class="card">
   <div class="subsec">2.1 PC アプリ側</div>
@@ -366,7 +387,7 @@ code {
 <!-- =====================================================
      3. E2Eテスト一覧
      ===================================================== -->
-<div id="sec3" class="sec-title"><span>🎭</span> 3. E2Eテスト一覧（Playwright）</div>
+<div id="sec3" class="sec-title"><span>🎭</span>3 E2Eテスト一覧（Playwright）</div>
 
 <div class="card">
   <div class="note note-blue" style="margin-bottom:20px">
@@ -416,7 +437,7 @@ code {
 <!-- =====================================================
      4. テスト実行方法
      ===================================================== -->
-<div id="sec4" class="sec-title"><span>▶</span> 4. テスト実行方法</div>
+<div id="sec4" class="sec-title"><span>▶</span>4 テスト実行方法</div>
 
 <div class="card">
   <div class="subsec">4.1 フロントエンド ユニットテスト（Vitest）</div>
@@ -460,7 +481,7 @@ code {
 <!-- =====================================================
      5. カバレッジ外の領域
      ===================================================== -->
-<div id="sec5" class="sec-title"><span>🚫</span> 5. カバレッジ外の領域</div>
+<div id="sec5" class="sec-title"><span>🚫</span>5 カバレッジ外の領域</div>
 
 <div class="card">
   <p style="font-size:13px;color:#64748b;margin-bottom:20px">
@@ -516,7 +537,7 @@ code {
 <!-- =====================================================
      改版履歴
      ===================================================== -->
-<div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
+<div id="history" class="sec-title"><span>📋</span>6 改版履歴</div>
 
 <div class="card">
   <table class="history-table">
@@ -534,5 +555,6 @@ code {
   </table>
 </div>
 
-</body>
-</html>
+
+
+</body></html>

@@ -1,6 +1,4 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
+<!DOCTYPE html><html lang="ja"><head>
 <meta charset="UTF-8">
 <title>俺の付箋 — 用語集</title>
 <style>
@@ -16,7 +14,7 @@ body {
 
 /* ===== NAV ===== */
 .nav { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
-.nav a, .nav span {
+.nav a, .nav span.nav-current {
   display: inline-block;
   padding: 6px 16px;
   border-radius: 99px;
@@ -26,6 +24,7 @@ body {
   border: 2px solid;
 }
 .nav-current { background: #dc2626; border-color: #dc2626; color: white; }
+.nav-index { border-color: #6d28d9; color: #6d28d9; }
 .nav-link { background: white; border-color: #93c5fd; color: #1e40af; }
 .nav-link:hover { background: #eff6ff; }
 
@@ -43,10 +42,12 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   margin-bottom: 40px;
   display: inline-block;
   min-width: 260px;
+  column-count: 2;
+  column-gap: 32px;
 }
 .toc-title { font-size: 12px; font-weight: 800; color: #475569; margin-bottom: 12px; letter-spacing: 0.05em; }
-.toc ol { padding-left: 20px; }
-.toc li { font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
+
+
 .toc a { color: #6d28d9; text-decoration: none; }
 .toc a:hover { text-decoration: underline; }
 
@@ -79,6 +80,7 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   padding: 11px 14px;
   text-align: left;
   vertical-align: top;
+  line-height: 1.5;
 }
 .glossary-table th {
   background: #f8fafc;
@@ -87,16 +89,27 @@ h1 { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
   font-size: 11px;
   letter-spacing: 0.04em;
 }
-.glossary-table td:first-child {
+.glossary-table th:nth-child(1),
+.glossary-table td:nth-child(1) {
+  width: 44px;
+  text-align: center;
+  color: #94a3b8;
   font-weight: 700;
-  font-family: ui-monospace, monospace;
-  width: 22%;
-  white-space: nowrap;
-  color: #1e40af;
   background: #f8fafc;
 }
+.glossary-table th:nth-child(2),
+.glossary-table td:nth-child(2) {
+  width: 22%;
+  font-weight: 700;
+  color: #1e40af;
+}
+.glossary-table th:nth-child(4),
+.glossary-table td:nth-child(4) {
+  width: 110px;
+  text-align: center;
+}
 .glossary-table tr:hover td { background: #f0f9ff; }
-.glossary-table tr:hover td:first-child { background: #e0f2fe; }
+.glossary-table tr:hover td:nth-child(1) { background: #e0f2fe; }
 
 code {
   font-family: ui-monospace, monospace;
@@ -140,46 +153,64 @@ code {
   text-align: left;
 }
 .history-table th { background: #f8fafc; font-weight: 700; color: #475569; }
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) { width: 44px; text-align: center; color: #94a3b8; font-weight: 700; }
+
+.toc-title { column-span: all; margin-bottom: 16px; }
+
+
+
+
+
+.toc-list { column-count: 3; column-gap: 32px; font-size: 13px; line-height: 1.6; }
+@media (max-width: 1024px) { .toc-list { column-count: 2; } }
+@media (max-width: 768px) { .toc-list { column-count: 1; } }
+.toc-l1 { margin-bottom: 8px; font-weight: 700; break-inside: avoid; }
+.toc-l2 { margin-bottom: 6px; margin-left: 16px; font-weight: normal; break-inside: avoid; }
+.toc-l3 { margin-bottom: 6px; margin-left: 32px; font-size: 12px; color: #475569; break-inside: avoid; }
+.toc-item a { color: #4c1d95; text-decoration: none; }
+.toc-item a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
 <!-- ===== NAV ===== -->
 <nav class="nav">
-  <a href="INDEX.html" class="nav-link" style="border-color:#6d28d9;color:#6d28d9">📋 INDEX</a>
+  <a href="INDEX.html" class="nav-link nav-index">📋 INDEX</a>
   <a class="nav-link" href="000_REQUIREMENTS.html">000 要求仕様</a>
-  <a class="nav-link" href="001_OVERVIEW.html">001 全体像</a>
-  <a class="nav-link" href="002_PC.html">002 PC側</a>
-  <a class="nav-link" href="003_IPHONE.html">003 iPhone連携</a>
+  <a class="nav-link" href="001_OVERVIEW.html">001 システム全体像</a>
+  <a class="nav-link" href="002_PC.html">002 PCローカル・UI設計</a>
+  <a class="nav-link" href="003_IPHONE.html">003 クラウド同期・iPhone設計</a>
   <a class="nav-link" href="004_TEST.html">004 テスト設計</a>
   <span class="nav-current">005 用語集</span>
+  <a class="nav-link" href="006_4PLUS1_ARCHITECTURE.html">006 4+1 Viewアーキテクチャ</a>
 </nav>
 
 <!-- ===== HEADER ===== -->
-<h1>005 用語集（Glossary）</h1>
-<p class="lead">設計書（000〜004）に登場する専門用語を一覧で解説します。</p>
+<h1>俺の付箋 — 用語集</h1>
+<p class="lead">専門用語・略語一覧</p>
 <p class="version-row">v1.0 / 2026-04-20</p>
 
 <!-- ===== 目次 ===== -->
 <nav class="toc">
-  <div class="toc-title">カテゴリ</div>
-  <ol>
-    <li><a href="#sec-auth">認証・セキュリティ</a></li>
-    <li><a href="#sec-push">Push 通知</a></li>
-    <li><a href="#sec-browser">ブラウザ技術</a></li>
-    <li><a href="#sec-fw">フレームワーク・ランタイム</a></li>
-    <li><a href="#sec-design">設計用語</a></li>
-    <li><a href="#sec-drive">Google Drive API</a></li>
-    <li><a href="#sec-data">データ形式</a></li>
-    <li><a href="#history">改版履歴</a></li>
-  </ol>
+  <div class="toc-title">目次</div>
+  <div class="toc-list">
+    <div class="toc-item toc-l1"><a href="#sec-auth">1 認証・セキュリティ</a></div>
+    <div class="toc-item toc-l1"><a href="#sec-push">2 Push 通知</a></div>
+    <div class="toc-item toc-l1"><a href="#sec-browser">3 ブラウザ技術</a></div>
+    <div class="toc-item toc-l1"><a href="#sec-fw">4 フレームワーク・ランタイム</a></div>
+    <div class="toc-item toc-l1"><a href="#sec-design">5 設計用語</a></div>
+    <div class="toc-item toc-l1"><a href="#sec-drive">6 Google Drive API</a></div>
+    <div class="toc-item toc-l1"><a href="#sec-data">7 データ形式</a></div>
+    <div class="toc-item toc-l1"><a href="#history">8 改版履歴</a></div>
+  </div>
 </nav>
 
 
 <!-- =====================================================
-     認証・セキュリティ
+     1. 認証・セキュリティ
      ===================================================== -->
-<div id="sec-auth" class="sec-title"><span>🔑</span> 認証・セキュリティ</div>
+<div id="sec-auth" class="sec-title"><span>🔑</span>1 認証・セキュリティ</div>
 
 <div class="card">
   <span class="cat-label cat-auth">認証・セキュリティ</span>
@@ -228,9 +259,9 @@ code {
 
 
 <!-- =====================================================
-     Push 通知
+     2. Push 通知
      ===================================================== -->
-<div id="sec-push" class="sec-title"><span>🔔</span> Push 通知</div>
+<div id="sec-push" class="sec-title"><span>🔔</span>2 Push 通知</div>
 
 <div class="card">
   <span class="cat-label cat-push">Push 通知</span>
@@ -273,9 +304,9 @@ code {
 
 
 <!-- =====================================================
-     ブラウザ技術
+     3. ブラウザ技術
      ===================================================== -->
-<div id="sec-browser" class="sec-title"><span>🌐</span> ブラウザ技術</div>
+<div id="sec-browser" class="sec-title"><span>🌐</span>3 ブラウザ技術</div>
 
 <div class="card">
   <span class="cat-label cat-browser">ブラウザ技術</span>
@@ -324,9 +355,9 @@ code {
 
 
 <!-- =====================================================
-     フレームワーク・ランタイム
+     4. フレームワーク・ランタイム
      ===================================================== -->
-<div id="sec-fw" class="sec-title"><span>🛠️</span> フレームワーク・ランタイム</div>
+<div id="sec-fw" class="sec-title"><span>🛠️</span>4 フレームワーク・ランタイム</div>
 
 <div class="card">
   <span class="cat-label cat-fw">フレームワーク・ランタイム</span>
@@ -369,9 +400,9 @@ code {
 
 
 <!-- =====================================================
-     設計用語
+     5. 設計用語
      ===================================================== -->
-<div id="sec-design" class="sec-title"><span>📐</span> 設計用語</div>
+<div id="sec-design" class="sec-title"><span>📐</span>5 設計用語</div>
 
 <div class="card">
   <span class="cat-label cat-design">設計用語</span>
@@ -420,9 +451,9 @@ code {
 
 
 <!-- =====================================================
-     Google Drive API
+     6. Google Drive API
      ===================================================== -->
-<div id="sec-drive" class="sec-title"><span>☁️</span> Google Drive API</div>
+<div id="sec-drive" class="sec-title"><span>☁️</span>6 Google Drive API</div>
 
 <div class="card">
   <span class="cat-label cat-drive">Google Drive API</span>
@@ -471,9 +502,9 @@ code {
 
 
 <!-- =====================================================
-     データ形式
+     7. データ形式
      ===================================================== -->
-<div id="sec-data" class="sec-title"><span>📄</span> データ形式</div>
+<div id="sec-data" class="sec-title"><span>📄</span>7 データ形式</div>
 
 <div class="card">
   <span class="cat-label cat-data">データ形式</span>
@@ -512,7 +543,7 @@ code {
 <!-- =====================================================
      改版履歴
      ===================================================== -->
-<div id="history" class="sec-title"><span>📋</span> 改版履歴</div>
+<div id="history" class="sec-title"><span>📋</span>8 改版履歴</div>
 
 <div class="card">
   <table class="history-table">
@@ -524,11 +555,12 @@ code {
         <td>1</td>
         <td>1.0</td>
         <td>2026-04-20</td>
-        <td>新規作成。設計書（000〜004）に登場する専門用語を7カテゴリ・29語で整理。</td>
+        <td>新規作成。設計書に登場する専門用語を整理。</td>
       </tr>
     </tbody>
   </table>
 </div>
 
-</body>
-</html>
+
+
+</body></html>
