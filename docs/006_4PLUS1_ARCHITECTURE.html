@@ -349,17 +349,17 @@ sequenceDiagram
   <div class="mermaid">
 flowchart TD
     subgraph "Local Execution Environment (Edge)"
-        PC[PC (Windows / macOS) <br> Tauri Runtime <br> Local Filesystem]
-        IPHONE[iPhone / iPad <br> Safari WebKit <br> IndexedDB]
+        PC["PC (Windows / macOS) <br> Tauri Runtime <br> Local Filesystem"]
+        IPHONE["iPhone / iPad <br> Safari WebKit <br> IndexedDB"]
     end
 
     subgraph "User Cloud Infrastructure"
-        DRIVE[Google Drive API <br> (User's Storage)]
+        DRIVE["Google Drive API <br> (User's Storage)"]
     end
 
     subgraph "Vendor Infrastructure"
-        VERCEL[Vercel Serverless Edge <br> Hosted App]
-        APNS[Apple Push Notification Service]
+        VERCEL["Vercel Serverless Edge <br> Hosted App"]
+        APNS["Apple Push Notification Service"]
     end
 
     PC <-->|HTTPS API / Polling| DRIVE
