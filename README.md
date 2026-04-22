@@ -14,7 +14,7 @@ A beautiful sticky notes app with Markdown support.
 [![License](https://img.shields.io/github/license/ore-no-fusen/ore-no-fusen?style=flat-square)](LICENSE)
 [![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square&label=downloads+total)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 [![Downloads Latest](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/latest/total?style=flat-square&label=downloads+latest)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
-[![Docs Views](https://umami-badges.vercel.app/api/umami/views?url=https://cloud.umami.is&shareId=RIjI7mnXFhjtHdOb&theme=dark)](https://ore-no-fusen.github.io/ore-no-fusen/)
+
 
 [Download](#-installation) • [Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [Landing Page](https://ore-no-fusen.vercel.app)
 
