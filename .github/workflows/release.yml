@@ -49,6 +49,7 @@ jobs:
   winget:
     needs: release
     runs-on: windows-latest
+    continue-on-error: true
     steps:
       - uses: vedantmgoyal2009/winget-releaser@v2
         with:
