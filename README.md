@@ -210,6 +210,7 @@ Save frequently used links on sticky notes. Group them using tags.
 
 ## 📖 Documentation
 
+- [Online Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) - System specifications and architecture (JA)
 - [User Guide](docs/USER_GUIDE.md) - Detailed instructions (JA)
 - [FAQ](docs/FAQ.md) - Frequently asked questions (JA)
 - [Development Rules](AG_RULES.md) - Guidelines for developers
