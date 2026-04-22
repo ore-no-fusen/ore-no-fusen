@@ -15,7 +15,7 @@ Markdownで書ける、美しい付箋アプリ
 [![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square&label=downloads+total)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 [![Downloads Latest](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/latest/total?style=flat-square&label=downloads+latest)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
-[ダウンロード](#-インストール) • [ドキュメント](docs/USER_GUIDE.md) • [FAQ](docs/FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app)
+[ダウンロード](#-インストール) • [オンラインドキュメント](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app)
 
 </div>
 
@@ -212,6 +212,7 @@ npm run tauri build
 
 ## 📖 ドキュメント
 
+- [オンラインドキュメント (GitHub Pages)](https://ore-no-fusen.github.io/ore-no-fusen/) - システム設計・仕様書
 - [ユーザーガイド](docs/USER_GUIDE.md) - 詳しい使い方
 - [FAQ](docs/FAQ.md) - よくある質問
 - [開発ルール](AG_RULES.md) - 開発者向けルール
