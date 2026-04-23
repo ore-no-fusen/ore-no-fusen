@@ -38,6 +38,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# ドキュメント変換ツール（コミット不要）
+/docs-v2/
+
 # 俺のファイル置き場
 /my
 
