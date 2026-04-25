@@ -38,8 +38,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# ドキュメント変換ツール（コミット不要）
-/docs-v2/
+# docs-v2 の依存パッケージ・ビルド成果物（コミット不要）
+/docs-v2/node_modules/
+/docs-v2/.vitepress/cache/
+/docs-v2/.vitepress/dist/
 
 # 俺のファイル置き場
 /my
@@ -49,6 +51,7 @@ next-env.d.ts
 
 # バックアップファイル置き場
 /bk
+/docs/bk/
 
 # PWA (next-pwa) が自動生成するService Workerファイル（ビルド時に毎回再生成される）
 public/sw.js

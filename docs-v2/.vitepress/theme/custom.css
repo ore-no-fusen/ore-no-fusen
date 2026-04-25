@@ -1,0 +1,172 @@
+/* Mermaid内のテキストがバウンディングボックスからはみ出して文字切れするのを防ぎ、文字サイズを統一する */
+.mermaid .nodeLabel,
+.mermaid .edgeLabel {
+  line-height: 1.2 !important;
+  font-family: sans-serif !important;
+  font-size: 13px !important;
+}
+
+.mermaid foreignObject {
+  overflow: visible !important;
+}
+
+/* VitePressのグローバルCSSがMermaid内のpタグ等のマージンを狂わせるのを防ぐ */
+/* 同時に、MermaidのSVG自体を画面幅いっぱい（フルワイド）に広げて余白を潰す */
+.mermaid {
+  display: flex !important;
+  justify-content: flex-start !important; /* 左寄せ */
+  max-width: 100% !important;
+  overflow-x: auto !important; /* 画面より大きい場合はスクロールさせる */
+}
+.mermaid svg {
+  max-width: 100% !important;
+  width: max-content !important; /* 本来のサイズ以上には拡大しない */
+  height: auto !important;
+}
+.mermaid p {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* VitePress のレイアウト変数を上書きして、左右のサイドバーを狭め、真ん中を広くする */
+:root {
+  --vp-sidebar-width: 220px; /* 左の「俺の付箋」サイドバーを少し縮小 */
+  --vp-aside-width: 200px;   /* 右の「On this page」を縮小 */
+  --vp-layout-max-width: 100%; /* 全体の最大幅を完全にフルワイドに拡張 */
+}
+
+/* VitePress のコンテンツ幅制限（諸悪の根源である content-container 等）を撤廃して、画面いっぱいに使い切る */
+.VPDoc {
+  width: 100% !important;
+}
+.VPDoc .container,
+.VPDoc .content,
+.VPDoc .content-container,
+.vp-doc {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+.VPDoc .content {
+  margin: 0 !important;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+.VPDoc .content-container {
+  margin: 0 !important;
+}
+
+/* モジュール表の余白を詰めてコンパクトにする */
+.module-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.module-table th, .module-table td {
+  border: 1px solid var(--vp-c-divider);
+  padding: 6px 8px; /* 余白を詰める */
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.4;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+.module-table th code, .module-table td code {
+  white-space: nowrap;
+}
+.module-table th {
+  background: var(--vp-c-bg-mute);
+  font-weight: 700;
+  color: var(--vp-c-text-2);
+}
+
+/* =========================================
+   魂を込めたデザイン（UIモックアップ＆レイアウト復元）
+   ========================================= */
+
+/* ===== グループラベル ===== */
+.group-label {
+  font-size: 12px; font-weight: 700;
+  border-radius: 8px; padding: 6px 14px;
+  display: inline-block; margin-bottom: 16px;
+}
+.group-safari { color: #9a3412; background: #fff7ed; border: 1.5px solid #fb923c; }
+.group-pwa    { color: #065f46; background: #f0fdf4; border: 1.5px solid #34d399; }
+
+/* ===== 画面グリッド（モック + 説明）===== */
+.screens-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+/* ===== スマホモック ===== */
+.phone { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.phone-frame {
+  width: 140px; height: 260px;
+  background: #1c1c1e; border-radius: 28px;
+  padding: 10px 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  display: flex; flex-direction: column;
+}
+.phone-notch { width: 48px; height: 8px; background: #1c1c1e; border-radius: 4px; margin: 0 auto 6px; }
+.phone-screen {
+  flex: 1; background: white; border-radius: 20px;
+  overflow: hidden; display: flex; flex-direction: column;
+  position: relative;
+}
+.phone-ver { position: absolute; bottom: 3px; right: 6px; font-size: 6px; color: #d1d5db; font-family: monospace; }
+.screen-name { font-size: 13px; font-weight: 700; color: var(--vp-c-text-1); }
+.screen-cond { font-size: 10px; color: var(--vp-c-text-2); font-family: monospace; }
+
+/* ===== 画面説明 ===== */
+.screen-def {
+  font-size: 11px; color: var(--vp-c-text-2); line-height: 1.6;
+  background: var(--vp-c-bg-soft); border-radius: 8px; padding: 10px 12px;
+  width: 100%; max-width: 200px;
+}
+.screen-def dt { font-weight: 700; color: var(--vp-c-text-1); margin-top: 6px; }
+.screen-def dt:first-child { margin-top: 0; }
+.screen-def dd { margin-left: 0; color: var(--vp-c-text-2); }
+
+/* ===== モックパーツ（ダークモード問わず固定色の部分はそのまま） ===== */
+.mock-text  { font-size: 6px; color: #374151; text-align: center; line-height: 1.5; }
+.mock-title { font-size: 8px; font-weight: 700; color: #111827; }
+.mock-btn   { background: #3b82f6; color: white; font-size: 6px; font-weight: 700; border-radius: 6px; padding: 4px 10px; text-align: center; }
+.mock-card  { background: white; border-radius: 8px; padding: 4px 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 4px; color: #111827; }
+.mock-dot   { width: 6px; height: 6px; border-radius: 50%; background: #d1d5db; flex-shrink: 0; }
+.mock-dot-blue { background: #3b82f6; }
+.mock-header { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; color: #111827; }
+.mock-input  { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; height: 30px; width: 100%; padding: 3px 5px; font-size: 6px; color: #9ca3af; }
+.mock-toolbar { display: flex; gap: 3px; padding: 3px 2px; border-top: 1px solid #f3f4f6; }
+.mock-tool-btn { font-size: 7px; color: #6b7280; background: #f9fafb; border-radius: 3px; padding: 1px 3px; }
+.step-badge { font-size: 5px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 2px 5px; }
+.mock-step-card { background: white; border-radius: 6px; padding: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); font-size: 5px; color: #374151; }
+.mock-sub-btn { background: #f3f4f6; color: #374151; font-size: 5px; font-weight: 700; border-radius: 5px; padding: 3px 7px; text-align: center; }
+
+/* ===== データ構造 (store-grid) ===== */
+.store-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+@media (max-width: 700px) { .store-grid { grid-template-columns: 1fr; } }
+
+.store-card {
+  border-radius: 10px;
+  padding: 16px 18px;
+  background: var(--vp-c-bg-soft);
+}
+.store-card h4 {
+  font-size: 13px; font-weight: 800;
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.store-idb    { border: 1.5px solid #eab308; }
+.store-idb h4 { color: #d97706; }
+.store-ls     { border: 1.5px solid #a855f7; }
+.store-ls h4  { color: #9333ea; }
+.store-drive  { border: 1.5px solid #22c55e; }
+.store-drive h4 { color: #16a34a; }
