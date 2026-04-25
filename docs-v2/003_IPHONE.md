@@ -345,6 +345,18 @@ Google OAuth の <code>client_secret</code>（秘密鍵）をブラウザ（iPho
 | 1 | `app/api/auth/token/route.ts` | OAuth 認証コード → アクセストークン＋リフレッシュトークン交換。初回ログイン時のみ呼ばれる。 |
 | 2 | `app/api/auth/refresh/route.ts` | リフレッシュトークン → 新しいアクセストークン取得。Drive API 呼び出し時にトークン期限切れを検出したら自動呼び出し。 |
 
+#### 環境変数
+
+| 変数名 | 設定場所 | 取得元 | 用途 |
+|:---|:---|:---|:---|
+| `GOOGLE_CLIENT_SECRET_PWA` | Vercel（サーバー専用） | Google Cloud Console → 認証情報 → OAuth 2.0 クライアント → クライアント シークレット | トークン交換・リフレッシュ時に Google へ提示する秘密鍵。ブラウザに渡してはいけない。 |
+| `NEXT_PUBLIC_GDRIVE_CLIENT_ID` | Vercel（公開可） | Google Cloud Console → 認証情報 → OAuth 2.0 クライアント → クライアント ID | OAuth リダイレクト URL の生成に使う。公開しても問題ない。 |
+
+<Note type="warning">
+<code>GOOGLE_CLIENT_SECRET_PWA</code> は <strong>Vercel の Environment Variables にのみ</strong>設定する。<code>.env</code> ファイルやコードにハードコードしない。<br>
+Vercel が「Needs Attention」と表示する場合は、Google Cloud Console（APIとサービス → 認証情報 → 該当クライアント）でステータスが「有効」であれば実害なし。値が一致していれば無視してよい。
+</Note>
+
 ---
 
 ## 3 データ構造
@@ -360,39 +372,41 @@ Drive は中継所（未処理キュー）に過ぎない。Drive に残って�
 
 PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3ストアを定義します。
 
+<div class="store-card store-idb" style="margin-bottom:16px">
+  <h4 id="sec3-0-1">3.1.1 🗄 fusen-drafts（ノートデータ）</h4>
+  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-4　fusen-drafts スキーマ</p>
+  <table class="module-table" style="font-size:11px">
+    <thead><tr><th style="width:36px;text-align:center;white-space:nowrap">No</th><th style="width:120px">フィールド</th><th style="width:80px">型</th><th>意味</th></tr></thead>
+    <tbody>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td><code>id</code></td><td>string</td><td>主キー（UUID）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>title</code></td><td>string</td><td>ノートタイトル</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td><code>body</code></td><td>string</td><td>本文（Markdown）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">4</td><td><code>images</code></td><td>Object[]</td><td>添付画像（<code>{ fileName: string, blob: Blob }[]</code>）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">5</td><td><code>tags</code></td><td>string[]</td><td>付与されたタグの配列</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">6</td><td><code>locked</code></td><td>boolean</td><td>ロック画面に表示が ON なら true</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">7</td><td><code>created_at</code></td><td>string</td><td>作成日時（JST ISO 8601）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">8</td><td><code>sent_at</code></td><td>string</td><td>送信日時（未送信時は undefined）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">9</td><td><code>received_pc</code></td><td>boolean</td><td>PC 側が受信済みかどうか</td></tr>
+    </tbody>
+  </table>
+</div>
 <div class="store-grid">
-  <div class="store-card store-idb">
-    <h4 id="sec3-0-1">3.1.1 🗄 fusen-drafts（ノートデータ）</h4>
-    <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-4　fusen-drafts スキーマ</p>
-    <table class="module-table" style="font-size:11px">
-      <thead><tr><th style="width:36px;text-align:center">No</th><th style="width:70px">フィールド</th><th style="width:50px">型</th><th>意味</th></tr></thead>
-      <tbody>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td><code>id</code></td><td>string</td><td>主キー（UUID）</td></tr>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>title</code></td><td>string</td><td>ノートタイトル</td></tr>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td><code>body</code></td><td>string</td><td>本文（Markdown）</td></tr>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">4</td><td><code>images</code></td><td>Object[]</td><td>添付画像（<code>{ fileName: string, blob: Blob }[]</code>）</td></tr>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">5</td><td><code>tags</code></td><td>string[]</td><td>付与されたタグの配列</td></tr>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">6</td><td><code>locked</code></td><td>boolean</td><td>ロック画面に表示が ON なら true</td></tr>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">7</td><td><code>created_at</code></td><td>string</td><td>作成日時（JST ISO 8601）</td></tr>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">8</td><td><code>sent_at</code></td><td>string</td><td>送信日時（未送信時は undefined）</td></tr>
-        <tr><td style="text-align:center;color:#94a3b8;font-weight:700">9</td><td><code>received_pc</code></td><td>boolean</td><td>PC 側が受信済みかどうか</td></tr>
-      </tbody>
-    </table>
-  </div>
   <div class="store-card store-idb">
     <h4 id="sec3-0-2">3.1.2 🗄 fusen-meta（メタ情報）</h4>
     <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-5　fusen-meta スキーマ</p>
     <table class="module-table" style="font-size:11px">
-      <thead><tr><th style="width:36px;text-align:center">No</th><th style="width:90px">キー</th><th>意味</th></tr></thead>
+      <thead><tr><th style="width:36px;text-align:center">No</th><th style="width:130px">キー</th><th>意味</th></tr></thead>
       <tbody>
         <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td><code>access_token</code></td><td>Google Drive アクセストークン（SW が参照）</td></tr>
         <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>pending_open</code></td><td>次回起動時に開くノートの情報。<code>{ id: string, t: number }</code></td></tr>
       </tbody>
     </table>
-    <h4 id="sec3-0-3" style="margin-top:16px">3.1.3 🗄 fusen-logs（デバッグログ）</h4>
+  </div>
+  <div class="store-card store-idb">
+    <h4 id="sec3-0-3">3.1.3 🗄 fusen-logs（デバッグログ）</h4>
     <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-6　fusen-logs スキーマ</p>
     <table class="module-table" style="font-size:11px">
-      <thead><tr><th style="width:36px;text-align:center">No</th><th style="width:50px">フィールド</th><th>意味</th></tr></thead>
+      <thead><tr><th style="width:36px;text-align:center">No</th><th style="width:80px">フィールド</th><th>意味</th></tr></thead>
       <tbody>
         <tr><td style="text-align:center;color:#94a3b8;font-weight:700">1</td><td><code>t</code></td><td>タイムスタンプ（JST）</td></tr>
         <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>msg</code></td><td>ログメッセージ</td></tr>

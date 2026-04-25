@@ -55,10 +55,17 @@
   margin: 0 !important;
 }
 
+/* ダークモード：module-table の固定背景色（#f8fafc 等）をダークテーマ対応カラーに上書き */
+.dark .module-table td {
+  background-color: var(--vp-c-bg-soft) !important;
+  color: var(--vp-c-text-1) !important;
+}
+
 /* モジュール表の余白を詰めてコンパクトにする */
 .module-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 11px;
   margin-top: 8px;
 }
@@ -68,8 +75,8 @@
   text-align: left;
   vertical-align: top;
   line-height: 1.4;
-  word-break: normal;
-  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .module-table th code, .module-table td code {
   white-space: nowrap;
@@ -78,6 +85,7 @@
   background: var(--vp-c-bg-mute);
   font-weight: 700;
   color: var(--vp-c-text-2);
+  white-space: nowrap;
 }
 
 /* =========================================

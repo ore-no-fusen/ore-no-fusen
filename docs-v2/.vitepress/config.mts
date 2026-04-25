@@ -47,6 +47,10 @@ export default withMermaid(defineConfig({
       }
     ],
 
+    search: {
+      provider: 'local'
+    },
+
     socialLinks: [
       { icon: 'github', link: 'https://github.com/uck/ore-no-fusen' }
     ]
