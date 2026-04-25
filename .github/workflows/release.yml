@@ -50,16 +50,8 @@ jobs:
     needs: release
     runs-on: windows-latest
     steps:
-      - name: Generate GitHub App Token
-        id: generate-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.WINGET_APP_ID }}
-          private-key: ${{ secrets.WINGET_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - uses: vedantmgoyal2009/winget-releaser@v2
         with:
           identifier: ONFStudios.OreNoFusen
-          token: ${{ steps.generate-token.outputs.token }}
+          token: ${{ secrets.WINGET_TOKEN }}
           max-versions-to-keep: '0'
