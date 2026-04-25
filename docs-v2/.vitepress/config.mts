@@ -6,6 +6,9 @@ export default withMermaid(defineConfig({
   title: "俺の付箋",
   description: "DESIGN DOCS PORTAL",
   base: '/ore-no-fusen/',
+  head: [
+    ['script', { defer: '', src: 'https://cloud.umami.is/script.js', 'data-website-id': 'ab93c6f7-275c-43f5-a539-7f399e98e27f' }]
+  ],
   mermaid: {
     sequence: {
       messageMargin: 12,
