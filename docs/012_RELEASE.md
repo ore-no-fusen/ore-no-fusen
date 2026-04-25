@@ -55,6 +55,15 @@ flowchart TD
     J --- actions
 
     J5 --> K["✅ GitHubリリースページに<br/>署名付きインストーラーが出現"]
+
+    subgraph docs_deploy [GitHub Actions: docs.yml（main push 時に自動実行）]
+        D1["1) docs-v2/ の変更を検知"]
+        D2["2) VitePress ビルド<br/>npm run docs:build"]
+        D3["3) GitHub Pages にデプロイ"]
+        D1 --> D2 --> D3
+    end
+    MRG -.->|docs-v2/** の変更がある場合| docs_deploy
+    D3 -.-> DK["✅ https://ore-no-fusen.github.io/ore-no-fusen/<br/>に最新ドキュメントが公開される"]
 ```
 
 ## develop ブランチと Vercel Preview
