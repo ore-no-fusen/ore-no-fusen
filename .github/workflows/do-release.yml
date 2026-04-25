@@ -7,6 +7,10 @@ on:
         description: 'New version (e.g. 2.10.4)'
         required: true
         type: string
+      message:
+        description: 'Commit message (optional)'
+        required: false
+        type: string
 
 jobs:
   do-release:
@@ -71,8 +75,10 @@ jobs:
       - name: Commit and push main
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          MSG="${{ github.event.inputs.message }}"
+          COMMIT_MSG="${MSG:-chore: バージョンを v${VERSION} に更新}"
           git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
-          git commit -m "chore: バージョンを v${VERSION} に更新"
+          git commit -m "$COMMIT_MSG"
           git push origin main
 
       - name: Create and push tag
