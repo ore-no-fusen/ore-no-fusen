@@ -55,7 +55,7 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
           sed -i "0,/^version = /s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-          npm install --package-lock-only
+          npm install --package-lock-only --ignore-scripts
 
       - name: Verify versions
         run: |
