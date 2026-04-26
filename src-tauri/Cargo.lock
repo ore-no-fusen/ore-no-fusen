@@ -4111,7 +4111,7 @@ dependencies = [
 
 [[package]]
 name = "ore-no-fusen"
-version = "2.10.0"
+version = "2.10.5"
 dependencies = [
  "aes-gcm",
  "arboard",

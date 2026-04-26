@@ -17,6 +17,9 @@ v1.0 / 2026-04-20
 
 ## 1 認証・セキュリティ
 
+<div class="glossary-table">
+<p class="table-caption">表 1-1　認証・セキュリティ用語</p>
+
 | No | 用語 | 解説 | 関連ファイル |
 |:---|:---|:---|:---|
 | 1 | OAuth 2.0 | Google が採用する認可プロトコル。ユーザーの許可を得て、アプリが Google Drive 等のリソースにアクセスできる仕組み。「認証（ログイン確認）」ではなく「認可（権限の委譲）」であることに注意。 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
@@ -26,9 +29,14 @@ v1.0 / 2026-04-20
 | 5 | JWT | **JSON Web Token** の略。ヘッダー・ペイロード・署名の 3 部を Base64URL エンコードしてドットで連結したトークン形式。VAPID 署名に使用する。 | [002_PC.md](/002_PC.html) |
 | 6 | ECDH / P-256 | **Elliptic Curve Diffie-Hellman**。楕円曲線を使った鍵共有プロトコル。P-256 は NIST 標準の楕円曲線パラメータ。Web Push ペイロードの暗号化鍵の導出に使用する。 | [002_PC.md](/002_PC.html) |
 
+</div>
+
 ---
 
 ## 2 Push 通知
+
+<div class="glossary-table">
+<p class="table-caption">表 2-1　Push 通知用語</p>
 
 | No | 用語 | 解説 | 関連ファイル |
 |:---|:---|:---|:---|
@@ -38,9 +46,14 @@ v1.0 / 2026-04-20
 | 4 | AES-128-GCM | Web Push のペイロードを暗号化するために使用する対称暗号方式（RFC 8291 準拠）。128 bit の鍵で GCM モードの AES 暗号化を行う。`webpush.rs` の `encrypt_payload` 関数で実装。 | [002_PC.md](/002_PC.html) |
 | 5 | pending_open | このプロジェクト固有の用語。iOS では `notificationclick` イベントが発火しないため、SW が Push 受信時に `fusen-meta`（IndexedDB）へ保存する「直近の通知 ID の痕跡」。アプリ復帰時に `page.tsx` がこれを読んで「通知からの起動」と判断し、再通知を行う。30 分で失効。 | [003_IPHONE.md](/003_IPHONE.html) |
 
+</div>
+
 ---
 
 ## 3 ブラウザ技術
+
+<div class="glossary-table">
+<p class="table-caption">表 3-1　ブラウザ技術用語</p>
 
 | No | 用語 | 解説 | 関連ファイル |
 |:---|:---|:---|:---|
@@ -51,9 +64,14 @@ v1.0 / 2026-04-20
 | 5 | skipWaiting / clients.claim | 新しい Service Worker を即時有効化するための API。`skipWaiting()` はインストール待ちの SW を強制起動し、`clients.claim()` は起動中のページを新 SW の管轄下に置く。バグ修正版 SW のデプロイ後、古い SW が動き続けることを防ぐ。 | [003_IPHONE.md](/003_IPHONE.html) |
 | 6 | locked（フラグ） | IndexedDB の付箋レコードに付与する boolean フィールド。`true` の場合、ロック画面への通知常駐（再通知サイクル）が有効になる。ユーザーが 🔔 ボタンで手動切り替えできる。 | [003_IPHONE.md](/003_IPHONE.html) |
 
+</div>
+
 ---
 
 ## 4 フレームワーク・ランタイム
+
+<div class="glossary-table">
+<p class="table-caption">表 4-1　フレームワーク・ランタイム用語</p>
 
 | No | 用語 | 解説 | 関連ファイル |
 |:---|:---|:---|:---|
@@ -63,9 +81,14 @@ v1.0 / 2026-04-20
 | 4 | Vitest | Vite ベースの高速 JavaScript / TypeScript テストフレームワーク。本プロジェクトのフロントエンドユニットテストに使用。`npm run test` で実行する。 | [004_TEST.md](/004_TEST.html) |
 | 5 | Playwright | Microsoft 製のブラウザ自動化・E2E テストフレームワーク。実際の Tauri アプリを起動してユーザー操作をシミュレートする。本プロジェクトの E2E テストに使用。 | [004_TEST.md](/004_TEST.html) |
 
+</div>
+
 ---
 
 ## 5 設計用語
+
+<div class="glossary-table">
+<p class="table-caption">表 5-1　設計用語</p>
 
 | No | 用語 | 解説 | 関連ファイル |
 |:---|:---|:---|:---|
@@ -76,9 +99,14 @@ v1.0 / 2026-04-20
 | 5 | AppState | このプロジェクトの PC アプリ（Rust 側）における単一状態管理構造体。`Mutex<AppState>` として Tauri の状態管理に登録し、全コマンドから参照する。SSOT の実体。 | [002_PC.md](/002_PC.html) |
 | 6 | Vault | 付箋データ（.md ファイル）の保存先フォルダ。ユーザーが設定した任意のディレクトリを指定できる。`AppState.vault_path` に保持。 | [002_PC.md](/002_PC.html) |
 
+</div>
+
 ---
 
 ## 6 Google Drive API
+
+<div class="glossary-table">
+<p class="table-caption">表 6-1　Google Drive API 用語</p>
 
 | No | 用語 | 解説 | 関連ファイル |
 |:---|:---|:---|:---|
@@ -89,9 +117,14 @@ v1.0 / 2026-04-20
 | 5 | notes_from_iphone.json | iPhone → PC への送信データを格納する中継ファイル。iPhone PWA が書き込み、PC の 30 秒ポーリングが読み込んで付箋を生成した後、削除する。 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 6 | push_devices.json | Web Push の送信先デバイス情報（endpoint・p256dh・auth 等）を格納する JSON ファイル。Drive 上に保存し、PC がポーリングして `AppState` にキャッシュする。 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [002_PC.md](/002_PC.html) |
 
+</div>
+
 ---
 
 ## 7 データ形式
+
+<div class="glossary-table">
+<p class="table-caption">表 7-1　データ形式用語</p>
 
 | No | 用語 | 解説 | 関連ファイル |
 |:---|:---|:---|:---|
@@ -100,10 +133,17 @@ v1.0 / 2026-04-20
 | 3 | Blob | **Binary Large Object** の略。画像などのバイナリデータを表すオブジェクト。IndexedDB 内の画像保存（`fusen-drafts` の `images` フィールド）に使用する。 | [003_IPHONE.md](/003_IPHONE.html) |
 | 4 | Markdown（.md） | プレーンテキストに記法を加えて構造化する軽量マークアップ言語。付箋データの本文形式。frontmatter を先頭に持つ Markdown ファイル（`.md`）が付箋の実体として Vault フォルダに保存される。 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
 
+</div>
+
 ---
 
 ## 8 改版履歴
 
+<div class="history-table">
+<p class="table-caption">表 8-1　改版履歴</p>
+
 | No | バージョン | 日付 | 変更内容 |
 |:---|:---|:---|:---|
-| 1 | 1.0 | 2026-04-20 | 新規作成。設計書に登場する専門用語を整理。 |
+| 1 | 1.0 | 26-04-20 | 新規作成。設計書に登場する専門用語を整理。 |
+
+</div>

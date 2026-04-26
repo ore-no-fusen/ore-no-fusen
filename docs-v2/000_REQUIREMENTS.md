@@ -29,14 +29,13 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </div>
 
 <!-- ② 設計の芯：原動力 -->
-<p class="mermaid-caption">図 1-1　設計の芯：各ツールの良いところだけを、ストレスなく一つに</p>
-<div style="margin:8px 0 24px;">
+<div style="margin:8px 0 4px;">
 <img src="/design-concept.png" alt="設計の芯：各ツールの良いところだけを、ストレスなく一つに" style="width:100%;max-width:100%;height:auto;display:block;"/>
 </div>
+<p class="mermaid-caption">図 1-1　設計の芯：各ツールの良いところだけを、ストレスなく一つに</p>
 
 <!-- ③ ユースケース図：できること -->
-<p class="mermaid-caption">図 1-2　ユースケース概要</p>
-<div style="display:flex;justify-content:center;margin:8px 0 24px;">
+<div style="display:flex;justify-content:center;margin:8px 0 4px;">
 <svg width="580" height="292" viewBox="0 0 580 292" xmlns="http://www.w3.org/2000/svg" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
   <!-- PC グループ境界 -->
   <rect x="115" y="6" width="460" height="184" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="2"/>
@@ -80,8 +79,10 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
   <text x="345" y="282" text-anchor="middle" font-size="11" fill="#14532d">⑨ PC に返す<tspan font-size="9" fill="#64748b"> §9.2</tspan></text>
 </svg>
 </div>
+<p class="mermaid-caption">図 1-2　ユースケース概要</p>
 
 <!-- ④ 製品定義：要求・仕様 -->
+<p class="table-caption">表 1.1-1　製品定義</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -123,6 +124,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 1.2 品質保証
+<p class="table-caption">表 1.2-1　品質保証</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -161,6 +163,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 アプリの起動・終了・作成・削除など、付箋のライフサイクル全体を定義します。
 
 ### 2.1 アプリケーションの常駐と起動
+<p class="table-caption">表 2.1-1　アプリケーションの常駐と起動</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -202,6 +205,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 2.2 初回セットアップ
+<p class="table-caption">表 2.2-1　初回セットアップ</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -239,6 +243,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 2.3 新規付箋の作成
+<p class="table-caption">表 2.3-1　新規付箋の作成</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -276,6 +281,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 2.4 アプリケーションの終了
+<p class="table-caption">表 2.4-1　アプリケーションの終了</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -309,6 +315,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 2.5 アラーム機能
+<p class="table-caption">表 2.5-1　アラーム機能</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -351,6 +358,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 付箋データの保存形式・メタデータ・自動保存の仕組みを定義します。
 
 ### 3.1 Markdown 形式での保存
+<p class="table-caption">表 3.1-1　Markdown 形式での保存</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -384,6 +392,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 3.2 メタデータの管理
+<p class="table-caption">表 3.2-1　メタデータの管理</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -417,6 +426,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 3.3 ファイル名の自動同期
+<p class="table-caption">表 3.3-1　ファイル名の自動同期</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -454,6 +464,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 3.4 変更の自動保存
+<p class="table-caption">表 3.4-1　変更の自動保存</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -492,6 +503,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 付箋の編集体験と表示機能を定義します。
 
 ### 4.1 リッチテキスト編集
+<p class="table-caption">表 4.1-1　リッチテキスト編集</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -537,6 +549,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 4.2 画像の取り込み
+<p class="table-caption">表 4.2-1　画像の取り込み</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -579,6 +592,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 付箋の検索・タグ管理・アーカイブ・削除を定義します。
 
 ### 5.1 全文検索
+<p class="table-caption">表 5.1-1　全文検索</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -620,6 +634,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 5.2 タグによるコンテキスト切り替え
+<p class="table-caption">表 5.2-1　タグによるコンテキスト切り替え</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -657,6 +672,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 5.3 不要メモの整理（アーカイブ・削除）
+<p class="table-caption">表 5.3-1　不要メモの整理（アーカイブ・削除）</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -695,6 +711,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 付箋ウィンドウの外観・コンテキストメニュー・効果音を定義します。
 
 ### 6.1 ウィンドウデザイン・外観
+<p class="table-caption">表 6.1-1　ウィンドウデザイン・外観</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -732,6 +749,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 6.2 コンテキストメニュー
+<p class="table-caption">表 6.2-1　コンテキストメニュー</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -773,6 +791,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 6.3 効果音
+<p class="table-caption">表 6.3-1　効果音</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -811,6 +830,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 フロントエンド↔バックエンド間の通信と設定永続化の仕様を定義します。
 
 ### 7.1 フロントエンド–バックエンド間通信
+<p class="table-caption">表 7.1-1　フロントエンド–バックエンド間通信</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -848,6 +868,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 7.2 設定の永続化
+<p class="table-caption">表 7.2-1　設定の永続化</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -886,6 +907,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 ショートカット・マルチモニター・セキュリティ・パフォーマンス・多言語化を定義します。
 
 ### 8.1 キーボードショートカット操作
+<p class="table-caption">表 8.1-1　キーボードショートカット操作</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -947,6 +969,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 8.2 マルチモニター・環境変動対応
+<p class="table-caption">表 8.2-1　マルチモニター・環境変動対応</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -980,6 +1003,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 8.3 セキュリティ・プライバシー
+<p class="table-caption">表 8.3-1　セキュリティ・プライバシー</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -1021,6 +1045,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 8.4 パフォーマンス・リソース制約
+<p class="table-caption">表 8.4-1　パフォーマンス・リソース制約</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -1054,6 +1079,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 </table>
 
 ### 8.5 多言語化・i18n 要件
+<p class="table-caption">表 8.5-1　多言語化・i18n 要件</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -1096,6 +1122,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
 PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.10で追加。
 
 ### 9.1 PC → iPhone 送信（プッシュ通知）
+<p class="table-caption">表 9.1-1　PC → iPhone 送信（プッシュ通知）</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -1141,6 +1168,7 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 </table>
 
 ### 9.2 iPhone → PC 送信
+<p class="table-caption">表 9.2-1　iPhone → PC 送信</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -1182,6 +1210,7 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 </table>
 
 ### 9.3 通知の常駐（ロックだぜ）
+<p class="table-caption">表 9.3-1　通知の常駐（ロックだぜ）</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -1219,6 +1248,7 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 </table>
 
 ### 9.4 iPhoneロック画面常駐体験
+<p class="table-caption">表 9.4-1　iPhoneロック画面常駐体験</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -1260,6 +1290,7 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 </table>
 
 ### 9.5 iPhone PWA の認証と持続可能性
+<p class="table-caption">表 9.5-1　iPhone PWA の認証と持続可能性</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
     <tr>
@@ -1300,8 +1331,13 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 
 ## 10 改版履歴
 
+<div class="history-table">
+<p class="table-caption">表 10-1　改版履歴</p>
+
 | No | バージョン | 日付 | 変更内容 |
 |:---|:---|:---|:---|
-| 1 | **v2.11** | 2026-04-20 | REQ_IP_05「iPhoneロック画面常駐体験」追加 |
-| 2 | v2.10 | 2026-04-19 | HTML化・iPhone連携要件追加・ショートカット更新等 |
-| 3 | v2.0 | 2026-02-22 | ベータリリース時の初版（Markdown形式） |
+| 1 | **v2.11** | 26-04-20 | REQ_IP_05「iPhoneロック画面常駐体験」追加 |
+| 2 | v2.10 | 26-04-19 | HTML化・iPhone連携要件追加・ショートカット更新等 |
+| 3 | v2.0 | 26-02-22 | ベータリリース時の初版（Markdown形式） |
+
+</div>

@@ -1,3 +1,62 @@
+/* 用語集テーブル: 用語列（2列目）を150px固定、関連ファイル列を200px固定 */
+.glossary-table table {
+  table-layout: fixed;
+  width: 100%;
+}
+.glossary-table table th:nth-child(1),
+.glossary-table table td:nth-child(1) { width: 36px; white-space: nowrap; }
+.glossary-table table th:nth-child(2),
+.glossary-table table td:nth-child(2) { width: 150px; }
+.glossary-table table th:nth-child(4),
+.glossary-table table td:nth-child(4) { width: 200px; }
+
+/* 改版履歴テーブル: No/バージョン/日付列を固定幅・折り返しなし */
+.history-table table {
+  table-layout: fixed;
+  width: 100%;
+}
+.history-table table th:nth-child(1),
+.history-table table td:nth-child(1) { width: 36px; white-space: nowrap; }
+.history-table table th:nth-child(2),
+.history-table table td:nth-child(2) { width: 82px; white-space: nowrap; }
+.history-table table th:nth-child(3),
+.history-table table td:nth-child(3) { width: 72px; white-space: nowrap; }
+
+/* 表名・図名の共通スタイル */
+.vp-doc .table-caption, .vp-doc .mermaid-caption {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--vp-c-text-2);
+  margin: 6px 0 0 !important;
+  letter-spacing: 0.03em;
+}
+/* 表キャプション直後のテーブルは上マージンを詰める */
+.vp-doc .table-caption + table {
+  margin-top: 4px !important;
+}
+
+/* --- の直後の h2 は border-top を消す（hr と h2 の二重線を防ぐ） */
+.vp-doc hr + h2 {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Markdown テーブルをコンテナ幅いっぱいに広げる */
+.vp-doc table {
+  width: 100%;
+}
+/* 表キャプション直後の要素（table / grid div）は上マージンを詰める */
+.vp-doc .table-caption + table,
+.vp-doc .table-caption + div {
+  margin-top: 4px !important;
+}
+
+/* テーブルのヘッダーセルは折り返さない */
+.vp-doc table th {
+  white-space: nowrap;
+}
+
 /* Mermaid内のテキストがバウンディングボックスからはみ出して文字切れするのを防ぎ、文字サイズを統一する */
 .mermaid .nodeLabel,
 .mermaid .edgeLabel {
@@ -19,10 +78,16 @@
   overflow-x: auto !important; /* 画面より大きい場合はスクロールさせる */
 }
 .mermaid svg {
-  max-width: 100% !important;
+  max-width: 100%; /* !important を外すことで Mermaid のインライン max-width が優先される（小図の拡大防止） */
   width: max-content !important; /* 本来のサイズ以上には拡大しない */
   height: auto !important;
 }
+
+/* 参加者3人のシーケンス図：5人図と同じ縮尺（708/1843≒0.384）になるよう 540px に制限 */
+.seq-small .mermaid {
+  max-width: 540px !important;
+}
+
 .mermaid p {
   margin: 0 !important;
   padding: 0 !important;

@@ -68,7 +68,7 @@ classDiagram
 - **EditingMode（編集モード）:** CodeMirrorインスタンスが立ち上がった状態。
 
 <Note type="warning">
-<strong>詳細リンク:</strong> PCアプリのUIクラス構造やモードの詳細は <a href="/002_PC#sec3-3-クラス図依存関係">002_PC のクラス図</a> 参照。
+<strong>詳細リンク:</strong> PCアプリのUIクラス構造やモードの詳細は <a href="./002_PC#sec3-3-クラス図依存関係">002_PC のクラス図</a> 参照。
 </Note>
 
 ---
@@ -115,7 +115,7 @@ sequenceDiagram
 <p class="mermaid-caption">図 6-2　通信およびバックグラウンドプロセスのタイムライン</p>
 
 <Note type="info">
-<strong>詳細リンク:</strong> プロセス間通信（IPC）やService Workerの詳細な動作シーケンスは <a href="/001_OVERVIEW#sec3-システムデータフロー">001_OVERVIEW の データフロー</a> および <a href="/003_IPHONE#sec4-データフロー">003_IPHONE の シーケンス</a> 参照。
+<strong>詳細リンク:</strong> プロセス間通信（IPC）やService Workerの詳細な動作シーケンスは <a href="./001_OVERVIEW#sec3-システムデータフロー">001_OVERVIEW の データフロー</a> および <a href="./003_IPHONE#sec4-データフロー">003_IPHONE の シーケンス</a> 参照。
 </Note>
 
 ---
@@ -128,7 +128,8 @@ sequenceDiagram
 
 本プロジェクトは単一のリポジトリ（モノレポ）で「PC（Tauri）」「iPhone（PWA）」「Vercel（API）」のすべてのコードを管理しています。フロントエンドを Next.js（React） で統一することで、UIコンポーネントや型定義（TypeScript）を共通化しています。
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0;">
+<p class="table-caption">表 4.1-1　モノレポアーキテクチャ概要</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:4px 0 12px 0;">
 <table class="module-table">
   <tr><th>ディレクトリ</th><th>責任範囲</th><th>技術スタック</th></tr>
   <tr><td><code>src-tauri/</code></td><td>PCアプリのコアロジック、OSネイティブAPI（ウィンドウ操作、トレイ）、ローカルファイルI/O</td><td>Rust (tokio, tauri, reqwest)</td></tr>
@@ -196,6 +197,8 @@ flowchart LR
 
 本アーキテクチャの存在意義と4つのビューの連携をもっとも色濃く反映している一連のシナリオ（ユースケース）です。
 
+<p class="table-caption">表 6.1-1　中心シナリオ展開</p>
+
 | ステップ | ユーザー視点のシナリオ展開 | アーキテクチャの関与ビュー |
 |:---|:---|:---|
 | **1. PCで入力** | ユーザーがPC上で「買い物リスト」を書き、「iPhoneに送る」ボタンを押す。 | **[Logical]** Fusen オブジェクトの生成<br>**[Development]** RustモジュールによるファイルI/O |
@@ -204,17 +207,22 @@ flowchart LR
 | **4. 返信して削除** | iPhoneから「牛乳買ったよ」と追記してPCに送り返し、手元のノートを消す。 | **[Logical]** Viewing/Editing Mode の遷移（PWA）<br>**[Process]** PCの30秒ポーリングによる即時回収と自動削除 |
 
 <Note type="info">
-このシナリオをプログラムで自動検証する E2E テストの仕様と結果については、<a href="/004_TEST">004 テスト設計</a> を参照してください。
+このシナリオをプログラムで自動検証する E2E テストの仕様と結果については、<a href="./004_TEST">004 テスト設計</a> を参照してください。
 </Note>
 
 ---
 
 ## 7 改版履歴
 
+<div class="history-table">
+<p class="table-caption">表 7-1　改版履歴</p>
+
 | No | バージョン | 日付 | 変更内容 |
 |:---|:---|:---|:---|
-| 1 | 1.0 | 2026-04-21 | 新規作成。4+1 View Model（論理・プロセス・開発・物理・シナリオ）全ビューを整理。 |
-| 2 | 1.1 | 2026-04-24 | classDiagram・物理ビュー flowchart を `LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
+| 1 | 1.0 | 26-04-21 | 新規作成。4+1 View Model（論理・プロセス・開発・物理・シナリオ）全ビューを整理。 |
+| 2 | 1.1 | 26-04-24 | classDiagram・物理ビュー flowchart を `LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
+
+</div>
 
 <div style="margin-top:60px;text-align:center;font-size:12px;color:#94a3b8">
   © 2026 Ore No Fusen Project. 4+1 View Architecture Design.

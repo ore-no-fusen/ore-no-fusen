@@ -127,7 +127,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                     />
                     <SidebarItem
                         icon={<Smartphone className="mr-3 h-4 w-4" />}
-                        label="iPhone連携"
+                        label={t('settings.iphone')}
                         isActive={activeSection === "iphone"}
                         onClick={() => setActiveSection("iphone")}
                         badge={iphoneDriveDisconnected}

@@ -30,7 +30,11 @@
       "Skill(gsd:new-milestone:*)",
       "WebSearch",
       "Skill(gsd:plan-phase)",
-      "Skill(gsd:plan-phase:*)"
+      "Skill(gsd:plan-phase:*)",
+      "Read(//c/Users/uck/AppData/Local/Temp/**)",
+      "Read(//tmp/**)",
+      "Read(//d/tmp/**)",
+      "Read(//c/tmp/**)"
     ]
   },
   "hooks": {

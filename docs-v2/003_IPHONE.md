@@ -201,6 +201,8 @@ flowchart LR
 ```
 <p class="mermaid-caption">図 3-1　起動時の画面遷移ルール</p>
 
+<p class="table-caption">表 1.2-1　起動時画面遷移ルール</p>
+
 | No | 起動時の状態 | 遷移先 |
 |:---|:---|:---|
 | 1 | 非 standalone（Safariで開いた） | banner |
@@ -228,7 +230,7 @@ flowchart LR
 画面を構成するコンポーネント・フックの依存関係を示します。
 また、図には現れない共通ユーティリティファイルも以下の表に一覧します。
 
-**共通ユーティリティ（viewer/ 配下）**
+<p class="table-caption">表 2.1-1　共通ユーティリティ（viewer/ 配下）</p>
 <table class="module-table" style="font-size:12px; margin-bottom: 16px;">
   <thead>
     <tr><th style="width:40px;text-align:center">No</th><th style="width:160px">ファイル名</th><th>役割</th></tr>
@@ -318,6 +320,8 @@ graph LR
 
 push受信・notificationclick等を処理するSWのイベントハンドラ5点を一覧します。
 
+<p class="table-caption">表 2.2-1　SW イベントハンドラ一覧</p>
+
 | No | イベント | 処理内容 |
 |:---|:---|:---|
 | 1 | `install` | `skipWaiting()` 呼び出し。新バージョンを即時有効化。 |
@@ -340,21 +344,32 @@ Google OAuth の <code>client_secret</code>（秘密鍵）をブラウザ（iPho
 トークン交換・更新の処理だけ Vercel のサーバーサイドに置く。iPhone は Vercel 経由でのみトークンを取得できる。
 </Note>
 
+<p class="table-caption">表 2.3-1　Vercel API Routes 一覧</p>
+
 | No | ファイル | 役割 |
 |:---|:---|:---|
 | 1 | `app/api/auth/token/route.ts` | OAuth 認証コード → アクセストークン＋リフレッシュトークン交換。初回ログイン時のみ呼ばれる。 |
 | 2 | `app/api/auth/refresh/route.ts` | リフレッシュトークン → 新しいアクセストークン取得。Drive API 呼び出し時にトークン期限切れを検出したら自動呼び出し。 |
 
-#### 環境変数
+#### 環境変数（Vercel）
 
-| 変数名 | 設定場所 | 取得元 | 用途 |
+Vercel の Environment Variables に設定する変数の一覧です。`.env` ファイルやコードにハードコードしないこと。
+
+<p class="table-caption">表 2.3-2　Vercel 環境変数一覧</p>
+
+| 変数名 | 公開範囲 | 取得元 | 用途 |
 |:---|:---|:---|:---|
-| `GOOGLE_CLIENT_SECRET_PWA` | Vercel（サーバー専用） | Google Cloud Console → 認証情報 → OAuth 2.0 クライアント → クライアント シークレット | トークン交換・リフレッシュ時に Google へ提示する秘密鍵。ブラウザに渡してはいけない。 |
-| `NEXT_PUBLIC_GDRIVE_CLIENT_ID` | Vercel（公開可） | Google Cloud Console → 認証情報 → OAuth 2.0 クライアント → クライアント ID | OAuth リダイレクト URL の生成に使う。公開しても問題ない。 |
+| `GOOGLE_CLIENT_SECRET_PWA` | サーバー専用 | Google Cloud Console → 認証情報 → OAuth 2.0 クライアント（PWA用） → クライアント シークレット | トークン交換・リフレッシュ時に Google へ提示する秘密鍵。ブラウザに渡してはいけない。 |
+| `NEXT_PUBLIC_GDRIVE_CLIENT_ID` | 公開可 | Google Cloud Console → 認証情報 → OAuth 2.0 クライアント（PWA用） → クライアント ID | iPhone PWA の OAuth フロー開始時に使う。公開しても問題ない。 |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | 公開可 | Web Push 鍵ペア生成時の公開鍵（`web-push generate-vapid-keys` 等で生成） | iPhone の Web Push 購読登録（`pushManager.subscribe`）時に使う。 |
+| `DISCORD_WEBHOOK_URL` | サーバー専用 | Discord サーバー → チャンネル設定 → 連携サービス → Webhook → URL をコピー | PC 設定画面のフィードバック送信ボタンから Discord へ通知を転送する。 |
+
+<Note type="info">
+<code>NEXT_PUBLIC_APP_VERSION</code> は Vercel への手動設定不要。<code>next.config.ts</code> がビルド時に <code>package.json</code> の <code>version</code> フィールドから自動設定する。
+</Note>
 
 <Note type="warning">
-<code>GOOGLE_CLIENT_SECRET_PWA</code> は <strong>Vercel の Environment Variables にのみ</strong>設定する。<code>.env</code> ファイルやコードにハードコードしない。<br>
-Vercel が「Needs Attention」と表示する場合は、Google Cloud Console（APIとサービス → 認証情報 → 該当クライアント）でステータスが「有効」であれば実害なし。値が一致していれば無視してよい。
+<code>GOOGLE_CLIENT_SECRET_PWA</code> は Vercel が「Needs Attention」と表示する場合がある。Google Cloud Console（APIとサービス → 認証情報 → 該当クライアント）でステータスが「有効」であれば実害なし。値が一致していれば無視してよい。
 </Note>
 
 ---
@@ -374,7 +389,7 @@ PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3スト�
 
 <div class="store-card store-idb" style="margin-bottom:16px">
   <h4 id="sec3-0-1">3.1.1 🗄 fusen-drafts（ノートデータ）</h4>
-  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-4　fusen-drafts スキーマ</p>
+  <p class="table-caption">表 3-4　fusen-drafts スキーマ</p>
   <table class="module-table" style="font-size:11px">
     <thead><tr><th style="width:36px;text-align:center;white-space:nowrap">No</th><th style="width:120px">フィールド</th><th style="width:80px">型</th><th>意味</th></tr></thead>
     <tbody>
@@ -393,7 +408,7 @@ PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3スト�
 <div class="store-grid">
   <div class="store-card store-idb">
     <h4 id="sec3-0-2">3.1.2 🗄 fusen-meta（メタ情報）</h4>
-    <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-5　fusen-meta スキーマ</p>
+    <p class="table-caption">表 3-5　fusen-meta スキーマ</p>
     <table class="module-table" style="font-size:11px">
       <thead><tr><th style="width:36px;text-align:center">No</th><th style="width:130px">キー</th><th>意味</th></tr></thead>
       <tbody>
@@ -404,7 +419,7 @@ PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3スト�
   </div>
   <div class="store-card store-idb">
     <h4 id="sec3-0-3">3.1.3 🗄 fusen-logs（デバッグログ）</h4>
-    <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-6　fusen-logs スキーマ</p>
+    <p class="table-caption">表 3-6　fusen-logs スキーマ</p>
     <table class="module-table" style="font-size:11px">
       <thead><tr><th style="width:36px;text-align:center">No</th><th style="width:80px">フィールド</th><th>意味</th></tr></thead>
       <tbody>
@@ -421,7 +436,7 @@ PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3スト�
 
 <div class="store-card store-ls" style="max-width:600px">
   <h4 id="sec3-0-4">3.2.1 🔑 認証・設定フラグ</h4>
-  <p style="font-size:11px;font-weight:700;color:#94a3b8;margin:4px 0 4px;letter-spacing:0.03em">表 3-7　localStorage キー一覧</p>
+  <p class="table-caption">表 3-7　localStorage キー一覧</p>
   <table class="module-table" style="font-size:11px">
     <thead><tr><th style="width:44px;text-align:center">No</th><th>キー</th><th>意味</th></tr></thead>
     <tbody>
@@ -446,6 +461,7 @@ PCとiPhone間の中継に使うDriveファイルの種類と書き込み/削除
 状態フィールド（received_at 等）は不要。残っていたら削除 API 失敗の残骸。
 </Note>
 
+<p class="table-caption">表 3.3-1　Google Drive ファイル一覧</p>
 <table class="module-table" style="font-size:12px; table-layout: fixed;">
   <thead>
     <tr>
@@ -585,7 +601,7 @@ Drive へのフェッチは画像バイナリのダウンロードのみ。JSON 
 </Note>
 
 <Note type="warning">
-<strong>ユーザー体験の全体像（<a href="/000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）：</strong>
+<strong>ユーザー体験の全体像（<a href="./000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）：</strong>
 このフローは ① の送信〜初回表示のみ。通知をタップした後も再通知されロック画面から消えない体験（②③）、および OFF 操作（④）は 4.4 を参照。
 </Note>
 
@@ -629,7 +645,7 @@ sequenceDiagram
 <strong>「iPhoneに置いておく」との違い：</strong>Drive を使わない。テキスト＋画像を IndexedDB のみに保存。PC への送信は発生しない。
 </Note>
 
-### 4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="/000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）
+### 4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="./000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）
 
 「消す意思がないかぎりロック画面から消えない」体験を実現する ON/OFF 操作と、タップ後の再通知サイクル。
 ユーザー体験の手順は ①〜⑥ で示す（REQ_IP_05 の①〜④に対応）。
@@ -640,6 +656,8 @@ sequenceDiagram
 代わりに push 受信時に <code>pending_open</code> を記録しておき、
 アプリ復帰時に <code>page.tsx</code> が <code>locked: true</code> を確認して再通知する。
 </Note>
+
+<div class="seq-small">
 
 ```mermaid
 %%{init: {'sequence': {'messageMargin': 8, 'mirrorActors': false, 'height': 24, 'boxMargin': 4, 'noteMargin': 6}}}%%
@@ -683,6 +701,7 @@ sequenceDiagram
     end
 ```
 <p class="mermaid-caption">図 3-6　ロック画面常駐サイクル（ON/OFF と再通知の実装フロー）</p>
+</div>
 
 <Note type="info">
 <strong>pending_open の役割：</strong>SW は push 受信時に通知を表示する直前に
@@ -715,6 +734,8 @@ iPhone PWA は「リストモード」と「ライトモード」の 2 画面構
 
 リスト・ライトの 2 モードとその遷移条件を定義します。
 
+<p class="table-caption">表 5.1-1　画面モード定義</p>
+
 | No | モード | 状態 | 遷移トリガー |
 |:---|:---|:---|:---|
 | 1 | **リストモード** | Drive から同期した付箋を一覧表示している状態 | アプリ起動後の初期画面 |
@@ -735,7 +756,7 @@ graph LR
 
 ### 5.2 各モードの操作一覧
 
-**表 3-10　リストモードの操作**
+<p class="table-caption">表 3-10　リストモードの操作</p>
 
 | No | 操作 | 対象 | 結果 |
 |:---|:---|:---|:---|
@@ -744,7 +765,7 @@ graph LR
 | 3 | 🗑️ タップ | 削除ボタン | 確認ダイアログ → Drive から削除 |
 | 4 | ＋ タップ | 新規ボタン | 空のライトモードへ遷移 |
 
-**表 3-11　ライトモードの操作**
+<p class="table-caption">表 3-11　ライトモードの操作</p>
 
 | No | 操作 | 対象 | 結果 |
 |:---|:---|:---|:---|
@@ -753,6 +774,8 @@ graph LR
 | 3 | ← タップ | 戻るボタン | リストモードへ遷移（保存確定） |
 
 ### 5.3 インタラクション・マトリックス
+
+<p class="table-caption">表 5.3-1　インタラクション・マトリックス</p>
 
 | No | 操作 | リストモード | ライトモード |
 |:---|:---|:---|:---|
@@ -811,9 +834,14 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 
 ## 7 改版履歴
 
-| バージョン | 日付 | 変更内容 |
-|:---|:---|:---|
-| 1.3 | 2026-04-24 | モジュール構造図を `graph LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
-| 1.2 | 2026-04-20 | 4.4 の再通知フローを実態に合わせて修正。iOS では notificationclick が発火しないため pending_open + page.tsx が再通知を担う仕組みを図入りで明記。2.2 の notificationclick 説明に iOS 制約を追記 |
-| 1.1 | 2026-04-20 | 4.4 にロック画面常駐体験（REQ_IP_05）の再通知サイクル（①②③④）を追加。4.2 に REQ_IP_05 への参照を追加 |
-| 1.0 | 2026-04-19 | 新規作成。005_VIEWER_SCREENS.html / 007_VIEWER_CODE_STRUCTURE.html / 004_PWA_DATA_FLOW.html の内容を統合・整理 |
+<div class="history-table">
+<p class="table-caption">表 7-1　改版履歴</p>
+
+| No | バージョン | 日付 | 変更内容 |
+|:---|:---|:---|:---|
+| 1 | 1.0 | 26-04-19 | 新規作成。005_VIEWER_SCREENS.html / 007_VIEWER_CODE_STRUCTURE.html / 004_PWA_DATA_FLOW.html の内容を統合・整理 |
+| 2 | 1.1 | 26-04-20 | 4.4 にロック画面常駐体験（REQ_IP_05）の再通知サイクル（①②③④）を追加。4.2 に REQ_IP_05 への参照を追加 |
+| 3 | 1.2 | 26-04-20 | 4.4 の再通知フローを実態に合わせて修正。iOS では notificationclick が発火しないため pending_open + page.tsx が再通知を担う仕組みを図入りで明記。2.2 の notificationclick 説明に iOS 制約を追記 |
+| 4 | 1.3 | 26-04-24 | モジュール構造図を `graph LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
+
+</div>

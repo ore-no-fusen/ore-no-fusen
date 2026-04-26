@@ -57,7 +57,8 @@ graph LR
 
 ### 登場人物の役割一覧
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0;">
+<p class="table-caption">表 1-1　登場人物の役割一覧</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:4px 0 12px 0;">
 <table class="module-table">
   <tr><th>No</th><th>登場人物</th><th>一言で言うと</th><th>何のために使うか</th></tr>
   <tr><td>1</td><td><strong>1⃣ 🖥 PC アプリ</strong></td><td>デスクトップ付箋アプリ</td><td>付箋の表示・編集・保存。iPhone に通知付きで送信。iPhone から受け取って付箋を開く</td></tr>
@@ -79,7 +80,8 @@ graph LR
 
 PCアプリ・iPhone PWA・共有インフラの3層に分けて使用技術を整理します。
 
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:16px 0;">
+<p class="table-caption">表 2-1　技術スタック一覧</p>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:4px 0 16px 0;">
 
   <div>
     <div style="font-size:13px;font-weight:800;margin-bottom:8px;">🖥 PC アプリ</div>
@@ -143,6 +145,8 @@ graph LR
     Lock -->|"タップ"| PWA["📱 iPhone PWA<br>IndexedDBから表示"]:::user
 ```
 
+<p class="mermaid-caption">図 3.1-1　PC → iPhone データフロー概要</p>
+
 <Note type="info">
 <strong>フォールバック：</strong>電源オフ中に複数件送ると APNs は最新1件のみ保持。list 画面を開いたとき <code>notes_to_iphone.json</code> に残っているものを IndexedDB に補完してから Drive を削除する。
 </Note>
@@ -158,6 +162,8 @@ graph LR
     PC -->|"新規生成"| Note["📝 付箋ウィンドウ<br>（テキスト・画像）"]:::user
 ```
 
+<p class="mermaid-caption">図 3.2-1　iPhone → PC データフロー概要</p>
+
 <Note type="success">
 <strong>Drive 設計原則：</strong>Drive にあるものは全て未処理キュー。受信処理が完了したら即削除。残っていたら削除 API 失敗の残骸。
 </Note>
@@ -172,6 +178,8 @@ Google OAuth2 の <code>client_secret</code> を安全に保護するためにVe
 
 <code>client_secret</code> は開発者が Google Cloud Console で発行した「このアプリが本物であることを証明する鍵」。漏れると開発者のアプリが停止・悪用されるリスクがある。iPhone のコードに埋め込むと Safari DevTools で誰でも読めてしまう。
 
+<p class="table-caption">表 4-1　client_secret 保護方式の比較</p>
+
 | No | 手法 | `client_secret` の場所 | 問題点・利点 |
 |:---|:---|:---|:---|
 | 1 | ✕ iPhone 直接 | iPhone のコードに埋め込む | Safari DevTools でユーザーが読める → 開発者のアプリが悪用される |
@@ -185,7 +193,12 @@ iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</co
 
 ## 5 改版履歴
 
+<div class="history-table">
+<p class="table-caption">表 5-1　改版履歴</p>
+
 | No | バージョン | 日付 | 変更内容 |
 |:---|:---|:---|:---|
-| 1 | 1.0 | 2026-04-19 | 設計書を 001/002/003 に再編。本ファイル（001）は全体像を担当。旧 001_ARCHITECTURE_DESIGN・003_SYSTEM_OVERVIEW の該当部分を統合 |
-| 2 | 1.1 | 2026-04-24 | システム全体関係図を `graph LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
+| 1 | 1.0 | 26-04-19 | 設計書を 001/002/003 に再編。本ファイル（001）は全体像を担当。旧 001_ARCHITECTURE_DESIGN・003_SYSTEM_OVERVIEW の該当部分を統合 |
+| 2 | 1.1 | 26-04-24 | システム全体関係図を `graph LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
+
+</div>

@@ -21,6 +21,7 @@ export const translations = {
         'settings.general': '一般',
         'settings.appearance': '外観',
         'settings.data': 'データ管理',
+        'settings.iphone': 'iPhone連携',
         'settings.about': 'このアプリについて',
 
         // 設定画面 - 一般
@@ -190,6 +191,7 @@ export const translations = {
         'settings.general': 'General',
         'settings.appearance': 'Appearance',
         'settings.data': 'Data Management',
+        'settings.iphone': 'iPhone Sync',
         'settings.about': 'About',
 
         // Settings - General
