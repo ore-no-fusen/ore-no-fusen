@@ -49,24 +49,17 @@ jobs:
             pkg.version = '$VERSION';
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
-          node -e "
-            const fs = require('fs');
-            const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8'));
-            conf.version = '$VERSION';
-            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
-          "
           sed -i "0,/^version = /s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          npm install --package-lock-only
 
       - name: Verify versions
         run: |
           VERSION="${{ github.event.inputs.version }}"
           PKG=$(node -e "console.log(require('./package.json').version)")
-          TAURI=$(node -e "console.log(require('./src-tauri/tauri.conf.json').version)")
           CARGO=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
           echo "package.json: $PKG"
-          echo "tauri.conf.json: $TAURI"
           echo "Cargo.toml: $CARGO"
-          if [ "$PKG" != "$VERSION" ] || [ "$TAURI" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ]; then
+          if [ "$PKG" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ]; then
             echo "❌ Version mismatch!"
             exit 1
           fi
@@ -77,7 +70,7 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           MSG="${{ github.event.inputs.message }}"
           COMMIT_MSG="${MSG:-chore: バージョンを v${VERSION} に更新}"
-          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+          git add package.json src-tauri/Cargo.toml package-lock.json
           git commit -m "$COMMIT_MSG"
           git push origin main
 

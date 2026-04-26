@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.0 / 2026-04-19
+設計書 v1.4 / 2026-04-27
 </p>
 
 ---
@@ -787,55 +787,135 @@ graph LR
 
 ---
 
-## 6 エラーハンドリング・リカバリ方針
+## 6 機能一覧
+
+画面ごとの機能と、各機能の設計意図を記します。
+
+### 6.1 メモ一覧画面（list）
+
+<p class="table-caption">表 6.1-1　メモ一覧画面の機能</p>
+
+| 機能 | 設計意図・工夫 |
+|:---|:---|
+| Drive → IndexedDB 同期 | 一覧を開くたびに `notes_to_iphone.json` を Drive から取得し、ローカルにない新着ノートを IndexedDB に取り込む。取り込み後は Drive ファイルを削除（Drive = 未処理キュー）。Drive 失敗時は IndexedDB だけで一覧表示を続ける（フォールセーフ） |
+| 画像サムネイル | 添付画像がある場合、IndexedDB の Blob から `URL.createObjectURL()` で URL を生成してサムネイルを表示。アンマウント時に `URL.revokeObjectURL()` で解放する |
+| ステータスバッジ | draft（下書き）/ sent（PC送信済み）/ PC受信 の3状態を `sent_at` フィールドの有無と `received_pc` フラグで判定して色分け表示する |
+| 相対時間表示 | `created_at` から「3分前」「1時間前」「昨日」の形式に変換（`formatRelativeTime()`）。 数字と絶対時刻を並べるより一目で新鮮度がわかる |
+| 🔔/🔕 ロック画面常駐 | 後述（6.2）|
+| 🗑️ 削除 | IndexedDB から削除後、Drive 上の同 ID ファイルも削除する |
+| ＋ 新規作成 | 新しい下書き ID を `crypto.randomUUID()` で生成し write 画面へ遷移 |
+| 🔔 デバイス再登録（フッター） | `silentReRegisterIfNeeded()` を呼び出し、`push_devices.json` に自デバイスが存在しない場合のみ静かに再登録する。既存デバイスがいれば何もしない |
+
+### 6.2 ロック画面常駐（🔔）
+
+このアプリの核心機能。「消す意思がないかぎり、ロック画面から消えない」体験を実現する。
+
+<p class="table-caption">表 6.2-1　ロック画面常駐の仕組みと設計意図</p>
+
+| 観点 | 設計意図・工夫 |
+|:---|:---|
+| 通知表示の方式 | iOS ではメインスレッドの `new Notification()` が動かない。`navigator.serviceWorker.ready` → `reg.showNotification()` を使う。これが iOS で通知を出せる唯一の方法 |
+| 重複防止 | `reg.getNotifications()` で既存通知を取得し、同じ `data.id` を持つものをすべて `n.close()` してから新規通知を表示する |
+| タイトル・本文の生成 | `# タイトル` 行があれば it を通知タイトルに。なければ本文冒頭20文字をタイトルに使う。本文から画像タグ `![](...)` を正規表現で除去してから40〜60文字を表示する |
+| 楽観的更新 | ボタンを押した瞬間に UI の 🔔/🔕 を切り替える。SW 操作や IndexedDB 書き込みに失敗した場合のみロールバックする。ユーザーに「レスポンスが遅い」と感じさせない |
+| 通知権限の動的確認 | `Notification.permission === 'default'` なら許可ダイアログを表示。`denied` なら UI を元に戻してエラーを表示する |
+| 通知を消す権限 | ロック解除時に `reg.active?.postMessage({ type: 'CLOSE_NOTIFICATION', tag })` で SW に通知クローズを依頼する。メインスレッドは通知を直接閉じられない |
+| locked フラグの永続化 | `locked: true/false` を IndexedDB に書き込む。次回 Push 受信時に SW がこの値を参照して再通知を行うかどうかを決める |
+| 効果音 | ON 時は `bell_on.wav`、OFF 時は `bell_off.wav` を `Audio` API で再生。操作の結果をユーザーが音で確認できる |
+
+### 6.3 メモ編集画面（write）
+
+<p class="table-caption">表 6.3-1　メモ編集画面の機能</p>
+
+| 機能 | 設計意図・工夫 |
+|:---|:---|
+| contenteditable エディタ | `contentEditable="true"` の `div` で実装。React の `value/onChange` モデルを使わず DOM を直接操作。`serializeEditor()` が HTML → Markdown 形式に変換する |
+| 3秒自動保存 | 入力のたびにタイマーをリセット。3秒間入力がなければ IndexedDB に保存（`useAutoSave`）。Drive は使わない。ネットワーク不要・オフライン動作 |
+| バックグラウンド遷移時の強制保存 | `visibilitychange` で非表示になった瞬間にも保存（`useVisibilitySave`）。アプリを閉じてもデータが消えない |
+| 📷 画像添付 | ファイル選択 → `CropModal` でトリミング → IndexedDB に Blob 保存 → `buildImageFileName()` でファイル名生成 → カーソル位置に `![]()` を挿入。PCへ送るときに Drive に実際にアップロードされる |
+| 🔷 Mermaid | `MermaidModal` でフローチャートのコードを書いて確定するとエディタに挿入される |
+| ☑ チェックボックス | カーソルのある行を `data-checkbox-line` 属性を持つ `<span>` に変換（再押しで解除）。行頭が IMG ノードの場合は次の兄弟ノードに処理を移す特殊ケース対応あり |
+| 🏷️ タグ | タグバーを展開。Enter または Space で確定。過去に入力したタグを `localStorage（fusen_known_tags）` から自動サジェスト。送信時に `mergeKnownTags()` で履歴に追加 |
+| ← 一覧に戻る | 内容がある場合は IndexedDB に下書き保存してから list 画面へ遷移。保存はサイレントに行われ、確認ダイアログは不要 |
+| 「iPhoneに置いておく」 | Drive を一切使わず IndexedDB のみに保存。ネットワーク不要。削除するまで端末に残り続ける |
+| 「PCへ送る」 | 後述（6.4）|
+
+### 6.4 「PCへ送る」
+
+<p class="table-caption">表 6.4-1　PCへ送る の処理ステップ</p>
+
+| ステップ | 設計意図・工夫 |
+|:---|:---|
+| ① トークン有効期限確認 | `viewer_expires_at` と `Date.now()` を比較。**期限5分前**を切っていたら送信前に Vercel `/api/auth/refresh` を呼んでトークンを更新する。送信中に突然期限切れにならないための先読み更新 |
+| ② セッション切れ処理 | リフレッシュが失敗した場合は localStorage のトークンを削除し、login 画面へ遷移。エラーメッセージを5秒表示して消す |
+| ③ 画像アップロード | 添付画像を `Promise.all()` で並列アップロード。直列より速い |
+| ④ キューへの追記 | `notes_from_iphone.json` を Drive から読み取り、既存アイテムの末尾に新しいアイテムを追加して上書き（read-modify-write）。旧スキーマのファイルが残っていても自動変換して引き継ぐ後方互換処理あり |
+| ⑤ IndexedDB に sent を記録 | 送信後、同 ID のレコードに `sent_at` をセットして IndexedDB を更新。一覧画面に「送信済み」バッジが表示される |
+| ⑥ 成功フィードバック | 3秒間 `backgroundSendSuccess = true` にして UI に成功インジケータを表示。その後自動で消える |
+
+### 6.5 通知許可・デバイス登録（push 画面）
+
+<p class="table-caption">表 6.5-1　プッシュ通知登録の処理ステップ</p>
+
+| ステップ | 設計意図・工夫 |
+|:---|:---|
+| ① 通知権限取得 | `Notification.requestPermission()` で OS レベルの許可ダイアログを表示。拒否された場合はエラーを表示して処理を停止 |
+| ② 購読の再生成 | 既存の Push 購読があれば一度 `unsubscribe()` してから再登録する。クリーンな状態を保つためのリセット処理 |
+| ③ VAPID 鍵での購読 | `process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY`（Vercel 環境変数）を使って `pushManager.subscribe()` を実行。この鍵は PC 側の WebPush 送信時の署名鍵と対になる |
+| ④ デバイス ID の永続化 | `crypto.randomUUID()` で端末固有の `device_id` を生成。localStorage に保存し以降の再登録でも同一 ID を使う |
+| ⑤ push_devices.json への upsert | Drive から `push_devices.json` を取得し、同 `device_id` のエントリを更新（または新規追加）して上書き保存。旧スキーマ（`endpoint` 直下方式）は自動的に新スキーマに移行する |
+
+---
+
+## 7 エラーハンドリング・リカバリ方針
 
 <Note type="info">
 各エラーケースの実施状況。<span style="color:#dc2626;font-weight:700">⚠️ 未実施</span> は現時点での課題。
 </Note>
 
-### 6.1 通信・認証エラー
+### 7.1 通信・認証エラー
 
-#### 6.1.1 Drive API エラーとトークン自動更新
+#### 7.1.1 Drive API エラーとトークン自動更新
 Drive API 呼び出し（ダウンロードやアップロード）が失敗した場合、<code>drive.ts</code> 内の <code>downloadWithAutoRefresh</code> 等によりトークンの自動リフレッシュが試行される（実施済み）。
 リフレッシュにも失敗した場合は例外がスローされ、呼び出し元の React コンポーネント側でキャッチされる。
 **UI上のエラーフィードバック（トースト表示等）は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。**
 
-#### 6.1.2 認証切れ時のフォールバック
+#### 7.1.2 認証切れ時のフォールバック
 トークンリフレッシュ（Vercel API <code>/api/auth/refresh</code>）が 4xx 等で失敗し、リフレッシュトークン自体が失効していると判定された場合、<code>localStorage</code> からトークン情報を破棄し <code>null</code> を返す。
 これによりアプリは未認証状態とみなされ、自動的にログイン画面（<code>login</code> ステップ）へフォールバックする（実施済み）。
 
-#### 6.1.3 PCアプリ側での Drive API 失敗（gdrive.rs）
+#### 7.1.3 PCアプリ側での Drive API 失敗（gdrive.rs）
 PC アプリ（Rust）が Drive API 呼び出しに失敗した場合、<code>Err(String)</code> を返して Tauri コマンド経由でPCフロントエンドにエラーを通知する。
 PC側のアクセストークンは期限到来の 60 秒前に自動リフレッシュされ、失敗時は「Googleの認証が切れました」と返す。
 **PCフロントエンドでのエラーダイアログ表示（トースト等）は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。**
 
-#### 6.1.4 PCからの Web Push 送信失敗
+#### 7.1.4 PCからの Web Push 送信失敗
 PC アプリから APNs / FCM へのプッシュ送信が失敗した場合（201 以外の HTTP ステータス）、エラーコードを含む <code>Err</code> を返す。
 **PC側での送信失敗時の自動リトライ機構は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。**送信失敗時は iPhone に通知が届かないまま終了する。
 
-### 6.2 バックグラウンド処理・リカバリ
+### 7.2 バックグラウンド処理・リカバリ
 
-#### 6.2.1 Push 受信時のフォールバック（画像DL失敗時）
+#### 7.2.1 Push 受信時のフォールバック（画像DL失敗時）
 Service Worker (<code>worker/index.js</code>) 内での Push 受信処理では、画像（<code>fusen_img_*</code>）の Drive ダウンロードがネットワークエラー等で失敗した場合でも**処理を中断しない**フェイルセーフ機構がある。
 画像取得に失敗した場合でも、テキスト本文のみを IndexedDB（<code>fusen-drafts</code>）に保存し、ユーザーへの OS 通知を確実に表示する（実施済み）。
 
-#### 6.2.2 デバッグログの運用方針（fusen-logs）
+#### 7.2.2 デバッグログの運用方針（fusen-logs）
 UIを持たない Service Worker 内で発生した処理結果やエラー（トークン取得失敗、画像保存失敗など）は、IndexedDB の <code>fusen-logs</code> ストアに対して <code>fire-and-forget</code> で記録される（実施済み）。
 後から Chrome DevTools 等で内部状態や Push 受信時のエラー原因を追跡できるようになっている。
 
-#### 6.2.3 iOS特有の制約とリカバリサイクル
+#### 7.2.3 iOS特有の制約とリカバリサイクル
 iOS の PWA 環境では、バックグラウンドでの通知タップ時（<code>notificationclick</code> イベント）が正常に発火しない・あるいは Web API へのアクセスが制限されるケースがある。
 この制限に対するリカバリとして、通知受信時に次回開くべきノート ID を IndexedDB に保存（<code>pending_open</code>）し、次にユーザーがアプリを開いた際（<code>page.tsx</code> マウント時）に自動的にそのノートを表示するサイクルを構築している（実施済み）。
 
-#### 6.2.4 Service Worker の更新
+#### 7.2.4 Service Worker の更新
 <code>skipWaiting()</code> + <code>clients.claim()</code> で新しい SW が即時有効化される。バグ修正版をリリースした際に古い SW が動き続けることはない。
 
 ---
 
-## 7 改版履歴
+## 8 改版履歴
 
 <div class="history-table">
-<p class="table-caption">表 7-1　改版履歴</p>
+<p class="table-caption">表 8-1　改版履歴</p>
 
 | No | バージョン | 日付 | 変更内容 |
 |:---|:---|:---|:---|
@@ -843,5 +923,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 2 | 1.1 | 26-04-20 | 4.4 にロック画面常駐体験（REQ_IP_05）の再通知サイクル（①②③④）を追加。4.2 に REQ_IP_05 への参照を追加 |
 | 3 | 1.2 | 26-04-20 | 4.4 の再通知フローを実態に合わせて修正。iOS では notificationclick が発火しないため pending_open + page.tsx が再通知を担う仕組みを図入りで明記。2.2 の notificationclick 説明に iOS 制約を追記 |
 | 4 | 1.3 | 26-04-24 | モジュール構造図を `graph LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
+| 5 | 1.4 | 26-04-27 | セクション6「機能一覧」を新規追加。メモ一覧・ロック画面常駐・メモ編集・PCへ送る・プッシュ登録の設計意図を記載。旧6→7、旧7→8に繰り下げ。 |
 
 </div>

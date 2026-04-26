@@ -106,10 +106,8 @@ E2E テストは Playwright で実際の Tauri アプリを起動して操作す
 ```bash
 # 全ユニットテストを実行（一回実行）
 npm run test
-
 # ウォッチモード（開発中）
 npx vitest
-
 # カバレッジレポート付き
 npx vitest run --coverage
 ```
@@ -127,10 +125,8 @@ cargo test
 ```bash
 # E2E テストを実行（Tauri アプリのビルドが必要）
 npx playwright test
-
 # 特定ファイルのみ実行
 npx playwright test e2e/sticky-note.spec.ts
-
 # UI モードで実行（デバッグ用）
 npx playwright test --ui
 ```

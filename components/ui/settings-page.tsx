@@ -638,7 +638,7 @@ function AboutSection({ t }: { t: (key: any) => string }) {
             .then(v => setVersion(v))
             .catch(e => {
                 console.error('Failed to get version:', e)
-                setVersion('0.10.0') // フォールバック
+                setVersion('')
             })
     }, [])
 

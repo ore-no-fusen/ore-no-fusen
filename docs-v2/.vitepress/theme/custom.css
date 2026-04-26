@@ -31,11 +31,6 @@
   margin: 6px 0 0 !important;
   letter-spacing: 0.03em;
 }
-/* 表キャプション直後のテーブルは上マージンを詰める */
-.vp-doc .table-caption + table {
-  margin-top: 4px !important;
-}
-
 /* --- の直後の h2 は border-top を消す（hr と h2 の二重線を防ぐ） */
 .vp-doc hr + h2 {
   border-top: none;
@@ -50,6 +45,10 @@
 .vp-doc .table-caption + table,
 .vp-doc .table-caption + div {
   margin-top: 4px !important;
+}
+/* グリッドdiv内のtable: VitePressデフォルトmarginをリセット（内側の空白対策） */
+.vp-doc .table-caption + div > table {
+  margin-top: 0 !important;
 }
 
 /* テーブルのヘッダーセルは折り返さない */
