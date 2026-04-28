@@ -75,7 +75,7 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           MSG="${{ github.event.inputs.message }}"
           COMMIT_MSG="${MSG:-chore: バージョンを v${VERSION} に更新}"
-          git add package.json src-tauri/Cargo.toml package-lock.json
+          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock package-lock.json
           git commit -m "$COMMIT_MSG"
           git push origin main
 

@@ -1393,15 +1393,26 @@ const StickyNote = memo(function StickyNote() {
                     let sourcePhysX: number | undefined;
                     let sourcePhysY: number | undefined;
                     let sourceScale: number | undefined;
+                    let sourcePhysWidth: number | undefined;
+                    let sourcePhysHeight: number | undefined;
                     try {
                         const physPos = await win.outerPosition();
                         sourcePhysX = physPos.x;
                         sourcePhysY = physPos.y;
                         sourceScale = await win.scaleFactor();
+                        const physSize = await win.outerSize();
+                        sourcePhysWidth = physSize.width;
+                        sourcePhysHeight = physSize.height;
                     } catch (e) {
                         invoke('fusen_debug_log', { message: `[CREATE_REQ] Ctrl+N outerPosition/scaleFactor FAILED: ${e}` }).catch(() => { });
                     }
-                    emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale });
+                    // outerSize() が失敗した場合は window.innerWidth/Height で補完する
+                    if (sourcePhysWidth === undefined || sourcePhysHeight === undefined) {
+                        const s = sourceScale ?? 1;
+                        sourcePhysWidth = Math.round(window.innerWidth * s);
+                        sourcePhysHeight = Math.round(window.innerHeight * s);
+                    }
+                    emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight });
                 }
             }
 
@@ -1524,16 +1535,28 @@ const StickyNote = memo(function StickyNote() {
                         let sourcePhysX: number | undefined;
                         let sourcePhysY: number | undefined;
                         let sourceScale: number | undefined;
+                        let sourcePhysWidth: number | undefined;
+                        let sourcePhysHeight: number | undefined;
                         try {
                             const physPos = await win.outerPosition();
                             sourcePhysX = physPos.x;
                             sourcePhysY = physPos.y;
                             sourceScale = await win.scaleFactor();
+                            const physSize = await win.outerSize();
+                            sourcePhysWidth = physSize.width;
+                            sourcePhysHeight = physSize.height;
                         } catch (e) {
                             invoke('fusen_debug_log', { message: `[CREATE_REQ] + button outerPosition/scaleFactor FAILED: ${e}` }).catch(() => { });
                         }
-                        invoke('fusen_debug_log', { message: `[CREATE_REQ] + clicked label=${win.label} sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale}` }).catch(() => { });
-                        emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale });
+                        // outerSize() が失敗した場合は window.innerWidth/Height で補完する
+                        if (sourcePhysWidth === undefined || sourcePhysHeight === undefined) {
+                            const s = sourceScale ?? 1;
+                            sourcePhysWidth = Math.round(window.innerWidth * s);
+                            sourcePhysHeight = Math.round(window.innerHeight * s);
+                            invoke('fusen_debug_log', { message: `[CREATE_REQ] outerSize fallback: innerWidth=${window.innerWidth} innerHeight=${window.innerHeight} scale=${s} → physW=${sourcePhysWidth} physH=${sourcePhysHeight}` }).catch(() => { });
+                        }
+                        invoke('fusen_debug_log', { message: `[CREATE_REQ] + clicked label=${win.label} sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale} physW=${sourcePhysWidth} physH=${sourcePhysHeight}` }).catch(() => { });
+                        emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight });
                     }}
                 />
             </div>

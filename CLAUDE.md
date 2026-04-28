@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## コマンド
 
 ```bash
-npm run dev          # 開発サーバー起動（port 3002）
+npm run dev          # 開発サーバー起動（port 3002、E2Eテストは port 3003）
 npm test             # ユニットテスト（vitest）
 npm run test:watch   # ウォッチモード
 npm run test:e2e     # E2Eテスト（要: devサーバー起動済み、port 3003）
@@ -69,7 +69,7 @@ iPhone → Drive（notes_from_iphone.json + 画像）→ PC が受信・付箋�
 必要なファイルのみ読む。大量読み込み禁止。
 
 ### 設計書の扱い
-設計書（`docs/`）は「参考」でなく「仕様」。
+設計書（`docs-v2/`）は「参考」でなく「仕様」。
 - 実装前にシーケンス図の何番に対応するか確認する
 - 設計に不明点があれば実装前に確認する（実装しながら修正禁止）
 
@@ -97,7 +97,6 @@ iPhone → Drive（notes_from_iphone.json + 画像）→ PC が受信・付箋�
 - 行の順序: 古い→新しい（No.1 が最古）
 - ラッパー: `<div class="history-table">`
 
-詳細: `docs-v2/DOCUMENT_GUIDELINES.html`
 
 ---
 
@@ -114,6 +113,3 @@ iPhone → Drive（notes_from_iphone.json + 画像）→ PC が受信・付箋�
 | 目的を理解してから動く | 「なぜ」が分かれば「何をすべきか」が見える |
 | 推測で実装しない | 分からなければ実装前に確認する |
 | 推測で回答しない | コードの動作・目的を聞かれたら必ずソースを調べてから答える |
-| YAGNI | 今必要でない機能は作らない |
-| DRY | 同じロジックを複数箇所に書かない |
-| Fail fast | エラーは早期に検出・報告する |
