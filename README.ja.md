@@ -21,27 +21,27 @@ Markdownで書ける、美しい付箋アプリ
 </div>
 
 ---
-# Ore-no-Fusen
+# 俺の付箋
 
-The fastest way to capture thoughts.
+思いついたことを、すぐメモできる。
 
-Markdown sticky notes for your desktop.
+Markdownで書ける、デスクトップ付箋。
 
-## Install (10 sec)
+## インストール（10秒）
 ```bash
 winget install ore-no-fusen
 ```
 
-Or download from:
+またはダウンロードページから：
 
-[Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
+[Releases ページ](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 
 
-## Concept
+## コンセプト
 
-Capture thoughts instantly without interrupting your thinking.
+思考を止めずに、瞬時にアイデアをメモできる。
 
-Ore-no-Fusen is designed as a fast thinking canvas where ideas can appear the moment they come to mind.
+俺の付箋は、アイデアが浮かんだ瞬間にすぐ書き留められる、高速思考キャンバスです。
 
 ---
 
