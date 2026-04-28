@@ -16,7 +16,7 @@ Markdownで書ける、美しい付箋アプリ
 [![Downloads Latest](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/latest/total?style=flat-square&label=downloads+latest)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
 
-[ダウンロード](#-インストール) • [オンラインドキュメント](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app)
+[ダウンロード](#-インストール) • [オンラインドキュメント](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app) • [🎥 漫画で学ぶ](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
 
 </div>
 
