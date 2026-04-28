@@ -475,7 +475,7 @@ function OrchestratorContent() {
   // [Fix] Synchronous lock for creation
   const isCreatingRef = useRef(false);
 
-  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number }, duplicatePath?: string) => {
+  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string) => {
     // Global Throttle (Module Level) prevention
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
@@ -538,10 +538,48 @@ function OrchestratorContent() {
           // [FIX] JS の show()→setSize→setPosition は非同期タイミング問題と
           // WINDOWPLACEMENT 復元問題で不安定。代わりに Rust の SetWindowPos(SWP_SHOWWINDOW) で
           // show・サイズ・位置を原子的に実行する (fusen_show_at_position)。
-          // DPI 対応のオフセット: 30 論理ピクセル → ソースの scale 倍で物理ピクセルに変換
-          const physOffset = sourceMeta ? Math.round(30 * sourceMeta.scale) : 0;
-          const targetPhysX = sourceMeta ? sourceMeta.physX + physOffset : undefined;
-          const targetPhysY = sourceMeta ? sourceMeta.physY + physOffset : undefined;
+          // 左→下→上の順で重ならない位置を探す
+          // 元の付箋が属するモニタの情報を取得してスクリーン境界を正確に判定する
+          let targetPhysX: number | undefined;
+          let targetPhysY: number | undefined;
+          if (sourceMeta) {
+            const srcH = sourceMeta.physHeight ?? Math.round(300 * sourceMeta.scale);
+            const newW = Math.round(400 * sourceMeta.scale);
+            const newH = Math.round(300 * sourceMeta.scale);
+            const gap = Math.round(10 * sourceMeta.scale);
+            const leftX = sourceMeta.physX - newW - gap;
+            invoke('fusen_debug_log', { message: `[POS_CALC] sourceMeta: physX=${sourceMeta.physX} physY=${sourceMeta.physY} physW=${sourceMeta.physWidth} physH=${sourceMeta.physHeight} scale=${sourceMeta.scale} | srcH=${srcH} newW=${newW} newH=${newH} leftX=${leftX}` }).catch(() => {});
+            if (leftX >= 0) {
+              // 左にスペースあり
+              targetPhysX = leftX;
+              targetPhysY = sourceMeta.physY;
+              invoke('fusen_debug_log', { message: `[POS_CALC] → 左に出す: (${targetPhysX}, ${targetPhysY})` }).catch(() => {});
+            } else {
+              // 左にスペースなし → 元の付箋が属するモニタを特定してから下/上を判断
+              const belowY = sourceMeta.physY + srcH + gap;
+              let screenPhysBottom = belowY + newH + 1; // デフォルト：下に入ると仮定
+              try {
+                const { monitorFromPoint } = await import('@tauri-apps/api/window');
+                const mon = await monitorFromPoint(
+                  sourceMeta.physX / sourceMeta.scale,
+                  sourceMeta.physY / sourceMeta.scale
+                );
+                invoke('fusen_debug_log', { message: `[POS_CALC] monitorFromPoint(${sourceMeta.physX / sourceMeta.scale}, ${sourceMeta.physY / sourceMeta.scale}) → mon=${mon ? `${mon.name} pos=(${mon.position.x},${mon.position.y}) size=${mon.size.width}x${mon.size.height} workArea=(${mon.workArea.position.y},${mon.workArea.size.height})` : 'null'}` }).catch(() => {});
+                if (mon) {
+                  const wa = mon.workArea;
+                  screenPhysBottom = wa.position.y + wa.size.height;
+                }
+              } catch (e) {
+                invoke('fusen_debug_log', { message: `[POS_CALC] monitorFromPoint FAILED: ${e}` }).catch(() => {});
+              }
+              invoke('fusen_debug_log', { message: `[POS_CALC] belowY=${belowY} newH=${newH} screenPhysBottom=${screenPhysBottom} → fits=${belowY + newH <= screenPhysBottom}` }).catch(() => {});
+              targetPhysX = sourceMeta.physX;
+              targetPhysY = belowY + newH <= screenPhysBottom
+                ? belowY                                            // 下に出す
+                : sourceMeta.physY - newH - gap;                   // 下が入らなければ上に出す
+              invoke('fusen_debug_log', { message: `[POS_CALC] → ${belowY + newH <= screenPhysBottom ? '下' : '上'}に出す: (${targetPhysX}, ${targetPhysY})` }).catch(() => {});
+            }
+          }
           // サイズを物理ピクセルで計算。sourceMeta がない場合はメインウィンドウの scale を取得する。
           // プールウィンドウは非表示で別モニタにいる可能性があるため scaleFactor() が不正確になる。
           let sizeScale = sourceMeta?.scale;
@@ -550,7 +588,7 @@ function OrchestratorContent() {
           }
           const targetPhysWidth = Math.round(400 * sizeScale);
           const targetPhysHeight = Math.round(300 * sizeScale);
-          invoke('fusen_debug_log', { message: `[CREATE_EMIT] emitTo ${poolWindow.label}: physOffset=${physOffset} target=(${targetPhysX},${targetPhysY}) size=${targetPhysWidth}x${targetPhysHeight} sizeScale=${sizeScale}` }).catch(() => { });
+          invoke('fusen_debug_log', { message: `[CREATE_EMIT] emitTo ${poolWindow.label}: target=(${targetPhysX},${targetPhysY}) size=${targetPhysWidth}x${targetPhysHeight} sizeScale=${sizeScale}` }).catch(() => { });
           const { emitTo } = await import('@tauri-apps/api/event');
           await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
             path: newNote.meta.path,
@@ -567,13 +605,26 @@ function OrchestratorContent() {
           invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
         } else {
           console.warn(`[CREATE] No pool window found, falling back to normal window creation`);
-          await openNoteWindow(newNote.meta.path, sourceMeta ? {
-            // openNoteWindow は論理座標で受け取るため変換する
-            x: (sourceMeta.physX / sourceMeta.scale) + 30,
-            y: (sourceMeta.physY / sourceMeta.scale) + 30,
-            width: 400,
-            height: 300,
-          } : undefined, true);
+          await openNoteWindow(newNote.meta.path, sourceMeta ? await (async () => {
+            // 左→下→上の順で重ならない位置を探す（論理座標）
+            const lx = sourceMeta.physX / sourceMeta.scale;
+            const ly = sourceMeta.physY / sourceMeta.scale;
+            const srcH = sourceMeta.physHeight ? sourceMeta.physHeight / sourceMeta.scale : 300;
+            const leftX = lx - 400 - 10;
+            if (leftX >= 0) return { x: leftX, y: ly, width: 400, height: 300 };
+            const belowY = ly + srcH + 10;
+            let screenLogBottom = belowY + 300 + 1; // デフォルト：下に入ると仮定
+            try {
+              const { monitorFromPoint } = await import('@tauri-apps/api/window');
+              const mon = await monitorFromPoint(lx, ly);
+              if (mon) {
+                const wa = mon.workArea;
+                screenLogBottom = (wa.position.y + wa.size.height) / sourceMeta.scale;
+              }
+            } catch (_) { /* デフォルトで下に出す */ }
+            const y = belowY + 300 <= screenLogBottom ? belowY : ly - 300 - 10;
+            return { x: lx, y, width: 400, height: 300 };
+          })() : undefined, true);
           invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
         }
       } catch (poolErr) {
@@ -886,15 +937,15 @@ function OrchestratorContent() {
 
     let unlisten: (() => void) | undefined;
 
-    const promise = listen<{ folderPath: string; context: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number }>('fusen:request_create', async (event) => {
-      const { folderPath, context, sourcePhysX, sourcePhysY, sourceScale } = event.payload;
-      invoke('fusen_debug_log', { message: `[CREATE_REQ] page.tsx received: sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale}` }).catch(() => { });
+    const promise = listen<{ folderPath: string; context: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number; sourcePhysWidth?: number; sourcePhysHeight?: number }>('fusen:request_create', async (event) => {
+      const { folderPath, context, sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight } = event.payload;
+      invoke('fusen_debug_log', { message: `[CREATE_REQ] page.tsx received: sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale} sourcePhysWidth=${sourcePhysWidth} sourcePhysHeight=${sourcePhysHeight}` }).catch(() => { });
       if (!folderPath) {
         console.warn('[RequestCreate] No folder path in request');
         return;
       }
       const sourceMeta = (sourcePhysX !== undefined && sourcePhysY !== undefined)
-        ? { physX: sourcePhysX, physY: sourcePhysY, scale: sourceScale ?? 1.0 }
+        ? { physX: sourcePhysX, physY: sourcePhysY, scale: sourceScale ?? 1.0, physWidth: sourcePhysWidth, physHeight: sourcePhysHeight }
         : undefined;
       await handleCreateNote(folderPath, context || 'memo', sourceMeta);
     });
