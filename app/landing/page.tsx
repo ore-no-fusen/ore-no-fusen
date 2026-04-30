@@ -205,10 +205,10 @@ export default function LandingPage() {
                                     'Notion is too complex. OneNote is too heavy.',
                                     'Looking for something just right.',
                                 ] : [
-                                    'iPhoneは好き。でもPCはWindows派。',
-                                    'Appleメモ使いたいけど、Windowsだから...',
-                                    'Notionは大げさ。OneNoteは重い。',
-                                    'なんかちょうどいいやつ、ないかな。',
+                                    'クックパッドで見つけたレシピを、キッチンでパッと見たい。',
+                                    '買い物リストをPCで作って、スーパーでiPhoneから確認したい。',
+                                    'Notionは大げさ。でも、ただのメモ帳だと物足りない。',
+                                    '仕事も、料理も、明日の予定も。全部一か所に貼っておきたい。',
                                 ]).map((text) => (
                                     <div
                                         key={text}
@@ -495,10 +495,10 @@ export default function LandingPage() {
                                 rotation: '-rotate-1',
                             },
                             {
-                                emoji: '📱',
-                                scene: '移動中',
-                                title: '通勤中にiPhoneでメモ',
-                                desc: 'iPhoneでサッと書いたメモが、帰宅後にPCのデスクトップに貼ってある。',
+                                emoji: '🍳',
+                                scene: 'キッチン・お買い物',
+                                title: 'レシピメモを片手に料理',
+                                desc: 'PCで見つけたレシピのコツを付箋に。キッチンではiPhoneを立てかけて、それを見ながら料理。',
                                 color: '#A8C890',
                                 topColor: '#8BAF75',
                                 textColor: '#1E3A10',
@@ -588,7 +588,7 @@ export default function LandingPage() {
                                         value={inputValue}
                                         onChange={(e) => setInputValue(e.target.value)}
                                         onKeyDown={handleDemoKeyDown}
-                                        placeholder={isEn ? "Write something here..." : "ここに書いてみてください..."}
+                                        placeholder={isEn ? "Write something here..." : "例：今夜はカレー（玉ねぎ忘れない！）"}
                                         className="w-full text-base py-4 pl-4 pr-28 bg-[#FDFBF7] border-2 border-[#8BAF7C] rounded-xl focus:outline-none focus:border-[#5C7A3E] focus:ring-4 focus:ring-[#8BAF7C]/30 transition-all font-medium text-[#2C1F0E] placeholder:text-[#A89878] shadow-inner"
                                         autoComplete="off"
                                     />
