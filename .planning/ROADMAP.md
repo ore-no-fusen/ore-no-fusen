@@ -245,7 +245,7 @@ Plans:
 ### Phase 19: 起動性能300ms達成（Pool 透明→不透明アーキテクチャ）
 **Goal**: Ctrl+N 押下から 1 文字目入力可能（T2_READY）まで 300ms 以内を達成する。MVP「すぐ書ける」の核心実装。
 **Depends on**: Phase 18（独立実装可能だが順序は 18 後）
-**Requirements**: PERF-01〜（要定義 / `gsd:plan-phase 19` で具体化）
+**Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-05, PERF-06, PERF-07, PERF-08
 **Success Criteria** (what must be TRUE):
   1. Ctrl+N → T2_READY が **5回中央値で 300ms 以下**（実測ログで確認）
   2. **連打耐性**: 1.5秒間に 3 回 Ctrl+N を押しても破綻しない（プール枯渇時はフォールバック動作）
@@ -253,10 +253,14 @@ Plans:
   4. **データ整合性**: 1 文字も入力されないまま閉じた場合 `.md` ファイルがゴミとして残らない
   5. Pool 窓は透明状態で事前完全準備（描画完了・CodeMirror マウント済・編集モード待機）
   6. Ctrl+N 時は Win32 レベルで α=0→255 と SetWindowPos 位置移動のみで実現（新規生成しない）
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 19 to break down)
+- [ ] 19-01-wave0-test-scaffolding-PLAN.md — Wave 1: テスト・スクリプト・ログ基盤の先行作成（perflog.rs, perf-check.mjs, e2e specs, manual-verify 手順書）
+- [ ] 19-02-rust-core-layered-pool-PLAN.md — Wave 2: Rust 側コア（WS_EX_LAYERED + α=0/255 制御、fusen_create_note_lazy）
+- [ ] 19-03-js-side-firstchar-ready-PLAN.md — Wave 3: JS 側（onFirstChar、firstCharFiredRef、PoolWaitToast、JS スロットル撤去）
+- [ ] 19-04-replenish-global-shortcut-PLAN.md — Wave 4: Pool 補充オーケストレーション + グローバル Ctrl+N + settings.json カスタマイズ
+- [ ] 19-05-perf-verification-checkpoint-PLAN.md — Wave 5: 5 サンプル計測 + REQUIREMENTS 追記 + 手動検証チェックポイント
 
 ---
 
