@@ -6,7 +6,7 @@
 - ✅ **v2.0 iPhone連携** — Phases 4-5 (shipped 2026-03-29)
 - 📋 **v3.0 iPhone→PC送信** — Phases 6-12 (planned)
 - 📋 **v4.0 ロック画面コントロール** — Phases 13-14 (planned)
-- 📋 **v5.0 iPhone PWA 安定化** — Phases 15-18 (planned)
+- 📋 **v5.0 iPhone PWA 安定化** — Phases 15-19 (planned)
 
 ## Phases
 
@@ -241,6 +241,22 @@ Plans:
   2. エディタの🔔ボタンは現在のロック状態を反映し、ON/OFFが視覚的に区別できる（一覧側と状態が一致する）
   3. アプリを完全終了して再起動すると、IndexedDBに保存されたロック中メモの通知がロック画面に自動表示される
 **Plans**: TBD
+
+### Phase 19: 起動性能300ms達成（Pool 透明→不透明アーキテクチャ）
+**Goal**: Ctrl+N 押下から 1 文字目入力可能（T2_READY）まで 300ms 以内を達成する。MVP「すぐ書ける」の核心実装。
+**Depends on**: Phase 18（独立実装可能だが順序は 18 後）
+**Requirements**: PERF-01〜（要定義 / `gsd:plan-phase 19` で具体化）
+**Success Criteria** (what must be TRUE):
+  1. Ctrl+N → T2_READY が **5回中央値で 300ms 以下**（実測ログで確認）
+  2. **連打耐性**: 1.5秒間に 3 回 Ctrl+N を押しても破綻しない（プール枯渇時はフォールバック動作）
+  3. **負荷耐性**: 既存 17 付箋同時起動下でも 300ms 達成
+  4. **データ整合性**: 1 文字も入力されないまま閉じた場合 `.md` ファイルがゴミとして残らない
+  5. Pool 窓は透明状態で事前完全準備（描画完了・CodeMirror マウント済・編集モード待機）
+  6. Ctrl+N 時は Win32 レベルで α=0→255 と SetWindowPos 位置移動のみで実現（新規生成しない）
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 19 to break down)
 
 ---
 

@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: iPhone PWA 安定化
 status: defining_requirements
-last_updated: "2026-04-10T00:00:00.000Z"
-last_activity: 2026-04-10 — v5.0 マイルストーン開始（要件定義完了、ロードマップ作成待ち）
+last_updated: "2026-04-30T00:00:00.000Z"
+last_activity: 2026-04-30 — Phase 19 追加（起動性能300ms達成: Pool窓 透明→不透明アーキテクチャ）
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -36,6 +36,7 @@ Last activity: 2026-04-10 — v5.0 マイルストーン開始
 | 16 | バグ修正3件 | FIX-01, FIX-02, FIX-03 | ✅ 実機確認 |
 | 17 | コンポーネント分割 | ARCH-01〜04 | ✅ 実機確認 |
 | 18 | ロック機能完成（エディタ🔔・再起動復元） | LOCK-06〜08 | ✅ 実機確認 |
+| 19 | 起動性能300ms達成（Pool窓 透明→不透明） | TBD（PERF-01〜） | ✅ デスクトップ実測 |
 
 ## Accumulated Context
 
@@ -56,10 +57,14 @@ Last activity: 2026-04-10 — v5.0 マイルストーン開始
 - Phase 14 は v5.0 の Phase 18 として実装する
 - Phase 11/12（v3.0）は未完だが優先度を下げて v5.0 後に再検討
 
+### Roadmap Evolution
+
+- Phase 19 added (2026-04-30): 起動性能300ms達成 — Pool窓を透明状態で事前完成させ、Ctrl+N時に「色変え」(α=0→255)だけで表示。MVP「すぐ書ける」の核心実装。T2_READY ≦ 300ms 必達
+
 ### Pending Todos
 
 なし
 
 ### Blockers/Concerns
 
-なし
+- **Phase 19 のマイルストーン整合性**: 現マイルストーン v5.0 は「iPhone PWA 安定化」だが Phase 19 はデスクトップ性能。次マイルストーン (v6.0 等) に切り出すか、v5.0 を「品質安定化全般」に再定義するか要判断
