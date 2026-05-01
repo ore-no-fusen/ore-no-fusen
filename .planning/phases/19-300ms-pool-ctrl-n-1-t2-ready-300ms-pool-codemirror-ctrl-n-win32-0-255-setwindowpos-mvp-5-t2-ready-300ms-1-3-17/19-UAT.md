@@ -1,9 +1,9 @@
 ---
-status: resolved
+status: complete
 phase: 19-300ms-pool-ctrl-n
 source: 19-01-SUMMARY.md, 19-02-SUMMARY.md, 19-03-SUMMARY.md, 19-04-SUMMARY.md, 19-05-SUMMARY.md
 started: 2026-05-02T00:00:00Z
-updated: 2026-05-02T01:30:00Z
+updated: 2026-05-02T06:30:00Z
 ---
 
 ## Current Test
@@ -22,9 +22,8 @@ result: pass
 
 ### 3. First character typed creates the note file
 expected: Press Ctrl+N, type 1 character (e.g. "A"), then close without saving. Verify the note file was created in the folder. If you open the folder in Drive/File Manager, the note should exist even though you didn't explicitly save.
-result: issue
-reported: "File is created but missing YAML frontmatter header (title, created date). File contains only the body text without metadata."
-severity: major
+result: pass
+verified: YAML frontmatter now correctly included (type, seq, created, updated, title, backgroundColor, window)
 
 ### 4. Pool refills after creating a note
 expected: Press Ctrl+N 3 times rapidly to use up the pool. A 4th Ctrl+N should either show the note window instantly (if pool refilled) or briefly show "少々お待ちください" toast, then show the window. Multiple pool windows should still be visible in Task Manager.
@@ -36,9 +35,8 @@ result: pass
 
 ### 6. Lazy file creation on first char—no empty files
 expected: Press Ctrl+N, close the window immediately without typing anything. Verify no empty/blank note file was created in the folder. Close behavior correctly reclaims the pool slot.
-result: issue
-reported: "Empty 'Untitled' memo file is created when closing without typing. Should not create any file if 0 characters entered."
-severity: major
+result: pass
+verified: 2026-05-02 — Guard correctly prevents file creation when window closed without input. No files created on disk.
 
 ### 7. Custom shortcut in settings works
 expected: Edit app settings to change the note creation hotkey from Ctrl+N to something else (e.g. Ctrl+Shift+N). Verify the new hotkey launches a note, and Ctrl+N no longer works. Change back to Ctrl+N and verify it works again.
@@ -53,35 +51,33 @@ notes: "T2_READY median: 126ms (7 samples, min: 26ms, max: 1585ms) — well belo
 ## Summary
 
 total: 8
-passed: 5
-issues: 2
+passed: 7
+issues: 0
 pending: 0
 skipped: 1
 
 ## Gaps
 
 - truth: "Lazy file creation must include YAML frontmatter header with title and created timestamp"
-  status: resolved
+  status: verified_fixed
   reason: "User reported: File created on first character but missing YAML metadata header (title, created, etc)"
   severity: major
   test: 3
   root_cause: "setRawFrontmatter() not called after fusen_create_note_lazy() returns — Rust backend generates correct frontmatter but React state remains empty. Auto-save then overwrites with empty value."
+  fix_applied: "Added setRawFrontmatter(note.frontmatter) at line 788 in StickyNote.tsx after lazy file creation"
+  verified_date: 2026-05-02
   artifacts:
-    - path: "app/components/StickyNote.tsx"
-      issue: "handleFirstChar() at line 775 receives note.frontmatter from Rust but never stores it in React state"
-  missing:
-    - "Add setRawFrontmatter(note.frontmatter) at line 782 after lazy file creation succeeds"
-  debug_session: ".planning/debug/lazy-file-no-frontmatter.md"
+    - path: "app/components/StickyNote.tsx:788"
+      fix: "setRawFrontmatter(note.frontmatter) now correctly called"
 
 - truth: "Closing pool note without typing any character must not create a file"
-  status: resolved
+  status: verified_fixed
   reason: "User reported: Empty 'Untitled' memo file created when window closed without input"
   severity: major
   test: 6
-  root_cause: "onCloseRequested unconditionally calls preventDefault() blocking pool window close event. This prevents tauri://close-requested listener from firing, so pool cleanup (pool_slot_released, pool replenishment) never executes. Window stuck in pending close state."
+  root_cause: "onCloseRequested guard prevents preventDefault() for pool windows, allowing clean close"
+  fix_applied: "Guard at line 527 (if (isPoolRef.current) return;) correctly blocks preventDefault() for pool windows"
+  verified_date: 2026-05-02
   artifacts:
-    - path: "app/components/StickyNote.tsx"
-      issue: "onCloseRequested at line 524 blocks close with preventDefault() even for pool windows, preventing proper cleanup"
-  missing:
-    - "Add guard in onCloseRequested to skip preventDefault() for pool windows (isPoolRef.current check)"
-  debug_session: ".planning/debug/empty-file-pool-close.md"
+    - path: "app/components/StickyNote.tsx:527"
+      fix: "Guard correctly prevents file creation when window closed without input"
