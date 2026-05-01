@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: iPhone PWA 安定化
-status: Defining requirements → ロードマップ作成待ち
-last_updated: "2026-05-01T02:16:13.444Z"
-last_activity: 2026-05-01 — Phase 19 Plan 01 完了（Wave 0 テスト土台: perflog.rs + perf-check.mjs + E2E/Vitest スケルトン）
+status: executing
+last_updated: "2026-05-01T02:34:33.771Z"
+last_activity: 2026-05-01 — Phase 19 Plan 02 完了（Rust コア: WS_EX_LAYERED Pool + α=0→255 Atomic + fusen_create_note_lazy）
 progress:
   total_phases: 14
   completed_phases: 5
   total_plans: 33
-  completed_plans: 24
+  completed_plans: 25
 ---
 
 # Project State
@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 ## Current Position
 
 Phase: 19-300ms-pool-ctrl-n
-Plan: 01 完了 → 次: 02 (Wave 1)
-Status: In progress — Wave 0 土台完了、Wave 1 実装フェーズへ
-Last activity: 2026-05-01 — Phase 19 Plan 01 完了（Wave 0 テスト土台）
+Plan: 02 完了 → 次: 03 (Wave 3 JS 側)
+Status: In progress — Wave 2 Rust コア完了、Wave 3 JS 側実装フェーズへ
+Last activity: 2026-05-01 — Phase 19 Plan 02 完了（Rust コア: WS_EX_LAYERED + α=0→255 + fusen_create_note_lazy）
 
 ## Phases（予定）
 
@@ -51,6 +51,9 @@ Last activity: 2026-05-01 — Phase 19 Plan 01 完了（Wave 0 テスト土台�
 - Pool 窓テストは describe.skip でスケルトン化し Wave 2 実装後に有効化する
 - perflog.rs は path を含めない（プライバシー保護 / Sentry リーク対策）
 - perf 計測ポイント: T0=keydown、T1_VISIBLE=SetWindowPos後、T2_READY=editor focus後
+- pitfall 6: SetLayeredWindowAttributes(α=255) を SetForegroundWindow より先に実行（透明窓 focus → 1 文字目消失バグ防止）
+- do_create_note: Mutex 全区間保持で get_next_seq〜apply_add_note を 1 トランザクション化（pool 窓間連番衝突防止）
+- pool_window_layered / fusen_show_at_position_atomic: 実 HWND 必要のため #[ignore]、Windows runner でのみ --ignored 実行
 
 ### 重要な決定事項（v5.0）
 - IndexedDB が唯一の真実。state は表示用キャッシュにすぎない
