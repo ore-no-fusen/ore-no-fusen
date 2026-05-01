@@ -4,7 +4,7 @@ milestone: v5.0
 milestone_name: iPhone PWA 安定化
 status: executing
 last_updated: "2026-05-01T09:00:24.000Z"
-last_activity: "2026-05-01 — Phase 19 Plan 04 完了（Pool 補充オーケストレーション + グローバル Ctrl+N ショートカット登録 + settings.json カスタマイズ）"
+last_activity: "2026-05-01 — Phase 19 Plan 05 実行中（Task 1 完了: REQUIREMENTS.md に PERF-01〜PERF-08 追記。Task 2 は実機計測 checkpoint 待ち）"
 progress:
   total_phases: 14
   completed_phases: 5
@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 ## Current Position
 
 Phase: 19-300ms-pool-ctrl-n
-Plan: 04 完了 → 次: 05 (Wave 5 E2E 検証 + Win32 実測 + perf:check 300ms 達成確認)
-Status: In progress — Wave 4 完了（Pool 補充オーケストレーション + グローバル Ctrl+N + settings.json カスタマイズ）
-Last activity: 2026-05-01 — Phase 19 Plan 04 完了（Pool 補充オーケストレーション + グローバル Ctrl+N ショートカット登録 + settings.json カスタマイズ）
+Plan: 05 実行中 → Task 1 完了（REQUIREMENTS.md PERF-01〜08 追記）→ Task 2 checkpoint 待ち（perf-evidence.jsonl 実機計測）
+Status: Checkpoint pause — 実機計測（perf-evidence.jsonl）と手動検証 6 項目を待機中
+Last activity: 2026-05-01 — Phase 19 Plan 05 Task 1 完了（REQUIREMENTS.md に PERF-01〜PERF-08 追記）
 
 ## Phases（予定）
 
@@ -60,6 +60,8 @@ Last activity: 2026-05-01 — Phase 19 Plan 04 完了（Pool 補充オーケス�
 - [Plan 04] グローバル Ctrl+N と Ctrl+Shift+H は同一 ShortcutBuilder に登録（別 Builder は重複登録エラー）
 - [Plan 04] Shortcut::try_from() parse 失敗時は ctrl+n フォールバック（起動失敗を防ぐ）
 - [Plan 04] 起動時補充は spawn して 2s 待機後から順次作成（pitfall 8 CPU 競合回避）
+- [Plan 05] Task 2（5 サンプル計測）は type="auto" だが実機操作が必須 → checkpoint:human-action として返却
+- [Plan 05] PERF-01〜PERF-08 を v5.0 Requirements に追記（マイルストーン整合性は Blockers 継続）
 
 ### 重要な決定事項（v5.0）
 - IndexedDB が唯一の真実。state は表示用キャッシュにすぎない
