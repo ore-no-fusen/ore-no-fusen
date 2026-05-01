@@ -105,7 +105,7 @@ pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &s
     
     // Reformatted: 'window' key with flow-style object for readability and compactness
     format!(
-        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}{}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
+        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: Untitled{}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
         seq, created, updated, color_line, tags_line, folded_line
     )
 }

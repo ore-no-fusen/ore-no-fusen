@@ -28,15 +28,11 @@ Plan: 05 実行中 → Task 1 完了（REQUIREMENTS.md PERF-01〜08 追記）→
 Status: Checkpoint pause — 実機計測（perf-evidence.jsonl）と手動検証 6 項目を待機中
 Last activity: 2026-05-01 — Phase 19 Plan 05 Task 1 完了（REQUIREMENTS.md に PERF-01〜PERF-08 追記）
 
-## Phases（予定）
+## Phases（実行中）
 
-| Phase | 内容 | 要件 | deploy必要 |
-|-------|------|------|-----------|
-| 15 | コード整理（lib/分離・死んだコード削除） | CLEAN-01, CLEAN-02 | 不要 |
-| 16 | バグ修正3件 | FIX-01, FIX-02, FIX-03 | ✅ 実機確認 |
-| 17 | コンポーネント分割 | ARCH-01〜04 | ✅ 実機確認 |
-| 18 | ロック機能完成（エディタ🔔・再起動復元） | LOCK-06〜08 | ✅ 実機確認 |
-| 19 | 起動性能300ms達成（Pool窓 透明→不透明） | TBD（PERF-01〜） | ✅ デスクトップ実測 |
+| Phase | 内容 | 状態 |
+|-------|------|------|
+| 19 | 起動性能300ms達成（Pool窓 透明→不透明） | 実装完了 → 次セッション /gsd:verify-work で実機検証 |
 
 ## Accumulated Context
 
@@ -85,4 +81,4 @@ Last activity: 2026-05-01 — Phase 19 Plan 05 Task 1 完了（REQUIREMENTS.md �
 
 ### Blockers/Concerns
 
-- **Phase 19 のマイルストーン整合性**: 現マイルストーン v5.0 は「iPhone PWA 安定化」だが Phase 19 はデスクトップ性能。次マイルストーン (v6.0 等) に切り出すか、v5.0 を「品質安定化全般」に再定義するか要判断
+なし

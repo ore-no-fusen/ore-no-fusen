@@ -184,13 +184,15 @@ const StickyNote = memo(function StickyNote() {
 
     // 保存処理のラッパー（削除中は保存しない）
     const handleSave = useCallback(async (body: string, front: string, allowRename: boolean) => {
-        console.log('[DBG:handleSave] body=', JSON.stringify(body.slice(0, 50)), 'isPool=', isPool, 'isNew=', isNew, 'isDeleting=', isDeletingRef.current);
+        console.log('[DBG:handleSave] body=', JSON.stringify(body.slice(0, 50)), 'isPool=', isPool, 'poolPromoted=', poolPromotedRef.current, 'isNew=', isNew, 'isDeleting=', isDeletingRef.current);
         if (isDeletingRef.current) {
             console.log('[DBG:handleSave] SKIP: isDeleting');
             return;
         }
-        if (isPoolRef.current) {
-            console.log('[DBG:handleSave] SKIP: isPool');
+        // Pool 由来の窓（promote 前後）からの保存をすべてブロック
+        // noteFilePathRef は ref で現在値を常に参照するため、deps に含める必要なし（ref は identity stable）
+        if (isPoolRef.current || (poolPromotedRef.current && !noteFilePathRef.current)) {
+            console.log('[DBG:handleSave] SKIP: isPool or poolPromoted without path');
             return;
         }
 
@@ -198,7 +200,7 @@ const StickyNote = memo(function StickyNote() {
         if (isNew) {
             setIsNewState(false);
         }
-    }, [saveNoteContent, isNew]);
+    }, [saveNoteContent, isNew, isPool]);
 
     // 編集モード管理
     const {
