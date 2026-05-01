@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 ## Current Position
 
 Phase: 19-300ms-pool-ctrl-n
-Plan: 05 実行中 → Task 1 完了（REQUIREMENTS.md PERF-01〜08 追記）→ Task 2 checkpoint 待ち（perf-evidence.jsonl 実機計測）
-Status: Checkpoint pause — 実機計測（perf-evidence.jsonl）と手動検証 6 項目を待機中
-Last activity: 2026-05-01 — Phase 19 Plan 05 Task 1 完了（REQUIREMENTS.md に PERF-01〜PERF-08 追記）
+Plan: 06 完了 → 2 UAT failures 修正（setRawFrontmatter() 追加、pool guard 検証） → Plan 07 待機中
+Status: Plan 06 execution complete — 2 tasks completed, 1 commit created
+Last activity: 2026-05-02 — Phase 19 Plan 06 実行完了（Task 1: setRawFrontmatter() 追加 by commit 82b6207、Task 2: pool guard 検証完了）
 
 ## Phases（実行中）
 
