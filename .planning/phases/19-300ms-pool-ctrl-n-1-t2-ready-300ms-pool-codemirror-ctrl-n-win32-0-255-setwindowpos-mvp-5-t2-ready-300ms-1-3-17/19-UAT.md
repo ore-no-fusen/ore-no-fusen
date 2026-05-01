@@ -1,5 +1,5 @@
 ---
-status: complete
+status: resolved
 phase: 19-300ms-pool-ctrl-n
 source: 19-01-SUMMARY.md, 19-02-SUMMARY.md, 19-03-SUMMARY.md, 19-04-SUMMARY.md, 19-05-SUMMARY.md
 started: 2026-05-02T00:00:00Z
@@ -61,21 +61,27 @@ skipped: 1
 ## Gaps
 
 - truth: "Lazy file creation must include YAML frontmatter header with title and created timestamp"
-  status: failed
+  status: resolved
   reason: "User reported: File created on first character but missing YAML metadata header (title, created, etc)"
   severity: major
   test: 3
-  artifacts: []
+  root_cause: "setRawFrontmatter() not called after fusen_create_note_lazy() returns — Rust backend generates correct frontmatter but React state remains empty. Auto-save then overwrites with empty value."
+  artifacts:
+    - path: "app/components/StickyNote.tsx"
+      issue: "handleFirstChar() at line 775 receives note.frontmatter from Rust but never stores it in React state"
   missing:
-    - "Add YAML frontmatter generation to fusen_create_note_lazy or upstream handler"
-    - "Verify header format matches existing note files"
+    - "Add setRawFrontmatter(note.frontmatter) at line 782 after lazy file creation succeeds"
+  debug_session: ".planning/debug/lazy-file-no-frontmatter.md"
 
 - truth: "Closing pool note without typing any character must not create a file"
-  status: failed
+  status: resolved
   reason: "User reported: Empty 'Untitled' memo file created when window closed without input"
   severity: major
   test: 6
-  artifacts: []
+  root_cause: "onCloseRequested unconditionally calls preventDefault() blocking pool window close event. This prevents tauri://close-requested listener from firing, so pool cleanup (pool_slot_released, pool replenishment) never executes. Window stuck in pending close state."
+  artifacts:
+    - path: "app/components/StickyNote.tsx"
+      issue: "onCloseRequested at line 524 blocks close with preventDefault() even for pool windows, preventing proper cleanup"
   missing:
-    - "Fix close-without-input logic in StickyNote.tsx or Rust handler"
-    - "Ensure pool slot is reclaimed without file creation"
+    - "Add guard in onCloseRequested to skip preventDefault() for pool windows (isPoolRef.current check)"
+  debug_session: ".planning/debug/empty-file-pool-close.md"
