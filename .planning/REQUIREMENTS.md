@@ -37,6 +37,17 @@
 - [x] **LOCK-04**: 複数のメモを同時にロック画面に表示できる
 - [x] **LOCK-05**: ロック画面表示状態はアプリを閉じても保持される（IndexedDB永続化）
 
+### 起動性能 (PERF) — Phase 19
+
+- [ ] **PERF-01**: Ctrl+N 押下から 1 文字目入力可能（T2_READY）まで 5 回中央値で 300ms 以内
+- [ ] **PERF-02**: 1.5 秒間に 3 回 Ctrl+N で 3 付箋全部 300ms 以内、4 回目はフォールバック + トースト
+- [ ] **PERF-03**: 既存 17 付箋同時起動下でも PERF-01 達成
+- [ ] **PERF-04**: 1 文字も入力されないまま閉じた場合、.md ファイルがフォルダに残らない
+- [ ] **PERF-05**: Pool 窓は WS_EX_LAYERED + α=0 状態で事前完全準備（描画完了・CodeMirror マウント済）
+- [ ] **PERF-06**: Ctrl+N 時は Win32 レベルで α=0→255 と SetWindowPos 位置移動のみ（webview 新規作成しない）
+- [ ] **PERF-07**: グローバル Ctrl+N で他アプリ focus 時も付箋作成可能
+- [ ] **PERF-08**: settings.json でショートカットをカスタマイズ可能
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -62,10 +73,18 @@
 | LOCK-06 | Phase 18 | Pending |
 | LOCK-07 | Phase 18 | Pending |
 | LOCK-08 | Phase 18 | Pending |
+| PERF-01 | Phase 19 | Pending |
+| PERF-02 | Phase 19 | Pending |
+| PERF-03 | Phase 19 | Pending |
+| PERF-04 | Phase 19 | Pending |
+| PERF-05 | Phase 19 | Pending |
+| PERF-06 | Phase 19 | Pending |
+| PERF-07 | Phase 19 | Pending |
+| PERF-08 | Phase 19 | Pending |
 
 **Coverage:**
-- v5.0 requirements: 12 total
-- Mapped to phases: 12
+- v5.0 requirements: 20 total
+- Mapped to phases: 20
 - Unmapped: 0 ✓
 
 ---
