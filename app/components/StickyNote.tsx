@@ -118,9 +118,16 @@ const StickyNote = memo(function StickyNote() {
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
     const isCapturingRef = useRef(false);
     const isPromotingRef = useRef(false); // 付箋表示中はフォーカスが外れても編集モードを維持する
-    // [FIX] Ctrl+N 連打クラッシュ防止: emit自体を1.2秒スロットルする
-    // 1枚目は lastCtrlNRef=0 なので即座に通過、2枚目以降は1.2秒インターバルを強制
-    const lastCtrlNRef = useRef<number>(0);
+    // [REMOVED] lastCtrlNRef (JS 1.2s スロットル) は Pool アーキテクチャ移行により不要になった
+    // フォールバック側は page.tsx 400ms グローバルスロットル + Rust 500ms セーフティで保護
+
+    // [NEW] Pool 窓 lazy ファイル作成用 refs
+    // firstCharFiredRef: 0→1 文字遷移を 1 回だけ検出するための再入防止フラグ（pitfall 5）
+    const firstCharFiredRef = useRef<boolean>(false);
+    // poolPromotedRef: pool 窓が promote されたことを記録（isPool が false になった後も参照可能）
+    const poolPromotedRef = useRef<boolean>(isPoolParams);
+    // lazyFolderPathRef: promote 時に受け取ったフォルダパス（1 文字目で fusen_create_note_lazy に渡す）
+    const lazyFolderPathRef = useRef<string>('');
 
     // アラーム用 refs（setInterval内でstale closureを避けるため）
     const rawFrontmatterForAlarmRef = useRef('');
@@ -593,7 +600,7 @@ const StickyNote = memo(function StickyNote() {
             const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const thisWin = getCurrentWebviewWindow();
 
-            const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string }>('fusen:promote_from_pool', async (event) => {
+            const u = await thisWin.listen<{ path?: string, folderPath?: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
                 const perfT0 = event.payload.t0;
                 isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）
@@ -618,11 +625,26 @@ const StickyNote = memo(function StickyNote() {
                     }
                 }
 
-                // リロード時にプールとして再認識されないようURLを書き換え
-                window.history.replaceState(null, '', `/?path=${encodeURIComponent(event.payload.path)}`);
+                // [NEW] Pool lazy 用フォルダパスを保存（1 文字目で fusen_create_note_lazy に渡す）
+                // folderPath を promote payload から受け取る（Task 3 で page.tsx が送信）
+                // 後方互換: path がある場合はそこから folder を算出
+                if (event.payload.folderPath) {
+                    lazyFolderPathRef.current = event.payload.folderPath;
+                } else if (event.payload.path) {
+                    const normalizedP = event.payload.path.replace(/\\/g, '/');
+                    lazyFolderPathRef.current = normalizedP.substring(0, normalizedP.lastIndexOf('/'));
+                }
+                // [NEW] promote 後は firstCharFiredRef をリセット（最初の 0→1 文字で lazy 作成を発火させる）
+                firstCharFiredRef.current = false;
+                // [NEW] poolPromotedRef を true に（isPool が false になった後も判別できるようにする）
+                poolPromotedRef.current = true;
 
-                noteFilePathRef.current = event.payload.path; // 即座に確定（stale closure 対策）
-                setDynamicUrlPath(event.payload.path); // React state 更新（非同期だが pathRef で補完）
+                // リロード時にプールとして再認識されないようURLを書き換え
+                if (event.payload.path) {
+                    window.history.replaceState(null, '', `/?path=${encodeURIComponent(event.payload.path)}`);
+                    noteFilePathRef.current = event.payload.path; // 即座に確定（stale closure 対策）
+                    setDynamicUrlPath(event.payload.path); // React state 更新（非同期だが pathRef で補完）
+                }
                 isPoolRef.current = false; // 即座に確定（stale closure 対策）
                 setIsPool(false); // プールモード解除
 
@@ -688,9 +710,7 @@ const StickyNote = memo(function StickyNote() {
             if (!mounted) { u(); return; }
             unlisten = u;
 
-            // リスナー登録完了をメインウィンドウに通知（レース条件対策）
-            const { emit } = await import('@tauri-apps/api/event');
-            emit('fusen:pool_window_ready', { label: thisWin.label }).catch(() => { });
+            // [REMOVED] 即時 emit は rAF 待機 effect に移動（pool ready 厳格化）
         };
         setup();
 
@@ -699,6 +719,81 @@ const StickyNote = memo(function StickyNote() {
             if (unlisten) unlisten();
         };
     }, [isPool, startEditing]);
+
+    // [NEW] Pool 窓 ready 厳格化: CodeMirror マウント完了 + rAF 1 回経過後に emit
+    // setTimeout 禁止（RESEARCH pitfall 6 / Pattern 3）
+    useEffect(() => {
+        if (!isPool) return;
+        let cancelled = false;
+        const waitReady = async () => {
+            // (1) RichTextEditor が EditorView を構築するまで rAF で待つ
+            while (!editorRef.current && !cancelled) {
+                await new Promise(r => requestAnimationFrame(r));
+            }
+            if (cancelled) return;
+            // (2) layout/paint 完了を保証する rAF 1 回
+            await new Promise(r => requestAnimationFrame(r));
+            if (cancelled) return;
+            // (3) emit ready
+            const { emit } = await import('@tauri-apps/api/event');
+            const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            emit('fusen:pool_window_ready', { label: getCurrentWebviewWindow().label }).catch(() => { });
+        };
+        waitReady();
+        return () => { cancelled = true; };
+    }, [isPool]);
+
+    // [NEW] Pool 窓 close-without-input クリーンアップ（PERF-04 スロットルリーク防止）
+    // 1 文字も入力せずに pool 窓を閉じた場合: usedPoolWindowsRef を解放し pool 補充をトリガ
+    useEffect(() => {
+        if (!isPool) return;
+        let unlisten: (() => void) | undefined;
+        (async () => {
+            const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            const win = getCurrentWebviewWindow();
+            unlisten = await win.listen('tauri://close-requested', async () => {
+                if (!firstCharFiredRef.current) {
+                    // 1 文字も入力されていない → スロットルを解放して補充トリガ
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('fusen:pool_slot_released', { label: win.label });
+                    invoke('fusen_create_pool_window').catch(e => console.warn('[POOL] replenish on close:', e));
+                }
+                // window close は Tauri のデフォルト動作に任せる（close() を明示的に呼ばない）
+            });
+        })();
+        return () => { unlisten?.(); };
+    }, [isPool]);
+
+    // [NEW] Pool 窓 lazy ファイル作成コールバック（0→1 文字遷移時に 1 回だけ呼ぶ）
+    // RichTextEditor の onFirstChar prop に渡す。firstCharFiredRef で再入防止（pitfall 5）。
+    // Atomic Coordination Constraint 厳守: invoke は 1 回のみ、複数 await 直列禁止。
+    const handleFirstChar = useCallback(async () => {
+        // 再入防止: promote 後の最初の 0→1 文字遷移のみ発火
+        if (firstCharFiredRef.current) return;
+        // pool 由来の窓のみ対象（pool 窓または pool から昇格した窓）
+        if (!isPoolRef.current && !poolPromotedRef.current) return;
+        firstCharFiredRef.current = true;
+
+        const folderPath = lazyFolderPathRef.current;
+        if (!folderPath) {
+            console.warn('[POOL] handleFirstChar: folderPath empty, skipping lazy create');
+            return;
+        }
+
+        try {
+            const note = await invoke<{ meta: { path: string; seq: number; context: string; updated: string }; body: string; frontmatter: string }>('fusen_create_note_lazy', { folderPath, context: '' });
+            invoke('fusen_debug_log', { message: `[POOL_LAZY] fusen_create_note_lazy OK path=${note.meta.path}` }).catch(() => { });
+            // ファイルが作成されたので selectedFile と URL を更新
+            const createdPath = note.meta.path;
+            noteFilePathRef.current = createdPath;
+            setDynamicUrlPath(createdPath);
+            setSelectedFile(note.meta);
+            window.history.replaceState(null, '', `/?path=${encodeURIComponent(createdPath)}`);
+        } catch (e) {
+            console.error('[POOL] fusen_create_note_lazy failed:', e);
+            firstCharFiredRef.current = false; // 失敗時はリセットして再挑戦を許可
+        }
+    }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
 
     // リロードイベントリスナー
     useEffect(() => {
@@ -1393,13 +1488,11 @@ const StickyNote = memo(function StickyNote() {
             // [New] Ctrl+N: 新規付箋作成
             if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
                 e.preventDefault();
-                // [FIX] 連打クラッシュ防止: 1.2秒以内の連続 emit をブロック
-                const now = Date.now();
-                if (now - lastCtrlNRef.current < 1200) return;
-                lastCtrlNRef.current = now;
+                // [NEW] JS 1.2s スロットル撤去: Pool アーキテクチャで webview 新規作成しないためクラッシュ原因が消えた
+                // フォールバック側（openNoteWindow）は page.tsx の 400ms global throttle + Rust 500ms で保護
                 if (selectedFile) {
                     // [PERF] 起動時間計測: T0 = Ctrl+N 押下時刻
-                    const t0 = now;
+                    const t0 = Date.now();
                     invoke('fusen_debug_log', { message: `[PERF|T0] Ctrl+N keydown t0=${t0}` }).catch(() => { });
                     const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                     const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
@@ -1686,6 +1779,7 @@ const StickyNote = memo(function StickyNote() {
                             fontSize={noteFontSize}
                             onBlur={handleEditBlur}
                             onSelectionChange={handleSelectionChange}
+                            onFirstChar={handleFirstChar}
                         />
                         {floatBarCoords && (
                             <FloatingFormatBar
