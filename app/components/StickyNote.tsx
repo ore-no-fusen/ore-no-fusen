@@ -1431,6 +1431,7 @@ const StickyNote = memo(function StickyNote() {
      */
     const { handleDeleteNote } = useStickyNoteContextMenu({
         selectedFile,
+        isPool,
         t,
         language,
         allTags,

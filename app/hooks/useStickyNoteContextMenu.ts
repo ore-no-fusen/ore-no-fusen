@@ -16,6 +16,7 @@ import { TranslationKey, Language } from '@/lib/i18n';
 
 type UseStickyNoteContextMenuProps = {
     selectedFile: NoteMeta | null;
+    isPool: boolean;
     t: (key: TranslationKey) => string;
     language: Language;
     allTags: string[];
@@ -42,6 +43,7 @@ type UseStickyNoteContextMenuProps = {
 
 export function useStickyNoteContextMenu({
     selectedFile,
+    isPool,
     t,
     language,
     allTags,
@@ -73,11 +75,15 @@ export function useStickyNoteContextMenu({
 
     // 削除
     const handleDeleteNote = useCallback(async () => {
-        if (!selectedFile) return;
+        // Pool窓（未保存）の場合は selectedFile がnullでもファイル作成前なので削除可能
+        if (!selectedFile && !isPool) return;
         try {
             isDeletingRef.current = true;
             await playDeleteSound();
-            await invoke('fusen_move_to_trash', { path: selectedFile.path });
+            // selectedFile がある場合のみファイルを削除（Pool未保存窓は対象外）
+            if (selectedFile) {
+                await invoke('fusen_move_to_trash', { path: selectedFile.path });
+            }
             const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
             await win.hide();
             await win.destroy();
@@ -86,7 +92,7 @@ export function useStickyNoteContextMenu({
             console.error('Failed to delete note:', e);
             alert(`削除に失敗しました\n${e}`);
         }
-    }, [selectedFile, isDeletingRef]);
+    }, [selectedFile, isPool, isDeletingRef]);
 
     // フォルダを開く
     const handleOpenFolder = useCallback(async () => {
