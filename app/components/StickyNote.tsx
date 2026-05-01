@@ -676,14 +676,14 @@ const StickyNote = memo(function StickyNote() {
                 // CodeMirror のレイアウトを再計算させる（hidden→visible 時に必要）
                 window.dispatchEvent(new Event('resize'));
 
-                // [FIX] Rust側でSetForegroundWindowを呼ぶため、JS側のsetFocusは不要。
-                // 300ms 待つことで ITaskbarList 操作完了後に確実にフォーカスを取得する。
+                // Rust が SetForegroundWindow をアトミックに完了済みのため、長い待機は不要。
+                // rAF 1回でレイアウト確定を待つだけで十分（ITaskbarList 待機の 300ms は不要）。
                 setTimeout(async () => {
                     isPromotingRef.current = false; // 付箋表示中フラグ OFF
                     // フォーカスが外れて編集モードが解除された場合に備えて、強制的に編集モードをONにする
                     setIsEditing(true);
-                    // Reactの再レンダリングを待ってからフォーカス
-                    await new Promise(r => setTimeout(r, 80));
+                    // React 再レンダリング + CodeMirror レイアウト確定を rAF 1回で待つ
+                    await new Promise(r => requestAnimationFrame(r));
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus attempt: editorRef=${!!editorRef.current}` }).catch(() => { });
                     if (event.payload.isNew) {
                         editorRef.current?.focusAndSelectFirstLine();
@@ -694,7 +694,7 @@ const StickyNote = memo(function StickyNote() {
                     if (perfT0) {
                         invoke('fusen_debug_log', { message: `[PERF|T2_READY] elapsed=${Date.now() - perfT0}ms (editor focused, ready for input)` }).catch(() => { });
                     }
-                }, 300);
+                }, 50);
             });
             // [FIX] React Strict Mode でダブルsetupが起きた場合、cleanup後にlistenが解決したら即解除
             if (!mounted) { u(); return; }
