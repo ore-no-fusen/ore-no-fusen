@@ -644,9 +644,13 @@ const StickyNote = memo(function StickyNote() {
                     window.history.replaceState(null, '', `/?path=${encodeURIComponent(event.payload.path)}`);
                     noteFilePathRef.current = event.payload.path; // 即座に確定（stale closure 対策）
                     setDynamicUrlPath(event.payload.path); // React state 更新（非同期だが pathRef で補完）
+                    // path が確定した（非lazy）場合のみプールモード解除
+                    isPoolRef.current = false;
+                    setIsPool(false);
                 }
-                isPoolRef.current = false; // 即座に確定（stale closure 対策）
-                setIsPool(false); // プールモード解除
+                // lazy（path 無し）の場合: ファイル未作成のため isPool=true を維持する。
+                // handleFirstChar で fusen_create_note_lazy が成功した後に isPool を解除する。
+                // ここで setIsPool(false) すると urlPath=null のまま「No path parameter」になる。
 
                 // 待機中にフォーカスが外れて編集モードが解除されている可能性があるため、明示的に編集モードを開始
                 startEditing();
@@ -656,25 +660,11 @@ const StickyNote = memo(function StickyNote() {
                     setEditBody(promotedBody);
                 }
 
-                // ウィンドウの表示・サイズ・位置をRust側でまとめて設定する。
-                // JS側から個別に設定すると順序のズレでクラッシュするため、Rust側で一括処理している。
-                // 座標が指定されていない場合は現在位置を維持する。
-                try {
-                    await invoke('fusen_show_at_position', {
-                        label: thisWin.label,
-                        physX: event.payload.targetPhysX ?? null,
-                        physY: event.payload.targetPhysY ?? null,
-                        physWidth: event.payload.targetPhysWidth ?? 400,
-                        physHeight: event.payload.targetPhysHeight ?? 300,
-                        runId: event.payload.runId ?? null,
-                    });
-                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position OK pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => { });
-                    if (perfT0) {
-                        invoke('fusen_debug_log', { message: `[PERF|T1_VISIBLE] elapsed=${Date.now() - perfT0}ms (window shown at position)` }).catch(() => { });
-                    }
-                } catch (e) {
-                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position FAILED: ${e} – falling back to show()` }).catch(() => { });
-                    await thisWin.show();
+                // page.tsx が fusen_show_at_position（α=255 + SetWindowPos + SetForegroundWindow）を
+                // 既に呼び済みのため、ここでの再呼び出しは不要（二重呼び出しで SetLayeredWindowAttributes が失敗する）。
+                invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position already done by page.tsx pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => { });
+                if (perfT0) {
+                    invoke('fusen_debug_log', { message: `[PERF|T1_VISIBLE] elapsed=${Date.now() - perfT0}ms (window shown at position by page.tsx)` }).catch(() => { });
                 }
 
                 // 実際の位置を確認
@@ -789,6 +779,9 @@ const StickyNote = memo(function StickyNote() {
             setDynamicUrlPath(createdPath);
             setSelectedFile(note.meta);
             window.history.replaceState(null, '', `/?path=${encodeURIComponent(createdPath)}`);
+            // ファイル確定後にプールモード解除（handleSave が isPoolRef チェックでスキップしないように）
+            isPoolRef.current = false;
+            setIsPool(false);
         } catch (e) {
             console.error('[POOL] fusen_create_note_lazy failed:', e);
             firstCharFiredRef.current = false; // 失敗時はリセットして再挑戦を許可
