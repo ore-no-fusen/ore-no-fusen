@@ -16,7 +16,8 @@
     "test:e2e": "playwright test",
     "tauri": "tauri",
     "release": "npm run tauri build && node scripts/generate-latest-json.mjs",
-    "prepare": "husky"
+    "prepare": "husky",
+    "perf:check": "node scripts/perf-check.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.1",
