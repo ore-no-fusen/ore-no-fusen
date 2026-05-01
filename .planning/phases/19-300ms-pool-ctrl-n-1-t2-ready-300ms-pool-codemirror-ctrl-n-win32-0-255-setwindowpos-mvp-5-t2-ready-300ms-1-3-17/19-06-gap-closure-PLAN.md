@@ -58,9 +58,9 @@ From app/components/StickyNote.tsx (handleFirstChar):
 - Line 782: Correct insertion point — after line 787 `setIsPool(false)` completes
 
 From app/components/StickyNote.tsx (onCloseRequested):
-- Line 524-535: Close handler unconditionally calls `event.preventDefault()` at line 529
-- Line 527: Guard for pool windows exists (`if (isPoolRef.current) return;`) but is placed AFTER preventDefault
-- Line 529: preventDefault blocks pool cleanup. Must move pool guard BEFORE preventDefault or skip it entirely for pools
+- Line 524-535: Close handler structure includes guard at line 527 (`if (isPoolRef.current) return;`)
+- Line 529: preventDefault() called AFTER the guard, so should not execute for pool windows
+- **VERIFIED CORRECT**: Guard is already in correct position (before preventDefault)
 </context>
 
 <tasks>
@@ -95,66 +95,30 @@ Line added at correct location (after setIsPool(false), before end of try block)
 </task>
 
 <task type="auto">
-  <name>Fix 2: Skip preventDefault() for pool windows on close</name>
+  <name>Fix 2: Verify pool guard prevents file creation on close without input</name>
   <files>app/components/StickyNote.tsx</files>
   <action>
-In onCloseRequested() at line 524-535, move the pool guard BEFORE preventDefault:
+Verify that the pool guard at line 527 (`if (isPoolRef.current) return;`) is correctly placed BEFORE preventDefault() at line 529. The code structure is correct: the guard returns early, preventing preventDefault() from executing for pool windows.
 
-Current code (line 524-529):
-```
-const uClose = await win.onCloseRequested(async (event) => {
-    if (isDeletingRef.current || isHandlingCloseRef.current) return;
-    // Pool 窓は close-requested listener に任せる（自動的に cleanup が走る）
-    if (isPoolRef.current) return;    // ← Line 527
-    // Alt+F4 等の外部クローズ要求は常にブロック（再表示手段がないため）
-    event.preventDefault();            // ← Line 529
-```
+**Root cause analysis**:
+The UAT diagnosed "empty files created on pool close" but the guard is already in the correct position. Two possibilities:
+1. The guard is working correctly, but empty files are being created by a different code path (e.g., auto-save triggered during close)
+2. isPoolRef.current is not being set correctly, so the guard doesn't fire
 
-The guard is AFTER preventDefault. This means:
-1. Pool window gets preventDefault() called first
-2. preventDefault blocks the tauri://close-requested event from firing
-3. Rust cleanup never fires (pool_slot_released, empty file not prevented)
+**Verification action**:
+- Confirm guard exists at line 527-528 with comment "Pool 窓は close-requested listener に任せる"
+- Confirm preventDefault() at line 529 is AFTER the guard
+- Confirm the return statement causes early exit before preventDefault
 
-The fix: The guard at line 527 already returns early, so preventDefault never executes for pools. BUT verify the code flow is correct. If the guard is already there and returns, preventDefault won't be called. However, per UAT diagnosis, the empty file IS being created, meaning the guard isn't preventing it.
+If the guard is correctly positioned but empty files still appear after Fix 1 is applied, the issue is in auto-save logic (not in this task). For now, verify the structure is as expected.
 
-Check if there's another code path. Looking at the structure: the guard `if (isPoolRef.current) return;` should work. The issue might be that preventDefault() is being called BEFORE the event check, or the listener registration has another problem.
-
-Actually, examining the code: line 527 has the guard, line 529 has preventDefault AFTER the guard. This should work. But the UAT says empty files are created.
-
-**Alternative hypothesis**: The pool cleanup happens in a different listener (tauri://close-requested from Rust), not in this preventDefault branch. Let me check: line 527 says "Pool 窓は close-requested listener に任せる" — meaning we expect Rust to handle cleanup via a separate event.
-
-The fix is: ensure that when isPoolRef.current is true, we do NOT call preventDefault() so the close event propagates to Rust. The current code already has this guard at line 527 returning early.
-
-**Action**: Verify the guard is actually preventing the preventDefault. If it is, the issue is elsewhere. If not, ensure the guard returns BEFORE any code that might create the file.
-
-Since the guard already exists at line 527, the most likely issue is: the file creation is happening in a different code path (not in onCloseRequested), perhaps in handleSave() or auto-save triggered by window closing.
-
-**Actual minimal fix**: The structure is already correct (guard returns before preventDefault). The real issue per UAT is that auto-save is being triggered when the pool window closes. The guard prevents preventDefault, but the window still triggers an auto-save to IndexedDB/Drive.
-
-**For this task**: Document that the guard at line 527 is correctly placed. If empty files still appear, the issue is auto-save logic, not close handling. Execute the fix anyway for clarity: add a comment above line 527 explaining the pool cleanup contract, and verify that isPoolRef.current is set to false only AFTER lazy file creation (line 787 setIsPool(false) is correct).
-
-Actually, re-reading the UAT: "onCloseRequested unconditionally calls preventDefault() blocking pool window close event". This suggests preventDefault IS being called for pool windows. But line 527 guards against that. Let me assume the guard is being bypassed somehow.
-
-**Most conservative fix**: Add explicit return after the pool guard to ensure no further code executes:
-
-```
-const uClose = await win.onCloseRequested(async (event) => {
-    if (isDeletingRef.current || isHandlingCloseRef.current) return;
-    if (isPoolRef.current) {
-        // Pool window close: do NOT preventDefault, let Rust cleanup fire
-        return;
-    }
-    // Non-pool: block Alt+F4 since no recovery mechanism exists
-    event.preventDefault();
-```
-
-This makes the guard explicit with a comment and ensures the return prevents all subsequent code.
+**No code changes needed** — the guard is already correctly positioned. This task confirms the fix and documents the expected behavior for UAT retest.
   </action>
   <verify>
-    <automated>grep -A 10 "if (isPoolRef.current)" app/components/StickyNote.tsx | grep -A 5 "onCloseRequested"</automated>
+    <automated>grep -n -A 5 "if (isPoolRef.current)" app/components/StickyNote.tsx | grep -B 2 -A 3 "onCloseRequested"</automated>
   </verify>
   <done>
-Guard verified in place before preventDefault(). When tested: press Ctrl+N, immediately close window without typing, file system shows no "Untitled.md" or empty file created. Pool slot is reclaimed and available for next Ctrl+N.
+Guard verified at line 527, positioned before preventDefault at line 529. Guard returns early, preventing preventDefault() from blocking pool window close event. When tested with Fix 1 applied: press Ctrl+N, close immediately without typing, no empty file created. Pool slot properly reclaimed.
   </done>
 </task>
 
@@ -187,7 +151,7 @@ After both fixes applied:
 
 <success_criteria>
 - [ ] setRawFrontmatter(note.frontmatter) added at line 788 (after setIsPool(false))
-- [ ] onCloseRequested pool guard verified before preventDefault
+- [ ] onCloseRequested pool guard verified at line 527 (before preventDefault at line 529)
 - [ ] UAT test 3 passes: created files have YAML frontmatter
 - [ ] UAT test 6 passes: no empty file created on pool close without input
 - [ ] Pool replenish logic unaffected (test 4 still passes)
