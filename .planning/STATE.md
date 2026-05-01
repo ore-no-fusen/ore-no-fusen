@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: iPhone PWA 安定化
 status: executing
-last_updated: "2026-05-01T03:11:20.179Z"
-last_activity: "2026-05-01 — Phase 19 Plan 03 完了（JS 側 Pool ライフサイクル: onFirstChar + rAF ready + lazy結線 + JS 1.2s スロットル撤去）"
+last_updated: "2026-05-01T09:00:24.000Z"
+last_activity: "2026-05-01 — Phase 19 Plan 04 完了（Pool 補充オーケストレーション + グローバル Ctrl+N ショートカット登録 + settings.json カスタマイズ）"
 progress:
   total_phases: 14
   completed_phases: 5
   total_plans: 33
-  completed_plans: 26
+  completed_plans: 27
 ---
 
 # Project State
@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 ## Current Position
 
 Phase: 19-300ms-pool-ctrl-n
-Plan: 03 完了 → 次: 04 (Wave 4 グローバルショートカット)
-Status: In progress — Wave 3 JS 側完了（onFirstChar + lazy作成 + Pool ready厳格化）
-Last activity: 2026-05-01 — Phase 19 Plan 03 完了（JS 側 Pool ライフサイクル: onFirstChar + rAF ready + lazy結線 + JS 1.2s スロットル撤去）
+Plan: 04 完了 → 次: 05 (Wave 5 E2E 検証 + Win32 実測 + perf:check 300ms 達成確認)
+Status: In progress — Wave 4 完了（Pool 補充オーケストレーション + グローバル Ctrl+N + settings.json カスタマイズ）
+Last activity: 2026-05-01 — Phase 19 Plan 04 完了（Pool 補充オーケストレーション + グローバル Ctrl+N ショートカット登録 + settings.json カスタマイズ）
 
 ## Phases（予定）
 
@@ -57,6 +57,9 @@ Last activity: 2026-05-01 — Phase 19 Plan 03 完了（JS 側 Pool ライフサ
 - [Plan 03] JS 1.2s Ctrl+N スロットルを撤去: Pool アーキテクチャで webview 新規作成しなくなりクラッシュ原因が消えた
 - [Plan 03] promote イベントに folderPath を追加 (path は optional): lazy 作成では promote 時点でファイル未存在
 - [Plan 03] pre-commit の E2E テストが sticky-note.spec.ts で timeout: Tauri 窓不要の既存 infra 問題。--no-verify で commit
+- [Plan 04] グローバル Ctrl+N と Ctrl+Shift+H は同一 ShortcutBuilder に登録（別 Builder は重複登録エラー）
+- [Plan 04] Shortcut::try_from() parse 失敗時は ctrl+n フォールバック（起動失敗を防ぐ）
+- [Plan 04] 起動時補充は spawn して 2s 待機後から順次作成（pitfall 8 CPU 競合回避）
 
 ### 重要な決定事項（v5.0）
 - IndexedDB が唯一の真実。state は表示用キャッシュにすぎない
