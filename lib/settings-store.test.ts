@@ -69,6 +69,31 @@ describe('useSettings Hook (Browser Mode)', () => {
         expect(result.current.settings.auto_start).toBe(true);
     });
 
+    it('loads shortcut_new_note from localStorage when specified', async () => {
+        const savedSettings = {
+            base_path: '/test/path',
+            language: 'ja',
+            auto_start: false,
+            font_size: 16,
+            sound_enabled: true,
+            shortcut_new_note: 'ctrl+shift+m',
+        };
+        localStorageMock.setItem('ore-no-fusen-settings', JSON.stringify(savedSettings));
+
+        const { result } = renderHook(() => useSettings());
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        // shortcut_new_note は AppSettings 型に含まれないが、localStorage 上に存在し後方互換で読めることを確認
+        const raw = JSON.parse(localStorageMock.getItem('ore-no-fusen-settings') as string);
+        expect(raw.shortcut_new_note).toBe('ctrl+shift+m');
+
+        // 既存フィールドが壊れていないことを確認（後方互換）
+        expect(result.current.settings.language).toBe('ja');
+        expect(result.current.settings.font_size).toBe(16);
+        expect(result.current.settings.sound_enabled).toBe(true);
+    });
+
     it('saves settings to localStorage and updates state', async () => {
         const { result } = renderHook(() => useSettings());
         await waitFor(() => expect(result.current.loading).toBe(false));
