@@ -593,7 +593,7 @@ const StickyNote = memo(function StickyNote() {
             const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const thisWin = getCurrentWebviewWindow();
 
-            const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number }>('fusen:promote_from_pool', async (event) => {
+            const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
                 const perfT0 = event.payload.t0;
                 isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）

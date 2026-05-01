@@ -211,6 +211,8 @@ interface RichTextEditorProps {
     onInsertBold?: () => void; // 強調挿入リクエスト（外部から呼ぶ用）
     onBlur?: (event?: FocusEvent) => void; // フォーカスが外れた時
     onSelectionChange?: (coords: { top: number; left: number; bottom: number } | null) => void; // テキスト選択変化
+    // [NEW] Pool 窓用: 0→1 文字遷移を検出して 1 回だけ呼ぶコールバック（IME 未確定中も含む）
+    onFirstChar?: () => void;
 }
 
 // 外部から呼べるメソッドの型定義
@@ -490,7 +492,7 @@ const linkEventHandler = EditorView.domEventHandlers({
 });
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
-    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange } = props;
+    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar } = props;
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
@@ -1111,6 +1113,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     EditorView.updateListener.of((update: ViewUpdate) => {
                         if (update.docChanged) {
                             onChange(update.state.doc.toString());
+                            // [NEW] Pool 窓用: 0→1 文字遷移を検出して onFirstChar を 1 回だけ呼ぶ
+                            // IME 未確定中の docChanged も発火対象（CONTEXT.md「IME 未確定中含む」）
+                            if (update.startState.doc.length === 0 && update.state.doc.length > 0) {
+                                onFirstChar?.();
+                            }
                         }
                         if ((update.selectionSet || update.docChanged) && onSelectionChange) {
                             const sel = update.state.selection.main;
