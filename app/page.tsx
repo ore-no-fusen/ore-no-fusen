@@ -706,6 +706,50 @@ function OrchestratorContent() {
     return () => { if (unlisten) unlisten(); };
   }, [isMainWindow]);
 
+  // [NEW] グローバル Ctrl+N リスナー（Rust が emit した fusen:request_create_global を受信して新規付箋作成）
+  // createNewNote は handleCreateNote の alias。useCallback でラップ済みなので毎 render で再登録されない。
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const setup = async () => {
+      try {
+        // カーソル位置を取得（50ms タイムアウト付き）。失敗時はプライマリモニタ中央にフォールバック
+        const getCursorSourceMeta = async (): Promise<{ physX: number; physY: number; scale: number } | undefined> => {
+          try {
+            const { cursorPosition } = await import('@tauri-apps/api/window');
+            const pos = await Promise.race([
+              cursorPosition(),
+              new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 50)),
+            ]);
+            if (!pos) return undefined;
+            // scaleFactor を取得（失敗時 1.0）
+            let scale = 1.0;
+            try { scale = await getCurrentWindow().scaleFactor(); } catch (_) { /* fallback */ }
+            return { physX: pos.x, physY: pos.y, scale };
+          } catch (_) {
+            // フォールバック: プライマリモニタ中央
+            let scale = 1.0;
+            try { scale = await getCurrentWindow().scaleFactor(); } catch (_) { /* fallback */ }
+            const physW = Math.round(screen.width * scale);
+            const physH = Math.round(screen.height * scale);
+            return { physX: Math.round(physW / 2), physY: Math.round(physH / 2), scale };
+          }
+        };
+
+        const { listen: listenEvent } = await import('@tauri-apps/api/event');
+        unlisten = await listenEvent('fusen:request_create_global', async () => {
+          console.log('[GlobalShortcut] fusen:request_create_global received → createNewNote');
+          const sourceMeta = await getCursorSourceMeta();
+          await handleCreateNote(undefined, undefined, sourceMeta, undefined, Date.now());
+        });
+      } catch (e) {
+        console.error('[GlobalShortcut] Failed to setup fusen:request_create_global listener:', e);
+      }
+    };
+    setup();
+    return () => { if (unlisten) unlisten(); };
+  }, [isMainWindow, handleCreateNote]);
+
   // [FIX] メインウィンドウの「閉じる」を「隠す」に変更 (検索ウィンドウ再表示不具合修正)
   useEffect(() => {
     if (!isMainWindow) return;

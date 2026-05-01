@@ -793,6 +793,11 @@ const StickyNote = memo(function StickyNote() {
             console.error('[POOL] fusen_create_note_lazy failed:', e);
             firstCharFiredRef.current = false; // 失敗時はリセットして再挑戦を許可
         }
+
+        // T2_READY +5s 後に Pool 補充トリガを発火（1 文字目以降は 300ms 予算外なのでリソース消費 OK）
+        setTimeout(() => {
+            invoke('fusen_replenish_pool').catch(e => console.warn('[POOL] replenish failed:', e));
+        }, 5000);
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
 
     // リロードイベントリスナー
