@@ -523,6 +523,8 @@ const StickyNote = memo(function StickyNote() {
 
                 const uClose = await win.onCloseRequested(async (event) => {
                     if (isDeletingRef.current || isHandlingCloseRef.current) return;
+                    // Pool 窓は close-requested listener に任せる（自動的に cleanup が走る）
+                    if (isPoolRef.current) return;
                     // Alt+F4 等の外部クローズ要求は常にブロック（再表示手段がないため）
                     event.preventDefault();
                     if (isEditingForListenerRef.current) {
@@ -783,6 +785,7 @@ const StickyNote = memo(function StickyNote() {
             // ファイル確定後にプールモード解除（handleSave が isPoolRef チェックでスキップしないように）
             isPoolRef.current = false;
             setIsPool(false);
+            setRawFrontmatter(note.frontmatter);
         } catch (e) {
             console.error('[POOL] fusen_create_note_lazy failed:', e);
             firstCharFiredRef.current = false; // 失敗時はリセットして再挑戦を許可
