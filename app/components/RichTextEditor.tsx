@@ -1079,6 +1079,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 return true;
                             }
                         },
+                        // Mod-d: defaultKeymap の selectNextOccurrence を無効化（Ctrl+D は StickyNote の削除で使用）
+                        {
+                            key: 'Mod-d',
+                            run: () => true,  // Handle event but don't select next occurrence
+                        },
                         ...defaultKeymap,
                         ...historyKeymap
                     ]),
