@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: iPhone PWA 安定化
-status: defining_requirements
-last_updated: "2026-04-30T00:00:00.000Z"
-last_activity: 2026-04-30 — Phase 19 追加（起動性能300ms達成: Pool窓 透明→不透明アーキテクチャ）
+status: Defining requirements → ロードマップ作成待ち
+last_updated: "2026-05-01T02:16:13.444Z"
+last_activity: 2026-05-01 — Phase 19 Plan 01 完了（Wave 0 テスト土台: perflog.rs + perf-check.mjs + E2E/Vitest スケルトン）
 progress:
-  total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_phases: 14
+  completed_phases: 5
+  total_plans: 33
+  completed_plans: 24
 ---
 
 # Project State
@@ -23,10 +23,10 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 ## Current Position
 
-Phase: Not started
-Plan: —
-Status: Defining requirements → ロードマップ作成待ち
-Last activity: 2026-04-10 — v5.0 マイルストーン開始
+Phase: 19-300ms-pool-ctrl-n
+Plan: 01 完了 → 次: 02 (Wave 1)
+Status: In progress — Wave 0 土台完了、Wave 1 実装フェーズへ
+Last activity: 2026-05-01 — Phase 19 Plan 01 完了（Wave 0 テスト土台）
 
 ## Phases（予定）
 
@@ -44,6 +44,13 @@ Last activity: 2026-04-10 — v5.0 マイルストーン開始
 - `docs/viewer-redesign.html` — バグ根本原因と修正方針の詳細
 - `docs/system-overview.html` — システム全体データフロー図
 - `docs/pwa-data-flow.html` — iPhone PWA 内部フロー図
+
+### 重要な決定事項（Phase 19）
+
+- E2E は JS 経路のみ検証し Win32 計測は実機 + perf:check に委ねる（Tauri webview の Win32 タイミングは Playwright からアクセス不可）
+- Pool 窓テストは describe.skip でスケルトン化し Wave 2 実装後に有効化する
+- perflog.rs は path を含めない（プライバシー保護 / Sentry リーク対策）
+- perf 計測ポイント: T0=keydown、T1_VISIBLE=SetWindowPos後、T2_READY=editor focus後
 
 ### 重要な決定事項（v5.0）
 - IndexedDB が唯一の真実。state は表示用キャッシュにすぎない
