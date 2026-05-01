@@ -25,6 +25,7 @@ import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
 import LandingPage from './landing/page'; // [NEW] Vercel用ランディングページ
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
+import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 
@@ -147,6 +148,8 @@ function OrchestratorContent() {
   const [iphoneDriveDisconnected, setIphoneDriveDisconnected] = useState(false);
   const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
   const readyPoolWindowsRef = useRef<Set<string>>(new Set()); // リスナー登録完了済みのプールウィンドウ
+  // [NEW] Pool 枯渇時トースト
+  const [poolWaitToast, setPoolWaitToast] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [files, setFiles] = useState<NoteMeta[]>([]);
   const [setupRequired, setSetupRequired] = useState(true);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
@@ -476,7 +479,7 @@ function OrchestratorContent() {
   const isCreatingRef = useRef(false);
 
   const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
-    // Global Throttle (Module Level) prevention
+    // 400ms グローバルスロットル（フォールバック側のクラッシュ防止）
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
 
@@ -485,7 +488,6 @@ function OrchestratorContent() {
       return;
     }
 
-    // Sync check
     const targetFolder = overrideFolder || folderPath || folderPathRef.current;
     if (!targetFolder || isCreatingRef.current) {
       console.warn('[CREATE] No folder or already creating. targetFolder:', targetFolder, 'creating:', isCreatingRef.current);
@@ -494,30 +496,30 @@ function OrchestratorContent() {
 
     globalLastCreateTime = now;
     isCreatingRef.current = true;
-    setIsCreating(true); // Keep for UI disabled state
-
-    const context = overrideContext || 'NewNote';
+    setIsCreating(true);
 
     try {
-      const newNote = duplicatePath
-        ? await invoke<any>('fusen_duplicate_note', { path: duplicatePath })
-        : await invoke<any>('fusen_create_note', { folderPath: targetFolder, context });
-      console.log('[CREATE] newNote:', newNote.meta.path, duplicatePath ? '(duplicate)' : '(new)');
+      // ============================================================
+      // 複製ルート: duplicatePath がある場合は pool を使わず従来通り
+      // ============================================================
+      if (duplicatePath) {
+        const newNote = await invoke<any>('fusen_duplicate_note', { path: duplicatePath });
+        console.log('[CREATE] duplicate newNote:', newNote.meta.path);
+        await playCreateSound();
+        setFiles(prev => [...prev, newNote.meta]);
+        await openNoteWindow(newNote.meta.path, undefined, true);
+        return;
+      }
 
-      // [NEW] 新規作成音を鳴らす
-      await playCreateSound();
-
-      setFiles(prev => [...prev, newNote.meta]);
-
-      // [NEW] プールウィンドウからの昇格を試みる
+      // ============================================================
+      // Pool 選択: usedPoolWindowsRef で未使用 + ready な pool 窓を探す
+      // ============================================================
+      let poolWindow: { label: string } | undefined;
       try {
         const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
         const allWindows = await getAllWebviewWindows();
-
-        // pool-window- で始まり、かつまだ昇格（使用）されていないものを選ぶ
-        // [FIX] ホットリロード等でRefが飛んでも上書きしないよう、localStorageのフラグも確認する
         console.log(`[TRACE:CREATE] All windows:`, allWindows.map(w => w.label));
-        const poolWindow = allWindows.find(w => {
+        poolWindow = allWindows.find(w => {
           if (!w.label.startsWith('pool-window-')) return false;
           const isUsedRef = usedPoolWindowsRef.current.has(w.label);
           const isPromotedStorage = localStorage.getItem(`promoted_${w.label}`);
@@ -525,115 +527,129 @@ function OrchestratorContent() {
           console.log(`[TRACE:CREATE] Checking pool candidate: ${w.label} | isUsedRef: ${isUsedRef} | promotedStorage: ${isPromotedStorage} | isReady: ${isReady}`);
           return !isUsedRef && !isPromotedStorage && isReady;
         });
+      } catch (e) {
+        console.warn('[CREATE] getAllWebviewWindows failed:', e);
+      }
 
-        if (poolWindow) {
-          // [ROOT FIX] Tauriでは各WebviewのLocalStorageは完全に独立して共有されない。
-          // StickyNote.tsx側でlocalStorage.setItemを呼んでもmainウィンドウからは見えない。
-          // そのため、昇格フラグはemitToを呼ぶpage.tsx（mainウィンドウ）自身が管理する。
-          usedPoolWindowsRef.current.add(poolWindow.label);
-          localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
-          const ts = new Date().toLocaleTimeString('ja-JP');
-          console.log(`[TRACE:CREATE | ${ts}] Promoting pool window ${poolWindow.label} -> ${newNote.meta.path}. localStorage flag set.`);
+      if (poolWindow) {
+        // ============================================================
+        // Pool 路: fusen_create_note は呼ばない（lazy 作成: 1 文字目で StickyNote 側が呼ぶ）
+        // Atomic Coordination: invoke 1 回で α=255 + SetWindowPos + focus を完結させる
+        // ============================================================
+        usedPoolWindowsRef.current.add(poolWindow.label);
+        localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
+        const ts = new Date().toLocaleTimeString('ja-JP');
+        console.log(`[TRACE:CREATE | ${ts}] Pool promote (lazy): ${poolWindow.label} folder=${targetFolder}`);
+        invoke('fusen_debug_log', { message: `[PERF|T_PROMOTE_START] t0=${perfT0} → pool promote start` }).catch(() => {});
 
-          // [FIX] JS の show()→setSize→setPosition は非同期タイミング問題と
-          // WINDOWPLACEMENT 復元問題で不安定。代わりに Rust の SetWindowPos(SWP_SHOWWINDOW) で
-          // show・サイズ・位置を原子的に実行する (fusen_show_at_position)。
-          // 左→下→上の順で重ならない位置を探す
-          // 元の付箋が属するモニタの情報を取得してスクリーン境界を正確に判定する
-          let targetPhysX: number | undefined;
-          let targetPhysY: number | undefined;
-          if (sourceMeta) {
-            const srcH = sourceMeta.physHeight ?? Math.round(300 * sourceMeta.scale);
-            const newW = Math.round(400 * sourceMeta.scale);
-            const newH = Math.round(300 * sourceMeta.scale);
-            const gap = Math.round(10 * sourceMeta.scale);
-            const leftX = sourceMeta.physX - newW - gap;
-            invoke('fusen_debug_log', { message: `[POS_CALC] sourceMeta: physX=${sourceMeta.physX} physY=${sourceMeta.physY} physW=${sourceMeta.physWidth} physH=${sourceMeta.physHeight} scale=${sourceMeta.scale} | srcH=${srcH} newW=${newW} newH=${newH} leftX=${leftX}` }).catch(() => {});
-            if (leftX >= 0) {
-              // 左にスペースあり
-              targetPhysX = leftX;
-              targetPhysY = sourceMeta.physY;
-              invoke('fusen_debug_log', { message: `[POS_CALC] → 左に出す: (${targetPhysX}, ${targetPhysY})` }).catch(() => {});
-            } else {
-              // 左にスペースなし → 元の付箋が属するモニタを特定してから下/上を判断
-              const belowY = sourceMeta.physY + srcH + gap;
-              let screenPhysBottom = belowY + newH + 1; // デフォルト：下に入ると仮定
-              try {
-                const { monitorFromPoint } = await import('@tauri-apps/api/window');
-                const mon = await monitorFromPoint(
-                  sourceMeta.physX / sourceMeta.scale,
-                  sourceMeta.physY / sourceMeta.scale
-                );
-                invoke('fusen_debug_log', { message: `[POS_CALC] monitorFromPoint(${sourceMeta.physX / sourceMeta.scale}, ${sourceMeta.physY / sourceMeta.scale}) → mon=${mon ? `${mon.name} pos=(${mon.position.x},${mon.position.y}) size=${mon.size.width}x${mon.size.height} workArea=(${mon.workArea.position.y},${mon.workArea.size.height})` : 'null'}` }).catch(() => {});
-                if (mon) {
-                  const wa = mon.workArea;
-                  screenPhysBottom = wa.position.y + wa.size.height;
-                }
-              } catch (e) {
-                invoke('fusen_debug_log', { message: `[POS_CALC] monitorFromPoint FAILED: ${e}` }).catch(() => {});
-              }
-              invoke('fusen_debug_log', { message: `[POS_CALC] belowY=${belowY} newH=${newH} screenPhysBottom=${screenPhysBottom} → fits=${belowY + newH <= screenPhysBottom}` }).catch(() => {});
-              targetPhysX = sourceMeta.physX;
-              targetPhysY = belowY + newH <= screenPhysBottom
-                ? belowY                                            // 下に出す
-                : sourceMeta.physY - newH - gap;                   // 下が入らなければ上に出す
-              invoke('fusen_debug_log', { message: `[POS_CALC] → ${belowY + newH <= screenPhysBottom ? '下' : '上'}に出す: (${targetPhysX}, ${targetPhysY})` }).catch(() => {});
-            }
+        // 表示位置を計算
+        let targetPhysX: number | undefined;
+        let targetPhysY: number | undefined;
+        if (sourceMeta) {
+          const srcH = sourceMeta.physHeight ?? Math.round(300 * sourceMeta.scale);
+          const newW = Math.round(400 * sourceMeta.scale);
+          const newH = Math.round(300 * sourceMeta.scale);
+          const gap = Math.round(10 * sourceMeta.scale);
+          const leftX = sourceMeta.physX - newW - gap;
+          if (leftX >= 0) {
+            targetPhysX = leftX;
+            targetPhysY = sourceMeta.physY;
+          } else {
+            const belowY = sourceMeta.physY + srcH + gap;
+            let screenPhysBottom = belowY + newH + 1;
+            try {
+              const { monitorFromPoint } = await import('@tauri-apps/api/window');
+              const mon = await monitorFromPoint(sourceMeta.physX / sourceMeta.scale, sourceMeta.physY / sourceMeta.scale);
+              if (mon) screenPhysBottom = mon.workArea.position.y + mon.workArea.size.height;
+            } catch (_) {}
+            targetPhysX = sourceMeta.physX;
+            targetPhysY = belowY + newH <= screenPhysBottom ? belowY : sourceMeta.physY - newH - gap;
           }
-          // サイズを物理ピクセルで計算。sourceMeta がない場合はメインウィンドウの scale を取得する。
-          // プールウィンドウは非表示で別モニタにいる可能性があるため scaleFactor() が不正確になる。
-          let sizeScale = sourceMeta?.scale;
-          if (sizeScale === undefined) {
-            try { sizeScale = await getCurrentWindow().scaleFactor(); } catch (_) { sizeScale = 1.0; }
-          }
-          const targetPhysWidth = Math.round(400 * sizeScale);
-          const targetPhysHeight = Math.round(300 * sizeScale);
-          invoke('fusen_debug_log', { message: `[CREATE_EMIT] emitTo ${poolWindow.label}: target=(${targetPhysX},${targetPhysY}) size=${targetPhysWidth}x${targetPhysHeight} sizeScale=${sizeScale}` }).catch(() => { });
-          const { emitTo } = await import('@tauri-apps/api/event');
-          await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
-            path: newNote.meta.path,
-            isNew: true,
-            content: newNote.body,
-            frontmatter: newNote.frontmatter,
-            targetPhysX,
-            targetPhysY,
-            targetPhysWidth,
-            targetPhysHeight,
-            t0: perfT0,
+        }
+
+        let sizeScale = sourceMeta?.scale;
+        if (sizeScale === undefined) {
+          try { sizeScale = await getCurrentWindow().scaleFactor(); } catch (_) { sizeScale = 1.0; }
+        }
+        const targetPhysWidth = Math.round(400 * sizeScale);
+        const targetPhysHeight = Math.round(300 * sizeScale);
+
+        // [NEW] fusen_show_at_position: α=255 + SetWindowPos + SetForegroundWindow を 1 invoke で完結
+        // Atomic Coordination Constraint 厳守: 複数 await invoke を直列に並べない
+        const runId = `create-${now}`;
+        try {
+          await invoke('fusen_show_at_position', {
+            label: poolWindow.label,
+            physX: targetPhysX ?? null,
+            physY: targetPhysY ?? null,
+            physWidth: targetPhysWidth,
+            physHeight: targetPhysHeight,
+            runId,
           });
+        } catch (e) {
+          invoke('fusen_debug_log', { message: `[CREATE] fusen_show_at_position failed: ${e}` }).catch(() => {});
+        }
 
-          // 次のプールウィンドウを補充する（即時開始）
-          invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
-        } else {
-          console.warn(`[CREATE] No pool window found, falling back to normal window creation`);
+        // StickyNote.tsx に promote を通知（folderPath を渡し、lazy 作成に使わせる）
+        const { emitTo } = await import('@tauri-apps/api/event');
+        await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
+          folderPath: targetFolder,
+          isNew: true,
+          targetPhysX,
+          targetPhysY,
+          targetPhysWidth,
+          targetPhysHeight,
+          t0: perfT0,
+          runId,
+        });
+
+        await playCreateSound();
+
+        // 次のプールウィンドウを補充（バックグラウンドで順次）
+        invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
+
+      } else {
+        // ============================================================
+        // フォールバック路: Pool 枯渇 → 従来の fusen_create_note + openNoteWindow
+        // フォールバック側は 400ms グローバルスロットル（上部）で保護済み
+        // ============================================================
+        console.warn(`[CREATE] No pool window found, falling back to normal window creation`);
+
+        // PoolWaitToast を表示（sourceMeta がある場合はその位置に近く、なければ中央付近）
+        const toastX = sourceMeta ? Math.max(0, sourceMeta.physX / (sourceMeta.scale || 1) - 80) : 200;
+        const toastY = sourceMeta ? Math.max(0, sourceMeta.physY / (sourceMeta.scale || 1) - 40) : 200;
+        setPoolWaitToast({ x: toastX, y: toastY, visible: true });
+
+        try {
+          const newNote = await invoke<any>('fusen_create_note', { folderPath: targetFolder, context: overrideContext || 'NewNote' });
+          console.log('[CREATE] fallback newNote:', newNote.meta.path);
+          await playCreateSound();
+          setFiles(prev => [...prev, newNote.meta]);
+
           await openNoteWindow(newNote.meta.path, sourceMeta ? await (async () => {
-            // 左→下→上の順で重ならない位置を探す（論理座標）
             const lx = sourceMeta.physX / sourceMeta.scale;
             const ly = sourceMeta.physY / sourceMeta.scale;
             const srcH = sourceMeta.physHeight ? sourceMeta.physHeight / sourceMeta.scale : 300;
             const leftX = lx - 400 - 10;
             if (leftX >= 0) return { x: leftX, y: ly, width: 400, height: 300 };
             const belowY = ly + srcH + 10;
-            let screenLogBottom = belowY + 300 + 1; // デフォルト：下に入ると仮定
+            let screenLogBottom = belowY + 300 + 1;
             try {
               const { monitorFromPoint } = await import('@tauri-apps/api/window');
               const mon = await monitorFromPoint(lx, ly);
-              if (mon) {
-                const wa = mon.workArea;
-                screenLogBottom = (wa.position.y + wa.size.height) / sourceMeta.scale;
-              }
-            } catch (_) { /* デフォルトで下に出す */ }
+              if (mon) screenLogBottom = (mon.workArea.position.y + mon.workArea.size.height) / sourceMeta.scale;
+            } catch (_) {}
             const y = belowY + 300 <= screenLogBottom ? belowY : ly - 300 - 10;
             return { x: lx, y, width: 400, height: 300 };
           })() : undefined, true);
+
           invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
+        } catch (e) {
+          console.error('create_note fallback failed', e);
         }
-      } catch (poolErr) {
-        console.error('[CREATE] Pool promotion failed, falling back:', poolErr);
-        await openNoteWindow(newNote.meta.path, undefined, true);
       }
     } catch (e) {
-      console.error('create_note failed', e);
+      console.error('handleCreateNote failed', e);
     } finally {
       isCreatingRef.current = false;
       setIsCreating(false);
@@ -672,6 +688,20 @@ function OrchestratorContent() {
     let unlisten: (() => void) | undefined;
     listen<{ label: string }>('fusen:pool_window_ready', (event) => {
       readyPoolWindowsRef.current.add(event.payload.label);
+    }).then((u) => { unlisten = u; });
+    return () => { if (unlisten) unlisten(); };
+  }, [isMainWindow]);
+
+  // [NEW] Pool スロット解放: close-without-input 時に StickyNote.tsx が emit → usedPoolWindowsRef からラベルを削除
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    listen<{ label: string }>('fusen:pool_slot_released', (event) => {
+      const label = event.payload.label;
+      usedPoolWindowsRef.current.delete(label);
+      // localStorage フラグもクリア（次回 createNewNote でこの pool を再利用できるようにする）
+      localStorage.removeItem(`promoted_${label}`);
+      console.log(`[POOL] pool_slot_released: label=${label} removed from usedPoolWindowsRef`);
     }).then((u) => { unlisten = u; });
     return () => { if (unlisten) unlisten(); };
   }, [isMainWindow]);
@@ -1498,6 +1528,14 @@ function OrchestratorContent() {
         <div style={{ display: isDashboard ? 'none' : 'block' }} data-testid="dashboard-anchor">
           {/* If we ever want to show something in the dashboard, put it here. Currently hidden. */}
         </div>
+
+        {/* [NEW] Pool 枯渇時トースト（isPool=false の付箋ウィンドウ上には表示されないため main ウィンドウに置く） */}
+        <PoolWaitToast
+          x={poolWaitToast.x}
+          y={poolWaitToast.y}
+          visible={poolWaitToast.visible}
+          onClose={() => setPoolWaitToast(prev => ({ ...prev, visible: false }))}
+        />
 
         {/* Search Overlay */}
         {isSearchOpen && (
