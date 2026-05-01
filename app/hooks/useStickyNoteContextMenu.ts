@@ -77,6 +77,8 @@ export function useStickyNoteContextMenu({
     const handleDeleteNote = useCallback(async () => {
         // Pool窓（未保存）の場合は selectedFile がnullでもファイル作成前なので削除可能
         if (!selectedFile && !isPool) return;
+        // Ctrl+D 連続押下でのダブル削除防止（Tauri destroy() は1回のみ）
+        if (isDeletingRef.current) return;
         try {
             isDeletingRef.current = true;
             await playDeleteSound();
