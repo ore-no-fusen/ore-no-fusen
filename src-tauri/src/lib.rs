@@ -692,6 +692,15 @@ static LAST_VISIBILITY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 /// 1枚目の付箋昇格（promote）には一切影響しない。
 static LAST_POOL_CREATE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Pool 窓の目標数（常時 3 個維持）
+const POOL_TARGET: usize = 3;
+
+/// 現在の pool 窓数と目標数から不足数を返す純粋関数。
+/// テスト可能な形に分離（ファイルシステム・OS API に依存しない）。
+pub(crate) fn count_missing_pool(current: usize, target: usize) -> usize {
+    target.saturating_sub(current)
+}
+
 static LAST_IPHONE_NOTE_IDS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
@@ -1284,6 +1293,62 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+
+/// Pool 窓を常時 POOL_TARGET 個に維持する補充コマンド。
+/// 不足数を count_missing_pool で計算し、順次 1 個ずつ create（補充並列度 1）。
+/// LAST_POOL_CREATE_MS セーフティネット 500ms スロットルを尊重する。
+/// JS 側の T2_READY +5s トリガから非同期に呼ばれる。
+#[tauri::command]
+async fn fusen_replenish_pool(app: tauri::AppHandle) -> Result<(), String> {
+    let current_count = app.webview_windows().values()
+        .filter(|w| w.label().starts_with("pool-window-"))
+        .count();
+    let missing = count_missing_pool(current_count, POOL_TARGET);
+
+    if missing == 0 {
+        logger::log_debug(&format!("[Pool] fusen_replenish_pool: pool full (current={})", current_count));
+        perflog::log_event("replenish", "POOL_REPLENISH_DONE", None, None, serde_json::json!({"current": current_count, "missing": 0}));
+        return Ok(());
+    }
+
+    logger::log_info(&format!("[Pool] fusen_replenish_pool: current={} missing={}", current_count, missing));
+    perflog::log_event("replenish", "POOL_REPLENISH_START", None, None, serde_json::json!({"current": current_count, "missing": missing}));
+
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for i in 0..missing {
+            use std::sync::atomic::Ordering;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let last = LAST_POOL_CREATE_MS.load(Ordering::SeqCst);
+            if now.saturating_sub(last) < 500 {
+                // セーフティネット: 前回生成から 500ms 未満なら待機
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            LAST_POOL_CREATE_MS.store(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+                Ordering::SeqCst
+            );
+            if let Err(e) = create_pool_window_internal(&app2) {
+                logger::log_warn(&format!("[Pool] replenish #{}: create failed: {}", i, e));
+            } else {
+                logger::log_info(&format!("[Pool] replenish #{}: created OK", i));
+            }
+            if i + 1 < missing {
+                // 連続作成: 500ms 間隔（CPU スパイク回避、pitfall 8 対策）
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+        perflog::log_event("replenish", "POOL_REPLENISH_DONE", None, None, serde_json::json!({"missing": missing}));
+    });
+
+    Ok(())
+}
 
 // --- Pro / iPhone 連携コマンド ---
 
@@ -1931,6 +1996,7 @@ pub fn run() {
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
+            fusen_replenish_pool,     // [NEW] Pool 補充オーケストレーション（T2_READY+5s トリガ）
             fusen_show_at_position, // [NEW] プールウィンドウをShow+リサイズ+移動を原子的に実行
             fusen_pick_folder,
             fusen_import_from_folder,
@@ -2069,41 +2135,103 @@ pub fn run() {
             }
 
             tray::create_tray(app.handle())?;
-            
-            // [NEW] グローバルショートカット: Ctrl+Shift+H で全付箋を隠す/表示する
-            use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState};
-            
+
+            // [NEW] グローバルショートカット: Ctrl+Shift+H（全隠し/表示） + Ctrl+N（新規付箋）
+            use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState, GlobalShortcutExt, Code, Modifiers, Shortcut};
+
             // 付箋の表示/非表示状態を追跡するための静的変数
             use std::sync::atomic::{AtomicBool, Ordering};
             static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
-            
-            // [Fix] Safely attempt to register shortcuts
+
+            // settings.json の shortcut_new_note を読み込み（無ければ "ctrl+n" をデフォルト使用）
+            let shortcut_new_note_str = storage::load_settings()
+                .ok()
+                .and_then(|s| s.shortcut_new_note)
+                .unwrap_or_else(|| "ctrl+n".to_string());
+            logger::log_info(&format!("[Shortcut] Ctrl+N ショートカット設定: {}", shortcut_new_note_str));
+
+            // shortcut_new_note を Shortcut に変換（parse 失敗時は ctrl+n にフォールバック）
+            let ctrl_n_shortcut = Shortcut::try_from(shortcut_new_note_str.as_str())
+                .unwrap_or_else(|_| {
+                    logger::log_warn("[Shortcut] shortcut_new_note の parse に失敗。ctrl+n にフォールバック。");
+                    Shortcut::new(Some(Modifiers::CONTROL), Code::KeyN)
+                });
+            let ctrl_n_shortcut_clone = ctrl_n_shortcut.clone();
+
+            // [Fix] Safely attempt to register shortcuts（Ctrl+Shift+H と Ctrl+N を同一プラグインに登録）
             match ShortcutBuilder::new().with_shortcuts(["ctrl+shift+h"]) {
                 Ok(builder) => {
                     let plugin = builder
-                        .with_handler(|app, _shortcut, event| {
+                        .with_handler(move |app, shortcut, event| {
                             if event.state == ShortcutState::Pressed {
-                                if !can_do_visibility_op() { return; }
-                                let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
-                                NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
-                                let visible = is_hidden; // was hidden → now show (true)
-                                let _ = app.emit("fusen:set_all_notes_visible", visible);
-                                
-                                logger::log_info(&format!(
-                                    "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",
-                                    if is_hidden { "SHOWN" } else { "HIDDEN" }
-                                ));
+                                if shortcut == &ctrl_n_shortcut_clone {
+                                    // --- グローバル Ctrl+N: 付箋に focus があればローカルに任せる（pitfall 4 対策）---
+                                    let focused = app.webview_windows().values()
+                                        .any(|w| w.is_focused().unwrap_or(false));
+                                    if focused {
+                                        logger::log_debug("[Shortcut] Ctrl+N: 付箋 focus あり → ローカルに委譲（二重発火回避）");
+                                        return;
+                                    }
+                                    logger::log_info("[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit");
+                                    perflog::log_event("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
+                                    let _ = app.emit("fusen:request_create_global", ());
+                                } else {
+                                    // --- Ctrl+Shift+H: 全付箋隠す/表示 ---
+                                    if !can_do_visibility_op() { return; }
+                                    let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
+                                    NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
+                                    let visible = is_hidden; // was hidden → now show (true)
+                                    let _ = app.emit("fusen:set_all_notes_visible", visible);
+
+                                    logger::log_info(&format!(
+                                        "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",
+                                        if is_hidden { "SHOWN" } else { "HIDDEN" }
+                                    ));
+                                }
                             }
                         })
                         .build();
 
-                    if let Err(e) = app.handle().plugin(plugin) {
-                        logger::log_warn(&format!("Failed to initialize global shortcut plugin: {}", e));
+                    match app.handle().plugin(plugin) {
+                        Ok(_) => {
+                            // プラグイン登録後に ctrl+n を追加登録
+                            use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                            if let Err(e) = app.handle().global_shortcut().register(ctrl_n_shortcut) {
+                                logger::log_warn(&format!("[Shortcut] Ctrl+N 追加登録失敗: {}", e));
+                            } else {
+                                logger::log_info("[Shortcut] Ctrl+N グローバルショートカット登録成功");
+                            }
+                        },
+                        Err(e) => {
+                            logger::log_warn(&format!("Failed to initialize global shortcut plugin: {}", e));
+                        }
                     }
                 },
                 Err(e) => {
                     logger::log_warn(&format!("Failed to register global shortcuts (might be conflicting): {}", e));
                 }
+            }
+
+            // [NEW] 起動時 Pool 補充（付箋復元後に 3 個を順次作成、CPU 競合回避）
+            // pitfall 8 対策: setup の同期ブロック外で spawn → 500ms 間隔で順次生成
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // メインウィンドウの初期化が完了するまで少し待つ（付箋復元 CPU 競合回避）
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    logger::log_info("[Pool] 起動時補充開始: POOL_TARGET=3 を順次作成");
+                    for i in 0..POOL_TARGET {
+                        match create_pool_window_internal(&app_handle) {
+                            Ok(_) => logger::log_info(&format!("[Pool] 起動補充 #{}: 作成成功", i)),
+                            Err(e) => logger::log_warn(&format!("[Pool] 起動補充 #{}: 失敗: {}", i, e)),
+                        }
+                        if i + 1 < POOL_TARGET {
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        }
+                    }
+                    perflog::log_event("startup", "POOL_REPLENISH_DONE", None, None, serde_json::json!({"count": POOL_TARGET}));
+                    logger::log_info("[Pool] 起動時補充完了");
+                });
             }
             
             // iPhone受信: バックグラウンドポーリングループ（30秒間隔）
@@ -2251,6 +2379,15 @@ mod pool_tests {
     use super::*;
     #[allow(unused_imports)]
     use tempfile::tempdir;
+
+    /// Task 4 (Plan 04): count_missing_pool 純粋関数のユニットテスト
+    #[test]
+    fn replenish_count_missing() {
+        assert_eq!(count_missing_pool(0, 3), 3, "pool が空なら 3 個不足");
+        assert_eq!(count_missing_pool(2, 3), 1, "2 個あれば 1 個不足");
+        assert_eq!(count_missing_pool(3, 3), 0, "pool が満杯なら不足なし");
+        assert_eq!(count_missing_pool(5, 3), 0, "超過時は 0（saturating_sub）");
+    }
 
     /// Task 3: do_create_note を 2 回連続呼び出して連番が衝突しないことを確認
     /// (Mutex 排他で pool 窓間レースが起きないことの確認)
