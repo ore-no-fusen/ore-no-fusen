@@ -24,6 +24,7 @@ mod clipboard; // [NEW] クリップボード機能
 mod import; // インポート機能
 mod gdrive; // Google Drive 連携
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs)
+mod perflog; // パフォーマンス計測ログ（JSON Lines）
 use state::{AppState, Note, NoteMeta};
 
 // --- Commands ---
@@ -1071,6 +1072,9 @@ async fn fusen_show_at_position(
     phys_height: u32,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    let perf_t_enter = std::time::Instant::now();
+    logger::log_info(&format!("[PERF|RUST_ENTER] fusen_show_at_position label={}", label));
+
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::UI::WindowsAndMessaging::{
@@ -1081,6 +1085,9 @@ async fn fusen_show_at_position(
         use raw_window_handle::RawWindowHandle;
 
         if let Some(win) = app.get_webview_window(&label) {
+            let perf_t_after_get_window = perf_t_enter.elapsed().as_millis();
+            logger::log_info(&format!("[PERF|RUST_AFTER_GET_WINDOW] elapsed_from_enter={}ms", perf_t_after_get_window));
+
             unsafe {
                 if let Ok(handle) = win.window_handle() {
                     if let RawWindowHandle::Win32(h) = handle.as_raw() {
@@ -1090,6 +1097,7 @@ async fn fusen_show_at_position(
                         } else {
                             SWP_SHOWWINDOW | SWP_NOMOVE
                         };
+                        let perf_t_before_setpos = perf_t_enter.elapsed().as_millis();
                         SetWindowPos(
                             hwnd,
                             HWND_TOP,
@@ -1099,12 +1107,17 @@ async fn fusen_show_at_position(
                             phys_height as i32,
                             flags,
                         ).map_err(|e| format!("SetWindowPos failed: {}", e))?;
+                        let perf_t_after_setpos = perf_t_enter.elapsed().as_millis();
+                        logger::log_info(&format!("[PERF|RUST_SETPOS] before={}ms after={}ms delta={}ms", perf_t_before_setpos, perf_t_after_setpos, perf_t_after_setpos - perf_t_before_setpos));
+
                         // SetForegroundWindow でOSのフォアグラウンドに設定する。
                         // SetWindowPos だけでは document.hasFocus()=false のままで
                         // CodeMirror が hasFocus=false を報告し、キー入力を受け付けない。
                         // このコマンドはユーザー操作（+ボタン等）直後に呼ばれるため
                         // Windows のフォアグラウンド制限に引っかからない。
                         let _ = SetForegroundWindow(hwnd);
+                        let perf_t_after_fg = perf_t_enter.elapsed().as_millis();
+                        logger::log_info(&format!("[PERF|RUST_SETFOREGROUND] after={}ms delta={}ms", perf_t_after_fg, perf_t_after_fg - perf_t_after_setpos));
                     }
                 }
             }
@@ -1112,12 +1125,20 @@ async fn fusen_show_at_position(
             // Tauri の内部 visibility 状態を更新しない。
             // win.show() で Tauri 状態を同期しないと、後続の Tauri API 呼び出し時に
             // tao が "hidden" 判定してウィンドウを非表示にするバグが発生する。
+            let perf_t_before_show = perf_t_enter.elapsed().as_millis();
             let _ = win.show();
+            let perf_t_after_show = perf_t_enter.elapsed().as_millis();
+            logger::log_info(&format!("[PERF|RUST_WINSHOW] before={}ms after={}ms delta={}ms", perf_t_before_show, perf_t_after_show, perf_t_after_show - perf_t_before_show));
+        } else {
+            logger::log_warn(&format!("[PERF|RUST] window not found label={}", label));
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     let _ = (label, phys_x, phys_y, phys_width, phys_height, app);
+
+    let perf_t_exit = perf_t_enter.elapsed().as_millis();
+    logger::log_info(&format!("[PERF|RUST_EXIT] total={}ms", perf_t_exit));
 
     Ok(())
 }
@@ -1265,6 +1286,45 @@ fn strip_local_images(body: &str) -> String {
         } else {
             "[画像]".to_string()
         }
+    }).into_owned()
+}
+
+/// body 中のローカル画像パスを base64 data URI に変換して埋め込む
+/// note_dir: ノートファイルのディレクトリ（相対パス解決に使用）
+/// data: URI はそのまま返す（http/https も変換しない）
+fn embed_local_images(body: &str, note_dir: &std::path::Path) -> String {
+    use base64::{Engine as _, engine::general_purpose};
+    let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
+    re.replace_all(body, |caps: &regex::Captures| {
+        let alt = &caps[1];
+        let raw_path = &caps[2];
+        // data: / http: / https: はそのまま返す
+        if raw_path.starts_with("data:") || raw_path.starts_with("http://") || raw_path.starts_with("https://") {
+            return caps[0].to_string();
+        }
+        // 絶対パスまたは note_dir からの相対パスとして解決
+        let path = {
+            let p = std::path::Path::new(raw_path);
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                note_dir.join(p)
+            }
+        };
+        // ファイルが存在しなければそのまま返す
+        let bytes = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(_) => return caps[0].to_string(),
+        };
+        let mime = match path.extension().and_then(|e| e.to_str()) {
+            Some("png") => "image/png",
+            Some("jpg") | Some("jpeg") => "image/jpeg",
+            Some("gif") => "image/gif",
+            Some("webp") => "image/webp",
+            _ => "application/octet-stream",
+        };
+        let encoded = general_purpose::STANDARD.encode(&bytes);
+        format!("![{}](data:{};base64,{})", alt, mime, encoded)
     }).into_owned()
 }
 
@@ -2075,11 +2135,34 @@ mod search_tests {
         let dir = tempdir().unwrap();
         let file1 = dir.path().join("Note1.md");
         let file2 = dir.path().join("Note2.md");
-        
+
         fs::write(&file1, "Hello World\nThis is a test.").unwrap();
         fs::write(&file2, "Another note\nHello there.").unwrap();
-        
+
         let hits = search_notes_logic(dir.path().to_str().unwrap(), "Hello");
         assert_eq!(hits.len(), 2);
+    }
+}
+
+/// Wave 1〜3 で実装予定の Pool 窓テストスケルトン
+/// #[ignore] 付きのため cargo test では skip される（後続 Wave で un-ignore して実装）
+#[cfg(test)]
+mod pool_tests {
+    #[test]
+    #[ignore]
+    fn pool_lazy_create() {
+        unimplemented!("Wave 2 で実装")
+    }
+
+    #[test]
+    #[ignore]
+    fn pool_window_layered() {
+        unimplemented!("Wave 2 で実装")
+    }
+
+    #[test]
+    #[ignore]
+    fn fusen_show_at_position_atomic() {
+        unimplemented!("Wave 2 で実装")
     }
 }

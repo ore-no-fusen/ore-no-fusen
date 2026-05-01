@@ -59,3 +59,6 @@ public/workbox-*.js
 
 # Claude Code のローカル設定（マシン固有のため除外）
 .claude/settings.local.json
+
+# Sustainable Action Plan (Private)
+.planning/SUSTAINABLE_ACTION_PLAN.md

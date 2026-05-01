@@ -593,10 +593,14 @@ const StickyNote = memo(function StickyNote() {
             const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const thisWin = getCurrentWebviewWindow();
 
-            const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number }>('fusen:promote_from_pool', async (event) => {
+            const u = await thisWin.listen<{ path: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
+                const perfT0 = event.payload.t0;
                 isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
+                if (perfT0) {
+                    invoke('fusen_debug_log', { message: `[PERF|T_PROMOTE_START] elapsed=${Date.now() - perfT0}ms (pool window received promote event)` }).catch(() => { });
+                }
 
                 let promotedBody: string | undefined;
                 if (event.payload.isNew) {
@@ -642,6 +646,9 @@ const StickyNote = memo(function StickyNote() {
                         physHeight: event.payload.targetPhysHeight ?? 300,
                     });
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position OK pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => { });
+                    if (perfT0) {
+                        invoke('fusen_debug_log', { message: `[PERF|T1_VISIBLE] elapsed=${Date.now() - perfT0}ms (window shown at position)` }).catch(() => { });
+                    }
                 } catch (e) {
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position FAILED: ${e} – falling back to show()` }).catch(() => { });
                     await thisWin.show();
@@ -671,6 +678,9 @@ const StickyNote = memo(function StickyNote() {
                         editorRef.current?.focus();
                     }
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus+cursor applied, editorRef=${!!editorRef.current}` }).catch(() => { });
+                    if (perfT0) {
+                        invoke('fusen_debug_log', { message: `[PERF|T2_READY] elapsed=${Date.now() - perfT0}ms (editor focused, ready for input)` }).catch(() => { });
+                    }
                 }, 300);
             });
             // [FIX] React Strict Mode でダブルsetupが起きた場合、cleanup後にlistenが解決したら即解除
@@ -1387,6 +1397,9 @@ const StickyNote = memo(function StickyNote() {
                 if (now - lastCtrlNRef.current < 1200) return;
                 lastCtrlNRef.current = now;
                 if (selectedFile) {
+                    // [PERF] 起動時間計測: T0 = Ctrl+N 押下時刻
+                    const t0 = now;
+                    invoke('fusen_debug_log', { message: `[PERF|T0] Ctrl+N keydown t0=${t0}` }).catch(() => { });
                     const normalizedPath = selectedFile.path.replace(/\\/g, '/');
                     const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
                     const win = getCurrentWindow();
@@ -1412,7 +1425,7 @@ const StickyNote = memo(function StickyNote() {
                         sourcePhysWidth = Math.round(window.innerWidth * s);
                         sourcePhysHeight = Math.round(window.innerHeight * s);
                     }
-                    emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight });
+                    emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight, t0 });
                 }
             }
 

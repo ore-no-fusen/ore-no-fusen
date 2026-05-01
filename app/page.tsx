@@ -475,7 +475,7 @@ function OrchestratorContent() {
   // [Fix] Synchronous lock for creation
   const isCreatingRef = useRef(false);
 
-  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string) => {
+  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
     // Global Throttle (Module Level) prevention
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
@@ -599,6 +599,7 @@ function OrchestratorContent() {
             targetPhysY,
             targetPhysWidth,
             targetPhysHeight,
+            t0: perfT0,
           });
 
           // 次のプールウィンドウを補充する（即時開始）
@@ -937,9 +938,12 @@ function OrchestratorContent() {
 
     let unlisten: (() => void) | undefined;
 
-    const promise = listen<{ folderPath: string; context: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number; sourcePhysWidth?: number; sourcePhysHeight?: number }>('fusen:request_create', async (event) => {
-      const { folderPath, context, sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight } = event.payload;
+    const promise = listen<{ folderPath: string; context: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number; sourcePhysWidth?: number; sourcePhysHeight?: number; t0?: number }>('fusen:request_create', async (event) => {
+      const { folderPath, context, sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight, t0 } = event.payload;
       invoke('fusen_debug_log', { message: `[CREATE_REQ] page.tsx received: sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale} sourcePhysWidth=${sourcePhysWidth} sourcePhysHeight=${sourcePhysHeight}` }).catch(() => { });
+      if (t0) {
+        invoke('fusen_debug_log', { message: `[PERF|T_PAGE_RECV] elapsed=${Date.now() - t0}ms (page.tsx received request_create)` }).catch(() => { });
+      }
       if (!folderPath) {
         console.warn('[RequestCreate] No folder path in request');
         return;
@@ -947,7 +951,7 @@ function OrchestratorContent() {
       const sourceMeta = (sourcePhysX !== undefined && sourcePhysY !== undefined)
         ? { physX: sourcePhysX, physY: sourcePhysY, scale: sourceScale ?? 1.0, physWidth: sourcePhysWidth, physHeight: sourcePhysHeight }
         : undefined;
-      await handleCreateNote(folderPath, context || 'memo', sourceMeta);
+      await handleCreateNote(folderPath, context || 'memo', sourceMeta, undefined, t0);
     });
 
     promise.then(u => { unlisten = u; });
