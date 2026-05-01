@@ -644,6 +644,7 @@ const StickyNote = memo(function StickyNote() {
                         physY: event.payload.targetPhysY ?? null,
                         physWidth: event.payload.targetPhysWidth ?? 400,
                         physHeight: event.payload.targetPhysHeight ?? 300,
+                        runId: event.payload.runId ?? null,
                     });
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position OK pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => { });
                     if (perfT0) {

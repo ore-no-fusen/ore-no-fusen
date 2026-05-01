@@ -1063,6 +1063,9 @@ async fn fusen_set_as_alt_tab_window(
 // JS async タイミングの問題で失敗することがある。
 // SetWindowPos(SWP_SHOWWINDOW) は表示と位置を原子的に設定し WINDOWPLACEMENT を使わないため
 // マルチモニター環境でも安定して動作する。
+// [Phase 19] Pool 昇格時: SetWindowPos → SetLayeredWindowAttributes(α=255) → SetForegroundWindow の
+// 順序で 1 関数内で連続実行する（Atomic Coordination Constraint: JS からの複数 invoke await を禁止）
+// pitfall 6: α=255 は SetForegroundWindow より前に設定する（透明窓に focus すると 1 文字目が消える）
 #[tauri::command]
 async fn fusen_show_at_position(
     label: String,
@@ -1070,18 +1073,24 @@ async fn fusen_show_at_position(
     phys_y: Option<i32>,
     phys_width: u32,
     phys_height: u32,
+    run_id: Option<String>, // perflog 計測用 run_id（None なら perflog 記録しない）
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let perf_t_enter = std::time::Instant::now();
     logger::log_info(&format!("[PERF|RUST_ENTER] fusen_show_at_position label={}", label));
 
+    // T1_RUST_ENTER: 関数突入時刻を記録（run_id が Some の場合のみ）
+    if let Some(rid) = &run_id {
+        perflog::log_event(rid, "T1_RUST_ENTER", Some(&label), None, serde_json::json!({}));
+    }
+
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, SetForegroundWindow, HWND_TOP, SET_WINDOW_POS_FLAGS,
-            SWP_SHOWWINDOW, SWP_NOMOVE,
+            SetWindowPos, SetForegroundWindow, SetLayeredWindowAttributes,
+            HWND_TOP, SET_WINDOW_POS_FLAGS, SWP_SHOWWINDOW, SWP_NOMOVE, LWA_ALPHA,
         };
-        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Foundation::{HWND, COLORREF};
         use raw_window_handle::RawWindowHandle;
 
         if let Some(win) = app.get_webview_window(&label) {
@@ -1110,6 +1119,14 @@ async fn fusen_show_at_position(
                         let perf_t_after_setpos = perf_t_enter.elapsed().as_millis();
                         logger::log_info(&format!("[PERF|RUST_SETPOS] before={}ms after={}ms delta={}ms", perf_t_before_setpos, perf_t_after_setpos, perf_t_after_setpos - perf_t_before_setpos));
 
+                        // [Phase 19] Pool 昇格: α=0 → α=255 に変更（不透明化）
+                        // pitfall 6: SetForegroundWindow より先に α=255 を設定する
+                        // （透明のままフォーカスを取ると 1 文字目が消えるバグが発生する）
+                        SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA)
+                            .map_err(|e| format!("SetLayeredWindowAttributes(255) failed: {}", e))?;
+                        let perf_t_after_alpha = perf_t_enter.elapsed().as_millis();
+                        logger::log_info(&format!("[PERF|RUST_ALPHA_255] after={}ms", perf_t_after_alpha));
+
                         // SetForegroundWindow でOSのフォアグラウンドに設定する。
                         // SetWindowPos だけでは document.hasFocus()=false のままで
                         // CodeMirror が hasFocus=false を報告し、キー入力を受け付けない。
@@ -1117,7 +1134,13 @@ async fn fusen_show_at_position(
                         // Windows のフォアグラウンド制限に引っかからない。
                         let _ = SetForegroundWindow(hwnd);
                         let perf_t_after_fg = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!("[PERF|RUST_SETFOREGROUND] after={}ms delta={}ms", perf_t_after_fg, perf_t_after_fg - perf_t_after_setpos));
+                        logger::log_info(&format!("[PERF|RUST_SETFOREGROUND] after={}ms delta={}ms", perf_t_after_fg, perf_t_after_fg - perf_t_after_alpha));
+
+                        // T2_READY: SetForegroundWindow 後（エディタ focus 到達の直前）
+                        if let Some(rid) = &run_id {
+                            let elapsed = perf_t_enter.elapsed().as_millis() as u64;
+                            perflog::log_event(rid, "T2_READY", Some(&label), Some(elapsed), serde_json::json!({}));
+                        }
                     }
                 }
             }
@@ -1135,7 +1158,7 @@ async fn fusen_show_at_position(
     }
 
     #[cfg(not(target_os = "windows"))]
-    let _ = (label, phys_x, phys_y, phys_width, phys_height, app);
+    let _ = (label, phys_x, phys_y, phys_width, phys_height, run_id, app);
 
     let perf_t_exit = perf_t_enter.elapsed().as_millis();
     logger::log_info(&format!("[PERF|RUST_EXIT] total={}ms", perf_t_exit));
