@@ -1167,24 +1167,76 @@ async fn fusen_create_pool_window(app: tauri::AppHandle) -> Result<String, Strin
 fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
     let uuid = uuid::Uuid::new_v4().to_string();
     let label = format!("pool-window-{}", uuid);
-    
+
     logger::log_debug(&format!("[Pool] Creating hidden pool window: {}", label));
-    
-    // 背景色は透明ではなく黄色で初期化（OSレベルでの白フラッシュ防止）
+
+    // visible(false) で build → 直後に Win32 API で WS_EX_LAYERED + α=0 + 画面外配置を設定する
+    // pitfall 1: visible(true) で作ると Tauri が内部状態を "visible" にしてしまい後の show() 制御が崩れる
+    // pitfall 2: SetWindowLongPtrW の上書きではなく OR パターンで付与する（既存 EX style を保持）
+    // pitfall 3: 画面端 1px 配置ではなく -10000 に追い出す（α=0 でもクリックスルー安全のため）
     tauri::WebviewWindowBuilder::new(
         app,
         &label,
         tauri::WebviewUrl::App("/?path=&isPool=true".into())
     )
     .title("Quick Memo")
-    .transparent(false) // 透明にせずに不透明にする
+    .transparent(false)
     .decorations(false)
-    .visible(false) // 予備なので最初は非表示
-    .focused(false) // [FIX] ここでフォーカスを奪わないようにする
+    .visible(false)  // 後から SW_SHOWNOACTIVATE で立てる
+    .focused(false)
     .skip_taskbar(true)
     .build()
     .map_err(|e| e.to_string())?;
-    
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowLongPtrW, SetLayeredWindowAttributes,
+            ShowWindow, SetWindowPos, GWL_EXSTYLE, SW_SHOWNOACTIVATE,
+            SWP_NOACTIVATE, SWP_NOSIZE, HWND_TOP, LWA_ALPHA,
+            WS_EX_LAYERED,
+        };
+        use windows::Win32::Foundation::{HWND, COLORREF};
+        use raw_window_handle::RawWindowHandle;
+
+        if let Some(win) = app.get_webview_window(&label) {
+            unsafe {
+                if let Ok(handle) = win.window_handle() {
+                    if let RawWindowHandle::Win32(h) = handle.as_raw() {
+                        let hwnd = HWND(h.hwnd.get());
+
+                        // pitfall 2 対策: OR パターンで WS_EX_LAYERED を追加（上書きしない）
+                        let current_ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                        let new_ex = current_ex | (WS_EX_LAYERED.0 as isize);
+                        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex);
+
+                        // α=0: 完全透明（見えない）にする
+                        SetLayeredWindowAttributes(hwnd, COLORREF(0), 0, LWA_ALPHA)
+                            .map_err(|e| format!("SetLayeredWindowAttributes(0) failed: {}", e))?;
+
+                        // pitfall 3 対策: 画面外 (-10000, -10000) に配置
+                        SetWindowPos(
+                            hwnd,
+                            HWND_TOP,
+                            -10000,
+                            -10000,
+                            0,
+                            0,
+                            SWP_NOACTIVATE | SWP_NOSIZE,
+                        ).map_err(|e| format!("SetWindowPos(-10000) failed: {}", e))?;
+
+                        // α=0 のため見えないが、ShowWindow で OS に "表示" を伝える
+                        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+                    }
+                }
+            }
+        }
+    }
+
+    // perflog: Pool 生成完了
+    let run_id = format!("pool-init-{}", uuid);
+    perflog::log_event(&run_id, "POOL_CREATED", Some(&label), None, serde_json::json!({}));
+
     Ok(())
 }
 
@@ -2144,25 +2196,49 @@ mod search_tests {
     }
 }
 
-/// Wave 1〜3 で実装予定の Pool 窓テストスケルトン
-/// #[ignore] 付きのため cargo test では skip される（後続 Wave で un-ignore して実装）
+/// Pool 窓 Win32 テスト
+/// pool_window_layered / fusen_show_at_position_atomic は実 HWND を要するため
+/// Windows runner でのみ実行可能。CI Linux では #[ignore] で skip される。
+/// pool_lazy_create は tempfile を使うためすべての OS で動作する。
 #[cfg(test)]
 mod pool_tests {
+    #[allow(unused_imports)]
+    use super::*;
+    #[allow(unused_imports)]
+    use tempfile::tempdir;
+
+    /// Task 3: do_create_note を 2 回連続呼び出して連番が衝突しないことを確認
+    /// (Mutex 排他で pool 窓間レースが起きないことの確認)
+    /// Task 3 実装後に #[ignore] を外す
     #[test]
     #[ignore]
     fn pool_lazy_create() {
-        unimplemented!("Wave 2 で実装")
+        unimplemented!("Task 3 で do_create_note 実装後に有効化")
     }
 
+    /// Task 1: Pool 窓の WS_EX_LAYERED + α=0 + 画面外配置を確認
+    /// 実 HWND が必要なため Windows runner でのみ実行可能
+    #[cfg(target_os = "windows")]
     #[test]
-    #[ignore]
+    #[ignore] // Windows runner でのみ実行: cargo test -- --ignored pool_window_layered
     fn pool_window_layered() {
-        unimplemented!("Wave 2 で実装")
+        // tauri::test::mock_app() でアプリを起動し create_pool_window_internal を呼ぶ
+        // 直後に GetWindowLongPtrW で WS_EX_LAYERED.0 ビットが立っていることを assert
+        // GetWindowRect で x/y が -10000 以下であることを assert
+        // このテストは実 Win32 HWND を要するため CI Linux では skip、Windows runner でのみ動作
+        todo!("Windows runner 上で実装（実 HWND を取得できる環境でのみ有効）")
     }
 
+    /// Task 2: fusen_show_at_position が α=255 を設定することを確認
+    /// 実 HWND が必要なため Windows runner でのみ実行可能
+    #[cfg(target_os = "windows")]
     #[test]
-    #[ignore]
+    #[ignore] // Windows runner でのみ実行: cargo test -- --ignored fusen_show_at_position_atomic
     fn fusen_show_at_position_atomic() {
-        unimplemented!("Wave 2 で実装")
+        // tauri::test::mock_app() で可視ウィンドウを生成
+        // fusen_show_at_position を呼んだ直後に GetLayeredWindowAttributes で alpha 値を読み戻す
+        // assert_eq!(alpha, 255, "alpha must be 255 after fusen_show_at_position");
+        // 実 HWND を要するため Linux CI では skip
+        todo!("Windows runner 上で実装（実 HWND を取得できる環境でのみ有効）")
     }
 }
