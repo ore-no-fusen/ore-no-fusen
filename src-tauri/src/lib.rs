@@ -129,22 +129,43 @@ fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Note {
     note
 }
 
-#[tauri::command]
-fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, context: String) -> Result<Note, String> {
+/// ノート作成の共通ロジック。Mutex を lock したまま get_next_seq → write_note → apply_add_note
+/// を 1 トランザクションで実行する（pool 窓間の連番衝突を防ぐ Mutex 排他）。
+fn do_create_note(state: &Mutex<AppState>, folder_path: &str, context: &str) -> Result<Note, String> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let next_seq = storage::get_next_seq(&folder_path);
-
-    let data = logic::build_create_note_data(&folder_path, &context, next_seq, &today);
-
+    // Mutex を lock して排他区間を開始
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    let next_seq = storage::get_next_seq(folder_path);
+    let data = logic::build_create_note_data(folder_path, context, next_seq, &today);
+    // I/O は排他区間内で実行（lock は write_note 完了まで保持）
     storage::write_note(&data.path_str, &data.content)?;
-
-    logic::apply_add_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), data.meta.clone());
-
+    logic::apply_add_note(&mut app_state, data.meta.clone());
+    // lock はここで drop される
     Ok(Note {
         body: data.body,
         frontmatter: data.frontmatter,
         meta: data.meta,
     })
+}
+
+#[tauri::command]
+fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, context: String) -> Result<Note, String> {
+    do_create_note(&state, &folder_path, &context)
+}
+
+/// 1 文字目入力時にのみ呼ぶ lazy ファイル作成コマンド。
+/// fusen_create_note と同等だが名前で用途を明示する（Pool 昇格後の遅延ファイル作成）。
+/// Mutex 排他で複数 pool 窓が同時呼び出した場合の連番衝突を防ぐ。
+#[tauri::command]
+fn fusen_create_note_lazy(state: State<'_, Mutex<AppState>>, folder_path: String, context: String) -> Result<Note, String> {
+    perflog::log_event(
+        &format!("lazy-{}", uuid::Uuid::new_v4()),
+        "T2_FIRST_CHAR_RUST_ENTER",
+        None,
+        None,
+        serde_json::json!({}),
+    );
+    do_create_note(&state, &folder_path, &context)
 }
 
 #[tauri::command]
@@ -1882,6 +1903,7 @@ pub fn run() {
             fusen_list_notes,
             fusen_read_note,
             fusen_create_note,
+            fusen_create_note_lazy,
             fusen_duplicate_note,
             fusen_save_note,
             fusen_move_to_trash,
@@ -2232,11 +2254,15 @@ mod pool_tests {
 
     /// Task 3: do_create_note を 2 回連続呼び出して連番が衝突しないことを確認
     /// (Mutex 排他で pool 窓間レースが起きないことの確認)
-    /// Task 3 実装後に #[ignore] を外す
     #[test]
-    #[ignore]
     fn pool_lazy_create() {
-        unimplemented!("Task 3 で do_create_note 実装後に有効化")
+        use tempfile::tempdir;
+        let tmp = tempdir().unwrap();
+        let folder_path = tmp.path().to_str().unwrap();
+        let state = Mutex::new(AppState::default());
+        let n1 = do_create_note(&state, folder_path, "first").unwrap();
+        let n2 = do_create_note(&state, folder_path, "second").unwrap();
+        assert_ne!(n1.meta.path, n2.meta.path, "連番が衝突してはいけない（Mutex 排他の効果）");
     }
 
     /// Task 1: Pool 窓の WS_EX_LAYERED + α=0 + 画面外配置を確認
