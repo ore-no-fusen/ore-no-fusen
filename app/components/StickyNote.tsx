@@ -667,11 +667,10 @@ const StickyNote = memo(function StickyNote() {
                     invoke('fusen_debug_log', { message: `[PERF|T1_VISIBLE] elapsed=${Date.now() - perfT0}ms (window shown at position by page.tsx)` }).catch(() => { });
                 }
 
-                // 実際の位置を確認
-                try {
-                    const finalPos = await thisWin.outerPosition();
-                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] FINAL pos=(${finalPos.x},${finalPos.y})` }).catch(() => { });
-                } catch (e) { /* ignore */ }
+                // 実際の位置を確認（await しない: IPC 遅延で setTimeout 開始が遅れるのを防ぐ）
+                thisWin.outerPosition().then(p => {
+                    invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] FINAL pos=(${p.x},${p.y})` }).catch(() => { });
+                }).catch(() => { });
 
                 // CodeMirror のレイアウトを再計算させる（hidden→visible 時に必要）
                 window.dispatchEvent(new Event('resize'));
