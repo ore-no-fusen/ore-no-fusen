@@ -2165,13 +2165,9 @@ pub fn run() {
                         .with_handler(move |app, shortcut, event| {
                             if event.state == ShortcutState::Pressed {
                                 if shortcut == &ctrl_n_shortcut_clone {
-                                    // --- グローバル Ctrl+N: 付箋に focus があればローカルに任せる（pitfall 4 対策）---
-                                    let focused = app.webview_windows().values()
-                                        .any(|w| w.is_focused().unwrap_or(false));
-                                    if focused {
-                                        logger::log_debug("[Shortcut] Ctrl+N: 付箋 focus あり → ローカルに委譲（二重発火回避）");
-                                        return;
-                                    }
+                                    // --- グローバル Ctrl+N: 常に fusen:request_create_global を emit ---
+                                    // フォーカスチェックは削除。付箋にフォーカスがある状態でも新規作成を許可する。
+                                    // 二重作成はメインウィンドウの 400ms グローバルスロットルで防ぐ。
                                     logger::log_info("[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit");
                                     perflog::log_event("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
                                     let _ = app.emit("fusen:request_create_global", ());
