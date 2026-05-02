@@ -410,7 +410,12 @@ const StickyNote = memo(function StickyNote() {
     // ============================================================
 
     // 初期ロード（一度だけ実行）
-    const hasInitializedRef = useRef(false);
+    // [FIX] プールウィンドウ（isPool=true）は urlPath=null で起動し、1文字目入力後に
+    // handleFirstChar → fusen_create_note_lazy でファイルが作成されて urlPath が変わる。
+    // このとき hasInitializedRef=false のまま useEffect が再発火すると
+    // focusAndSelectFirstLine が再度呼ばれてカーソルが先頭にリセットされるバグがあった。
+    // isPool=true の場合は最初から「初期化済み」とみなしてスキップすることで防ぐ。
+    const hasInitializedRef = useRef(isPoolParams); // プールウィンドウは true で初期化
     useEffect(() => {
         if (!urlPath) return;
         if (hasInitializedRef.current) return;

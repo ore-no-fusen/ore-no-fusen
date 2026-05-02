@@ -790,10 +790,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                 });
             };
 
-            // Focusを確実にするため、段階的に複数回試行する
-            requestAnimationFrame(() => doFocus());
-            setTimeout(() => doFocus(), 50);
-            setTimeout(() => doFocus(), 150);
+            // [FIX] rAF x2 でレイアウト確定後に「1回だけ」実行する。
+            // 以前は setTimeout 50ms / 150ms の繰り返し呼び出しがあり、
+            // ユーザーが入力を開始した後（150〜250ms後）もカーソルを
+            // 先頭にリセットし続けるバグを引き起こしていた。
+            requestAnimationFrame(() => requestAnimationFrame(() => doFocus()));
         },
         setCursorToEnd: () => {
             if (!viewRef.current) return;
@@ -1262,7 +1263,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
         // [NEW] 初期選択処理（作成直後に一度だけ予約）
         if (isNewNote) {
-            // [FIX] CodeMirrorインスタンス生成完了後に、確実にフォーカスさせる
+            // [FIX] rAF x2 でレイアウト確定後に「1回だけ」フォーカス＆カーソル先頭配置する。
+            // 以前は setTimeout 50ms / 150ms / 300ms の繰り返しがあり、
+            // ユーザーが入力開始後（300ms以内）にもカーソルを先頭にリセットし続けるバグがあった。
             const doFocus = () => {
                 const currentView = viewRef.current;
                 if (!currentView) return;
@@ -1274,12 +1277,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     });
                 }
             };
-
-            // 複数段階のアプローチでどれか一つが確実にヒットするようにする
-            requestAnimationFrame(doFocus);
-            setTimeout(doFocus, 50);
-            setTimeout(doFocus, 150);
-            setTimeout(doFocus, 300);
+            requestAnimationFrame(() => requestAnimationFrame(doFocus));
         }
 
         // 初期カーソル位置が指定されている場合は適用＆フォーカス（新規付箋以外）
