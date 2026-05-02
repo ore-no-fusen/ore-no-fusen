@@ -38,7 +38,11 @@
       "WebFetch(domain:localhost)",
       "Skill(gsd:add-phase)",
       "Skill(gsd:add-phase:*)",
-      "PowerShell(Get-NetTCPConnection -LocalPort 3002 -ErrorAction SilentlyContinue | Select-Object @{Name=\"ProcessName\";Expression={\\(Get-Process -Id $_.OwningProcess\\).ProcessName}} | ForEach-Object { taskkill /PID \\(Get-Process -Name $_.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Id\\) /F -ErrorAction SilentlyContinue 2>$null })"
+      "PowerShell(Get-NetTCPConnection -LocalPort 3002 -ErrorAction SilentlyContinue | Select-Object @{Name=\"ProcessName\";Expression={\\(Get-Process -Id $_.OwningProcess\\).ProcessName}} | ForEach-Object { taskkill /PID \\(Get-Process -Name $_.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Id\\) /F -ErrorAction SilentlyContinue 2>$null })",
+      "Skill(gsd:execute-phase)",
+      "Skill(gsd:execute-phase:*)",
+      "Skill(gsd:progress)",
+      "Skill(gsd:progress:*)"
     ]
   },
   "hooks": {

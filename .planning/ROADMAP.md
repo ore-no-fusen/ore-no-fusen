@@ -4,9 +4,10 @@
 
 - ✅ **v1.0 品質改善** — Phases 1-3 (shipped 2026-03-23)
 - ✅ **v2.0 iPhone連携** — Phases 4-5 (shipped 2026-03-29)
-- 📋 **v3.0 iPhone→PC送信** — Phases 6-12 (planned)
-- 📋 **v4.0 ロック画面コントロール** — Phases 13-14 (planned)
-- 📋 **v5.0 iPhone PWA 安定化** — Phases 15-19 (planned)
+- ✅ **v3.0 iPhone→PC送信** — Phases 6-12 (shipped 2026-04-10)
+- ✅ **v4.0 ロック画面コントロール** — Phases 13-14 (shipped 2026-04-10)
+- ✅ **v5.0 iPhone PWA 安定化** — Phases 15-18 (shipped 2026-05-02)
+- ✅ **v6.0 起動性能 300ms 達成（Pool）** — Phase 19 (shipped 2026-05-02)
 
 ## Phases
 
@@ -282,7 +283,8 @@ Plans:
 | 12. チェックボックスTODO一覧インライントグル | v3.0 | Closed | 2026-04-10 |
 | 13. ロック画面コントロール基盤 | v4.0 | Closed | 2026-04-10 |
 | 14. エディタ連携 + 再起動復元 | v4.0 | Deferred → Phase 18 | — |
-| **15. コード整理（lib 抽出・死んだコード削除）** | **v5.0** | **Not started** | — |
-| **16. バグ修正（画像・URL・ロック状態）** | **v5.0** | **Not started** | — |
-| **17. コンポーネント分割** | **v5.0** | **Not started** | — |
-| **18. エディタ連携 + 再起動復元** | **v5.0** | **Not started** | — |
+| 15. コード整理（lib 抽出・死んだコード削除） | v5.0 | Complete | 2026-05-02 |
+| 16. バグ修正（画像・URL・ロック状態） | v5.0 | Complete | 2026-05-02 |
+| 17. コンポーネント分割 | v5.0 | Complete | 2026-05-02 |
+| 18. エディタ連携 + 再起動復元 | v5.0 | Complete | 2026-05-02 |
+| 19. 起動性能300ms達成（Pool） | v6.0 | Complete | 2026-05-02 |
