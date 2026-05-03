@@ -174,5 +174,5 @@ export function useNoteList({
       .finally(() => setIsHistoryLoading(false));
 
     return () => { thumbUrls.forEach((u) => URL.revokeObjectURL(u)); };
-  }, [step, accessToken]);
+  }, [step, accessToken, initLockedNoteIds, setHistoryNotes, setIsHistoryLoading, setThumbnailUrls]);
 }

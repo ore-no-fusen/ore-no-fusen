@@ -121,6 +121,10 @@ export function useStickyNoteContextMenu({
      * コンテキストメニュー表示
      */
     const showContextMenu = useCallback(async (x: number, y: number) => {
+        if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) {
+            return;
+        }
+
         try {
             const { Menu, MenuItem, PredefinedMenuItem, Submenu } = await import('@tauri-apps/api/menu');
             const { LogicalPosition } = await import('@tauri-apps/api/dpi');
@@ -447,7 +451,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleDeleteNote, handleOpenFolder, onToast]);
 
 
     // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）

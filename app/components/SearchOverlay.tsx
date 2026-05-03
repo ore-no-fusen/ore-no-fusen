@@ -133,14 +133,14 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
         const nextIndex = (currentIndex + 1) % results.length;
         setCurrentIndex(nextIndex);
         await jumpToHit(results[nextIndex]);
-    }, [results.length, currentIndex, jumpToHit]);
+    }, [results, currentIndex, jumpToHit]);
 
     const handlePrev = useCallback(async () => {
         if (results.length === 0) return;
         const prevIndex = (currentIndex - 1 + results.length) % results.length;
         setCurrentIndex(prevIndex);
         await jumpToHit(results[prevIndex]);
-    }, [results.length, currentIndex, jumpToHit]);
+    }, [results, currentIndex, jumpToHit]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {

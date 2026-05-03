@@ -197,7 +197,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
             cancelled = true;
             timers.forEach(clearTimeout);
         };
-    }, [path, savePending, content, rawFrontmatter, saveNoteContent]);
+    }, [path, savePending, content, rawFrontmatter, saveNoteContent, onSaveError]);
 
     return {
         note,

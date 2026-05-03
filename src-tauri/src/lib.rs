@@ -1453,6 +1453,7 @@ fn strip_local_images(body: &str) -> String {
 /// body 中のローカル画像パスを base64 data URI に変換して埋め込む
 /// note_dir: ノートファイルのディレクトリ（相対パス解決に使用）
 /// data: URI はそのまま返す（http/https も変換しない）
+#[cfg(test)]
 fn embed_local_images(body: &str, note_dir: &std::path::Path) -> String {
     use base64::{Engine as _, engine::general_purpose};
     let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
@@ -2137,7 +2138,7 @@ pub fn run() {
             tray::create_tray(app.handle())?;
 
             // [NEW] グローバルショートカット: Ctrl+Shift+H（全隠し/表示） + Ctrl+N（新規付箋）
-            use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState, GlobalShortcutExt, Code, Modifiers, Shortcut};
+            use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState, Code, Modifiers, Shortcut};
 
             // 付箋の表示/非表示状態を追跡するための静的変数
             use std::sync::atomic::{AtomicBool, Ordering};

@@ -21,14 +21,15 @@ export type AppSettings = {
     sound_enabled: boolean
 }
 
-// デフォルト値
+// デフォルト値（Rust側 state.rs の default_auto_start() と統一）
 const DEFAULT_SETTINGS: AppSettings = {
     base_path: "",
     language: "ja",
-    auto_start: false,
+    auto_start: true,
     font_size: 16,
     sound_enabled: true,
 }
+
 
 // --- 2. 倉庫番（保存ロジック） ---
 

@@ -28,6 +28,8 @@ import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
+import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { useMainWindowResizePolicy } from './hooks/useMainWindowResizePolicy';
 
 // Global AppState type definition
 type AppState = {
@@ -159,95 +161,13 @@ function OrchestratorContent() {
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
-  // [NEW] アップデートダイアログ
-  const [pendingUpdate, setPendingUpdate] = useState<any>(null);
-  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
-  const [isHidingAfterUpdate, setIsHidingAfterUpdate] = useState(false);
-  const [uiLanguage, setUiLanguage] = useState<Language>('ja');
-  const tUpdate = getTranslation(uiLanguage);
-  useEffect(() => {
-    invoke<any>('get_settings').then(s => {
-      if (s?.language) setUiLanguage(s.language as Language);
-    }).catch(() => {});
-  }, []);
+  // [NEW] アップデートチェック（useUpdateCheckに委譲）
+  const { pendingUpdate, showUpdateDialog, isHidingAfterUpdate, handleUpdateConfirm, handleUpdateCancel, tUpdate }
+    = useUpdateCheck({ isMainWindow });
+
   const isSearchOpenRef = useRef(false);
   useEffect(() => { isSearchOpenRef.current = isSearchOpen; }, [isSearchOpen]);
 
-
-
-  // 設定画面が開いたときは 900x700 に、閉じたときは 240x300 に自動リサイズ
-  useEffect(() => {
-    const resize = async () => {
-      try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const { LogicalSize } = await import('@tauri-apps/api/dpi');
-        const win = getCurrentWindow();
-        if (win.label !== 'main') return;
-        if (setupRequired || isSettingsOpen) {
-          await win.setSize(new LogicalSize(900, 700));
-          await win.center();
-          await win.show();
-          await win.setFocus();
-        } else if (!isCheckingSetup && !showUpdateDialog) {
-          await win.setSize(new LogicalSize(240, 300));
-          await win.center();
-        }
-      } catch (e) {
-        console.error('[resizeForSettings] failed:', e);
-      }
-    };
-    resize();
-  }, [setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog]);
-
-  // 自動アップデート確認（メインウィンドウのみ・起動後に実行）
-  useEffect(() => {
-    if (!isMainWindow) return;
-    const checkForUpdate = async () => {
-      try {
-        const { check } = await import('@tauri-apps/plugin-updater');
-        const update = await check();
-        if (!update) return;
-        console.log(`[Updater] 新しいバージョンが見つかりました: ${update.version}`);
-        // [FIX] window.confirm → アプリ内ConfirmDialogに変更
-        setPendingUpdate(update);
-        setShowUpdateDialog(true);
-      } catch (e) {
-        // アップデートチェック失敗はサイレントに無視
-        console.warn('[Updater] アップデートチェック失敗:', e);
-      }
-    };
-    // 起動から3秒後に確認（初期化完了を待つ）
-    const timer = setTimeout(checkForUpdate, 3000);
-    return () => clearTimeout(timer);
-  }, [isMainWindow]);
-
-  // [FIX] アップデートダイアログ表示時のウィンドウ操作をuseEffectに移動
-  // レンダー内でサイドエフェクトを呼ぶとタイミングが不安定になりフラッシュが起きるため
-  useEffect(() => {
-    if (!showUpdateDialog || !pendingUpdate) return;
-    import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
-      const { LogicalSize } = await import('@tauri-apps/api/dpi');
-      const win = getCurrentWindow();
-      await win.setSize(new LogicalSize(420, 280)).catch(() => {});
-      await win.center().catch(() => {});
-      await win.show().catch(() => {});
-      await win.setFocus().catch(() => {});
-    });
-  }, [showUpdateDialog, pendingUpdate]);
-
-  // アップデートのダウンロードとインストールを実行
-  const handleUpdateConfirm = useCallback(async () => {
-    setShowUpdateDialog(false);
-    if (!pendingUpdate) return;
-    try {
-      const { relaunch } = await import('@tauri-apps/plugin-process');
-      await pendingUpdate.downloadAndInstall();
-      await relaunch();
-    } catch (installErr) {
-      console.error('[Updater] インストール失敗:', installErr);
-    }
-    setPendingUpdate(null);
-  }, [pendingUpdate]);
 
   const syncState = useCallback(async (): Promise<AppState | null> => {
     try {
@@ -265,33 +185,8 @@ function OrchestratorContent() {
     }
   }, []);
 
-  // [Splash Screen Logic] resize window
-  useEffect(() => {
-    const handleResize = async () => {
-      try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const { LogicalSize } = await import('@tauri-apps/api/dpi');
-        const win = getCurrentWindow();
-
-        // メインウィンドウ以外（付箋・プールウィンドウなど）はリサイズしない
-        if (win.label !== 'main') return;
-
-        // 検索中はリサイズしない（setSize(600,450)を上書きしないよう）
-        if (isSearchOpen) return;
-
-        if (!isCheckingSetup && (setupRequired || isSettingsOpen)) {
-          await win.setSize(new LogicalSize(900, 700));
-          await win.center();
-          await win.show();
-          await win.setFocus();
-        } else if (!isCheckingSetup && !isSettingsOpen) {
-          await win.setSize(new LogicalSize(240, 300));
-          await win.center();
-        }
-      } catch (e) { }
-    };
-    handleResize();
-  }, [isCheckingSetup, setupRequired, isSearchOpen, isSettingsOpen]);
+  // ウィンドウリサイズポリシー（useMainWindowResizePolicyに委譲）
+  useMainWindowResizePolicy({ setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen });
 
   // ウィンドウラベル生成
   const getWindowLabel = useCallback((path: string) => {
@@ -803,7 +698,6 @@ function OrchestratorContent() {
         const unlistenSettings = await listen<any>('settings_updated', async (event) => {
           console.log('[ORCHESTRATOR] Settings updated:', event.payload);
           const newSettings = event.payload;
-          if (newSettings?.language) setUiLanguage(newSettings.language as Language);
           if (newSettings && newSettings.base_path) {
             setFolderPath(newSettings.base_path);
             await syncState();
@@ -1511,18 +1405,7 @@ function OrchestratorContent() {
         confirmText={tUpdate('update.confirm')}
         cancelText={tUpdate('update.cancel')}
         onConfirm={handleUpdateConfirm}
-        onCancel={async () => {
-          setIsHidingAfterUpdate(true);
-          setShowUpdateDialog(false);
-          setPendingUpdate(null);
-          const { getCurrentWindow } = await import('@tauri-apps/api/window');
-          const { LogicalSize } = await import('@tauri-apps/api/dpi');
-          const win = getCurrentWindow();
-          await win.setSize(new LogicalSize(240, 300)).catch(() => {});
-          await win.center().catch(() => {});
-          await win.hide().catch(() => {});
-          setIsHidingAfterUpdate(false);
-        }}
+        onCancel={handleUpdateCancel}
       />
     );
   }

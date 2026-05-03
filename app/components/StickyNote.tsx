@@ -53,7 +53,8 @@ import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
 import ErrorBoundary from './ErrorBoundary';
 
-
+// ホバーフォーカスのレートリミット用変数
+let hoverFocusTimer: NodeJS.Timeout | null = null;
 
 const StickyNote = memo(function StickyNote() {
     const searchParams = useSearchParams();
@@ -200,7 +201,7 @@ const StickyNote = memo(function StickyNote() {
         if (isNew) {
             setIsNewState(false);
         }
-    }, [saveNoteContent, isNew, isPool]);
+    }, [saveNoteContent, isNew, isPool, noteFilePathRef]);
 
     // 編集モード管理
     const {
@@ -280,7 +281,7 @@ const StickyNote = memo(function StickyNote() {
         if (isPool) return;
         setRawFrontmatter((prev) => updateFrontmatterGeometry(prev, geom));
         setSavePending(true);
-    }, [isPool]); // isDeletingRef は ref（安定）、setters は React 保証の安定参照
+    }, [isPool, setRawFrontmatter, setSavePending]); // isDeletingRef は ref（安定）
 
     const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize, setIsMinimized } = useWindowManager({
         onGeometryChange: handleGeometryChange,
@@ -555,6 +556,7 @@ const StickyNote = memo(function StickyNote() {
                 if (p && (p as any).catch) (p as any).catch(() => { });
             } catch (e) { }
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedFile]); // deps は selectedFile のみ（state は ref 経由で参照）
 
     // [NEW] Alt+Tab表示制御: フォーカス時にRustへ通知（selectedFileに依存しない独立したuseEffect）
@@ -716,7 +718,7 @@ const StickyNote = memo(function StickyNote() {
             mounted = false;
             if (unlisten) unlisten();
         };
-    }, [isPool, startEditing]);
+    }, [isPool, noteFilePathRef, setContent, setEditBody, setIsEditing, setRawFrontmatter, startEditing]);
 
     // [NEW] Pool 窓 ready 厳格化: CodeMirror マウント完了 + rAF 1 回経過後に emit
     // setTimeout 禁止（RESEARCH pitfall 6 / Pattern 3）
@@ -800,6 +802,7 @@ const StickyNote = memo(function StickyNote() {
         setTimeout(() => {
             invoke('fusen_replenish_pool').catch(e => console.warn('[POOL] replenish failed:', e));
         }, 5000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
 
     // リロードイベントリスナー
@@ -878,7 +881,7 @@ const StickyNote = memo(function StickyNote() {
             safeUnlisten(unlistenReload);
         };
         // [FIX] deps を selectedFile のみに絞る（loadNote は path 変更時のみ再生成、isEditing は ref 経由）
-    }, [selectedFile, loadNote]);
+    }, [selectedFile, loadNote, noteFilePathRef, setContent, setCurrentTags, setEditBody, setIsEditing, setRawFrontmatter]);
 
     // 全文検索スクロールイベントリスナー
     useEffect(() => {
@@ -968,6 +971,7 @@ const StickyNote = memo(function StickyNote() {
             safeUnlisten(unlisten);
         };
         // [FIX] deps を selectedFile のみに絞る。state は ref 経由で取得するため deps 不要。
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedFile]);
 
     // 背景色をDOMに反映
@@ -1483,6 +1487,11 @@ const StickyNote = memo(function StickyNote() {
      */
     useEffect(() => {
         const handleKeyDown = async (e: KeyboardEvent) => {
+            // [New] F2: 編集モードに入る
+            if (e.key === 'F2') {
+                e.preventDefault();
+                startEditingForListenerRef.current(editBodyRef.current.length);
+            }
             if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
                 e.preventDefault();
                 emit('fusen:open_search');
@@ -1578,8 +1587,32 @@ const StickyNote = memo(function StickyNote() {
                 ['--footer-height' as any]: '20px',
             }}
             onPointerDown={handleDragStart}
-            onPointerEnter={() => setIsHover(true)}
-            onPointerLeave={() => setIsHover(false)}
+            onPointerEnter={() => {
+                setIsHover(true);
+                // [FIX] 複数ウィンドウを連続で横切った際のTauriクラッシュを防ぐため、150ms滞在した時のみフォーカスする
+                if (!document.hasFocus()) {
+                    if (hoverFocusTimer) clearTimeout(hoverFocusTimer);
+                    hoverFocusTimer = setTimeout(async () => {
+                        try {
+                            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                            if (!(await getCurrentWindow().isFocused())) {
+                                console.log('[Focus] 150ms滞在を確認。ウィンドウをアクティブにします');
+                                await getCurrentWindow().setFocus();
+                            }
+                        } catch (e) {
+                            console.error('Failed to focus window on hover', e);
+                        }
+                    }, 150);
+                }
+            }}
+            onPointerLeave={() => {
+                setIsHover(false);
+                if (hoverFocusTimer) {
+                    console.log('[Focus] 通過しただけなのでフォーカス要求をキャンセルしました');
+                    clearTimeout(hoverFocusTimer);
+                    hoverFocusTimer = null;
+                }
+            }}
         >
             <style>{`
                 .notePaper::-webkit-scrollbar { width: 12px; height: 12px; }

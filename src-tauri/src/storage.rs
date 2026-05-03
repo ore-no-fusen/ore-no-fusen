@@ -257,28 +257,34 @@ pub fn write_note(path: &str, content: &str) -> Result<(), String> {
     }
 
     // Rename temp file to target file
+    // [Safe] Atomic Write: バックアップを先に作り、失敗時は必ず元に戻す。
+    //   旧実装: rename失敗 → 元ファイル削除 → rename再試行 → 失敗するとデータ消滅
+    //   新実装: 元ファイル → backup退避 → temp → 本番 → 成功時backup削除 / 失敗時backup復元
     match fs::rename(&temp_path, path_obj) {
         Ok(_) => Ok(()),
-        Err(e) => {
-            // Windows fallback: rename fails if target exists? 
-            // Actually std::fs::rename on Windows might fail if target exists depending on impl.
-            // Try removing target first if it exists.
+        Err(_) => {
+            // 元ファイルが存在する場合はバックアップに退避してから再試行
+            let backup_path = path_obj.with_extension("md.bak");
             if path_obj.exists() {
-                if let Err(rm_err) = fs::remove_file(path_obj) {
-                     // Clean up temp file
-                     let _ = fs::remove_file(&temp_path);
-                     return Err(format!("Failed to overwrite: {} (remove error: {})", e, rm_err));
+                if let Err(e) = fs::rename(path_obj, &backup_path) {
+                    // バックアップすら作れない場合は temp を消してエラー（元ファイルは無傷）
+                    let _ = fs::remove_file(&temp_path);
+                    return Err(format!("バックアップ作成に失敗しました: {}", e));
                 }
-                if let Err(rn_err) = fs::rename(&temp_path, path_obj) {
-                     // Clean up temp file
-                     let _ = fs::remove_file(&temp_path);
-                     return Err(format!("Failed to rename after remove: {}", rn_err));
+            }
+            // temp → 本番 へ rename
+            match fs::rename(&temp_path, path_obj) {
+                Ok(_) => {
+                    // 成功 → バックアップを削除してクリーンアップ
+                    let _ = fs::remove_file(&backup_path);
+                    Ok(())
                 }
-                Ok(())
-            } else {
-                 // Clean up temp file
-                 let _ = fs::remove_file(&temp_path);
-                 Err(format!("Failed to rename: {}", e))
+                Err(e) => {
+                    // 失敗 → バックアップから元ファイルを復元してデータを保護
+                    let _ = fs::rename(&backup_path, path_obj);
+                    let _ = fs::remove_file(&temp_path);
+                    Err(format!("保存に失敗しました（元データは保護されています）: {}", e))
+                }
             }
         }
     }

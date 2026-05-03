@@ -86,7 +86,7 @@ export function useEditMode({
         setEditBodyAndRef(initialContent);
         setCursorPosition(cursorPos ?? null);
         setInitialCoords(coords ?? null);
-    }, [isEditing, initialContent]);
+    }, [isEditing, initialContent, setEditBodyAndRef]);
 
     /**
      * 編集モードを終了する（保存を実行）

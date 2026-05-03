@@ -203,5 +203,5 @@ export function useAppInit({
     } else {
       setStep('login');
     }
-  }, []);
+  }, [setAccessToken, setErrorMessage, setIsLoading, setIsStandalone, setPendingHydrate, setStep, setSwReady]);
 }
