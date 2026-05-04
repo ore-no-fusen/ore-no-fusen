@@ -42,7 +42,22 @@
       "Skill(gsd:execute-phase)",
       "Skill(gsd:execute-phase:*)",
       "Skill(gsd:progress)",
-      "Skill(gsd:progress:*)"
+      "Skill(gsd:progress:*)",
+      "PowerShell(Get-Content \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\app.log\" -Tail 100 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Item \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\push_keys.json\" -ErrorAction SilentlyContinue)",
+      "Read(//c/Users/uck/AppData/Local/ore-no-fusen/**)",
+      "PowerShell(ls -la \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\\" | grep -E \"push|keys\")",
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\\" -File | Select Name, LastWriteTime)",
+      "PowerShell(ls \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\\")",
+      "PowerShell(Get-Content \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\app.log\" -Tail 50)",
+      "PowerShell(ls \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\push_keys.json\" -ErrorAction Stop | Select Name, LastWriteTime)",
+      "PowerShell(Get-Item \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\push_keys.json\" | fl Name, LastWriteTime, Length)",
+      "PowerShell(Get-Content \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\app.log\" -Tail 30)",
+      "PowerShell(cd \"d:\\\\Users\\\\uck\\\\Documents\\\\curry-project\\\\ore-no-fusen\" ; $job = Start-Job -ScriptBlock { Set-Location \"d:\\\\Users\\\\uck\\\\Documents\\\\curry-project\\\\ore-no-fusen\"; & npm run dev 2>&1 } ; Start-Sleep 15 ; Receive-Job $job ; Stop-Job $job ; Remove-Job $job)",
+      "PowerShell(netstat -ano)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\uck\\AppData\\Local\\ore-no-fusen"
     ]
   },
   "hooks": {

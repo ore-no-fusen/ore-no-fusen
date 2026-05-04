@@ -57,6 +57,8 @@ html.dark .doc-card-header {
 .badge-004 { background: #f3e8ff; color: #6b21a8; }
 .badge-005 { background: #fee2e2; color: #991b1b; }
 .badge-006 { background: #e0f2fe; color: #075985; }
+.badge-100 { background: #ecfdf5; color: #065f46; }
+.badge-101 { background: #fff7ed; color: #9a3412; }
 
 .doc-card-title {
   flex: 1;
@@ -142,6 +144,8 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <tr><td><span class="doc-badge badge-004">004</span></td><td><strong><a href="./004_TEST">テスト設計</a></strong></td><td>テスト戦略・テスト対象・実行方法・領域等</td></tr>
   <tr><td><span class="doc-badge badge-005">005</span></td><td><strong><a href="./005_GLOSSARY">用語集</a></strong></td><td>専門用語・略語一覧</td></tr>
   <tr><td><span class="doc-badge badge-006">006</span></td><td><strong><a href="./006_ARCHITECTURE">4+1 Viewアーキテクチャ</a></strong></td><td>4+1 View Model・システム全体俯瞰図</td></tr>
+  <tr><td><span class="doc-badge badge-100">100</span></td><td><strong><a href="./100_PRIVACY">プライバシーポリシー</a></strong></td><td>Google Drive連携・ログ・データ削除方針</td></tr>
+  <tr><td><span class="doc-badge badge-101">101</span></td><td><strong><a href="./101_TERMS">利用規約</a></strong></td><td>利用条件・免責事項・外部サービスの扱い</td></tr>
 </table>
 </div>
 
@@ -275,6 +279,24 @@ html.dark .read-order .note-text { color: #fcd34d; }
         <div class="doc-card-title">
           <a href="./006_ARCHITECTURE">4+1 Viewアーキテクチャ</a>
           <div class="doc-subtitle">4+1 View Model・システム全体俯瞰図</div>
+        </div>
+      </div>
+    </div>
+    <div class="doc-card" style="margin-bottom: 0;">
+      <div class="doc-card-header">
+        <span class="doc-badge badge-100">100</span>
+        <div class="doc-card-title">
+          <a href="./100_PRIVACY">プライバシーポリシー</a>
+          <div class="doc-subtitle">Google Drive連携・ログ・データ削除方針</div>
+        </div>
+      </div>
+    </div>
+    <div class="doc-card" style="margin-bottom: 0;">
+      <div class="doc-card-header">
+        <span class="doc-badge badge-101">101</span>
+        <div class="doc-card-title">
+          <a href="./101_TERMS">利用規約</a>
+          <div class="doc-subtitle">利用条件・免責事項・外部サービスの扱い</div>
         </div>
       </div>
     </div>

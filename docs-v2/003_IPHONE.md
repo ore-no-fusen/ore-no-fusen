@@ -361,7 +361,7 @@ Vercel の Environment Variables に設定する変数の一覧です。`.env` �
 |:---|:---|:---|:---|
 | `GOOGLE_CLIENT_SECRET_PWA` | サーバー専用 | Google Cloud Console → 認証情報 → OAuth 2.0 クライアント（PWA用） → クライアント シークレット | トークン交換・リフレッシュ時に Google へ提示する秘密鍵。ブラウザに渡してはいけない。 |
 | `NEXT_PUBLIC_GDRIVE_CLIENT_ID` | 公開可 | Google Cloud Console → 認証情報 → OAuth 2.0 クライアント（PWA用） → クライアント ID | iPhone PWA の OAuth フロー開始時に使う。公開しても問題ない。 |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | 公開可 | Web Push 鍵ペア生成時の公開鍵（`web-push generate-vapid-keys` 等で生成） | iPhone の Web Push 購読登録（`pushManager.subscribe`）時に使う。 |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | 公開可 | 旧設計の固定 VAPID 公開鍵 | 現行設計では使用しない。iPhone はユーザー自身の Drive 上の `push_keys.json` から `public_key_b64url` を取得して購読登録する。 |
 | `DISCORD_WEBHOOK_URL` | サーバー専用 | Discord サーバー → チャンネル設定 → 連携サービス → Webhook → URL をコピー | PC 設定画面のフィードバック送信ボタンから Discord へ通知を転送する。 |
 
 <Note type="info">
@@ -544,7 +544,8 @@ sequenceDiagram
     Vercel-->>PWA: トークン返却 → localStorage に保存
     Note over UserPhone: → push 画面へ
     UserPhone->>PWA: 「通知を許可する」ボタン
-    PWA->>SW: Service Worker 登録 + Push サブスクリプション取得
+    PWA->>Drive: push_keys.json から VAPID 公開鍵（public_key_b64url）を取得
+    PWA->>SW: Service Worker 登録 + 取得した VAPID 公開鍵で Push サブスクリプション取得
     SW-->>PWA: endpoint + keys
     PWA->>Drive: push_devices.json に端末情報を upsert
     PWA->>UserPhone: ✅ セットアップ完了 → list 画面へ
@@ -861,7 +862,7 @@ graph LR
 |:---|:---|
 | ① 通知権限取得 | `Notification.requestPermission()` で OS レベルの許可ダイアログを表示。拒否された場合はエラーを表示して処理を停止 |
 | ② 購読の再生成 | 既存の Push 購読があれば一度 `unsubscribe()` してから再登録する。クリーンな状態を保つためのリセット処理 |
-| ③ VAPID 鍵での購読 | `process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY`（Vercel 環境変数）を使って `pushManager.subscribe()` を実行。この鍵は PC 側の WebPush 送信時の署名鍵と対になる |
+| ③ VAPID 鍵での購読 | Drive の `push_keys.json` から `public_key_b64url` を取得し、その公開鍵を使って `pushManager.subscribe()` を実行。この公開鍵は PC 側の WebPush 送信時に使う `private_key_b64url` と対になる。`push_keys.json` が未作成の場合は、PC 側で Drive 接続後に iPhone 送信準備を行うよう案内する |
 | ④ デバイス ID の永続化 | `crypto.randomUUID()` で端末固有の `device_id` を生成。localStorage に保存し以降の再登録でも同一 ID を使う |
 | ⑤ push_devices.json への upsert | Drive から `push_devices.json` を取得し、同 `device_id` のエントリを更新（または新規追加）して上書き保存。旧スキーマ（`endpoint` 直下方式）は自動的に新スキーマに移行する |
 

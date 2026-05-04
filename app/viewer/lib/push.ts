@@ -1,6 +1,6 @@
 'use client';
 
-import { downloadFromDrive, uploadWithAutoRefresh } from '../lib/drive';
+import { downloadFromDrive, downloadWithAutoRefresh, uploadWithAutoRefresh } from '../lib/drive';
 import { urlBase64ToUint8Array } from '../lib/auth';
 import { nowJST } from '../utils';
 
@@ -14,6 +14,10 @@ type SubscribeOptions = {
   setIsLoading: (v: boolean) => void;
   setErrorMessage: (msg: string | null) => void;
   setStep: (step: 'login' | 'write') => void;
+};
+
+type PushKeys = {
+  public_key_b64url?: unknown;
 };
 
 /**
@@ -58,6 +62,15 @@ function detectDeviceName(): string {
   return 'Unknown';
 }
 
+async function loadVapidPublicKey(accessToken: string): Promise<string> {
+  const pushKeys = await downloadWithAutoRefresh(accessToken, 'push_keys.json') as PushKeys;
+  const publicKey = pushKeys?.public_key_b64url;
+  if (typeof publicKey !== 'string' || !publicKey) {
+    throw new Error('push_keys.json に VAPID 公開鍵がありません。PC側でGoogle Drive接続後、iPhone送信準備を行ってください。');
+  }
+  return publicKey;
+}
+
 /**
  * 責務: Push 通知の許可取得・購読・デバイス登録・Drive への保存を行う
  * 入力: SubscribeOptions（accessToken, setIsLoading, setErrorMessage, setStep）
@@ -82,7 +95,8 @@ export async function subscribePush({
     const existingSub = await reg.pushManager.getSubscription();
     if (existingSub) await existingSub.unsubscribe();
 
-    const vapidKey = urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!);
+    const vapidPublicKey = await loadVapidPublicKey(accessToken);
+    const vapidKey = urlBase64ToUint8Array(vapidPublicKey);
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: vapidKey.buffer.slice(

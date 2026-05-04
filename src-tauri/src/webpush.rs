@@ -81,10 +81,32 @@ pub fn load_or_generate_vapid_keys() -> Result<VapidKeys, String> {
     let path = get_vapid_key_path();
     if path.exists() {
         let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&json).map_err(|e| e.to_string())
-    } else {
-        generate_vapid_keys()
+        return serde_json::from_str(&json).map_err(|e| e.to_string());
     }
+
+    // フォールバック: 旧ファイル名 vapid_keys.json から読み込み
+    let old_path = if let Some(base_dirs) = BaseDirs::new() {
+        base_dirs.data_local_dir()
+            .join("ore-no-fusen")
+            .join("vapid_keys.json")
+    } else {
+        PathBuf::from("ore-no-fusen/vapid_keys.json")
+    };
+
+    if old_path.exists() {
+        let json = std::fs::read_to_string(&old_path).map_err(|e| e.to_string())?;
+        let keys: VapidKeys = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+        // 新しいパスに保存（以降は新しい名前で読み込まれる）
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let json = serde_json::to_string_pretty(&keys).map_err(|e| e.to_string())?;
+        let _ = std::fs::write(&path, json);
+        return Ok(keys);
+    }
+
+    // どちらも存在しない場合は新規生成
+    generate_vapid_keys()
 }
 
 // ------ JWT 署名 (RFC 8292 VAPID) ------

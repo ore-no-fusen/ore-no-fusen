@@ -43,6 +43,7 @@ next-env.d.ts
 /docs-v2/node_modules/
 /docs-v2/.vitepress/cache/
 /docs-v2/.vitepress/dist/
+/docs-v2/.vitepress/.temp/
 
 # 俺のファイル置き場
 /my
@@ -56,7 +57,10 @@ next-env.d.ts
 
 # PWA (next-pwa) が自動生成するService Workerファイル（ビルド時に毎回再生成される）
 public/sw.js
+public/sw.js.map
+public/worker-*.js
 public/workbox-*.js
+public/workbox-*.js.map
 
 # Claude Code のローカル設定（マシン固有のため除外）
 .claude/settings.local.json
