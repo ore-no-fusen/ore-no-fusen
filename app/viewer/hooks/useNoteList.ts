@@ -40,11 +40,13 @@ export function useNoteList({
     setIsHistoryLoading(true);
 
     let thumbUrls: string[] = [];
+    let cancelled = false;
 
     const draftsPromise = loadAllDrafts().catch(() => [] as DraftRecord[]);
 
     // ロック通知は IndexedDB のデータで即時処理（Drive fetch を待たない）
     draftsPromise.then((localDrafts) => {
+      if (cancelled) return;
       const lockedIds = localDrafts.filter((d) => d.locked).map((d) => d.id);
       // ロック状態ログ
       try {
@@ -159,6 +161,7 @@ export function useNoteList({
           }))
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 20);
+        if (cancelled) return;
         setHistoryNotes(notes);
 
         const thumbMap = new Map<string, string>();
@@ -171,8 +174,13 @@ export function useNoteList({
         }
         setThumbnailUrls(thumbMap);
       })
-      .finally(() => setIsHistoryLoading(false));
+      .finally(() => {
+        if (!cancelled) setIsHistoryLoading(false);
+      });
 
-    return () => { thumbUrls.forEach((u) => URL.revokeObjectURL(u)); };
+    return () => {
+      cancelled = true;
+      thumbUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
   }, [step, accessToken, initLockedNoteIds, setHistoryNotes, setIsHistoryLoading, setThumbnailUrls]);
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { IphoneNote, DraftRecord } from '../types';
 import { saveDraft, loadDraft } from '../lib/indexeddb';
 import { nowJST } from '../utils';
@@ -57,9 +57,14 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
    * 出力: なし
    * 副作用: setLockedNoteIds を呼ぶ
    */
-  const initLockedNoteIds = (ids: string[]) => {
-    setLockedNoteIds(ids);
-  };
+  const initLockedNoteIds = useCallback((ids: string[]) => {
+    setLockedNoteIds((prev) => {
+      if (prev.length === ids.length && prev.every((id, index) => id === ids[index])) {
+        return prev;
+      }
+      return ids;
+    });
+  }, []);
 
   /**
    * 責務: ロックボタンのクリックでノートのロック状態を切り替える
@@ -67,7 +72,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
    * 出力: Promise<void>
    * 副作用: ServiceWorker 通知表示・解除、IndexedDB 書き込み（saveDraft）、Notification 権限リクエスト
    */
-  const handleLockToggle = async (e: React.MouseEvent, note: IphoneNote) => {
+  const handleLockToggle = useCallback(async (e: React.MouseEvent, note: IphoneNote) => {
     e.stopPropagation();
     const isLocked = lockedNoteIds.includes(note.id);
     notifLog(`toggle id=${note.id.slice(0,8)} isLocked=${isLocked}`);
@@ -164,7 +169,7 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
         setLockedNoteIds((prev) => prev.filter((id) => id !== note.id));
       }
     }
-  };
+  }, [lockedNoteIds, onError]);
 
   return { lockedNoteIds, setLockedNoteIds, initLockedNoteIds, isLockPermissionPending, handleLockToggle };
 }

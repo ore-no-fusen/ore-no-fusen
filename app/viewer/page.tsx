@@ -498,7 +498,7 @@ export default function ViewerPage() {
 function DebugLogView() {
   const [logs, setLogs] = React.useState<{ t: string; msg: string }[]>([]);
   const [swVersion, setSwVersion] = React.useState<string | null>(null);
-  useEffect(() => {
+  const loadLogs = React.useCallback(() => {
     const req = indexedDB.open('fusen-logs', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
     req.onsuccess = () => {
@@ -506,13 +506,22 @@ function DebugLogView() {
       const all = tx.objectStore('logs').getAll();
       all.onsuccess = () => setLogs((all.result as { t: string; msg: string }[]).reverse());
     };
+    req.onerror = () => setLogs([]);
+  }, []);
+
+  useEffect(() => {
+    loadLogs();
+    const timer = window.setInterval(loadLogs, 1000);
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'SW_VERSION') setSwVersion(e.data.version);
     };
     navigator.serviceWorker.addEventListener('message', handler);
     navigator.serviceWorker.controller?.postMessage({ type: 'GET_VERSION' });
-    return () => navigator.serviceWorker.removeEventListener('message', handler);
-  }, []);
+    return () => {
+      window.clearInterval(timer);
+      navigator.serviceWorker.removeEventListener('message', handler);
+    };
+  }, [loadLogs]);
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 text-green-400 text-xs font-mono p-4 overflow-y-auto z-50">
       <div className="flex justify-between mb-2">
@@ -521,10 +530,13 @@ function DebugLogView() {
           <span className="text-white font-bold">SW Debug Log</span>
           <span className="text-yellow-400">SW: {swVersion ?? '---'}</span>
         </div>
-        <button className="text-red-400" onClick={() => {
-          indexedDB.deleteDatabase('fusen-logs');
-          setLogs([]);
-        }}>クリア</button>
+        <div className="flex items-center gap-3">
+          <button className="text-blue-400" onClick={loadLogs}>更新</button>
+          <button className="text-red-400" onClick={() => {
+            indexedDB.deleteDatabase('fusen-logs');
+            setLogs([]);
+          }}>クリア</button>
+        </div>
       </div>
       {logs.length === 0 && <p className="text-gray-500">ログなし</p>}
       {logs.map((l, i) => (
