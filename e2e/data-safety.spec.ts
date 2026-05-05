@@ -259,25 +259,25 @@ test('[DATA-03] 削除ボタン: 対象メモのみ一覧から消え、他の�
     return;
   }
 
-  // 「削除するメモ」の削除ボタンをクリック
-  const items = page.locator('li');
-  let targetDeleteBtn: import('@playwright/test').Locator | null = null;
-  for (let i = 0; i < await items.count(); i++) {
-    const item = items.nth(i);
-    const text = await item.textContent();
-    if (text?.includes('削除するメモ')) {
-      targetDeleteBtn = item.locator('button[aria-label="削除"]');
-      break;
-    }
-  }
-
-  if (!targetDeleteBtn) {
+  // 「削除するメモ」の削除ボタンをクリック。
+  // 一覧は描画直後に再レンダリングされることがあるため、li走査で得た相対Locatorを
+  // 保持せず、クリック時にタイトル条件付きで取り直す。
+  const targetItem = page.locator('li', { hasText: '削除するメモ' }).first();
+  await targetItem.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  if (!await targetItem.isVisible()) {
     test.skip(true, '削除対象メモが見つからなかった');
     return;
   }
 
-  await targetDeleteBtn.click();
-  await page.waitForTimeout(800);
+  await expect(async () => {
+    const targetDeleteBtn = page
+      .locator('li', { hasText: '削除するメモ' })
+      .first()
+      .locator('button[aria-label="削除"]');
+    await targetDeleteBtn.click({ timeout: 1000 });
+  }).toPass({ timeout: 8000 });
+
+  await expect(page.locator('li', { hasText: '削除するメモ' })).toHaveCount(0, { timeout: 5000 });
 
   // 一覧の内容を確認
   const listContent = await page.locator('ul').textContent().catch(() => '');
