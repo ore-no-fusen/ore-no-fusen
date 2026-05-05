@@ -108,10 +108,15 @@ function detectDeviceName(): string {
 }
 
 async function loadVapidPublicKey(accessToken: string): Promise<string> {
-  const pushKeys = await downloadWithAutoRefresh(accessToken, 'push_keys.json') as PushKeys;
+  let pushKeys: PushKeys;
+  try {
+    pushKeys = await downloadWithAutoRefresh(accessToken, 'push_keys.json') as PushKeys;
+  } catch {
+    throw new Error('先にPC側の準備が必要です。PCで「俺の付箋」を開き、付箋を右クリックして「iPhoneに送る」を押してください。設定画面が開いたらGoogleドライブに接続し、その後このiPhone版で「通知を許可する」をもう一度押してください。');
+  }
   const publicKey = pushKeys?.public_key_b64url;
   if (typeof publicKey !== 'string' || !publicKey) {
-    throw new Error('push_keys.json に VAPID 公開鍵がありません。PC側でGoogle Drive接続後、iPhone送信準備を行ってください。');
+    throw new Error('iPhone通知用の準備がまだ完了していません。PCで「俺の付箋」を開き、付箋を右クリックして「iPhoneに送る」を押してください。設定画面でGoogleドライブに再接続した後、このiPhone版で「通知を許可する」をもう一度押してください。');
   }
   return publicKey;
 }

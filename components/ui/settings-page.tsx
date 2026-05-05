@@ -1004,8 +1004,9 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 const ok = await invoke<boolean>('fusen_check_pro_setup')
                 setStatus(ok ? 'connected' : 'disconnected')
                 if (ok) {
-                    loadPcAccount()
-                    loadDevices()
+                    await invoke('fusen_ensure_push_keys')
+                    await loadPcAccount()
+                    await loadDevices()
                 } else {
                     setPcAccount(null)
                 }
@@ -1026,12 +1027,13 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             const ok = await invoke<boolean>('fusen_check_pro_setup')
             setStatus(ok ? 'connected' : 'disconnected')
             if (ok) {
+                await invoke('fusen_ensure_push_keys')
                 await loadPcAccount()
                 await loadDevices()
             } else {
                 setPcAccount(null)
             }
-            if (!ok) setErrorMsg('接続しましたが、iPhoneのセットアップがまだ完了していません。iPhoneでPWAを開いてセットアップしてください。')
+            if (!ok) setErrorMsg('接続しましたが、Googleドライブの確認がまだ完了していません。少し待ってから再度確認してください。')
         } catch (e: unknown) {
             setErrorMsg('接続に失敗しました: ' + String(e))
             setStatus('disconnected')
@@ -1053,24 +1055,24 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
     const setupSteps = [
         {
             no: 1,
-            title: 'iPhoneでPWAをインストール',
+            title: 'PC側でGoogleドライブに接続',
+            detail: pcAccount?.emailAddress ?? 'このPCでGoogleドライブに接続し、iPhone通知用の鍵をDriveに準備します。',
+            done: pcConnected,
+            status: pcConnected ? '接続済み' : status === 'loading' ? '確認中' : '未接続',
+        },
+        {
+            no: 2,
+            title: 'iPhone版をホーム画面に追加',
             detail: 'QRコードをSafariで開き、ホーム画面に追加します。',
             done: hasRegisteredDevice,
             status: hasRegisteredDevice ? '完了' : '未確認',
         },
         {
-            no: 2,
+            no: 3,
             title: 'iPhone側でGoogleドライブに接続',
-            detail: hasIphoneAccountInfo ? registeredDeviceEmails[0] : 'iPhone側PWAを開くと確認されます。',
+            detail: hasIphoneAccountInfo ? registeredDeviceEmails[0] : 'iPhoneのホーム画面から「俺の付箋」を開くと確認されます。',
             done: hasIphoneAccountInfo,
             status: hasIphoneAccountInfo ? '接続済み' : '未取得',
-        },
-        {
-            no: 3,
-            title: 'PC側でGoogleドライブに接続',
-            detail: pcAccount?.emailAddress ?? 'このPCでGoogleドライブに接続します。',
-            done: pcConnected,
-            status: pcConnected ? '接続済み' : status === 'loading' ? '確認中' : '未接続',
         },
         {
             no: 4,
@@ -1090,14 +1092,14 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
         if (hasAccountMismatch) {
             return 'PCとiPhoneで同じGoogleアカウントに再接続してください。'
         }
+        if (!pcConnected) {
+            return 'まずこのPCでGoogleドライブに接続してください。iPhone通知用の鍵をDriveに準備します。'
+        }
         if (!hasRegisteredDevice) {
-            return 'まずiPhoneでQRコードを開き、PWAをホーム画面に追加してGoogleドライブに接続してください。'
+            return '次にiPhoneでQRコードを開き、「俺の付箋」をホーム画面に追加してください。'
         }
         if (!hasIphoneAccountInfo) {
-            return 'iPhoneでホーム画面の「俺の付箋」を開いてください。iPhone側のGoogleアカウント情報が更新されます。'
-        }
-        if (!pcConnected) {
-            return 'このPCでGoogleドライブに接続してください。'
+            return 'iPhoneでホーム画面の「俺の付箋」を開き、Googleドライブに接続してください。'
         }
         return '準備完了です。付箋を右クリックして「iPhoneに送る」を押してください。'
     })()
@@ -1117,7 +1119,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             </div>
             <Separator />
 
-            {/* --- PWA QRコードパネル --- */}
+            {/* --- iPhone版 QRコードパネル --- */}
             <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-5">
                 <div className="flex items-start justify-between gap-4">
                     <div>
@@ -1185,7 +1187,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
                 <h3 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
                     <Smartphone className="h-4 w-4 text-slate-500" />
-                    iPhoneでPWAを開く
+                    iPhone版を開く
                 </h3>
                 <p className="text-xs text-gray-500 mb-4">
                     iPhoneのSafariでQRコードを読み取るか、URLをコピーして開いてください。
@@ -1198,7 +1200,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                     {/* URL + コピー */}
                     <div className="flex flex-col justify-center gap-3 min-w-0">
                         <div className="flex flex-col gap-1">
-                            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">PWA アドレス</span>
+                            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">iPhone版アドレス</span>
                             <code className="text-sm font-mono text-gray-700 bg-white border border-gray-200 rounded px-3 py-2 whitespace-nowrap overflow-x-auto block">
                                 {PWA_URL}
                             </code>
@@ -1292,7 +1294,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                             ? '同じGoogleアカウントで再接続してください。違うDriveを見ているため、送信に失敗します。'
                             : hasIphoneAccountInfo
                                 ? 'PCとiPhoneは同じGoogleアカウントで接続されています。'
-                                : '付箋を右クリック →「iPhoneに送る」で送信できます。iPhone側アカウントはPWAを開くと表示されます。'}
+                                : '付箋を右クリック →「iPhoneに送る」で送信できます。iPhone側アカウントは、ホーム画面の「俺の付箋」を開くと表示されます。'}
                     </p>
                 </div>
             )}
@@ -1339,7 +1341,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                     )}
 
                     {!devicesLoading && devices !== null && devices.length === 0 && (
-                        <p className="text-xs text-gray-400">登録デバイスなし。iPhoneのPWAで通知を有効にしてください。</p>
+                        <p className="text-xs text-gray-400">登録デバイスなし。iPhone版で通知を有効にしてください。</p>
                     )}
 
                     {!devicesLoading && devices && devices.length > 0 && (
@@ -1357,7 +1359,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                                         </div>
                                         <div className="text-xs text-gray-400 mt-0.5">{formatDate(d.registered_at)}</div>
                                         <div className={`text-xs mt-1 ${pcEmail && d.google_account_email && d.google_account_email.toLowerCase() !== pcEmail ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
-                                            Google: {d.google_account_email ?? '未取得（iPhone側PWAを開くと更新されます）'}
+                                            Google: {d.google_account_email ?? '未取得（iPhone版を開くと更新されます）'}
                                             {d.google_account_name && (
                                                 <span className="text-gray-400"> / {d.google_account_name}</span>
                                             )}
@@ -1393,9 +1395,9 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                     <h3 className="font-semibold text-gray-700 text-sm">セットアップ手順</h3>
                     <ol className="text-sm text-gray-500 space-y-1 list-decimal list-inside">
                         <li>上のQRコードをiPhoneのカメラで読み取る（またはURLをコピー）</li>
-                        <li>SafariでPWAを開き「ホーム画面に追加」</li>
+                        <li>SafariでiPhone版を開き「ホーム画面に追加」</li>
                         <li>上の「Googleドライブに接続」ボタンをクリックし、Googleアカウントにログイン</li>
-                        <li>iPhoneのPWAでもGoogleアカウントにログインしてセットアップを完了</li>
+                        <li>iPhone版でもGoogleアカウントにログインしてセットアップを完了</li>
                         <li>付箋を右クリック →「iPhoneに送る」</li>
                     </ol>
                 </div>

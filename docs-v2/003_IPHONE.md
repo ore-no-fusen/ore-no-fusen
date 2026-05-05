@@ -508,53 +508,16 @@ PCとiPhone間の中継に使うDriveファイルの種類と書き込み/削除
 
 ## 4 データフロー
 
-起動・PC→iPhone受信・iPhone→PC送信・通知ON/OFFの4つのシーケンス図を示します。
+PC→iPhone の初回セットアップ、初回以降の通常送信、iPhone→PC送信、通知ON/OFFのシーケンス図を示します。
 
-### 4.1 アプリ起動（初回：Safari でインストール → Google ログイン → 通知許可）
+### 4.1 PC → iPhone 初回セットアップと通常送信
 
-初回起動（Safari→インストール→ログイン→通知許可）の全ステップを示します。
+初回は、ユーザーがPCで「iPhoneに送る」を押したことをきっかけに設定画面へ誘導し、PC側でGoogle Drive接続と `push_keys.json` の準備を行ってから、iPhone PWAをセットアップします。
+初回以降は、PCの「iPhoneに送る」操作だけで通知が届きます。
 
-```mermaid
-%%{init: {'sequence': {'messageMargin': 8, 'mirrorActors': false, 'height': 24, 'boxMargin': 4, 'noteMargin': 6}}}%%
-sequenceDiagram
-    actor UserPhone as ユーザー（iPhone）
-    box iPhone PWA
-        participant PWA as 2⃣ iPhone PWA
-    end
-    box Vercel / Google OAuth2
-        participant Vercel as 5⃣ Vercel
-        participant OAuth as 6⃣ Google OAuth2
-    end
-    box Google Drive / Service Worker
-        participant Drive as 4⃣ Google Drive
-        participant SW as 3⃣ Service Worker
-    end
-
-    Note over UserPhone: Safariで /viewer を開く
-    UserPhone->>PWA: Safari でURL直接アクセス（非standalone）
-    PWA->>UserPhone: banner 画面（ホーム追加案内）
-    UserPhone->>PWA: ホーム画面に追加 → アイコンで起動（standalone）
-    Note over UserPhone: tokenなし → login 表示
-    UserPhone->>PWA: 「Googleでログイン」ボタン
-    PWA->>OAuth: PKCE OAuth リダイレクト
-    OAuth->>PWA: ?code=... コールバック
-    PWA->>Vercel: POST /api/auth/token
-    Vercel->>OAuth: トークン交換
-    OAuth-->>Vercel: access_token + refresh_token
-    Vercel-->>PWA: トークン返却 → localStorage に保存
-    Note over UserPhone: → push 画面へ
-    UserPhone->>PWA: 「通知を許可する」ボタン
-    PWA->>Drive: push_keys.json から VAPID 公開鍵（public_key_b64url）を取得
-    PWA->>SW: Service Worker 登録 + 取得した VAPID 公開鍵で Push サブスクリプション取得
-    SW-->>PWA: endpoint + keys
-    PWA->>Drive: push_devices.json に端末情報を upsert
-    PWA->>UserPhone: ✅ セットアップ完了 → list 画面へ
-```
-<p class="mermaid-caption">図 3-3　アプリ起動シーケンス（初回：インストール → 認証 → 通知許可）</p>
-
-### 4.2 PC → iPhone 受信（ユーザー体験 + 内部処理）
-
-PCで「iPhoneに送る」を押した瞬間から、iPhoneのロック画面に通知が出て、ユーザーがタップして内容を確認するまでの全体フロー。
+<Note type="info">
+シーケンス図では、<strong>①②③</strong> はユーザーが実施する操作、<strong>❶❷❸</strong> はアプリ・Drive・Service Worker が自動実行する処理を表します。
+</Note>
 
 ```mermaid
 %%{init: {'sequence': {'messageMargin': 8, 'mirrorActors': false, 'height': 24, 'boxMargin': 4, 'noteMargin': 6}}}%%
@@ -567,34 +530,69 @@ sequenceDiagram
         participant Drive as 4⃣ Google Drive
         participant APNs as 7⃣ APNs / FCM
     end
-    box Service Worker
-        participant SW as 3⃣ Service Worker
-    end
     box iPhone PWA
         participant PWA as 2⃣ iPhone PWA
     end
+    box Service Worker
+        participant SW as 3⃣ Service Worker
+    end
+    box Vercel / Google OAuth2
+        participant Vercel as 5⃣ Vercel
+        participant OAuth as 6⃣ Google OAuth2
+    end
     actor UserPhone as ユーザー（iPhone）
 
-    Note over UserPC: 📝 付箋を見ている
-    UserPC->>PC: 右クリック →「iPhoneに送る」
-    PC->>Drive: notes_to_iphone.json を書き込み
-    PC->>Drive: fusen_img_*.jpg を書き込み（添付画像）
-    PC->>APNs: Web Push 送信（VAPID 認証）
-    Note over UserPC: ✅ 送信完了（PC側の操作はここまで）
+    rect rgb(240, 253, 244)
+        Note over UserPC,UserPhone: 初回セットアップ（①〜⑤）
+        UserPC->>PC: ① 付箋を右クリック →「iPhoneに送る」
+        PC->>PC: ❶ iPhone送信の準備不足を検出
+        PC->>UserPC: ❷ 設定画面 > iPhone連携へ誘導
+        UserPC->>PC: ② PC側でGoogle Driveを許可
+        PC->>Drive: ❸ push_keys.json を生成/更新<br>VAPID公開鍵・秘密鍵をユーザー自身のDriveへ保存
+        PC->>UserPC: ❹ QRコードと次の手順を表示
 
-    APNs->>SW: Push 受信（iPhoneを起こす）
-    SW->>Drive: fusen_img_*.jpg をダウンロード
-    SW->>SW: ノートを IndexedDB に保存
-    SW->>Drive: 送信済みファイルを削除
-    SW->>UserPhone: 🔔 ロック画面に通知を表示
+        UserPhone->>PWA: ③ Safariで /viewer を開く → ホーム画面に追加 → PWA起動
+        UserPhone->>PWA: ④ PWA側でGoogle Driveを許可
+        PWA->>OAuth: ❺ PKCE OAuth リダイレクト
+        OAuth->>PWA: ❻ ?code=... コールバック
+        PWA->>Vercel: ❼ POST /api/auth/token
+        Vercel->>OAuth: ❽ トークン交換
+        OAuth-->>Vercel: ❾ access_token + refresh_token
+        Vercel-->>PWA: ❿ トークン返却 → localStorage に保存
 
-    Note over UserPhone: 📵 ロック画面で通知が見える
-    UserPhone->>PWA: 通知をタップ
-    PWA->>SW: IndexedDB からノートデータを読み込み
-    PWA->>UserPhone: write画面でノートを表示 ✅
-    Note over UserPhone: 📖 内容を確認できた
+        UserPhone->>PWA: ⑤ 通知を許可する
+        PWA->>Drive: ⓫ push_keys.json から VAPID 公開鍵を取得
+        PWA->>SW: ⓬ Service Worker 登録 + Push購読
+        SW-->>PWA: ⓭ endpoint + keys
+        PWA->>Drive: ⓮ push_devices.json に端末情報とGoogleアカウントを upsert
+        PWA->>UserPhone: ⓯ セットアップ完了 → list 画面へ
+    end
+
+    rect rgb(239, 246, 255)
+        Note over UserPC,UserPhone: 初回以降の通常送信
+        UserPC->>PC: ① 付箋を右クリック →「iPhoneに送る」
+        PC->>Drive: ❶ notes_to_iphone.json を書き込み
+        PC->>Drive: ❷ fusen_img_*.jpg を書き込み（添付画像）
+        PC->>APNs: ❸ Web Push送信（push_keys.json の秘密鍵でVAPID認証）
+        APNs->>SW: ❹ Push受信
+        SW->>Drive: ❺ 添付画像をダウンロード
+        SW->>SW: ❻ ノートをIndexedDBに保存
+        SW->>Drive: ❼ 処理済みファイルを削除
+        SW->>UserPhone: ❽ ロック画面に通知を表示
+        UserPhone->>PWA: ② 通知をタップ
+        PWA->>SW: ❾ IndexedDBからノートデータを読み込み
+        PWA->>UserPhone: ❿ write画面でノートを表示
+    end
 ```
-<p class="mermaid-caption">図 3-4　PC → iPhone 受信シーケンス</p>
+<p class="mermaid-caption">図 3-3　PC → iPhone 初回セットアップと通常送信シーケンス</p>
+
+### 4.2 PC → iPhone 受信の補足
+
+図 3-3 の初回セットアップで `push_keys.json` と `push_devices.json` が準備済みであれば、以降はPC側の「iPhoneに送る」操作だけで送信できます。
+
+- `push_keys.json`：PC側が作成するVAPID鍵。iPhoneは公開鍵を使ってPush購読し、PCは秘密鍵を使ってWeb Pushを送信する。
+- `push_devices.json`：iPhone側が作成・更新する通知先デバイス一覧。PCはこの一覧を見て送信先を決める。
+- `notes_to_iphone.json`：PCからiPhoneへ渡す未処理キュー。Service Workerが受信後に処理済みファイルを削除する。
 
 <Note type="info">
 <strong>body_rich：</strong>Markdown 本文（画像タグ含む）は Push ペイロードに直接含まれる。
@@ -603,7 +601,7 @@ Drive へのフェッチは画像バイナリのダウンロードのみ。JSON 
 
 <Note type="warning">
 <strong>ユーザー体験の全体像（<a href="./000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）：</strong>
-このフローは ① の送信〜初回表示のみ。通知をタップした後も再通知されロック画面から消えない体験（②③）、および OFF 操作（④）は 4.4 を参照。
+図 3-3 の通常送信は、送信〜初回表示までを示す。通知をタップした後も再通知されロック画面から消えない体験、および OFF 操作は 4.4 を参照。
 </Note>
 
 ### 4.3 iPhone → PC 送信（ユーザー体験 + 内部処理）
@@ -640,7 +638,7 @@ sequenceDiagram
     PC->>UserPC: 新規付箋ウィンドウが開く ✅
     Note over UserPC: 📝 内容を確認できた
 ```
-<p class="mermaid-caption">図 3-5　iPhone → PC 送信シーケンス</p>
+<p class="mermaid-caption">図 3-4　iPhone → PC 送信シーケンス</p>
 
 <Note type="success">
 <strong>「iPhoneに置いておく」との違い：</strong>Drive を使わない。テキスト＋画像を IndexedDB のみに保存。PC への送信は発生しない。
@@ -701,7 +699,7 @@ sequenceDiagram
         SW->>UserPhone: 🔔 ロック画面に常駐再開
     end
 ```
-<p class="mermaid-caption">図 3-6　ロック画面常駐サイクル（ON/OFF と再通知の実装フロー）</p>
+<p class="mermaid-caption">図 3-5　ロック画面常駐サイクル（ON/OFF と再通知の実装フロー）</p>
 </div>
 
 <Note type="info">
@@ -753,7 +751,7 @@ graph LR
     L -->|"付箋タップ / +ボタン"| W
     W -->|"戻る（保存確定）"| L
 ```
-<p class="mermaid-caption">図 3-7　画面モード遷移図</p>
+<p class="mermaid-caption">図 3-6　画面モード遷移図</p>
 
 ### 5.2 各モードの操作一覧
 

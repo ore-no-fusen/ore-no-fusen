@@ -1391,6 +1391,15 @@ async fn fusen_get_google_account() -> Result<gdrive::GoogleAccountInfo, String>
 }
 
 #[tauri::command]
+async fn fusen_ensure_push_keys() -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let access_token = gdrive::get_access_token(&client).await?;
+    let keys = webpush::load_or_generate_vapid_keys()?;
+    let value = serde_json::to_value(&keys).map_err(|e| e.to_string())?;
+    gdrive::upload_json(&client, &access_token, "push_keys.json", &value).await
+}
+
+#[tauri::command]
 async fn fusen_delete_push_device(device_id: String) -> Result<(), String> {
     let client = reqwest::Client::new();
     gdrive::delete_push_device(&client, &device_id).await
@@ -2018,6 +2027,7 @@ pub fn run() {
             fusen_check_pro_setup,
             fusen_list_push_devices,
             fusen_get_google_account,
+            fusen_ensure_push_keys,
             fusen_delete_push_device,
             fusen_delete_all_push_devices,
             fusen_send_to_iphone,
