@@ -491,6 +491,26 @@ const linkEventHandler = EditorView.domEventHandlers({
     }
 });
 
+const stripLinePrefix = (text: string): string => {
+    return text
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/^[\-\*\+]\s+\[[ xX]\]\s+/, '')
+        .replace(/^[\-\*\+]\s+/, '');
+};
+
+const hasLinePrefix = (text: string, prefix: 'heading' | 'list' | 'checkbox'): boolean => {
+    if (prefix === 'heading') return /^#\s+/.test(text);
+    if (prefix === 'checkbox') return /^[\-\*\+]\s+\[[ xX]\]\s+/.test(text);
+    return /^[\-\*\+]\s+/.test(text) && !/^[\-\*\+]\s+\[[ xX]\]\s+/.test(text);
+};
+
+const formatLineWithPrefix = (text: string, prefix: 'heading' | 'list' | 'checkbox'): string => {
+    const body = stripLinePrefix(text);
+    if (prefix === 'heading') return `# ${body}`;
+    if (prefix === 'checkbox') return `- [ ] ${body}`;
+    return `- ${body}`;
+};
+
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
     const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar } = props;
     const editorRef = useRef<HTMLDivElement>(null);
@@ -515,7 +535,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             const changes: any[] = [];
             let allHave = true;
             for (let i = lineStart; i <= lineEnd; i++) {
-                if (!state.doc.line(i).text.startsWith('# ')) {
+                if (!hasLinePrefix(state.doc.line(i).text, 'heading')) {
                     allHave = false;
                     break;
                 }
@@ -526,10 +546,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                 // [GUARD] 画像行は絶対に変更しない
                 if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                 if (allHave) {
-                    changes.push({ from: line.from, to: line.from + 2 });
+                    changes.push({ from: line.from, to: line.from + line.text.length, insert: stripLinePrefix(line.text) });
                 } else {
-                    if (!line.text.startsWith('# ')) {
-                        changes.push({ from: line.from, to: line.from, insert: '# ' });
+                    if (!hasLinePrefix(line.text, 'heading')) {
+                        changes.push({ from: line.from, to: line.from + line.text.length, insert: formatLineWithPrefix(line.text, 'heading') });
                     }
                 }
             }
@@ -548,7 +568,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             const changes: any[] = [];
             let allHave = true;
             for (let i = lineStart; i <= lineEnd; i++) {
-                if (!state.doc.line(i).text.startsWith('- ')) {
+                if (!hasLinePrefix(state.doc.line(i).text, 'list')) {
                     allHave = false;
                     break;
                 }
@@ -559,9 +579,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                 // [GUARD] 画像行は絶対に変更しない
                 if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                 if (allHave) {
-                    changes.push({ from: line.from, to: line.from + 2 });
-                } else if (!line.text.startsWith('- ')) {
-                    changes.push({ from: line.from, to: line.from, insert: '- ' });
+                    changes.push({ from: line.from, to: line.from + line.text.length, insert: stripLinePrefix(line.text) });
+                } else if (!hasLinePrefix(line.text, 'list')) {
+                    changes.push({ from: line.from, to: line.from + line.text.length, insert: formatLineWithPrefix(line.text, 'list') });
                 }
             }
 
@@ -579,7 +599,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             const changes: any[] = [];
             let allHave = true;
             for (let i = lineStart; i <= lineEnd; i++) {
-                if (!state.doc.line(i).text.startsWith('- [ ] ')) {
+                if (!hasLinePrefix(state.doc.line(i).text, 'checkbox')) {
                     allHave = false;
                     break;
                 }
@@ -590,9 +610,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                 // [GUARD] 画像行は絶対に変更しない
                 if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
                 if (allHave) {
-                    changes.push({ from: line.from, to: line.from + 6 });
-                } else if (!line.text.startsWith('- [ ] ')) {
-                    changes.push({ from: line.from, to: line.from, insert: '- [ ] ' });
+                    changes.push({ from: line.from, to: line.from + line.text.length, insert: stripLinePrefix(line.text) });
+                } else if (!hasLinePrefix(line.text, 'checkbox')) {
+                    changes.push({ from: line.from, to: line.from + line.text.length, insert: formatLineWithPrefix(line.text, 'checkbox') });
                 }
             }
 

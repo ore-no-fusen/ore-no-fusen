@@ -20,6 +20,31 @@ type PushKeys = {
   public_key_b64url?: unknown;
 };
 
+type GoogleAccountInfo = {
+  emailAddress?: string;
+  displayName?: string;
+  photoLink?: string;
+};
+
+async function fetchGoogleAccount(accessToken: string): Promise<GoogleAccountInfo | null> {
+  const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data?.user ?? null;
+}
+
+function withGoogleAccount<T extends Record<string, unknown>>(entry: T, account: GoogleAccountInfo | null): T {
+  if (!account) return entry;
+  return {
+    ...entry,
+    google_account_email: account.emailAddress,
+    google_account_name: account.displayName,
+    google_account_photo: account.photoLink,
+  };
+}
+
 /**
  * 責務: Drive の push_devices.json に自デバイスが存在しなければ静かに再登録する
  * 入力: accessToken
@@ -32,7 +57,27 @@ export async function silentReRegisterIfNeeded(accessToken: string): Promise<voi
 
   const existing = await downloadFromDrive(accessToken, 'push_devices.json').catch(() => ({}));
   const devices: any[] = existing?.devices ?? [];
-  if (devices.some((d: any) => d.device_id === deviceId)) return; // 登録済み
+  const account = await fetchGoogleAccount(accessToken).catch(() => null);
+  const existingDevice = devices.find((d: any) => d.device_id === deviceId);
+  if (existingDevice) {
+    if (
+      !account ||
+      (
+        existingDevice.google_account_email === account.emailAddress &&
+        existingDevice.google_account_name === account.displayName &&
+        existingDevice.google_account_photo === account.photoLink
+      )
+    ) {
+      return;
+    }
+
+    const updatedDevices = devices.map((d: any) => (
+      d.device_id === deviceId ? withGoogleAccount(d, account) : d
+    ));
+    await uploadWithAutoRefresh(accessToken, 'push_devices.json', { devices: updatedDevices });
+    console.log('[push] updated device Google account:', deviceId);
+    return;
+  }
 
   // push subscription がまだ有効かチェック（unsubscribe/subscribe はしない）
   const reg = await navigator.serviceWorker.ready;
@@ -46,7 +91,7 @@ export async function silentReRegisterIfNeeded(accessToken: string): Promise<voi
 
   const updatedDevices = [
     ...devices,
-    { device_id: deviceId, endpoint, keys, registered_at: nowJST(), device_name: detectDeviceName() },
+    withGoogleAccount({ device_id: deviceId, endpoint, keys, registered_at: nowJST(), device_name: detectDeviceName() }, account),
   ];
   await uploadWithAutoRefresh(accessToken, 'push_devices.json', { devices: updatedDevices });
   console.log('[push] silently re-registered device:', deviceId);
@@ -117,6 +162,7 @@ export async function subscribePush({
 
     // 既存デバイスリストを取得してupsert（新スキーマ対応、旧スキーマは自動移行）
     const existing = await downloadFromDrive(accessToken, 'push_devices.json').catch(() => ({}));
+    const account = await fetchGoogleAccount(accessToken).catch(() => null);
     const existingDevices: any[] = existing?.devices ?? (
       // 旧スキーマ（endpoint直下）があれば移行する
       existing?.endpoint
@@ -125,7 +171,7 @@ export async function subscribePush({
     );
     const updatedDevices = [
       ...existingDevices.filter((d: any) => d.device_id !== deviceId),
-      { device_id: deviceId, endpoint, keys, registered_at: nowJST(), device_name: detectDeviceName() },
+      withGoogleAccount({ device_id: deviceId, endpoint, keys, registered_at: nowJST(), device_name: detectDeviceName() }, account),
     ];
     await uploadWithAutoRefresh(accessToken, 'push_devices.json', { devices: updatedDevices });
 

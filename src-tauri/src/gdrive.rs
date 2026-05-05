@@ -56,6 +56,17 @@ struct DeviceEntry {
     keys: PushConfigKeys,
     registered_at: Option<String>,
     device_name: Option<String>,
+    google_account_email: Option<String>,
+    google_account_name: Option<String>,
+    google_account_photo: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GoogleAccountInfo {
+    pub email_address: Option<String>,
+    pub display_name: Option<String>,
+    pub photo_link: Option<String>,
 }
 
 /// フロントエンドに返すデバイス情報
@@ -65,6 +76,9 @@ pub struct PushDeviceInfo {
     pub endpoint: String,
     pub registered_at: String,
     pub device_name: Option<String>,
+    pub google_account_email: Option<String>,
+    pub google_account_name: Option<String>,
+    pub google_account_photo: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -77,6 +91,11 @@ struct PushConfigKeys {
 struct TokenRefreshResponse {
     access_token: String,
     expires_in: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct DriveAboutResponse {
+    user: Option<GoogleAccountInfo>,
 }
 
 // ------ 公開関数 ------
@@ -243,6 +262,25 @@ pub async fn get_access_token(client: &Client) -> Result<String, String> {
     }
 
     Ok(saved.access_token.unwrap())
+}
+
+/// Google Drive に接続しているユーザー情報を返す
+pub async fn get_google_account(client: &Client) -> Result<GoogleAccountInfo, String> {
+    let token = get_access_token(client).await?;
+    let resp = client
+        .get("https://www.googleapis.com/drive/v3/about")
+        .query(&[("fields", "user")])
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("about.get failed: {}", resp.status()));
+    }
+
+    let body: DriveAboutResponse = resp.json().await.map_err(|e| e.to_string())?;
+    body.user.ok_or_else(|| "Googleアカウント情報を取得できませんでした".to_string())
 }
 
 /// Drive 内の ore-no-fusen フォルダの file id を返す（なければ作成）
@@ -625,6 +663,9 @@ pub async fn list_push_devices(client: &Client) -> Result<Vec<PushDeviceInfo>, S
         endpoint: d.endpoint,
         registered_at: d.registered_at.unwrap_or_default(),
         device_name: d.device_name,
+        google_account_email: d.google_account_email,
+        google_account_name: d.google_account_name,
+        google_account_photo: d.google_account_photo,
     }).collect())
 }
 

@@ -907,6 +907,15 @@ type PushDevice = {
     endpoint: string;
     registered_at: string;
     device_name?: string;
+    google_account_email?: string;
+    google_account_name?: string;
+    google_account_photo?: string;
+}
+
+type GoogleAccount = {
+    emailAddress?: string;
+    displayName?: string;
+    photoLink?: string;
 }
 
 function endpointLabel(endpoint: string): string {
@@ -961,6 +970,18 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
     const [devices, setDevices] = useState<PushDevice[] | null>(null)
     const [devicesLoading, setDevicesLoading] = useState(false)
     const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [pcAccount, setPcAccount] = useState<GoogleAccount | null>(null)
+
+    const loadPcAccount = async () => {
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const account = await invoke<GoogleAccount>('fusen_get_google_account')
+            setPcAccount(account)
+        } catch (e) {
+            console.error('[google-account]', e)
+            setPcAccount(null)
+        }
+    }
 
     const loadDevices = async () => {
         setDevicesLoading(true)
@@ -982,9 +1003,15 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 const { invoke } = await import('@tauri-apps/api/core')
                 const ok = await invoke<boolean>('fusen_check_pro_setup')
                 setStatus(ok ? 'connected' : 'disconnected')
-                if (ok) loadDevices()
+                if (ok) {
+                    loadPcAccount()
+                    loadDevices()
+                } else {
+                    setPcAccount(null)
+                }
             } catch {
                 setStatus('disconnected')
+                setPcAccount(null)
             }
         }
         check()
@@ -998,6 +1025,12 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             await invoke('fusen_oauth_connect')
             const ok = await invoke<boolean>('fusen_check_pro_setup')
             setStatus(ok ? 'connected' : 'disconnected')
+            if (ok) {
+                await loadPcAccount()
+                await loadDevices()
+            } else {
+                setPcAccount(null)
+            }
             if (!ok) setErrorMsg('接続しましたが、iPhoneのセットアップがまだ完了していません。iPhoneでPWAを開いてセットアップしてください。')
         } catch (e: unknown) {
             setErrorMsg('接続に失敗しました: ' + String(e))
@@ -1006,6 +1039,68 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             setIsConnecting(false)
         }
     }
+
+    const pcEmail = pcAccount?.emailAddress?.toLowerCase()
+    const registeredDeviceEmails = (devices ?? [])
+        .map((d) => d.google_account_email)
+        .filter((email): email is string => !!email)
+    const hasIphoneAccountInfo = registeredDeviceEmails.length > 0
+    const hasAccountMismatch = !!pcEmail && registeredDeviceEmails.some((email) => email.toLowerCase() !== pcEmail)
+    const hasRegisteredDevice = (devices ?? []).length > 0
+    const pcConnected = status === 'connected' && !!pcAccount?.emailAddress
+    const accountsReady = pcConnected && hasIphoneAccountInfo && !hasAccountMismatch
+
+    const setupSteps = [
+        {
+            no: 1,
+            title: 'iPhoneでPWAをインストール',
+            detail: 'QRコードをSafariで開き、ホーム画面に追加します。',
+            done: hasRegisteredDevice,
+            status: hasRegisteredDevice ? '完了' : '未確認',
+        },
+        {
+            no: 2,
+            title: 'iPhone側でGoogleドライブに接続',
+            detail: hasIphoneAccountInfo ? registeredDeviceEmails[0] : 'iPhone側PWAを開くと確認されます。',
+            done: hasIphoneAccountInfo,
+            status: hasIphoneAccountInfo ? '接続済み' : '未取得',
+        },
+        {
+            no: 3,
+            title: 'PC側でGoogleドライブに接続',
+            detail: pcAccount?.emailAddress ?? 'このPCでGoogleドライブに接続します。',
+            done: pcConnected,
+            status: pcConnected ? '接続済み' : status === 'loading' ? '確認中' : '未接続',
+        },
+        {
+            no: 4,
+            title: '同じGoogleアカウントで送信準備',
+            detail: hasAccountMismatch
+                ? 'PCとiPhoneで別のGoogleアカウントが使われています。'
+                : accountsReady
+                    ? '付箋を右クリックして「iPhoneに送る」を使えます。'
+                    : 'PC側とiPhone側の接続がそろうと送信できます。',
+            done: accountsReady,
+            status: hasAccountMismatch ? '不一致' : accountsReady ? 'OK' : '未完了',
+            warning: hasAccountMismatch,
+        },
+    ]
+
+    const nextAction = (() => {
+        if (hasAccountMismatch) {
+            return 'PCとiPhoneで同じGoogleアカウントに再接続してください。'
+        }
+        if (!hasRegisteredDevice) {
+            return 'まずiPhoneでQRコードを開き、PWAをホーム画面に追加してGoogleドライブに接続してください。'
+        }
+        if (!hasIphoneAccountInfo) {
+            return 'iPhoneでホーム画面の「俺の付箋」を開いてください。iPhone側のGoogleアカウント情報が更新されます。'
+        }
+        if (!pcConnected) {
+            return 'このPCでGoogleドライブに接続してください。'
+        }
+        return '準備完了です。付箋を右クリックして「iPhoneに送る」を押してください。'
+    })()
 
     const handleCopy = () => {
         navigator.clipboard.writeText(PWA_URL).then(() => {
@@ -1023,6 +1118,70 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             <Separator />
 
             {/* --- PWA QRコードパネル --- */}
+            <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-5">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-900">iPhoneに送る準備</h3>
+                        <p className="text-sm text-gray-500 mt-1">初回は上から順に進めてください。次に必要な作業だけが分かるように表示します。</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        accountsReady
+                            ? 'bg-green-100 text-green-700'
+                            : hasAccountMismatch
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-slate-100 text-slate-600'
+                    }`}>
+                        {accountsReady ? '準備完了' : hasAccountMismatch ? '確認が必要' : 'セットアップ中'}
+                    </span>
+                </div>
+
+                <div className="grid gap-3">
+                    {setupSteps.map((step) => (
+                        <div
+                            key={step.no}
+                            className={`flex gap-3 rounded-md border px-4 py-3 ${
+                                step.warning
+                                    ? 'border-amber-200 bg-amber-50'
+                                    : step.done
+                                        ? 'border-green-100 bg-green-50'
+                                        : 'border-gray-100 bg-gray-50'
+                            }`}
+                        >
+                            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                                step.warning
+                                    ? 'bg-amber-500 text-white'
+                                    : step.done
+                                        ? 'bg-green-500 text-white'
+                                        : 'bg-white text-gray-500 border border-gray-200'
+                            }`}>
+                                {step.done ? '✓' : step.no}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-semibold text-gray-800">{step.title}</p>
+                                    <span className={`shrink-0 text-xs font-medium ${
+                                        step.warning ? 'text-amber-700' : step.done ? 'text-green-700' : 'text-gray-400'
+                                    }`}>
+                                        {step.status}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1 break-all">{step.detail}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className={`rounded-md px-4 py-3 text-sm ${
+                    hasAccountMismatch
+                        ? 'bg-amber-100 text-amber-800'
+                        : accountsReady
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-blue-50 text-blue-800'
+                }`}>
+                    <span className="font-semibold">次にやること: </span>{nextAction}
+                </div>
+            </div>
+
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
                 <h3 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
                     <Smartphone className="h-4 w-4 text-slate-500" />
@@ -1086,11 +1245,25 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 )}
 
                 {status === 'connected' && (
-                    <div className="flex items-center gap-3">
-                        <span className="text-green-600 font-semibold">✅ 接続済み</span>
-                        <Button variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting}>
-                            再接続
-                        </Button>
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                            <span className="text-green-600 font-semibold">✅ 接続済み</span>
+                            <Button variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting}>
+                                再接続
+                            </Button>
+                        </div>
+                        <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
+                            <div className="text-xs font-medium text-gray-500">PC側 Googleアカウント</div>
+                            <div className="mt-1 flex items-center gap-2 text-sm text-gray-800">
+                                {pcAccount?.photoLink && (
+                                    <img src={pcAccount.photoLink} alt="" className="h-5 w-5 rounded-full" />
+                                )}
+                                <span className="font-medium">{pcAccount?.emailAddress ?? '取得中...'}</span>
+                                {pcAccount?.displayName && (
+                                    <span className="text-xs text-gray-400">{pcAccount.displayName}</span>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -1110,9 +1283,17 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             </div>
 
             {status === 'connected' && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-6">
-                    <p className="text-sm text-green-700 font-medium">✅ iPhoneへの送信が有効です</p>
-                    <p className="text-sm text-green-600 mt-1">付箋を右クリック →「iPhoneに送る」で送信できます。</p>
+                <div className={`rounded-lg border p-6 ${hasAccountMismatch ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
+                    <p className={`text-sm font-medium ${hasAccountMismatch ? 'text-amber-700' : 'text-green-700'}`}>
+                        {hasAccountMismatch ? '⚠ PCとiPhoneのGoogleアカウントが違います' : '✅ iPhoneへの送信が有効です'}
+                    </p>
+                    <p className={`text-sm mt-1 ${hasAccountMismatch ? 'text-amber-700' : 'text-green-600'}`}>
+                        {hasAccountMismatch
+                            ? '同じGoogleアカウントで再接続してください。違うDriveを見ているため、送信に失敗します。'
+                            : hasIphoneAccountInfo
+                                ? 'PCとiPhoneは同じGoogleアカウントで接続されています。'
+                                : '付箋を右クリック →「iPhoneに送る」で送信できます。iPhone側アカウントはPWAを開くと表示されます。'}
+                    </p>
                 </div>
             )}
 
@@ -1175,6 +1356,12 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                                             </span>
                                         </div>
                                         <div className="text-xs text-gray-400 mt-0.5">{formatDate(d.registered_at)}</div>
+                                        <div className={`text-xs mt-1 ${pcEmail && d.google_account_email && d.google_account_email.toLowerCase() !== pcEmail ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
+                                            Google: {d.google_account_email ?? '未取得（iPhone側PWAを開くと更新されます）'}
+                                            {d.google_account_name && (
+                                                <span className="text-gray-400"> / {d.google_account_name}</span>
+                                            )}
+                                        </div>
                                     </div>
                                     <button
                                         disabled={deletingId === d.device_id}

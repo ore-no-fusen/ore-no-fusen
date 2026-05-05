@@ -153,8 +153,8 @@ function OrchestratorContent() {
   // [NEW] Pool 枯渇時トースト
   const [poolWaitToast, setPoolWaitToast] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [files, setFiles] = useState<NoteMeta[]>([]);
-  const [setupRequired, setSetupRequired] = useState(true);
-  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
+  const [setupRequired, setSetupRequired] = useState(isMainWindow);
+  const [isCheckingSetup, setIsCheckingSetup] = useState(isMainWindow);
   const [loadingStatus, setLoadingStatus] = useState("STARTING..."); // [NEW] Visual Debug Log
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
@@ -186,7 +186,13 @@ function OrchestratorContent() {
   }, []);
 
   // ウィンドウリサイズポリシー（useMainWindowResizePolicyに委譲）
-  useMainWindowResizePolicy({ setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen });
+  useMainWindowResizePolicy({
+    setupRequired: isMainWindow && setupRequired,
+    isSettingsOpen: isMainWindow && isSettingsOpen,
+    isCheckingSetup: isMainWindow && isCheckingSetup,
+    showUpdateDialog: isMainWindow && showUpdateDialog,
+    isSearchOpen: isMainWindow && isSearchOpen,
+  });
 
   // ウィンドウラベル生成
   const getWindowLabel = useCallback((path: string) => {
@@ -402,7 +408,7 @@ function OrchestratorContent() {
         console.log('[CREATE] duplicate newNote:', newNote.meta.path);
         await playCreateSound();
         setFiles(prev => [...prev, newNote.meta]);
-        await openNoteWindow(newNote.meta.path, undefined, true);
+        await openNoteWindow(newNote.meta.path, undefined, false);
         return;
       }
 

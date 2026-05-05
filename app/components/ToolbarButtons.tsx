@@ -71,7 +71,7 @@ export default function ToolbarButtons({
 
                 {/* 新規作成ボタン (左端) */}
                 {onCreateNewNote && (
-                    <Tooltip text={t('tooltip.newNote')} hint="Ctrl+N" placement="top-right">
+                    <Tooltip text={t('tooltip.newNote')} hint="Ctrl+N" placement="top-right-arrow-shifted">
                         <button
                             onPointerDown={(e) => {
                                 e.preventDefault();
@@ -101,7 +101,7 @@ export default function ToolbarButtons({
 
                 {/* ピン留めボタン (右) */}
                 {onTogglePin && (
-                    <Tooltip text={isPinned ? t('tooltip.unpin') : t('tooltip.pin')} placement="top-right">
+                    <Tooltip text={isPinned ? t('tooltip.unpin') : t('tooltip.pin')} placement="top-right-shifted">
                         <button
                             onPointerDown={(e) => {
                                 e.preventDefault();

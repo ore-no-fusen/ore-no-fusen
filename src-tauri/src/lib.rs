@@ -1062,11 +1062,17 @@ async fn fusen_set_as_alt_tab_window(
                             let _ = tbl.AddTab(hwnd);
                         }
                         // 最小化ブロックのWndProcを登録（元のProcをHashMapに保存）
+                        let hook_proc = minimize_block_proc as isize;
                         let orig = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
-                        original_wndprocs()
-                            .lock().unwrap_or_else(|p| p.into_inner())
-                            .insert(hwnd.0, orig);
-                        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, minimize_block_proc as isize);
+                        if orig != hook_proc {
+                            original_wndprocs()
+                                .lock().unwrap_or_else(|p| p.into_inner())
+                                .entry(hwnd.0)
+                                .or_insert(orig);
+                            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, hook_proc);
+                        } else {
+                            diag.push_str("; WNDPROC_ALREADY_HOOKED");
+                        }
                         let after = GetWindowLongW(hwnd, GWL_EXSTYLE);
                         diag.push_str(&format!("; SHOW {:#010x}->{:#010x} verify={:#010x}", style, new_style, after));
                     }
@@ -1376,6 +1382,12 @@ async fn fusen_check_pro_setup(
 async fn fusen_list_push_devices() -> Result<Vec<gdrive::PushDeviceInfo>, String> {
     let client = reqwest::Client::new();
     gdrive::list_push_devices(&client).await
+}
+
+#[tauri::command]
+async fn fusen_get_google_account() -> Result<gdrive::GoogleAccountInfo, String> {
+    let client = reqwest::Client::new();
+    gdrive::get_google_account(&client).await
 }
 
 #[tauri::command]
@@ -2005,6 +2017,7 @@ pub fn run() {
             fusen_oauth_connect,
             fusen_check_pro_setup,
             fusen_list_push_devices,
+            fusen_get_google_account,
             fusen_delete_push_device,
             fusen_delete_all_push_devices,
             fusen_send_to_iphone,

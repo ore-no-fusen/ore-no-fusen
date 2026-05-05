@@ -1443,6 +1443,27 @@ const StickyNote = memo(function StickyNote() {
     /**
      * コンテキストメニュー処理（外部hook）
      */
+    const resolveCreateFolderPath = useCallback(async (): Promise<string | null> => {
+        if (selectedFile?.path) {
+            const normalizedPath = selectedFile.path.replace(/\\/g, '/');
+            const separatorIndex = normalizedPath.lastIndexOf('/');
+            if (separatorIndex > 0) {
+                return normalizedPath.substring(0, separatorIndex);
+            }
+        }
+
+        if (lazyFolderPathRef.current) {
+            return lazyFolderPathRef.current;
+        }
+
+        try {
+            return await invoke<string | null>('get_base_path');
+        } catch (e) {
+            invoke('fusen_debug_log', { message: `[CREATE_REQ] get_base_path failed: ${e}` }).catch(() => { });
+            return null;
+        }
+    }, [selectedFile]);
+
     const { handleDeleteNote } = useStickyNoteContextMenu({
         selectedFile,
         isPool,
@@ -1475,6 +1496,7 @@ const StickyNote = memo(function StickyNote() {
             setToastMessage(msg);
             setTimeout(() => setToastMessage(null), 3000);
         },
+        resolveCreateFolderPath,
     });
 
     /**
@@ -1507,12 +1529,14 @@ const StickyNote = memo(function StickyNote() {
                 e.preventDefault();
                 // [NEW] JS 1.2s スロットル撤去: Pool アーキテクチャで webview 新規作成しないためクラッシュ原因が消えた
                 // フォールバック側（openNoteWindow）は page.tsx の 400ms global throttle + Rust 500ms で保護
-                if (selectedFile) {
+                const folderPath = await resolveCreateFolderPath();
+                if (!folderPath) {
+                    invoke('fusen_debug_log', { message: '[CREATE_REQ] Ctrl+N skipped: folderPath unresolved' }).catch(() => { });
+                    return;
+                }
                     // [PERF] 起動時間計測: T0 = Ctrl+N 押下時刻
                     const t0 = Date.now();
                     invoke('fusen_debug_log', { message: `[PERF|T0] Ctrl+N keydown t0=${t0}` }).catch(() => { });
-                    const normalizedPath = selectedFile.path.replace(/\\/g, '/');
-                    const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
                     const win = getCurrentWindow();
                     let sourcePhysX: number | undefined;
                     let sourcePhysY: number | undefined;
@@ -1537,14 +1561,13 @@ const StickyNote = memo(function StickyNote() {
                         sourcePhysHeight = Math.round(window.innerHeight * s);
                     }
                     emit('fusen:request_create', { folderPath, context: 'memo', sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight, t0 });
-                }
             }
 
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedFile, handleDeleteNote]);
+    }, [handleDeleteNote, resolveCreateFolderPath]);
 
     // ============================================================
     // レンダリング
@@ -1676,9 +1699,11 @@ const StickyNote = memo(function StickyNote() {
                     alarmAtStr={alarmAtStr}
                     alarmTooltip={alarmTooltip || t('menu.setAlarm')}
                     onCreateNewNote={async () => {
-                        if (!selectedFile) return;
-                        const normalizedPath = selectedFile.path.replace(/\\/g, '/');
-                        const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+                        const folderPath = await resolveCreateFolderPath();
+                        if (!folderPath) {
+                            invoke('fusen_debug_log', { message: '[CREATE_REQ] + button skipped: folderPath unresolved' }).catch(() => { });
+                            return;
+                        }
                         const win = getCurrentWindow();
                         let sourcePhysX: number | undefined;
                         let sourcePhysY: number | undefined;
@@ -1914,27 +1939,49 @@ const StickyNote = memo(function StickyNote() {
             */}
 
             {/* タグ表示エリア（右下、ホバー時のみ） */}
-            {!isEditing && !isMinimized && currentTags.length > 0 && (
+            {!isEditing && !isMinimized && (
                 <div
                     className="absolute bottom-ui-offset-y right-ui-offset-x z-tags pointer-events-none flex justify-end"
                     style={{ opacity: isHover ? 1 : 0, transition: 'opacity 0.2s ease' }}
                 >
-                    <div className="flex gap-1 flex-wrap max-w-[250px] justify-end">
-                        {currentTags.slice(0, 3).map((tag: string, idx: number) => (
-                            <span
-                                key={idx}
-                                className="text-[10px] px-2 py-[3px] bg-gray-200/80 text-gray-700 rounded border border-gray-300/80 whitespace-nowrap font-medium shadow-sm"
-                            >
-                                {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
-                            </span>
-                        ))}
-                        {currentTags.length > 3 && (
-                            <span
-                                className="text-[10px] px-2 py-[3px] bg-gray-200/50 text-gray-500 rounded border border-gray-300/50 whitespace-nowrap font-medium"
-                            >
-                                +{currentTags.length - 3}
-                            </span>
+                    <div className="flex items-center justify-end gap-1 pointer-events-auto">
+                        {currentTags.length > 0 && (
+                            <div className="flex gap-1 flex-wrap max-w-[250px] justify-end">
+                                {currentTags.slice(0, 3).map((tag: string, idx: number) => (
+                                    <span
+                                        key={idx}
+                                        className="text-[10px] px-2 py-[3px] bg-gray-200/80 text-gray-700 rounded border border-gray-300/80 whitespace-nowrap font-medium shadow-sm"
+                                    >
+                                        {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
+                                    </span>
+                                ))}
+                                {currentTags.length > 3 && (
+                                    <span
+                                        className="text-[10px] px-2 py-[3px] bg-gray-200/50 text-gray-500 rounded border border-gray-300/50 whitespace-nowrap font-medium"
+                                    >
+                                        +{currentTags.length - 3}
+                                    </span>
+                                )}
+                            </div>
                         )}
+                        <Tooltip text={t('menu.delete')} hint="Ctrl+D" placement="top-right-arrow-shifted">
+                            <button
+                                type="button"
+                                aria-label={t('menu.delete')}
+                                onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                }}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleDeleteNote();
+                                }}
+                                className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-red-100 hover:text-red-600 hover:border-red-200 transition-colors"
+                            >
+                                🗑
+                            </button>
+                        </Tooltip>
                     </div>
                 </div>
             )}

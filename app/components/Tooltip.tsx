@@ -7,7 +7,7 @@ type TooltipProps = {
     text: string;
     hint?: string;
     children: React.ReactNode;
-    placement?: 'top' | 'top-right';
+    placement?: 'top' | 'top-right' | 'top-right-shifted' | 'top-right-arrow-shifted';
 };
 
 type TipPos = {
@@ -15,10 +15,12 @@ type TipPos = {
     left?: number;
     right?: number;
     flipDown: boolean;
+    arrowOffset?: number;
 };
 
 /** ツールチップ表示に必要な最低高さ (px) */
 const TIP_HEIGHT = 40;
+const SHIFTED_TIP_WIDTH = 62;
 
 export default function Tooltip({ text, hint, children, placement = 'top-right' }: TooltipProps) {
     const [tipPos, setTipPos] = useState<TipPos | null>(null);
@@ -35,6 +37,13 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
 
         if (placement === 'top-right') {
             setTipPos({ top: base, right: window.innerWidth - r.right, flipDown });
+        } else if (placement === 'top-right-arrow-shifted') {
+            setTipPos({ top: base, right: window.innerWidth - r.right, flipDown, arrowOffset: 18 });
+        } else if (placement === 'top-right-shifted') {
+            const minLeft = 4 + SHIFTED_TIP_WIDTH / 2;
+            const maxLeft = window.innerWidth - 4 - SHIFTED_TIP_WIDTH / 2;
+            const left = Math.min(Math.max(r.left + r.width / 2 + 12, minLeft), maxLeft);
+            setTipPos({ top: base, left, flipDown, arrowOffset: 18 });
         } else {
             setTipPos({ top: base, left: r.left + r.width / 2, flipDown });
         }
@@ -56,7 +65,11 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
             position: 'fixed',
             zIndex: 9999,
             pointerEvents: 'none',
-            whiteSpace: 'nowrap',
+            whiteSpace: placement === 'top-right-shifted' ? 'normal' : 'nowrap',
+            width: placement === 'top-right-shifted' ? SHIFTED_TIP_WIDTH : undefined,
+            boxSizing: placement === 'top-right-shifted' ? 'border-box' : undefined,
+            padding: placement === 'top-right-shifted' ? '5px 6px' : undefined,
+            textAlign: placement === 'top-right-shifted' ? 'center' : undefined,
             animation: 'tooltip-pop 0.1s ease-out both',
             top: tipPos.top,
             ...(tipPos.left !== undefined
@@ -67,7 +80,14 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
         : null;
 
     const tooltip = tipPos && tipStyle ? createPortal(
-        <span className={`fusen-tooltip${tipPos.flipDown ? ' fusen-tooltip--down' : ''}`} style={tipStyle}>
+        <span
+            className={`fusen-tooltip${tipPos.flipDown ? ' fusen-tooltip--down' : ''}`}
+            data-arrow-offset={tipPos.arrowOffset}
+            style={tipStyle}
+        >
+            {tipPos.arrowOffset !== undefined && (
+                <style>{`.fusen-tooltip[data-arrow-offset="${tipPos.arrowOffset}"]::after{left:calc(50% + ${tipPos.arrowOffset}px);}`}</style>
+            )}
             <span style={{ display: 'block', fontSize: '11px', color: '#444', fontWeight: 500 }}>{text}</span>
             {hint && (
                 <span style={{ display: 'block', fontSize: '10px', color: '#999', marginTop: '2px' }}>{hint}</span>

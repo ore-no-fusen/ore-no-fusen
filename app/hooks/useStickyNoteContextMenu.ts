@@ -39,6 +39,7 @@ type UseStickyNoteContextMenuProps = {
     setTagToDelete: (tag: string) => void;
     onSetAlarm: () => void;
     onToast?: (message: string) => void;
+    resolveCreateFolderPath: () => Promise<string | null>;
 };
 
 export function useStickyNoteContextMenu({
@@ -66,6 +67,7 @@ export function useStickyNoteContextMenu({
     setTagToDelete,
     onSetAlarm,
     onToast,
+    resolveCreateFolderPath,
 }: UseStickyNoteContextMenuProps) {
     const lastContextMenuPos = useRef<{ x: number; y: number } | null>(null);
     const shouldReopenMenu = useRef(false);
@@ -206,11 +208,10 @@ export function useStickyNoteContextMenu({
                 text: `✨ ${t('menu.newNote')}  Ctrl+N`,
                 action: async () => {
                     try {
-                        if (!selectedFile) return;
                         const { emit } = await import('@tauri-apps/api/event');
                         const { getCurrentWindow } = await import('@tauri-apps/api/window');
-                        const normalizedPath = selectedFile.path.replace(/\\/g, '/');
-                        const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+                        const folderPath = await resolveCreateFolderPath();
+                        if (!folderPath) return;
                         const win = getCurrentWindow();
                         let sourcePhysX: number | undefined;
                         let sourcePhysY: number | undefined;
@@ -451,7 +452,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleDeleteNote, handleOpenFolder, onToast]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath]);
 
 
     // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）
