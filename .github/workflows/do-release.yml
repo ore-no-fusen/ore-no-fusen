@@ -63,9 +63,16 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           PKG=$(node -e "console.log(require('./package.json').version)")
           CARGO=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
+          LOCK=$(node -e "
+            const fs = require('fs');
+            const lock = fs.readFileSync('src-tauri/Cargo.lock', 'utf8');
+            const match = lock.match(/\[\[package\]\]\s+name = \"ore-no-fusen\"\s+version = \"([^\"]+)\"/);
+            console.log(match ? match[1] : '');
+          ")
           echo "package.json: $PKG"
           echo "Cargo.toml: $CARGO"
-          if [ "$PKG" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ]; then
+          echo "Cargo.lock: $LOCK"
+          if [ "$PKG" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ] || [ "$LOCK" != "$VERSION" ]; then
             echo "❌ Version mismatch!"
             exit 1
           fi

@@ -1,1 +1,8 @@
-{ "css.validate": false, "less.validate": false, "scss.validate": false, "tailwindCSS.emmetCompletions": true }
+{
+  "css.validate": false,
+  "less.validate": false,
+  "scss.validate": false,
+  "tailwindCSS.emmetCompletions": true,
+  "git.autofetch": true,
+  "git.pruneOnFetch": true
+}
