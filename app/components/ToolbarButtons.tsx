@@ -11,6 +11,7 @@
 
 import React from 'react';
 import Tooltip from './Tooltip';
+import PinTackIcon from './PinTackIcon';
 import { getTranslation, type Language } from '@/lib/i18n';
 
 export type ToolbarButtonsProps = {
@@ -165,20 +166,11 @@ export default function ToolbarButtons({
                             {isPinned ? (
                                 // ON State: Pinned (刺さっている)
                                 // Vertical pin, firmly planted
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2L12 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                    <rect x="8" y="2" width="8" height="6" rx="1" fill="currentColor" />
-                                    {/* Shadow/Hole at the bottom to indicate insertion */}
-                                    <ellipse cx="12" cy="15" rx="3" ry="1.5" fill="rgba(0,0,0,0.3)" />
-                                </svg>
+                                <PinTackIcon active={true} />
                             ) : (
                                 // OFF State: Unpinned (外れている)
                                 // Pin lying on its side
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="rotate-45">
-                                    <path d="M16 12L7 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                    <rect x="16" y="8" width="6" height="8" rx="1" fill="currentColor" stroke="currentColor" strokeWidth="2" />
-                                    <path d="M4 12L7 12" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-                                </svg>
+                                <PinTackIcon active={false} />
                             )}
                         </button>
                     </Tooltip>
