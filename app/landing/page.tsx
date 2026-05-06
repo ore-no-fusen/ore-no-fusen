@@ -1144,62 +1144,73 @@ export default function LandingPage() {
                         </div>
                     </div>
 
+                    {/* MVP 3本柱：すぐ書ける ／ 強調できる ／ そこに残る */}
+                    <p className="text-center text-xs font-bold text-[#8A7055] uppercase tracking-[0.3em] mb-6">
+                        {isEn ? "Three Promises" : "三つの約束"}
+                    </p>
+
                     <div className="grid md:grid-cols-3 gap-7">
                         {(isEn ? [
                             {
                                 color: '#EDD87A',
                                 topColor: '#D9C060',
                                 rotation: '-rotate-1',
-                                emoji: '🔗',
-                                title: 'Connect your Windows PC ↔ iPhone',
-                                text: 'Notes written on your own PC can be checked on your iPhone. Notes written on iPhone stay on your PC too.',
-                                textColor: '#3A2C00',
-                            },
-                            {
-                                color: '#A8C890',
-                                topColor: '#8BAF75',
-                                rotation: 'rotate-1',
                                 emoji: '⚡',
-                                title: 'Fast. Incredible Fast.',
-                                text: '0.3s startup with Ctrl+N. Auto-save. Built to never interrupt your thoughts. Stop waiting for Excel to open.',
-                                textColor: '#1E3A10',
+                                title: 'Write instantly.',
+                                text: 'Ctrl + N in 0.3 s. Capture the thought before it slips away. Auto-save means you never stop to save.',
+                                textColor: '#3A2C00',
+                                badge: null,
                             },
                             {
                                 color: '#9DC0D0',
                                 topColor: '#7AAFC0',
-                                rotation: '-rotate-1',
+                                rotation: 'rotate-1',
                                 emoji: '🔒',
-                                title: 'Yours. Always.',
-                                text: 'Stored on your PC and (optionally) your own Google Drive — never on a third-party server. Works offline. Your privacy stays yours.',
+                                title: 'Stay prominent.',
+                                text: 'Pick a color. Resize. Pin to the front. "Lock-Da-Ze" mode keeps the important things lined up where your eyes go — never buried under windows.',
                                 textColor: '#102030',
+                                badge: 'Lock-Da-Ze',
+                            },
+                            {
+                                color: '#A8C890',
+                                topColor: '#8BAF75',
+                                rotation: '-rotate-1',
+                                emoji: '📌',
+                                title: 'Always there.',
+                                text: 'Close the app. Restart your PC. The notes stay. Tomorrow you walk past your monitor and they catch your eye — you don\'t have to remember anything.',
+                                textColor: '#1E3A10',
+                                badge: null,
                             },
                         ] : [
                             {
                                 color: '#EDD87A',
                                 topColor: '#D9C060',
                                 rotation: '-rotate-1',
-                                emoji: '🔗',
-                                title: '自分のWin ↔ iPhoneで繋がる',
-                                text: '自分のPCで書いたメモをiPhoneでも見られる。iPhoneで書いたメモもPCに残る。Appleメモが羨ましかった、あのやつです。',
-                                textColor: '#3A2C00',
-                            },
-                            {
-                                color: '#A8C890',
-                                topColor: '#8BAF75',
-                                rotation: 'rotate-1',
                                 emoji: '⚡',
-                                title: '速い。とにかく速い。',
-                                text: 'Ctrl+N で 0.3 秒起動。書いたら自動保存。思考を止めないために作りました。Excelの起動待ち、もうやめませんか。',
-                                textColor: '#1E3A10',
+                                title: 'すぐ書ける。',
+                                text: 'Ctrl + N で 0.3 秒。思考が逃げる前に、捕まえる。書いた瞬間に自動保存、手は止まらない。',
+                                textColor: '#3A2C00',
+                                badge: null,
                             },
                             {
                                 color: '#9DC0D0',
                                 topColor: '#7AAFC0',
-                                rotation: '-rotate-1',
+                                rotation: 'rotate-1',
                                 emoji: '🔒',
-                                title: 'あなたのデータは、あなたのもの。',
-                                text: 'データは PC と（同期するなら）自分の Google Drive にだけ保存。当方サーバーには一切送りません。オフラインでも動きます。',
+                                title: '強調できる。',
+                                text: '色を変える。サイズを変える。最前面に貼る。「ロックだぜ」モードで、大事なことを視界の真ん中に置く。他のウィンドウに埋もれない。',
                                 textColor: '#102030',
+                                badge: 'ロックだぜ',
+                            },
+                            {
+                                color: '#A8C890',
+                                topColor: '#8BAF75',
+                                rotation: '-rotate-1',
+                                emoji: '📌',
+                                title: 'そこに残る。',
+                                text: 'アプリを閉じても、PC を再起動しても、付箋はそこにある。明日もモニターの前を通れば、目に入る。覚えていなくていい。',
+                                textColor: '#1E3A10',
+                                badge: null,
                             },
                         ]).map((item) => (
                             <div
@@ -1208,12 +1219,21 @@ export default function LandingPage() {
                                 style={{
                                     backgroundColor: item.color,
                                     boxShadow: '3px 5px 14px rgba(0,0,0,0.13)',
+                                    position: 'relative',
                                 }}
                             >
                                 <div
                                     className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5"
                                     style={{ backgroundColor: item.topColor }}
                                 />
+                                {item.badge && (
+                                    <div
+                                        className="absolute -top-3 right-4 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-md"
+                                        style={{ backgroundColor: '#2C1F0E', color: '#F0E0A0' }}
+                                    >
+                                        {item.badge}
+                                    </div>
+                                )}
                                 <div className="text-2xl mb-3">{item.emoji}</div>
                                 <h3
                                     className="text-lg font-bold mb-2"
@@ -1234,27 +1254,36 @@ export default function LandingPage() {
                     {/* サブ機能グリッド */}
                     <div className="grid sm:grid-cols-3 gap-4 mt-8">
                         {(isEn ? [
+                            { emoji: '🖼️', text: 'Paste images & draw on them', highlight: true },
                             { emoji: '🖊️', text: 'Markdown Support' },
                             { emoji: '🔍', text: 'Full-text Search (Regex)' },
                             { emoji: '📊', text: 'Flowcharts with Mermaid' },
-                            { emoji: '🖼️', text: 'Paste Images from Clipboard' },
-                            { emoji: '📌', text: 'Pin to Top' },
                             { emoji: '🏷️', text: 'Tags & Archive Management' },
+                            { emoji: '🔔', text: 'System tray + Auto-start' },
                         ] : [
+                            { emoji: '🖼️', text: '画像を貼って、その上に書き込める', highlight: true },
                             { emoji: '🖊️', text: 'Markdown対応' },
                             { emoji: '🔍', text: '全文検索（正規表現）' },
                             { emoji: '📊', text: 'Mermaidでフローチャート' },
-                            { emoji: '🖼️', text: 'クリップボードから画像貼り付け' },
-                            { emoji: '📌', text: '最前面固定（ピン留め）' },
                             { emoji: '🏷️', text: 'タグ・アーカイブ管理' },
+                            { emoji: '🔔', text: 'システムトレイ常駐＋自動起動' },
                         ]).map((item) => (
                             <div
                                 key={item.text}
-                                className="flex items-center gap-3 px-4 py-3 rounded-sm border text-sm text-[#6A5540]"
-                                style={{ backgroundColor: '#EDE4D3', borderColor: '#C8B898' }}
+                                className={`flex items-center gap-3 px-4 py-3 rounded-sm border text-sm ${item.highlight ? 'font-bold' : ''}`}
+                                style={{
+                                    backgroundColor: item.highlight ? '#F4F9F1' : '#EDE4D3',
+                                    borderColor: item.highlight ? '#5C7A3E' : '#C8B898',
+                                    color: item.highlight ? '#3A5020' : '#6A5540',
+                                }}
                             >
                                 <span>{item.emoji}</span>
                                 <span>{item.text}</span>
+                                {item.highlight && (
+                                    <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full text-[#F5EDD8]" style={{ backgroundColor: '#5C7A3E' }}>
+                                        {isEn ? 'NEW' : '注目'}
+                                    </span>
+                                )}
                             </div>
                         ))}
                     </div>
