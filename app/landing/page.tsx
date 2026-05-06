@@ -183,13 +183,13 @@ export default function LandingPage() {
                             <h1 className="text-4xl sm:text-5xl lg:text-[4.2rem] font-extrabold leading-tight tracking-tight mb-3 text-[#2C1F0E] drop-shadow-sm">
                                 {isEn ? (
                                     <>
-                                        The solution for everyone <br />
-                                        using <span className="text-[#5C7A3E]">iPhone & Windows.</span>
+                                        Send Windows sticky notes<br />
+                                        to <span className="text-[#5C7A3E]">your iPhone.</span>
                                     </>
                                 ) : (
                                     <>
-                                        Macじゃなくていい。<br />
-                                        <span className="text-[#5C7A3E]">繋がればいい。</span>
+                                        Windowsの付箋を、<br />
+                                        <span className="text-[#5C7A3E]">iPhoneでも見られる。</span>
                                     </>
                                 )}
                             </h1>
@@ -197,21 +197,21 @@ export default function LandingPage() {
                             {/* 機能直球サブヘッドライン */}
                             <p className="text-base sm:text-lg text-[#5C7A3E] font-bold mb-5">
                                 {isEn
-                                    ? "── A light sticky note app that connects Windows + iPhone."
-                                    : "── Win と iPhone を繋ぐ、軽い付箋アプリ。"}
+                                    ? "── A light sticky note app for your own Windows PC and iPhone."
+                                    : "── 自分の Windows PC と iPhone を繋ぐ、軽い付箋アプリ。"}
                             </p>
 
                             {/* サブコピー */}
                             <p className="text-lg sm:text-xl text-[#6A5540] mb-8 font-medium leading-relaxed">
                                 {isEn ? (
                                     <>
-                                        Write on PC, reaches your iPhone.<br className="sm:hidden" />
-                                        Write on iPhone, stays on your PC.
+                                        Write on your Windows PC.<br className="sm:hidden" />
+                                        Check it later on your iPhone.
                                     </>
                                 ) : (
                                     <>
-                                        PCで書いて、iPhoneへ届く。<br className="sm:hidden" />
-                                        iPhoneで書いて、PCに残る。
+                                        Windowsで書いて、あとでiPhoneで見る。<br className="sm:hidden" />
+                                        iPhoneで書いたことは、PCにも残る。
                                     </>
                                 )}
                             </p>
@@ -222,15 +222,15 @@ export default function LandingPage() {
                                     {isEn ? "This is exactly for you:" : "こんな人に刺さります"}
                                 </p>
                                 {(isEn ? [
-                                    'Love iPhone, but use a Windows PC.',
-                                    'Want to use Apple Notes, but on Windows...',
+                                    'Use an iPhone and a personal Windows PC.',
+                                    'Want Apple Notes-like convenience on Windows.',
                                     "Excel is overkill. Sticky Notes isn't enough.",
                                     'Looking for something just right.',
                                 ] : [
-                                    'クックパッドで見つけたレシピを、キッチンでパッと見たい。',
-                                    '買い物リストをPCで作って、スーパーでiPhoneから確認したい。',
+                                    '自宅PCで見つけたレシピを、キッチンでパッと見たい。',
+                                    '買い物リストを自分のPCで作って、外でiPhoneから確認したい。',
                                     'Excelは大げさ。Sticky Notesだと物足りない。',
-                                    '仕事も、料理も、明日の予定も。全部一か所に貼っておきたい。',
+                                    '料理も、明日の予定も、ちょっとした調べものも。全部一か所に貼っておきたい。',
                                 ]).map((text) => (
                                     <div
                                         key={text}
@@ -261,6 +261,27 @@ export default function LandingPage() {
                                 <p className="text-xs text-[#9A8468]">
                                     {isEn ? "Windows 10/11 · Free · Your data stays with you" : "Windows 10/11 · 無料 · データはあなたの手元（PC＋自分の Drive）に"}
                                 </p>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full sm:w-auto text-[11px] text-[#5A4030]">
+                                    {(isEn ? [
+                                        'Free',
+                                        'GitHub public',
+                                        'No server storage',
+                                        'Uninstall anytime',
+                                    ] : [
+                                        '無料',
+                                        'GitHub公開',
+                                        'サーバー保存なし',
+                                        'いつでも削除可',
+                                    ]).map((label) => (
+                                        <span
+                                            key={label}
+                                            className="px-2.5 py-1.5 rounded-full border border-[#C8B89A]/80 bg-white/55 text-center font-semibold"
+                                        >
+                                            {label}
+                                        </span>
+                                    ))}
+                                </div>
 
                                 {/* winget 案内 */}
                                 <div className="flex items-center gap-2 text-xs text-[#7A6A50] mt-1">
@@ -508,6 +529,105 @@ export default function LandingPage() {
             </div>
 
             {/* ==============================
+                実物スクリーンショット + 初回手順
+            ============================== */}
+            <section className="py-16 px-6" style={{ backgroundColor: '#E2D7C3' }}>
+                <div className="max-w-6xl mx-auto grid lg:grid-cols-[1.35fr_0.95fr] gap-10 items-center">
+                    <div>
+                        <div className="text-center lg:text-left mb-6">
+                            <div
+                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-4 text-[#5C7A3E]"
+                                style={{ backgroundColor: '#D8EAC8', border: '1px solid #8BAF7C' }}
+                            >
+                                {isEn ? "🖥️ Real Windows app" : "🖥️ 実際のWindowsアプリ画面"}
+                            </div>
+                            <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
+                                {isEn ? "A sticky note that lives on your desktop." : "デスクトップに、ちゃんと貼りつきます。"}
+                            </h2>
+                            <p className="text-[#8A7055] leading-relaxed">
+                                {isEn
+                                    ? "It is not just a web demo. It is a lightweight Windows app that opens fast, stays visible, and can send notes to your own iPhone."
+                                    : "Webの見た目だけではなく、実際にWindowsへ入れて使う軽い付箋アプリです。すばやく開き、画面に残り、必要なら自分のiPhoneでも見られます。"}
+                            </p>
+                        </div>
+
+                        <div className="relative">
+                            <div
+                                className="absolute -top-3 left-10 z-10 w-14 h-5 rounded-sm opacity-60 rotate-2"
+                                style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }}
+                            />
+                            <div
+                                className="rounded-sm overflow-hidden"
+                                style={{
+                                    boxShadow: '4px 6px 24px rgba(0,0,0,0.15)',
+                                    border: '1px solid #C8B898',
+                                }}
+                            >
+                                <Image
+                                    src="/screenshots/ScreenShot_OreNoFusen.png"
+                                    alt="俺の付箋の実際のWindows画面"
+                                    width={1200}
+                                    height={800}
+                                    className="w-full h-auto"
+                                    priority
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-5">
+                        <div className="rounded-2xl border border-[#C8B89A]/80 bg-white/65 p-6 shadow-md">
+                            <h3 className="text-xl font-bold text-[#2C1F0E] mb-4">
+                                {isEn ? "First setup is 3 steps." : "初回設定は3ステップです。"}
+                            </h3>
+                            <ol className="space-y-3 text-sm text-[#5A4030] leading-relaxed">
+                                {(isEn ? [
+                                    ['Install on Windows', 'Start with your own Windows PC.'],
+                                    ['Allow Google Drive', 'Used only to pass notes between your PC and iPhone.'],
+                                    ['Open on iPhone', 'Add to Home Screen, then allow notifications.'],
+                                ] : [
+                                    ['Windowsに入れる', 'まずは自分のWindows PCで使い始めます。'],
+                                    ['Google Driveを許可する', 'PCとiPhoneの付箋受け渡しにだけ使います。'],
+                                    ['iPhoneで開く', 'ホーム画面に追加し、通知を許可します。'],
+                                ]).map(([title, text], index) => (
+                                    <li key={title} className="flex gap-3">
+                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#5C7A3E] text-sm font-bold text-[#F5EDD8]">
+                                            {index + 1}
+                                        </span>
+                                        <span>
+                                            <span className="font-bold text-[#2C1F0E]">{title}</span>
+                                            <br />
+                                            {text}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
+
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-1 gap-3">
+                            {(isEn ? [
+                                ['Your data stays with you', 'Notes are stored on your PC and, for sync, your own Google Drive.'],
+                                ['Source available', 'You can check the project on GitHub before installing.'],
+                                ['Company rules matter', 'Use it in your own environment. Do not connect workplace data to a private device if your company forbids it.'],
+                            ] : [
+                                ['データはあなたの手元に', '付箋はPCと、同期する場合は自分のGoogle Driveに保存します。'],
+                                ['中身を確認できます', 'インストール前にGitHubでソースとリリースを確認できます。'],
+                                ['会社ルールは守ってください', '会社で私物iPhone連携が禁止されている場合は、個人の環境で使ってください。'],
+                            ]).map(([title, text]) => (
+                                <div
+                                    key={title}
+                                    className="rounded-xl border border-[#C8B89A]/80 bg-[#F7F0E2]/80 p-4 text-sm text-[#5A4030]"
+                                >
+                                    <p className="font-bold text-[#2C1F0E] mb-1">{title}</p>
+                                    <p className="leading-relaxed">{text}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* ==============================
                 速さの証拠（実測動画）セクション
             ============================== */}
             <section className="py-20 px-6" style={{ backgroundColor: '#E2D7C3' }}>
@@ -550,6 +670,7 @@ export default function LandingPage() {
                                 loop
                                 playsInline
                                 preload="metadata"
+                                poster="/screenshots/ScreenShot_OreNoFusen.png"
                                 className="w-full h-auto block"
                             >
                                 <source src="/promo/speed-proof.mp4" type="video/mp4" />
@@ -600,13 +721,13 @@ export default function LandingPage() {
                     <div className="text-center mb-10">
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
                             {isEn
-                                ? <>Between <span className="text-[#5C7A3E]">Sticky Notes</span> and <span className="text-[#5C7A3E]">Excel</span>.</>
-                                : <><span className="text-[#5C7A3E]">Sticky Notes</span> と <span className="text-[#5C7A3E]">Excel</span> の、あいだ。</>}
+                                ? <>Why not just <span className="text-[#5C7A3E]">Sticky Notes</span> or <span className="text-[#5C7A3E]">Excel</span>?</>
+                                : <><span className="text-[#5C7A3E]">Sticky Notes</span> でも <span className="text-[#5C7A3E]">Excel</span> でもない理由。</>}
                         </h2>
                         <p className="text-[#8A7055] max-w-2xl mx-auto leading-relaxed">
                             {isEn
-                                ? <>Sticky Notes is fast — but you can&apos;t draw on a picture. Excel can — but takes ages to open.<br className="hidden sm:inline" /> The gap right between the two is where 俺の付箋 sits.</>
-                                : <>Sticky Notes は速いが、画像に書き込めない。Excel は書き込めるが、起動が遅い。<br className="hidden sm:inline" />その隙間に座っているのが、俺の付箋です。</>}
+                                ? <>Sticky Notes is fast, but too limited. Excel is flexible, but too heavy.<br className="hidden sm:inline" /> OreNoFusen is for the small notes you want to keep visible and carry to iPhone.</>
+                                : <>Sticky Notes は速いが、できることが少ない。Excel は自由だが、ちょっと重い。<br className="hidden sm:inline" />俺の付箋は、見える場所に貼って、必要ならiPhoneでも見るための道具です。</>}
                         </p>
                     </div>
 
@@ -746,9 +867,9 @@ export default function LandingPage() {
                         {(isEn ? [
                             {
                                 emoji: '🖥️',
-                                scene: 'Working on PC',
-                                title: 'When an idea strikes at work',
-                                desc: 'Write on a desktop sticky note. It reaches your iPhone instantly.',
+                                scene: 'Personal PC',
+                                title: 'When something comes to mind at home',
+                                desc: 'Write it on your Windows sticky note. Check it later from your iPhone.',
                                 color: '#EDD87A',
                                 topColor: '#D9C060',
                                 textColor: '#3A2C00',
@@ -777,9 +898,9 @@ export default function LandingPage() {
                         ] : [
                             {
                                 emoji: '🖥️',
-                                scene: 'PC作業中',
-                                title: '仕事中にふと思ったら',
-                                desc: 'デスクトップの付箋に書く。気づいたらiPhoneに届いてる。',
+                                scene: '自宅PC',
+                                title: '家のPCでふと思ったら',
+                                desc: 'Windowsの付箋に書く。あとでiPhoneでも見られる。',
                                 color: '#EDD87A',
                                 topColor: '#D9C060',
                                 textColor: '#3A2C00',
@@ -860,9 +981,9 @@ export default function LandingPage() {
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-10">
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
-                            {isEn ? "Try writing just one line." : "まず1行、書いてみてください"}
+                            {isEn ? "Try the PC to iPhone flow." : "PCからiPhoneへ送る感じを試せます。"}
                         </h2>
-                        <p className="text-[#8A7055]">{isEn ? "No download required. Try it here." : "ダウンロード不要。ここで体験できます。"}</p>
+                        <p className="text-[#8A7055]">{isEn ? "No download required. Write once and see how a note moves." : "ダウンロード不要。1行書くと、付箋がiPhone側へ届くイメージを見られます。"}</p>
                     </div>
 
                     <div className="flex flex-col lg:flex-row items-start gap-8">
@@ -870,7 +991,7 @@ export default function LandingPage() {
                         <div className="w-full lg:w-80 flex-shrink-0">
                             <div className="bg-white/80 p-5 sm:p-6 rounded-2xl shadow-lg border border-[#C8B89A]/80 backdrop-blur-md">
                                 <label className="block text-sm font-bold text-[#4A6730] mb-3 flex items-center gap-2">
-                                    <span className="text-lg">💡</span> {isEn ? "Write your thoughts" : "思ったことを書く"}
+                                    <span className="text-lg">💡</span> {isEn ? "Write on Windows" : "Windows側で書く"}
                                 </label>
                                 <div className="relative">
                                     <input
@@ -879,7 +1000,7 @@ export default function LandingPage() {
                                         value={inputValue}
                                         onChange={(e) => setInputValue(e.target.value)}
                                         onKeyDown={handleDemoKeyDown}
-                                        placeholder={isEn ? "Write something here..." : "例：今夜はカレー（玉ねぎ忘れない！）"}
+                                        placeholder={isEn ? "Recipe idea, shopping list..." : "例：今夜はカレー（玉ねぎ忘れない！）"}
                                         className="w-full text-base py-4 pl-4 pr-28 bg-[#FDFBF7] border-2 border-[#8BAF7C] rounded-xl focus:outline-none focus:border-[#5C7A3E] focus:ring-4 focus:ring-[#8BAF7C]/30 transition-all font-medium text-[#2C1F0E] placeholder:text-[#A89878] shadow-inner"
                                         autoComplete="off"
                                     />
@@ -887,7 +1008,7 @@ export default function LandingPage() {
                                         onClick={addDemoNote}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-[#5C7A3E] bg-[#F4F9F1] hover:bg-[#E8F0E4] px-3 py-2 rounded-lg border-2 border-[#8BAF7C]/60 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95"
                                     >
-                                        {isEn ? "Stick ⏎" : "貼る ⏎"}
+                                        {isEn ? "Send ⏎" : "送る ⏎"}
                                     </button>
                                 </div>
                                 <p className="text-xs text-[#A89878] mt-2 text-right">{isEn ? "Press Enter to stick" : "Enterでも貼れます"}</p>
@@ -900,6 +1021,13 @@ export default function LandingPage() {
                                 className="relative w-full rounded-2xl border border-[#C8B89A]/60 shadow-inner overflow-hidden"
                                 style={{ backgroundColor: '#D8CEBA', minHeight: '280px' }}
                             >
+                                <div className="absolute left-4 top-4 rounded-full bg-white/70 px-3 py-1 text-xs font-bold text-[#5C7A3E] border border-[#C8B89A]/70">
+                                    {isEn ? "Windows sticky note" : "Windowsの付箋"}
+                                </div>
+                                <div className="absolute right-4 top-4 rounded-full bg-white/70 px-3 py-1 text-xs font-bold text-[#5C7A3E] border border-[#C8B89A]/70">
+                                    {isEn ? "iPhone view" : "iPhoneでも見る"}
+                                </div>
+
                                 {/* 付箋 */}
                                 {demoNotes.map((note, idx) => (
                                     <div
@@ -923,11 +1051,35 @@ export default function LandingPage() {
                                     </div>
                                 ))}
 
+                                {demoNotes.slice(0, 3).map((note, idx) => (
+                                    <div
+                                        key={`iphone-${note.id}`}
+                                        className="absolute right-5 rounded-xl border-4 border-[#1C1C1E] bg-[#F5F0E8] px-3 py-3 shadow-lg"
+                                        style={{
+                                            top: `${25 + idx * 20}%`,
+                                            width: 120,
+                                            minHeight: 72,
+                                            animation: 'demoPopIn 0.35s ease-out forwards',
+                                        }}
+                                    >
+                                        <p className="text-[9px] font-bold text-[#5C4430] mb-2">
+                                            {isEn ? "FUSEN" : "俺の付箋"}
+                                        </p>
+                                        <div
+                                            className="rounded-sm px-2 py-1.5 text-[10px] font-semibold text-[#2C1F0E]"
+                                            style={{ backgroundColor: note.color }}
+                                        >
+                                            {note.text}
+                                        </div>
+                                    </div>
+                                ))}
+
                                 {/* 初期ガイド */}
                                 <div className={`absolute inset-0 transition-opacity duration-700 ${demoNotes.length > 0 ? 'opacity-0 pointer-events-none' : 'opacity-100 flex items-center justify-center'}`}>
                                     <div className="text-center text-[#8A7055] px-4">
                                         <div className="text-4xl mb-3 animate-bounce">✨</div>
-                                        <p className="font-bold">{isEn ? "✨ Write on the left and hit Enter!" : "左の入力欄に書いてEnter！"}</p>
+                                        <p className="font-bold">{isEn ? "Write on the left and hit Enter." : "左の入力欄に書いてEnter。"}</p>
+                                        <p className="text-sm mt-2">{isEn ? "A note appears as if it moved to iPhone." : "付箋がiPhone側へ届くイメージで表示されます。"}</p>
                                     </div>
                                 </div>
                             </div>
@@ -999,8 +1151,8 @@ export default function LandingPage() {
                                 topColor: '#D9C060',
                                 rotation: '-rotate-1',
                                 emoji: '🔗',
-                                title: 'Connect Win ↔ iPhone',
-                                text: 'Notes written on PC reach iPhone. Notes written on iPhone stay on PC. The experience you envied from Apple Notes.',
+                                title: 'Connect your Windows PC ↔ iPhone',
+                                text: 'Notes written on your own PC can be checked on your iPhone. Notes written on iPhone stay on your PC too.',
                                 textColor: '#3A2C00',
                             },
                             {
@@ -1027,8 +1179,8 @@ export default function LandingPage() {
                                 topColor: '#D9C060',
                                 rotation: '-rotate-1',
                                 emoji: '🔗',
-                                title: 'Win ↔ iPhone で繋がる',
-                                text: 'PCで書いたメモがiPhoneに届く。iPhoneで書いたメモがPCに残る。Appleメモが羨ましかった、あのやつです。',
+                                title: '自分のWin ↔ iPhoneで繋がる',
+                                text: '自分のPCで書いたメモをiPhoneでも見られる。iPhoneで書いたメモもPCに残る。Appleメモが羨ましかった、あのやつです。',
                                 textColor: '#3A2C00',
                             },
                             {
@@ -1210,6 +1362,7 @@ export default function LandingPage() {
                                 controls
                                 loop
                                 playsInline
+                                poster="/promo/char-sticky.png"
                                 className="w-full h-full block"
                                 style={{ objectFit: 'cover' }}
                             >
