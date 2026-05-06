@@ -977,9 +977,11 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
             const { invoke } = await import('@tauri-apps/api/core')
             const account = await invoke<GoogleAccount>('fusen_get_google_account')
             setPcAccount(account)
+            return account
         } catch (e) {
             console.error('[google-account]', e)
             setPcAccount(null)
+            return null
         }
     }
 
@@ -1001,18 +1003,19 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
         const check = async () => {
             try {
                 const { invoke } = await import('@tauri-apps/api/core')
-                const ok = await invoke<boolean>('fusen_check_pro_setup')
-                setStatus(ok ? 'connected' : 'disconnected')
-                if (ok) {
-                    await invoke('fusen_ensure_push_keys')
-                    await loadPcAccount()
-                    await loadDevices()
-                } else {
-                    setPcAccount(null)
+                const account = await loadPcAccount()
+                if (!account?.emailAddress) {
+                    setStatus('disconnected')
+                    setDevices([])
+                    return
                 }
+                setStatus('connected')
+                await invoke('fusen_ensure_push_keys')
+                await loadDevices()
             } catch {
                 setStatus('disconnected')
                 setPcAccount(null)
+                setDevices([])
             }
         }
         check()
@@ -1024,16 +1027,11 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
         try {
             const { invoke } = await import('@tauri-apps/api/core')
             await invoke('fusen_oauth_connect')
-            const ok = await invoke<boolean>('fusen_check_pro_setup')
-            setStatus(ok ? 'connected' : 'disconnected')
-            if (ok) {
-                await invoke('fusen_ensure_push_keys')
-                await loadPcAccount()
-                await loadDevices()
-            } else {
-                setPcAccount(null)
-            }
-            if (!ok) setErrorMsg('接続しましたが、Googleドライブの確認がまだ完了していません。少し待ってから再度確認してください。')
+            await invoke('fusen_ensure_push_keys')
+            const account = await loadPcAccount()
+            if (!account?.emailAddress) throw new Error('Googleアカウント情報を取得できませんでした')
+            await loadDevices()
+            setStatus('connected')
         } catch (e: unknown) {
             setErrorMsg('接続に失敗しました: ' + String(e))
             setStatus('disconnected')
@@ -1184,6 +1182,58 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 </div>
             </div>
 
+            {/* --- Google Drive接続パネル --- */}
+            <div className="rounded-lg border p-6 space-y-4">
+                <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-800">Googleドライブ接続</h3>
+                    {iphoneDriveDisconnected && (
+                        <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" title="Driveに接続されていません" />
+                    )}
+                </div>
+                <p className="text-sm text-gray-500">PCとiPhoneのデータ中継にGoogleドライブを使用します。最初にこのPC側の接続を完了してください。</p>
+
+                {status === 'loading' && (
+                    <p className="text-sm text-gray-400">確認中...</p>
+                )}
+
+                {status === 'connected' && (
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                            <span className="text-green-600 font-semibold">✅ 接続済み</span>
+                            <Button variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting}>
+                                再接続
+                            </Button>
+                        </div>
+                        <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
+                            <div className="text-xs font-medium text-gray-500">PC側 Googleアカウント</div>
+                            <div className="mt-1 flex items-center gap-2 text-sm text-gray-800">
+                                {pcAccount?.photoLink && (
+                                    <img src={pcAccount.photoLink} alt="" className="h-5 w-5 rounded-full" />
+                                )}
+                                <span className="font-medium">{pcAccount?.emailAddress ?? '取得中...'}</span>
+                                {pcAccount?.displayName && (
+                                    <span className="text-xs text-gray-400">{pcAccount.displayName}</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {status === 'disconnected' && (
+                    <Button onClick={handleConnect} disabled={isConnecting}>
+                        {isConnecting ? (
+                            <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />接続中...</>
+                        ) : (
+                            <><Smartphone className="mr-2 h-4 w-4" />Googleドライブに接続</>
+                        )}
+                    </Button>
+                )}
+
+                {errorMsg && (
+                    <p className="text-sm text-amber-600 bg-amber-50 rounded p-3">{errorMsg}</p>
+                )}
+            </div>
+
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
                 <h3 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
                     <Smartphone className="h-4 w-4 text-slate-500" />
@@ -1232,69 +1282,35 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 </div>
             </div>
 
-            {/* --- Google Drive接続パネル --- */}
-            <div className="rounded-lg border p-6 space-y-4">
-                <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-800">Googleドライブ接続</h3>
-                    {iphoneDriveDisconnected && (
-                        <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" title="Driveに接続されていません" />
-                    )}
-                </div>
-                <p className="text-sm text-gray-500">PCとiPhoneのデータ中継にGoogleドライブを使用します。</p>
-
-                {status === 'loading' && (
-                    <p className="text-sm text-gray-400">確認中...</p>
-                )}
-
-                {status === 'connected' && (
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                            <span className="text-green-600 font-semibold">✅ 接続済み</span>
-                            <Button variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting}>
-                                再接続
-                            </Button>
-                        </div>
-                        <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
-                            <div className="text-xs font-medium text-gray-500">PC側 Googleアカウント</div>
-                            <div className="mt-1 flex items-center gap-2 text-sm text-gray-800">
-                                {pcAccount?.photoLink && (
-                                    <img src={pcAccount.photoLink} alt="" className="h-5 w-5 rounded-full" />
-                                )}
-                                <span className="font-medium">{pcAccount?.emailAddress ?? '取得中...'}</span>
-                                {pcAccount?.displayName && (
-                                    <span className="text-xs text-gray-400">{pcAccount.displayName}</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {status === 'disconnected' && (
-                    <Button onClick={handleConnect} disabled={isConnecting}>
-                        {isConnecting ? (
-                            <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />接続中...</>
-                        ) : (
-                            <><Smartphone className="mr-2 h-4 w-4" />Googleドライブに接続</>
-                        )}
-                    </Button>
-                )}
-
-                {errorMsg && (
-                    <p className="text-sm text-amber-600 bg-amber-50 rounded p-3">{errorMsg}</p>
-                )}
-            </div>
-
             {status === 'connected' && (
-                <div className={`rounded-lg border p-6 ${hasAccountMismatch ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
-                    <p className={`text-sm font-medium ${hasAccountMismatch ? 'text-amber-700' : 'text-green-700'}`}>
-                        {hasAccountMismatch ? '⚠ PCとiPhoneのGoogleアカウントが違います' : '✅ iPhoneへの送信が有効です'}
+                <div className={`rounded-lg border p-6 ${
+                    hasAccountMismatch
+                        ? 'border-amber-200 bg-amber-50'
+                        : accountsReady
+                            ? 'border-green-200 bg-green-50'
+                            : 'border-blue-200 bg-blue-50'
+                }`}>
+                    <p className={`text-sm font-medium ${
+                        hasAccountMismatch
+                            ? 'text-amber-700'
+                            : accountsReady
+                                ? 'text-green-700'
+                                : 'text-blue-700'
+                    }`}>
+                        {hasAccountMismatch ? '⚠ PCとiPhoneのGoogleアカウントが違います' : accountsReady ? '✅ iPhoneへの送信が有効です' : '✅ PC側の準備が完了しました'}
                     </p>
-                    <p className={`text-sm mt-1 ${hasAccountMismatch ? 'text-amber-700' : 'text-green-600'}`}>
+                    <p className={`text-sm mt-1 ${
+                        hasAccountMismatch
+                            ? 'text-amber-700'
+                            : accountsReady
+                                ? 'text-green-600'
+                                : 'text-blue-700'
+                    }`}>
                         {hasAccountMismatch
                             ? '同じGoogleアカウントで再接続してください。違うDriveを見ているため、送信に失敗します。'
-                            : hasIphoneAccountInfo
+                            : accountsReady
                                 ? 'PCとiPhoneは同じGoogleアカウントで接続されています。'
-                                : '付箋を右クリック →「iPhoneに送る」で送信できます。iPhone側アカウントは、ホーム画面の「俺の付箋」を開くと表示されます。'}
+                                : '次にiPhone版を開き、ホーム画面に追加してからGoogleドライブ接続と通知許可を完了してください。'}
                     </p>
                 </div>
             )}
@@ -1394,9 +1410,9 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 <div className="rounded-lg border p-6 space-y-2 bg-gray-50">
                     <h3 className="font-semibold text-gray-700 text-sm">セットアップ手順</h3>
                     <ol className="text-sm text-gray-500 space-y-1 list-decimal list-inside">
-                        <li>上のQRコードをiPhoneのカメラで読み取る（またはURLをコピー）</li>
-                        <li>SafariでiPhone版を開き「ホーム画面に追加」</li>
                         <li>上の「Googleドライブに接続」ボタンをクリックし、Googleアカウントにログイン</li>
+                        <li>QRコードをiPhoneのカメラで読み取る（またはURLをコピー）</li>
+                        <li>SafariでiPhone版を開き「ホーム画面に追加」</li>
                         <li>iPhone版でもGoogleアカウントにログインしてセットアップを完了</li>
                         <li>付箋を右クリック →「iPhoneに送る」</li>
                     </ol>
