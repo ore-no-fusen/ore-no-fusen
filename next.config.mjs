@@ -25,6 +25,22 @@ const nextConfig = {
     unoptimized: true,
   },
   staticPageGenerationTimeout: 300, // 5分に延長
+  // Vercel配信時のみ '/' を LP (/landing) として配信する。
+  // - 本番Tauriビルド (IS_TAURI_BUILD=true) では output:'export' の都合で rewrites は無視されるが、念のため明示的に空にする。
+  // - Tauri dev (TAURI_DEV=1) では同じ dev サーバを Tauri が読みに行くため、リライトを無効化してアプリ画面を返す。
+  // beforeFiles を使うことで、ファイルシステム上の '/' (= app/page.tsx = Tauri アプリ) より先に書き換える。
+  async rewrites() {
+    const isTauriContext =
+      process.env.IS_TAURI_BUILD === 'true' || process.env.TAURI_DEV === '1';
+    if (isTauriContext) return { beforeFiles: [], afterFiles: [], fallback: [] };
+    return {
+      beforeFiles: [
+        { source: '/', destination: '/landing' },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
 };
 
 const pwaConfig = withPWA({

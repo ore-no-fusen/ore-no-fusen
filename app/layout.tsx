@@ -15,10 +15,44 @@ import "./globals.css";
 import RegisterPWA from "./RegisterPWA";
 import { Analytics } from "@vercel/analytics/next";
 
+const SITE_URL = "https://ore-no-fusen.vercel.app";
+const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
+
 export const metadata: Metadata = {
-  title: "俺の付箋",
-  description: "Obsidian VaultのMarkdownを付箋UIで表示",
+  metadataBase: new URL(SITE_URL),
+  title: "俺の付箋 — Win+iPhone を繋ぐ、軽い付箋アプリ",
+  description:
+    "PCで書いて、iPhoneへ届く。iPhoneで書いて、PCに残る。Ctrl+N で 0.3 秒起動、無料、データはあなたの手元（PC＋自分の Google Drive）に。",
   manifest: "/manifest.webmanifest",
+  openGraph: {
+    type: "website",
+    url: SITE_URL,
+    siteName: "俺の付箋",
+    title: "俺の付箋 — Win+iPhone を繋ぐ、軽い付箋アプリ",
+    description:
+      "PCで書いて、iPhoneへ届く。Ctrl+N で 0.3 秒起動。無料・ローカル保存。",
+    images: [
+      {
+        url: OG_IMAGE,
+        width: 1200,
+        height: 800,
+        alt: "俺の付箋のスクリーンショット",
+      },
+    ],
+    locale: "ja_JP",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@uchikiman",
+    creator: "@uchikiman",
+    title: "俺の付箋 — Win+iPhone を繋ぐ、軽い付箋アプリ",
+    description:
+      "PCで書いて、iPhoneへ届く。Ctrl+N で 0.3 秒起動。無料・ローカル保存。",
+    images: [OG_IMAGE],
+  },
+  alternates: {
+    canonical: SITE_URL,
+  },
 };
 
 export const viewport: Viewport = {

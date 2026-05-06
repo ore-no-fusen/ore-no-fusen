@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.0 / 2026-04-19
+設計書 v1.2 / 2026-05-06
 </p>
 
 
@@ -43,8 +43,8 @@ graph LR
     end
 
     PWA -->|"ログイン・トークン更新を依頼"| Vercel
-    Vercel -->|"client_secretを使って<br>Googleに認証を依頼"| OAuth
-    OAuth -.->|"access_token（Drive操作許可証）"| PWA
+    Vercel -->|"client_secretを使って<br>トークン交換を依頼"| OAuth
+    OAuth -.->|"access_token<br>（Drive操作の短時間許可証）"| PWA
 
     PWA <-->|"ノート・画像ファイル"| Drive
     SW <-->|"ノート取得・削除"| Drive
@@ -68,8 +68,8 @@ graph LR
 </table>
 <table class="module-table">
   <tr><th>No</th><th>登場人物</th><th>一言で言うと</th><th>何のために使うか</th></tr>
-  <tr><td>5</td><td><strong>5⃣ 🌐 Vercel</strong></td><td>開発者が置いた Web サーバー</td><td>iPhone PWA を配信。<code>client_secret</code> をブラウザに渡さず保護するための認証 API を置く</td></tr>
-  <tr><td>6</td><td><strong>6⃣ 🔑 Google OAuth2</strong></td><td>Drive の鍵を発行する仕組み</td><td>ユーザーが自分の Drive を読み書きするための <code>access_token</code> を取得する</td></tr>
+  <tr><td>5</td><td><strong>5⃣ 🌐 Vercel</strong></td><td>開発者が置いた Web サーバー</td><td>iPhone PWA を配信。開発者が守る <code>client_secret</code> を iPhone に入れず、Google OAuth のトークン交換・更新だけを行う</td></tr>
+  <tr><td>6</td><td><strong>6⃣ 🔑 Google OAuth2</strong></td><td>Drive 操作の許可を受け取る仕組み</td><td>ユーザーが Google にログインし、「俺の付箋が Drive のアプリ用ファイルを扱ってよい」と許可する</td></tr>
   <tr><td>7</td><td><strong>7⃣ 📡 APNs / FCM</strong></td><td>通知配信サーバー</td><td>PC からの「通知してください」を受け取り iPhone に届ける。APNs は iPhone/Mac、FCM は Chrome/Android</td></tr>
 </table>
 </div>
@@ -86,37 +86,37 @@ PCアプリ・iPhone PWA・共有インフラの3層に分けて使用技術を�
   <div>
     <div style="font-size:13px;font-weight:800;margin-bottom:8px;">🖥 PC アプリ</div>
     <table class="module-table">
-      <tr><th>領域</th><th>技術・役割</th></tr>
-      <tr><td>フレームワーク</td><td>Tauri v2（WebView + Rust）</td></tr>
-      <tr><td>UI</td><td>Next.js 14 / React 18 / TypeScript / Tailwind</td></tr>
-      <tr><td>エディタ</td><td>CodeMirror 6（Markdown ハイライト・検索）</td></tr>
-      <tr><td>バックエンド</td><td>Rust（AppState・ファイル I/O・Win32 API）</td></tr>
-      <tr><td>データ保存</td><td>ファイルシステム（JSON / Markdown）</td></tr>
-      <tr><td>テスト</td><td>Vitest（ユニット）/ Playwright（E2E）</td></tr>
+      <tr><th style="width:32px">No</th><th>領域</th><th>技術・役割</th></tr>
+      <tr><td>1</td><td>フレームワーク</td><td>Tauri v2（WebView + Rust）</td></tr>
+      <tr><td>2</td><td>UI</td><td>Next.js 14 / React 18 / TypeScript / Tailwind</td></tr>
+      <tr><td>3</td><td>エディタ</td><td>CodeMirror 6（Markdown ハイライト・検索）</td></tr>
+      <tr><td>4</td><td>バックエンド</td><td>Rust（AppState・ファイル I/O・Win32 API）</td></tr>
+      <tr><td>5</td><td>データ保存</td><td>ファイルシステム（JSON / Markdown）</td></tr>
+      <tr><td>6</td><td>テスト</td><td>Vitest（ユニット）/ Playwright（E2E）</td></tr>
     </table>
   </div>
 
   <div>
     <div style="font-size:13px;font-weight:800;margin-bottom:8px;">📱 iPhone PWA</div>
     <table class="module-table">
-      <tr><th>領域</th><th>技術・役割</th></tr>
-      <tr><td>ページ</td><td>Next.js 14 App Router（app/viewer/page.tsx）</td></tr>
-      <tr><td>配信</td><td>Vercel（API Routes も同居）</td></tr>
-      <tr><td>バックグラウンド</td><td>Service Worker（worker/index.js）</td></tr>
-      <tr><td>ローカル DB</td><td>IndexedDB（fusen-drafts）</td></tr>
-      <tr><td>認証</td><td>Google OAuth2（Vercel API 経由）</td></tr>
-      <tr><td>通知</td><td>Web Push / APNs / FCM</td></tr>
+      <tr><th style="width:32px">No</th><th>領域</th><th>技術・役割</th></tr>
+      <tr><td>1</td><td>ページ</td><td>Next.js 14 App Router（app/viewer/page.tsx）</td></tr>
+      <tr><td>2</td><td>配信</td><td>Vercel（API Routes も同居）</td></tr>
+      <tr><td>3</td><td>バックグラウンド</td><td>Service Worker（worker/index.js）</td></tr>
+      <tr><td>4</td><td>ローカル DB</td><td>IndexedDB（fusen-drafts）</td></tr>
+      <tr><td>5</td><td>認証</td><td>Google OAuth2（Vercel API 経由）</td></tr>
+      <tr><td>6</td><td>通知</td><td>Web Push / APNs / FCM</td></tr>
     </table>
   </div>
 
   <div>
     <div style="font-size:13px;font-weight:800;margin-bottom:8px;">🌐 共有インフラ</div>
     <table class="module-table">
-      <tr><th>領域</th><th>技術・役割</th></tr>
-      <tr><td>ホスティング</td><td>Vercel（PWA 配信・OAuth2 API）</td></tr>
-      <tr><td>データ中継</td><td>Google Drive API（ユーザー所有）</td></tr>
-      <tr><td>通知基盤</td><td>APNs / FCM（Apple / Google 運営）</td></tr>
-      <tr><td>CI / CD</td><td>GitHub Actions（ビルド・Winget 自動リリース）</td></tr>
+      <tr><th style="width:32px">No</th><th>領域</th><th>技術・役割</th></tr>
+      <tr><td>1</td><td>ホスティング</td><td>Vercel（PWA 配信・OAuth2 API）</td></tr>
+      <tr><td>2</td><td>データ中継</td><td>Google Drive API（ユーザー所有）</td></tr>
+      <tr><td>3</td><td>通知基盤</td><td>APNs / FCM（Apple / Google 運営）</td></tr>
+      <tr><td>4</td><td>CI / CD</td><td>GitHub Actions（ビルド・Winget 自動リリース）</td></tr>
     </table>
   </div>
 
@@ -172,21 +172,24 @@ graph LR
 
 ## 4 なぜ Vercel が必要か
 
-Google OAuth2 の <code>client_secret</code> を安全に保護するためにVercelが必要な理由を説明します。
+この節は、主に開発者・保守担当向けです。Google OAuth2 の <code>client_secret</code> を iPhone に入れず、Vercel で扱う理由を説明します。
 
-**守っている対象：開発者（アプリ作者）のアプリ自体。** ユーザーの秘密情報ではない。
+**守っている対象：開発者（アプリ作者）が Google に登録した「俺の付箋アプリ」そのもの。** ユーザーに守ってもらう値ではありません。
 
-<code>client_secret</code> は開発者が Google Cloud Console で発行した「このアプリが本物であることを証明する鍵」。漏れると開発者のアプリが停止・悪用されるリスクがある。iPhone のコードに埋め込むと Safari DevTools で誰でも読めてしまう。
+ここでいう <code>client</code> は、ユーザーの iPhone や PC のことではなく、Google Cloud Console に登録した「俺の付箋アプリ」のこと。
+<code>client_id</code> は Google がそのアプリを見分けるための公開ID、<code>client_secret</code> はそのアプリが本物であることを Google に示すための秘密値。
+
+<code>client_secret</code> は開発者が Google Cloud Console で発行した「このアプリが本物であることを示す秘密値」。漏れると、第三者が俺の付箋の OAuth 設定を悪用し、開発者のアプリ名義でトークン交換を試みるリスクがある。iPhone PWA のコードに埋め込むと、端末上で読めてしまう。
 
 <p class="table-caption">表 4-1　client_secret 保護方式の比較</p>
 
 | No | 手法 | `client_secret` の場所 | 問題点・利点 |
 |:---|:---|:---|:---|
-| 1 | ✕ iPhone 直接 | iPhone のコードに埋め込む | Safari DevTools でユーザーが読める → 開発者のアプリが悪用される |
-| 2 | ✔ Vercel 経由 | Vercel の環境変数に置く | iPhone（Safari）には届かない。Vercel のサーバー内だけで使われる |
+| 1 | ✕ iPhone 直接 | iPhone PWA のコードに埋め込む | 端末上で読めてしまうため、開発者のアプリ名義の OAuth 処理を悪用される恐れがある |
+| 2 | ✔ Vercel 経由 | Vercel の環境変数に置く | iPhone には届かない。Vercel のサーバー内で、トークン交換・更新の瞬間だけ使う |
 
 <Note type="warning">
-iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</code> を呼ぶだけ。<code>client_secret</code> は一切 iPhone に渡らない。
+iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</code> を呼ぶだけ。<code>client_secret</code> は iPhone に渡らない。Vercel は付箋本文、添付画像、Drive 中継ファイル、Google Drive 用トークンを保存しない。
 </Note>
 
 ---
@@ -200,5 +203,6 @@ iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</co
 |:---|:---|:---|:---|
 | 1 | 1.0 | 26-04-19 | 設計書を 001/002/003 に再編。本ファイル（001）は全体像を担当。旧 001_ARCHITECTURE_DESIGN・003_SYSTEM_OVERVIEW の該当部分を統合 |
 | 2 | 1.1 | 26-04-24 | システム全体関係図を `graph LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
+| 3 | 1.2 | 26-05-06 | 1 登場人物、2 技術スタック、4 なぜ Vercel が必要かを修正。技術スタック表に No を追加し、OAuth / Vercel の説明を開発者・保守担当向けとして明記。client_secret を誰が何のために守るのか分かる表現へ修正。 |
 
 </div>

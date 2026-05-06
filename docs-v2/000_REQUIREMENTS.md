@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
+v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
 </p>
 
 ---
@@ -1035,7 +1035,7 @@ v2.10 | 2026-04-19 | USDM (Universal Specification Describing Manner)
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-03-03</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;"><strong>Vercel の役割はシークレット保護のみ</strong>: Vercel は Google OAuth2 の <code>client_secret</code> を保護するためだけに存在し、付箋データは保持・参照しない。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;"><strong>Vercel の役割は開発者用シークレット保護とトークン交換のみ</strong>: Vercel は開発者が守る Google OAuth2 の <code>client_secret</code> を iPhone PWA に入れないために使用する。付箋本文、添付画像、Drive 中継ファイル、Google Drive 用トークンは保持・参照しない。</td>
     </tr>
     <tr>
       <td style=" text-align:center;">SPEC-NF-03-04</td>
@@ -1314,7 +1314,7 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
         モバイルでの再ログイン手順が複雑だと、機能そのものが使われなくなるため。また Vercel 無料枠・Google API 制限の範囲内で運用を続けられる設計が必要。
       </td>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-04-01</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;">Google OAuth2 PKCE フローでログインする。<code>client_secret</code> は Vercel API Routes で保護し、iPhone 側には渡さない。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">Google OAuth2 + PKCE でログインする。ユーザーは「俺の付箋が Drive のアプリ用ファイルを扱うこと」を Google に許可する。開発者が守る <code>client_secret</code> は Vercel API Routes でのみ使用し、iPhone 側には渡さない。</td>
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-04-02</td>
@@ -1336,8 +1336,9 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 
 | No | バージョン | 日付 | 変更内容 |
 |:---|:---|:---|:---|
-| 1 | **v2.11** | 26-04-20 | REQ_IP_05「iPhoneロック画面常駐体験」追加 |
-| 2 | v2.10 | 26-04-19 | HTML化・iPhone連携要件追加・ショートカット更新等 |
-| 3 | v2.0 | 26-02-22 | ベータリリース時の初版（Markdown形式） |
+| 1 | **v2.12** | 26-05-06 | 8.3 セキュリティ・プライバシー、9.5 iPhone PWA の認証と持続可能性を修正。OAuth / Vercel の要件説明を見直し、ユーザーが許可するものと開発者が守るものを分けて記載。 |
+| 2 | **v2.11** | 26-04-20 | REQ_IP_05「iPhoneロック画面常駐体験」追加 |
+| 3 | v2.10 | 26-04-19 | HTML化・iPhone連携要件追加・ショートカット更新等 |
+| 4 | v2.0 | 26-02-22 | ベータリリース時の初版（Markdown形式） |
 
 </div>

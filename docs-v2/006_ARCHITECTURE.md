@@ -10,15 +10,15 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.0 / 2026-04-21
+設計書 v1.2 / 2026-05-06
 </p>
 
 ---
 
 ## 1 4+1 View Model について
 
-ソフトウェアアーキテクチャは、単一の図面や視点だけで全体を表現することは困難です。
-**「4+1 View Model」**は、1995年にPhilippe Kruchtenが提唱した設計フレームワークであり、システムを「論理」「プロセス」「開発」「物理」の4つのビューと、それらを統合する「シナリオ」という5つの異なる視点から表現することで、すべての関係者（ユーザー、開発者、SysAdmin）に明確な理解を提供します。
+このドキュメントは、俺の付箋を「ユーザーが見る機能」「裏で動く処理」「開発者が保守するコード」「実際に置かれる場所」「代表的な使い方」の5つの視点で整理します。
+一般的なアーキテクチャ用語を説明することよりも、PC / iPhone / Google Drive / Vercel / Push がどこで関わるかを確認することを目的にします。
 
 <Note type="info">
 本ドキュメントは「俺の付箋」のすべての詳細設計ドキュメント（001〜005）を束ねる**メタアーキテクチャ仕様書**です。各ビューから該当する詳細ドキュメントへとリンクします。
@@ -28,7 +28,7 @@ outline: deep
 
 ## 2 論理ビュー
 
-対象: エンドユーザー、システムアナリスト。システムが提供する機能要素とドメインモデルを定義します。
+対象: ユーザー / 保守担当。システムが提供する機能要素とドメインモデルを定義します。
 
 ### 2.1 コアドメインモデル：付箋（Fusen）
 
@@ -75,12 +75,16 @@ classDiagram
 
 ## 3 プロセスビュー
 
-対象: パフォーマンステスター、アーキテクト。並行処理、同期、IPC（プロセス間通信）、バックグラウンド非同期処理の実行モデルを定義します。
+対象: 開発者 / 保守担当。並行処理、同期、IPC（プロセス間通信）、バックグラウンド非同期処理の実行モデルを定義します。
 
 ### 3.1 非同期メッセージングとイベント駆動処理
 
 本システムは「ポーリング」と「イベント駆動（Push）」を適材適所で組み合わせて並行処理を実現します。
 PC（Tauri）はバックグラウンドスレッドでイベントを監視（`tauri::async_runtime`）し、iPhone（PWA）は Service Worker を通じてブラウザのメインスレッドとは独立したプロセスでデータを受け取ります。
+
+<Note type="info">
+シーケンス図では、<strong>①②③</strong> はユーザーが実施する操作、<strong>❶❷❸</strong> はアプリ・Drive・Push基盤・Service Worker が自動実行する処理を表します。
+</Note>
 
 ```mermaid
 %%{init: {'sequence': {'messageMargin': 8, 'mirrorActors': false, 'height': 24, 'boxMargin': 4, 'noteMargin': 6}}}%%
@@ -93,21 +97,25 @@ sequenceDiagram
     
     rect rgba(59, 130, 246, 0.15)
     Note over PC,IDB: Process 1: イベント駆動型バックグラウンド転送 (PC -> iPhone)
-    PC->>Drive: 1. async write notes_to_iphone.json
-    PC->>Push: 2. fire Web Push trigger (async)
-    Push-->>SW: 3. wake up Service Worker
-    SW->>Drive: 4. fetch & delete JSON
-    SW->>IDB: 5. transaction write
-    SW-->>SW: 6. self.registration.showNotification
+    PC->>Drive: ❶ notes_to_iphone.json を read-modify-write
+    PC->>Drive: ❷ 添付画像 fusen_img_* をアップロード
+    PC->>Push: ❸ Web Push trigger を送信（async）
+    Push-->>SW: ❹ Service Worker を起床
+    SW->>Drive: ❺ 添付画像を取得
+    SW->>IDB: ❻ transaction write（draft + images）
+    SW->>Drive: ❼ 処理済み item / 画像を削除
+    SW-->>SW: ❽ self.registration.showNotification
     end
 
     rect rgba(34, 197, 94, 0.15)
     Note over PC,Drive: Process 2: ポーリング型受信 (iPhone -> PC)
     loop Every 30 seconds (tokio::time::interval)
-        PC->>Drive: check notes_from_iphone.json
+        PC->>Drive: ❶ notes_from_iphone.json を確認
         alt Found data
-            PC->>PC: emit IPC event to React
-            PC->>Drive: delete file
+            PC->>Drive: ❷ 添付画像をダウンロード
+            PC->>PC: ❸ Vault に .md / assets を保存
+            PC->>PC: ❹ React へ受信イベントを emit
+            PC->>Drive: ❺ 処理済み item / 画像を削除
         end
     end
     end
@@ -122,7 +130,7 @@ sequenceDiagram
 
 ## 4 開発ビュー
 
-対象: 開発者、プログラマー。ソフトウェアモジュールの階層構造、ディレクトリ構成、ライブラリスタックを定義します。
+対象: 開発者。ソフトウェアモジュールの階層構造、ディレクトリ構成、ライブラリスタックを定義します。
 
 ### 4.1 モノレポアーキテクチャ
 
@@ -131,15 +139,17 @@ sequenceDiagram
 <p class="table-caption">表 4.1-1　モノレポアーキテクチャ概要</p>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:4px 0 12px 0;">
 <table class="module-table">
-  <tr><th>ディレクトリ</th><th>責任範囲</th><th>技術スタック</th></tr>
-  <tr><td><code>src-tauri/</code></td><td>PCアプリのコアロジック、OSネイティブAPI（ウィンドウ操作、トレイ）、ローカルファイルI/O</td><td>Rust (tokio, tauri, reqwest)</td></tr>
-  <tr><td><code>app/viewer/</code></td><td>iPhone PWA および Vercel API Routes のエントリーポイント</td><td>Next.js (App Router), React, Google APIs</td></tr>
-  <tr><td><code>app/page.tsx</code> 等</td><td>PCアプリ用のフロントエンド・UIコンポーネント群</td><td>Next.js, Tailwind CSS, CodeMirror</td></tr>
+  <tr><th style="width:32px">No</th><th>ディレクトリ</th><th>責任範囲</th><th>技術スタック</th></tr>
+  <tr><td>1</td><td><code>src-tauri/</code></td><td>PCアプリのコアロジック、OSネイティブAPI（ウィンドウ操作、トレイ）、ローカルファイルI/O</td><td>Rust (tokio, tauri, reqwest)</td></tr>
+  <tr><td>2</td><td><code>app/viewer/</code></td><td>iPhone PWA および Vercel API Routes のエントリーポイント</td><td>Next.js (App Router), React, Google APIs</td></tr>
+  <tr><td>3</td><td><code>app/page.tsx</code> 等</td><td>PCアプリ用のフロントエンド・UIコンポーネント群</td><td>Next.js, Tailwind CSS, CodeMirror</td></tr>
 </table>
 <table class="module-table">
-  <tr><th>ディレクトリ</th><th>責任範囲</th><th>技術スタック</th></tr>
-  <tr><td><code>public/worker/</code></td><td>iPhone バックグラウンド同期と通知処理</td><td>Vanilla JS (Service Worker API), IndexedDB</td></tr>
-  <tr><td><code>.github/workflows/</code></td><td>CI/CD パイプライン（自動ビルド、Winget自動リリース）</td><td>GitHub Actions</td></tr>
+  <tr><th style="width:32px">No</th><th>ディレクトリ</th><th>責任範囲</th><th>技術スタック</th></tr>
+  <tr><td>4</td><td><code>public/worker/</code></td><td>iPhone バックグラウンド同期と通知処理</td><td>Vanilla JS (Service Worker API), IndexedDB</td></tr>
+  <tr><td>5</td><td><code>docs-v2/</code></td><td>設計書、用語集、プライバシーポリシー、利用規約</td><td>VitePress, Markdown</td></tr>
+  <tr><td>6</td><td><code>wiki-temp/</code></td><td>GitHub Wiki 用の一時ドキュメント置き場。公開前の Wiki 原稿やリンク確認に使う</td><td>Markdown, GitHub Wiki</td></tr>
+  <tr><td>7</td><td><code>.github/workflows/</code></td><td>CI/CD パイプライン（自動ビルド、Winget自動リリース）</td><td>GitHub Actions</td></tr>
 </table>
 </div>
 
@@ -151,12 +161,12 @@ sequenceDiagram
 
 ## 5 物理ビュー
 
-対象: インフラエンジニア。システムがデプロイされるハードウェア、ネットワーク、実行コンテキストを定義します。
+対象: 開発者 / 保守担当。システムがデプロイされる場所、ネットワーク、実行コンテキストを定義します。
 
 ### 5.1 ランタイム環境とネットワーク・トポロジー
 
-本システムは中央集権的なデータベースを持たず、**「ユーザーのデバイス（Edge）」**と**「ユーザー所有のパーソナルクラウド（Drive）」**のみで完結するピュアな分散コンピューティングモデルです。
-Vercelは静的ファイルのホスティングおよび一時的な認証プロキシ（OAuth2 Secret の秘匿）のためだけに存在します。
+俺の付箋は、中央のアプリ用データベースを持たない。付箋本文はユーザーの PC、iPhone 連携中の一時ファイルはユーザー自身の Google Drive に置く。
+Vercel は iPhone PWA の配信と、開発者が守る `client_secret` を iPhone に入れず Google OAuth のトークン交換・更新を行うためだけに使う。
 
 ```mermaid
 flowchart LR
@@ -171,27 +181,28 @@ flowchart LR
 
     subgraph "Vendor Infrastructure"
         VERCEL["Vercel Serverless Edge<br>Hosted App"]
+        OAUTH["Google OAuth2<br>Token Endpoint"]
         APNS["Apple Push Notification Service"]
     end
 
     PC <-->|HTTPS API / Polling| DRIVE
     IPHONE <-->|HTTPS API| DRIVE
-    IPHONE -->|Fetch PWA / Auth| VERCEL
+    IPHONE -->|Fetch PWA / Token API| VERCEL
     PC -->|Trigger Push| APNS
     APNS -->|Deliver Push| IPHONE
-    VERCEL -.->|Client Secret| DRIVE
+    VERCEL -.->|client_secret で token 交換| OAUTH
 ```
 <p class="mermaid-caption">図 6-3　物理デプロイトポロジー</p>
 
 <Note type="success">
-<strong>セキュリティ原則:</strong> 開発者が管理するサーバー（Vercel）にはユーザーのメモデータ（Fusen）は一切保存も通過もされません。通信はすべて HTTPS 経由で Google のサーバーへ直接（Peer-to-Cloud）行われます。
+<strong>セキュリティ原則:</strong> 開発者が管理するサーバー（Vercel）にはユーザーのメモ本文、添付画像、Drive 中継ファイル、Google Drive 用トークンを保存しない。Vercel が扱うのは、iPhone PWA の配信と OAuth トークン交換・更新の一時処理だけ。
 </Note>
 
 ---
 
 ## 6 ユースケース（Scenarios）
 
-対象: 全ステークホルダー。4つのビューを実証する代表的なユースケースのシナリオです。
+対象: ユーザー / 開発者 / 保守担当。4つのビューを実証する代表的なユースケースのシナリオです。
 
 ### 6.1 中心シナリオ: 「出先での確認と返信」
 
@@ -199,12 +210,12 @@ flowchart LR
 
 <p class="table-caption">表 6.1-1　中心シナリオ展開</p>
 
-| ステップ | ユーザー視点のシナリオ展開 | アーキテクチャの関与ビュー |
-|:---|:---|:---|
-| **1. PCで入力** | ユーザーがPC上で「買い物リスト」を書き、「iPhoneに送る」ボタンを押す。 | **[Logical]** Fusen オブジェクトの生成<br>**[Development]** RustモジュールによるファイルI/O |
-| **2. クラウド中継** | 数秒以内にノートがクラウドにアップロードされ、通知発火のトリガーが引かれる。 | **[Physical]** Local PC → Google Drive 通信<br>**[Process]** APNs への非同期 Push API 呼び出し |
-| **3. iPhoneで受信** | ユーザーが外出先でiPhoneを見ると、ポケットの中で既に通知（新着ノート）が届いている。 | **[Process]** Service Workerのバックグラウンド起床とDrive取得<br>**[Physical]** Safariサンドボックス内でのIndexedDB保管 |
-| **4. 返信して削除** | iPhoneから「牛乳買ったよ」と追記してPCに送り返し、手元のノートを消す。 | **[Logical]** Viewing/Editing Mode の遷移（PWA）<br>**[Process]** PCの30秒ポーリングによる即時回収と自動削除 |
+| No | ステップ | ユーザー視点のシナリオ展開 | アーキテクチャの関与ビュー |
+|:---|:---|:---|:---|
+| 1 | **PCで入力** | ユーザーがPC上で「買い物リスト」を書き、「iPhoneに送る」ボタンを押す。 | **[Logical]** Fusen オブジェクトの生成<br>**[Development]** RustモジュールによるファイルI/O |
+| 2 | **クラウド中継** | 数秒以内にノートがクラウドにアップロードされ、通知発火のトリガーが引かれる。 | **[Physical]** Local PC → Google Drive 通信<br>**[Process]** APNs への非同期 Push API 呼び出し |
+| 3 | **iPhoneで受信** | ユーザーが外出先でiPhoneを見ると、ポケットの中で既に通知（新着ノート）が届いている。 | **[Process]** Service Workerのバックグラウンド起床とDrive取得<br>**[Physical]** Safariサンドボックス内でのIndexedDB保管 |
+| 4 | **返信して削除** | iPhoneから「牛乳買ったよ」と追記してPCに送り返し、手元のノートを消す。 | **[Logical]** Viewing/Editing Mode の遷移（PWA）<br>**[Process]** PCの30秒ポーリングによる即時回収と自動削除 |
 
 <Note type="info">
 このシナリオをプログラムで自動検証する E2E テストの仕様と結果については、<a href="./004_TEST">004 テスト設計</a> を参照してください。
@@ -221,6 +232,7 @@ flowchart LR
 |:---|:---|:---|:---|
 | 1 | 1.0 | 26-04-21 | 新規作成。4+1 View Model（論理・プロセス・開発・物理・シナリオ）全ビューを整理。 |
 | 2 | 1.1 | 26-04-24 | classDiagram・物理ビュー flowchart を `LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
+| 3 | 1.2 | 26-05-06 | 1 4+1 View Model、4.1 モノレポアーキテクチャ、5.1 物理ビュー、6.1 中心シナリオを修正。各ビューの対象者を明記し、4.1 に `docs-v2/` と `wiki-temp/` を追加。6.1 の表に No を追加。Vercel / Google OAuth の物理トポロジーを修正し、client_secret は Drive ではなく Google OAuth のトークン交換に使うことを明確化。 |
 
 </div>
 

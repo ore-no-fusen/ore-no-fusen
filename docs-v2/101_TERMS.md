@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-利用規約 v1.0 / 2026-05-05
+利用規約 v1.1 / 2026-05-06
 </p>
 
 ---
@@ -59,6 +59,8 @@ https://www.googleapis.com/auth/drive.file
 
 ユーザーが Google Drive 上の同期ファイルを削除、移動、編集した場合、iPhone 連携が正常に動作しなくなることがあります。
 
+ユーザーは、Google Drive の `ore-no-fusen` フォルダや、その中のファイルを第三者に共有・公開しないでください。このフォルダには、送受信中のメモ、添付画像、Push 通知に必要な設定ファイルが入るためです。
+
 ---
 
 ## 5 データ管理
@@ -75,12 +77,14 @@ iPhone 連携を利用する場合、PC と iPhone の間の中継データが�
 
 本アプリは、機能提供のために以下の外部サービスを利用する場合があります。
 
-| サービス | 用途 |
-|:---|:---|
-| Google Drive API | iPhone 連携用ファイルの保存・取得 |
-| Google OAuth | Google Drive 連携の認可 |
-| Vercel | iPhone PWA 配信および OAuth トークン交換 |
-| Apple Push Notification Service / Push サービス | iPhone への通知 |
+<p class="table-caption">表 6-1　利用する外部サービス</p>
+
+| No | サービス | 用途 |
+|:---|:---|:---|
+| 1 | Google Drive API | iPhone 連携用ファイルの保存・取得 |
+| 2 | Google OAuth | Google Drive 連携の認可 |
+| 3 | Vercel | iPhone PWA 配信および OAuth トークン交換 |
+| 4 | Apple Push Notification Service / Push サービス | iPhone への通知 |
 
 外部サービスの停止、仕様変更、障害により、本アプリの一部機能が利用できなくなる場合があります。
 
@@ -118,3 +122,13 @@ iPhone 連携を利用する場合、PC と iPhone の間の中継データが�
 
 - GitHub: https://github.com/ore-no-fusen/ore-no-fusen
 
+---
+
+## 11 変更履歴
+
+<p class="table-caption">表 11-1　変更履歴</p>
+
+| No | バージョン | 日付 | 変更内容 |
+|:---|:---|:---|:---|
+| 1 | 1.0 | 26-05-05 | 新規作成。利用条件、Google Drive 連携、データ管理、外部サービス利用を整理。 |
+| 2 | 1.1 | 26-05-06 | 4 Google Drive 連携、6 外部サービス、11 変更履歴を修正。ユーザー向けの注意として、Google Drive の `ore-no-fusen` フォルダを第三者に共有・公開しないことを追記し、外部サービス表と変更履歴表に表名・No を追加。 |

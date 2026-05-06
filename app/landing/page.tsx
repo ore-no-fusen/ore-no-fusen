@@ -718,7 +718,7 @@ export default function LandingPage() {
                                 rotation: 'rotate-1',
                                 emoji: '⚡',
                                 title: 'Fast. Incredible Fast.',
-                                text: '0.5s startup. Auto-save. Built to never interrupt your thoughts. Stop waiting for Excel to open.',
+                                text: '0.3s startup with Ctrl+N. Auto-save. Built to never interrupt your thoughts. Stop waiting for Excel to open.',
                                 textColor: '#1E3A10',
                             },
                             {
@@ -746,7 +746,7 @@ export default function LandingPage() {
                                 rotation: 'rotate-1',
                                 emoji: '⚡',
                                 title: '速い。とにかく速い。',
-                                text: '起動0.5秒。書いたら自動保存。思考を止めないために作りました。Excelの起動待ち、もうやめませんか。',
+                                text: 'Ctrl+N で 0.3 秒起動。書いたら自動保存。思考を止めないために作りました。Excelの起動待ち、もうやめませんか。',
                                 textColor: '#1E3A10',
                             },
                             {

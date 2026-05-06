@@ -54,7 +54,8 @@
       "PowerShell(Get-Item \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\push_keys.json\" | fl Name, LastWriteTime, Length)",
       "PowerShell(Get-Content \"$env:LOCALAPPDATA\\\\ore-no-fusen\\\\app.log\" -Tail 30)",
       "PowerShell(cd \"d:\\\\Users\\\\uck\\\\Documents\\\\curry-project\\\\ore-no-fusen\" ; $job = Start-Job -ScriptBlock { Set-Location \"d:\\\\Users\\\\uck\\\\Documents\\\\curry-project\\\\ore-no-fusen\"; & npm run dev 2>&1 } ; Start-Sleep 15 ; Receive-Job $job ; Stop-Job $job ; Remove-Job $job)",
-      "PowerShell(netstat -ano)"
+      "PowerShell(netstat -ano)",
+      "WebFetch(domain:ore-no-fusen.vercel.app)"
     ],
     "additionalDirectories": [
       "C:\\Users\\uck\\AppData\\Local\\ore-no-fusen"

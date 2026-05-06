@@ -116,7 +116,7 @@
 .vp-doc td:first-child {
   /* No column */
   text-align: center;
-  width: 40px;
+  width: 28px;
   color: var(--c-text-muted);
 }
 

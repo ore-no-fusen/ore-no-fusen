@@ -23,7 +23,6 @@ import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
-import LandingPage from './landing/page'; // [NEW] Vercel用ランディングページ
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
@@ -1524,19 +1523,6 @@ function OrchestratorContent() {
 }
 
 export default function Home() {
-  const [isWeb, setIsWeb] = useState(false);
-
-  useEffect(() => {
-    // Check if running in a standard web browser (not Tauri)
-    if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__) {
-      setIsWeb(true);
-    }
-  }, []);
-
-  if (isWeb) {
-    return <LandingPage />;
-  }
-
   return (
     <Suspense fallback={<LoadingScreen />}>
       <ErrorBoundary>

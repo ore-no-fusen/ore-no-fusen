@@ -4,7 +4,7 @@
   width: 100%;
 }
 .glossary-table table th:nth-child(1),
-.glossary-table table td:nth-child(1) { width: 36px; white-space: nowrap; }
+.glossary-table table td:nth-child(1) { width: 32px; white-space: nowrap; }
 .glossary-table table th:nth-child(2),
 .glossary-table table td:nth-child(2) { width: 150px; }
 .glossary-table table th:nth-child(4),
@@ -16,7 +16,7 @@
   width: 100%;
 }
 .history-table table th:nth-child(1),
-.history-table table td:nth-child(1) { width: 36px; white-space: nowrap; }
+.history-table table td:nth-child(1) { width: 32px; white-space: nowrap; }
 .history-table table th:nth-child(2),
 .history-table table td:nth-child(2) { width: 82px; white-space: nowrap; }
 .history-table table th:nth-child(3),
@@ -40,6 +40,16 @@
 /* Markdown テーブルをコンテナ幅いっぱいに広げる */
 .vp-doc table {
   width: 100%;
+}
+.vp-doc table th:first-child,
+.vp-doc table td:first-child {
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
 }
 /* 表キャプション直後の要素（table / grid div）は上マージンを詰める */
 .vp-doc .table-caption + table,
@@ -141,6 +151,12 @@
   line-height: 1.4;
   word-break: break-word;
   overflow-wrap: break-word;
+}
+.module-table th:first-child,
+.module-table td:first-child {
+  width: 32px;
+  white-space: nowrap;
+  text-align: center;
 }
 .module-table th code, .module-table td code {
   white-space: nowrap;
