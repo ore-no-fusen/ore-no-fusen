@@ -1048,7 +1048,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
     const hasAccountMismatch = !!pcEmail && registeredDeviceEmails.some((email) => email.toLowerCase() !== pcEmail)
     const hasRegisteredDevice = (devices ?? []).length > 0
     const pcConnected = status === 'connected' && !!pcAccount?.emailAddress
-    const accountsReady = pcConnected && hasIphoneAccountInfo && !hasAccountMismatch
+    const accountsReady = pcConnected && hasRegisteredDevice && !hasAccountMismatch
 
     const setupSteps = [
         {
@@ -1068,9 +1068,9 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
         {
             no: 3,
             title: 'iPhone側でGoogleドライブに接続',
-            detail: hasIphoneAccountInfo ? registeredDeviceEmails[0] : 'iPhoneのホーム画面から「俺の付箋」を開くと確認されます。',
-            done: hasIphoneAccountInfo,
-            status: hasIphoneAccountInfo ? '接続済み' : '未取得',
+            detail: hasIphoneAccountInfo ? registeredDeviceEmails[0] : '通知デバイスが登録済みです。Googleアカウントのメールは未取得ですが、送信できます。',
+            done: hasRegisteredDevice,
+            status: hasRegisteredDevice ? '接続済み' : '未取得',
         },
         {
             no: 4,
@@ -1095,9 +1095,6 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
         }
         if (!hasRegisteredDevice) {
             return '次にiPhoneでQRコードを開き、「俺の付箋」をホーム画面に追加してください。'
-        }
-        if (!hasIphoneAccountInfo) {
-            return 'iPhoneでホーム画面の「俺の付箋」を開き、Googleドライブに接続してください。'
         }
         return '準備完了です。付箋を右クリックして「iPhoneに送る」を押してください。'
     })()
@@ -1309,7 +1306,9 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                         {hasAccountMismatch
                             ? '同じGoogleアカウントで再接続してください。違うDriveを見ているため、送信に失敗します。'
                             : accountsReady
-                                ? 'PCとiPhoneは同じGoogleアカウントで接続されています。'
+                                ? hasIphoneAccountInfo
+                                    ? 'PCとiPhoneは同じGoogleアカウントで接続されています。'
+                                    : '通知デバイスが登録されています。Googleアカウントのメールは未取得ですが、iPhoneへの送信は有効です。'
                                 : '次にiPhone版を開き、ホーム画面に追加してからGoogleドライブ接続と通知許可を完了してください。'}
                     </p>
                 </div>
@@ -1375,7 +1374,7 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                                         </div>
                                         <div className="text-xs text-gray-400 mt-0.5">{formatDate(d.registered_at)}</div>
                                         <div className={`text-xs mt-1 ${pcEmail && d.google_account_email && d.google_account_email.toLowerCase() !== pcEmail ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
-                                            Google: {d.google_account_email ?? '未取得（iPhone版を開くと更新されます）'}
+                                            Google: {d.google_account_email ?? '未取得（送信可）'}
                                             {d.google_account_name && (
                                                 <span className="text-gray-400"> / {d.google_account_name}</span>
                                             )}
