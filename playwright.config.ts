@@ -28,9 +28,9 @@ export default defineConfig({
         },
     ],
     webServer: {
-        command: 'npm run dev -- -p 3002',
+        command: 'npm run dev:tauri',
         url: 'http://localhost:3002',
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer: false,
         timeout: 60000,
     },
 });

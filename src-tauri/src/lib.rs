@@ -1062,7 +1062,7 @@ async fn fusen_set_as_alt_tab_window(
                             let _ = tbl.AddTab(hwnd);
                         }
                         // 最小化ブロックのWndProcを登録（元のProcをHashMapに保存）
-                        let hook_proc = minimize_block_proc as isize;
+                        let hook_proc = minimize_block_proc as *const () as isize;
                         let orig = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
                         if orig != hook_proc {
                             original_wndprocs()

@@ -14,7 +14,7 @@ use p256::ecdh::EphemeralSecret;
 use p256::{PublicKey, EncodedPoint};
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::EncodePrivateKey;
-use aes_gcm::{Aes128Gcm, Key, Nonce};
+use aes_gcm::Aes128Gcm;
 use aes_gcm::aead::{Aead, KeyInit};
 use hkdf::Hkdf;
 use sha2::Sha256;
@@ -63,7 +63,7 @@ pub fn generate_vapid_keys() -> Result<VapidKeys, String> {
 
     let keys = VapidKeys {
         public_key_b64url: URL_SAFE_NO_PAD.encode(public_bytes),
-        private_key_b64url: URL_SAFE_NO_PAD.encode(private_bytes.as_slice()),
+        private_key_b64url: URL_SAFE_NO_PAD.encode(&private_bytes[..]),
         subject: "mailto:ore-no-fusen@example.com".to_string(),
     };
 
@@ -192,7 +192,7 @@ pub fn encrypt_payload(
     info_key.extend_from_slice(&peer_pub_bytes);
     info_key.extend_from_slice(ephemeral_pub_bytes);
 
-    let hk_key = Hkdf::<Sha256>::new(Some(&auth_bytes), shared_secret_bytes.as_slice());
+    let hk_key = Hkdf::<Sha256>::new(Some(&auth_bytes), &shared_secret_bytes[..]);
     let mut prk_key = [0u8; 32];
     hk_key.expand(&info_key, &mut prk_key)
         .map_err(|_| "HKDF expand (key) failed".to_string())?;
@@ -209,15 +209,14 @@ pub fn encrypt_payload(
         .map_err(|_| "HKDF expand (nonce) failed".to_string())?;
 
     // 7. AES-128-GCM 暗号化
-    let key = Key::<Aes128Gcm>::from_slice(&cek);
-    let cipher = Aes128Gcm::new(key);
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let cipher = Aes128Gcm::new_from_slice(&cek)
+        .map_err(|e| format!("AES-GCM key error: {e}"))?;
 
     // padding: plaintext + \x02 (delimiter)
     let mut padded = plaintext.to_vec();
     padded.push(0x02); // RFC 8291 delimiter byte
 
-    let ciphertext = cipher.encrypt(nonce, padded.as_slice())
+    let ciphertext = cipher.encrypt((&nonce_bytes).into(), padded.as_slice())
         .map_err(|e| format!("AES-GCM encrypt error: {e}"))?;
 
     // 8. RFC 8291 ヘッダー構築:

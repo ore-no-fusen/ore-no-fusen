@@ -1567,7 +1567,7 @@ const StickyNote = memo(function StickyNote() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleDeleteNote, resolveCreateFolderPath]);
+    }, [editBodyRef, handleDeleteNote, resolveCreateFolderPath]);
 
     // ============================================================
     // レンダリング
