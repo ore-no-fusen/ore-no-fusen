@@ -86,7 +86,7 @@ export default function LandingPage() {
 
     // インタラクティブデモ用ステート
     const inputRef = useRef<HTMLInputElement>(null);
-    const [demoNotes, setDemoNotes] = useState<{ id: number; text: string; color: string; rotation: number; topPos: number; leftPos: number }[]>([]);
+    const [demoNotes, setDemoNotes] = useState<{ id: number; text: string; color: string; rotation: number; topPos: number; leftPos: number; sentToIphone: boolean }[]>([]);
     const [inputValue, setInputValue] = useState('');
     const demoColors = ['#EDD87A', '#A8C890', '#9DC0D0', '#D4A48A'];
 
@@ -100,10 +100,16 @@ export default function LandingPage() {
             rotation: Math.random() * 8 - 4,
             topPos: 10 + Math.random() * 40,
             leftPos: 10 + Math.random() * 40,
+            sentToIphone: false,
         };
         setDemoNotes((prev) => [newNote, ...prev].slice(0, 5));
         setInputValue('');
         if (inputRef.current) inputRef.current.focus();
+    };
+
+    const sendDemoNoteToIphone = (id: number) => {
+        setDemoNotes((prev) => prev.map((n) => n.id === id ? { ...n, sentToIphone: true } : n));
+        trackEvent('demo_send_to_iphone');
     };
 
     const handleDemoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -981,9 +987,13 @@ export default function LandingPage() {
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-10">
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
-                            {isEn ? "Try the PC to iPhone flow." : "PCからiPhoneへ送る感じを試せます。"}
+                            {isEn ? "Write on Windows, then send to iPhone." : "Windows で書いて、iPhone へ送る。"}
                         </h2>
-                        <p className="text-[#8A7055]">{isEn ? "No download required. Write once and see how a note moves." : "ダウンロード不要。1行書くと、付箋がiPhone側へ届くイメージを見られます。"}</p>
+                        <p className="text-[#8A7055]">
+                            {isEn
+                                ? <>No download required. Press Enter to stick on PC, then tap 📱→ to send. <span className="text-[#A53C2C]">(In the real app: right-click the note → &ldquo;Send to iPhone&rdquo;.)</span></>
+                                : <>ダウンロード不要。Enter で PC に貼り、付箋の 📱→ ボタンで iPhone に送ります。<span className="text-[#A53C2C]">（実アプリでは付箋を右クリック→「iPhoneへ送る」です。）</span></>}
+                        </p>
                     </div>
 
                     <div className="flex flex-col lg:flex-row items-start gap-8">
@@ -1028,7 +1038,7 @@ export default function LandingPage() {
                                     {isEn ? "iPhone view" : "iPhoneでも見る"}
                                 </div>
 
-                                {/* 付箋 */}
+                                {/* 付箋（PC側） */}
                                 {demoNotes.map((note, idx) => (
                                     <div
                                         key={note.id}
@@ -1048,10 +1058,25 @@ export default function LandingPage() {
                                                 {note.text}
                                             </p>
                                         </div>
+                                        {/* iPhone へ送るボタン（実アプリでは右クリック→送る） */}
+                                        {!note.sentToIphone ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => sendDemoNoteToIphone(note.id)}
+                                                title={isEn ? "Send to iPhone (right-click in the real app)" : "iPhoneへ送る（実アプリでは右クリック）"}
+                                                className="absolute -top-2 -right-2 px-2 py-1 rounded-full text-[10px] font-bold bg-[#5C7A3E] text-[#F5EDD8] shadow hover:scale-105 active:scale-95 transition-transform"
+                                            >
+                                                📱→
+                                            </button>
+                                        ) : (
+                                            <div className="absolute -top-2 -right-2 px-2 py-1 rounded-full text-[10px] font-bold bg-[#7A6A50] text-[#F0E0A0] shadow">
+                                                ✓
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
 
-                                {demoNotes.slice(0, 3).map((note, idx) => (
+                                {demoNotes.filter(n => n.sentToIphone).slice(0, 3).map((note, idx) => (
                                     <div
                                         key={`iphone-${note.id}`}
                                         className="absolute right-5 rounded-xl border-4 border-[#1C1C1E] bg-[#F5F0E8] px-3 py-3 shadow-lg"
@@ -1078,8 +1103,8 @@ export default function LandingPage() {
                                 <div className={`absolute inset-0 transition-opacity duration-700 ${demoNotes.length > 0 ? 'opacity-0 pointer-events-none' : 'opacity-100 flex items-center justify-center'}`}>
                                     <div className="text-center text-[#8A7055] px-4">
                                         <div className="text-4xl mb-3 animate-bounce">✨</div>
-                                        <p className="font-bold">{isEn ? "Write on the left and hit Enter." : "左の入力欄に書いてEnter。"}</p>
-                                        <p className="text-sm mt-2">{isEn ? "A note appears as if it moved to iPhone." : "付箋がiPhone側へ届くイメージで表示されます。"}</p>
+                                        <p className="font-bold">{isEn ? "Write on the left, hit Enter." : "左の入力欄に書いて Enter。"}</p>
+                                        <p className="text-sm mt-2">{isEn ? "Then tap 📱→ on the note to send it to iPhone." : "貼った付箋の 📱→ ボタンで iPhone に送れます。"}</p>
                                     </div>
                                 </div>
                             </div>
