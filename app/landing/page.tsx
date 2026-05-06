@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Download, Globe } from 'lucide-react';
+import { Download, Globe, Volume2, VolumeX } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 
 // ジブリ風カラーパレット（維持）
@@ -68,6 +68,21 @@ export default function LandingPage() {
         return () => clearInterval(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [noteIdx]);
+
+    // 速さの証拠動画 - 音声 ON/OFF
+    const speedProofVideoRef = useRef<HTMLVideoElement>(null);
+    const [speedProofMuted, setSpeedProofMuted] = useState(true);
+    const toggleSpeedProofMute = () => {
+        const v = speedProofVideoRef.current;
+        if (!v) return;
+        const next = !speedProofMuted;
+        v.muted = next;
+        // 音を出すタイミングで再生位置を Ctrl+N の少し前(0.5s)に巻き戻す
+        if (!next) v.currentTime = 0.5;
+        v.play().catch(() => { });
+        setSpeedProofMuted(next);
+        trackEvent('speed_proof_unmute');
+    };
 
     // インタラクティブデモ用ステート
     const inputRef = useRef<HTMLInputElement>(null);
@@ -165,7 +180,7 @@ export default function LandingPage() {
                             </div>
 
                             {/* H1 */}
-                            <h1 className="text-4xl sm:text-5xl lg:text-[4.2rem] font-extrabold leading-tight tracking-tight mb-5 text-[#2C1F0E] drop-shadow-sm">
+                            <h1 className="text-4xl sm:text-5xl lg:text-[4.2rem] font-extrabold leading-tight tracking-tight mb-3 text-[#2C1F0E] drop-shadow-sm">
                                 {isEn ? (
                                     <>
                                         The solution for everyone <br />
@@ -178,6 +193,13 @@ export default function LandingPage() {
                                     </>
                                 )}
                             </h1>
+
+                            {/* 機能直球サブヘッドライン */}
+                            <p className="text-base sm:text-lg text-[#5C7A3E] font-bold mb-5">
+                                {isEn
+                                    ? "── A light sticky note app that connects Windows + iPhone."
+                                    : "── Win と iPhone を繋ぐ、軽い付箋アプリ。"}
+                            </p>
 
                             {/* サブコピー */}
                             <p className="text-lg sm:text-xl text-[#6A5540] mb-8 font-medium leading-relaxed">
@@ -202,12 +224,12 @@ export default function LandingPage() {
                                 {(isEn ? [
                                     'Love iPhone, but use a Windows PC.',
                                     'Want to use Apple Notes, but on Windows...',
-                                    'Notion is too complex. OneNote is too heavy.',
+                                    "Excel is overkill. Sticky Notes isn't enough.",
                                     'Looking for something just right.',
                                 ] : [
                                     'クックパッドで見つけたレシピを、キッチンでパッと見たい。',
                                     '買い物リストをPCで作って、スーパーでiPhoneから確認したい。',
-                                    'Notionは大げさ。でも、ただのメモ帳だと物足りない。',
+                                    'Excelは大げさ。Sticky Notesだと物足りない。',
                                     '仕事も、料理も、明日の予定も。全部一か所に貼っておきたい。',
                                 ]).map((text) => (
                                     <div
@@ -226,7 +248,7 @@ export default function LandingPage() {
                             </div>
 
                             {/* CTA */}
-                            <div className="flex flex-col items-center lg:items-start gap-2 mt-8">
+                            <div className="flex flex-col items-center lg:items-start gap-3 mt-8">
                                 <Link
                                     href={downloadUrl}
                                     target="_blank"
@@ -237,8 +259,56 @@ export default function LandingPage() {
                                     {isEn ? "Download for Windows (Free)" : "Windowsに入れる（無料）"}
                                 </Link>
                                 <p className="text-xs text-[#9A8468]">
-                                    {isEn ? "Windows 10/11 · Free · 100% Local Storage" : "Windows 10/11 · 無料 · データはローカル保存"}
+                                    {isEn ? "Windows 10/11 · Free · Your data stays with you" : "Windows 10/11 · 無料 · データはあなたの手元（PC＋自分の Drive）に"}
                                 </p>
+
+                                {/* winget 案内 */}
+                                <div className="flex items-center gap-2 text-xs text-[#7A6A50] mt-1">
+                                    <span>{isEn ? "or via winget:" : "winget でも入れられます:"}</span>
+                                    <code className="px-2 py-1 rounded bg-[#2C1F0E]/85 text-[#F0E0A0] font-mono select-all">
+                                        winget install ore-no-fusen
+                                    </code>
+                                </div>
+
+                                {/* SmartScreen 注意書き（折り畳み） */}
+                                <details className="text-xs text-[#7A6A50] mt-1 max-w-md">
+                                    <summary className="cursor-pointer hover:text-[#5C7A3E] select-none">
+                                        {isEn
+                                            ? "ℹ️ Windows SmartScreen warning? — click here"
+                                            : "ℹ️ SmartScreen の警告が出たら？"}
+                                    </summary>
+                                    <div className="mt-2 pl-4 leading-relaxed">
+                                        {isEn ? (
+                                            <>
+                                                The installer is not Authenticode-signed (yet), so SmartScreen may warn on first launch.
+                                                Click <strong>「More info」</strong> → <strong>「Run anyway」</strong> to proceed.
+                                                You can also{' '}
+                                                <Link
+                                                    href="https://github.com/ore-no-fusen/ore-no-fusen/releases/latest"
+                                                    target="_blank"
+                                                    className="text-[#5C7A3E] underline"
+                                                >
+                                                    verify the SHA-256 hash
+                                                </Link>{' '}
+                                                on the release page.
+                                            </>
+                                        ) : (
+                                            <>
+                                                インストーラに Authenticode 署名を付けていないため、初回起動で SmartScreen が警告を出します。
+                                                <strong>「詳細情報」</strong> → <strong>「実行」</strong> で進めます。
+                                                心配な方は{' '}
+                                                <Link
+                                                    href="https://github.com/ore-no-fusen/ore-no-fusen/releases/latest"
+                                                    target="_blank"
+                                                    className="text-[#5C7A3E] underline"
+                                                >
+                                                    リリースページの SHA-256 ハッシュ
+                                                </Link>{' '}
+                                                でファイルを検証できます。
+                                            </>
+                                        )}
+                                    </div>
+                                </details>
                             </div>
                         </div>
 
@@ -433,6 +503,227 @@ export default function LandingPage() {
                     preserveAspectRatio="none"
                     style={{ display: 'block', width: '100%', height: '100%' }}
                 >
+                    <path d="M0,20 C300,40 900,0 1200,20 L1200,40 L0,40 Z" fill="#E2D7C3" />
+                </svg>
+            </div>
+
+            {/* ==============================
+                速さの証拠（実測動画）セクション
+            ============================== */}
+            <section className="py-20 px-6" style={{ backgroundColor: '#E2D7C3' }}>
+                <div className="max-w-4xl mx-auto">
+                    <div className="text-center mb-10">
+                        <div
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-4 text-[#5C7A3E]"
+                            style={{ backgroundColor: '#D8EAC8', border: '1px solid #8BAF7C' }}
+                        >
+                            {isEn ? "🎬 Real measurement, no edit" : "🎬 実測・無編集（キー押下含む）"}
+                        </div>
+                        <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
+                            {isEn ? "It really is fast." : "本当に、速い。"}
+                        </h2>
+                        <p className="text-[#8A7055] text-base sm:text-lg">
+                            {isEn
+                                ? <>Measured: <span className="font-bold text-[#5C7A3E]">0.04 s</span> from Ctrl + N to a writable note. Designed worst case: 0.3 s.</>
+                                : <>Ctrl + N から書ける状態まで <span className="font-bold text-[#5C7A3E]">実測 0.04 秒</span>。設計上限は 0.3 秒。</>}
+                        </p>
+                    </div>
+
+                    <div className="relative max-w-2xl mx-auto">
+                        {/* テープ装飾（LPの既存デザインに揃える） */}
+                        <div
+                            className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 w-16 h-5 rounded-sm opacity-70 -rotate-1"
+                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }}
+                        />
+                        <div
+                            className="relative rounded-sm overflow-hidden"
+                            style={{
+                                boxShadow: '4px 6px 24px rgba(0,0,0,0.18)',
+                                border: '1px solid #C8B898',
+                                background: '#1a1a1a',
+                            }}
+                        >
+                            <video
+                                ref={speedProofVideoRef}
+                                autoPlay
+                                muted={speedProofMuted}
+                                loop
+                                playsInline
+                                preload="metadata"
+                                className="w-full h-auto block"
+                            >
+                                <source src="/promo/speed-proof.mp4" type="video/mp4" />
+                            </video>
+                            <button
+                                type="button"
+                                onClick={toggleSpeedProofMute}
+                                aria-label={speedProofMuted
+                                    ? (isEn ? 'Unmute video' : '動画の音を出す')
+                                    : (isEn ? 'Mute video' : '動画をミュートする')}
+                                className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/55 hover:bg-black/75 text-white text-xs font-semibold backdrop-blur-sm transition-all duration-150 shadow-md"
+                            >
+                                {speedProofMuted ? (
+                                    <>
+                                        <VolumeX className="w-4 h-4" />
+                                        <span>{isEn ? 'Sound off' : '音 OFF'}</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Volume2 className="w-4 h-4" />
+                                        <span>{isEn ? 'Sound on' : '音 ON'}</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    <p className="text-center text-xs text-[#9A8468] mt-5 leading-relaxed">
+                        {isEn
+                            ? <>Measured at 50 fps. Keypress visualization by NohBoard (lower right).<br />Pool window technique: a transparent window pre-launched, made opaque on Ctrl+N.</>
+                            : <>50 fps で計測。右下のキーボード表示は NohBoard。<br />Pool 機構：透明な窓を待機させて Ctrl+N で不透明化する仕組みです。</>}
+                    </p>
+                </div>
+            </section>
+
+            {/* 波形の区切り */}
+            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#E2D7C3' }}>
+                <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
+                    <path d="M0,20 C300,0 900,40 1200,20 L1200,0 L0,0 Z" fill="#E2D7C3" />
+                </svg>
+            </div>
+
+            {/* ==============================
+                棲み分け：Sticky Notes と Excel の、あいだ
+            ============================== */}
+            <section className="py-20 px-6" style={{ backgroundColor: '#EDE4D3' }}>
+                <div className="max-w-5xl mx-auto">
+                    <div className="text-center mb-10">
+                        <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-3">
+                            {isEn
+                                ? <>Between <span className="text-[#5C7A3E]">Sticky Notes</span> and <span className="text-[#5C7A3E]">Excel</span>.</>
+                                : <><span className="text-[#5C7A3E]">Sticky Notes</span> と <span className="text-[#5C7A3E]">Excel</span> の、あいだ。</>}
+                        </h2>
+                        <p className="text-[#8A7055] max-w-2xl mx-auto leading-relaxed">
+                            {isEn
+                                ? <>Sticky Notes is fast — but you can&apos;t draw on a picture. Excel can — but takes ages to open.<br className="hidden sm:inline" /> The gap right between the two is where 俺の付箋 sits.</>
+                                : <>Sticky Notes は速いが、画像に書き込めない。Excel は書き込めるが、起動が遅い。<br className="hidden sm:inline" />その隙間に座っているのが、俺の付箋です。</>}
+                        </p>
+                    </div>
+
+                    {/* ポジショニング・チャート（2軸スキャタープロット） */}
+                    <div className="bg-white/60 rounded-2xl border border-[#C8B89A]/70 p-6 sm:p-10 mb-12 shadow-md">
+                        <div className="text-center mb-4">
+                            <p className="text-xs font-bold text-[#8A7055] uppercase tracking-widest">
+                                {isEn ? "Positioning" : "ポジショニング・チャート"}
+                            </p>
+                        </div>
+                        <div className="relative mx-auto" style={{ maxWidth: 600, paddingLeft: 56, paddingBottom: 36, paddingTop: 12, paddingRight: 12 }}>
+                            {/* チャート本体 */}
+                            <div className="relative h-72 sm:h-80 border-l-2 border-b-2 border-[#8A7055]/50">
+                                {/* 縦軸ラベル */}
+                                <div className="absolute -left-12 top-0 text-xs text-[#5C7A3E] font-bold leading-tight">
+                                    <div>↑ {isEn ? "Fast" : "速い"}</div>
+                                </div>
+                                <div className="absolute -left-12 bottom-0 text-xs text-[#A53C2C] font-bold leading-tight">
+                                    <div>↓ {isEn ? "Slow" : "遅い"}</div>
+                                </div>
+                                {/* 横軸ラベル */}
+                                <div className="absolute -bottom-7 left-0 text-xs text-[#A53C2C] font-bold">
+                                    ← {isEn ? "Can't draw" : "書けない"}
+                                </div>
+                                <div className="absolute -bottom-7 right-0 text-xs text-[#5C7A3E] font-bold">
+                                    {isEn ? "Can draw" : "書ける"} →
+                                </div>
+
+                                {/* Sticky Notes - 左上（速い・書けない） */}
+                                <div className="absolute" style={{ top: '14%', left: '12%', transform: 'translate(-50%, -50%)' }}>
+                                    <div className="flex flex-col items-center">
+                                        <div className="w-4 h-4 rounded-full bg-[#7A6A50] shadow" />
+                                        <div className="text-xs mt-2 whitespace-nowrap text-[#5A4030] font-medium">📌 Sticky Notes</div>
+                                    </div>
+                                </div>
+
+                                {/* Excel - 右下（遅い・書ける） */}
+                                <div className="absolute" style={{ top: '78%', left: '78%', transform: 'translate(-50%, -50%)' }}>
+                                    <div className="flex flex-col items-center">
+                                        <div className="w-4 h-4 rounded-full bg-[#7A6A50] shadow" />
+                                        <div className="text-xs mt-2 whitespace-nowrap text-[#5A4030] font-medium">📊 Excel</div>
+                                    </div>
+                                </div>
+
+                                {/* 俺の付箋 - 右上（速い・書ける）= 隙間 */}
+                                <div className="absolute" style={{ top: '14%', left: '78%', transform: 'translate(-50%, -50%)' }}>
+                                    <div className="flex flex-col items-center">
+                                        <div className="relative">
+                                            <div className="absolute inset-0 w-7 h-7 rounded-full bg-[#8BAF7C] animate-ping opacity-50" style={{ left: -6, top: -6 }} />
+                                            <div className="relative w-4 h-4 rounded-full bg-[#5C7A3E] ring-4 ring-[#8BAF7C]/40 shadow" />
+                                        </div>
+                                        <div className="text-xs mt-2 whitespace-nowrap font-bold text-[#5C7A3E]">⭐ {isEn ? "OreNoFusen" : "俺の付箋"}</div>
+                                        <div className="text-[10px] text-[#8A7055] mt-0.5">+ 📱 iPhone</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p className="text-center text-xs text-[#8A7055] mt-8">
+                            {isEn
+                                ? "The top-right corner had nobody. So we built it."
+                                : "右上に居る人がいなかったので、自分で作りました。"}
+                        </p>
+                    </div>
+
+                    {/* 3列比較カード */}
+                    <div className="grid md:grid-cols-3 gap-7">
+                        {/* Sticky Notes */}
+                        <div className="rotate-1 p-6 rounded-sm transition-all duration-200 hover:rotate-0" style={{ backgroundColor: '#E2D7C3', boxShadow: '3px 5px 14px rgba(0,0,0,0.13)' }}>
+                            <div className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5" style={{ backgroundColor: '#C8B898' }} />
+                            <div className="text-2xl mb-2">📌</div>
+                            <div className="text-[10px] font-bold text-[#8A7055] uppercase tracking-widest mb-1">Microsoft</div>
+                            <h3 className="text-lg font-bold text-[#2C1F0E] mb-4">Sticky Notes</h3>
+                            <ul className="text-sm text-[#5A4030] space-y-2 leading-relaxed">
+                                <li>⚡ {isEn ? "Fast launch" : "起動が速い"}</li>
+                                <li>📌 {isEn ? "Sticks on desktop" : "付箋として常駐"}</li>
+                                <li className="text-[#A53C2C]">❌ {isEn ? "Can't draw on images" : "画像に書き込めない"}</li>
+                                <li className="text-[#A53C2C]">❌ {isEn ? "No iPhone sync" : "iPhone と繋がらない"}</li>
+                            </ul>
+                        </div>
+
+                        {/* Excel */}
+                        <div className="-rotate-1 p-6 rounded-sm transition-all duration-200 hover:rotate-0" style={{ backgroundColor: '#E2D7C3', boxShadow: '3px 5px 14px rgba(0,0,0,0.13)' }}>
+                            <div className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5" style={{ backgroundColor: '#C8B898' }} />
+                            <div className="text-2xl mb-2">📊</div>
+                            <div className="text-[10px] font-bold text-[#8A7055] uppercase tracking-widest mb-1">Microsoft</div>
+                            <h3 className="text-lg font-bold text-[#2C1F0E] mb-4">Excel</h3>
+                            <ul className="text-sm text-[#5A4030] space-y-2 leading-relaxed">
+                                <li>🖋️ {isEn ? "Draw on images" : "画像に書き込める"}</li>
+                                <li>📐 {isEn ? "Free layout" : "自由なレイアウト"}</li>
+                                <li className="text-[#A53C2C]">❌ {isEn ? "Slow to launch" : "起動が遅い"}</li>
+                                <li className="text-[#A53C2C]">❌ {isEn ? "Not a sticky note" : "付箋として常駐できない"}</li>
+                            </ul>
+                        </div>
+
+                        {/* 俺の付箋（ハイライト） */}
+                        <div className="rotate-1 p-6 rounded-sm border-2 transition-all duration-200 hover:rotate-0 relative" style={{ backgroundColor: '#EDD87A', borderColor: '#5C7A3E', boxShadow: '4px 6px 18px rgba(92,122,62,0.25)' }}>
+                            <div className="h-2.5 -mx-6 -mt-6 rounded-t-sm mb-5" style={{ backgroundColor: '#D9C060' }} />
+                            <div className="absolute -top-3 -right-3 px-3 py-1 rounded-full text-[10px] font-bold text-[#F5EDD8] uppercase tracking-wider" style={{ backgroundColor: '#5C7A3E' }}>
+                                ⭐ {isEn ? "The fit" : "隙間にぴったり"}
+                            </div>
+                            <div className="text-2xl mb-2">📝</div>
+                            <div className="text-[10px] font-bold text-[#5C7A3E] uppercase tracking-widest mb-1">ONF Studios</div>
+                            <h3 className="text-lg font-bold text-[#3A2C00] mb-4">{isEn ? "OreNoFusen" : "俺の付箋"}</h3>
+                            <ul className="text-sm text-[#3A2C00] space-y-2 leading-relaxed font-medium">
+                                <li>⚡ {isEn ? "0.3 s launch (Ctrl+N)" : "起動 0.3 秒（Ctrl+N）"}</li>
+                                <li>📌 {isEn ? "Sticks on desktop" : "付箋として常駐"}</li>
+                                <li>🖋️ {isEn ? "Draw on images" : "画像に書き込める"}</li>
+                                <li>📱 {isEn ? "Reaches your iPhone" : "iPhone と繋がる"}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* 波形の区切り */}
+            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#EDE4D3' }}>
+                <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
                     <path d="M0,20 C300,40 900,0 1200,20 L1200,40 L0,40 Z" fill="#E2D7C3" />
                 </svg>
             </div>
@@ -726,8 +1017,8 @@ export default function LandingPage() {
                                 topColor: '#7AAFC0',
                                 rotation: '-rotate-1',
                                 emoji: '🔒',
-                                title: 'Light. Safe. Local.',
-                                text: 'Data stays on your PC. No cloud needed. Works offline. Your privacy is yours.',
+                                title: 'Yours. Always.',
+                                text: 'Stored on your PC and (optionally) your own Google Drive — never on a third-party server. Works offline. Your privacy stays yours.',
                                 textColor: '#102030',
                             },
                         ] : [
@@ -754,8 +1045,8 @@ export default function LandingPage() {
                                 topColor: '#7AAFC0',
                                 rotation: '-rotate-1',
                                 emoji: '🔒',
-                                title: '軽い。安心。ローカル保存。',
-                                text: 'データはPC上に保存。クラウド不要。オフライン動作。プライバシーはあなたのもの。',
+                                title: 'あなたのデータは、あなたのもの。',
+                                text: 'データは PC と（同期するなら）自分の Google Drive にだけ保存。当方サーバーには一切送りません。オフラインでも動きます。',
                                 textColor: '#102030',
                             },
                         ]).map((item) => (
@@ -967,7 +1258,7 @@ export default function LandingPage() {
                             {isEn ? "Give it a try first" : "まず入れてみてください"}
                         </h2>
                         <p className="text-sm text-[#7A6200] mb-7">
-                            {isEn ? "Free · 1-min install · Local Storage" : "無料・インストール1分・データはローカル保存"}
+                            {isEn ? "Free · 1-min install · Your data stays with you" : "無料・インストール1分・データはあなたの手元に"}
                         </p>
                         <Link
                             href={downloadUrl}
