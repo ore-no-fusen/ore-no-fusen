@@ -12,7 +12,8 @@ Markdownで書ける、美しい付箋アプリ
 
 [![GitHub release](https://img.shields.io/github/v/release/ore-no-fusen/ore-no-fusen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Download latest](https://img.shields.io/badge/download-latest-brightgreen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square&label=downloads%20total)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
+[![Downloads Latest](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/latest/total?style=flat-square&label=downloads%20latest)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
 
 [ダウンロード](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest) • [オンラインドキュメント](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app) • [🎥 漫画で学ぶ](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
