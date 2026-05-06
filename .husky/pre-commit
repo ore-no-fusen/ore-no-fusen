@@ -1,12 +1,18 @@
-npx tsc --noEmit && npm test
+echo "[pre-commit] 1/3 TypeScript check..."
+npx tsc --noEmit
 
-# 変更ファイルを確認
+echo "[pre-commit] 2/3 Unit tests..."
+npm test
+
 CHANGED=$(git diff --cached --name-only)
 
-# Tauri側（src-tauri/）またはデスクトップUI（app/components/, app/hooks/ 等）が変わっていればE2E全実行
-# PWA側（app/viewer/, worker/）のみの変更ならE2Eスキップ
+# Run E2E only when app-facing or Tauri files changed.
+# PWA/viewer-only changes can skip E2E to keep commits quick.
 if echo "$CHANGED" | grep -qE '^(src-tauri|app/components|app/hooks|app/utils|app/page\.|app/layout)'; then
+  echo "[pre-commit] 3/3 E2E tests..."
   npm run test:e2e
 else
-  echo "E2E skipped: PWA-only changes"
+  echo "[pre-commit] 3/3 E2E tests skipped: no app-facing/Tauri changes"
 fi
+
+echo "[pre-commit] All checks passed."
