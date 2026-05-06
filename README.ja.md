@@ -11,12 +11,11 @@
 Markdownで書ける、美しい付箋アプリ
 
 [![GitHub release](https://img.shields.io/github/v/release/ore-no-fusen/ore-no-fusen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-[![License](https://img.shields.io/github/license/ore-no-fusen/ore-no-fusen?style=flat-square)](LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square&label=downloads+total)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-[![Downloads Latest](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/latest/total?style=flat-square&label=downloads+latest)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Download latest](https://img.shields.io/badge/download-latest-brightgreen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
 
-[ダウンロード](#-インストール) • [オンラインドキュメント](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app) • [🎥 漫画で学ぶ](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
+[ダウンロード](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest) • [オンラインドキュメント](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app) • [🎥 漫画で学ぶ](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
 
 </div>
 
@@ -34,7 +33,7 @@ winget install ore-no-fusen
 
 またはダウンロードページから：
 
-[Releases ページ](https://github.com/ore-no-fusen/ore-no-fusen/releases)
+[最新リリース](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
 
 ## コンセプト
@@ -70,7 +69,7 @@ winget install ore-no-fusen
 
 ## 📸 スクリーンショット
 
-![メイン画面](public/screenshots/ScreenShot_OreNoFusen.jpg)
+![メイン画面](public/screenshots/ScreenShot_OreNoFusen.png)
 
 ---
 
@@ -78,7 +77,7 @@ winget install ore-no-fusen
 
 ### 一般ユーザー向け（推奨）
 
-1. [Releases ページ](https://github.com/ore-no-fusen/ore-no-fusen/releases)を開く
+1. [最新リリースページ](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)を開く
 2. 最新版の **`ore-no-fusen_x.x.x_x64-setup.exe`** をダウンロード
 3. ダウンロードしたファイルをダブルクリックしてインストール
 4. インストール完了後、スタートメニューから「俺の付箋」を起動
@@ -88,7 +87,7 @@ winget install ore-no-fusen
 - 容量: 約 100MB
 - メモリ: 4GB以上推奨
 
-詳しいインストール手順は[ユーザーガイド](docs/USER_GUIDE.md#インストール)をご覧ください。
+詳しいインストール手順は[ユーザーガイド](docs/100_USER_GUIDE.md#インストール)をご覧ください。
 
 ### ⚠️ インストール時の「SmartScreen」警告について
 
@@ -106,7 +105,7 @@ SmartScreen とは、Windows に搭載されたセキュリティ機能です。
 
 > 💡 **ご安心ください** — ore-no-fusen はオープンソースです。ソースコードは [GitHub](https://github.com/ore-no-fusen/ore-no-fusen) で全て公開されており、誰でも内容を確認できます。
 
-詳しいインストール手順は[ユーザーガイド](docs/USER_GUIDE.md#インストール)をご覧ください。
+詳しいインストール手順は[ユーザーガイド](docs/100_USER_GUIDE.md#インストール)をご覧ください。
 
 ### 開発者向け
 
@@ -150,7 +149,7 @@ npm run tauri build
 3. **検索** - `Ctrl+F` で検索ウィンドウを開く
 4. **タグ付け** - 付箋の内容に `#タグ名` を記述
 
-詳しい使い方は[ユーザーガイド](docs/USER_GUIDE.md)をご覧ください。
+詳しい使い方は[ユーザーガイド](docs/100_USER_GUIDE.md)をご覧ください。
 
 ### Markdownの例
 
@@ -214,8 +213,8 @@ npm run tauri build
 ## 📖 ドキュメント
 
 - [オンラインドキュメント (GitHub Pages)](https://ore-no-fusen.github.io/ore-no-fusen/) - システム設計・仕様書
-- [ユーザーガイド](docs/USER_GUIDE.md) - 詳しい使い方
-- [FAQ](docs/FAQ.md) - よくある質問
+- [ユーザーガイド](docs/100_USER_GUIDE.md) - 詳しい使い方
+- [FAQ](docs/101_FAQ.md) - よくある質問
 - [開発ルール](AG_RULES.md) - 開発者向けルール
 
 ---
@@ -230,7 +229,7 @@ Issue、Pull Requestを歓迎します！
 4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
 5. Pull Requestを作成
 
-詳しくは[CONTRIBUTING.md](CONTRIBUTING.md)をご覧ください（作成予定）。
+詳しくは Issue または Pull Request でご相談ください。
 
 ---
 
@@ -256,7 +255,7 @@ ore-no-fusenは以下のオープンソースプロジェクトを使用して�
 
 - **バグ報告**: [GitHub Issues](https://github.com/ore-no-fusen/ore-no-fusen/issues)
 - **機能リクエスト**: [GitHub Discussions](https://github.com/ore-no-fusen/ore-no-fusen/discussions)
-- **質問**: [FAQ](docs/FAQ.md)
+- **質問**: [FAQ](docs/101_FAQ.md)
 
 ---
 

@@ -24,7 +24,10 @@ import { useState, useEffect, useRef } from 'react';
 
 export default function LandingPage() {
     const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
-    const downloadUrl = `https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v${version}/ore-no-fusen_${version}_x64-setup.exe`;
+    const latestReleaseUrl = 'https://github.com/ore-no-fusen/ore-no-fusen/releases/latest';
+    const downloadUrl = version
+        ? `https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v${version}/ore-no-fusen_${version}_x64-setup.exe`
+        : latestReleaseUrl;
 
     const [lang, setLang] = useState<'ja' | 'en'>('ja');
 

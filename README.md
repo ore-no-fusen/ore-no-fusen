@@ -11,12 +11,11 @@
 A beautiful sticky notes app with Markdown support.
 
 [![GitHub release](https://img.shields.io/github/v/release/ore-no-fusen/ore-no-fusen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-[![License](https://img.shields.io/github/license/ore-no-fusen/ore-no-fusen?style=flat-square)](LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square&label=downloads+total)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-[![Downloads Latest](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/latest/total?style=flat-square&label=downloads+latest)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Download latest](https://img.shields.io/badge/download-latest-brightgreen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
 
-[Download](#-installation) • [Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [Landing Page](https://ore-no-fusen.vercel.app) • [🎥 Comic Guide](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
+[Download](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest) • [Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [Landing Page](https://ore-no-fusen.vercel.app) • [🎥 Comic Guide](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
 
 </div>
 
@@ -34,7 +33,7 @@ winget install ore-no-fusen
 
 Or download from:
 
-[Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
+[Latest release](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest).
 
 
 ## Concept
@@ -70,7 +69,7 @@ FUSEN is designed as a fast thinking canvas where ideas can appear the moment th
 
 ## 📸 Screenshots
 
-![Main Screen](public/screenshots/ScreenShot_OreNoFusen.jpg)
+![Main Screen](public/screenshots/ScreenShot_OreNoFusen.png)
 
 ---
 
@@ -78,7 +77,7 @@ FUSEN is designed as a fast thinking canvas where ideas can appear the moment th
 
 ### For General Users (Recommended)
 
-1. Go to the [Releases page](https://github.com/ore-no-fusen/ore-no-fusen/releases).
+1. Go to the [latest release page](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest).
 2. Download the latest **`ore-no-fusen_x.x.x_x64-setup.exe`**.
 3. Double-click the downloaded file to install.
 4. After installation, launch "俺の付箋" (FUSEN) from the Start menu.
@@ -88,7 +87,7 @@ FUSEN is designed as a fast thinking canvas where ideas can appear the moment th
 - Disk Space: Approx. 100MB
 - Memory: 4GB+ recommended
 
-For detailed instructions, see the [User Guide](docs/USER_GUIDE.md#インストール) (Currently in Japanese).
+For detailed instructions, see the [User Guide](docs/100_USER_GUIDE.md#インストール) (Currently in Japanese).
 
 ### ⚠️ About "SmartScreen" Warning During Installation
 
@@ -148,7 +147,7 @@ Build artifacts will be generated in `src-tauri\target\release\bundle\nsis\`.
 3. **Search** - Press `Ctrl+F` to open the search window
 4. **Tagging** - Write `#tagname` within a note to automatically tag it
 
-For detailed usage, please see the [User Guide](docs/USER_GUIDE.md).
+For detailed usage, please see the [User Guide](docs/100_USER_GUIDE.md).
 
 ### Markdown Example
 
@@ -212,8 +211,8 @@ Save frequently used links on sticky notes. Group them using tags.
 ## 📖 Documentation
 
 - [Online Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) - System specifications and architecture (JA)
-- [User Guide](docs/USER_GUIDE.md) - Detailed instructions (JA)
-- [FAQ](docs/FAQ.md) - Frequently asked questions (JA)
+- [User Guide](docs/100_USER_GUIDE.md) - Detailed instructions (JA)
+- [FAQ](docs/101_FAQ.md) - Frequently asked questions (JA)
 - [Development Rules](AG_RULES.md) - Guidelines for developers
 
 ---
@@ -252,7 +251,7 @@ FUSEN uses the following open-source projects:
 
 - **Bug Reports**: [GitHub Issues](https://github.com/ore-no-fusen/ore-no-fusen/issues)
 - **Feature Requests**: [GitHub Discussions](https://github.com/ore-no-fusen/ore-no-fusen/discussions)
-- **Questions**: [FAQ](docs/FAQ.md)
+- **Questions**: [FAQ](docs/101_FAQ.md)
 
 ---
 

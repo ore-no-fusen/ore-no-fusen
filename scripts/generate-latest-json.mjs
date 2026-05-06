@@ -15,9 +15,9 @@ import { execSync } from 'child_process';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 
-// バージョンを tauri.conf.json から読む
-const conf = JSON.parse(readFileSync('./src-tauri/tauri.conf.json', 'utf-8'));
-const version = conf.version;
+// バージョンを package.json から読む
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+const version = pkg.version;
 
 // インストーラーパス
 const installerPath = `./src-tauri/target/release/bundle/nsis/ore-no-fusen_${version}_x64-setup.exe`;
