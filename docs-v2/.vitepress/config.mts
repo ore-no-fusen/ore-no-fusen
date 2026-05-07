@@ -7,7 +7,8 @@ export default withMermaid(defineConfig({
   description: 'DESIGN DOCS PORTAL',
   base: '/ore-no-fusen/',
   head: [
-    ['script', { defer: '', src: 'https://cloud.umami.is/script.js', 'data-website-id': 'ab93c6f7-275c-43f5-a539-7f399e98e27f' }]
+    ['script', { defer: '', src: 'https://cloud.umami.is/script.js', 'data-website-id': 'ab93c6f7-275c-43f5-a539-7f399e98e27f' }],
+    ['meta', { name: 'google-site-verification', content: 'pofQfdwMUYp6bCxtOlqPb52NCLpYSF6LiUoRCCFbLWw' }]
   ],
   mermaid: {
     sequence: {
