@@ -56,7 +56,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold border-b border-[#C8B89A] pb-2 mb-4">10 問い合わせ</h2>
+            <h2 className="text-xl font-bold border-b border-[#C8B89A] pb-2 mb-4">8 問い合わせ</h2>
             <p>プライバシーに関する問い合わせは、GitHub Issues またはアプリ公開ページに記載されたサポート窓口から連絡してください。</p>
             <p className="mt-2">GitHub: <a href="https://github.com/ore-no-fusen/ore-no-fusen" className="text-[#5C7A3E] underline">https://github.com/ore-no-fusen/ore-no-fusen</a></p>
           </section>

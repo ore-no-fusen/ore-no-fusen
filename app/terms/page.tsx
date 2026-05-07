@@ -36,17 +36,17 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold border-b border-[#C8B89A] pb-2 mb-4">7 免責事項</h2>
+            <h2 className="text-xl font-bold border-b border-[#C8B89A] pb-2 mb-4">5 免責事項</h2>
             <p>開発者は、本アプリが常に正確、完全、安全に動作することを保証しません。本アプリの利用により発生した損害について、開発者は法律上認められる範囲で責任を負いません。重要なデータは自己の責任でバックアップを行ってください。</p>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold border-b border-[#C8B89A] pb-2 mb-4">8 知的財産権</h2>
+            <h2 className="text-xl font-bold border-b border-[#C8B89A] pb-2 mb-4">6 知的財産権</h2>
             <p>本アプリのソースコード、ロゴ、ドキュメントに関する権利は、各権利者に帰属します。ソースコードは GitHub にて公開されているライセンス条件に従って利用できます。</p>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold border-b border-[#C8B89A] pb-2 mb-4">10 問い合わせ</h2>
+            <h2 className="text-xl font-bold border-b border-[#C8B89A] pb-2 mb-4">7 問い合わせ</h2>
             <p>本規約に関する問い合わせは、GitHub Issues またはアプリ公開ページに記載されたサポート窓口から連絡してください。</p>
             <p className="mt-2">GitHub: <a href="https://github.com/ore-no-fusen/ore-no-fusen" className="text-[#5C7A3E] underline">https://github.com/ore-no-fusen/ore-no-fusen</a></p>
           </section>
