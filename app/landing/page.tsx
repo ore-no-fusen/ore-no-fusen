@@ -1488,32 +1488,27 @@ export default function LandingPage() {
                 className="py-8 px-6 border-t"
                 style={{ backgroundColor: '#D8CEBA', borderColor: '#C0B098' }}
             >
-                <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-[#8A7458]">
-                    <div>© 2026 ore-no-fusen by ONF Studios. MIT License.</div>
-                    <div className="flex gap-6">
-                        <Link
-                            href="https://github.com/ore-no-fusen/ore-no-fusen"
-                            target="_blank"
-                            className="hover:text-[#5A4830] transition-colors"
-                        >
-                            GitHub
-                        </Link>
-                        <Link
-                            href="https://github.com/ore-no-fusen/ore-no-fusen/blob/main/README.md"
-                            target="_blank"
-                            className="hover:text-[#5A4830] transition-colors"
-                        >
-                            {isEn ? "Documentation" : "ドキュメント"}
-                        </Link>
+                <div className="max-w-5xl mx-auto flex flex-col gap-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-[#8A7458]">
+                        <div>© 2026 ore-no-fusen by ONF Studios. MIT License.</div>
+                        <div className="flex gap-6">
+                            <Link
+                                href="https://github.com/ore-no-fusen/ore-no-fusen"
+                                target="_blank"
+                                className="hover:text-[#5A4830] transition-colors"
+                            >
+                                GitHub
+                            </Link>
+                            <Link
+                                href="https://github.com/ore-no-fusen/ore-no-fusen/blob/main/README.md"
+                                target="_blank"
+                                className="hover:text-[#5A4830] transition-colors"
+                            >
+                                {isEn ? "Documentation" : "ドキュメント"}
+                            </Link>
+                        </div>
                     </div>
-                </div>
-            </footer>
-            {/* ==============================
-                フッター（規約リンク）
-            ============================== */}
-            <footer className="py-12 px-6 border-t border-[#C8B89A]/40 text-center">
-                <div className="max-w-6xl mx-auto flex flex-col items-center gap-4">
-                    <div className="flex gap-6 text-sm text-[#7A6A50] font-medium">
+                    <div className="border-t border-[#C0B098]/40 pt-4 flex justify-center gap-8 text-sm text-[#7A6A50] font-medium">
                         <Link href="/privacy" className="hover:text-[#5C7A3E] transition-colors">
                             {isEn ? 'Privacy Policy' : 'プライバシーポリシー'}
                         </Link>
@@ -1521,9 +1516,6 @@ export default function LandingPage() {
                             {isEn ? 'Terms of Service' : '利用規約'}
                         </Link>
                     </div>
-                    <p className="text-[10px] text-[#A89878]">
-                        &copy; 2026 Ore-no-Fusen. All rights reserved.
-                    </p>
                 </div>
             </footer>
         </div>
