@@ -138,7 +138,7 @@ export default function LandingPage() {
             {/* ナビゲーション */}
             <nav className="px-6 py-5 flex justify-between items-center border-b border-[#C8B89A]/40">
                 <div className="text-xl font-bold tracking-wide text-[#2C1F0E]">
-                    {isEn ? 'FUSEN' : '俺の付箋'}
+                    {isEn ? 'FUSEN' : '俺の付箋 (Ore-no-Fusen)'}
                 </div>
                 <div className="flex items-center gap-4">
                     <button
@@ -1506,6 +1506,24 @@ export default function LandingPage() {
                             {isEn ? "Documentation" : "ドキュメント"}
                         </Link>
                     </div>
+                </div>
+            </footer>
+            {/* ==============================
+                フッター（規約リンク）
+            ============================== */}
+            <footer className="py-12 px-6 border-t border-[#C8B89A]/40 text-center">
+                <div className="max-w-6xl mx-auto flex flex-col items-center gap-4">
+                    <div className="flex gap-6 text-sm text-[#7A6A50] font-medium">
+                        <Link href="/privacy" className="hover:text-[#5C7A3E] transition-colors">
+                            {isEn ? 'Privacy Policy' : 'プライバシーポリシー'}
+                        </Link>
+                        <Link href="/terms" className="hover:text-[#5C7A3E] transition-colors">
+                            {isEn ? 'Terms of Service' : '利用規約'}
+                        </Link>
+                    </div>
+                    <p className="text-[10px] text-[#A89878]">
+                        &copy; 2026 Ore-no-Fusen. All rights reserved.
+                    </p>
                 </div>
             </footer>
         </div>
