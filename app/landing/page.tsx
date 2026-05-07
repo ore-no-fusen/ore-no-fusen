@@ -41,7 +41,7 @@ export default function LandingPage() {
     const isEn = lang === 'en';
 
     useEffect(() => {
-        document.title = isEn ? 'FUSEN' : '俺の付箋（OreNoFusen）';
+        document.title = isEn ? 'Ore-no-Fusen' : '俺の付箋（Ore-no-Fusen）';
     }, [isEn]);
 
     // PC→iPhone 連携アニメーション
@@ -138,7 +138,7 @@ export default function LandingPage() {
             {/* ナビゲーション */}
             <nav className="px-6 py-5 flex justify-between items-center border-b border-[#C8B89A]/40">
                 <div className="text-xl font-bold tracking-wide text-[#2C1F0E]">
-                    {isEn ? 'FUSEN' : '俺の付箋 (Ore-no-Fusen)'}
+                    {isEn ? 'Ore-no-Fusen' : '俺の付箋 (Ore-no-Fusen)'}
                 </div>
                 <div className="flex items-center gap-4">
                     <button
@@ -1509,10 +1509,10 @@ export default function LandingPage() {
                         </div>
                     </div>
                     <div className="border-t border-[#C0B098]/40 pt-4 flex justify-center gap-8 text-sm text-[#7A6A50] font-medium">
-                        <Link href="/privacy" className="hover:text-[#5C7A3E] transition-colors">
+                        <Link href="https://ore-no-fusen.github.io/ore-no-fusen/100_PRIVACY.html" target="_blank" className="hover:text-[#5C7A3E] transition-colors">
                             {isEn ? 'Privacy Policy' : 'プライバシーポリシー'}
                         </Link>
-                        <Link href="/terms" className="hover:text-[#5C7A3E] transition-colors">
+                        <Link href="https://ore-no-fusen.github.io/ore-no-fusen/101_TERMS.html" target="_blank" className="hover:text-[#5C7A3E] transition-colors">
                             {isEn ? 'Terms of Service' : '利用規約'}
                         </Link>
                     </div>
