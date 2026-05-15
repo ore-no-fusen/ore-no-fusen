@@ -1497,6 +1497,7 @@ const StickyNote = memo(function StickyNote() {
             setTimeout(() => setToastMessage(null), 3000);
         },
         resolveCreateFolderPath,
+        iphoneSendEnabled: settings.iphone_send_enabled,
     });
 
     /**

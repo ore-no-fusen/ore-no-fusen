@@ -48,6 +48,7 @@ describe('useSettings Hook (Browser Mode)', () => {
 
         expect(result.current.settings.language).toBe('ja');
         expect(result.current.settings.font_size).toBe(16);
+        expect(result.current.settings.iphone_send_enabled).toBe(false);
     });
 
     it('loads settings from localStorage if available', async () => {
@@ -57,6 +58,7 @@ describe('useSettings Hook (Browser Mode)', () => {
             auto_start: true,
             font_size: 20,
             sound_enabled: false,
+            iphone_send_enabled: true,
         };
         localStorageMock.setItem('ore-no-fusen-settings', JSON.stringify(savedSettings));
 
@@ -67,6 +69,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         expect(result.current.settings.language).toBe('en');
         expect(result.current.settings.font_size).toBe(20);
         expect(result.current.settings.auto_start).toBe(true);
+        expect(result.current.settings.iphone_send_enabled).toBe(true);
     });
 
     it('loads shortcut_new_note from localStorage when specified', async () => {

@@ -72,6 +72,9 @@ pub struct Settings {
     #[serde(alias = "soundEnabled")]
     #[serde(default = "default_sound_enabled")]
     pub sound_enabled: bool,
+    #[serde(alias = "iphoneSendEnabled")]
+    #[serde(default)]
+    pub iphone_send_enabled: bool,
     /// グローバルショートカットのカスタマイズ（例: "ctrl+shift+m"）。None の場合は "ctrl+n" をデフォルトとして使用。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_new_note: Option<String>,
@@ -99,6 +102,7 @@ impl Default for Settings {
             auto_start: default_auto_start(),
             font_size: default_font_size(),
             sound_enabled: default_sound_enabled(),
+            iphone_send_enabled: false,
             shortcut_new_note: None,
         }
     }

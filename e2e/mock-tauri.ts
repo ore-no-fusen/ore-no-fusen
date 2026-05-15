@@ -73,6 +73,7 @@ updated: 2026-01-31
                         auto_start: false,
                         font_size: 12,
                         sound_enabled: true,
+                        iphone_send_enabled: false,
                     };
 
                 // 設定保存

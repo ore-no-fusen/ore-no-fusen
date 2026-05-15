@@ -19,6 +19,7 @@ export type AppSettings = {
     auto_start: boolean
     font_size: number
     sound_enabled: boolean
+    iphone_send_enabled: boolean
 }
 
 // デフォルト値（Rust側 state.rs の default_auto_start() と統一）
@@ -28,6 +29,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     auto_start: true,
     font_size: 16,
     sound_enabled: true,
+    iphone_send_enabled: false,
 }
 
 
@@ -75,6 +77,7 @@ export function useSettings() {
                         auto_start: parsed.auto_start ?? parsed.autoStart ?? DEFAULT_SETTINGS.auto_start,
                         font_size: parsed.font_size ?? parsed.fontSize ?? DEFAULT_SETTINGS.font_size,
                         sound_enabled: parsed.sound_enabled ?? parsed.soundEnabled ?? DEFAULT_SETTINGS.sound_enabled,
+                        iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
                     }
                     setSettings(migrated)
                 }
@@ -90,6 +93,7 @@ export function useSettings() {
                     auto_start: loaded.auto_start,
                     font_size: loaded.font_size,
                     sound_enabled: loaded.sound_enabled,
+                    iphone_send_enabled: loaded.iphone_send_enabled,
                 }
                 setSettings({ ...DEFAULT_SETTINGS, ...normalized })
             }

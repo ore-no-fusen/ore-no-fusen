@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     auto_start: true,
     font_size: 12,
     sound_enabled: true,
+    iphone_send_enabled: false,
 };
 
 // キャッシュ
@@ -79,6 +80,7 @@ async function getSettings(): Promise<AppSettings> {
                     auto_start: parsed.auto_start ?? parsed.autoStart ?? DEFAULT_SETTINGS.auto_start,
                     font_size: parsed.font_size ?? parsed.fontSize ?? DEFAULT_SETTINGS.font_size,
                     sound_enabled: parsed.sound_enabled ?? parsed.soundEnabled ?? DEFAULT_SETTINGS.sound_enabled,
+                    iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
                 };
             } else {
                 settingsCache = DEFAULT_SETTINGS;
@@ -93,6 +95,7 @@ async function getSettings(): Promise<AppSettings> {
                 auto_start: loaded.auto_start,
                 font_size: loaded.font_size,
                 sound_enabled: loaded.sound_enabled,
+                iphone_send_enabled: loaded.iphone_send_enabled,
             }
             settingsCache = { ...DEFAULT_SETTINGS, ...normalized };
         }

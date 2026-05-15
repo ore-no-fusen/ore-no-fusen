@@ -504,7 +504,21 @@ const hasLinePrefix = (text: string, prefix: 'heading' | 'list' | 'checkbox'): b
     return /^[\-\*\+]\s+/.test(text) && !/^[\-\*\+]\s+\[[ xX]\]\s+/.test(text);
 };
 
+const canApplyLinePrefix = (text: string): boolean => {
+    return text.trim() !== '' && !/!\[.*?\]\(.*?\)/.test(text);
+};
+
+const getSelectedLineRange = (state: EditorState, from: number, to: number): { lineStart: number; lineEnd: number } => {
+    const lineStart = state.doc.lineAt(from).number;
+    const toLine = state.doc.lineAt(to);
+    const lineEnd = to > from && toLine.from === to
+        ? toLine.number - 1
+        : toLine.number;
+    return { lineStart, lineEnd };
+};
+
 const formatLineWithPrefix = (text: string, prefix: 'heading' | 'list' | 'checkbox'): string => {
+    if (text.trim() === '') return text;
     const body = stripLinePrefix(text);
     if (prefix === 'heading') return `# ${body}`;
     if (prefix === 'checkbox') return `- [ ] ${body}`;
@@ -529,8 +543,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             const view = viewRef.current;
             const { state } = view;
             const { from, to } = state.selection.main;
-            const lineStart = state.doc.lineAt(from).number;
-            const lineEnd = state.doc.lineAt(to).number;
+            const { lineStart, lineEnd } = getSelectedLineRange(state, from, to);
 
             const changes: any[] = [];
             let allHave = true;
@@ -562,8 +575,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             const view = viewRef.current;
             const { state } = view;
             const { from, to } = state.selection.main;
-            const lineStart = state.doc.lineAt(from).number;
-            const lineEnd = state.doc.lineAt(to).number;
+            const { lineStart, lineEnd } = getSelectedLineRange(state, from, to);
 
             const changes: any[] = [];
             let allHave = true;
@@ -593,13 +605,14 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             const view = viewRef.current;
             const { state } = view;
             const { from, to } = state.selection.main;
-            const lineStart = state.doc.lineAt(from).number;
-            const lineEnd = state.doc.lineAt(to).number;
+            const { lineStart, lineEnd } = getSelectedLineRange(state, from, to);
 
             const changes: any[] = [];
             let allHave = true;
             for (let i = lineStart; i <= lineEnd; i++) {
-                if (!hasLinePrefix(state.doc.line(i).text, 'checkbox')) {
+                const line = state.doc.line(i);
+                if (!canApplyLinePrefix(line.text)) continue;
+                if (!hasLinePrefix(line.text, 'checkbox')) {
                     allHave = false;
                     break;
                 }
@@ -978,8 +991,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
-                                const lineStart = state.doc.lineAt(from).number;
-                                const lineEnd = state.doc.lineAt(to).number;
+                                const { lineStart, lineEnd } = getSelectedLineRange(state, from, to);
                                 const changes: { from: number; to?: number; insert?: string }[] = [];
                                 let allHave = true;
                                 for (let i = lineStart; i <= lineEnd; i++) {
@@ -1037,15 +1049,17 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 const changes: { from: number; to?: number; insert?: string }[] = [];
                                 let allHave = true;
                                 for (let i = lineStart; i <= lineEnd; i++) {
-                                    if (!state.doc.line(i).text.startsWith('- [ ] ')) { allHave = false; break; }
+                                    const line = state.doc.line(i);
+                                    if (!canApplyLinePrefix(line.text)) continue;
+                                    if (!line.text.startsWith('- [ ] ')) { allHave = false; break; }
                                 }
                                 for (let i = lineStart; i <= lineEnd; i++) {
                                     const line = state.doc.line(i);
                                     // [GUARD] 画像行は絶対に変更しない
                                     if (/!\[.*?\]\(.*?\)/.test(line.text)) continue;
-                                    if (allHave) {
+                                    if (allHave && canApplyLinePrefix(line.text)) {
                                         changes.push({ from: line.from, to: line.from + 6 });
-                                    } else if (!line.text.startsWith('- [ ] ')) {
+                                    } else if (canApplyLinePrefix(line.text) && !line.text.startsWith('- [ ] ')) {
                                         changes.push({ from: line.from, insert: '- [ ] ' });
                                     }
                                 }

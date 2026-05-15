@@ -1516,6 +1516,11 @@ async fn fusen_send_to_iphone(
     state: tauri::State<'_, Mutex<AppState>>,
     path: String,
 ) -> Result<(), String> {
+    let settings = storage::load_settings()?;
+    if !settings.iphone_send_enabled {
+        return Err("iPhone送信は設定で無効です。設定画面のiPhone連携で有効にしてください。".to_string());
+    }
+
     let client = reqwest::Client::new();
 
     // 1. ノートの内容を読む

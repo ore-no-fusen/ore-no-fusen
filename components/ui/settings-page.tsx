@@ -88,7 +88,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
             case "about":
                 return <AboutSection t={t} />
             case "iphone":
-                return <IphoneSection t={t} iphoneDriveDisconnected={iphoneDriveDisconnected ?? false} />
+                return <IphoneSection settings={settings} onUpdate={updateSetting} t={t} iphoneDriveDisconnected={iphoneDriveDisconnected ?? false} />
             case "feedback":
                 return <FeedbackSection t={t} />
             default:
@@ -959,7 +959,7 @@ function QrCodeCanvas({ url }: { url: string }) {
     )
 }
 
-function IphoneSection({ t, iphoneDriveDisconnected }: {
+function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: SectionProps & {
   t: (key: any) => string;
   iphoneDriveDisconnected: boolean;
 }) {
@@ -1113,6 +1113,19 @@ function IphoneSection({ t, iphoneDriveDisconnected }: {
                 <p className="text-gray-500 text-sm">付箋をiPhoneのロック画面に送信するための設定です。</p>
             </div>
             <Separator />
+
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-5">
+                <div className="min-w-0 pr-6">
+                    <Label className="text-base font-bold text-gray-900">{t('settings.iphone.sendEnabled')}</Label>
+                    <p className="mt-1 text-sm text-gray-500">
+                        {t('settings.iphone.sendEnabledDesc')}
+                    </p>
+                </div>
+                <Switch
+                    checked={settings.iphone_send_enabled}
+                    onCheckedChange={(val) => onUpdate("iphone_send_enabled", val)}
+                />
+            </div>
 
             {/* --- iPhone版 QRコードパネル --- */}
             <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-5">

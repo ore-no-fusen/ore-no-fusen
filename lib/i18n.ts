@@ -22,6 +22,8 @@ export const translations = {
         'settings.appearance': '外観',
         'settings.data': 'データ管理',
         'settings.iphone': 'iPhone連携',
+        'settings.iphone.sendEnabled': 'iPhone送信を有効にする',
+        'settings.iphone.sendEnabledDesc': 'ONにしたときだけ、付箋の右クリックメニューに「iPhoneに表示」を出します。会社PCなどではOFFのままにできます。',
         'settings.about': 'このアプリについて',
 
         // 設定画面 - 一般
@@ -192,6 +194,8 @@ export const translations = {
         'settings.appearance': 'Appearance',
         'settings.data': 'Data Management',
         'settings.iphone': 'iPhone Sync',
+        'settings.iphone.sendEnabled': 'Enable iPhone Send',
+        'settings.iphone.sendEnabledDesc': 'Show "Send to iPhone" in the note context menu only when this is on. You can leave it off on shared or work PCs.',
         'settings.about': 'About',
 
         // Settings - General
