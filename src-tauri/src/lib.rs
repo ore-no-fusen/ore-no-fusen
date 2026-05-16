@@ -286,19 +286,48 @@ fn fusen_move_to_trash(
     let trash_dir = storage::ensure_trash_dir(parent)?;
 
     let filename = current_path.file_name().ok_or("no name")?.to_string_lossy();
-    let new_path = trash_dir.join(filename.as_ref());
+    let new_path = non_colliding_path(&trash_dir.join(filename.as_ref()));
     let new_path_str = new_path.to_string_lossy().to_string();
 
-    // Move associated assets (images) to Trash as well
+    // Move associated assets (images) to Trash as well. Delete originals only after note move succeeds.
     storage::copy_associated_assets(current_path, &trash_dir)?;
-    storage::delete_associated_assets(current_path)?;
-
     storage::rename_note(&path, &new_path_str)?;
+    if let Err(e) = storage::delete_associated_assets(current_path) {
+        logger::log_warn(&format!("[trash] associated asset cleanup skipped: {}", e));
+    }
 
     logic::apply_remove_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path);
 
     // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
     Ok(new_path_str)
+}
+
+fn non_colliding_path(path: &Path) -> std::path::PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("note");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+
+    for i in 1..1000 {
+        let filename = if ext.is_empty() {
+            format!("{} ({})", stem, i)
+        } else {
+            format!("{} ({}).{}", stem, i, ext)
+        };
+        let candidate = parent.join(filename);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    if ext.is_empty() {
+        parent.join(format!("{}-{}", stem, uuid::Uuid::new_v4()))
+    } else {
+        parent.join(format!("{}-{}.{}", stem, uuid::Uuid::new_v4(), ext))
+    }
 }
 
 #[tauri::command]
@@ -330,23 +359,25 @@ fn fusen_archive_note(
 
     if let Some(tag) = resolved_tag {
         let tag_dir = storage::ensure_tag_dir(vault_root_path, &tag)?;
-        let new_path = tag_dir.join(current_path.file_name().ok_or("no name")?);
+        let new_path = non_colliding_path(&tag_dir.join(current_path.file_name().ok_or("no name")?));
 
         storage::copy_associated_assets(current_path, &tag_dir)?;
-        storage::delete_associated_assets(current_path)?;
-
-        std::fs::write(&new_path, &cleaned_content).map_err(|e| e.to_string())?;
+        storage::write_note(&new_path.to_string_lossy(), &cleaned_content)?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        if let Err(e) = storage::delete_associated_assets(current_path) {
+            logger::log_warn(&format!("[archive] associated asset cleanup skipped: {}", e));
+        }
     } else {
         // タグなし → Archive フォルダへ
         let archive_dir = storage::ensure_archive_dir(vault_root_path)?;
-        let new_path = archive_dir.join(current_path.file_name().ok_or("no name")?);
+        let new_path = non_colliding_path(&archive_dir.join(current_path.file_name().ok_or("no name")?));
 
         storage::copy_associated_assets(current_path, &archive_dir)?;
-        storage::delete_associated_assets(current_path)?;
-
-        std::fs::write(&new_path, &cleaned_content).map_err(|e| e.to_string())?;
+        storage::write_note(&new_path.to_string_lossy(), &cleaned_content)?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        if let Err(e) = storage::delete_associated_assets(current_path) {
+            logger::log_warn(&format!("[archive] associated asset cleanup skipped: {}", e));
+        }
     }
     
     // 4. Update state
@@ -1704,7 +1735,7 @@ async fn fusen_download_iphone_images(
     use std::path::Path;
 
     // 画像ファイル名を抽出: ![](fusen_img_XXX.ext) → ["fusen_img_XXX.ext", ...]
-    let re = regex::Regex::new(r"!\[\]\((fusen_img_[^)]+)\)")
+    let re = regex::Regex::new(r"!\[[^\]]*\]\((fusen_img_[^)]+)\)")
         .map_err(|e| e.to_string())?;
 
     let filenames: Vec<String> = re
@@ -1737,8 +1768,8 @@ async fn fusen_download_iphone_images(
         // 既存ファイルはスキップ（冪等）
         if local_path.exists() {
             rewritten = rewritten.replace(
-                &format!("![]({filename})"),
-                &format!("![](assets/{filename})"),
+                &format!("({filename})"),
+                &format!("(assets/{filename})"),
             );
             continue;
         }
@@ -1748,8 +1779,8 @@ async fn fusen_download_iphone_images(
                 std::fs::write(&local_path, &bytes)
                     .map_err(|e| format!("画像保存失敗 {}: {}", filename, e))?;
                 rewritten = rewritten.replace(
-                    &format!("![]({filename})"),
-                    &format!("![](assets/{filename})"),
+                    &format!("({filename})"),
+                    &format!("(assets/{filename})"),
                 );
             }
             Err(e) => {
@@ -1775,10 +1806,83 @@ fn build_context(title: &str, body: &str) -> String {
 
 #[derive(Clone, serde::Serialize)]
 struct IphoneNotePayload {
+    id: String,
     title: String,
     body: String,
     context: String,
     tags: Vec<String>,
+}
+
+fn collect_iphone_image_names(item: &serde_json::Value) -> Vec<String> {
+    let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+    let body = item.get("body").and_then(|v| v.as_str()).unwrap_or("");
+    let combined = format!("{} {}", title, body);
+    let mut search = combined.as_str();
+    let mut image_names = Vec::new();
+    while let Some(start) = search.find("](fusen_img_") {
+        let rest = &search[start + 2..];
+        if let Some(end) = rest.find(')') {
+            image_names.push(rest[..end].to_string());
+        }
+        search = &search[start + 1..];
+    }
+    image_names
+}
+
+#[tauri::command]
+async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let token = gdrive::get_access_token(&client).await?;
+    let data = match gdrive::download_json_with_migration(
+        &client,
+        &token,
+        "notes_from_iphone.json",
+        "fusen_from_iphone.json",
+    ).await {
+        Err(e) if e.contains("File not found") => return Ok(()),
+        Err(e) => return Err(e),
+        Ok(d) => d,
+    };
+
+    let items: Vec<serde_json::Value> = if let Some(arr) = data.get("items").and_then(|v| v.as_array()) {
+        arr.clone()
+    } else if data.get("id").and_then(|v| v.as_str()).is_some() {
+        vec![data.clone()]
+    } else {
+        return Ok(());
+    };
+
+    let mut image_names = Vec::new();
+    let mut remaining = Vec::new();
+    let mut found = false;
+    for item in items {
+        let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        if item_id == note_id {
+            found = true;
+            image_names.extend(collect_iphone_image_names(&item));
+        } else if item.get("received_at").is_none() {
+            remaining.push(item);
+        }
+    }
+
+    if !found {
+        return Ok(());
+    }
+
+    if remaining.is_empty() {
+        gdrive::delete_file_by_name(&client, &token, "notes_from_iphone.json").await?;
+    } else {
+        let updated_data = serde_json::json!({ "items": remaining });
+        gdrive::upload_json(&client, &token, "notes_from_iphone.json", &updated_data).await?;
+    }
+
+    for name in image_names {
+        if let Err(e) = gdrive::delete_file_by_name(&client, &token, &name).await {
+            logger::log_info(&format!("[iphone ack] image delete error {}: {}", name, e));
+        }
+    }
+    logger::log_info(&format!("[iphone ack] completed id={}", note_id));
+    Ok(())
 }
 
 async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
@@ -1843,21 +1947,10 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         return;
     }
 
-    // 6. 処理済みIDセットに追加
-    {
-        let mut known_ids = LAST_IPHONE_NOTE_IDS.lock().unwrap_or_else(|p| p.into_inner());
-        for &idx in &new_indices {
-            let note_id = items[idx].get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            known_ids.insert(note_id);
-        }
-    }
-
-    // 7. 各アイテムを処理（emit + 通知）、画像名を収集
-    let new_indices_set: std::collections::HashSet<usize> = new_indices.iter().copied().collect();
-    let mut all_image_names: Vec<String> = Vec::new();
-
+    // 6. 各アイテムを処理（emit + 通知）。Drive側の削除はJS保存成功後のackで行う。
     for &idx in &new_indices {
         let item = &items[idx];
+        let note_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
         let body  = item.get("body").and_then(|v| v.as_str()).unwrap_or("");
         let context = build_context(title, body);
@@ -1865,17 +1958,6 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
             .unwrap_or_default();
-
-        // 画像ファイル名を収集
-        let combined = format!("{} {}", title, body);
-        let mut search = combined.as_str();
-        while let Some(start) = search.find("![](fusen_img_") {
-            let rest = &search[start + 4..];
-            if let Some(end) = rest.find(')') {
-                all_image_names.push(rest[..end].to_string());
-            }
-            search = &search[start + 1..];
-        }
 
         // Windows トースト通知
         #[cfg(desktop)]
@@ -1899,50 +1981,24 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             format!("{}\n{}", title, body)
         };
 
-        let _ = app.emit(
+        if app.emit(
             "fusen:note_from_iphone",
             IphoneNotePayload {
+                id: note_id.clone(),
                 title: title.to_string(),
                 body: pc_body,
                 context,
                 tags,
             },
-        );
-    }
-
-    // 8. 未処理アイテムのみ Drive に書き戻す（処理済みは捨てる）
-    let updated_items: Vec<serde_json::Value> = items
-        .into_iter()
-        .enumerate()
-        .filter(|(idx, item)| {
-            !new_indices_set.contains(idx) && item.get("received_at").is_none()
-        })
-        .map(|(_, item)| item)
-        .collect();
-
-    let client2 = client.clone();
-    let token2  = token.clone();
-    tauri::async_runtime::spawn(async move {
-        if updated_items.is_empty() {
-            // 未処理アイテムが残っていなければファイルごと削除
-            match gdrive::delete_file_by_name(&client2, &token2, "notes_from_iphone.json").await {
-                Ok(_) => logger::log_info("[poll] notes_from_iphone.json deleted"),
-                Err(e) => logger::log_info(&format!("[poll] notes_from_iphone.json delete error: {}", e)),
-            }
+        ).is_ok() {
+            LAST_IPHONE_NOTE_IDS
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .insert(note_id);
         } else {
-            let updated_data = serde_json::json!({ "items": updated_items });
-            let _ = gdrive::upload_json(
-                &client2, &token2, "notes_from_iphone.json", &updated_data,
-            ).await;
+            logger::log_info(&format!("[poll] emit failed id={}", note_id));
         }
-        logger::log_info(&format!("[poll] deleting {} image(s): {:?}", all_image_names.len(), all_image_names));
-        for name in all_image_names {
-            match gdrive::delete_file_by_name(&client2, &token2, &name).await {
-                Ok(_) => logger::log_info(&format!("[poll] image deleted: {}", name)),
-                Err(e) => logger::log_info(&format!("[poll] image delete error {}: {}", name, e)),
-            }
-        }
-    });
+    }
 }
 
 // --- Entry Point ---
@@ -2037,6 +2093,7 @@ pub fn run() {
             fusen_delete_all_push_devices,
             fusen_send_to_iphone,
             fusen_download_iphone_images,
+            fusen_ack_iphone_note,
         ])
         /* .on_menu_event(|app, event| {
              // handle_menu_event(app, &event);

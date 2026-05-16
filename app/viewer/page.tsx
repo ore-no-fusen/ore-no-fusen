@@ -61,6 +61,7 @@ export default function ViewerPage() {
   const [tagInput, setTagInput] = useState('');
   const [knownTags, setKnownTags] = useState<string[]>([]);
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [, setCropQueue] = useState<File[]>([]);
   const [showCropModal, setShowCropModal] = useState(false);
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
   const [historyNotes, setHistoryNotes] = useState<IphoneNote[]>([]);
@@ -410,11 +411,11 @@ export default function ViewerPage() {
           <WriteStep
             editorRef={editorRef}
             fileInputRef={fileInputRef}
+            imageBlobsRef={imageBlobsRef}
             showTagBar={showTagBar}
             tagInput={tagInput}
             writeTags={writeTags}
             knownTags={knownTags}
-            imageBlobs={imageBlobs}
             showCropModal={showCropModal}
             cropFile={cropFile}
             showMermaidModal={showMermaidModal}
@@ -433,6 +434,7 @@ export default function ViewerPage() {
             setImageBlobs={setImageBlobs}
             setShowCropModal={setShowCropModal}
             setCropFile={setCropFile}
+            setCropQueue={setCropQueue}
             setShowMermaidModal={setShowMermaidModal}
             setErrorMessage={setErrorMessage}
             setIsLoading={setIsLoading}

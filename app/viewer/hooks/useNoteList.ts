@@ -136,18 +136,29 @@ export function useNoteList({
         }
 
         // 不足分を IndexedDB に保存（取りこぼし補完）
-        await Promise.all(toSave.map((d) => saveDraft(d).catch(() => {})));
+        const saveResults = await Promise.all(
+          toSave.map(async (d) => {
+            try {
+              await saveDraft(d);
+              return d;
+            } catch {
+              return null;
+            }
+          })
+        );
+        const savedDrafts = saveResults.filter((d): d is DraftRecord => d !== null);
+        const allPendingSaved = savedDrafts.length === toSave.length;
 
         // IndexedDB 保存済み画像を Drive から削除（リソース解放）
         if (accessToken) {
-          const savedFileNames = toSave.flatMap((d) => (d.images ?? []).map((i) => i.fileName));
+          const savedFileNames = savedDrafts.flatMap((d) => (d.images ?? []).map((i) => i.fileName));
           for (const fileName of savedFileNames) {
             deleteFileFromDrive(accessToken, fileName).catch(() => {});
           }
         }
 
-        // Drive から読めた場合は全件処理済みとして削除
-        if (driveItems.length > 0 && accessToken) {
+        // Drive から読めた場合も、ローカル保存が全部成功したときだけ処理済みとして削除
+        if (driveItems.length > 0 && accessToken && allPendingSaved) {
           deleteFileFromDrive(accessToken, 'notes_to_iphone.json').catch(() => {});
         }
 

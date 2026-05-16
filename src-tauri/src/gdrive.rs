@@ -362,7 +362,7 @@ pub async fn upload_json(
 
     if let Some(file_id) = find_file(client, access_token, &folder_id, filename).await? {
         // 既存ファイルを更新 (PATCH)
-        client
+        let resp = client
             .patch(format!(
                 "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=multipart",
                 file_id
@@ -388,13 +388,16 @@ pub async fn upload_json(
             .send()
             .await
             .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Drive JSON update failed: {}", resp.status()));
+        }
     } else {
         // 新規作成 (POST multipart)
         let metadata = serde_json::json!({
             "name": filename,
             "parents": [folder_id]
         });
-        client
+        let resp = client
             .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
             .bearer_auth(access_token)
             .multipart(
@@ -415,6 +418,9 @@ pub async fn upload_json(
             .send()
             .await
             .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Drive JSON create failed: {}", resp.status()));
+        }
     }
 
     Ok(())
@@ -431,7 +437,7 @@ pub async fn upload_binary(
     let folder_id = ensure_folder(client, access_token).await?;
 
     if let Some(file_id) = find_file(client, access_token, &folder_id, filename).await? {
-        client
+        let resp = client
             .patch(format!(
                 "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=multipart",
                 file_id
@@ -448,9 +454,12 @@ pub async fn upload_binary(
             .send()
             .await
             .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Drive binary update failed: {}", resp.status()));
+        }
     } else {
         let metadata = serde_json::json!({ "name": filename, "parents": [folder_id] });
-        client
+        let resp = client
             .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
             .bearer_auth(access_token)
             .multipart(
@@ -463,6 +472,9 @@ pub async fn upload_binary(
             .send()
             .await
             .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Drive binary create failed: {}", resp.status()));
+        }
     }
 
     Ok(())
@@ -601,12 +613,15 @@ pub async fn delete_file_by_name(
         Some(f) => f.id,
         None => return Ok(()), // 存在しなければ無視
     };
-    client
+    let resp = client
         .delete(format!("https://www.googleapis.com/drive/v3/files/{}", file_id))
         .bearer_auth(access_token)
         .send()
         .await
         .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() && resp.status().as_u16() != 404 {
+        return Err(format!("Drive delete failed: {}", resp.status()));
+    }
     Ok(())
 }
 

@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '2.9.32';
+const SW_VERSION = '3.3.13';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -56,12 +56,16 @@ self.addEventListener('push', (event) => {
   const flow = loadTokenFromMeta().then((token) => {
     swLog(`token=${token ? 'あり' : 'なし'}`);
     if (!token) return saveToIndexedDB(id, title, bodyRich, []);
+    const expectedImages = extractImageFileNames(bodyRich);
     return downloadImagesFromDrive(token, bodyRich).then((images) => {
-      swLog(`画像=${images.length}件`);
+      swLog(`画像=${images.length}/${expectedImages.length}件`);
       return saveToIndexedDB(id, title, bodyRich, images).then(() => {
         swLog('IndexedDB保存完了');
-        deleteImagesFromDrive(token, images);
-        return removeIdFromNotesToIphone(token, id);
+        if (images.length === expectedImages.length) {
+          deleteImagesFromDrive(token, images);
+          return removeIdFromNotesToIphone(token, id);
+        }
+        swLog('画像不足のためDriveキューを保持');
       });
     }).catch((e) => {
       swLog(`画像ダウンロード失敗: ${e}`);
@@ -132,12 +136,17 @@ function getAppFolderId(token) {
   ).then((r) => r.json()).then((d) => d.files?.[0]?.id ?? null).catch(() => null);
 }
 
-/** body 内の fusen_img_* をすべて Drive からダウンロードして Blob 配列で返す */
-function downloadImagesFromDrive(token, body) {
+function extractImageFileNames(body) {
   const re = /!\[[^\]]*\]\((fusen_img_[^)]+)\)/g;
   const fileNames = [];
   let m;
   while ((m = re.exec(body)) !== null) fileNames.push(m[1]);
+  return fileNames;
+}
+
+/** body 内の fusen_img_* をすべて Drive からダウンロードして Blob 配列で返す */
+function downloadImagesFromDrive(token, body) {
+  const fileNames = extractImageFileNames(body);
   if (fileNames.length === 0) return Promise.resolve([]);
   return getAppFolderId(token).then((folderId) => {
     const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
@@ -167,7 +176,7 @@ function saveToIndexedDB(id, title, body, images) {
   );
   return Promise.all(imagePromises).then((processed) => {
     const validImages = processed.filter(Boolean);
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const req = indexedDB.open('fusen-drafts', 1);
       req.onupgradeneeded = () => req.result.createObjectStore('drafts');
       req.onsuccess = () => {
@@ -177,9 +186,9 @@ function saveToIndexedDB(id, title, body, images) {
           id
         );
         tx.oncomplete = () => resolve();
-        tx.onerror = () => resolve();
+        tx.onerror = () => reject(new Error('IndexedDB transaction failed'));
       };
-      req.onerror = () => resolve();
+      req.onerror = () => reject(new Error('IndexedDB open failed'));
     });
   });
 }

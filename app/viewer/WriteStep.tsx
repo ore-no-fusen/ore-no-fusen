@@ -22,12 +22,12 @@ type WriteStepProps = {
   // refs
   editorRef: React.MutableRefObject<HTMLDivElement | null>;
   fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
+  imageBlobsRef: React.MutableRefObject<Map<string, Blob>>;
   // state
   showTagBar: boolean;
   tagInput: string;
   writeTags: string[];
   knownTags: string[];
-  imageBlobs: Map<string, Blob>;
   showCropModal: boolean;
   cropFile: File | null;
   showMermaidModal: boolean;
@@ -47,6 +47,7 @@ type WriteStepProps = {
   setImageBlobs: React.Dispatch<React.SetStateAction<Map<string, Blob>>>;
   setShowCropModal: React.Dispatch<React.SetStateAction<boolean>>;
   setCropFile: React.Dispatch<React.SetStateAction<File | null>>;
+  setCropQueue: React.Dispatch<React.SetStateAction<File[]>>;
   setShowMermaidModal: React.Dispatch<React.SetStateAction<boolean>>;
   setErrorMessage: React.Dispatch<React.SetStateAction<string | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -54,7 +55,7 @@ type WriteStepProps = {
   setPendingHydrate: React.Dispatch<React.SetStateAction<PendingHydrate | null>>;
   // handlers
   handleEditorInput: () => void;
-  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; draftId: string | null }) => void;
+  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; draftId: string | null }) => Promise<boolean>;
 };
 
 /**
@@ -66,11 +67,11 @@ type WriteStepProps = {
 export function WriteStep({
   editorRef,
   fileInputRef,
+  imageBlobsRef,
   showTagBar,
   tagInput,
   writeTags,
   knownTags,
-  imageBlobs,
   showCropModal,
   cropFile,
   showMermaidModal,
@@ -89,6 +90,7 @@ export function WriteStep({
   setImageBlobs,
   setShowCropModal,
   setCropFile,
+  setCropQueue,
   setShowMermaidModal,
   setErrorMessage,
   setIsLoading,
@@ -97,6 +99,20 @@ export function WriteStep({
   handleEditorInput,
   sendToPC,
 }: WriteStepProps) {
+  const openNextCrop = React.useCallback(() => {
+    setCropQueue((prev) => {
+      const [nextFile, ...rest] = prev;
+      if (nextFile) {
+        setCropFile(nextFile);
+        setShowCropModal(true);
+      } else {
+        setCropFile(null);
+        setShowCropModal(false);
+      }
+      return rest;
+    });
+  }, [setCropFile, setCropQueue, setShowCropModal]);
+
   return (
     <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
       {/* ヘッダー */}
@@ -109,7 +125,7 @@ export function WriteStep({
               if (rawText.trim()) {
                 const { title, body } = extractTitleBody(rawText);
                 const draftId = currentDraftId ?? crypto.randomUUID();
-                const imagesArr = Array.from(imageBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
+                const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
                 await saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
                 setCurrentDraftId(draftId);
               }
@@ -347,11 +363,13 @@ export function WriteStep({
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          setCropFile(file);
+          const files = Array.from(e.target.files ?? []);
+          if (files.length === 0) return;
+          setCropQueue(files.slice(1));
+          setCropFile(files[0]);
           setShowCropModal(true);
           e.target.value = '';
         }}
@@ -380,7 +398,7 @@ export function WriteStep({
               const rawText = serializeEditor(editorRef.current);
               const { title, body } = extractTitleBody(rawText);
               const draftId = currentDraftId ?? crypto.randomUUID();
-              const imagesArr = Array.from(imageBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
+              const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
               mergeKnownTags(writeTags);
               await saveDraft({
                 id: draftId,
@@ -390,6 +408,7 @@ export function WriteStep({
                 images: imagesArr,
                 tags: writeTags,
               });
+              imageBlobsRef.current = new Map();
               setImageBlobs(new Map());
               setWriteTags([]);
               setShowTagBar(false);
@@ -409,28 +428,55 @@ export function WriteStep({
         <button
           className="w-full py-4 rounded-2xl bg-blue-500 text-white font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-md text-base"
           disabled={isSendingInBackground}
-          onClick={() => {
-            if (!accessToken || !editorRef.current) return;
+          onClick={async () => {
+            if (!editorRef.current) return;
             new Audio('/sounds/save.wav').play().catch(() => {});
-            // クリア前にデータをキャプチャ
             const rawText = serializeEditor(editorRef.current);
             const capturedTags = [...writeTags];
-            const capturedBlobs = new Map(imageBlobs);
-            const capturedDraftId = currentDraftId;
-            // UIを即クリア
+            const capturedBlobs = new Map(imageBlobsRef.current);
+            const draftId = currentDraftId ?? crypto.randomUUID();
+            const { title, body } = extractTitleBody(rawText);
+            const imagesArr = Array.from(capturedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
+
+            try {
+              await saveDraft({
+                id: draftId,
+                title,
+                body,
+                created_at: nowJST(),
+                images: imagesArr,
+                tags: capturedTags,
+              });
+              setCurrentDraftId(draftId);
+              localStorage.setItem('pending_note', draftId);
+            } catch (err: unknown) {
+              setErrorMessage('送信前の退避保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+              return;
+            }
+
+            if (!accessToken) {
+              setErrorMessage('Driveに接続してください。付箋は下書きに退避しました。');
+              return;
+            }
+
+            const sent = await sendToPC({
+              rawText,
+              tags: capturedTags,
+              blobs: capturedBlobs,
+              draftId,
+            });
+            if (!sent) return;
+
             editorRef.current.innerHTML = '';
+            imageBlobsRef.current = new Map();
             setImageBlobs(new Map());
             setWriteTags([]);
             setShowTagBar(false);
             setTagInput('');
             setCurrentDraftId(null);
-            // バックグラウンド送信開始
-            sendToPC({
-              rawText,
-              tags: capturedTags,
-              blobs: capturedBlobs,
-              draftId: capturedDraftId,
-            });
+            if (localStorage.getItem('pending_note') === draftId) {
+              localStorage.removeItem('pending_note');
+            }
           }}
         >
           {isSendingInBackground ? t('pwa.sending') : 'PCに送る'}
@@ -442,16 +488,18 @@ export function WriteStep({
         <CropModal
           file={cropFile}
           onCancel={() => {
-            setShowCropModal(false);
-            setCropFile(null);
+            openNextCrop();
           }}
           onCrop={(croppedBlob) => {
             const title = editorRef.current
               ? extractTitleBody(serializeEditor(editorRef.current)).title
               : '';
-            const fileName = buildImageFileName(title, imageBlobs.size + 1);
+            const fileName = buildImageFileName(title, imageBlobsRef.current.size + 1);
             const file = new File([croppedBlob], fileName, { type: 'image/jpeg' });
-            setImageBlobs((prev) => new Map(prev).set(fileName, file));
+            const nextBlobs = new Map(imageBlobsRef.current);
+            nextBlobs.set(fileName, file);
+            imageBlobsRef.current = nextBlobs;
+            setImageBlobs(nextBlobs);
             const img = document.createElement('img');
             img.src = URL.createObjectURL(croppedBlob);
             img.setAttribute('data-filename', fileName);
@@ -479,9 +527,16 @@ export function WriteStep({
                 editorRef.current.appendChild(img);
                 editorRef.current.appendChild(document.createTextNode('\n'));
               }
+              const rawText = serializeEditor(editorRef.current);
+              if (rawText.trim()) {
+                const { title, body } = extractTitleBody(rawText);
+                const draftId = currentDraftId ?? crypto.randomUUID();
+                const imagesArr = Array.from(nextBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
+                saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
+                setCurrentDraftId(draftId);
+              }
             }
-            setShowCropModal(false);
-            setCropFile(null);
+            openNextCrop();
           }}
         />
       )}

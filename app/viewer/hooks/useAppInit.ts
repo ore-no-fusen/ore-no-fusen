@@ -102,7 +102,7 @@ export function useAppInit({
         }),
       })
         .then((r) => r.json())
-        .then((data) => {
+        .then(async (data) => {
           const t = data.access_token;
           if (!t) throw new Error('access_token missing');
           localStorage.setItem('viewer_access_token', t);
@@ -115,6 +115,19 @@ export function useAppInit({
           saveAuthToken(t).catch(() => {}); // SW が push 時に参照するため IndexedDB にも保存
           setAccessToken(t);
           window.history.replaceState({}, '', '/viewer');
+          const pendingNote = localStorage.getItem('pending_note');
+          if (pendingNote) {
+            const draft = await loadDraft(pendingNote).catch(() => null);
+            if (draft) {
+              const titleLine = draft.title ? `${draft.title}\n` : '';
+              const images = draft.images ?? [];
+              const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
+              setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+              localStorage.removeItem('pending_note');
+            }
+            setStep('write');
+            return;
+          }
           setStep('push');
         })
         .catch((err) => {
@@ -154,7 +167,6 @@ export function useAppInit({
     // OAuth 再リダイレクト後の pending_note 処理
     const pendingNote = localStorage.getItem('pending_note');
     if (pendingNote && token) {
-      localStorage.removeItem('pending_note');
       setAccessToken(token);
       loadDraft(pendingNote).then((draft) => {
         if (draft) {
@@ -162,6 +174,7 @@ export function useAppInit({
           const images = draft.images ?? [];
           const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
           setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+          localStorage.removeItem('pending_note');
         }
         setStep('write');
       });

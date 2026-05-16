@@ -1025,10 +1025,10 @@ function OrchestratorContent() {
   useEffect(() => {
     if (!isMainWindow) return;
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ title: string; body: string; context: string; tags?: string[] }>(
+    const promise = listen<{ id: string; title: string; body: string; context: string; tags?: string[] }>(
       'fusen:note_from_iphone',
       async (event) => {
-        const { title, body, context, tags } = event.payload;
+        const { id, title, body, context, tags } = event.payload;
         try {
           const newNote = await invoke<{ body: string; frontmatter: string; meta: { path: string } }>(
             'fusen_create_note',
@@ -1059,6 +1059,9 @@ function OrchestratorContent() {
             false,
             true  // fromIphone: Alt+Tab窓として登録する
           );
+          await invoke('fusen_ack_iphone_note', { noteId: id }).catch((ackError) => {
+            console.error('[iphone] Drive受信キューのack失敗:', ackError);
+          });
         } catch (e) {
           console.error('[iphone] 付箋作成失敗:', e);
         }
