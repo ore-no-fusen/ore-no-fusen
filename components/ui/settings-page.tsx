@@ -10,7 +10,7 @@
 "use client"
 
 import React, { useState, useMemo, useEffect } from "react"
-import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone } from "lucide-react"
+import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
 import { useSettings, type AppSettings } from "@/lib/settings-store"
@@ -33,6 +33,10 @@ type SettingsPageProps = {
 
 export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnected }: SettingsPageProps) {
     const [activeSection, setActiveSection] = useState(defaultTab ?? "general")
+
+    useEffect(() => {
+        if (defaultTab) setActiveSection(defaultTab)
+    }, [defaultTab])
 
     // ★ここで「倉庫番」を呼び出し！
     // loading: 読み込み中かどうか
@@ -89,6 +93,8 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 return <AboutSection t={t} />
             case "iphone":
                 return <IphoneSection settings={settings} onUpdate={updateSetting} t={t} iphoneDriveDisconnected={iphoneDriveDisconnected ?? false} />
+            case "help":
+                return <HelpSection t={t} />
             case "feedback":
                 return <FeedbackSection t={t} />
             default:
@@ -142,6 +148,12 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         <Separator />
                         <span className="text-xs font-bold text-muted-foreground px-4 py-2 block uppercase tracking-wider">Help & Feedback</span>
                     </div>
+                    <SidebarItem
+                        icon={<HelpCircle className="mr-3 h-4 w-4" />}
+                        label={t('settings.help.menuTitle')}
+                        isActive={activeSection === "help"}
+                        onClick={() => setActiveSection("help")}
+                    />
                     <SidebarItem
                         icon={<div className="mr-3 h-4 w-4">📨</div>}
                         label={t('settings.feedback.menuTitle')}
@@ -730,7 +742,248 @@ function AboutSection({ t }: { t: (key: any) => string }) {
     )
 }
 
+function HelpSection({ t }: { t: (key: any) => string }) {
+    const sections = [
+        {
+            icon: <Type className="h-5 w-5" />,
+            title: t('settings.help.write.title'),
+            items: [
+                t('settings.help.write.newNote'),
+                t('settings.help.write.edit'),
+                t('settings.help.write.checkbox'),
+                t('settings.help.write.format'),
+                t('settings.help.write.image'),
+            ],
+        },
+        {
+            icon: <FolderOpen className="h-5 w-5" />,
+            title: t('settings.help.organize.title'),
+            items: [
+                t('settings.help.organize.color'),
+                t('settings.help.organize.tag'),
+                t('settings.help.organize.archive'),
+                t('settings.help.organize.delete'),
+            ],
+        },
+        {
+            icon: <Smartphone className="h-5 w-5" />,
+            title: t('settings.help.iphone.title'),
+            items: [
+                t('settings.help.iphone.send'),
+                t('settings.help.iphone.receive'),
+                t('settings.help.iphone.photos'),
+                t('settings.help.iphone.drive'),
+            ],
+        },
+        {
+            icon: <MousePointer2 className="h-5 w-5" />,
+            title: t('settings.help.context.title'),
+            items: [
+                t('settings.help.context.openFolder'),
+                t('settings.help.context.color'),
+                t('settings.help.context.alarm'),
+                t('settings.help.context.iphone'),
+            ],
+        },
+        {
+            icon: <Keyboard className="h-5 w-5" />,
+            title: t('settings.help.shortcuts.title'),
+            items: [
+                t('settings.help.shortcuts.newNote'),
+                t('settings.help.shortcuts.delete'),
+                t('settings.help.shortcuts.capture'),
+            ],
+        },
+        {
+            icon: <ShieldCheck className="h-5 w-5" />,
+            title: t('settings.help.safety.title'),
+            items: [
+                t('settings.help.safety.local'),
+                t('settings.help.safety.backup'),
+                t('settings.help.safety.iphoneLoss'),
+                t('settings.help.safety.trash'),
+            ],
+        },
+    ];
+    const workflows = [
+        {
+            title: t('settings.help.workflow.newNote.title'),
+            body: t('settings.help.workflow.newNote.body'),
+        },
+        {
+            title: t('settings.help.workflow.sendIphone.title'),
+            body: t('settings.help.workflow.sendIphone.body'),
+        },
+        {
+            title: t('settings.help.workflow.photoNote.title'),
+            body: t('settings.help.workflow.photoNote.body'),
+        },
+        {
+            title: t('settings.help.workflow.organize.title'),
+            body: t('settings.help.workflow.organize.body'),
+        },
+    ];
+    const contextRows = [
+        ['settings.help.contextTable.openFolder.action', 'settings.help.contextTable.openFolder.when'],
+        ['settings.help.contextTable.newNote.action', 'settings.help.contextTable.newNote.when'],
+        ['settings.help.contextTable.duplicate.action', 'settings.help.contextTable.duplicate.when'],
+        ['settings.help.contextTable.color.action', 'settings.help.contextTable.color.when'],
+        ['settings.help.contextTable.tags.action', 'settings.help.contextTable.tags.when'],
+        ['settings.help.contextTable.alarm.action', 'settings.help.contextTable.alarm.when'],
+        ['settings.help.contextTable.iphone.action', 'settings.help.contextTable.iphone.when'],
+        ['settings.help.contextTable.archive.action', 'settings.help.contextTable.archive.when'],
+        ['settings.help.contextTable.help.action', 'settings.help.contextTable.help.when'],
+        ['settings.help.contextTable.delete.action', 'settings.help.contextTable.delete.when'],
+    ];
+    const shortcutRows = [
+        ['settings.help.shortcutTable.newNote.keys', 'settings.help.shortcutTable.newNote.action'],
+        ['settings.help.shortcutTable.delete.keys', 'settings.help.shortcutTable.delete.action'],
+        ['settings.help.shortcutTable.capture.keys', 'settings.help.shortcutTable.capture.action'],
+        ['settings.help.shortcutTable.paste.keys', 'settings.help.shortcutTable.paste.action'],
+        ['settings.help.shortcutTable.save.keys', 'settings.help.shortcutTable.save.action'],
+    ];
+    const troubleRows = [
+        ['settings.help.troubleTable.iphone.issue', 'settings.help.troubleTable.iphone.check'],
+        ['settings.help.troubleTable.photos.issue', 'settings.help.troubleTable.photos.check'],
+        ['settings.help.troubleTable.drive.issue', 'settings.help.troubleTable.drive.check'],
+        ['settings.help.troubleTable.deleted.issue', 'settings.help.troubleTable.deleted.check'],
+    ];
+
+    return (
+        <div className="space-y-6">
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.help.title')}</h2>
+                <p className="text-gray-500 text-sm">{t('settings.help.description')}</p>
+            </div>
+            <Separator />
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+                <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700">
+                        <HelpCircle className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-slate-900">{t('settings.help.quickStart.title')}</h3>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">{t('settings.help.quickStart.body')}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+                <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                        <HelpCircle className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-base font-bold">{t('settings.help.workflow.title')}</h3>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                    {workflows.map((workflow, index) => (
+                        <div key={workflow.title} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                            <div className="mb-2 flex items-center gap-2">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
+                                    {index + 1}
+                                </span>
+                                <h4 className="text-sm font-bold text-slate-900">{workflow.title}</h4>
+                            </div>
+                            <p className="text-sm leading-6 text-slate-600">{workflow.body}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+                {sections.map((section) => (
+                    <div key={section.title} className="rounded-lg border border-slate-200 bg-white p-5">
+                        <div className="mb-3 flex items-center gap-2 text-slate-900">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                                {section.icon}
+                            </div>
+                            <h3 className="text-base font-bold">{section.title}</h3>
+                        </div>
+                        <ul className="space-y-2">
+                            {section.items.map((item) => (
+                                <li key={item} className="flex gap-2 text-sm leading-6 text-slate-600">
+                                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
+                                    <span>{item}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                ))}
+            </div>
+
+            <HelpTable
+                title={t('settings.help.contextTable.title')}
+                firstHeader={t('settings.help.table.action')}
+                secondHeader={t('settings.help.table.when')}
+                rows={contextRows.map(([action, when]) => [t(action), t(when)])}
+            />
+
+            <HelpTable
+                title={t('settings.help.shortcutTable.title')}
+                firstHeader={t('settings.help.table.keys')}
+                secondHeader={t('settings.help.table.action')}
+                rows={shortcutRows.map(([keys, action]) => [t(keys), t(action)])}
+            />
+
+            <HelpTable
+                title={t('settings.help.troubleTable.title')}
+                firstHeader={t('settings.help.table.issue')}
+                secondHeader={t('settings.help.table.check')}
+                rows={troubleRows.map(([issue, check]) => [t(issue), t(check)])}
+                tone="amber"
+            />
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+                <h3 className="font-bold text-amber-900">{t('settings.help.trouble.title')}</h3>
+                <p className="mt-1 text-sm leading-6 text-amber-800">{t('settings.help.trouble.body')}</p>
+            </div>
+        </div>
+    )
+}
+
 // --- フィードバックセクション ---
+function HelpTable({
+    title,
+    firstHeader,
+    secondHeader,
+    rows,
+    tone = 'slate',
+}: {
+    title: string;
+    firstHeader: string;
+    secondHeader: string;
+    rows: string[][];
+    tone?: 'slate' | 'amber';
+}) {
+    const borderClass = tone === 'amber' ? 'border-amber-200' : 'border-slate-200';
+    const headerClass = tone === 'amber' ? 'bg-amber-50 text-amber-950' : 'bg-slate-50 text-slate-900';
+
+    return (
+        <div className={`rounded-lg border ${borderClass} bg-white p-5`}>
+            <h3 className="mb-4 text-base font-bold text-slate-900">{title}</h3>
+            <div className={`overflow-hidden rounded-md border ${borderClass}`}>
+                <table className="w-full table-fixed border-collapse text-sm">
+                    <thead className={headerClass}>
+                        <tr>
+                            <th className="w-40 px-4 py-3 text-left font-bold">{firstHeader}</th>
+                            <th className="px-4 py-3 text-left font-bold">{secondHeader}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map(([first, second]) => (
+                            <tr key={`${first}-${second}`} className="border-t border-slate-200">
+                                <td className="break-words px-4 py-3 font-medium text-slate-900">{first}</td>
+                                <td className="break-words px-4 py-3 leading-6 text-slate-600">{second}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    )
+}
+
 function FeedbackSection({ t }: { t: (key: any) => string }) {
     const [type, setType] = useState<'bug' | 'feature' | 'other'>('bug')
     const [content, setContent] = useState('')

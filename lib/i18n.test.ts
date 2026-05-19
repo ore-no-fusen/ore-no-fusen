@@ -16,6 +16,10 @@ describe('i18n Utility', () => {
         expect(t('settings.title')).toBe('俺の付箋');
         expect(t('common.save')).toBe('保存');
         expect(t('settings.data.basePathPlaceholder')).toBe('フォルダを選択してください...');
+        expect(t('settings.help.menuTitle')).toBe('使い方');
+        expect(t('settings.help.workflow.title')).toBe('よくある使い方');
+        expect(t('settings.help.contextTable.title')).toBe('右クリックメニュー早見表');
+        expect(t('menu.openHelp')).toBe('使い方を開く');
     });
 
     it('returns correct translation for English', () => {
@@ -23,6 +27,10 @@ describe('i18n Utility', () => {
         expect(t('settings.title')).toBe('Settings');
         expect(t('common.save')).toBe('Save & Close');
         expect(t('settings.data.basePathPlaceholder')).toBe('Select a folder...');
+        expect(t('settings.help.menuTitle')).toBe('Help');
+        expect(t('settings.help.workflow.title')).toBe('Common Workflows');
+        expect(t('settings.help.contextTable.title')).toBe('Right-Click Menu Reference');
+        expect(t('menu.openHelp')).toBe('Open Help');
     });
 
     it('returns key if translation is missing', () => {

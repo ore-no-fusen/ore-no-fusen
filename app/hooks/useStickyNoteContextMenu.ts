@@ -441,6 +441,16 @@ export function useStickyNoteContextMenu({
                 }));
             }
 
+            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            menuItems.push(await MenuItem.new({
+                id: 'ctx_open_help',
+                text: `❔ ${t('menu.openHelp')}`,
+                action: async () => {
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('fusen:open_settings', { tab: 'help' });
+                }
+            }));
+
             // 削除
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
