@@ -274,51 +274,6 @@ export default function ViewerPage() {
     onSessionExpired: () => setStep('login'),
   });
 
-  // Siri ショートカット連携: URL クエリ ?siri_send=... による自動送信
-  // 動作要件: accessToken 有効・step が write|list・未送信であること
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!accessToken) return;
-    if (step !== 'write' && step !== 'list') return;
-
-    const params = new URLSearchParams(window.location.search);
-    const sendText = params.get('siri_send');
-    if (!sendText) return;
-
-    // 二重送信防止: テキスト内容ベースのフラグを sessionStorage に立てる
-    let hash = 0;
-    for (let i = 0; i < sendText.length; i++) {
-      hash = ((hash << 5) - hash + sendText.charCodeAt(i)) | 0;
-    }
-    const sentKey = `auto_send_done:${hash}`;
-    if (sessionStorage.getItem(sentKey)) return;
-    sessionStorage.setItem(sentKey, '1');
-
-    const trySpeak = (text: string) => {
-      if (!('speechSynthesis' in window)) return;
-      try {
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'ja-JP';
-        window.speechSynthesis.speak(u);
-      } catch { /* ベスト・エフォート: 失敗は無視 */ }
-    };
-
-    (async () => {
-      const ok = await sendToPC({
-        rawText: sendText,
-        tags: ['siri'],
-        blobs: new Map(),
-        draftId: null,
-      });
-      if (ok) {
-        trySpeak('送りました');
-        window.history.replaceState({}, '', '/viewer');
-      } else {
-        trySpeak('遅れました');
-      }
-    })();
-  }, [accessToken, step, sendToPC]);
-
   // メモ削除ハンドラ
   const handleDeleteNote = async (note: IphoneNote) => {
     new Audio('/sounds/delete.wav').play().catch(() => {});
@@ -523,6 +478,22 @@ export default function ViewerPage() {
             onReRegisterPush={() => {
               localStorage.removeItem('viewer_push_done');
               setStep('push');
+            }}
+            onCopySiriToken={async () => {
+              const token = localStorage.getItem('viewer_refresh_token');
+              if (!token) {
+                setErrorMessage('トークンが見つかりません。ログインし直してください。');
+                setTimeout(() => setErrorMessage(null), 5000);
+                return;
+              }
+              try {
+                await navigator.clipboard.writeText(token);
+                setErrorMessage('Siri 用トークンをコピーしました');
+                setTimeout(() => setErrorMessage(null), 3000);
+              } catch {
+                setErrorMessage('コピーに失敗しました。ブラウザの許可設定を確認してください。');
+                setTimeout(() => setErrorMessage(null), 5000);
+              }
             }}
           />
         )}
