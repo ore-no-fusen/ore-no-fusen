@@ -20,7 +20,6 @@ export function NoteListStep({
   onDelete,
   onLockToggle,
   onReRegisterPush,
-  onCopySiriToken,
 }: NoteListStepProps) {
   return (
     <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
@@ -137,22 +136,14 @@ export function NoteListStep({
         )}
       </div>
 
-      <div className="px-5 py-3 border-t border-gray-200 bg-[#F2F2F7] flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <button
-            className="text-xs text-gray-400 hover:text-blue-500 active:text-blue-600 py-1 transition-colors"
-            onClick={onReRegisterPush}
-          >
-            通知デバイスを再登録する
-          </button>
-          <span className="text-xs text-gray-300 font-mono">SW {swVersion ?? '---'}</span>
-        </div>
+      <div className="px-5 py-3 border-t border-gray-200 bg-[#F2F2F7] flex items-center justify-between">
         <button
-          className="text-xs text-gray-400 hover:text-blue-500 active:text-blue-600 py-1 transition-colors text-left"
-          onClick={onCopySiriToken}
+          className="text-xs text-gray-400 hover:text-blue-500 active:text-blue-600 py-1 transition-colors"
+          onClick={onReRegisterPush}
         >
-          Siri 用トークンをコピー
+          通知デバイスを再登録する
         </button>
+        <span className="text-xs text-gray-300 font-mono">SW {swVersion ?? '---'}</span>
       </div>
     </div>
   );

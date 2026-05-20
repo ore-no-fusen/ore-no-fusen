@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // ---------------------------------------------------------------------------
 // /api/siri-send
-// iPhone のショートカット App から叩かれる Siri 連携用エンドポイント。
+//
+// ★ 裏機能・実験的・開発者向け ★
+// 一般ユーザー向け機能ではない。本番リリース・ユーザーガイドに含めない。
+// 開発者が iPhone のショートカット App から手動で叩いて、Siri 連携を実験する用途。
+//
+// PWA の DebugLogView (?debug=1) 内の「Siri 用トークンをコピー」で取得した
+// refresh_token を、ショートカット App 内に貼り付けて使う。
 //
 // 入力 (GET クエリ):
 //   text          : 送信するテキスト（必須）
@@ -18,6 +24,10 @@ import { NextRequest, NextResponse } from 'next/server';
 //
 // PC 側はこれを 30 秒間隔のポーリング (src-tauri/src/lib.rs:poll_iphone_note)
 // で検出して付箋ウィンドウを立ち上げる。
+//
+// プライバシー上の注意:
+//   GET クエリに refresh_token と text が含まれるため、Vercel のアクセスログに
+//   短期間（Hobby プランで約 1 時間）残る。一般ユーザーには案内しない裏機能とする。
 // ---------------------------------------------------------------------------
 
 const APP_FOLDER_NAME = 'ore-no-fusen';

@@ -479,22 +479,6 @@ export default function ViewerPage() {
               localStorage.removeItem('viewer_push_done');
               setStep('push');
             }}
-            onCopySiriToken={async () => {
-              const token = localStorage.getItem('viewer_refresh_token');
-              if (!token) {
-                setErrorMessage('トークンが見つかりません。ログインし直してください。');
-                setTimeout(() => setErrorMessage(null), 5000);
-                return;
-              }
-              try {
-                await navigator.clipboard.writeText(token);
-                setErrorMessage('Siri 用トークンをコピーしました');
-                setTimeout(() => setErrorMessage(null), 3000);
-              } catch {
-                setErrorMessage('コピーに失敗しました。ブラウザの許可設定を確認してください。');
-                setTimeout(() => setErrorMessage(null), 5000);
-              }
-            }}
           />
         )}
 
@@ -516,6 +500,7 @@ export default function ViewerPage() {
 function DebugLogView() {
   const [logs, setLogs] = React.useState<{ t: string; msg: string }[]>([]);
   const [swVersion, setSwVersion] = React.useState<string | null>(null);
+  const [siriTokenStatus, setSiriTokenStatus] = React.useState<string | null>(null);
   const loadLogs = React.useCallback(() => {
     const req = indexedDB.open('fusen-logs', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
@@ -525,6 +510,25 @@ function DebugLogView() {
       all.onsuccess = () => setLogs((all.result as { t: string; msg: string }[]).reverse());
     };
     req.onerror = () => setLogs([]);
+  }, []);
+
+  // 裏機能: Siri 用 refresh_token をクリップボードにコピーする
+  // 一般ユーザー向けではない。?debug=1 で開いた開発者のみ使用する想定
+  const copySiriToken = React.useCallback(async () => {
+    const token = localStorage.getItem('viewer_refresh_token');
+    if (!token) {
+      setSiriTokenStatus('トークンが見つかりません');
+      setTimeout(() => setSiriTokenStatus(null), 3000);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(token);
+      setSiriTokenStatus('コピーしました');
+      setTimeout(() => setSiriTokenStatus(null), 3000);
+    } catch {
+      setSiriTokenStatus('コピー失敗');
+      setTimeout(() => setSiriTokenStatus(null), 3000);
+    }
   }, []);
 
   useEffect(() => {
@@ -555,6 +559,10 @@ function DebugLogView() {
             setLogs([]);
           }}>クリア</button>
         </div>
+      </div>
+      <div className="flex items-center gap-3 mb-3 pb-2 border-b border-gray-700">
+        <button className="text-purple-400" onClick={copySiriToken}>Siri 用トークンをコピー</button>
+        {siriTokenStatus && <span className="text-yellow-300">{siriTokenStatus}</span>}
       </div>
       {logs.length === 0 && <p className="text-gray-500">ログなし</p>}
       {logs.map((l, i) => (

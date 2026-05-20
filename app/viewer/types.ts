@@ -58,5 +58,4 @@ export type NoteListStepProps = {
   onDelete: (note: IphoneNote) => void;
   onLockToggle: (e: React.MouseEvent, note: IphoneNote) => void;
   onReRegisterPush: () => void;
-  onCopySiriToken: () => void;
 };
