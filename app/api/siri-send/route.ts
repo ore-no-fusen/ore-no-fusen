@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // PWA の DebugLogView (?debug=1) 内の「Siri 用トークンをコピー」で取得した
 // refresh_token を、ショートカット App 内に貼り付けて使う。
 //
-// 入力 (GET クエリ):
+// 入力 (POST JSON ボディ):
 //   text          : 送信するテキスト（必須）
 //   refresh_token : ユーザーの Google OAuth リフレッシュトークン（必須）
 //
@@ -25,9 +25,10 @@ import { NextRequest, NextResponse } from 'next/server';
 // PC 側はこれを 30 秒間隔のポーリング (src-tauri/src/lib.rs:poll_iphone_note)
 // で検出して付箋ウィンドウを立ち上げる。
 //
-// プライバシー上の注意:
-//   GET クエリに refresh_token と text が含まれるため、Vercel のアクセスログに
-//   短期間（Hobby プランで約 1 時間）残る。一般ユーザーには案内しない裏機能とする。
+// プライバシー設計:
+//   POST のリクエストボディは Vercel のアクセスログに記録されないため、
+//   text と refresh_token の中身はログに残らない。
+//   ログに残るのは "POST /api/siri-send" とステータスコード、実行時間のみ。
 // ---------------------------------------------------------------------------
 
 const APP_FOLDER_NAME = 'ore-no-fusen';
@@ -126,10 +127,15 @@ async function uploadNotesJson(accessToken: string, folderId: string, data: obje
   }
 }
 
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const text = url.searchParams.get('text');
-  const refreshToken = url.searchParams.get('refresh_token');
+export async function POST(req: NextRequest) {
+  let body: { text?: string; refresh_token?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: 'invalid JSON body' }, { status: 400 });
+  }
+  const text = body.text;
+  const refreshToken = body.refresh_token;
 
   if (!text || !text.trim()) {
     return NextResponse.json({ ok: false, error: 'text is required' }, { status: 400 });

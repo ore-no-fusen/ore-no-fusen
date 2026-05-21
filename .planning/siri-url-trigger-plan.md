@@ -73,11 +73,16 @@ PWA は **一切起動しない**。Vercel API が refresh_token を OAuth と�
 
 **[app/api/siri-send/route.ts](app/api/siri-send/route.ts)**
 
-GET リクエスト：
+POST リクエスト（プライバシー保護のため GET から POST に変更）：
 
 ```
-GET /api/siri-send?text=<送信テキスト>&refresh_token=<許可証>
+POST /api/siri-send
+Content-Type: application/json
+Body: {"text": "<送信テキスト>", "refresh_token": "<許可証>"}
 ```
+
+GET だと URL クエリパラメータが Vercel のアクセスログに記録されるが、
+POST のリクエストボディは記録されないため、text と refresh_token がログに残らない。
 
 処理：
 1. `refresh_token` を Google OAuth と交換して `access_token` を取得
@@ -116,18 +121,21 @@ Google 公式によると、本番環境の refresh_token は **無期限**（6 
 
 ### 6.2 ショートカットを作る
 
-iPhone のショートカット App で新規ショートカットを作成し、以下の 4 アクションを順に配置：
+iPhone のショートカット App で新規ショートカットを作成し、以下のアクションを順に配置：
 
 | # | アクション | 設定 |
 |:---:|:---|:---|
-| 1 | テキスト（ショートカットの入力受け取り） | 「i」ボタン →「ショートカットの入力を受け取る」を ON、種類は「テキスト」 |
-| 2 | URL エンコード | 入力対象：ステップ 1 の「ショートカットの入力」 |
-| 3 | URL | `https://<develop プレビュー URL>/api/siri-send?text=【ステップ2】&refresh_token=【6.1でコピーしたトークン】` |
-| 4 | URL の内容を取得 | URL：ステップ 3、メソッド：GET |
+| 1 | テキストを音声入力 | （実行時にマイクで音声入力） |
+| 2 | URL エンコード | 入力：ステップ 1 の音声入力結果 |
+| 3 | テキスト | JSON 本文：`{"text": "【URLエンコード結果】", "refresh_token": "【6.1でコピーしたトークン】"}` |
+| 4 | URL | `https://<develop プレビュー URL>/api/siri-send` |
+| 5 | URL の内容を取得 | URL：ステップ 4、**メソッド：POST**、**リクエストボディ：JSON**、ボディの内容：ステップ 3 のテキスト |
 
-ショートカット名を「**付箋に送る**」に変更し、「Siri に追加」で起動フレーズを登録。
+ショートカット名を Siri が認識しやすい造語にする（例：「はひふへほ」）。
+Siri が「テキスト」「メモ」「送信」などの一般語をショートカット名と認識せず、検索や他アプリへの命令と誤解する事象が発生する。意味のない造語のほうが認識される【確認済み】。
 
-**重要**：ステップ 4 は `URL を開く` ではなく `URL の内容を取得` を使う。前者は Safari を開いてしまう。
+**重要**：ステップ 5 は `URL を開く` ではなく `URL の内容を取得` を使う。前者は Safari を開いてしまう。
+メソッドは必ず **POST** にする。GET だと URL クエリが Vercel のアクセスログに残る。
 
 ### 6.3 使う
 
