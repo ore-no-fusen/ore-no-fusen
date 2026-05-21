@@ -72,3 +72,9 @@ public/workbox-*.js.map
 promo/frames-debug/
 promo/work/
 /speed-proof-raw.mp4
+
+# GSD (Get Shit Done) - ローカル開発ツール（マシン固有のため除外）
+.agents/
+.codex/
+AGENTS.md
+wiki-temp/
