@@ -59,6 +59,7 @@ html.dark .doc-card-header {
 .badge-006 { background: #e0f2fe; color: #075985; }
 .badge-100 { background: #ecfdf5; color: #065f46; }
 .badge-101 { background: #fff7ed; color: #9a3412; }
+.badge-200 { background: #fef3c7; color: #92400e; }
 
 .doc-card-title {
   flex: 1;
@@ -146,6 +147,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <tr><td><span class="doc-badge badge-006">006</span></td><td><strong><a href="./006_ARCHITECTURE">4+1 Viewアーキテクチャ</a></strong></td><td>4+1 View Model・システム全体俯瞰図</td></tr>
   <tr><td><span class="doc-badge badge-100">100</span></td><td><strong><a href="./100_PRIVACY">プライバシーポリシー</a></strong></td><td>Google Drive連携・ログ・データ削除方針</td></tr>
   <tr><td><span class="doc-badge badge-101">101</span></td><td><strong><a href="./101_TERMS">利用規約</a></strong></td><td>利用条件・免責事項・外部サービスの扱い</td></tr>
+  <tr><td><span class="doc-badge badge-200">200</span></td><td><strong><a href="./200_SIRI_SETUP">Siri から PC に付箋を送る</a></strong></td><td>iPhone のショートカット App を使った音声送信の設定手順（実験的）</td></tr>
 </table>
 </div>
 
