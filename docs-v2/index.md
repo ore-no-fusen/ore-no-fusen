@@ -51,6 +51,7 @@ html.dark .doc-card-header {
   margin-top: 2px;
 }
 .badge-000 { background: #ede9fe; color: #4c1d95; }
+.badge-000i { background: #fae8ff; color: #86198f; }
 .badge-001 { background: #dbeafe; color: #1e40af; }
 .badge-002 { background: #dbeafe; color: #1e40af; }
 .badge-003 { background: #dcfce7; color: #14532d; }
@@ -124,7 +125,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
 <div class="portal-header">
   <div style="display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: #6d28d9; background: #ede9fe; border-radius: 99px; padding: 3px 10px; margin-bottom: 10px;">DESIGN DOCS PORTAL</div>
   <h1 style="font-size: 28px; font-weight: 800; margin-bottom: 6px; border: none;">俺の付箋 設計書</h1>
-  <p style="font-size: 14px; color: #64748b;">000〜006 の全ドキュメント・全セクション一覧。各リンクから該当箇所へ直接ジャンプできます。</p>
+  <p style="font-size: 14px; color: #64748b;">Intention Layer と 000〜006 の全ドキュメント・全セクション一覧。各リンクから該当箇所へ直接ジャンプできます。</p>
 </div>
 
 ---
@@ -135,6 +136,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0;">
 <table class="module-table">
   <tr><th style="width:32px">No</th><th>タイトル</th><th>内容</th></tr>
+  <tr><td><span class="doc-badge badge-000i">000-I</span></td><td><strong><a href="./000_INTENTION_LAYER">Intention Layer</a></strong></td><td>AIエージェント時代の上位思想・プロダクト定義</td></tr>
   <tr><td><span class="doc-badge badge-000">000</span></td><td><strong><a href="./000_REQUIREMENTS">要求仕様</a></strong></td><td>プロダクトが満たすべき機能・非機能要件</td></tr>
   <tr><td><span class="doc-badge badge-001">001</span></td><td><strong><a href="./001_OVERVIEW">システム全体像</a></strong></td><td>登場人物・技術スタック・データフロー等</td></tr>
   <tr><td><span class="doc-badge badge-002">002</span></td><td><strong><a href="./002_PC">PCローカル・UI設計</a></strong></td><td>画面構成・モジュール・データ構造・フロー</td></tr>
@@ -155,6 +157,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
 
 <div class="read-order">
   <strong>📖 読む順序</strong>：<br>
+  <a href="./000_INTENTION_LAYER"><span class="seq-badge" style="background:#fae8ff;color:#86198f;">000-I</span>Intention Layer</a> →
   <a href="./000_REQUIREMENTS"><span class="seq-badge" style="background:#ede9fe;color:#4c1d95;">000</span>要求仕様</a> →
   <a href="./001_OVERVIEW"><span class="seq-badge" style="background:#dbeafe;color:#1e40af;">001</span>システム全体像</a> →
   <a href="./002_PC"><span class="seq-badge" style="background:#dbeafe;color:#1e40af;">002</span>PCローカル・UI設計</a> →
@@ -163,12 +166,31 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <a href="./005_GLOSSARY"><span class="seq-badge" style="background:#fee2e2;color:#991b1b;">005</span>用語集</a> →
   <a href="./006_ARCHITECTURE"><span class="seq-badge" style="background:#e0f2fe;color:#075985;">006</span>4+1 Viewアーキテクチャ</a>
   
-  <div class="note-text">⚠️ <strong>000（要求仕様）</strong> は「なぜ作るか・何を作るか」を定義する文書です。<strong>001〜006（設計書）</strong> は「どう作るか」を定義する別の文書群です。初めて読む方は000から順に読むことを推奨します。</div>
+  <div class="note-text">⚠️ <strong>000-I（Intention Layer）</strong> は「何者として作るか」を定義する上位思想です。<strong>000（要求仕様）</strong> は「なぜ作るか・何を作るか」を定義する文書です。<strong>001〜006（設計書）</strong> は「どう作るか」を定義する別の文書群です。初めて読む方は000-Iから順に読むことを推奨します。</div>
 </div>
 
 ---
 
 <div class="doc-grid">
+  <!-- ===== 000-I ===== -->
+  <div class="doc-card">
+    <div class="doc-card-header">
+      <span class="doc-badge badge-000i">000-I</span>
+      <div class="doc-card-title">
+        <a href="./000_INTENTION_LAYER">Intention Layer</a>
+        <div class="doc-subtitle">AIエージェント時代の上位思想・プロダクト定義</div>
+      </div>
+    </div>
+    <div class="toc-list">
+      <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#thesis">Thesis</a></div>
+      <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#problem">Problem</a></div>
+      <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#current-evidence">Current Evidence</a></div>
+      <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#system-model">System Model</a></div>
+      <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#ai-phone-direction">AI Phone Direction</a></div>
+      <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#aiエージェント時代の-intention-layer">日本語訳</a></div>
+    </div>
+  </div>
+
   <!-- ===== 000 ===== -->
   <div class="doc-card">
     <div class="doc-card-header">

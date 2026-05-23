@@ -13,6 +13,12 @@ outline: deep
 設計書 v1.2 / 2026-05-06
 </p>
 
+## 0 上位思想
+
+このシステム全体像は、[000-I Intention Layer](./000_INTENTION_LAYER.md) を上位思想として読む。
+
+俺の付箋は、単なる付箋アプリではなく、AIエージェント時代の「意図の置き場」である。
+PC、iPhone/PWA、Google Drive、Vercel、通知基盤は、すべて `Capture -> Land -> Persist -> Surface -> Act -> Resolve` の loop を支える構成要素として扱う。
 
 ## 1 登場人物
 
