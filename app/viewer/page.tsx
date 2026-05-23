@@ -69,6 +69,7 @@ export default function ViewerPage() {
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<string, string>>(new Map());
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const videoInputRef = React.useRef<HTMLInputElement>(null);
   const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
   const currentDraftIdRef = React.useRef<string | null>(null);
   const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
@@ -268,6 +269,7 @@ export default function ViewerPage() {
     backgroundSendSuccess,
     backgroundSendError,
     sendToPC,
+    sendVideoToPC,
   } = useBackgroundSend({
     accessToken,
     onTokenRefreshed: (newToken) => setAccessToken(newToken),
@@ -411,6 +413,7 @@ export default function ViewerPage() {
           <WriteStep
             editorRef={editorRef}
             fileInputRef={fileInputRef}
+            videoInputRef={videoInputRef}
             imageBlobsRef={imageBlobsRef}
             showTagBar={showTagBar}
             tagInput={tagInput}
@@ -442,6 +445,7 @@ export default function ViewerPage() {
             setPendingHydrate={setPendingHydrate}
             handleEditorInput={handleEditorInput}
             sendToPC={sendToPC}
+            sendVideoToPC={sendVideoToPC}
           />
         )}
 

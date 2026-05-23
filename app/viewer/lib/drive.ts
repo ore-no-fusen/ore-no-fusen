@@ -256,6 +256,38 @@ export async function uploadImageToDrive(
 }
 
 /**
+ * 責務: 動画 Blob を Google Drive にアップロードする（multipart）
+ * 入力: accessToken: string, file: Blob, fileName: string
+ * 出力: Promise<void>
+ * 副作用: Google Drive API 呼び出し（POST multipart）
+ */
+export async function uploadVideoToDrive(
+  accessToken: string,
+  file: Blob,
+  fileName: string
+): Promise<void> {
+  const folderId = await getAppFolderId(accessToken);
+  const parentId = folderId ?? 'root';
+  const metadata = JSON.stringify({
+    name: fileName,
+    mimeType: file.type || 'video/mp4',
+    parents: [parentId],
+  });
+  const form = new FormData();
+  form.append('metadata', new Blob([metadata], { type: 'application/json' }));
+  form.append('file', file);
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    }
+  );
+  if (!res.ok) throw new Error(`Drive video upload failed: ${res.status}`);
+}
+
+/**
  * 責務: Drive からファイルをダウンロードする（トークン期限切れ時に自動リフレッシュ）
  * 入力: token: string, fileName: string
  * 出力: Promise<unknown>（JSON パース済みオブジェクト）
@@ -291,6 +323,26 @@ export async function uploadImageWithAutoRefresh(
     const newToken = await refreshAccessToken();
     if (!newToken) throw new Error('session expired');
     await uploadImageToDrive(newToken, file, fileName);
+  }
+}
+
+/**
+ * 責務: 動画を Drive にアップロードする（トークン期限切れ時に自動リフレッシュ）
+ * 入力: token: string, file: Blob, fileName: string
+ * 出力: Promise<void>
+ * 副作用: Google Drive API 呼び出し、期限切れ時に refreshAccessToken を呼び出す
+ */
+export async function uploadVideoWithAutoRefresh(
+  token: string,
+  file: Blob,
+  fileName: string
+): Promise<void> {
+  try {
+    await uploadVideoToDrive(token, file, fileName);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    await uploadVideoToDrive(newToken, file, fileName);
   }
 }
 

@@ -22,6 +22,7 @@ type WriteStepProps = {
   // refs
   editorRef: React.MutableRefObject<HTMLDivElement | null>;
   fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
+  videoInputRef: React.MutableRefObject<HTMLInputElement | null>;
   imageBlobsRef: React.MutableRefObject<Map<string, Blob>>;
   // state
   showTagBar: boolean;
@@ -56,6 +57,7 @@ type WriteStepProps = {
   // handlers
   handleEditorInput: () => void;
   sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; draftId: string | null }) => Promise<boolean>;
+  sendVideoToPC: (payload: { file: File; rawText: string; tags: string[]; draftId: string | null }) => Promise<boolean>;
 };
 
 /**
@@ -67,6 +69,7 @@ type WriteStepProps = {
 export function WriteStep({
   editorRef,
   fileInputRef,
+  videoInputRef,
   imageBlobsRef,
   showTagBar,
   tagInput,
@@ -98,6 +101,7 @@ export function WriteStep({
   setPendingHydrate,
   handleEditorInput,
   sendToPC,
+  sendVideoToPC,
 }: WriteStepProps) {
   const openNextCrop = React.useCallback(() => {
     setCropQueue((prev) => {
@@ -146,6 +150,15 @@ export function WriteStep({
             title="画像"
           >
             📷
+          </button>
+          {/* 動画送信ボタン */}
+          <button
+            className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
+            onClick={() => videoInputRef.current?.click()}
+            aria-label="動画をPCに送る"
+            title="動画"
+          >
+            🎬
           </button>
           {/* Mermaid ボタン */}
           <button
@@ -372,6 +385,53 @@ export function WriteStep({
           setCropFile(files[0]);
           setShowCropModal(true);
           e.target.value = '';
+        }}
+      />
+
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/mp4,video/quicktime,.mp4,.mov"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (!file || !editorRef.current) return;
+          if (!accessToken) {
+            setErrorMessage('Driveに接続してください。');
+            return;
+          }
+          const rawText = serializeEditor(editorRef.current);
+          const capturedTags = [...writeTags];
+          const draftId = currentDraftId ?? crypto.randomUUID();
+          const { title, body } = extractTitleBody(rawText);
+          const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, imageFile]) => ({ fileName, blob: imageFile }));
+
+          try {
+            await saveDraft({
+              id: draftId,
+              title,
+              body,
+              created_at: nowJST(),
+              images: imagesArr,
+              tags: capturedTags,
+            });
+            setCurrentDraftId(draftId);
+            localStorage.setItem('pending_note', draftId);
+          } catch (err: unknown) {
+            setErrorMessage('送信前の退避保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+            return;
+          }
+
+          const sent = await sendVideoToPC({
+            file,
+            rawText,
+            tags: capturedTags,
+            draftId,
+          });
+          if (sent && localStorage.getItem('pending_note') === draftId) {
+            localStorage.removeItem('pending_note');
+          }
         }}
       />
 

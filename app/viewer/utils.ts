@@ -48,6 +48,28 @@ export function buildImageFileName(title: string, index: number): string {
 }
 
 /**
+ * 責務: iPhone/iPad からPCへ送る動画ファイル名を生成する
+ * 入力: originalName: string
+ * 出力: string（例: fusen_video_20260101_120000_dance01_a1b2c3d4.mp4）
+ * 副作用: なし
+ */
+export function buildVideoFileName(originalName: string): string {
+  const now = new Date();
+  const date = now.toLocaleDateString('sv').replace(/-/g, '');
+  const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+  const dot = originalName.lastIndexOf('.');
+  const rawBase = dot >= 0 ? originalName.slice(0, dot) : originalName;
+  const rawExt = dot >= 0 ? originalName.slice(dot + 1).toLowerCase() : 'mp4';
+  const ext = rawExt === 'mov' ? 'mov' : 'mp4';
+  const base = rawBase
+    .trim()
+    .replace(/[^\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f]/g, '')
+    .slice(0, 24) || 'video';
+  const suffix = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+  return `fusen_video_${date}_${time}_${base}_${suffix}.${ext}`;
+}
+
+/**
  * 責務: contenteditable のカーソル位置にテキストノードを挿入する
  * 入力: text: string
  * 出力: なし

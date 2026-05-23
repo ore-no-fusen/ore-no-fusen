@@ -27,10 +27,12 @@ const saveDraftMock = vi.mocked(saveDraft);
 function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteStep>> = {}) {
   const editorRef = React.createRef<HTMLDivElement>() as React.MutableRefObject<HTMLDivElement | null>;
   const fileInputRef = React.createRef<HTMLInputElement>() as React.MutableRefObject<HTMLInputElement | null>;
+  const videoInputRef = React.createRef<HTMLInputElement>() as React.MutableRefObject<HTMLInputElement | null>;
   const imageBlobsRef = { current: new Map<string, Blob>() };
   const props: React.ComponentProps<typeof WriteStep> = {
     editorRef,
     fileInputRef,
+    videoInputRef,
     imageBlobsRef,
     showTagBar: false,
     tagInput: '',
@@ -62,6 +64,7 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
     setPendingHydrate: vi.fn(),
     handleEditorInput: vi.fn(),
     sendToPC: vi.fn(async () => true),
+    sendVideoToPC: vi.fn(async () => true),
     ...overrides,
   };
 
@@ -136,7 +139,7 @@ describe('WriteStep loss prevention', () => {
     const setCropQueue = vi.fn();
     const setShowCropModal = vi.fn();
     const { container } = renderWriteStep({ setCropFile, setCropQueue, setShowCropModal });
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const input = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
     const first = new File(['1'], 'first.jpg', { type: 'image/jpeg' });
     const second = new File(['2'], 'second.jpg', { type: 'image/jpeg' });
     const third = new File(['3'], 'third.jpg', { type: 'image/jpeg' });
@@ -147,5 +150,22 @@ describe('WriteStep loss prevention', () => {
     expect(setCropFile).toHaveBeenCalledWith(first);
     expect(setCropQueue).toHaveBeenCalledWith([second, third]);
     expect(setShowCropModal).toHaveBeenCalledWith(true);
+  });
+
+  it('動画を選択したらメモ本文を保持したままsendVideoToPCへ渡す', async () => {
+    const sendVideoToPC = vi.fn(async () => true);
+    const { container } = renderWriteStep({ sendVideoToPC });
+    const input = container.querySelector('input[accept="video/mp4,video/quicktime,.mp4,.mov"]') as HTMLInputElement;
+    const file = new File(['video'], 'dance.mov', { type: 'video/quicktime' });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(sendVideoToPC).toHaveBeenCalled());
+    expect(sendVideoToPC).toHaveBeenCalledWith({
+      file,
+      rawText: '大事な付箋',
+      tags: ['tag1'],
+      draftId: 'draft-id-1',
+    });
   });
 });

@@ -1829,6 +1829,52 @@ fn collect_iphone_image_names(item: &serde_json::Value) -> Vec<String> {
     image_names
 }
 
+fn collect_iphone_video_names(item: &serde_json::Value) -> Vec<String> {
+    item.get("videoFileName")
+        .and_then(|v| v.as_str())
+        .filter(|name| name.starts_with("fusen_video_"))
+        .map(|name| vec![name.to_string()])
+        .unwrap_or_default()
+}
+
+fn sanitize_video_file_name(name: &str) -> String {
+    let file_name = std::path::Path::new(name)
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or("video.mp4");
+    let mut safe = String::with_capacity(file_name.len());
+    for ch in file_name.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+            safe.push(ch);
+        } else {
+            safe.push('_');
+        }
+    }
+    if safe.is_empty() {
+        "video.mp4".to_string()
+    } else {
+        safe
+    }
+}
+
+async fn download_iphone_video_to_assets(
+    client: &reqwest::Client,
+    token: &str,
+    folder_path: &str,
+    video_file_name: &str,
+) -> Result<String, String> {
+    let safe_name = sanitize_video_file_name(video_file_name);
+    let video_dir = std::path::Path::new(folder_path).join("assets").join("video");
+    std::fs::create_dir_all(&video_dir).map_err(|e| e.to_string())?;
+    let local_path = video_dir.join(&safe_name);
+    if !local_path.exists() {
+        let bytes = gdrive::download_binary(client, token, video_file_name).await?;
+        std::fs::write(&local_path, &bytes)
+            .map_err(|e| format!("動画保存失敗 {}: {}", safe_name, e))?;
+    }
+    Ok(format!("assets/video/{}", safe_name))
+}
+
 #[tauri::command]
 async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
     let client = reqwest::Client::new();
@@ -1853,6 +1899,7 @@ async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
     };
 
     let mut image_names = Vec::new();
+    let mut video_names = Vec::new();
     let mut remaining = Vec::new();
     let mut found = false;
     for item in items {
@@ -1860,6 +1907,7 @@ async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
         if item_id == note_id {
             found = true;
             image_names.extend(collect_iphone_image_names(&item));
+            video_names.extend(collect_iphone_video_names(&item));
         } else if item.get("received_at").is_none() {
             remaining.push(item);
         }
@@ -1879,6 +1927,11 @@ async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
     for name in image_names {
         if let Err(e) = gdrive::delete_file_by_name(&client, &token, &name).await {
             logger::log_info(&format!("[iphone ack] image delete error {}: {}", name, e));
+        }
+    }
+    for name in video_names {
+        if let Err(e) = gdrive::delete_file_by_name(&client, &token, &name).await {
+            logger::log_info(&format!("[iphone ack] video delete error {}: {}", name, e));
         }
     }
     logger::log_info(&format!("[iphone ack] completed id={}", note_id));
@@ -1953,11 +2006,58 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         let note_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
         let body  = item.get("body").and_then(|v| v.as_str()).unwrap_or("");
-        let context = build_context(title, body);
+        let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("note");
+        let original_file_name = item.get("originalFileName").and_then(|v| v.as_str()).unwrap_or("");
+        let mut pc_body = if title.is_empty() {
+            body.to_string()
+        } else if body.is_empty() {
+            title.to_string()
+        } else {
+            format!("{}\n{}", title, body)
+        };
+        let context = if item_type == "video" {
+            if original_file_name.is_empty() {
+                build_context(title, body)
+            } else {
+                original_file_name.to_string()
+            }
+        } else {
+            build_context(title, body)
+        };
         let tags: Vec<String> = item.get("tags")
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
             .unwrap_or_default();
+
+        if item_type == "video" {
+            if let Some(video_file_name) = item.get("videoFileName").and_then(|v| v.as_str()) {
+                let folder_path = {
+                    let state = app.state::<Mutex<AppState>>();
+                    let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+                    guard.base_path.clone().or(guard.folder_path.clone())
+                };
+                if let Some(folder_path) = folder_path {
+                    match download_iphone_video_to_assets(client, &token, &folder_path, video_file_name).await {
+                        Ok(local_rel_path) => {
+                            let display_name = if original_file_name.is_empty() { video_file_name } else { original_file_name };
+                            let memo = if body.trim().is_empty() {
+                                String::new()
+                            } else {
+                                format!("\n\n{}", body.trim())
+                            };
+                            pc_body = format!("🎬 {}\n\n保存先:\n{}{}", display_name, local_rel_path, memo);
+                        }
+                        Err(e) => {
+                            logger::log_info(&format!("[iphone video] download failed {}: {}", video_file_name, e));
+                            pc_body = format!("🎬 {}\n\n保存失敗:\n{}", original_file_name, video_file_name);
+                        }
+                    }
+                } else {
+                    logger::log_info("[iphone video] folder path is not set");
+                    pc_body = format!("🎬 {}\n\n保存失敗:\n{}", original_file_name, video_file_name);
+                }
+            }
+        }
 
         // Windows トースト通知
         #[cfg(desktop)]
@@ -1970,16 +2070,6 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                 .body(&context)
                 .show();
         }
-
-        // JS に emit（JS側が fusen_create_note → openNoteWindow を実行）
-        // title/body を再結合してPC側に渡す（iPhone側ロジックは変更しない）
-        let pc_body = if title.is_empty() {
-            body.to_string()
-        } else if body.is_empty() {
-            title.to_string()
-        } else {
-            format!("{}\n{}", title, body)
-        };
 
         if app.emit(
             "fusen:note_from_iphone",
