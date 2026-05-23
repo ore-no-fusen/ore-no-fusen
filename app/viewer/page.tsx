@@ -46,6 +46,7 @@ export default function ViewerPage() {
 
   const [isStandalone, setIsStandalone] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [showDebugLog, setShowDebugLog] = useState(false);
   const [step, setStep] = useState<
     'banner' | 'login' | 'push' | 'ready' | 'write' | 'list'
   >('banner');
@@ -76,7 +77,10 @@ export default function ViewerPage() {
   const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
   const writeTagsRef = React.useRef<string[]>([]);
 
-  useEffect(() => { setIsMounted(true); }, []);
+  useEffect(() => {
+    setIsMounted(true);
+    setShowDebugLog(new URLSearchParams(window.location.search).get('debug') === '1');
+  }, []);
 
   // SWバージョン取得
   useEffect(() => {
@@ -494,7 +498,7 @@ export default function ViewerPage() {
         )}
 
         {/* デバッグログ表示（?debug=1 のときのみ） */}
-        {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1' && (
+        {showDebugLog && (
           <DebugLogView />
         )}
       </div>
