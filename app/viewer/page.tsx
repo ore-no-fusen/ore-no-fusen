@@ -70,6 +70,7 @@ export default function ViewerPage() {
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const videoInputRef = React.useRef<HTMLInputElement>(null);
+  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
   const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
   const currentDraftIdRef = React.useRef<string | null>(null);
   const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
@@ -269,7 +270,6 @@ export default function ViewerPage() {
     backgroundSendSuccess,
     backgroundSendError,
     sendToPC,
-    sendVideoToPC,
   } = useBackgroundSend({
     accessToken,
     onTokenRefreshed: (newToken) => setAccessToken(newToken),
@@ -422,6 +422,7 @@ export default function ViewerPage() {
             showCropModal={showCropModal}
             cropFile={cropFile}
             showMermaidModal={showMermaidModal}
+            pendingVideoFile={pendingVideoFile}
             backgroundSendSuccess={backgroundSendSuccess}
             errorMessage={errorMessage}
             isLoading={isLoading}
@@ -439,13 +440,13 @@ export default function ViewerPage() {
             setCropFile={setCropFile}
             setCropQueue={setCropQueue}
             setShowMermaidModal={setShowMermaidModal}
+            setPendingVideoFile={setPendingVideoFile}
             setErrorMessage={setErrorMessage}
             setIsLoading={setIsLoading}
             setCurrentDraftId={setCurrentDraftId}
             setPendingHydrate={setPendingHydrate}
             handleEditorInput={handleEditorInput}
             sendToPC={sendToPC}
-            sendVideoToPC={sendVideoToPC}
           />
         )}
 

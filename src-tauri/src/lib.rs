@@ -1862,7 +1862,7 @@ async fn download_iphone_video_to_assets(
     token: &str,
     folder_path: &str,
     video_file_name: &str,
-) -> Result<String, String> {
+) -> Result<(String, String), String> {
     let safe_name = sanitize_video_file_name(video_file_name);
     let video_dir = std::path::Path::new(folder_path).join("assets").join("video");
     std::fs::create_dir_all(&video_dir).map_err(|e| e.to_string())?;
@@ -1872,7 +1872,10 @@ async fn download_iphone_video_to_assets(
         std::fs::write(&local_path, &bytes)
             .map_err(|e| format!("動画保存失敗 {}: {}", safe_name, e))?;
     }
-    Ok(format!("assets/video/{}", safe_name))
+    Ok((
+        format!("assets/video/{}", safe_name),
+        local_path.to_string_lossy().to_string(),
+    ))
 }
 
 #[tauri::command]
@@ -2038,14 +2041,14 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                 };
                 if let Some(folder_path) = folder_path {
                     match download_iphone_video_to_assets(client, &token, &folder_path, video_file_name).await {
-                        Ok(local_rel_path) => {
+                        Ok((_local_rel_path, local_abs_path)) => {
                             let display_name = if original_file_name.is_empty() { video_file_name } else { original_file_name };
                             let memo = if body.trim().is_empty() {
                                 String::new()
                             } else {
                                 format!("\n\n{}", body.trim())
                             };
-                            pc_body = format!("🎬 {}\n\n保存先:\n{}{}", display_name, local_rel_path, memo);
+                            pc_body = format!("🎬 {}\n\n保存先:\n{}{}", display_name, local_abs_path, memo);
                         }
                         Err(e) => {
                             logger::log_info(&format!("[iphone video] download failed {}: {}", video_file_name, e));

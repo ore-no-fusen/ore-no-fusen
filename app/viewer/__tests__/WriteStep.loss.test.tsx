@@ -41,6 +41,7 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
     showCropModal: false,
     cropFile: null,
     showMermaidModal: false,
+    pendingVideoFile: null,
     backgroundSendSuccess: false,
     errorMessage: null,
     isLoading: false,
@@ -58,13 +59,13 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
     setCropFile: vi.fn(),
     setCropQueue: vi.fn(),
     setShowMermaidModal: vi.fn(),
+    setPendingVideoFile: vi.fn(),
     setErrorMessage: vi.fn(),
     setIsLoading: vi.fn(),
     setCurrentDraftId: vi.fn(),
     setPendingHydrate: vi.fn(),
     handleEditorInput: vi.fn(),
     sendToPC: vi.fn(async () => true),
-    sendVideoToPC: vi.fn(async () => true),
     ...overrides,
   };
 
@@ -152,19 +153,32 @@ describe('WriteStep loss prevention', () => {
     expect(setShowCropModal).toHaveBeenCalledWith(true);
   });
 
-  it('動画を選択したらメモ本文を保持したままsendVideoToPCへ渡す', async () => {
-    const sendVideoToPC = vi.fn(async () => true);
-    const { container } = renderWriteStep({ sendVideoToPC });
+  it('動画を選択しただけでは送信せず、選択済み動画として保持する', async () => {
+    const sendToPC = vi.fn(async () => true);
+    const setPendingVideoFile = vi.fn();
+    const { container } = renderWriteStep({ sendToPC, setPendingVideoFile });
     const input = container.querySelector('input[accept="video/mp4,video/quicktime,.mp4,.mov"]') as HTMLInputElement;
     const file = new File(['video'], 'dance.mov', { type: 'video/quicktime' });
 
     fireEvent.change(input, { target: { files: [file] } });
 
-    await waitFor(() => expect(sendVideoToPC).toHaveBeenCalled());
-    expect(sendVideoToPC).toHaveBeenCalledWith({
-      file,
+    expect(setPendingVideoFile).toHaveBeenCalledWith(file);
+    expect(sendToPC).not.toHaveBeenCalled();
+  });
+
+  it('動画選択済みならPCに送る時に通常付箋と一緒に送信する', async () => {
+    const sendToPC = vi.fn(async () => true);
+    const videoFile = new File(['video'], 'dance.mov', { type: 'video/quicktime' });
+    const { getByRole } = renderWriteStep({ sendToPC, pendingVideoFile: videoFile });
+
+    fireEvent.click(getByRole('button', { name: 'PCに送る' }));
+
+    await waitFor(() => expect(sendToPC).toHaveBeenCalled());
+    expect(sendToPC).toHaveBeenCalledWith({
       rawText: '大事な付箋',
       tags: ['tag1'],
+      blobs: expect.any(Map),
+      videoFile,
       draftId: 'draft-id-1',
     });
   });

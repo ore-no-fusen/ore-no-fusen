@@ -32,6 +32,7 @@ type WriteStepProps = {
   showCropModal: boolean;
   cropFile: File | null;
   showMermaidModal: boolean;
+  pendingVideoFile: File | null;
   backgroundSendSuccess: boolean;
   errorMessage: string | null;
   isLoading: boolean;
@@ -50,14 +51,14 @@ type WriteStepProps = {
   setCropFile: React.Dispatch<React.SetStateAction<File | null>>;
   setCropQueue: React.Dispatch<React.SetStateAction<File[]>>;
   setShowMermaidModal: React.Dispatch<React.SetStateAction<boolean>>;
+  setPendingVideoFile: React.Dispatch<React.SetStateAction<File | null>>;
   setErrorMessage: React.Dispatch<React.SetStateAction<string | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setCurrentDraftId: React.Dispatch<React.SetStateAction<string | null>>;
   setPendingHydrate: React.Dispatch<React.SetStateAction<PendingHydrate | null>>;
   // handlers
   handleEditorInput: () => void;
-  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; draftId: string | null }) => Promise<boolean>;
-  sendVideoToPC: (payload: { file: File; rawText: string; tags: string[]; draftId: string | null }) => Promise<boolean>;
+  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoFile?: File | null; draftId: string | null }) => Promise<boolean>;
 };
 
 /**
@@ -78,6 +79,7 @@ export function WriteStep({
   showCropModal,
   cropFile,
   showMermaidModal,
+  pendingVideoFile,
   backgroundSendSuccess,
   errorMessage,
   isLoading,
@@ -95,13 +97,13 @@ export function WriteStep({
   setCropFile,
   setCropQueue,
   setShowMermaidModal,
+  setPendingVideoFile,
   setErrorMessage,
   setIsLoading,
   setCurrentDraftId,
   setPendingHydrate,
   handleEditorInput,
   sendToPC,
-  sendVideoToPC,
 }: WriteStepProps) {
   const openNextCrop = React.useCallback(() => {
     setCropQueue((prev) => {
@@ -393,45 +395,17 @@ export function WriteStep({
         type="file"
         accept="video/mp4,video/quicktime,.mp4,.mov"
         className="hidden"
-        onChange={async (e) => {
+        onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = '';
-          if (!file || !editorRef.current) return;
-          if (!accessToken) {
-            setErrorMessage('Driveに接続してください。');
+          if (!file) return;
+          const lower = file.name.toLowerCase();
+          if (!lower.endsWith('.mp4') && !lower.endsWith('.mov')) {
+            setErrorMessage('mp4 または mov を選択してください。');
             return;
           }
-          const rawText = serializeEditor(editorRef.current);
-          const capturedTags = [...writeTags];
-          const draftId = currentDraftId ?? crypto.randomUUID();
-          const { title, body } = extractTitleBody(rawText);
-          const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, imageFile]) => ({ fileName, blob: imageFile }));
-
-          try {
-            await saveDraft({
-              id: draftId,
-              title,
-              body,
-              created_at: nowJST(),
-              images: imagesArr,
-              tags: capturedTags,
-            });
-            setCurrentDraftId(draftId);
-            localStorage.setItem('pending_note', draftId);
-          } catch (err: unknown) {
-            setErrorMessage('送信前の退避保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
-            return;
-          }
-
-          const sent = await sendVideoToPC({
-            file,
-            rawText,
-            tags: capturedTags,
-            draftId,
-          });
-          if (sent && localStorage.getItem('pending_note') === draftId) {
-            localStorage.removeItem('pending_note');
-          }
+          setPendingVideoFile(file);
+          setErrorMessage(null);
         }}
       />
 
@@ -441,6 +415,19 @@ export function WriteStep({
       )}
       {errorMessage && (
         <p className="text-center text-red-600 text-sm py-1">{errorMessage}</p>
+      )}
+      {pendingVideoFile && (
+        <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-white text-sm text-gray-700 shadow-sm flex items-center justify-between gap-2">
+          <span className="truncate">🎬 {pendingVideoFile.name}</span>
+          <button
+            type="button"
+            className="text-gray-400 hover:text-red-500 px-2"
+            aria-label="動画を外す"
+            onClick={() => setPendingVideoFile(null)}
+          >
+            ×
+          </button>
+        </div>
       )}
 
       {/* アクションボタン */}
@@ -523,6 +510,7 @@ export function WriteStep({
               rawText,
               tags: capturedTags,
               blobs: capturedBlobs,
+              videoFile: pendingVideoFile,
               draftId,
             });
             if (!sent) return;
@@ -533,6 +521,7 @@ export function WriteStep({
             setWriteTags([]);
             setShowTagBar(false);
             setTagInput('');
+            setPendingVideoFile(null);
             setCurrentDraftId(null);
             if (localStorage.getItem('pending_note') === draftId) {
               localStorage.removeItem('pending_note');

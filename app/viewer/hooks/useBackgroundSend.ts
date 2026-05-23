@@ -24,14 +24,9 @@ type SendPayload = {
   tags: string[];
   /** 送信対象の画像 blob Map<fileName, Blob> */
   blobs: Map<string, Blob>;
+  /** 送信対象の動画ファイル（未選択なら null） */
+  videoFile?: File | null;
   /** 現在の下書き ID（null なら新規） */
-  draftId: string | null;
-};
-
-type SendVideoPayload = {
-  file: File;
-  rawText: string;
-  tags: string[];
   draftId: string | null;
 };
 
@@ -49,7 +44,6 @@ type UseBackgroundSendReturn = {
   backgroundSendSuccess: boolean;
   backgroundSendError: string | null;
   sendToPC: (payload: SendPayload) => Promise<boolean>;
-  sendVideoToPC: (payload: SendVideoPayload) => Promise<boolean>;
 };
 
 /**
@@ -73,7 +67,7 @@ export function useBackgroundSend({
    * 出力: 送信に成功したら true、未接続・失敗・再ログインが必要なら false
    * 副作用: Drive API 呼び出し（画像アップロード・JSON 更新）、IndexedDB 書き込み（saveDraft）、localStorage 読み書き（トークン）
    */
-  const sendToPC = async ({ rawText, tags, blobs, draftId }: SendPayload): Promise<boolean> => {
+  const sendToPC = async ({ rawText, tags, blobs, videoFile, draftId }: SendPayload): Promise<boolean> => {
     if (!accessToken) {
       setBackgroundSendError('Driveに接続してください。');
       setTimeout(() => setBackgroundSendError(null), 5000);
@@ -107,6 +101,7 @@ export function useBackgroundSend({
       const { title, body: extractedBody } = extractTitleBody(rawText);
       const noteId = crypto.randomUUID();
       const sentAt = nowJST();
+      const videoFileName = videoFile ? buildVideoFileName(videoFile.name) : null;
 
       // 画像を並列アップロード
       await Promise.all(
@@ -114,6 +109,9 @@ export function useBackgroundSend({
           uploadImageWithAutoRefresh(token, file, fileName)
         )
       );
+      if (videoFile && videoFileName) {
+        await uploadVideoWithAutoRefresh(token, videoFile, videoFileName);
+      }
 
       const fullBody = extractedBody;
       // --- キュー配列方式: read-modify-write ---
@@ -137,14 +135,26 @@ export function useBackgroundSend({
         // 旧スキーマで received_at がある場合は処理済み → 捨てる（空配列のまま）
       }
       // 新しいアイテムを末尾に追加
-      const newItem = { id: noteId, title, body: fullBody, sent_at: sentAt, tags };
+      const fallbackTitle = videoFile ? videoFile.name.replace(/\.[^.]+$/, '') : title;
+      const newItem = videoFile && videoFileName
+        ? {
+            id: noteId,
+            type: 'video',
+            title: title || fallbackTitle,
+            body: fullBody,
+            sent_at: sentAt,
+            tags,
+            videoFileName,
+            originalFileName: videoFile.name,
+          }
+        : { id: noteId, title, body: fullBody, sent_at: sentAt, tags };
       const updatedItems = [...currentItems, newItem];
       await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: updatedItems });
 
       // 送信済みとして IndexedDB に保存（sent_at をセット）
       await saveDraft({
         id: draftId ?? noteId,
-        title,
+        title: title || fallbackTitle,
         body: fullBody,
         created_at: sentAt,
         images: Array.from(mergedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
@@ -173,104 +183,5 @@ export function useBackgroundSend({
     }
   };
 
-  const sendVideoToPC = async ({ file, rawText, tags, draftId }: SendVideoPayload): Promise<boolean> => {
-    if (!accessToken) {
-      setBackgroundSendError('Driveに接続してください。');
-      setTimeout(() => setBackgroundSendError(null), 5000);
-      return false;
-    }
-    setIsSendingInBackground(true);
-    setBackgroundSendError(null);
-
-    try {
-      let token = accessToken;
-      const expiresAt = parseInt(localStorage.getItem('viewer_expires_at') || '0');
-      if (Date.now() > expiresAt - 5 * 60 * 1000) {
-        const newToken = await refreshAccessToken();
-        if (!newToken) {
-          localStorage.removeItem('viewer_access_token');
-          localStorage.removeItem('viewer_refresh_token');
-          setIsSendingInBackground(false);
-          setBackgroundSendError('セッションが切れました。再度ログインしてください。');
-          setTimeout(() => setBackgroundSendError(null), 5000);
-          onSessionExpired();
-          return false;
-        }
-        token = newToken;
-        onTokenRefreshed(newToken);
-      }
-
-      mergeKnownTags(tags);
-
-      const { title, body } = extractTitleBody(rawText);
-      const noteId = crypto.randomUUID();
-      const sentAt = nowJST();
-      const videoFileName = buildVideoFileName(file.name);
-
-      await uploadVideoWithAutoRefresh(token, file, videoFileName);
-
-      const existing = await downloadFromDrive(token, 'notes_from_iphone.json').catch(() => null);
-      let currentItems: any[] = [];
-      if (existing) {
-        if (Array.isArray(existing.items)) {
-          currentItems = existing.items;
-        } else if (existing.id && !existing.received_at) {
-          currentItems = [{
-            id: existing.id,
-            title: existing.title ?? '',
-            body: existing.body ?? '',
-            sent_at: existing.sent_at ?? sentAt,
-            tags: existing.tags ?? [],
-            type: existing.type,
-            videoFileName: existing.videoFileName,
-            originalFileName: existing.originalFileName,
-          }];
-        }
-      }
-
-      const fallbackTitle = file.name.replace(/\.[^.]+$/, '');
-      const newItem = {
-        id: noteId,
-        type: 'video',
-        title: title || fallbackTitle,
-        body,
-        sent_at: sentAt,
-        tags,
-        videoFileName,
-        originalFileName: file.name,
-      };
-      await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: [...currentItems, newItem] });
-
-      await saveDraft({
-        id: draftId ?? noteId,
-        title: title || fallbackTitle,
-        body,
-        created_at: sentAt,
-        images: [],
-        tags,
-        sent_at: sentAt,
-      });
-
-      setIsSendingInBackground(false);
-      setBackgroundSendSuccess(true);
-      setTimeout(() => setBackgroundSendSuccess(false), 3000);
-      return true;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? (err.message || String(err)) : String(err);
-      setIsSendingInBackground(false);
-      if (msg.includes('session expired')) {
-        localStorage.removeItem('viewer_access_token');
-        localStorage.removeItem('viewer_refresh_token');
-        setBackgroundSendError('セッションが切れました。再度ログインしてください。');
-        setTimeout(() => setBackgroundSendError(null), 5000);
-        onSessionExpired();
-      } else {
-        setBackgroundSendError('動画送信失敗: ' + msg);
-        setTimeout(() => setBackgroundSendError(null), 5000);
-      }
-      return false;
-    }
-  };
-
-  return { isSendingInBackground, backgroundSendSuccess, backgroundSendError, sendToPC, sendVideoToPC };
+  return { isSendingInBackground, backgroundSendSuccess, backgroundSendError, sendToPC };
 }
