@@ -5,7 +5,10 @@
  * 責務:
  * - 前回タグ（または最初のコミット）以降のコミット履歴を git log から取得
  * - コミットメッセージの prefix (feat:, fix:, security: 等) で分類
- * - Markdown 形式で日英併記のリリースノートを stdout に出力
+ * - Markdown 形式で日英併記のリリースノートを生成
+ * - GITHUB_OUTPUT 環境変数が指定されていればそこに body=<内容> を書き込む
+ *   （GitHub Actions の Step output として後続ステップから参照可能になる）
+ * - GITHUB_OUTPUT がなければ stdout に出力（ローカル動作確認用）
  *
  * 呼び出し: .github/workflows/release.yml の "Generate release notes" Step
  *
@@ -22,6 +25,7 @@
  */
 
 import { execSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 
 /** prefix → { 絵文字, 日本語, 英語 } のマッピング */
 const CATEGORIES = {
@@ -124,18 +128,33 @@ function buildNotes(tag, prevTag, commits) {
   return lines.join('\n');
 }
 
+function emitOutput(body) {
+  // GitHub Actions の Step output として書き込む
+  // 複数行値の正規書式: key<<DELIMITER\nvalue...\nDELIMITER\n
+  // (https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings)
+  const outputFile = process.env.GITHUB_OUTPUT;
+  if (outputFile) {
+    const delimiter = `RELEASE_NOTES_EOF_${Date.now()}`;
+    appendFileSync(outputFile, `body<<${delimiter}\n${body}\n${delimiter}\n`);
+  } else {
+    // ローカル動作確認時は stdout に出す
+    process.stdout.write(body + '\n');
+  }
+}
+
 function main() {
   const tag = currentTag();
   const prev = previousTag(tag);
   const commits = commitsBetween(prev, tag);
 
+  let body;
   if (commits.length === 0) {
-    // コミットが取れない場合の最小フォールバック（ジョブを止めない）
-    process.stdout.write(`## ${tag}\n\nNo commits found in range.\n`);
-    return;
+    body = `## ${tag}\n\nNo commits found in range.`;
+  } else {
+    body = buildNotes(tag, prev, commits);
   }
 
-  process.stdout.write(buildNotes(tag, prev, commits));
+  emitOutput(body);
 }
 
 main();
