@@ -9,7 +9,7 @@ import {
   refreshAccessToken,
 } from '../lib/drive';
 import { saveDraft } from '../lib/indexeddb';
-import { buildVideoFileName, nowJST } from '../utils';
+import { buildVideoFileName, createId, nowJST } from '../utils';
 import { extractTitleBody, mergeKnownTags } from '../editor-helpers';
 
 // ---------------------------------------------------------------------------
@@ -99,9 +99,9 @@ export function useBackgroundSend({
 
       const mergedBlobs = new Map(blobs);
       const { title, body: extractedBody } = extractTitleBody(rawText);
-      const noteId = crypto.randomUUID();
+      const noteId = createId();
       const sentAt = nowJST();
-      const videoFileName = videoFile ? buildVideoFileName(videoFile.name) : null;
+      const videoFileName = videoFile ? buildVideoFileName(videoFile.name, title) : null;
 
       // 画像を並列アップロード
       await Promise.all(
@@ -114,6 +114,7 @@ export function useBackgroundSend({
       }
 
       const fullBody = extractedBody;
+      const videoMemo = videoFile ? fullBody.trim() : undefined;
       // --- キュー配列方式: read-modify-write ---
       // 既存データを読み込む（存在しない場合や旧スキーマは自動変換）
       const existing = await downloadFromDrive(token, 'notes_from_iphone.json').catch(() => null);
@@ -135,17 +136,19 @@ export function useBackgroundSend({
         // 旧スキーマで received_at がある場合は処理済み → 捨てる（空配列のまま）
       }
       // 新しいアイテムを末尾に追加
-      const fallbackTitle = videoFile ? videoFile.name.replace(/\.[^.]+$/, '') : title;
+      const fallbackTitle = title;
       const newItem = videoFile && videoFileName
         ? {
             id: noteId,
             type: 'video',
-            title: title || fallbackTitle,
+            title: fallbackTitle,
             body: fullBody,
             sent_at: sentAt,
             tags,
             videoFileName,
             originalFileName: videoFile.name,
+            memo: videoMemo ?? '',
+            sourceOriginalFileName: videoFile.name,
           }
         : { id: noteId, title, body: fullBody, sent_at: sentAt, tags };
       const updatedItems = [...currentItems, newItem];
@@ -154,12 +157,16 @@ export function useBackgroundSend({
       // 送信済みとして IndexedDB に保存（sent_at をセット）
       await saveDraft({
         id: draftId ?? noteId,
-        title: title || fallbackTitle,
+        title,
         body: fullBody,
         created_at: sentAt,
         images: Array.from(mergedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
         tags,
         sent_at: sentAt,
+        type: videoFile ? 'video' : 'note',
+        videoFileName: videoFileName ?? undefined,
+        originalFileName: videoFile ? videoFile.name : undefined,
+        memo: videoMemo,
       });
 
       setIsSendingInBackground(false);

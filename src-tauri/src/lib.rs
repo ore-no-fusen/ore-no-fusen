@@ -2011,6 +2011,7 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         let body  = item.get("body").and_then(|v| v.as_str()).unwrap_or("");
         let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("note");
         let original_file_name = item.get("originalFileName").and_then(|v| v.as_str()).unwrap_or("");
+        let memo = item.get("memo").and_then(|v| v.as_str());
         let mut pc_body = if title.is_empty() {
             body.to_string()
         } else if body.is_empty() {
@@ -2043,12 +2044,18 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                     match download_iphone_video_to_assets(client, &token, &folder_path, video_file_name).await {
                         Ok((_local_rel_path, local_abs_path)) => {
                             let display_name = if original_file_name.is_empty() { video_file_name } else { original_file_name };
-                            let memo = if body.trim().is_empty() {
+                            let heading = if title.trim().is_empty() {
+                                display_name
+                            } else {
+                                title.trim()
+                            };
+                            let memo_text = memo.unwrap_or(pc_body.trim()).trim();
+                            let memo = if memo_text.is_empty() {
                                 String::new()
                             } else {
-                                format!("\n\n{}", body.trim())
+                                format!("\n\n{}", memo_text)
                             };
-                            pc_body = format!("🎬 {}\n\n保存先:\n{}{}", display_name, local_abs_path, memo);
+                            pc_body = format!("{}{}\n\n保存先:\n{}", heading, memo, local_abs_path);
                         }
                         Err(e) => {
                             logger::log_info(&format!("[iphone video] download failed {}: {}", video_file_name, e));

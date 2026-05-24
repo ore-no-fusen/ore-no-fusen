@@ -1,7 +1,7 @@
 import React from 'react';
 import { serializeEditor, extractTitleBody } from '../editor-helpers';
 import { saveDraft } from '../lib/indexeddb';
-import { nowJST } from '../utils';
+import { createId, nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
 // useAutoSave: contenteditable の onInput 自動保存ロジック
@@ -37,7 +37,7 @@ export function useAutoSave(
       const rawText = serializeEditor(refs.editorRef.current);
       if (!rawText.trim()) return;
       const { title, body } = extractTitleBody(rawText);
-      const draftId = refs.currentDraftIdRef.current ?? crypto.randomUUID();
+      const draftId = refs.currentDraftIdRef.current ?? createId();
       if (!refs.currentDraftIdRef.current) {
         (refs.currentDraftIdRef as React.MutableRefObject<string | null>).current = draftId;
         callbacks.setCurrentDraftId(draftId);

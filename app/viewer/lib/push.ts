@@ -2,7 +2,7 @@
 
 import { downloadFromDrive, downloadWithAutoRefresh, uploadWithAutoRefresh } from '../lib/drive';
 import { urlBase64ToUint8Array } from '../lib/auth';
-import { nowJST } from '../utils';
+import { createId, nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
 // usePushSubscribe（フックではなく純粋なユーティリティ関数）
@@ -161,7 +161,7 @@ export async function subscribePush({
     // デバイスIDを生成・永続化（このデバイスを一意に識別するため）
     let deviceId = localStorage.getItem('viewer_device_id');
     if (!deviceId) {
-      deviceId = crypto.randomUUID();
+      deviceId = createId();
       localStorage.setItem('viewer_device_id', deviceId);
     }
 

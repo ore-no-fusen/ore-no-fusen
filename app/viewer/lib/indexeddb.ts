@@ -74,14 +74,22 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
     const getReq = tx.objectStore('drafts').get(draft.id);
     getReq.onsuccess = () => {
       const existing = getReq.result;
+      const storedDraft = {
+        ...draft,
+        type: draft.type ?? existing?.type,
+        videoFileName: draft.videoFileName ?? existing?.videoFileName,
+        originalFileName: draft.originalFileName ?? existing?.originalFileName,
+        memo: draft.memo ?? existing?.memo,
+        images,
+      };
       // locked=true が明示的に false にされた場合（intentional unlock）はそのまま通す。
       // unlocked=undefined（Drive マージなど locked を知らないコードパス）の場合は保護する。
       if (existing?.locked && draft.locked === undefined) {
         const stack = new Error().stack?.split('\n').slice(1, 4).join(' | ') ?? '';
         logToFusenLogs(`[saveDraft] locked保護 id=${draft.id.slice(0, 8)} | ${stack}`);
-        tx.objectStore('drafts').put({ ...draft, locked: true, images }, draft.id);
+        tx.objectStore('drafts').put({ ...storedDraft, locked: true }, draft.id);
       } else {
-        tx.objectStore('drafts').put({ ...draft, images }, draft.id);
+        tx.objectStore('drafts').put(storedDraft, draft.id);
       }
     };
     tx.oncomplete = () => resolve();

@@ -1,7 +1,7 @@
 import React from 'react';
 import { serializeEditor, extractTitleBody } from '../editor-helpers';
 import { saveDraft, loadDraft } from '../lib/indexeddb';
-import { nowJST } from '../utils';
+import { createId, nowJST } from '../utils';
 
 // ---------------------------------------------------------------------------
 // useVisibilitySave: アプリがバックグラウンドになった瞬間に保存
@@ -28,7 +28,7 @@ export function useVisibilitySave(refs: VisibilitySaveRefs): void {
       const rawText = serializeEditor(refs.editorRef.current);
       if (!rawText.trim()) return;
       const { title, body } = extractTitleBody(rawText);
-      const draftId = refs.currentDraftIdRef.current ?? crypto.randomUUID();
+      const draftId = refs.currentDraftIdRef.current ?? createId();
       refs.currentDraftIdRef.current = draftId;
       const imagesArr = Array.from((refs.imageBlobsRef.current ?? new Map()).entries()).map(
         ([fn, f]) => ({ fileName: fn, blob: f })

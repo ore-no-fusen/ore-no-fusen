@@ -5,6 +5,7 @@ import { CropModal } from './CropModal';
 import { MermaidModal } from './MermaidModal';
 import {
   buildImageFileName,
+  createId,
   insertTextAtCursor,
   insertNodeAtCursor,
   nowJST,
@@ -12,7 +13,7 @@ import {
 import { saveDraft } from './lib/indexeddb';
 import { serializeEditor, extractTitleBody, mergeKnownTags, loadKnownTags } from './editor-helpers';
 import type { TranslationKey } from '@/lib/i18n';
-import type { PendingHydrate } from './types';
+import type { PendingHydrate, PendingVideoMeta } from './types';
 
 // ---------------------------------------------------------------------------
 // WriteStep: メモ編集画面（step === 'write'）
@@ -33,6 +34,7 @@ type WriteStepProps = {
   cropFile: File | null;
   showMermaidModal: boolean;
   pendingVideoFile: File | null;
+  pendingVideoMeta?: PendingVideoMeta | null;
   backgroundSendSuccess: boolean;
   errorMessage: string | null;
   isLoading: boolean;
@@ -52,6 +54,7 @@ type WriteStepProps = {
   setCropQueue: React.Dispatch<React.SetStateAction<File[]>>;
   setShowMermaidModal: React.Dispatch<React.SetStateAction<boolean>>;
   setPendingVideoFile: React.Dispatch<React.SetStateAction<File | null>>;
+  setPendingVideoMeta?: React.Dispatch<React.SetStateAction<PendingVideoMeta | null>>;
   setErrorMessage: React.Dispatch<React.SetStateAction<string | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setCurrentDraftId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -80,6 +83,7 @@ export function WriteStep({
   cropFile,
   showMermaidModal,
   pendingVideoFile,
+  pendingVideoMeta,
   backgroundSendSuccess,
   errorMessage,
   isLoading,
@@ -98,6 +102,7 @@ export function WriteStep({
   setCropQueue,
   setShowMermaidModal,
   setPendingVideoFile,
+  setPendingVideoMeta = () => {},
   setErrorMessage,
   setIsLoading,
   setCurrentDraftId,
@@ -130,7 +135,7 @@ export function WriteStep({
               const rawText = serializeEditor(editorRef.current);
               if (rawText.trim()) {
                 const { title, body } = extractTitleBody(rawText);
-                const draftId = currentDraftId ?? crypto.randomUUID();
+                const draftId = currentDraftId ?? createId();
                 const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
                 await saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
                 setCurrentDraftId(draftId);
@@ -405,6 +410,7 @@ export function WriteStep({
             return;
           }
           setPendingVideoFile(file);
+          setPendingVideoMeta({ name: file.name, size: file.size, type: file.type });
           setErrorMessage(null);
         }}
       />
@@ -416,14 +422,17 @@ export function WriteStep({
       {errorMessage && (
         <p className="text-center text-red-600 text-sm py-1">{errorMessage}</p>
       )}
-      {pendingVideoFile && (
-        <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-white text-sm text-gray-700 shadow-sm flex items-center justify-between gap-2">
-          <span className="truncate">🎬 {pendingVideoFile.name}</span>
+      {(pendingVideoMeta || pendingVideoFile) && (
+        <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-white text-sm text-gray-700 shadow-sm flex items-center justify-between gap-2 border border-blue-100">
+          <span className="truncate">🎬 {pendingVideoMeta?.name || pendingVideoFile?.name}</span>
           <button
             type="button"
             className="text-gray-400 hover:text-red-500 px-2"
             aria-label="動画を外す"
-            onClick={() => setPendingVideoFile(null)}
+            onClick={() => {
+              setPendingVideoFile(null);
+              setPendingVideoMeta(null);
+            }}
           >
             ×
           </button>
@@ -444,7 +453,7 @@ export function WriteStep({
             try {
               const rawText = serializeEditor(editorRef.current);
               const { title, body } = extractTitleBody(rawText);
-              const draftId = currentDraftId ?? crypto.randomUUID();
+              const draftId = currentDraftId ?? createId();
               const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
               mergeKnownTags(writeTags);
               await saveDraft({
@@ -481,7 +490,7 @@ export function WriteStep({
             const rawText = serializeEditor(editorRef.current);
             const capturedTags = [...writeTags];
             const capturedBlobs = new Map(imageBlobsRef.current);
-            const draftId = currentDraftId ?? crypto.randomUUID();
+            const draftId = currentDraftId ?? createId();
             const { title, body } = extractTitleBody(rawText);
             const imagesArr = Array.from(capturedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
 
@@ -522,6 +531,7 @@ export function WriteStep({
             setShowTagBar(false);
             setTagInput('');
             setPendingVideoFile(null);
+            setPendingVideoMeta(null);
             setCurrentDraftId(null);
             if (localStorage.getItem('pending_note') === draftId) {
               localStorage.removeItem('pending_note');
@@ -579,7 +589,7 @@ export function WriteStep({
               const rawText = serializeEditor(editorRef.current);
               if (rawText.trim()) {
                 const { title, body } = extractTitleBody(rawText);
-                const draftId = currentDraftId ?? crypto.randomUUID();
+                const draftId = currentDraftId ?? createId();
                 const imagesArr = Array.from(nextBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
                 saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
                 setCurrentDraftId(draftId);

@@ -52,6 +52,13 @@ export function NoteListStep({
           <ul className="flex flex-col gap-2 px-3 pb-3">
             {notes.map((note) => {
               const isLocked = lockedNoteIds.includes(note.id);
+              const isVideo = note.type === 'video' || Boolean(note.videoFileName || note.originalFileName);
+              const textPreview = ((note.title ? `${note.title}\n` : '') + (note.body ?? ''))
+                .replace(/!\[.*?\]\(.*?\)/g, '')
+                .replace(/\n\n+/g, '\n')
+                .trim()
+                .slice(0, 120);
+              const videoLabel = note.originalFileName || note.videoFileName || '';
 
               return (
                 <li
@@ -68,6 +75,18 @@ export function NoteListStep({
                           className="w-10 h-10 object-cover rounded flex-shrink-0"
                         />
                       )}
+                      {isVideo ? (
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
+                            {textPreview || '空のメモ'}
+                          </p>
+                          {videoLabel && (
+                            <p className="text-xs text-gray-500 mt-1 truncate">
+                              🎬 {videoLabel}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
                       <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
                         {(
                           ((note.title ? `${note.title}\n` : '') + (note.body ?? ''))
@@ -77,6 +96,7 @@ export function NoteListStep({
                             .slice(0, 120)
                         ) || '空のメモ'}
                       </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-col items-end justify-between py-2 pr-2 flex-shrink-0">

@@ -6,11 +6,15 @@ import type { TranslationKey } from '@/lib/i18n';
 export type IphoneNote = {
   id: string;
   status: 'sent' | 'draft' | 'received_pc';
+  type?: 'note' | 'video';
   title: string;
   body: string;
   created_at: string;
   sent_at?: string;
   tags?: string[];
+  videoFileName?: string;
+  originalFileName?: string;
+  memo?: string;
 };
 
 export type PendingHydrate = {
@@ -18,10 +22,18 @@ export type PendingHydrate = {
   blobMap: Map<string, Blob>;
   draftId: string | null;
   tags: string[];
+  videoMeta?: PendingVideoMeta | null;
+};
+
+export type PendingVideoMeta = {
+  name: string;
+  size: number;
+  type: string;
 };
 
 export type DraftRecord = {
   id: string;
+  type?: 'note' | 'video';
   title: string;
   body: string;
   created_at: string;
@@ -30,6 +42,9 @@ export type DraftRecord = {
   received_pc?: true;
   sent_at?: string;
   locked?: boolean;
+  videoFileName?: string;
+  originalFileName?: string;
+  memo?: string;
 };
 
 export type CropModalProps = {

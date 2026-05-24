@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor, nowJST } from './utils';
 import { getTranslation, type Language } from '@/lib/i18n';
-import type { IphoneNote, PendingHydrate, DraftRecord } from './types';
+import type { IphoneNote, PendingHydrate, DraftRecord, PendingVideoMeta } from './types';
 import { NoteListStep } from './NoteListStep';
 import { PushStep } from './PushStep';
 import { WriteStep } from './WriteStep';
@@ -72,6 +72,7 @@ export default function ViewerPage() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const videoInputRef = React.useRef<HTMLInputElement>(null);
   const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
+  const [pendingVideoMeta, setPendingVideoMeta] = useState<PendingVideoMeta | null>(null);
   const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
   const currentDraftIdRef = React.useRef<string | null>(null);
   const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
@@ -84,6 +85,10 @@ export default function ViewerPage() {
 
   // SWバージョン取得
   useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) {
+      setSwVersion('not-available');
+      return;
+    }
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'SW_VERSION') setSwVersion(e.data.version);
     };
@@ -113,6 +118,19 @@ export default function ViewerPage() {
   useEffect(() => { currentDraftIdRef.current = currentDraftId; }, [currentDraftId]);
   useEffect(() => { imageBlobsRef.current = imageBlobs; }, [imageBlobs]);
   useEffect(() => { writeTagsRef.current = writeTags; }, [writeTags]);
+
+  const videoMetaFromRecord = React.useCallback((record: {
+    type?: string;
+    videoFileName?: string;
+    originalFileName?: string;
+  }): PendingVideoMeta | null => {
+    if (record.type !== 'video' && !record.videoFileName && !record.originalFileName) return null;
+    return {
+      name: record.originalFileName || record.videoFileName || 'video',
+      size: 0,
+      type: 'video/mp4',
+    };
+  }, []);
 
   // visibilitychange: バックグラウンドになった瞬間に保存
   useVisibilitySave({ editorRef, currentDraftIdRef, imageBlobsRef, writeTagsRef });
@@ -153,6 +171,8 @@ export default function ViewerPage() {
       setCurrentDraftId(pendingHydrate.draftId);
       setWriteTags(pendingHydrate.tags);
       setShowTagBar(pendingHydrate.tags.length > 0);
+      setPendingVideoMeta(pendingHydrate.videoMeta ?? null);
+      setPendingVideoFile(null);
       setPendingHydrate(null);
     };
     const timer = setTimeout(run, 50);
@@ -199,7 +219,13 @@ export default function ViewerPage() {
         const titleLine = draft.title ? `${draft.title}\n` : '';
         const images = draft.images ?? [];
         const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }: { fileName: string; blob: Blob }) => [fileName, blob]));
-        setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+        setPendingHydrate({
+          markdown: titleLine + draft.body,
+          blobMap,
+          draftId: draft.id,
+          tags: draft.tags ?? [],
+          videoMeta: videoMetaFromRecord(draft),
+        });
       }
       setStep('write');
     };
@@ -249,7 +275,13 @@ export default function ViewerPage() {
         pageLog(`[page] draft取得成功 images=${images.length}件`);
         const titleLine = draft.title ? `${draft.title}\n` : '';
         const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }: { fileName: string; blob: Blob }) => [fileName, blob]));
-        setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+        setPendingHydrate({
+          markdown: titleLine + draft.body,
+          blobMap,
+          draftId: draft.id,
+          tags: draft.tags ?? [],
+          videoMeta: videoMetaFromRecord(draft),
+        });
       } else {
         pageLog(`[page] draft取得失敗 id=${noteId}`);
       }
@@ -427,6 +459,7 @@ export default function ViewerPage() {
             cropFile={cropFile}
             showMermaidModal={showMermaidModal}
             pendingVideoFile={pendingVideoFile}
+            pendingVideoMeta={pendingVideoMeta}
             backgroundSendSuccess={backgroundSendSuccess}
             errorMessage={errorMessage}
             isLoading={isLoading}
@@ -445,6 +478,7 @@ export default function ViewerPage() {
             setCropQueue={setCropQueue}
             setShowMermaidModal={setShowMermaidModal}
             setPendingVideoFile={setPendingVideoFile}
+            setPendingVideoMeta={setPendingVideoMeta}
             setErrorMessage={setErrorMessage}
             setIsLoading={setIsLoading}
             setCurrentDraftId={setCurrentDraftId}
@@ -463,7 +497,9 @@ export default function ViewerPage() {
             isLockPermissionPending={isLockPermissionPending}
             t={t}
             onNew={() => {
-              setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
+              setPendingVideoFile(null);
+              setPendingVideoMeta(null);
+              setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [], videoMeta: null });
               setStep('write');
             }}
             onOpen={async (note) => {
@@ -477,7 +513,13 @@ export default function ViewerPage() {
               const fullText = note.title
                 ? (note.body ? `${note.title}\n${note.body}` : note.title)
                 : (note.body ?? '');
-              setPendingHydrate({ markdown: fullText, blobMap, draftId: note.id, tags: note.tags ?? [] });
+              setPendingHydrate({
+                markdown: fullText,
+                blobMap,
+                draftId: note.id,
+                tags: note.tags ?? [],
+                videoMeta: videoMetaFromRecord(note),
+              });
               setStep('write');
 
             }}
@@ -543,6 +585,10 @@ function DebugLogView() {
   useEffect(() => {
     loadLogs();
     const timer = window.setInterval(loadLogs, 1000);
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) {
+      setSwVersion('not-available');
+      return () => window.clearInterval(timer);
+    }
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'SW_VERSION') setSwVersion(e.data.version);
     };

@@ -1,4 +1,5 @@
 // app/viewer/lib/auth.ts
+import { createId } from '../utils';
 // OAuth / PKCE / Web Push 用ユーティリティ
 
 // ---------------------------------------------------------------------------
@@ -13,8 +14,8 @@
  */
 export async function generatePKCE() {
   const verifier =
-    crypto.randomUUID().replace(/-/g, '') +
-    crypto.randomUUID().replace(/-/g, '');
+    createId().replace(/-/g, '') +
+    createId().replace(/-/g, '');
   const digest = await crypto.subtle.digest(
     'SHA-256',
     new TextEncoder().encode(verifier)

@@ -51,6 +51,19 @@ export function useAppInit({
   setPendingHydrate,
 }: UseAppInitOptions): void {
   useEffect(() => {
+    const videoMetaFromDraft = (draft: {
+      type?: string;
+      videoFileName?: string;
+      originalFileName?: string;
+    }) => {
+      if (draft.type !== 'video' && !draft.videoFileName && !draft.originalFileName) return null;
+      return {
+        name: draft.originalFileName || draft.videoFileName || 'video',
+        size: 0,
+        type: 'video/mp4',
+      };
+    };
+
     // iOS Safari は navigator.standalone で判定、他は matchMedia
     const standalone =
       (navigator as any).standalone === true ||
@@ -122,7 +135,7 @@ export function useAppInit({
               const titleLine = draft.title ? `${draft.title}\n` : '';
               const images = draft.images ?? [];
               const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
-              setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+              setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [], videoMeta: videoMetaFromDraft(draft) });
               localStorage.removeItem('pending_note');
             }
             setStep('write');
@@ -157,7 +170,7 @@ export function useAppInit({
           const titleLine = draft.title ? `${draft.title}\n` : '';
           const images = draft.images ?? [];
           const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
-          setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+          setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [], videoMeta: videoMetaFromDraft(draft) });
         }
         setStep('write');
       });
@@ -173,7 +186,7 @@ export function useAppInit({
           const titleLine = draft.title ? `${draft.title}\n` : '';
           const images = draft.images ?? [];
           const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
-          setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+          setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [], videoMeta: videoMetaFromDraft(draft) });
           localStorage.removeItem('pending_note');
         }
         setStep('write');
@@ -196,7 +209,7 @@ export function useAppInit({
             const titleLine = draft.title ? `${draft.title}\n` : '';
             const images = draft.images ?? [];
             const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }) => [fileName, blob]));
-            setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [] });
+            setPendingHydrate({ markdown: titleLine + draft.body, blobMap, draftId: draft.id, tags: draft.tags ?? [], videoMeta: videoMetaFromDraft(draft) });
           }
           setStep('write');
           return;

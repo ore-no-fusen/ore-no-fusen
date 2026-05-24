@@ -70,11 +70,15 @@ export function useNoteList({
             const items = Array.isArray(data.items) ? data.items : [];
             return items.map((item: any) => ({
               id: item.id as string,
+              type: item.type === 'video' ? 'video' : 'note',
               title: item.title ?? '',
               body: item.body ?? '',
               created_at: item.sent_at ?? nowJST(),
               images: [],
               tags: Array.isArray(item.tags) ? item.tags : [],
+              videoFileName: typeof item.videoFileName === 'string' ? item.videoFileName : undefined,
+              originalFileName: typeof item.originalFileName === 'string' ? item.originalFileName : undefined,
+              memo: typeof item.memo === 'string' ? item.memo : undefined,
               received_pc: true as const,
             } satisfies DraftRecord));
           })
@@ -166,9 +170,12 @@ export function useNoteList({
 
         const notes: IphoneNote[] = drafts
           .map((d) => ({
-            id: d.id, title: d.title, body: d.body,
+            id: d.id, type: d.type, title: d.title, body: d.body,
             status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
             created_at: d.created_at, tags: d.tags,
+            videoFileName: d.videoFileName,
+            originalFileName: d.originalFileName,
+            memo: d.memo,
           }))
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 20);

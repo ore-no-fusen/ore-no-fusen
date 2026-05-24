@@ -31,6 +31,22 @@ export function insertAtCursor(el: HTMLTextAreaElement, insertion: string): stri
   return newValue;
 }
 
+export function createId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  const random = Math.random().toString(16).slice(2).padEnd(13, '0');
+  return `${Date.now().toString(16)}-${random}`;
+}
+
 /**
  * 責務: 日付・時刻・タイトルを含む画像ファイル名を生成する
  * 入力: title: string（コンテキスト用）, index: number（連番）
@@ -53,7 +69,7 @@ export function buildImageFileName(title: string, index: number): string {
  * 出力: string（例: fusen_video_20260101_120000_dance01_a1b2c3d4.mp4）
  * 副作用: なし
  */
-export function buildVideoFileName(originalName: string): string {
+export function buildVideoFileName(originalName: string, titleHint = ''): string {
   const now = new Date();
   const date = now.toLocaleDateString('sv').replace(/-/g, '');
   const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
@@ -61,12 +77,20 @@ export function buildVideoFileName(originalName: string): string {
   const rawBase = dot >= 0 ? originalName.slice(0, dot) : originalName;
   const rawExt = dot >= 0 ? originalName.slice(dot + 1).toLowerCase() : 'mp4';
   const ext = rawExt === 'mov' ? 'mov' : 'mp4';
-  const base = rawBase
+  const base = (titleHint || rawBase)
     .trim()
     .replace(/[^\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f]/g, '')
     .slice(0, 24) || 'video';
-  const suffix = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+  const suffix = createId().replace(/-/g, '').slice(0, 8);
   return `fusen_video_${date}_${time}_${base}_${suffix}.${ext}`;
+}
+
+export function buildVideoDisplayName(originalName: string, titleHint = ''): string {
+  const dot = originalName.lastIndexOf('.');
+  const rawExt = dot >= 0 ? originalName.slice(dot + 1).toLowerCase() : 'mp4';
+  const ext = rawExt === 'mov' ? 'mov' : 'mp4';
+  const base = titleHint.trim() || (dot >= 0 ? originalName.slice(0, dot) : originalName).trim() || 'video';
+  return base.toLowerCase().endsWith(`.${ext}`) ? base : `${base}.${ext}`;
 }
 
 /**
