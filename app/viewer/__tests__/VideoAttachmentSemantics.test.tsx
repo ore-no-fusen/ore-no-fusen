@@ -48,8 +48,12 @@ describe('Video attachment semantics', () => {
             title: 'びでお',
             body: 'ユーザが書いたメモ',
             created_at: new Date().toISOString(),
-            videoFileName: 'fusen_video_20260524_064500_びでお_abcd1234.mp4',
-            originalFileName: 'promo_fixed.mp4',
+            videos: [
+              {
+                videoFileName: 'fusen_video_20260524_064500_びでお_abcd1234.mp4',
+                originalFileName: 'promo_fixed.mp4',
+              },
+            ],
           },
         ]}
         isLoading={false}
@@ -79,13 +83,16 @@ describe('Video attachment semantics', () => {
       }),
     );
     const videoFile = new File(['video'], 'promo_fixed.mp4', { type: 'video/mp4' });
+    const videoBlobs = new Map([
+      ['fusen_video_20260524_064500_びでお_abcd1234.mp4', { blob: videoFile, originalName: 'promo_fixed.mp4' }],
+    ]);
 
     await act(async () => {
       const ok = await result.current.sendToPC({
         rawText: 'びでお\nユーザが書いたメモ',
         tags: [],
         blobs: new Map(),
-        videoFile,
+        videoBlobs,
         draftId: 'draft-1',
       });
       expect(ok).toBe(true);
@@ -93,25 +100,86 @@ describe('Video attachment semantics', () => {
 
     await waitFor(() => expect(uploadWithAutoRefresh).toHaveBeenCalled());
     const uploadPayload = vi.mocked(uploadWithAutoRefresh).mock.calls[0][2] as {
-      items: Array<{ title: string; body: string; originalFileName: string; memo: string }>;
+      items: Array<{
+        title: string;
+        body: string;
+        originalFileName: string;
+        memo: string;
+        videos: Array<{ videoFileName: string; originalFileName: string }>;
+      }>;
     };
     expect(uploadPayload.items[0].title).toBe('びでお');
     expect(uploadPayload.items[0].body).toBe('ユーザが書いたメモ');
     expect(uploadPayload.items[0].memo).toBe('ユーザが書いたメモ');
     expect(uploadPayload.items[0].originalFileName).toBe('promo_fixed.mp4');
+    expect(uploadPayload.items[0].videos).toEqual([
+      {
+        videoFileName: 'fusen_video_20260524_064500_びでお_abcd1234.mp4',
+        originalFileName: 'promo_fixed.mp4',
+      },
+    ]);
     expect(uploadPayload.items[0].title).not.toBe(uploadPayload.items[0].originalFileName);
     expect(uploadVideoWithAutoRefresh).toHaveBeenCalledWith(
       'token',
       videoFile,
-      expect.stringContaining('びでお'),
+      'fusen_video_20260524_064500_びでお_abcd1234.mp4',
     );
     expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({
       id: 'draft-1',
       title: 'びでお',
       body: 'ユーザが書いたメモ',
       originalFileName: 'promo_fixed.mp4',
+      videos: [
+        expect.objectContaining({
+          fileName: 'fusen_video_20260524_064500_びでお_abcd1234.mp4',
+          originalName: 'promo_fixed.mp4',
+          blob: videoFile,
+        }),
+      ],
       memo: 'ユーザが書いたメモ',
       type: 'video',
     }));
+  });
+
+  it('複数動画でも本文はそのまま、動画だけ videos 配列に分けて送る', async () => {
+    const { result } = renderHook(() =>
+      useBackgroundSend({
+        accessToken: 'token',
+        onTokenRefreshed: vi.fn(),
+        onSessionExpired: vi.fn(),
+      }),
+    );
+    const first = new File(['first'], 'first.mp4', { type: 'video/mp4' });
+    const second = new File(['second'], 'second.mov', { type: 'video/quicktime' });
+    const videoBlobs = new Map([
+      ['fusen_video_first.mp4', { blob: first, originalName: 'first.mp4' }],
+      ['fusen_video_second.mov', { blob: second, originalName: 'second.mov' }],
+    ]);
+
+    await act(async () => {
+      const ok = await result.current.sendToPC({
+        rawText: '大事なタイトル\n一文字も消さない本文',
+        tags: [],
+        blobs: new Map(),
+        videoBlobs,
+        draftId: 'draft-2',
+      });
+      expect(ok).toBe(true);
+    });
+
+    const uploadPayload = vi.mocked(uploadWithAutoRefresh).mock.calls[0][2] as {
+      items: Array<{
+        title: string;
+        body: string;
+        videos: Array<{ videoFileName: string; originalFileName: string }>;
+      }>;
+    };
+    expect(uploadPayload.items[0].title).toBe('大事なタイトル');
+    expect(uploadPayload.items[0].body).toBe('一文字も消さない本文');
+    expect(uploadPayload.items[0].videos).toEqual([
+      { videoFileName: 'fusen_video_first.mp4', originalFileName: 'first.mp4' },
+      { videoFileName: 'fusen_video_second.mov', originalFileName: 'second.mov' },
+    ]);
+    expect(uploadVideoWithAutoRefresh).toHaveBeenCalledTimes(2);
   });
 });

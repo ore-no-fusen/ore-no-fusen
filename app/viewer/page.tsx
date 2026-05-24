@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor, nowJST } from './utils';
 import { getTranslation, type Language } from '@/lib/i18n';
-import type { IphoneNote, PendingHydrate, DraftRecord, PendingVideoMeta } from './types';
+import type { IphoneNote, PendingHydrate, DraftRecord, PendingVideoMeta, VideoBlobMap } from './types';
 import { NoteListStep } from './NoteListStep';
 import { PushStep } from './PushStep';
 import { WriteStep } from './WriteStep';
@@ -71,11 +71,12 @@ export default function ViewerPage() {
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const videoInputRef = React.useRef<HTMLInputElement>(null);
-  const [pendingVideoFile, setPendingVideoFile] = useState<File | null>(null);
-  const [pendingVideoMeta, setPendingVideoMeta] = useState<PendingVideoMeta | null>(null);
+  const [videoBlobs, setVideoBlobs] = useState<VideoBlobMap>(new Map());
+  const [videoMetas, setVideoMetas] = useState<PendingVideoMeta[]>([]);
   const [pendingHydrate, setPendingHydrate] = useState<PendingHydrate | null>(null);
   const currentDraftIdRef = React.useRef<string | null>(null);
   const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
+  const videoBlobsRef = React.useRef<VideoBlobMap>(new Map());
   const writeTagsRef = React.useRef<string[]>([]);
 
   useEffect(() => {
@@ -117,27 +118,50 @@ export default function ViewerPage() {
   // refs を state と同期（visibilitychange ハンドラで最新値を参照するため）
   useEffect(() => { currentDraftIdRef.current = currentDraftId; }, [currentDraftId]);
   useEffect(() => { imageBlobsRef.current = imageBlobs; }, [imageBlobs]);
+  useEffect(() => { videoBlobsRef.current = videoBlobs; }, [videoBlobs]);
   useEffect(() => { writeTagsRef.current = writeTags; }, [writeTags]);
 
-  const videoMetaFromRecord = React.useCallback((record: {
+  const videoMetasFromRecord = React.useCallback((record: {
     type?: string;
     videoFileName?: string;
     originalFileName?: string;
-  }): PendingVideoMeta | null => {
-    if (record.type !== 'video' && !record.videoFileName && !record.originalFileName) return null;
-    return {
+    videos?: Array<{ fileName?: string; videoFileName?: string; originalName?: string; originalFileName?: string; blob?: Blob }>;
+  }): PendingVideoMeta[] => {
+    if (Array.isArray(record.videos) && record.videos.length > 0) {
+      return record.videos.map((video, index) => {
+        const fileName = video.fileName || video.videoFileName || `video-${index}`;
+        return {
+          fileName,
+          name: video.originalName || video.originalFileName || fileName,
+          size: video.blob?.size ?? 0,
+          type: video.blob?.type || 'video/mp4',
+        };
+      });
+    }
+    if (record.type !== 'video' && !record.videoFileName && !record.originalFileName) return [];
+    const fileName = record.videoFileName || record.originalFileName || 'video';
+    return [{
+      fileName,
       name: record.originalFileName || record.videoFileName || 'video',
       size: 0,
       type: 'video/mp4',
-    };
+    }];
+  }, []);
+
+  const videoBlobMapFromDraft = React.useCallback((draft: DraftRecord | null): VideoBlobMap => {
+    if (!draft?.videos || draft.videos.length === 0) return new Map();
+    return new Map(draft.videos.map((video) => [
+      video.fileName,
+      { blob: video.blob, originalName: video.originalName },
+    ]));
   }, []);
 
   // visibilitychange: バックグラウンドになった瞬間に保存
-  useVisibilitySave({ editorRef, currentDraftIdRef, imageBlobsRef, writeTagsRef });
+  useVisibilitySave({ editorRef, currentDraftIdRef, imageBlobsRef, videoBlobsRef, writeTagsRef });
 
   // onInput 自動保存
   const handleEditorInput = useAutoSave(
-    { editorRef, currentDraftIdRef, imageBlobsRef, writeTagsRef },
+    { editorRef, currentDraftIdRef, imageBlobsRef, videoBlobsRef, writeTagsRef },
     { setCurrentDraftId }
   );
 
@@ -171,8 +195,10 @@ export default function ViewerPage() {
       setCurrentDraftId(pendingHydrate.draftId);
       setWriteTags(pendingHydrate.tags);
       setShowTagBar(pendingHydrate.tags.length > 0);
-      setPendingVideoMeta(pendingHydrate.videoMeta ?? null);
-      setPendingVideoFile(null);
+      const nextVideoBlobMap = pendingHydrate.videoBlobMap ?? new Map();
+      videoBlobsRef.current = nextVideoBlobMap;
+      setVideoBlobs(nextVideoBlobMap);
+      setVideoMetas(pendingHydrate.videoMetas ?? (pendingHydrate.videoMeta ? [pendingHydrate.videoMeta] : []));
       setPendingHydrate(null);
     };
     const timer = setTimeout(run, 50);
@@ -224,7 +250,8 @@ export default function ViewerPage() {
           blobMap,
           draftId: draft.id,
           tags: draft.tags ?? [],
-          videoMeta: videoMetaFromRecord(draft),
+          videoMetas: videoMetasFromRecord(draft),
+          videoBlobMap: videoBlobMapFromDraft(draft),
         });
       }
       setStep('write');
@@ -233,7 +260,7 @@ export default function ViewerPage() {
     // 起動直後も確認（clients.openWindow で新規タブが開かれた場合、visibilitychange は発火しない）
     handleVisible();
     return () => document.removeEventListener('visibilitychange', handleVisible);
-  }, []);
+  }, [videoBlobMapFromDraft, videoMetasFromRecord]);
 
 
   // ページ起動ログ（バージョン確認用）
@@ -280,7 +307,8 @@ export default function ViewerPage() {
           blobMap,
           draftId: draft.id,
           tags: draft.tags ?? [],
-          videoMeta: videoMetaFromRecord(draft),
+          videoMetas: videoMetasFromRecord(draft),
+          videoBlobMap: videoBlobMapFromDraft(draft),
         });
       } else {
         pageLog(`[page] draft取得失敗 id=${noteId}`);
@@ -289,7 +317,7 @@ export default function ViewerPage() {
     };
     navigator.serviceWorker.addEventListener('message', handler);
     return () => navigator.serviceWorker.removeEventListener('message', handler);
-  }, []);
+  }, [videoBlobMapFromDraft, videoMetasFromRecord]);
 
   // step === 'list' になったとき一覧ロード（Drive → IndexedDB → UI）
   useNoteList({
@@ -329,6 +357,13 @@ export default function ViewerPage() {
               id: d.id, title: d.title, body: d.body,
               status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
               created_at: d.created_at, tags: d.tags,
+              type: d.type,
+              videoFileName: d.videoFileName,
+              originalFileName: d.originalFileName,
+              videos: (d.videos ?? []).map((video) => ({
+                videoFileName: video.fileName,
+                originalFileName: video.originalName,
+              })),
             }))
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .slice(0, 20)
@@ -451,6 +486,7 @@ export default function ViewerPage() {
             fileInputRef={fileInputRef}
             videoInputRef={videoInputRef}
             imageBlobsRef={imageBlobsRef}
+            videoBlobsRef={videoBlobsRef}
             showTagBar={showTagBar}
             tagInput={tagInput}
             writeTags={writeTags}
@@ -458,8 +494,7 @@ export default function ViewerPage() {
             showCropModal={showCropModal}
             cropFile={cropFile}
             showMermaidModal={showMermaidModal}
-            pendingVideoFile={pendingVideoFile}
-            pendingVideoMeta={pendingVideoMeta}
+            videoMetas={videoMetas}
             backgroundSendSuccess={backgroundSendSuccess}
             errorMessage={errorMessage}
             isLoading={isLoading}
@@ -477,8 +512,8 @@ export default function ViewerPage() {
             setCropFile={setCropFile}
             setCropQueue={setCropQueue}
             setShowMermaidModal={setShowMermaidModal}
-            setPendingVideoFile={setPendingVideoFile}
-            setPendingVideoMeta={setPendingVideoMeta}
+            setVideoBlobs={setVideoBlobs}
+            setVideoMetas={setVideoMetas}
             setErrorMessage={setErrorMessage}
             setIsLoading={setIsLoading}
             setCurrentDraftId={setCurrentDraftId}
@@ -497,9 +532,10 @@ export default function ViewerPage() {
             isLockPermissionPending={isLockPermissionPending}
             t={t}
             onNew={() => {
-              setPendingVideoFile(null);
-              setPendingVideoMeta(null);
-              setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [], videoMeta: null });
+              videoBlobsRef.current = new Map();
+              setVideoBlobs(new Map());
+              setVideoMetas([]);
+              setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [], videoMetas: [], videoBlobMap: new Map() });
               setStep('write');
             }}
             onOpen={async (note) => {
@@ -518,7 +554,8 @@ export default function ViewerPage() {
                 blobMap,
                 draftId: note.id,
                 tags: note.tags ?? [],
-                videoMeta: videoMetaFromRecord(note),
+                videoMetas: videoMetasFromRecord(draft ?? note),
+                videoBlobMap: videoBlobMapFromDraft(draft),
               });
               setStep('write');
 

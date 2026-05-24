@@ -51,6 +51,7 @@ FUSEN is designed as a fast thinking canvas where ideas can appear the moment th
 ### 🎯 Simple yet Powerful
 
 - **Markdown Support** - Supports headings, lists, code blocks, tables, Mermaid diagrams, images, and more.
+- **VideoDrop** - Send `mp4` / `mov` videos from the iPhone/iPad PWA to your PC and keep the saved path attached to the note.
 - **One-click Edit** - Click anywhere to start typing immediately. Auto-saves so you never lose your thoughts.
 - **Floating Format Bar** - Appears automatically when text is selected. Click to format bold, headings, lists, and checkboxes.
 - **Tags & Archives** - Organize your sticky notes. Folder structure for easy viewing.

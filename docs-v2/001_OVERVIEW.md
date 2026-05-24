@@ -15,7 +15,7 @@ outline: deep
 
 ## 0 上位思想
 
-このシステム全体像は、[000-I Intention Layer](./000_INTENTION_LAYER.md) を上位思想として読む。
+このシステム全体像は、[000 要求仕様](./000_REQUIREMENTS.md) を上位仕様として読む。
 
 俺の付箋は、単なる付箋アプリではなく、AIエージェント時代の「意図の置き場」である。
 PC、iPhone/PWA、Google Drive、Vercel、通知基盤は、すべて `Capture -> Land -> Persist -> Surface -> Act -> Resolve` の loop を支える構成要素として扱う。
@@ -52,7 +52,7 @@ graph LR
     Vercel -->|"client_secretを使って<br>トークン交換を依頼"| OAuth
     OAuth -.->|"access_token<br>（Drive操作の短時間許可証）"| PWA
 
-    PWA <-->|"ノート・画像ファイル"| Drive
+    PWA <-->|"ノート・添付メディア"| Drive
     SW <-->|"ノート取得・削除"| Drive
     PC <-->|"ノート・デバイス登録情報"| Drive
 
@@ -67,8 +67,8 @@ graph LR
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:4px 0 12px 0;">
 <table class="module-table">
   <tr><th>No</th><th>登場人物</th><th>一言で言うと</th><th>何のために使うか</th></tr>
-  <tr><td>1</td><td><strong>1⃣ 🖥 PC アプリ</strong></td><td>デスクトップ付箋アプリ</td><td>付箋の表示・編集・保存。iPhone に通知付きで送信。iPhone から受け取って付箋を開く</td></tr>
-  <tr><td>2</td><td><strong>2⃣ 📱 iPhone PWA</strong></td><td>ホーム画面に追加した Web アプリ</td><td>PC からのノートを受け取り閲覧。メモを書いて PC に送る</td></tr>
+  <tr><td>1</td><td><strong>1⃣ 🖥 PC アプリ</strong></td><td>デスクトップ付箋アプリ</td><td>付箋の表示・編集・保存。iPhone に通知付きで送信。iPhone から受け取った本文・画像・動画を付箋として開く</td></tr>
+  <tr><td>2</td><td><strong>2⃣ 📱 iPhone PWA</strong></td><td>ホーム画面に追加した Web アプリ</td><td>PC からのノートを受け取り閲覧。メモを書き、画像・動画を添付して PC に送る</td></tr>
   <tr><td>3</td><td><strong>3⃣ ⚙️ Service Worker</strong></td><td>iPhone の常駐プログラム</td><td>アプリを閉じていても Push を受信してノートを保存・通知表示。IndexedDB がデータの唯一の保存場所</td></tr>
   <tr><td>4</td><td><strong>4⃣ ☁️ Google Drive</strong></td><td>PC と iPhone の中継所</td><td>ノートデータを一時的に置く場所。処理したら即削除。開発者はアクセス不可</td></tr>
 </table>
@@ -165,10 +165,16 @@ graph LR
 
     PWA["📱 iPhone PWA<br>（PC に送る）"]:::user -->|"書き込み"| Drive["☁️ Drive<br>（iPhone→PC）"]:::user
     Drive -->|"30秒ポーリング"| PC["🖥 PC アプリ<br>（新着検出・削除）"]:::user
-    PC -->|"新規生成"| Note["📝 付箋ウィンドウ<br>（テキスト・画像）"]:::user
+    PC -->|"新規生成"| Note["📝 付箋ウィンドウ<br>（テキスト・添付メディア）"]:::user
 ```
 
 <p class="mermaid-caption">図 3.2-1　iPhone → PC データフロー概要</p>
+
+<Note type="success">
+<strong>VideoDrop：</strong>iPhone PWA から送る画像・動画は、付箋本文を置き換えるものではなく添付メディアとして扱う。
+PC 側は動画ファイルを <code>assets/video/</code> に保存し、付箋本文の末尾へ保存先パスを追記する。
+ユーザーが入力した本文、元ファイル名、Drive 一時ファイル名、PC 保存パスは混同しない。
+</Note>
 
 <Note type="success">
 <strong>Drive 設計原則：</strong>Drive にあるものは全て未処理キュー。受信処理が完了したら即削除。残っていたら削除 API 失敗の残骸。
@@ -195,7 +201,7 @@ graph LR
 | 2 | ✔ Vercel 経由 | Vercel の環境変数に置く | iPhone には届かない。Vercel のサーバー内で、トークン交換・更新の瞬間だけ使う |
 
 <Note type="warning">
-iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</code> を呼ぶだけ。<code>client_secret</code> は iPhone に渡らない。Vercel は付箋本文、添付画像、Drive 中継ファイル、Google Drive 用トークンを保存しない。
+iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</code> を呼ぶだけ。<code>client_secret</code> は iPhone に渡らない。Vercel は付箋本文、添付画像、添付動画、Drive 中継ファイル、Google Drive 用トークンを保存しない。
 </Note>
 
 ---
@@ -210,5 +216,6 @@ iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</co
 | 1 | 1.0 | 26-04-19 | 設計書を 001/002/003 に再編。本ファイル（001）は全体像を担当。旧 001_ARCHITECTURE_DESIGN・003_SYSTEM_OVERVIEW の該当部分を統合 |
 | 2 | 1.1 | 26-04-24 | システム全体関係図を `graph LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
 | 3 | 1.2 | 26-05-06 | 1 登場人物、2 技術スタック、4 なぜ Vercel が必要かを修正。技術スタック表に No を追加し、OAuth / Vercel の説明を開発者・保守担当向けとして明記。client_secret を誰が何のために守るのか分かる表現へ修正。 |
+| 4 | 1.3 | 26-05-25 | iPhone → PC フローに VideoDrop を追加。画像・動画を添付メディアとして扱い、PC 側で動画を `assets/video/` に保存する全体像を追記。 |
 
 </div>

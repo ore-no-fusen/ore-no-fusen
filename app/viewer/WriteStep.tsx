@@ -5,6 +5,7 @@ import { CropModal } from './CropModal';
 import { MermaidModal } from './MermaidModal';
 import {
   buildImageFileName,
+  buildVideoFileName,
   createId,
   insertTextAtCursor,
   insertNodeAtCursor,
@@ -13,7 +14,7 @@ import {
 import { saveDraft } from './lib/indexeddb';
 import { serializeEditor, extractTitleBody, mergeKnownTags, loadKnownTags } from './editor-helpers';
 import type { TranslationKey } from '@/lib/i18n';
-import type { PendingHydrate, PendingVideoMeta } from './types';
+import type { PendingHydrate, PendingVideoMeta, VideoBlobMap } from './types';
 
 // ---------------------------------------------------------------------------
 // WriteStep: メモ編集画面（step === 'write'）
@@ -25,6 +26,7 @@ type WriteStepProps = {
   fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
   videoInputRef: React.MutableRefObject<HTMLInputElement | null>;
   imageBlobsRef: React.MutableRefObject<Map<string, Blob>>;
+  videoBlobsRef: React.MutableRefObject<VideoBlobMap>;
   // state
   showTagBar: boolean;
   tagInput: string;
@@ -33,8 +35,7 @@ type WriteStepProps = {
   showCropModal: boolean;
   cropFile: File | null;
   showMermaidModal: boolean;
-  pendingVideoFile: File | null;
-  pendingVideoMeta?: PendingVideoMeta | null;
+  videoMetas: PendingVideoMeta[];
   backgroundSendSuccess: boolean;
   errorMessage: string | null;
   isLoading: boolean;
@@ -53,15 +54,15 @@ type WriteStepProps = {
   setCropFile: React.Dispatch<React.SetStateAction<File | null>>;
   setCropQueue: React.Dispatch<React.SetStateAction<File[]>>;
   setShowMermaidModal: React.Dispatch<React.SetStateAction<boolean>>;
-  setPendingVideoFile: React.Dispatch<React.SetStateAction<File | null>>;
-  setPendingVideoMeta?: React.Dispatch<React.SetStateAction<PendingVideoMeta | null>>;
+  setVideoBlobs: React.Dispatch<React.SetStateAction<VideoBlobMap>>;
+  setVideoMetas: React.Dispatch<React.SetStateAction<PendingVideoMeta[]>>;
   setErrorMessage: React.Dispatch<React.SetStateAction<string | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setCurrentDraftId: React.Dispatch<React.SetStateAction<string | null>>;
   setPendingHydrate: React.Dispatch<React.SetStateAction<PendingHydrate | null>>;
   // handlers
   handleEditorInput: () => void;
-  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoFile?: File | null; draftId: string | null }) => Promise<boolean>;
+  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoBlobs?: VideoBlobMap; draftId: string | null }) => Promise<boolean>;
 };
 
 /**
@@ -75,6 +76,7 @@ export function WriteStep({
   fileInputRef,
   videoInputRef,
   imageBlobsRef,
+  videoBlobsRef,
   showTagBar,
   tagInput,
   writeTags,
@@ -82,8 +84,7 @@ export function WriteStep({
   showCropModal,
   cropFile,
   showMermaidModal,
-  pendingVideoFile,
-  pendingVideoMeta,
+  videoMetas,
   backgroundSendSuccess,
   errorMessage,
   isLoading,
@@ -101,8 +102,8 @@ export function WriteStep({
   setCropFile,
   setCropQueue,
   setShowMermaidModal,
-  setPendingVideoFile,
-  setPendingVideoMeta = () => {},
+  setVideoBlobs,
+  setVideoMetas,
   setErrorMessage,
   setIsLoading,
   setCurrentDraftId,
@@ -124,6 +125,25 @@ export function WriteStep({
     });
   }, [setCropFile, setCropQueue, setShowCropModal]);
 
+  const currentVideos = React.useCallback(() => (
+    Array.from(videoBlobsRef.current.entries()).map(([fileName, entry]) => ({
+      fileName,
+      originalName: entry.originalName,
+      blob: entry.blob,
+    }))
+  ), [videoBlobsRef]);
+
+  const videoDraftFields = React.useCallback(() => {
+    const videos = currentVideos();
+    const first = videos[0];
+    return {
+      videos,
+      type: videos.length > 0 ? ('video' as const) : ('note' as const),
+      videoFileName: first?.fileName,
+      originalFileName: first?.originalName,
+    };
+  }, [currentVideos]);
+
   return (
     <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
       {/* ヘッダー */}
@@ -137,7 +157,7 @@ export function WriteStep({
                 const { title, body } = extractTitleBody(rawText);
                 const draftId = currentDraftId ?? createId();
                 const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
-                await saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
+                await saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags, ...videoDraftFields() }).catch(() => {});
                 setCurrentDraftId(draftId);
               }
             }
@@ -399,19 +419,66 @@ export function WriteStep({
         ref={videoInputRef}
         type="file"
         accept="video/mp4,video/quicktime,.mp4,.mov"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
+          const files = Array.from(e.target.files ?? []);
           e.target.value = '';
-          if (!file) return;
-          const lower = file.name.toLowerCase();
-          if (!lower.endsWith('.mp4') && !lower.endsWith('.mov')) {
+          if (files.length === 0) return;
+          const validFiles = files.filter((file) => {
+            const lower = file.name.toLowerCase();
+            return lower.endsWith('.mp4') || lower.endsWith('.mov');
+          });
+          if (validFiles.length !== files.length) {
             setErrorMessage('mp4 または mov を選択してください。');
+          }
+          if (validFiles.length === 0) {
             return;
           }
-          setPendingVideoFile(file);
-          setPendingVideoMeta({ name: file.name, size: file.size, type: file.type });
+          const title = editorRef.current
+            ? extractTitleBody(serializeEditor(editorRef.current)).title
+            : '';
+          const nextMap = new Map(videoBlobsRef.current);
+          const nextMetas = [...videoMetas];
+          for (const file of validFiles) {
+            const fileName = buildVideoFileName(file.name, title);
+            nextMap.set(fileName, { blob: file, originalName: file.name });
+            nextMetas.push({
+              fileName,
+              name: file.name,
+              size: file.size,
+              type: file.type || 'video/mp4',
+            });
+          }
+          videoBlobsRef.current = nextMap;
+          setVideoBlobs(nextMap);
+          setVideoMetas(nextMetas);
           setErrorMessage(null);
+          if (editorRef.current) {
+            const rawText = serializeEditor(editorRef.current);
+            if (rawText.trim()) {
+              const { title, body } = extractTitleBody(rawText);
+              const draftId = currentDraftId ?? createId();
+              const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
+              saveDraft({
+                id: draftId,
+                title,
+                body,
+                created_at: nowJST(),
+                images: imagesArr,
+                tags: writeTags,
+                videos: Array.from(nextMap.entries()).map(([fileName, entry]) => ({
+                  fileName,
+                  originalName: entry.originalName,
+                  blob: entry.blob,
+                })),
+                type: nextMap.size > 0 ? 'video' : 'note',
+                videoFileName: nextMetas[0]?.fileName,
+                originalFileName: nextMetas[0]?.name,
+              }).catch(() => {});
+              setCurrentDraftId(draftId);
+            }
+          }
         }}
       />
 
@@ -422,20 +489,30 @@ export function WriteStep({
       {errorMessage && (
         <p className="text-center text-red-600 text-sm py-1">{errorMessage}</p>
       )}
-      {(pendingVideoMeta || pendingVideoFile) && (
-        <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-white text-sm text-gray-700 shadow-sm flex items-center justify-between gap-2 border border-blue-100">
-          <span className="truncate">🎬 {pendingVideoMeta?.name || pendingVideoFile?.name}</span>
-          <button
-            type="button"
-            className="text-gray-400 hover:text-red-500 px-2"
-            aria-label="動画を外す"
-            onClick={() => {
-              setPendingVideoFile(null);
-              setPendingVideoMeta(null);
-            }}
-          >
-            ×
-          </button>
+      {videoMetas.length > 0 && (
+        <div className="mx-4 mb-2 flex flex-col gap-2">
+          {videoMetas.map((meta) => (
+            <div
+              key={meta.fileName}
+              className="px-3 py-2 rounded-xl bg-white text-sm text-gray-700 shadow-sm flex items-center justify-between gap-2 border border-blue-100"
+            >
+              <span className="truncate">🎬 {meta.name}</span>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-red-500 px-2"
+                aria-label={`${meta.name} を外す`}
+                onClick={() => {
+                  const nextMap = new Map(videoBlobsRef.current);
+                  nextMap.delete(meta.fileName);
+                  videoBlobsRef.current = nextMap;
+                  setVideoBlobs(nextMap);
+                  setVideoMetas((prev) => prev.filter((v) => v.fileName !== meta.fileName));
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -463,9 +540,13 @@ export function WriteStep({
                 created_at: nowJST(),
                 images: imagesArr,
                 tags: writeTags,
+                ...videoDraftFields(),
               });
               imageBlobsRef.current = new Map();
               setImageBlobs(new Map());
+              videoBlobsRef.current = new Map();
+              setVideoBlobs(new Map());
+              setVideoMetas([]);
               setWriteTags([]);
               setShowTagBar(false);
               setTagInput('');
@@ -501,6 +582,7 @@ export function WriteStep({
                 body,
                 created_at: nowJST(),
                 images: imagesArr,
+                ...videoDraftFields(),
                 tags: capturedTags,
               });
               setCurrentDraftId(draftId);
@@ -519,7 +601,7 @@ export function WriteStep({
               rawText,
               tags: capturedTags,
               blobs: capturedBlobs,
-              videoFile: pendingVideoFile,
+              videoBlobs: new Map(videoBlobsRef.current),
               draftId,
             });
             if (!sent) return;
@@ -530,8 +612,9 @@ export function WriteStep({
             setWriteTags([]);
             setShowTagBar(false);
             setTagInput('');
-            setPendingVideoFile(null);
-            setPendingVideoMeta(null);
+            videoBlobsRef.current = new Map();
+            setVideoBlobs(new Map());
+            setVideoMetas([]);
             setCurrentDraftId(null);
             if (localStorage.getItem('pending_note') === draftId) {
               localStorage.removeItem('pending_note');
@@ -591,7 +674,7 @@ export function WriteStep({
                 const { title, body } = extractTitleBody(rawText);
                 const draftId = currentDraftId ?? createId();
                 const imagesArr = Array.from(nextBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
-                saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
+                saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags, ...videoDraftFields() }).catch(() => {});
                 setCurrentDraftId(draftId);
               }
             }

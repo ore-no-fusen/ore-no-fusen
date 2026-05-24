@@ -112,10 +112,10 @@ sequenceDiagram
     loop Every 30 seconds (tokio::time::interval)
         PC->>Drive: ❶ notes_from_iphone.json を確認
         alt Found data
-            PC->>Drive: ❷ 添付画像をダウンロード
-            PC->>PC: ❸ Vault に .md / assets を保存
+            PC->>Drive: ❷ 添付画像・動画をダウンロード
+            PC->>PC: ❸ Vault に .md / assets / assets/video を保存
             PC->>PC: ❹ React へ受信イベントを emit
-            PC->>Drive: ❺ 処理済み item / 画像を削除
+            PC->>Drive: ❺ 処理済み item / 画像・動画を削除
         end
     end
     end
@@ -124,6 +124,11 @@ sequenceDiagram
 
 <Note type="info">
 <strong>詳細リンク:</strong> プロセス間通信（IPC）やService Workerの詳細な動作シーケンスは <a href="./001_OVERVIEW#sec3-システムデータフロー">001_OVERVIEW の データフロー</a> および <a href="./003_IPHONE#sec4-データフロー">003_IPHONE の シーケンス</a> 参照。
+</Note>
+
+<Note type="warning">
+<strong>添付メディアの境界：</strong>iPhone → PC 方向の画像・動画は、付箋本文と同じ意味に統合しない。
+ユーザー本文は <code>body</code>、添付動画は <code>videos[]</code>、Drive 一時ファイル名は <code>fusen_video_*</code>、PC 保存先は <code>assets/video/</code> のパスとして別々に扱う。
 </Note>
 
 ---
@@ -195,7 +200,7 @@ flowchart LR
 <p class="mermaid-caption">図 6-3　物理デプロイトポロジー</p>
 
 <Note type="success">
-<strong>セキュリティ原則:</strong> 開発者が管理するサーバー（Vercel）にはユーザーのメモ本文、添付画像、Drive 中継ファイル、Google Drive 用トークンを保存しない。Vercel が扱うのは、iPhone PWA の配信と OAuth トークン交換・更新の一時処理だけ。
+<strong>セキュリティ原則:</strong> 開発者が管理するサーバー（Vercel）にはユーザーのメモ本文、添付画像、添付動画、Drive 中継ファイル、Google Drive 用トークンを保存しない。Vercel が扱うのは、iPhone PWA の配信と OAuth トークン交換・更新の一時処理だけ。
 </Note>
 
 ---
@@ -215,7 +220,7 @@ flowchart LR
 | 1 | **PCで入力** | ユーザーがPC上で「買い物リスト」を書き、「iPhoneに送る」ボタンを押す。 | **[Logical]** Fusen オブジェクトの生成<br>**[Development]** RustモジュールによるファイルI/O |
 | 2 | **クラウド中継** | 数秒以内にノートがクラウドにアップロードされ、通知発火のトリガーが引かれる。 | **[Physical]** Local PC → Google Drive 通信<br>**[Process]** APNs への非同期 Push API 呼び出し |
 | 3 | **iPhoneで受信** | ユーザーが外出先でiPhoneを見ると、ポケットの中で既に通知（新着ノート）が届いている。 | **[Process]** Service Workerのバックグラウンド起床とDrive取得<br>**[Physical]** Safariサンドボックス内でのIndexedDB保管 |
-| 4 | **返信して削除** | iPhoneから「牛乳買ったよ」と追記してPCに送り返し、手元のノートを消す。 | **[Logical]** Viewing/Editing Mode の遷移（PWA）<br>**[Process]** PCの30秒ポーリングによる即時回収と自動削除 |
+| 4 | **返信して削除** | iPhoneから「牛乳買ったよ」と追記してPCに送り返し、手元のノートを消す。画像や動画を添付した場合も、本文はそのまま保持される。 | **[Logical]** Viewing/Editing Mode の遷移（PWA）<br>**[Process]** PCの30秒ポーリングによる即時回収と自動削除 |
 
 <Note type="info">
 このシナリオをプログラムで自動検証する E2E テストの仕様と結果については、<a href="./004_TEST">004 テスト設計</a> を参照してください。
@@ -233,6 +238,7 @@ flowchart LR
 | 1 | 1.0 | 26-04-21 | 新規作成。4+1 View Model（論理・プロセス・開発・物理・シナリオ）全ビューを整理。 |
 | 2 | 1.1 | 26-04-24 | classDiagram・物理ビュー flowchart を `LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
 | 3 | 1.2 | 26-05-06 | 1 4+1 View Model、4.1 モノレポアーキテクチャ、5.1 物理ビュー、6.1 中心シナリオを修正。各ビューの対象者を明記し、4.1 に `docs-v2/` と `wiki-temp/` を追加。6.1 の表に No を追加。Vercel / Google OAuth の物理トポロジーを修正し、client_secret は Drive ではなく Google OAuth のトークン交換に使うことを明確化。 |
+| 4 | 1.3 | 26-05-25 | iPhone → PC のポーリング型受信に VideoDrop を追加。動画を `assets/video/` に保存し、本文・添付・一時ファイル名・保存パスを分離する境界を明記。 |
 
 </div>
 

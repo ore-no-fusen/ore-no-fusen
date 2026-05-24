@@ -79,7 +79,7 @@ v1.1 / 2026-05-06
 |:---|:---|:---|:---|:---|
 | 1 | Tauri | PC 版アプリを作るための実行基盤。俺の付箋では、画面は WebView、OS 操作・ファイル保存・Google Drive 連携・Push 送信は Rust 側が担当する。PC で落ちる/保存できない問題の調査では Tauri と Rust 側を見る。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) |
 | 2 | Next.js | React ベースの Web アプリ基盤。俺の付箋では、PC 版の画面、iPhone PWA、Vercel API Routes を同じプロジェクト内で実装するために使う。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
-| 3 | Vercel | 開発者が管理するサーバー側の実行場所。俺の付箋では iPhone PWA を配信し、`client_secret` を iPhone に渡さず Google OAuth のトークン交換・更新を行う。付箋本文、添付画像、Drive 中継ファイル、Google Drive 用トークンは保存しない。 | 開発者 / 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
+| 3 | Vercel | 開発者が管理するサーバー側の実行場所。俺の付箋では iPhone PWA を配信し、`client_secret` を iPhone に渡さず Google OAuth のトークン交換・更新を行う。付箋本文、添付画像、添付動画、Drive 中継ファイル、Google Drive 用トークンは保存しない。 | 開発者 / 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 4 | Vitest | TypeScript / React の小さな単位の動作を確認するテスト基盤。俺の付箋では、部品や関数の変更で既存動作を壊していないかを見るために使う。 | 開発者 | [004_TEST.md](/004_TEST.html) |
 | 5 | Playwright | 実際の画面操作に近い形でアプリを自動操作するテスト基盤。俺の付箋では、クリック、入力、保存、画面遷移など、ユーザー操作の流れが壊れていないかを見るために使う。 | 開発者 / 保守担当 | [004_TEST.md](/004_TEST.html) |
 
@@ -119,6 +119,7 @@ v1.1 / 2026-05-06
 | 5 | notes_from_iphone.json | iPhone から PC へ送る付箋を一時的に入れる Drive ファイル。iPhone PWA が書き込み、PC が 30 秒ごとに読み込んで付箋を作った後、処理済み分を削除する。 | 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 6 | push_devices.json | iPhone の Push 通知送信先情報を保存する Drive ファイル。endpoint、`p256dh`、`auth` などを持つ。これがないと PC はどの iPhone に通知すればよいか分からない。 | 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [002_PC.md](/002_PC.html) |
 | 7 | push_keys.json | ユーザーごとの VAPID 公開鍵・秘密鍵を保存する Drive ファイル。公開鍵は iPhone の Push 購読に使い、秘密鍵は PC が Web Push 送信者であることを署名するために使う。第三者に `push_devices.json` と一緒に見られると、偽の通知を送られる可能性がある。 | ユーザー / 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
+| 8 | fusen_video_* | iPhone PWA から PC へ動画を送るとき、Google Drive に一時保存する動画ファイル名。PC が受信して `assets/video/` に保存した後に削除する。ユーザーが入力した本文や元ファイル名とは別の一時名として扱う。 | 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
 
 </div>
 
@@ -133,8 +134,12 @@ v1.1 / 2026-05-06
 |:---|:---|:---|:---|:---|
 | 1 | YAML | 人が読みやすいキー・値形式のテキスト。俺の付箋では、PC 側の .md ファイル先頭にある frontmatter で、色、タグ、位置、アラームなどを保存する。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) |
 | 2 | JSON | アプリ同士がデータを受け渡すためのテキスト形式。俺の付箋では、Drive 上の `notes_to_iphone.json`、`push_devices.json` などの中継ファイルや API レスポンスに使う。 | 開発者 / 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
-| 3 | Blob | 画像などのバイナリデータをブラウザ内で扱うための形式。俺の付箋では、iPhone PWA が添付画像を IndexedDB に保存し、画面にプレビュー表示するために使う。 | 開発者 / 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
+| 3 | Blob | 画像や動画などのバイナリデータをブラウザ内で扱うための形式。俺の付箋では、iPhone PWA が添付メディアを IndexedDB に保存し、送信時に Drive へアップロードするために使う。 | 開発者 / 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
 | 4 | Markdown（.md） | 付箋本文の保存形式。PC 側では Vault フォルダ内の .md ファイルが付箋の実体で、frontmatter と本文を1つのテキストファイルとして持つ。 | ユーザー / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
+| 5 | 添付メディア | 付箋本文とは別に紐づく画像・動画などのファイル。ユーザーの思考やメモに素材を添える部品であり、本文やタイトルを置き換えるものではない。 | ユーザー / 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
+| 6 | VideoDrop | iPhone PWA から `mp4` / `mov` を PC へ送る機能。Windows ユーザー向けの AirDrop 的な使い方だが、俺の付箋では動画管理アプリではなく、付箋に動画ファイルの保存先パスを紐づける添付機能として扱う。 | ユーザー / 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
+| 7 | originalFileName | ユーザーが選んだ動画の元ファイル名。Drive に置く一時ファイル名や PC 保存パスとは別物。表示・確認には使えるが、ユーザーが入力した本文を上書きする根拠にしてはならない。 | 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
+| 8 | videos[] | `notes_from_iphone.json` と IndexedDB で使う添付動画の配列。複数動画を同じ付箋に紐づけるための正規フィールド。旧互換の `videoFileName` 単体フィールドより優先する。 | 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
 
 </div>
 
@@ -149,5 +154,6 @@ v1.1 / 2026-05-06
 |:---|:---|:---|:---|
 | 1 | 1.0 | 26-04-20 | 新規作成。設計書に登場する専門用語を整理。 |
 | 2 | 1.1 | 26-05-06 | 1 認証・セキュリティ、2 Push 通知、3 ブラウザ技術、4 フレームワーク・ランタイム、5 設計用語、6 Google Drive API、7 データ形式を修正。全表に「主な対象」を追加し、OAuth / client_secret / VAPID / Drive ファイルを「俺の付箋で何のために使うか」が分かる表現へ修正。 |
+| 3 | 1.2 | 26-05-25 | VideoDrop、添付メディア、`fusen_video_*`、`videos[]`、`originalFileName` を追加。本文・元ファイル名・Drive 一時名・PC 保存パスを混同しない用語境界を明記。 |
 
 </div>

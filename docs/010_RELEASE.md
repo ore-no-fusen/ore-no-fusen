@@ -39,6 +39,23 @@ MAJOR.MINOR.PATCH
 
 ## 開発からリリースまでの流れ
 
+### リリース前の必須ゲート
+
+ソース修正、テスト、ドキュメント更新、リリース確認は1セットで実施する。
+特に PWA / Service Worker / iPhone 連携を変更した場合は、SW バージョンを必ず上げる。
+
+| No | ゲート | 内容 |
+|----|--------|------|
+| 1 | ソース修正 | 実装は最小単位で行い、ユーザー本文・添付・保存パスなど異なる意味のデータを混ぜない |
+| 2 | テスト | `npx tsc --noEmit --pretty false`、対象テスト、`npm test`、`cargo check`、`npm run build` を実行する |
+| 3 | ドキュメント更新 | `docs-v2/` の仕様、`docs/` のユーザー向け手順、必要なら `README.md` を更新する |
+| 4 | 変更履歴 | 更新した設計書・マニュアルの変更履歴へ日付 `YY-MM-DD` で追記する |
+| 5 | PWA バージョン確認 | PWA / SW を触った場合、画面右下の `SW` バージョンで反映を確認できるようにする |
+| 6 | リリース | develop に push し、Preview / ローカル Tauri で確認してから正式リリースへ進む |
+
+> **データロスト禁止:** ユーザーが入力した本文・1行目・タグを、添付ファイル名や保存パスで上書きしてはならない。
+> 添付画像・動画・音声・ファイルは、付箋本文とは別の部品として扱う。
+
 ```mermaid
 flowchart TD
     subgraph legend [凡例]
@@ -66,7 +83,10 @@ flowchart TD
     style D3 fill:#fefece,stroke:#aaaa33,color:#333333
 
     A["① ソース修正<br/>（develop ブランチで）"]
-    A --> CM["② git commit"]
+    A --> T0["② ローカルテスト<br/>型検査・対象テスト・全テスト"]
+    T0 --> DOC["③ ドキュメント更新<br/>docs-v2 / docs / README"]
+    DOC --> SWV["④ PWA変更時はSWバージョン更新"]
+    SWV --> CM["⑤ git commit"]
 
     subgraph hook [Husky: pre-commit]
         H1["➊ TypeScript型チェック<br/>tsc --noEmit"]
@@ -77,14 +97,14 @@ flowchart TD
     CM --- hook
 
     hook -->|失敗| HF["❌ コミット中断 → ①に戻る"]
-    hook -->|成功| B2["③ git push origin develop"]
-    B2 --> B3["④ iPhone で動作確認<br/>Vercel Preview URL を Safari で開く"]
+    hook -->|成功| B2["⑥ git push origin develop"]
+    B2 --> B3["⑦ iPhone で動作確認<br/>Vercel Preview URL を Safari で開く"]
     B3 --> C2{問題あり?}
     C2 -->|あり| RF["→ ①に戻る"]
-    C2 -->|なし| B["⑤ ローカルビルドで動作確認<br/>npm run tauri build"]
+    C2 -->|なし| B["⑧ ローカルビルドで動作確認<br/>npm run tauri build"]
     B --> C{問題あり?}
     C -->|あり| RF2["→ ①に戻る"]
-    C -->|なし| REL["⑥ GitHub Actions「Do Release」を実行<br/>新バージョンを入力して Run workflow"]
+    C -->|なし| REL["⑨ GitHub Actions「Do Release」を実行<br/>新バージョンを入力して Run workflow"]
 
     subgraph do_release [GitHub Actions: do-release.yml]
         R1["➍ develop → main マージ"]
@@ -152,3 +172,11 @@ git push origin main --tags
 `gh release create` や GitHub Web UI でリリースを手動作成しないこと。
 `tauri-action` がビルド完了後に自動でリリースとインストーラーを作成する。
 手動作成すると競合して CD が失敗する。
+
+---
+
+## 更新履歴
+
+| No | 日付 | 変更内容 |
+|----|------|----------|
+| 1 | 26-05-25 | ソース修正→テスト→ドキュメント更新→SWバージョン確認→リリースの必須ゲートを追加。 |

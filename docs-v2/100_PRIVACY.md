@@ -21,7 +21,7 @@ outline: deep
 
 PC 版の付箋データは、ユーザーの PC 上のローカルフォルダに保存されます。iPhone 連携を利用する場合のみ、PC と iPhone の間でデータを受け渡すために、ユーザー自身の Google Drive を使用します。
 
-開発者が管理するサーバーには、付箋本文、添付画像、ユーザーの Google Drive 内ファイルの内容を保存しません。
+開発者が管理するサーバーには、付箋本文、添付画像、添付動画、ユーザーの Google Drive 内ファイルの内容を保存しません。
 
 ---
 
@@ -54,6 +54,7 @@ iPhone 連携を利用する場合、以下の情報をユーザー自身の Goo
 | 3 | `push_devices.json` | Web Push 通知の送信先端末情報 |
 | 4 | `push_keys.json` | ユーザーごとの Web Push 用 VAPID 鍵 |
 | 5 | `fusen_img_*` | 添付画像の一時中継 |
+| 6 | `fusen_video_*` | 添付動画の一時中継 |
 
 これらは、ユーザーの Google Drive 内に作成される `ore-no-fusen` フォルダで管理されます。
 
@@ -82,7 +83,7 @@ Google Drive は、PC と iPhone の間の中継場所として使用します�
 | No | 種別 | 内容 | 用途 |
 |:---|:---|:---|:---|
 | 1 | Google Drive のファイルメタデータ | `ore-no-fusen` フォルダおよびアプリが作成・利用するファイルの名前、ID、親フォルダ、削除状態など | 同期用フォルダと同期用ファイルを検索、作成、更新、削除するため |
-| 2 | Google Drive のファイル内容 | `notes_to_iphone.json`、`notes_from_iphone.json`、`push_devices.json`、`push_keys.json`、`fusen_img_*` など、俺の付箋が作成・利用するファイルの内容 | PC と iPhone の間でメモ、添付画像、通知設定を受け渡すため |
+| 2 | Google Drive のファイル内容 | `notes_to_iphone.json`、`notes_from_iphone.json`、`push_devices.json`、`push_keys.json`、`fusen_img_*`、`fusen_video_*` など、俺の付箋が作成・利用するファイルの内容 | PC と iPhone の間でメモ、添付画像、添付動画、通知設定を受け渡すため |
 | 3 | Google アカウント情報 | Google Drive API の `about` から取得できるメールアドレス、表示名、プロフィール画像 URL | PC と iPhone が同じ Google アカウントで連携しているかをユーザーに分かりやすく表示し、通知端末を識別しやすくするため |
 | 4 | Google OAuth トークン | Google Drive API を呼び出すためのアクセストークンとリフレッシュトークン | ユーザーが許可した範囲で Drive API を呼び出し、再ログインなしで連携を継続するため |
 
@@ -96,10 +97,10 @@ Google ユーザーデータの使用、保存、共有の方針は以下です�
 
 | No | 項目 | 内容 |
 |:---|:---|:---|
-| 1 | 使用目的 | PC と iPhone の間で付箋本文、添付画像、通知設定を同期・中継するためにのみ使用します。 |
+| 1 | 使用目的 | PC と iPhone の間で付箋本文、添付画像、添付動画、通知設定を同期・中継するためにのみ使用します。 |
 | 2 | PC 側の保存 | Google OAuth トークンは PC のローカルアプリデータ領域に保存します。付箋データはユーザーが指定した PC 上の保存先に保存します。 |
 | 3 | iPhone PWA 側の保存 | アクセストークン、リフレッシュトークン、通知用の端末 ID などを iPhone のブラウザ内ストレージ（localStorage / IndexedDB）に保存します。 |
-| 4 | Vercel 側の処理 | Vercel API Routes は Google OAuth のトークン交換・更新のために認可コードまたはリフレッシュトークンを Google に転送します。Vercel は Google OAuth トークン、付箋本文、添付画像、Drive ファイル内容を保存しません。 |
+| 4 | Vercel 側の処理 | Vercel API Routes は Google OAuth のトークン交換・更新のために認可コードまたはリフレッシュトークンを Google に転送します。Vercel は Google OAuth トークン、付箋本文、添付画像、添付動画、Drive ファイル内容を保存しません。 |
 | 5 | 第三者提供 | 開発者は Google ユーザーデータを販売、貸与、広告目的で共有しません。アプリの動作に必要な Google Drive API、Google OAuth、Vercel、Push 通知サービス以外へ提供しません。 |
 | 6 | AI / ML 学習 | Google ユーザーデータを AI / ML モデルの学習、改善、推論データセット作成には使用しません。 |
 | 7 | 人による閲覧 | 開発者は、ユーザーの Google Drive 内の同期ファイルや付箋本文を通常運用で閲覧しません。ユーザーが自分で GitHub Issues などに情報を投稿した場合を除き、サポート目的でも Drive 内データへアクセスしません。 |
@@ -122,13 +123,13 @@ Vercel は、以下の目的にのみ使用します。
 | 2 | OAuth トークン交換 | Google OAuth の認可コードをアクセストークンへ交換する。トークンは保存しない |
 | 3 | OAuth トークン更新 | リフレッシュトークンを使って新しいアクセストークンを取得する。トークンは保存しない |
 
-Vercel には、付箋本文や添付画像を保存しません。
+Vercel には、付箋本文や添付画像・添付動画を保存しません。
 
 ---
 
 ## 5 第三者提供
 
-開発者は、ユーザーの付箋本文、添付画像、Google Drive 内の同期ファイルの内容を第三者へ販売、貸与、共有しません。
+開発者は、ユーザーの付箋本文、添付画像、添付動画、Google Drive 内の同期ファイルの内容を第三者へ販売、貸与、共有しません。
 
 ただし、アプリの動作に必要な範囲で、以下の外部サービスを利用します。
 
@@ -166,7 +167,7 @@ Google Drive 上の同期ファイルを削除すると、iPhone 連携や通知
 
 Google OAuth の `client_secret` は、開発者が管理します。
 この値は iPhone PWA には含めず、Vercel のサーバー側だけで使用します。
-Vercel は Google OAuth のトークン交換・更新を行いますが、付箋本文、添付画像、Google Drive 上の中継ファイルは保存しません。
+Vercel は Google OAuth のトークン交換・更新を行いますが、付箋本文、添付画像、添付動画、Google Drive 上の中継ファイルは保存しません。
 ユーザーの Google Drive 用トークンも、Vercel には保存しません。
 
 <p class="table-caption">表 7-1　守るものと責任の分担</p>
@@ -175,7 +176,7 @@ Vercel は Google OAuth のトークン交換・更新を行いますが、付�
 |:---|:---|:---|:---|
 | 1 | Google OAuth の `client_secret` | 開発者 | 俺の付箋アプリが本物であることを Google に示す秘密値のため。iPhone PWA や公開リポジトリには入れない。 |
 | 2 | GitHub Secrets / Vercel 環境変数 | 開発者 | リリース、PWA 配信、OAuth トークン交換に使う秘密値を含むため。 |
-| 3 | Google Drive の `ore-no-fusen` フォルダ | ユーザー | 送受信中の付箋、添付画像、Push 通知用設定が入るため。第三者に共有・公開しない。 |
+| 3 | Google Drive の `ore-no-fusen` フォルダ | ユーザー | 送受信中の付箋、添付画像、添付動画、Push 通知用設定が入るため。第三者に共有・公開しない。 |
 
 ### 7.2 ユーザーにお願いしたいこと
 
@@ -187,7 +188,7 @@ Google Drive の `ore-no-fusen` フォルダや、その中のファイルを第
 | No | 見られる可能性があるもの | 起き得ること |
 |:---|:---|:---|
 | 1 | `notes_to_iphone.json` / `notes_from_iphone.json` | PC と iPhone の間で送受信中のメモ本文やタグを見られる可能性があります。 |
-| 2 | `fusen_img_*` | 送受信中の添付画像を見られる可能性があります。 |
+| 2 | `fusen_img_*` / `fusen_video_*` | 送受信中の添付画像・添付動画を見られる可能性があります。 |
 | 3 | `push_keys.json` と `push_devices.json` | 攻撃者が俺の付箋のふりをして、登録済み iPhone に偽の通知を送る可能性があります。 |
 
 特に `push_keys.json` と `push_devices.json` の両方が見られると、攻撃者が偽の付箋通知をロック画面に表示したり、大量の通知で利用を妨害したりする可能性があります。
@@ -227,3 +228,4 @@ Google Drive 全体を自由に読む設計ではありません。
 | 1 | 1.0 | 26-05-05 | 新規作成。データの取り扱い、Google Drive 連携、外部サービス利用、削除方法を整理。 |
 | 2 | 1.1 | 26-05-06 | 2.1〜2.2 取得・保存する情報、4 Vercel の利用、5 第三者提供、6 データの削除、7.1〜7.2 セキュリティを修正。全表に表名と No を追加し、ユーザー向けと開発者向けの責任分担を表で明記。Vercel はトークンを保存しないこと、ユーザーが守る対象は Drive の `ore-no-fusen` フォルダであることを明確化。 |
 | 3 | 1.2 | 26-05-14 | 3.1〜3.2 を追加。Google API でアクセスする Google ユーザーデータ、利用目的、保存場所、Vercel での処理、第三者提供しないこと、AI / ML 学習に使わないことを明記。 |
+| 4 | 1.3 | 26-05-25 | iPhone 連携で扱う添付動画 `fusen_video_*` を追加。Vercel には付箋本文・添付画像・添付動画を保存しないこと、Drive の一時動画はユーザー自身の管理対象であることを追記。 |

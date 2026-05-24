@@ -1829,12 +1829,54 @@ fn collect_iphone_image_names(item: &serde_json::Value) -> Vec<String> {
     image_names
 }
 
-fn collect_iphone_video_names(item: &serde_json::Value) -> Vec<String> {
+#[derive(Clone, Debug)]
+struct IphoneVideoRef {
+    video_file_name: String,
+    original_file_name: String,
+}
+
+fn collect_iphone_videos(item: &serde_json::Value) -> Vec<IphoneVideoRef> {
+    if let Some(videos) = item.get("videos").and_then(|v| v.as_array()) {
+        return videos
+            .iter()
+            .filter_map(|video| {
+                let video_file_name = video.get("videoFileName").and_then(|v| v.as_str())?;
+                if !video_file_name.starts_with("fusen_video_") {
+                    return None;
+                }
+                let original_file_name = video
+                    .get("originalFileName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(video_file_name);
+                Some(IphoneVideoRef {
+                    video_file_name: video_file_name.to_string(),
+                    original_file_name: original_file_name.to_string(),
+                })
+            })
+            .collect();
+    }
+
     item.get("videoFileName")
         .and_then(|v| v.as_str())
         .filter(|name| name.starts_with("fusen_video_"))
-        .map(|name| vec![name.to_string()])
+        .map(|name| {
+            let original_file_name = item
+                .get("originalFileName")
+                .and_then(|v| v.as_str())
+                .unwrap_or(name);
+            vec![IphoneVideoRef {
+                video_file_name: name.to_string(),
+                original_file_name: original_file_name.to_string(),
+            }]
+        })
         .unwrap_or_default()
+}
+
+fn collect_iphone_video_names(item: &serde_json::Value) -> Vec<String> {
+    collect_iphone_videos(item)
+        .into_iter()
+        .map(|video| video.video_file_name)
+        .collect()
 }
 
 fn sanitize_video_file_name(name: &str) -> String {
@@ -1857,23 +1899,95 @@ fn sanitize_video_file_name(name: &str) -> String {
     }
 }
 
+/// `original_file_name`（PWA から渡る元のファイル名）が空でなければ
+/// `{元の名前(拡張子なし)}_{YYYYMMDD_HHMMSS}.{拡張子}` 形式の名前を作る。
+/// 危険な文字 (\ / : * ? " < > |) と制御文字は `_` に置換するが、半角空白は保持する。
+/// 元ファイル名が空のときは Drive 名から sanitize した名前にフォールバックする。
+fn build_local_video_file_name(video_file_name: &str, original_file_name: &str) -> String {
+    let original = original_file_name.trim();
+    if original.is_empty() {
+        return sanitize_video_file_name(video_file_name);
+    }
+
+    // 拡張子を Drive 上の名前から決める（PWA が一致を保証している前提）。
+    let drive_ext = std::path::Path::new(video_file_name)
+        .extension()
+        .and_then(|v| v.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    let orig_ext = std::path::Path::new(original)
+        .extension()
+        .and_then(|v| v.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    let ext = drive_ext.or(orig_ext).unwrap_or_else(|| "mp4".to_string());
+
+    let stem = std::path::Path::new(original)
+        .file_stem()
+        .and_then(|v| v.to_str())
+        .unwrap_or("video");
+
+    let mut safe_stem = String::with_capacity(stem.len());
+    for ch in stem.chars() {
+        let is_dangerous = matches!(ch, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || ch.is_control();
+        safe_stem.push(if is_dangerous { '_' } else { ch });
+    }
+    let safe_stem = safe_stem.trim().trim_end_matches('.').to_string();
+    let safe_stem = if safe_stem.is_empty() { "video".to_string() } else { safe_stem };
+
+    let now = chrono::Local::now();
+    let stamp = now.format("%Y%m%d_%H%M%S");
+    format!("{}_{}.{}", safe_stem, stamp, ext)
+}
+
+/// `base_name`（拡張子付き）が既に存在する場合、`name_2.ext`, `name_3.ext`, ... と
+/// 連番を付けて空きを探す。最初の空きパスを返す。
+fn resolve_video_path_with_suffix(video_dir: &std::path::Path, base_name: &str) -> std::path::PathBuf {
+    let initial = video_dir.join(base_name);
+    if !initial.exists() {
+        return initial;
+    }
+    let path = std::path::Path::new(base_name);
+    let stem = path.file_stem().and_then(|v| v.to_str()).unwrap_or("video");
+    let ext = path.extension().and_then(|v| v.to_str()).unwrap_or("mp4");
+    let mut n: u32 = 2;
+    loop {
+        let candidate = video_dir.join(format!("{}_{}.{}", stem, n, ext));
+        if !candidate.exists() {
+            return candidate;
+        }
+        n = n.saturating_add(1);
+        if n > 9999 {
+            // 念のため上限。万一に備え timestamp を末尾に足す。
+            let stamp = chrono::Local::now().format("%Y%m%d_%H%M%S_%3f");
+            return video_dir.join(format!("{}_{}.{}", stem, stamp, ext));
+        }
+    }
+}
+
 async fn download_iphone_video_to_assets(
     client: &reqwest::Client,
     token: &str,
     folder_path: &str,
     video_file_name: &str,
+    original_file_name: &str,
 ) -> Result<(String, String), String> {
-    let safe_name = sanitize_video_file_name(video_file_name);
     let video_dir = std::path::Path::new(folder_path).join("assets").join("video");
     std::fs::create_dir_all(&video_dir).map_err(|e| e.to_string())?;
-    let local_path = video_dir.join(&safe_name);
+
+    let desired_name = build_local_video_file_name(video_file_name, original_file_name);
+    let local_path = resolve_video_path_with_suffix(&video_dir, &desired_name);
+    let local_name = local_path
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or(&desired_name)
+        .to_string();
+
     if !local_path.exists() {
         let bytes = gdrive::download_binary(client, token, video_file_name).await?;
         std::fs::write(&local_path, &bytes)
-            .map_err(|e| format!("動画保存失敗 {}: {}", safe_name, e))?;
+            .map_err(|e| format!("動画保存失敗 {}: {}", local_name, e))?;
     }
     Ok((
-        format!("assets/video/{}", safe_name),
+        format!("assets/video/{}", local_name),
         local_path.to_string_lossy().to_string(),
     ))
 }
@@ -2010,8 +2124,11 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
         let body  = item.get("body").and_then(|v| v.as_str()).unwrap_or("");
         let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("note");
-        let original_file_name = item.get("originalFileName").and_then(|v| v.as_str()).unwrap_or("");
-        let memo = item.get("memo").and_then(|v| v.as_str());
+        let video_refs = collect_iphone_videos(item);
+        let first_original_file_name = video_refs
+            .first()
+            .map(|v| v.original_file_name.as_str())
+            .unwrap_or_else(|| item.get("originalFileName").and_then(|v| v.as_str()).unwrap_or(""));
         let mut pc_body = if title.is_empty() {
             body.to_string()
         } else if body.is_empty() {
@@ -2020,10 +2137,10 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             format!("{}\n{}", title, body)
         };
         let context = if item_type == "video" {
-            if original_file_name.is_empty() {
+            if first_original_file_name.is_empty() {
                 build_context(title, body)
             } else {
-                original_file_name.to_string()
+                first_original_file_name.to_string()
             }
         } else {
             build_context(title, body)
@@ -2033,39 +2150,56 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
             .unwrap_or_default();
 
-        if item_type == "video" {
-            if let Some(video_file_name) = item.get("videoFileName").and_then(|v| v.as_str()) {
-                let folder_path = {
-                    let state = app.state::<Mutex<AppState>>();
-                    let guard = state.lock().unwrap_or_else(|p| p.into_inner());
-                    guard.base_path.clone().or(guard.folder_path.clone())
+        if item_type == "video" && !video_refs.is_empty() {
+            let folder_path = {
+                let state = app.state::<Mutex<AppState>>();
+                let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+                guard.base_path.clone().or(guard.folder_path.clone())
+            };
+            let mut video_lines = Vec::new();
+            for video_ref in &video_refs {
+                let display_name = if video_ref.original_file_name.is_empty() {
+                    video_ref.video_file_name.as_str()
+                } else {
+                    video_ref.original_file_name.as_str()
                 };
-                if let Some(folder_path) = folder_path {
-                    match download_iphone_video_to_assets(client, &token, &folder_path, video_file_name).await {
+                if let Some(folder_path) = folder_path.as_deref() {
+                    match download_iphone_video_to_assets(
+                        client,
+                        &token,
+                        folder_path,
+                        &video_ref.video_file_name,
+                        &video_ref.original_file_name,
+                    ).await {
                         Ok((_local_rel_path, local_abs_path)) => {
-                            let display_name = if original_file_name.is_empty() { video_file_name } else { original_file_name };
-                            let heading = if title.trim().is_empty() {
-                                display_name
-                            } else {
-                                title.trim()
-                            };
-                            let memo_text = memo.unwrap_or(pc_body.trim()).trim();
-                            let memo = if memo_text.is_empty() {
-                                String::new()
-                            } else {
-                                format!("\n\n{}", memo_text)
-                            };
-                            pc_body = format!("{}{}\n\n保存先:\n{}", heading, memo, local_abs_path);
+                            video_lines.push(format!("🎬 {}\n保存先:\n{}", display_name, local_abs_path));
                         }
                         Err(e) => {
-                            logger::log_info(&format!("[iphone video] download failed {}: {}", video_file_name, e));
-                            pc_body = format!("🎬 {}\n\n保存失敗:\n{}", original_file_name, video_file_name);
+                            logger::log_info(&format!("[iphone video] download failed {}: {}", video_ref.video_file_name, e));
+                            video_lines.push(format!(
+                                "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
+                                display_name,
+                                video_ref.video_file_name
+                            ));
                         }
                     }
                 } else {
                     logger::log_info("[iphone video] folder path is not set");
-                    pc_body = format!("🎬 {}\n\n保存失敗:\n{}", original_file_name, video_file_name);
+                    video_lines.push(format!(
+                        "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
+                        display_name,
+                        video_ref.video_file_name
+                    ));
                 }
+            }
+            if !video_lines.is_empty() {
+                let base = pc_body.trim_end();
+                let attachment_text = video_lines.join("\n\n");
+                pc_body = if base.is_empty() {
+                    attachment_text
+                } else {
+                    format!("{}\n\n{}", base, attachment_text)
+                };
             }
         }
 

@@ -76,6 +76,17 @@ export function useNoteList({
               created_at: item.sent_at ?? nowJST(),
               images: [],
               tags: Array.isArray(item.tags) ? item.tags : [],
+              videos: Array.isArray(item.videos)
+                ? item.videos
+                    .filter((video: any) => typeof video.videoFileName === 'string')
+                    .map((video: any) => ({
+                      fileName: video.videoFileName,
+                      originalName: typeof video.originalFileName === 'string'
+                        ? video.originalFileName
+                        : video.videoFileName,
+                      blob: new Blob([], { type: 'video/mp4' }),
+                    }))
+                : undefined,
               videoFileName: typeof item.videoFileName === 'string' ? item.videoFileName : undefined,
               originalFileName: typeof item.originalFileName === 'string' ? item.originalFileName : undefined,
               memo: typeof item.memo === 'string' ? item.memo : undefined,
@@ -175,6 +186,10 @@ export function useNoteList({
             created_at: d.created_at, tags: d.tags,
             videoFileName: d.videoFileName,
             originalFileName: d.originalFileName,
+            videos: (d.videos ?? []).map((video) => ({
+              videoFileName: video.fileName,
+              originalFileName: video.originalName,
+            })),
             memo: d.memo,
           }))
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())

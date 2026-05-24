@@ -2,6 +2,7 @@ import React from 'react';
 import { serializeEditor, extractTitleBody } from '../editor-helpers';
 import { saveDraft } from '../lib/indexeddb';
 import { createId, nowJST } from '../utils';
+import type { VideoBlobMap } from '../types';
 
 // ---------------------------------------------------------------------------
 // useAutoSave: contenteditable の onInput 自動保存ロジック
@@ -11,6 +12,7 @@ type AutoSaveRefs = {
   editorRef: React.RefObject<HTMLDivElement>;
   currentDraftIdRef: React.RefObject<string | null>;
   imageBlobsRef: React.RefObject<Map<string, Blob>>;
+  videoBlobsRef?: React.RefObject<VideoBlobMap>;
   writeTagsRef: React.RefObject<string[]>;
 };
 
@@ -43,12 +45,23 @@ export function useAutoSave(
         callbacks.setCurrentDraftId(draftId);
       }
       const imagesArr = Array.from((refs.imageBlobsRef.current ?? new Map()).entries()).map(([fn, f]) => ({ fileName: fn, blob: f }));
+      const videoEntries = Array.from((refs.videoBlobsRef?.current ?? new Map()).entries());
+      const videos = videoEntries.map(([fileName, entry]) => ({
+        fileName,
+        originalName: entry.originalName,
+        blob: entry.blob,
+      }));
+      const firstVideo = videos[0];
       await saveDraft({
         id: draftId,
         title,
         body,
         created_at: nowJST(),
         images: imagesArr,
+        videos,
+        type: videos.length > 0 ? 'video' : 'note',
+        videoFileName: firstVideo?.fileName,
+        originalFileName: firstVideo?.originalName,
         tags: refs.writeTagsRef.current ?? [],
       }).catch(() => {});
     }, 3000);

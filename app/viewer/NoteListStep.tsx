@@ -52,13 +52,16 @@ export function NoteListStep({
           <ul className="flex flex-col gap-2 px-3 pb-3">
             {notes.map((note) => {
               const isLocked = lockedNoteIds.includes(note.id);
-              const isVideo = note.type === 'video' || Boolean(note.videoFileName || note.originalFileName);
+              const videos = note.videos ?? [];
+              const isVideo = note.type === 'video' || videos.length > 0 || Boolean(note.videoFileName || note.originalFileName);
               const textPreview = ((note.title ? `${note.title}\n` : '') + (note.body ?? ''))
                 .replace(/!\[.*?\]\(.*?\)/g, '')
                 .replace(/\n\n+/g, '\n')
                 .trim()
                 .slice(0, 120);
-              const videoLabel = note.originalFileName || note.videoFileName || '';
+              const videoLabel = videos.length > 0
+                ? `${videos[0].originalFileName || videos[0].videoFileName}${videos.length > 1 ? ` 他${videos.length - 1}件` : ''}`
+                : note.originalFileName || note.videoFileName || '';
 
               return (
                 <li

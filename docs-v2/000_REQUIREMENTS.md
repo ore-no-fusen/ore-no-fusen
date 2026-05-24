@@ -1035,7 +1035,7 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-03-03</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;"><strong>Vercel の役割は開発者用シークレット保護とトークン交換のみ</strong>: Vercel は開発者が守る Google OAuth2 の <code>client_secret</code> を iPhone PWA に入れないために使用する。付箋本文、添付画像、Drive 中継ファイル、Google Drive 用トークンは保持・参照しない。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;"><strong>Vercel の役割は開発者用シークレット保護とトークン交換のみ</strong>: Vercel は開発者が守る Google OAuth2 の <code>client_secret</code> を iPhone PWA に入れないために使用する。付箋本文、添付画像、添付動画、Drive 中継ファイル、Google Drive 用トークンは保持・参照しない。</td>
     </tr>
     <tr>
       <td style=" text-align:center;">SPEC-NF-03-04</td>
@@ -1184,15 +1184,15 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
   </thead>
   <tbody>
     <tr>
-            <td rowspan="4" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_IP_02</td>
-      <td rowspan="4" style="vertical-align:top; background-color:#f8fafc;">
+            <td rowspan="7" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_IP_02</td>
+      <td rowspan="7" style="vertical-align:top; background-color:#f8fafc;">
         <strong>【要求】</strong><br>
-        ユーザーは、外出先で iPhone に書いたメモを PC に戻ったとき付箋として受け取りたい。<br><br>
+        ユーザーは、外出先で iPhone に書いたメモ、画像、動画を PC に戻ったとき付箋として受け取りたい。<br><br>
         <strong>【理由】</strong><br>
-        外出先のアイデアをデスクトップに自動で届けることで、「転記」の手間をなくすため。
+        外出先のアイデアや素材をデスクトップに自動で届けることで、「転記」や手作業のファイル移動をなくすため。画像・動画は付箋の本文を置き換えるものではなく、ユーザーの思考に紐づく添付メディアとして扱う。
       </td>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-02-01</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;">iPhone PWA の write 画面で「PC に送る」を押すと、テキストと画像を Google Drive に送信する（<code>notes_from_iphone.json</code> ＋ <code>fusen_img_*</code>）。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">iPhone PWA の write 画面で「PC に送る」を押すと、テキスト、画像、動画を Google Drive に送信する（<code>notes_from_iphone.json</code> ＋ <code>fusen_img_*</code> ＋ <code>fusen_video_*</code>）。</td>
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-02-02</td>
@@ -1203,8 +1203,20 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
       <td style="border-bottom: 1px dotted #cbd5e1;">PC 受信後、Drive 上の JSON から処理済みアイテムを除外して書き戻す（空になったらファイルごと削除）。</td>
     </tr>
     <tr>
-      <td style=" text-align:center;">SPEC-IP-02-04</td>
-      <td style="">PC 受信後、Drive 上の画像ファイルは即座に削除する。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-02-04</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">PC 受信後、Drive 上の画像・動画ファイルは即座に削除する。</td>
+    </tr>
+    <tr>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-02-05</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">動画は <code>mp4</code> / <code>mov</code> を対象とし、PWA で選択した時点では送信しない。現在の付箋に添付し、「PC に送る」実行時に画像と同じ送信単位で Drive へアップロードする。</td>
+    </tr>
+    <tr>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-02-06</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">PC 受信後、動画ファイルはユーザーの保存先配下の <code>assets/video/</code> に保存し、付箋本文には保存先パスを追記する。動画バイナリを付箋 DB や Markdown 本文へ埋め込まない。</td>
+    </tr>
+    <tr>
+      <td style=" text-align:center;">SPEC-IP-02-07</td>
+      <td style="">ユーザーが入力した本文、1行目、タグ、添付一覧は別々の情報として扱う。動画の元ファイル名、Drive 一時ファイル名、PC 保存パスを本文やタイトルの代わりに上書きしてはならない。</td>
     </tr>
   </tbody>
 </table>
@@ -1336,9 +1348,10 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 
 | No | バージョン | 日付 | 変更内容 |
 |:---|:---|:---|:---|
-| 1 | **v2.12** | 26-05-06 | 8.3 セキュリティ・プライバシー、9.5 iPhone PWA の認証と持続可能性を修正。OAuth / Vercel の要件説明を見直し、ユーザーが許可するものと開発者が守るものを分けて記載。 |
-| 2 | **v2.11** | 26-04-20 | REQ_IP_05「iPhoneロック画面常駐体験」追加 |
-| 3 | v2.10 | 26-04-19 | HTML化・iPhone連携要件追加・ショートカット更新等 |
-| 4 | v2.0 | 26-02-22 | ベータリリース時の初版（Markdown形式） |
+| 1 | v2.0 | 26-02-22 | ベータリリース時の初版（Markdown形式） |
+| 2 | v2.10 | 26-04-19 | HTML化・iPhone連携要件追加・ショートカット更新等 |
+| 3 | **v2.11** | 26-04-20 | REQ_IP_05「iPhoneロック画面常駐体験」追加 |
+| 4 | **v2.12** | 26-05-06 | 8.3 セキュリティ・プライバシー、9.5 iPhone PWA の認証と持続可能性を修正。OAuth / Vercel の要件説明を見直し、ユーザーが許可するものと開発者が守るものを分けて記載。 |
+| 5 | v2.13 | 26-05-25 | 9.2 iPhone → PC 送信に VideoDrop を追加。画像・動画を同じ添付メディアとして扱い、ユーザー本文を上書きしないこと、動画を `assets/video/` に保存することを明記。 |
 
 </div>

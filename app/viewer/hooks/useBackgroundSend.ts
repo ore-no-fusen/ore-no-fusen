@@ -11,6 +11,7 @@ import {
 import { saveDraft } from '../lib/indexeddb';
 import { buildVideoFileName, createId, nowJST } from '../utils';
 import { extractTitleBody, mergeKnownTags } from '../editor-helpers';
+import type { VideoBlobMap } from '../types';
 
 // ---------------------------------------------------------------------------
 // useBackgroundSend
@@ -24,8 +25,8 @@ type SendPayload = {
   tags: string[];
   /** 送信対象の画像 blob Map<fileName, Blob> */
   blobs: Map<string, Blob>;
-  /** 送信対象の動画ファイル（未選択なら null） */
-  videoFile?: File | null;
+  /** 送信対象の動画 blob Map<driveName, { blob, originalName }> */
+  videoBlobs?: VideoBlobMap;
   /** 現在の下書き ID（null なら新規） */
   draftId: string | null;
 };
@@ -67,7 +68,7 @@ export function useBackgroundSend({
    * 出力: 送信に成功したら true、未接続・失敗・再ログインが必要なら false
    * 副作用: Drive API 呼び出し（画像アップロード・JSON 更新）、IndexedDB 書き込み（saveDraft）、localStorage 読み書き（トークン）
    */
-  const sendToPC = async ({ rawText, tags, blobs, videoFile, draftId }: SendPayload): Promise<boolean> => {
+  const sendToPC = async ({ rawText, tags, blobs, videoBlobs, draftId }: SendPayload): Promise<boolean> => {
     if (!accessToken) {
       setBackgroundSendError('Driveに接続してください。');
       setTimeout(() => setBackgroundSendError(null), 5000);
@@ -101,20 +102,30 @@ export function useBackgroundSend({
       const { title, body: extractedBody } = extractTitleBody(rawText);
       const noteId = createId();
       const sentAt = nowJST();
-      const videoFileName = videoFile ? buildVideoFileName(videoFile.name, title) : null;
-
-      // 画像を並列アップロード
-      await Promise.all(
-        Array.from(mergedBlobs.entries()).map(([fileName, file]) =>
-          uploadImageWithAutoRefresh(token, file, fileName)
-        )
-      );
-      if (videoFile && videoFileName) {
-        await uploadVideoWithAutoRefresh(token, videoFile, videoFileName);
+      const videosToSend: VideoBlobMap = new Map(videoBlobs ?? []);
+      const legacyVideosToSend: VideoBlobMap = new Map();
+      for (const [fileName, entry] of videosToSend.entries()) {
+        const driveName = fileName || buildVideoFileName(entry.originalName, title);
+        legacyVideosToSend.set(driveName, entry);
       }
 
+      // 画像を並列アップロード
+      await Promise.all([
+        ...Array.from(mergedBlobs.entries()).map(([fileName, file]) =>
+          uploadImageWithAutoRefresh(token, file, fileName)
+        ),
+        ...Array.from(legacyVideosToSend.entries()).map(([videoFileName, { blob }]) =>
+          uploadVideoWithAutoRefresh(token, blob, videoFileName)
+        ),
+      ]);
+
       const fullBody = extractedBody;
-      const videoMemo = videoFile ? fullBody.trim() : undefined;
+      const videoItems = Array.from(legacyVideosToSend.entries()).map(([videoFileName, { originalName }]) => ({
+        videoFileName,
+        originalFileName: originalName,
+      }));
+      const firstVideo = videoItems[0];
+      const videoMemo = videoItems.length > 0 ? fullBody.trim() : undefined;
       // --- キュー配列方式: read-modify-write ---
       // 既存データを読み込む（存在しない場合や旧スキーマは自動変換）
       const existing = await downloadFromDrive(token, 'notes_from_iphone.json').catch(() => null);
@@ -137,7 +148,7 @@ export function useBackgroundSend({
       }
       // 新しいアイテムを末尾に追加
       const fallbackTitle = title;
-      const newItem = videoFile && videoFileName
+      const newItem = videoItems.length > 0
         ? {
             id: noteId,
             type: 'video',
@@ -145,10 +156,10 @@ export function useBackgroundSend({
             body: fullBody,
             sent_at: sentAt,
             tags,
-            videoFileName,
-            originalFileName: videoFile.name,
+            videos: videoItems,
+            videoFileName: firstVideo?.videoFileName,
+            originalFileName: firstVideo?.originalFileName,
             memo: videoMemo ?? '',
-            sourceOriginalFileName: videoFile.name,
           }
         : { id: noteId, title, body: fullBody, sent_at: sentAt, tags };
       const updatedItems = [...currentItems, newItem];
@@ -161,11 +172,16 @@ export function useBackgroundSend({
         body: fullBody,
         created_at: sentAt,
         images: Array.from(mergedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
+        videos: Array.from(legacyVideosToSend.entries()).map(([fileName, { blob, originalName }]) => ({
+          fileName,
+          originalName,
+          blob,
+        })),
         tags,
         sent_at: sentAt,
-        type: videoFile ? 'video' : 'note',
-        videoFileName: videoFileName ?? undefined,
-        originalFileName: videoFile ? videoFile.name : undefined,
+        type: videoItems.length > 0 ? 'video' : 'note',
+        videoFileName: firstVideo?.videoFileName,
+        originalFileName: firstVideo?.originalFileName,
         memo: videoMemo,
       });
 

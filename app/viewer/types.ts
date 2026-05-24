@@ -14,8 +14,21 @@ export type IphoneNote = {
   tags?: string[];
   videoFileName?: string;
   originalFileName?: string;
+  videos?: VideoAttachment[];
   memo?: string;
 };
+
+export type VideoAttachment = {
+  videoFileName: string;
+  originalFileName: string;
+};
+
+export type VideoBlobEntry = {
+  blob: Blob;
+  originalName: string;
+};
+
+export type VideoBlobMap = Map<string, VideoBlobEntry>;
 
 export type PendingHydrate = {
   markdown: string;
@@ -23,9 +36,12 @@ export type PendingHydrate = {
   draftId: string | null;
   tags: string[];
   videoMeta?: PendingVideoMeta | null;
+  videoMetas?: PendingVideoMeta[];
+  videoBlobMap?: VideoBlobMap;
 };
 
 export type PendingVideoMeta = {
+  fileName: string;
   name: string;
   size: number;
   type: string;
@@ -44,6 +60,7 @@ export type DraftRecord = {
   locked?: boolean;
   videoFileName?: string;
   originalFileName?: string;
+  videos?: { fileName: string; originalName: string; blob: Blob }[];
   memo?: string;
 };
 

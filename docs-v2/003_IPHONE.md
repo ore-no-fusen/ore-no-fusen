@@ -398,11 +398,12 @@ PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3スト�
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">2</td><td><code>title</code></td><td>string</td><td>ノートタイトル</td></tr>
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">3</td><td><code>body</code></td><td>string</td><td>本文（Markdown）</td></tr>
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">4</td><td><code>images</code></td><td>Object[]</td><td>添付画像（<code>{ fileName: string, blob: Blob }[]</code>）</td></tr>
-      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">5</td><td><code>tags</code></td><td>string[]</td><td>付与されたタグの配列</td></tr>
-      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">6</td><td><code>locked</code></td><td>boolean</td><td>ロック画面に表示が ON なら true</td></tr>
-      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">7</td><td><code>created_at</code></td><td>string</td><td>作成日時（JST ISO 8601）</td></tr>
-      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">8</td><td><code>sent_at</code></td><td>string</td><td>送信日時（未送信時は undefined）</td></tr>
-      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">9</td><td><code>received_pc</code></td><td>boolean</td><td>PC 側が受信済みかどうか</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">5</td><td><code>videos</code></td><td>Object[]</td><td>添付動画（<code>{ fileName: string, blob: Blob }[]</code>）。ユーザー本文とは別に保持する</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">6</td><td><code>tags</code></td><td>string[]</td><td>付与されたタグの配列</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">7</td><td><code>locked</code></td><td>boolean</td><td>ロック画面に表示が ON なら true</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">8</td><td><code>created_at</code></td><td>string</td><td>作成日時（JST ISO 8601）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">9</td><td><code>sent_at</code></td><td>string</td><td>送信日時（未送信時は undefined）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">10</td><td><code>received_pc</code></td><td>boolean</td><td>PC 側が受信済みかどうか</td></tr>
     </tbody>
   </table>
 </div>
@@ -459,7 +460,7 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
 
 <Note type="success">
 <strong>Drive 設計原則：</strong>
-<code>notes_to_iphone.json</code>、<code>notes_from_iphone.json</code>、<code>fusen_img_*</code> は未処理キュー。処理済みは即削除。
+<code>notes_to_iphone.json</code>、<code>notes_from_iphone.json</code>、<code>fusen_img_*</code>、<code>fusen_video_*</code> は未処理キュー。処理済みは即削除。
 <code>push_keys.json</code> と <code>push_devices.json</code> は Web Push 用の設定ファイルなので、セットアップ後も残す。
 </Note>
 
@@ -487,7 +488,7 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
       <td><code>notes_from_iphone.json</code></td>
       <td>iPhone<br>（useBackgroundSend）</td>
       <td>PC（gdrive.rs<br>30秒ポーリング）</td>
-      <td>iPhone から PC へメモ本文と添付画像名を渡すために、未処理ノートを一時保存する。PC 受信後は処理済みアイテムを除いた残りのみ書き戻す。</td>
+      <td>iPhone から PC へメモ本文、添付画像名、添付動画名を渡すために、未処理ノートを一時保存する。PC 受信後は処理済みアイテムを除いた残りのみ書き戻す。</td>
     </tr>
     <tr>
       <td style="text-align:center;color:#94a3b8;font-weight:700">3</td>
@@ -498,13 +499,20 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
     </tr>
     <tr>
       <td style="text-align:center;color:#94a3b8;font-weight:700">4</td>
+      <td><code>fusen_video_*.mp4</code><br><code>fusen_video_*.mov</code></td>
+      <td>iPhone<br>（useBackgroundSend）</td>
+      <td>PC（gdrive.rs<br>30秒ポーリング）</td>
+      <td>動画バイナリを JSON や付箋本文に埋め込まないために、添付動画を一時ファイルとして保存する。PC が <code>assets/video/</code> に保存し、付箋本文へ保存先パスを追記した後に削除する。</td>
+    </tr>
+    <tr>
+      <td style="text-align:center;color:#94a3b8;font-weight:700">5</td>
       <td><code>push_keys.json</code></td>
       <td>PC（webpush.rs）</td>
       <td>iPhone（lib/push.ts）が<br>公開鍵を読む<br>PC（webpush.rs）が<br>秘密鍵を読む</td>
       <td>PC が「このユーザーの通知送信者である」と Push Service に示すために、VAPID 鍵ペアを保存する。公開鍵は iPhone の Push 購読に使い、秘密鍵は PC が Web Push 送信時の VAPID JWT に署名するために使う。秘密鍵がないと APNs / Push Service が送信者を検証できず、通知送信できない。</td>
     </tr>
     <tr>
-      <td style="text-align:center;color:#94a3b8;font-weight:700">5</td>
+      <td style="text-align:center;color:#94a3b8;font-weight:700">6</td>
       <td><code>push_devices.json</code></td>
       <td>iPhone（lib/push.ts）<br>が upsert</td>
       <td>PC（webpush.rs）が<br>全端末へ Push 送信</td>
@@ -553,9 +561,12 @@ Drive 上の JSON は、以下の構成を基本とする。
 | 1 | `items` | `Object[]` | ○ | 未処理ノートの配列 |
 | 2 | `items[].id` | `string` | ○ | ノートID（UUID） |
 | 3 | `items[].title` | `string` | ○ | ノートタイトル |
-| 4 | `items[].body` | `string` | ○ | Markdown本文。画像は `fusen_img_*` 参照 |
+| 4 | `items[].body` | `string` | ○ | Markdown本文。画像は `fusen_img_*` 参照。ユーザーが入力した本文であり、添付動画のファイル名で上書きしない |
 | 5 | `items[].sent_at` | `string` | ○ | iPhone送信時刻 |
 | 6 | `items[].tags` | `string[]` | ○ | タグ一覧 |
+| 7 | `items[].images` | `Object[]` | △ | 添付画像一覧。各要素は Drive 一時ファイル名を持つ |
+| 8 | `items[].videos` | `Object[]` | △ | 添付動画一覧。各要素は <code>{ videoFileName, originalFileName }</code> を持つ。複数動画可 |
+| 9 | `items[].videoFileName` / `items[].originalFileName` | `string` | △ | 旧実装互換用の先頭動画情報。新規実装では <code>videos[]</code> を正とする |
 
 ```json
 {
@@ -565,7 +576,13 @@ Drive 上の JSON は、以下の構成を基本とする。
       "title": "外出先メモ",
       "body": "帰ったら確認\n![](fusen_img_20260505_120000_0.jpg)",
       "sent_at": "2026-05-05T12:00:00+09:00",
-      "tags": []
+      "tags": [],
+      "videos": [
+        {
+          "videoFileName": "fusen_video_20260525_073000_0.mp4",
+          "originalFileName": "dance.mp4"
+        }
+      ]
     }
   ]
 }
@@ -772,7 +789,7 @@ sequenceDiagram
     Note over UserPhone: メモを書いている
     UserPhone->>PWA: ① 「PCに送る」ボタン
     PWA->>PWA: ❶ トークン期限を確認<br>必要なら /api/auth/refresh
-    PWA->>Drive: ❷ fusen_img_*.jpg を並列アップロード（添付がある場合）
+    PWA->>Drive: ❷ fusen_img_*.jpg / fusen_video_* を並列アップロード（添付がある場合）
     PWA->>Drive: ❸ notes_from_iphone.json を取得<br>旧スキーマなら配列へ変換
     PWA->>Drive: ❹ notes_from_iphone.json に追記して上書き
     PWA->>PWA: ❺ IndexedDB に sent_at を保存
@@ -781,18 +798,23 @@ sequenceDiagram
 
     Note over Drive,PC: 30秒ポーリングで自動検出
     PC->>Drive: ❼ notes_from_iphone.json を確認
-    Drive-->>PC: ❽ 新着データ + 画像ファイル名
-    PC->>Drive: ❾ fusen_img_*.jpg をダウンロード
-    PC->>PC: ❿ Vault に .md / assets を保存
+    Drive-->>PC: ❽ 新着データ + 画像/動画ファイル名
+    PC->>Drive: ❾ fusen_img_*.jpg / fusen_video_* をダウンロード
+    PC->>PC: ❿ Vault に .md / assets / assets/video を保存
     PC->>Drive: ⓫ 処理済みアイテムまたはキューファイルを削除
-    PC->>Drive: ⓬ fusen_img_*.jpg を削除
+    PC->>Drive: ⓬ fusen_img_*.jpg / fusen_video_* を削除
     PC->>UserPC: ⓭ 新規付箋ウィンドウを開く
     UserPC->>PC: ② 内容を確認する
 ```
 <p class="mermaid-caption">図 3-4　iPhone → PC 送信シーケンス</p>
 
 <Note type="success">
-<strong>「iPhoneに置いておく」との違い：</strong>Drive を使わない。テキスト＋画像を IndexedDB のみに保存。PC への送信は発生しない。
+<strong>「iPhoneに置いておく」との違い：</strong>Drive を使わない。テキスト＋画像＋動画を IndexedDB のみに保存。PC への送信は発生しない。
+</Note>
+
+<Note type="warning">
+<strong>本文保護：</strong>ユーザーが入力した <code>body</code> と、添付ファイルの元ファイル名・Drive 一時ファイル名・PC 保存パスは別の情報として扱う。
+動画を選んでも本文をファイル名で上書きしてはならない。PC 受信時は既存本文の後ろに保存先パスを追記する。
 </Note>
 
 ### 4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="./000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）
@@ -989,7 +1011,7 @@ graph LR
 | 8 | ← 一覧に戻る | 内容がある場合は IndexedDB に下書き保存してから list 画面へ遷移。保存はサイレントに行われ、確認ダイアログは不要 |
 | 9 | 「iPhoneに置いておく」 | Drive を一切使わず IndexedDB のみに保存。ネットワーク不要。削除するまで端末に残り続ける |
 | 10 | 「PCへ送る」 | 後述（6.4）|
-| 11 | 🎬 VideoDrop | `mp4` / `mov` を選択して現在の付箋に添付し、「PCへ送る」を押したときに Drive 経由でPCへ送る。PWA側は動画管理をせず、PC側で `assets/video/` に保存された絶対パスを付箋本文に記録する |
+| 11 | 🎬 VideoDrop | `mp4` / `mov` を選択して現在の付箋に添付し、「PCへ送る」を押したときに Drive 経由で PC へ送る。画像と同じく付箋の添付部品であり、選択時に本文を上書きしない。PC側で `assets/video/` に保存された絶対パスを付箋本文の末尾へ追記する |
 
 ### 6.4 「PCへ送る」
 
@@ -999,11 +1021,11 @@ graph LR
 |:---|:---|:---|
 | 1 | ① トークン有効期限確認 | `viewer_expires_at` と `Date.now()` を比較。**期限5分前**を切っていたら送信前に Vercel `/api/auth/refresh` を呼んでトークンを更新する。送信中に突然期限切れにならないための先読み更新 |
 | 2 | ② セッション切れ処理 | リフレッシュが失敗した場合は localStorage のトークンを削除し、login 画面へ遷移。エラーメッセージを5秒表示して消す |
-| 3 | ③ 画像アップロード | 添付画像を `Promise.all()` で並列アップロード。直列より速い |
+| 3 | ③ 添付アップロード | 添付画像・動画を `Promise.all()` で並列アップロード。直列より速い |
 | 4 | ④ キューへの追記 | `notes_from_iphone.json` を Drive から読み取り、既存アイテムの末尾に新しいアイテムを追加して上書き（read-modify-write）。旧スキーマのファイルが残っていても自動変換して引き継ぐ後方互換処理あり |
 | 5 | ⑤ IndexedDB に sent を記録 | 送信後、同 ID のレコードに `sent_at` をセットして IndexedDB を更新。一覧画面に「送信済み」バッジが表示される |
 | 6 | ⑥ 成功フィードバック | 3秒間 `backgroundSendSuccess = true` にして UI に成功インジケータを表示。その後自動で消える |
-| 7 | ⑦ VideoDrop | 🎬で選ばれた動画は選択時点では送信しない。「PCへ送る」時に `fusen_video_*.mp4/mov` として Drive へアップロードし、キューには `type: "video"`、`videoFileName`、`originalFileName` を入れる。PC側は受信時に `assets/video/` へ保存し、本文にはクリック可能な絶対パスを記録し、ack後にDrive上の一時動画を削除する |
+| 7 | ⑦ VideoDrop | 🎬で選ばれた動画は選択時点では送信しない。「PCへ送る」時に `fusen_video_*.mp4/mov` として Drive へアップロードし、キューには `videos[]` を入れる。PC側は受信時に `assets/video/` へ保存し、本文にはクリック可能な絶対パスを末尾へ追記し、ack後にDrive上の一時動画を削除する |
 
 ### 6.5 通知許可・デバイス登録（push 画面）
 
@@ -1079,5 +1101,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 6 | 1.5 | 26-05-06 | 2.3 Vercel / OAuth、3 データ構造、6.1〜6.5 機能一覧を修正。説明対象を開発者・保守担当向けとして明記し、client_secret は開発者が守る値であること、Vercel がトークンを保存しないことを追記。表の「意味」を「用途・内容」に変更し、6.1-1 以降の表へ No を追加。 |
 | 7 | 1.6 | 26-05-24 | 6.3 / 6.4 に VideoDrop を追加。PWAから `mp4` / `mov` をDrive経由でPCへ送り、PC側で `assets/video/` に保存して付箋本文へパスを記録する仕様を追記。 |
 | 8 | 1.7 | 26-05-24 | VideoDrop を動画選択即送信から付箋添付後に「PCへ送る」で送信する方式へ変更。PC側本文にはクリック可能な絶対パスを記録する仕様へ更新。 |
+| 9 | 1.8 | 26-05-25 | VideoDrop を複数動画対応の添付メディア仕様へ更新。`videos[]`、IndexedDB の `videos`、Drive 一時ファイル `fusen_video_*`、本文保護ルールを追加。 |
 
 </div>

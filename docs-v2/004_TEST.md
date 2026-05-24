@@ -26,7 +26,7 @@ outline: deep
   </div>
   <div style="width:64%;background:#2563eb;color:#fff;display:flex;flex-direction:column;align-items:center;padding:12px 20px;border-radius:6px;font-weight:700;font-size:0.95em;text-align:center;">
     ⚡ ユニットテスト（Vitest）
-    <span style="font-size:0.78em;font-weight:400;margin-top:4px;opacity:0.9;">11 ファイル / jsdom 環境</span>
+    <span style="font-size:0.78em;font-weight:400;margin-top:4px;opacity:0.9;">13+ ファイル / jsdom 環境</span>
   </div>
   <div style="width:90%;background:#059669;color:#fff;display:flex;flex-direction:column;align-items:center;padding:12px 20px;border-radius:6px;font-weight:700;font-size:0.95em;text-align:center;">
     🦀 Rust ユニットテスト（cargo test）
@@ -69,6 +69,8 @@ E2E テストはユーザー操作シナリオを実際のアプリで検証す�
 | 2 | `app/viewer/lib/indexeddb.test.ts` | <span class="badge badge-vitest">Vitest</span> | IndexedDB 操作（indexeddb.ts） | saveDraft / loadDraft / loadAllDrafts / deleteDraft の CRUD 確認 |
 | 3 | `app/viewer/__tests__/page.test.tsx` | <span class="badge badge-vitest">Vitest</span> | iPhone PWA ページ（viewer/page.tsx） | 画像変換（hydrateEditor/serializeEditor）・チェックボックス変換・タグ永続化・Mermaid ブロック変換 |
 | 4 | `app/viewer/viewer.test.tsx` | <span class="badge badge-vitest">Vitest</span> | Viewer コンポーネント全体 | ステップ遷移・初期化フロー・リスト/ライトモード切り替え |
+| 5 | `app/viewer/__tests__/VideoAttachmentSemantics.test.tsx` | <span class="badge badge-vitest">Vitest</span> | VideoDrop 添付セマンティクス | 動画選択時に本文を上書きしない、複数動画を `videos[]` として保持する、送信後に送信済み表示へ反映する |
+| 6 | `app/viewer/__tests__/WriteStep.loss.test.tsx` | <span class="badge badge-vitest">Vitest</span> | PWA 編集画面のデータ安全性 | ユーザーが入力した本文・1行目・添付情報が保存/送信過程で失われないこと |
 
 ### 2.3 Rust バックエンド（cargo test）
 
@@ -99,9 +101,32 @@ E2E テストは Playwright で実際の Tauri アプリを起動して操作す
 
 ---
 
-## 4 テスト実行方法
+## 4 データロスト防止ゲート
 
-### 4.1 フロントエンド ユニットテスト（Vitest）
+付箋アプリでは、ユーザーが入力した1文字を失うことが最重大障害である。
+ソース修正後は、リリース前に以下の順で確認する。
+
+<p class="table-caption">表 4-1　データロスト防止ゲート</p>
+
+| No | 確認項目 | 実行コマンド / 観点 |
+|:---|:---|:---|
+| 1 | 型検査 | `npx tsc --noEmit --pretty false` |
+| 2 | PWA 本文保護 | `npm test -- WriteStep.loss` |
+| 3 | VideoDrop 添付仕様 | `npm test -- VideoAttachmentSemantics` |
+| 4 | 全ユニットテスト | `npm test` |
+| 5 | Rust 側受信処理 | `cargo check` |
+| 6 | 本番ビルド | `npm run build` |
+
+<Note type="warning">
+<strong>禁止事項：</strong>添付ファイル名、Drive 一時ファイル名、PC 保存パスを、ユーザーが入力した本文やタイトルの代わりとして上書きしてはならない。
+画像・動画・音声などの添付は、本文とは別の部品として扱う。
+</Note>
+
+---
+
+## 5 テスト実行方法
+
+### 5.1 フロントエンド ユニットテスト（Vitest）
 
 ```bash
 # 全ユニットテストを実行（一回実行）
@@ -112,7 +137,7 @@ npx vitest
 npx vitest run --coverage
 ```
 
-### 4.2 Rust バックエンド ユニットテスト（cargo test）
+### 5.2 Rust バックエンド ユニットテスト（cargo test）
 
 ```bash
 # Rust ユニットテストを実行
@@ -120,7 +145,7 @@ cd src-tauri
 cargo test
 ```
 
-### 4.3 E2E テスト（Playwright）
+### 5.3 E2E テスト（Playwright）
 
 ```bash
 # E2E テストを実行（Tauri アプリのビルドが必要）
@@ -138,11 +163,11 @@ CI での実行は未整備（ローカル手動実行のみ）。
 
 ---
 
-## 5 カバレッジ外の領域
+## 6 カバレッジ外の領域
 
 現時点でテストが存在しない・または困難な領域。今後のリスクとして認識しておくべき箇所。
 
-<p class="table-caption">表 5-1　カバレッジ外領域一覧</p>
+<p class="table-caption">表 6-1　カバレッジ外領域一覧</p>
 
 | No | 領域 | カバレッジ外の理由 | リスク |
 |:---|:---|:---|:---|
@@ -160,14 +185,15 @@ CI での実行は未整備（ローカル手動実行のみ）。
 
 ---
 
-## 6 改版履歴
+## 7 改版履歴
 
 <div class="history-table">
-<p class="table-caption">表 6-1　改版履歴</p>
+<p class="table-caption">表 7-1　改版履歴</p>
 
 | No | バージョン | 日付 | 変更内容 |
 |:---|:---|:---|:---|
 | 1 | 1.0 | 26-04-20 | 新規作成。テスト戦略・ユニットテスト一覧（11ファイル）・E2E一覧（3ファイル）・実行方法・カバレッジ外領域を整理。 |
 | 2 | 1.1 | 26-04-24 | テストピラミッドを TestPyramid コンポーネント（3色ブロック）に変更。 |
+| 3 | 1.2 | 26-05-25 | VideoDrop と PWA 本文保護のテストを追加。データロスト防止ゲートを新設し、ソース修正後の必須確認順を明記。 |
 
 </div>

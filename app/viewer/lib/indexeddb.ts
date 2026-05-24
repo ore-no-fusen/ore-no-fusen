@@ -35,6 +35,23 @@ async function serializeImages(images: { fileName: string; blob: Blob }[]): Prom
   })).then((r) => r.filter(Boolean));
 }
 
+async function serializeVideos(videos: { fileName: string; originalName: string; blob: Blob }[]): Promise<unknown[]> {
+  return Promise.all(videos.map(async (video: any) => {
+    if (video.blob instanceof Blob) {
+      const data = await video.blob.arrayBuffer().catch(() => null);
+      return data
+        ? {
+            fileName: video.fileName,
+            originalName: video.originalName,
+            data,
+            type: video.blob.type || 'video/mp4',
+          }
+        : null;
+    }
+    return video;
+  })).then((r) => r.filter(Boolean));
+}
+
 /** ArrayBuffer → Blob に変換（読み込み時） */
 function deserializeImages(images: unknown[]): { fileName: string; blob: Blob }[] {
   return (images || []).flatMap((img: any) => {
@@ -44,6 +61,21 @@ function deserializeImages(images: unknown[]): { fileName: string; blob: Blob }[
     }
     // 旧Blob形式: iOS SW更新後に無効化（size=0）されている場合は除外
     if (img.blob instanceof Blob && img.blob.size > 0) return [img];
+    return [];
+  });
+}
+
+function deserializeVideos(videos: unknown[]): { fileName: string; originalName: string; blob: Blob }[] {
+  return (videos || []).flatMap((video: any) => {
+    if (video.data instanceof ArrayBuffer) {
+      const blob = new Blob([video.data], { type: video.type || 'video/mp4' });
+      return blob.size > 0
+        ? [{ fileName: video.fileName, originalName: video.originalName || video.fileName, blob }]
+        : [];
+    }
+    if (video.blob instanceof Blob && video.blob.size > 0) {
+      return [{ fileName: video.fileName, originalName: video.originalName || video.fileName, blob: video.blob }];
+    }
     return [];
   });
 }
@@ -67,6 +99,11 @@ function logToFusenLogs(msg: string): void {
 
 export async function saveDraft(draft: DraftRecord): Promise<void> {
   const images = await serializeImages(draft.images || []);
+  const hasVideos = Object.prototype.hasOwnProperty.call(draft, 'videos');
+  const videos = hasVideos ? await serializeVideos(draft.videos || []) : undefined;
+  const hasVideoFileName = Object.prototype.hasOwnProperty.call(draft, 'videoFileName');
+  const hasOriginalFileName = Object.prototype.hasOwnProperty.call(draft, 'originalFileName');
+  const hasMemo = Object.prototype.hasOwnProperty.call(draft, 'memo');
   // 既存レコードのlocked状態と比較してログ出力
   const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
@@ -77,9 +114,10 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
       const storedDraft = {
         ...draft,
         type: draft.type ?? existing?.type,
-        videoFileName: draft.videoFileName ?? existing?.videoFileName,
-        originalFileName: draft.originalFileName ?? existing?.originalFileName,
-        memo: draft.memo ?? existing?.memo,
+        videoFileName: hasVideoFileName ? draft.videoFileName : existing?.videoFileName,
+        originalFileName: hasOriginalFileName ? draft.originalFileName : existing?.originalFileName,
+        videos: hasVideos ? videos : existing?.videos,
+        memo: hasMemo ? draft.memo : existing?.memo,
         images,
       };
       // locked=true が明示的に false にされた場合（intentional unlock）はそのまま通す。
@@ -109,7 +147,11 @@ export async function loadAllDrafts(): Promise<DraftRecord[]> {
     const tx = db.transaction('drafts', 'readonly');
     const req = tx.objectStore('drafts').getAll();
     req.onsuccess = () => {
-      const drafts = (req.result ?? []).map((d: any) => ({ ...d, images: deserializeImages(d.images || []) }));
+      const drafts = (req.result ?? []).map((d: any) => ({
+        ...d,
+        images: deserializeImages(d.images || []),
+        videos: deserializeVideos(d.videos || []),
+      }));
       resolve(drafts);
     };
     req.onerror = () => reject(req.error);
@@ -130,7 +172,11 @@ export async function loadDraft(id: string): Promise<DraftRecord | null> {
     req.onsuccess = () => {
       const d = req.result ?? null;
       if (!d) { resolve(null); return; }
-      resolve({ ...d, images: deserializeImages(d.images || []) });
+      resolve({
+        ...d,
+        images: deserializeImages(d.images || []),
+        videos: deserializeVideos(d.videos || []),
+      });
     };
     req.onerror = () => reject(req.error);
   });

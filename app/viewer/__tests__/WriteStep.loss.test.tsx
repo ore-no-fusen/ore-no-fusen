@@ -29,11 +29,13 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
   const fileInputRef = React.createRef<HTMLInputElement>() as React.MutableRefObject<HTMLInputElement | null>;
   const videoInputRef = React.createRef<HTMLInputElement>() as React.MutableRefObject<HTMLInputElement | null>;
   const imageBlobsRef = { current: new Map<string, Blob>() };
+  const videoBlobsRef = { current: new Map<string, { blob: Blob; originalName: string }>() };
   const props: React.ComponentProps<typeof WriteStep> = {
     editorRef,
     fileInputRef,
     videoInputRef,
     imageBlobsRef,
+    videoBlobsRef,
     showTagBar: false,
     tagInput: '',
     writeTags: ['tag1'],
@@ -41,7 +43,7 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
     showCropModal: false,
     cropFile: null,
     showMermaidModal: false,
-    pendingVideoFile: null,
+    videoMetas: [],
     backgroundSendSuccess: false,
     errorMessage: null,
     isLoading: false,
@@ -59,7 +61,8 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
     setCropFile: vi.fn(),
     setCropQueue: vi.fn(),
     setShowMermaidModal: vi.fn(),
-    setPendingVideoFile: vi.fn(),
+    setVideoBlobs: vi.fn(),
+    setVideoMetas: vi.fn(),
     setErrorMessage: vi.fn(),
     setIsLoading: vi.fn(),
     setCurrentDraftId: vi.fn(),
@@ -72,7 +75,7 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
   const view = render(<WriteStep {...props} />);
   if (!editorRef.current) throw new Error('editorRef not mounted');
   editorRef.current.textContent = '大事な付箋';
-  return { ...view, props, editor: editorRef.current, imageBlobsRef };
+  return { ...view, props, editor: editorRef.current, imageBlobsRef, videoBlobsRef };
 }
 
 describe('WriteStep loss prevention', () => {
@@ -155,21 +158,26 @@ describe('WriteStep loss prevention', () => {
 
   it('動画を選択しただけでは送信せず、選択済み動画として保持する', async () => {
     const sendToPC = vi.fn(async () => true);
-    const setPendingVideoFile = vi.fn();
-    const { container } = renderWriteStep({ sendToPC, setPendingVideoFile });
+    const setVideoBlobs = vi.fn();
+    const setVideoMetas = vi.fn();
+    const { container } = renderWriteStep({ sendToPC, setVideoBlobs, setVideoMetas });
     const input = container.querySelector('input[accept="video/mp4,video/quicktime,.mp4,.mov"]') as HTMLInputElement;
     const file = new File(['video'], 'dance.mov', { type: 'video/quicktime' });
 
     fireEvent.change(input, { target: { files: [file] } });
 
-    expect(setPendingVideoFile).toHaveBeenCalledWith(file);
+    expect(setVideoBlobs).toHaveBeenCalledWith(expect.any(Map));
+    expect(setVideoMetas).toHaveBeenCalledWith([
+      expect.objectContaining({ name: 'dance.mov' }),
+    ]);
     expect(sendToPC).not.toHaveBeenCalled();
   });
 
   it('動画選択済みならPCに送る時に通常付箋と一緒に送信する', async () => {
     const sendToPC = vi.fn(async () => true);
     const videoFile = new File(['video'], 'dance.mov', { type: 'video/quicktime' });
-    const { getByRole } = renderWriteStep({ sendToPC, pendingVideoFile: videoFile });
+    const videoBlobsRef = { current: new Map([['fusen_video_dance.mov', { blob: videoFile, originalName: 'dance.mov' }]]) };
+    const { getByRole } = renderWriteStep({ sendToPC, videoBlobsRef });
 
     fireEvent.click(getByRole('button', { name: 'PCに送る' }));
 
@@ -178,8 +186,13 @@ describe('WriteStep loss prevention', () => {
       rawText: '大事な付箋',
       tags: ['tag1'],
       blobs: expect.any(Map),
-      videoFile,
+      videoBlobs: expect.any(Map),
       draftId: 'draft-id-1',
     });
+    const calls = sendToPC.mock.calls as unknown as Array<[{
+      videoBlobs: Map<string, { blob: Blob; originalName: string }>;
+    }]>;
+    const payload = calls[0][0];
+    expect(payload.videoBlobs.get('fusen_video_dance.mov')).toEqual({ blob: videoFile, originalName: 'dance.mov' });
   });
 });
