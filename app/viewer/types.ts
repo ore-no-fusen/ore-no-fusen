@@ -60,7 +60,7 @@ export type DraftRecord = {
   locked?: boolean;
   videoFileName?: string;
   originalFileName?: string;
-  videos?: { fileName: string; originalName: string; blob: Blob }[];
+  videos?: { fileName: string; originalName: string; blob?: Blob }[];
   memo?: string;
 };
 

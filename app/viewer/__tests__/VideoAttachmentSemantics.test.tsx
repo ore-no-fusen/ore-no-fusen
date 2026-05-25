@@ -130,11 +130,10 @@ describe('Video attachment semantics', () => {
       body: 'ユーザが書いたメモ',
       originalFileName: 'promo_fixed.mp4',
       videos: [
-        expect.objectContaining({
+        {
           fileName: 'fusen_video_20260524_064500_びでお_abcd1234.mp4',
           originalName: 'promo_fixed.mp4',
-          blob: videoFile,
-        }),
+        },
       ],
       memo: 'ユーザが書いたメモ',
       type: 'video',

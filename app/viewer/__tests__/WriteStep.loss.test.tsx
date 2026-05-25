@@ -171,6 +171,10 @@ describe('WriteStep loss prevention', () => {
       expect.objectContaining({ name: 'dance.mov' }),
     ]);
     expect(sendToPC).not.toHaveBeenCalled();
+    await waitFor(() => expect(saveDraftMock).toHaveBeenCalled());
+    expect(saveDraftMock).toHaveBeenCalledWith(expect.not.objectContaining({
+      videos: expect.any(Array),
+    }));
   });
 
   it('動画選択済みならPCに送る時に通常付箋と一緒に送信する', async () => {

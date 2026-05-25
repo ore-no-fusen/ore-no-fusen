@@ -35,21 +35,17 @@ async function serializeImages(images: { fileName: string; blob: Blob }[]): Prom
   })).then((r) => r.filter(Boolean));
 }
 
-async function serializeVideos(videos: { fileName: string; originalName: string; blob: Blob }[]): Promise<unknown[]> {
-  return Promise.all(videos.map(async (video: any) => {
-    if (video.blob instanceof Blob) {
-      const data = await video.blob.arrayBuffer().catch(() => null);
-      return data
-        ? {
-            fileName: video.fileName,
-            originalName: video.originalName,
-            data,
-            type: video.blob.type || 'video/mp4',
-          }
-        : null;
-    }
-    return video;
-  })).then((r) => r.filter(Boolean));
+async function serializeVideos(videos: { fileName: string; originalName: string; blob?: Blob }[]): Promise<unknown[]> {
+  return stripVideoBlobs(videos);
+}
+
+function stripVideoBlobs(videos: unknown[] = []): { fileName: string; originalName: string }[] {
+  return videos
+    .map((video: any) => ({
+      fileName: video.fileName,
+      originalName: video.originalName || video.fileName,
+    }))
+    .filter((video) => video.fileName);
 }
 
 /** ArrayBuffer → Blob に変換（読み込み時） */
@@ -65,7 +61,7 @@ function deserializeImages(images: unknown[]): { fileName: string; blob: Blob }[
   });
 }
 
-function deserializeVideos(videos: unknown[]): { fileName: string; originalName: string; blob: Blob }[] {
+function deserializeVideos(videos: unknown[]): { fileName: string; originalName: string; blob?: Blob }[] {
   return (videos || []).flatMap((video: any) => {
     if (video.data instanceof ArrayBuffer) {
       const blob = new Blob([video.data], { type: video.type || 'video/mp4' });
@@ -75,6 +71,9 @@ function deserializeVideos(videos: unknown[]): { fileName: string; originalName:
     }
     if (video.blob instanceof Blob && video.blob.size > 0) {
       return [{ fileName: video.fileName, originalName: video.originalName || video.fileName, blob: video.blob }];
+    }
+    if (video.fileName) {
+      return [{ fileName: video.fileName, originalName: video.originalName || video.fileName }];
     }
     return [];
   });
@@ -116,7 +115,7 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
         type: draft.type ?? existing?.type,
         videoFileName: hasVideoFileName ? draft.videoFileName : existing?.videoFileName,
         originalFileName: hasOriginalFileName ? draft.originalFileName : existing?.originalFileName,
-        videos: hasVideos ? videos : existing?.videos,
+        videos: hasVideos ? videos : stripVideoBlobs(existing?.videos),
         memo: hasMemo ? draft.memo : existing?.memo,
         images,
       };

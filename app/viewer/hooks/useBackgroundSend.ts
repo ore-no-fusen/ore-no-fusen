@@ -172,10 +172,9 @@ export function useBackgroundSend({
         body: fullBody,
         created_at: sentAt,
         images: Array.from(mergedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
-        videos: Array.from(legacyVideosToSend.entries()).map(([fileName, { blob, originalName }]) => ({
+        videos: Array.from(legacyVideosToSend.entries()).map(([fileName, { originalName }]) => ({
           fileName,
           originalName,
-          blob,
         })),
         tags,
         sent_at: sentAt,

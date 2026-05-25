@@ -125,25 +125,6 @@ export function WriteStep({
     });
   }, [setCropFile, setCropQueue, setShowCropModal]);
 
-  const currentVideos = React.useCallback(() => (
-    Array.from(videoBlobsRef.current.entries()).map(([fileName, entry]) => ({
-      fileName,
-      originalName: entry.originalName,
-      blob: entry.blob,
-    }))
-  ), [videoBlobsRef]);
-
-  const videoDraftFields = React.useCallback(() => {
-    const videos = currentVideos();
-    const first = videos[0];
-    return {
-      videos,
-      type: videos.length > 0 ? ('video' as const) : ('note' as const),
-      videoFileName: first?.fileName,
-      originalFileName: first?.originalName,
-    };
-  }, [currentVideos]);
-
   return (
     <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
       {/* ヘッダー */}
@@ -157,7 +138,7 @@ export function WriteStep({
                 const { title, body } = extractTitleBody(rawText);
                 const draftId = currentDraftId ?? createId();
                 const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
-                await saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags, ...videoDraftFields() }).catch(() => {});
+                await saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
                 setCurrentDraftId(draftId);
               }
             }
@@ -467,14 +448,6 @@ export function WriteStep({
                 created_at: nowJST(),
                 images: imagesArr,
                 tags: writeTags,
-                videos: Array.from(nextMap.entries()).map(([fileName, entry]) => ({
-                  fileName,
-                  originalName: entry.originalName,
-                  blob: entry.blob,
-                })),
-                type: nextMap.size > 0 ? 'video' : 'note',
-                videoFileName: nextMetas[0]?.fileName,
-                originalFileName: nextMetas[0]?.name,
               }).catch(() => {});
               setCurrentDraftId(draftId);
             }
@@ -540,7 +513,6 @@ export function WriteStep({
                 created_at: nowJST(),
                 images: imagesArr,
                 tags: writeTags,
-                ...videoDraftFields(),
               });
               imageBlobsRef.current = new Map();
               setImageBlobs(new Map());
@@ -582,7 +554,6 @@ export function WriteStep({
                 body,
                 created_at: nowJST(),
                 images: imagesArr,
-                ...videoDraftFields(),
                 tags: capturedTags,
               });
               setCurrentDraftId(draftId);
@@ -674,7 +645,7 @@ export function WriteStep({
                 const { title, body } = extractTitleBody(rawText);
                 const draftId = currentDraftId ?? createId();
                 const imagesArr = Array.from(nextBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
-                saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags, ...videoDraftFields() }).catch(() => {});
+                saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
                 setCurrentDraftId(draftId);
               }
             }

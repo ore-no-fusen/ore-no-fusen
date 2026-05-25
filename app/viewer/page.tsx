@@ -150,10 +150,11 @@ export default function ViewerPage() {
 
   const videoBlobMapFromDraft = React.useCallback((draft: DraftRecord | null): VideoBlobMap => {
     if (!draft?.videos || draft.videos.length === 0) return new Map();
-    return new Map(draft.videos.map((video) => [
-      video.fileName,
-      { blob: video.blob, originalName: video.originalName },
-    ]));
+    return new Map(draft.videos.flatMap((video) => (
+      video.blob
+        ? [[video.fileName, { blob: video.blob, originalName: video.originalName }]]
+        : []
+    )));
   }, []);
 
   // visibilitychange: バックグラウンドになった瞬間に保存

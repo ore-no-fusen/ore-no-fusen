@@ -45,23 +45,12 @@ export function useAutoSave(
         callbacks.setCurrentDraftId(draftId);
       }
       const imagesArr = Array.from((refs.imageBlobsRef.current ?? new Map()).entries()).map(([fn, f]) => ({ fileName: fn, blob: f }));
-      const videoEntries = Array.from((refs.videoBlobsRef?.current ?? new Map()).entries());
-      const videos = videoEntries.map(([fileName, entry]) => ({
-        fileName,
-        originalName: entry.originalName,
-        blob: entry.blob,
-      }));
-      const firstVideo = videos[0];
       await saveDraft({
         id: draftId,
         title,
         body,
         created_at: nowJST(),
         images: imagesArr,
-        videos,
-        type: videos.length > 0 ? 'video' : 'note',
-        videoFileName: firstVideo?.fileName,
-        originalFileName: firstVideo?.originalName,
         tags: refs.writeTagsRef.current ?? [],
       }).catch(() => {});
     }, 3000);
