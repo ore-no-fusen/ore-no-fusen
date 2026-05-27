@@ -133,8 +133,6 @@ function TagSelector() {
 function OrchestratorContent() {
   // [DEBUG] Lifecycle
   useEffect(() => {
-    console.log('[Orchestrator] Mounted');
-    invoke('fusen_debug_log', { message: '[画面管理] 初期化を開始しました (Mounted)' }).catch(() => { });
     return () => console.log('[Orchestrator] Unmounted');
   }, []);
 
@@ -143,6 +141,31 @@ function OrchestratorContent() {
   const tagSelector = searchParams.get('tagSelector');
   const isPool = searchParams.get('isPool') === 'true'; // [NEW] プール判定
   const isMainWindow = !path && !tagSelector && !isPool; // [FIX] プールウィンドウをメインウィンドウ扱いしない
+
+  useEffect(() => {
+    const logWindowIdentity = async () => {
+      const search = typeof window !== 'undefined' ? window.location.search : '(server)';
+      let label = '(unknown)';
+      try {
+        label = getCurrentWindow().label;
+      } catch (e) {
+        label = `(getCurrentWindow failed: ${String(e)})`;
+      }
+      if (label === 'main' && isMainWindow) {
+        const msg = `[起動診断] main OK search=${search || '(empty)'}`;
+        console.log(msg);
+        invoke('fusen_debug_log', { message: msg }).catch(() => { });
+        const startupMsg = '[起動 1/6] メインウィンドウの画面を読み込みました。ここから付箋復元を開始します';
+        console.log(startupMsg);
+        invoke('fusen_debug_log', { message: startupMsg }).catch(() => { });
+      } else if (isPool) {
+        const msg = '[起動後準備] Pool付箋 ready';
+        console.log(msg);
+        invoke('fusen_debug_log', { message: msg }).catch(() => { });
+      }
+    };
+    logWindowIdentity();
+  }, [path, tagSelector, isPool, isMainWindow]);
 
   const [folderPath, setFolderPath] = useState<string>('');
   const folderPathRef = useRef<string>(''); // [FIX] スロットル用にRefでも保持
@@ -265,26 +288,16 @@ function OrchestratorContent() {
   const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
 
-    // [AGDP] ターミナルとコンソールの両方にログ出力
-    const debugLog = (msg: string) => {
-      console.log(msg);
-      invoke('fusen_debug_log', { message: msg }).catch(() => { });
-    };
-
-    debugLog(`[openNoteWindow] Called for: ${path}, x=${meta?.x}, y=${meta?.y}, width=${meta?.width}, height=${meta?.height}`);
-
     try {
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
       const existing = await WebviewWindow.getByLabel(label);
       if (existing) {
-        debugLog(`[openNoteWindow] Showing existing window: ${label}`);
         await existing.show();
         await existing.unminimize();
         await existing.setFocus();
         return;
       }
-      debugLog(`[openNoteWindow] No existing window found for: ${label}, creating new...`);
-    } catch (e) { console.warn(`[openNoteWindow] Failed to check existing window: ${label}`, e); }
+    } catch (e) { console.warn(`[付箋表示] 既存ウィンドウ確認に失敗しました: ${label}`, e); }
 
     await enqueueWindowCreation(async () => {
       try {
@@ -309,11 +322,6 @@ function OrchestratorContent() {
           const x = meta?.x;
           const y = meta?.y;
 
-          // [AGDP Phase I] 復元時の座標ログ
-          const logMsg = `[openNoteWindow] Creating window: url=${url}, isNew=${isNew}, width=${width}, height=${height}, x=${x}, y=${y}`;
-          console.log(logMsg);
-          invoke('fusen_debug_log', { message: logMsg }).catch(() => { });
-
           const win = new WebviewWindow(label, {
             url,
             title: 'Quick Memo',  // タスクバープレビューのタイトル
@@ -330,41 +338,29 @@ function OrchestratorContent() {
             focus: true,
           });
 
-          // [AGDP Phase I] ウィンドウ作成後の位置確認ログ
           win.once('tauri://created', async () => {
-            try {
-              const actualPos = await win.outerPosition();
-              const posMsg = `[openNoteWindow] Window created. Requested: (${x}, ${y}), Actual: (${actualPos.x}, ${actualPos.y})`;
-              console.log(posMsg);
-              invoke('fusen_debug_log', { message: posMsg }).catch(() => { });
-            } catch (e) {
-              const errMsg = `[openNoteWindow] Failed to get actual position: ${e}`;
-              console.log(errMsg);
-              invoke('fusen_debug_log', { message: errMsg }).catch(() => { });
-            }
-          });
-          win.once('tauri://created', async () => {
-            console.log(`[openNoteWindow] Window created: ${label}. fromIphone=${fromIphone}`);
             if (fromIphone) {
               // iPhone受信ウィンドウ: Alt+Tab窓として登録（フォーカスはすでに渡し済み）
               try {
                 await invoke('fusen_set_as_alt_tab_window', { label });
               } catch (e) {
-                console.warn('[openNoteWindow] Failed to set as alt-tab window:', e);
+                console.warn('[付箋表示] Alt+Tab登録に失敗しました:', e);
               }
             } else {
-              await win.setFocus();
+              try { await win.setFocus(); } catch (e) { /* 表示自体は成功しているので無視 */ }
               try {
                 await invoke('fusen_make_tool_window');
               } catch (e) {
-                console.warn('[openNoteWindow] Failed to apply tool window style:', e);
+                console.warn('[付箋表示] ツールウィンドウ化に失敗しました:', e);
               }
             }
           });
-          if (!fromIphone) await win.setFocus();
+          if (!fromIphone) {
+            try { await win.setFocus(); } catch (e) { /* 作成直後は失敗することがある */ }
+          }
 
         } finally { unmarkWindowInProgress(label); }
-      } catch (e) { console.error(`Failed to open window:`, e); unmarkWindowInProgress(label); }
+      } catch (e) { console.error('[付箋表示] ウィンドウ作成に失敗しました:', e); unmarkWindowInProgress(label); }
     });
   }, [getWindowLabel, enqueueWindowCreation, isWindowInProgress, markWindowInProgress, unmarkWindowInProgress]);
 
@@ -1172,25 +1168,34 @@ function OrchestratorContent() {
     // Original logic follows
     if (!path) {
       const checkAndRestore = async () => {
+        const startupStartedAt = performance.now();
         // [HELPER] Log to both Console and Terminal (via Rust)
         const log = (msg: string) => {
           console.log(msg);
           invoke('fusen_debug_log', { message: msg }).catch(() => { });
         };
+        const logStartupStep = (step: string, detail: string) => {
+          log(`[起動 ${step}] ${detail} / 経過 ${Math.round(performance.now() - startupStartedAt)}ms`);
+        };
+        const startPoolReplenishInBackground = () => {
+          log('[起動後準備 1/3] 付箋表示が完了したため、Ctrl+N高速化用Pool付箋の準備をバックグラウンドで開始します');
+          setTimeout(() => {
+            invoke('fusen_replenish_pool')
+              .then(() => log('[起動後準備 2/3] Pool付箋のバックグラウンド補充を開始しました'))
+              .catch((e) => log(`[起動後準備 2/3] Pool付箋のバックグラウンド補充開始に失敗しました: ${e}`));
+          }, 250);
+        };
 
         setLoadingStatus("保存先の設定を確認中...");
-        log('[起動処理] 復元処理を開始します (checkAndRestore started)');
+        logStartupStep('2/6', '保存先フォルダの設定を確認しています');
 
         try {
           const basePath = await invoke<string | null>('get_base_path');
-          log(`[起動処理] 設定されたパス: ${basePath || 'なし'}`);
 
           if (!basePath) {
-            log('[起動処理] パスが未設定のため、デフォルトフォルダを自動作成します');
             setLoadingStatus("保存先フォルダを準備中...");
             try {
               await invoke<string>('setup_first_launch', { useDefault: true, importPath: null });
-              log('[起動処理] デフォルトフォルダの作成に成功しました');
             } catch (setupErr) {
               log(`[起動処理] デフォルトフォルダ作成に失敗: ${setupErr}`);
               setLoadingStatus("保存先の準備に失敗しました");
@@ -1198,18 +1203,20 @@ function OrchestratorContent() {
             }
           }
           const savedFolder = await invoke<string | null>('get_base_path') ?? '';
+          logStartupStep('2/6', `保存先フォルダを確認しました: ${savedFolder || '未設定'}`);
 
           // ノート復元を即座に開始
           (async () => {
             try {
               setLoadingStatus("ノート一覧を取得中...");
-              log('[起動処理] ノート一覧を取得しています...');
+              logStartupStep('3/6', '保存先フォルダから付箋ファイル一覧を取得しています');
               await invoke('fusen_list_notes', { folderPath: savedFolder });
-              log('[起動処理] 一覧取得完了。状態を同期します...');
+              logStartupStep('3/6', '付箋ファイル一覧の取得が完了しました');
 
               setLoadingStatus("状態を同期中...");
+              logStartupStep('4/6', 'Rust側の状態をフロントへ同期しています');
               const state = await syncState();
-              log(`[起動処理] 同期結果: ${state ? '成功' : '失敗'}`);
+              logStartupStep('4/6', `状態同期が完了しました: ${state ? '成功' : '失敗'}`);
 
               if (!state) {
                 setLoadingStatus("同期に失敗しました");
@@ -1220,36 +1227,35 @@ function OrchestratorContent() {
                 setSetupRequired(false);
               }
               const notes = state.notes;
-              log(`[起動処理] 復元対象のノート数: ${notes.length}件`);
+              logStartupStep('5/6', `復元する付箋を確定しました: ${notes.length}件`);
 
               if (notes.length > 0) {
                 setLoadingStatus(`${notes.length} 件のノートを復元中...`);
+                logStartupStep('6/6', `付箋ウィンドウを順番に開きます: 0/${notes.length}`);
 
                 for (let i = 0; i < notes.length; i++) {
                   const note = notes[i];
-                  setLoadingStatus(`ノートを開いています (${i + 1}/${notes.length}): ${note.path.split(/[\\/]/).pop()}...`);
-                  log(`[起動処理] ウィンドウを開く: ${note.path} at (${note.x}, ${note.y})`);
+                  const noteStartedAt = performance.now();
+                  const noteName = note.path.split(/[\\/]/).pop();
+                  setLoadingStatus(`ノートを開いています (${i + 1}/${notes.length}): ${noteName}...`);
                   await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
+                  logStartupStep('6/6', `付箋 ${i + 1}/${notes.length} ${noteName} ${Math.round(performance.now() - noteStartedAt)}ms`);
 
                 }
+                logStartupStep('6/6', `付箋ウィンドウをすべて開きました: ${notes.length}/${notes.length}`);
 
                 setLoadingStatus("仕上げ処理...");
+                logStartupStep('6/6', 'メインウィンドウを片付けて起動を完了します');
                 setTimeout(async () => {
                   try {
                     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                     const mainWindow = await WebviewWindow.getByLabel('main');
                     if (mainWindow) {
-                      log('[起動処理] メインウィンドウを最小化します (通常起動)');
                       await mainWindow.minimize();
                       setIsCheckingSetup(false);
+                      logStartupStep('6/6', '起動完了: 復元処理が終わりました');
+                      startPoolReplenishInBackground();
                     }
-                    log('[起動処理] プールウィンドウ(予備)を2枚生成します');
-                    setTimeout(() => {
-                      invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー: ${e}`));
-                    }, 500);
-                    setTimeout(() => {
-                      invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー2: ${e}`));
-                    }, 1200);
                   } catch (e) {
                     log(`[起動処理] 最小化エラー: ${e}`);
                     setLoadingStatus("最小化失敗: " + String(e));
@@ -1258,7 +1264,6 @@ function OrchestratorContent() {
                 }, 100);
               } else {
                 setLoadingStatus("ようこそノートを作成中...");
-                log('[起動処理] ノートが0件のため、ようこそノートを作成します');
                 try {
                   const newNote = await invoke<{ meta: { path: string }; frontmatter: string }>(
                     'fusen_create_note', { folderPath: savedFolder, context: 'はじめての付箋（消してOK）' }
@@ -1279,17 +1284,11 @@ function OrchestratorContent() {
                     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                     const mainWindow = await WebviewWindow.getByLabel('main');
                     if (mainWindow) {
-                      log('[起動処理] メインウィンドウを隠します (初回ウェルカム)');
                       await mainWindow.hide();
                       setIsCheckingSetup(false);
+                      logStartupStep('6/6', '起動完了: はじめての付箋を開きました');
+                      startPoolReplenishInBackground();
                     }
-                    log('[起動処理] プールウィンドウ(予備)を2枚生成します');
-                    setTimeout(() => {
-                      invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー: ${e}`));
-                    }, 500);
-                    setTimeout(() => {
-                      invoke('fusen_create_pool_window').catch(e => log(`プール生成エラー2: ${e}`));
-                    }, 1200);
                   } catch (e) {
                     log(`[起動処理] ウィンドウ非表示エラー: ${e}`);
                   }
@@ -1338,24 +1337,16 @@ function OrchestratorContent() {
 
   // [DEBUG] isDashboard状態の詳細ログ
   useEffect(() => {
+    if (!isMainWindow) return;
     const logState = async () => {
-      const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
-
-      dbg(`[Dashboard:State] isDashboard=${isDashboard} | breakdown: isMainWindow=${isMainWindow}, isSearchOpen=${isSearchOpen}, isCheckingSetup=${isCheckingSetup}, setupRequired=${setupRequired}, isSettingsOpen=${isSettingsOpen}`);
-
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
         if (win.label === 'main') {
-          const isVisible = await win.isVisible();
-          const isMinimized = await win.isMinimized();
-          const size = await win.innerSize();
-
-          dbg(`[Dashboard:Window] label=main, visible=${isVisible}, minimized=${isMinimized}, size=${size.width}x${size.height}`);
-          console.log('[Dashboard:Window]', { isDashboard, isVisible, isMinimized, size: `${size.width}x${size.height}` });
+          await win.isVisible();
         }
       } catch (e) {
-        console.error('[Dashboard:State] Failed to get window info:', e);
+        console.error('[Dashboard] 状態確認に失敗しました:', e);
       }
     };
     logState();
@@ -1366,8 +1357,6 @@ function OrchestratorContent() {
     if (!isDashboard) return;
 
     const hideWindow = async () => {
-      const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
-
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
@@ -1376,18 +1365,11 @@ function OrchestratorContent() {
           const isVisible = await win.isVisible();
 
           if (isVisible) {
-            dbg(`[Dashboard:Fix] メインウィンドウが表示されているため隠します (visible=${isVisible})`);
-            console.log('[Dashboard:Fix] Hiding main window because isDashboard=true');
             await win.hide();
-            dbg('[Dashboard:Fix] ウィンドウを隠しました');
-            console.log('[Dashboard:Fix] Window hidden successfully');
-          } else {
-            console.log('[Dashboard:Fix] Window already hidden, no action needed');
           }
         }
       } catch (e) {
-        dbg(`[Dashboard:Fix] エラー: ${e}`);
-        console.error('[Dashboard:Fix] Failed to hide window:', e);
+        console.error('[Dashboard] メインウィンドウ非表示に失敗しました:', e);
       }
     };
 

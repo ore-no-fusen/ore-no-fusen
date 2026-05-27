@@ -1324,9 +1324,6 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
     }
 
     // perflog: Pool 生成完了
-    let run_id = format!("pool-init-{}", uuid);
-    perflog::log_event(&run_id, "POOL_CREATED", Some(&label), None, serde_json::json!({}));
-
     Ok(())
 }
 
@@ -1344,12 +1341,10 @@ async fn fusen_replenish_pool(app: tauri::AppHandle) -> Result<(), String> {
 
     if missing == 0 {
         logger::log_debug(&format!("[Pool] fusen_replenish_pool: pool full (current={})", current_count));
-        perflog::log_event("replenish", "POOL_REPLENISH_DONE", None, None, serde_json::json!({"current": current_count, "missing": 0}));
         return Ok(());
     }
 
     logger::log_info(&format!("[Pool] fusen_replenish_pool: current={} missing={}", current_count, missing));
-    perflog::log_event("replenish", "POOL_REPLENISH_START", None, None, serde_json::json!({"current": current_count, "missing": missing}));
 
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -1381,7 +1376,6 @@ async fn fusen_replenish_pool(app: tauri::AppHandle) -> Result<(), String> {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
         }
-        perflog::log_event("replenish", "POOL_REPLENISH_DONE", None, None, serde_json::json!({"missing": missing}));
     });
 
     Ok(())
@@ -2528,28 +2522,6 @@ pub fn run() {
                 }
             }
 
-            // [NEW] 起動時 Pool 補充（付箋復元後に 3 個を順次作成、CPU 競合回避）
-            // pitfall 8 対策: setup の同期ブロック外で spawn → 500ms 間隔で順次生成
-            {
-                let app_handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    // メインウィンドウの初期化が完了するまで少し待つ（付箋復元 CPU 競合回避）
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    logger::log_info("[Pool] 起動時補充開始: POOL_TARGET=3 を順次作成");
-                    for i in 0..POOL_TARGET {
-                        match create_pool_window_internal(&app_handle) {
-                            Ok(_) => logger::log_info(&format!("[Pool] 起動補充 #{}: 作成成功", i)),
-                            Err(e) => logger::log_warn(&format!("[Pool] 起動補充 #{}: 失敗: {}", i, e)),
-                        }
-                        if i + 1 < POOL_TARGET {
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        }
-                    }
-                    perflog::log_event("startup", "POOL_REPLENISH_DONE", None, None, serde_json::json!({"count": POOL_TARGET}));
-                    logger::log_info("[Pool] 起動時補充完了");
-                });
-            }
-            
             // iPhone受信: バックグラウンドポーリングループ（30秒間隔）
             {
                 let app_handle = app.handle().clone();
