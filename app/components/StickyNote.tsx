@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, memo, useMemo, lazy, Suspense } from 'react';
 import React from 'react';
 import { useSearchParams } from 'next/navigation';
 import { emit, listen } from '@tauri-apps/api/event';
@@ -28,7 +28,7 @@ import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 
 // UIコンポーネント
-import RichTextEditor, { RichTextEditorRef } from './RichTextEditor';
+import type { RichTextEditorRef } from './RichTextEditor';
 import ToolbarButtons from './ToolbarButtons';
 import FloatingFormatBar from './FloatingFormatBar';
 import MarkdownRenderer from './MarkdownRenderer';
@@ -52,6 +52,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
 import ErrorBoundary from './ErrorBoundary';
+
+const RichTextEditor = lazy(() => import('./RichTextEditor'));
 
 // ホバーフォーカスのレートリミット用変数
 let hoverFocusTimer: NodeJS.Timeout | null = null;
@@ -1817,37 +1819,39 @@ const StickyNote = memo(function StickyNote() {
                         ref={editorHostRef}
                     >
                         {/* [再発防止] RichTextEditor内部で height: 100% を強制し、この白いエリアを埋め尽くす */}
-                        <RichTextEditor
-                            ref={editorRef}
-                            value={editBody}
-                            onChange={(newValue) => {
-                                setEditBody(newValue);
-                                setSavePending(true);
-                            }}
-                            filePath={selectedFile?.path || ''}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Escape') handleEditBlur();
-                                // Tabキーでツールバーへフォーカス移動
-                                if (e.key === 'Tab' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    // ツールバー内の最初のボタンを探してフォーカス
-                                    const toolbar = document.querySelector('.hoverBar');
-                                    const firstButton = toolbar?.querySelector('button');
-                                    if (firstButton) {
-                                        (firstButton as HTMLElement).focus();
+                        <Suspense fallback={<div className="w-full h-full" />}>
+                            <RichTextEditor
+                                ref={editorRef}
+                                value={editBody}
+                                onChange={(newValue) => {
+                                    setEditBody(newValue);
+                                    setSavePending(true);
+                                }}
+                                filePath={selectedFile?.path || ''}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Escape') handleEditBlur();
+                                    // Tabキーでツールバーへフォーカス移動
+                                    if (e.key === 'Tab' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        // ツールバー内の最初のボタンを探してフォーカス
+                                        const toolbar = document.querySelector('.hoverBar');
+                                        const firstButton = toolbar?.querySelector('button');
+                                        if (firstButton) {
+                                            (firstButton as HTMLElement).focus();
+                                        }
                                     }
-                                }
-                            }}
-                            // エディタ自体は透明にして親の色を見せる
-                            backgroundColor="transparent"
-                            cursorPosition={cursorPosition}
-                            initialCoords={initialCoords}
-                            isNewNote={isNewNote}
-                            fontSize={noteFontSize}
-                            onBlur={handleEditBlur}
-                            onSelectionChange={handleSelectionChange}
-                            onFirstChar={handleFirstChar}
-                        />
+                                }}
+                                // エディタ自体は透明にして親の色を見せる
+                                backgroundColor="transparent"
+                                cursorPosition={cursorPosition}
+                                initialCoords={initialCoords}
+                                isNewNote={isNewNote}
+                                fontSize={noteFontSize}
+                                onBlur={handleEditBlur}
+                                onSelectionChange={handleSelectionChange}
+                                onFirstChar={handleFirstChar}
+                            />
+                        </Suspense>
                         {floatBarCoords && (
                             <FloatingFormatBar
                                 top={floatBarCoords.top}
@@ -1938,6 +1942,35 @@ const StickyNote = memo(function StickyNote() {
                 </div>
             )}
             */}
+
+            {/* 使い方を開くボタン（左下、ホバー時のみ控えめに出る） */}
+            {!isEditing && !isMinimized && (
+                <div
+                    className="absolute bottom-ui-offset-y left-ui-offset-x z-tags pointer-events-none flex"
+                    style={{ opacity: isHover ? 1 : 0, transition: 'opacity 0.3s ease' }}
+                >
+                    <Tooltip text={t('menu.openHelp')} placement="top-left">
+                        <button
+                            type="button"
+                            aria-label={t('menu.openHelp')}
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }}
+                            onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const { emit } = await import('@tauri-apps/api/event');
+                                await emit('fusen:open_settings', { tab: 'help' });
+                            }}
+                            className="pointer-events-auto h-[20px] w-[20px] rounded-full text-[12px] leading-none flex items-center justify-center font-bold select-none text-gray-500/60 hover:text-gray-700 hover:bg-white/70 transition-colors"
+                            style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
+                        >
+                            ?
+                        </button>
+                    </Tooltip>
+                </div>
+            )}
 
             {/* タグ表示エリア（右下、ホバー時のみ） */}
             {!isEditing && !isMinimized && (

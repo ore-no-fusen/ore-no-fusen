@@ -10,7 +10,7 @@
 "use client"
 
 import React, { useState, useMemo, useEffect } from "react"
-import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck } from "lucide-react"
+import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
 import { useSettings, type AppSettings } from "@/lib/settings-store"
@@ -37,6 +37,30 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
     useEffect(() => {
         if (defaultTab) setActiveSection(defaultTab)
     }, [defaultTab])
+
+    useEffect(() => {
+        let cancelled = false
+
+        const resizeWindow = async () => {
+            try {
+                const { getCurrentWindow } = await import("@tauri-apps/api/window")
+                const { LogicalSize } = await import("@tauri-apps/api/dpi")
+                const win = getCurrentWindow()
+                if (cancelled || win.label !== "main") return
+                await win.setSize(new LogicalSize(1100, 760))
+                await win.center()
+            } catch {
+                // Browser preview does not have a Tauri window.
+            }
+        }
+
+        resizeWindow()
+        const retry = window.setTimeout(resizeWindow, 150)
+        return () => {
+            cancelled = true
+            window.clearTimeout(retry)
+        }
+    }, [])
 
     // ★ここで「倉庫番」を呼び出し！
     // loading: 読み込み中かどうか
@@ -742,87 +766,120 @@ function AboutSection({ t }: { t: (key: any) => string }) {
     )
 }
 
+/**
+ * ステップ用ミニ絵: 付箋 + Ctrl+N キー / ピン留め / iPhoneへ送る
+ * SVG ベースで lucide のアイコンと組み合わせる軽量な装飾。
+ */
+function StepIllustration({ kind }: { kind: 'write' | 'pin' | 'iphone' }) {
+    if (kind === 'write') {
+        return (
+            <svg viewBox="0 0 120 80" className="h-16 w-24" aria-hidden="true">
+                {/* 既存の付箋 */}
+                <rect x="6" y="14" width="58" height="52" rx="2" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1.5" />
+                <line x1="14" y1="32" x2="50" y2="32" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="14" y1="40" x2="44" y2="40" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="14" y1="48" x2="48" y2="48" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round" />
+                {/* + ボタンと指差し矢印 */}
+                <g>
+                    <circle cx="58" cy="16" r="9" fill="#1F2937" />
+                    <line x1="54" y1="16" x2="62" y2="16" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="58" y1="12" x2="58" y2="20" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+                </g>
+                {/* 新しく出てくる付箋（うっすら） */}
+                <rect x="74" y="28" width="40" height="40" rx="2" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1.5" opacity="0.55" transform="rotate(6 94 48)" />
+                {/* 矢印 */}
+                <path d="M68 22 Q 76 14 84 26" stroke="#16A34A" strokeWidth="2" fill="none" strokeLinecap="round" />
+                <path d="M81 23 L 86 26 L 82 30" stroke="#16A34A" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        );
+    }
+    if (kind === 'pin') {
+        return (
+            <svg viewBox="0 0 120 80" className="h-16 w-24" aria-hidden="true">
+                <rect x="14" y="22" width="60" height="40" rx="2" fill="#DBEAFE" stroke="#3B82F6" strokeWidth="1.5" transform="rotate(-3 44 42)" />
+                <rect x="36" y="14" width="50" height="40" rx="2" fill="#FECACA" stroke="#EF4444" strokeWidth="1.5" transform="rotate(4 61 34)" />
+                {/* 画鋲（ピン）の絵 */}
+                <g transform="translate(86 6) rotate(20)">
+                    <circle cx="6" cy="6" r="6" fill="#FBBF24" stroke="#92400E" strokeWidth="1.2" />
+                    <circle cx="6" cy="6" r="2" fill="#92400E" />
+                    <line x1="6" y1="11" x2="6" y2="22" stroke="#475569" strokeWidth="1.8" strokeLinecap="round" />
+                </g>
+                {/* 「最前面」マーク */}
+                <text x="96" y="62" fontSize="8" fill="#475569" fontWeight="700">TOP</text>
+            </svg>
+        );
+    }
+    // iphone
+    return (
+        <svg viewBox="0 0 140 80" className="h-16 w-28" aria-hidden="true">
+            <rect x="10" y="20" width="44" height="40" rx="2" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1.5" transform="rotate(-3 32 40)" />
+            <line x1="18" y1="34" x2="46" y2="32" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="18" y1="42" x2="42" y2="40" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M62 40 L88 40 M82 34 L88 40 L82 46" stroke="#16A34A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            <rect x="98" y="14" width="28" height="52" rx="6" fill="#1F2937" />
+            <rect x="101" y="20" width="22" height="40" rx="2" fill="#F9FAFB" />
+            <rect x="104" y="24" width="16" height="6" rx="1" fill="#FEF3C7" />
+            <rect x="104" y="33" width="16" height="6" rx="1" fill="#BBF7D0" opacity="0.8" />
+            <rect x="104" y="42" width="16" height="6" rx="1" fill="#DBEAFE" opacity="0.6" />
+        </svg>
+    );
+}
+
 function HelpSection({ t }: { t: (key: any) => string }) {
-    const sections = [
+    const onboardingSteps = [
         {
-            icon: <Type className="h-5 w-5" />,
-            title: t('settings.help.write.title'),
-            items: [
-                t('settings.help.write.newNote'),
-                t('settings.help.write.edit'),
-                t('settings.help.write.checkbox'),
-                t('settings.help.write.format'),
-                t('settings.help.write.image'),
-            ],
+            kind: 'write' as const,
+            title: t('settings.help.onboarding.step1.title'),
+            body: t('settings.help.onboarding.step1.body'),
+            hint: t('settings.help.onboarding.step1.hint'),
         },
         {
-            icon: <FolderOpen className="h-5 w-5" />,
-            title: t('settings.help.organize.title'),
-            items: [
-                t('settings.help.organize.color'),
-                t('settings.help.organize.tag'),
-                t('settings.help.organize.archive'),
-                t('settings.help.organize.delete'),
-            ],
+            kind: 'pin' as const,
+            title: t('settings.help.onboarding.step2.title'),
+            body: t('settings.help.onboarding.step2.body'),
+            hint: t('settings.help.onboarding.step2.hint'),
+        },
+        {
+            kind: 'iphone' as const,
+            title: t('settings.help.onboarding.step3.title'),
+            body: t('settings.help.onboarding.step3.body'),
+            hint: t('settings.help.onboarding.step3.hint'),
+        },
+    ];
+
+    const goals = [
+        {
+            icon: <Sparkles className="h-5 w-5" />,
+            tone: 'amber' as const,
+            label: t('settings.help.goals.write.label'),
+            body: t('settings.help.goals.write.body'),
+        },
+        {
+            icon: <Pin className="h-5 w-5" />,
+            tone: 'rose' as const,
+            label: t('settings.help.goals.keep.label'),
+            body: t('settings.help.goals.keep.body'),
         },
         {
             icon: <Smartphone className="h-5 w-5" />,
-            title: t('settings.help.iphone.title'),
-            items: [
-                t('settings.help.iphone.send'),
-                t('settings.help.iphone.receive'),
-                t('settings.help.iphone.photos'),
-                t('settings.help.iphone.drive'),
-            ],
+            tone: 'emerald' as const,
+            label: t('settings.help.goals.iphone.label'),
+            body: t('settings.help.goals.iphone.body'),
         },
         {
-            icon: <MousePointer2 className="h-5 w-5" />,
-            title: t('settings.help.context.title'),
-            items: [
-                t('settings.help.context.openFolder'),
-                t('settings.help.context.color'),
-                t('settings.help.context.alarm'),
-                t('settings.help.context.iphone'),
-            ],
+            icon: <Search className="h-5 w-5" />,
+            tone: 'sky' as const,
+            label: t('settings.help.goals.findLater.label'),
+            body: t('settings.help.goals.findLater.body'),
         },
         {
-            icon: <Keyboard className="h-5 w-5" />,
-            title: t('settings.help.shortcuts.title'),
-            items: [
-                t('settings.help.shortcuts.newNote'),
-                t('settings.help.shortcuts.delete'),
-                t('settings.help.shortcuts.capture'),
-            ],
-        },
-        {
-            icon: <ShieldCheck className="h-5 w-5" />,
-            title: t('settings.help.safety.title'),
-            items: [
-                t('settings.help.safety.local'),
-                t('settings.help.safety.backup'),
-                t('settings.help.safety.iphoneLoss'),
-                t('settings.help.safety.trash'),
-            ],
+            icon: <AlertCircle className="h-5 w-5" />,
+            tone: 'slate' as const,
+            label: t('settings.help.goals.trouble.label'),
+            body: t('settings.help.goals.trouble.body'),
         },
     ];
-    const workflows = [
-        {
-            title: t('settings.help.workflow.newNote.title'),
-            body: t('settings.help.workflow.newNote.body'),
-        },
-        {
-            title: t('settings.help.workflow.sendIphone.title'),
-            body: t('settings.help.workflow.sendIphone.body'),
-        },
-        {
-            title: t('settings.help.workflow.photoNote.title'),
-            body: t('settings.help.workflow.photoNote.body'),
-        },
-        {
-            title: t('settings.help.workflow.organize.title'),
-            body: t('settings.help.workflow.organize.body'),
-        },
-    ];
+
     const contextRows = [
         ['settings.help.contextTable.openFolder.action', 'settings.help.contextTable.openFolder.when'],
         ['settings.help.contextTable.newNote.action', 'settings.help.contextTable.newNote.when'],
@@ -849,69 +906,89 @@ function HelpSection({ t }: { t: (key: any) => string }) {
         ['settings.help.troubleTable.deleted.issue', 'settings.help.troubleTable.deleted.check'],
     ];
 
+    const goalToneStyle: Record<'amber' | 'rose' | 'emerald' | 'sky' | 'slate', { dot: string; iconBg: string; iconText: string; }> = {
+        amber: { dot: 'bg-amber-400', iconBg: 'bg-amber-100', iconText: 'text-amber-700' },
+        rose: { dot: 'bg-rose-400', iconBg: 'bg-rose-100', iconText: 'text-rose-700' },
+        emerald: { dot: 'bg-emerald-400', iconBg: 'bg-emerald-100', iconText: 'text-emerald-700' },
+        sky: { dot: 'bg-sky-400', iconBg: 'bg-sky-100', iconText: 'text-sky-700' },
+        slate: { dot: 'bg-slate-400', iconBg: 'bg-slate-100', iconText: 'text-slate-700' },
+    };
+
     return (
-        <div className="space-y-6">
-            <div className="mb-8">
+        <div className="space-y-8">
+            <div className="mb-2">
                 <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.help.title')}</h2>
                 <p className="text-gray-500 text-sm">{t('settings.help.description')}</p>
             </div>
             <Separator />
 
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
-                <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700">
-                        <HelpCircle className="h-5 w-5" />
+            {/* ===== B案: 最初の5分（縦並びオンボーディング） ===== */}
+            <section>
+                <div className="mb-4">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">{t('settings.help.onboarding.title')}</span>
                     </div>
-                    <div>
-                        <h3 className="font-bold text-slate-900">{t('settings.help.quickStart.title')}</h3>
-                        <p className="mt-1 text-sm leading-6 text-slate-600">{t('settings.help.quickStart.body')}</p>
-                    </div>
+                    <p className="mt-1 text-base font-bold text-slate-900">{t('settings.help.onboarding.subtitle')}</p>
                 </div>
-            </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white p-5">
-                <div className="mb-4 flex items-center gap-2 text-slate-900">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
-                        <HelpCircle className="h-5 w-5" />
-                    </div>
-                    <h3 className="text-base font-bold">{t('settings.help.workflow.title')}</h3>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                    {workflows.map((workflow, index) => (
-                        <div key={workflow.title} className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                            <div className="mb-2 flex items-center gap-2">
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
+                <ol className="space-y-3">
+                    {onboardingSteps.map((step, index) => (
+                        <li
+                            key={step.title}
+                            className="relative rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                        >
+                            <div className="flex items-start gap-5">
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white">
                                     {index + 1}
                                 </span>
-                                <h4 className="text-sm font-bold text-slate-900">{workflow.title}</h4>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="text-lg font-bold text-slate-900">{step.title}</h3>
+                                    <p className="mt-2 text-sm leading-7 text-slate-600">{step.body}</p>
+                                    <p className="mt-2 text-xs text-slate-400">{step.hint}</p>
+                                </div>
+                                <div className="hidden sm:flex shrink-0 items-center justify-center">
+                                    <StepIllustration kind={step.kind} />
+                                </div>
                             </div>
-                            <p className="text-sm leading-6 text-slate-600">{workflow.body}</p>
-                        </div>
+                        </li>
                     ))}
+                </ol>
+            </section>
+
+            {/* ===== A案: やりたいことから探す（アコーディオン） ===== */}
+            <section>
+                <div className="mb-4">
+                    <span className="text-xs font-bold uppercase tracking-[0.2em] text-sky-700">{t('settings.help.goals.title')}</span>
+                    <p className="mt-1 text-base font-bold text-slate-900">{t('settings.help.goals.subtitle')}</p>
                 </div>
-            </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-                {sections.map((section) => (
-                    <div key={section.title} className="rounded-lg border border-slate-200 bg-white p-5">
-                        <div className="mb-3 flex items-center gap-2 text-slate-900">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
-                                {section.icon}
-                            </div>
-                            <h3 className="text-base font-bold">{section.title}</h3>
-                        </div>
-                        <ul className="space-y-2">
-                            {section.items.map((item) => (
-                                <li key={item} className="flex gap-2 text-sm leading-6 text-slate-600">
-                                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
-                                    <span>{item}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                ))}
-            </div>
+                <div className="space-y-2">
+                    {goals.map((goal) => {
+                        const tone = goalToneStyle[goal.tone];
+                        return (
+                            <details
+                                key={goal.label}
+                                className="group rounded-lg border border-slate-200 bg-white open:border-slate-300 open:shadow-sm transition-all"
+                            >
+                                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 hover:bg-slate-50/70 rounded-lg">
+                                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${tone.iconBg} ${tone.iconText}`}>
+                                        {goal.icon}
+                                    </span>
+                                    <span className="flex-1 text-sm font-bold text-slate-900">{goal.label}</span>
+                                    <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
+                                </summary>
+                                <div className="px-4 pb-4 pt-1 pl-16">
+                                    <p className="text-sm leading-7 text-slate-600">{goal.body}</p>
+                                </div>
+                            </details>
+                        );
+                    })}
+                </div>
+            </section>
 
+            <Separator />
+
+            {/* ===== 既存の参照テーブル群（情報を求める人向けに残す） ===== */}
             <HelpTable
                 title={t('settings.help.contextTable.title')}
                 firstHeader={t('settings.help.table.action')}

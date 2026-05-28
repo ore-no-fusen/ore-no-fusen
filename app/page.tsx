@@ -776,8 +776,8 @@ function OrchestratorContent() {
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
 
         if (win.label === 'main') {
-          console.log('[MAIN_WINDOW_DEBUG] Opening settings - resizing to 900x700');
-          await win.setSize(new LogicalSize(900, 700));
+          console.log('[MAIN_WINDOW_DEBUG] Opening settings - resizing to 1100x760');
+          await win.setSize(new LogicalSize(1100, 760));
           await win.center();
           await win.show();
           await win.unminimize();
@@ -881,7 +881,7 @@ function OrchestratorContent() {
           const { getCurrentWindow } = await import('@tauri-apps/api/window');
           const win = getCurrentWindow();
           const { LogicalSize } = await import('@tauri-apps/api/dpi');
-          await win.setSize(new LogicalSize(900, 700));
+          await win.setSize(new LogicalSize(1100, 760));
           await win.center();
           await win.show();
           await win.setFocus();

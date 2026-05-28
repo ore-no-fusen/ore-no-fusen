@@ -46,7 +46,7 @@ export function useMainWindowResizePolicy({
 
                 if (!isCheckingSetup && (setupRequired || isSettingsOpen)) {
                     // セットアップ中 or 設定画面表示中 → 大きく表示
-                    await win.setSize(new LogicalSize(900, 700));
+                    await win.setSize(new LogicalSize(1100, 760));
                     await win.center();
                     await win.show();
                     await win.setFocus();

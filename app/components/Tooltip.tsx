@@ -7,7 +7,7 @@ type TooltipProps = {
     text: string;
     hint?: string;
     children: React.ReactNode;
-    placement?: 'top' | 'top-right' | 'top-right-shifted' | 'top-right-arrow-shifted';
+    placement?: 'top' | 'top-left' | 'top-right' | 'top-right-shifted' | 'top-right-arrow-shifted';
 };
 
 type TipPos = {
@@ -37,6 +37,9 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
 
         if (placement === 'top-right') {
             setTipPos({ top: base, right: window.innerWidth - r.right, flipDown });
+        } else if (placement === 'top-left') {
+            // ボタンの左端基準で吹き出しを右方向に伸ばす（画面左端での切れを防ぐ）
+            setTipPos({ top: base, left: r.left, flipDown });
         } else if (placement === 'top-right-arrow-shifted') {
             setTipPos({ top: base, right: window.innerWidth - r.right, flipDown, arrowOffset: 18 });
         } else if (placement === 'top-right-shifted') {
@@ -73,7 +76,12 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
             animation: 'tooltip-pop 0.1s ease-out both',
             top: tipPos.top,
             ...(tipPos.left !== undefined
-                ? { left: tipPos.left, transform: tipPos.flipDown ? 'translateX(-50%)' : 'translateX(-50%) translateY(-100%)' }
+                ? {
+                    left: tipPos.left,
+                    transform: placement === 'top-left'
+                        ? (tipPos.flipDown ? 'none' : 'translateY(-100%)')
+                        : (tipPos.flipDown ? 'translateX(-50%)' : 'translateX(-50%) translateY(-100%)'),
+                }
                 : { right: tipPos.right, transform: tipPos.flipDown ? 'none' : 'translateY(-100%)' }),
             transformOrigin: tipPos.flipDown ? 'top center' : 'bottom center',
         }

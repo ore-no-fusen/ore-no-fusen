@@ -196,7 +196,7 @@ const filePathFacet = Facet.define<string, string>({
     combine: (values: readonly string[]) => values[0] || ''
 });
 
-interface RichTextEditorProps {
+export interface RichTextEditorProps {
     value: string;
     onChange: (value: string) => void;
     filePath: string; // [NEW] Needed for relative path resolution

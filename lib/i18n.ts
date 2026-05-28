@@ -166,6 +166,33 @@ export const translations = {
         'settings.help.troubleTable.deleted.issue': '付箋を消してしまった',
         'settings.help.troubleTable.deleted.check': '削除した付箋はごみ箱に移動します。保存先フォルダやバックアップも確認してください。',
 
+        // 設定画面 - 使い方（B案: 最初の5分オンボーディング）
+        'settings.help.onboarding.title': '最初の5分',
+        'settings.help.onboarding.subtitle': 'これだけ覚えれば、もう使えます。',
+        'settings.help.onboarding.step1.title': '1枚、書いてみる。',
+        'settings.help.onboarding.step1.body': '付箋の右上の「＋」ボタンを押すと、新しい付箋が出ます。クリックして打ち始めて、終わったら付箋の外をクリック。それで保存されます。',
+        'settings.help.onboarding.step1.hint': 'キー操作が好きなら Ctrl + N でも作れます（0.3 秒）。右クリック →「新規メモ」もあります。',
+        'settings.help.onboarding.step2.title': '消えないように、留める。',
+        'settings.help.onboarding.step2.body': '大事な付箋は、右クリック → 「色変更」で色を変える。さらに「ロックだぜ」モードにすると、他のウィンドウの上に常に出ます。',
+        'settings.help.onboarding.step2.hint': '机の上に「貼ってある」感覚です。',
+        'settings.help.onboarding.step3.title': 'iPhone へ持ち出す。（任意）',
+        'settings.help.onboarding.step3.body': '右クリック → 「iPhone に表示」。iPhone のホーム画面に追加した PWA で見られます。最初の 1 回だけ Google Drive 接続が必要です。',
+        'settings.help.onboarding.step3.hint': '設定 →「iPhone 連携」から準備します。',
+
+        // 設定画面 - 使い方（A案: やりたいことから探す）
+        'settings.help.goals.title': 'やりたいことから探す',
+        'settings.help.goals.subtitle': '困りごとは、たぶんこのどれか。',
+        'settings.help.goals.write.label': 'ぱっと書いて貼りたい',
+        'settings.help.goals.write.body': 'Ctrl + N で 0.3 秒。クリックして打って、外をクリックすれば保存されます。Markdown・チェックボックス・画像貼り付けが使えます。',
+        'settings.help.goals.keep.label': '大事な付箋を、消えないようにしたい',
+        'settings.help.goals.keep.body': '色を変えて目立たせる。「ロックだぜ」モードで最前面に固定する。アラームをセットして、指定時刻に通知する。再起動しても付箋はそこに残ります。',
+        'settings.help.goals.iphone.label': 'iPhone でも見たい',
+        'settings.help.goals.iphone.body': '右クリック →「iPhone に表示」で送信。iPhone 側はホーム画面に追加した PWA で受信します。Google Drive を経由（あなた自身の Drive）。開発者のサーバーは通りません。',
+        'settings.help.goals.findLater.label': 'あとで見返したい',
+        'settings.help.goals.findLater.body': 'タグを付ける。全文検索（Ctrl+F）で探す。「タグフォルダへ整理」でデスクトップを片付ける。削除はごみ箱に移動するだけなので戻せます。',
+        'settings.help.goals.trouble.label': 'うまく動かないときは',
+        'settings.help.goals.trouble.body': 'iPhone に届かない / 写真が足りない / Drive 接続が切れた、などは下の「困ったときの確認表」を見てください。それでも解決しないときは「ご意見・ご要望」から連絡をください。',
+
         // コンテキストメニュー
         'menu.openFolder': 'フォルダを開く',
         'menu.newNote': '新規メモ',
@@ -432,6 +459,33 @@ export const translations = {
         'settings.help.troubleTable.drive.check': 'Finish the connection flow, then resume sending. The note you were sending is kept.',
         'settings.help.troubleTable.deleted.issue': 'A note was deleted by mistake',
         'settings.help.troubleTable.deleted.check': 'Deleted notes move to the trash. Also check the storage folder and backups.',
+
+        // Settings - Help (B: First 5 Minutes Onboarding)
+        'settings.help.onboarding.title': 'First 5 Minutes',
+        'settings.help.onboarding.subtitle': 'Learn these, and you are ready.',
+        'settings.help.onboarding.step1.title': 'Write one note.',
+        'settings.help.onboarding.step1.body': 'Click the "+" button at the top-right of any note. A new note appears. Click it, start typing, and click outside to save.',
+        'settings.help.onboarding.step1.hint': 'Prefer keys? Ctrl + N works too (0.3 s). Right-click → "New Note" also works.',
+        'settings.help.onboarding.step2.title': 'Pin it so it stays.',
+        'settings.help.onboarding.step2.body': 'Right-click a note → "Change Color" to make it stand out. Turn on "Lock-Da-Ze" mode and it stays on top of every other window.',
+        'settings.help.onboarding.step2.hint': 'It feels like stuck on your desk.',
+        'settings.help.onboarding.step3.title': 'Carry it to iPhone. (Optional)',
+        'settings.help.onboarding.step3.body': 'Right-click → "Send to iPhone". View it in the PWA you added to your iPhone Home Screen. You\'ll connect your Google Drive once on the first setup.',
+        'settings.help.onboarding.step3.hint': 'Set it up in Settings → "iPhone Sync".',
+
+        // Settings - Help (A: Find by Goal)
+        'settings.help.goals.title': 'Find by what you want to do',
+        'settings.help.goals.subtitle': 'Your question is probably one of these.',
+        'settings.help.goals.write.label': 'I want to write something fast',
+        'settings.help.goals.write.body': 'Ctrl + N opens a note in 0.3 seconds. Click, type, click outside to save. Markdown, checkboxes, and pasted images all work.',
+        'settings.help.goals.keep.label': 'I want important notes to stay visible',
+        'settings.help.goals.keep.body': 'Change the color. Turn on "Lock-Da-Ze" mode to keep it on top. Set an alarm to ping you later. Notes survive restarts.',
+        'settings.help.goals.iphone.label': 'I want to see notes on iPhone',
+        'settings.help.goals.iphone.body': 'Right-click → "Send to iPhone". Receive in the PWA on your iPhone Home Screen. Routed through your own Google Drive — no developer servers in between.',
+        'settings.help.goals.findLater.label': 'I want to find notes later',
+        'settings.help.goals.findLater.body': 'Add tags. Full-text search with Ctrl + F. Use "Move to Tag Folder" to clean up the desktop. Deletes go to trash, so they can come back.',
+        'settings.help.goals.trouble.label': 'Something is not working',
+        'settings.help.goals.trouble.body': 'iPhone delivery, missing photos, Drive disconnects — see the Troubleshooting table below. If that does not help, please reach out via "Feedback".',
 
         // Context Menu
         'menu.openFolder': 'Open Folder',
