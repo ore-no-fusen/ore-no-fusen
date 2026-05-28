@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'New version (e.g. 2.10.4)'
+        description: 'New version (e.g. 3.5.0 or 3.5 — missing parts auto-fill to .0)'
         required: true
         type: string
       message:
@@ -15,6 +15,8 @@ on:
 jobs:
   do-release:
     runs-on: ubuntu-latest
+    env:
+      RAW_VERSION: ${{ github.event.inputs.version }}
     steps:
       - name: Generate GitHub App Token
         id: generate-token
@@ -40,6 +42,53 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Normalize and validate version
+        id: ver
+        run: |
+          RAW="${RAW_VERSION}"
+          # 余分な空白と先頭の v / V を除去
+          RAW="$(echo "$RAW" | tr -d '[:space:]')"
+          RAW="${RAW#v}"
+          RAW="${RAW#V}"
+
+          # 数字とドットだけ許可（前段で v は剥がしてある）
+          if ! [[ "$RAW" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "❌ Version must be digits and dots only (e.g. 3.5.0, 3.5, 3). Got: '${RAW_VERSION}'"
+            exit 1
+          fi
+
+          # 不足部分を .0 で補完して MAJOR.MINOR.PATCH に揃える
+          IFS='.' read -r MA MI PA <<< "$RAW"
+          MI="${MI:-0}"
+          PA="${PA:-0}"
+          VERSION="${MA}.${MI}.${PA}"
+
+          # 現バージョンより小さい/同じなら止める
+          CURRENT="$(node -e "console.log(require('./package.json').version)")"
+          if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Current package.json version is not in MAJOR.MINOR.PATCH form: '$CURRENT'"
+            exit 1
+          fi
+
+          IFS='.' read -r CMA CMI CPA <<< "$CURRENT"
+          # sort -V で順序を判定（CURRENT が VERSION 以上なら NG）
+          smaller_or_equal=$(printf '%s\n%s\n' "$VERSION" "$CURRENT" | sort -V | head -1)
+          if [ "$VERSION" = "$CURRENT" ]; then
+            echo "❌ Version unchanged. Current is already $CURRENT."
+            exit 1
+          fi
+          if [ "$smaller_or_equal" = "$VERSION" ]; then
+            echo "❌ New version ($VERSION) must be greater than current ($CURRENT)."
+            exit 1
+          fi
+
+          echo "Input:      ${RAW_VERSION}"
+          echo "Normalized: ${VERSION}"
+          echo "Current:    ${CURRENT}"
+          echo "✅ Will release v${VERSION}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Merge develop → main
         run: |
           git checkout main
@@ -47,7 +96,6 @@ jobs:
 
       - name: Update versions
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
@@ -60,7 +108,6 @@ jobs:
 
       - name: Verify versions
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           PKG=$(node -e "console.log(require('./package.json').version)")
           CARGO=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
           LOCK=$(node -e "
@@ -80,7 +127,6 @@ jobs:
 
       - name: Commit and push main
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           MSG="${{ github.event.inputs.message }}"
           COMMIT_MSG="${MSG:-chore: バージョンを v${VERSION} に更新}"
           git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock package-lock.json
@@ -89,7 +135,6 @@ jobs:
 
       - name: Create and push tag
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           git tag "v${VERSION}"
           git push origin "v${VERSION}"
 
