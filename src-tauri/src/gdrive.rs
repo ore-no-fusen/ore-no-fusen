@@ -17,9 +17,11 @@ use crate::state::{AppState, ProConfig};
 // ------ 定数 ------
 const FOLDER_NAME: &str = "ore-no-fusen";
 const PUSH_CONFIG_FILE: &str = "push_devices.json";
+const PC_DEVICES_FILE: &str = "pc_devices.json";
 #[allow(dead_code)]
 const NOTE_FILE: &str = "notes_to_iphone.json";
 const TOKEN_FILE: &str = "gdrive_token.json";
+const PC_DEVICE_FILE: &str = "pc_device.json";
 
 // ------ 型定義 ------
 #[derive(Serialize, Deserialize, Clone)]
@@ -37,6 +39,29 @@ struct DriveFileList {
 #[derive(Deserialize, Clone)]
 struct DriveFile {
     id: String,
+}
+
+#[derive(Deserialize)]
+struct DriveFileDetailList {
+    files: Vec<DriveFileDetail>,
+}
+
+#[derive(Deserialize)]
+struct DriveFileDetail {
+    id: String,
+    name: String,
+    #[serde(rename = "modifiedTime")]
+    modified_time: Option<String>,
+    size: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DriveTempMediaFile {
+    pub id: String,
+    pub name: String,
+    pub modified_time: Option<String>,
+    pub size: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +106,22 @@ pub struct PushDeviceInfo {
     pub google_account_photo: Option<String>,
 }
 
+/// iPhone PWA が送信先として表示する PC 情報
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PcDeviceInfo {
+    pub pc_id: String,
+    pub pc_name: String,
+    pub registered_at: String,
+    pub updated_at: String,
+    pub google_account_email: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PcDevicesJson {
+    pcs: Option<Vec<PcDeviceInfo>>,
+}
+
 #[derive(Deserialize)]
 struct PushConfigKeys {
     p256dh: String,
@@ -109,6 +150,73 @@ pub fn get_token_path() -> PathBuf {
         std::fs::create_dir_all(&dir).ok();
     }
     dir.join(TOKEN_FILE)
+}
+
+fn get_pc_device_path() -> PathBuf {
+    get_token_path().with_file_name(PC_DEVICE_FILE)
+}
+
+fn default_pc_name() -> String {
+    std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "このPC".to_string())
+}
+
+/// 旧バージョンの pc_device.json から pc_id を取り出して破棄する。
+/// 戻り値: Some(pc_id) なら移行成功、None なら旧ファイル無し。
+fn migrate_legacy_pc_device_file() -> Option<String> {
+    let path = get_pc_device_path();
+    if !path.exists() {
+        return None;
+    }
+    let pc_id = std::fs::read_to_string(&path).ok()
+        .and_then(|raw| serde_json::from_str::<PcDeviceInfo>(&raw).ok())
+        .and_then(|pc| {
+            let id = pc.pc_id.trim().to_string();
+            if id.is_empty() { None } else { Some(id) }
+        });
+    // 旧ファイルは settings.json に移したのでもう不要。読み終わったら削除する
+    let _ = std::fs::remove_file(&path);
+    pc_id
+}
+
+/// この PC を識別する PcDeviceInfo を返す。
+/// 取得順: settings.json の pc_id → 旧 pc_device.json（自動移行）→ 新規生成。
+pub fn load_or_create_pc_device() -> Result<PcDeviceInfo, String> {
+    let mut settings = crate::storage::load_settings()?;
+
+    let mut needs_save = false;
+    let pc_id = if let Some(id) = settings.pc_id.as_ref().filter(|s| !s.trim().is_empty()).cloned() {
+        id
+    } else if let Some(legacy_id) = migrate_legacy_pc_device_file() {
+        settings.pc_id = Some(legacy_id.clone());
+        needs_save = true;
+        legacy_id
+    } else {
+        let new_id = uuid::Uuid::new_v4().to_string();
+        settings.pc_id = Some(new_id.clone());
+        needs_save = true;
+        new_id
+    };
+
+    if needs_save {
+        crate::storage::save_settings(&settings)?;
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    Ok(PcDeviceInfo {
+        pc_id,
+        pc_name: default_pc_name(),
+        registered_at: now.clone(),
+        updated_at: now,
+        google_account_email: None,
+    })
+}
+
+pub fn local_pc_id() -> Result<String, String> {
+    Ok(load_or_create_pc_device()?.pc_id)
 }
 
 /// Google OAuth2 PKCE フロー。ブラウザを開き、認証後に SavedToken を保存して返す。
@@ -625,6 +733,58 @@ pub async fn delete_file_by_name(
     Ok(())
 }
 
+/// Drive の ore-no-fusen フォルダに残った一時メディアファイルを列挙する。
+pub async fn list_temp_media_files(
+    client: &Client,
+    access_token: &str,
+) -> Result<Vec<DriveTempMediaFile>, String> {
+    let folder_id = ensure_folder(client, access_token).await?;
+    let q = format!("'{}' in parents and trashed=false", folder_id);
+    let resp: DriveFileDetailList = client
+        .get("https://www.googleapis.com/drive/v3/files")
+        .bearer_auth(access_token)
+        .query(&[
+            ("q", q.as_str()),
+            ("fields", "files(id,name,modifiedTime,size)"),
+            ("pageSize", "1000"),
+        ])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(resp
+        .files
+        .into_iter()
+        .filter(|f| f.name.starts_with("fusen_img_") || f.name.starts_with("fusen_video_"))
+        .map(|f| DriveTempMediaFile {
+            id: f.id,
+            name: f.name,
+            modified_time: f.modified_time,
+            size: f.size.and_then(|s| s.parse::<u64>().ok()),
+        })
+        .collect())
+}
+
+pub async fn delete_file_by_id(
+    client: &Client,
+    access_token: &str,
+    file_id: &str,
+) -> Result<(), String> {
+    let resp = client
+        .delete(format!("https://www.googleapis.com/drive/v3/files/{}", file_id))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() && resp.status().as_u16() != 404 {
+        return Err(format!("Drive delete failed: {}", resp.status()));
+    }
+    Ok(())
+}
+
 /// push_config を Drive からダウンロードして AppState.pro_configs に設定する
 /// 新スキーマ: { "devices": [...] }
 /// 旧スキーマ後方互換: { "endpoint": "...", "keys": {...} }
@@ -682,6 +842,68 @@ pub async fn list_push_devices(client: &Client) -> Result<Vec<PushDeviceInfo>, S
         google_account_name: d.google_account_name,
         google_account_photo: d.google_account_photo,
     }).collect())
+}
+
+pub async fn list_pc_devices(client: &Client) -> Result<Vec<PcDeviceInfo>, String> {
+    let token = get_access_token(client).await?;
+    let value = match download_json(client, &token, PC_DEVICES_FILE).await {
+        Ok(value) => value,
+        Err(e) if e.contains("File not found") => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let parsed: PcDevicesJson = serde_json::from_value(value)
+        .map_err(|e| format!("pc_devices parse error: {}", e))?;
+    Ok(parsed.pcs.unwrap_or_default())
+}
+
+pub async fn register_pc_device(client: &Client) -> Result<PcDeviceInfo, String> {
+    let token = get_access_token(client).await?;
+    let mut pc = load_or_create_pc_device()?;
+    pc.updated_at = chrono::Utc::now().to_rfc3339();
+    if let Ok(account) = get_google_account(client).await {
+        pc.google_account_email = account.email_address;
+    }
+
+    let mut pcs = match download_json(client, &token, PC_DEVICES_FILE).await {
+        Ok(value) => serde_json::from_value::<PcDevicesJson>(value)
+            .map_err(|e| format!("pc_devices parse error: {}", e))?
+            .pcs
+            .unwrap_or_default(),
+        Err(e) if e.contains("File not found") => Vec::new(),
+        Err(e) => return Err(e),
+    };
+
+    if let Some(existing) = pcs.iter_mut().find(|existing| existing.pc_id == pc.pc_id) {
+        *existing = pc.clone();
+    } else {
+        pcs.push(pc.clone());
+    }
+    upload_json(client, &token, PC_DEVICES_FILE, &serde_json::json!({ "pcs": pcs })).await?;
+    // pc_id は settings.json に保存済み（load_or_create_pc_device 内）。updated_at / email は Drive 上で管理。
+    Ok(pc)
+}
+
+/// pc_devices.json から特定 PC を削除して Drive に書き戻す
+pub async fn delete_pc_device_by_id(client: &Client, pc_id: &str) -> Result<(), String> {
+    let token = get_access_token(client).await?;
+
+    let mut pcs = match download_json(client, &token, PC_DEVICES_FILE).await {
+        Ok(value) => serde_json::from_value::<PcDevicesJson>(value)
+            .map_err(|e| format!("pc_devices parse error: {}", e))?
+            .pcs
+            .unwrap_or_default(),
+        Err(e) if e.contains("File not found") => Vec::new(),
+        Err(e) => return Err(e),
+    };
+
+    let before = pcs.len();
+    pcs.retain(|p| p.pc_id != pc_id);
+    if pcs.len() == before {
+        // 削除対象が無い場合もエラーにはしない（既に消えている）
+        return Ok(());
+    }
+    upload_json(client, &token, PC_DEVICES_FILE, &serde_json::json!({ "pcs": pcs })).await?;
+    Ok(())
 }
 
 /// push_devices.json から特定デバイスを削除して Drive に書き戻す

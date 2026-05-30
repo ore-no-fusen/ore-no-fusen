@@ -10,7 +10,7 @@
 "use client"
 
 import React, { useState, useMemo, useEffect } from "react"
-import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight } from "lucide-react"
+import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
 import { useSettings, type AppSettings } from "@/lib/settings-store"
@@ -29,9 +29,13 @@ type SettingsPageProps = {
     onClose?: () => void;
     defaultTab?: string;
     iphoneDriveDisconnected?: boolean;
+    /** 保存先フォルダが消えていて再セットアップ中の通知を出すか */
+    baseFolderMissing?: boolean;
+    /** 失われた保存先フォルダのパス（バナー表示用） */
+    missingFolderPath?: string | null;
 }
 
-export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnected }: SettingsPageProps) {
+export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnected, baseFolderMissing, missingFolderPath }: SettingsPageProps) {
     const [activeSection, setActiveSection] = useState(defaultTab ?? "general")
 
     useEffect(() => {
@@ -121,6 +125,8 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 return <HelpSection t={t} />
             case "feedback":
                 return <FeedbackSection t={t} />
+            case "advanced":
+                return <AdvancedSection settings={settings} t={t} />
             default:
                 return <GeneralSection settings={settings} onUpdate={updateSetting} t={t} />
         }
@@ -184,12 +190,50 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         isActive={activeSection === "feedback"}
                         onClick={() => setActiveSection("feedback")}
                     />
+
+                    <div className="pt-4 pb-2">
+                        <Separator />
+                        <span className="text-xs font-bold text-muted-foreground px-4 py-2 block uppercase tracking-wider">{t('settings.advanced.section')}</span>
+                    </div>
+                    <SidebarItem
+                        icon={<Wrench className="mr-3 h-4 w-4" />}
+                        label={t('settings.advanced.menuTitle')}
+                        isActive={activeSection === "advanced"}
+                        onClick={() => setActiveSection("advanced")}
+                    />
                 </nav>
             </aside>
 
             {/* メインコンテンツエリア */}
             <main className="flex flex-1 flex-col overflow-hidden bg-white">
                 <div className="flex-1 overflow-y-auto p-10 pt-12">
+                    {baseFolderMissing && (
+                        <div className="mb-8 rounded-lg border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">!</div>
+                            <div className="flex-1 text-sm leading-6 text-amber-900">
+                                <p className="font-bold text-amber-900 mb-1">
+                                    保存先フォルダが見つかりませんでした。
+                                </p>
+                                {missingFolderPath && (
+                                    <p className="text-xs text-amber-800 mb-2 font-mono break-all">
+                                        以前の場所: {missingFolderPath}
+                                    </p>
+                                )}
+                                <p className="text-amber-800 mb-3">
+                                    自動で新しいデフォルトフォルダを作成しました。場所を変更したいときは「データ管理」タブから保存先を編集してください。
+                                </p>
+                                {activeSection !== 'data' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveSection('data')}
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100 transition-colors"
+                                    >
+                                        データ管理タブを開く →
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
                     {renderContent()}
                 </div>
 
@@ -762,6 +806,40 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                     {t('settings.about.copyright')}
                 </div>
             </div>
+
+            {/* 関連リンク */}
+            <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+                <h3 className="text-base font-bold text-gray-900 mb-1">{t('settings.about.relatedLinks')}</h3>
+                <p className="text-xs text-gray-500 mb-4">{t('settings.about.relatedLinksDesc')}</p>
+                <div className="grid sm:grid-cols-2 gap-2">
+                    {[
+                        { key: 'settings.about.links.manga', url: 'https://github.com/ore-no-fusen/ore-no-fusen/wiki' },
+                        { key: 'settings.about.links.discussions', url: 'https://github.com/ore-no-fusen/ore-no-fusen/discussions' },
+                        { key: 'settings.about.links.releases', url: 'https://github.com/ore-no-fusen/ore-no-fusen/releases/latest' },
+                        { key: 'settings.about.links.docs', url: 'https://ore-no-fusen.github.io/ore-no-fusen/' },
+                        { key: 'settings.about.links.privacy', url: 'https://ore-no-fusen.github.io/ore-no-fusen/100_PRIVACY.html' },
+                        { key: 'settings.about.links.terms', url: 'https://ore-no-fusen.github.io/ore-no-fusen/101_TERMS.html' },
+                    ].map((link) => (
+                        <button
+                            key={link.key}
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    const { open } = await import('@tauri-apps/plugin-shell')
+                                    await open(link.url)
+                                } catch (e) {
+                                    console.error('Failed to open link:', e)
+                                    window.open(link.url, '_blank')
+                                }
+                            }}
+                            className="rounded-md border border-slate-200 bg-white px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 transition-colors"
+                        >
+                            <ExternalLink className="h-4 w-4 shrink-0 text-slate-500" />
+                            <span className="flex-1 text-sm font-medium text-slate-900">{t(link.key)}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
         </div>
     )
 }
@@ -1231,6 +1309,802 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
     )
 }
 
+// --- 管理者ツール（Advanced） ---
+type PcDeviceItem = {
+    pcId: string;
+    pcName: string;
+    registeredAt: string;
+    updatedAt: string;
+    googleAccountEmail?: string;
+};
+
+type PushDeviceItem = {
+    device_id: string;
+    endpoint: string;
+    registered_at: string;
+    device_name?: string;
+    google_account_email?: string;
+    google_account_name?: string;
+};
+
+type DriveQueueCounts = { to_iphone: number; from_iphone: number };
+
+function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any) => string }) {
+    const [driveFolderLoading, setDriveFolderLoading] = useState(false)
+
+    // 接続状態
+    const [connLoading, setConnLoading] = useState(false)
+    const [connError, setConnError] = useState<string | null>(null)
+    const [pcs, setPcs] = useState<PcDeviceItem[] | null>(null)
+    const [iphones, setIphones] = useState<PushDeviceItem[] | null>(null)
+    const [queueCounts, setQueueCounts] = useState<DriveQueueCounts | null>(null)
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+
+    const [deletingId, setDeletingId] = useState<string | null>(null)
+
+    // JSON ビューア
+    const [jsonViewer, setJsonViewer] = useState<{
+        titleKey: string;
+        filename: string;
+        fallback?: string;
+    } | null>(null)
+    const [jsonText, setJsonText] = useState<string>('')
+    const [jsonLoading, setJsonLoading] = useState(false)
+    const [jsonError, setJsonError] = useState<string | null>(null)
+    const [jsonCopied, setJsonCopied] = useState(false)
+
+    const openJsonViewer = (titleKey: string, filename: string, fallback?: string) => {
+        setJsonViewer({ titleKey, filename, fallback })
+    }
+
+    const closeJsonViewer = () => {
+        setJsonViewer(null)
+        setJsonText('')
+        setJsonError(null)
+        setJsonCopied(false)
+    }
+
+    const loadJson = async () => {
+        if (!jsonViewer) return
+        setJsonLoading(true)
+        setJsonError(null)
+        setJsonCopied(false)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const text = await invoke<string>('fusen_read_drive_json', {
+                filename: jsonViewer.filename,
+                fallbackFilename: jsonViewer.fallback ?? null,
+            })
+            setJsonText(text)
+        } catch (e) {
+            console.error('[AdvancedSection] read drive json failed:', e)
+            setJsonError(String(e))
+        } finally {
+            setJsonLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        if (jsonViewer) loadJson()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [jsonViewer])
+
+    const copyJson = async () => {
+        try {
+            await navigator.clipboard.writeText(jsonText)
+            setJsonCopied(true)
+            setTimeout(() => setJsonCopied(false), 1500)
+        } catch (e) {
+            console.error('[AdvancedSection] copy json failed:', e)
+        }
+    }
+
+    const jsonFiles: Array<{ titleKey: string; filename: string; fallback?: string }> = [
+        { titleKey: 'settings.advanced.external.viewJson.pcDevices', filename: 'pc_devices.json' },
+        { titleKey: 'settings.advanced.external.viewJson.pushDevices', filename: 'push_devices.json' },
+        { titleKey: 'settings.advanced.external.viewJson.pushKeys', filename: 'push_keys.json' },
+        { titleKey: 'settings.advanced.external.viewJson.notesToIphone', filename: 'notes_to_iphone.json', fallback: 'fusen_note.json' },
+        { titleKey: 'settings.advanced.external.viewJson.notesFromIphone', filename: 'notes_from_iphone.json', fallback: 'fusen_from_iphone.json' },
+    ]
+
+    // Drive 一時ファイル（旧 iPhone 連携タブから移動）
+    const [driveTempSummary, setDriveTempSummary] = useState<DriveTempCleanupSummary | null>(null)
+    const [driveTempLoading, setDriveTempLoading] = useState(false)
+    const [driveTempMessage, setDriveTempMessage] = useState<string | null>(null)
+
+    // 診断情報（コピー用）
+    const [diagText, setDiagText] = useState<string>('')
+    const [diagLoading, setDiagLoading] = useState(false)
+    const [diagCopied, setDiagCopied] = useState(false)
+
+    const buildDiagnostics = async () => {
+        setDiagLoading(true)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const { getVersion } = await import('@tauri-apps/api/app')
+
+            // アプリバージョン
+            let appVersion = '?'
+            try { appVersion = await getVersion() } catch { /* ignore */ }
+
+            // OS / バージョン / アーキ
+            let osType = '?'; let osVer = '?'; let osArch = '?'
+            try {
+                const os = await import('@tauri-apps/plugin-os')
+                osType = await os.type()
+                osVer = await os.version()
+                osArch = await os.arch()
+            } catch { /* ignore */ }
+
+            // base_path 実在
+            const basePath = settings.base_path || ''
+            let baseExists: boolean | null = null
+            if (basePath.trim() !== '') {
+                try {
+                    baseExists = await invoke<boolean>('fusen_path_exists', { path: basePath })
+                } catch { baseExists = null }
+            }
+
+            // 付箋ファイル数（base_path から）
+            let noteCount: number | null = null
+            if (baseExists) {
+                try {
+                    const notes = await invoke<unknown[]>('fusen_list_notes', { folderPath: basePath })
+                    noteCount = notes.length
+                } catch { noteCount = null }
+            }
+
+            // Drive 接続（pcs/iphones/queueCounts は接続状態セクションで取得済みのものを使う）
+            let driveEmail: string | null = null
+            try {
+                const account = await invoke<{ emailAddress?: string }>('fusen_get_google_account')
+                driveEmail = account?.emailAddress ?? null
+            } catch { driveEmail = null }
+
+            const lines = [
+                '=== 俺の付箋 診断情報 ===',
+                `アプリ: ${appVersion}`,
+                `OS: ${osType} ${osVer} ${osArch}`,
+                `言語: ${settings.language}`,
+                `保存先: ${basePath || '(未設定)'}`,
+                `保存先フォルダ実在: ${baseExists === null ? '(未確認)' : baseExists ? 'はい' : 'いいえ'}`,
+                `付箋ファイル数: ${noteCount === null ? '(未取得)' : `${noteCount} 件`}`,
+                `pc_id: ${settings.pc_id ?? '(未生成)'}`,
+                `設定ファイル: %APPDATA%\\OreNoFusen\\settings.json`,
+                `ログフォルダ: %LOCALAPPDATA%\\ore-no-fusen\\`,
+                `Drive 接続: ${driveEmail ? `接続済み (${driveEmail})` : '未接続'}`,
+                `登録 PC: ${pcs === null ? '(未取得)' : `${pcs.length} 台`}`,
+                `登録 iPhone / iPad: ${iphones === null ? '(未取得)' : `${iphones.length} 台`}`,
+                `iPhone への未送信: ${queueCounts === null ? '(未取得)' : `${queueCounts.to_iphone} 件`}`,
+                `PC への未受信: ${queueCounts === null ? '(未取得)' : `${queueCounts.from_iphone} 件`}`,
+                `取得時刻: ${new Date().toISOString()}`,
+                '=========================',
+            ]
+            setDiagText(lines.join('\n'))
+        } catch (e) {
+            console.error('[AdvancedSection] build diagnostics failed:', e)
+            setDiagText(`診断情報の取得に失敗しました: ${e}`)
+        } finally {
+            setDiagLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        // 接続状態が取得されたら診断情報も自動で組み立てる
+        if (!connLoading && pcs !== null && iphones !== null) {
+            buildDiagnostics()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pcs, iphones, queueCounts, connLoading])
+
+    const copyDiag = async () => {
+        try {
+            await navigator.clipboard.writeText(diagText)
+            setDiagCopied(true)
+            setTimeout(() => setDiagCopied(false), 1500)
+        } catch (e) {
+            console.error('[AdvancedSection] copy diag failed:', e)
+        }
+    }
+
+    const loadDriveTempSummary = async () => {
+        setDriveTempLoading(true)
+        setDriveTempMessage(null)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const summary = await invoke<DriveTempCleanupSummary>('fusen_list_drive_temp_files')
+            setDriveTempSummary(summary)
+        } catch (e) {
+            setDriveTempMessage('一時ファイルの確認に失敗しました: ' + String(e))
+        } finally {
+            setDriveTempLoading(false)
+        }
+    }
+
+    const cleanupDriveTempFiles = async () => {
+        if (!driveTempSummary || driveTempSummary.oldCount === 0) return
+        if (!confirm(`${driveTempSummary.retentionDays}日以上前の一時ファイル ${driveTempSummary.oldCount} 個を削除します。よろしいですか？`)) return
+        setDriveTempLoading(true)
+        setDriveTempMessage(null)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const summary = await invoke<DriveTempCleanupSummary>('fusen_cleanup_drive_temp_files')
+            setDriveTempSummary(summary)
+            setDriveTempMessage(`削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
+        } catch (e) {
+            setDriveTempMessage('一時ファイルの削除に失敗しました: ' + String(e))
+        } finally {
+            setDriveTempLoading(false)
+        }
+    }
+
+    const deletePc = async (pcId: string, pcName: string) => {
+        const confirmMsg = (t('settings.advanced.connection.deleteConfirm') as string).replace('{name}', pcName)
+        if (!window.confirm(confirmMsg)) return
+        setDeletingId(pcId)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            await invoke('fusen_delete_pc_device', { pcId })
+            await fetchConnectionStatus()
+        } catch (e) {
+            console.error('[AdvancedSection] delete pc failed:', e)
+            alert(`${t('settings.advanced.connection.deleteFailed')}: ${e}`)
+        } finally {
+            setDeletingId(null)
+        }
+    }
+
+    const deleteIphone = async (deviceId: string, deviceName: string) => {
+        const confirmMsg = (t('settings.advanced.connection.deleteConfirm') as string).replace('{name}', deviceName)
+        if (!window.confirm(confirmMsg)) return
+        setDeletingId(deviceId)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            await invoke('fusen_delete_push_device', { deviceId })
+            await fetchConnectionStatus()
+        } catch (e) {
+            console.error('[AdvancedSection] delete iphone failed:', e)
+            alert(`${t('settings.advanced.connection.deleteFailed')}: ${e}`)
+        } finally {
+            setDeletingId(null)
+        }
+    }
+
+    const fetchConnectionStatus = async () => {
+        setConnLoading(true)
+        setConnError(null)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const [pcList, iphoneList, counts] = await Promise.all([
+                invoke<PcDeviceItem[]>('fusen_list_pc_devices'),
+                invoke<PushDeviceItem[]>('fusen_list_push_devices'),
+                invoke<DriveQueueCounts>('fusen_get_drive_queue_counts'),
+            ])
+            setPcs(pcList)
+            setIphones(iphoneList)
+            setQueueCounts(counts)
+            setLastUpdated(new Date())
+        } catch (e) {
+            console.error('[AdvancedSection] fetch connection failed:', e)
+            setConnError(String(e))
+        } finally {
+            setConnLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        fetchConnectionStatus()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    const formatTime = (d: Date) => {
+        const pad = (n: number) => n.toString().padStart(2, '0')
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }
+    const formatDate = (iso: string) => {
+        try {
+            const d = new Date(iso)
+            if (isNaN(d.getTime())) return iso
+            return formatTime(d)
+        } catch {
+            return iso
+        }
+    }
+
+    const openFolder = async (path: string | null | undefined, fallbackCommand?: string) => {
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            if (fallbackCommand) {
+                await invoke(fallbackCommand)
+            } else if (path && path.trim() !== '') {
+                await invoke('fusen_open_containing_folder', { path })
+            }
+        } catch (e) {
+            console.error('[AdvancedSection] open folder failed:', e)
+            alert(`フォルダを開けませんでした: ${e}`)
+        }
+    }
+
+    const openUrl = async (url: string) => {
+        try {
+            const { open } = await import('@tauri-apps/plugin-shell')
+            await open(url)
+        } catch (e) {
+            console.error('[AdvancedSection] open url failed:', e)
+            window.open(url, '_blank')
+        }
+    }
+
+    const openDriveFolder = async () => {
+        setDriveFolderLoading(true)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const folderId = await invoke<string>('fusen_get_drive_folder_id')
+            await openUrl(`https://drive.google.com/drive/folders/${folderId}`)
+        } catch (e) {
+            console.error('[AdvancedSection] open drive folder failed:', e)
+            alert(t('settings.advanced.external.driveFolderUnavailable'))
+        } finally {
+            setDriveFolderLoading(false)
+        }
+    }
+
+    const notesPath = settings.base_path ?? ''
+    const hasNotesPath = notesPath.trim() !== ''
+
+    return (
+        <div className="space-y-8">
+            <div className="mb-2">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.advanced.title')}</h2>
+                <p className="text-gray-500 text-sm">{t('settings.advanced.description')}</p>
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" />
+                <p className="text-sm leading-6 text-amber-900">{t('settings.advanced.warning')}</p>
+            </div>
+
+            {/* 📁 データの場所 */}
+            <section>
+                <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                        <HardDrive className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-base font-bold">{t('settings.advanced.locations.title')}</h3>
+                </div>
+                <div className="space-y-2">
+                    {/* 付箋フォルダ */}
+                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-900">{t('settings.advanced.locations.notes')}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{t('settings.advanced.locations.notesDesc')}</p>
+                            <p className="text-xs text-slate-600 mt-1 font-mono break-all">
+                                {hasNotesPath ? notesPath : t('settings.advanced.locations.notSet')}
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!hasNotesPath}
+                            onClick={() => openFolder(notesPath)}
+                            className="shrink-0"
+                        >
+                            <FolderOpen className="h-4 w-4 mr-1.5" />
+                            {t('settings.advanced.locations.open')}
+                        </Button>
+                    </div>
+                    {/* 設定フォルダ */}
+                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-900">{t('settings.advanced.locations.settings')}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{t('settings.advanced.locations.settingsDesc')}</p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openFolder(null, 'fusen_open_settings_folder')}
+                            className="shrink-0"
+                        >
+                            <FolderOpen className="h-4 w-4 mr-1.5" />
+                            {t('settings.advanced.locations.open')}
+                        </Button>
+                    </div>
+                    {/* ログフォルダ */}
+                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-900">{t('settings.advanced.locations.logs')}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{t('settings.advanced.locations.logsDesc')}</p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openFolder(null, 'fusen_open_log_folder')}
+                            className="shrink-0"
+                        >
+                            <FolderOpen className="h-4 w-4 mr-1.5" />
+                            {t('settings.advanced.locations.open')}
+                        </Button>
+                    </div>
+                </div>
+            </section>
+
+            {/* ☁️ 外部サービス */}
+            <section>
+                <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                        <Cloud className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-base font-bold">{t('settings.advanced.external.title')}</h3>
+                </div>
+                <div className="space-y-2">
+                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-900">{t('settings.advanced.external.driveFolder')}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{t('settings.advanced.external.driveFolderDesc')}</p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={driveFolderLoading}
+                            onClick={openDriveFolder}
+                            className="shrink-0"
+                        >
+                            <ExternalLink className="h-4 w-4 mr-1.5" />
+                            {driveFolderLoading ? t('settings.advanced.external.opening') : t('settings.advanced.external.open')}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* JSON ビューア */}
+                <div className="mt-4">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                        {t('settings.advanced.external.viewJson.title')}
+                    </p>
+                    <div className="space-y-2">
+                        {jsonFiles.map((f) => (
+                            <div key={f.filename} className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex items-center gap-3">
+                                <FileJson className="h-4 w-4 shrink-0 text-slate-500" />
+                                <p className="flex-1 text-sm text-slate-700 min-w-0 truncate">{t(f.titleKey)}</p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openJsonViewer(f.titleKey, f.filename, f.fallback)}
+                                    className="shrink-0"
+                                >
+                                    {t('settings.advanced.external.viewJson.view')}
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* JSON モーダル */}
+            {jsonViewer && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+                    onClick={closeJsonViewer}
+                >
+                    <div
+                        className="bg-white rounded-xl shadow-2xl max-w-3xl w-[90vw] max-h-[85vh] flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* ヘッダ */}
+                        <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-200">
+                            <FileJson className="h-5 w-5 text-slate-600" />
+                            <h3 className="flex-1 text-sm font-bold text-slate-900 min-w-0 truncate">
+                                {t(jsonViewer.titleKey)}
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={closeJsonViewer}
+                                aria-label={t('settings.advanced.external.viewJson.close')}
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        {/* 本文 */}
+                        <div className="flex-1 overflow-auto p-4 bg-slate-900">
+                            {jsonLoading ? (
+                                <p className="text-sm text-slate-400">{t('settings.advanced.external.viewJson.loading')}</p>
+                            ) : jsonError ? (
+                                <pre className="text-xs text-red-300 font-mono whitespace-pre-wrap break-all">{jsonError}</pre>
+                            ) : (
+                                <pre className="text-xs text-emerald-200 font-mono whitespace-pre-wrap break-all leading-6">{jsonText}</pre>
+                            )}
+                        </div>
+
+                        {/* フッタ */}
+                        <div className="flex items-center gap-2 px-5 py-3 border-t border-slate-200 bg-slate-50">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={loadJson}
+                                disabled={jsonLoading}
+                            >
+                                <RefreshCw className={`h-4 w-4 mr-1.5 ${jsonLoading ? 'animate-spin' : ''}`} />
+                                {t('settings.advanced.external.viewJson.refresh')}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={copyJson}
+                                disabled={jsonLoading || !jsonText}
+                            >
+                                <Copy className="h-4 w-4 mr-1.5" />
+                                {jsonCopied
+                                    ? t('settings.advanced.external.viewJson.copied')
+                                    : t('settings.advanced.external.viewJson.copy')}
+                            </Button>
+                            <div className="flex-1" />
+                            <Button
+                                variant="default"
+                                size="sm"
+                                onClick={closeJsonViewer}
+                            >
+                                {t('settings.advanced.external.viewJson.close')}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 🩺 診断情報 */}
+            <section>
+                <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                        <Activity className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-base font-bold flex-1">{t('settings.advanced.diagnostics.title')}</h3>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={buildDiagnostics}
+                        disabled={diagLoading}
+                    >
+                        <RefreshCw className={`h-4 w-4 mr-1.5 ${diagLoading ? 'animate-spin' : ''}`} />
+                        {diagLoading ? t('settings.advanced.diagnostics.loading') : t('settings.advanced.diagnostics.refresh')}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={copyDiag}
+                        disabled={diagLoading || !diagText}
+                    >
+                        <Copy className="h-4 w-4 mr-1.5" />
+                        {diagCopied
+                            ? t('settings.advanced.diagnostics.copied')
+                            : t('settings.advanced.diagnostics.copy')}
+                    </Button>
+                </div>
+                <p className="text-xs text-slate-500 mb-2">{t('settings.advanced.diagnostics.description')}</p>
+                <pre className="rounded-lg border border-slate-200 bg-slate-900 text-emerald-200 p-4 text-xs font-mono whitespace-pre-wrap break-all leading-6 max-h-72 overflow-auto">
+                    {diagLoading && !diagText ? t('settings.advanced.diagnostics.loading') : diagText}
+                </pre>
+            </section>
+
+            {/* 🔄 接続状態 */}
+            <section>
+                <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                        <RefreshCw className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-base font-bold flex-1">{t('settings.advanced.connection.title')}</h3>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchConnectionStatus}
+                        disabled={connLoading}
+                    >
+                        <RefreshCw className={`h-4 w-4 mr-1.5 ${connLoading ? 'animate-spin' : ''}`} />
+                        {connLoading ? t('settings.advanced.connection.loading') : t('settings.advanced.connection.refresh')}
+                    </Button>
+                </div>
+
+                {connError ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                        <p className="font-bold mb-1">{t('settings.advanced.connection.fetchError')}</p>
+                        <p className="text-xs text-amber-800">{t('settings.advanced.connection.notConnected')}</p>
+                        <p className="text-xs text-amber-700 mt-2 font-mono break-all">{connError}</p>
+                    </div>
+                ) : (
+                    <>
+                        {/* 送受信キュー */}
+                        <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 mb-4">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">{t('settings.advanced.queue.title')}</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
+                                        <Send className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-slate-500 truncate">{t('settings.advanced.queue.toIphone')}</p>
+                                        <p className="text-2xl font-black text-slate-900 leading-tight">
+                                            {queueCounts ? queueCounts.to_iphone : '—'}
+                                            <span className="text-xs text-slate-500 font-normal ml-1">{t('settings.advanced.queue.unit')}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-sky-50 text-sky-700">
+                                        <Inbox className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-slate-500 truncate">{t('settings.advanced.queue.fromIphone')}</p>
+                                        <p className="text-2xl font-black text-slate-900 leading-tight">
+                                            {queueCounts ? queueCounts.from_iphone : '—'}
+                                            <span className="text-xs text-slate-500 font-normal ml-1">{t('settings.advanced.queue.unit')}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* PC 一覧 */}
+                        <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 mb-3">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
+                                {(t('settings.advanced.connection.pcs') as string).replace('{count}', String(pcs?.length ?? 0))}
+                            </p>
+                            {pcs && pcs.length > 0 ? (
+                                <ul className="space-y-2">
+                                    {pcs.map((pc) => (
+                                        <li key={pc.pcId} className={`flex items-start gap-3 rounded-md px-3 py-2.5 ${pc.pcId === settings.pc_id ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'bg-slate-50'}`}>
+                                            <Laptop className={`h-5 w-5 shrink-0 mt-0.5 ${pc.pcId === settings.pc_id ? 'text-emerald-700' : 'text-slate-600'}`} />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-bold text-slate-900 truncate flex items-center gap-2">
+                                                    <span className="truncate">{pc.pcName || t('settings.advanced.connection.unnamed')}</span>
+                                                    {pc.pcId === settings.pc_id && (
+                                                        <span className="shrink-0 inline-flex items-center rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+                                                            {t('settings.advanced.connection.thisPc')}
+                                                        </span>
+                                                    )}
+                                                </p>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    {pc.googleAccountEmail ? `${pc.googleAccountEmail} ・ ` : ''}
+                                                    {t('settings.advanced.connection.registeredAt')}: {formatDate(pc.registeredAt)}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 mt-0.5 font-mono break-all">
+                                                    ID: {pc.pcId}
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => deletePc(pc.pcId, pc.pcName || t('settings.advanced.connection.unnamed'))}
+                                                disabled={deletingId === pc.pcId}
+                                                title={t('settings.advanced.connection.deleteTooltip')}
+                                                aria-label={t('settings.advanced.connection.deleteTooltip')}
+                                                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-sm text-slate-500 italic">{t('settings.advanced.connection.pcsEmpty')}</p>
+                            )}
+                        </div>
+
+                        {/* iPhone 一覧 */}
+                        <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 mb-3">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
+                                {(t('settings.advanced.connection.iphones') as string).replace('{count}', String(iphones?.length ?? 0))}
+                            </p>
+                            {iphones && iphones.length > 0 ? (
+                                <ul className="space-y-2">
+                                    {iphones.map((d) => (
+                                        <li key={d.device_id} className="flex items-start gap-3 rounded-md bg-slate-50 px-3 py-2.5">
+                                            <Smartphone className="h-5 w-5 shrink-0 text-slate-600 mt-0.5" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-bold text-slate-900 truncate">{d.device_name || t('settings.advanced.connection.unnamed')}</p>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    {d.google_account_email ? `${d.google_account_email}${d.google_account_name ? ` (${d.google_account_name})` : ''} ・ ` : ''}
+                                                    {t('settings.advanced.connection.registeredAt')}: {formatDate(d.registered_at)}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 mt-0.5 font-mono break-all">
+                                                    ID: {d.device_id}
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => deleteIphone(d.device_id, d.device_name || t('settings.advanced.connection.unnamed'))}
+                                                disabled={deletingId === d.device_id}
+                                                title={t('settings.advanced.connection.deleteTooltip')}
+                                                aria-label={t('settings.advanced.connection.deleteTooltip')}
+                                                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-sm text-slate-500 italic">{t('settings.advanced.connection.iphonesEmpty')}</p>
+                            )}
+                        </div>
+
+                        {lastUpdated && (
+                            <p className="text-xs text-slate-400 text-right">
+                                {t('settings.advanced.connection.lastUpdated')}: {formatTime(lastUpdated)}
+                            </p>
+                        )}
+                    </>
+                )}
+            </section>
+
+            {/* 🧹 Drive 一時ファイル */}
+            <section>
+                <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                        <Trash2 className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-base font-bold flex-1">Drive 一時ファイル</h3>
+                    <Button variant="outline" size="sm" onClick={loadDriveTempSummary} disabled={driveTempLoading}>
+                        {driveTempLoading ? '確認中...' : '確認'}
+                    </Button>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
+                    <p className="text-xs text-slate-500">
+                        送受信後に Drive に残った画像・動画の一時ファイルだけを確認・削除します。設定ファイルやキューは触りません。
+                    </p>
+
+                    {driveTempSummary && (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-3">
+                                <div className="text-xs font-medium text-gray-500">残っている一時ファイル</div>
+                                <div className="mt-1 text-2xl font-bold text-gray-900">
+                                    {driveTempSummary.totalCount} 個
+                                </div>
+                                <div className="text-xs text-gray-400">{formatBytes(driveTempSummary.totalBytes)}</div>
+                            </div>
+                            <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-3">
+                                <div className="text-xs font-medium text-gray-500">
+                                    {driveTempSummary.retentionDays}日以上前の削除候補
+                                </div>
+                                <div className="mt-1 text-2xl font-bold text-gray-900">
+                                    {driveTempSummary.oldCount} 個
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                    {formatBytes(driveTempSummary.oldBytes)}
+                                    {driveTempSummary.skippedReferencedCount > 0 && ` / 使用中 ${driveTempSummary.skippedReferencedCount} 個は保護`}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {!driveTempSummary && !driveTempLoading && (
+                        <p className="text-sm text-slate-400 italic">「確認」を押すと一時ファイルの状況を取得します。</p>
+                    )}
+
+                    {driveTempSummary && (
+                        <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs text-gray-400">
+                                対象: fusen_img_* / fusen_video_* のみ。notes_* と push_* は残します。
+                            </p>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={cleanupDriveTempFiles}
+                                disabled={driveTempLoading || driveTempSummary.oldCount === 0}
+                                className="border-red-200 text-red-600 hover:bg-red-50"
+                            >
+                                古い一時ファイルを削除
+                            </Button>
+                        </div>
+                    )}
+
+                    {driveTempMessage && (
+                        <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-gray-600">{driveTempMessage}</p>
+                    )}
+                </div>
+            </section>
+
+        </div>
+    )
+}
+
 // --- デバイス管理 ---
 type PushDevice = {
     device_id: string;
@@ -1246,6 +2120,17 @@ type GoogleAccount = {
     emailAddress?: string;
     displayName?: string;
     photoLink?: string;
+}
+
+type DriveTempCleanupSummary = {
+    totalCount: number;
+    oldCount: number;
+    totalBytes: number;
+    oldBytes: number;
+    deletedCount: number;
+    failedCount: number;
+    skippedReferencedCount: number;
+    retentionDays: number;
 }
 
 function endpointLabel(endpoint: string): string {
@@ -1264,6 +2149,18 @@ function formatDate(iso: string): string {
 }
 
 // --- iPhone連携セクション ---
+function formatBytes(bytes: number): string {
+    if (!bytes) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB']
+    let value = bytes
+    let unit = 0
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024
+        unit += 1
+    }
+    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
+}
+
 const PWA_URL = 'https://ore-no-fusen.vercel.app/viewer'
 
 function QrCodeCanvas({ url }: { url: string }) {
@@ -1374,59 +2271,26 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
     const registeredDeviceEmails = (devices ?? [])
         .map((d) => d.google_account_email)
         .filter((email): email is string => !!email)
-    const hasIphoneAccountInfo = registeredDeviceEmails.length > 0
     const hasAccountMismatch = !!pcEmail && registeredDeviceEmails.some((email) => email.toLowerCase() !== pcEmail)
     const hasRegisteredDevice = (devices ?? []).length > 0
     const pcConnected = status === 'connected' && !!pcAccount?.emailAddress
     const accountsReady = pcConnected && hasRegisteredDevice && !hasAccountMismatch
+    const sendEnabled = settings.iphone_send_enabled
 
-    const setupSteps = [
-        {
-            no: 1,
-            title: 'PC側でGoogleドライブに接続',
-            detail: pcAccount?.emailAddress ?? 'このPCでGoogleドライブに接続し、iPhone通知用の鍵をDriveに準備します。',
-            done: pcConnected,
-            status: pcConnected ? '接続済み' : status === 'loading' ? '確認中' : '未接続',
-        },
-        {
-            no: 2,
-            title: 'iPhone版をホーム画面に追加',
-            detail: 'QRコードをSafariで開き、ホーム画面に追加します。',
-            done: hasRegisteredDevice,
-            status: hasRegisteredDevice ? '完了' : '未確認',
-        },
-        {
-            no: 3,
-            title: 'iPhone側でGoogleドライブに接続',
-            detail: hasIphoneAccountInfo ? registeredDeviceEmails[0] : '通知デバイスが登録済みです。Googleアカウントのメールは未取得ですが、送信できます。',
-            done: hasRegisteredDevice,
-            status: hasRegisteredDevice ? '接続済み' : '未取得',
-        },
-        {
-            no: 4,
-            title: '同じGoogleアカウントで送信準備',
-            detail: hasAccountMismatch
-                ? 'PCとiPhoneで別のGoogleアカウントが使われています。'
-                : accountsReady
-                    ? '付箋を右クリックして「iPhoneに送る」を使えます。'
-                    : 'PC側とiPhone側の接続がそろうと送信できます。',
-            done: accountsReady,
-            status: hasAccountMismatch ? '不一致' : accountsReady ? 'OK' : '未完了',
-            warning: hasAccountMismatch,
-        },
-    ]
-
+    // 「次に何をすればよいか」の一文。状況に応じて切り替える
     const nextAction = (() => {
-        if (hasAccountMismatch) {
-            return 'PCとiPhoneで同じGoogleアカウントに再接続してください。'
-        }
-        if (!pcConnected) {
-            return 'まずこのPCでGoogleドライブに接続してください。iPhone通知用の鍵をDriveに準備します。'
-        }
-        if (!hasRegisteredDevice) {
-            return '次にiPhoneでQRコードを開き、「俺の付箋」をホーム画面に追加してください。'
-        }
-        return '準備完了です。付箋を右クリックして「iPhoneに送る」を押してください。'
+        if (!sendEnabled) return '上の「iPhone送信を有効にする」をONにしてください。'
+        if (hasAccountMismatch) return 'PCとiPhoneで同じGoogleアカウントに再接続してください。'
+        if (!pcConnected) return 'Step 1：PCをGoogleドライブに接続してください。'
+        if (!hasRegisteredDevice) return 'Step 2：iPhoneでQRコードを開き、「ホーム画面に追加」してください。'
+        return '準備完了です。付箋を右クリック →「iPhoneに表示」で送れます。'
+    })()
+
+    const overallStatus: { label: string; tone: 'gray' | 'amber' | 'green' } = (() => {
+        if (!sendEnabled) return { label: 'OFF', tone: 'gray' }
+        if (hasAccountMismatch) return { label: '確認が必要', tone: 'amber' }
+        if (accountsReady) return { label: '準備完了', tone: 'green' }
+        return { label: 'セットアップ中', tone: 'gray' }
     })()
 
     const handleCopy = () => {
@@ -1438,17 +2302,18 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
 
     return (
         <div className="space-y-6">
-            <div className="mb-8">
+            <div className="mb-4">
                 <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">iPhone連携</h2>
-                <p className="text-gray-500 text-sm">付箋をiPhoneのロック画面に送信するための設定です。</p>
+                <p className="text-gray-500 text-sm">PCで書いた付箋をiPhoneに送れるようにします。</p>
             </div>
             <Separator />
 
+            {/* ① ON/OFF スイッチ */}
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-5">
                 <div className="min-w-0 pr-6">
                     <Label className="text-base font-bold text-gray-900">{t('settings.iphone.sendEnabled')}</Label>
                     <p className="mt-1 text-sm text-gray-500">
-                        {t('settings.iphone.sendEnabledDesc')}
+                        OFFのとき：付箋の右クリックメニューに「iPhoneに表示」は出ません。
                     </p>
                 </div>
                 <Switch
@@ -1457,212 +2322,179 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                 />
             </div>
 
-            {/* --- iPhone版 QRコードパネル --- */}
-            <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-5">
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900">iPhoneに送る準備</h3>
-                        <p className="text-sm text-gray-500 mt-1">初回は上から順に進めてください。次に必要な作業だけが分かるように表示します。</p>
-                    </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        accountsReady
-                            ? 'bg-green-100 text-green-700'
-                            : hasAccountMismatch
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-slate-100 text-slate-600'
-                    }`}>
-                        {accountsReady ? '準備完了' : hasAccountMismatch ? '確認が必要' : 'セットアップ中'}
-                    </span>
-                </div>
-
-                <div className="grid gap-3">
-                    {setupSteps.map((step) => (
-                        <div
-                            key={step.no}
-                            className={`flex gap-3 rounded-md border px-4 py-3 ${
-                                step.warning
-                                    ? 'border-amber-200 bg-amber-50'
-                                    : step.done
-                                        ? 'border-green-100 bg-green-50'
-                                        : 'border-gray-100 bg-gray-50'
-                            }`}
-                        >
-                            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                                step.warning
-                                    ? 'bg-amber-500 text-white'
-                                    : step.done
-                                        ? 'bg-green-500 text-white'
-                                        : 'bg-white text-gray-500 border border-gray-200'
-                            }`}>
-                                {step.done ? '✓' : step.no}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="text-sm font-semibold text-gray-800">{step.title}</p>
-                                    <span className={`shrink-0 text-xs font-medium ${
-                                        step.warning ? 'text-amber-700' : step.done ? 'text-green-700' : 'text-gray-400'
-                                    }`}>
-                                        {step.status}
-                                    </span>
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1 break-all">{step.detail}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <div className={`rounded-md px-4 py-3 text-sm ${
-                    hasAccountMismatch
-                        ? 'bg-amber-100 text-amber-800'
-                        : accountsReady
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-blue-50 text-blue-800'
-                }`}>
-                    <span className="font-semibold">次にやること: </span>{nextAction}
-                </div>
-            </div>
-
-            {/* --- Google Drive接続パネル --- */}
-            <div className="rounded-lg border p-6 space-y-4">
-                <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-800">Googleドライブ接続</h3>
-                    {iphoneDriveDisconnected && (
-                        <span className="h-2 w-2 rounded-full bg-red-500 flex-shrink-0" title="Driveに接続されていません" />
-                    )}
-                </div>
-                <p className="text-sm text-gray-500">PCとiPhoneのデータ中継にGoogleドライブを使用します。最初にこのPC側の接続を完了してください。</p>
-
-                {status === 'loading' && (
-                    <p className="text-sm text-gray-400">確認中...</p>
-                )}
-
-                {status === 'connected' && (
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                            <span className="text-green-600 font-semibold">✅ 接続済み</span>
-                            <Button variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting}>
-                                再接続
-                            </Button>
-                        </div>
-                        <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
-                            <div className="text-xs font-medium text-gray-500">PC側 Googleアカウント</div>
-                            <div className="mt-1 flex items-center gap-2 text-sm text-gray-800">
-                                {pcAccount?.photoLink && (
-                                    <img src={pcAccount.photoLink} alt="" className="h-5 w-5 rounded-full" />
-                                )}
-                                <span className="font-medium">{pcAccount?.emailAddress ?? '取得中...'}</span>
-                                {pcAccount?.displayName && (
-                                    <span className="text-xs text-gray-400">{pcAccount.displayName}</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {status === 'disconnected' && (
-                    <Button onClick={handleConnect} disabled={isConnecting}>
-                        {isConnecting ? (
-                            <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />接続中...</>
-                        ) : (
-                            <><Smartphone className="mr-2 h-4 w-4" />Googleドライブに接続</>
-                        )}
-                    </Button>
-                )}
-
-                {errorMsg && (
-                    <p className="text-sm text-amber-600 bg-amber-50 rounded p-3">{errorMsg}</p>
-                )}
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
-                <h3 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
-                    <Smartphone className="h-4 w-4 text-slate-500" />
-                    iPhone版を開く
-                </h3>
-                <p className="text-xs text-gray-500 mb-4">
-                    iPhoneのSafariでQRコードを読み取るか、URLをコピーして開いてください。
-                </p>
-                <div className="flex items-start gap-6">
-                    {/* QRコード */}
-                    <div className="flex-shrink-0">
-                        <QrCodeCanvas url={PWA_URL} />
-                    </div>
-                    {/* URL + コピー */}
-                    <div className="flex flex-col justify-center gap-3 min-w-0">
-                        <div className="flex flex-col gap-1">
-                            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">iPhone版アドレス</span>
-                            <code className="text-sm font-mono text-gray-700 bg-white border border-gray-200 rounded px-3 py-2 whitespace-nowrap overflow-x-auto block">
-                                {PWA_URL}
-                            </code>
-                        </div>
-                        <button
-                            onClick={handleCopy}
-                            className={`flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-all duration-200 ${
-                                copied
-                                    ? 'border-green-300 bg-green-50 text-green-700'
-                                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                            }`}
-                        >
-                            {copied ? (
-                                <>
-                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                    コピーしました
-                                </>
-                            ) : (
-                                <>
-                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                                    URLをコピー
-                                </>
-                            )}
-                        </button>
-                        <p className="text-xs text-gray-400">
-                            ①SafariでURLを開く → ②「ホーム画面に追加」→ ③ログイン
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            {status === 'connected' && (
-                <div className={`rounded-lg border p-6 ${
-                    hasAccountMismatch
-                        ? 'border-amber-200 bg-amber-50'
-                        : accountsReady
-                            ? 'border-green-200 bg-green-50'
-                            : 'border-blue-200 bg-blue-50'
-                }`}>
-                    <p className={`text-sm font-medium ${
-                        hasAccountMismatch
-                            ? 'text-amber-700'
-                            : accountsReady
-                                ? 'text-green-700'
-                                : 'text-blue-700'
-                    }`}>
-                        {hasAccountMismatch ? '⚠ PCとiPhoneのGoogleアカウントが違います' : accountsReady ? '✅ iPhoneへの送信が有効です' : '✅ PC側の準備が完了しました'}
-                    </p>
-                    <p className={`text-sm mt-1 ${
-                        hasAccountMismatch
-                            ? 'text-amber-700'
-                            : accountsReady
-                                ? 'text-green-600'
-                                : 'text-blue-700'
-                    }`}>
-                        {hasAccountMismatch
-                            ? '同じGoogleアカウントで再接続してください。違うDriveを見ているため、送信に失敗します。'
-                            : accountsReady
-                                ? hasIphoneAccountInfo
-                                    ? 'PCとiPhoneは同じGoogleアカウントで接続されています。'
-                                    : '通知デバイスが登録されています。Googleアカウントのメールは未取得ですが、iPhoneへの送信は有効です。'
-                                : '次にiPhone版を開き、ホーム画面に追加してからGoogleドライブ接続と通知許可を完了してください。'}
-                    </p>
+            {/* OFF のときの注釈 */}
+            {!sendEnabled && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    上の「iPhone送信を有効にする」をONにすると、下のセットアップ手順が使えるようになります。
                 </div>
             )}
 
-            {/* --- デバイス管理パネル --- */}
-            {status === 'connected' && (
-                <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-gray-800 text-sm">通知デバイス管理</h3>
-                        <div className="flex gap-2">
+            {/* ② 接続セットアップ（OFFのときはグレーアウト） */}
+            <div className={!sendEnabled ? 'opacity-40 pointer-events-none select-none' : ''}>
+                <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-5">
+                    {/* ヘッダ：状態バッジ */}
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">セットアップ</h3>
+                            <p className="text-sm text-gray-500 mt-1">上から順に進めてください。完了したステップは ✓ になります。</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+                            overallStatus.tone === 'green'
+                                ? 'bg-green-100 text-green-700'
+                                : overallStatus.tone === 'amber'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-slate-100 text-slate-600'
+                        }`}>
+                            {overallStatus.label}
+                        </span>
+                    </div>
+
+                    {/* Step 1: PC で Drive 接続 */}
+                    <div className={`rounded-md border px-4 py-4 ${pcConnected ? 'border-green-100 bg-green-50' : 'border-gray-100 bg-gray-50'}`}>
+                        <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                                pcConnected ? 'bg-green-500 text-white' : 'bg-white text-gray-500 border border-gray-200'
+                            }`}>
+                                {pcConnected ? '✓' : '1'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-gray-800">PCをGoogleドライブに接続</p>
+                                {status === 'loading' ? (
+                                    <p className="text-xs text-gray-400 mt-1">確認中...</p>
+                                ) : pcConnected ? (
+                                    <div className="mt-2 flex items-center gap-2">
+                                        {pcAccount?.photoLink && (
+                                            <img src={pcAccount.photoLink} alt="" className="h-5 w-5 rounded-full" />
+                                        )}
+                                        <span className="text-sm text-gray-700 truncate">{pcAccount?.emailAddress}</span>
+                                        <Button variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting} className="ml-auto">
+                                            再接続
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="mt-2">
+                                        <p className="text-xs text-gray-500 mb-2">付箋データをPCとiPhoneで受け渡すため、あなたのGoogleドライブに接続します。</p>
+                                        <Button onClick={handleConnect} disabled={isConnecting} size="sm">
+                                            {isConnecting ? (
+                                                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />接続中...</>
+                                            ) : (
+                                                <><Smartphone className="mr-2 h-4 w-4" />Googleドライブに接続</>
+                                            )}
+                                        </Button>
+                                    </div>
+                                )}
+                                {errorMsg && (
+                                    <p className="text-xs text-amber-700 bg-amber-50 rounded p-2 mt-2">{errorMsg}</p>
+                                )}
+                                {iphoneDriveDisconnected && pcConnected && (
+                                    <p className="text-xs text-amber-700 bg-amber-50 rounded p-2 mt-2">
+                                        Driveとの接続が切れている可能性があります。「再接続」を試してください。
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Step 2: iPhone をホーム画面に追加（QR） */}
+                    <div className={`rounded-md border px-4 py-4 ${hasRegisteredDevice ? 'border-green-100 bg-green-50' : pcConnected ? 'border-blue-100 bg-blue-50' : 'border-gray-100 bg-gray-50'}`}>
+                        <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                                hasRegisteredDevice ? 'bg-green-500 text-white' : pcConnected ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 border border-gray-200'
+                            }`}>
+                                {hasRegisteredDevice ? '✓' : '2'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-gray-800">iPhone版をホーム画面に追加</p>
+                                {hasRegisteredDevice ? (
+                                    <p className="text-xs text-green-700 mt-1">追加済みです。iPhone側からも俺の付箋が起動できます。</p>
+                                ) : (
+                                    <>
+                                        <p className="text-xs text-gray-500 mt-1 mb-3">QRコードをiPhoneのカメラで読み取り、SafariでURLを開いて「ホーム画面に追加」してください。</p>
+                                        <div className="flex items-start gap-4">
+                                            <div className="flex-shrink-0">
+                                                <QrCodeCanvas url={PWA_URL} />
+                                            </div>
+                                            <div className="flex flex-col gap-2 min-w-0 flex-1">
+                                                <code className="text-xs font-mono text-gray-700 bg-white border border-gray-200 rounded px-2 py-1.5 truncate block">
+                                                    {PWA_URL}
+                                                </code>
+                                                <button
+                                                    onClick={handleCopy}
+                                                    className={`flex items-center justify-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                                        copied
+                                                            ? 'border-green-300 bg-green-50 text-green-700'
+                                                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    {copied ? '✓ コピーしました' : 'URLをコピー'}
+                                                </button>
+                                                <p className="text-[11px] text-gray-400 leading-relaxed">
+                                                    SafariでURLを開く → 共有ボタン → 「ホーム画面に追加」
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Step 3: iPhone 側で Drive 接続 */}
+                    <div className={`rounded-md border px-4 py-4 ${
+                        hasAccountMismatch
+                            ? 'border-amber-200 bg-amber-50'
+                            : hasRegisteredDevice && !hasAccountMismatch
+                                ? 'border-green-100 bg-green-50'
+                                : pcConnected
+                                    ? 'border-gray-100 bg-gray-50'
+                                    : 'border-gray-100 bg-gray-50'
+                    }`}>
+                        <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                                hasAccountMismatch
+                                    ? 'bg-amber-500 text-white'
+                                    : hasRegisteredDevice && !hasAccountMismatch
+                                        ? 'bg-green-500 text-white'
+                                        : 'bg-white text-gray-500 border border-gray-200'
+                            }`}>
+                                {hasAccountMismatch ? '!' : hasRegisteredDevice ? '✓' : '3'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-gray-800">iPhone側で同じGoogleアカウントに接続</p>
+                                {hasAccountMismatch ? (
+                                    <p className="text-xs text-amber-800 mt-1">
+                                        PCとiPhoneで違うGoogleアカウントが使われています。同じアカウントで再接続してください。
+                                    </p>
+                                ) : hasRegisteredDevice ? (
+                                    <p className="text-xs text-green-700 mt-1">
+                                        {registeredDeviceEmails[0] ?? '通知デバイスが登録されました。'}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        iPhone版アプリを開いたら、PCと同じGoogleアカウントでログインしてください。ここに ✓ が付けば完了です。
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 次にやること */}
+                    <div className={`rounded-md px-4 py-3 text-sm ${
+                        overallStatus.tone === 'green'
+                            ? 'bg-green-50 text-green-800 border border-green-200'
+                            : overallStatus.tone === 'amber'
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                : 'bg-blue-50 text-blue-800 border border-blue-200'
+                    }`}>
+                        <span className="font-semibold">次にやること：</span>{nextAction}
+                    </div>
+                </div>
+
+                {/* ③ 接続済み iPhone 一覧（接続済みで端末がいるときだけ） */}
+                {pcConnected && hasRegisteredDevice && (
+                    <div className="mt-6 rounded-lg border border-slate-200 bg-white p-6 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-800 text-sm">接続済みのiPhone / iPad</h3>
                             <button
                                 onClick={loadDevices}
                                 disabled={devicesLoading}
@@ -1670,62 +2502,28 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                             >
                                 {devicesLoading ? '読み込み中...' : '更新'}
                             </button>
-                            {devices && devices.length > 0 && (
-                                <button
-                                    onClick={async () => {
-                                        if (!confirm('全デバイスを削除しますか？\niPhoneで再登録が必要になります。')) return
-                                        setDevicesLoading(true)
-                                        try {
-                                            const { invoke } = await import('@tauri-apps/api/core')
-                                            await invoke('fusen_delete_all_push_devices')
-                                            setDevices([])
-                                        } catch (e) {
-                                            alert('削除に失敗しました: ' + String(e))
-                                        } finally {
-                                            setDevicesLoading(false)
-                                        }
-                                    }}
-                                    className="text-xs text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-1"
-                                >
-                                    全て削除
-                                </button>
-                            )}
                         </div>
-                    </div>
-                    <p className="text-xs text-gray-400">通知の送信先デバイス一覧です。不要なデバイスを削除できます。</p>
-
-                    {devicesLoading && (
-                        <p className="text-xs text-gray-400">読み込み中...</p>
-                    )}
-
-                    {!devicesLoading && devices !== null && devices.length === 0 && (
-                        <p className="text-xs text-gray-400">登録デバイスなし。iPhone版で通知を有効にしてください。</p>
-                    )}
-
-                    {!devicesLoading && devices && devices.length > 0 && (
                         <div className="space-y-2">
-                            {devices.map((d) => (
+                            {devices!.map((d) => (
                                 <div key={d.device_id} className="flex items-center justify-between rounded-md border border-gray-100 bg-gray-50 px-3 py-2 gap-2">
                                     <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-medium text-gray-700">
-                                                {d.device_name ?? endpointLabel(d.endpoint)}
-                                            </span>
-                                            <span className="text-xs text-gray-400 truncate max-w-[100px]">
-                                                {endpointLabel(d.endpoint)}
-                                            </span>
+                                        <div className="text-sm font-medium text-gray-700">
+                                            {d.device_name ?? endpointLabel(d.endpoint)}
                                         </div>
                                         <div className="text-xs text-gray-400 mt-0.5">{formatDate(d.registered_at)}</div>
-                                        <div className={`text-xs mt-1 ${pcEmail && d.google_account_email && d.google_account_email.toLowerCase() !== pcEmail ? 'text-amber-600 font-medium' : 'text-gray-500'}`}>
-                                            Google: {d.google_account_email ?? '未取得（送信可）'}
-                                            {d.google_account_name && (
-                                                <span className="text-gray-400"> / {d.google_account_name}</span>
-                                            )}
-                                        </div>
+                                        {d.google_account_email && (
+                                            <div className={`text-xs mt-0.5 ${pcEmail && d.google_account_email.toLowerCase() !== pcEmail ? 'text-amber-700 font-medium' : 'text-gray-500'}`}>
+                                                {d.google_account_email}
+                                                {d.google_account_name && (
+                                                    <span className="text-gray-400"> / {d.google_account_name}</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     <button
                                         disabled={deletingId === d.device_id}
                                         onClick={async () => {
+                                            if (!confirm(`「${d.device_name ?? 'このデバイス'}」を削除しますか？\nこのiPhoneで再登録するまで送信できなくなります。`)) return
                                             setDeletingId(d.device_id)
                                             try {
                                                 const { invoke } = await import('@tauri-apps/api/core')
@@ -1744,22 +2542,50 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                 </div>
                             ))}
                         </div>
-                    )}
-                </div>
-            )}
+                    </div>
+                )}
 
-            {status === 'disconnected' && !isConnecting && (
-                <div className="rounded-lg border p-6 space-y-2 bg-gray-50">
-                    <h3 className="font-semibold text-gray-700 text-sm">セットアップ手順</h3>
-                    <ol className="text-sm text-gray-500 space-y-1 list-decimal list-inside">
-                        <li>上の「Googleドライブに接続」ボタンをクリックし、Googleアカウントにログイン</li>
-                        <li>QRコードをiPhoneのカメラで読み取る（またはURLをコピー）</li>
-                        <li>SafariでiPhone版を開き「ホーム画面に追加」</li>
-                        <li>iPhone版でもGoogleアカウントにログインしてセットアップを完了</li>
-                        <li>付箋を右クリック →「iPhoneに送る」</li>
-                    </ol>
-                </div>
-            )}
+                {/* ④ もう一台のiPhone / iPadを追加（接続済み&登録済みのときだけ折りたたみで表示） */}
+                {pcConnected && hasRegisteredDevice && (
+                    <details className="mt-3 rounded-lg border border-slate-200 bg-white group">
+                        <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 hover:bg-slate-50/70 rounded-lg">
+                            <Smartphone className="h-4 w-4 shrink-0 text-slate-500" />
+                            <span className="flex-1 text-sm font-semibold text-slate-700">
+                                もう一台のiPhone / iPadを追加する
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
+                        </summary>
+                        <div className="px-5 pb-5 pt-1 border-t border-slate-100">
+                            <p className="text-xs text-gray-500 mb-3 mt-3">
+                                追加したいiPhone / iPadのSafariで、下のURLを開いて「ホーム画面に追加」してください。
+                            </p>
+                            <div className="flex items-start gap-4">
+                                <div className="flex-shrink-0">
+                                    <QrCodeCanvas url={PWA_URL} />
+                                </div>
+                                <div className="flex flex-col gap-2 min-w-0 flex-1">
+                                    <code className="text-xs font-mono text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1.5 truncate block">
+                                        {PWA_URL}
+                                    </code>
+                                    <button
+                                        onClick={handleCopy}
+                                        className={`flex items-center justify-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                            copied
+                                                ? 'border-green-300 bg-green-50 text-green-700'
+                                                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        {copied ? '✓ コピーしました' : 'URLをコピー'}
+                                    </button>
+                                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                                        SafariでURLを開く → 共有ボタン → 「ホーム画面に追加」
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                )}
+            </div>
         </div>
     )
 }

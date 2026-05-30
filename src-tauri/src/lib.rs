@@ -517,6 +517,95 @@ fn fusen_open_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// 管理者ツール用: 設定ファイル（settings.json）のあるフォルダを開く
+#[tauri::command]
+fn fusen_open_settings_folder() -> Result<(), String> {
+    let app_data = std::env::var("APPDATA").map_err(|_| "APPDATA not found".to_string())?;
+    let config_dir = std::path::PathBuf::from(app_data).join("OreNoFusen");
+    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    storage::open_in_explorer(config_dir.to_string_lossy().as_ref())?;
+    Ok(())
+}
+
+// 管理者ツール用: ログファイル（app.log）のあるフォルダを開く
+#[tauri::command]
+fn fusen_open_log_folder() -> Result<(), String> {
+    let app_data = std::env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA not found".to_string())?;
+    let log_dir = std::path::PathBuf::from(app_data).join("ore-no-fusen");
+    std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
+    storage::open_in_explorer(log_dir.to_string_lossy().as_ref())?;
+    Ok(())
+}
+
+// 管理者ツール用: Google Drive 上の「俺の付箋」フォルダ ID を返す（直リンク生成用）
+#[tauri::command]
+async fn fusen_get_drive_folder_id() -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let access_token = gdrive::get_access_token(&client).await?;
+    gdrive::ensure_folder(&client, &access_token).await
+}
+
+/// 管理者ツール用: PC→iPhone / iPhone→PC のキューに溜まっている未送信件数
+#[derive(serde::Serialize)]
+struct DriveQueueCounts {
+    to_iphone: usize,
+    from_iphone: usize,
+}
+
+/// キュー JSON の件数を数える。実体は { "items": [...] } 形式だが、
+/// 旧仕様で配列だけの形式も読めるよう両対応する。
+fn count_queue_items(v: &serde_json::Value) -> usize {
+    if let Some(arr) = v.as_array() {
+        return arr.len();
+    }
+    if let Some(arr) = v.get("items").and_then(|x| x.as_array()) {
+        return arr.len();
+    }
+    0
+}
+
+#[tauri::command]
+async fn fusen_get_drive_queue_counts() -> Result<DriveQueueCounts, String> {
+    let client = reqwest::Client::new();
+    let token = gdrive::get_access_token(&client).await?;
+
+    // notes_to_iphone.json （PC→iPhone）の件数を取得。ファイル不在は 0 件扱い
+    let to_iphone = match gdrive::download_json_with_migration(
+        &client, &token, "notes_to_iphone.json", "fusen_note.json"
+    ).await {
+        Ok(v) => count_queue_items(&v),
+        Err(_) => 0,
+    };
+
+    // notes_from_iphone.json （iPhone→PC）の件数を取得
+    let from_iphone = match gdrive::download_json_with_migration(
+        &client, &token, "notes_from_iphone.json", "fusen_from_iphone.json"
+    ).await {
+        Ok(v) => count_queue_items(&v),
+        Err(_) => 0,
+    };
+
+    Ok(DriveQueueCounts { to_iphone, from_iphone })
+}
+
+/// 管理者ツール用: Drive 上の任意 JSON ファイルを取得して整形済み文字列として返す。
+/// fallback_filename が指定されていれば旧名からの自動移行を試みる。ファイル不在は空オブジェクト相当を返す。
+#[tauri::command]
+async fn fusen_read_drive_json(filename: String, fallback_filename: Option<String>) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let token = gdrive::get_access_token(&client).await?;
+    let value = if let Some(fallback) = fallback_filename {
+        gdrive::download_json_with_migration(&client, &token, &filename, &fallback).await
+    } else {
+        gdrive::download_json(&client, &token, &filename).await
+    };
+    match value {
+        Ok(v) => serde_json::to_string_pretty(&v).map_err(|e| e.to_string()),
+        Err(e) if e.contains("File not found") => Ok("{}".to_string()),
+        Err(e) => Err(e),
+    }
+}
+
 #[tauri::command]
 fn fusen_add_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, app: tauri::AppHandle) -> Result<(), String> {
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
@@ -810,6 +899,12 @@ fn get_base_path(state: State<'_, Mutex<AppState>>) -> Option<String> {
     logger::log_debug(&format!("Returning: {:?}", result));
     logger::log_debug(&format!("Type: {}", if result.is_none() { "None" } else { "Some" }));
     result
+}
+
+// 指定パスがディレクトリとして実在するか
+#[tauri::command]
+fn fusen_path_exists(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
 }
 
 // UC-01, UC-02, UC-03: セットアップ統合コマンド
@@ -1386,6 +1481,10 @@ async fn fusen_replenish_pool(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn fusen_oauth_connect(app: tauri::AppHandle) -> Result<(), String> {
     gdrive::oauth_pkce_flow(&app).await?;
+    let client = reqwest::Client::new();
+    if let Ok(pc) = gdrive::register_pc_device(&client).await {
+        logger::log_info(&format!("[iphone receive] PC registered after OAuth id={} name={}", pc.pc_id, pc.pc_name));
+    }
     Ok(())
 }
 
@@ -1416,12 +1515,110 @@ async fn fusen_get_google_account() -> Result<gdrive::GoogleAccountInfo, String>
 }
 
 #[tauri::command]
+async fn fusen_register_pc_device() -> Result<gdrive::PcDeviceInfo, String> {
+    let client = reqwest::Client::new();
+    gdrive::register_pc_device(&client).await
+}
+
+#[tauri::command]
+async fn fusen_list_pc_devices() -> Result<Vec<gdrive::PcDeviceInfo>, String> {
+    let client = reqwest::Client::new();
+    gdrive::list_pc_devices(&client).await
+}
+
+#[tauri::command]
+async fn fusen_delete_pc_device(pc_id: String) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    gdrive::delete_pc_device_by_id(&client, &pc_id).await
+}
+
+fn save_vapid_keys_to_local(keys: &webpush::VapidKeys) -> Result<(), String> {
+    let path = webpush::get_vapid_key_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(keys).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+async fn sync_vapid_keys_from_drive_or_create(
+    client: &reqwest::Client,
+    access_token: &str,
+) -> Result<webpush::VapidKeys, String> {
+    match gdrive::download_json_with_migration(client, access_token, "push_keys.json", "vapid_keys.json").await {
+        Ok(value) => {
+            let keys: webpush::VapidKeys = serde_json::from_value(value)
+                .map_err(|e| format!("push_keys parse error: {}", e))?;
+            save_vapid_keys_to_local(&keys)?;
+            Ok(keys)
+        }
+        Err(e) if e.contains("File not found") => {
+            let keys = webpush::load_or_generate_vapid_keys()?;
+            let value = serde_json::to_value(&keys).map_err(|e| e.to_string())?;
+            gdrive::upload_json(client, access_token, "push_keys.json", &value).await?;
+            Ok(keys)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn classify_webpush_error(error: &str) -> String {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("apns error: 400") || lower.contains("bad request") {
+        return format!(
+            "APNs 400 Bad Request: Push鍵またはiPhone購読情報が一致していない可能性があります。iPhone側で通知を再登録してください。詳細: {}",
+            error
+        );
+    }
+    if lower.contains("apns error: 401") || lower.contains("unauthorized") {
+        return format!(
+            "APNs 401 Unauthorized: VAPID署名が拒否されました。Driveのpush_keys.jsonとPCローカル鍵の同期を確認してください。詳細: {}",
+            error
+        );
+    }
+    if lower.contains("apns error: 403") || lower.contains("forbidden") {
+        return format!(
+            "APNs 403 Forbidden: Push Serviceが送信を拒否しました。VAPID鍵または購読先endpointを確認してください。詳細: {}",
+            error
+        );
+    }
+    if lower.contains("apns error: 404")
+        || lower.contains("apns error: 410")
+        || lower.contains("not found")
+        || lower.contains("gone")
+    {
+        return format!(
+            "APNs 404/410: iPhoneのPush購読が期限切れまたは無効です。iPhone側で通知を再登録してください。詳細: {}",
+            error
+        );
+    }
+    if lower.contains("apns error: 413") || lower.contains("payload too large") {
+        return format!(
+            "APNs 413 Payload Too Large: Push通知の本文が大きすぎます。本文を短くするか添付はDrive参照にしてください。詳細: {}",
+            error
+        );
+    }
+    if lower.contains("apns error: 429") || lower.contains("too many requests") {
+        return format!(
+            "APNs 429 Too Many Requests: Push通知が短時間に多すぎます。少し待ってから再送してください。詳細: {}",
+            error
+        );
+    }
+    if lower.contains("apns error: 5") || lower.contains("timeout") || lower.contains("reqwest error") {
+        return format!(
+            "Push通信エラー: APNs/Push Serviceまたはネットワークが一時的に失敗しました。Driveキューは保存済みなので、時間を置いて再試行してください。詳細: {}",
+            error
+        );
+    }
+    format!("Push送信エラー: {}", error)
+}
+
+#[tauri::command]
 async fn fusen_ensure_push_keys() -> Result<(), String> {
     let client = reqwest::Client::new();
     let access_token = gdrive::get_access_token(&client).await?;
-    let keys = webpush::load_or_generate_vapid_keys()?;
-    let value = serde_json::to_value(&keys).map_err(|e| e.to_string())?;
-    gdrive::upload_json(&client, &access_token, "push_keys.json", &value).await
+    sync_vapid_keys_from_drive_or_create(&client, &access_token).await?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1434,6 +1631,147 @@ async fn fusen_delete_push_device(device_id: String) -> Result<(), String> {
 async fn fusen_delete_all_push_devices() -> Result<(), String> {
     let client = reqwest::Client::new();
     gdrive::delete_all_push_devices(&client).await
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DriveTempCleanupSummary {
+    total_count: usize,
+    old_count: usize,
+    total_bytes: u64,
+    old_bytes: u64,
+    deleted_count: usize,
+    failed_count: usize,
+    skipped_referenced_count: usize,
+    retention_days: i64,
+}
+
+const DRIVE_TEMP_RETENTION_DAYS: i64 = 30;
+
+fn is_drive_temp_old(file: &gdrive::DriveTempMediaFile, now: chrono::DateTime<chrono::Utc>) -> bool {
+    let Some(modified_time) = &file.modified_time else {
+        return false;
+    };
+    chrono::DateTime::parse_from_rfc3339(modified_time)
+        .map(|dt| now.signed_duration_since(dt.with_timezone(&chrono::Utc)).num_days() >= DRIVE_TEMP_RETENTION_DAYS)
+        .unwrap_or(false)
+}
+
+fn collect_temp_tokens_from_str(text: &str, names: &mut std::collections::HashSet<String>) {
+    for prefix in ["fusen_img_", "fusen_video_"] {
+        let mut rest = text;
+        while let Some(pos) = rest.find(prefix) {
+            let candidate = &rest[pos..];
+            let end = candidate
+                .find(|ch: char| ch.is_whitespace() || matches!(ch, ')' | '"' | '\'' | ',' | ']' | '}'))
+                .unwrap_or(candidate.len());
+            let name = candidate[..end].trim_matches(|ch| matches!(ch, '.' | ';' | ':'));
+            if name.starts_with(prefix) {
+                names.insert(name.to_string());
+            }
+            rest = &candidate[prefix.len()..];
+        }
+    }
+}
+
+fn collect_temp_refs_from_value(value: &serde_json::Value, names: &mut std::collections::HashSet<String>) {
+    match value {
+        serde_json::Value::String(s) => collect_temp_tokens_from_str(s, names),
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_temp_refs_from_value(item, names);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for value in map.values() {
+                collect_temp_refs_from_value(value, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+async fn drive_referenced_temp_names(
+    client: &reqwest::Client,
+    token: &str,
+) -> Result<std::collections::HashSet<String>, String> {
+    let mut names = std::collections::HashSet::new();
+    for (new_name, old_name) in [
+        ("notes_from_iphone.json", "fusen_from_iphone.json"),
+        ("notes_to_iphone.json", "fusen_note.json"),
+    ] {
+        match gdrive::download_json_with_migration(client, token, new_name, old_name).await {
+            Ok(value) => collect_temp_refs_from_value(&value, &mut names),
+            Err(e) if e.contains("File not found") => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(names)
+}
+
+fn summarize_drive_temp_files(
+    files: &[gdrive::DriveTempMediaFile],
+    referenced: &std::collections::HashSet<String>,
+) -> DriveTempCleanupSummary {
+    let now = chrono::Utc::now();
+    let mut summary = DriveTempCleanupSummary {
+        total_count: files.len(),
+        old_count: 0,
+        total_bytes: files.iter().filter_map(|f| f.size).sum(),
+        old_bytes: 0,
+        deleted_count: 0,
+        failed_count: 0,
+        skipped_referenced_count: 0,
+        retention_days: DRIVE_TEMP_RETENTION_DAYS,
+    };
+
+    for file in files {
+        if is_drive_temp_old(file, now) {
+            if referenced.contains(&file.name) {
+                summary.skipped_referenced_count += 1;
+            } else {
+                summary.old_count += 1;
+                summary.old_bytes += file.size.unwrap_or(0);
+            }
+        }
+    }
+    summary
+}
+
+#[tauri::command]
+async fn fusen_list_drive_temp_files() -> Result<DriveTempCleanupSummary, String> {
+    let client = reqwest::Client::new();
+    let token = gdrive::get_access_token(&client).await?;
+    let files = gdrive::list_temp_media_files(&client, &token).await?;
+    let referenced = drive_referenced_temp_names(&client, &token).await?;
+    Ok(summarize_drive_temp_files(&files, &referenced))
+}
+
+#[tauri::command]
+async fn fusen_cleanup_drive_temp_files() -> Result<DriveTempCleanupSummary, String> {
+    let client = reqwest::Client::new();
+    let token = gdrive::get_access_token(&client).await?;
+    let files = gdrive::list_temp_media_files(&client, &token).await?;
+    let referenced = drive_referenced_temp_names(&client, &token).await?;
+    let now = chrono::Utc::now();
+    let mut summary = summarize_drive_temp_files(&files, &referenced);
+
+    for file in files {
+        if !is_drive_temp_old(&file, now) {
+            continue;
+        }
+        if referenced.contains(&file.name) {
+            continue;
+        }
+        match gdrive::delete_file_by_id(&client, &token, &file.id).await {
+            Ok(_) => summary.deleted_count += 1,
+            Err(e) => {
+                summary.failed_count += 1;
+                logger::log_info(&format!("[drive cleanup] delete failed {}: {}", file.name, e));
+            }
+        }
+    }
+    Ok(summary)
 }
 
 /// body 中のローカル画像パスを Drive にアップロードして fusen_img_*.ext 参照に変換する
@@ -1614,71 +1952,47 @@ async fn fusen_send_to_iphone(
         "sent_at": sent_at
     });
 
-    // 3a. VAPID鍵を Drive と同期
-    // ローカルに鍵がある（元のPC）→ そのまま使い、Drive にバックグラウンドアップ（別PC共有用）
-    // ローカルに鍵がない（別PC）  → Drive からダウンロードして保存
-    let vk_path = webpush::get_vapid_key_path();
-    if vk_path.exists() {
-        // 元のPC: ローカルの鍵を Drive にアップ（別PC が使えるよう最新を保つ）
-        if let Ok(local_keys) = webpush::load_or_generate_vapid_keys() {
-            if let Ok(value) = serde_json::to_value(&local_keys) {
-                let bg_client_v = client.clone();
-                let bg_token_v = access_token.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = gdrive::upload_json(&bg_client_v, &bg_token_v, "push_keys.json", &value).await {
-                        eprintln!("[vapid] Drive upload error: {}", e);
-                    }
-                });
-            }
-        }
-    } else {
-        // 別PC: Drive からダウンロードしてローカルに保存
-        match gdrive::download_json_with_migration(&client, &access_token, "push_keys.json", "vapid_keys.json").await {
-            Ok(value) => {
-                if let Ok(json) = serde_json::to_string_pretty(&value) {
-                    if let Some(parent) = vk_path.parent() {
-                        std::fs::create_dir_all(parent).ok();
-                    }
-                    std::fs::write(&vk_path, json).ok();
-                }
-            }
-            Err(e) => {
-                eprintln!("[vapid] Drive download failed (new PC, no keys yet): {}", e);
-                // Drive にも鍵がない → 新規生成して Drive にもアップ
-                if let Ok(new_keys) = webpush::load_or_generate_vapid_keys() {
-                    if let Ok(value) = serde_json::to_value(&new_keys) {
-                        let bg_client_v = client.clone();
-                        let bg_token_v = access_token.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) = gdrive::upload_json(&bg_client_v, &bg_token_v, "push_keys.json", &value).await {
-                                eprintln!("[vapid] Drive upload error (new keys): {}", e);
-                            }
-                        });
-                    }
-                }
-            }
-        }
-    }
+    // 3a. VAPID鍵を Drive と同期する。
+    // Drive の push_keys.json が正。ローカルファイルはキャッシュとして上書き同期する。
+    // Drive に存在しない初回だけローカル生成し、Drive へ保存する。
+    sync_vapid_keys_from_drive_or_create(&client, &access_token).await?;
 
-    // 4. Google Drive に notes_to_iphone.json をアップロード（バックグラウンド・read-modify-write 配列追加）
-    // トーストを遅らせないよう await しない。Viewer が開くまでに完了すれば十分。
-    let bg_client = client.clone();
-    let bg_token = access_token.clone();
-    tokio::spawn(async move {
-        let mut items: Vec<serde_json::Value> = match gdrive::download_json_with_migration(&bg_client, &bg_token, "notes_to_iphone.json", "fusen_note.json").await {
-            Ok(v) => v["items"].as_array().cloned().unwrap_or_default(),
-            Err(_) => vec![],
-        };
-        items.push(note_json_drive);
-        if items.len() > 20 {
-            let start = items.len() - 20;
-            items = items[start..].to_vec();
+    // 4. Google Drive に notes_to_iphone.json をアップロード（read-modify-write 配列追加）
+    // Drive 書き込み成功前に Push すると、iPhone が起きても読む本文がない状態になる。
+    let mut items: Vec<serde_json::Value> = match gdrive::download_json_with_migration(
+        &client,
+        &access_token,
+        "notes_to_iphone.json",
+        "fusen_note.json",
+    )
+    .await
+    {
+        Ok(v) => {
+            if let Some(items) = v["items"].as_array() {
+                items.clone()
+            } else if v.get("id").is_some() && v.get("received_at").is_none() {
+                vec![v]
+            } else {
+                Vec::new()
+            }
         }
-        let data = serde_json::json!({ "items": items });
-        if let Err(e) = gdrive::upload_json(&bg_client, &bg_token, "notes_to_iphone.json", &data).await {
-            eprintln!("[iphone] Drive upload error: {}", e);
+        Err(e) if e.contains("File not found") => Vec::new(),
+        Err(e) => {
+            return Err(format!(
+                "iPhone送信用キューの読み込みに失敗しました。既存の未送信データを守るため送信を中止しました: {}",
+                e
+            ));
         }
-    });
+    };
+    items.push(note_json_drive);
+    if items.len() > 20 {
+        let start = items.len() - 20;
+        items = items[start..].to_vec();
+    }
+    let data = serde_json::json!({ "items": items });
+    gdrive::upload_json(&client, &access_token, "notes_to_iphone.json", &data)
+        .await
+        .map_err(|e| format!("iPhone送信用キューのDrive保存に失敗しました。Push通知は送らずに中止しました: {}", e))?;
 
     // 5. キャッシュ済み pro_configs を取得（なければ Drive から再取得）
     let pro_configs = {
@@ -1704,8 +2018,9 @@ async fn fusen_send_to_iphone(
         match webpush::send_web_push(&client, config, &plaintext).await {
             Ok(_) => {},
             Err(e) => {
-                eprintln!("[webpush] デバイスへの送信エラー: {}", e);
-                send_errors.push(e);
+                let classified = classify_webpush_error(&e);
+                eprintln!("[webpush] デバイスへの送信エラー: {}", classified);
+                send_errors.push(classified);
             }
         }
     }
@@ -1871,6 +2186,13 @@ fn collect_iphone_video_names(item: &serde_json::Value) -> Vec<String> {
         .into_iter()
         .map(|video| video.video_file_name)
         .collect()
+}
+
+fn iphone_item_targets_this_pc(item: &serde_json::Value, pc_id: &str) -> bool {
+    match item.get("targetPcId").and_then(|v| v.as_str()).map(str::trim) {
+        Some(target_id) if !target_id.is_empty() => target_id == pc_id,
+        _ => true,
+    }
 }
 
 fn sanitize_video_file_name(name: &str) -> String {
@@ -2061,6 +2383,13 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             return;
         }
     };
+    let pc_id = match gdrive::local_pc_id() {
+        Ok(id) => id,
+        Err(e) => {
+            logger::log_info(&format!("[iphone receive] local pc id error: {}", e));
+            String::new()
+        }
+    };
 
     // 2. notes_from_iphone.json をダウンロード（旧名: fusen_from_iphone.json から自動移行）
     let data = match gdrive::download_json_with_migration(client, &token, "notes_from_iphone.json", "fusen_from_iphone.json").await {
@@ -2088,6 +2417,7 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         .iter()
         .enumerate()
         .filter(|(_, item)| item.get("received_at").and_then(|v| v.as_str()).is_none())
+        .filter(|(_, item)| iphone_item_targets_this_pc(item, &pc_id))
         .map(|(idx, _)| idx)
         .collect();
 
@@ -2293,8 +2623,14 @@ pub fn run() {
             fusen_archive_note,
             fusen_open_containing_folder,
             fusen_open_file,
+            fusen_open_settings_folder,
+            fusen_open_log_folder,
+            fusen_get_drive_folder_id,
+            fusen_get_drive_queue_counts,
+            fusen_read_drive_json,
             show_context_menu,
             get_base_path,
+            fusen_path_exists,
             setup_first_launch,
             settings::get_settings,  // ← 「settings箱の中の」と指定！
             settings::save_settings,  // ← 「settings箱の中の」と指定！
@@ -2316,9 +2652,14 @@ pub fn run() {
             fusen_check_pro_setup,
             fusen_list_push_devices,
             fusen_get_google_account,
+            fusen_register_pc_device,
+            fusen_list_pc_devices,
+            fusen_delete_pc_device,
             fusen_ensure_push_keys,
             fusen_delete_push_device,
             fusen_delete_all_push_devices,
+            fusen_list_drive_temp_files,
+            fusen_cleanup_drive_temp_files,
             fusen_send_to_iphone,
             fusen_download_iphone_images,
             fusen_ack_iphone_note,

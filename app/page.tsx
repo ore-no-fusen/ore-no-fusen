@@ -170,6 +170,8 @@ function OrchestratorContent() {
   const [folderPath, setFolderPath] = useState<string>('');
   const folderPathRef = useRef<string>(''); // [FIX] スロットル用にRefでも保持
   const [iphoneDriveDisconnected, setIphoneDriveDisconnected] = useState(false);
+  // 保存先フォルダが消えていて再セットアップ中かどうか
+  const [recoveredMissingFolder, setRecoveredMissingFolder] = useState<string | null>(null);
   const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
   const readyPoolWindowsRef = useRef<Set<string>>(new Set()); // リスナー登録完了済みのプールウィンドウ
   // [NEW] Pool 枯渇時トースト
@@ -1104,7 +1106,21 @@ function OrchestratorContent() {
           folderPath = state?.base_path || state?.folder_path || null;
         }
 
-        const needsSetup = !folderPath || folderPath.trim() === '';
+        let needsSetup = !folderPath || folderPath.trim() === '';
+
+        // base_path に文字列はあっても、フォルダ自体が消えていたら再セットアップさせる
+        if (!needsSetup && folderPath) {
+          try {
+            const exists = await invoke<boolean>('fusen_path_exists', { path: folderPath });
+            if (!exists) {
+              console.warn('[checkSetup] base_path folder is missing:', folderPath);
+              needsSetup = true;
+            }
+          } catch (e) {
+            console.error('[checkSetup] fusen_path_exists failed, assuming setup required:', e);
+            needsSetup = true;
+          }
+        }
 
         if (needsSetup) {
           setSetupRequired(true);
@@ -1192,7 +1208,23 @@ function OrchestratorContent() {
         try {
           const basePath = await invoke<string | null>('get_base_path');
 
-          if (!basePath) {
+          // base_path にパスはあっても、フォルダ自体が消えていたら
+          // 「はじめて起動」と同じルートに合流させる（デフォルトフォルダ再作成＋設定画面表示＋ウェルカム）
+          let baseFolderMissing = false;
+          if (basePath) {
+            try {
+              const exists = await invoke<boolean>('fusen_path_exists', { path: basePath });
+              if (!exists) {
+                log(`[起動処理] 保存先フォルダが見つかりません: ${basePath} → 再セットアップします`);
+                baseFolderMissing = true;
+              }
+            } catch (e) {
+              log(`[起動処理] 保存先フォルダの確認に失敗、再セットアップします: ${e}`);
+              baseFolderMissing = true;
+            }
+          }
+
+          if (!basePath || baseFolderMissing) {
             setLoadingStatus("保存先フォルダを準備中...");
             try {
               await invoke<string>('setup_first_launch', { useDefault: true, importPath: null });
@@ -1200,6 +1232,16 @@ function OrchestratorContent() {
               log(`[起動処理] デフォルトフォルダ作成に失敗: ${setupErr}`);
               setLoadingStatus("保存先の準備に失敗しました");
               return;
+            }
+            // フォルダが消えていたケースでは、ユーザーが状況を把握できるよう設定画面を前面に出す
+            if (baseFolderMissing) {
+              setRecoveredMissingFolder(basePath ?? null);
+              setSetupRequired(true);
+              const win = getCurrentWindow();
+              if (win.label === 'main') {
+                await win.show();
+                await win.setFocus();
+              }
             }
           }
           const savedFolder = await invoke<string | null>('get_base_path') ?? '';
@@ -1223,7 +1265,8 @@ function OrchestratorContent() {
                 log('[起動処理] エラー: 状態オブジェクトが空です');
                 return;
               }
-              if (state.folder_path) {
+              // フォルダ消失からの再起動時は、ユーザーが気づけるよう設定画面を出したままにする
+              if (state.folder_path && !baseFolderMissing) {
                 setSetupRequired(false);
               }
               const notes = state.notes;
@@ -1270,7 +1313,7 @@ function OrchestratorContent() {
                   );
                   await invoke('fusen_save_note', {
                     path: newNote.meta.path,
-                    body: 'はじめの付箋(消してOK)\n\nすぐ書ける\n**強調できる**\nそこに残る！',
+                    body: '👋 ようこそ。これが最初の付箋です。\n\n- [ ] このチェックを押してみる\n- [ ] 右上の「＋」で新しく1枚作る\n- [ ] このメモを右クリック→色を変えてみる\n- [ ] 左下の「？」で詳しい使い方を見る\n\n消したくなったら、付箋の上にマウスをのせて右下の🗑️',
                     frontmatterRaw: newNote.frontmatter || '',
                     allowRename: false,
                   });
@@ -1284,7 +1327,10 @@ function OrchestratorContent() {
                     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                     const mainWindow = await WebviewWindow.getByLabel('main');
                     if (mainWindow) {
-                      await mainWindow.hide();
+                      // フォルダ消失からの再起動時は、設定画面で通知バナーを見てもらう必要があるので隠さない
+                      if (!baseFolderMissing) {
+                        await mainWindow.hide();
+                      }
                       setIsCheckingSetup(false);
                       logStartupStep('6/6', '起動完了: はじめての付箋を開きました');
                       startPoolReplenishInBackground();
@@ -1404,9 +1450,16 @@ function OrchestratorContent() {
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
   if (setupRequired || isSettingsOpen) {
-    return <SettingsPage defaultTab={setupRequired ? 'general' : settingsDefaultTab} iphoneDriveDisconnected={iphoneDriveDisconnected} onClose={async () => {
+    return <SettingsPage
+      defaultTab={setupRequired ? 'general' : settingsDefaultTab}
+      iphoneDriveDisconnected={iphoneDriveDisconnected}
+      baseFolderMissing={!!recoveredMissingFolder}
+      missingFolderPath={recoveredMissingFolder}
+      onClose={async () => {
       // 設定画面を閉じる時の処理
       setIsSettingsOpen(false);
+      // フォルダ消失通知は一度確認したら消す
+      setRecoveredMissingFolder(null);
 
       // setupRequiredだった場合は、ここを通るということはセットアップ完了のはず（SettingsPage内でsetup_first_launchするから）
       if (setupRequired) {

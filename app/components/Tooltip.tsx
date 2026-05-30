@@ -16,6 +16,8 @@ type TipPos = {
     right?: number;
     flipDown: boolean;
     arrowOffset?: number;
+    /** top-left 用: 吹き出しの左端を基準に、矢印（▼）を置く絶対 px 位置 */
+    arrowLeftPx?: number;
 };
 
 /** ツールチップ表示に必要な最低高さ (px) */
@@ -38,8 +40,10 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
         if (placement === 'top-right') {
             setTipPos({ top: base, right: window.innerWidth - r.right, flipDown });
         } else if (placement === 'top-left') {
-            // ボタンの左端基準で吹き出しを右方向に伸ばす（画面左端での切れを防ぐ）
-            setTipPos({ top: base, left: r.left, flipDown });
+            // ボタンの左端基準で吹き出しを右方向に伸ばす（画面左端での切れを防ぐ）。
+            // 矢印（▼）はボタンの中心の真上に来るよう、吹き出し左端からの px 位置で指定する。
+            const arrowLeftPx = r.width / 2;
+            setTipPos({ top: base, left: r.left, flipDown, arrowLeftPx });
         } else if (placement === 'top-right-arrow-shifted') {
             setTipPos({ top: base, right: window.innerWidth - r.right, flipDown, arrowOffset: 18 });
         } else if (placement === 'top-right-shifted') {
@@ -87,14 +91,23 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
         }
         : null;
 
+    const arrowDataAttr = tipPos?.arrowOffset !== undefined
+        ? `off-${tipPos.arrowOffset}`
+        : tipPos?.arrowLeftPx !== undefined
+            ? `lpx-${Math.round(tipPos.arrowLeftPx)}`
+            : undefined;
+
     const tooltip = tipPos && tipStyle ? createPortal(
         <span
             className={`fusen-tooltip${tipPos.flipDown ? ' fusen-tooltip--down' : ''}`}
-            data-arrow-offset={tipPos.arrowOffset}
+            data-arrow={arrowDataAttr}
             style={tipStyle}
         >
             {tipPos.arrowOffset !== undefined && (
-                <style>{`.fusen-tooltip[data-arrow-offset="${tipPos.arrowOffset}"]::after{left:calc(50% + ${tipPos.arrowOffset}px);}`}</style>
+                <style>{`.fusen-tooltip[data-arrow="off-${tipPos.arrowOffset}"]::after{left:calc(50% + ${tipPos.arrowOffset}px);}`}</style>
+            )}
+            {tipPos.arrowLeftPx !== undefined && (
+                <style>{`.fusen-tooltip[data-arrow="lpx-${Math.round(tipPos.arrowLeftPx)}"]::after{left:${Math.round(tipPos.arrowLeftPx)}px;transform:translateX(-50%);}`}</style>
             )}
             <span style={{ display: 'block', fontSize: '11px', color: '#444', fontWeight: 500 }}>{text}</span>
             {hint && (

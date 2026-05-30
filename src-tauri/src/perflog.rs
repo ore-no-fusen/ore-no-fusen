@@ -59,6 +59,16 @@ pub fn log_event(
     elapsed_ms: Option<u64>,
     meta: Value,
 ) {
+    // リリースビルドでは計測ログを書かない（開発時の起動性能計測専用機構のため）。
+    // ただし PERF_LOG 環境変数が明示的に指定されていれば（CI 等）有効にする。
+    #[cfg(not(debug_assertions))]
+    {
+        if std::env::var("PERF_LOG").is_err() {
+            let _ = (run_id, event, label, elapsed_ms, meta);
+            return;
+        }
+    }
+
     let ev = PerfEvent {
         ts: Local::now().to_rfc3339(),
         run_id: run_id.to_string(),

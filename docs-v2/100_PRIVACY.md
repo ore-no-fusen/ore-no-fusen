@@ -153,9 +153,10 @@ Vercel には、付箋本文や添付画像・添付動画を保存しません�
 | No | データ | 削除方法 |
 |:---|:---|:---|
 | 1 | PC 上の付箋データ | アプリの保存フォルダ内のファイルを削除 |
-| 2 | PC 上のログ | `%LOCALAPPDATA%\ore-no-fusen\app.log` を削除 |
-| 3 | Google Drive 上の同期データ | Google Drive の `ore-no-fusen` フォルダ内のファイルを削除 |
-| 4 | Google 連携の許可 | Google アカウントの「サードパーティ製アプリとサービス」から俺の付箋のアクセス権を削除 |
+| 2 | PC 上の設定（保存先パス、PC 識別子など） | `%APPDATA%\OreNoFusen\settings.json` を削除（アンインストールでは消えません） |
+| 3 | PC 上のログ・Drive アクセストークン | `%LOCALAPPDATA%\ore-no-fusen\` 配下を削除（アンインストールで自動削除されます） |
+| 4 | Google Drive 上の同期データ | Google Drive の `ore-no-fusen` フォルダ内のファイルを削除（アプリ内「管理者ツール」からも個別削除可能） |
+| 5 | Google 連携の許可 | Google アカウントの「サードパーティ製アプリとサービス」から俺の付箋のアクセス権を削除 |
 
 Google Drive 上の同期ファイルを削除すると、iPhone 連携や通知送信が利用できなくなる場合があります。
 

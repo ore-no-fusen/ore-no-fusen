@@ -1943,34 +1943,43 @@ const StickyNote = memo(function StickyNote() {
             )}
             */}
 
-            {/* 使い方を開くボタン（左下、ホバー時のみ控えめに出る） */}
-            {!isEditing && !isMinimized && (
-                <div
-                    className="absolute bottom-ui-offset-y left-ui-offset-x z-tags pointer-events-none flex"
-                    style={{ opacity: isHover ? 1 : 0, transition: 'opacity 0.3s ease' }}
-                >
-                    <Tooltip text={t('menu.openHelp')} placement="top-left">
-                        <button
-                            type="button"
-                            aria-label={t('menu.openHelp')}
-                            onPointerDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                            }}
-                            onClick={async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const { emit } = await import('@tauri-apps/api/event');
-                                await emit('fusen:open_settings', { tab: 'help' });
-                            }}
-                            className="pointer-events-auto h-[20px] w-[20px] rounded-full text-[12px] leading-none flex items-center justify-center font-bold select-none text-gray-500/60 hover:text-gray-700 hover:bg-white/70 transition-colors"
-                            style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
-                        >
-                            ?
-                        </button>
-                    </Tooltip>
-                </div>
-            )}
+            {/* 使い方を開くボタン（左下）
+                ・通常: ホバー時のみ控えめに出る
+                ・ウェルカム付箋: 常に表示＆赤くはねて「?」の存在に気づかせる */}
+            {!isEditing && !isMinimized && (() => {
+                const isWelcome = (selectedFile?.context?.includes('はじめての付箋') ?? (urlPath?.includes('はじめての付箋') ?? false))
+                return (
+                    <div
+                        className="absolute bottom-ui-offset-y left-ui-offset-x z-tags pointer-events-none flex"
+                        style={{ opacity: isWelcome || isHover ? 1 : 0, transition: 'opacity 0.3s ease' }}
+                    >
+                        <Tooltip text={t('menu.openHelp')} placement="top-left">
+                            <button
+                                type="button"
+                                aria-label={t('menu.openHelp')}
+                                onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                }}
+                                onClick={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const { emit } = await import('@tauri-apps/api/event');
+                                    await emit('fusen:open_settings', { tab: 'help' });
+                                }}
+                                className={`pointer-events-auto h-[20px] w-[20px] rounded-full text-[12px] leading-none flex items-center justify-center font-bold select-none transition-colors ${
+                                    isWelcome
+                                        ? 'animate-bounce text-orange-500'
+                                        : 'text-gray-500/60 hover:text-gray-700 hover:bg-white/70'
+                                }`}
+                                style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
+                            >
+                                ?
+                            </button>
+                        </Tooltip>
+                    </div>
+                )
+            })()}
 
             {/* タグ表示エリア（右下、ホバー時のみ） */}
             {!isEditing && !isMinimized && (

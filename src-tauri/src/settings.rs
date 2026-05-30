@@ -24,10 +24,18 @@ pub fn get_settings<R: Runtime>(_app: AppHandle<R>) -> Result<AppSettings, Strin
 // 設定を保存するコマンド
 #[tauri::command]
 pub fn save_settings<R: Runtime>(
-    app: AppHandle<R>, 
+    app: AppHandle<R>,
     state: State<'_, Mutex<AppState>>,
-    settings: AppSettings
+    mut settings: AppSettings
 ) -> Result<(), String> {
+    // pc_id は UI から書き換えさせない内部フィールド。
+    // フロントから空（=フロントが知らない or 古いフロント）で来ても既存値を保持する。
+    if settings.pc_id.as_ref().map_or(true, |s| s.trim().is_empty()) {
+        if let Ok(existing) = storage::load_settings() {
+            settings.pc_id = existing.pc_id;
+        }
+    }
+
     // 1. ファイルに保存
     storage::save_settings(&settings)?;
 

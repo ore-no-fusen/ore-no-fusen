@@ -20,6 +20,11 @@ export type AppSettings = {
     font_size: number
     sound_enabled: boolean
     iphone_send_enabled: boolean
+    /**
+     * この PC を一意に識別する UUID。Rust 側が自動生成し settings.json に保存する。
+     * ユーザーには見せない内部フィールド。フロントは設定 UI には出さず、保存時に Rust に往復させて消えないようにする。
+     */
+    pc_id?: string
 }
 
 // デフォルト値（Rust側 state.rs の default_auto_start() と統一）
@@ -94,6 +99,7 @@ export function useSettings() {
                     font_size: loaded.font_size,
                     sound_enabled: loaded.sound_enabled,
                     iphone_send_enabled: loaded.iphone_send_enabled,
+                    pc_id: loaded.pc_id,
                 }
                 setSettings({ ...DEFAULT_SETTINGS, ...normalized })
             }

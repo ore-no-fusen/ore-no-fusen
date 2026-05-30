@@ -17,6 +17,10 @@ RequestExecutionLevel user
 ; --- インストーラー ページ構成（最小構成3画面） ---
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_INSTFILES
+
+; インストール完了画面に「ore-no-fusen を起動する」チェックボックスを表示
+!define MUI_FINISHPAGE_RUN "$INSTDIR\ore-no-fusen.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "$(LAUNCH_APP_TEXT)"
 !insertmacro MUI_PAGE_FINISH
 
 ; --- アンインストーラー ページ構成 ---
@@ -42,6 +46,9 @@ LangString MUI_TEXT_FINISH_INFO_TEXT ${LANG_JAPANESE} \
 
 LangString MUI_TEXT_FINISH_INFO_TEXT ${LANG_ENGLISH} \
 "Installation is complete.$\r$\n$\r$\nCreate your first sticky note now."
+
+LangString LAUNCH_APP_TEXT ${LANG_JAPANESE} "ore-no-fusen を起動する"
+LangString LAUNCH_APP_TEXT ${LANG_ENGLISH} "Launch ore-no-fusen"
 
 Section "Install"
   ; インストールディレクトリを設定
