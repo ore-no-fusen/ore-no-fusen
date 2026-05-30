@@ -258,7 +258,11 @@ pub async fn send_web_push(
 
     let status = response.status();
     if status.as_u16() != 201 {
-        return Err(format!("APNs error: {status}"));
+        let body = response.text().await.unwrap_or_default();
+        if body.trim().is_empty() {
+            return Err(format!("APNs error: {status}"));
+        }
+        return Err(format!("APNs error: {status}: {}", body.trim()));
     }
 
     Ok(())

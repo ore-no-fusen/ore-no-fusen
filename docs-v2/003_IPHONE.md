@@ -461,7 +461,7 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
 <Note type="success">
 <strong>Drive 設計原則：</strong>
 <code>notes_to_iphone.json</code>、<code>notes_from_iphone.json</code>、<code>fusen_img_*</code>、<code>fusen_video_*</code> は未処理キュー。処理済みは即削除。
-<code>push_keys.json</code> と <code>push_devices.json</code> は Web Push 用の設定ファイルなので、セットアップ後も残す。
+<code>push_keys.json</code>、<code>push_devices.json</code>、<code>pc_devices.json</code> は接続設定ファイルなので、セットアップ後も残す。
 </Note>
 
 <p class="table-caption">表 3.3-1　Google Drive ファイル一覧</p>
@@ -507,9 +507,9 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
     <tr>
       <td style="text-align:center;color:#94a3b8;font-weight:700">5</td>
       <td><code>push_keys.json</code></td>
-      <td>PC（webpush.rs）</td>
+      <td>PC（webpush.rs）<br>初回のみ作成</td>
       <td>iPhone（lib/push.ts）が<br>公開鍵を読む<br>PC（webpush.rs）が<br>秘密鍵を読む</td>
-      <td>PC が「このユーザーの通知送信者である」と Push Service に示すために、VAPID 鍵ペアを保存する。公開鍵は iPhone の Push 購読に使い、秘密鍵は PC が Web Push 送信時の VAPID JWT に署名するために使う。秘密鍵がないと APNs / Push Service が送信者を検証できず、通知送信できない。</td>
+      <td>PC が「このユーザーの俺の付箋通知送信者である」と Push Service に示すために、VAPID 鍵ペアを保存する。これは開発者の秘密鍵ではなく、ユーザー本人の Drive に置かれる、俺の付箋連携端末群の共有通知鍵である。ユーザーの Drive 上の 1 個を正とし、各PCのローカルファイルはキャッシュとして扱う。公開鍵は iPhone の Push 購読に使い、秘密鍵は PC が Web Push 送信時の VAPID JWT に署名するために使う。秘密鍵がないと APNs / Push Service が送信者を検証できず、通知送信できない。</td>
     </tr>
     <tr>
       <td style="text-align:center;color:#94a3b8;font-weight:700">6</td>
@@ -518,10 +518,82 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
       <td>PC（webpush.rs）が<br>全端末へ Push 送信</td>
       <td>PC が登録済み iPhone へ Push を送るために、端末ごとの <code>device_id</code> / <code>endpoint</code> / 暗号化鍵を保存する。複数端末へ送るために、端末一覧として保持する。</td>
     </tr>
+    <tr>
+      <td style="text-align:center;color:#94a3b8;font-weight:700">7</td>
+      <td><code>pc_devices.json</code></td>
+      <td>PC（Google連携完了時<br>または手動登録時）</td>
+      <td>iPhone PWA<br>（送信直前に読む）</td>
+      <td>iPhone から PC へ送るときの送信先 PC 名簿。PCごとの <code>pcId</code> / 表示名 / 更新時刻を保存する。PC起動時や受信ポーリング時に勝手に書き込まない。</td>
+    </tr>
   </tbody>
 </table>
 
-### 3.3.1 Drive JSON データ構成
+### 3.3.1 複数 iPhone・複数 PC の接続モデル
+
+同じ Google Drive の <code>ore-no-fusen</code> フォルダを共有領域として使い、複数 iPhone / iPad と複数 PC を接続できる。
+
+```mermaid
+flowchart TD
+    Threat["守りたいこと<br>第三者や別鍵PCが<br>勝手にiPhoneへ通知しない"] --> Rule["そのためのルール<br>push_keys.json は<br>Drive上の1個だけを正にする"]
+
+    Rule --> PC1["PC-A<br>Drive鍵で送信"]
+    Rule --> PC2["PC-B<br>Drive鍵で送信"]
+    Rule --> IP1["iPhone A<br>同じ公開鍵で購読"]
+    Rule --> IP2["iPhone B<br>同じ公開鍵で購読"]
+
+    IP1 --> Devices["push_devices.json<br>iPhoneごとの宛先"]
+    IP2 --> Devices
+    PC1 -->|"共有秘密鍵で署名"| APNs["APNs / Push Service<br>署名を検証"]
+    PC2 -->|"共有秘密鍵で署名"| APNs
+    Devices --> APNs
+    APNs -->|"正しければ通知"| IP1
+    APNs -->|"正しければ通知"| IP2
+```
+
+<p class="mermaid-caption">図 3.3.1-1　Push鍵は「勝手に通知されない」ために1個だけ共有する</p>
+
+<Note type="info">
+<code>push_keys.json</code> の目的は、APNs / Push Service に「この通知は、このユーザーの俺の付箋から送られた正規の通知である」と示すこと。
+これは開発者の秘密ではなく、ユーザー本人の Google Drive に保存される、俺の付箋連携端末群の共有通知鍵である。
+守る対象は、iPhone が第三者や別鍵PCから勝手に通知されること。
+そのため、<code>push_keys.json</code> は Drive 上の 1 個を正とし、全PCは同じ鍵を使う。
+複数 iPhone でも鍵は 1 個で、増えるのは <code>push_devices.json</code> 内の通知宛先だけである。
+</Note>
+
+```mermaid
+flowchart LR
+    PC["PC<br>付箋を送る"] -->|"① notes_to_iphone.json<br>未処理キュー"| Drive["Google Drive<br>ore-no-fusen"]
+    PC -->|"② push_devices.json の全端末へPush"| Push["APNs / FCM"]
+    Push --> IP1["iPhone A<br>IndexedDBに保存"]
+    Push --> IP2["iPhone B<br>IndexedDBに保存"]
+    Push --> IP3["iPad<br>IndexedDBに保存"]
+    Drive -.->|"フォールバック取得"| IP1
+    Drive -.->|"フォールバック取得"| IP2
+    Drive -.->|"フォールバック取得"| IP3
+```
+
+<p class="mermaid-caption">図 3.3.1-2　PC → iPhone は登録済み端末への同報送信</p>
+
+<Note type="warning">
+PC → iPhone は <code>push_devices.json</code> の登録端末へ同報送信する。現行仕様では個別 iPhone を選んで送る UI はない。
+</Note>
+
+```mermaid
+flowchart LR
+    IP["iPhone PWA<br>PCに送る"] -->|"① 送信直前に読む"| Devices["pc_devices.json<br>PC名簿"]
+    Devices -->|"② 送信先PCを選ぶ"| IP
+    IP -->|"③ notes_from_iphone.json<br>targetPcId=PC-B"| Drive["Google Drive<br>ore-no-fusen"]
+    Drive -->|"30秒ポーリング"| PCA["PC-A<br>targetPcId不一致<br>触らない"]
+    Drive -->|"30秒ポーリング"| PCB["PC-B<br>targetPcId一致<br>受信して削除"]
+```
+
+<p class="mermaid-caption">図 3.3.1-3　iPhone → PC は targetPcId で送信先PCを指定</p>
+
+<Note type="info">
+iPhone → PC は複数PCが同じ <code>notes_from_iphone.json</code> を読むため、送信先指定がないと取り合いになる。そのため <code>targetPcId</code> が必要。
+</Note>
+
+### 3.3.2 Drive JSON データ構成
 
 表 3.3-1 に記載した各 JSON ファイルの構造は、この節に示す。
 Drive 上の JSON は、以下の構成を基本とする。
@@ -567,6 +639,7 @@ Drive 上の JSON は、以下の構成を基本とする。
 | 7 | `items[].images` | `Object[]` | △ | 添付画像一覧。各要素は Drive 一時ファイル名を持つ |
 | 8 | `items[].videos` | `Object[]` | △ | 添付動画一覧。各要素は <code>{ videoFileName, originalFileName }</code> を持つ。複数動画可 |
 | 9 | `items[].videoFileName` / `items[].originalFileName` | `string` | △ | 旧実装互換用の先頭動画情報。新規実装では <code>videos[]</code> を正とする |
+| 10 | `items[].targetPcId` | `string` | △ | 複数PC接続時の送信先PC ID。未指定の旧データは従来互換として全PCが受信対象にできる |
 
 ```json
 {
@@ -576,6 +649,7 @@ Drive 上の JSON は、以下の構成を基本とする。
       "title": "外出先メモ",
       "body": "帰ったら確認\n![](fusen_img_20260505_120000_0.jpg)",
       "sent_at": "2026-05-05T12:00:00+09:00",
+      "targetPcId": "pc-uuid",
       "tags": [],
       "videos": [
         {
@@ -593,7 +667,7 @@ Drive 上の JSON は、以下の構成を基本とする。
 | No | フィールド | 型 | 必須 | 用途 |
 |:---|:---|:---|:---:|:---|
 | 1 | `public_key_b64url` | `string` | ○ | iPhone が Push Service に「この送信者の通知を受け取る端末」として登録するために、`pushManager.subscribe()` の `applicationServerKey` に渡す |
-| 2 | `private_key_b64url` | `string` | ○ | PC が Web Push 送信者であることを証明するために、VAPID JWT に署名する。署名結果は `Authorization: vapid t=...,k=...` として APNs / Push Service に送る |
+| 2 | `private_key_b64url` | `string` | ○ | PC が Web Push 送信者であることを証明するために、VAPID JWT に署名する。署名結果は `Authorization: vapid t=...,k=...` として APNs / Push Service に送る。Drive 上の共有鍵を正とし、PCごとに別鍵を作らない |
 | 3 | `subject` | `string` | ○ | Push Service が送信者の連絡先を把握するために、VAPID JWT の `sub` に入れる。現行値は `mailto:ore-no-fusen@example.com` |
 
 ```json
@@ -605,14 +679,26 @@ Drive 上の JSON は、以下の構成を基本とする。
 ```
 
 <Note type="warning">
-<code>push_keys.json</code> には秘密鍵が含まれるため、共有・公開してはいけない。
+<code>push_keys.json</code> には秘密鍵が含まれる。
+これは開発者やVercelの秘密ではなく、ユーザー本人の Drive に置かれる「そのユーザーの連携端末群にとっての秘密」である。
+言い換えると、ユーザー本人の iPhone へ通知を送る権利を表す鍵である。
+そのため、同じユーザーが連携したPC間では共有してよいが、第三者・別ユーザー・公開リポジトリへ共有してはいけない。
 </Note>
 
 <Note type="info">
-<strong>秘密鍵を使う理由：</strong>
-PC は Web Push を送るとき、通知先端末の <code>endpoint</code> 宛てに暗号化済みペイロードを POST する。
-このとき <code>private_key_b64url</code> で VAPID JWT に署名し、対応する <code>public_key_b64url</code> と一緒に <code>Authorization</code> ヘッダーへ入れる。
-APNs / Push Service はこの署名を検証し、iPhone が購読時に登録した公開鍵と一致する送信者からの通知として扱う。
+<strong>鍵の目的：</strong>
+APNs / Push Service が「この通知は、このユーザーの俺の付箋から送られた正規の通知か」を判定するために使う。
+これにより、第三者や別鍵PCが勝手に iPhone へ通知することを防ぐ。
+PC は共有秘密鍵で通知に署名し、iPhone は同じ共有鍵の公開鍵で購読する。
+秘密鍵は「アプリ開発者を守る秘密」ではなく、「ユーザー本人の iPhone に勝手な通知を送られないようにするための、ユーザー側の秘密」である。
+</Note>
+
+<Note type="warning">
+<strong>盗まれた場合の影響：</strong>
+<code>push_keys.json</code> の秘密鍵が第三者に渡ると、その第三者は「このユーザーの俺の付箋から送られた通知」のように見える Push 通知を作れる可能性がある。
+通知本文や添付データそのものは別途 Drive 権限がないと読めないが、通知を勝手に送れること自体が被害である。
+つまり、この鍵の価値は「ユーザー本人の iPhone を勝手に起こせないようにすること」にある。
+漏えいした場合は、Drive 上の <code>push_keys.json</code> を作り直し、iPhone 側の Push 購読を再登録する必要がある。
 </Note>
 
 <Note type="warning">
@@ -624,10 +710,17 @@ PC は正しい VAPID 署名を作れない。
 
 <Note type="info">
 <strong>Drive に置く理由：</strong>
-このアプリはユーザー自身の Google Drive を PC と iPhone の共有領域として使う。
-<code>push_keys.json</code> を Drive に置くことで、PC が生成した公開鍵を iPhone が取得して購読登録でき、別PCでも同じユーザーの鍵を取得して同じ iPhone 宛てに送信できる。
-保存先はアプリが作成・利用する Drive ファイルであり、OAuth スコープは <code>drive.file</code> に限定する。
-つまりアプリが作ったファイルをユーザー本人の Drive 内で共有する設計であり、外部サーバーや他ユーザーに秘密鍵を預ける設計ではない。
+複数PC・複数iPhoneが同じ通知鍵を使えるようにするため。
+Drive 上の <code>push_keys.json</code> を正とし、各PCのローカルファイルはキャッシュとして扱う。
+ユーザー本人の Drive を共有場所にすることで、同じユーザーが許可したPCだけが同じ秘密鍵で通知を送れる。
+</Note>
+
+<Note type="warning">
+<strong>複数PC時の鍵同期ルール：</strong>
+<code>push_keys.json</code> は Drive 上の 1 個を正とする。
+PC のローカル <code>push_keys.json</code> はキャッシュであり、Drive に共有鍵が存在する場合は必ず Drive 鍵をローカルへ同期して使う。
+ローカル鍵で Drive の共有鍵を上書きしてはならない。
+Drive に共有鍵が存在しない初回セットアップ時だけ、新規生成して Drive へ保存する。
 </Note>
 
 <p class="table-caption">表 3.3-5　push_devices.json（Web Push 宛先一覧）</p>
@@ -667,6 +760,31 @@ PC は正しい VAPID 署名を作れない。
 <code>push_devices.json</code> は旧スキーマ <code>{ endpoint, keys, created_at }</code> が残っていても、iPhone 側と PC 側で新スキーマへ読み替える。
 </Note>
 
+<p class="table-caption">表 3.3-6　pc_devices.json（iPhone → PC 送信先一覧）</p>
+
+| No | フィールド | 型 | 必須 | 用途・内容 |
+|:---|:---|:---|:---:|:---|
+| 1 | `pcs` | `Object[]` | ○ | 登録済みPCの配列 |
+| 2 | `pcs[].pcId` | `string` | ○ | PCを一意に識別するID。PC側ローカルにも保持し、受信時の自分宛判定に使う |
+| 3 | `pcs[].pcName` | `string` | ○ | PWAの送信先プルダウンに表示するPC名 |
+| 4 | `pcs[].registeredAt` | `string` | △ | 初回登録時刻 |
+| 5 | `pcs[].updatedAt` | `string` | △ | 最終更新時刻 |
+| 6 | `pcs[].googleAccountEmail` | `string` | △ | どのGoogleアカウントで登録されたPCかを確認するためのメールアドレス |
+
+```json
+{
+  "pcs": [
+    {
+      "pcId": "pc-uuid",
+      "pcName": "DESKTOP-01",
+      "registeredAt": "2026-05-29T12:00:00+09:00",
+      "updatedAt": "2026-05-29T12:00:00+09:00",
+      "googleAccountEmail": "user@example.com"
+    }
+  ]
+}
+```
+
 ---
 
 ## 4 データフロー
@@ -676,6 +794,7 @@ PC→iPhone の初回セットアップ、初回以降の通常送信、iPhone�
 ### 4.1 PC → iPhone 初回セットアップと通常送信
 
 初回は、ユーザーがPCで「iPhoneに送る」を押したことをきっかけに設定画面へ誘導し、PC側でGoogle Drive接続と `push_keys.json` の準備を行ってから、iPhone PWAをセットアップします。
+「iPhoneに送る」は右クリックメニューに常に表示し、未設定のときは送信せず設定画面の iPhone 連携タブへ直行します。
 初回以降は、PCの「iPhoneに送る」操作だけで通知が届きます。
 
 <Note type="info">
@@ -711,7 +830,7 @@ sequenceDiagram
         PC->>PC: ❶ iPhone送信の準備不足を検出
         PC->>UserPC: ❷ 設定画面 > iPhone連携へ誘導
         UserPC->>PC: ② PC側でGoogle Driveを許可
-        PC->>Drive: ❸ push_keys.json を生成/更新<br>VAPID公開鍵・秘密鍵をユーザー自身のDriveへ保存
+        PC->>Drive: ❸ push_keys.json を確認<br>既存ならDrive鍵を使用、無ければ初回生成
         PC->>UserPC: ❹ QRコードと次の手順を表示
 
         UserPhone->>PWA: ③ Safariで /viewer を開く → ホーム画面に追加 → PWA起動
@@ -734,17 +853,18 @@ sequenceDiagram
     rect rgb(239, 246, 255)
         Note over UserPC,UserPhone: 初回以降の通常送信
         UserPC->>PC: ① 付箋を右クリック →「iPhoneに送る」
-        PC->>Drive: ❶ notes_to_iphone.json を書き込み
+        PC->>Drive: ❶ notes_to_iphone.json を読み込み<br>取得失敗時は既存キュー保護のため中止
         PC->>Drive: ❷ fusen_img_*.jpg を書き込み（添付画像）
-        PC->>APNs: ❸ Web Push送信（push_keys.json の秘密鍵でVAPID認証）
-        APNs->>SW: ❹ Push受信
-        SW->>Drive: ❺ 添付画像をダウンロード
-        SW->>SW: ❻ ノートをIndexedDBに保存
-        SW->>Drive: ❼ 処理済みファイルを削除
-        SW->>UserPhone: ❽ ロック画面に通知を表示
+        PC->>Drive: ❸ notes_to_iphone.json を保存
+        PC->>APNs: ❹ Web Push送信（push_keys.json の秘密鍵でVAPID認証）
+        APNs->>SW: ❺ Push受信
+        SW->>Drive: ❻ 添付画像をダウンロード
+        SW->>SW: ❼ ノートをIndexedDBに保存
+        SW->>Drive: ❽ 処理済みファイルを削除
+        SW->>UserPhone: ❾ ロック画面に通知を表示
         UserPhone->>PWA: ② 通知をタップ
-        PWA->>PWA: ❾ pending_open を確認<br>IndexedDBからノートデータを読み込み
-        PWA->>UserPhone: ❿ write画面でノートを表示
+        PWA->>PWA: ❿ pending_open を確認<br>IndexedDBからノートデータを読み込み
+        PWA->>UserPhone: ⓫ write画面でノートを表示
     end
 ```
 <p class="mermaid-caption">図 3-3　PC → iPhone 初回セットアップと通常送信シーケンス</p>
@@ -753,9 +873,17 @@ sequenceDiagram
 
 図 3-3 の初回セットアップで `push_keys.json` と `push_devices.json` が準備済みであれば、以降はPC側の「iPhoneに送る」操作だけで送信できます。
 
-- `push_keys.json`：PC側が作成するVAPID鍵。iPhoneは公開鍵を使ってPush購読し、PCは秘密鍵を使ってWeb Pushを送信する。
+- `push_keys.json`：Drive 上の 1 個を正とする Web Push 用共有VAPID鍵。iPhoneは公開鍵を使ってPush購読し、PCは秘密鍵を使ってWeb Pushを送信する。PCローカルの同名ファイルはキャッシュであり、Drive鍵を上書きしてはならない。
 - `push_devices.json`：iPhone側が作成・更新する通知先デバイス一覧。PCはこの一覧を見て送信先を決める。
 - `notes_to_iphone.json`：PCからiPhoneへ渡す未処理キュー。Service Workerが受信後に処理済みファイルを削除する。
+
+<Note type="warning">
+<strong>送信時のエラー保護：</strong>
+PC は <code>notes_to_iphone.json</code> の読み込みに失敗した場合、空配列で上書きしない。
+Drive 上に既存の未処理キューがある可能性を優先し、送信を中止してエラーを返す。
+また、<code>notes_to_iphone.json</code> の保存が成功してから Web Push を送る。
+Push 失敗時は APNs / Push Service のステータスを見て、400（鍵・購読不整合）、404/410（購読期限切れ）、413（本文過大）、429（送信過多）、5xx/通信失敗を分けて表示する。
+</Note>
 
 <Note type="info">
 <strong>body_rich：</strong>Markdown 本文（画像タグ含む）は Push ペイロードに直接含まれる。
@@ -815,6 +943,12 @@ sequenceDiagram
 <Note type="warning">
 <strong>本文保護：</strong>ユーザーが入力した <code>body</code> と、添付ファイルの元ファイル名・Drive 一時ファイル名・PC 保存パスは別の情報として扱う。
 動画を選んでも本文をファイル名で上書きしてはならない。PC 受信時は既存本文の後ろに保存先パスを追記する。
+</Note>
+
+<Note type="warning">
+<strong>送信キュー保護：</strong>iPhone PWA は <code>notes_from_iphone.json</code> の読み込みに失敗した場合、空配列で上書きしない。
+ファイル未作成の場合だけ空キューとして扱い、それ以外の Drive 失敗では送信を中止する。
+これにより、一時的な Drive エラーで他の未処理送信を消さない。
 </Note>
 
 ### 4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="./000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）
@@ -1102,5 +1236,9 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 7 | 1.6 | 26-05-24 | 6.3 / 6.4 に VideoDrop を追加。PWAから `mp4` / `mov` をDrive経由でPCへ送り、PC側で `assets/video/` に保存して付箋本文へパスを記録する仕様を追記。 |
 | 8 | 1.7 | 26-05-24 | VideoDrop を動画選択即送信から付箋添付後に「PCへ送る」で送信する方式へ変更。PC側本文にはクリック可能な絶対パスを記録する仕様へ更新。 |
 | 9 | 1.8 | 26-05-25 | VideoDrop を複数動画対応の添付メディア仕様へ更新。`videos[]`、IndexedDB の `videos`、Drive 一時ファイル `fusen_video_*`、本文保護ルールを追加。 |
+| 10 | 1.9 | 26-05-30 | 複数iPhone・複数PCの接続モデルを追加。PC→iPhoneは登録済み通知端末への同報送信、iPhone→PCは`pc_devices.json`と`targetPcId`で送信先PCを選択する仕様を明記。 |
+| 11 | 1.10 | 26-05-30 | Web Push共有鍵の目的・保護対象・誰にとっての秘密かを追記。`push_keys.json` はユーザー本人のDrive上の1個を正とし、PCローカル鍵で上書きしないルールを明記。 |
+| 12 | 1.11 | 26-05-30 | PC→iPhone / iPhone→PC 送信時のキュー保護を明記。Driveキュー取得失敗時は空配列で上書きせず送信を中止し、PC→iPhoneはDrive保存成功後にPushを送る。Push失敗はHTTPステータス別に分類して表示する。 |
+| 13 | 1.12 | 26-05-30 | PC右クリックメニューの「iPhoneに送る」を常時表示し、未設定時は設定画面の iPhone 連携タブへ誘導する仕様を明記。 |
 
 </div>

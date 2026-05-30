@@ -1138,10 +1138,10 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
   </thead>
   <tbody>
     <tr>
-            <td rowspan="5" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_IP_01</td>
-      <td rowspan="5" style="vertical-align:top; background-color:#f8fafc;">
+            <td rowspan="6" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_IP_01</td>
+      <td rowspan="6" style="vertical-align:top; background-color:#f8fafc;">
         <strong>【要求】</strong><br>
-        ユーザーは、PC で書いた付箋の内容をiPhone のロック画面通知として受け取りたい。<br><br>
+        ユーザーは、PC で書いた付箋の内容をiPhone のロック画面通知として受け取りたい。複数のiPhone / iPadを同じGoogle Driveに接続している場合は、登録済み端末へ同じ付箋を届けたい。<br><br>
         <strong>【理由】</strong><br>
         移動中でも PC の重要メモを目に入る場所（ロック画面）に残しておけるようにするため。「そこに残る」という付箋の本質をモバイルでも実現する。
       </td>
@@ -1150,7 +1150,7 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-01-02</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;">VAPID を使用した Web Push 通知を APNs/FCM 経由で iPhone に送信する。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">VAPID を使用した Web Push 通知を APNs/FCM 経由で iPhone に送信する。VAPID 鍵は開発者の秘密ではなく、ユーザー本人の Google Drive に置かれる連携端末群の共有通知鍵であり、ユーザー本人の iPhone へ通知を送る権利を表す。漏えいすると第三者が正規通知のように見える Push 通知を送れる可能性があるため、Google Drive の <code>push_keys.json</code> 1 個を正とし、各PCのローカル鍵で共有鍵を上書きしてはならない。</td>
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-01-03</td>
@@ -1163,6 +1163,10 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
     <tr>
       <td style=" text-align:center;">SPEC-IP-01-05</td>
       <td style="">iPhone のロック画面に通知として表示し、タップすると PWA の該当ノートへ遷移する。</td>
+    </tr>
+    <tr>
+      <td style=" text-align:center;">SPEC-IP-01-06</td>
+      <td style="">PC から iPhone へ送る場合、<code>push_devices.json</code> に登録されている複数端末へ送信できる。現行仕様では個別の iPhone を選択して送る UI はなく、登録済み通知端末へ同報送信する。PC → iPhone は各端末へ Push を配る同報配信であり、複数端末が同じ付箋を受け取ってもPC側の未処理キューを取り合う構造ではない。</td>
     </tr>
   </tbody>
 </table>
@@ -1184,10 +1188,10 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
   </thead>
   <tbody>
     <tr>
-            <td rowspan="7" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_IP_02</td>
-      <td rowspan="7" style="vertical-align:top; background-color:#f8fafc;">
+            <td rowspan="8" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_IP_02</td>
+      <td rowspan="8" style="vertical-align:top; background-color:#f8fafc;">
         <strong>【要求】</strong><br>
-        ユーザーは、外出先で iPhone に書いたメモ、画像、動画を PC に戻ったとき付箋として受け取りたい。<br><br>
+        ユーザーは、外出先で iPhone に書いたメモ、画像、動画を PC に戻ったとき付箋として受け取りたい。複数PCを同じGoogle Driveに接続している場合は、iPhone PWAから送信先PCを選びたい。<br><br>
         <strong>【理由】</strong><br>
         外出先のアイデアや素材をデスクトップに自動で届けることで、「転記」や手作業のファイル移動をなくすため。画像・動画は付箋の本文を置き換えるものではなく、ユーザーの思考に紐づく添付メディアとして扱う。
       </td>
@@ -1215,8 +1219,12 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
       <td style="border-bottom: 1px dotted #cbd5e1;">PC 受信後、動画ファイルはユーザーの保存先配下の <code>assets/video/</code> に保存し、付箋本文には保存先パスを追記する。動画バイナリを付箋 DB や Markdown 本文へ埋め込まない。</td>
     </tr>
     <tr>
-      <td style=" text-align:center;">SPEC-IP-02-07</td>
-      <td style="">ユーザーが入力した本文、1行目、タグ、添付一覧は別々の情報として扱う。動画の元ファイル名、Drive 一時ファイル名、PC 保存パスを本文やタイトルの代わりに上書きしてはならない。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-02-07</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">ユーザーが入力した本文、1行目、タグ、添付一覧は別々の情報として扱う。動画の元ファイル名、Drive 一時ファイル名、PC 保存パスを本文やタイトルの代わりに上書きしてはならない。</td>
+    </tr>
+    <tr>
+      <td style=" text-align:center;">SPEC-IP-02-08</td>
+      <td style="">複数 PC を同じ Google Drive に接続する場合、PC は Google 連携完了時または手動登録時に限り、<code>pc_devices.json</code> に自分の <code>pcId</code> と表示名を登録する。iPhone PWA は送信直前に送信先 PC 一覧を確認して送信先 PC を選択し、<code>notes_from_iphone.json</code> の各アイテムに <code>targetPcId</code> を付与する。iPhone → PC は複数PCが同じ未処理キューを読むため、送信先指定なしでは取り合いになる。PC アプリは自分宛のアイテムのみ受信し、他 PC 宛の未処理アイテムを削除してはならない。</td>
     </tr>
   </tbody>
 </table>
@@ -1353,5 +1361,7 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 | 3 | **v2.11** | 26-04-20 | REQ_IP_05「iPhoneロック画面常駐体験」追加 |
 | 4 | **v2.12** | 26-05-06 | 8.3 セキュリティ・プライバシー、9.5 iPhone PWA の認証と持続可能性を修正。OAuth / Vercel の要件説明を見直し、ユーザーが許可するものと開発者が守るものを分けて記載。 |
 | 5 | v2.13 | 26-05-25 | 9.2 iPhone → PC 送信に VideoDrop を追加。画像・動画を同じ添付メディアとして扱い、ユーザー本文を上書きしないこと、動画を `assets/video/` に保存することを明記。 |
+| 6 | v2.14 | 26-05-29 | 9.2 iPhone → PC 送信に複数 PC の送信先選択を追加。`pc_devices.json` と `targetPcId` により、自分宛のアイテムのみ受信する制約と、PC 名簿を書き込むタイミングを明記。 |
+| 7 | v2.15 | 26-05-30 | 9.1 PC → iPhone 送信で、VAPID 鍵はユーザー本人の Google Drive に置かれる連携端末群の共有通知鍵であり、盗まれると第三者が正規通知のように見える Push 通知を送れる可能性があること、Drive の `push_keys.json` 1 個を正とし、各PCのローカル鍵で共有鍵を上書きしてはならない制約を追加。 |
 
 </div>

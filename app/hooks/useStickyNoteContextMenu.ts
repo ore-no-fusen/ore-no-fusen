@@ -366,31 +366,38 @@ export function useStickyNoteContextMenu({
                 action: () => onSetAlarm()
             }));
 
-            if (iphoneSendEnabled) {
-                menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                menuItems.push(await MenuItem.new({
-                    id: 'ctx_send_to_iphone',
-                    text: `📱 ${t('menu.sendToIphone')}`,
-                    enabled: true,
-                    action: async () => {
-                        if (!selectedFile) return;
-                        // 事前チェック: Google Drive + iPhone push_config が揃っているか
-                        const isReady = await invoke<boolean>('fusen_check_pro_setup').catch(() => false);
-                        if (!isReady) {
-                            // 未設定: 設定画面の iPhone連携タブを開く
-                            const { emit } = await import('@tauri-apps/api/event');
-                            await emit('fusen:open_settings', { tab: 'iphone' });
-                            return;
-                        }
-                        try {
-                            await invoke('fusen_send_to_iphone', { path: selectedFile.path });
-                            onToast?.('📱 iPhoneに送りました');
-                        } catch (e: unknown) {
-                            alert(`iPhoneへの送信に失敗しました: ${String(e)}`);
-                        }
+            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            menuItems.push(await MenuItem.new({
+                id: 'ctx_send_to_iphone',
+                text: `📱 ${t('menu.sendToIphone')}`,
+                enabled: true,
+                action: async () => {
+                    if (!selectedFile) return;
+                    const openIphoneSettings = async () => {
+                        const { emit } = await import('@tauri-apps/api/event');
+                        await emit('fusen:open_settings', { tab: 'iphone' });
+                    };
+
+                    if (!iphoneSendEnabled) {
+                        await openIphoneSettings();
+                        return;
                     }
-                }));
-            }
+
+                    // 事前チェック: Google Drive + iPhone push_config が揃っているか
+                    const isReady = await invoke<boolean>('fusen_check_pro_setup').catch(() => false);
+                    if (!isReady) {
+                        // 未設定: 設定画面の iPhone連携タブを開く
+                        await openIphoneSettings();
+                        return;
+                    }
+                    try {
+                        await invoke('fusen_send_to_iphone', { path: selectedFile.path });
+                        onToast?.('📱 iPhoneに送りました');
+                    } catch (e: unknown) {
+                        alert(`iPhoneへの送信に失敗しました: ${String(e)}`);
+                    }
+                }
+            }));
 
             // アーカイブ
             const doArchive = async (targetTag?: string) => {

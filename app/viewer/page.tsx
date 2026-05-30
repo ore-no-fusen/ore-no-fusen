@@ -14,6 +14,7 @@ import { useLockToggle } from './hooks/useLockToggle';
 import { useBackgroundSend } from './hooks/useBackgroundSend';
 import { useAppInit } from './hooks/useAppInit';
 import { useNoteList } from './hooks/useNoteList';
+import { usePcDevices } from './hooks/usePcDevices';
 import {
   downloadFromDrive,
   downloadWithAutoRefresh,
@@ -340,6 +341,7 @@ export default function ViewerPage() {
     onTokenRefreshed: (newToken) => setAccessToken(newToken),
     onSessionExpired: () => setStep('login'),
   });
+  const { pcDevices, selectedPcId, setSelectedPcId, refreshPcDevices } = usePcDevices(accessToken);
 
   // メモ削除ハンドラ
   const handleDeleteNote = async (note: IphoneNote) => {
@@ -502,6 +504,8 @@ export default function ViewerPage() {
             isSendingInBackground={isSendingInBackground}
             currentDraftId={currentDraftId}
             accessToken={accessToken}
+            pcDevices={pcDevices}
+            selectedPcId={selectedPcId}
             t={t}
             setStep={setStep}
             setShowTagBar={setShowTagBar}
@@ -519,6 +523,8 @@ export default function ViewerPage() {
             setIsLoading={setIsLoading}
             setCurrentDraftId={setCurrentDraftId}
             setPendingHydrate={setPendingHydrate}
+            setSelectedPcId={setSelectedPcId}
+            refreshPcDevices={refreshPcDevices}
             handleEditorInput={handleEditorInput}
             sendToPC={sendToPC}
           />

@@ -94,6 +94,7 @@ describe('Video attachment semantics', () => {
         blobs: new Map(),
         videoBlobs,
         draftId: 'draft-1',
+        targetPcId: 'pc-1',
       });
       expect(ok).toBe(true);
     });
@@ -104,12 +105,14 @@ describe('Video attachment semantics', () => {
         title: string;
         body: string;
         originalFileName: string;
+        targetPcId: string;
         memo: string;
         videos: Array<{ videoFileName: string; originalFileName: string }>;
       }>;
     };
     expect(uploadPayload.items[0].title).toBe('びでお');
     expect(uploadPayload.items[0].body).toBe('ユーザが書いたメモ');
+    expect(uploadPayload.items[0].targetPcId).toBe('pc-1');
     expect(uploadPayload.items[0].memo).toBe('ユーザが書いたメモ');
     expect(uploadPayload.items[0].originalFileName).toBe('promo_fixed.mp4');
     expect(uploadPayload.items[0].videos).toEqual([

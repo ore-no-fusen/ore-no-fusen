@@ -20,6 +20,7 @@ export function resetCachedFolderId() {
 const LEGACY_FILE_NAMES: Record<string, string> = {
   'notes_to_iphone.json': 'notes_to_iphone.json',
   'push_devices.json': 'push_devices.json',
+  'pc_devices.json': 'pc_devices.json',
   'notes_from_iphone.json': 'notes_from_iphone.json',
 };
 

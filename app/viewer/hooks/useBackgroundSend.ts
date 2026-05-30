@@ -29,6 +29,8 @@ type SendPayload = {
   videoBlobs?: VideoBlobMap;
   /** 現在の下書き ID（null なら新規） */
   draftId: string | null;
+  /** 送信先PC ID。未指定なら従来どおり全PCが受信候補になる */
+  targetPcId?: string;
 };
 
 type UseBackgroundSendOptions = {
@@ -68,7 +70,7 @@ export function useBackgroundSend({
    * 出力: 送信に成功したら true、未接続・失敗・再ログインが必要なら false
    * 副作用: Drive API 呼び出し（画像アップロード・JSON 更新）、IndexedDB 書き込み（saveDraft）、localStorage 読み書き（トークン）
    */
-  const sendToPC = async ({ rawText, tags, blobs, videoBlobs, draftId }: SendPayload): Promise<boolean> => {
+  const sendToPC = async ({ rawText, tags, blobs, videoBlobs, draftId, targetPcId }: SendPayload): Promise<boolean> => {
     if (!accessToken) {
       setBackgroundSendError('Driveに接続してください。');
       setTimeout(() => setBackgroundSendError(null), 5000);
@@ -109,6 +111,36 @@ export function useBackgroundSend({
         legacyVideosToSend.set(driveName, entry);
       }
 
+      // --- キュー配列方式: read-modify-write ---
+      // 既存データの取得に失敗した場合、空配列で上書きすると未処理キューを失う。
+      // 「ファイル未作成」だけを空配列扱いにし、それ以外は送信を中止する。
+      let currentItems: any[] = [];
+      try {
+        const existing = await downloadFromDrive(token, 'notes_from_iphone.json');
+        if (existing && typeof existing === 'object') {
+          const data = existing as any;
+          if (Array.isArray(data.items)) {
+            // 新スキーマ
+            currentItems = data.items;
+          } else if (data.id && !data.received_at) {
+            // 旧スキーマ（未処理の単一アイテム）→ キューに変換して引き継ぐ
+            currentItems = [{
+              id: data.id,
+              title: data.title ?? '',
+              body: data.body ?? '',
+              sent_at: data.sent_at ?? nowJST(),
+              tags: data.tags ?? [],
+            }];
+          }
+          // 旧スキーマで received_at がある場合は処理済み → 捨てる（空配列のまま）
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? (err.message || String(err)) : String(err);
+        if (!msg.includes('notes_from_iphone.json not found in Drive')) {
+          throw new Error(`既存のPC送信キューを読み込めませんでした。未送信データを守るため送信を中止しました: ${msg}`);
+        }
+      }
+
       // 画像を並列アップロード
       await Promise.all([
         ...Array.from(mergedBlobs.entries()).map(([fileName, file]) =>
@@ -126,31 +158,13 @@ export function useBackgroundSend({
       }));
       const firstVideo = videoItems[0];
       const videoMemo = videoItems.length > 0 ? fullBody.trim() : undefined;
-      // --- キュー配列方式: read-modify-write ---
-      // 既存データを読み込む（存在しない場合や旧スキーマは自動変換）
-      const existing = await downloadFromDrive(token, 'notes_from_iphone.json').catch(() => null);
-      let currentItems: any[] = [];
-      if (existing) {
-        if (Array.isArray(existing.items)) {
-          // 新スキーマ
-          currentItems = existing.items;
-        } else if (existing.id && !existing.received_at) {
-          // 旧スキーマ（未処理の単一アイテム）→ キューに変換して引き継ぐ
-          currentItems = [{
-            id: existing.id,
-            title: existing.title ?? '',
-            body: existing.body ?? '',
-            sent_at: existing.sent_at ?? sentAt,
-            tags: existing.tags ?? [],
-          }];
-        }
-        // 旧スキーマで received_at がある場合は処理済み → 捨てる（空配列のまま）
-      }
       // 新しいアイテムを末尾に追加
       const fallbackTitle = title;
+      const targetFields = targetPcId ? { targetPcId } : {};
       const newItem = videoItems.length > 0
         ? {
             id: noteId,
+            ...targetFields,
             type: 'video',
             title: fallbackTitle,
             body: fullBody,
@@ -161,7 +175,7 @@ export function useBackgroundSend({
             originalFileName: firstVideo?.originalFileName,
             memo: videoMemo ?? '',
           }
-        : { id: noteId, title, body: fullBody, sent_at: sentAt, tags };
+        : { id: noteId, ...targetFields, title, body: fullBody, sent_at: sentAt, tags };
       const updatedItems = [...currentItems, newItem];
       await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: updatedItems });
 

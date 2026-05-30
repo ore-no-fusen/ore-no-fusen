@@ -181,7 +181,12 @@ describe('WriteStep loss prevention', () => {
     const sendToPC = vi.fn(async () => true);
     const videoFile = new File(['video'], 'dance.mov', { type: 'video/quicktime' });
     const videoBlobsRef = { current: new Map([['fusen_video_dance.mov', { blob: videoFile, originalName: 'dance.mov' }]]) };
-    const { getByRole } = renderWriteStep({ sendToPC, videoBlobsRef });
+    const { getByRole } = renderWriteStep({
+      sendToPC,
+      videoBlobsRef,
+      pcDevices: [{ pcId: 'pc-1', pcName: '作業PC' }],
+      selectedPcId: 'pc-1',
+    });
 
     fireEvent.click(getByRole('button', { name: 'PCに送る' }));
 
@@ -192,11 +197,34 @@ describe('WriteStep loss prevention', () => {
       blobs: expect.any(Map),
       videoBlobs: expect.any(Map),
       draftId: 'draft-id-1',
+      targetPcId: 'pc-1',
     });
     const calls = sendToPC.mock.calls as unknown as Array<[{
       videoBlobs: Map<string, { blob: Blob; originalName: string }>;
     }]>;
     const payload = calls[0][0];
     expect(payload.videoBlobs.get('fusen_video_dance.mov')).toEqual({ blob: videoFile, originalName: 'dance.mov' });
+  });
+
+  it('PCに送る直前に送信先PC一覧を再確認し、最新のPC IDで送る', async () => {
+    const sendToPC = vi.fn(async () => true);
+    const refreshPcDevices = vi.fn(async () => 'pc-2');
+    const { getByRole } = renderWriteStep({
+      sendToPC,
+      refreshPcDevices,
+      pcDevices: [
+        { pcId: 'pc-1', pcName: '旧PC' },
+        { pcId: 'pc-2', pcName: '新PC' },
+      ],
+      selectedPcId: 'pc-1',
+    });
+
+    fireEvent.click(getByRole('button', { name: 'PCに送る' }));
+
+    await waitFor(() => expect(refreshPcDevices).toHaveBeenCalled());
+    expect(sendToPC).toHaveBeenCalledWith(expect.objectContaining({
+      rawText: '大事な付箋',
+      targetPcId: 'pc-2',
+    }));
   });
 });

@@ -30,6 +30,14 @@ export type VideoBlobEntry = {
 
 export type VideoBlobMap = Map<string, VideoBlobEntry>;
 
+export type PcDevice = {
+  pcId: string;
+  pcName: string;
+  registeredAt?: string;
+  updatedAt?: string;
+  googleAccountEmail?: string | null;
+};
+
 export type PendingHydrate = {
   markdown: string;
   blobMap: Map<string, Blob>;

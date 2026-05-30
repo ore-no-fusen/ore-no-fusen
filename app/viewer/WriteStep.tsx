@@ -14,7 +14,7 @@ import {
 import { saveDraft } from './lib/indexeddb';
 import { serializeEditor, extractTitleBody, mergeKnownTags, loadKnownTags } from './editor-helpers';
 import type { TranslationKey } from '@/lib/i18n';
-import type { PendingHydrate, PendingVideoMeta, VideoBlobMap } from './types';
+import type { PcDevice, PendingHydrate, PendingVideoMeta, VideoBlobMap } from './types';
 
 // ---------------------------------------------------------------------------
 // WriteStep: メモ編集画面（step === 'write'）
@@ -42,6 +42,8 @@ type WriteStepProps = {
   isSendingInBackground: boolean;
   currentDraftId: string | null;
   accessToken: string | null;
+  pcDevices?: PcDevice[];
+  selectedPcId?: string;
   t: (key: TranslationKey) => string;
   // setters
   setStep: (step: 'list' | 'write') => void;
@@ -60,9 +62,11 @@ type WriteStepProps = {
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setCurrentDraftId: React.Dispatch<React.SetStateAction<string | null>>;
   setPendingHydrate: React.Dispatch<React.SetStateAction<PendingHydrate | null>>;
+  setSelectedPcId?: (pcId: string) => void;
+  refreshPcDevices?: () => Promise<string>;
   // handlers
   handleEditorInput: () => void;
-  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoBlobs?: VideoBlobMap; draftId: string | null }) => Promise<boolean>;
+  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoBlobs?: VideoBlobMap; draftId: string | null; targetPcId?: string }) => Promise<boolean>;
 };
 
 /**
@@ -91,6 +95,8 @@ export function WriteStep({
   isSendingInBackground,
   currentDraftId,
   accessToken,
+  pcDevices = [],
+  selectedPcId = '',
   t,
   setStep,
   setShowTagBar,
@@ -108,6 +114,8 @@ export function WriteStep({
   setIsLoading,
   setCurrentDraftId,
   setPendingHydrate,
+  setSelectedPcId,
+  refreshPcDevices,
   handleEditorInput,
   sendToPC,
 }: WriteStepProps) {
@@ -491,6 +499,27 @@ export function WriteStep({
 
       {/* アクションボタン */}
       <div className="flex flex-col gap-3 px-4 py-4 bg-[#F2F2F7]">
+        {accessToken && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-white text-sm text-gray-700 shadow-sm">
+            <span className="shrink-0 text-gray-500">送信先</span>
+            {pcDevices.length > 0 ? (
+              <select
+                className="min-w-0 flex-1 bg-transparent outline-none"
+                value={selectedPcId}
+                onChange={(e) => setSelectedPcId?.(e.target.value)}
+                aria-label="送信先PC"
+              >
+                {pcDevices.map((pc) => (
+                  <option key={pc.pcId} value={pc.pcId}>
+                    {pc.pcName}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-gray-400">PC未登録（従来方式で送信）</span>
+            )}
+          </div>
+        )}
         {/* 新規付箋ボタン */}
         <button
           className="w-full py-4 rounded-2xl bg-white text-gray-800 font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-sm text-base"
@@ -568,12 +597,22 @@ export function WriteStep({
               return;
             }
 
+            let targetPcId = selectedPcId;
+            if (refreshPcDevices) {
+              targetPcId = await refreshPcDevices();
+            }
+            if (pcDevices.length > 0 && !targetPcId) {
+              setErrorMessage('送信先PCを選んでください。付箋は下書きに退避しました。');
+              return;
+            }
+
             const sent = await sendToPC({
               rawText,
               tags: capturedTags,
               blobs: capturedBlobs,
               videoBlobs: new Map(videoBlobsRef.current),
               draftId,
+              ...(targetPcId ? { targetPcId } : {}),
             });
             if (!sent) return;
 
