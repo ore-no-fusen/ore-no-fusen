@@ -12,9 +12,20 @@ type PcDevicesJson = {
 
 function normalizePcDevices(data: unknown): PcDevice[] {
   const pcs = (data as PcDevicesJson | null)?.pcs;
-  return Array.isArray(pcs)
-    ? pcs.filter((pc) => pc.pcId && pc.pcName)
-    : [];
+  if (!Array.isArray(pcs)) return [];
+
+  const byName = new Map<string, PcDevice>();
+  for (const pc of pcs) {
+    if (!pc.pcId || !pc.pcName) continue;
+    const current = byName.get(pc.pcName);
+    const currentTime = current?.updatedAt ? new Date(current.updatedAt).getTime() : 0;
+    const nextTime = pc.updatedAt ? new Date(pc.updatedAt).getTime() : 0;
+    if (!current || nextTime >= currentTime) {
+      byName.set(pc.pcName, pc);
+    }
+  }
+
+  return Array.from(byName.values());
 }
 
 function getStoredPcId() {

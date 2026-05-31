@@ -56,6 +56,7 @@ export default function ViewerPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [swReady, setSwReady] = useState(false);
   const [swVersion, setSwVersion] = useState<string | null>(null);
+  const [runtimeOrigin, setRuntimeOrigin] = useState('');
   const editorRef = React.useRef<HTMLDivElement>(null);
   const [imageBlobs, setImageBlobs] = useState<Map<string, Blob>>(new Map());
   const [writeTags, setWriteTags] = useState<string[]>([]);
@@ -83,7 +84,17 @@ export default function ViewerPage() {
   useEffect(() => {
     setIsMounted(true);
     setShowDebugLog(new URLSearchParams(window.location.search).get('debug') === '1');
+    setRuntimeOrigin(window.location.origin);
   }, []);
+
+  const runtimeKind = React.useMemo(() => {
+    if (!runtimeOrigin) return '確認中';
+    if (runtimeOrigin.includes('localhost') || runtimeOrigin.includes('127.0.0.1') || /^http:\/\/192\.168\./.test(runtimeOrigin)) {
+      return 'PC開発環境';
+    }
+    if (runtimeOrigin.includes('vercel.app')) return 'Vercel';
+    return '不明';
+  }, [runtimeOrigin]);
 
   // SWバージョン取得
   useEffect(() => {
@@ -442,6 +453,10 @@ export default function ViewerPage() {
           <div className="flex flex-col items-center gap-4 w-full max-w-sm">
             <p className="text-gray-700">{t('pwa.loginTitle')}</p>
             <p className="text-gray-500 text-sm text-center">{t('pwa.loginDesc')}</p>
+            <div className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-500 leading-relaxed">
+              <div>接続先: <span className="font-mono break-all">{runtimeOrigin || '確認中'}</span></div>
+              <div>環境: <span className="font-semibold">{runtimeKind}</span> / SW: <span className="font-mono">{swVersion ?? '---'}</span></div>
+            </div>
             {!swReady && (
               <p className="text-gray-500 text-sm">SW準備中...</p>
             )}
@@ -568,6 +583,8 @@ export default function ViewerPage() {
 
             }}
             swVersion={swVersion}
+            runtimeOrigin={runtimeOrigin}
+            runtimeKind={runtimeKind}
             onDelete={handleDeleteNote}
             onLockToggle={handleLockToggle}
             onReRegisterPush={() => {

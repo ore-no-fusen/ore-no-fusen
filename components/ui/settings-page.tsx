@@ -1318,6 +1318,10 @@ type PcDeviceItem = {
     googleAccountEmail?: string;
 };
 
+function shortDeviceId(id?: string | null) {
+    return id ? id.slice(-8) : 'unknown'
+}
+
 type PushDeviceItem = {
     device_id: string;
     endpoint: string;
@@ -1352,6 +1356,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
     const [jsonLoading, setJsonLoading] = useState(false)
     const [jsonError, setJsonError] = useState<string | null>(null)
     const [jsonCopied, setJsonCopied] = useState(false)
+    const [queueDeleting, setQueueDeleting] = useState<'to_iphone' | 'from_iphone' | null>(null)
 
     const openJsonViewer = (titleKey: string, filename: string, fallback?: string) => {
         setJsonViewer({ titleKey, filename, fallback })
@@ -1396,6 +1401,38 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setTimeout(() => setJsonCopied(false), 1500)
         } catch (e) {
             console.error('[AdvancedSection] copy json failed:', e)
+        }
+    }
+
+    const deleteQueueJson = async (
+        direction: 'to_iphone' | 'from_iphone',
+        filename: string,
+        fallback: string,
+    ) => {
+        const label = direction === 'from_iphone'
+            ? 'PCへの未受信キュー'
+            : 'iPhoneへの未送信キュー'
+        const ok = window.confirm(
+            `${label}を削除します。\n\nまだ届いていない付箋は復元できません。\n中身を確認してから削除することをおすすめします。\n\n削除しますか？`
+        )
+        if (!ok) return
+
+        setQueueDeleting(direction)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            await invoke('fusen_delete_drive_queue_json', {
+                filename,
+                fallbackFilename: fallback,
+            })
+            await fetchConnectionStatus()
+            if (jsonViewer?.filename === filename) {
+                closeJsonViewer()
+            }
+        } catch (e) {
+            console.error('[AdvancedSection] delete drive queue failed:', e)
+            window.alert(`削除に失敗しました: ${String(e)}`)
+        } finally {
+            setQueueDeleting(null)
         }
     }
 
@@ -1610,6 +1647,15 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             return iso
         }
     }
+    const thisPcRegistered = !!settings.pc_id && !!pcs?.some((pc) => pc.pcId === settings.pc_id)
+    const duplicatePcNames = useMemo(() => {
+        const counts = new Map<string, number>()
+        for (const pc of pcs ?? []) {
+            const name = pc.pcName || String(t('settings.advanced.connection.unnamed'))
+            counts.set(name, (counts.get(name) ?? 0) + 1)
+        }
+        return Array.from(counts.entries()).filter(([, count]) => count > 1)
+    }, [pcs, t])
 
     const openFolder = async (path: string | null | undefined, fallbackCommand?: string) => {
         try {
@@ -1915,7 +1961,8 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                         <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 mb-4">
                             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">{t('settings.advanced.queue.title')}</p>
                             <div className="grid grid-cols-2 gap-3">
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2">
+                                    <div className="flex items-center gap-3 min-w-0">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-700">
                                         <Send className="h-5 w-5" />
                                     </div>
@@ -1926,8 +1973,31 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                             <span className="text-xs text-slate-500 font-normal ml-1">{t('settings.advanced.queue.unit')}</span>
                                         </p>
                                     </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => openJsonViewer('settings.advanced.external.viewJson.notesToIphone', 'notes_to_iphone.json', 'fusen_note.json')}
+                                            disabled={connLoading}
+                                        >
+                                            <FileJson className="h-3.5 w-3.5 mr-1" />
+                                            中身
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => deleteQueueJson('to_iphone', 'notes_to_iphone.json', 'fusen_note.json')}
+                                            disabled={connLoading || queueDeleting !== null || !queueCounts || queueCounts.to_iphone === 0}
+                                            className="text-red-600 hover:text-red-700"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                            {queueDeleting === 'to_iphone' ? '削除中' : '削除'}
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2">
+                                    <div className="flex items-center gap-3 min-w-0">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-md bg-sky-50 text-sky-700">
                                         <Inbox className="h-5 w-5" />
                                     </div>
@@ -1938,9 +2008,53 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                             <span className="text-xs text-slate-500 font-normal ml-1">{t('settings.advanced.queue.unit')}</span>
                                         </p>
                                     </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => openJsonViewer('settings.advanced.external.viewJson.notesFromIphone', 'notes_from_iphone.json', 'fusen_from_iphone.json')}
+                                            disabled={connLoading}
+                                        >
+                                            <FileJson className="h-3.5 w-3.5 mr-1" />
+                                            中身
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => deleteQueueJson('from_iphone', 'notes_from_iphone.json', 'fusen_from_iphone.json')}
+                                            disabled={connLoading || queueDeleting !== null || !queueCounts || queueCounts.from_iphone === 0}
+                                            className="text-red-600 hover:text-red-700"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                            {queueDeleting === 'from_iphone' ? '削除中' : '削除'}
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
+                        {pcs && !thisPcRegistered && (
+                            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                <p className="font-bold">このPCはDrive上のPC一覧に登録されていません</p>
+                                <p className="mt-1 leading-relaxed">
+                                    iPhone / PWA から送った付箋がこのPCに届かない場合があります。設定の「iPhone連携」でPC側のDriveを再接続してください。
+                                </p>
+                                <p className="mt-2 font-mono text-xs text-amber-800">このPCのID: ...{shortDeviceId(settings.pc_id)}</p>
+                            </div>
+                        )}
+
+                        {duplicatePcNames.length > 0 && (
+                            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                <p className="font-bold">同じ名前のPCが複数登録されています</p>
+                                <p className="mt-1 leading-relaxed">
+                                    PWAでは名前だけだと区別しづらいため、送信先のID末尾も確認してください。古い登録は下のPC一覧から削除できます。
+                                </p>
+                                <p className="mt-2 text-xs text-amber-800">
+                                    {duplicatePcNames.map(([name, count]) => `${name} (${count}件)`).join(' / ')}
+                                </p>
+                            </div>
+                        )}
 
                         {/* PC 一覧 */}
                         <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 mb-3">
@@ -1966,7 +2080,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                                     {t('settings.advanced.connection.registeredAt')}: {formatDate(pc.registeredAt)}
                                                 </p>
                                                 <p className="text-[10px] text-slate-400 mt-0.5 font-mono break-all">
-                                                    ID: {pc.pcId}
+                                                    ID: {pc.pcId} / 末尾 ...{shortDeviceId(pc.pcId)} / 更新: {formatDate(pc.updatedAt)}
                                                 </p>
                                             </div>
                                             <button

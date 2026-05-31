@@ -1150,7 +1150,7 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-01-02</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;">VAPID を使用した Web Push 通知を APNs/FCM 経由で iPhone に送信する。VAPID 鍵は開発者の秘密ではなく、ユーザー本人の Google Drive に置かれる連携端末群の共有通知鍵であり、ユーザー本人の iPhone へ通知を送る権利を表す。漏えいすると第三者が正規通知のように見える Push 通知を送れる可能性があるため、Google Drive の <code>push_keys.json</code> 1 個を正とし、各PCのローカル鍵で共有鍵を上書きしてはならない。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">VAPID を使用した Web Push 通知を APNs/FCM 経由で iPhone に送信する。VAPID 鍵は俺の付箋アプリ開発者の秘密ではなく、ユーザー本人の Google Drive に置かれる「ユーザーが許可した端末群の共有通知鍵」であり、ユーザー本人の iPhone へ通知を送る権利を表す。漏えいすると悪意ある第三者が正規通知のように見える Push 通知を送れる可能性があるため、Google Drive の <code>push_keys.json</code> 1 個を正とし、各PCのローカル鍵で共有鍵を上書きしてはならない。詳細は <a href="./003_IPHONE.html#sec3-0">003_IPHONE「3.0 鍵の前提」</a> を参照。</td>
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-IP-01-03</td>
@@ -1363,5 +1363,6 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 | 5 | v2.13 | 26-05-25 | 9.2 iPhone → PC 送信に VideoDrop を追加。画像・動画を同じ添付メディアとして扱い、ユーザー本文を上書きしないこと、動画を `assets/video/` に保存することを明記。 |
 | 6 | v2.14 | 26-05-29 | 9.2 iPhone → PC 送信に複数 PC の送信先選択を追加。`pc_devices.json` と `targetPcId` により、自分宛のアイテムのみ受信する制約と、PC 名簿を書き込むタイミングを明記。 |
 | 7 | v2.15 | 26-05-30 | 9.1 PC → iPhone 送信で、VAPID 鍵はユーザー本人の Google Drive に置かれる連携端末群の共有通知鍵であり、盗まれると第三者が正規通知のように見える Push 通知を送れる可能性があること、Drive の `push_keys.json` 1 個を正とし、各PCのローカル鍵で共有鍵を上書きしてはならない制約を追加。 |
+| 8 | v2.16 | 26-05-31 | SPEC-IP-01-02 の VAPID 鍵説明を **3 者（ユーザー / 俺の付箋アプリ開発者 / 悪意ある第三者）** の語彙に統一。「開発者」「第三者」表記の揺れを解消し、設計書 003「3.0 鍵の前提」と 005「0 登場人物と関係」への参照を追加。 |
 
 </div>

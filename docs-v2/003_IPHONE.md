@@ -384,6 +384,99 @@ Vercel の Environment Variables に設定する変数の一覧です。`.env` �
 Drive は中継所（未処理キュー）に過ぎない。Drive に残っているものは「まだ処理していない」を意味する。処理済みは即削除。
 </Note>
 
+<a id="sec3-0"></a>
+### 3.0 鍵の前提（先に読む）
+
+俺の付箋の鍵の話は、まず **登場人物の整理** から始めます。3 者の関係を理解せずに鍵単体の話を読んでも、空回りします。
+
+#### 3.0.1 登場人物（3 者）
+
+<p class="table-caption">表 3.0-1　登場人物と守るもの</p>
+
+| No | 登場人物 | 役割 | 守るもの |
+|:---|:---|:---|:---|
+| 1 | **ユーザー** | 俺の付箋を使う人 | 自分の付箋本文・添付・iPhone への通知の門・Google Drive の `ore-no-fusen` フォルダ |
+| 2 | **俺の付箋アプリ開発者** | アプリを作り、Vercel に PWA を配信、Google Cloud Console で OAuth を登録 | `client_secret`、Vercel 環境変数、GitHub Secrets |
+| 3 | **悪意ある第三者** | 上の 2 者ではない攻撃者 | （守らない・攻撃する側） |
+
+<p class="table-caption">表 3.0-2　3 者の警戒関係</p>
+
+| 警戒する人 | 警戒する相手 | 警戒の理由 |
+|:---|:---|:---|
+| **ユーザー** | 悪意ある第三者 | 付箋を盗まれない・偽通知を受け取らない |
+| **ユーザー** | 俺の付箋アプリ開発者 | 開発者を盲目的に信頼しない。必要以上の権限を要求するアプリではないか見極める |
+| **俺の付箋アプリ開発者** | 悪意ある第三者 | `client_secret` を奪われない・悪用されない |
+| **俺の付箋アプリ開発者** | ユーザー | `client_secret` をユーザーに渡さない（PWA・コード・公開リポジトリに含めない）。ユーザー環境が侵害された場合に被害が広がらないよう設計する |
+
+<Note type="info">
+<strong>大前提：</strong>
+「<strong>3 者すべてが、他の 2 者を警戒する</strong>」。特に「ユーザー → アプリ開発者」と「アプリ開発者 → ユーザー」は<strong>対等で</strong>、どちらか一方を信頼し切る設計にはしません。
+鍵・トークン・秘密値の置き場所は、すべてこの 3 者関係から論理的に導かれます。
+</Note>
+
+#### 3.0.2 鍵を記述する 3 観点
+
+鍵は登場人物のうち**所有者**が決まらないと置き場所が定まりません。すべての鍵を次の 3 観点で記述します。
+
+<p class="table-caption">表 3.0-3　鍵を記述する 3 観点</p>
+
+| 観点 | 意味 |
+|:---|:---|
+| **所有者** | 3 者のうち誰のための鍵か |
+| **目的** | 誰から、何を、どう守るのか |
+| **防衛手段** | どこに置き、どう使うか（置き場所は所有者と目的から論理的に導かれる） |
+
+<Note type="warning">
+<strong>「秘密」という言葉のワナ：</strong>
+「秘密鍵」「秘密」は、<strong>誰の秘密か</strong>を明示しないと意味が変わります。
+「俺の付箋アプリ開発者の秘密」「ユーザー本人の秘密」「ユーザーが許可した端末群の共有秘密」は、置き場所も扱いも違います。
+業界一般の「秘密鍵は外に出すな」というルールは「アプリ開発者の秘密」を前提にしています。
+それを「ユーザーの秘密」や「ユーザーが許可した端末群の共有秘密」に当てはめると、逆に間違った設計になります。
+</Note>
+
+#### 3.0.3 俺の付箋に登場する鍵の一覧
+
+<p class="table-caption">表 3.0-4　鍵の一覧（詳細は各セクション参照）</p>
+
+| 鍵 | 所有者 | 主目的 | 主な置き場所 |
+|:---|:---|:---|:---|
+| **VAPID 鍵**（`push_keys.json`） | **ユーザー本人**（ユーザーが許可した全 PC・全 iPhone で共有） | 悪意ある第三者や別鍵PCが、ユーザーの iPhone へ偽通知を送れないようにする | ユーザーの Drive 1 個を正、各PCローカルはキャッシュ |
+| **ECDH 鍵**（`push_devices.json` 内 `keys`） | **個々の iPhone**（ユーザーのもの） | 通知本文の暗号化（端末ごと） | ユーザーの Drive、端末ごとに 1 組 |
+| **OAuth トークン**（`gdrive_token.json`） | **ユーザー本人**（その PC のみ） | Drive へのアクセス権を一時的に証明する | PC のローカル（`%LOCALAPPDATA%`） |
+| **`client_secret`** | **俺の付箋アプリ開発者** | 「俺の付箋」を名乗る他アプリが Google OAuth を通れないようにする | Vercel のサーバー（コードに含めない） |
+
+<Note type="info">
+<strong>識別子は「鍵」ではない：</strong>
+<code>pc_id</code>（PC ごとの UUID）や <code>device_id</code>（iPhone ごとの UUID）は単なる識別子であり、鍵ではありません。
+漏れても攻撃には使えない（「ID が知られる」だけで「何かを偽る権利を得る」わけではない）ので、上の一覧には含めません。
+</Note>
+
+#### 3.0.4 VAPID 鍵の補足
+
+VAPID 鍵については特に誤解されやすい点があるので、ここで補足します。
+
+<Note type="warning">
+<strong>VAPID 鍵はユーザーごとに別物：</strong>
+俺の付箋アプリ全体で 1 個ではありません。<strong>ユーザーごとに別の鍵</strong>が、そのユーザーの PC で初回起動時にランダム生成されます（<code>webpush.rs::generate_vapid_keys</code>）。
+俺の付箋アプリ開発者の鍵というものは存在せず、ユーザー A の鍵とユーザー B の鍵は全くの別物で、相互に関係ありません。
+表 3.0-4 で「所有者：ユーザー本人」と書いているのは、<strong>そのユーザーが所有する全 PC・全 iPhone</strong>のことを指します。
+</Note>
+
+<Note type="info">
+<strong>「鍵を持つ = 権限を持つ」と読み替える：</strong>
+VAPID 鍵の「秘密」は「データを隠す」ではなく「<strong>誰にこの権限を持たせるか</strong>」を意味します。
+鍵 = 「<strong>このユーザーの iPhone に通知を送る権限の証明書</strong>」と捉えると分かりやすい。
+
+<ul>
+<li>鍵を作る = ユーザーが「<strong>この PC からの送信を許可する</strong>」と決める</li>
+<li>鍵を Drive に置く = ユーザーが「<strong>自分の他の PC にも同じ送信を許可する</strong>」</li>
+<li>鍵が漏れる = 「<strong>悪意ある第三者にも自分の iPhone への送信権限を与えてしまう</strong>」</li>
+<li>鍵を作り直す = 「<strong>今までの送信権限を全部取り消し、新しい権限に切り替える</strong>」</li>
+</ul>
+
+つまり VAPID は「<strong>ユーザーが許可した PC からの送信を、ユーザー本人が技術的に認可する</strong>」仕組みです。
+</Note>
+
 ### 3.1 IndexedDB
 
 PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3ストアを定義します。
@@ -464,6 +557,11 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
 <code>push_keys.json</code>、<code>push_devices.json</code>、<code>pc_devices.json</code> は接続設定ファイルなので、セットアップ後も残す。
 </Note>
 
+<Note type="warning">
+未処理キューが宛先違い・古いPWA・通信中断などで残った場合、設定画面の接続状態から件数を確認し、<code>notes_to_iphone.json</code> / <code>notes_from_iphone.json</code> の中身を表示できる。
+ユーザーが明示確認した場合だけ、同画面から該当キューJSONを削除できる。これは未処理付箋の破棄なので、自動削除しない。
+</Note>
+
 <p class="table-caption">表 3.3-1　Google Drive ファイル一覧</p>
 <table class="module-table" style="font-size:12px; table-layout: fixed;">
   <thead>
@@ -509,7 +607,7 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
       <td><code>push_keys.json</code></td>
       <td>PC（webpush.rs）<br>初回のみ作成</td>
       <td>iPhone（lib/push.ts）が<br>公開鍵を読む<br>PC（webpush.rs）が<br>秘密鍵を読む</td>
-      <td>PC が「このユーザーの俺の付箋通知送信者である」と Push Service に示すために、VAPID 鍵ペアを保存する。これは開発者の秘密鍵ではなく、ユーザー本人の Drive に置かれる、俺の付箋連携端末群の共有通知鍵である。ユーザーの Drive 上の 1 個を正とし、各PCのローカルファイルはキャッシュとして扱う。公開鍵は iPhone の Push 購読に使い、秘密鍵は PC が Web Push 送信時の VAPID JWT に署名するために使う。秘密鍵がないと APNs / Push Service が送信者を検証できず、通知送信できない。</td>
+      <td>VAPID 鍵ペア。iPhone は公開鍵で Push 購読、PC は秘密鍵で送信時に署名する。鍵の所有者・目的・防衛手段は <a href="#sec3-0">3.0 鍵の前提</a>、詳細は <a href="#sec3-3-2-push-keys">表 3.3-4</a> を参照。</td>
     </tr>
     <tr>
       <td style="text-align:center;color:#94a3b8;font-weight:700">6</td>
@@ -534,7 +632,7 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
 
 ```mermaid
 flowchart TD
-    Threat["守りたいこと<br>第三者や別鍵PCが<br>勝手にiPhoneへ通知しない"] --> Rule["そのためのルール<br>push_keys.json は<br>Drive上の1個だけを正にする"]
+    Threat["守りたいこと<br>悪意ある第三者や別鍵PCが<br>勝手にiPhoneへ通知しない"] --> Rule["そのためのルール<br>push_keys.json は<br>Drive上の1個だけを正にする"]
 
     Rule --> PC1["PC-A<br>Drive鍵で送信"]
     Rule --> PC2["PC-B<br>Drive鍵で送信"]
@@ -553,11 +651,7 @@ flowchart TD
 <p class="mermaid-caption">図 3.3.1-1　Push鍵は「勝手に通知されない」ために1個だけ共有する</p>
 
 <Note type="info">
-<code>push_keys.json</code> の目的は、APNs / Push Service に「この通知は、このユーザーの俺の付箋から送られた正規の通知である」と示すこと。
-これは開発者の秘密ではなく、ユーザー本人の Google Drive に保存される、俺の付箋連携端末群の共有通知鍵である。
-守る対象は、iPhone が第三者や別鍵PCから勝手に通知されること。
-そのため、<code>push_keys.json</code> は Drive 上の 1 個を正とし、全PCは同じ鍵を使う。
-複数 iPhone でも鍵は 1 個で、増えるのは <code>push_devices.json</code> 内の通知宛先だけである。
+鍵の所有者・目的・防衛手段は <a href="#sec3-0">3.0 鍵の前提</a>、詳細仕様は <a href="#sec3-3-2-push-keys">表 3.3-4 push_keys.json</a> を参照。
 </Note>
 
 ```mermaid
@@ -662,13 +756,31 @@ Drive 上の JSON は、以下の構成を基本とする。
 }
 ```
 
-<p class="table-caption">表 3.3-4　push_keys.json（VAPID 鍵）</p>
+<a id="sec3-3-2-push-keys"></a>
+<p class="table-caption">表 3.3-4　push_keys.json（VAPID 鍵）の鍵プロファイル</p>
+
+| 観点 | 値 |
+|:---|:---|
+| **所有者** | **ユーザー本人**（ユーザーが許可した全 PC・全 iPhone で共有する「許可された端末群の共有秘密」） |
+| **目的** | 悪意ある第三者や別鍵PCが、ユーザーの iPhone へ偽通知を送れないようにする |
+| **防衛手段** | Drive 上の 1 個を正、各PCローカルはキャッシュ。PC は秘密鍵で署名、iPhone は同じ鍵の公開鍵で購読する |
+| **漏えい時** | 悪意ある第三者が「正規の通知」に見える Push を送れる可能性。付箋本文・添付メディアは別途 Drive 権限が必要なので読めないが、通知を送れること自体が被害。対応：Drive 上の `push_keys.json` を作り直し、iPhone 側で再購読する |
+| **欠落時** | PC は VAPID 署名を作れず Push 送信不可。iPhone 受信は list 画面でのフォールバック取得頼みになる |
+
+<Note type="warning">
+<strong>同期ルール：</strong>
+Drive 鍵を正、ローカル鍵はキャッシュ。Drive に共有鍵が存在する場合は必ず Drive 鍵をローカルへ同期する。
+<strong>ローカル鍵で Drive の共有鍵を上書きしてはならない。</strong>
+Drive に共有鍵が存在しない初回セットアップ時だけ、新規生成して Drive へ保存する。
+</Note>
+
+<p class="table-caption">表 3.3-4-2　push_keys.json フィールド</p>
 
 | No | フィールド | 型 | 必須 | 用途 |
 |:---|:---|:---|:---:|:---|
-| 1 | `public_key_b64url` | `string` | ○ | iPhone が Push Service に「この送信者の通知を受け取る端末」として登録するために、`pushManager.subscribe()` の `applicationServerKey` に渡す |
-| 2 | `private_key_b64url` | `string` | ○ | PC が Web Push 送信者であることを証明するために、VAPID JWT に署名する。署名結果は `Authorization: vapid t=...,k=...` として APNs / Push Service に送る。Drive 上の共有鍵を正とし、PCごとに別鍵を作らない |
-| 3 | `subject` | `string` | ○ | Push Service が送信者の連絡先を把握するために、VAPID JWT の `sub` に入れる。現行値は `mailto:ore-no-fusen@example.com` |
+| 1 | `public_key_b64url` | `string` | ○ | iPhone が `pushManager.subscribe()` の `applicationServerKey` に渡す |
+| 2 | `private_key_b64url` | `string` | ○ | PC が VAPID JWT に署名し `Authorization: vapid t=...,k=...` として送る |
+| 3 | `subject` | `string` | ○ | VAPID JWT の `sub`。現行値は `mailto:ore-no-fusen@example.com` |
 
 ```json
 {
@@ -678,59 +790,24 @@ Drive 上の JSON は、以下の構成を基本とする。
 }
 ```
 
-<Note type="warning">
-<code>push_keys.json</code> には秘密鍵が含まれる。
-これは開発者やVercelの秘密ではなく、ユーザー本人の Drive に置かれる「そのユーザーの連携端末群にとっての秘密」である。
-言い換えると、ユーザー本人の iPhone へ通知を送る権利を表す鍵である。
-そのため、同じユーザーが連携したPC間では共有してよいが、第三者・別ユーザー・公開リポジトリへ共有してはいけない。
-</Note>
+<p class="table-caption">表 3.3-5　push_devices.json 内 ECDH 鍵（`keys.p256dh` / `keys.auth`）の鍵プロファイル</p>
 
-<Note type="info">
-<strong>鍵の目的：</strong>
-APNs / Push Service が「この通知は、このユーザーの俺の付箋から送られた正規の通知か」を判定するために使う。
-これにより、第三者や別鍵PCが勝手に iPhone へ通知することを防ぐ。
-PC は共有秘密鍵で通知に署名し、iPhone は同じ共有鍵の公開鍵で購読する。
-秘密鍵は「アプリ開発者を守る秘密」ではなく、「ユーザー本人の iPhone に勝手な通知を送られないようにするための、ユーザー側の秘密」である。
-</Note>
+| 観点 | 値 |
+|:---|:---|
+| **所有者** | 個々の iPhone（端末ごとに 1 組） |
+| **目的** | Push 通知本文の暗号化。iPhone 自身だけが本文を復号できるようにする |
+| **防衛手段** | iPhone が購読時に生成し、Drive の `push_devices.json` に upsert。PC は送信時にその鍵で本文を暗号化する |
+| **漏えい時** | その iPhone への暗号化済み通知の本文を悪意ある第三者が復号できる可能性。VAPID 鍵（送信権）とは別軸。対応：iPhone PWA で再購読し、新しい鍵で `push_devices.json` を更新 |
+| **欠落時** | PC は暗号化済み通知を作れず、その iPhone への送信が失敗する |
 
-<Note type="warning">
-<strong>盗まれた場合の影響：</strong>
-<code>push_keys.json</code> の秘密鍵が第三者に渡ると、その第三者は「このユーザーの俺の付箋から送られた通知」のように見える Push 通知を作れる可能性がある。
-通知本文や添付データそのものは別途 Drive 権限がないと読めないが、通知を勝手に送れること自体が被害である。
-つまり、この鍵の価値は「ユーザー本人の iPhone を勝手に起こせないようにすること」にある。
-漏えいした場合は、Drive 上の <code>push_keys.json</code> を作り直し、iPhone 側の Push 購読を再登録する必要がある。
-</Note>
-
-<Note type="warning">
-<strong>秘密鍵がない場合：</strong>
-PC は正しい VAPID 署名を作れない。
-その結果、Push Service が送信者を検証できず、PC は iPhone へ Web Push を送れない。
-<code>notes_to_iphone.json</code> だけ Drive に残っても、iPhone の Service Worker を起こす通知トリガーが届かないため、受信は list 画面を開いたときの Drive 同期などフォールバック頼みになる。
-</Note>
-
-<Note type="info">
-<strong>Drive に置く理由：</strong>
-複数PC・複数iPhoneが同じ通知鍵を使えるようにするため。
-Drive 上の <code>push_keys.json</code> を正とし、各PCのローカルファイルはキャッシュとして扱う。
-ユーザー本人の Drive を共有場所にすることで、同じユーザーが許可したPCだけが同じ秘密鍵で通知を送れる。
-</Note>
-
-<Note type="warning">
-<strong>複数PC時の鍵同期ルール：</strong>
-<code>push_keys.json</code> は Drive 上の 1 個を正とする。
-PC のローカル <code>push_keys.json</code> はキャッシュであり、Drive に共有鍵が存在する場合は必ず Drive 鍵をローカルへ同期して使う。
-ローカル鍵で Drive の共有鍵を上書きしてはならない。
-Drive に共有鍵が存在しない初回セットアップ時だけ、新規生成して Drive へ保存する。
-</Note>
-
-<p class="table-caption">表 3.3-5　push_devices.json（Web Push 宛先一覧）</p>
+<p class="table-caption">表 3.3-5-2　push_devices.json フィールド</p>
 
 | No | フィールド | 型 | 必須 | 用途・内容 |
 |:---|:---|:---|:---:|:---|
 | 1 | `devices` | `Object[]` | ○ | 登録済み端末の配列 |
 | 2 | `devices[].device_id` | `string` | ○ | 端末ID。iPhone PWA が `localStorage` に保持 |
 | 3 | `devices[].endpoint` | `string` | ○ | APNs / Push Service の送信先URL |
-| 4 | `devices[].keys.p256dh` | `string` | ○ | Push 暗号化用の公開鍵 |
+| 4 | `devices[].keys.p256dh` | `string` | ○ | Push 暗号化用の公開鍵（ECDH） |
 | 5 | `devices[].keys.auth` | `string` | ○ | Push 暗号化用の認証シークレット |
 | 6 | `devices[].registered_at` | `string` | ○ | 登録時刻 |
 | 7 | `devices[].device_name` | `string` | △ | 表示用端末名 |
@@ -770,6 +847,8 @@ Drive に共有鍵が存在しない初回セットアップ時だけ、新規�
 | 4 | `pcs[].registeredAt` | `string` | △ | 初回登録時刻 |
 | 5 | `pcs[].updatedAt` | `string` | △ | 最終更新時刻 |
 | 6 | `pcs[].googleAccountEmail` | `string` | △ | どのGoogleアカウントで登録されたPCかを確認するためのメールアドレス |
+
+PWA の通常画面では、ユーザーに `pcId` を選ばせない。送信先は「家のPC」「会社のPC」のような `pcName` で選ばせる。同じ `pcName` の登録が複数ある場合は、PWA側で `updatedAt` が最も新しい登録を採用し、古い同名登録は通常候補に出さない。`pcId` は受信判定とトラブル診断用の内部IDであり、通常操作の判断材料にしない。
 
 ```json
 {
@@ -1240,5 +1319,9 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 11 | 1.10 | 26-05-30 | Web Push共有鍵の目的・保護対象・誰にとっての秘密かを追記。`push_keys.json` はユーザー本人のDrive上の1個を正とし、PCローカル鍵で上書きしないルールを明記。 |
 | 12 | 1.11 | 26-05-30 | PC→iPhone / iPhone→PC 送信時のキュー保護を明記。Driveキュー取得失敗時は空配列で上書きせず送信を中止し、PC→iPhoneはDrive保存成功後にPushを送る。Push失敗はHTTPステータス別に分類して表示する。 |
 | 13 | 1.12 | 26-05-30 | PC右クリックメニューの「iPhoneに送る」を常時表示し、未設定時は設定画面の iPhone 連携タブへ誘導する仕様を明記。 |
+| 14 | 1.13 | 26-05-31 | 3.0「鍵の前提」を新設。鍵を **所有者・目的・防衛手段** の 3 観点で記述するルールと、登場する鍵の一覧表を追加。VAPID 鍵セクションの 6 つの Note を 1 つの鍵プロファイル表と同期ルールに統合し、重複を削減。push_devices.json 内 ECDH 鍵にも同じ枠組みを適用。 |
+| 15 | 1.14 | 26-05-31 | 3.0 を「3 者の登場人物と関係 → 鍵の枠組み → 鍵一覧 → VAPID 補足」の順に再編成。**ユーザー / 俺の付箋アプリ開発者 / 悪意ある第三者** の 3 者と互いの警戒関係を表で明示。「作者」「攻撃者」「第三者」表記を統一し、用語の揺れを解消。 |
+| 16 | 1.15 | 26-05-31 | PWAの送信先PC選択は `pcName` を通常表示とし、同名PCが複数ある場合は `updatedAt` が最新の登録へ自動的に寄せる仕様を追記。`pcId` は受信判定・診断用の内部IDであり、通常操作でユーザーに選ばせないことを明記。 |
+| 17 | 1.16 | 26-05-31 | 設定画面の接続状態で Drive 未処理キューの中身確認と、ユーザー確認付きのキューJSON削除を行える仕様を追記。 |
 
 </div>

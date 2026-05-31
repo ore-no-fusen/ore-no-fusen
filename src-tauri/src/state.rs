@@ -54,6 +54,12 @@ pub struct ProConfig {
     pub push_endpoint: String,
     pub p256dh: String,
     pub auth: String,
+    #[serde(default)]
+    pub device_id: Option<String>,
+    #[serde(default)]
+    pub device_name: Option<String>,
+    #[serde(default)]
+    pub google_account_email: Option<String>,
 }
 
 // NEW: UC-01 - 設定ファイル用の構造体

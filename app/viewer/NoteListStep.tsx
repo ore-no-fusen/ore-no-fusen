@@ -15,6 +15,8 @@ export function NoteListStep({
   isLockPermissionPending,
   t,
   swVersion,
+  runtimeOrigin,
+  runtimeKind,
   onNew,
   onOpen,
   onDelete,
@@ -166,7 +168,9 @@ export function NoteListStep({
         >
           通知デバイスを再登録する
         </button>
-        <span className="text-xs text-gray-300 font-mono">SW {swVersion ?? '---'}</span>
+        <span className="text-xs text-gray-300 font-mono text-right">
+          {runtimeKind} / {runtimeOrigin || 'origin確認中'} / SW {swVersion ?? '---'}
+        </span>
       </div>
     </div>
   );

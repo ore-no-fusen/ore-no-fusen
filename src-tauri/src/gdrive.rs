@@ -804,6 +804,9 @@ pub async fn poll_push_config(
             push_endpoint: d.endpoint,
             p256dh: d.keys.p256dh,
             auth: d.keys.auth,
+            device_id: d.device_id,
+            device_name: d.device_name,
+            google_account_email: d.google_account_email,
         }).collect()
     } else if let (Some(endpoint), Some(keys)) = (config.endpoint, config.keys) {
         // 旧スキーマ後方互換: 単一デバイスとして扱う
@@ -811,6 +814,9 @@ pub async fn poll_push_config(
             push_endpoint: endpoint,
             p256dh: keys.p256dh,
             auth: keys.auth,
+            device_id: Some("legacy".to_string()),
+            device_name: Some("legacy".to_string()),
+            google_account_email: None,
         }]
     } else {
         return Err("push_config: デバイス情報が見つかりませんでした".to_string());

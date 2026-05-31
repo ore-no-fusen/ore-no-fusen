@@ -227,4 +227,14 @@ describe('WriteStep loss prevention', () => {
       targetPcId: 'pc-2',
     }));
   });
+
+  it('送信先PCは通常利用ではPC名だけを表示する', () => {
+    const { getByText } = renderWriteStep({
+      pcDevices: [{ pcId: 'pc-1', pcName: '家のPC', updatedAt: '2026-05-31T10:00:00+09:00' }],
+      selectedPcId: 'pc-1',
+    });
+
+    expect(getByText('家のPC')).toBeTruthy();
+    expect(getByText(/更新 5\/31 10:00/)).toBeTruthy();
+  });
 });

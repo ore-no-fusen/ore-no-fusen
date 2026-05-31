@@ -15,6 +15,43 @@ v1.1 / 2026-05-06
 
 ---
 
+<a id="sec0"></a>
+## 0 登場人物と関係（先に読む）
+
+俺の付箋の設計を語るときには **3 者** が登場します。それぞれ守るものが違い、互いに警戒する関係にあります。
+
+<div class="glossary-table">
+<p class="table-caption">表 0-1　3 者の役割と守るもの</p>
+
+| No | 登場人物 | 何者か | 守るもの |
+|:---|:---|:---|:---|
+| 1 | **ユーザー** | 俺の付箋を使う人。PC と iPhone を所有し、自分の付箋データを管理する | 自分の付箋本文・添付・iPhone への通知の門。Google Drive の `ore-no-fusen` フォルダ |
+| 2 | **俺の付箋アプリ開発者** | 俺の付箋アプリそのものを作り、Vercel に PWA を配信する人。OAuth の `client_secret` を Google Cloud Console で管理する | `client_secret`、Vercel 環境変数、GitHub Secrets |
+| 3 | **悪意ある第三者** | 上の 2 者ではない攻撃者。データを盗み、偽の通知を送り、なりすますことを目的とする | （守らない・攻撃する側） |
+
+</div>
+
+<div class="glossary-table">
+<p class="table-caption">表 0-2　3 者の関係（誰が誰を警戒するか）</p>
+
+| 警戒する人 | 警戒する相手 | 警戒の理由 |
+|:---|:---|:---|
+| **ユーザー** | 悪意ある第三者 | 自分の付箋を盗まれない、偽通知を受け取らない |
+| **ユーザー** | 俺の付箋アプリ開発者 | 開発者を盲目的に信頼しない。必要以上の権限を要求しないアプリを選ぶ |
+| **俺の付箋アプリ開発者** | 悪意ある第三者 | `client_secret` を奪われない、悪用されない |
+| **俺の付箋アプリ開発者** | ユーザー | `client_secret` をユーザーに渡さない（PWA・コード・公開リポジトリに含めない）。ユーザー環境が侵害された場合に被害が広がらないよう設計する |
+
+</div>
+
+<Note type="info">
+<strong>大事なこと：</strong>
+「<strong>3 者すべてが、他の 2 者を警戒する</strong>」という前提で設計が組まれています。
+特に「<strong>ユーザー → アプリ開発者を警戒</strong>」と「<strong>アプリ開発者 → ユーザーを警戒</strong>」は対等で、どちらか一方を信頼し切る設計にはしません。
+鍵・トークン・秘密値の置き場所は、すべてこの 3 者関係から論理的に導かれます。詳細は <a href="/003_IPHONE.html#sec3-0">003_IPHONE 「3.0 鍵の前提」</a> を参照。
+</Note>
+
+---
+
 ## 1 認証・セキュリティ
 
 <div class="glossary-table">
@@ -27,7 +64,7 @@ v1.1 / 2026-05-06
 | 3 | アクセストークン | 俺の付箋が Google Drive API を呼ぶための短時間の許可証。有効期限は約 1 時間。PC 側はローカルに、iPhone 側は端末内に持つ。Vercel には保存しない。漏れると期限内は Drive のアプリ用ファイルを読まれたり書き換えられたりする可能性がある。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 4 | リフレッシュトークン | アクセストークンが切れたとき、ユーザーに何度も Google ログインさせずに新しいアクセストークンを取るための長めの許可証。PC 側は `gdrive_token.json`、iPhone 側は localStorage に保存する。Vercel は更新処理に使うだけで保存しない。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 5 | client_id | Google Cloud Console に登録した「俺の付箋アプリ」を Google が見分けるための公開ID。ここでいう client はユーザーの iPhone や PC ではなく、Google に登録したアプリのこと。公開前提なので iPhone PWA に含めてよい。 | 開発者 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
-| 6 | client_secret | Google Cloud Console に登録した「俺の付箋アプリ」が本物であることを Google に示すための秘密値。ユーザーに守ってもらうものではなく、開発者が Vercel 環境変数などで守るもの。iPhone PWA に含めると端末上で読めてしまうため入れない。 | 開発者 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
+| 6 | client_secret | Google Cloud Console に登録した「俺の付箋アプリ」が本物であることを Google に示すための秘密値。**俺の付箋アプリ開発者**が守るもので、ユーザーには渡さない。「俺の付箋」を名乗る他アプリが Google OAuth を通れないようにするため、Vercel 環境変数で守り、iPhone PWA・PC アプリ本体・公開リポジトリには含めない。詳細は <a href="/005_GLOSSARY.html#sec0">表 0-2</a> の 3 者関係を参照。 | 俺の付箋アプリ開発者 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 7 | JWT | 署名付きの短いメッセージ形式。俺の付箋では、PC が Web Push を送るときに「このユーザーの通知送信者です」と Push Service に示す VAPID 署名の入れ物として使う。ユーザーが直接扱うものではない。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) |
 | 8 | ECDH / P-256 | Web Push の本文を暗号化するために使う鍵交換方式。俺の付箋では、iPhone の Push 購読情報に含まれる `p256dh` / `auth` と組み合わせ、PC が通知本文を暗号化する。これが合わないと Push Service までは届いても iPhone 側で正しく読めない。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) |
 
@@ -43,7 +80,7 @@ v1.1 / 2026-05-06
 | No | 用語 | 解説 | 主な対象 | 関連ファイル |
 |:---|:---|:---|:---|:---|
 | 1 | Web Push | PC から iPhone PWA の Service Worker を起こし、ロック画面通知を表示するためのブラウザ標準の通知仕組み。俺の付箋では、通知そのものは APNs / Push Service が届け、実際の付箋本文や画像は Drive から取得して IndexedDB に保存する。 | 開発者 / 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
-| 2 | VAPID | ID番号ではなく、Web Push の送信者を証明するための「公開鍵・秘密鍵・署名」の仕組み。俺の付箋では、PC アプリが「このユーザーの iPhone へ通知を送る正しい送信者です」と APNs / Push Service に示すために使う。iPhone は公開鍵で Push 購読し、PC は対応する秘密鍵で送信リクエストに署名する。VAPID 署名がない、または購読時の公開鍵と合わない場合、Push Service が送信者を確認できず通知を受け付けない。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
+| 2 | VAPID | Web Push の「送信権」を公開鍵暗号で証明する仕組み。**俺の付箋アプリ開発者**ではなく**ユーザー本人**が所有者で、「自分が許可した PC からの送信を自分の iPhone で受ける」というユーザー本人の意思表示を技術的に成立させるためのもの。秘密鍵を持つ PC だけが署名でき、APNs / Push Service は対応する公開鍵で署名を検証する。詳細は <a href="/003_IPHONE.html#sec3-3-2-push-keys">003_IPHONE 「push_keys.json」</a>。 | 俺の付箋アプリ開発者 / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 3 | APNs | Apple が運営する iPhone 向け通知配信サービス。俺の付箋では、PC が Push 送信すると最終的に APNs が iPhone の Service Worker を起こす。開発者のサーバーに付箋本文を保存するためのものではない。 | 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [002_PC.md](/002_PC.html) |
 | 4 | AES-128-GCM | PC から Push Service へ送る通知ペイロードを暗号化する方式。Push Service が通知を中継しても、本文をそのまま読めないようにするために使う。`webpush.rs` の `encrypt_payload` 関数で実装する。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) |
 | 5 | pending_open | iOS で通知タップ時の `notificationclick` が発火しない場合に備え、Service Worker が IndexedDB に残す「直近に開くべき通知ID」。PWA 起動時に `page.tsx` がこれを読んで、通知から開いたように付箋を表示・再通知する。30 分で失効し、読んだら削除する。 | 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
@@ -100,6 +137,9 @@ v1.1 / 2026-05-06
 | 4 | SSOT | データの正を一か所に決める考え方。俺の付箋では、PC 側は `AppState`、iPhone 側は IndexedDB を正にすることで、画面ごとに状態がずれて戻れなくなる状況を減らす。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 5 | AppState | PC アプリの Rust 側で持つ単一状態。ノート一覧、設定、VAPID 鍵、デバイス情報などを保持し、各 Tauri コマンドがここを通して状態を確認・更新する。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) |
 | 6 | Vault | PC 上の付箋 .md ファイルの保存先フォルダ。ユーザーが選ぶ場所で、俺の付箋の本文データの実体。バックアップや直接編集の確認点になる。 | ユーザー / 保守担当 | [002_PC.md](/002_PC.html) |
+| 7 | 鍵（key） | ある人が、ある悪いことを防ぐために、ある場所に置く道具。すべての鍵は **所有者・目的・防衛手段** の 3 観点で記述する。所有者を最初に決めないと、置き場所が間違う。 | 全員 | [003_IPHONE.md](/003_IPHONE.html#sec3-0) |
+| 8 | 秘密鍵（private key） | 「外に出してはいけない鍵」ではなく、「秘密の所有者だけが持つべき鍵」。**所有者は <a href="/005_GLOSSARY.html#sec0">3 者</a>のうちのいずれか**で、置き場所はそれぞれ違う：**俺の付箋アプリ開発者の秘密**（例: `client_secret`、Vercel サーバーに置く）、**ユーザー本人の秘密**（例: OAuth トークン、ユーザーの PC ローカル）、**ユーザーが許可した端末群の共有秘密**（例: VAPID 秘密鍵、ユーザーの Drive で共有）。「秘密鍵は外に出すな」は俺の付箋アプリ開発者の秘密だけに当てはまる業界一般則であり、他の所有者には当てはまらない。 | 全員 | [003_IPHONE.md](/003_IPHONE.html#sec3-0) |
+| 9 | VAPID 鍵 | iPhone への偽通知を防ぐための鍵。**ユーザー本人**が所有し、ユーザーが許可した全 PC・全 iPhone で共有する。Drive 上の 1 個を正、各 PC ローカルはキャッシュ。漏えいすると**悪意ある第三者**が「正規の通知」に見える Push を送れる可能性があるが、付箋本文・添付メディアは別途 Drive 権限が必要なので読めない。 | 俺の付箋アプリ開発者 / 保守担当 | [003_IPHONE.md](/003_IPHONE.html#sec3-3-2-push-keys) |
 
 </div>
 
@@ -114,11 +154,11 @@ v1.1 / 2026-05-06
 |:---|:---|:---|:---|:---|
 | 1 | Google Drive API v3 | 俺の付箋がユーザー自身の Google Drive にファイルを作成・読み書きするための API。PC と iPhone は直接通信せず、Drive 上の中継ファイルを介してやり取りする。 | 開発者 / 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 2 | multipart upload | JSON のメタ情報とファイル本体を1回のリクエストで Drive に送る方式。俺の付箋では、メモ用 JSON や添付画像を Drive に置くときに使う。アップロード失敗時の調査ではこの方式の処理を見る。 | 開発者 / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
-| 3 | ore-no-fusen フォルダ | Google Drive 上に自動作成される俺の付箋専用フォルダ。PC と iPhone の中継ファイル、添付画像、Push 用設定を置く。ユーザー向けの注意として、このフォルダを第三者に共有・公開しない。 | ユーザー / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
+| 3 | ore-no-fusen フォルダ | Google Drive 上に自動作成される俺の付箋専用フォルダ。PC と iPhone の中継ファイル、添付画像、Push 用設定を置く。ユーザー向けの注意として、このフォルダを**悪意ある第三者**を含む外部に共有・公開しない。 | ユーザー / 保守担当 | [002_PC.md](/002_PC.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 4 | notes_to_iphone.json | PC から iPhone へ送る付箋を一時的に入れる Drive ファイル。PC が書き込み、Service Worker が読み込んで IndexedDB に保存した後、処理済み分を削除する。 | 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 5 | notes_from_iphone.json | iPhone から PC へ送る付箋を一時的に入れる Drive ファイル。iPhone PWA が書き込み、PC が 30 秒ごとに読み込んで付箋を作った後、処理済み分を削除する。 | 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [003_IPHONE.md](/003_IPHONE.html) |
 | 6 | push_devices.json | iPhone の Push 通知送信先情報を保存する Drive ファイル。endpoint、`p256dh`、`auth` などを持つ。これがないと PC はどの iPhone に通知すればよいか分からない。 | 保守担当 | [001_OVERVIEW.md](/001_OVERVIEW.html) / [002_PC.md](/002_PC.html) |
-| 7 | push_keys.json | ユーザーごとの VAPID 公開鍵・秘密鍵を保存する Drive ファイル。公開鍵は iPhone の Push 購読に使い、秘密鍵は PC が Web Push 送信者であることを署名するために使う。第三者に `push_devices.json` と一緒に見られると、偽の通知を送られる可能性がある。 | ユーザー / 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
+| 7 | push_keys.json | ユーザーごとの VAPID 公開鍵・秘密鍵を保存する Drive ファイル。公開鍵は iPhone の Push 購読に使い、秘密鍵は PC が Web Push 送信者であることを署名するために使う。**悪意ある第三者**に `push_devices.json` と一緒に見られると、偽の通知を送られる可能性がある。詳細は <a href="/003_IPHONE.html#sec3-3-2-push-keys">003_IPHONE 「push_keys.json」</a>。 | ユーザー / 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
 | 8 | fusen_video_* | iPhone PWA から PC へ動画を送るとき、Google Drive に一時保存する動画ファイル名。PC が受信して `assets/video/` に保存した後に削除する。ユーザーが入力した本文や元ファイル名とは別の一時名として扱う。 | 保守担当 | [003_IPHONE.md](/003_IPHONE.html) |
 
 </div>
@@ -155,5 +195,6 @@ v1.1 / 2026-05-06
 | 1 | 1.0 | 26-04-20 | 新規作成。設計書に登場する専門用語を整理。 |
 | 2 | 1.1 | 26-05-06 | 1 認証・セキュリティ、2 Push 通知、3 ブラウザ技術、4 フレームワーク・ランタイム、5 設計用語、6 Google Drive API、7 データ形式を修正。全表に「主な対象」を追加し、OAuth / client_secret / VAPID / Drive ファイルを「俺の付箋で何のために使うか」が分かる表現へ修正。 |
 | 3 | 1.2 | 26-05-25 | VideoDrop、添付メディア、`fusen_video_*`、`videos[]`、`originalFileName` を追加。本文・元ファイル名・Drive 一時名・PC 保存パスを混同しない用語境界を明記。 |
+| 4 | 1.3 | 26-05-31 | 0 章「登場人物と関係」を新設。3 者（ユーザー / 俺の付箋アプリ開発者 / 悪意ある第三者）と互いの警戒関係を表で明記。VAPID / 秘密鍵 / push_keys.json / client_secret / ore-no-fusen フォルダの記述を 3 者語彙に統一。「作者」「攻撃者」「第三者」表記を整理。 |
 
 </div>

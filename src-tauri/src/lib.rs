@@ -25,7 +25,7 @@ mod import; // インポート機能
 mod gdrive; // Google Drive 連携
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs)
 mod perflog; // パフォーマンス計測ログ（JSON Lines）
-use state::{AppState, Note, NoteMeta};
+use state::{AppState, Note, NoteMeta, ProConfig};
 
 // --- Commands ---
 
@@ -604,6 +604,32 @@ async fn fusen_read_drive_json(filename: String, fallback_filename: Option<Strin
         Err(e) if e.contains("File not found") => Ok("{}".to_string()),
         Err(e) => Err(e),
     }
+}
+
+#[tauri::command]
+async fn fusen_delete_drive_queue_json(filename: String, fallback_filename: Option<String>) -> Result<(), String> {
+    let allowed = [
+        "notes_to_iphone.json",
+        "fusen_note.json",
+        "notes_from_iphone.json",
+        "fusen_from_iphone.json",
+    ];
+    if !allowed.contains(&filename.as_str()) {
+        return Err(format!("削除できないファイルです: {}", filename));
+    }
+    if let Some(fallback) = fallback_filename.as_deref() {
+        if !allowed.contains(&fallback) {
+            return Err(format!("削除できないファイルです: {}", fallback));
+        }
+    }
+
+    let client = reqwest::Client::new();
+    let token = gdrive::get_access_token(&client).await?;
+    gdrive::delete_file_by_name(&client, &token, &filename).await?;
+    if let Some(fallback) = fallback_filename {
+        gdrive::delete_file_by_name(&client, &token, &fallback).await?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1613,6 +1639,27 @@ fn classify_webpush_error(error: &str) -> String {
     format!("Push送信エラー: {}", error)
 }
 
+fn webpush_device_label(index: usize, total: usize, config: &ProConfig) -> String {
+    let endpoint_tail = config
+        .push_endpoint
+        .chars()
+        .rev()
+        .take(10)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    format!(
+        "{}/{} device_id={} name={} account={} endpoint=...{}",
+        index + 1,
+        total,
+        config.device_id.as_deref().unwrap_or("unknown"),
+        config.device_name.as_deref().unwrap_or("unknown"),
+        config.google_account_email.as_deref().unwrap_or("unknown"),
+        endpoint_tail
+    )
+}
+
 #[tauri::command]
 async fn fusen_ensure_push_keys() -> Result<(), String> {
     let client = reqwest::Client::new();
@@ -2014,16 +2061,28 @@ async fn fusen_send_to_iphone(
     // 6. Web Push 全デバイスに順次送信（1台でも届けばOK）
     let plaintext = serde_json::to_string(&note_json_push).map_err(|e| e.to_string())?;
     let mut send_errors: Vec<String> = Vec::new();
-    for config in &pro_configs {
+    let mut send_success_count = 0usize;
+    let total_targets = pro_configs.len();
+    for (index, config) in pro_configs.iter().enumerate() {
+        let target = webpush_device_label(index, total_targets, config);
         match webpush::send_web_push(&client, config, &plaintext).await {
-            Ok(_) => {},
+            Ok(_) => {
+                send_success_count += 1;
+                eprintln!("[webpush] 送信成功: target={}", target);
+            },
             Err(e) => {
                 let classified = classify_webpush_error(&e);
-                eprintln!("[webpush] デバイスへの送信エラー: {}", classified);
-                send_errors.push(classified);
+                eprintln!("[webpush] 送信失敗: target={} error={}", target, classified);
+                send_errors.push(format!("{}: {}", target, classified));
             }
         }
     }
+    eprintln!(
+        "[webpush] 送信結果: total={} success={} failed={}",
+        total_targets,
+        send_success_count,
+        send_errors.len()
+    );
     // 全デバイスが失敗した場合のみエラーとする
     if !pro_configs.is_empty() && send_errors.len() == pro_configs.len() {
         return Err(format!("全デバイスへの送信が失敗しました: {}", send_errors.join(", ")));
@@ -2413,12 +2472,43 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     };
 
     // 4. 未処理アイテム（received_at なし）を抽出
-    let pending_indices: Vec<usize> = items
+    let unreceived_indices: Vec<usize> = items
         .iter()
         .enumerate()
         .filter(|(_, item)| item.get("received_at").and_then(|v| v.as_str()).is_none())
-        .filter(|(_, item)| iphone_item_targets_this_pc(item, &pc_id))
         .map(|(idx, _)| idx)
+        .collect();
+
+    let target_mismatch_ids: Vec<String> = unreceived_indices
+        .iter()
+        .filter_map(|&idx| {
+            let target = items[idx].get("targetPcId").and_then(|v| v.as_str()).map(str::trim)?;
+            if !target.is_empty() && target != pc_id {
+                Some(target.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if !target_mismatch_ids.is_empty() {
+        let sample = target_mismatch_ids
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        logger::log_info(&format!(
+            "[iphone receive] 宛先違いでスキップ: skipped={} this_pc_id={} targetPcId={}",
+            target_mismatch_ids.len(),
+            pc_id,
+            sample
+        ));
+    }
+
+    let pending_indices: Vec<usize> = unreceived_indices
+        .into_iter()
+        .filter(|&idx| iphone_item_targets_this_pc(&items[idx], &pc_id))
         .collect();
 
     if pending_indices.is_empty() {
@@ -2628,6 +2718,7 @@ pub fn run() {
             fusen_get_drive_folder_id,
             fusen_get_drive_queue_counts,
             fusen_read_drive_json,
+            fusen_delete_drive_queue_json,
             show_context_menu,
             get_base_path,
             fusen_path_exists,

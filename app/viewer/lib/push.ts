@@ -14,7 +14,29 @@ type SubscribeOptions = {
   setIsLoading: (v: boolean) => void;
   setErrorMessage: (msg: string | null) => void;
   setStep: (step: 'login' | 'write') => void;
+  /** 現在の処理段階を画面に表示するためのコールバック（省略可） */
+  setProgress?: (progress: string | null) => void;
 };
+
+/**
+ * Promise にタイムアウトを付ける。ms 以内に解決しなければ TimeoutError を throw する。
+ * 「読み込み中のまま固まる」を防ぐためのガード。
+ */
+async function withTimeout<T>(promise: Promise<T>, ms: number, stageLabel: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`「${stageLabel}」で時間がかかりすぎています（${Math.round(ms / 1000)}秒経過）。iPhone PWA を一度閉じて開き直してから、もう一度「通知を許可する」を押してください。`));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 type PushKeys = {
   public_key_b64url?: unknown;
@@ -132,28 +154,48 @@ export async function subscribePush({
   setIsLoading,
   setErrorMessage,
   setStep,
+  setProgress,
 }: SubscribeOptions): Promise<void> {
+  const updateProgress = (msg: string | null) => {
+    if (setProgress) setProgress(msg);
+  };
+
   try {
     setIsLoading(true);
-    const perm = await Notification.requestPermission();
+
+    // --- 1/4 通知許可 ---
+    updateProgress('1/4 通知の許可を求めています...');
+    // OS のダイアログ待ちは最大 60 秒（ユーザーがダイアログに反応する時間を含む）
+    const perm = await withTimeout(Notification.requestPermission(), 60_000, '1/4 通知許可');
     if (perm !== 'granted') {
       setErrorMessage('通知を許可してください');
+      updateProgress(null);
       setIsLoading(false);
       return;
     }
-    const reg = await navigator.serviceWorker.ready;
+
+    // --- 2/4 ServiceWorker 準備 + VAPID 公開鍵取得 ---
+    updateProgress('2/4 通知サービスに接続しています...');
+    const reg = await withTimeout(navigator.serviceWorker.ready, 15_000, '2/4 ServiceWorker 準備');
     const existingSub = await reg.pushManager.getSubscription();
     if (existingSub) await existingSub.unsubscribe();
 
-    const vapidPublicKey = await loadVapidPublicKey(accessToken);
+    const vapidPublicKey = await withTimeout(loadVapidPublicKey(accessToken), 15_000, '2/4 VAPID 鍵取得');
     const vapidKey = urlBase64ToUint8Array(vapidPublicKey);
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: vapidKey.buffer.slice(
-        vapidKey.byteOffset,
-        vapidKey.byteOffset + vapidKey.byteLength
-      ) as ArrayBuffer,
-    });
+
+    // --- 3/4 購読登録 ---
+    updateProgress('3/4 通知の購読を登録しています...');
+    const sub = await withTimeout(
+      reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidKey.buffer.slice(
+          vapidKey.byteOffset,
+          vapidKey.byteOffset + vapidKey.byteLength
+        ) as ArrayBuffer,
+      }),
+      30_000,
+      '3/4 通知の購読登録'
+    );
     const subJson = sub.toJSON();
     const endpoint = subJson?.endpoint as string;
     const keys = subJson?.keys;
@@ -165,8 +207,14 @@ export async function subscribePush({
       localStorage.setItem('viewer_device_id', deviceId);
     }
 
+    // --- 4/4 端末情報を Drive に保存 ---
+    updateProgress('4/4 端末情報を保存しています...');
     // 既存デバイスリストを取得してupsert（新スキーマ対応、旧スキーマは自動移行）
-    const existing = await downloadFromDrive(accessToken, 'push_devices.json').catch(() => ({}));
+    const existing = await withTimeout(
+      downloadFromDrive(accessToken, 'push_devices.json').catch(() => ({})),
+      20_000,
+      '4/4 端末一覧の取得'
+    );
     const account = await fetchGoogleAccount(accessToken).catch(() => null);
     const existingDevices: any[] = existing?.devices ?? (
       // 旧スキーマ（endpoint直下）があれば移行する
@@ -178,9 +226,14 @@ export async function subscribePush({
       ...existingDevices.filter((d: any) => d.device_id !== deviceId),
       withGoogleAccount({ device_id: deviceId, endpoint, keys, registered_at: nowJST(), device_name: detectDeviceName() }, account),
     ];
-    await uploadWithAutoRefresh(accessToken, 'push_devices.json', { devices: updatedDevices });
+    await withTimeout(
+      uploadWithAutoRefresh(accessToken, 'push_devices.json', { devices: updatedDevices }),
+      20_000,
+      '4/4 端末情報の保存'
+    );
 
     localStorage.setItem('viewer_push_done', 'true');
+    updateProgress(null);
     setStep('write');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -192,6 +245,7 @@ export async function subscribePush({
     } else {
       setErrorMessage('通知設定に失敗しました: ' + msg);
     }
+    updateProgress(null);
   } finally {
     setIsLoading(false);
   }

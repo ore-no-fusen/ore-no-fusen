@@ -186,12 +186,12 @@ PC 側は動画ファイルを <code>assets/video/</code> に保存し、付箋�
 
 この節は、主に開発者・保守担当向けです。Google OAuth2 の <code>client_secret</code> を iPhone に入れず、Vercel で扱う理由を説明します。
 
-**守っている対象：開発者（アプリ作者）が Google に登録した「俺の付箋アプリ」そのもの。** ユーザーに守ってもらう値ではありません。
+**守っている対象：俺の付箋アプリ開発者が Google に登録した「俺の付箋アプリ」そのもの。** ユーザーに守ってもらう値ではありません。詳細な 3 者関係は <a href="./005_GLOSSARY.html#sec0">005_GLOSSARY 「0 登場人物と関係」</a> を参照。
 
 ここでいう <code>client</code> は、ユーザーの iPhone や PC のことではなく、Google Cloud Console に登録した「俺の付箋アプリ」のこと。
 <code>client_id</code> は Google がそのアプリを見分けるための公開ID、<code>client_secret</code> はそのアプリが本物であることを Google に示すための秘密値。
 
-<code>client_secret</code> は開発者が Google Cloud Console で発行した「このアプリが本物であることを示す秘密値」。漏れると、第三者が俺の付箋の OAuth 設定を悪用し、開発者のアプリ名義でトークン交換を試みるリスクがある。iPhone PWA のコードに埋め込むと、端末上で読めてしまう。
+<code>client_secret</code> は俺の付箋アプリ開発者が Google Cloud Console で発行した「このアプリが本物であることを示す秘密値」。漏れると、悪意ある第三者が俺の付箋の OAuth 設定を悪用し、俺の付箋アプリ開発者のアプリ名義でトークン交換を試みるリスクがある。iPhone PWA のコードに埋め込むと、端末上で読めてしまう。
 
 <p class="table-caption">表 4-1　client_secret 保護方式の比較</p>
 
@@ -217,5 +217,6 @@ iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</co
 | 2 | 1.1 | 26-04-24 | システム全体関係図を `graph LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
 | 3 | 1.2 | 26-05-06 | 1 登場人物、2 技術スタック、4 なぜ Vercel が必要かを修正。技術スタック表に No を追加し、OAuth / Vercel の説明を開発者・保守担当向けとして明記。client_secret を誰が何のために守るのか分かる表現へ修正。 |
 | 4 | 1.3 | 26-05-25 | iPhone → PC フローに VideoDrop を追加。画像・動画を添付メディアとして扱い、PC 側で動画を `assets/video/` に保存する全体像を追記。 |
+| 5 | 1.4 | 26-05-31 | 4「なぜ Vercel が必要か」の表現を 3 者語彙に統一。「アプリ作者」を「俺の付箋アプリ開発者」、「第三者」を「悪意ある第三者」に修正し、005「0 登場人物と関係」への参照を追加。 |
 
 </div>

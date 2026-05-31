@@ -69,6 +69,13 @@ type WriteStepProps = {
   sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoBlobs?: VideoBlobMap; draftId: string | null; targetPcId?: string }) => Promise<boolean>;
 };
 
+function formatPcUpdatedAt(value?: string) {
+  if (!value) return '更新時刻なし';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+}
+
 /**
  * 責務: ノート編集画面（contenteditable エディタ・タグ入力・画像添付・PC 送信）を描画する
  * 入力: WriteStepProps（editorRef, fileInputRef, 各 state と callback）
@@ -119,6 +126,8 @@ export function WriteStep({
   handleEditorInput,
   sendToPC,
 }: WriteStepProps) {
+  const selectedPc = pcDevices.find((pc) => pc.pcId === selectedPcId) ?? null;
+
   const openNextCrop = React.useCallback(() => {
     setCropQueue((prev) => {
       const [nextFile, ...rest] = prev;
@@ -500,23 +509,29 @@ export function WriteStep({
       {/* アクションボタン */}
       <div className="flex flex-col gap-3 px-4 py-4 bg-[#F2F2F7]">
         {accessToken && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-white text-sm text-gray-700 shadow-sm">
-            <span className="shrink-0 text-gray-500">送信先</span>
-            {pcDevices.length > 0 ? (
-              <select
-                className="min-w-0 flex-1 bg-transparent outline-none"
-                value={selectedPcId}
-                onChange={(e) => setSelectedPcId?.(e.target.value)}
-                aria-label="送信先PC"
-              >
-                {pcDevices.map((pc) => (
-                  <option key={pc.pcId} value={pc.pcId}>
-                    {pc.pcName}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="min-w-0 flex-1 truncate text-gray-400">PC未登録（従来方式で送信）</span>
+          <div className="rounded-2xl bg-white px-3 py-2 text-sm text-gray-700 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-gray-500">送信先</span>
+              {pcDevices.length > 0 ? (
+                <select
+                  className="min-w-0 flex-1 bg-transparent outline-none"
+                  value={selectedPcId}
+                  onChange={(e) => setSelectedPcId?.(e.target.value)}
+                  aria-label="送信先PC"
+                >
+                  {pcDevices.map((pc) => (
+                    <option key={pc.pcId} value={pc.pcId}>{pc.pcName}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="min-w-0 flex-1 truncate text-gray-400">PC未登録（従来方式で送信）</span>
+              )}
+            </div>
+            {selectedPc && (
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">
+                <span>更新 {formatPcUpdatedAt(selectedPc.updatedAt)}</span>
+                {selectedPc.googleAccountEmail && <span className="truncate">{selectedPc.googleAccountEmail}</span>}
+              </div>
             )}
           </div>
         )}
