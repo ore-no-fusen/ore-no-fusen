@@ -1,8 +1,19 @@
 import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
-import { evaluateDeveloperReplyEligibility, parseAllowedDiscordUserIds } from '../../lib/security';
+import {
+  evaluateDeveloperReplyEligibility,
+  extractConversationIdFromDiscordEmbeds,
+  parseAllowedDiscordUserIds,
+} from '../../lib/security';
 import { createFeedbackConversationStore } from '../../lib/store';
 import type { DiscordCandidateMessage } from '../../lib/types';
+
+type DiscordEmbed = {
+  fields?: Array<{
+    name?: string;
+    value?: string;
+  }>;
+};
 
 type DiscordMessage = {
   id: string;
@@ -18,6 +29,7 @@ type DiscordMessage = {
   };
   referenced_message?: {
     id?: string;
+    embeds?: DiscordEmbed[];
   } | null;
   thread?: {
     id?: string;
@@ -73,11 +85,18 @@ export async function POST(req: Request) {
 
     for (const message of messages) {
       const referencedMessageId = message.message_reference?.message_id ?? message.referenced_message?.id ?? null;
-      const mappedConversationId = referencedMessageId
+      let mappedConversationId = referencedMessageId
         ? await store.getConversationIdByDiscordMessage(referencedMessageId)
-        : message.thread?.id
-          ? await store.getConversationIdByDiscordThread(message.thread.id)
-          : null;
+        : null;
+      if (!mappedConversationId && message.thread?.id) {
+        mappedConversationId = await store.getConversationIdByDiscordThread(message.thread.id);
+      }
+      if (!mappedConversationId) {
+        const embeddedConversationId = extractConversationIdFromDiscordEmbeds(message.referenced_message?.embeds);
+        if (embeddedConversationId && await store.getConversation(embeddedConversationId)) {
+          mappedConversationId = embeddedConversationId;
+        }
+      }
       const candidate: DiscordCandidateMessage = {
         id: message.id,
         channelId: message.channel_id,

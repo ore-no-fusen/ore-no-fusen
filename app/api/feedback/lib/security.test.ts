@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   evaluateDeveloperReplyEligibility,
+  extractConversationIdFromDiscordEmbeds,
   hashSecretToken,
   parseAllowedDiscordUserIds,
   safeEqualHash,
@@ -105,5 +106,24 @@ describe('feedback token hashing', () => {
 
   it('parses allowed Discord user ids', () => {
     expect(parseAllowedDiscordUserIds(' dev-1,dev-2 ,, ')).toEqual(['dev-1', 'dev-2']);
+  });
+});
+
+describe('Discord embed conversation id extraction', () => {
+  it('extracts the conversation id from a feedback embed field', () => {
+    expect(extractConversationIdFromDiscordEmbeds([
+      {
+        fields: [
+          { name: '内容', value: 'hello' },
+          { name: '会話ID', value: '  conversation-1  ' },
+        ],
+      },
+    ])).toBe('conversation-1');
+  });
+
+  it('ignores embeds without a conversation id field', () => {
+    expect(extractConversationIdFromDiscordEmbeds([
+      { fields: [{ name: '内容', value: 'hello' }] },
+    ])).toBeNull();
   });
 });

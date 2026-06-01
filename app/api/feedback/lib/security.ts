@@ -1,6 +1,13 @@
 import { createHash, randomBytes } from 'crypto';
 import type { DeveloperReplyEligibilityInput, DeveloperReplyEligibilityResult } from './types';
 
+export type DiscordEmbedLike = {
+  fields?: Array<{
+    name?: string;
+    value?: string;
+  }>;
+};
+
 export function createSecretToken(): string {
   return randomBytes(32).toString('base64url');
 }
@@ -23,6 +30,18 @@ export function parseAllowedDiscordUserIds(raw: string | undefined): string[] {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+export function extractConversationIdFromDiscordEmbeds(embeds: DiscordEmbedLike[] | undefined): string | null {
+  for (const embed of embeds ?? []) {
+    for (const field of embed.fields ?? []) {
+      if (field.name === '会話ID' && field.value?.trim()) {
+        return field.value.trim();
+      }
+    }
+  }
+
+  return null;
 }
 
 export function evaluateDeveloperReplyEligibility(
