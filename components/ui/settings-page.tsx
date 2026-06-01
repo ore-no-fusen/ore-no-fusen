@@ -16,6 +16,11 @@ import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database,
 import { useSettings, type AppSettings } from "@/lib/settings-store"
 // ★翻訳関数をインポート
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
+import {
+    getFeedbackApiBaseUrl,
+    getOrCreateFeedbackConversationIdentity,
+    saveFeedbackConversationIdentity,
+} from "@/app/utils/feedbackConversation"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -125,6 +130,8 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 return <HelpSection t={t} />
             case "feedback":
                 return <FeedbackSection t={t} />
+            case "conversation":
+                return <DeveloperConversationSection />
             case "advanced":
                 return <AdvancedSection settings={settings} t={t} />
             default:
@@ -189,6 +196,12 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         label={t('settings.feedback.menuTitle')}
                         isActive={activeSection === "feedback"}
                         onClick={() => setActiveSection("feedback")}
+                    />
+                    <SidebarItem
+                        icon={<Inbox className="mr-3 h-4 w-4" />}
+                        label="開発者とのやりとり"
+                        isActive={activeSection === "conversation"}
+                        onClick={() => setActiveSection("conversation")}
                     />
 
                     <div className="pt-4 pb-2">
@@ -1179,9 +1192,8 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
 
             // 環境に応じてAPIのエンドポイントを切り替え
             const isDev = process.env.NODE_ENV === 'development';
-            const apiUrl = isDev
-                ? 'http://localhost:3002/api/feedback'
-                : 'https://ore-no-fusen.vercel.app/api/feedback';
+            const apiUrl = `${getFeedbackApiBaseUrl()}/conversation/messages`;
+            const conversationIdentity = getOrCreateFeedbackConversationIdentity();
 
             console.log(`Sending feedback to: ${apiUrl}`);
 
@@ -1195,12 +1207,22 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
                     content,
                     contact,
                     systemInfo,
-                    version: appVersion
+                    version: appVersion,
+                    conversationId: conversationIdentity.conversationId,
+                    secretToken: conversationIdentity.secretToken,
                 }),
             });
 
             if (!response.ok) {
                 throw new Error(`Server error: ${response.status}`);
+            }
+
+            const result = await response.json().catch(() => null);
+            if (result?.conversationId && result?.secretToken) {
+                saveFeedbackConversationIdentity({
+                    conversationId: result.conversationId,
+                    secretToken: result.secretToken,
+                });
             }
 
             setSent(true)
@@ -1303,6 +1325,160 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
                             <><div className="mr-2">📨</div> {t('settings.feedback.sendButton')}</>
                         )}
                     </Button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+type BoardMessage = {
+    messageId: string;
+    authorType: 'user' | 'developer';
+    body: string;
+    createdAt: string;
+    readByUser: boolean;
+};
+
+function DeveloperConversationSection() {
+    const [messages, setMessages] = useState<BoardMessage[]>([])
+    const [draft, setDraft] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [sending, setSending] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    const loadMessages = async () => {
+        setLoading(true)
+        setError(null)
+        try {
+            const identity = getOrCreateFeedbackConversationIdentity()
+            const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/poll`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(identity),
+            })
+            if (!response.ok) throw new Error(`Server error: ${response.status}`)
+            const data = await response.json().catch(() => null) as { messages?: BoardMessage[] } | null
+            const nextMessages = data?.messages ?? []
+            setMessages(nextMessages)
+
+            const unreadDeveloperMessageIds = nextMessages
+                .filter((message) => message.authorType === 'developer' && !message.readByUser)
+                .map((message) => message.messageId)
+
+            if (unreadDeveloperMessageIds.length > 0) {
+                requestAnimationFrame(() => {
+                    fetch(`${getFeedbackApiBaseUrl()}/conversation/ack`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...identity, messageIds: unreadDeveloperMessageIds }),
+                    }).catch(() => { })
+                })
+            }
+        } catch (e) {
+            setError(String(e))
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        loadMessages()
+    }, [])
+
+    const sendMessage = async () => {
+        const content = draft.trim()
+        if (!content) return
+
+        setSending(true)
+        setError(null)
+        try {
+            const identity = getOrCreateFeedbackConversationIdentity()
+            const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...identity,
+                    type: 'message',
+                    content,
+                    contact: '',
+                    systemInfo: 'User opened settings board',
+                    version: 'Unknown',
+                }),
+            })
+            if (!response.ok) throw new Error(`Server error: ${response.status}`)
+            const result = await response.json().catch(() => null)
+            if (result?.conversationId && result?.secretToken) {
+                saveFeedbackConversationIdentity({
+                    conversationId: result.conversationId,
+                    secretToken: result.secretToken,
+                })
+            }
+            setDraft('')
+            await loadMessages()
+        } catch (e) {
+            setError(String(e))
+        } finally {
+            setSending(false)
+        }
+    }
+
+    return (
+        <div className="max-w-4xl space-y-6">
+            <div>
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">開発者とのやりとり</h2>
+                <p className="text-gray-500 text-sm">返信はここにだけ表示されます。付箋として自動表示されることはありません。</p>
+            </div>
+
+            <div className="border rounded-lg overflow-hidden bg-white">
+                <div className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
+                    {loading && messages.length === 0 ? (
+                        <div className="text-sm text-gray-500">読み込み中...</div>
+                    ) : messages.length === 0 ? (
+                        <div className="rounded-md border border-dashed bg-white p-6 text-sm text-gray-500">
+                            まだやりとりはありません。下の入力欄からメッセージを送れます。
+                        </div>
+                    ) : (
+                        messages.map((message) => (
+                            <div
+                                key={message.messageId}
+                                className={`flex ${message.authorType === 'user' ? 'justify-end' : 'justify-start'}`}
+                            >
+                                <div className={`max-w-[78%] rounded-lg border px-4 py-3 text-sm leading-6 ${message.authorType === 'user'
+                                    ? 'bg-gray-900 text-white border-gray-900'
+                                    : 'bg-white text-gray-900 border-gray-200'
+                                    }`}>
+                                    <div className={`text-xs font-bold mb-1 ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
+                                        {message.authorType === 'user' ? 'ユーザー' : 'アプリ開発者'}
+                                    </div>
+                                    <div className="whitespace-pre-wrap break-words">{message.body}</div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                <div className="border-t p-4 space-y-3">
+                    {error && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            通信に失敗しました。時間をおいて再試行してください。
+                        </div>
+                    )}
+                    <textarea
+                        className="flex min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        placeholder="開発者に伝えたいことを書いてください"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                    />
+                    <div className="flex justify-between items-center">
+                        <Button variant="outline" onClick={loadMessages} disabled={loading || sending}>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            更新
+                        </Button>
+                        <Button onClick={sendMessage} disabled={sending || !draft.trim()}>
+                            <Send className="mr-2 h-4 w-4" />
+                            {sending ? '送信中...' : '送信'}
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.2 / 2026-05-06
+設計書 v1.7 / 2026-06-01
 </p>
 
 ---
@@ -170,8 +170,9 @@ sequenceDiagram
 
 ### 5.1 ランタイム環境とネットワーク・トポロジー
 
-俺の付箋は、中央のアプリ用データベースを持たない。付箋本文はユーザーの PC、iPhone 連携中の一時ファイルはユーザー自身の Google Drive に置く。
-Vercel は iPhone PWA の配信と、開発者が守る `client_secret` を iPhone に入れず Google OAuth のトークン交換・更新を行うためだけに使う。
+俺の付箋は、付箋本文を保存する中央データベースを持たない。付箋本文はユーザーの PC、iPhone 連携中の一時ファイルはユーザー自身の Google Drive に置く。
+設定画面内の 1 対 1 掲示板だけは例外として、Vercel API が Firebase / Firestore に会話データを保存する。Firestore に保存するのは、ユーザーが掲示板へ自分で送信した本文、開発者返信、匿名会話 ID、既読状態に限定する。
+Vercel は iPhone PWA の配信、開発者が守る `client_secret` を iPhone に入れず Google OAuth のトークン交換・更新を行う処理、設定画面内の 1 対 1 掲示板 API にだけ使う。
 
 ```mermaid
 flowchart LR
@@ -186,21 +187,26 @@ flowchart LR
 
     subgraph "Vendor Infrastructure"
         VERCEL["Vercel Serverless Edge<br>Hosted App"]
+        FEEDBACK["Feedback Conversation API<br>Anonymous Conversation Endpoint"]
+        FIRESTORE["Firebase / Firestore<br>Conversation Store"]
         OAUTH["Google OAuth2<br>Token Endpoint"]
         APNS["Apple Push Notification Service"]
     end
 
     PC <-->|HTTPS API / Polling| DRIVE
+    PC -->|Feedback submit / Daily conversation check| FEEDBACK
     IPHONE <-->|HTTPS API| DRIVE
     IPHONE -->|Fetch PWA / Token API| VERCEL
     PC -->|Trigger Push| APNS
     APNS -->|Deliver Push| IPHONE
     VERCEL -.->|client_secret で token 交換| OAUTH
+    VERCEL --- FEEDBACK
+    FEEDBACK -->|Server-side credentials| FIRESTORE
 ```
 <p class="mermaid-caption">図 6-3　物理デプロイトポロジー</p>
 
 <Note type="success">
-<strong>セキュリティ原則:</strong> 開発者が管理するサーバー（Vercel）にはユーザーのメモ本文、添付画像、添付動画、Drive 中継ファイル、Google Drive 用トークンを保存しない。Vercel が扱うのは、iPhone PWA の配信と OAuth トークン交換・更新の一時処理だけ。
+<strong>セキュリティ原則:</strong> 開発者が管理するサーバー（Vercel）と Firestore には、ユーザーの既存メモ本文、添付画像、添付動画、Drive 中継ファイル、Google Drive 用トークンを保存しない。掲示板 API が扱うのは、ユーザーが自分で送信した掲示板メッセージ、匿名の会話 ID、開発者からの返信本文、既読状態に限定する。
 </Note>
 
 ---
@@ -228,6 +234,12 @@ flowchart LR
 
 ---
 
+### 6.2 補助シナリオ: 「開発者とのやりとり掲示板」
+
+ユーザーと開発者の 1 対 1 の掲示板 UI、Discord を開発者側 UI として使う流れ、ユーザーとの距離感を守る制約は <a href="./007_COMMUNICATION">007 コミュニケーション設計</a> で定義します。本章では物理トポロジー上、PC アプリが Vercel 掲示板 API を日次確認する接続だけを扱います。
+
+---
+
 ## 7 改版履歴
 
 <div class="history-table">
@@ -239,6 +251,10 @@ flowchart LR
 | 2 | 1.1 | 26-04-24 | classDiagram・物理ビュー flowchart を `LR`（横向き）に変更。スクロールなしで全体が見えるよう改善。 |
 | 3 | 1.2 | 26-05-06 | 1 4+1 View Model、4.1 モノレポアーキテクチャ、5.1 物理ビュー、6.1 中心シナリオを修正。各ビューの対象者を明記し、4.1 に `docs-v2/` と `wiki-temp/` を追加。6.1 の表に No を追加。Vercel / Google OAuth の物理トポロジーを修正し、client_secret は Drive ではなく Google OAuth のトークン交換に使うことを明確化。 |
 | 4 | 1.3 | 26-05-25 | iPhone → PC のポーリング型受信に VideoDrop を追加。動画を `assets/video/` に保存し、本文・添付・一時ファイル名・保存パスを分離する境界を明記。 |
+| 5 | 1.4 | 26-06-01 | 5.1 にフィードバック返信 API を追加。6.2 から 007 コミュニケーション設計への参照を追加し、ユーザーと開発者の会話 UI の詳細を独立章へ分離。 |
+| 6 | 1.5 | 26-06-01 | 返信付箋方式を廃止し、設定画面内の 1 対 1 掲示板 API として物理ビュー・補助シナリオを更新。 |
+| 7 | 1.6 | 26-06-01 | 掲示板 API の永続保存先を Firebase / Firestore と明記し、Vercel と Firestore の責務を分離。 |
+| 8 | 1.7 | 26-06-01 | 007 章の表現に合わせ、ユーザーとの距離感を守る制約として参照文言を更新。 |
 
 </div>
 

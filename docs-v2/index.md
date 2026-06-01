@@ -58,6 +58,7 @@ html.dark .doc-card-header {
 .badge-004 { background: #f3e8ff; color: #6b21a8; }
 .badge-005 { background: #fee2e2; color: #991b1b; }
 .badge-006 { background: #e0f2fe; color: #075985; }
+.badge-007 { background: #fce7f3; color: #9d174d; }
 .badge-100 { background: #ecfdf5; color: #065f46; }
 .badge-101 { background: #fff7ed; color: #9a3412; }
 .badge-200 { background: #fef3c7; color: #92400e; }
@@ -125,7 +126,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
 <div class="portal-header">
   <div style="display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: #6d28d9; background: #ede9fe; border-radius: 99px; padding: 3px 10px; margin-bottom: 10px;">DESIGN DOCS PORTAL</div>
   <h1 style="font-size: 28px; font-weight: 800; margin-bottom: 6px; border: none;">俺の付箋 設計書</h1>
-  <p style="font-size: 14px; color: #64748b;">Intention Layer と 000〜006 の全ドキュメント・全セクション一覧。各リンクから該当箇所へ直接ジャンプできます。</p>
+  <p style="font-size: 14px; color: #64748b;">Intention Layer と 000〜007 の全ドキュメント・全セクション一覧。各リンクから該当箇所へ直接ジャンプできます。</p>
 </div>
 
 ---
@@ -147,6 +148,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <tr><td><span class="doc-badge badge-004">004</span></td><td><strong><a href="./004_TEST">テスト設計</a></strong></td><td>テスト戦略・テスト対象・実行方法・領域等</td></tr>
   <tr><td><span class="doc-badge badge-005">005</span></td><td><strong><a href="./005_GLOSSARY">用語集</a></strong></td><td>専門用語・略語一覧</td></tr>
   <tr><td><span class="doc-badge badge-006">006</span></td><td><strong><a href="./006_ARCHITECTURE">4+1 Viewアーキテクチャ</a></strong></td><td>4+1 View Model・システム全体俯瞰図</td></tr>
+  <tr><td><span class="doc-badge badge-007">007</span></td><td><strong><a href="./007_COMMUNICATION">コミュニケーション設計</a></strong></td><td>ユーザーと開発者の 1 対 1 掲示板・安全な日次確認</td></tr>
   <tr><td><span class="doc-badge badge-100">100</span></td><td><strong><a href="./100_PRIVACY">プライバシーポリシー</a></strong></td><td>Google Drive連携・ログ・データ削除方針</td></tr>
   <tr><td><span class="doc-badge badge-101">101</span></td><td><strong><a href="./101_TERMS">利用規約</a></strong></td><td>利用条件・免責事項・外部サービスの扱い</td></tr>
   <tr><td><span class="doc-badge badge-200">200</span></td><td><strong><a href="./200_SIRI_SETUP">Siri から PC に付箋を送る</a></strong></td><td>iPhone のショートカット App を使った音声送信の設定手順（実験的）</td></tr>
@@ -164,9 +166,10 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <a href="./003_IPHONE"><span class="seq-badge" style="background:#dcfce7;color:#14532d;">003</span>クラウド同期・iPhone設計</a> →
   <a href="./004_TEST"><span class="seq-badge" style="background:#f3e8ff;color:#6b21a8;">004</span>テスト設計</a> →
   <a href="./005_GLOSSARY"><span class="seq-badge" style="background:#fee2e2;color:#991b1b;">005</span>用語集</a> →
-  <a href="./006_ARCHITECTURE"><span class="seq-badge" style="background:#e0f2fe;color:#075985;">006</span>4+1 Viewアーキテクチャ</a>
+  <a href="./006_ARCHITECTURE"><span class="seq-badge" style="background:#e0f2fe;color:#075985;">006</span>4+1 Viewアーキテクチャ</a> →
+  <a href="./007_COMMUNICATION"><span class="seq-badge" style="background:#fce7f3;color:#9d174d;">007</span>コミュニケーション設計</a>
   
-  <div class="note-text">⚠️ <strong>000-I（Intention Layer）</strong> は「何者として作るか」を定義する上位思想です。<strong>000（要求仕様）</strong> は「なぜ作るか・何を作るか」を定義する文書です。<strong>001〜006（設計書）</strong> は「どう作るか」を定義する別の文書群です。初めて読む方は000-Iから順に読むことを推奨します。</div>
+  <div class="note-text">⚠️ <strong>000-I（Intention Layer）</strong> は「何者として作るか」を定義する上位思想です。<strong>000（要求仕様）</strong> は「なぜ作るか・何を作るか」を定義する文書です。<strong>001〜007（設計書）</strong> は「どう作るか」を定義する別の文書群です。初めて読む方は000-Iから順に読むことを推奨します。</div>
 </div>
 
 ---
@@ -303,6 +306,15 @@ html.dark .read-order .note-text { color: #fcd34d; }
         <div class="doc-card-title">
           <a href="./006_ARCHITECTURE">4+1 Viewアーキテクチャ</a>
           <div class="doc-subtitle">4+1 View Model・システム全体俯瞰図</div>
+        </div>
+      </div>
+    </div>
+    <div class="doc-card" style="margin-bottom: 0;">
+      <div class="doc-card-header">
+        <span class="doc-badge badge-007">007</span>
+        <div class="doc-card-title">
+          <a href="./007_COMMUNICATION">コミュニケーション設計</a>
+          <div class="doc-subtitle">ユーザーと開発者の 1 対 1 掲示板</div>
         </div>
       </div>
     </div>

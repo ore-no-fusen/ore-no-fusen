@@ -1,0 +1,119 @@
+import { randomUUID } from 'crypto';
+import { NextResponse } from 'next/server';
+import { createSecretToken, hashSecretToken } from '../../lib/security';
+import { createFeedbackConversationStore } from '../../lib/store';
+
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+}
+
+function formatRecentContext(messages: Array<{ authorType: 'user' | 'developer'; body: string }>): string {
+  if (messages.length === 0) return '過去のやりとりはまだありません。';
+  return messages
+    .map((message) => `${message.authorType === 'developer' ? 'アプリ開発者' : 'ユーザー'}: ${message.body}`)
+    .join('\n')
+    .slice(0, 1000);
+}
+
+export async function GET() {
+  return NextResponse.json({ error: 'Method Not Allowed' }, { status: 405, headers: corsHeaders() });
+}
+
+export async function POST(req: Request) {
+  try {
+    if (process.env.FEEDBACK_CONVERSATION_ENABLED === 'false') {
+      return NextResponse.json({ error: 'Conversation disabled' }, { status: 503, headers: corsHeaders() });
+    }
+
+    const body = await req.json();
+    const content = typeof body.content === 'string' ? body.content.trim() : '';
+    if (!content) {
+      return NextResponse.json({ error: 'Missing content' }, { status: 400, headers: corsHeaders() });
+    }
+
+    const conversationId = typeof body.conversationId === 'string' && body.conversationId.trim()
+      ? body.conversationId.trim()
+      : randomUUID();
+    const secretToken = typeof body.secretToken === 'string' && body.secretToken.trim()
+      ? body.secretToken.trim()
+      : createSecretToken();
+    const type = typeof body.type === 'string' ? body.type : 'message';
+    const contact = typeof body.contact === 'string' ? body.contact : '';
+    const systemInfo = typeof body.systemInfo === 'string' ? body.systemInfo : 'Unknown';
+    const version = typeof body.version === 'string' ? body.version : 'Unknown';
+    const now = new Date().toISOString();
+    const store = createFeedbackConversationStore();
+    const recentMessages = await store.listLatestMessages(conversationId, 5);
+
+    const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    if (!webhookUrl) {
+      return NextResponse.json({ error: 'Missing Discord webhook' }, { status: 500, headers: corsHeaders() });
+    }
+
+    const embed = {
+      title: `📨 新着フィードバック: ${type}`,
+      color: type === 'bug' ? 0xff0000 : type === 'feature' ? 0x00ff00 : 0x0099ff,
+      fields: [
+        { name: '内容', value: content },
+        { name: '連絡先', value: contact || 'なし', inline: true },
+        { name: 'バージョン', value: version || '不明', inline: true },
+        { name: '会話ID', value: conversationId },
+        { name: '直近5件', value: formatRecentContext(recentMessages) },
+      ],
+      footer: {
+        text: `OS: ${systemInfo || 'Unknown'} | IP: ${req.headers.get('x-forwarded-for') || 'Unknown'}`,
+      },
+      timestamp: now,
+    };
+
+    const discordUrl = new URL(webhookUrl);
+    discordUrl.searchParams.set('wait', 'true');
+    const discordResponse = await fetch(discordUrl.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+    if (!discordResponse.ok) {
+      throw new Error(`Discord API error: ${discordResponse.status}`);
+    }
+    const discordMessage = await discordResponse.json().catch(() => null) as {
+      id?: string;
+      channel_id?: string;
+      thread_id?: string;
+    } | null;
+
+    await store.createConversation({
+      conversationId,
+      secretTokenHash: hashSecretToken(secretToken),
+      discordChannelId: discordMessage?.channel_id,
+      discordMessageId: discordMessage?.id,
+      discordThreadId: discordMessage?.thread_id,
+      deliveryEnabled: true,
+      shadowOnly: process.env.FEEDBACK_CONVERSATION_SHADOW_MODE === 'true',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await store.appendMessage({
+      messageId: randomUUID(),
+      conversationId,
+      authorType: 'user',
+      body: content,
+      createdAt: now,
+      readByUser: true,
+      shadowOnly: false,
+    });
+
+    return NextResponse.json({ success: true, conversationId, secretToken }, { headers: corsHeaders() });
+  } catch (error) {
+    console.error('Feedback conversation message error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500, headers: corsHeaders() });
+  }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders() });
+}
