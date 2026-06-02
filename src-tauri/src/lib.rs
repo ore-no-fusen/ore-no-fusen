@@ -1592,7 +1592,7 @@ fn classify_webpush_error(error: &str) -> String {
     let lower = error.to_ascii_lowercase();
     if lower.contains("apns error: 400") || lower.contains("bad request") {
         return format!(
-            "APNs 400 Bad Request: Push鍵またはiPhone購読情報が一致していない可能性があります。iPhone側で通知を再登録してください。詳細: {}",
+            "APNs 400 Bad Request: Push鍵が一致しません。設定の「iPhone連携」でPC側のDriveを「再接続」するか、iPhone側でPWAを再インストールしてください。詳細: {}",
             error
         );
     }
@@ -1614,7 +1614,7 @@ fn classify_webpush_error(error: &str) -> String {
         || lower.contains("gone")
     {
         return format!(
-            "APNs 404/410: iPhoneのPush購読が期限切れまたは無効です。iPhone側で通知を再登録してください。詳細: {}",
+            "APNs 404/410: iPhoneのPush購読が無効です。iPhoneのホーム画面からアプリを削除し、Safariから再度「ホーム画面に追加」して初期設定をやり直してください。詳細: {}",
             error
         );
     }
@@ -1637,6 +1637,29 @@ fn classify_webpush_error(error: &str) -> String {
         );
     }
     format!("Push送信エラー: {}", error)
+}
+
+#[cfg(test)]
+mod webpush_error_message_tests {
+    use super::*;
+
+    #[test]
+    fn apns_400_guides_pc_reconnect_or_pwa_reinstall() {
+        let message = classify_webpush_error("APNs error: 400: VapidPkHashMismatch");
+
+        assert!(message.contains("Push鍵が一致しません"));
+        assert!(message.contains("設定の「iPhone連携」でPC側のDriveを「再接続」"));
+        assert!(message.contains("iPhone側でPWAを再インストール"));
+    }
+
+    #[test]
+    fn apns_404_410_guides_pwa_reinstall_flow() {
+        let message = classify_webpush_error("APNs error: 410: Gone");
+
+        assert!(message.contains("iPhoneのPush購読が無効です"));
+        assert!(message.contains("iPhoneのホーム画面からアプリを削除"));
+        assert!(message.contains("Safariから再度「ホーム画面に追加」"));
+    }
 }
 
 fn webpush_device_label(index: usize, total: usize, config: &ProConfig) -> String {
