@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  getFeedbackApiBaseUrl,
   getOrCreateFeedbackConversationIdentity,
   markFeedbackConversationPollAttempt,
   shouldPollFeedbackConversation,
@@ -35,5 +36,20 @@ describe('feedback conversation identity', () => {
 
     expect(shouldPollFeedbackConversation(1_000 + 23 * 60 * 60 * 1000, storage)).toBe(false);
     expect(shouldPollFeedbackConversation(1_000 + 24 * 60 * 60 * 1000, storage)).toBe(true);
+  });
+
+  it('uses the current web origin for hosted browser pages', () => {
+    expect(getFeedbackApiBaseUrl()).toBe(`${window.location.origin}/api/feedback`);
+  });
+
+  it('uses the public production API from the Tauri desktop runtime', () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {},
+    });
+
+    expect(getFeedbackApiBaseUrl()).toBe('https://ore-no-fusen.vercel.app/api/feedback');
+
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 });

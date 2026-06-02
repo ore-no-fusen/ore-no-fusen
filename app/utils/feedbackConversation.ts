@@ -2,6 +2,7 @@ const CONVERSATION_ID_KEY = 'ore-no-fusen.feedback.conversation_id';
 const SECRET_TOKEN_KEY = 'ore-no-fusen.feedback.secret_token';
 const LAST_POLL_KEY = 'ore-no-fusen.feedback.last_poll_at';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const PRODUCTION_FEEDBACK_API_BASE_URL = 'https://ore-no-fusen.vercel.app/api/feedback';
 
 export type FeedbackConversationIdentity = {
   conversationId: string;
@@ -76,7 +77,17 @@ export function markFeedbackConversationPollAttempt(now = Date.now(), storage?: 
 }
 
 export function getFeedbackApiBaseUrl(): string {
-  return process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3002/api/feedback'
-    : 'https://ore-no-fusen.vercel.app/api/feedback';
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3002/api/feedback';
+  }
+
+  if (typeof window !== 'undefined') {
+    const isTauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
+    const origin = window.location.origin;
+    if (!isTauri && /^https?:\/\//.test(origin)) {
+      return `${origin}/api/feedback`;
+    }
+  }
+
+  return PRODUCTION_FEEDBACK_API_BASE_URL;
 }
