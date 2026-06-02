@@ -2,39 +2,12 @@ import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 import {
   evaluateDeveloperReplyEligibility,
-  extractConversationIdFromDiscordEmbeds,
   parseAllowedDiscordUserIds,
 } from '../../lib/security';
 import { createFeedbackConversationStore } from '../../lib/store';
 import type { DiscordCandidateMessage } from '../../lib/types';
-
-type DiscordEmbed = {
-  fields?: Array<{
-    name?: string;
-    value?: string;
-  }>;
-};
-
-type DiscordMessage = {
-  id: string;
-  channel_id: string;
-  content: string;
-  author?: {
-    id?: string;
-    bot?: boolean;
-  };
-  message_reference?: {
-    message_id?: string;
-    channel_id?: string;
-  };
-  referenced_message?: {
-    id?: string;
-    embeds?: DiscordEmbed[];
-  } | null;
-  thread?: {
-    id?: string;
-  } | null;
-};
+import { resolveDiscordConversationIdForMessage } from './resolve';
+import type { DiscordMessage } from './resolve';
 
 function corsHeaders() {
   return {
@@ -84,19 +57,8 @@ export async function POST(req: Request) {
     const rejected: Array<{ discordMessageId: string; reason: string }> = [];
 
     for (const message of messages) {
-      const referencedMessageId = message.message_reference?.message_id ?? message.referenced_message?.id ?? null;
-      let mappedConversationId = referencedMessageId
-        ? await store.getConversationIdByDiscordMessage(referencedMessageId)
-        : null;
-      if (!mappedConversationId && message.thread?.id) {
-        mappedConversationId = await store.getConversationIdByDiscordThread(message.thread.id);
-      }
-      if (!mappedConversationId) {
-        const embeddedConversationId = extractConversationIdFromDiscordEmbeds(message.referenced_message?.embeds);
-        if (embeddedConversationId && await store.getConversation(embeddedConversationId)) {
-          mappedConversationId = embeddedConversationId;
-        }
-      }
+      const { conversationId: mappedConversationId, referencedMessageId } =
+        await resolveDiscordConversationIdForMessage(message, botToken, store);
       const candidate: DiscordCandidateMessage = {
         id: message.id,
         channelId: message.channel_id,

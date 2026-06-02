@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-コミュニケーション設計 v2.4 / 2026-06-01
+コミュニケーション設計 v2.6 / 2026-06-02
 </p>
 
 ---
@@ -23,8 +23,23 @@ outline: deep
 本章では、返信を付箋として出すのではなく、設定画面内に「開発者とのやりとり」掲示板を作ります。ユーザーは必要なときだけ設定画面を開いて会話を確認します。
 
 <Note type="info">
-この仕組みは、ユーザーの既存付箋、添付画像、添付動画、Google Drive 内の同期ファイル、Google Drive トークンを開発者サーバーへ送るものではありません。ユーザーが自分で入力した掲示板メッセージと、開発者からの返信だけを扱います。
+この仕組みは、ユーザーの既存付箋、添付画像、添付動画、Google Drive 内の同期ファイル、Google Drive トークンを Vercel API へ送るものではありません。ユーザーが自分で入力した掲示板メッセージと、開発者からの返信だけを扱います。
 </Note>
+
+### 1.1 登場人物と用語
+
+本章では「サーバー」という曖昧な言葉を使わず、次の名前で役割を区別します。
+
+<p class="table-caption">表 1.1-1　登場人物と責務</p>
+
+| No | 名前 | 役割 | 保持してよい情報 |
+|:---|:---|:---|:---|
+| 1 | PCアプリ | ユーザーが投稿し、自分の会話ログを表示する | `conversation_id`、生の `secret_token`、最終確認時刻 |
+| 2 | Vercel API | PCアプリ、Firestore、DiscordをつなぐAPI処理 | Firebase Admin SDK認証情報、Discord Bot Token、ingest secret |
+| 3 | Firebase / Firestore | 会話データの正本を保存するDB | `secret_token_hash`、会話本文、開発者返信、Discord通知ID |
+| 4 | Discordサーバー | 開発者が通知を見て返信する場所 | Discord通知メッセージ、開発者返信 |
+| 5 | Discord Webhook | Vercel APIからDiscordサーバーへ通知を投稿する入口 | Webhook URL |
+| 6 | Discord Bot | Discordサーバー上の返信をVercel APIへ取り込むために読む主体 | Bot Token |
 
 ---
 
@@ -129,10 +144,30 @@ flowchart LR
 | 6 | `status` | 未読、既読、shadow accepted、ignored など |
 
 <Note type="warning">
-`secret_token` の生値はサーバーに保存しません。サーバーはハッシュ化した値と照合します。
+`secret_token` の生値は Firebase / Firestore に保存しません。Vercel API は、PCアプリから受け取った `secret_token` をハッシュ化し、Firestore に保存済みの `secret_token_hash` と照合します。
 </Note>
 
-Firestore は Vercel の中にある保存領域ではなく、Firebase が提供する外部の永続データベースです。Vercel API はサーバー側の秘密鍵で Firestore を読み書きします。PC アプリや iPhone PWA に Firebase の管理用認証情報を配布しません。
+<p class="table-caption">表 5-3　`secret_token` の発行と更新</p>
+
+| No | 項目 | 仕様 |
+|:---|:---|:---|
+| 1 | 発行タイミング | PCアプリが開発者とのやりとりを初めて使い、ローカルに `secret_token` がないときに発行する |
+| 2 | 更新タイミング | 通常は自動更新しない。ローカル保存が消えた、別環境を使った、または値が欠けた場合に新しく発行する |
+| 3 | 長さ | 32バイトの乱数を base64url 文字列にするため、通常は43文字になる |
+| 4 | 生成方法 | 暗号用途の乱数生成器で32バイトを作り、URLに含められる base64url 形式へ変換する |
+| 5 | Firestore保存 | 生の `secret_token` は保存せず、`secret_token_hash` だけを Firestore に保存する |
+
+<p class="table-caption">表 5-4　会話データの分離ルール</p>
+
+| No | ルール | 理由 |
+|:---|:---|:---|
+| 1 | Firestore の会話正本は `feedback_conversations/{conversation_id}` 単位で分離する | ユーザーごとの掲示板をDB上でも別スレッドとして扱う |
+| 2 | `conversation_id` だけで本人確認しない | IDが見えたり推測された場合でも、会話を読ませない |
+| 3 | 読み取り、投稿、既読更新は `secret_token_hash` が一致した場合だけ許可する | 別ユーザーの会話ログが返る事故を防ぐ |
+| 4 | Discord返信は元の通知メッセージまたは通知内の会話IDから対象会話を確定できた場合だけ保存する | Discord内の無関係な投稿がユーザーの掲示板に混入しないようにする |
+| 5 | 対象会話を確定できない、token が一致しない、または重複している場合は保存せず拒否する | 判断できないものは表示しない fail closed にする |
+
+Firestore は Vercel の中にある保存領域ではなく、Firebase が提供する外部の永続データベースです。Vercel API は、Vercelの環境変数に設定した Firebase Admin SDK 認証情報を使って Firestore を読み書きします。PC アプリや iPhone PWA に Firebase の管理用認証情報を配布しません。
 
 ```txt
 feedback_conversations/{conversation_id}
@@ -242,15 +277,17 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 
 ## 8 安全要求と距離感
 
-この機能で特に守る安全要求は2つです。加えて、ユーザーと開発者の距離感を守ります。  
+この機能で特に守る安全要求は4つです。加えて、ユーザーと開発者の距離感を守ります。  
 開発者から返信できることは便利ですが、ユーザーの作業空間へ突然入り込む体験にはしません。ユーザーが必要なときに設定画面を開き、自分の意思で確認できる関係にします。
 
 <p class="table-caption">表 8-1　安全要求と対策</p>
 
 | No | 要求 | 失敗した場合 | 対策 |
 |:---|:---|:---|:---|
-| 1 | 返信は元のユーザーだけに届く | 別ユーザーの掲示板に返信が表示される | `conversation_id + secret_token` が一致した場合だけ返す |
+| 1 | 返信は元のユーザーだけに届く | 別ユーザーの掲示板に返信が表示される。これはセキュリティ事故として扱う | `conversation_id + secret_token` が一致した場合だけ返す。`conversation_id` だけでは返さない |
 | 2 | 開発者の返信だけが届く | Discord内の無関係な投稿が表示される | 許可済みDiscordユーザーID、返信元メッセージID、重複状態をすべて検証する |
+| 3 | DB上で他人の会話と混ざらない | Firestoreから別ユーザーの `messages` を取得または保存する | `feedback_conversations/{conversation_id}` 単位で保存し、読み書きのたびに `secret_token_hash` を照合する |
+| 4 | 判断できない返信は表示しない | 対象会話が不明なDiscord投稿がユーザーの掲示板に出る | 会話IDを確定できない返信は保存せず、`ignored` または `rejected` として扱う |
 
 <p class="table-caption">表 8-2　ユーザーとの距離感を守る制約</p>
 
@@ -260,7 +297,7 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 2 | 設定画面を開いたときに見る | ユーザーが自分の意思で確認する関係にする |
 | 3 | 1日1回程度の確認にする | 必要以上に接続せず、見張られているような印象を避ける |
 | 4 | 返信がない日は何も出さない | 通常利用の流れを邪魔しない |
-| 5 | kill switch を持つ | 問題があればサーバー側で即停止できる |
+| 5 | kill switch を持つ | 問題があれば Vercel API 側で即停止できる |
 | 6 | shadow mode から始める | 実配信前にDiscord返信分類を確認できる |
 
 ---
@@ -277,7 +314,7 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 4 | `POST /api/feedback/discord/ingest` | Discord返信を取り込む |
 
 2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。  
-4 の `discord/ingest` は、サーバー側または管理ジョブが「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。
+4 の `discord/ingest` は、Vercel Cron または開発者の管理操作が「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。
 
 ```mermaid
 sequenceDiagram
@@ -339,7 +376,7 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 
 | 区分 | 内容 |
 |:---|:---|
-| 実装する | 設定画面内の掲示板、匿名会話ID、secret token、サーバー保存、Discord通知、Discord返信取り込み、新着確認 |
+| 実装する | 設定画面内の掲示板、匿名会話ID、secret token、Firestore保存、Discord通知、Discord返信取り込み、新着確認 |
 | 実装しない | 返信付箋、ユーザー数分のDiscordチャンネル、自動プッシュ通知、Google Drive内の会話ファイル同期 |
 | 将来検討 | 通知バッジ、ユーザーによる会話削除、添付画像、既読表示、サポート対応ステータス |
 
@@ -374,5 +411,7 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 5 | 2.2 | 26-06-01 | 「怖くないための制約」を「ユーザーとの距離感を守る制約」に変更し、開発者が作業空間へ割り込まない意図を明確化 |
 | 6 | 2.3 | 26-06-01 | 開発者がDiscordで会話を確認する方法、100人規模でもチャンネルを増やさない運用、管理画面追加の判断基準を追加 |
 | 7 | 2.4 | 26-06-01 | 開発者が直近5件の過去ログを確認して返信できる方針を追加し、Firestoreを会話履歴の正本と明記 |
+| 8 | 2.5 | 26-06-02 | `secret_token` の発行仕様と、Firestore上で他人の会話を混在させない分離ルールを追加 |
+| 9 | 2.6 | 26-06-02 | 登場人物の用語を定義し、曖昧な「サーバー」表現を Vercel API、Firebase / Firestore、Discordサーバーに分解 |
 
 </div>
