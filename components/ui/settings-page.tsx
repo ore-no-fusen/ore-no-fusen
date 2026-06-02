@@ -17,6 +17,7 @@ import { useSettings, type AppSettings } from "@/lib/settings-store"
 // ★翻訳関数をインポート
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 import {
+    getDeveloperFeedbackApiBaseUrl,
     getFeedbackApiBaseUrl,
     getOrCreateFeedbackConversationIdentity,
     saveFeedbackConversationIdentity,
@@ -1339,7 +1340,18 @@ type BoardMessage = {
     readByUser: boolean;
 };
 
+function getFeedbackApiTargetLabel(apiBaseUrl: string): string {
+    if (apiBaseUrl.includes('localhost') || apiBaseUrl.includes('127.0.0.1')) return 'local'
+    if (apiBaseUrl.includes('git-develop')) return 'develop'
+    if (apiBaseUrl.includes('ore-no-fusen.vercel.app')) return 'production'
+    if (apiBaseUrl.includes('vercel.app')) return 'preview'
+    return 'custom'
+}
+
 function DeveloperConversationSection() {
+    const conversationIdentity = useMemo(() => getOrCreateFeedbackConversationIdentity(), [])
+    const feedbackApiBaseUrl = getFeedbackApiBaseUrl()
+    const feedbackApiTargetLabel = getFeedbackApiTargetLabel(feedbackApiBaseUrl)
     const [messages, setMessages] = useState<BoardMessage[]>([])
     const [draft, setDraft] = useState('')
     const [loading, setLoading] = useState(false)
@@ -1350,11 +1362,10 @@ function DeveloperConversationSection() {
         setLoading(true)
         setError(null)
         try {
-            const identity = getOrCreateFeedbackConversationIdentity()
             const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/poll`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(identity),
+                body: JSON.stringify(conversationIdentity),
             })
             if (!response.ok) throw new Error(`Server error: ${response.status}`)
             const data = await response.json().catch(() => null) as { messages?: BoardMessage[] } | null
@@ -1370,7 +1381,7 @@ function DeveloperConversationSection() {
                     fetch(`${getFeedbackApiBaseUrl()}/conversation/ack`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ...identity, messageIds: unreadDeveloperMessageIds }),
+                        body: JSON.stringify({ ...conversationIdentity, messageIds: unreadDeveloperMessageIds }),
                     }).catch(() => { })
                 })
             }
@@ -1392,12 +1403,11 @@ function DeveloperConversationSection() {
         setSending(true)
         setError(null)
         try {
-            const identity = getOrCreateFeedbackConversationIdentity()
             const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    ...identity,
+                    ...conversationIdentity,
                     type: 'message',
                     content,
                     contact: '',
@@ -1427,6 +1437,17 @@ function DeveloperConversationSection() {
             <div>
                 <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">開発者とのやりとり</h2>
                 <p className="text-gray-500 text-sm">返信はここにだけ表示されます。付箋として自動表示されることはありません。</p>
+                <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <span>
+                            接続先: <span className="font-semibold text-slate-900">{feedbackApiTargetLabel}</span>
+                        </span>
+                        <span className="break-all">
+                            会話ID: <span className="font-mono text-slate-900">{conversationIdentity.conversationId}</span>
+                        </span>
+                    </div>
+                    <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{feedbackApiBaseUrl}</div>
+                </div>
             </div>
 
             <div className="border rounded-lg overflow-hidden bg-white">
@@ -1533,6 +1554,14 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
     const [jsonError, setJsonError] = useState<string | null>(null)
     const [jsonCopied, setJsonCopied] = useState(false)
     const [queueDeleting, setQueueDeleting] = useState<'to_iphone' | 'from_iphone' | null>(null)
+
+    const [discordIngestSecret, setDiscordIngestSecret] = useState('')
+    const [discordIngestLoading, setDiscordIngestLoading] = useState(false)
+    const [discordIngestResult, setDiscordIngestResult] = useState<{
+        ingested: number;
+        rejected: Array<{ discordMessageId: string; reason: string }>;
+    } | null>(null)
+    const [discordIngestError, setDiscordIngestError] = useState<string | null>(null)
 
     const openJsonViewer = (titleKey: string, filename: string, fallback?: string) => {
         setJsonViewer({ titleKey, filename, fallback })
@@ -1868,6 +1897,44 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             alert(t('settings.advanced.external.driveFolderUnavailable'))
         } finally {
             setDriveFolderLoading(false)
+        }
+    }
+
+    const runDiscordIngest = async () => {
+        const secret = discordIngestSecret.trim()
+        if (!secret) {
+            setDiscordIngestError('ingest secret を入力してください。')
+            setDiscordIngestResult(null)
+            return
+        }
+
+        setDiscordIngestLoading(true)
+        setDiscordIngestError(null)
+        setDiscordIngestResult(null)
+        try {
+            const response = await fetch(`${getDeveloperFeedbackApiBaseUrl()}/discord/ingest`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${secret}`,
+                },
+            })
+            const result = await response.json().catch(() => null) as {
+                ingested?: number;
+                rejected?: Array<{ discordMessageId: string; reason: string }>;
+                error?: string;
+            } | null
+            if (!response.ok) {
+                throw new Error(result?.error || `Server error: ${response.status}`)
+            }
+            setDiscordIngestResult({
+                ingested: result?.ingested ?? 0,
+                rejected: result?.rejected ?? [],
+            })
+        } catch (e) {
+            setDiscordIngestError(String(e))
+        } finally {
+            setDiscordIngestLoading(false)
         }
     }
 
@@ -2387,6 +2454,74 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
 
                     {driveTempMessage && (
                         <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-gray-600">{driveTempMessage}</p>
+                    )}
+                </div>
+            </section>
+
+            {/* 開発者専用 */}
+            <section className="border-t border-slate-200 pt-8">
+                <div className="mb-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-red-500">Developer Only</p>
+                    <h3 className="mt-1 text-base font-bold text-slate-900">開発者専用</h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                        アプリ開発者がVercel/Firebase/Discordの管理用secretを持っている場合だけ使う領域です。
+                    </p>
+                </div>
+
+                <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-red-50 text-red-700">
+                        <Inbox className="h-5 w-5" />
+                    </div>
+                    <h4 className="text-base font-bold">Discord返信取り込み</h4>
+                </div>
+                <div className="rounded-lg border border-red-200 bg-red-50/40 px-5 py-4 space-y-4">
+                    <div>
+                        <p className="text-sm font-bold text-slate-900">手動ingest</p>
+                        <p className="text-xs text-slate-600 mt-1">
+                            Discordの開発者返信を、現在のフィードバックAPIへ手動で取り込みます。secretは保存されません。
+                        </p>
+                    </div>
+                    <div className="flex items-end gap-3">
+                        <div className="flex-1 min-w-0">
+                            <Label htmlFor="discord-ingest-secret" className="text-xs font-bold text-slate-600">
+                                ingest secret
+                            </Label>
+                            <Input
+                                id="discord-ingest-secret"
+                                type="password"
+                                value={discordIngestSecret}
+                                onChange={(e) => setDiscordIngestSecret(e.target.value)}
+                                placeholder="FEEDBACK_CONVERSATION_INGEST_SECRET"
+                                className="mt-1 bg-white"
+                            />
+                        </div>
+                        <Button
+                            variant="outline"
+                            onClick={runDiscordIngest}
+                            disabled={discordIngestLoading}
+                            className="shrink-0 bg-white"
+                        >
+                            <RefreshCw className={`h-4 w-4 mr-1.5 ${discordIngestLoading ? 'animate-spin' : ''}`} />
+                            {discordIngestLoading ? '取り込み中' : '取り込み実行'}
+                        </Button>
+                    </div>
+                    {discordIngestError && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            {discordIngestError}
+                        </div>
+                    )}
+                    {discordIngestResult && (
+                        <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                            <p className="font-bold text-slate-900">取り込み: {discordIngestResult.ingested} 件</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                                rejected: {discordIngestResult.rejected.length} 件
+                            </p>
+                            {discordIngestResult.rejected.length > 0 && (
+                                <pre className="mt-2 max-h-32 overflow-auto rounded bg-slate-50 p-2 text-xs font-mono text-slate-600">
+                                    {JSON.stringify(discordIngestResult.rejected.slice(0, 10), null, 2)}
+                                </pre>
+                            )}
+                        </div>
                     )}
                 </div>
             </section>

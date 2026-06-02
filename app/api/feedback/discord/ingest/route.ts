@@ -1,13 +1,5 @@
-import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
-import {
-  evaluateDeveloperReplyEligibility,
-  parseAllowedDiscordUserIds,
-} from '../../lib/security';
-import { createFeedbackConversationStore } from '../../lib/store';
-import type { DiscordCandidateMessage } from '../../lib/types';
-import { resolveDiscordConversationIdForMessage } from './resolve';
-import type { DiscordMessage } from './resolve';
+import { isDiscordIngestFailure, runDiscordIngest } from './run';
 
 function corsHeaders() {
   return {
@@ -33,67 +25,11 @@ export async function POST(req: Request) {
     if (!isAuthorized(req)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders() });
     }
-    if (process.env.FEEDBACK_CONVERSATION_ENABLED === 'false') {
-      return NextResponse.json({ ingested: 0, rejected: [] }, { headers: corsHeaders() });
+    const result = await runDiscordIngest();
+    if (isDiscordIngestFailure(result)) {
+      return NextResponse.json({ error: result.error }, { status: result.status, headers: corsHeaders() });
     }
-
-    const botToken = process.env.DISCORD_BOT_TOKEN;
-    const channelId = process.env.DISCORD_FEEDBACK_CHANNEL_ID;
-    if (!botToken || !channelId) {
-      return NextResponse.json({ error: 'Missing Discord configuration' }, { status: 500, headers: corsHeaders() });
-    }
-
-    const store = createFeedbackConversationStore();
-    const allowedDiscordUserIds = parseAllowedDiscordUserIds(process.env.ALLOWED_DISCORD_USER_IDS);
-    const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages?limit=50`, {
-      headers: { Authorization: `Bot ${botToken}` },
-    });
-    if (!response.ok) {
-      return NextResponse.json({ error: `Discord API error: ${response.status}` }, { status: 502, headers: corsHeaders() });
-    }
-
-    const messages = await response.json() as DiscordMessage[];
-    let ingested = 0;
-    const rejected: Array<{ discordMessageId: string; reason: string }> = [];
-
-    for (const message of messages) {
-      const { conversationId: mappedConversationId, referencedMessageId } =
-        await resolveDiscordConversationIdForMessage(message, botToken, store);
-      const candidate: DiscordCandidateMessage = {
-        id: message.id,
-        channelId: message.channel_id,
-        authorId: message.author?.id ?? '',
-        authorIsBot: message.author?.bot === true,
-        content: message.content,
-        referencedMessageId,
-        threadId: message.thread?.id ?? null,
-      };
-      const result = evaluateDeveloperReplyEligibility({
-        message: candidate,
-        allowedDiscordUserIds,
-        mappedConversationId,
-        alreadyIngested: await store.hasDiscordMessage(message.id),
-      });
-
-      if (!result.ok) {
-        rejected.push({ discordMessageId: message.id, reason: result.reason });
-        continue;
-      }
-
-      const saved = await store.appendMessage({
-        messageId: randomUUID(),
-        conversationId: result.conversationId,
-        authorType: 'developer',
-        body: message.content.trim(),
-        discordMessageId: message.id,
-        createdAt: new Date().toISOString(),
-        readByUser: false,
-        shadowOnly: process.env.FEEDBACK_CONVERSATION_SHADOW_MODE === 'true',
-      });
-      if (saved) ingested += 1;
-    }
-
-    return NextResponse.json({ ingested, rejected }, { headers: corsHeaders() });
+    return NextResponse.json(result, { headers: corsHeaders() });
   } catch (error) {
     console.error('Discord ingest error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500, headers: corsHeaders() });

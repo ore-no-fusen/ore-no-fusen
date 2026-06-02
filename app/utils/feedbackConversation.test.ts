@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  getDeveloperFeedbackApiBaseUrl,
   getFeedbackApiBaseUrl,
   getOrCreateFeedbackConversationIdentity,
   markFeedbackConversationPollAttempt,
@@ -17,6 +18,11 @@ function createMemoryStorage() {
 }
 
 describe('feedback conversation identity', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  });
+
   it('creates and persists an anonymous conversation identity', () => {
     const storage = createMemoryStorage();
 
@@ -42,6 +48,14 @@ describe('feedback conversation identity', () => {
     expect(getFeedbackApiBaseUrl()).toBe(`${window.location.origin}/api/feedback`);
   });
 
+  it('uses the develop branch API for feedback in local development', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+
+    expect(getFeedbackApiBaseUrl()).toBe(
+      'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback',
+    );
+  });
+
   it('uses the public production API from the Tauri desktop runtime', () => {
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       configurable: true,
@@ -49,7 +63,13 @@ describe('feedback conversation identity', () => {
     });
 
     expect(getFeedbackApiBaseUrl()).toBe('https://ore-no-fusen.vercel.app/api/feedback');
+  });
 
-    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  it('uses the develop branch API for developer-only actions in local development', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+
+    expect(getDeveloperFeedbackApiBaseUrl()).toBe(
+      'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback',
+    );
   });
 });

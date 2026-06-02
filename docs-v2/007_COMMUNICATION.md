@@ -311,10 +311,12 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 1 | `POST /api/feedback/conversation/messages` | ユーザー投稿を保存し、Discordへ通知する |
 | 2 | `POST /api/feedback/conversation/poll` | 設定画面が会話ログ・未読返信を取得する |
 | 3 | `POST /api/feedback/conversation/ack` | ユーザーが見た返信を既読にする |
-| 4 | `POST /api/feedback/discord/ingest` | Discord返信を取り込む |
+| 4 | `POST /api/feedback/discord/ingest` | 開発者の管理操作でDiscord返信を取り込む |
+| 5 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
 
 2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。  
-4 の `discord/ingest` は、Vercel Cron または開発者の管理操作が「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。
+4 の `discord/ingest` は、開発者の管理操作が「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。  
+5 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で定期実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
 
 ```mermaid
 sequenceDiagram
@@ -332,7 +334,7 @@ sequenceDiagram
     API->>Discord: 開発者へ通知
 
     Dev->>Discord: 通知へ返信を書く
-    Job->>API: 4. discord/ingest
+    Job->>API: 5. discord/cron
     API->>Discord: Discord返信を読む
     API->>API: 返信元・開発者ID・重複を検証
     API->>Firestore: 開発者返信として保存

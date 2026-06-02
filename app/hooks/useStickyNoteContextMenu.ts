@@ -457,6 +457,14 @@ export function useStickyNoteContextMenu({
                     await emit('fusen:open_settings', { tab: 'help' });
                 }
             }));
+            menuItems.push(await MenuItem.new({
+                id: 'ctx_open_developer_conversation',
+                text: '📨 開発者とのやりとり',
+                action: async () => {
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('fusen:open_settings', { tab: 'conversation' });
+                }
+            }));
 
             // 削除
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
