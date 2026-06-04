@@ -47,6 +47,13 @@ type SettingsPageProps = {
     missingFolderPath?: string | null;
 }
 
+const DISCORD_INGEST_SECRET_STORAGE_KEY = 'ore-no-fusen.feedback.discord_ingest_secret';
+
+function getStoredDiscordIngestSecret(): string {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(DISCORD_INGEST_SECRET_STORAGE_KEY) ?? '';
+}
+
 export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnected, baseFolderMissing, missingFolderPath }: SettingsPageProps) {
     const [activeSection, setActiveSection] = useState(defaultTab ?? "general")
 
@@ -1555,7 +1562,8 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
     const [jsonCopied, setJsonCopied] = useState(false)
     const [queueDeleting, setQueueDeleting] = useState<'to_iphone' | 'from_iphone' | null>(null)
 
-    const [discordIngestSecret, setDiscordIngestSecret] = useState('')
+    const [discordIngestSecret, setDiscordIngestSecret] = useState(() => getStoredDiscordIngestSecret())
+    const [shouldSaveDiscordIngestSecret, setShouldSaveDiscordIngestSecret] = useState(() => getStoredDiscordIngestSecret() !== '')
     const [discordIngestLoading, setDiscordIngestLoading] = useState(false)
     const [discordIngestResult, setDiscordIngestResult] = useState<{
         ingested: number;
@@ -1941,6 +1949,22 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setDiscordIngestError(String(e))
         } finally {
             setDiscordIngestLoading(false)
+        }
+    }
+
+    const updateDiscordIngestSecret = (value: string) => {
+        setDiscordIngestSecret(value)
+        if (shouldSaveDiscordIngestSecret) {
+            window.localStorage.setItem(DISCORD_INGEST_SECRET_STORAGE_KEY, value)
+        }
+    }
+
+    const updateShouldSaveDiscordIngestSecret = (checked: boolean) => {
+        setShouldSaveDiscordIngestSecret(checked)
+        if (checked) {
+            window.localStorage.setItem(DISCORD_INGEST_SECRET_STORAGE_KEY, discordIngestSecret)
+        } else {
+            window.localStorage.removeItem(DISCORD_INGEST_SECRET_STORAGE_KEY)
         }
     }
 
@@ -2564,10 +2588,19 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                 id="discord-ingest-secret"
                                 type="password"
                                 value={discordIngestSecret}
-                                onChange={(e) => setDiscordIngestSecret(e.target.value)}
+                                onChange={(e) => updateDiscordIngestSecret(e.target.value)}
                                 placeholder="FEEDBACK_CONVERSATION_INGEST_SECRET"
                                 className="mt-1 bg-white"
                             />
+                            <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                                <input
+                                    type="checkbox"
+                                    checked={shouldSaveDiscordIngestSecret}
+                                    onChange={(e) => updateShouldSaveDiscordIngestSecret(e.target.checked)}
+                                    className="h-4 w-4 rounded border-slate-300"
+                                />
+                                このPCにingest secretを保存する
+                            </label>
                         </div>
                         <Button
                             variant="outline"

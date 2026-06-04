@@ -326,6 +326,8 @@ PC アプリは JST 4:00 頃に1日1回だけ `conversation/poll` を呼び、�
 4 の `discord/ingest` は、開発者の管理操作が「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。  
 5 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で JST 3:00 に1日1回実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
 
+管理者ツールの手動 `discord/ingest` では、開発者PCの `localStorage` に `FEEDBACK_CONVERSATION_INGEST_SECRET` を保存できます。これは開発者PCでの入力補助だけに使い、Vercel や Firestore へ secret の生値を保存しません。`CRON_SECRET` は通常PCアプリで入力しないため、保存対象にしません。
+
 ```mermaid
 sequenceDiagram
     participant User as ユーザー
@@ -428,5 +430,6 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 8 | 2.5 | 26-06-02 | `secret_token` の発行仕様と、Firestore上で他人の会話を混在させない分離ルールを追加 |
 | 9 | 2.6 | 26-06-02 | 登場人物の用語を定義し、曖昧な「サーバー」表現を Vercel API、Firebase / Firestore、Discordサーバーに分解 |
 | 10 | 2.7 | 26-06-04 | Vercel Cron は JST 3:00、PCアプリは JST 4:00 頃に1日1回確認する運用を追加。右クリックメニューは通信せずローカル未読状態だけで新着表示し、掲示板表示時に既読化する仕様を追加 |
+| 11 | 2.8 | 26-06-05 | 管理者ツールの手動 ingest 用に、開発者PCの localStorage へ `FEEDBACK_CONVERSATION_INGEST_SECRET` を保存できる仕様を追加。`CRON_SECRET` は保存対象外と明記。 |
 
 </div>
