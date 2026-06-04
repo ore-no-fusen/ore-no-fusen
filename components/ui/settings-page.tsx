@@ -10,7 +10,7 @@
 "use client"
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
-import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity } from "lucide-react"
+import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
 import { useSettings, type AppSettings } from "@/lib/settings-store"
@@ -1667,6 +1667,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
     const [driveTempSummary, setDriveTempSummary] = useState<DriveTempCleanupSummary | null>(null)
     const [driveTempLoading, setDriveTempLoading] = useState(false)
     const [driveTempMessage, setDriveTempMessage] = useState<string | null>(null)
+    const [selectedDriveTempFileIds, setSelectedDriveTempFileIds] = useState<string[]>([])
 
     // 診断情報（コピー用）
     const [diagText, setDiagText] = useState<string>('')
@@ -1770,8 +1771,39 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             const { invoke } = await import('@tauri-apps/api/core')
             const summary = await invoke<DriveTempCleanupSummary>('fusen_list_drive_temp_files')
             setDriveTempSummary(summary)
+            setSelectedDriveTempFileIds((ids) => ids.filter((id) => summary.files?.some((file) => file.id === id && file.canDelete)))
         } catch (e) {
             setDriveTempMessage('一時ファイルの確認に失敗しました: ' + String(e))
+        } finally {
+            setDriveTempLoading(false)
+        }
+    }
+
+    const toggleDriveTempSelection = (file: DriveTempFileView) => {
+        if (!file.canDelete) return
+        setSelectedDriveTempFileIds((ids) =>
+            ids.includes(file.id)
+                ? ids.filter((id) => id !== file.id)
+                : [...ids, file.id]
+        )
+    }
+
+    const cleanupSelectedDriveTempFiles = async () => {
+        const selectedCount = selectedDriveTempFileIds.length
+        if (selectedCount === 0) return
+        if (!confirm(`選択したDrive一時ファイル ${selectedCount} 個を削除します。\n\n設定ファイルやキューは削除しません。送受信中ではないことを確認してください。\n\n削除しますか？`)) return
+        setDriveTempLoading(true)
+        setDriveTempMessage(null)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const summary = await invoke<DriveTempCleanupSummary>('fusen_cleanup_selected_drive_temp_files', {
+                selectedFileIds: selectedDriveTempFileIds,
+            })
+            setDriveTempSummary(summary)
+            setSelectedDriveTempFileIds([])
+            setDriveTempMessage(`選択した一時ファイルを削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
+        } catch (e) {
+            setDriveTempMessage('選択した一時ファイルの削除に失敗しました: ' + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -1786,6 +1818,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             const { invoke } = await import('@tauri-apps/api/core')
             const summary = await invoke<DriveTempCleanupSummary>('fusen_cleanup_drive_temp_files')
             setDriveTempSummary(summary)
+            setSelectedDriveTempFileIds([])
             setDriveTempMessage(`削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
         } catch (e) {
             setDriveTempMessage('一時ファイルの削除に失敗しました: ' + String(e))
@@ -2488,24 +2521,100 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                         </div>
                     )}
 
+                    {driveTempSummary && driveTempSummary.files.length > 0 && (
+                        <div className="rounded-md border border-slate-200 bg-slate-50">
+                            <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                                <div>
+                                    <p className="text-sm font-bold text-slate-900">削除するファイルを選択</p>
+                                    <p className="text-xs text-slate-500">画像はサムネイルを表示します。使用中のファイルは保護されます。</p>
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                    選択中: {selectedDriveTempFileIds.length} 個
+                                </p>
+                            </div>
+                            <div className="max-h-80 overflow-y-auto divide-y divide-slate-200">
+                                {driveTempSummary.files.map((file) => {
+                                    const selected = selectedDriveTempFileIds.includes(file.id)
+                                    return (
+                                        <label
+                                            key={file.id}
+                                            className={`flex gap-3 px-3 py-3 ${file.canDelete ? 'cursor-pointer hover:bg-white' : 'bg-slate-100/60'}`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="mt-5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+                                                checked={selected}
+                                                disabled={!file.canDelete || driveTempLoading}
+                                                onChange={() => toggleDriveTempSelection(file)}
+                                            />
+                                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                                                {file.previewDataUrl ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={file.previewDataUrl} alt="" className="h-full w-full object-cover" />
+                                                ) : file.kind === 'video' ? (
+                                                    <Video className="h-6 w-6 text-slate-400" />
+                                                ) : file.kind === 'image' ? (
+                                                    <ImageIcon className="h-6 w-6 text-slate-400" />
+                                                ) : (
+                                                    <FileText className="h-6 w-6 text-slate-400" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="min-w-0 break-all text-sm font-semibold text-slate-900">{file.name}</p>
+                                                    {file.isReferenced && (
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">使用中・保護</span>
+                                                    )}
+                                                    {file.isOld && (
+                                                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-600">{driveTempSummary.retentionDays}日以上前</span>
+                                                    )}
+                                                </div>
+                                                {file.previewText && (
+                                                    <p className="mt-1 max-h-10 overflow-hidden text-xs text-slate-600">{file.previewText}</p>
+                                                )}
+                                                <p className="mt-1 text-xs text-slate-500">
+                                                    {formatBytes(file.size ?? 0)} ・ 更新: {formatDate(file.modifiedTime ?? '')}
+                                                </p>
+                                                {!file.canDelete && (
+                                                    <p className="mt-1 text-xs text-amber-700">notes_to_iphone / notes_from_iphone から参照されているため削除しません。</p>
+                                                )}
+                                            </div>
+                                        </label>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {!driveTempSummary && !driveTempLoading && (
                         <p className="text-sm text-slate-400 italic">「確認」を押すと一時ファイルの状況を取得します。</p>
                     )}
 
                     {driveTempSummary && (
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-xs text-gray-400">
                                 対象: fusen_img_* / fusen_video_* のみ。notes_* と push_* は残します。
                             </p>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={cleanupDriveTempFiles}
-                                disabled={driveTempLoading || driveTempSummary.oldCount === 0}
-                                className="border-red-200 text-red-600 hover:bg-red-50"
-                            >
-                                古い一時ファイルを削除
-                            </Button>
+                            <div className="flex flex-wrap gap-2 sm:justify-end">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={cleanupSelectedDriveTempFiles}
+                                    disabled={driveTempLoading || selectedDriveTempFileIds.length === 0}
+                                    className="border-red-200 text-red-600 hover:bg-red-50"
+                                >
+                                    選択した一時ファイルを削除
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={cleanupDriveTempFiles}
+                                    disabled={driveTempLoading || driveTempSummary.oldCount === 0}
+                                    className="border-red-200 text-red-600 hover:bg-red-50"
+                                >
+                                    古い一時ファイルを削除
+                                </Button>
+                            </div>
                         </div>
                     )}
 
@@ -2657,12 +2766,28 @@ type GoogleAccount = {
 type DriveTempCleanupSummary = {
     totalCount: number;
     oldCount: number;
+    deletableCount: number;
     totalBytes: number;
     oldBytes: number;
+    deletableBytes: number;
     deletedCount: number;
     failedCount: number;
     skippedReferencedCount: number;
     retentionDays: number;
+    files: DriveTempFileView[];
+}
+
+type DriveTempFileView = {
+    id: string;
+    name: string;
+    modifiedTime?: string | null;
+    size?: number | null;
+    kind: 'image' | 'video' | 'unknown' | string;
+    isOld: boolean;
+    isReferenced: boolean;
+    canDelete: boolean;
+    previewDataUrl?: string | null;
+    previewText?: string | null;
 }
 
 function endpointLabel(endpoint: string): string {

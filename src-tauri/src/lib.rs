@@ -1705,18 +1705,37 @@ async fn fusen_delete_all_push_devices() -> Result<(), String> {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct DriveTempFileView {
+    id: String,
+    name: String,
+    modified_time: Option<String>,
+    size: Option<u64>,
+    kind: String,
+    is_old: bool,
+    is_referenced: bool,
+    can_delete: bool,
+    preview_data_url: Option<String>,
+    preview_text: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DriveTempCleanupSummary {
     total_count: usize,
     old_count: usize,
+    deletable_count: usize,
     total_bytes: u64,
     old_bytes: u64,
+    deletable_bytes: u64,
     deleted_count: usize,
     failed_count: usize,
     skipped_referenced_count: usize,
     retention_days: i64,
+    files: Vec<DriveTempFileView>,
 }
 
 const DRIVE_TEMP_RETENTION_DAYS: i64 = 30;
+const DRIVE_TEMP_PREVIEW_MAX_BYTES: u64 = 2 * 1024 * 1024;
 
 fn is_drive_temp_old(file: &gdrive::DriveTempMediaFile, now: chrono::DateTime<chrono::Utc>) -> bool {
     let Some(modified_time) = &file.modified_time else {
@@ -1725,6 +1744,32 @@ fn is_drive_temp_old(file: &gdrive::DriveTempMediaFile, now: chrono::DateTime<ch
     chrono::DateTime::parse_from_rfc3339(modified_time)
         .map(|dt| now.signed_duration_since(dt.with_timezone(&chrono::Utc)).num_days() >= DRIVE_TEMP_RETENTION_DAYS)
         .unwrap_or(false)
+}
+
+fn drive_temp_file_kind(name: &str) -> &'static str {
+    if name.starts_with("fusen_img_") {
+        "image"
+    } else if name.starts_with("fusen_video_") {
+        "video"
+    } else {
+        "unknown"
+    }
+}
+
+fn drive_temp_image_mime(name: &str) -> Option<&'static str> {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        _ => None,
+    }
 }
 
 fn collect_temp_tokens_from_str(text: &str, names: &mut std::collections::HashSet<String>) {
@@ -1787,15 +1832,22 @@ fn summarize_drive_temp_files(
     let mut summary = DriveTempCleanupSummary {
         total_count: files.len(),
         old_count: 0,
+        deletable_count: 0,
         total_bytes: files.iter().filter_map(|f| f.size).sum(),
         old_bytes: 0,
+        deletable_bytes: 0,
         deleted_count: 0,
         failed_count: 0,
         skipped_referenced_count: 0,
         retention_days: DRIVE_TEMP_RETENTION_DAYS,
+        files: Vec::new(),
     };
 
     for file in files {
+        if !referenced.contains(&file.name) {
+            summary.deletable_count += 1;
+            summary.deletable_bytes += file.size.unwrap_or(0);
+        }
         if is_drive_temp_old(file, now) {
             if referenced.contains(&file.name) {
                 summary.skipped_referenced_count += 1;
@@ -1808,13 +1860,81 @@ fn summarize_drive_temp_files(
     summary
 }
 
+async fn build_drive_temp_file_view(
+    client: &reqwest::Client,
+    access_token: &str,
+    file: &gdrive::DriveTempMediaFile,
+    referenced: &std::collections::HashSet<String>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> DriveTempFileView {
+    use base64::{engine::general_purpose, Engine as _};
+
+    let kind = drive_temp_file_kind(&file.name).to_string();
+    let is_referenced = referenced.contains(&file.name);
+    let is_old = is_drive_temp_old(file, now);
+    let can_delete = !is_referenced;
+    let preview_data_url = if kind == "image"
+        && file.size.unwrap_or(DRIVE_TEMP_PREVIEW_MAX_BYTES + 1) <= DRIVE_TEMP_PREVIEW_MAX_BYTES
+    {
+        match drive_temp_image_mime(&file.name) {
+            Some(mime) => match gdrive::download_binary_by_id(client, access_token, &file.id).await {
+                Ok(bytes) => Some(format!(
+                    "data:{};base64,{}",
+                    mime,
+                    general_purpose::STANDARD.encode(bytes)
+                )),
+                Err(e) => {
+                    logger::log_info(&format!(
+                        "[drive temp] preview download failed {}: {}",
+                        file.name, e
+                    ));
+                    None
+                }
+            },
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    DriveTempFileView {
+        id: file.id.clone(),
+        name: file.name.clone(),
+        modified_time: file.modified_time.clone(),
+        size: file.size,
+        kind,
+        is_old,
+        is_referenced,
+        can_delete,
+        preview_data_url,
+        preview_text: None,
+    }
+}
+
+async fn summarize_drive_temp_files_with_previews(
+    client: &reqwest::Client,
+    access_token: &str,
+    files: &[gdrive::DriveTempMediaFile],
+    referenced: &std::collections::HashSet<String>,
+) -> DriveTempCleanupSummary {
+    let now = chrono::Utc::now();
+    let mut summary = summarize_drive_temp_files(files, referenced);
+    let mut views = Vec::with_capacity(files.len());
+    for file in files {
+        views.push(build_drive_temp_file_view(client, access_token, file, referenced, now).await);
+    }
+    views.sort_by(|a, b| b.modified_time.cmp(&a.modified_time).then_with(|| a.name.cmp(&b.name)));
+    summary.files = views;
+    summary
+}
+
 #[tauri::command]
 async fn fusen_list_drive_temp_files() -> Result<DriveTempCleanupSummary, String> {
     let client = reqwest::Client::new();
     let token = gdrive::get_access_token(&client).await?;
     let files = gdrive::list_temp_media_files(&client, &token).await?;
     let referenced = drive_referenced_temp_names(&client, &token).await?;
-    Ok(summarize_drive_temp_files(&files, &referenced))
+    Ok(summarize_drive_temp_files_with_previews(&client, &token, &files, &referenced).await)
 }
 
 #[tauri::command]
@@ -1841,6 +1961,44 @@ async fn fusen_cleanup_drive_temp_files() -> Result<DriveTempCleanupSummary, Str
             }
         }
     }
+    let files = gdrive::list_temp_media_files(&client, &token).await?;
+    let referenced = drive_referenced_temp_names(&client, &token).await?;
+    let mut updated = summarize_drive_temp_files_with_previews(&client, &token, &files, &referenced).await;
+    updated.deleted_count = summary.deleted_count;
+    updated.failed_count = summary.failed_count;
+    Ok(updated)
+}
+
+#[tauri::command]
+async fn fusen_cleanup_selected_drive_temp_files(
+    selected_file_ids: Vec<String>,
+) -> Result<DriveTempCleanupSummary, String> {
+    let client = reqwest::Client::new();
+    let token = gdrive::get_access_token(&client).await?;
+    let files = gdrive::list_temp_media_files(&client, &token).await?;
+    let referenced = drive_referenced_temp_names(&client, &token).await?;
+    let selected: std::collections::HashSet<String> = selected_file_ids.into_iter().collect();
+    let mut deleted_count = 0;
+    let mut failed_count = 0;
+
+    for file in files {
+        if !selected.contains(&file.id) || referenced.contains(&file.name) {
+            continue;
+        }
+        match gdrive::delete_file_by_id(&client, &token, &file.id).await {
+            Ok(_) => deleted_count += 1,
+            Err(e) => {
+                failed_count += 1;
+                logger::log_info(&format!("[drive cleanup] selected delete failed {}: {}", file.name, e));
+            }
+        }
+    }
+
+    let files = gdrive::list_temp_media_files(&client, &token).await?;
+    let referenced = drive_referenced_temp_names(&client, &token).await?;
+    let mut summary = summarize_drive_temp_files_with_previews(&client, &token, &files, &referenced).await;
+    summary.deleted_count = deleted_count;
+    summary.failed_count = failed_count;
     Ok(summary)
 }
 
@@ -2774,6 +2932,7 @@ pub fn run() {
             fusen_delete_all_push_devices,
             fusen_list_drive_temp_files,
             fusen_cleanup_drive_temp_files,
+            fusen_cleanup_selected_drive_temp_files,
             fusen_send_to_iphone,
             fusen_download_iphone_images,
             fusen_ack_iphone_note,

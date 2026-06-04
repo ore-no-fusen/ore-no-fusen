@@ -626,6 +626,13 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
   </tbody>
 </table>
 
+<Note type="info">
+<strong>Drive 一時ファイルの手動整理：</strong>
+管理者ツールの「Drive 一時ファイル」では、<code>fusen_img_*</code> / <code>fusen_video_*</code> だけを一覧表示し、画像はサムネイル、その他はファイル名・更新日時・サイズを確認してから選択削除できる。
+<code>notes_to_iphone.json</code> / <code>notes_from_iphone.json</code> から参照されている一時ファイルは「使用中」として保護し、選択削除の対象にしない。
+設定ファイル（<code>push_keys.json</code> / <code>push_devices.json</code> / <code>pc_devices.json</code>）とキューJSONはこの機能では削除しない。
+</Note>
+
 ### 3.3.1 複数 iPhone・複数 PC の接続モデル
 
 同じ Google Drive の <code>ore-no-fusen</code> フォルダを共有領域として使い、複数 iPhone / iPad と複数 PC を接続できる。

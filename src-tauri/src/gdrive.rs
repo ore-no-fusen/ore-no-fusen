@@ -785,6 +785,26 @@ pub async fn delete_file_by_id(
     Ok(())
 }
 
+pub async fn download_binary_by_id(
+    client: &Client,
+    access_token: &str,
+    file_id: &str,
+) -> Result<Vec<u8>, String> {
+    let bytes = client
+        .get(format!(
+            "https://www.googleapis.com/drive/v3/files/{}?alt=media",
+            file_id
+        ))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(bytes.to_vec())
+}
+
 /// push_config を Drive からダウンロードして AppState.pro_configs に設定する
 /// 新スキーマ: { "devices": [...] }
 /// 旧スキーマ後方互換: { "endpoint": "...", "keys": {...} }
