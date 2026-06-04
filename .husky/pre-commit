@@ -10,6 +10,10 @@ CHANGED=$(git diff --cached --name-only)
 # PWA/viewer-only changes can skip E2E to keep commits quick.
 if echo "$CHANGED" | grep -qE '^(src-tauri|app/components|app/hooks|app/utils|app/page\.|app/layout)'; then
   echo "[pre-commit] 3/3 E2E tests..."
+  if command -v powershell.exe >/dev/null 2>&1; then
+    echo "[pre-commit] Freeing localhost:3002 before E2E..."
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$connections = Get-NetTCPConnection -LocalPort 3002 -State Listen -ErrorAction SilentlyContinue; foreach ($connection in $connections) { Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue }'
+  fi
   npm run test:e2e
 else
   echo "[pre-commit] 3/3 E2E tests skipped: no app-facing/Tauri changes"
