@@ -1,7 +1,11 @@
 const CONVERSATION_ID_KEY = 'ore-no-fusen.feedback.conversation_id';
 const SECRET_TOKEN_KEY = 'ore-no-fusen.feedback.secret_token';
 const LAST_POLL_KEY = 'ore-no-fusen.feedback.last_poll_at';
+const HAS_UNREAD_DEVELOPER_REPLY_KEY = 'ore-no-fusen.feedback.has_unread_developer_reply';
+const LAST_UNREAD_CHECK_DATE_KEY = 'ore-no-fusen.feedback.last_unread_check_date';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAILY_UNREAD_CHECK_HOUR_JST = 4;
 const PRODUCTION_FEEDBACK_API_BASE_URL = 'https://ore-no-fusen.vercel.app/api/feedback';
 const DEVELOP_FEEDBACK_API_BASE_URL = 'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback';
 
@@ -11,6 +15,14 @@ export type FeedbackConversationIdentity = {
 };
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
+
+export type FeedbackConversationMessage = {
+  messageId: string;
+  authorType: 'user' | 'developer';
+  body: string;
+  createdAt: string;
+  readByUser: boolean;
+};
 
 function getStorage(storage?: StorageLike): StorageLike | null {
   if (storage) return storage;
@@ -55,11 +67,32 @@ export function getOrCreateFeedbackConversationIdentity(storage?: StorageLike): 
   return identity;
 }
 
+export function getFeedbackConversationIdentity(storage?: StorageLike): FeedbackConversationIdentity | null {
+  const target = getStorage(storage);
+  if (!target) return null;
+  const conversationId = target.getItem(CONVERSATION_ID_KEY);
+  const secretToken = target.getItem(SECRET_TOKEN_KEY);
+  if (!conversationId || !secretToken) return null;
+  return { conversationId, secretToken };
+}
+
 export function saveFeedbackConversationIdentity(identity: FeedbackConversationIdentity, storage?: StorageLike): void {
   const target = getStorage(storage);
   if (!target) return;
   target.setItem(CONVERSATION_ID_KEY, identity.conversationId);
   target.setItem(SECRET_TOKEN_KEY, identity.secretToken);
+}
+
+export function getFeedbackConversationUnreadState(storage?: StorageLike): boolean {
+  const target = getStorage(storage);
+  if (!target) return false;
+  return target.getItem(HAS_UNREAD_DEVELOPER_REPLY_KEY) === 'true';
+}
+
+export function setFeedbackConversationUnreadState(hasUnread: boolean, storage?: StorageLike): void {
+  const target = getStorage(storage);
+  if (!target) return;
+  target.setItem(HAS_UNREAD_DEVELOPER_REPLY_KEY, hasUnread ? 'true' : 'false');
 }
 
 export function shouldPollFeedbackConversation(now = Date.now(), storage?: StorageLike): boolean {
@@ -75,6 +108,68 @@ export function markFeedbackConversationPollAttempt(now = Date.now(), storage?: 
   const target = getStorage(storage);
   if (!target) return;
   target.setItem(LAST_POLL_KEY, String(now));
+}
+
+function getJstDateParts(now: Date): { date: string; hour: number } {
+  const shifted = new Date(now.getTime() + JST_OFFSET_MS);
+  return {
+    date: shifted.toISOString().slice(0, 10),
+    hour: shifted.getUTCHours(),
+  };
+}
+
+export function shouldRunDailyFeedbackUnreadCheck(now = new Date(), storage?: StorageLike): boolean {
+  const target = getStorage(storage);
+  if (!target) return false;
+  const { date, hour } = getJstDateParts(now);
+  if (hour < DAILY_UNREAD_CHECK_HOUR_JST) return false;
+  return target.getItem(LAST_UNREAD_CHECK_DATE_KEY) !== date;
+}
+
+export function markDailyFeedbackUnreadCheck(now = new Date(), storage?: StorageLike): void {
+  const target = getStorage(storage);
+  if (!target) return;
+  target.setItem(LAST_UNREAD_CHECK_DATE_KEY, getJstDateParts(now).date);
+}
+
+export function hasUnreadDeveloperReply(messages: FeedbackConversationMessage[]): boolean {
+  return messages.some((message) => message.authorType === 'developer' && !message.readByUser);
+}
+
+export function getUnreadDeveloperReplyIds(messages: FeedbackConversationMessage[]): string[] {
+  return messages
+    .filter((message) => message.authorType === 'developer' && !message.readByUser)
+    .map((message) => message.messageId);
+}
+
+export async function pollFeedbackConversationMessages(
+  identity: FeedbackConversationIdentity,
+  fetchImpl: typeof fetch = fetch,
+): Promise<FeedbackConversationMessage[]> {
+  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/poll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(identity),
+  });
+  if (!response.ok) throw new Error(`Server error: ${response.status}`);
+  const data = await response.json().catch(() => null) as { messages?: FeedbackConversationMessage[] } | null;
+  return data?.messages ?? [];
+}
+
+export async function ackFeedbackConversationMessages(
+  identity: FeedbackConversationIdentity,
+  messageIds: string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  if (messageIds.length === 0) return true;
+  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/ack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...identity, messageIds }),
+  });
+  if (!response.ok) return false;
+  const data = await response.json().catch(() => null) as { success?: boolean } | null;
+  return data?.success === true;
 }
 
 export function getFeedbackApiBaseUrl(): string {

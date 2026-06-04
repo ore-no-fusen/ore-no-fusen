@@ -29,6 +29,7 @@ import { getTranslation, type Language } from '@/lib/i18n';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useMainWindowResizePolicy } from './hooks/useMainWindowResizePolicy';
+import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 
 // Global AppState type definition
 type AppState = {
@@ -217,6 +218,7 @@ function OrchestratorContent() {
     showUpdateDialog: isMainWindow && showUpdateDialog,
     isSearchOpen: isMainWindow && isSearchOpen,
   });
+  useFeedbackConversationUnreadCheck(isMainWindow);
 
   // ウィンドウラベル生成
   const getWindowLabel = useCallback((path: string) => {

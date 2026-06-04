@@ -1,9 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  ackFeedbackConversationMessages,
   getDeveloperFeedbackApiBaseUrl,
   getFeedbackApiBaseUrl,
+  getFeedbackConversationIdentity,
+  getFeedbackConversationUnreadState,
   getOrCreateFeedbackConversationIdentity,
+  getUnreadDeveloperReplyIds,
+  hasUnreadDeveloperReply,
+  markDailyFeedbackUnreadCheck,
   markFeedbackConversationPollAttempt,
+  pollFeedbackConversationMessages,
+  setFeedbackConversationUnreadState,
+  shouldRunDailyFeedbackUnreadCheck,
   shouldPollFeedbackConversation,
 } from './feedbackConversation';
 
@@ -42,6 +51,93 @@ describe('feedback conversation identity', () => {
 
     expect(shouldPollFeedbackConversation(1_000 + 23 * 60 * 60 * 1000, storage)).toBe(false);
     expect(shouldPollFeedbackConversation(1_000 + 24 * 60 * 60 * 1000, storage)).toBe(true);
+  });
+
+  it('reads an existing identity without creating a new one', () => {
+    const storage = createMemoryStorage();
+
+    expect(getFeedbackConversationIdentity(storage)).toBeNull();
+
+    const identity = getOrCreateFeedbackConversationIdentity(storage);
+    expect(getFeedbackConversationIdentity(storage)).toEqual(identity);
+  });
+
+  it('stores the unread developer reply flag locally', () => {
+    const storage = createMemoryStorage();
+
+    expect(getFeedbackConversationUnreadState(storage)).toBe(false);
+    setFeedbackConversationUnreadState(true, storage);
+    expect(getFeedbackConversationUnreadState(storage)).toBe(true);
+    setFeedbackConversationUnreadState(false, storage);
+    expect(getFeedbackConversationUnreadState(storage)).toBe(false);
+  });
+
+  it('runs the daily unread check only after 4:00 JST and once per JST date', () => {
+    const storage = createMemoryStorage();
+
+    expect(shouldRunDailyFeedbackUnreadCheck(new Date('2026-06-03T18:59:00.000Z'), storage)).toBe(false);
+    expect(shouldRunDailyFeedbackUnreadCheck(new Date('2026-06-03T19:00:00.000Z'), storage)).toBe(true);
+
+    markDailyFeedbackUnreadCheck(new Date('2026-06-03T19:00:00.000Z'), storage);
+    expect(shouldRunDailyFeedbackUnreadCheck(new Date('2026-06-03T23:00:00.000Z'), storage)).toBe(false);
+    expect(shouldRunDailyFeedbackUnreadCheck(new Date('2026-06-04T19:00:00.000Z'), storage)).toBe(true);
+  });
+
+  it('detects unread developer replies only', () => {
+    const messages = [
+      { messageId: 'user-1', authorType: 'user' as const, body: 'hello', createdAt: '2026-06-01T00:00:00.000Z', readByUser: false },
+      { messageId: 'dev-read', authorType: 'developer' as const, body: 'read', createdAt: '2026-06-01T00:00:01.000Z', readByUser: true },
+      { messageId: 'dev-unread', authorType: 'developer' as const, body: 'unread', createdAt: '2026-06-01T00:00:02.000Z', readByUser: false },
+    ];
+
+    expect(hasUnreadDeveloperReply(messages)).toBe(true);
+    expect(getUnreadDeveloperReplyIds(messages)).toEqual(['dev-unread']);
+    expect(hasUnreadDeveloperReply(messages.filter((message) => message.messageId !== 'dev-unread'))).toBe(false);
+  });
+
+  it('polls conversation messages through the feedback API', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      messages: [
+        {
+          messageId: 'message-1',
+          authorType: 'developer',
+          body: 'hello',
+          createdAt: '2026-06-01T00:00:00.000Z',
+          readByUser: false,
+        },
+      ],
+    }))) as unknown as typeof fetch;
+
+    const messages = await pollFeedbackConversationMessages({
+      conversationId: 'conversation-1',
+      secretToken: 'secret',
+    }, fetchImpl);
+
+    expect(messages).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledWith(`${window.location.origin}/api/feedback/conversation/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: 'conversation-1', secretToken: 'secret' }),
+    });
+  });
+
+  it('acks displayed conversation messages through the feedback API', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ success: true }))) as unknown as typeof fetch;
+
+    await expect(ackFeedbackConversationMessages({
+      conversationId: 'conversation-1',
+      secretToken: 'secret',
+    }, ['message-1'], fetchImpl)).resolves.toBe(true);
+
+    expect(fetchImpl).toHaveBeenCalledWith(`${window.location.origin}/api/feedback/conversation/ack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId: 'conversation-1',
+        secretToken: 'secret',
+        messageIds: ['message-1'],
+      }),
+    });
   });
 
   it('uses the current web origin for hosted browser pages', () => {

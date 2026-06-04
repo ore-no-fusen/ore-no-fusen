@@ -9,7 +9,7 @@
 
 "use client"
 
-import React, { useState, useMemo, useEffect } from "react"
+import React, { useState, useMemo, useEffect, useCallback } from "react"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
@@ -17,10 +17,16 @@ import { useSettings, type AppSettings } from "@/lib/settings-store"
 // ★翻訳関数をインポート
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 import {
+    ackFeedbackConversationMessages,
     getDeveloperFeedbackApiBaseUrl,
     getFeedbackApiBaseUrl,
+    getFeedbackConversationIdentity,
     getOrCreateFeedbackConversationIdentity,
+    getUnreadDeveloperReplyIds,
+    hasUnreadDeveloperReply,
+    pollFeedbackConversationMessages,
     saveFeedbackConversationIdentity,
+    setFeedbackConversationUnreadState,
 } from "@/app/utils/feedbackConversation"
 
 import { Button } from "@/components/ui/button"
@@ -1358,43 +1364,37 @@ function DeveloperConversationSection() {
     const [sending, setSending] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    const loadMessages = async () => {
+    const loadMessages = useCallback(async () => {
         setLoading(true)
         setError(null)
         try {
-            const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/poll`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(conversationIdentity),
-            })
-            if (!response.ok) throw new Error(`Server error: ${response.status}`)
-            const data = await response.json().catch(() => null) as { messages?: BoardMessage[] } | null
-            const nextMessages = data?.messages ?? []
+            const nextMessages = await pollFeedbackConversationMessages(conversationIdentity)
             setMessages(nextMessages)
 
-            const unreadDeveloperMessageIds = nextMessages
-                .filter((message) => message.authorType === 'developer' && !message.readByUser)
-                .map((message) => message.messageId)
+            const unreadDeveloperMessageIds = getUnreadDeveloperReplyIds(nextMessages)
 
             if (unreadDeveloperMessageIds.length > 0) {
+                setFeedbackConversationUnreadState(true)
                 requestAnimationFrame(() => {
-                    fetch(`${getFeedbackApiBaseUrl()}/conversation/ack`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ...conversationIdentity, messageIds: unreadDeveloperMessageIds }),
-                    }).catch(() => { })
+                    ackFeedbackConversationMessages(conversationIdentity, unreadDeveloperMessageIds)
+                        .then((success) => {
+                            if (success) setFeedbackConversationUnreadState(false)
+                        })
+                        .catch(() => { })
                 })
+            } else {
+                setFeedbackConversationUnreadState(hasUnreadDeveloperReply(nextMessages))
             }
         } catch (e) {
             setError(String(e))
         } finally {
             setLoading(false)
         }
-    }
+    }, [conversationIdentity])
 
     useEffect(() => {
         loadMessages()
-    }, [])
+    }, [loadMessages])
 
     const sendMessage = async () => {
         const content = draft.trim()
@@ -1562,6 +1562,12 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
         rejected: Array<{ discordMessageId: string; reason: string }>;
     } | null>(null)
     const [discordIngestError, setDiscordIngestError] = useState<string | null>(null)
+    const [feedbackUnreadCheckLoading, setFeedbackUnreadCheckLoading] = useState(false)
+    const [feedbackUnreadCheckResult, setFeedbackUnreadCheckResult] = useState<{
+        unreadCount: number;
+        hasUnread: boolean;
+    } | null>(null)
+    const [feedbackUnreadCheckError, setFeedbackUnreadCheckError] = useState<string | null>(null)
 
     const openJsonViewer = (titleKey: string, filename: string, fallback?: string) => {
         setJsonViewer({ titleKey, filename, fallback })
@@ -1935,6 +1941,33 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setDiscordIngestError(String(e))
         } finally {
             setDiscordIngestLoading(false)
+        }
+    }
+
+    const runFeedbackUnreadCheck = async () => {
+        const identity = getFeedbackConversationIdentity()
+        if (!identity) {
+            setFeedbackUnreadCheckError('会話IDがまだありません。先に「開発者とのやりとり」からメッセージを送信してください。')
+            setFeedbackUnreadCheckResult(null)
+            return
+        }
+
+        setFeedbackUnreadCheckLoading(true)
+        setFeedbackUnreadCheckError(null)
+        setFeedbackUnreadCheckResult(null)
+        try {
+            const messages = await pollFeedbackConversationMessages(identity)
+            const unreadDeveloperMessageIds = getUnreadDeveloperReplyIds(messages)
+            const hasUnread = hasUnreadDeveloperReply(messages)
+            setFeedbackConversationUnreadState(hasUnread)
+            setFeedbackUnreadCheckResult({
+                unreadCount: unreadDeveloperMessageIds.length,
+                hasUnread,
+            })
+        } catch (e) {
+            setFeedbackUnreadCheckError(String(e))
+        } finally {
+            setFeedbackUnreadCheckLoading(false)
         }
     }
 
@@ -2466,6 +2499,47 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     <p className="mt-1 text-xs text-slate-500">
                         アプリ開発者がVercel/Firebase/Discordの管理用secretを持っている場合だけ使う領域です。
                     </p>
+                </div>
+
+                <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-red-50 text-red-700">
+                        <RefreshCw className="h-5 w-5" />
+                    </div>
+                    <h4 className="text-base font-bold">開発者返信の未読チェック</h4>
+                </div>
+                <div className="mb-6 rounded-lg border border-red-200 bg-red-50/40 px-5 py-4 space-y-4">
+                    <div>
+                        <p className="text-sm font-bold text-slate-900">手動未読チェック</p>
+                        <p className="text-xs text-slate-600 mt-1">
+                            現在のPCの会話IDで返信を確認し、右クリックメニュー用の新着状態だけを更新します。ここでは既読化しません。
+                        </p>
+                    </div>
+                    <div>
+                        <Button
+                            variant="outline"
+                            onClick={runFeedbackUnreadCheck}
+                            disabled={feedbackUnreadCheckLoading}
+                            className="bg-white"
+                        >
+                            <RefreshCw className={`h-4 w-4 mr-1.5 ${feedbackUnreadCheckLoading ? 'animate-spin' : ''}`} />
+                            {feedbackUnreadCheckLoading ? '確認中' : '未読チェック実行'}
+                        </Button>
+                    </div>
+                    {feedbackUnreadCheckError && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            {feedbackUnreadCheckError}
+                        </div>
+                    )}
+                    {feedbackUnreadCheckResult && (
+                        <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                            <p className="font-bold text-slate-900">
+                                未読返信: {feedbackUnreadCheckResult.unreadCount} 件
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                                右クリック表示: {feedbackUnreadCheckResult.hasUnread ? '新着あり' : '新着なし'}
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="mb-4 flex items-center gap-2 text-slate-900">

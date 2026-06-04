@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { NoteMeta } from '@/app/api/notes';
 import { playDeleteSound, playSaveSound } from '../utils/soundManager';
 import { TranslationKey, Language } from '@/lib/i18n';
+import { getFeedbackConversationUnreadState } from '@/app/utils/feedbackConversation';
 
 type UseStickyNoteContextMenuProps = {
     selectedFile: NoteMeta | null;
@@ -459,7 +460,9 @@ export function useStickyNoteContextMenu({
             }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_open_developer_conversation',
-                text: '📨 開発者とのやりとり',
+                text: getFeedbackConversationUnreadState()
+                    ? '📨 開発者とのやりとり  ● 新着あり'
+                    : '📨 開発者とのやりとり',
                 action: async () => {
                     const { emit } = await import('@tauri-apps/api/event');
                     await emit('fusen:open_settings', { tab: 'conversation' });

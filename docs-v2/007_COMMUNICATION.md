@@ -68,8 +68,9 @@ outline: deep
 | 2 | 初回表示 | まだやりとりがない旨、入力欄、送信ボタン | メッセージを書く |
 | 3 | 送信後 | 自分の投稿が会話ログに追加される | 必要なら続けて投稿する |
 | 4 | 返信あり | 「アプリ開発者」名義の返信が会話ログに表示される | 読む、必要なら返信する |
-| 5 | 返信なし | 何も割り込んで表示しない | 通常利用を続ける |
-| 6 | 通信失敗 | 設定画面内に控えめな再試行表示 | 付箋や通常操作には影響しない |
+| 5 | 未読返信あり | 右クリックメニューの「開発者とのやりとり」に `● 新着あり` を付ける | 開いて確認する |
+| 6 | 返信なし | 何も割り込んで表示しない | 通常利用を続ける |
+| 7 | 通信失敗 | 設定画面内に控えめな再試行表示 | 付箋や通常操作には影響しない |
 
 <p class="table-caption">表 3-2　会話ログの表示例</p>
 
@@ -131,6 +132,8 @@ flowchart LR
 | 1 | `conversation_id` | PCローカル設定 | このアプリの掲示板を識別する |
 | 2 | `secret_token` | PCローカル設定 | 他人が会話を読めないようにする |
 | 3 | `last_message_check_at` | PCローカル設定 | 1日1回程度の新着確認に制限する |
+| 4 | `has_unread_developer_reply` | PCローカル設定 | 右クリックメニューの新着表示に使う |
+| 5 | `last_unread_check_date` | PCローカル設定 | JST 4:00 頃の自動確認を同じ日に重複実行しない |
 
 <p class="table-caption">表 5-2　Firebase / Firestore に保存する情報</p>
 
@@ -141,7 +144,8 @@ flowchart LR
 | 3 | `messages[]` | ユーザー投稿と開発者返信の本文 |
 | 4 | `discord_message_id` | Discord通知と会話の紐付け |
 | 5 | `author_type` | `user` または `developer` |
-| 6 | `status` | 未読、既読、shadow accepted、ignored など |
+| 6 | `read_by_user` | 開発者返信をユーザーが見たかどうか |
+| 7 | `status` | shadow accepted、ignored など |
 
 <Note type="warning">
 `secret_token` の生値は Firebase / Firestore に保存しません。Vercel API は、PCアプリから受け取った `secret_token` をハッシュ化し、Firestore に保存済みの `secret_token_hash` と照合します。
@@ -166,6 +170,8 @@ flowchart LR
 | 3 | 読み取り、投稿、既読更新は `secret_token_hash` が一致した場合だけ許可する | 別ユーザーの会話ログが返る事故を防ぐ |
 | 4 | Discord返信は元の通知メッセージまたは通知内の会話IDから対象会話を確定できた場合だけ保存する | Discord内の無関係な投稿がユーザーの掲示板に混入しないようにする |
 | 5 | 対象会話を確定できない、token が一致しない、または重複している場合は保存せず拒否する | 判断できないものは表示しない fail closed にする |
+| 6 | 右クリックメニュー表示時は Firestore へ問い合わせない | メニュー表示を遅くせず、通信失敗で右クリックが効かなくなる事故を防ぐ |
+| 7 | 掲示板を開いて表示できた開発者返信だけを既読化する | 見ていない返信を既読にしない |
 
 Firestore は Vercel の中にある保存領域ではなく、Firebase が提供する外部の永続データベースです。Vercel API は、Vercelの環境変数に設定した Firebase Admin SDK 認証情報を使って Firestore を読み書きします。PC アプリや iPhone PWA に Firebase の管理用認証情報を配布しません。
 
@@ -295,7 +301,7 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 |:---|:---|:---|
 | 1 | 付箋として自動表示しない | 開発者の返信がユーザーの作業中の画面へ割り込まない |
 | 2 | 設定画面を開いたときに見る | ユーザーが自分の意思で確認する関係にする |
-| 3 | 1日1回程度の確認にする | 必要以上に接続せず、見張られているような印象を避ける |
+| 3 | JST 4:00 頃に1日1回確認する | Vercel Cron が JST 3:00 に Discord 返信を取り込んだ後、朝に新着を拾えるようにする |
 | 4 | 返信がない日は何も出さない | 通常利用の流れを邪魔しない |
 | 5 | kill switch を持つ | 問題があれば Vercel API 側で即停止できる |
 | 6 | shadow mode から始める | 実配信前にDiscord返信分類を確認できる |
@@ -314,9 +320,11 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 4 | `POST /api/feedback/discord/ingest` | 開発者の管理操作でDiscord返信を取り込む |
 | 5 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
 
-2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。  
+2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。右クリックメニュー表示時には呼びません。  
+PC アプリは JST 4:00 頃に1日1回だけ `conversation/poll` を呼び、未読の開発者返信があればローカルの `has_unread_developer_reply` を true にします。  
+ユーザーが「開発者とのやりとり」を開いた場合は、その時点で最新の `conversation/poll` を呼び、表示できた開発者返信だけ `conversation/ack` で既読化します。
 4 の `discord/ingest` は、開発者の管理操作が「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。  
-5 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で定期実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
+5 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で JST 3:00 に1日1回実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
 
 ```mermaid
 sequenceDiagram
@@ -339,10 +347,14 @@ sequenceDiagram
     API->>API: 返信元・開発者ID・重複を検証
     API->>Firestore: 開発者返信として保存
 
-    PC->>API: 2. poll<br>conversation_id + token
+    PC->>API: 2. poll<br>JST 4:00頃、または掲示板を開いた時
     API->>Firestore: 自分の会話だけ取得
     Firestore-->>API: 会話ログ・未読返信
     API-->>PC: 表示してよいメッセージだけ返す
+    PC->>PC: 未読有無をローカルに保存
+    User->>PC: 右クリックメニューを開く
+    PC->>User: ローカル状態だけで新着表示
+    User->>PC: 掲示板を開く
     PC->>User: 掲示板に表示
 
     PC->>API: 3. ack<br>表示済みメッセージID
@@ -415,5 +427,6 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 7 | 2.4 | 26-06-01 | 開発者が直近5件の過去ログを確認して返信できる方針を追加し、Firestoreを会話履歴の正本と明記 |
 | 8 | 2.5 | 26-06-02 | `secret_token` の発行仕様と、Firestore上で他人の会話を混在させない分離ルールを追加 |
 | 9 | 2.6 | 26-06-02 | 登場人物の用語を定義し、曖昧な「サーバー」表現を Vercel API、Firebase / Firestore、Discordサーバーに分解 |
+| 10 | 2.7 | 26-06-04 | Vercel Cron は JST 3:00、PCアプリは JST 4:00 頃に1日1回確認する運用を追加。右クリックメニューは通信せずローカル未読状態だけで新着表示し、掲示板表示時に既読化する仕様を追加 |
 
 </div>
