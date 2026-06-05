@@ -11,7 +11,7 @@
 
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { open } from '@tauri-apps/plugin-shell';
-import { EditorState, Extension, StateField, Compartment, RangeSetBuilder, Transaction, Facet, StateEffect } from '@codemirror/state';
+import { EditorState, EditorSelection, Extension, StateField, Compartment, RangeSetBuilder, Transaction, Facet, StateEffect } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { highlightSelectionMatches, search, setSearchQuery, SearchQuery } from '@codemirror/search';
@@ -525,6 +525,28 @@ const formatLineWithPrefix = (text: string, prefix: 'heading' | 'list' | 'checkb
     return `- ${body}`;
 };
 
+const selectVisualLine = (view: EditorView, forward: boolean): boolean => {
+    const range = view.state.selection.main;
+    const coords = view.coordsAtPos(range.head, forward ? 1 : -1);
+    if (!coords) return false;
+
+    const contentRect = view.contentDOM.getBoundingClientRect();
+    const x = Math.max(coords.left + 2, contentRect.left + 2);
+    const y = forward ? coords.bottom + 2 : coords.top - 2;
+    let head = view.posAtCoords({ x, y });
+
+    if (head === null || head === range.head) {
+        head = view.moveVertically(range, forward).head;
+    }
+    if (head === range.head) return false;
+
+    view.dispatch({
+        selection: EditorSelection.create([EditorSelection.range(range.anchor, head)]),
+        scrollIntoView: true,
+    });
+    return true;
+};
+
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
     const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar } = props;
     const editorRef = useRef<HTMLDivElement>(null);
@@ -532,6 +554,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
     const themeCompartment = useRef(new Compartment());
     const filePathCompartment = useRef(new Compartment());
     const isReadyRef = useRef(false); // [NEW] 初期化直後の誤検知防止用フラグ
+    const suppressFormatBarUntilRef = useRef(0);
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
@@ -964,6 +987,16 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     keymap.of([
                         // Ctrl+B: 太字トグル
                         {
+                            key: 'ArrowDown',
+                            shift: (view) => selectVisualLine(view, true),
+                            preventDefault: true,
+                        },
+                        {
+                            key: 'ArrowUp',
+                            shift: (view) => selectVisualLine(view, false),
+                            preventDefault: true,
+                        },
+                        {
                             key: 'Mod-b',
                             run: (view) => {
                                 const { state } = view;
@@ -1142,6 +1175,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     linkDecorationField, // [New]
                     linkEventHandler,    // [New]
                     imagePreviewPlugin,  // [NEW]
+                    EditorView.lineWrapping,
                     highlightSelectionMatches(), // [NEW] 選択テキストのハイライト
                     search({ top: false }), // [NEW] 検索ハイライト用（パネル非表示）
                     filePathCompartment.current.of(filePathFacet.of(filePath)), // [NEW] Inject filePath (compartment for dynamic updates)
@@ -1161,6 +1195,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         }
                         if ((update.selectionSet || update.docChanged) && onSelectionChange) {
                             const sel = update.state.selection.main;
+                            if (Date.now() < suppressFormatBarUntilRef.current) {
+                                onSelectionChange(null);
+                                return;
+                            }
                             if (!sel.empty) {
                                 const coords = update.view.coordsAtPos(sel.from);
                                 onSelectionChange(coords ? { top: coords.top, left: coords.left, bottom: coords.bottom } : null);
@@ -1173,6 +1211,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     EditorView.domEventHandlers({
                         // フォーカスが外れた時の処理: 削除（上で定義済み）
                         keydown: (e) => {
+                            if (e.shiftKey && ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                                suppressFormatBarUntilRef.current = Date.now() + 1200;
+                                onSelectionChange?.(null);
+                            }
                             if (e.key === 'Escape' && onKeyDown) {
                                 onKeyDown(e as any);
                             }
@@ -1426,8 +1468,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     boxSizing: 'border-box',
                     padding: '0 !important',
                     caretColor: '#333',
-                    whiteSpace: 'pre-wrap',
-                    wordWrap: 'break-word',
                     cursor: 'text',
                 },
                 '.cm-line': {
