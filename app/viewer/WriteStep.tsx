@@ -524,7 +524,7 @@ export function WriteStep({
                   ))}
                 </select>
               ) : (
-                <span className="min-w-0 flex-1 truncate text-gray-400">PC未登録（従来方式で送信）</span>
+                <span className="min-w-0 flex-1 truncate text-gray-400">PC未登録（1台なら送信可）</span>
               )}
             </div>
             {selectedPc && (

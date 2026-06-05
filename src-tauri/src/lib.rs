@@ -1534,6 +1534,61 @@ async fn fusen_list_push_devices() -> Result<Vec<gdrive::PushDeviceInfo>, String
     gdrive::list_push_devices(&client).await
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IphoneConnectionDiagnostic {
+    status: String,
+    summary: String,
+    action: Option<String>,
+    device_count: usize,
+    details: Vec<String>,
+}
+
+#[tauri::command]
+async fn fusen_diagnose_iphone_connection() -> Result<IphoneConnectionDiagnostic, String> {
+    let client = reqwest::Client::new();
+    let access_token = gdrive::get_access_token(&client).await?;
+
+    let drive_keys_value = gdrive::download_json_with_migration(
+        &client,
+        &access_token,
+        "push_keys.json",
+        "vapid_keys.json",
+    )
+    .await
+    .map_err(|e| format!("Driveのpush_keys.jsonを読めませんでした。PC側のDrive再接続を試してください。詳細: {}", e))?;
+    let drive_keys: webpush::VapidKeys = serde_json::from_value(drive_keys_value)
+        .map_err(|e| format!("Driveのpush_keys.jsonを解析できませんでした。PC側のDrive再接続を試してください。詳細: {}", e))?;
+
+    let devices = gdrive::list_push_devices(&client)
+        .await
+        .map_err(|e| format!("Driveのpush_devices.jsonを読めませんでした。iPhone側の再設定、またはPC側のDrive再接続を試してください。詳細: {}", e))?;
+
+    let mut details = Vec::new();
+    details.push("iPhone送信用の合い鍵があります。".to_string());
+    details.push(format!("通知を受け取れるiPhone / iPadが{}台あります。", devices.len()));
+
+    let mut status = "ok".to_string();
+    let mut summary = "安心してください。iPhone送信の準備はできています。".to_string();
+    let mut action = None;
+
+    if devices.is_empty() {
+        status = "warning".to_string();
+        summary = "通知を受け取れるiPhone / iPadが見つかりませんでした。".to_string();
+        action = Some("iPhone側で俺の付箋をホーム画面に追加し、同じGoogleアカウントで初期設定してください。".to_string());
+    }
+
+    let _ = drive_keys;
+
+    Ok(IphoneConnectionDiagnostic {
+        status,
+        summary,
+        action,
+        device_count: devices.len(),
+        details,
+    })
+}
+
 #[tauri::command]
 async fn fusen_get_google_account() -> Result<gdrive::GoogleAccountInfo, String> {
     let client = reqwest::Client::new();
@@ -1558,15 +1613,6 @@ async fn fusen_delete_pc_device(pc_id: String) -> Result<(), String> {
     gdrive::delete_pc_device_by_id(&client, &pc_id).await
 }
 
-fn save_vapid_keys_to_local(keys: &webpush::VapidKeys) -> Result<(), String> {
-    let path = webpush::get_vapid_key_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let json = serde_json::to_string_pretty(keys).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
-}
-
 async fn sync_vapid_keys_from_drive_or_create(
     client: &reqwest::Client,
     access_token: &str,
@@ -1575,11 +1621,10 @@ async fn sync_vapid_keys_from_drive_or_create(
         Ok(value) => {
             let keys: webpush::VapidKeys = serde_json::from_value(value)
                 .map_err(|e| format!("push_keys parse error: {}", e))?;
-            save_vapid_keys_to_local(&keys)?;
             Ok(keys)
         }
         Err(e) if e.contains("File not found") => {
-            let keys = webpush::load_or_generate_vapid_keys()?;
+            let keys = webpush::generate_vapid_keys()?;
             let value = serde_json::to_value(&keys).map_err(|e| e.to_string())?;
             gdrive::upload_json(client, access_token, "push_keys.json", &value).await?;
             Ok(keys)
@@ -1598,7 +1643,7 @@ fn classify_webpush_error(error: &str) -> String {
     }
     if lower.contains("apns error: 401") || lower.contains("unauthorized") {
         return format!(
-            "APNs 401 Unauthorized: VAPID署名が拒否されました。Driveのpush_keys.jsonとPCローカル鍵の同期を確認してください。詳細: {}",
+            "APNs 401 Unauthorized: VAPID署名が拒否されました。設定の「iPhone連携」でPC側のDriveを再接続してください。詳細: {}",
             error
         );
     }
@@ -1659,6 +1704,33 @@ mod webpush_error_message_tests {
         assert!(message.contains("iPhoneのPush購読が無効です"));
         assert!(message.contains("iPhoneのホーム画面からアプリを削除"));
         assert!(message.contains("Safariから再度「ホーム画面に追加」"));
+    }
+
+    #[test]
+    fn iphone_send_refreshes_push_devices_after_queue_save_before_push() {
+        let source = include_str!("lib.rs");
+        let fn_start = source
+            .rfind("async fn fusen_send_to_iphone(")
+            .expect("fusen_send_to_iphone should exist");
+        let send_source = &source[fn_start..];
+        let queue_save = send_source
+            .find("gdrive::upload_json(&client, &access_token, \"notes_to_iphone.json\", &data)")
+            .expect("iPhone send queue save step should exist");
+        let refresh = send_source
+            .find("gdrive::poll_push_config(&client, &state).await?;")
+            .expect("iPhone send should refresh push_devices.json before Web Push");
+        let push_send = send_source
+            .find("webpush::send_web_push(&client, config, &vapid_keys, &plaintext).await")
+            .expect("iPhone send Web Push step should exist");
+
+        assert!(
+            queue_save < refresh,
+            "push_devices.json must be refreshed after notes_to_iphone.json is safely saved"
+        );
+        assert!(
+            refresh < push_send,
+            "push_devices.json must be refreshed before sending Web Push"
+        );
     }
 }
 
@@ -2180,10 +2252,10 @@ async fn fusen_send_to_iphone(
         "sent_at": sent_at
     });
 
-    // 3a. VAPID鍵を Drive と同期する。
-    // Drive の push_keys.json が正。ローカルファイルはキャッシュとして上書き同期する。
-    // Drive に存在しない初回だけローカル生成し、Drive へ保存する。
-    sync_vapid_keys_from_drive_or_create(&client, &access_token).await?;
+    // 3a. VAPID鍵を Drive から取得する。
+    // Drive の push_keys.json が正。PCローカルには保存せず、この送信中だけメモリ上で使う。
+    // Drive に存在しない初回だけ生成し、Drive へ保存する。
+    let vapid_keys = sync_vapid_keys_from_drive_or_create(&client, &access_token).await?;
 
     // 4. Google Drive に notes_to_iphone.json をアップロード（read-modify-write 配列追加）
     // Drive 書き込み成功前に Push すると、iPhone が起きても読む本文がない状態になる。
@@ -2222,22 +2294,16 @@ async fn fusen_send_to_iphone(
         .await
         .map_err(|e| format!("iPhone送信用キューのDrive保存に失敗しました。Push通知は送らずに中止しました: {}", e))?;
 
-    // 5. キャッシュ済み pro_configs を取得（なければ Drive から再取得）
+    // 5. 送信直前に Drive の push_devices.json を再取得する。
+    // iPhone の購読更新後に古いメモリキャッシュで送ると APNs の VAPID 鍵不一致になり得る。
+    gdrive::poll_push_config(&client, &state).await?;
     let pro_configs = {
         let guard = state.lock().unwrap_or_else(|p| p.into_inner());
         guard.pro_configs.clone()
     };
-    let pro_configs = if !pro_configs.is_empty() {
-        pro_configs
-    } else {
-        gdrive::poll_push_config(&client, &state).await?;
-        let guard = state.lock().unwrap_or_else(|p| p.into_inner());
-        let configs = guard.pro_configs.clone();
-        if configs.is_empty() {
-            return Err("push_config not found in Google Drive. Please set up the iPhone app first.".to_string());
-        }
-        configs
-    };
+    if pro_configs.is_empty() {
+        return Err("push_config not found in Google Drive. Please set up the iPhone app first.".to_string());
+    }
 
     // 6. Web Push 全デバイスに順次送信（1台でも届けばOK）
     let plaintext = serde_json::to_string(&note_json_push).map_err(|e| e.to_string())?;
@@ -2246,7 +2312,7 @@ async fn fusen_send_to_iphone(
     let total_targets = pro_configs.len();
     for (index, config) in pro_configs.iter().enumerate() {
         let target = webpush_device_label(index, total_targets, config);
-        match webpush::send_web_push(&client, config, &plaintext).await {
+        match webpush::send_web_push(&client, config, &vapid_keys, &plaintext).await {
             Ok(_) => {
                 send_success_count += 1;
                 eprintln!("[webpush] 送信成功: target={}", target);
@@ -2923,6 +2989,7 @@ pub fn run() {
             fusen_oauth_connect,
             fusen_check_pro_setup,
             fusen_list_push_devices,
+            fusen_diagnose_iphone_connection,
             fusen_get_google_account,
             fusen_register_pc_device,
             fusen_list_pc_devices,

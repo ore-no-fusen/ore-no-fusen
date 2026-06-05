@@ -2790,6 +2790,14 @@ type DriveTempFileView = {
     previewText?: string | null;
 }
 
+type IphoneConnectionDiagnostic = {
+    status: 'ok' | 'warning' | 'error' | string;
+    summary: string;
+    action?: string | null;
+    deviceCount: number;
+    details: string[];
+}
+
 function endpointLabel(endpoint: string): string {
     if (endpoint.includes('web.push.apple.com')) return 'Apple (Safari)'
     if (endpoint.includes('fcm.googleapis.com') || endpoint.includes('fcm.google.com') || endpoint.includes('push.googleapis.com')) return 'Google (Chrome)'
@@ -2855,6 +2863,9 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
     const [devicesLoading, setDevicesLoading] = useState(false)
     const [deletingId, setDeletingId] = useState<string | null>(null)
     const [pcAccount, setPcAccount] = useState<GoogleAccount | null>(null)
+    const [diagnostic, setDiagnostic] = useState<IphoneConnectionDiagnostic | null>(null)
+    const [diagnosticLoading, setDiagnosticLoading] = useState(false)
+    const [diagnosticError, setDiagnosticError] = useState<string | null>(null)
 
     const loadPcAccount = async () => {
         try {
@@ -2957,6 +2968,21 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
         })
     }
 
+    const handleDiagnose = async () => {
+        setDiagnosticLoading(true)
+        setDiagnosticError(null)
+        setDiagnostic(null)
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const result = await invoke<IphoneConnectionDiagnostic>('fusen_diagnose_iphone_connection')
+            setDiagnostic(result)
+        } catch (e) {
+            setDiagnosticError(String(e))
+        } finally {
+            setDiagnosticLoading(false)
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="mb-4">
@@ -2970,7 +2996,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                 <div className="min-w-0 pr-6">
                     <Label className="text-base font-bold text-gray-900">{t('settings.iphone.sendEnabled')}</Label>
                     <p className="mt-1 text-sm text-gray-500">
-                        OFFのとき：付箋の右クリックメニューに「iPhoneに表示」は出ません。
+                        OFFのとき：右クリックメニューには表示されますが、iPhoneへ送信できません。
                     </p>
                 </div>
                 <Switch
@@ -3242,6 +3268,54 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                         </div>
                     </details>
                 )}
+
+                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                            <h3 className="text-sm font-semibold text-slate-800">困ったときの接続診断</h3>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                                iPhone送信でエラーが出たときに、送信準備だけを確認します。通知は送信しません。
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDiagnose}
+                            disabled={diagnosticLoading || !sendEnabled}
+                            className="shrink-0"
+                        >
+                            <Activity className={`mr-2 h-4 w-4 ${diagnosticLoading ? 'animate-pulse' : ''}`} />
+                            {diagnosticLoading ? '診断中' : '接続を診断'}
+                        </Button>
+                    </div>
+
+                    {diagnosticError && (
+                        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                            {diagnosticError}
+                        </div>
+                    )}
+
+                    {diagnostic && (
+                        <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+                            diagnostic.status === 'ok'
+                                ? 'border-green-200 bg-green-50 text-green-800'
+                                : 'border-amber-200 bg-amber-50 text-amber-800'
+                        }`}>
+                            <p className="font-semibold">{diagnostic.summary}</p>
+                            {diagnostic.action && (
+                                <p className="mt-1">{diagnostic.action}</p>
+                            )}
+                            <details className="mt-2">
+                                <summary className="cursor-pointer text-xs font-medium opacity-80">確認できたこと</summary>
+                                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 opacity-90">
+                                    {diagnostic.details.map((detail) => (
+                                        <li key={detail}>{detail}</li>
+                                    ))}
+                                </ul>
+                            </details>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     )

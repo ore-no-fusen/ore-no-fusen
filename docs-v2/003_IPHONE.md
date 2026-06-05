@@ -384,6 +384,16 @@ Vercel の Environment Variables に設定する変数の一覧です。`.env` �
 Drive は中継所（未処理キュー）に過ぎない。Drive に残っているものは「まだ処理していない」を意味する。処理済みは即削除。
 </Note>
 
+<Note type="info">
+<strong>iPhone送信の鍵をひと言で言うと：</strong>
+<code>push_keys.json</code> は「このGoogle Drive連携グループの合い鍵」、
+<code>push_devices.json</code> は「その合い鍵で通知を受け取れるiPhone / iPadの名簿」です。
+同じGoogle DriveにつながるPC・iPhoneは、Drive上の1つの <code>push_keys.json</code> を共有し、各iPhoneの通知先は <code>push_devices.json</code> に登録されます。
+数の前提は、<code>push_keys.json</code> は1つのGoogle Drive連携グループにつき最大1個、
+<code>push_devices.json</code> は1ファイルの中に複数のiPhone / iPadを登録できる名簿です。
+現行仕様では <code>push_devices.json</code> の登録台数にアプリ側の固定上限は設けていませんが、実運用はユーザー本人の数台程度を想定します。
+</Note>
+
 <a id="sec3-0"></a>
 ### 3.0 鍵の前提（先に読む）
 
@@ -440,7 +450,7 @@ Drive は中継所（未処理キュー）に過ぎない。Drive に残って�
 
 | 鍵 | 所有者 | 主目的 | 主な置き場所 |
 |:---|:---|:---|:---|
-| **VAPID 鍵**（`push_keys.json`） | **ユーザー本人**（ユーザーが許可した全 PC・全 iPhone で共有） | 悪意ある第三者や別鍵PCが、ユーザーの iPhone へ偽通知を送れないようにする | ユーザーの Drive 1 個を正、各PCローカルはキャッシュ |
+| **VAPID 鍵**（`push_keys.json`） | **ユーザー本人**（ユーザーが許可した全 PC・全 iPhone で共有） | 悪意ある第三者や別鍵PCが、ユーザーの iPhone へ偽通知を送れないようにする | ユーザーの Drive 1 個を正。PC は送信時に Drive から読み、ローカルに保存しない |
 | **ECDH 鍵**（`push_devices.json` 内 `keys`） | **個々の iPhone**（ユーザーのもの） | 通知本文の暗号化（端末ごと） | ユーザーの Drive、端末ごとに 1 組 |
 | **OAuth トークン**（`gdrive_token.json`） | **ユーザー本人**（その PC のみ） | Drive へのアクセス権を一時的に証明する | PC のローカル（`%LOCALAPPDATA%`） |
 | **`client_secret`** | **俺の付箋アプリ開発者** | 「俺の付箋」を名乗る他アプリが Google OAuth を通れないようにする | Vercel のサーバー（コードに含めない） |
@@ -636,6 +646,9 @@ PCとiPhone間の中継、および Web Push 設定に使う Drive ファイル�
 ### 3.3.1 複数 iPhone・複数 PC の接続モデル
 
 同じ Google Drive の <code>ore-no-fusen</code> フォルダを共有領域として使い、複数 iPhone / iPad と複数 PC を接続できる。
+現行仕様では、1台のPCアプリが同時に使える Google Drive は1つだけである。
+同じPCから「iPhone A は Drive 1」「iPhone B は Drive 2」のように複数Driveを同時に使い分ける運用は非対応とする。
+Driveを切り替える場合は、PC側でGoogle Driveを再接続し、そのDriveに登録されているiPhone / iPadが送信対象になる。
 
 ```mermaid
 flowchart TD
@@ -664,7 +677,8 @@ flowchart TD
 ```mermaid
 flowchart LR
     PC["PC<br>付箋を送る"] -->|"① notes_to_iphone.json<br>未処理キュー"| Drive["Google Drive<br>ore-no-fusen"]
-    PC -->|"② push_devices.json の全端末へPush"| Push["APNs / FCM"]
+    PC -->|"② push_devices.json<br>送信直前に再取得"| Drive
+    PC -->|"③ 登録済み全端末へPush"| Push["APNs / FCM"]
     Push --> IP1["iPhone A<br>IndexedDBに保存"]
     Push --> IP2["iPhone B<br>IndexedDBに保存"]
     Push --> IP3["iPad<br>IndexedDBに保存"]
@@ -677,6 +691,7 @@ flowchart LR
 
 <Note type="warning">
 PC → iPhone は <code>push_devices.json</code> の登録端末へ同報送信する。現行仕様では個別 iPhone を選んで送る UI はない。
+PC は送信直前に Drive から <code>push_devices.json</code> を再取得し、起動中に残った古いメモリキャッシュで送らない。
 </Note>
 
 ```mermaid
@@ -770,14 +785,14 @@ Drive 上の JSON は、以下の構成を基本とする。
 |:---|:---|
 | **所有者** | **ユーザー本人**（ユーザーが許可した全 PC・全 iPhone で共有する「許可された端末群の共有秘密」） |
 | **目的** | 悪意ある第三者や別鍵PCが、ユーザーの iPhone へ偽通知を送れないようにする |
-| **防衛手段** | Drive 上の 1 個を正、各PCローカルはキャッシュ。PC は秘密鍵で署名、iPhone は同じ鍵の公開鍵で購読する |
+| **防衛手段** | Drive 上の 1 個を正とする。PC は送信時に Drive から秘密鍵を読み、メモリ上で署名に使う。iPhone は同じ鍵の公開鍵で購読する。PC ローカルには保存しない |
 | **漏えい時** | 悪意ある第三者が「正規の通知」に見える Push を送れる可能性。付箋本文・添付メディアは別途 Drive 権限が必要なので読めないが、通知を送れること自体が被害。対応：Drive 上の `push_keys.json` を作り直し、iPhone 側で再購読する |
 | **欠落時** | PC は VAPID 署名を作れず Push 送信不可。iPhone 受信は list 画面でのフォールバック取得頼みになる |
 
 <Note type="warning">
 <strong>同期ルール：</strong>
-Drive 鍵を正、ローカル鍵はキャッシュ。Drive に共有鍵が存在する場合は必ず Drive 鍵をローカルへ同期する。
-<strong>ローカル鍵で Drive の共有鍵を上書きしてはならない。</strong>
+Drive 鍵を正とし、PC は送信時に Drive から読み込んでメモリ上で使う。
+<strong>PC ローカルに push_keys.json を保存しない。</strong>
 Drive に共有鍵が存在しない初回セットアップ時だけ、新規生成して Drive へ保存する。
 </Note>
 
@@ -942,15 +957,16 @@ sequenceDiagram
         PC->>Drive: ❶ notes_to_iphone.json を読み込み<br>取得失敗時は既存キュー保護のため中止
         PC->>Drive: ❷ fusen_img_*.jpg を書き込み（添付画像）
         PC->>Drive: ❸ notes_to_iphone.json を保存
-        PC->>APNs: ❹ Web Push送信（push_keys.json の秘密鍵でVAPID認証）
-        APNs->>SW: ❺ Push受信
-        SW->>Drive: ❻ 添付画像をダウンロード
-        SW->>SW: ❼ ノートをIndexedDBに保存
-        SW->>Drive: ❽ 処理済みファイルを削除
-        SW->>UserPhone: ❾ ロック画面に通知を表示
+        PC->>Drive: ❹ push_devices.json を送信直前に再取得
+        PC->>APNs: ❺ Web Push送信（push_keys.json の秘密鍵でVAPID認証）
+        APNs->>SW: ❻ Push受信
+        SW->>Drive: ❼ 添付画像をダウンロード
+        SW->>SW: ❽ ノートをIndexedDBに保存
+        SW->>Drive: ❾ 処理済みファイルを削除
+        SW->>UserPhone: ❿ ロック画面に通知を表示
         UserPhone->>PWA: ② 通知をタップ
-        PWA->>PWA: ❿ pending_open を確認<br>IndexedDBからノートデータを読み込み
-        PWA->>UserPhone: ⓫ write画面でノートを表示
+        PWA->>PWA: ⓫ pending_open を確認<br>IndexedDBからノートデータを読み込み
+        PWA->>UserPhone: ⓬ write画面でノートを表示
     end
 ```
 <p class="mermaid-caption">図 3-3　PC → iPhone 初回セットアップと通常送信シーケンス</p>
@@ -959,8 +975,8 @@ sequenceDiagram
 
 図 3-3 の初回セットアップで `push_keys.json` と `push_devices.json` が準備済みであれば、以降はPC側の「iPhoneに送る」操作だけで送信できます。
 
-- `push_keys.json`：Drive 上の 1 個を正とする Web Push 用共有VAPID鍵。iPhoneは公開鍵を使ってPush購読し、PCは秘密鍵を使ってWeb Pushを送信する。PCローカルの同名ファイルはキャッシュであり、Drive鍵を上書きしてはならない。
-- `push_devices.json`：iPhone側が作成・更新する通知先デバイス一覧。PCはこの一覧を見て送信先を決める。
+- `push_keys.json`：Drive 上の 1 個を正とする Web Push 用共有VAPID鍵。iPhoneは公開鍵を使ってPush購読し、PCは送信時にDriveから秘密鍵を読み、メモリ上でWeb Push署名に使う。PCローカルには保存しない。
+- `push_devices.json`：iPhone側が作成・更新する通知先デバイス一覧。PCは送信直前に Drive から再取得し、この一覧を見て送信先を決める。
 - `notes_to_iphone.json`：PCからiPhoneへ渡す未処理キュー。Service Workerが受信後に処理済みファイルを削除する。
 
 <Note type="warning">
@@ -968,6 +984,7 @@ sequenceDiagram
 PC は <code>notes_to_iphone.json</code> の読み込みに失敗した場合、空配列で上書きしない。
 Drive 上に既存の未処理キューがある可能性を優先し、送信を中止してエラーを返す。
 また、<code>notes_to_iphone.json</code> の保存が成功してから Web Push を送る。
+Web Push 送信直前には <code>push_devices.json</code> を Drive から再取得し、PC起動中に残った古い購読情報キャッシュによる VAPID 鍵不一致を避ける。
 Push 失敗時は APNs / Push Service のステータスを見て、400（鍵・購読不整合）、404/410（購読期限切れ）、413（本文過大）、429（送信過多）、5xx/通信失敗を分けて表示する。
 </Note>
 
@@ -1285,7 +1302,9 @@ PC側のアクセストークンは期限到来の 60 秒前に自動リフレ�
 
 #### 7.1.4 PCからの Web Push 送信失敗
 PC アプリから APNs / FCM へのプッシュ送信が失敗した場合（201 以外の HTTP ステータス）、エラーコードを含む <code>Err</code> を返す。
+PC は送信直前に <code>push_devices.json</code> を Drive から再取得し、古いメモリキャッシュによる VAPID 鍵不一致を事前に避ける（実施済み）。
 **PC側での送信失敗時の自動リトライ機構は <span style="color:#dc2626;font-weight:700">⚠️ 未実施</span>。**送信失敗時は iPhone に通知が届かないまま終了する。
+エラー表示では APNs / Push Service のステータスごとに原因カテゴリを分け、ユーザーが取れる操作（Drive再接続、PWA再インストール、通信確認など）を示す。
 
 ### 7.2 バックグラウンド処理・リカバリ
 
@@ -1330,5 +1349,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 15 | 1.14 | 26-05-31 | 3.0 を「3 者の登場人物と関係 → 鍵の枠組み → 鍵一覧 → VAPID 補足」の順に再編成。**ユーザー / 俺の付箋アプリ開発者 / 悪意ある第三者** の 3 者と互いの警戒関係を表で明示。「作者」「攻撃者」「第三者」表記を統一し、用語の揺れを解消。 |
 | 16 | 1.15 | 26-05-31 | PWAの送信先PC選択は `pcName` を通常表示とし、同名PCが複数ある場合は `updatedAt` が最新の登録へ自動的に寄せる仕様を追記。`pcId` は受信判定・診断用の内部IDであり、通常操作でユーザーに選ばせないことを明記。 |
 | 17 | 1.16 | 26-05-31 | 設定画面の接続状態で Drive 未処理キューの中身確認と、ユーザー確認付きのキューJSON削除を行える仕様を追記。 |
+| 18 | 1.17 | 26-06-05 | PC→iPhone送信直前に `push_devices.json` を Drive から再取得する仕様を明記。予見可能なPush不整合はアプリ側で回避し、エラー時はユーザーが取れる復旧手順を表示する方針を追記。 |
 
 </div>

@@ -2,13 +2,12 @@
  * Web Push モジュール (RFC 8291 / RFC 8292)
  *
  * 責務:
- * - VAPID 鍵ペアの生成・保存・読み込み
+ * - VAPID 鍵ペアの生成
  * - RFC 8292 VAPID JWT 署名
  * - RFC 8291 AES-128-GCM ペイロード暗号化
  * - APNs HTTP/2 POST 送信
  */
 
-use std::path::PathBuf;
 use reqwest::Client;
 use p256::ecdh::EphemeralSecret;
 use p256::{PublicKey, EncodedPoint};
@@ -20,7 +19,6 @@ use hkdf::Hkdf;
 use sha2::Sha256;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
-use directories::BaseDirs;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use crate::state::ProConfig;
 
@@ -40,19 +38,7 @@ struct VapidClaims {
     sub: String,
 }
 
-// ------ パス ------
-
-pub fn get_vapid_key_path() -> PathBuf {
-    if let Some(base_dirs) = BaseDirs::new() {
-        base_dirs.data_local_dir()
-            .join("ore-no-fusen")
-            .join("push_keys.json")
-    } else {
-        PathBuf::from("ore-no-fusen/push_keys.json")
-    }
-}
-
-// ------ 鍵生成・ロード ------
+// ------ 鍵生成 ------
 
 pub fn generate_vapid_keys() -> Result<VapidKeys, String> {
     let signing_key = SigningKey::random(&mut rand_core::OsRng);
@@ -67,46 +53,7 @@ pub fn generate_vapid_keys() -> Result<VapidKeys, String> {
         subject: "mailto:ore-no-fusen@example.com".to_string(),
     };
 
-    let path = get_vapid_key_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let json = serde_json::to_string_pretty(&keys).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
-
     Ok(keys)
-}
-
-pub fn load_or_generate_vapid_keys() -> Result<VapidKeys, String> {
-    let path = get_vapid_key_path();
-    if path.exists() {
-        let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        return serde_json::from_str(&json).map_err(|e| e.to_string());
-    }
-
-    // フォールバック: 旧ファイル名 vapid_keys.json から読み込み
-    let old_path = if let Some(base_dirs) = BaseDirs::new() {
-        base_dirs.data_local_dir()
-            .join("ore-no-fusen")
-            .join("vapid_keys.json")
-    } else {
-        PathBuf::from("ore-no-fusen/vapid_keys.json")
-    };
-
-    if old_path.exists() {
-        let json = std::fs::read_to_string(&old_path).map_err(|e| e.to_string())?;
-        let keys: VapidKeys = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-        // 新しいパスに保存（以降は新しい名前で読み込まれる）
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let json = serde_json::to_string_pretty(&keys).map_err(|e| e.to_string())?;
-        let _ = std::fs::write(&path, json);
-        return Ok(keys);
-    }
-
-    // どちらも存在しない場合は新規生成
-    generate_vapid_keys()
 }
 
 // ------ JWT 署名 (RFC 8292 VAPID) ------
@@ -237,9 +184,9 @@ pub fn encrypt_payload(
 pub async fn send_web_push(
     client: &Client,
     pro_config: &ProConfig,
+    keys: &VapidKeys,
     plaintext_json: &str,
 ) -> Result<(), String> {
-    let keys = load_or_generate_vapid_keys()?;
     let encrypted = encrypt_payload(&pro_config.p256dh, &pro_config.auth, plaintext_json.as_bytes())?;
     let jwt = sign_vapid_jwt(&pro_config.push_endpoint, &keys)?;
 
@@ -273,13 +220,6 @@ pub async fn send_web_push(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_vapid_key_path_returns_ore_no_fusen_dir() {
-        let path = get_vapid_key_path();
-        assert!(path.to_string_lossy().contains("ore-no-fusen"));
-        assert!(path.to_string_lossy().ends_with("push_keys.json"));
-    }
 
     #[test]
     fn test_generate_vapid_keys_creates_valid_keypair() {
