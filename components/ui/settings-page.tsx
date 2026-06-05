@@ -2636,47 +2636,6 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
 
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-red-50 text-red-700">
-                        <RefreshCw className="h-5 w-5" />
-                    </div>
-                    <h4 className="text-base font-bold">開発者返信の未読チェック</h4>
-                </div>
-                <div className="mb-6 rounded-lg border border-red-200 bg-red-50/40 px-5 py-4 space-y-4">
-                    <div>
-                        <p className="text-sm font-bold text-slate-900">手動未読チェック</p>
-                        <p className="text-xs text-slate-600 mt-1">
-                            現在のPCの会話IDで返信を確認し、右クリックメニュー用の新着状態だけを更新します。ここでは既読化しません。
-                        </p>
-                    </div>
-                    <div>
-                        <Button
-                            variant="outline"
-                            onClick={runFeedbackUnreadCheck}
-                            disabled={feedbackUnreadCheckLoading}
-                            className="bg-white"
-                        >
-                            <RefreshCw className={`h-4 w-4 mr-1.5 ${feedbackUnreadCheckLoading ? 'animate-spin' : ''}`} />
-                            {feedbackUnreadCheckLoading ? '確認中' : '未読チェック実行'}
-                        </Button>
-                    </div>
-                    {feedbackUnreadCheckError && (
-                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                            {feedbackUnreadCheckError}
-                        </div>
-                    )}
-                    {feedbackUnreadCheckResult && (
-                        <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                            <p className="font-bold text-slate-900">
-                                未読返信: {feedbackUnreadCheckResult.unreadCount} 件
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                                右クリック表示: {feedbackUnreadCheckResult.hasUnread ? '新着あり' : '新着なし'}
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                <div className="mb-4 flex items-center gap-2 text-slate-900">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-red-50 text-red-700">
                         <Inbox className="h-5 w-5" />
                     </div>
                     <h4 className="text-base font-bold">Discord返信取り込み</h4>
@@ -2737,6 +2696,47 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                     {JSON.stringify(discordIngestResult.rejected.slice(0, 10), null, 2)}
                                 </pre>
                             )}
+                        </div>
+                    )}
+                </div>
+
+                <div className="mt-6 mb-4 flex items-center gap-2 text-slate-900">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-red-50 text-red-700">
+                        <RefreshCw className="h-5 w-5" />
+                    </div>
+                    <h4 className="text-base font-bold">開発者返信の未読チェック</h4>
+                </div>
+                <div className="rounded-lg border border-red-200 bg-red-50/40 px-5 py-4 space-y-4">
+                    <div>
+                        <p className="text-sm font-bold text-slate-900">手動未読チェック</p>
+                        <p className="text-xs text-slate-600 mt-1">
+                            現在のPCの会話IDで返信を確認し、右クリックメニュー用の新着状態だけを更新します。ここでは既読化しません。
+                        </p>
+                    </div>
+                    <div>
+                        <Button
+                            variant="outline"
+                            onClick={runFeedbackUnreadCheck}
+                            disabled={feedbackUnreadCheckLoading}
+                            className="bg-white"
+                        >
+                            <RefreshCw className={`h-4 w-4 mr-1.5 ${feedbackUnreadCheckLoading ? 'animate-spin' : ''}`} />
+                            {feedbackUnreadCheckLoading ? '確認中' : '未読チェック実行'}
+                        </Button>
+                    </div>
+                    {feedbackUnreadCheckError && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            {feedbackUnreadCheckError}
+                        </div>
+                    )}
+                    {feedbackUnreadCheckResult && (
+                        <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                            <p className="font-bold text-slate-900">
+                                未読返信: {feedbackUnreadCheckResult.unreadCount} 件
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                                右クリック表示: {feedbackUnreadCheckResult.hasUnread ? '新着あり' : '新着なし'}
+                            </p>
                         </div>
                     )}
                 </div>
