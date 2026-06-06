@@ -190,6 +190,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
       <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#current-evidence">Current Evidence</a></div>
       <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#system-model">System Model</a></div>
       <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#ai-phone-direction">AI Phone Direction</a></div>
+      <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#ai-partner-search">AI Partner Search</a></div>
       <div class="toc-section"><a class="toc-sec-link" href="./000_INTENTION_LAYER#aiエージェント時代の-intention-layer">日本語訳</a></div>
     </div>
   </div>

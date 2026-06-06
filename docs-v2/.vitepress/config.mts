@@ -22,6 +22,7 @@ export default withMermaid(defineConfig({
   themeConfig: {
     nav: [
       { text: 'INDEX', link: '/' },
+      { text: '000-I', link: '/000_INTENTION_LAYER' },
       { text: '000', link: '/000_REQUIREMENTS' },
       { text: '001', link: '/001_OVERVIEW' },
       { text: '002', link: '/002_PC' },
@@ -40,6 +41,7 @@ export default withMermaid(defineConfig({
         text: 'ドキュメント一覧',
         items: [
           { text: 'INDEX', link: '/' },
+          { text: '000-I Intention Layer', link: '/000_INTENTION_LAYER' },
           { text: '000 要求仕様', link: '/000_REQUIREMENTS' },
           { text: '001 システム全体像', link: '/001_OVERVIEW' },
           { text: '002 PC版設計', link: '/002_PC' },

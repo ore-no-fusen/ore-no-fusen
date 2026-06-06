@@ -15,7 +15,7 @@ outline: deep
 
 ## 0 上位思想
 
-このシステム全体像は、[000 要求仕様](./000_REQUIREMENTS.md) を上位仕様として読む。
+このシステム全体像は、[000-I Intention Layer](./000_INTENTION_LAYER.md) を上位思想、[000 要求仕様](./000_REQUIREMENTS.md) を上位仕様として読む。
 
 俺の付箋は、単なる付箋アプリではなく、AIエージェント時代の「意図の置き場」である。
 PC、iPhone/PWA、Google Drive、Vercel、通知基盤は、すべて `Capture -> Land -> Persist -> Surface -> Act -> Resolve` の loop を支える構成要素として扱う。
