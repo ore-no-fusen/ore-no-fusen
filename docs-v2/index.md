@@ -121,6 +121,20 @@ html.dark .read-order .note-text { color: #fcd34d; }
   display: inline-block;
   font-size: 11px;
 }
+
+.vp-doc .doc-list-table th:first-child,
+.vp-doc .doc-list-table td:first-child {
+  width: 64px !important;
+  min-width: 64px !important;
+  max-width: 64px !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+.doc-list-table .doc-badge {
+  min-width: 42px;
+  text-align: center;
+  box-sizing: border-box;
+}
 </style>
 
 <div class="portal-header">
@@ -135,16 +149,16 @@ html.dark .read-order .note-text { color: #fcd34d; }
 
 <p class="table-caption">表1　設計書一覧</p>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0;">
-<table class="module-table">
-  <tr><th style="width:32px">No</th><th>タイトル</th><th>内容</th></tr>
+<table class="module-table doc-list-table">
+  <tr><th style="width:58px">No</th><th>タイトル</th><th>内容</th></tr>
   <tr><td><span class="doc-badge badge-000i">000-I</span></td><td><strong><a href="./000_INTENTION_LAYER">Intention Layer</a></strong></td><td>AIエージェント時代の上位思想・プロダクト定義</td></tr>
   <tr><td><span class="doc-badge badge-000">000</span></td><td><strong><a href="./000_REQUIREMENTS">要求仕様</a></strong></td><td>プロダクトが満たすべき機能・非機能要件</td></tr>
   <tr><td><span class="doc-badge badge-001">001</span></td><td><strong><a href="./001_OVERVIEW">システム全体像</a></strong></td><td>登場人物・技術スタック・データフロー等</td></tr>
   <tr><td><span class="doc-badge badge-002">002</span></td><td><strong><a href="./002_PC">PCローカル・UI設計</a></strong></td><td>画面構成・モジュール・データ構造・フロー</td></tr>
   <tr><td><span class="doc-badge badge-003">003</span></td><td><strong><a href="./003_IPHONE">クラウド同期・iPhone設計</a></strong></td><td>画面構成・Service Worker・データ構造等</td></tr>
 </table>
-<table class="module-table">
-  <tr><th style="width:32px">No</th><th>タイトル</th><th>内容</th></tr>
+<table class="module-table doc-list-table">
+  <tr><th style="width:58px">No</th><th>タイトル</th><th>内容</th></tr>
   <tr><td><span class="doc-badge badge-004">004</span></td><td><strong><a href="./004_TEST">テスト設計</a></strong></td><td>テスト戦略・テスト対象・実行方法・領域等</td></tr>
   <tr><td><span class="doc-badge badge-005">005</span></td><td><strong><a href="./005_GLOSSARY">用語集</a></strong></td><td>専門用語・略語一覧</td></tr>
   <tr><td><span class="doc-badge badge-006">006</span></td><td><strong><a href="./006_ARCHITECTURE">4+1 Viewアーキテクチャ</a></strong></td><td>4+1 View Model・システム全体俯瞰図</td></tr>

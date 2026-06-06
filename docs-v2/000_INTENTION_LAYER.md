@@ -96,17 +96,37 @@ This document was written in English first because the idea is not only local.
 
 Ore-no-Fusen may one day need to explain itself to people building the future of AI: founders, researchers, investors, product builders, and people like Elon Musk or others in that class of world-shaping builders. The exact person is not the point. The point is that the product should be able to say, clearly and simply, what it is trying to protect.
 
-It is searching for the right partners in the AI age.
+There is also a personal purpose behind this product.
 
-Not a partner who replaces the user.
+I am searching for the right partners in the AI age.
 
-Not an AI that absorbs every private thought.
+Not someone who replaces the user.
 
-But a partner who understands that the next era needs a human-owned intention layer: a small, durable place where thoughts can land before they become prompts, tasks, code, decisions, support conversations, or shared work.
+Not a system that absorbs every private thought.
+
+But people who understand that the next era needs a human-owned intention layer: a small, durable place where thoughts can land before they become prompts, tasks, code, decisions, support conversations, or shared work.
+
+Ore-no-Fusen is one way to make that search visible. By building it, testing it, and writing down its principles, I can show what I am trying to protect and what kind of future I want to build with others.
 
 Ore-no-Fusen is a sticky note app because sticky notes are humble.
 
 It is an Intention Layer because the future needs a place for human intent to survive.
+
+Ore-no-Fusen is also a machine that makes life a little better.
+
+It is closer to a small charm than a productivity system.
+
+Not because it performs magic, and not because it promises success. It simply stays near the user, holds the small intention, and makes the next step feel possible. Like a quiet prayer, it does not force anything. It just gives the thought a place to remain until something good can happen from it.
+
+That is not meant to be grand. Happiness is often not a huge dream. Happiness is when life becomes a little better than it is now: being able to do the small thing I wanted to do, fix the small problem that bothered me, remember the idea I almost lost, or move one step forward without friction.
+
+In the AI age, most work starts as a small intention: a sentence, a discomfort, a reminder, a question, a bug, a wish, or a quiet hope. If the system can catch it, keep it, move it, hand it to the right person or AI, and bring back the result, then the size of the original note no longer matters.
+
+A small note can become a lot of things.
+
+The product voice is simple:
+
+Maybe it can be done. Put it on a note. Who knows.
 
 ## AIエージェント時代の Intention Layer
 
@@ -126,11 +146,35 @@ AIが強くなるほど大事になるのは、情報そのものだけではな
 
 付箋は、その入口である。
 
-AI時代のパートナー探しとは、ユーザーを置き換えるAIを探すことではない。
+このプロダクトには、もう一つの個人的な目的がある。
 
-ユーザーの個人的な思考をすべて吸い上げる仕組みを探すことでもない。
+僕自身が、AI時代に一緒に未来を作れるパートナーとなるべき人を探している。
+
+それは、ユーザーを置き換えるAIを探すことではない。
+
+個人的な思考をすべて吸い上げる仕組みを探すことでもない。
 
 人間が自分の意図を失わず、必要なときだけAI・端末・開発者・未来の自分へ渡せること。そのための小さくて強い場所を、一緒に作れる相手を探すことである。
+
+俺の付箋は、その探索を見える形にするためのプロダクトでもある。作り、試し、思想を書き残すことで、自分が何を守ろうとしているのか、どんな未来を誰と作りたいのかを示す。
+
+俺の付箋は、いまよりちょっとよくなるマシンでもある。
+
+それは、生産性ツールというより、少しお守りに近い。
+
+魔法を起こすわけではない。成功を約束するわけでもない。ただ、そばにいて、小さな意図を持っていてくれる。次の一歩が、少しだけできそうに見える。お祈りのように、何かを強制するのではなく、いいことが起きるまで考えを置いておける場所になる。
+
+それは、夢をかなえるというほど大げさな話だけではない。
+
+幸せとは、いまよりちょっとよくなることだと思う。やろうと思っていた小さなことができる。気になっていた小さな問題が片付く。忘れかけていた考えを拾い直せる。少しだけ前に進める。そういう、たいしたことではないことが、いちばん生活をよくする。
+
+AI時代のほとんどの仕事は、小さな意図から始まる。ひとこと、違和感、リマインダー、質問、不具合、願い、静かな希望。システムがそれを捕まえ、保ち、運び、必要な人やAIに渡し、結果を持ち帰ることができるなら、最初のメモの小ささは問題ではない。
+
+小さな付箋は、いろいろなことになれる。
+
+プロダクトの声としては、もっと短い。
+
+たぶんできるよ。はっとけば。しらんけど。
 
 だからこの文書は英語を先に置く。
 
