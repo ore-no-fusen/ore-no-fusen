@@ -17,18 +17,54 @@ import { Analytics } from "@vercel/analytics/next";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
+const SITE_DESCRIPTION =
+  "PCで書いて、iPhoneへ届く。iPhoneで書いて、PCに残る。Ctrl+N で 0.3 秒起動、無料、データはあなたの手元（PC＋自分の Google Drive）に。";
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "俺の付箋",
+  alternateName: "FUSEN — My Sticky Notes for Windows",
+  applicationCategory: "ProductivityApplication",
+  operatingSystem: "Windows",
+  url: SITE_URL,
+  image: OG_IMAGE,
+  description: SITE_DESCRIPTION,
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "JPY",
+  },
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "俺の付箋 — Win+iPhone を繋ぐ、軽い付箋アプリ",
-  description:
-    "PCで書いて、iPhoneへ届く。iPhoneで書いて、PCに残る。Ctrl+N で 0.3 秒起動、無料、データはあなたの手元（PC＋自分の Google Drive）に。",
+  description: SITE_DESCRIPTION,
+  keywords: [
+    "俺の付箋",
+    "FUSEN",
+    "My Sticky Notes",
+    "Ore-no-Fusen",
+    "Windows 付箋アプリ",
+    "デスクトップ付箋",
+    "iPhone メモ PC 送信",
+    "iPhoneからPCにメモ",
+    "Google Drive 同期 メモ",
+    "Markdown 付箋",
+    "ローカル保存 メモアプリ",
+  ],
+  applicationName: "俺の付箋",
+  authors: [{ name: "Ore-no-Fusen" }],
+  creator: "Ore-no-Fusen",
+  publisher: "Ore-no-Fusen",
+  category: "productivity",
   manifest: "/manifest.webmanifest",
   openGraph: {
     type: "website",
     url: SITE_URL,
     siteName: "俺の付箋",
-    title: "俺の付箋 — Win+iPhone を繋ぐ、軽い付箋アプリ",
+    title: "FUSEN — My Sticky Notes for Windows",
     description:
       "PCで書いて、iPhoneへ届く。Ctrl+N で 0.3 秒起動。無料・ローカル保存。",
     images: [
@@ -45,7 +81,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     site: "@uchikiman",
     creator: "@uchikiman",
-    title: "俺の付箋 — Win+iPhone を繋ぐ、軽い付箋アプリ",
+    title: "FUSEN — My Sticky Notes for Windows",
     description:
       "PCで書いて、iPhoneへ届く。Ctrl+N で 0.3 秒起動。無料・ローカル保存。",
     images: [OG_IMAGE],
@@ -74,6 +110,10 @@ export default function RootLayout({
     <html lang="ja">
       <head>
         <link rel="icon" href="/favicon.ico" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
         {/* 付箋ウィンドウ（?path=）はglobals.cssの#111827より先に黄色を設定 */}
         <script dangerouslySetInnerHTML={{
           __html: `

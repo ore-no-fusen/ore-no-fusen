@@ -49,7 +49,8 @@
     "active": true,
     "publisher": "ONF Studios",
     "targets": [
-      "nsis"
+      "nsis",
+      "msi"
     ],
     "createUpdaterArtifacts": true,
     "icon": [

@@ -21,7 +21,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Download, Globe, Volume2, VolumeX } from 'lucide-react';
+import { Check, Copy, Download, Globe, Volume2, VolumeX } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 
 export default function LandingPage() {
@@ -43,7 +43,7 @@ export default function LandingPage() {
     const isEn = lang === 'en';
 
     useEffect(() => {
-        document.title = isEn ? 'Ore-no-Fusen' : '俺の付箋（Ore-no-Fusen）';
+        document.title = isEn ? 'FUSEN — My Sticky Notes for Windows' : '俺の付箋（Ore-no-Fusen）';
     }, [isEn]);
 
     // PC→iPhone 連携アニメーション
@@ -92,6 +92,7 @@ export default function LandingPage() {
     const inputRef = useRef<HTMLInputElement>(null);
     const [demoNotes, setDemoNotes] = useState<{ id: number; text: string; color: string; rotation: number; topPos: number; leftPos: number; sentToIphone: boolean }[]>([]);
     const [inputValue, setInputValue] = useState('');
+    const [wingetCopied, setWingetCopied] = useState(false);
     const demoColors = ['#EDD87A', '#A8C890', '#9DC0D0', '#D4A48A'];
 
     const addDemoNote = () => {
@@ -127,6 +128,13 @@ export default function LandingPage() {
         }
     };
 
+    const copyWingetCommand = () => {
+        navigator.clipboard.writeText('winget install ore-no-fusen').catch(() => { });
+        setWingetCopied(true);
+        setTimeout(() => setWingetCopied(false), 2500);
+        trackEvent('winget_install_copy');
+    };
+
     return (
         <div
             className="min-h-screen text-[#2C1F0E] overflow-x-hidden"
@@ -139,7 +147,7 @@ export default function LandingPage() {
             {/* ナビゲーション */}
             <nav className="px-6 py-5 flex justify-between items-center border-b border-[#C8B89A]/40">
                 <div className="text-xl font-bold tracking-wide text-[#2C1F0E]">
-                    {isEn ? 'Ore-no-Fusen' : '俺の付箋 (Ore-no-Fusen)'}
+                    {isEn ? 'FUSEN — My Sticky Notes' : '俺の付箋 (Ore-no-Fusen)'}
                 </div>
                 <div className="flex items-center gap-4">
                     <button
@@ -178,7 +186,7 @@ export default function LandingPage() {
                 <div className="relative max-w-4xl mx-auto w-full text-center">
                     {/* 一行のサブブランド */}
                     <p className="text-xs sm:text-sm font-bold text-[#8A7055] uppercase tracking-[0.35em] mb-8">
-                        {isEn ? 'Ore-no-Fusen · Thinking Canvas' : '俺の付箋 ・ Thinking Canvas'}
+                        {isEn ? 'FUSEN · My Sticky Notes for Windows' : '俺の付箋 ・ Thinking Canvas'}
                     </p>
 
                     {/* メインコピー */}
@@ -229,12 +237,26 @@ export default function LandingPage() {
                         </p>
 
                         {/* winget */}
-                        <div className="flex items-center gap-2 text-xs text-[#7A6A50] mt-2">
-                            <span>{isEn ? 'or via winget:' : 'winget でも入れられます:'}</span>
+                        <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-[#7A6A50] mt-2">
+                            <span>{isEn ? 'or via Command Prompt:' : 'コマンドプロンプトでも入れられます:'}</span>
                             <code className="px-2 py-1 rounded bg-[#2C1F0E]/85 text-[#F0E0A0] font-mono select-all">
                                 winget install ore-no-fusen
                             </code>
+                            <button
+                                type="button"
+                                onClick={copyWingetCommand}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[#C8B89A] bg-[#FFF8E8] hover:bg-[#F5EDD8] text-[#5C4A32] transition-colors"
+                                aria-label={isEn ? 'Copy winget command' : 'wingetコマンドをコピー'}
+                            >
+                                {wingetCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                {wingetCopied ? (isEn ? 'Copied' : 'コピー済み') : (isEn ? 'Copy' : 'コピー')}
+                            </button>
                         </div>
+                        <p className="text-xs text-[#9A8468]">
+                            {isEn
+                                ? 'If you know winget, this is recommended because Windows warnings are less likely. Press Win+R, type cmd, press Enter, then paste this command.'
+                                : 'winget が分かる方はこちらがおすすめです。Windowsの警告が出にくいです。Win+R → cmd → Enter でコマンドプロンプトを開き、このコマンドを貼り付けて実行します。'}
+                        </p>
 
                         <details className="text-xs text-[#7A6A50] mt-1 max-w-md">
                             <summary className="cursor-pointer hover:text-[#5C7A3E] select-none">
@@ -511,7 +533,7 @@ export default function LandingPage() {
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] leading-tight tracking-tight">
                             {isEn ? (
                                 <>
-                                    Ore-no-Fusen pins your thoughts<br />
+                                    FUSEN pins your thoughts<br />
                                     <span className="text-[#5C7A3E]">into your field of view.</span>
                                 </>
                             ) : (
@@ -1024,7 +1046,7 @@ export default function LandingPage() {
                         </h2>
                         <p className="text-[#8A7055] max-w-2xl mx-auto leading-relaxed">
                             {isEn
-                                ? <>Sticky Notes is fast, but too limited. Excel is flexible, but too heavy.<br className="hidden sm:inline" /> Ore-no-Fusen lives in the gap.</>
+                                ? <>Sticky Notes is fast, but too limited. Excel is flexible, but too heavy.<br className="hidden sm:inline" /> FUSEN lives in the gap.</>
                                 : <>Sticky Notes は速いが、できることが少ない。Excel は自由だが、ちょっと重い。<br className="hidden sm:inline" />俺の付箋は、その隙間にいる。</>}
                         </p>
                     </div>
@@ -1071,7 +1093,7 @@ export default function LandingPage() {
                                             <div className="absolute inset-0 w-7 h-7 rounded-full bg-[#8BAF7C] animate-ping opacity-50" style={{ left: -6, top: -6 }} />
                                             <div className="relative w-4 h-4 rounded-full bg-[#5C7A3E] ring-4 ring-[#8BAF7C]/40 shadow" />
                                         </div>
-                                        <div className="text-xs mt-2 whitespace-nowrap font-bold text-[#5C7A3E]">⭐ {isEn ? 'Ore-no-Fusen' : '俺の付箋'}</div>
+                                        <div className="text-xs mt-2 whitespace-nowrap font-bold text-[#5C7A3E]">⭐ {isEn ? 'FUSEN' : '俺の付箋'}</div>
                                         <div className="text-[10px] text-[#8A7055] mt-0.5">+ 📱 iPhone</div>
                                     </div>
                                 </div>
@@ -1117,7 +1139,7 @@ export default function LandingPage() {
                             </div>
                             <div className="text-2xl mb-2">📝</div>
                             <div className="text-[10px] font-bold text-[#5C7A3E] uppercase tracking-widest mb-1">ONF Studios</div>
-                            <h3 className="text-lg font-bold text-[#3A2C00] mb-4">{isEn ? 'Ore-no-Fusen' : '俺の付箋'}</h3>
+                            <h3 className="text-lg font-bold text-[#3A2C00] mb-4">{isEn ? 'FUSEN' : '俺の付箋'}</h3>
                             <ul className="text-sm text-[#3A2C00] space-y-2 leading-relaxed font-medium">
                                 <li>⚡ {isEn ? '0.3 s launch (Ctrl+N)' : '起動 0.3 秒（Ctrl+N）'}</li>
                                 <li>📌 {isEn ? 'Sticks on desktop' : '付箋として常駐'}</li>
@@ -1398,7 +1420,7 @@ export default function LandingPage() {
                     <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] leading-tight mb-10 tracking-tight">
                         {isEn ? (
                             <>
-                                Ore-no-Fusen lives<br />
+                                FUSEN lives<br />
                                 on <span className="text-[#5C7A3E]">your own PC.</span>
                             </>
                         ) : (
