@@ -50,6 +50,7 @@ next-env.d.ts
 
 # 一時ファイル置き場
 /tmp
+/.tmp/
 
 # バックアップファイル置き場
 /bk
@@ -79,3 +80,6 @@ promo/work/
 AGENTS.md
 wiki-temp/
 .planning/press/
+
+# ユーザー指定のローカル画像アセット
+/public/store-logo-1080.png
