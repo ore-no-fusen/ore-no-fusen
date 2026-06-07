@@ -37,6 +37,27 @@ pub fn sanitize_context(context: &str) -> String {
     safe_context.trim().to_string()
 }
 
+fn is_markdown_image_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with("![") && trimmed.contains("](") && trimmed.ends_with(')')
+}
+
+pub fn select_context_line(body: &str) -> &str {
+    let mut non_empty_lines = body.lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty());
+
+    match non_empty_lines.next() {
+        Some(first_line) if is_markdown_image_line(first_line) => {
+            non_empty_lines
+                .find(|line| !is_markdown_image_line(line))
+                .unwrap_or("")
+        }
+        Some(first_line) => first_line,
+        None => "",
+    }
+}
+
 pub fn generate_filename(seq: i32, date: &str, context: &str) -> String {
     format!("{:04}_{}_{}.md", seq, date, context)
 }
@@ -197,10 +218,7 @@ pub fn handle_save_note(
 
     // Parse current filename to get fixed params (seq, created)
     let (seq, created_date, old_context) = parse_filename(&filename);
-    let first_line = body.lines()
-        .map(|l| l.trim())
-        .find(|l| !l.is_empty() && !l.starts_with("!["))
-        .unwrap_or("");
+    let first_line = select_context_line(body);
 
     // Find old meta for comparison
     let old_meta = state.notes.iter().find(|n| n.path == current_path).cloned();
@@ -542,6 +560,27 @@ mod tests {
     }
 
     #[test]
+    fn select_context_line_uses_first_text_line() {
+        let body = "通常のタイトル\n![image](assets/pasted.png)\nメモ";
+
+        assert_eq!(select_context_line(body), "通常のタイトル");
+    }
+
+    #[test]
+    fn select_context_line_uses_second_line_when_first_line_is_image() {
+        let body = "![image](assets/pasted_20260608.png)\nこのエラーをあとで確認";
+
+        assert_eq!(select_context_line(body), "このエラーをあとで確認");
+    }
+
+    #[test]
+    fn select_context_line_skips_blank_after_first_image() {
+        let body = "![image](assets/pasted_20260608.png)\n\nこの画面を調べる";
+
+        assert_eq!(select_context_line(body), "この画面を調べる");
+    }
+
+    #[test]
     fn sanitize_real_world_example() {
         // 実際のユースケース: Windowsパスをファイル名に
         let input = "C:\\Users\\test\\Documents";
@@ -618,7 +657,7 @@ mod tests {
     #[test]
     fn parse_filename_large_seq_number() {
         // 大きなシーケンス番号
-        let (seq, date, context) = parse_filename("9999_2026-01-12_テスト.md");
+        let (seq, _date, _context) = parse_filename("9999_2026-01-12_テスト.md");
         assert_eq!(seq, 9999);
     }
 
@@ -739,7 +778,7 @@ alwaysOnTop: true
 メモの本文
 "#;
         
-        let (x, y, width, height, color, aot, tags, _) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, _tags, _) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(150.0));
         assert_eq!(y, Some(200.0));
@@ -760,7 +799,7 @@ window: { x: 100, y: 150, width: 200, height: 300 }
 backgroundColor: #f7e9b0
 ---"#;
         
-        let (x, y, width, height, color, aot, tags, _) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, _tags, _) = extract_meta_from_content(content);
         
         assert_eq!(x, Some(100.0));
         assert_eq!(y, Some(150.0));
@@ -775,7 +814,7 @@ backgroundColor: #f7e9b0
         // フロントマターが存在しない場合
         let content = "ただのテキスト";
         
-        let (x, y, width, height, color, aot, tags, _) = extract_meta_from_content(content);
+        let (x, y, width, height, color, aot, _tags, _) = extract_meta_from_content(content);
         
         // 全てNone
         assert_eq!(x, None);
@@ -1149,4 +1188,3 @@ tags: [OreNoFusen, 開発プロセス]
         assert_eq!(result, content, "フロントマターなしはそのまま");
     }
 }
-

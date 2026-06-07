@@ -213,6 +213,8 @@ export interface RichTextEditorProps {
     onSelectionChange?: (coords: { top: number; left: number; bottom: number } | null) => void; // テキスト選択変化
     // [NEW] Pool 窓用: 0→1 文字遷移を検出して 1 回だけ呼ぶコールバック（IME 未確定中も含む）
     onFirstChar?: () => void;
+    // Pool 窓用: 画像貼り付けなど文字入力以外でも保存先ファイルを確保する
+    onEnsureFilePath?: () => Promise<string | null>;
 }
 
 // 外部から呼べるメソッドの型定義
@@ -548,13 +550,17 @@ const selectVisualLine = (view: EditorView, forward: boolean): boolean => {
 };
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
-    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar } = props;
+    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath } = props;
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
     const filePathCompartment = useRef(new Compartment());
     const isReadyRef = useRef(false); // [NEW] 初期化直後の誤検知防止用フラグ
     const suppressFormatBarUntilRef = useRef(0);
+    const latestFilePathRef = useRef(filePath);
+    const latestOnEnsureFilePathRef = useRef(onEnsureFilePath);
+    latestFilePathRef.current = filePath;
+    latestOnEnsureFilePathRef.current = onEnsureFilePath;
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
@@ -1236,9 +1242,20 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                     // カーソル位置の取得
                                     const currentPos = view.state.selection.main.from;
 
-                                    // Invoke backend command to save image from clipboard
-                                    import('@tauri-apps/api/core').then(({ invoke }) => {
-                                        invoke<string>('fusen_get_image_from_clipboard', { path: filePath })
+                                    // Invoke backend command to save image from clipboard.
+                                    // Ctrl+N の高速付箋は最初の文字まで実ファイルが無いので、
+                                    // 画像貼り付けでも先に保存先ファイルを確保する。
+                                    (async () => {
+                                        const targetFilePath =
+                                            view.state.facet(filePathFacet) ||
+                                            latestFilePathRef.current ||
+                                            await latestOnEnsureFilePathRef.current?.();
+                                        if (!targetFilePath) {
+                                            throw new Error('No note path available for image paste');
+                                        }
+                                        const { invoke } = await import('@tauri-apps/api/core');
+                                        return invoke<string>('fusen_get_image_from_clipboard', { path: targetFilePath });
+                                    })()
                                             .then((savedPath) => {
                                                 // Insert markdown: ![image](path)
                                                 // Use "image" as alt text, can be changed later
@@ -1260,7 +1277,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                                 console.error('[EDITOR] Failed to paste image:', err);
                                                 // Optional: Show error to user?
                                             });
-                                    });
 
                                     return;
                                 }

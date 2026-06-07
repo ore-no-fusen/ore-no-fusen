@@ -131,6 +131,8 @@ const StickyNote = memo(function StickyNote() {
     const poolPromotedRef = useRef<boolean>(isPoolParams);
     // lazyFolderPathRef: promote 時に受け取ったフォルダパス（1 文字目で fusen_create_note_lazy に渡す）
     const lazyFolderPathRef = useRef<string>('');
+    // 文字入力と画像貼り付けが同時に lazy 作成を要求しても 1 回にまとめる
+    const lazyCreatePromiseRef = useRef<Promise<string | null> | null>(null);
 
     // アラーム用 refs（setInterval内でstale closureを避けるため）
     const rawFrontmatterForAlarmRef = useRef('');
@@ -769,20 +771,26 @@ const StickyNote = memo(function StickyNote() {
     // [NEW] Pool 窓 lazy ファイル作成コールバック（0→1 文字遷移時に 1 回だけ呼ぶ）
     // RichTextEditor の onFirstChar prop に渡す。firstCharFiredRef で再入防止（pitfall 5）。
     // Atomic Coordination Constraint 厳守: invoke は 1 回のみ、複数 await 直列禁止。
-    const handleFirstChar = useCallback(async () => {
+    const handleFirstChar = useCallback(async (): Promise<string | null> => {
+        if (noteFilePathRef.current) {
+            return noteFilePathRef.current;
+        }
+        if (lazyCreatePromiseRef.current) {
+            return lazyCreatePromiseRef.current;
+        }
         // 再入防止: promote 後の最初の 0→1 文字遷移のみ発火
-        if (firstCharFiredRef.current) return;
+        if (firstCharFiredRef.current) return null;
         // pool 由来の窓のみ対象（pool 窓または pool から昇格した窓）
-        if (!isPoolRef.current && !poolPromotedRef.current) return;
+        if (!isPoolRef.current && !poolPromotedRef.current) return null;
         firstCharFiredRef.current = true;
 
         const folderPath = lazyFolderPathRef.current;
         if (!folderPath) {
             console.warn('[POOL] handleFirstChar: folderPath empty, skipping lazy create');
-            return;
+            return null;
         }
 
-        try {
+        lazyCreatePromiseRef.current = (async () => {
             const note = await invoke<{ meta: { path: string; seq: number; context: string; updated: string }; body: string; frontmatter: string }>('fusen_create_note_lazy', { folderPath, context: '' });
             invoke('fusen_debug_log', { message: `[POOL_LAZY] fusen_create_note_lazy OK path=${note.meta.path}` }).catch(() => { });
             // ファイルが作成されたので selectedFile と URL を更新
@@ -795,15 +803,22 @@ const StickyNote = memo(function StickyNote() {
             isPoolRef.current = false;
             setIsPool(false);
             setRawFrontmatter(note.frontmatter);
+            // T2_READY +5s 後に Pool 補充トリガを発火（1 文字目以降は 300ms 予算外なのでリソース消費 OK）
+            setTimeout(() => {
+                invoke('fusen_replenish_pool').catch(e => console.warn('[POOL] replenish failed:', e));
+            }, 5000);
+            return createdPath;
+        })();
+
+        try {
+            return await lazyCreatePromiseRef.current;
         } catch (e) {
             console.error('[POOL] fusen_create_note_lazy failed:', e);
             firstCharFiredRef.current = false; // 失敗時はリセットして再挑戦を許可
+            return null;
+        } finally {
+            lazyCreatePromiseRef.current = null;
         }
-
-        // T2_READY +5s 後に Pool 補充トリガを発火（1 文字目以降は 300ms 予算外なのでリソース消費 OK）
-        setTimeout(() => {
-            invoke('fusen_replenish_pool').catch(e => console.warn('[POOL] replenish failed:', e));
-        }, 5000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
 
@@ -1850,6 +1865,7 @@ const StickyNote = memo(function StickyNote() {
                                 onBlur={handleEditBlur}
                                 onSelectionChange={handleSelectionChange}
                                 onFirstChar={handleFirstChar}
+                                onEnsureFilePath={handleFirstChar}
                             />
                         </Suspense>
                         {floatBarCoords && (
