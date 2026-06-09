@@ -18,7 +18,7 @@ import { Analytics } from "@vercel/analytics/next";
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
 const SITE_DESCRIPTION =
-  "PCで書いて、iPhoneへ届く。iPhoneで書いて、PCに残る。Ctrl+N で 0.3 秒起動、無料、データはあなたの手元（PC＋自分の Google Drive）に。";
+  "消えそうな思考を、逃がさない。\n\n思考を構造化し、\nAIで図解や資料へつなげる。";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -65,8 +65,7 @@ export const metadata: Metadata = {
     url: SITE_URL,
     siteName: "俺の付箋",
     title: "FUSEN — My Sticky Notes for Windows",
-    description:
-      "PCで書いて、iPhoneへ届く。Ctrl+N で 0.3 秒起動。無料・ローカル保存。",
+    description: SITE_DESCRIPTION,
     images: [
       {
         url: OG_IMAGE,
@@ -82,8 +81,7 @@ export const metadata: Metadata = {
     site: "@uchikiman",
     creator: "@uchikiman",
     title: "FUSEN — My Sticky Notes for Windows",
-    description:
-      "PCで書いて、iPhoneへ届く。Ctrl+N で 0.3 秒起動。無料・ローカル保存。",
+    description: SITE_DESCRIPTION,
     images: [OG_IMAGE],
   },
   alternates: {
