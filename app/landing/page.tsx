@@ -10,9 +10,9 @@
  *  5. 機能             思想の言い換えとして
  *  6. PC↔iPhone        思考をどこでも逃がさない
  *  7. 棲み分け         Sticky Notes / Excel の、あいだ
- *  8. 使い方シナリオ
- *  9. 体験デモ
- * 10. オレノフ動画
+ *  8. 体験デモ
+ *  9. オレノフ動画
+ * 10. 活用ギャラリー   「こんな使い方もあるのか」（動画の余韻の直後）
  * 11. プライバシー
  * 12. 最後のCTA
  */
@@ -1402,8 +1402,60 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            {/* 波形 */}
+            {/* 波形 (動画 -> ギャラリー) */}
             <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#EDE4D3' }}>
+                <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
+                    <path d="M0,20 C300,40 900,0 1200,20 L1200,40 L0,40 Z" fill="#FAF6EE" />
+                </svg>
+            </div>
+
+            {/* ==============================
+                活用ギャラリー（使い方シナリオ）
+                動画で世界観に共感した直後 → 「こんな使い方もあるのか」と実用面が膨らむ
+            ============================== */}
+            <section className="py-24 px-6" style={{ backgroundColor: '#FAF6EE' }}>
+                <div className="max-w-5xl mx-auto">
+                    <div className="text-center mb-16">
+                        <p className="text-xs font-bold text-[#5C7A3E] uppercase tracking-[0.2em] mb-4">
+                            {isEn ? 'Use Cases' : '俺の付箋 活用ギャラリー'}
+                        </p>
+                        <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] tracking-tight">
+                            {isEn ? 'AI eras canvas' : 'AI時代の"思考のキャンバス"として'}
+                        </h2>
+                        <p className="mt-6 text-[#6A5540] text-base sm:text-lg">
+                            {isEn
+                                ? 'Transform rough ideas into beautiful diagrams instantly.'
+                                : '思いついた構造を「俺の付箋」に雑に書き留め、AIに投げるだけ。'}
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {/* 活用事例カード */}
+                        <a href="https://qiita.com/ktdatascience/items/4b35eb4e157becfac073" target="_blank" rel="noopener noreferrer"
+                            className="group bg-white rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1"
+                            style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #EAE0D0' }}>
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-8 h-8 rounded-full bg-[#55C500] flex items-center justify-center text-white font-bold text-xs">
+                                    Q
+                                </div>
+                                <span className="text-xs font-bold text-[#8A7055] tracking-wide">Qiita</span>
+                            </div>
+                            <h3 className="font-bold text-[#2C1F0E] text-lg leading-snug mb-3 group-hover:text-[#5C7A3E] transition-colors">
+                                【図解】エンジニアの「雑なMermaid」を、ビジネス側に刺さる図解に変換する
+                            </h3>
+                            <p className="text-sm text-[#6A5540] leading-relaxed mb-6">
+                                俺の付箋でパッと思いついた構造をメモし、Google Gemini（Gems）に投げるだけで美しいインフォグラフィックが完成するワークフロー。
+                            </p>
+                            <div className="text-sm font-bold text-[#5C7A3E] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                記事を読む <span className="text-lg leading-none">→</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </section>
+
+            {/* 波形 (ギャラリー -> プライバシー) */}
+            <div className="overflow-hidden leading-none" style={{ height: 40, backgroundColor: '#FAF6EE' }}>
                 <svg viewBox="0 0 1200 40" preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%' }}>
                     <path d="M0,20 C300,40 900,0 1200,20 L1200,40 L0,40 Z" fill="#E2D7C3" />
                 </svg>
@@ -1534,6 +1586,7 @@ export default function LandingPage() {
                     </div>
                 </div>
             </section>
+
 
             {/* フッター */}
             <footer
