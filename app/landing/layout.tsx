@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
 const LANDING_DESCRIPTION =
-  "消えそうな思考を、逃がさない。\n\n思考を構造化し、\nAIで図解や資料へつなげる。";
+  "消えそうな思考を、逃がさない。思考を構造化し、AIで図解や資料へつなげる。";
 
 export const metadata: Metadata = {
   title: "FUSEN — My Sticky Notes for Windows",
