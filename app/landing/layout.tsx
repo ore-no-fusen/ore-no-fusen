@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
 const LANDING_DESCRIPTION =
-  "俺の付箋は、Windowsのデスクトップ付箋をiPhoneとGoogle Driveでつなぐ無料アプリです。PCで書いたメモをiPhoneへ送り、iPhoneからPCへも戻せます。";
+  "消えそうな思考を、逃がさない。\n\n思考を構造化し、\nAIで図解や資料へつなげる。";
 
 export const metadata: Metadata = {
   title: "FUSEN — My Sticky Notes for Windows",
