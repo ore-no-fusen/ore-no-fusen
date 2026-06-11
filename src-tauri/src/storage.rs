@@ -439,16 +439,38 @@ pub fn open_in_explorer(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// explorer.exe に渡す引数用にパスを整形する。
+///
+/// 1. `/` を `\` に変換（Windows 形式へ統一）
+/// 2. 末尾のバックスラッシュを除去（ドライブルート `C:\` は除く）
+///
+/// 末尾を除去する理由: パスにスペースを含む場合、std::process::Command が
+/// 引数をダブルクォートで囲むため末尾が `\"` となり、Windows のコマンドライン
+/// 解析でエスケープされたクォートと誤認されてパスが壊れる（explorer が既定
+/// フォルダを開いてしまう）。`C:\` のようなルートは末尾 `\` を残さないと
+/// ドライブ指定が壊れるため保護する。
+fn normalize_explorer_arg(path: &str) -> String {
+    let windows_path = path.replace('/', "\\");
+    let trimmed = windows_path.trim_end_matches('\\');
+    // ルート（例 "C:"）まで削れた場合は元のドライブ表記 "C:\" を維持する
+    if trimmed.len() == 2 && trimmed.ends_with(':') {
+        format!("{}\\", trimmed)
+    } else if trimmed.is_empty() {
+        windows_path
+    } else {
+        trimmed.to_string()
+    }
+}
+
 pub fn open_file(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        // Convert forward slashes to backslashes for Windows
-        let windows_path = path.replace('/', "\\");
-        
+        let arg_path = normalize_explorer_arg(path);
+
         // Open file or folder with default application (explorer handles both)
         Command::new("explorer")
-            .arg(&windows_path)
+            .arg(&arg_path)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -795,5 +817,42 @@ tags: ["important"]
 
         assert_eq!(notes.len(), 1);
         assert!(file_path.exists(), "既存の標準形式ファイルが消えてはいけない");
+    }
+
+    // === normalize_explorer_arg のテスト ===
+    // スペース入りパスで末尾 `\` があると explorer が壊れる不具合の修正
+
+    #[test]
+    fn normalize_removes_trailing_backslash_with_space() {
+        // 不具合の本体: スペース有り + 末尾\ → 末尾\を除去する
+        assert_eq!(
+            normalize_explorer_arg("C:\\Program Files\\WindowsApps\\App_x64\\"),
+            "C:\\Program Files\\WindowsApps\\App_x64"
+        );
+    }
+
+    #[test]
+    fn normalize_keeps_path_without_trailing_backslash() {
+        // 末尾\が無ければそのまま
+        assert_eq!(
+            normalize_explorer_arg("C:\\Users\\uck\\note.md"),
+            "C:\\Users\\uck\\note.md"
+        );
+    }
+
+    #[test]
+    fn normalize_converts_forward_slashes() {
+        // `/` は `\` に変換され、末尾\も除去される
+        assert_eq!(
+            normalize_explorer_arg("C:/Users/uck/folder/"),
+            "C:\\Users\\uck\\folder"
+        );
+    }
+
+    #[test]
+    fn normalize_preserves_drive_root() {
+        // ドライブルートは末尾\を残す（"C:" にしない）
+        assert_eq!(normalize_explorer_arg("C:\\"), "C:\\");
+        assert_eq!(normalize_explorer_arg("C:/"), "C:\\");
     }
 }
