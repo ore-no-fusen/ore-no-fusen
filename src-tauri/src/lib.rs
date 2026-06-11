@@ -25,6 +25,7 @@ mod import; // インポート機能
 mod gdrive; // Google Drive 連携
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs)
 mod perflog; // パフォーマンス計測ログ（JSON Lines）
+mod crash_guard; // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）
 use state::{AppState, Note, NoteMeta, ProConfig};
 
 // --- Commands ---
@@ -2900,6 +2901,9 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 注入DLL由来の不正命令例外を最初期に捕捉するため、何より先に登録する。
+    crash_guard::install();
+
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .plugin(tauri_plugin_os::init()) // Added tauri_plugin_os::init()
