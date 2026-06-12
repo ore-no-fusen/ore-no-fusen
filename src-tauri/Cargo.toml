@@ -24,6 +24,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5.3", features = [] }
 
 [dependencies]
+# time は間接依存（tauri/cookie 等が利用）。0.3.48 は cookie/tauri-utils と
+# trait の重複実装 (E0119) を起こしビルドが失敗するため 0.3.47 に固定する。
+# Tauri 側が新しい time に対応したら、この固定を外して追従できる。
+time = "=0.3.47"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
