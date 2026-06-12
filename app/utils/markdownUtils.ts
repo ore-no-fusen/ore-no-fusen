@@ -7,6 +7,8 @@
  * - 画像Markdownの抽出と解析
  */
 
+import { isAbsoluteOrExternalPath } from './pathUtils';
+
 /**
  * 相対パスを絶対パスに解決する（Windows対応）
  *
@@ -16,7 +18,7 @@
  */
 export function resolvePath(baseFile: string, relativePath: string): string {
     // 既に絶対パスまたはURLの場合はそのまま返す
-    if (/^[a-zA-Z]:\\|^\\\\|^http/.test(relativePath)) {
+    if (isAbsoluteOrExternalPath(relativePath)) {
         return relativePath;
     }
 

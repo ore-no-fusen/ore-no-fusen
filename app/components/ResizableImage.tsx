@@ -20,11 +20,13 @@ export interface ResizableImageProps {
     baseOffset: number;
     contentReadOnly?: boolean;
     onAnnotationClick?: (absolutePath: string) => void;
+    markdownFallback?: string;
 }
 
-export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick }: ResizableImageProps) {
+export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick, markdownFallback }: ResizableImageProps) {
     const [currentWidth, setCurrentWidth] = useState<number | undefined>(undefined);
     const [isResizing, setIsResizing] = useState(false);
+    const [loadFailed, setLoadFailed] = useState(false);
     const imgRef = useRef<HTMLImageElement>(null);
     const startXRef = useRef<number>(0);
     const startWidthRef = useRef<number>(0);
@@ -47,6 +49,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
     });
 
     useEffect(() => {
+        setLoadFailed(false);
         let active = true;
 
         const loadSrc = async () => {
@@ -126,6 +129,18 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
         // naturalWidthRef が 0 の場合は書き込みをスキップ（画像未ロード状態）
     };
 
+    if (loadFailed) {
+        return (
+            <span
+                contentEditable={false}
+                data-src-start={baseOffset}
+                style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+            >
+                {markdownFallback ?? `![${alt}](${src})`}
+            </span>
+        );
+    }
+
     return (
         <span
             className="resizable-image-container"
@@ -147,6 +162,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                 alt={alt}
                 title={alt}
                 onLoad={handleImageLoad}
+                onError={() => setLoadFailed(true)}
                 style={{
                     width: currentWidth ? `${currentWidth}px` : 'auto',
                     maxWidth: '100%',

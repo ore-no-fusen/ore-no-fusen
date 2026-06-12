@@ -40,6 +40,31 @@ export function pathsEqual(path1: string, path2: string): boolean {
 }
 
 /**
+ * 絶対パスまたは外部リソースかどうかを判定する
+ * - Windows drive paths: C:\foo, C:/foo
+ * - UNC paths: \\server\share, //server/share
+ * - External URLs / data URIs
+ */
+export function isAbsoluteOrExternalPath(path: string): boolean {
+    return /^(?:[a-zA-Z]:[\\/]|\\\\|\/\/|https?:\/\/|data:)/i.test(path);
+}
+
+/**
+ * 本文中でクリック可能にするリンク対象を検出する正規表現を作る。
+ * RegExp の lastIndex 共有を避けるため、利用箇所ごとに生成する。
+ */
+export function createLinkTargetRegex(): RegExp {
+    return /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:[\\/][^:<>"?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
+}
+
+/**
+ * 文字列全体がクリック可能リンク対象かどうかを判定する。
+ */
+export function isLinkTarget(text: string): boolean {
+    return /^(?:https?:\/\/[^\s]+)$|^(?:[a-zA-Z]:[\\/][^:<>"?*|\r\n]+)$|^(?:\\\\[^:<>"\/?*|\r\n]+)$/.test(text);
+}
+
+/**
  * パスからファイル名を取得する
  * Windows / Unix 両対応
  * 

@@ -399,24 +399,23 @@ pub fn open_in_explorer(path: &str) -> Result<(), String> {
         use std::process::Command;
         use std::path::Path;
 
-        // Convert forward slashes to backslashes for Windows
-        let windows_path = path.replace('/', "\\");
+        let arg_path = normalize_explorer_arg(path);
 
         // [DEBUG] Log path
         crate::logger::log_info(&format!("[DEBUG] open_in_explorer called with: '{}'", path));
         
-        let path_obj = Path::new(&windows_path);
+        let path_obj = Path::new(&arg_path);
         
         if path_obj.exists() {
             // Plan A: File exists, select it
             Command::new("explorer")
                 .arg("/select,")
-                .arg(&windows_path)
+                .arg(&arg_path)
                 .spawn()
                 .map_err(|e| e.to_string())?;
         } else {
             // Plan B: File missing, open parent folder (Fallback)
-            crate::logger::log_warn(&format!("[WARN] File not found: '{}'. Opening parent folder.", windows_path));
+            crate::logger::log_warn(&format!("[WARN] File not found: '{}'. Opening parent folder.", arg_path));
             if let Some(parent) = path_obj.parent() {
                  Command::new("explorer")
                     .arg(parent)
@@ -425,7 +424,7 @@ pub fn open_in_explorer(path: &str) -> Result<(), String> {
             } else {
                  // Fallback if parent lookup fails (e.g. root), try opening path directly
                   Command::new("explorer")
-                    .arg(&windows_path)
+                    .arg(&arg_path)
                     .spawn()
                     .map_err(|e| e.to_string())?;
             }
@@ -854,5 +853,14 @@ tags: ["important"]
         // ドライブルートは末尾\を残す（"C:" にしない）
         assert_eq!(normalize_explorer_arg("C:\\"), "C:\\");
         assert_eq!(normalize_explorer_arg("C:/"), "C:\\");
+    }
+
+    #[test]
+    fn normalize_removes_trailing_backslash_for_open_in_explorer_folder() {
+        // open_in_explorer も同じ正規化済み引数で存在判定と explorer 起動を行う
+        assert_eq!(
+            normalize_explorer_arg("C:\\Users\\uck\\AppData\\Local\\ore-no-fusen\\some folder\\"),
+            "C:\\Users\\uck\\AppData\\Local\\ore-no-fusen\\some folder"
+        );
     }
 }

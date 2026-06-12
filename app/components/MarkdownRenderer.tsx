@@ -13,6 +13,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import ResizableImage from './ResizableImage';
+import { createLinkTargetRegex, isAbsoluteOrExternalPath, isLinkTarget } from '../utils/pathUtils';
 
 /**
  * Mermaid図ブロックコンポーネント
@@ -115,7 +116,7 @@ const parseInlineStyles = (text: string, baseOffset: number) => {
  * リンクをパースする
  */
 const parseLinks = (text: string, baseOffset: number) => {
-    const regex = /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
+    const regex = createLinkTargetRegex();
     const parts = text.split(regex);
     let currentOffset = 0;
 
@@ -128,7 +129,7 @@ const parseLinks = (text: string, baseOffset: number) => {
                 currentOffset += part.length;
 
                 // regexの状態をリセットするため、新しくマッチ判定
-                const isLink = /^(?:https?:\/\/[^\s]+)|^(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|^(?:\\\\[^:<>"\/?*|\r\n]+)$/.test(part);
+                const isLink = isLinkTarget(part);
                 if (isLink) {
                     return (
                         <span
@@ -288,7 +289,7 @@ export default function MarkdownRenderer({
 
             // 画像URLを解決（相対パス対応）
             let url = urlRaw;
-            if (selectedFilePath && !/^[a-zA-Z]:\\|^\\\\|^http/.test(urlRaw)) {
+            if (selectedFilePath && !isAbsoluteOrExternalPath(urlRaw)) {
                 url = resolvePath(selectedFilePath, urlRaw);
             }
 
@@ -321,6 +322,7 @@ export default function MarkdownRenderer({
                         alt={alt}
                         scale={scale}
                         baseOffset={baseOffset + index}
+                        markdownFallback={fullMatch}
                         onResizeEnd={(s) => onImageResize(s, baseOffset + index, fullMatch)}
                         contentReadOnly={false}
                         onAnnotationClick={onAnnotationClick}

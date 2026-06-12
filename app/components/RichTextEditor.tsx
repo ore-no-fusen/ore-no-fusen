@@ -18,11 +18,12 @@ import { highlightSelectionMatches, search, setSearchQuery, SearchQuery } from '
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, WidgetType } from '@codemirror/view'; // Remove scrollPastEnd
 import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
+import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUtils';
 
 // Helper to resolve relative path (same as in StickyNote)
 const resolvePath = (baseFile: string, relativePath: string) => {
     if (!baseFile) return relativePath;
-    if (/^[a-zA-Z]:\\|^\\\\|^http|^data:/.test(relativePath)) return relativePath;
+    if (isAbsoluteOrExternalPath(relativePath)) return relativePath;
 
     // Extract directory - support both \ and /
     const lastSlash = Math.max(baseFile.lastIndexOf('\\'), baseFile.lastIndexOf('/'));
@@ -68,6 +69,7 @@ class ImageWidget extends WidgetType {
                 alt={this.alt}
                 scale={this.scale}
                 baseOffset={0} // Not needed for widget
+                markdownFallback={this.fullMatch}
                 contentReadOnly={false}
                 onDragStart={(e) => {
                     e.stopPropagation(); // Stop CodeMirror from handling this drag
@@ -401,7 +403,7 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
 
 // [New] Link Detection Logic
 // URL and Windows Path Regex (Drive Letter & UNC)
-const LINK_REGEX = /((?:https?:\/\/[^\s]+)|(?:[a-zA-Z]:\\[^:<>"\/?*|\r\n]+)|(?:\\\\[^:<>"\/?*|\r\n]+))/g;
+const LINK_REGEX = createLinkTargetRegex();
 
 const linkDecorationField = ViewPlugin.fromClass(class {
     decorations: DecorationSet;
