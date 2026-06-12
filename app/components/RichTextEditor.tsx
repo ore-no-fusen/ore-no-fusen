@@ -551,6 +551,32 @@ const selectVisualLine = (view: EditorView, forward: boolean): boolean => {
     return true;
 };
 
+const IMAGE_MARKDOWN_LINE_REGEX = /^\s*!\[[^\]]*\]\([^)]+\)\s*$/;
+
+const moveFromImageLineEnd = (view: EditorView, direction: 'left' | 'right'): boolean => {
+    const range = view.state.selection.main;
+    if (!range.empty) return false;
+
+    const line = view.state.doc.lineAt(range.head);
+    if (range.head <= line.from || !IMAGE_MARKDOWN_LINE_REGEX.test(line.text)) {
+        return false;
+    }
+
+    const target = direction === 'left'
+        ? line.from
+        : line.number < view.state.doc.lines
+            ? view.state.doc.line(line.number + 1).from
+            : view.state.doc.length;
+
+    if (target === range.head) return false;
+
+    view.dispatch({
+        selection: { anchor: target, head: target },
+        scrollIntoView: true,
+    });
+    return true;
+};
+
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
     const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath } = props;
     const editorRef = useRef<HTMLDivElement>(null);
@@ -1002,6 +1028,16 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: 'ArrowUp',
                             shift: (view) => selectVisualLine(view, false),
+                            preventDefault: true,
+                        },
+                        {
+                            key: 'ArrowRight',
+                            run: (view) => moveFromImageLineEnd(view, 'right'),
+                            preventDefault: true,
+                        },
+                        {
+                            key: 'ArrowLeft',
+                            run: (view) => moveFromImageLineEnd(view, 'left'),
                             preventDefault: true,
                         },
                         {
