@@ -36,6 +36,10 @@ pub fn save_settings<R: Runtime>(
         }
     }
 
+    if let Some(base_path) = &settings.base_path {
+        storage::validate_storage_path(base_path)?;
+    }
+
     // 1. ファイルに保存
     storage::save_settings(&settings)?;
 

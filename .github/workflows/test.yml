@@ -1,0 +1,24 @@
+name: Test
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build:tauri
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --lib
+      - name: cargo test (symlink safety, ignored)
+        working-directory: src-tauri
+        run: cargo test --lib -- --ignored

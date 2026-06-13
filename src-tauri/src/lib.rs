@@ -14,6 +14,7 @@ use raw_window_handle::HasWindowHandle;
 
 mod state;
 mod logic;
+mod distribution;
 mod storage;
 mod tray;
 mod logger;  // ログシステム
@@ -934,6 +935,42 @@ fn fusen_path_exists(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
 }
 
+fn log_startup_distribution_diagnostics() {
+    logger::log_info(&format!("distribution_kind: {}", distribution::get_distribution_kind()));
+
+    match std::env::current_exe() {
+        Ok(path) => logger::log_info(&format!("diagnostic current_exe: {:?}", path)),
+        Err(e) => logger::log_warn(&format!("diagnostic current_exe failed: {}", e)),
+    }
+
+    logger::log_info(&format!("diagnostic APPDATA: {:?}", std::env::var("APPDATA")));
+    logger::log_info(&format!("diagnostic LOCALAPPDATA: {:?}", std::env::var("LOCALAPPDATA")));
+
+    match storage::load_settings() {
+        Ok(settings) => {
+            logger::log_info(&format!("diagnostic base_path: {:?}", settings.base_path));
+            if let Some(base_path) = settings.base_path {
+                logger::log_info(&format!(
+                    "diagnostic canonical_base_path: {:?}",
+                    dunce::canonicalize(&base_path)
+                ));
+                logger::log_info(&format!(
+                    "diagnostic base_path_is_symlink: {}",
+                    std::fs::symlink_metadata(&base_path)
+                        .map(|meta| meta.file_type().is_symlink())
+                        .unwrap_or(false)
+                ));
+            }
+        }
+        Err(e) => logger::log_warn(&format!("diagnostic settings load failed: {}", e)),
+    }
+
+    match storage::get_settings_path() {
+        Ok(path) => logger::log_info(&format!("diagnostic settings_path: {:?}", path)),
+        Err(e) => logger::log_warn(&format!("diagnostic settings_path failed: {}", e)),
+    }
+}
+
 // UC-01, UC-02, UC-03: セットアップ統合コマンド
 #[tauri::command]
 fn setup_first_launch(
@@ -968,6 +1005,12 @@ fn setup_first_launch(
         if use_default { "Default" } else { "Custom" }));
     logger::log_debug(&format!("Vault folder: {}", logger::sanitize_path(&base_path)));
     
+    storage::validate_storage_path(&base_path)
+        .map_err(|e| {
+            logger::log_error(&format!("Invalid vault directory: {}", e));
+            e
+        })?;
+
     // 2. UC-03: フォルダ作成 + trashフォルダ作成
     storage::ensure_directory(&base_path)
         .map_err(|e| {
@@ -3044,6 +3087,7 @@ pub fn run() {
                 Ok(path) => logger::log_info(&format!("設定ファイルパス: {:?}", path)),
                 Err(e) => logger::log_warn(&format!("設定ファイルパスの解決に失敗: {}", e)),
             }
+            log_startup_distribution_diagnostics();
             
             // UC-01: 設定ファイルからbase_pathを読み込み、AppStateに反映
             logger::log_info("設定を読み込んでいます...");

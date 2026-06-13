@@ -8,6 +8,7 @@
  */
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use crate::state::{Note, NoteMeta};
@@ -33,6 +34,10 @@ pub fn load_settings() -> Result<Settings, String> {
 }
 
 pub fn save_settings(settings: &Settings) -> Result<(), String> {
+    if let Some(base_path) = &settings.base_path {
+        validate_storage_path(base_path)?;
+    }
+
     let path = get_settings_path()?;
     let content = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     fs::write(path, content).map_err(|e| e.to_string())
@@ -40,6 +45,46 @@ pub fn save_settings(settings: &Settings) -> Result<(), String> {
 
 pub fn ensure_directory(path: &str) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|e| e.to_string())
+}
+
+pub fn validate_storage_path(path: &str) -> Result<(), String> {
+    if is_dangerous_storage_path(path) {
+        return Err("危険な保存先のため使用できません".to_string());
+    }
+
+    Ok(())
+}
+
+pub fn is_dangerous_storage_path(path: &str) -> bool {
+    let target = Path::new(path);
+    let normalized = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+
+    is_path_under(&normalized, Path::new(r"C:\Program Files\WindowsApps"))
+        || std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|parent| parent.to_path_buf()))
+            .map_or(false, |exe_dir| is_path_under(&normalized, &exe_dir))
+        || (crate::distribution::is_msix_packaged()
+            && std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|parent| parent.to_path_buf()))
+                .map_or(false, |exe_dir| is_path_under(&normalized, &exe_dir)))
+}
+
+#[cfg(windows)]
+fn is_path_under(path: &Path, parent: &Path) -> bool {
+    let path_str = path.to_string_lossy().replace('/', "\\").to_lowercase();
+    let mut parent_str = parent.to_string_lossy().replace('/', "\\").to_lowercase();
+    while parent_str.ends_with('\\') && parent_str.len() > 3 {
+        parent_str.pop();
+    }
+
+    path_str == parent_str || path_str.starts_with(&format!("{}\\", parent_str))
+}
+
+#[cfg(not(windows))]
+fn is_path_under(path: &Path, parent: &Path) -> bool {
+    path.starts_with(parent)
 }
 
 // UC-02: インポート機能（.mdファイルをコピー + Δ0.7形式フロントマター生成）
@@ -240,8 +285,20 @@ pub fn read_note(path: &str) -> Result<Note, String> {
 }
 
 pub fn write_note(path: &str, content: &str) -> Result<(), String> {
-    // Atomic Write attempt: Write to temp file then rename
     let path_obj = Path::new(path);
+    let write_path = match fs::symlink_metadata(path_obj) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            dunce::canonicalize(path_obj)
+                .map_err(|e| format!("リンク先の解決に失敗しました: {}", e))?
+        }
+        _ => path_obj.to_path_buf(),
+    };
+
+    atomic_write_note(&write_path, content)
+}
+
+fn atomic_write_note(path_obj: &Path, content: &str) -> Result<(), String> {
+    // Atomic Write attempt: Write to temp file then rename
     // temp path: same dir, different extension to ensure same filesystem
     
     // Add a random suffix or just .tmp extension. 
@@ -252,7 +309,9 @@ pub fn write_note(path: &str, content: &str) -> Result<(), String> {
     let temp_filename = format!("{}.{}.tmp", file_stem, extension);
     let temp_path = path_obj.parent().unwrap_or(Path::new(".")).join(temp_filename);
 
-    if let Err(e) = fs::write(&temp_path, content) {
+    if let Err(e) = fs::File::create(&temp_path)
+        .and_then(|mut file| file.write_all(content.as_bytes()))
+    {
         return Err(format!("Failed to write temp file: {}", e));
     }
 
@@ -517,7 +576,10 @@ fn backup_dir_recursive(src: &std::path::Path, dst: &std::path::Path, count: &mu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     // === write_note と read_note のテスト ===
     // ファイルI/O操作の基本
@@ -579,6 +641,116 @@ mod tests {
         // 読み込んで確認
         let note = read_note(&file_path_str).unwrap();
         assert_eq!(note.body, "上書きされた内容");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires permission to create file symlinks on Windows"]
+    fn test_write_note_preserves_symlink_and_updates_target() {
+        let dir = tempdir().unwrap();
+        let target_path = dir.path().join("target.md");
+        let link_path = dir.path().join("link.md");
+
+        std::fs::write(&target_path, "before").unwrap();
+        std::os::windows::fs::symlink_file(&target_path, &link_path).expect(
+            "creating a file symlink requires admin or Developer Mode; \
+             run this --ignored test in such an environment (e.g. CI windows runner)",
+        );
+
+        write_note(&link_path.to_string_lossy(), "after").unwrap();
+
+        assert!(
+            std::fs::symlink_metadata(&link_path)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "保存後もリンクであること"
+        );
+        assert_eq!(std::fs::read_to_string(&target_path).unwrap(), "after");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires permission to create file symlinks on Windows"]
+    fn test_write_note_broken_symlink_returns_err_without_replacing_link() {
+        let dir = tempdir().unwrap();
+        let target_path = dir.path().join("missing.md");
+        let link_path = dir.path().join("broken.md");
+
+        std::os::windows::fs::symlink_file(&target_path, &link_path).expect(
+            "creating a file symlink requires admin or Developer Mode; \
+             run this --ignored test in such an environment (e.g. CI windows runner)",
+        );
+
+        let result = write_note(&link_path.to_string_lossy(), "after");
+
+        assert!(result.is_err(), "リンク切れ symlink への保存は失敗すること");
+        assert!(
+            std::fs::symlink_metadata(&link_path)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "失敗後もリンクが置き換わっていないこと"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_dangerous_storage_path_rejects_windows_apps() {
+        assert!(is_dangerous_storage_path(
+            r"C:\Program Files\WindowsApps\OreNoFusen"
+        ));
+    }
+
+    #[test]
+    fn test_dangerous_storage_path_rejects_current_exe_parent() {
+        let exe_dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let path = exe_dir.join("OreNoFusenData");
+
+        assert!(is_dangerous_storage_path(&path.to_string_lossy()));
+    }
+
+    #[test]
+    fn test_dangerous_storage_path_allows_normal_temp_path() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("Documents").join("OreNoFusen");
+
+        assert!(!is_dangerous_storage_path(&path.to_string_lossy()));
+    }
+
+    #[test]
+    fn test_save_settings_keeps_original_base_path_string() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap();
+        let appdata_dir = tempdir().unwrap();
+        let base_dir = tempdir().unwrap();
+        let raw_base_path = base_dir.path().join("..").join(
+            base_dir
+                .path()
+                .file_name()
+                .expect("temp dir has file name"),
+        );
+        let raw_base_path_str = raw_base_path.to_string_lossy().to_string();
+        let old_appdata = std::env::var("APPDATA").ok();
+
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let mut settings = Settings::default();
+        settings.base_path = Some(raw_base_path_str.clone());
+        save_settings(&settings).unwrap();
+
+        let saved = std::fs::read_to_string(get_settings_path().unwrap()).unwrap();
+        let saved_settings: Settings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(saved_settings.base_path, Some(raw_base_path_str));
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
     }
 
     // === rename_note のテスト ===
