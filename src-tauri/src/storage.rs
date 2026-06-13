@@ -8,7 +8,6 @@
  */
 
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use crate::state::{Note, NoteMeta};
@@ -285,20 +284,8 @@ pub fn read_note(path: &str) -> Result<Note, String> {
 }
 
 pub fn write_note(path: &str, content: &str) -> Result<(), String> {
-    let path_obj = Path::new(path);
-    let write_path = match fs::symlink_metadata(path_obj) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            dunce::canonicalize(path_obj)
-                .map_err(|e| format!("リンク先の解決に失敗しました: {}", e))?
-        }
-        _ => path_obj.to_path_buf(),
-    };
-
-    atomic_write_note(&write_path, content)
-}
-
-fn atomic_write_note(path_obj: &Path, content: &str) -> Result<(), String> {
     // Atomic Write attempt: Write to temp file then rename
+    let path_obj = Path::new(path);
     // temp path: same dir, different extension to ensure same filesystem
     
     // Add a random suffix or just .tmp extension. 
@@ -309,9 +296,7 @@ fn atomic_write_note(path_obj: &Path, content: &str) -> Result<(), String> {
     let temp_filename = format!("{}.{}.tmp", file_stem, extension);
     let temp_path = path_obj.parent().unwrap_or(Path::new(".")).join(temp_filename);
 
-    if let Err(e) = fs::File::create(&temp_path)
-        .and_then(|mut file| file.write_all(content.as_bytes()))
-    {
+    if let Err(e) = fs::write(&temp_path, content) {
         return Err(format!("Failed to write temp file: {}", e));
     }
 
@@ -641,57 +626,6 @@ mod tests {
         // 読み込んで確認
         let note = read_note(&file_path_str).unwrap();
         assert_eq!(note.body, "上書きされた内容");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    #[ignore = "requires permission to create file symlinks on Windows"]
-    fn test_write_note_preserves_symlink_and_updates_target() {
-        let dir = tempdir().unwrap();
-        let target_path = dir.path().join("target.md");
-        let link_path = dir.path().join("link.md");
-
-        std::fs::write(&target_path, "before").unwrap();
-        std::os::windows::fs::symlink_file(&target_path, &link_path).expect(
-            "creating a file symlink requires admin or Developer Mode; \
-             run this --ignored test in such an environment (e.g. CI windows runner)",
-        );
-
-        write_note(&link_path.to_string_lossy(), "after").unwrap();
-
-        assert!(
-            std::fs::symlink_metadata(&link_path)
-                .unwrap()
-                .file_type()
-                .is_symlink(),
-            "保存後もリンクであること"
-        );
-        assert_eq!(std::fs::read_to_string(&target_path).unwrap(), "after");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    #[ignore = "requires permission to create file symlinks on Windows"]
-    fn test_write_note_broken_symlink_returns_err_without_replacing_link() {
-        let dir = tempdir().unwrap();
-        let target_path = dir.path().join("missing.md");
-        let link_path = dir.path().join("broken.md");
-
-        std::os::windows::fs::symlink_file(&target_path, &link_path).expect(
-            "creating a file symlink requires admin or Developer Mode; \
-             run this --ignored test in such an environment (e.g. CI windows runner)",
-        );
-
-        let result = write_note(&link_path.to_string_lossy(), "after");
-
-        assert!(result.is_err(), "リンク切れ symlink への保存は失敗すること");
-        assert!(
-            std::fs::symlink_metadata(&link_path)
-                .unwrap()
-                .file_type()
-                .is_symlink(),
-            "失敗後もリンクが置き換わっていないこと"
-        );
     }
 
     #[cfg(windows)]

@@ -25,8 +25,3 @@ jobs:
       - name: cargo test
         working-directory: src-tauri
         run: cargo test --lib
-      - name: cargo test (symlink safety, ignored)
-        working-directory: src-tauri
-        # symlink 安全性テストのみ実行する。他の #[ignore] テスト
-        # (pool_window_layered 等) は実 HWND が要る未実装スタブのため対象外。
-        run: cargo test --lib -- --ignored symlink
