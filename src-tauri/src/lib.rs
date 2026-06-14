@@ -3166,20 +3166,24 @@ pub fn run() {
             // Autostart plugin (デスクトップのみ)
             #[cfg(desktop)]
             {
-                app.handle().plugin(tauri_plugin_autostart::init(
-                    tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                    None, // 引数なし
-                ))?;
-
-                // 設定に従って自動起動をOSに登録/解除
-                use tauri_plugin_autostart::ManagerExt;
-                let auto_start = storage::load_settings()
-                    .unwrap_or_default()
-                    .auto_start;
-                if auto_start {
-                    let _ = app.handle().autolaunch().enable();
+                if distribution::is_msix_packaged() {
+                    logger::log_info("MSIX: registry autostart skipped (StartupTask 使用)");
                 } else {
-                    let _ = app.handle().autolaunch().disable();
+                    app.handle().plugin(tauri_plugin_autostart::init(
+                        tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                        None, // 引数なし
+                    ))?;
+
+                    // 設定に従って自動起動をOSに登録/解除
+                    use tauri_plugin_autostart::ManagerExt;
+                    let auto_start = storage::load_settings()
+                        .unwrap_or_default()
+                        .auto_start;
+                    if auto_start {
+                        let _ = app.handle().autolaunch().enable();
+                    } else {
+                        let _ = app.handle().autolaunch().disable();
+                    }
                 }
             }
 
