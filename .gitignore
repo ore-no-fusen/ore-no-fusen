@@ -83,3 +83,9 @@ wiki-temp/
 
 # ユーザー指定のローカル画像アセット
 /public/store-logo-1080.png
+
+# MSIX local packaging artifacts
+packaging/msix/staging/
+*.pfx
+*.cer
+*.msix
