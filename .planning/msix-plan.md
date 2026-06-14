@@ -36,7 +36,7 @@
 | インストール先 | 書込可フォルダ | WindowsApps 配下＝読取専用・更新毎にパス変化 |
 | 任意フォルダ読み書き | できる | できる（runFullTrust 同等） |
 | symlink を作る | 権限次第（OSの話・差なし） | 権限次第（差なし） |
-| 設定(%APPDATA%) | 実体 | 仮想化され LocalCache に化ける |
+| 設定(%APPDATA%) | 実体 | 実体（実測: 仮想化されず MSI と共有） |
 | 付箋データ(Documents) | 実体 | 実体（仮想化対象外）＝両版で共有可 |
 | 自動更新 | Tauri updater | Store 管理（Tauri updater は効かない） |
 | 自動起動 | レジストリ Run キー | Run キーは効かない → StartupTask 必須 |
@@ -89,7 +89,8 @@ MSIX 分岐の土台と、共通の保存先防御。
 
 ## 4. MSIX の割り切り事項（ユーザーに制約として説明する）
 
-- 設定は MSIX↔MSI で引き継がれない（付箋データは引き継がれる）
+- 設定・付箋とも MSI↔MSIX で**共有される**（AppData 非仮想化を実測。MSIX お試し版は隔離サンドボックスではなく実データを使う点に注意）
+- MSI 版と MSIX 版は single-instance により**同時起動できない**（先発が後発を弾く・実測）
 - 高度なファイル運用（symlink 等）は MSIX では推奨しない／MSI 版推奨
 - 読取専用インストール先のため、保存先を特殊な場所にできない
 
@@ -100,7 +101,7 @@ MSIX 分岐の土台と、共通の保存先防御。
 - ブランチ `stage1-msix-data-safety`、develop **未マージ**（PR #4 オープン中）。**作業ツリー clean・未コミットなし**。
 - コミット済み: Stage 1（データ安全・symlink 削除）／MSIX 資材（manifest + build-msix.ps1）／Stage 2 ゲート（c61c093）／Stage 3a（e7b455e）／計画書・連携ログ。
 - 実 MSIX で検証済み: `distribution_kind=msix`・`MSIX: registry autostart skipped`（MSIX 専用分岐が本物のパッケージで効くことを実証）。
-- 実測知見: **MSIX は AppData を仮想化せず、設定・付箋を MSI と共有**（→ §4 の「設定は引き継がれない」は要修正）。MSI 版と MSIX 版は single-instance により同時起動不可。
+- 実測知見: **MSIX は AppData を仮想化せず、設定・付箋を MSI と共有**。MSI 版と MSIX 版は single-instance により同時起動不可（いずれも §4 に反映済み）。
 - 次の候補: Stage 3b（自動起動トグル）／Stage 2 更新検知UI／Stage 4（お試し版UI・docs・CI）／自動起動の再起動テスト（ユーザー作業）。
 
 ---
