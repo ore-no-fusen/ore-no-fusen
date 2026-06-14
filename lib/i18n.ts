@@ -32,6 +32,8 @@ export const translations = {
         'settings.general.language': '言語 (Language)',
         'settings.general.autoStart': 'ログイン時に起動',
         'settings.general.autoStartDesc': 'PC起動時に自動でアプリを立ち上げます',
+        'settings.general.autoStartDisabledByUser': 'Windows のスタートアップ設定で無効になっています（アプリからは再有効化できません）',
+        'settings.general.openWindowsStartupSettings': 'Windows のスタートアップ設定を開く',
         'settings.general.sound': '効果音 (SE)',
         'settings.general.soundDesc': '操作時のサウンドエフェクトを有効にする',
 
@@ -402,6 +404,8 @@ export const translations = {
         'settings.general.language': 'Language',
         'settings.general.autoStart': 'Auto Start',
         'settings.general.autoStartDesc': 'Launch automatically when you log in.',
+        'settings.general.autoStartDisabledByUser': 'Startup is disabled in Windows Startup settings and cannot be re-enabled from the app.',
+        'settings.general.openWindowsStartupSettings': 'Open Windows Startup settings',
         'settings.general.sound': 'Sound Effects',
         'settings.general.soundDesc': 'Play sounds on interaction.',
 

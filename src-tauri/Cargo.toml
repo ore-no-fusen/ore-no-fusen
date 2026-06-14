@@ -79,6 +79,8 @@ windows = { version = "0.52", features = [
     "Win32_System_Com",    # CoCreateInstance - COMオブジェクト生成
     "Win32_System_Diagnostics_Debug", # AddVectoredExceptionHandler - 注入DLL例外の記録
     "Win32_System_Kernel", # EXCEPTION_POINTERS など VEH 関連型に必要
+    "ApplicationModel",
+    "Foundation",
 ] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]

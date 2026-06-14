@@ -68,15 +68,15 @@ MSIX 分岐の土台と、共通の保存先防御。
   - desktop/MSI は従来どおり Tauri updater。
 - ⬜ **未着手**: 「更新があればボタン」の更新検知UI（StoreContext API、Win32 では HWND 紐付け要・本物の Store 識別子が必要）。
 
-### Stage 3：自動起動の振り分け ― 🟡 **3a 完了 / 3b 未着手**
+### Stage 3：自動起動の振り分け ― ✅ **3a・3b 完了（実機検証は 3b のみ未）**
 
 - ✅ **3a 完了・コミット済み（e7b455e）**: MSIX 時は tauri-plugin-autostart（レジストリ）を使わず、manifest の StartupTask に委譲。
   - 実 MSIX で `MSIX: registry autostart skipped (StartupTask 使用)` を確認。
   - `AppxManifest.xml` に `windows.startupTask` を Enabled=true で宣言済み＝デフォルト常駐起動。
-- ⬜ **3b 未着手（計画は下記 §3b に策定）**: 設定の「ログイン時に起動」トグルで StartupTask を ON/OFF。
+- ✅ **3b 完了**: 設定トグルで StartupTask を ON/OFF。disabled_by_user 時は警告＋Windows 設定導線、i18n(ja/en)対応。実装: `lib.rs`（`fusen_get_startup_state`/`fusen_set_startup_enabled`・`is_msix_packaged` ガード・パニックなし）、`Cargo.toml`（windows feature ApplicationModel/Foundation）、`settings-page.tsx`、`i18n.ts`。**実機テスト（§3b の受け入れ条件1〜5）は未実施**＝最新ビルドで再インストール後にトグル動作・再起動を確認する。
 - 注: ログイン時に実際に自動起動するかの最終確認（再起動テスト）は未実施。
 
-#### §3b 詳細計画（着手前に固める版・2026-06-14）
+#### §3b 詳細計画（✅ 実装済み・以下は策定時の計画とテスト基準）
 
 **目的**: MSIX 版で、設定の「ログイン時に起動」トグルが StartupTask を ON/OFF し、Windows 側で無効化された状態も UI に反映する。MSI/desktop は従来どおり（レジストリ方式）。
 
@@ -126,10 +126,11 @@ MSIX 分岐の土台と、共通の保存先防御。
 ## 5. 現在地（2026-06-14 時点）
 
 - ブランチ `stage1-msix-data-safety`、develop **未マージ**（PR #4 オープン中）。**作業ツリー clean・未コミットなし**。
-- コミット済み: Stage 1（データ安全・symlink 削除）／MSIX 資材（manifest + build-msix.ps1）／Stage 2 ゲート（c61c093）／Stage 3a（e7b455e）／計画書・連携ログ。
+- コミット済み: Stage 1（データ安全・symlink 削除）／MSIX 資材（manifest + build-msix.ps1）／Stage 2 ゲート（c61c093）／Stage 3a（e7b455e）／**Stage 3b 自動起動トグル**／計画書・連携ログ。
 - 実 MSIX で検証済み: `distribution_kind=msix`・`MSIX: registry autostart skipped`（MSIX 専用分岐が本物のパッケージで効くことを実証）。
 - 実測知見: **MSIX は AppData を仮想化せず、設定・付箋を MSI と共有**。MSI 版と MSIX 版は single-instance により同時起動不可（いずれも §4 に反映済み）。
-- 次の候補: Stage 3b（自動起動トグル）／Stage 2 更新検知UI／Stage 4（お試し版UI・docs・CI）／自動起動の再起動テスト（ユーザー作業）。
+- 次の候補: **Stage 4（お試し版UI・docs・CI）** ／ Stage 2 更新検知UI（本物の Store 識別子待ち・最後）。
+- ユーザー作業の保留: 自動起動の再起動テスト ＋ Stage 3b の実機テスト（最新ビルド再インストール→トグル→再起動）。
 
 ---
 

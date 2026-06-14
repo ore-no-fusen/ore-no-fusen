@@ -44,6 +44,95 @@ fn fusen_get_distribution_info() -> String {
     distribution::get_distribution_kind().to_string()
 }
 
+const STARTUP_TASK_ID: &str = "OreNoFusenStartup";
+
+#[cfg(target_os = "windows")]
+fn startup_task_state_to_string(
+    state: windows::ApplicationModel::StartupTaskState,
+) -> &'static str {
+    use windows::ApplicationModel::StartupTaskState;
+
+    match state {
+        StartupTaskState::Enabled => "enabled",
+        StartupTaskState::Disabled => "disabled",
+        StartupTaskState::DisabledByUser => "disabled_by_user",
+        StartupTaskState::DisabledByPolicy => "disabled_by_policy",
+        _ => "disabled",
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_startup_task() -> windows::core::Result<windows::ApplicationModel::StartupTask> {
+    use windows::ApplicationModel::StartupTask;
+    use windows::core::HSTRING;
+
+    StartupTask::GetAsync(&HSTRING::from(STARTUP_TASK_ID))?.get()
+}
+
+#[cfg(target_os = "windows")]
+fn get_msix_startup_state() -> Result<String, String> {
+    let task = get_startup_task().map_err(|e| e.to_string())?;
+    let state = task.State().map_err(|e| e.to_string())?;
+    Ok(startup_task_state_to_string(state).to_string())
+}
+
+#[tauri::command]
+fn fusen_get_startup_state() -> String {
+    if !distribution::is_msix_packaged() {
+        return "desktop".to_string();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        get_msix_startup_state().unwrap_or_else(|e| {
+            logger::log_warn(&format!("MSIX StartupTask state read failed: {}", e));
+            "disabled".to_string()
+        })
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        "desktop".to_string()
+    }
+}
+
+#[tauri::command]
+fn fusen_set_startup_enabled(enabled: bool) -> String {
+    if !distribution::is_msix_packaged() {
+        return "desktop".to_string();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let result = (|| -> Result<String, String> {
+            let task = get_startup_task().map_err(|e| e.to_string())?;
+            if enabled {
+                let state = task
+                    .RequestEnableAsync()
+                    .map_err(|e| e.to_string())?
+                    .get()
+                    .map_err(|e| e.to_string())?;
+                Ok(startup_task_state_to_string(state).to_string())
+            } else {
+                task.Disable().map_err(|e| e.to_string())?;
+                let state = task.State().map_err(|e| e.to_string())?;
+                Ok(startup_task_state_to_string(state).to_string())
+            }
+        })();
+
+        result.unwrap_or_else(|e| {
+            logger::log_warn(&format!("MSIX StartupTask update failed: {}", e));
+            get_msix_startup_state().unwrap_or_else(|_| "disabled".to_string())
+        })
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = enabled;
+        "desktop".to_string()
+    }
+}
+
 #[tauri::command]
 fn fusen_select_folder(state: State<'_, Mutex<AppState>>) -> Option<String> {
     let folder_opt = rfd::FileDialog::new().pick_folder();
@@ -2994,6 +3083,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_distribution_info,
+            fusen_get_startup_state,
+            fusen_set_startup_enabled,
             fusen_set_always_on_top,
             fusen_select_folder,
             fusen_list_notes,
