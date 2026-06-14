@@ -106,3 +106,12 @@
 2. **変更ファイルと差分要点**: `docs-v2/008_DISTRIBUTION.md` の §2 プロローグ1文のみ。
 3. **レビュー結果**: ✅ **合格**。指定どおり1文のみ修正。VitePress ビルド通過。
 4. **コミット**: `4004520`。**doc＋計画書（最終更新の同期）を両方含む** ✓。
+
+### #11 Stage 4 お試し版UI（Codex 実装 / Claude レビュー）
+
+1. **指示**: AboutSection に版表示（MSIX お試し版 / 通常版）。MSIX 時のみお試し説明＋「通常版（MSI）を入手」（Vercel `https://ore-no-fusen.vercel.app`）。desktop は版ラベルのみ。i18n(ja/en)。ユーザー確定値: リンク=Vercel、文言=例文、desktop も「通常版」表示。
+2. **変更ファイルと差分要点**:
+   - `components/ui/settings-page.tsx`: AboutSection で `fusen_get_distribution_info` 取得（失敗時 desktop）。バージョン下に版ラベル。MSIX 時のみ trialNote＋入手ボタン（plugin-shell open Vercel）。
+   - `lib/i18n.ts`: editionTrial/editionStandard/trialNote/getStandard を ja/en 追加。
+3. **レビュー結果**: ✅ **合格**。両版で版ラベル表示・MSIX 限定の説明/ボタン・desktop 既存表示 無傷・i18n OK。tsc / npm run lint / pre-commit 通過。
+4. **コミット**: `dc91c18`。**UI（settings-page.tsx・i18n.ts）＋計画書（§4-ui 完了・Stage4 状態同期）を両方含む** ✓。
