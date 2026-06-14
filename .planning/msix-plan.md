@@ -60,31 +60,26 @@ MSIX 分岐の土台と、共通の保存先防御。
 - 付随：pre-commit のポート開放バグ修正、テスト CI `test.yml` 新設
 - **symlink 対応は削除済み**（§1）。テスト CI からも symlink ステップを除去
 
-### Stage 2：自動更新の振り分け ― ⬜ **未着手（MSIX の必須項目①）**
+### Stage 2：自動更新の振り分け ― 🟡 **ゲートは完了 / 更新検知UIは未着手**
 
-- desktop：従来通り Tauri updater
-- MSIX：Tauri updater を止め、**更新があればボタンを出す**
-  - 起動時の自動 updater チェック（`app/hooks/useUpdateCheck.ts`）を MSIX 時は無効化
-  - 更新確認を Rust コマンドに一本化し配布形式で分岐
-  - 「更新検知ボタン」は StoreContext API で更新有無を取得する実装（Win32 では HWND 紐付けが要る）
-  - ※ 簡易版（常に「Storeで更新」ボタン）と本命版（更新検知）の選択 → **本命版を採用**
+- ✅ **完了・コミット済み（c61c093）**: MSIX 時は起動時の Tauri updater 自動チェックをスキップ。
+  - `lib.rs` に `fusen_get_distribution_info` コマンド追加、`useUpdateCheck.ts` で MSIX 時 return。
+  - 実 MSIX で `distribution_kind=msix` を確認＝更新チェックが走らないことを保証。
+  - desktop/MSI は従来どおり Tauri updater。
+- ⬜ **未着手**: 「更新があればボタン」の更新検知UI（StoreContext API、Win32 では HWND 紐付け要・本物の Store 識別子が必要）。
 
-### Stage 3：自動起動の振り分け ― ⬜ **未着手（MSIX の必須項目②・前提待ち）**
+### Stage 3：自動起動の振り分け ― 🟡 **3a 完了 / 3b 未着手**
 
-- desktop：従来の tauri-plugin-autostart（レジストリ）
-- MSIX：manifest の `windows.startupTask` で**デフォルト常駐起動**（管理者権限不要）
-  - Rust：MSIX 時は autostart プラグインを使わず StartupTask（windows crate）で状態取得・有効化
-  - 制約：ユーザーが Windows 設定で自分でオフにすると**アプリから再オンにできない** → UI に表示
-- **前提：現行 AppxManifest.xml（または Packaging Tool プロジェクト）の提供が必要**（StartupTask は manifest 宣言が要る）
+- ✅ **3a 完了・コミット済み（e7b455e）**: MSIX 時は tauri-plugin-autostart（レジストリ）を使わず、manifest の StartupTask に委譲。
+  - 実 MSIX で `MSIX: registry autostart skipped (StartupTask 使用)` を確認。
+  - `AppxManifest.xml` に `windows.startupTask` を Enabled=true で宣言済み＝デフォルト常駐起動。
+- ⬜ **3b 未着手**: 設定の「ログイン時に起動」トグルで StartupTask を ON/OFF（windows crate で状態取得・有効化）。Windows 設定でオフにされたら再オンできない旨の UI 表示も。
+- 注: ログイン時に実際に自動起動するかの最終確認（再起動テスト）は未実施。
 
-### Stage 4：MSIX 資材 ＋ お試し版案内 ＋ docs ― ⬜ **未着手**
+### Stage 4：MSIX 資材 ＋ お試し版案内 ＋ docs ― 🟡 **資材は完了 / UI・docs・CI は未着手**
 
-- `packaging/msix/` に AppxManifest.xml と生成スクリプト
-- release.yml に MSIX 生成ジョブ追加（store-submit.yml は現方式のまま）
-- 設定画面に「MSIX お試し版／MSI 本気版」の表示と案内
-- docs：割り切り事項を**制約として明記**
-  - 「付箋データ（Documents）は MSIX↔MSI で共有／設定（%APPDATA%）は引き継がれない」
-  - 「symlink での多タグ配置は非対応」「片側のタグフォルダへ移動する仕様」
+- ✅ **完了・コミット済み（107cf67）**: `packaging/msix/AppxManifest.xml`（ダミー識別子・runFullTrust・StartupTask 宣言）と `build-msix.ps1`（Tauri 成果物を包んで自己署名 MSIX 生成）。実行で署名済み MSIX 生成を実証。
+- ⬜ **未着手**: release.yml に MSIX 生成ジョブ追加。設定画面の「MSIX お試し版／MSI 本気版」表示と案内。docs（割り切り事項・symlink 非対応など）。
 
 ### （未割当）assets の扱い ― ⬜ **Stage 未定**
 
@@ -100,18 +95,19 @@ MSIX 分岐の土台と、共通の保存先防御。
 
 ---
 
-## 5. 現在地（2026-06-13 時点）
+## 5. 現在地（2026-06-14 時点）
 
-- **Stage 1（symlink 削除版）が完成**。`cargo test` 97 passed。
-- ブランチ `stage1-msix-data-safety`、develop へ **PR #4** オープン中。CI（test.yml）は緑運用。
-- **symlink 削除の修正はまだ未コミット**（write_note を元の atomic write に戻す／symlink テスト削除／test.yml の symlink ステップ削除）。
-- 次の一手：symlink 削除をコミット → PR #4 を develop にマージ → Stage 2（自動更新）/ Stage 3（自動起動）へ。
+- ブランチ `stage1-msix-data-safety`、develop **未マージ**（PR #4 オープン中）。**作業ツリー clean・未コミットなし**。
+- コミット済み: Stage 1（データ安全・symlink 削除）／MSIX 資材（manifest + build-msix.ps1）／Stage 2 ゲート（c61c093）／Stage 3a（e7b455e）／計画書・連携ログ。
+- 実 MSIX で検証済み: `distribution_kind=msix`・`MSIX: registry autostart skipped`（MSIX 専用分岐が本物のパッケージで効くことを実証）。
+- 実測知見: **MSIX は AppData を仮想化せず、設定・付箋を MSI と共有**（→ §4 の「設定は引き継がれない」は要修正）。MSI 版と MSIX 版は single-instance により同時起動不可。
+- 次の候補: Stage 3b（自動起動トグル）／Stage 2 更新検知UI／Stage 4（お試し版UI・docs・CI）／自動起動の再起動テスト（ユーザー作業）。
 
 ---
 
 ## 6. 未確定事項
 
 - 自動更新「更新検知ボタン」の StoreContext + HWND 実装の詳細
-- AppxManifest / Partner Center の識別情報（提供待ち＝Stage 3 の前提）
+- Partner Center の本物の識別情報（Store 提出の最後に差し替え）。AppxManifest はダミー識別子で作成済み。
 - assets 対応を実施する Stage
-- MSIX 実機検証（インストール／再起動後の自動起動／更新ボタン／両版同時起動）は **ユーザー側作業**で未実施
+- MSIX 実機検証: インストール・配布判定・registry autostart skip は **確認済み**。**再起動後の自動起動の最終確認は未実施**（ユーザー側作業）。
