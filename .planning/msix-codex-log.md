@@ -65,3 +65,20 @@
   → 以前の「設定は MSIX↔MSI で引き継がれない」は誤り。**実際は設定・付箋とも共有・シームレス移行**。
   → ただし MSIX お試し版は隔離サンドボックスではなく実データを使う点に注意（docs に明記する）。
 - single-instance により MSI 版と MSIX 版は同時起動できない（先発が後発を弾く）。
+
+---
+
+> **記録ルール（ユーザー指示・例外なし）**: 以後、Codex に実装させたら毎回この4点を記録する。
+> ①出した指示 ②変更ファイルと差分要点 ③レビュー結果（合否＋理由） ④コミットハッシュ＋コード＋計画書が両方入っているか。
+
+### #7 Stage 3b: 自動起動トグル（Codex 実装 / Claude レビュー）
+
+1. **指示**: 設定の「ログイン時に起動」トグルで MSIX の StartupTask を ON/OFF。Rust に get/set コマンド（`is_msix_packaged` ガード）、UI 分岐、`disabled_by_user` 表示。レビューで日本語直書きを発見 → i18n(ja/en)化を追加依頼。
+2. **変更ファイルと差分要点**:
+   - `src-tauri/src/lib.rs`: `fusen_get_startup_state`/`fusen_set_startup_enabled` 追加＋`generate_handler!` 登録。非MSIX は "desktop" 即返し。WinRT は `GetAsync`/`RequestEnableAsync` を `.get()` でブロック、`Disable()` は同期。エラーは log＋フォールバックでパニックなし。
+   - `src-tauri/Cargo.toml`: windows feature に `ApplicationModel`/`Foundation` 追加。
+   - `components/ui/settings-page.tsx`: MSIX 時のみ新コマンド呼び出し、`disabled_by_user` 警告＋`ms-settings:startupapps` 導線。desktop は plugin-autostart 維持。
+   - `lib/i18n.ts`: `autoStartDisabledByUser`/`openWindowsStartupSettings` を ja/en 追加。
+3. **レビュー結果**: ✅ **合格**。Rust はガード・パニックなし・desktop 回帰なし。UI ロジック正。i18n は直書きを指摘し修正させた。cargo check / npm run lint / pre-commit（E2E 24 passed）通過。
+4. **コミット**: `aa417bb`。**コード＋計画書（msix-plan.md の Stage 3 状態を「3b 完了」に更新）を両方含む** ✓。
+   - 注: 3b の実機テスト（§3b 受け入れ条件1〜5）は未実施。
