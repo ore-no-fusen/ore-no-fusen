@@ -1,7 +1,7 @@
 # 計画書：MSIX / MSI 配布対応
 
 作成日: 2026-06-13
-最終更新: 2026-06-15（Stage 4 docs の計画・テスト基準を策定）
+最終更新: 2026-06-15（008章追加・symlink/高度運用の記述を両版同等に訂正）
 ブランチ: stage1-msix-data-safety（develop へ PR #4 オープン中）
 独立計画ファイル（GSD の ROADMAP.md / STATE.md とは別管理）
 
