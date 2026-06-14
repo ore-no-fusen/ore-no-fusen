@@ -103,12 +103,12 @@ MSIX 分岐の土台と、共通の保存先防御。
 - トグル変更は UI から直接コマンドを呼ぶ方式を採用（settings.rs 側では拾わない・最小）。
 - windows crate の必要 feature 名はビルドで確定。
 
-### Stage 4：MSIX 資材 ＋ お試し版案内 ＋ docs ― 🟡 **資材・docs・UI 完了 / CI は未着手**
+### Stage 4：MSIX 資材 ＋ お試し版案内 ＋ docs ― ✅ **全完了（資材・docs・UI・CI）※CI 実行検証はタグ push 時**
 
 - ✅ **資材 完了・コミット済み（107cf67）**: `packaging/msix/AppxManifest.xml`（ダミー識別子・runFullTrust・StartupTask 宣言）と `build-msix.ps1`（Tauri 成果物を包んで自己署名 MSIX 生成）。実行で署名済み MSIX 生成を実証。
 - ✅ **docs 完了**: 設計書に新章 `docs-v2/008_DISTRIBUTION.md`「配布設計（MSIX / MSI）」を追加（7セクション）＋ `docs-v2/index.md` に章登録（badge/一覧/読む順序/doc-grid）。VitePress ビルド通過。
 - ✅ **UI 完了**: `AboutSection` に版表示（MSIX お試し版 / 通常版）。MSIX 時のみお試し説明＋「通常版（MSI）を入手」（Vercel）。i18n(ja/en)。実装: `settings-page.tsx`・`i18n.ts`。
-- ⬜ **未着手（CI）**: release.yml に MSIX 生成ジョブ追加。
+- ✅ **CI 完了**: release.yml の tauri-action 後に build-msix.ps1 実行＋自己署名 MSIX を Actions アーティファクト化（`msix-selfsigned`）。**実行検証は次のタグ push 時**。Store 提出署名は別フロー。
 
 #### §4-docs 詳細計画（✅ 実装済み・以下は策定時の計画）
 
@@ -167,6 +167,13 @@ MSIX 分岐の土台と、共通の保存先防御。
 2. 説明文言 = 例文どおり採用。
 3. desktop も版ラベル「通常版」を表示（お試し説明・入手ボタンは MSIX のみ）。
 
+#### §4-ci 詳細計画（✅ 実装済み・実行検証はタグ push 時）
+
+**範囲**: `release.yml` に MSIX 生成を追加（A 案＝自己署名アーティファクト。Store 提出署名は別フロー）。
+**実装**: `release` ジョブの tauri-action の後に `build-msix.ps1` を実行して MSIX を生成し、`actions/upload-artifact` でアップロード（store-submit と混同しないよう release 資産にはしない）。
+**テスト基準**: タグ push で release ジョブが MSIX を生成・アップロード／既存の NSIS・MSI・winget を壊さない／build-msix.ps1 が windows-latest で動作（SDK ツール検出・自己署名）。
+**注**: 自己署名 MSIX は配布テスト用。Store 提出は本物の証明書で別途（store-submit.yml）。
+
 ### （未割当）assets の扱い ― ⬜ **Stage 未定**
 
 画像 asset を実体コピーに統一し、symlink asset を検出したらログ、という方針は合意済みだが、どの Stage でやるかは **未定**。
@@ -185,10 +192,10 @@ MSIX 分岐の土台と、共通の保存先防御。
 ## 5. 現在地（2026-06-14 時点）
 
 - ブランチ `stage1-msix-data-safety`、develop **未マージ**（PR #4 オープン中）。**作業ツリー clean・未コミットなし**。
-- コミット済み: Stage 1（データ安全・symlink 削除）／MSIX 資材（manifest + build-msix.ps1）／Stage 2 ゲート（c61c093）／Stage 3a（e7b455e）／Stage 3b 自動起動トグル／Stage 4 docs（008章）／**Stage 4 お試し版UI**／計画書・連携ログ。
+- コミット済み: Stage 1（データ安全・symlink 削除）／MSIX 資材（manifest + build-msix.ps1）／Stage 2 ゲート（c61c093）／Stage 3a（e7b455e）／Stage 3b 自動起動トグル／Stage 4 docs（008章）／Stage 4 お試し版UI／**Stage 4 CI（MSIX アーティファクト）**／計画書・連携ログ。
 - 実 MSIX で検証済み: `distribution_kind=msix`・`MSIX: registry autostart skipped`（MSIX 専用分岐が本物のパッケージで効くことを実証）。
 - 実測知見: **MSIX は AppData を仮想化せず、設定・付箋を MSI と共有**。MSI 版と MSIX 版は single-instance により同時起動不可（いずれも §4 に反映済み）。
-- 次の候補: **Stage 4 残り（CI: release.yml の MSIX 生成ジョブ）** ／ Stage 2 更新検知UI（本物の Store 識別子待ち・最後）。
+- 次の候補: Stage 2 更新検知UI（本物の Store 識別子待ち＝Store 提出準備時）。**MSIX の主要作業（Stage 1〜4）は完了**。
 - ユーザー作業の保留: 自動起動の再起動テスト ＋ Stage 3b の実機テスト（最新ビルド再インストール→トグル→再起動）。
 
 ---
