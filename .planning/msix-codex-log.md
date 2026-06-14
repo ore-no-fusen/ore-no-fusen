@@ -115,3 +115,11 @@
    - `lib/i18n.ts`: editionTrial/editionStandard/trialNote/getStandard を ja/en 追加。
 3. **レビュー結果**: ✅ **合格**。両版で版ラベル表示・MSIX 限定の説明/ボタン・desktop 既存表示 無傷・i18n OK。tsc / npm run lint / pre-commit 通過。
 4. **コミット**: `dc91c18`。**UI（settings-page.tsx・i18n.ts）＋計画書（§4-ui 完了・Stage4 状態同期）を両方含む** ✓。
+
+### #12 Stage 4 CI: release.yml に自己署名 MSIX 生成（Codex 実装 / Claude レビュー）
+
+1. **指示**: release.yml の tauri-action 後に build-msix.ps1 を実行し、自己署名 MSIX を `actions/upload-artifact`（msix-selfsigned）でアップロード。release 資産にはしない。既存ジョブ無変更（A 案・Store 署名は別フロー）。
+2. **変更ファイルと差分要点**: `.github/workflows/release.yml` のみ。release ジョブに2ステップ追加（Build self-signed MSIX / Upload self-signed MSIX）。winget ジョブ・既存ステップ無変更。
+3. **レビュー結果**: ✅ **合格**。YAML 構造正・既存無傷・アーティファクト方式で store-submit と非干渉。実行検証は次のタグ push 時（CI は現時点で未実行）。
+4. **コミット**: `632ec2e`。**release.yml＋計画書（Stage 4 全完了に同期）を両方含む** ✓。
+   - 注: 作業外の `.claude/hooks/gsd-statusline.js` の未コミット変更は私の対象外・未コミットのまま。
