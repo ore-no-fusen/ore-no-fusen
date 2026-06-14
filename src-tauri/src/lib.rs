@@ -40,6 +40,11 @@ fn fusen_debug_log(message: String) {
 }
 
 #[tauri::command]
+fn fusen_get_distribution_info() -> String {
+    distribution::get_distribution_kind().to_string()
+}
+
+#[tauri::command]
 fn fusen_select_folder(state: State<'_, Mutex<AppState>>) -> Option<String> {
     let folder_opt = rfd::FileDialog::new().pick_folder();
     if let Some(path_buf) = folder_opt {
@@ -2988,6 +2993,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
+            fusen_get_distribution_info,
             fusen_set_always_on_top,
             fusen_select_folder,
             fusen_list_notes,
