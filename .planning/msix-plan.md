@@ -73,8 +73,35 @@ MSIX 分岐の土台と、共通の保存先防御。
 - ✅ **3a 完了・コミット済み（e7b455e）**: MSIX 時は tauri-plugin-autostart（レジストリ）を使わず、manifest の StartupTask に委譲。
   - 実 MSIX で `MSIX: registry autostart skipped (StartupTask 使用)` を確認。
   - `AppxManifest.xml` に `windows.startupTask` を Enabled=true で宣言済み＝デフォルト常駐起動。
-- ⬜ **3b 未着手**: 設定の「ログイン時に起動」トグルで StartupTask を ON/OFF（windows crate で状態取得・有効化）。Windows 設定でオフにされたら再オンできない旨の UI 表示も。
+- ⬜ **3b 未着手（計画は下記 §3b に策定）**: 設定の「ログイン時に起動」トグルで StartupTask を ON/OFF。
 - 注: ログイン時に実際に自動起動するかの最終確認（再起動テスト）は未実施。
+
+#### §3b 詳細計画（着手前に固める版・2026-06-14）
+
+**目的**: MSIX 版で、設定の「ログイン時に起動」トグルが StartupTask を ON/OFF し、Windows 側で無効化された状態も UI に反映する。MSI/desktop は従来どおり（レジストリ方式）。
+
+**実装方針（最小）**
+- Rust: windows crate の `Windows.ApplicationModel.StartupTask`（packaged のみ動作）。Cargo.toml に StartupTask 用 feature 追加。
+  - TaskId は manifest と一致: `OreNoFusenStartup`。
+  - `StartupTask::GetAsync` → `.State()` で状態取得、`.RequestEnableAsync()` / `.Disable()` で切替（WinRT 非同期は `.get()` でブロック）。
+- Tauri コマンド2つ（どちらも `distribution::is_msix_packaged()` でガード。非MSIX では API を呼ばない＝例外回避）:
+  - `fusen_get_startup_state() -> String`: "enabled" / "disabled" / "disabled_by_user" / "disabled_by_policy"。非MSIX は "desktop"。
+  - `fusen_set_startup_enabled(enabled: bool) -> String`: MSIX 時のみ切替し結果状態を返す。非MSIX は no-op。
+- UI（settings）: MSIX 時、トグル操作で `fusen_set_startup_enabled` を呼ぶ。戻りが "disabled_by_user" なら「Windows のスタートアップ設定で無効になっています（アプリからは再有効化できません）」を表示し、Windows 設定へ誘導。
+
+**テスト基準（受け入れ条件）**
+- 自動: cargo check 通過・既存テスト不変。非MSIX 経路で StartupTask API を呼ばない（panic/例外なし）。
+- 実機（インストール済み MSIX）:
+  1. 既定で `fusen_get_startup_state` = "enabled"（manifest Enabled=true）。
+  2. トグル OFF → "disabled"（Get-StartApps / Windows 設定 / コマンド戻りで確認）。
+  3. トグル ON → "enabled" に戻る。
+  4. Windows 設定で手動オフ → "disabled_by_user"、set_enabled(true) で上書き不可、UI にメッセージ。
+  5. 再起動して OFF 時は自動起動しない／ON 時は自動起動する（ユーザー操作）。
+- desktop/MSI: 既存の自動起動が回帰していない。
+
+**未確定 / 確認点**
+- トグル変更は UI から直接コマンドを呼ぶ方式を採用（settings.rs 側では拾わない・最小）。
+- windows crate の必要 feature 名はビルドで確定。
 
 ### Stage 4：MSIX 資材 ＋ お試し版案内 ＋ docs ― 🟡 **資材は完了 / UI・docs・CI は未着手**
 
