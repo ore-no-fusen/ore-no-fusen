@@ -1,7 +1,7 @@
 # 計画書：MSIX / MSI 配布対応
 
 作成日: 2026-06-13
-最終更新: 2026-06-13（symlink 対応を削除・MSIX 採用を確定）
+最終更新: 2026-06-15（Stage 4 docs の計画・テスト基準を策定）
 ブランチ: stage1-msix-data-safety（develop へ PR #4 オープン中）
 独立計画ファイル（GSD の ROADMAP.md / STATE.md とは別管理）
 
@@ -107,6 +107,36 @@ MSIX 分岐の土台と、共通の保存先防御。
 
 - ✅ **完了・コミット済み（107cf67）**: `packaging/msix/AppxManifest.xml`（ダミー識別子・runFullTrust・StartupTask 宣言）と `build-msix.ps1`（Tauri 成果物を包んで自己署名 MSIX 生成）。実行で署名済み MSIX 生成を実証。
 - ⬜ **未着手**: release.yml に MSIX 生成ジョブ追加。設定画面の「MSIX お試し版／MSI 本気版」表示と案内。docs（割り切り事項・symlink 非対応など）。
+  - 進め方: **docs を先行**（計画は下記 §4-docs）。UI・CI は docs 完了後に別途計画する。
+
+#### §4-docs 詳細計画（着手前に固める版・2026-06-15）
+
+**範囲**: 今回は **docs のみ**。UI（版表示・案内）と CI（release.yml の MSIX ジョブ）は対象外（docs 完了後に別計画）。
+
+**何を書くか（内容・すべて実測/確定済みの事実のみ。§4・§5 と矛盾させない）**
+ユーザー向けに「MSIX お試し版 と MSI 本気版の違いと注意」を1か所にまとめる:
+1. 配布形態: MSIX＝Microsoft Store の**お試し版** / MSI・NSIS＝**本気版**
+2. データ共有: 設定・付箋は**両版で共有**（同じ Documents・%APPDATA% を使う。お試し版も実データを使う＝隔離ではない）
+3. 同時起動不可: MSI 版と MSIX 版は**同時に動かせない**（片方ずつ・single-instance）
+4. 自動起動: MSIX は Windows スタートアップ（StartupTask）。**Windows 設定でオフにするとアプリから戻せない**
+5. 自動更新: MSIX は **Store が自動更新** / MSI は**アプリ内更新**（Tauri updater）
+6. 高度なファイル運用（symlink 等）は **MSIX 非推奨・MSI 推奨**
+7. 保存先: MSIX では読取専用領域などを保存先にできない（危険パス拒否）
+
+**どこに書くか（★ユーザー確認事項）**
+- 候補A: `README.md` に「配布形態（MSIX / MSI）」セクション追加（軽量・整形ルールゆるい）
+- 候補B: `docs-v2/` に専用ガイドページ（VitePress・整形ルール厳格＝キャプション配置/採番/改版履歴）
+- 暫定推奨: **まず README に要点**を書く。docs-v2 へ展開するかは別判断。
+- 言語: README は日本語主体（既存に合わせる）。
+
+**テスト/受け入れ基準（docs は自動テスト無し → レビュー基準）**
+- 記載が実測/確定事実と一致（§4・§5 と矛盾しない）。7項目を網羅。
+- docs-v2 を使う場合のみ: 図キャプは下・表キャプは上・採番・改版履歴(YY-MM-DD) を厳守（CLAUDE.md）。VitePress ビルドが通り、リンク切れ無し。
+- 既存 docs と用語が一致。
+
+**未確定 / ★決めてから着手**
+- 書き先（README か docs-v2 か両方か）
+- docs-v2 にする場合のページ構成・言語
 
 ### （未割当）assets の扱い ― ⬜ **Stage 未定**
 
