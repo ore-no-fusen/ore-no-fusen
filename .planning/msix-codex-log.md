@@ -82,3 +82,12 @@
 3. **レビュー結果**: ✅ **合格**。Rust はガード・パニックなし・desktop 回帰なし。UI ロジック正。i18n は直書きを指摘し修正させた。cargo check / npm run lint / pre-commit（E2E 24 passed）通過。
 4. **コミット**: `aa417bb`。**コード＋計画書（msix-plan.md の Stage 3 状態を「3b 完了」に更新）を両方含む** ✓。
    - 注: 3b の実機テスト（§3b 受け入れ条件1〜5）は未実施。
+
+### #8 Stage 4 docs: 設計書 新章 008（Codex 実装 / Claude レビュー）
+
+1. **指示**: 設計書 docs-v2 に新章 `008_DISTRIBUTION.md`「配布設計（MSIX / MSI）」を追加（007 体裁準拠・7セクション・実測事実のみ・表キャプは表の上・改版履歴 v1.0/26-06-15）＋ `index.md` に章登録。VitePress ビルドで検証。
+2. **変更ファイルと差分要点**:
+   - `docs-v2/008_DISTRIBUTION.md`（新規）: 1目的/2配布形態/3共通の前提/4自動起動/5自動更新/6制約と割り切り/7改版履歴。各表に `表 N-M` キャプを表の上。`<Note type=info/warning>` 使用。
+   - `docs-v2/index.md`: `.badge-008` CSS、一覧テーブル行、読む順序チェーン末尾、doc-grid カード（全7セクションの TOC アンカー）、ポータル文言 007→008。
+3. **レビュー結果**: ✅ **合格**。内容は §4・§5 の実測事実と一致（推測なし）。体裁 007 準拠・表キャプ位置・採番・改版履歴 OK。index 登録は完全。VitePress `npm run docs:build` 通過。
+4. **コミット**: `e482536`。**docs（008＋index）＋計画書（Stage 4 docs 完了に同期）を両方含む** ✓。
