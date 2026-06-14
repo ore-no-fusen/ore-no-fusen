@@ -142,6 +142,30 @@ MSIX 分岐の土台と、共通の保存先防御。
 - 章タイトル「008 配布設計（MSIX / MSI）」でよいか。
 - 改版履歴の起点（版数・日付）。
 
+#### §4-ui 詳細計画（着手前に固める版・2026-06-15）
+
+**範囲**: お試し版UI のみ（CI は別途）。
+
+**目的**: ユーザーが今使っている版（MSIX お試し版 / MSI 本気版）を認識でき、MSIX 版では「お試し版」であることと本気版（MSI）への導線を示す。
+
+**どこに**: `components/ui/settings-page.tsx` の `AboutSection`（バージョン表示の近く。既存の website/GitHub ボタンと同じ並び）。
+
+**実装方針（最小）**
+- AboutSection で `fusen_get_distribution_info` を呼び版を判定（"msix" / "desktop"）。
+- 版表示: バージョン付近に「Microsoft Store 版（お試し版）」/「通常版」を表示。
+- MSIX 時のみ: お試し版の短い説明＋「通常版（MSI）を入手」ボタン（既存の `plugin-shell` の `open` でリンクを開く）。
+- 文言は i18n（ja/en）。
+
+**テスト/受け入れ基準**
+- 自動: tsc / npm run lint 通過・既存テスト不変。
+- 手動/実機: MSIX 版で「お試し版」表示＋案内＋入手ボタンが出る。MSI/desktop は「通常版」表示のみ（案内・ボタンは出さない）。i18n ja/en で正しい文言。
+- desktop の AboutSection 既存表示が回帰しない。
+
+**★着手前に決めること（ユーザー）**
+1. 「通常版（MSI）を入手」のリンク先 URL（例: GitHub Releases / Vercel のダウンロードページ）。
+2. お試し版の説明文言。
+3. desktop（通常版）でも版表示を出すか（出す / 何も出さない）。
+
 ### （未割当）assets の扱い ― ⬜ **Stage 未定**
 
 画像 asset を実体コピーに統一し、symlink asset を検出したらログ、という方針は合意済みだが、どの Stage でやるかは **未定**。
