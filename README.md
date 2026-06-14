@@ -15,6 +15,7 @@ A beautiful sticky notes app with Markdown support.
 [![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square&label=downloads%20total)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 [![Downloads Latest](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/latest/total?style=flat-square&label=downloads%20latest)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
+**Thanks for 1,000+ downloads.**
 
 [Download](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest) • [Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [Landing Page](https://ore-no-fusen.vercel.app) • [🎥 Comic Guide](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
 
