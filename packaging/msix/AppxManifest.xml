@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  俺の付箋 MSIX マニフェスト（開発・テスト用）
+
+  ⚠️ 識別子はダミー。Store 提出の最後にだけ本物へ差し替える。
+     - Identity Name / Publisher … Partner Center の予約名・発行者へ置換
+     - Publisher は署名する証明書の Subject と完全一致が必須
+       （開発中は自己署名 CN=OreNoFusenDev と一致させる）
+  本物の値・証明書はネットに上げない。
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  IgnorableNamespaces="uap rescap desktop">
+
+  <!-- 本物の識別子（Partner Center / FUSEN）。Store 手動提出用。
+       署名は Microsoft 代行のため自己署名のままでよい（Store が再署名する）。 -->
+  <Identity
+    Name="ONFStudios.FUSEN"
+    Publisher="CN=4820A467-BFE8-46A3-A142-42A0E840F3A5"
+    Version="3.6.5.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>俺の付箋</DisplayName>
+    <PublisherDisplayName>ONF Studios</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="10.0.17763.0"
+      MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="ja-JP" />
+    <Resource Language="en-US" />
+  </Resources>
+
+  <!-- runFullTrust: Win32(Tauri) アプリを MSIX で動かす前提（restricted capability） -->
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+  <Applications>
+    <Application
+      Id="OreNoFusen"
+      Executable="ore-no-fusen.exe"
+      EntryPoint="Windows.FullTrustApplication">
+
+      <uap:VisualElements
+        DisplayName="俺の付箋"
+        Description="大事なことは貼っておけばいいと思うよ"
+        BackgroundColor="#111827"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Wide310x150Logo="Assets\Square310x310Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+
+      <!-- 自動起動: MSIX ではこの StartupTask が常駐起動の手段。
+           Enabled=true は設定 auto_start のデフォルト(true)に合わせる。
+           ユーザーが Windows 設定でオフにしたらアプリからは再オンにできない。 -->
+      <Extensions>
+        <desktop:Extension
+          Category="windows.startupTask"
+          Executable="ore-no-fusen.exe"
+          EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask
+            TaskId="OreNoFusenStartup"
+            Enabled="true"
+            DisplayName="俺の付箋" />
+        </desktop:Extension>
+      </Extensions>
+
+    </Application>
+  </Applications>
+
+</Package>

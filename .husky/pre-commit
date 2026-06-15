@@ -12,7 +12,10 @@ if echo "$CHANGED" | grep -qE '^(src-tauri|app/components|app/hooks|app/utils|ap
   echo "[pre-commit] 3/3 E2E tests..."
   if command -v powershell.exe >/dev/null 2>&1; then
     echo "[pre-commit] Freeing localhost:3002 before E2E..."
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$connections = Get-NetTCPConnection -LocalPort 3002 -State Listen -ErrorAction SilentlyContinue; foreach ($connection in $connections) { Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue }'
+    # NOTE: ポート開放はベストエフォート。3002 が空だと Get-NetTCPConnection が
+    # $? を false にして powershell.exe が exit 1 を返し、E2E 到達前にフックが
+    # 落ちるため、末尾に exit 0 を付けて常に成功扱いにする。
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$connections = Get-NetTCPConnection -LocalPort 3002 -State Listen -ErrorAction SilentlyContinue; foreach ($connection in $connections) { Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue }; exit 0'
   fi
   npm run test:e2e
 else

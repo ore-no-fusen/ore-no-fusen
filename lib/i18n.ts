@@ -32,6 +32,8 @@ export const translations = {
         'settings.general.language': '言語 (Language)',
         'settings.general.autoStart': 'ログイン時に起動',
         'settings.general.autoStartDesc': 'PC起動時に自動でアプリを立ち上げます',
+        'settings.general.autoStartDisabledByUser': 'Windows のスタートアップ設定で無効になっています（アプリからは再有効化できません）',
+        'settings.general.openWindowsStartupSettings': 'Windows のスタートアップ設定を開く',
         'settings.general.sound': '効果音 (SE)',
         'settings.general.soundDesc': '操作時のサウンドエフェクトを有効にする',
 
@@ -69,6 +71,10 @@ export const translations = {
         'settings.about.appName': '俺の付箋',
         'settings.about.appDesc': 'シンプルで使いやすいデスクトップ付箋アプリです。メモを素早く作成し、デスクトップ上で整理することができます。',
         'settings.about.version': 'バージョン',
+        'settings.about.editionTrial': 'Microsoft Store 版（お試し版）',
+        'settings.about.editionStandard': '通常版',
+        'settings.about.trialNote': 'この版は導入しやすいお試し版です。長期利用・高度なファイル管理には通常版 MSI をおすすめします。',
+        'settings.about.getStandard': '通常版（MSI）を入手',
         'settings.about.website': '公式ウェブサイト',
         'settings.about.copyright': '© 2026 OreNoFusen. All rights reserved.',
 
@@ -402,6 +408,8 @@ export const translations = {
         'settings.general.language': 'Language',
         'settings.general.autoStart': 'Auto Start',
         'settings.general.autoStartDesc': 'Launch automatically when you log in.',
+        'settings.general.autoStartDisabledByUser': 'Startup is disabled in Windows Startup settings and cannot be re-enabled from the app.',
+        'settings.general.openWindowsStartupSettings': 'Open Windows Startup settings',
         'settings.general.sound': 'Sound Effects',
         'settings.general.soundDesc': 'Play sounds on interaction.',
 
@@ -439,6 +447,10 @@ export const translations = {
         'settings.about.appName': "OreNoFusen",
         'settings.about.version': "Version",
         'settings.about.appDesc': "OreNoFusen is a desktop sticky note app designed for simplicity and customization.",
+        'settings.about.editionTrial': "Microsoft Store edition (trial)",
+        'settings.about.editionStandard': "Standard edition",
+        'settings.about.trialNote': "This edition is an easy-to-install trial. For long-term use and advanced file management, we recommend the standard MSI edition.",
+        'settings.about.getStandard': "Get the standard edition (MSI)",
         'settings.about.website': "Official Website",
         'settings.about.copyright': "© 2026 OreNoFusen Project. All rights reserved.",
 

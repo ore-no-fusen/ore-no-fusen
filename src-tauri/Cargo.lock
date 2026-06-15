@@ -4139,6 +4139,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "directories",
+ "dunce",
  "env_logger",
  "hkdf",
  "image 0.25.10",

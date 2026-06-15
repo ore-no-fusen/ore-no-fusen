@@ -33,6 +33,10 @@ pub fn load_settings() -> Result<Settings, String> {
 }
 
 pub fn save_settings(settings: &Settings) -> Result<(), String> {
+    if let Some(base_path) = &settings.base_path {
+        validate_storage_path(base_path)?;
+    }
+
     let path = get_settings_path()?;
     let content = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     fs::write(path, content).map_err(|e| e.to_string())
@@ -40,6 +44,46 @@ pub fn save_settings(settings: &Settings) -> Result<(), String> {
 
 pub fn ensure_directory(path: &str) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|e| e.to_string())
+}
+
+pub fn validate_storage_path(path: &str) -> Result<(), String> {
+    if is_dangerous_storage_path(path) {
+        return Err("危険な保存先のため使用できません".to_string());
+    }
+
+    Ok(())
+}
+
+pub fn is_dangerous_storage_path(path: &str) -> bool {
+    let target = Path::new(path);
+    let normalized = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+
+    is_path_under(&normalized, Path::new(r"C:\Program Files\WindowsApps"))
+        || std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|parent| parent.to_path_buf()))
+            .map_or(false, |exe_dir| is_path_under(&normalized, &exe_dir))
+        || (crate::distribution::is_msix_packaged()
+            && std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|parent| parent.to_path_buf()))
+                .map_or(false, |exe_dir| is_path_under(&normalized, &exe_dir)))
+}
+
+#[cfg(windows)]
+fn is_path_under(path: &Path, parent: &Path) -> bool {
+    let path_str = path.to_string_lossy().replace('/', "\\").to_lowercase();
+    let mut parent_str = parent.to_string_lossy().replace('/', "\\").to_lowercase();
+    while parent_str.ends_with('\\') && parent_str.len() > 3 {
+        parent_str.pop();
+    }
+
+    path_str == parent_str || path_str.starts_with(&format!("{}\\", parent_str))
+}
+
+#[cfg(not(windows))]
+fn is_path_under(path: &Path, parent: &Path) -> bool {
+    path.starts_with(parent)
 }
 
 // UC-02: インポート機能（.mdファイルをコピー + Δ0.7形式フロントマター生成）
@@ -517,7 +561,10 @@ fn backup_dir_recursive(src: &std::path::Path, dst: &std::path::Path, count: &mu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     // === write_note と read_note のテスト ===
     // ファイルI/O操作の基本
@@ -579,6 +626,65 @@ mod tests {
         // 読み込んで確認
         let note = read_note(&file_path_str).unwrap();
         assert_eq!(note.body, "上書きされた内容");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_dangerous_storage_path_rejects_windows_apps() {
+        assert!(is_dangerous_storage_path(
+            r"C:\Program Files\WindowsApps\OreNoFusen"
+        ));
+    }
+
+    #[test]
+    fn test_dangerous_storage_path_rejects_current_exe_parent() {
+        let exe_dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let path = exe_dir.join("OreNoFusenData");
+
+        assert!(is_dangerous_storage_path(&path.to_string_lossy()));
+    }
+
+    #[test]
+    fn test_dangerous_storage_path_allows_normal_temp_path() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("Documents").join("OreNoFusen");
+
+        assert!(!is_dangerous_storage_path(&path.to_string_lossy()));
+    }
+
+    #[test]
+    fn test_save_settings_keeps_original_base_path_string() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap();
+        let appdata_dir = tempdir().unwrap();
+        let base_dir = tempdir().unwrap();
+        let raw_base_path = base_dir.path().join("..").join(
+            base_dir
+                .path()
+                .file_name()
+                .expect("temp dir has file name"),
+        );
+        let raw_base_path_str = raw_base_path.to_string_lossy().to_string();
+        let old_appdata = std::env::var("APPDATA").ok();
+
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let mut settings = Settings::default();
+        settings.base_path = Some(raw_base_path_str.clone());
+        save_settings(&settings).unwrap();
+
+        let saved = std::fs::read_to_string(get_settings_path().unwrap()).unwrap();
+        let saved_settings: Settings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(saved_settings.base_path, Some(raw_base_path_str));
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
     }
 
     // === rename_note のテスト ===
