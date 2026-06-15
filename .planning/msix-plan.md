@@ -298,3 +298,32 @@ MSIX 分岐の土台と、共通の保存先防御。
 
 参考: Microsoft Learn「Publish app updates to Microsoft Store with GitHub Actions」/「CI/CD Environments」。
 ![alt text](image.png)
+
+
+## 9. 次にやること（次のチャットで続ける）
+
+### 状態（2026-06-16・更新）
+- v4.0.0 リリース済み（MSI/NSIS は成功・公開済み）。main=develop=e801f43 で揃っている。
+- ストアに 3.6.5 を手動提出済み（認定処理中）。
+
+### ★やること1: build-msix.ps1 を直す ― ✅ 完了
+署名を外す編集自体は正しかった（signtool / 自己署名証明書まわりを一括削除）。
+真の不具合は**別**だった: 削除と同時に**日本語コメント（116〜117行）を追加**したが、
+ファイルが **UTF-8 BOM なし**だったため Windows PowerShell（powershell.exe）が
+Shift-JIS として誤デコード→マルチバイトコメントが化けてトークナイザが行ずれを起こし、
+直後の `$ToolRoot = Get-LatestWindowsSdkToolRoot`（118行）の代入が**飲み込まれて**
+「$ToolRoot 未定義」になっていた。
+**修正: ファイルに UTF-8 BOM を付与**（コメント削除や ASCII 化ではなく、根本のエンコーディングを是正）。
+これで 116〜117 行・126 行の日本語も正しく読まれる。CI（windows-latest = 同じ Windows PowerShell）でも安全。
+検証: `powershell.exe -ExecutionPolicy Bypass -File packaging/msix/build-msix.ps1`
+→ `Package creation succeeded` / 署名なし `out/ore-no-fusen.msix` 生成・EXIT=0 を確認済み。
+（末尾 Write-Host の日本語はコンソール表示上の文字化けのみ＝挙動に影響なし）
+
+### ★やること2: 手順書 010_RELEASE.md に追記 ― ✅ 完了
+`docs/010_RELEASE.md` に「MSIX（ストアお試し版）の扱い」節を追加（ローカルビルド節の直後）:
+毎回 CI で生成・署名なし・ローカルテストしない・アプリ機能は MSI でテスト・
+MSIX 固有部分（自動起動/更新分岐）は v4.0.0 前に自己署名ビルドで実機確認済み・
+ストア提出時は Microsoft が署名。更新履歴に No.3（26-06-16）を追記。
+
+### ★やること3: コミット ― ⬜ 未（ユーザー指示待ち）
+build-msix.ps1（署名外し＋BOM）＋ docs/010_RELEASE.md ＋ 本計画書を develop でコミット。
