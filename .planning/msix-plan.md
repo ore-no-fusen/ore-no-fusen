@@ -248,7 +248,27 @@ MSIX 分岐の土台と、共通の保存先防御。
   - Store ID（product_id）= `9N4MW0V2MVVG` / PFN = `ONFStudios.FUSEN_bjrn10gahtsj2`
   - ※ 開発版 AppxManifest はダミー（`OreNoFusen.Dev` / `CN=OreNoFusenDev`）。本物提出時に上記へ差し替える。
 
-### ストア提出の前に必ず確認する（残る不確実性）
-- `store-submit.yml` は Partner Center の秘密情報4つを使う: `AZURE_AD_TENANT_ID` / `SELLER_ID` / `AZURE_AD_APPLICATION_CLIENT_ID` / `AZURE_AD_APPLICATION_SECRET`。**GitHub Secrets に登録済みか未確認**。
-- `MICROSOFT_STORE_PRODUCT_ID`（= 9N4MW0V2MVVG）が repository variable に登録済みか未確認。
-- これらが未登録なら提出は止まる。**まず dry run で確認 → OK なら本番**。いきなり本番送信しない。
+### 【最優先・難所】ストア提出の認証情報がまだ未登録（2026-06-15 確認済み）
+方針: **自動化（store-submit.yml）で出す**と決定。仕組み（yml）は作成済み。だが動かす鍵が無い。難所なので**先に潰す**。
+
+- 1回目のストア提出は **Partner Center 画面から手動**でやった（だから GitHub には鍵を入れていない）。2回目以降は自動化に移行する。
+- `gh secret list` / 環境 / org を全確認 → **以下5つは1つも登録されていない**:
+  - `AZURE_AD_TENANT_ID`（secret）
+  - `SELLER_ID`（secret）
+  - `AZURE_AD_APPLICATION_CLIENT_ID`（secret）
+  - `AZURE_AD_APPLICATION_SECRET`（secret）
+  - `MICROSOFT_STORE_PRODUCT_ID`（variable・値は 9N4MW0V2MVVG で判明済み）
+- **登録するまで store-submit.yml は動かない**。これが今日のリリースの最大の難所。
+
+#### 取得・登録の手順（次にやること）
+1. Partner Center → アカウント設定で:
+   - **Seller ID** を確認（→ `SELLER_ID`）
+   - **Azure AD アプリを登録/連携**して **Tenant ID / Client ID / Client Secret** を取得（→ 残り3つ）
+     - Partner Center の「ユーザー → Azure AD アプリケーション」あたり。新規 client secret を発行する。
+2. GitHub に登録（リポジトリ ore-no-fusen）:
+   - `gh secret set AZURE_AD_TENANT_ID` 等で4つの secret を登録
+   - `gh variable set MICROSOFT_STORE_PRODUCT_ID --body 9N4MW0V2MVVG` で variable を登録
+3. 登録後、`gh secret list` で5つ揃ったか確認。
+4. **dry run**（store-submit.yml を submit_to_store=false で実行）で疎通確認 → OK なら本番（safety_ack=FIRST_STORE_SUBMISSION_PASSED）。
+
+※ Azure AD アプリ登録は技術的に難所。ユーザーと1ステップずつ確認しながら進める。
