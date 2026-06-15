@@ -260,15 +260,25 @@ MSIX 分岐の土台と、共通の保存先防御。
   - `MICROSOFT_STORE_PRODUCT_ID`（variable・値は 9N4MW0V2MVVG で判明済み）
 - **登録するまで store-submit.yml は動かない**。これが今日のリリースの最大の難所。
 
-#### 取得・登録の手順（次にやること）
-1. Partner Center → アカウント設定で:
-   - **Seller ID** を確認（→ `SELLER_ID`）
-   - **Azure AD アプリを登録/連携**して **Tenant ID / Client ID / Client Secret** を取得（→ 残り3つ）
-     - Partner Center の「ユーザー → Azure AD アプリケーション」あたり。新規 client secret を発行する。
-2. GitHub に登録（リポジトリ ore-no-fusen）:
-   - `gh secret set AZURE_AD_TENANT_ID` 等で4つの secret を登録
-   - `gh variable set MICROSOFT_STORE_PRODUCT_ID --body 9N4MW0V2MVVG` で variable を登録
-3. 登録後、`gh secret list` で5つ揃ったか確認。
-4. **dry run**（store-submit.yml を submit_to_store=false で実行）で疎通確認 → OK なら本番（safety_ack=FIRST_STORE_SUBMISSION_PASSED）。
+#### 5つの値の在処（Microsoft 公式ドキュメントで確認済み・2026-06-15）
+| 値 | どこで取るか |
+|---|---|
+| `SELLER_ID` | Partner Center「**概要**」ページの **Partner Center ID**（短い数字）がこれ |
+| `AZURE_AD_TENANT_ID` | 「**ユーザー管理**」→ 追加した Azure AD アプリの設定画面に表示。または entra.microsoft.com の Azure AD 概要 |
+| `AZURE_AD_APPLICATION_CLIENT_ID` | 「**ユーザー管理**」→ Azure AD アプリの設定画面に表示 |
+| `AZURE_AD_APPLICATION_SECRET` | 「**ユーザー管理**」→ Azure AD アプリの「**Key（キー）を新規発行**」した値（= Client secret） |
+| `MICROSOFT_STORE_PRODUCT_ID` | `9N4MW0V2MVVG`（判明済み） |
 
-※ Azure AD アプリ登録は技術的に難所。ユーザーと1ステップずつ確認しながら進める。
+※ 難所の4つは全部「**ユーザー管理**」に集約されている。手順:
+1. Partner Center →「ユーザー管理」→「**Azure AD アプリケーションの追加**」（無ければ新規作成）
+2. 追加したアプリ名をクリック → **Tenant ID / Client ID をコピー**
+3. 「**Key（キー）**」を新規発行 → それが **Client Secret**（発行直後しか全文表示されないので即コピー）
+※ 注意: Identifiers ページの「Windows パブリッシャー ID（CN=4820A467-…）」は **Seller ID ではない**（Publisher）。混同しない。
+
+#### 取得後、GitHub に登録（リポジトリ ore-no-fusen）
+- `gh secret set AZURE_AD_TENANT_ID` /`SELLER_ID` /`AZURE_AD_APPLICATION_CLIENT_ID` /`AZURE_AD_APPLICATION_SECRET` の4つ
+- `gh variable set MICROSOFT_STORE_PRODUCT_ID --body 9N4MW0V2MVVG`
+- 登録後 `gh secret list` で5つ揃ったか確認
+- **dry run**（store-submit.yml を submit_to_store=false）で疎通 → OK なら本番（safety_ack=FIRST_STORE_SUBMISSION_PASSED）
+
+参考: Microsoft Learn「Publish app updates to Microsoft Store with GitHub Actions」/「CI/CD Environments」。
