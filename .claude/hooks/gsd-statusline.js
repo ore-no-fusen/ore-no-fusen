@@ -102,12 +102,23 @@ process.stdin.on('end', () => {
       } catch (e) {}
     }
 
+    // Rate limits (Claude.ai Pro/Max only, appears after first API response)
+    let limits = '';
+    const fiveH = data.rate_limits?.five_hour?.used_percentage;
+    const week = data.rate_limits?.seven_day?.used_percentage;
+    const parts = [];
+    if (fiveH != null) parts.push(`5h: ${Math.round(fiveH)}%`);
+    if (week != null) parts.push(`7d: ${Math.round(week)}%`);
+    if (parts.length > 0) {
+      limits = `  │  \x1b[36m${parts.join(' ')}\x1b[0m`;
+    }
+
     // Output
     const dirname = path.basename(dir);
     if (task) {
-      process.stdout.write(`${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[1m${task}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}`);
+      process.stdout.write(`${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[1m${task}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}${limits}`);
     } else {
-      process.stdout.write(`${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}`);
+      process.stdout.write(`${gsdUpdate}\x1b[2m${model}\x1b[0m │ \x1b[2m${dirname}\x1b[0m${ctx}${limits}`);
     }
   } catch (e) {
     // Silent fail - don't break statusline on parse errors
