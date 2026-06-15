@@ -36,6 +36,13 @@ flowchart TD
 アプリに影響しない変更は、`main` に入った時点で GitHub README や公開ドキュメントの表示を更新できる。
 アプリに影響する変更は `develop` に集め、通常リリース手順で `main` へ反映する。
 
+#### 補足（運用上の注意・v4.0.0 で確定）
+
+- **CI / ビルド設定（`test.yml`・`release.yml` 等）は「アプリに影響する側」** として扱う＝ `develop` で変更する（`main` 直接にしない）。
+- **普段の作業ブランチは `develop`。`main` に居座らない**（誤って `main` でアプリコードを触る事故を防ぐ）。
+- **`main` と `develop` をズレたまま放置しない。** `main` に直接入れた変更（LP 等）は、次の Do Release の「`main` → `develop` 戻し」で `develop` に反映され、両者が揃う。ズレを放置すると Do Release のマージで衝突する（v4.0.0 で `.gitignore` の衝突が実際に発生した）。
+- **Do Release の二重テストの扱い:** `test.yml` は `develop`/`main` への push でテストするが、「`main` → `develop` 戻し」（bot による `develop` への push）は `main` 行きで既にテスト済みのコードを戻すだけなので、`rust` ジョブの `if: !(develop かつ bot)` で再テストをスキップする（無駄を排除）。
+
 ---
 
 ## バージョンの仕組み
