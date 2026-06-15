@@ -83,3 +83,12 @@ wiki-temp/
 
 # ユーザー指定のローカル画像アセット
 /public/store-logo-1080.png
+
+# MSIX ローカルパッケージング生成物・開発証明書（コミット禁止）
+# ※ AppxManifest.xml と build-msix.ps1 は提出に使うソースなので残す（無視しない）
+/packaging/msix/out/
+/packaging/msix/staging/
+/packaging/msix/certs/
+/packaging/msix/*.pfx
+/packaging/msix/*.cer
+/packaging/msix/*.msix

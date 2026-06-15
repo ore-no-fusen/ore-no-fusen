@@ -92,7 +92,7 @@ jobs:
       - name: Merge develop → main
         run: |
           git checkout main
-          git merge origin/develop --ff-only
+          git merge origin/develop --no-ff -m "Merge develop into main for v${VERSION}"
 
       - name: Update versions
         run: |
