@@ -196,7 +196,8 @@ MSIX 分岐の土台と、共通の保存先防御。
 - 実 MSIX で検証済み: `distribution_kind=msix`・`MSIX: registry autostart skipped`（MSIX 専用分岐が本物のパッケージで効くことを実証）。
 - 実測知見: **MSIX は AppData を仮想化せず、設定・付箋を MSI と共有**。MSI 版と MSIX 版は single-instance により同時起動不可（いずれも §4 に反映済み）。
 - 次の候補: Stage 2 更新検知UI（本物の Store 識別子待ち＝Store 提出準備時）。**MSIX の主要作業（Stage 1〜4）は完了**。
-- ユーザー作業の保留: 自動起動の再起動テスト ＋ Stage 3b の実機テスト（最新ビルド再インストール→トグル→再起動）。
+- 実機検証（OreNoFusen.Dev 3.6.5）: Stage 2 更新ゲート（更新通知が出ない）・Stage 4 UI（お試し版表示・入手ボタン）を**確認済み** ✓。紛らわしい古い MSIX（ONFStudios.FUSEN 3.6.1 / FUSEN.Test 3.6.0）はアンインストール済み、残るは OreNoFusen.Dev 3.6.5 のみ。
+- 残るユーザー作業: Stage 3b 自動起動トグルの動作 ＋ 再起動でログイン時に自動起動するかの確認。
 
 ---
 
