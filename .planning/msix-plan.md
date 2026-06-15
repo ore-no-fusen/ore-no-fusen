@@ -229,15 +229,30 @@ MSIX 分岐の土台と、共通の保存先防御。
 
 ## 8. リリース〜ストア提出の手順（会話が消えても、これを読めば進められる）
 
-### いまの到達点（2026-06-15）
-- MSIX のコード（Stage 1〜4）は完成。実機で Stage 2/4 検証 OK（最新版 = 無印「俺の付箋」OreNoFusen.Dev 3.6.5）。
-- 残るユーザー作業: **再起動テスト**（ログイン時に自動で「俺の付箋」がトレイに出るか）。これが OK なら検証完了。
+### 【確定した運用方針・2026-06-15】★最重要・忘れたらここを読む
+- **ストア版（MSIX）= お試し版**。**メジャーアップデートのときだけ手動でストアに上げる**（毎回は上げない）。
+- **MSI 版（本気版）= 普段の更新はこっち**。日常のテストも **MSI でやる**（MSIX はローカルテストしない）。
+- **自動ストア提出（store-submit.yml / Azure AD 連携）は採用しない**（お試し版で毎回上げる必要がないため。Azure AD の難所を回避）。仕組み（yml）は残すが使わない。
+- 2026-06-15 に 3.6.5 を手動でストア提出済み（成功・認定処理中）。1回目=3.6.1 も手動。
 
-### この後の順番（なぜこの順かは §後述）
-1. **再起動テスト**（ユーザー）→ OK なら次へ
-2. **develop へマージ**（PR #4）
-3. **develop → main（Do Release）→ タグ → Release ワークフロー**で MSI/NSIS + MSIX アーティファクト生成
-4. **ストア提出**（下記）。← develop/main で「出すコードが確定」してから行う手続き。先にやると二度手間
+### 【メジャーアップデート時のストア提出 手順書】★次回これをなぞる
+前提: develop→main でリリース済み（最新コードが確定している）こと。
+1. **本物の識別子で MSIX をビルド**（AppxManifest は既に本物。`packaging/msix/build-msix.ps1` を実行）:
+   - `powershell -ExecutionPolicy Bypass -File packaging\msix\build-msix.ps1`
+   - **署名ステップで `SignerSign() failed` エラーが出るが正常**（本物 CN の鍵は持っていない＝Microsoft 代行）。**箱（out\ore-no-fusen.msix）はできている**のでそれを使う。
+2. **Partner Center で手動アップ**（https://partner.microsoft.com → FUSEN）:
+   - 「製品の更新」→「更新の開始」
+   - 「パッケージ」→ 古い msix を消し、`packaging\msix\out\ore-no-fusen.msix` をアップ → Validated を確認・Save
+   - 「Store 登録情報」→ **英語(en-US)は削除**して日本語だけにする（英語を入れると未完了になる）
+   - 表示名「俺の付箋」は予約済み（アプリ名の管理）。全項目が緑になったら「**送信して認定を受ける**」
+3. 認定（審査）数時間〜。通れば自動公開。**ユーザーは待つだけ**。
+
+### 識別子・名前のメモ（提出に必須）
+- AppxManifest（本物・main に入っている）: Name=`ONFStudios.FUSEN` / Publisher=`CN=4820A467-BFE8-46A3-A142-42A0E840F3A5` / DisplayName=俺の付箋（予約済み）
+- Store ID=`9N4MW0V2MVVG` / Seller ID=`94899650`（参考。手動提出では使わない）
+
+---
+### （参考・不採用）自動ストア提出の仕組み — 今は使わない
 
 ### ストア提出の仕組み（調査済み・推測でなく `store-submit.yml` を読んで確認）
 - **署名は自分でやらない**。`msstore publish` で Partner Center に**パッケージを送るだけ**。Microsoft 側が処理する（だから「Publisher と証明書 Subject の一致」を自分で署名する形では扱わない）。
@@ -282,3 +297,4 @@ MSIX 分岐の土台と、共通の保存先防御。
 - **dry run**（store-submit.yml を submit_to_store=false）で疎通 → OK なら本番（safety_ack=FIRST_STORE_SUBMISSION_PASSED）
 
 参考: Microsoft Learn「Publish app updates to Microsoft Store with GitHub Actions」/「CI/CD Environments」。
+![alt text](image.png)

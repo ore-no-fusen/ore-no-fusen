@@ -15,10 +15,11 @@
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   IgnorableNamespaces="uap rescap desktop">
 
-  <!-- ダミー識別子（最後に本物へ差し替え） -->
+  <!-- 本物の識別子（Partner Center / FUSEN）。Store 手動提出用。
+       署名は Microsoft 代行のため自己署名のままでよい（Store が再署名する）。 -->
   <Identity
-    Name="OreNoFusen.Dev"
-    Publisher="CN=OreNoFusenDev"
+    Name="ONFStudios.FUSEN"
+    Publisher="CN=4820A467-BFE8-46A3-A142-42A0E840F3A5"
     Version="3.6.5.0"
     ProcessorArchitecture="x64" />
 
