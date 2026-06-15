@@ -263,7 +263,7 @@ MSIX 分岐の土台と、共通の保存先防御。
 #### 5つの値の在処（Microsoft 公式ドキュメントで確認済み・2026-06-15）
 | 値 | どこで取るか |
 |---|---|
-| `SELLER_ID` | Partner Center「**概要**」ページの **Partner Center ID**（短い数字）がこれ |
+| `SELLER_ID` | **取得済み = `94899650`**（Partner Center「Legal info（法的情報）」の「販売者 ID」。公開情報） |
 | `AZURE_AD_TENANT_ID` | 「**ユーザー管理**」→ 追加した Azure AD アプリの設定画面に表示。または entra.microsoft.com の Azure AD 概要 |
 | `AZURE_AD_APPLICATION_CLIENT_ID` | 「**ユーザー管理**」→ Azure AD アプリの設定画面に表示 |
 | `AZURE_AD_APPLICATION_SECRET` | 「**ユーザー管理**」→ Azure AD アプリの「**Key（キー）を新規発行**」した値（= Client secret） |
