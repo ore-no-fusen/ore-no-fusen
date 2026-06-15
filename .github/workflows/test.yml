@@ -8,6 +8,9 @@ on:
 jobs:
   rust:
     runs-on: windows-latest
+    # Do Release の「main → develop 戻し」は、main 行きで既にテスト済みの
+    # コードを戻すだけなので、その push（develop 行き・bot）では再テストしない（無駄を排除）。
+    if: ${{ !(github.ref == 'refs/heads/develop' && github.actor == 'github-actions[bot]') }}
     # gdrive.rs は env!() で GDRIVE_* をコンパイル時に埋め込む。
     # ローカルは ../.env.local（build.rs 経由）で供給されるが CI には無いため、
     # ユニットテスト用のダミー値を渡してコンパイルを通す（Drive へ実アクセスしない）。
