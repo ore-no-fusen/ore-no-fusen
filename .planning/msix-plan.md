@@ -224,3 +224,31 @@ MSIX 分岐の土台と、共通の保存先防御。
 - 計画書はユーザーと Claude をつなぐ唯一の対話の場。現実とズレたまま放置しない
 - コードを変えたら、計画書も必ず同じコミットで現実に合わせる（置き去り厳禁）
 - コミットは専用ブランチなので自由。ただし計画書を必ず同伴させる
+
+---
+
+## 8. リリース〜ストア提出の手順（会話が消えても、これを読めば進められる）
+
+### いまの到達点（2026-06-15）
+- MSIX のコード（Stage 1〜4）は完成。実機で Stage 2/4 検証 OK（最新版 = 無印「俺の付箋」OreNoFusen.Dev 3.6.5）。
+- 残るユーザー作業: **再起動テスト**（ログイン時に自動で「俺の付箋」がトレイに出るか）。これが OK なら検証完了。
+
+### この後の順番（なぜこの順かは §後述）
+1. **再起動テスト**（ユーザー）→ OK なら次へ
+2. **develop へマージ**（PR #4）
+3. **develop → main（Do Release）→ タグ → Release ワークフロー**で MSI/NSIS + MSIX アーティファクト生成
+4. **ストア提出**（下記）。← develop/main で「出すコードが確定」してから行う手続き。先にやると二度手間
+
+### ストア提出の仕組み（調査済み・推測でなく `store-submit.yml` を読んで確認）
+- **署名は自分でやらない**。`msstore publish` で Partner Center に**パッケージを送るだけ**。Microsoft 側が処理する（だから「Publisher と証明書 Subject の一致」を自分で署名する形では扱わない）。
+- 動かすのは GitHub Actions の **`store-submit.yml`**（workflow_dispatch で手動実行）。
+- **安全装置あり**: `submit_to_store=false` で **dry run（送信しない確認）**ができる。本番送信は `safety_ack=FIRST_STORE_SUBMISSION_PASSED` を入れないと拒否される。
+- 本物の識別子（AppxManifest に入れる／既に判明済み）:
+  - Name = `ONFStudios.FUSEN` / Publisher = `CN=4820A467-BFE8-46A3-A142-42A0E840F3A5` / PublisherDisplayName = `ONF Studios`
+  - Store ID（product_id）= `9N4MW0V2MVVG` / PFN = `ONFStudios.FUSEN_bjrn10gahtsj2`
+  - ※ 開発版 AppxManifest はダミー（`OreNoFusen.Dev` / `CN=OreNoFusenDev`）。本物提出時に上記へ差し替える。
+
+### ストア提出の前に必ず確認する（残る不確実性）
+- `store-submit.yml` は Partner Center の秘密情報4つを使う: `AZURE_AD_TENANT_ID` / `SELLER_ID` / `AZURE_AD_APPLICATION_CLIENT_ID` / `AZURE_AD_APPLICATION_SECRET`。**GitHub Secrets に登録済みか未確認**。
+- `MICROSOFT_STORE_PRODUCT_ID`（= 9N4MW0V2MVVG）が repository variable に登録済みか未確認。
+- これらが未登録なら提出は止まる。**まず dry run で確認 → OK なら本番**。いきなり本番送信しない。
