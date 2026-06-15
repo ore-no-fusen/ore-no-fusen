@@ -422,6 +422,56 @@ type DataSectionProps = SectionProps & {
 }
 
 function GeneralSection({ settings, onUpdate, t }: SectionProps) {
+    const [startupDistribution, setStartupDistribution] = useState<"unknown" | "desktop" | "msix">("unknown")
+    const [startupState, setStartupState] = useState("desktop")
+    const [startupMessage, setStartupMessage] = useState("")
+    const startupDisabledByUserMessage = t('settings.general.autoStartDisabledByUser')
+
+    useEffect(() => {
+        let cancelled = false
+
+        const loadStartupState = async () => {
+            try {
+                const { invoke } = await import("@tauri-apps/api/core")
+                const distribution = await invoke<string>("fusen_get_distribution_info")
+                if (cancelled) return
+
+                if (distribution !== "msix") {
+                    setStartupDistribution("desktop")
+                    setStartupState("desktop")
+                    return
+                }
+
+                const state = await invoke<string>("fusen_get_startup_state")
+                if (cancelled) return
+                setStartupDistribution("msix")
+                setStartupState(state)
+                setStartupMessage(state === "disabled_by_user"
+                    ? startupDisabledByUserMessage
+                    : "")
+            } catch (e) {
+                console.error("[AutoStart] Failed to load startup state:", e)
+                if (!cancelled) setStartupDistribution("desktop")
+            }
+        }
+
+        loadStartupState()
+        return () => { cancelled = true }
+    }, [startupDisabledByUserMessage])
+
+    const autoStartChecked = startupDistribution === "msix"
+        ? startupState === "enabled"
+        : settings.auto_start
+
+    const openStartupSettings = async () => {
+        try {
+            const { open } = await import("@tauri-apps/plugin-shell")
+            await open("ms-settings:startupapps")
+        } catch (e) {
+            console.error("[AutoStart] Failed to open Windows startup settings:", e)
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="mb-8">
@@ -455,10 +505,40 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.general.autoStart')}</Label>
                         <p className="text-sm text-muted-foreground">{t('settings.general.autoStartDesc')}</p>
+                        {startupMessage && (
+                            <div className="pt-2">
+                                <p className="text-sm text-amber-700">{startupMessage}</p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2"
+                                    onClick={openStartupSettings}
+                                >
+                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                    {t('settings.general.openWindowsStartupSettings')}
+                                </Button>
+                            </div>
+                        )}
                     </div>
                     <Switch
-                        checked={settings.auto_start}
+                        checked={autoStartChecked}
+                        disabled={startupDistribution === "unknown"}
                         onCheckedChange={async (val) => {
+                            if (startupDistribution === "msix") {
+                                try {
+                                    const { invoke } = await import("@tauri-apps/api/core")
+                                    const state = await invoke<string>("fusen_set_startup_enabled", { enabled: val })
+                                    setStartupState(state)
+                                    setStartupMessage(state === "disabled_by_user"
+                                        ? t('settings.general.autoStartDisabledByUser')
+                                        : "")
+                                    onUpdate("auto_start", state === "enabled")
+                                } catch (e) {
+                                    console.error("[AutoStart] Failed to set MSIX startup task:", e)
+                                }
+                                return
+                            }
+
                             onUpdate("auto_start", val)
                             // autostart pluginを呼び出し
                             try {
@@ -737,6 +817,7 @@ function DataSection({
 
 function AboutSection({ t }: { t: (key: any) => string }) {
     const [version, setVersion] = React.useState<string>('...')
+    const [distribution, setDistribution] = React.useState<'msix' | 'desktop'>('desktop')
 
     React.useEffect(() => {
         // Tauriのバージョン情報を取得
@@ -748,6 +829,20 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                 setVersion('')
             })
     }, [])
+
+    React.useEffect(() => {
+        import('@tauri-apps/api/core')
+            .then(({ invoke }) => invoke<string>('fusen_get_distribution_info'))
+            .then(distributionInfo => {
+                setDistribution(distributionInfo === 'msix' ? 'msix' : 'desktop')
+            })
+            .catch(e => {
+                console.error('Failed to get distribution info:', e)
+                setDistribution('desktop')
+            })
+    }, [])
+
+    const isMsix = distribution === 'msix'
 
     return (
         <div className="space-y-6">
@@ -785,6 +880,9 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                         <h3 className="font-bold text-xl leading-none">{t('settings.about.appName')}</h3>
                         <p className="text-sm text-muted-foreground">OreNoFusen</p>
                         <p className="text-xs text-muted-foreground pt-1">{t('settings.about.version')} {version}</p>
+                        <p className="text-xs font-medium text-muted-foreground">
+                            {isMsix ? t('settings.about.editionTrial') : t('settings.about.editionStandard')}
+                        </p>
                     </div>
                 </div>
 
@@ -793,7 +891,30 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                         {t('settings.about.appDesc')}
                     </p>
 
+                    {isMsix && (
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                            {t('settings.about.trialNote')}
+                        </p>
+                    )}
+
                     <div className="space-y-2 pt-2">
+                        {isMsix && (
+                            <Button
+                                variant="outline"
+                                className="w-full justify-start h-12 text-base font-normal"
+                                onClick={async () => {
+                                    try {
+                                        const { open } = await import('@tauri-apps/plugin-shell');
+                                        await open('https://ore-no-fusen.vercel.app');
+                                    } catch (e) {
+                                        console.error('Failed to open link:', e);
+                                    }
+                                }}
+                            >
+                                <ExternalLink className="mr-3 h-5 w-5" />
+                                {t('settings.about.getStandard')}
+                            </Button>
+                        )}
                         <Button
                             variant="outline"
                             className="w-full justify-start h-12 text-base font-normal"

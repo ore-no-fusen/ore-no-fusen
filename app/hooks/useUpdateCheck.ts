@@ -56,6 +56,9 @@ export function useUpdateCheck({ isMainWindow }: UseUpdateCheckOptions): UseUpda
         if (!isMainWindow) return;
         const checkForUpdate = async () => {
             try {
+                const distributionKind = await invoke<string>('fusen_get_distribution_info').catch(() => 'desktop');
+                if (distributionKind === 'msix') return;
+
                 const { check } = await import('@tauri-apps/plugin-updater');
                 const update = await check();
                 if (!update) return;
