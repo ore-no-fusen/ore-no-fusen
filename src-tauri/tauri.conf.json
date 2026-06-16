@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "俺の付箋",
+        "title": "Ore No Fusen",
         "width": 240,
         "height": 300,
         "resizable": true,

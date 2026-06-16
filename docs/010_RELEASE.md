@@ -85,6 +85,24 @@ MAJOR.MINOR.PATCH
 
 ---
 
+## SW_VERSION（PWA / Service Worker）の採番
+
+PWA（`app/viewer/`）と Service Worker（`worker/index.js`）は、本体（Tauri アプリ）とは
+別タイミングで更新されるため、専用の連番を持つ。
+
+形式: `本体バージョン-pwa.N`（例: `4.0.2-pwa.1`）
+
+| いつ | どうする | 例 |
+|------|---------|----|
+| PWA / SW だけ直した | `N` を 1 つ上げる | `4.0.2-pwa.1` → `4.0.2-pwa.2` |
+| 本体バージョンが上がった | 先頭を新バージョンにし `N` を 1 に戻す | `4.0.2-pwa.3` → `4.0.3-pwa.1` |
+
+- 場所: `worker/index.js` の `SW_VERSION`
+- 反映確認: 画面右下の `SW` 表示で確認できる
+- videodrop など機能名の枝番は使わない（過去の `3.4.2-videodrop.N` は廃止）
+
+---
+
 ## 開発からリリースまでの流れ
 
 この章は、アプリに影響する変更を `develop` に集めて正式リリースする通常手順を示す。
@@ -243,3 +261,4 @@ git push origin main --tags
 | 3 | 26-06-16 | MSIX（ストアお試し版）の扱いを追記（毎回CI生成・署名なし・ローカルテストしない・MSI でテスト・MSIX固有部分は実機確認済み・ストア提出時は Microsoft が署名）。 |
 | 4 | 26-06-16 | アプリ非影響変更も `develop` 起点で作業し、PR 先だけ `main` にする運用を明記。 |
 | 5 | 26-06-16 | `main` だけで変更を作らない方針と、Do Release の `main` → `develop` 戻しの役割を明確化。 |
+| 6 | 26-06-17 | SW_VERSION の採番ルール（`本体バージョン-pwa.N` 形式）を追加。videodrop 枝番は廃止。 |

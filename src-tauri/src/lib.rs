@@ -1528,7 +1528,7 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
         &label,
         tauri::WebviewUrl::App("/?path=&isPool=true".into())
     )
-    .title("Quick Memo")
+    .title("Ore No Fusen")
     .transparent(false)
     .decorations(false)
     .visible(false)  // 後から SW_SHOWNOACTIVATE で立てる

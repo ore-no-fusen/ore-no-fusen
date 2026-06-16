@@ -329,7 +329,7 @@ function OrchestratorContent() {
 
           const win = new WebviewWindow(label, {
             url,
-            title: 'Quick Memo',  // タスクバープレビューのタイトル
+            title: 'Ore No Fusen',  // タスクバープレビューのタイトル
             transparent: false,
             decorations: false,
             alwaysOnTop: meta?.always_on_top || false,
