@@ -2,7 +2,7 @@
  * ランディングページ (LandingPage) - 「思考を現実へ」ブランド再設計版
  *
  * 構成（依頼書順 + ラスコー保持）:
- *  0. Hero            「消えそうな思考を、逃がさない。」+ 0.3秒の証拠 + CTA
+ *  0. Hero            「消えそうな思考を、逃がさない。」+ 0.3秒の証拠 + CTA + 製品スクショ
  *  1. 共感             あとでやろうで消える
  *  2. ラスコー         思想の根拠（残す）
  *  3. 解決フロー       思考 → 固定 → 視界 → 決心 → 行動 → 現実
@@ -27,6 +27,7 @@ import { useState, useEffect, useRef } from 'react';
 export default function LandingPage() {
     const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
     const latestReleaseUrl = 'https://github.com/ore-no-fusen/ore-no-fusen/releases/latest';
+    const microsoftStoreUrl = 'https://apps.microsoft.com/detail/9N4MW0V2MVVG';
     const downloadUrl = version
         ? `https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v${version}/ore-no-fusen_${version}_x64-setup.exe`
         : latestReleaseUrl;
@@ -236,6 +237,24 @@ export default function LandingPage() {
                                 : 'Windows 10/11 ・ 無料 ・ データはあなたの手元'}
                         </p>
 
+                        {/* Microsoft Store（署名済み・SmartScreen 警告が出ない安全な道） */}
+                        <Link
+                            href={microsoftStoreUrl}
+                            target="_blank"
+                            onClick={() => trackEvent('store_click')}
+                            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm border-2 border-[#5C7A3E] text-[#5C7A3E] bg-white/60 hover:bg-[#5C7A3E] hover:text-[#F5EDD8] transition-all duration-300"
+                        >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M3 3h8.5v8.5H3V3zm9.5 0H21v8.5h-8.5V3zM3 12.5h8.5V21H3v-8.5zm9.5 0H21V21h-8.5v-8.5z" />
+                            </svg>
+                            {isEn ? 'Get it from Microsoft Store' : 'Microsoft Store から入れる'}
+                        </Link>
+                        <p className="text-xs text-[#9A8468]">
+                            {isEn
+                                ? 'Signed · No SmartScreen warning · Auto-updates'
+                                : '署名済み ・ SmartScreen の警告が出ません ・ 自動更新'}
+                        </p>
+
                         {/* winget */}
                         <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-[#7A6A50] mt-2">
                             <span>{isEn ? 'or via Command Prompt:' : 'コマンドプロンプトでも入れられます:'}</span>
@@ -286,6 +305,33 @@ export default function LandingPage() {
                                 )}
                             </div>
                         </details>
+                    </div>
+
+                    {/* 製品スクリーンショット（まず「何のソフトか」を一目で伝える） */}
+                    <div className="relative mt-16 max-w-3xl mx-auto">
+                        <div
+                            className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 w-16 h-5 rounded-sm opacity-70 -rotate-1"
+                            style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }}
+                            aria-hidden="true"
+                        />
+                        <div
+                            className="relative rounded-sm overflow-hidden"
+                            style={{
+                                boxShadow: '4px 8px 28px rgba(0,0,0,0.18)',
+                                border: '1px solid #C8B898',
+                            }}
+                        >
+                            <Image
+                                src="/screenshots/ScreenShot_OreNoFusen.png"
+                                alt={isEn
+                                    ? 'FUSEN sticky notes pinned on a Windows desktop'
+                                    : 'Windows デスクトップに貼られた俺の付箋'}
+                                width={1200}
+                                height={800}
+                                priority
+                                className="w-full h-auto block"
+                            />
+                        </div>
                     </div>
 
                     {/* スクロールヒント */}
@@ -1420,7 +1466,7 @@ export default function LandingPage() {
                             {isEn ? 'Use Cases' : '俺の付箋 活用ギャラリー'}
                         </p>
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] tracking-tight">
-                            {isEn ? 'AI eras canvas' : 'AI時代の"思考のキャンバス"として'}
+                            {isEn ? 'Your thinking canvas for the AI era' : 'AI時代の"思考のキャンバス"として'}
                         </h2>
                         <p className="mt-6 text-[#6A5540] text-base sm:text-lg">
                             {isEn
@@ -1559,6 +1605,19 @@ export default function LandingPage() {
                             <Download className="w-5 h-5" />
                             {isEn ? 'Download for Windows' : 'ダウンロード（Windows）'}
                         </Link>
+                        <div className="mt-4">
+                            <Link
+                                href={microsoftStoreUrl}
+                                target="_blank"
+                                onClick={() => trackEvent('store_click_cta')}
+                                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-sm font-bold text-sm border-2 border-[#5C7A3E] text-[#3A5020] bg-white/50 hover:bg-[#5C7A3E] hover:text-[#F5EDD8] transition-all duration-200"
+                            >
+                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                    <path d="M3 3h8.5v8.5H3V3zm9.5 0H21v8.5h-8.5V3zM3 12.5h8.5V21H3v-8.5zm9.5 0H21V21h-8.5v-8.5z" />
+                                </svg>
+                                {isEn ? 'Get it from Microsoft Store' : 'Microsoft Store から入れる'}
+                            </Link>
+                        </div>
                         <p className="text-xs text-[#7A6200] mt-4">
                             {isEn ? 'Free · 1-min install · Your data stays with you' : '無料 ・ インストール 1 分 ・ データはあなたの手元に'}
                         </p>

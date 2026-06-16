@@ -11,7 +11,7 @@
 
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { open } from '@tauri-apps/plugin-shell';
-import { EditorState, EditorSelection, Extension, StateField, Compartment, RangeSetBuilder, Transaction, Facet, StateEffect } from '@codemirror/state';
+import { EditorState, EditorSelection, Extension, StateField, Compartment, RangeSetBuilder, Transaction, Facet, StateEffect, Line } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { highlightSelectionMatches, search, setSearchQuery, SearchQuery } from '@codemirror/search';
@@ -152,46 +152,70 @@ const imagePreviewPlugin = ViewPlugin.fromClass(class {
     }
 
     computeDecorations(view: EditorView) {
-        const builder = new RangeSetBuilder<Decoration>();
-        const { doc } = view.state;
-        const filePath = view.state.facet(filePathFacet); // Access filePath from facet
-
-        // Simple regex scan over visible ranges (or whole doc for simplicity if small)
-        // Sticky Notes are small, scanning whole doc is fine.
-        for (const { from, to } of view.visibleRanges) {
-            const text = doc.sliceString(from, to);
-            // Regex for ![alt](src) or ![alt|scale](src)
-            // Need global flag
-            const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-            let match;
-
-            while ((match = imgRegex.exec(text))) {
-                const fullMatch = match[0];
-                const altRaw = match[1];
-                const src = match[2];
-                const start = from + match.index;
-                const end = start + fullMatch.length;
-
-                // Parse scale
-                const altParts = altRaw.split('|');
-                const realAlt = altParts[0];
-                let scale = 1.0;
-                if (altParts.length > 1) {
-                    const s = parseFloat(altParts[1]);
-                    if (!isNaN(s)) scale = s;
-                }
-
-                builder.add(start, end, Decoration.replace({
-                    widget: new ImageWidget(src, realAlt, scale, filePath, fullMatch),
-                    inclusive: false
-                }));
-            }
-        }
-        return builder.finish();
+        return buildImagePreviewDecorations(
+            view.state.doc,
+            view.visibleRanges,
+            view.state.facet(filePathFacet)
+        );
     }
 }, {
     decorations: v => v.decorations
 });
+
+export function buildImagePreviewDecorations(
+    doc: EditorState['doc'],
+    visibleRanges: readonly { from: number; to: number }[],
+    filePath: string
+): DecorationSet {
+    const builder = new RangeSetBuilder<Decoration>();
+    const visitedLines = new Set<number>();
+
+    for (const { from, to } of visibleRanges) {
+        let line = doc.lineAt(from);
+        while (line.from <= to) {
+            if (!visitedLines.has(line.number)) {
+                visitedLines.add(line.number);
+                addImagePreviewDecorationsForLine(builder, line, filePath);
+            }
+
+            if (line.to >= to || line.number >= doc.lines) break;
+            line = doc.line(line.number + 1);
+        }
+    }
+
+    return builder.finish();
+}
+
+function addImagePreviewDecorationsForLine(
+    builder: RangeSetBuilder<Decoration>,
+    line: Line,
+    filePath: string
+) {
+    // 1行内で完結する画像Markdownだけをプレビュー化する。
+    const imgRegex = /!\[([^\]\r\n]*)\]\(([^)\r\n]+)\)/g;
+    let match;
+
+    while ((match = imgRegex.exec(line.text))) {
+        const fullMatch = match[0];
+        const altRaw = match[1];
+        const src = match[2];
+        const start = line.from + match.index;
+        const end = start + fullMatch.length;
+
+        const altParts = altRaw.split('|');
+        const realAlt = altParts[0];
+        let scale = 1.0;
+        if (altParts.length > 1) {
+            const s = parseFloat(altParts[1]);
+            if (!isNaN(s)) scale = s;
+        }
+
+        builder.add(start, end, Decoration.replace({
+            widget: new ImageWidget(src, realAlt, scale, filePath, fullMatch),
+            inclusive: false
+        }));
+    }
+}
 
 // [NEW] Facet to pass filePath to extensions
 const filePathFacet = Facet.define<string, string>({

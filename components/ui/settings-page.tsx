@@ -856,23 +856,13 @@ function AboutSection({ t }: { t: (key: any) => string }) {
             <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
                 <div className="flex items-start space-x-4">
                     {/* 黄色いアイコン */}
-                    <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-yellow-100">
-                        <div className="h-8 w-8 text-yellow-600">
-                            {/* 簡易的な付箋アイコン */}
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="h-8 w-8"
-                            >
-                                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                                <polyline points="14 2 14 8 20 8" />
-                            </svg>
-                        </div>
+                    <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-900 shadow-sm">
+                        <img
+                            src="/logo.png"
+                            alt=""
+                            aria-hidden="true"
+                            className="h-full w-full object-cover"
+                        />
                     </div>
 
                     {/* タイトルとバージョン */}
@@ -3441,3 +3431,4 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
         </div>
     )
 }
+

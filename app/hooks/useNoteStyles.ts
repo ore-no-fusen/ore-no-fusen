@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useSettings } from '@/lib/settings-store';
 import { Note } from '@/app/api/notes';
+import { safeUnlisten } from '@/app/utils/safeUnlisten';
 
 export function useNoteStyles(note: Note | null) {
     const { settings } = useSettings();
@@ -29,7 +30,7 @@ export function useNoteStyles(note: Note | null) {
             }
         })();
         return () => {
-            if (unlisten) unlisten();
+            safeUnlisten(unlisten);
         };
     }, []);
 

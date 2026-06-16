@@ -17,6 +17,7 @@ import { Analytics } from "@vercel/analytics/next";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
+const IS_TAURI_BUILD = process.env.IS_TAURI_BUILD === "true";
 const SITE_DESCRIPTION =
   "消えそうな思考を、逃がさない。\n\n思考を構造化し、\nAIで図解や資料へつなげる。";
 
@@ -107,7 +108,9 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/favicon.ico?v=20260617-s" />
+        <link rel="shortcut icon" href="/favicon.ico?v=20260617-s" />
+        <link rel="apple-touch-icon" href="/icon-192.png?v=20260617-s" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
@@ -152,7 +155,7 @@ export default function RootLayout({
             });
           `}
         </Script>
-        <Analytics /> 
+        {!IS_TAURI_BUILD && <Analytics />} 
       </body>
     </html>
   );
