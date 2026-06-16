@@ -107,7 +107,9 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/favicon.ico?v=20260617-s" />
+        <link rel="shortcut icon" href="/favicon.ico?v=20260617-s" />
+        <link rel="apple-touch-icon" href="/icon-192.png?v=20260617-s" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
