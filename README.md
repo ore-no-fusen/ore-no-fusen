@@ -10,10 +10,10 @@
 
 A beautiful sticky notes app with Markdown support.
 
-[![GitHub release](https://img.shields.io/github/v/release/ore-no-fusen/ore-no-fusen?style=flat-square)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
+[![GitHub release](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/release.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/total?style=flat-square&label=downloads%20total)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-[![Downloads Latest](https://img.shields.io/github/downloads/ore-no-fusen/ore-no-fusen/latest/total?style=flat-square&label=downloads%20latest)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
+[![Downloads](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/downloads-total.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
+[![Downloads Latest](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/downloads-latest.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
 **Thanks for 1,000+ downloads.**
 

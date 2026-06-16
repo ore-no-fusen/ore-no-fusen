@@ -1,0 +1,8 @@
+name = "ore-no-fusen-badges"
+main = "src/index.js"
+compatibility_date = "2026-06-16"
+
+[[kv_namespaces]]
+binding = "BADGE_CACHE"
+id = "eefc51b05d24499db727671bf0e435fb"
+preview_id = "65a4addf509546e4b0f6b4f723f7dcb7"
