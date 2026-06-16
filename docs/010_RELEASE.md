@@ -35,6 +35,7 @@ flowchart TD
 | アプリに影響する大きい変更 | 専用ブランチを作成 | `develop` | 新機能、同期処理、保存処理、Tauri/Rust側の変更 |
 
 アプリに影響しない変更は、作業ブランチを `develop` から作り、PR 先だけ `main` にする。
+`main` だけで変更を作らない。非影響変更の `main` 向け PR は、`develop` 起点で作った変更を `main` に載せるためのもの。
 `main` に入った時点で GitHub README や公開ドキュメントの表示を更新できる。
 アプリに影響する変更は `develop` に集め、通常リリース手順で `main` へ反映する。
 
@@ -42,7 +43,7 @@ flowchart TD
 
 - **CI / ビルド設定（`test.yml`・`release.yml` 等）は「アプリに影響する側」** として扱う＝ `develop` で変更する（`main` 直接にしない）。
 - **普段の作業ブランチは `develop`。`main` に居座らない**（誤って `main` でアプリコードを触る事故を防ぐ）。
-- **`main` と `develop` をズレたまま放置しない。** `main` に直接入れた変更（LP 等）は、次の Do Release の「`main` → `develop` 戻し」で `develop` に反映され、両者が揃う。ズレを放置すると Do Release のマージで衝突する（v4.0.0 で `.gitignore` の衝突が実際に発生した）。
+- **`main` と `develop` をズレたまま放置しない。** `main` だけで変更を作らない。Do Release の「`main` → `develop` 戻し」は、リリース処理中に `main` 側で作られるバージョン更新などを `develop` に戻すためのもの。ズレを放置すると Do Release のマージで衝突する（v4.0.0 で `.gitignore` の衝突が実際に発生した）。
 - **Do Release の二重テストの扱い:** `test.yml` は `develop`/`main` への push でテストするが、「`main` → `develop` 戻し」（bot による `develop` への push）は `main` 行きで既にテスト済みのコードを戻すだけなので、`rust` ジョブの `if: !(develop かつ bot)` で再テストをスキップする（無駄を排除）。
 
 ---
@@ -241,3 +242,4 @@ git push origin main --tags
 | 2 | 26-06-14 | アプリ非影響変更は `main` 向け、アプリ影響変更は `develop` 向けに分けるブランチ運用を追加。 |
 | 3 | 26-06-16 | MSIX（ストアお試し版）の扱いを追記（毎回CI生成・署名なし・ローカルテストしない・MSI でテスト・MSIX固有部分は実機確認済み・ストア提出時は Microsoft が署名）。 |
 | 4 | 26-06-16 | アプリ非影響変更も `develop` 起点で作業し、PR 先だけ `main` にする運用を明記。 |
+| 5 | 26-06-16 | `main` だけで変更を作らない方針と、Do Release の `main` → `develop` 戻しの役割を明確化。 |
