@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '3.4.2-videodrop.17';
+const SW_VERSION = '3.4.2-videodrop.18';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

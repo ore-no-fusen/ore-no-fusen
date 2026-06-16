@@ -223,13 +223,13 @@ export function WriteStep({
                 }
               }
               // すでにチェックボックス行なら解除（toggle off）
-              if (lineNode instanceof Element && lineNode.hasAttribute('data-checkbox-line')) {
+              if (lineNode instanceof Element && lineNode.hasAttribute('data-checkbox-line') && lineNode.parentNode === editor) {
                 const text = (lineNode.textContent ?? '').trimStart();
                 const div = document.createElement('div');
                 div.textContent = text;
                 editor.replaceChild(div, lineNode);
                 const next = div.nextSibling;
-                if (next && next.nodeName === 'BR') editor.removeChild(next);
+                if (next && next.nodeName === 'BR' && next.parentNode === editor) editor.removeChild(next);
                 const range = document.createRange();
                 range.selectNodeContents(div);
                 range.collapse(false);
@@ -266,7 +266,7 @@ export function WriteStep({
               } else {
                 // 空行または新規: wrapper + br を追加
                 wrapper.appendChild(document.createTextNode(''));
-                if (lineNode) {
+                if (lineNode && lineNode.parentNode === editor) {
                   editor.insertBefore(wrapper, lineNode);
                   editor.insertBefore(document.createElement('br'), wrapper.nextSibling);
                 } else {
@@ -685,8 +685,8 @@ export function WriteStep({
                   }
                   node = node.parentNode;
                 }
-                if (checkboxSpan) {
-                  checkboxSpan.parentNode!.insertBefore(img, checkboxSpan.nextSibling);
+                if (checkboxSpan && checkboxSpan.parentNode) {
+                  checkboxSpan.parentNode.insertBefore(img, checkboxSpan.nextSibling);
                 } else {
                   insertNodeAtCursor(img);
                 }
