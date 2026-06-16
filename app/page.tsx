@@ -30,6 +30,7 @@ import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useMainWindowResizePolicy } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
+import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 
 // Global AppState type definition
 type AppState = {
@@ -577,8 +578,8 @@ function OrchestratorContent() {
     promise.then((u) => { unlisten = u; });
 
     return () => {
-      if (unlisten) unlisten();
-      else promise.then((u) => u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [isMainWindow, openNoteWindow]);
 
@@ -589,7 +590,7 @@ function OrchestratorContent() {
     listen<{ label: string }>('fusen:pool_window_ready', (event) => {
       readyPoolWindowsRef.current.add(event.payload.label);
     }).then((u) => { unlisten = u; });
-    return () => { if (unlisten) unlisten(); };
+    return () => { safeUnlisten(unlisten); };
   }, [isMainWindow]);
 
   // [NEW] Pool スロット解放: close-without-input 時に StickyNote.tsx が emit → usedPoolWindowsRef からラベルを削除
@@ -603,7 +604,7 @@ function OrchestratorContent() {
       localStorage.removeItem(`promoted_${label}`);
       console.log(`[POOL] pool_slot_released: label=${label} removed from usedPoolWindowsRef`);
     }).then((u) => { unlisten = u; });
-    return () => { if (unlisten) unlisten(); };
+    return () => { safeUnlisten(unlisten); };
   }, [isMainWindow]);
 
   // [NEW] グローバル Ctrl+N リスナー（Rust が emit した fusen:request_create_global を受信して新規付箋作成）
@@ -647,7 +648,7 @@ function OrchestratorContent() {
       }
     };
     setup();
-    return () => { if (unlisten) unlisten(); };
+    return () => { safeUnlisten(unlisten); };
   }, [isMainWindow, handleCreateNote]);
 
   // [FIX] メインウィンドウの「閉じる」を「隠す」に変更 (検索ウィンドウ再表示不具合修正)
@@ -685,7 +686,7 @@ function OrchestratorContent() {
     };
     setup();
 
-    return () => { if (unlisten) unlisten(); };
+    return () => { safeUnlisten(unlisten); };
   }, [isMainWindow]);
 
   // [New] 設定更新イベントの監視
@@ -719,8 +720,8 @@ function OrchestratorContent() {
 
         // Return combined cleanup function
         return () => {
-          unlistenSettings();
-          unlistenNotes();
+          safeUnlisten(unlistenSettings);
+          safeUnlisten(unlistenNotes);
         };
 
       } catch (e) {
@@ -733,8 +734,8 @@ function OrchestratorContent() {
     promise.then(u => { unlisten = u; });
 
     return () => {
-      if (unlisten) unlisten();
-      else promise.then(u => u && u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [syncState, isMainWindow]);
 
@@ -754,8 +755,8 @@ function OrchestratorContent() {
 
     promise.then(u => { unlisten = u; });
     return () => {
-      if (unlisten) unlisten();
-      else promise.then(u => u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [isMainWindow]);
 
@@ -796,8 +797,8 @@ function OrchestratorContent() {
 
     promise.then(u => { unlisten = u; });
     return () => {
-      if (unlisten) unlisten();
-      else promise.then(u => u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [isMainWindow]);
 
@@ -853,8 +854,8 @@ function OrchestratorContent() {
 
     promise.then(u => { unlisten = u; });
     return () => {
-      if (unlisten) unlisten();
-      else promise.then(u => u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [isMainWindow]);
 
@@ -900,8 +901,8 @@ function OrchestratorContent() {
     promise.then(u => { unlisten = u; });
 
     return () => {
-      if (unlisten) unlisten();
-      else promise.then(u => u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [isMainWindow, handleCreateNote]);
 
@@ -930,8 +931,8 @@ function OrchestratorContent() {
     promise.then(u => { unlisten = u; });
 
     return () => {
-      if (unlisten) unlisten();
-      else promise.then(u => u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [isMainWindow, handleCreateNote]);
 
@@ -948,8 +949,8 @@ function OrchestratorContent() {
     });
     promise.then(u => { unlisten = u; });
     return () => {
-      if (unlisten) unlisten();
-      else promise.then(u => u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [isMainWindow, handleCreateNote]);
 
@@ -999,8 +1000,8 @@ function OrchestratorContent() {
     })();
 
     return () => {
-      try { unlistenSync?.(); } catch (e) { /* ignore */ }
-      try { unlistenVisible?.(); } catch (e) { /* ignore */ }
+      safeUnlisten(unlistenSync);
+      safeUnlisten(unlistenVisible);
     };
   }, [isMainWindow, getWindowLabel]);
 
@@ -1018,7 +1019,7 @@ function OrchestratorContent() {
     };
     setup();
 
-    return () => { if (unlisten) unlisten(); };
+    return () => { safeUnlisten(unlisten); };
   }, [isMainWindow]);
 
   // [iPhone受信] iPhoneから付箋受信 → 新規付箋ウィンドウを右上に開く (POLL-02)
@@ -1069,8 +1070,8 @@ function OrchestratorContent() {
     );
     promise.then((u) => { unlisten = u; });
     return () => {
-      if (unlisten) unlisten();
-      else promise.then((u) => u());
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
     };
   }, [isMainWindow, openNoteWindow, folderPath]);
 
@@ -1088,10 +1089,10 @@ function OrchestratorContent() {
     p1.then((u) => { unlistenDisconnected = u; });
     p2.then((u) => { unlistenConnected = u; });
     return () => {
-      if (unlistenDisconnected) unlistenDisconnected();
-      else p1.then((u) => u());
-      if (unlistenConnected) unlistenConnected();
-      else p2.then((u) => u());
+      if (unlistenDisconnected) safeUnlisten(unlistenDisconnected);
+      else safeUnlistenWhenResolved(p1);
+      if (unlistenConnected) safeUnlisten(unlistenConnected);
+      else safeUnlistenWhenResolved(p2);
     };
   }, [isMainWindow]);
 

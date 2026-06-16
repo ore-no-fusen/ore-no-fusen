@@ -43,6 +43,7 @@ import Tooltip from './Tooltip';
 import { pathsEqual, getFileName } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
 import { resolvePath } from '../utils/markdownUtils';
+import { safeUnlisten } from '../utils/safeUnlisten';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
@@ -720,7 +721,7 @@ const StickyNote = memo(function StickyNote() {
 
         return () => {
             mounted = false;
-            if (unlisten) unlisten();
+            safeUnlisten(unlisten);
         };
     }, [isPool, noteFilePathRef, setContent, setEditBody, setIsEditing, setRawFrontmatter, startEditing]);
 
@@ -765,7 +766,7 @@ const StickyNote = memo(function StickyNote() {
                 // window close は Tauri のデフォルト動作に任せる（close() を明示的に呼ばない）
             });
         })();
-        return () => { unlisten?.(); };
+        return () => { safeUnlisten(unlisten); };
     }, [isPool]);
 
     // [NEW] Pool 窓 lazy ファイル作成コールバック（0→1 文字遷移時に 1 回だけ呼ぶ）

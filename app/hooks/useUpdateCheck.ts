@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getTranslation, type Language } from '@/lib/i18n';
+import { safeUnlisten } from '@/app/utils/safeUnlisten';
 
 type UseUpdateCheckOptions = {
     isMainWindow: boolean;
@@ -48,7 +49,7 @@ export function useUpdateCheck({ isMainWindow }: UseUpdateCheckOptions): UseUpda
             }).then(u => { unlisten = u; });
         }).catch(console.error);
 
-        return () => { if (unlisten) unlisten(); };
+        return () => { safeUnlisten(unlisten); };
     }, []);
 
     // 自動アップデート確認（メインウィンドウのみ・起動3秒後）
