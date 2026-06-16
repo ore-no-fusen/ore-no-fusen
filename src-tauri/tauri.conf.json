@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Ore No Fusen",
+  "productName": "ore-no-fusen",
   "identifier": "com.ore-no-fusen.app",
   "build": {
     "frontendDist": "../out",
