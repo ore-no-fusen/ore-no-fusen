@@ -7,6 +7,29 @@ import type { NoteListStepProps } from './types';
 
 const SHOW_DEBUG = true;
 
+function DebugBugIcon() {
+  return (
+    <svg
+      viewBox="0 0 56 36"
+      className="h-8 w-14"
+      role="img"
+      aria-hidden="true"
+    >
+      <path d="M13 8.8 8.6 4" stroke="#7C8AA0" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M19 8.8 24 4" stroke="#7C8AA0" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="16" cy="17" r="7.4" fill="#EF746F" />
+      <circle cx="30" cy="20.5" r="7.1" fill="#9CE6A2" />
+      <circle cx="42" cy="20.5" r="7" fill="#81DA8A" />
+      <circle cx="52" cy="20.5" r="6.2" fill="#B5EE8E" />
+      <circle cx="13.5" cy="15.6" r="1.3" fill="#233044" />
+      <circle cx="18" cy="15.6" r="1.3" fill="#233044" />
+      <path d="M14.4 20.2 Q16.2 22.1 18.7 20.2" stroke="#233044" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <circle cx="11.8" cy="18.8" r="0.8" fill="#F8A6B7" opacity="0.8" />
+      <circle cx="20.3" cy="18.8" r="0.8" fill="#F8A6B7" opacity="0.8" />
+    </svg>
+  );
+}
+
 export function NoteListStep({
   notes,
   isLoading,
@@ -29,11 +52,11 @@ export function NoteListStep({
         <span className="text-3xl font-bold text-gray-900 flex-1">メモ</span>
         {SHOW_DEBUG && (
           <button
-            className="w-9 h-9 flex items-center justify-center text-gray-400 text-lg mr-1"
+            className="w-14 h-9 flex items-center justify-center rounded-full mr-1 active:bg-gray-200 transition-colors"
             aria-label="デバッグログ"
             onClick={() => { window.location.href = '/viewer?debug=1'; }}
           >
-            DBG
+            <DebugBugIcon />
           </button>
         )}
         <button

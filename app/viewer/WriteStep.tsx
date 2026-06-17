@@ -127,6 +127,7 @@ export function WriteStep({
   sendToPC,
 }: WriteStepProps) {
   const selectedPc = pcDevices.find((pc) => pc.pcId === selectedPcId) ?? null;
+  const [isRefreshingPcDevices, setIsRefreshingPcDevices] = React.useState(false);
 
   const openNextCrop = React.useCallback(() => {
     setCropQueue((prev) => {
@@ -526,6 +527,26 @@ export function WriteStep({
               ) : (
                 <span className="min-w-0 flex-1 truncate text-gray-400">PC未登録（1台なら送信可）</span>
               )}
+              <button
+                type="button"
+                className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 active:bg-gray-200 disabled:opacity-40"
+                disabled={!refreshPcDevices || isRefreshingPcDevices}
+                aria-label="PC一覧を更新"
+                onClick={async () => {
+                  if (!refreshPcDevices) return;
+                  setIsRefreshingPcDevices(true);
+                  setErrorMessage(null);
+                  try {
+                    await refreshPcDevices();
+                  } catch (err: unknown) {
+                    setErrorMessage('PC一覧の更新に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+                  } finally {
+                    setIsRefreshingPcDevices(false);
+                  }
+                }}
+              >
+                {isRefreshingPcDevices ? '更新中' : '更新'}
+              </button>
             </div>
             {selectedPc && (
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">
