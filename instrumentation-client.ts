@@ -17,9 +17,13 @@ Sentry.init({
 
   // 付箋の本文・ファイルパスなど個人情報をレポートから除外
   beforeSend(event) {
-    // パンくずリストから付箋内容が混入しないよう本文系データを削除
-    // consoleログのパンくずは付箋内容が混入する可能性があるため削除
-    delete event.breadcrumbs;
+    // console ログのパンくずには付箋本文が混入しうるため除外する。
+    // 一方 fetch/xhr/navigation のパンくず（URL・遷移のみ＝本文を含まない）は残す。
+    // → 「Unexpected token '<'」のようにスタックが無いエラーでも、
+    //    直前にどのファイルを取りに行って失敗したかを追えるようにするため。
+    if (event.breadcrumbs) {
+      event.breadcrumbs = event.breadcrumbs.filter((b) => b.category !== 'console');
+    }
 
     // requestボディがあれば削除
     if (event.request?.data) {
