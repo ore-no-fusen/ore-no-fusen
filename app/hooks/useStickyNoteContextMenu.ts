@@ -261,9 +261,11 @@ export function useStickyNoteContextMenu({
 
             // 色変更サブメニュー
             const colorItems = [
-                await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange('#80d8ff') }),
+                await MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange('#f7e9b0') }),
                 await MenuItem.new({ id: 'ctx_color_pink', text: `🌸 ${t('menu.colors.pink')}`, action: () => handleColorChange('#ffcdd2') }),
-                await MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange('#f7e9b0') })
+                await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange('#80d8ff') }),
+                await MenuItem.new({ id: 'ctx_color_white', text: `⬜ ${t('menu.colors.white')}`, action: () => handleColorChange('#fafaf0') }),
+                await MenuItem.new({ id: 'ctx_color_black', text: `⬛ ${t('menu.colors.black')}`, action: () => handleColorChange('#cfd8dc') })
             ];
             const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: `🎨 ${t('menu.changeColor')}`, items: colorItems });
 
