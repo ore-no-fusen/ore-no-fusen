@@ -122,6 +122,21 @@ export function useStickyNoteContextMenu({
         }
     }, [updateFrontmatter, setNoteBackgroundColor, shellRef]);
 
+    // 透明度変更
+    const handleOpacityChange = useCallback(async (opacity: number) => {
+        try {
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+            await invoke('fusen_set_opacity', {
+                windowLabel: getCurrentWindow().label,
+                opacity,
+            });
+            updateFrontmatter('opacity', opacity);
+        } catch (e) {
+            console.error('Failed to change opacity:', e);
+            alert(`透明度の変更に失敗しました\n${e}`);
+        }
+    }, [updateFrontmatter]);
+
     /**
      * コンテキストメニュー表示
      */
@@ -269,6 +284,14 @@ export function useStickyNoteContextMenu({
             ];
             const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: `🎨 ${t('menu.changeColor')}`, items: colorItems });
 
+            // 透明度サブメニュー
+            const opacityItems = [
+                await MenuItem.new({ id: 'ctx_opacity_opaque', text: t('menu.opacity.opaque'), action: () => handleOpacityChange(1.0) }),
+                await MenuItem.new({ id: 'ctx_opacity_light', text: t('menu.opacity.light'), action: () => handleOpacityChange(0.7) }),
+                await MenuItem.new({ id: 'ctx_opacity_heavy', text: t('menu.opacity.heavy'), action: () => handleOpacityChange(0.4) })
+            ];
+            const opacitySubmenu = await Submenu.new({ id: 'ctx_opacity_submenu', text: t('menu.changeOpacity'), items: opacityItems });
+
             const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
 
             // メニュー項目の構築
@@ -280,6 +303,7 @@ export function useStickyNoteContextMenu({
                 newNoteItem,
                 duplicateItem,
                 colorSubmenu,
+                opacitySubmenu,
                 separatorCommon
             ];
 
@@ -486,7 +510,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled]);
 
 
     // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）

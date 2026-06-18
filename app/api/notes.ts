@@ -23,6 +23,7 @@ export type NoteMeta = {
     background_color?: string;
     always_on_top?: boolean;
     folded?: boolean;
+    opacity?: number;
     tags?: string[];
 };
 

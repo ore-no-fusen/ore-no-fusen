@@ -22,6 +22,7 @@ pub struct NoteMeta {
     pub background_color: Option<String>,
     pub always_on_top: Option<bool>,
     pub folded: Option<bool>,
+    pub opacity: Option<f64>,
     #[serde(default)]
     pub tags: Vec<String>,
 }
