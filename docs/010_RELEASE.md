@@ -1,6 +1,6 @@
 # リリース手順
 
-## ブランチ運用の判断
+## 1. ブランチ運用の判断
 
 変更内容を見て、アプリに影響するかどうかでリリース経路を分ける。
 普段の作業開始地点は `develop` とし、README バッジのようにアプリへ影響しない変更だけ `main` 向け PR にする。
@@ -28,6 +28,10 @@ flowchart TD
     H --> I
 ```
 
+**図 1-1　ブランチ運用の判断フロー**
+
+**表 1-1　変更種別とブランチ運用の対応**
+
 | 変更種別 | 作業ブランチ | PR先 | 例 |
 |---------|-------------|------|----|
 | アプリに影響しない変更 | `develop` から `docs/*` ブランチを作成 | `main` | `README.md`、READMEバッジ、`docs/`、LP、GitHub表示文言 |
@@ -44,13 +48,15 @@ flowchart TD
 - **CI / ビルド設定（`test.yml`・`release.yml` 等）は「アプリに影響する側」** として扱う＝ `develop` で変更する（`main` 直接にしない）。
 - **普段の作業ブランチは `develop`。`main` に居座らない**（誤って `main` でアプリコードを触る事故を防ぐ）。
 - **`main` と `develop` をズレたまま放置しない。** `main` だけで変更を作らない。Do Release の「`main` → `develop` 戻し」は、リリース処理中に `main` 側で作られるバージョン更新などを `develop` に戻すためのもの。ズレを放置すると Do Release のマージで衝突する（v4.0.0 で `.gitignore` の衝突が実際に発生した）。
-- **Do Release の二重テストの扱い:** `test.yml` は `develop`/`main` への push でテストするが、「`main` → `develop` 戻し」（bot による `develop` への push）は `main` 行きで既にテスト済みのコードを戻すだけなので、`rust` ジョブの `if: !(develop かつ bot)` で再テストをスキップする（無駄を排除）。
+- **Do Release / winget の二重テスト回避:** `test.yml` の `rust` ジョブは、**bot（`github-actions[bot]` / `orenofusen-winget-releaser[bot]`）による push なら `develop` / `main` どちらでもスキップ**する（`if` で「`push` イベント かつ bot actor」を除外）。理由は、Do Release や winget の bot push にぶら下がってテストが並走し、本命のリリース処理（`release.yml` / winget ジョブ）の邪魔になるのを防ぐため。人間による push と Pull Request では通常どおり実行される。
 
 ---
 
-## バージョンの仕組み
+## 2. バージョンの仕組み
 
 ### 更新が必要なファイル（2つだけ）
+
+**表 2-1　バージョン更新が必要なファイル**
 
 | ファイル | ビルドシステム | 役割 |
 |---------|--------------|------|
@@ -61,21 +67,26 @@ flowchart TD
 
 ### 自動追従するもの（更新不要）
 
+**表 2-2　バージョンが自動追従するファイル**
+
 | ファイル | 仕組み |
 |---------|-------|
 | `src-tauri/tauri.conf.json` | `version` フィールドなし。Tauriがビルド时に `Cargo.toml` から自動取得 |
 | `package-lock.json` | `npm install --package-lock-only` で `package.json` に追従 |
 | ランディングページ | `next.config.mjs` がビルド時に `package.json` を読み `NEXT_PUBLIC_APP_VERSION` にセット |
+| `packaging/msix/AppxManifest.xml`（MSIX / ストア版） | Do Release（`do-release.yml`）が本体バージョンに合わせ `Identity Version` を `X.Y.Z.0`（4桁・第4桁は Store 予約のため 0 固定）へ自動更新・コミット |
 
 ---
 
-## バージョン番号の規則
+## 3. バージョン番号の規則
 
 セマンティックバージョニング（SemVer）を使用する。
 
 ```
 MAJOR.MINOR.PATCH
 ```
+
+**表 3-1　セマンティックバージョニングの種別**
 
 | 種別 | 基準 | 例 |
 |------|------|----|
@@ -85,12 +96,14 @@ MAJOR.MINOR.PATCH
 
 ---
 
-## SW_VERSION（PWA / Service Worker）の採番
+## 4. SW_VERSION（PWA / Service Worker）の採番
 
 PWA（`app/viewer/`）と Service Worker（`worker/index.js`）は、本体（Tauri アプリ）とは
 別タイミングで更新されるため、専用の連番を持つ。
 
 形式: `本体バージョン-pwa.N`（例: `4.0.2-pwa.1`）
+
+**表 4-1　SW_VERSION の採番ルール**
 
 | いつ | どうする | 例 |
 |------|---------|----|
@@ -103,7 +116,7 @@ PWA（`app/viewer/`）と Service Worker（`worker/index.js`）は、本体（Ta
 
 ---
 
-## 開発からリリースまでの流れ
+## 5. 開発からリリースまでの流れ
 
 この章は、アプリに影響する変更を `develop` に集めて正式リリースする通常手順を示す。
 
@@ -112,17 +125,16 @@ PWA（`app/viewer/`）と Service Worker（`worker/index.js`）は、本体（Ta
 ソース修正、テスト、ドキュメント更新、リリース確認は1セットで実施する。
 特に PWA / Service Worker / iPhone 連携を変更した場合は、SW バージョンを必ず上げる。
 
+**表 5-1　リリース前の必須ゲート**
+
 | No | ゲート | 内容 |
 |----|--------|------|
-| 1 | ソース修正 | 実装は最小単位で行い、ユーザー本文・添付・保存パスなど異なる意味のデータを混ぜない |
+| 1 | ソース修正 | 実装は最小単位で行う |
 | 2 | テスト | `npx tsc --noEmit --pretty false`、対象テスト、`npm test`、`cargo check`、`npm run build` を実行する |
-| 3 | ドキュメント更新 | `docs-v2/` の仕様、`docs/` のユーザー向け手順、必要なら `README.md` を更新する |
+| 3 | ドキュメント更新 | `docs-v2/` の設計仕様、`docs/` の手順書・マニュアル（開発者向け手順＝`010_RELEASE` 等／付箋アプリ利用者向け＝`100_USER_GUIDE`・`101_FAQ`）、必要なら `README.md` を更新する |
 | 4 | 変更履歴 | 更新した設計書・マニュアルの変更履歴へ日付 `YY-MM-DD` で追記する |
 | 5 | PWA バージョン確認 | PWA / SW を触った場合、画面右下の `SW` バージョンで反映を確認できるようにする |
 | 6 | リリース | develop に push し、Preview / ローカル Tauri で確認してから正式リリースへ進む |
-
-> **データロスト禁止:** ユーザーが入力した本文・1行目・タグを、添付ファイル名や保存パスで上書きしてはならない。
-> 添付画像・動画・音声・ファイルは、付箋本文とは別の部品として扱う。
 
 ```mermaid
 flowchart TD
@@ -145,7 +157,7 @@ flowchart TD
     style J2 fill:#fefece,stroke:#aaaa33,color:#333333
     style J3 fill:#fefece,stroke:#aaaa33,color:#333333
     style J4 fill:#fefece,stroke:#aaaa33,color:#333333
-    style J5 fill:#fefece,stroke:#aaaa33,color:#333333
+    style WG fill:#fefece,stroke:#aaaa33,color:#333333
     style D1 fill:#fefece,stroke:#aaaa33,color:#333333
     style D2 fill:#fefece,stroke:#aaaa33,color:#333333
     style D3 fill:#fefece,stroke:#aaaa33,color:#333333
@@ -159,7 +171,7 @@ flowchart TD
     subgraph hook [Husky: pre-commit]
         H1["➊ TypeScript型チェック<br/>tsc --noEmit"]
         H2["➋ Vitest 単体テスト"]
-        H3["➌ Playwright E2Eテスト"]
+        H3["➌ Playwright E2Eテスト<br/>（app/Tauri 系の変更時のみ・<br/>PWA/docs のみ変更ならスキップ）"]
         H1 --> H2 --> H3
     end
     CM --- hook
@@ -176,8 +188,8 @@ flowchart TD
 
     subgraph do_release [GitHub Actions: do-release.yml]
         R1["➍ develop → main マージ"]
-        R2["➎ 2ファイルを一括更新<br/>package.json / Cargo.toml"]
-        R3["➏ package-lock.json 更新"]
+        R2["➎ バージョン一括更新<br/>package.json / Cargo.toml<br/>AppxManifest(MSIX)"]
+        R3["➏ package-lock.json / Cargo.lock 更新"]
         R4["➐ git commit & push"]
         R5["➑ git tag vX.X.X & push"]
         R6["➒ main → develop 戻し"]
@@ -187,15 +199,16 @@ flowchart TD
 
     subgraph actions [GitHub Actions: release.yml]
         J1["➓ npm ci"]
-        J2["⓫ Rustツールチェーン準備"]
-        J3["⓬ tauri-action<br/>Next.jsビルド + Rustビルド"]
-        J4["⓭ インストーラー署名"]
-        J5["⓮ GitHubリリース作成"]
-        J1 --> J2 --> J3 --> J4 --> J5
+        J2["⓫ リリースノート自動生成<br/>generate-release-notes.mjs"]
+        J3["⓬ tauri-action<br/>Next.js+Rust ビルド→署名→<br/>GitHubリリース作成"]
+        J4["⓭ 署名なし MSIX 生成<br/>build-msix.ps1 → アーティファクト保存"]
+        J1 --> J2 --> J3 --> J4
     end
     R5 --- actions
 
-    J5 --> K["✅ GitHubリリースページに<br/>署名付きインストーラーが出現"]
+    J3 --> K["✅ GitHubリリースページに<br/>署名付きインストーラーが出現"]
+    K --> WG["⓮ winget へ自動公開<br/>winget-releaser（ONFStudios.OreNoFusen）"]
+    K --> STORE["① 適宜 Store 登録を手動で実施する<br/>（メジャー更新時のみ・署名なし MSIX を<br/>Partner Center へ手動アップロード）"]
 
     subgraph docs_deploy [GitHub Actions: docs.yml]
         D1["⓯ docs-v2/ の変更を検知"]
@@ -207,9 +220,13 @@ flowchart TD
     D3 -.-> DK["✅ ドキュメントサイト更新"]
 ```
 
+**図 5-1　開発からリリースまでの全体フロー**
+
+> **補足（`release.yml` の自動処理）:** タグ push を起点に `release.yml` が走り、① リリースノート自動生成 → ② `tauri-action` でビルド・署名・GitHubリリース作成 → ③ 署名なし MSIX 生成（Actions アーティファクト保存）→ ④ `winget` へ自動公開（`ONFStudios.OreNoFusen`）まで自動で行う。**MSIX のストア提出だけは手動**（第7章）。
+
 ---
 
-## ローカルビルド（動作確認用・署名なし）
+## 6. ローカルビルド（動作確認用・署名なし）
 
 ```bash
 npm run tauri build
@@ -219,16 +236,17 @@ npm run tauri build
 
 ---
 
-## MSIX（ストアお試し版）の扱い
+## 7. MSIX（ストアお試し版）の扱い
 
 - **MSIX は毎回 CI（`release.yml`）で生成する**が、**署名はしない**。署名はストア提出時に Microsoft が代行するため、ローカルで自己署名する必要はない。
 - **署名なし MSIX はローカルではテストしない。** アプリ機能の動作確認は MSI 版で行う（普段のテストも MSI でやる）。
 - **MSIX 固有部分（自動起動 StartupTask / 自動更新の Store 委譲分岐）は v4.0.0 前に自己署名ビルドで一度実機確認済み**。以降は MSIX 固有コードを変えない限り再確認は不要。
 - ストア提出は**メジャーアップデートのときだけ手動で行う**（`packaging\msix\build-msix.ps1` で署名なし MSIX を作り、Partner Center に手動アップロード）。詳細手順は `.planning/msix-plan.md` §8。
+- **AppxManifest（MSIX）の Version は Do Release が自動更新する。** 本体バージョンに合わせ `X.Y.Z.0`（4桁・第4桁は Store が予約するため 0 固定）へ書き換えてコミットするので、**手で版番号を上げる必要はない**。MSIX をビルドする時点では既に正しい版番号が入っている。
 
 ---
 
-## ⚠️ 注意事項
+## 8. ⚠️ 注意事項
 
 ### タグは Actions が単体でプッシュする（手動でやらない）
 
@@ -252,13 +270,22 @@ git push origin main --tags
 
 ---
 
-## 更新履歴
+## 9. 更新履歴
 
-| No | 日付 | 変更内容 |
-|----|------|----------|
-| 1 | 26-05-25 | ソース修正→テスト→ドキュメント更新→SWバージョン確認→リリースの必須ゲートを追加。 |
-| 2 | 26-06-14 | アプリ非影響変更は `main` 向け、アプリ影響変更は `develop` 向けに分けるブランチ運用を追加。 |
-| 3 | 26-06-16 | MSIX（ストアお試し版）の扱いを追記（毎回CI生成・署名なし・ローカルテストしない・MSI でテスト・MSIX固有部分は実機確認済み・ストア提出時は Microsoft が署名）。 |
-| 4 | 26-06-16 | アプリ非影響変更も `develop` 起点で作業し、PR 先だけ `main` にする運用を明記。 |
-| 5 | 26-06-16 | `main` だけで変更を作らない方針と、Do Release の `main` → `develop` 戻しの役割を明確化。 |
-| 6 | 26-06-17 | SW_VERSION の採番ルール（`本体バージョン-pwa.N` 形式）を追加。videodrop 枝番は廃止。 |
+**表 9-1　更新履歴**
+
+| No | 日付 | 更新箇所 | 変更内容 |
+|----|------|---------|----------|
+| 1 | 26-05-25 | 5. 開発からリリースまでの流れ | ソース修正→テスト→ドキュメント更新→SWバージョン確認→リリースの必須ゲートを追加。 |
+| 2 | 26-06-14 | 1. ブランチ運用の判断 | アプリ非影響変更は `main` 向け、アプリ影響変更は `develop` 向けに分けるブランチ運用を追加。 |
+| 3 | 26-06-16 | 7. MSIX（ストアお試し版）の扱い | MSIX（ストアお試し版）の扱いを追記（毎回CI生成・署名なし・ローカルテストしない・MSI でテスト・MSIX固有部分は実機確認済み・ストア提出時は Microsoft が署名）。 |
+| 4 | 26-06-16 | 1. ブランチ運用の判断 | アプリ非影響変更も `develop` 起点で作業し、PR 先だけ `main` にする運用を明記。 |
+| 5 | 26-06-16 | 1. ブランチ運用の判断 | `main` だけで変更を作らない方針と、Do Release の `main` → `develop` 戻しの役割を明確化。 |
+| 6 | 26-06-17 | 4. SW_VERSION の採番 | SW_VERSION の採番ルール（`本体バージョン-pwa.N` 形式）を追加。videodrop 枝番は廃止。 |
+| 7 | 26-06-19 | 2. バージョンの仕組み / 7. MSIX の扱い | Do Release が `AppxManifest.xml`（MSIX）の Version も本体バージョンに合わせ自動更新するようにした（4桁・第4桁0固定）。手動更新が不要に。 |
+| 8 | 26-06-19 | 全章（見出し）/ 5. フロー図 | 各章に項番（1〜9）を付与。リリースフロー図の最後に「適宜 Store 登録を手動で実施する」を追加。 |
+| 9 | 26-06-19 | 9. 更新履歴 | 更新履歴の表に「更新箇所」列を追加し、既存行を対応させた。 |
+| 10 | 26-06-19 | 1. ブランチ運用 / 5. 開発からリリースまでの流れ | 実ソースとの差分を修正：test.yml のスキップ条件（bot push は develop/main 両方・bot 2種・リリース並走回避）、pre-commit の E2E が条件付き実行である点、`release.yml` の自動処理（リリースノート生成・署名なし MSIX 生成・winget 自動公開）を追記。Mermaid に Cargo.lock 更新も明記。 |
+| 11 | 26-06-19 | 5. 開発からリリースまでの流れ | 必須ゲート表などの「ユーザー」表現を、開発者か付箋アプリ利用者か明確化（`docs/` は開発者向け手順と利用者向けガイドの両方を含む旨を明記）。 |
+| 12 | 26-06-19 | 全章（表・図） | すべての表に表番号・表名（表 N-M）、すべての図に図番号・図名（図 N-M）を付与。表名は表の上、図名は図の下に配置。 |
+| 13 | 26-06-19 | 5. 開発からリリースまでの流れ | リリース手順に不適だった「データロスト禁止」注記を削除（実装原則であり、内容は `docs-v2/` の「データロスト防止ゲート」等に既出）。ゲート No.1 を「実装は最小単位で行う」に簡潔化。 |
