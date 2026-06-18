@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { readNote, saveNote, Note } from '@/app/api/notes';
 import { splitFrontMatter, updateFrontmatterValue } from '@/app/utils/splitFrontMatter';
 import { pathsEqual } from '@/app/utils/pathUtils';
@@ -77,6 +78,15 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
         try {
             const loadedNote = await readNote(path);
             const { front, body } = splitFrontMatter(loadedNote.body);
+            try {
+                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                await invoke('fusen_set_opacity', {
+                    windowLabel: getCurrentWindow().label,
+                    opacity: loadedNote.meta.opacity ?? 1.0,
+                });
+            } catch (e) {
+                console.warn('[useNoteFile] Failed to apply opacity:', e);
+            }
 
             setNote(loadedNote);
             setRawFrontmatter(front);

@@ -204,6 +204,61 @@ fn fusen_set_always_on_top(window: tauri::Window, enabled: bool) -> Result<(), S
     Ok(())
 }
 
+#[tauri::command]
+fn fusen_set_opacity(
+    window_label: Option<String>,
+    path: Option<String>,
+    opacity: f64,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    if !(0.0..=1.0).contains(&opacity) {
+        return Err(format!("opacity out of range: {}", opacity));
+    }
+
+    let label = window_label
+        .or_else(|| path.as_deref().map(get_window_label))
+        .ok_or_else(|| "window_label or path is required".to_string())?;
+    let alpha = (opacity * 255.0).round() as u8;
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowLongPtrW, SetLayeredWindowAttributes,
+            GWL_EXSTYLE, LWA_ALPHA, WS_EX_LAYERED,
+        };
+        use windows::Win32::Foundation::{HWND, COLORREF};
+        use raw_window_handle::RawWindowHandle;
+
+        let win = app
+            .get_webview_window(&label)
+            .ok_or_else(|| format!("window not found: {}", label))?;
+
+        unsafe {
+            if let Ok(handle) = win.window_handle() {
+                if let RawWindowHandle::Win32(h) = handle.as_raw() {
+                    let hwnd = HWND(h.hwnd.get());
+
+                    let current_ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                    if current_ex & (WS_EX_LAYERED.0 as isize) == 0 {
+                        let new_ex = current_ex | (WS_EX_LAYERED.0 as isize);
+                        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex);
+                    }
+
+                    SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA)
+                        .map_err(|e| format!("SetLayeredWindowAttributes({}) failed: {}", alpha, e))?;
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (label, alpha, app);
+    }
+
+    Ok(())
+}
+
 
 #[tauri::command]
 fn fusen_list_notes(state: State<'_, Mutex<AppState>>, folder_path: String) -> Vec<NoteMeta> {
@@ -272,6 +327,7 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
     let original = storage::read_note(&path).map_err(|e| e.to_string())?;
     let (orig_front, orig_body) = logic::split_frontmatter(&original.body);
     let (_, _, _, _, color, _, tags, _) = logic::extract_meta_from_content(orig_front);
+    let opacity = logic::extract_opacity(orig_front);
     let bg_color = color.as_deref().unwrap_or("#f7e9b0").to_string();
 
     // stateからfolder_pathとcontextを取得（lockをすぐ解放）
@@ -286,7 +342,7 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
         (fp, ctx, seq)
     };
 
-    let new_frontmatter = logic::generate_frontmatter(next_seq, &context, &today, &today, Some(&bg_color), &tags, None);
+    let new_frontmatter = logic::generate_frontmatter(next_seq, &context, &today, &today, Some(&bg_color), &tags, None, opacity);
     let new_filename = logic::generate_filename(next_seq, &today, &context);
     let new_path_str = std::path::Path::new(&folder_path).join(&new_filename).to_string_lossy().to_string();
     let content = format!("{}\n\n{}", new_frontmatter, orig_body.trim());
@@ -3086,6 +3142,7 @@ pub fn run() {
             fusen_get_startup_state,
             fusen_set_startup_enabled,
             fusen_set_always_on_top,
+            fusen_set_opacity,
             fusen_select_folder,
             fusen_list_notes,
             fusen_read_note,

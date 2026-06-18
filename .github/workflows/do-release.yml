@@ -115,6 +115,9 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
           sed -i "0,/^version = /s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          # MSIX(AppxManifest)のバージョンも揃える。4桁形式でリビジョンは Store 予約のため 0 固定。
+          # 行頭インデント+Version= の Identity 行だけに一致（MinVersion/MaxVersionTested/<?xml version は対象外）。
+          sed -i -E "s/^([[:space:]]+)Version=\"[^\"]*\"/\1Version=\"${VERSION}.0\"/" packaging/msix/AppxManifest.xml
           npm install --package-lock-only --ignore-scripts
           cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
 
@@ -128,20 +131,26 @@ jobs:
             const match = lock.match(/\[\[package\]\]\s+name = \"ore-no-fusen\"\s+version = \"([^\"]+)\"/);
             console.log(match ? match[1] : '');
           ")
+          MSIX=$(grep -E '^[[:space:]]+Version="' packaging/msix/AppxManifest.xml | head -1 | sed -E 's/.*Version="([^"]+)".*/\1/')
           echo "package.json: $PKG"
           echo "Cargo.toml: $CARGO"
           echo "Cargo.lock: $LOCK"
+          echo "AppxManifest(MSIX): $MSIX"
           if [ "$PKG" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ] || [ "$LOCK" != "$VERSION" ]; then
             echo "❌ Version mismatch!"
             exit 1
           fi
-          echo "✅ All versions match: $VERSION"
+          if [ "$MSIX" != "${VERSION}.0" ]; then
+            echo "❌ AppxManifest version mismatch! Expected ${VERSION}.0, got $MSIX"
+            exit 1
+          fi
+          echo "✅ All versions match: $VERSION (MSIX ${VERSION}.0)"
 
       - name: Commit and push main
         run: |
           MSG="${{ github.event.inputs.message }}"
           COMMIT_MSG="${MSG:-chore: バージョンを v${VERSION} に更新}"
-          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock package-lock.json
+          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock package-lock.json packaging/msix/AppxManifest.xml
           git commit -m "$COMMIT_MSG"
           git push origin main
 

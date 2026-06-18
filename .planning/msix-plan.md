@@ -108,7 +108,7 @@ MSIX 分岐の土台と、共通の保存先防御。
 - ✅ **資材 完了・コミット済み（107cf67）**: `packaging/msix/AppxManifest.xml`（ダミー識別子・runFullTrust・StartupTask 宣言）と `build-msix.ps1`（Tauri 成果物を包んで自己署名 MSIX 生成）。実行で署名済み MSIX 生成を実証。
 - ✅ **docs 完了**: 設計書に新章 `docs-v2/008_DISTRIBUTION.md`「配布設計（MSIX / MSI）」を追加（7セクション）＋ `docs-v2/index.md` に章登録（badge/一覧/読む順序/doc-grid）。VitePress ビルド通過。
 - ✅ **UI 完了**: `AboutSection` に版表示（MSIX お試し版 / 通常版）。MSIX 時のみお試し説明＋「通常版（MSI）を入手」（Vercel）。i18n(ja/en)。実装: `settings-page.tsx`・`i18n.ts`。
-- ✅ **CI 完了**: release.yml の tauri-action 後に build-msix.ps1 実行＋自己署名 MSIX を Actions アーティファクト化（`msix-selfsigned`）。**実行検証は次のタグ push 時**。Store 提出署名は別フロー。
+- ✅ **CI 完了**: release.yml の tauri-action 後に build-msix.ps1 実行＋署名なし MSIX を Actions アーティファクト化（`msix-unsigned`）。**実行検証は次のタグ push 時**。Store 提出署名は別フロー。
 
 #### §4-docs 詳細計画（✅ 実装済み・以下は策定時の計画）
 
@@ -234,6 +234,7 @@ MSIX 分岐の土台と、共通の保存先防御。
 - **MSI 版（本気版）= 普段の更新はこっち**。日常のテストも **MSI でやる**（MSIX はローカルテストしない）。
 - **自動ストア提出（store-submit.yml / Azure AD 連携）は採用しない**（お試し版で毎回上げる必要がないため。Azure AD の難所を回避）。仕組み（yml）は残すが使わない。
 - 2026-06-15 に 3.6.5 を手動でストア提出済み（成功・認定処理中）。1回目=3.6.1 も手動。
+- **AppxManifest の Version は Do Release が自動更新する（2026-06-19〜）**。`do-release.yml` が `package.json`/`Cargo.toml` を上げるのと同じステップで、`packaging/msix/AppxManifest.xml` の `Identity Version` を `本体バージョン.0`（4桁・第4桁=Store 予約のため 0 固定）に書き換えてコミットする。**手で AppxManifest を編集する必要はない**。MSIX をビルドする時点（Release 後）で既に正しい版番号が入っている。旧来の手打ち固定値（3.6.5.0）は次回 Do Release で 4.0.x.0 に自動置換される（`4.0.x.0 > 3.6.5.0` で Store の単調増加要件も満たす）。
 
 ### 【メジャーアップデート時のストア提出 手順書】★次回これをなぞる
 前提: develop→main でリリース済み（最新コードが確定している）こと。

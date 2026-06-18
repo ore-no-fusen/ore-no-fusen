@@ -290,7 +290,7 @@ function OrchestratorContent() {
   }, []);
 
   // ウィンドウ生成
-  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean }, isNew?: boolean, fromIphone?: boolean) => {
+  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
 
     try {
@@ -344,6 +344,11 @@ function OrchestratorContent() {
           });
 
           win.once('tauri://created', async () => {
+            try {
+              await invoke('fusen_set_opacity', { windowLabel: label, opacity: meta?.opacity ?? 1.0 });
+            } catch (e) {
+              console.warn('[付箋表示] 透明度の適用に失敗しました:', e);
+            }
             if (fromIphone) {
               // iPhone受信ウィンドウ: Alt+Tab窓として登録（フォーカスはすでに渡し済み）
               try {
@@ -558,7 +563,7 @@ function OrchestratorContent() {
   }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
 
   const handleFileSelect = useCallback(async (file: NoteMeta) => {
-    await openNoteWindow(file.path, { x: file.x, y: file.y, width: file.width, height: file.height });
+    await openNoteWindow(file.path, { x: file.x, y: file.y, width: file.width, height: file.height, opacity: file.opacity });
   }, [openNoteWindow]);
 
 
@@ -1284,7 +1289,7 @@ function OrchestratorContent() {
                   const noteStartedAt = performance.now();
                   const noteName = note.path.split(/[\\/]/).pop();
                   setLoadingStatus(`ノートを開いています (${i + 1}/${notes.length}): ${noteName}...`);
-                  await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height });
+                  await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height, opacity: note.opacity });
                   logStartupStep('6/6', `付箋 ${i + 1}/${notes.length} ${noteName} ${Math.round(performance.now() - noteStartedAt)}ms`);
 
                 }

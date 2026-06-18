@@ -69,13 +69,13 @@ jobs:
           releaseDraft: false
           prerelease: false
 
-      - name: Build self-signed MSIX
+      - name: Build unsigned MSIX
         run: powershell -ExecutionPolicy Bypass -File packaging\msix\build-msix.ps1
 
-      - name: Upload self-signed MSIX
+      - name: Upload unsigned MSIX
         uses: actions/upload-artifact@v4
         with:
-          name: msix-selfsigned
+          name: msix-unsigned
           path: packaging/msix/out/ore-no-fusen.msix
 
   winget:

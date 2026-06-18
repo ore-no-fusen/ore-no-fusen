@@ -84,7 +84,7 @@ pub fn strip_sticky_fields(content: &str) -> String {
         return content.to_string();
     }
 
-    const REMOVE_KEYS: &[&str] = &["type", "seq", "window", "backgroundColor", "folded", "alwaysOnTop"];
+    const REMOVE_KEYS: &[&str] = &["type", "seq", "window", "backgroundColor", "folded", "alwaysOnTop", "opacity"];
 
     let cleaned_lines: Vec<&str> = front
         .lines()
@@ -105,7 +105,7 @@ pub fn strip_sticky_fields(content: &str) -> String {
 }
 
 
-pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String], folded: Option<bool>) -> String {
+pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &str, background_color: Option<&str>, tags: &[String], folded: Option<bool>, opacity: Option<f64>) -> String {
     let color_line = if let Some(c) = background_color {
         format!("\nbackgroundColor: {}", c)
     } else {
@@ -123,12 +123,30 @@ pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &s
     } else {
         "".to_string()
     };
+
+    let opacity_line = if let Some(value) = opacity {
+        if (0.0..1.0).contains(&value) {
+            format!("\nopacity: {}", value)
+        } else {
+            "".to_string()
+        }
+    } else {
+        "".to_string()
+    };
     
     // Reformatted: 'window' key with flow-style object for readability and compactness
     format!(
-        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: Untitled{}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
-        seq, created, updated, color_line, tags_line, folded_line
+        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: Untitled{}{}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
+        seq, created, updated, color_line, tags_line, folded_line, opacity_line
     )
+}
+
+pub fn extract_opacity(content: &str) -> Option<f64> {
+    let re_opacity = regex::Regex::new(r"(?m)^opacity:\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*$").unwrap();
+    re_opacity
+        .captures(content)
+        .and_then(|c| c[1].parse::<f64>().ok())
+        .filter(|value| (0.0..=1.0).contains(value))
 }
 
 pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>, Vec<String>, Option<bool>) {
@@ -226,13 +244,15 @@ pub fn handle_save_note(
 
     // Extract content fields from NEW frontmatter_raw
     let (_, _, _, _, new_color, new_aot, new_tags, new_folded) = extract_meta_from_content(frontmatter_raw);
+    let new_opacity = extract_opacity(frontmatter_raw);
 
     // Check if "Content-related" fields changed
     let content_changed = body != old_body 
         || old_meta.as_ref().map_or(true, |m| m.background_color != new_color 
             || m.always_on_top != new_aot 
             || m.tags != new_tags
-            || m.folded != new_folded);
+            || m.folded != new_folded
+            || m.opacity != new_opacity);
 
     // Determine final updated date
     let final_updated = if content_changed { today } else { old_updated };
@@ -246,6 +266,7 @@ pub fn handle_save_note(
 
         // Update State (Metadata)
         let (x, y, w, h, bg, aot, tags, folded) = extract_meta_from_content(&content);
+        let opacity = extract_opacity(&content);
         let new_meta = NoteMeta {
             path: current_path.to_string(),
             seq,
@@ -256,6 +277,7 @@ pub fn handle_save_note(
             always_on_top: aot,
             tags,
             folded,
+            opacity,
         };
 
         // WRITE GUARD: If content is IDENTICAL to what logic expects (meaning no changes at all, inclusive of geometry)
@@ -315,6 +337,7 @@ pub fn handle_save_note(
 
     // Update State
     let (x, y, w, h, bg, aot, tags, folded) = extract_meta_from_content(&content);
+    let opacity = extract_opacity(&content);
 
     let nothing_changed = !should_rename && !content_changed 
         && old_meta.as_ref().map_or(false, |m| m.x == x && m.y == y && m.width == w && m.height == h);
@@ -335,6 +358,7 @@ pub fn handle_save_note(
         always_on_top: aot,
         tags,
         folded,
+        opacity,
     };
     
     apply_update_note(state, current_path, new_meta);
@@ -359,7 +383,7 @@ pub fn build_create_note_data(folder_path: &str, context: &str, next_seq: i32, t
     let path = std::path::Path::new(folder_path).join(&filename);
     let path_str = path.to_string_lossy().to_string();
     
-    let frontmatter = generate_frontmatter(next_seq, context, today, today, Some("#f7e9b0"), &[], None);
+    let frontmatter = generate_frontmatter(next_seq, context, today, today, Some("#f7e9b0"), &[], None, None);
     let body = "".to_string();
     let content = format!("{}\n\n{}", frontmatter, body);
     
@@ -615,7 +639,7 @@ mod tests {
 
     #[test]
     fn generate_frontmatter_with_tags() {
-        let fm = generate_frontmatter(1, "ctx", "2024-01-01", "2024-01-01", None, &vec!["tag1".to_string(), "tag2".to_string()], None);
+        let fm = generate_frontmatter(1, "ctx", "2024-01-01", "2024-01-01", None, &vec!["tag1".to_string(), "tag2".to_string()], None, None);
         assert!(fm.contains("tags: [tag1, tag2]"));
     }
 
@@ -727,7 +751,7 @@ mod tests {
     #[test]
     fn generate_frontmatter_with_default_color() {
         // デフォルトカラー（指定なし）の場合
-        let frontmatter = generate_frontmatter(1, "テストメモ", "2026-01-12", "2026-01-12", None, &[], None);
+        let frontmatter = generate_frontmatter(1, "テストメモ", "2026-01-12", "2026-01-12", None, &[], None, None);
         
         // 必須フィールドが含まれていることを確認
         assert!(frontmatter.contains("type: sticky"));
@@ -745,7 +769,7 @@ mod tests {
     #[test]
     fn generate_frontmatter_with_custom_color() {
         // カスタムカラーを指定
-        let frontmatter = generate_frontmatter(42, "青いメモ", "2026-01-12", "2026-01-12", Some("#80d8ff"), &[], None);
+        let frontmatter = generate_frontmatter(42, "青いメモ", "2026-01-12", "2026-01-12", Some("#80d8ff"), &[], None, None);
         
         assert!(frontmatter.contains("backgroundColor: #80d8ff"));
         assert!(frontmatter.contains("seq: 42"));
@@ -754,11 +778,35 @@ mod tests {
     #[test]
     fn generate_frontmatter_format() {
         // フロントマターが正しいYAML形式であることを確認
-        let frontmatter = generate_frontmatter(1, "test", "2026-01-12", "2026-01-12", None, &[], None);
+        let frontmatter = generate_frontmatter(1, "test", "2026-01-12", "2026-01-12", None, &[], None, None);
         
         // ---で開始・終了することを確認
         assert!(frontmatter.starts_with("---\n"));
         assert!(frontmatter.contains("---\n") && frontmatter.matches("---").count() == 2);
+    }
+
+    #[test]
+    fn extract_opacity_valid_value() {
+        let content = "---\nopacity: 0.7\n---";
+        assert_eq!(extract_opacity(content), Some(0.7));
+    }
+
+    #[test]
+    fn extract_opacity_missing_key() {
+        let content = "---\nbackgroundColor: #f7e9b0\n---";
+        assert_eq!(extract_opacity(content), None);
+    }
+
+    #[test]
+    fn extract_opacity_out_of_range() {
+        assert_eq!(extract_opacity("---\nopacity: 1.5\n---"), None);
+        assert_eq!(extract_opacity("---\nopacity: -0.2\n---"), None);
+    }
+
+    #[test]
+    fn extract_opacity_broken_value() {
+        let content = "---\nopacity: abc\n---";
+        assert_eq!(extract_opacity(content), None);
     }
 
     // === extract_meta_from_content のテスト ===
