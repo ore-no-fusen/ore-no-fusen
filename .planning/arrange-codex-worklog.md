@@ -105,3 +105,28 @@ NoteMeta に opacity を持たせる必要があり state.rs/storage.rs/api/note
 未確認（実機要・計画 5-2）: 最前面表示中の透明化／クリック貫通の挙動。これは `npm run tauri dev` で要確認。
 
 → タスク3 実装・検証OK。コミットはユーザー指示待ち。実機確認も推奨。
+
+---
+
+## タスク2: 整列本体（2段階で実装）
+
+計画: arrange-by-tag-plan.md（設計確定）。ブランチ: feature/arrange-clean（develop起点のクリーン版）。
+
+分割: 第1段=位置計算の純粋関数＋テスト。第2段=ウィンドウ反映・frontmatter更新・トレイUI・undo。
+
+### 第1段 経緯と結果
+
+- Codex に位置計算の純粋関数のみを依頼（指示#3）。arrange.rs＋mod追加。
+- ただし旧ブランチ feature/arrange-by-tag には依頼外の混入あり（StickyNote.tsx 編集高速化・
+  fusen_set_opacity 改造・RichTextEditor 変更）。Codex が範囲外を触った。
+- 対応: 最新 develop から feature/arrange-clean を作り、arrange.rs と mod arrange; の1行のみ移植。
+  編集高速化・opacity改造は持ち込まない。旧ブランチは残置（編集高速化を後で拾う）。
+
+### Claude レビュー＆検証 #3（第1段）→ 合格
+
+arrange.rs を精読し計画書と照合: 色順(黄赤青白黒)/タグ順(多い順・同数タグ名昇順)/タグなし最右/
+色なし→黄/5色以外→その他列/列内path昇順/あふれ40px重ね/巨大付箋左上収め、全て計画どおり。純粋関数で副作用なし。
+
+検証: cargo test arrange → 7 passed（feature/arrange-clean 上）。
+
+→ 第1段 完了。次は第2段。

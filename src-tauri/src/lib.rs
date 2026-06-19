@@ -14,6 +14,7 @@ use raw_window_handle::HasWindowHandle;
 
 mod state;
 mod logic;
+mod arrange;
 mod distribution;
 mod storage;
 mod tray;
