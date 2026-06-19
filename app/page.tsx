@@ -345,7 +345,10 @@ function OrchestratorContent() {
 
           win.once('tauri://created', async () => {
             try {
-              await invoke('fusen_set_opacity', { windowLabel: label, opacity: meta?.opacity ?? 1.0 });
+              // opacity: 0（完全透明＝見えない）や不正値は 1.0 にフォールバックする。
+              // 旧データで 0 が入っていても付箋が消えないようにする二重防御。
+              const safeOpacity = (typeof meta?.opacity === 'number' && meta.opacity > 0 && meta.opacity <= 1) ? meta.opacity : 1.0;
+              await invoke('fusen_set_opacity', { windowLabel: label, opacity: safeOpacity });
             } catch (e) {
               console.warn('[付箋表示] 透明度の適用に失敗しました:', e);
             }
