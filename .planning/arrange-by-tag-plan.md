@@ -219,6 +219,42 @@ MVP「大事なことは貼っておけばいい」の延長線上にある機�
 - Rust 側で **フォーカスを奪わない一括移動**にする。必要なら小さなバッチで実行する。
 - サイズ変更なし・位置変更のみ・フォーカス変更なしを前提にする。
 
+### 5.5 実装の段分け（混在防止・1つずつ検証）
+
+第1段は完了（`arrange.rs` の位置計算・純粋関数）。第2段を3つに分ける。
+
+| 段 | 内容 | 検証 |
+|----|------|------|
+| 第1段 | 位置計算ロジック `arrange.rs`（純粋関数） | ✅ cargo test 7件 pass（feature/arrange-clean） |
+| 2-a | 整列コマンド `fusen_arrange_by_tag`：付箋列挙→モニター判定→arrange計算→位置反映→frontmatter更新 | 実機（仮トリガ）。まず単一モニター→次にマルチで確認 |
+| 2-b | トレイメニューに「タグで整列」追加 | 実機 |
+| 2-c | undo（整列前スナップショット1段＋「整列前に戻す」） | 実機 |
+
+### 5.6 2-a 実装指示（Codex 再開時にそのまま渡す）
+
+**作るもの**: Rust コマンド `fusen_arrange_by_tag`（Rust 主導・状態の真実は AppState）。
+
+**手順**:
+1. 付箋ウィンドウを列挙: `app.webview_windows()` の `(label, window)` で `label != "main"` が付箋。
+2. 各付箋について:
+   - label から path を引く（既存の `get_window_label(path)` の逆引き、または AppState.notes と突き合わせ）。
+   - 現在位置を取得: `window.outer_position()`（物理）を `window.scale_factor()` で割り**論理座標**にする
+     （JS の `getWindowGeometry`＝`app/api/window.ts` と同じ換算）。
+   - 所属モニターを判定し、そのモニターの作業領域（workArea）を論理座標で得る。
+     Tauri v2 Rust の monitor API（`window.available_monitors()` / `monitor_from_point` 相当）を使う。
+     **未検証 API なので、まず単一モニターで正しく動くことを確認してからマルチを詰める**。
+3. モニターごとにグルーピング → 各モニターの付箋を `ArrangeNote` に変換 →
+   `arrange::calculate_arrange_by_tag_positions(notes, work_area)` で新座標（論理）を得る。
+4. 各付箋を新座標へ移動: フォーカスを奪わない位置変更のみ（5.4）。論理→OS は内部で変換。
+   `fusen_show_at_position` は副作用が強いので使わない（5.1/位置反映の注意）。
+5. 移動に成功した付箋だけ frontmatter の `window` を更新（`updated` は変えない・5.3）。
+   既存の window 正規表現フォーマット `window: { x, y, width, height }` を維持。
+
+**制約**:
+- トレイUI（2-b）・undo（2-c）は今回やらない。
+- arrange.rs は完成済み・変更しない。`NoteMeta` の構造も変えない。
+- StickyNote.tsx 等フロントの表示ロジックは触らない（編集高速化は別タスク）。
+
 ---
 
 ## 6 関連する作業ルール
@@ -272,3 +308,4 @@ MVP「大事なことは貼っておけばいい」の延長線上にある機�
 | 7 | 26-06-17 | アプリ上は色変更が5色の固定選択のみで自由色は作れないと確認。5色以外（手書き等の異常値）は黒の右に「その他」列で受けると確定（3.3）。論点 7-1 を「整列の取り消し（undo）」に繰り上げ。 |
 | 8 | 26-06-17 | undo は1段（直前1回だけ）で確定。整列前スナップショットを AppState にメモリで1枚持つ仕組み・3操作・付箋増減時の照合を 7 に明記。全論点が確定し、状態を「設計確定」に更新。 |
 | 9 | 26-06-17 | ブランチ運用を確定：前提タスク（白黒追加＋メニュー順統一）は小さいので develop 直接、整列本体は専用ブランチで develop へ PR。前提を先に入れてから整列に着手する順序を明記。 |
+| 10 | 26-06-19 | 第1段（arrange.rs 位置計算・純粋関数）完了・レビュー合格（cargo test 7件）。ブランチを feature/arrange-clean に整理（旧 feature/arrange-by-tag の混在を排除）。第2段を 2-a/2-b/2-c に分割（5.5）し、2-a の実装指示（5.6）を Codex 再開用に明記。 |
