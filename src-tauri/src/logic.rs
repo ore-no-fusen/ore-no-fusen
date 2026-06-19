@@ -146,7 +146,9 @@ pub fn extract_opacity(content: &str) -> Option<f64> {
     re_opacity
         .captures(content)
         .and_then(|c| c[1].parse::<f64>().ok())
-        .filter(|value| (0.0..=1.0).contains(value))
+        // opacity: 0 は完全透明＝付箋が見えなくなる実用上ありえない値。
+        // 旧データ等で 0 が入っていても無効扱い（None）にし、呼び出し側で 1.0 にフォールバックさせる。
+        .filter(|value| *value > 0.0 && *value <= 1.0)
 }
 
 pub fn extract_meta_from_content(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<bool>, Vec<String>, Option<bool>) {
@@ -801,6 +803,14 @@ mod tests {
     fn extract_opacity_out_of_range() {
         assert_eq!(extract_opacity("---\nopacity: 1.5\n---"), None);
         assert_eq!(extract_opacity("---\nopacity: -0.2\n---"), None);
+    }
+
+    #[test]
+    fn extract_opacity_zero_is_invalid() {
+        // 回帰: opacity: 0（完全透明＝付箋が見えない）は無効扱いにし、
+        // 呼び出し側で 1.0 にフォールバックさせる（旧データで付箋が消えるバグの修正）。
+        assert_eq!(extract_opacity("---\nopacity: 0\n---"), None);
+        assert_eq!(extract_opacity("---\nopacity: 0.0\n---"), None);
     }
 
     #[test]
