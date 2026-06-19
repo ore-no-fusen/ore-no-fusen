@@ -71,7 +71,7 @@ test.describe('すぐ書ける', () => {
         await page.waitForTimeout(300);
         await page.evaluate(() => window.dispatchEvent(new Event('blur')));
         await page.locator('article.notePaper').waitFor({ state: 'visible', timeout: 5000 });
-        await page.getByText('Heading', { exact: true }).dblclick();
+        await page.locator('article.notePaper').getByText('Heading', { exact: true }).dblclick();
         await editor.waitFor({ state: 'visible', timeout: 3000 });
         await page.keyboard.type('INSERT');
         expect(await editor.innerText()).toContain('INSERT');
@@ -89,7 +89,7 @@ test.describe('すぐ書ける', () => {
         await page.evaluate(() => window.dispatchEvent(new Event('blur')));
         await page.locator('article.notePaper').waitFor({ state: 'visible', timeout: 5000 });
         await page.waitForTimeout(200);
-        await page.locator('strong').first().dblclick();
+        await page.locator('article.notePaper strong').first().dblclick();
         await editor.waitFor({ state: 'visible', timeout: 3000 });
         await page.keyboard.type('INSERT');
         expect(await editor.innerText()).toContain('INSERT');
@@ -101,7 +101,7 @@ test.describe('すぐ書ける', () => {
         await page.waitForTimeout(300);
         await page.evaluate(() => window.dispatchEvent(new Event('blur')));
         await page.locator('article.notePaper').waitFor({ state: 'visible', timeout: 5000 });
-        await page.getByText('TaskItem', { exact: true }).dblclick();
+        await page.locator('article.notePaper').getByText('TaskItem', { exact: true }).dblclick();
         await editor.waitFor({ state: 'visible', timeout: 3000 });
         await page.keyboard.type('INSERT');
         expect(await editor.innerText()).toContain('INSERT');
@@ -153,7 +153,8 @@ test.describe('すぐ書ける', () => {
         await editor.click();
         await editor.type('Escapeキーテスト');
         await editor.press('Escape');
-        await expect(page.locator('.cm-content')).not.toBeVisible();
+        await expect(page.locator('.editorHost')).toHaveCSS('visibility', 'hidden');
+        await expect(page.locator('.editorHost')).toHaveAttribute('aria-hidden', 'true');
         await expect(page.locator('article.notePaper')).toContainText('Escapeキーテスト');
 
         // 付箋下部をクリックして終わる
@@ -161,7 +162,8 @@ test.describe('すぐ書ける', () => {
         await page.locator('.cm-content').waitFor({ state: 'visible', timeout: 3000 });
         await editor.type('フッタークリックテスト');
         await page.locator('[aria-label="ドラッグで移動"]').click();
-        await expect(page.locator('.cm-content')).not.toBeVisible();
+        await expect(page.locator('.editorHost')).toHaveCSS('visibility', 'hidden');
+        await expect(page.locator('.editorHost')).toHaveAttribute('aria-hidden', 'true');
         await expect(page.locator('article.notePaper')).toContainText('フッタークリックテスト');
 
         // 他のアプリに切り替えると自動で終わる
@@ -170,7 +172,8 @@ test.describe('すぐ書ける', () => {
         await editor.type('フォーカス外れテスト');
         await page.waitForTimeout(300);
         await page.evaluate(() => { window.dispatchEvent(new Event('blur')); });
-        await expect(page.locator('.cm-content')).not.toBeVisible();
+        await expect(page.locator('.editorHost')).toHaveCSS('visibility', 'hidden');
+        await expect(page.locator('.editorHost')).toHaveAttribute('aria-hidden', 'true');
         await expect(page.locator('article.notePaper')).toContainText('フォーカス外れテスト');
     });
 

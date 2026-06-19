@@ -611,8 +611,18 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
     const suppressFormatBarUntilRef = useRef(0);
     const latestFilePathRef = useRef(filePath);
     const latestOnEnsureFilePathRef = useRef(onEnsureFilePath);
+    const latestOnChangeRef = useRef(onChange);
+    const latestOnKeyDownRef = useRef(onKeyDown);
+    const latestOnBlurRef = useRef(onBlur);
+    const latestOnSelectionChangeRef = useRef(onSelectionChange);
+    const latestOnFirstCharRef = useRef(onFirstChar);
     latestFilePathRef.current = filePath;
     latestOnEnsureFilePathRef.current = onEnsureFilePath;
+    latestOnChangeRef.current = onChange;
+    latestOnKeyDownRef.current = onKeyDown;
+    latestOnBlurRef.current = onBlur;
+    latestOnSelectionChangeRef.current = onSelectionChange;
+    latestOnFirstCharRef.current = onFirstChar;
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
@@ -1229,8 +1239,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             if (!isReadyRef.current) {
                                 return;
                             }
-                            if (onBlur) {
-                                onBlur(event);
+                            if (latestOnBlurRef.current) {
+                                latestOnBlurRef.current(event);
                             }
                         }
                     }),
@@ -1254,24 +1264,24 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     // 変更検知・選択変化検知
                     EditorView.updateListener.of((update: ViewUpdate) => {
                         if (update.docChanged) {
-                            onChange(update.state.doc.toString());
+                            latestOnChangeRef.current(update.state.doc.toString());
                             // [NEW] Pool 窓用: 0→1 文字遷移を検出して onFirstChar を 1 回だけ呼ぶ
                             // IME 未確定中の docChanged も発火対象（CONTEXT.md「IME 未確定中含む」）
                             if (update.startState.doc.length === 0 && update.state.doc.length > 0) {
-                                onFirstChar?.();
+                                latestOnFirstCharRef.current?.();
                             }
                         }
-                        if ((update.selectionSet || update.docChanged) && onSelectionChange) {
+                        if ((update.selectionSet || update.docChanged) && latestOnSelectionChangeRef.current) {
                             const sel = update.state.selection.main;
                             if (Date.now() < suppressFormatBarUntilRef.current) {
-                                onSelectionChange(null);
+                                latestOnSelectionChangeRef.current(null);
                                 return;
                             }
                             if (!sel.empty) {
                                 const coords = update.view.coordsAtPos(sel.from);
-                                onSelectionChange(coords ? { top: coords.top, left: coords.left, bottom: coords.bottom } : null);
+                                latestOnSelectionChangeRef.current(coords ? { top: coords.top, left: coords.left, bottom: coords.bottom } : null);
                             } else {
-                                onSelectionChange(null);
+                                latestOnSelectionChangeRef.current(null);
                             }
                         }
                     }),
@@ -1281,10 +1291,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         keydown: (e) => {
                             if (e.shiftKey && ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
                                 suppressFormatBarUntilRef.current = Date.now() + 1200;
-                                onSelectionChange?.(null);
+                                latestOnSelectionChangeRef.current?.(null);
                             }
-                            if (e.key === 'Escape' && onKeyDown) {
-                                onKeyDown(e as any);
+                            if (e.key === 'Escape' && latestOnKeyDownRef.current) {
+                                latestOnKeyDownRef.current(e as any);
                             }
                         },
                         // [FIX] Pasteハンドラの追加：カーソル位置への画像挿入
@@ -1471,6 +1481,27 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
     }, []);
 
 
+    // Keep the editor document current before applying a resumed cursor position.
+    useEffect(() => {
+        if (!viewRef.current) return;
+        const currentValue = viewRef.current.state.doc.toString();
+        if (currentValue !== value) {
+            const selection = viewRef.current.state.selection.main;
+
+            viewRef.current.dispatch({
+                changes: {
+                    from: 0,
+                    to: currentValue.length,
+                    insert: value
+                },
+                selection: {
+                    anchor: Math.min(selection.anchor, value.length),
+                    head: Math.min(selection.head, value.length)
+                }
+            });
+        }
+    }, [value]);
+
 
     // [New] cursorPosition change handler
     useEffect(() => {
@@ -1481,13 +1512,13 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
         const docLength = view.state.doc.length;
         const safePos = Math.min(Math.max(0, cursorPosition), docLength);
 
-        // 描画/初回ロードのズレに勝つため2フレームで確実にfocus
+        // Apply the resumed cursor before the next typed key can arrive.
+        view.dispatch({ selection: { anchor: safePos, head: safePos }, scrollIntoView: true });
+        view.focus();
         requestAnimationFrame(() => {
-            view.dispatch({ selection: { anchor: safePos, head: safePos }, scrollIntoView: true });
-            view.focus();
-            requestAnimationFrame(() => {
+            if (viewRef.current === view) {
                 view.focus();
-            });
+            }
         });
     }, [cursorPosition]);
 
@@ -1497,18 +1528,18 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
         if (!viewRef.current) return;
 
         const view = viewRef.current;
+        const pos = view.posAtCoords({ x: initialCoords.x, y: initialCoords.y }, false);
+        if (pos !== null) {
+            view.dispatch({ selection: { anchor: pos, head: pos }, scrollIntoView: true });
+        } else {
+            const docLength = view.state.doc.length;
+            view.dispatch({ selection: { anchor: docLength, head: docLength }, scrollIntoView: true });
+        }
+        view.focus();
         requestAnimationFrame(() => {
-            const pos = view.posAtCoords({ x: initialCoords.x, y: initialCoords.y }, false);
-            if (pos !== null) {
-                view.dispatch({ selection: { anchor: pos, head: pos }, scrollIntoView: true });
-            } else {
-                const docLength = view.state.doc.length;
-                view.dispatch({ selection: { anchor: docLength, head: docLength }, scrollIntoView: true });
-            }
-            view.focus();
-            requestAnimationFrame(() => {
+            if (viewRef.current === view) {
                 view.focus();
-            });
+            }
         });
     }, [initialCoords]);
 
@@ -1578,29 +1609,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             })) // カンマを追加すべき箇所と閉じ括弧の整理
         });
     }, [fontSize, backgroundColor]);
-
-    // value が外部から変更された場合の同期
-    useEffect(() => {
-        if (!viewRef.current) return;
-        const currentValue = viewRef.current.state.doc.toString();
-        if (currentValue !== value) {
-            // 選択範囲を保存
-            const selection = viewRef.current.state.selection.main;
-
-            viewRef.current.dispatch({
-                changes: {
-                    from: 0,
-                    to: currentValue.length,
-                    insert: value
-                },
-                // 選択範囲を復元（新しいドキュメント範囲内に収める）
-                selection: {
-                    anchor: Math.min(selection.anchor, value.length),
-                    head: Math.min(selection.head, value.length)
-                }
-            });
-        }
-    }, [value]);
 
     return (
         <div
