@@ -205,16 +205,6 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                     >
                         奉納帳
                     </h2>
-                    <div
-                        style={{
-                            color: '#9a936f',
-                            fontSize: '12px',
-                            lineHeight: 1.5,
-                            marginTop: '4px',
-                        }}
-                    >
-                        早く応援した人ほど、大きく上に
-                    </div>
                 </div>
                 <Lantern />
             </header>
