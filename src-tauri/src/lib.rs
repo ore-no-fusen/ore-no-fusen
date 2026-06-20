@@ -1246,6 +1246,22 @@ async fn fusen_is_sticky_note_focused(app: tauri::AppHandle) -> bool {
     false
 }
 
+fn arrange_note_seq(note: &arrange::ArrangeNote) -> i32 {
+    let Some(filename) = std::path::Path::new(&note.path)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+    else {
+        return 0;
+    };
+    let (seq, _, _) = logic::parse_filename(&filename);
+    seq
+}
+
+fn sort_notes_by_seq_desc(notes: &mut Vec<arrange::ArrangeNote>) {
+    // Arrange order is decided here. Change only this function to switch ordering.
+    notes.sort_by_cached_key(|note| std::cmp::Reverse(arrange_note_seq(note)));
+}
+
 #[tauri::command]
 async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
     let note_paths: Vec<String> = {
@@ -1342,6 +1358,9 @@ async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
         "[ARRANGE] primary monitor workArea logical x={:.1} y={:.1} width={:.1} height={:.1} scale={:.2}",
         work_area.x, work_area.y, work_area.width, work_area.height, scale_factor
     ));
+
+    sort_notes_by_seq_desc(&mut notes);
+    logger::log_info("[ARRANGE] sorted notes by seq desc");
 
     let positions = arrange::calculate_arrange_by_tag_positions(&notes, work_area);
     for position in &positions {
