@@ -1246,6 +1246,19 @@ async fn fusen_is_sticky_note_focused(app: tauri::AppHandle) -> bool {
     false
 }
 
+#[tauri::command]
+async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
+    let mut count = 0;
+    for (label, _window) in app.webview_windows() {
+        if label != "main" {
+            logger::log_info(&format!("[ARRANGE] note window: {}", label));
+            count += 1;
+        }
+    }
+    logger::log_info(&format!("[ARRANGE] note window count: {}", count));
+    Ok(())
+}
+
 // [NEW] ウィンドウをAlt+Tab/タスクビューから除外する（WS_EX_TOOLWINDOW適用）
 #[tauri::command]
 async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
@@ -3180,6 +3193,7 @@ pub fn run() {
             clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
             clipboard::fusen_save_annotated_image,
             fusen_is_sticky_note_focused,
+            fusen_arrange_by_tag,
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             fusen_create_pool_window, // [NEW] プールウィンドウ生成

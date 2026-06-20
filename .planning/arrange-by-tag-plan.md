@@ -255,6 +255,35 @@ MVP「大事なことは貼っておけばいい」の延長線上にある機�
 - arrange.rs は完成済み・変更しない。`NoteMeta` の構造も変えない。
 - StickyNote.tsx 等フロントの表示ロジックは触らない（編集高速化は別タスク）。
 
+### 5.7 既存コードの接続点（2026-06-20 下調べ済み・Codex に渡す）
+
+実装前に確認した既存コードの位置と使い方。Codex 依頼時はこれを添えれば再調査不要。
+
+| 用途 | 既存コード | 使い方 |
+|------|-----------|--------|
+| 付箋ウィンドウ列挙 | `app.webview_windows()` を回す（実例 lib.rs:1241 `fusen_is_sticky_note_focused`） | `for (label, window) in app.webview_windows()` で `label != "main"` が付箋 |
+| path→label | `get_window_label(path)`（lib.rs:943） | path から label を作る |
+| **label→path（逆引き）** | 専用関数は無い | `app_state.notes`（各 note に path あり・lib.rs:845/851）の各 path を `get_window_label` に通して一致する label を探す |
+| メタ抽出 | `extract_meta_from_content(content)`（logic.rs:154） | 返り値 `(x,y,w,h,color,aot,tags,folded)`。tags/color/w/h をここから取る |
+| 現在位置→論理座標 | `window.outer_position()`（物理）÷ `window.scale_factor()` | JS の `getWindowGeometry`（app/api/window.ts）と同じ換算。**Rust 側に既存の換算ヘルパは無い**ので、この割り算を Codex に書かせる |
+| 位置反映 | `window.set_position(LogicalPosition)` 等 | フォーカスを奪わない移動。`fusen_show_at_position`（lib.rs:1453）は副作用強で使わない |
+| handler 登録 | `generate_handler!`（lib.rs:3140） | `fusen_arrange_by_tag` をここに追加 |
+| frontmatter window 更新 | `re_window`（logic.rs） | `window: { x, y, width, height }` フォーマットを維持・`updated` は変えない |
+
+### 5.8 部品分割（1依頼=1部品・都度コミット／Codex トークン切れ事故対策）
+
+2-a を以下の粒度で分け、1部品ずつ Codex に依頼 → cargo build/test 緑 → 即コミット。
+大ファイル lib.rs は**全面書き換え禁止・追記/最小差分のみ**。各依頼前に Codex 残量を確認する。
+
+| 部品 | 内容 | 検証 |
+|------|------|------|
+| ① 骨組み | `fusen_arrange_by_tag` の空実装＋handler 登録。付箋を列挙してログ出すだけ | cargo build |
+| ② メタ取得 | 各付箋の path（label逆引き）・tags・color・w・h・現在位置（論理）を集める | cargo build |
+| ③ 計算呼び出し | 単一モニターの workArea で `calculate_arrange_by_tag_positions` を呼び新座標を得る | cargo build/test |
+| ④ 位置反映 | フォーカスを奪わず移動。途中失敗は据え置き | 実機（仮トリガ） |
+| ⑤ frontmatter更新 | 成功分だけ window 更新・updated は変えない | 実機 |
+| ⑥ マルチモニター | monitor 判定を足す（未検証API・単一で確認後に着手） | 実機マルチ |
+
 ---
 
 ## 6 関連する作業ルール
@@ -309,3 +338,4 @@ MVP「大事なことは貼っておけばいい」の延長線上にある機�
 | 8 | 26-06-17 | undo は1段（直前1回だけ）で確定。整列前スナップショットを AppState にメモリで1枚持つ仕組み・3操作・付箋増減時の照合を 7 に明記。全論点が確定し、状態を「設計確定」に更新。 |
 | 9 | 26-06-17 | ブランチ運用を確定：前提タスク（白黒追加＋メニュー順統一）は小さいので develop 直接、整列本体は専用ブランチで develop へ PR。前提を先に入れてから整列に着手する順序を明記。 |
 | 10 | 26-06-19 | 第1段（arrange.rs 位置計算・純粋関数）完了・レビュー合格（cargo test 7件）。ブランチを feature/arrange-clean に整理（旧 feature/arrange-by-tag の混在を排除）。第2段を 2-a/2-b/2-c に分割（5.5）し、2-a の実装指示（5.6）を Codex 再開用に明記。 |
+| 11 | 26-06-20 | 2-a の既存コード接続点を下調べ（5.7）・部品分割（5.8）を追記。Codex トークン切れ事故（lib.rs 全面書き換え中断で src 17ファイル破損→checkout で復旧）を受け、1依頼=1部品＋都度コミット＋大ファイル追記のみの運用に確定。実装は Codex 残量回復後に着手。 |
