@@ -1310,6 +1310,47 @@ async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
         });
     }
     logger::log_info(&format!("[ARRANGE] arrange note count: {}", notes.len()));
+
+    let monitor = match app.primary_monitor() {
+        Ok(Some(monitor)) => monitor,
+        Ok(None) => {
+            let message = "[ARRANGE] primary monitor not found".to_string();
+            logger::log_info(&message);
+            return Err(message);
+        }
+        Err(e) => {
+            let message = format!("[ARRANGE] primary monitor error: {}", e);
+            logger::log_info(&message);
+            return Err(message);
+        }
+    };
+    let scale_factor = monitor.scale_factor();
+    if scale_factor == 0.0 {
+        let message = "[ARRANGE] primary monitor scale factor is zero".to_string();
+        logger::log_info(&message);
+        return Err(message);
+    }
+
+    let monitor_work_area = monitor.work_area();
+    let work_area = arrange::WorkArea {
+        x: monitor_work_area.position.x as f64 / scale_factor,
+        y: monitor_work_area.position.y as f64 / scale_factor,
+        width: monitor_work_area.size.width as f64 / scale_factor,
+        height: monitor_work_area.size.height as f64 / scale_factor,
+    };
+    logger::log_info(&format!(
+        "[ARRANGE] primary monitor workArea logical x={:.1} y={:.1} width={:.1} height={:.1} scale={:.2}",
+        work_area.x, work_area.y, work_area.width, work_area.height, scale_factor
+    ));
+
+    let positions = arrange::calculate_arrange_by_tag_positions(&notes, work_area);
+    for position in &positions {
+        logger::log_info(&format!(
+            "[ARRANGE] calculated path={} -> x={:.1}, y={:.1}",
+            position.path, position.x, position.y
+        ));
+    }
+    logger::log_info(&format!("[ARRANGE] calculated position count: {}", positions.len()));
     Ok(())
 }
 
