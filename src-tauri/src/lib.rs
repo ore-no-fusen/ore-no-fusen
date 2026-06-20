@@ -1248,14 +1248,68 @@ async fn fusen_is_sticky_note_focused(app: tauri::AppHandle) -> bool {
 
 #[tauri::command]
 async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
-    let mut count = 0;
-    for (label, _window) in app.webview_windows() {
-        if label != "main" {
-            logger::log_info(&format!("[ARRANGE] note window: {}", label));
-            count += 1;
+    let note_paths: Vec<String> = {
+        let state = app.state::<Mutex<AppState>>();
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.notes.iter().map(|note| note.path.clone()).collect()
+    };
+
+    let mut notes: Vec<arrange::ArrangeNote> = Vec::new();
+    for (label, window) in app.webview_windows() {
+        if label == "main" {
+            continue;
         }
+
+        logger::log_info(&format!("[ARRANGE] note window: {}", label));
+
+        let logical_position = match (window.outer_position(), window.scale_factor()) {
+            (Ok(position), Ok(scale_factor)) if scale_factor != 0.0 => {
+                Some((position.x as f64 / scale_factor, position.y as f64 / scale_factor))
+            }
+            _ => None,
+        };
+
+        let Some(path) = note_paths
+            .iter()
+            .find(|path| get_window_label(path) == label)
+            .cloned()
+        else {
+            logger::log_info(&format!("[ARRANGE] path not found for label: {}", label));
+            continue;
+        };
+
+        let content = match storage::read_note(&path) {
+            Ok(note) => note.body,
+            Err(e) => {
+                logger::log_info(&format!("[ARRANGE] read failed path={} error={}", path, e));
+                continue;
+            }
+        };
+        let (_, _, width, height, background_color, _, tags, _) =
+            logic::extract_meta_from_content(&content);
+
+        let (Some(width), Some(height)) = (width, height) else {
+            logger::log_info(&format!("[ARRANGE] size missing path={}", path));
+            continue;
+        };
+
+        let position_text = logical_position
+            .map(|(x, y)| format!("{:.1},{:.1}", x, y))
+            .unwrap_or_else(|| "unknown".to_string());
+        logger::log_info(&format!(
+            "[ARRANGE] meta path={} tags={:?} color={:?} size={:.1}x{:.1} position={}",
+            path, tags, background_color, width, height, position_text
+        ));
+
+        notes.push(arrange::ArrangeNote {
+            path,
+            tags,
+            background_color,
+            width,
+            height,
+        });
     }
-    logger::log_info(&format!("[ARRANGE] note window count: {}", count));
+    logger::log_info(&format!("[ARRANGE] arrange note count: {}", notes.len()));
     Ok(())
 }
 
