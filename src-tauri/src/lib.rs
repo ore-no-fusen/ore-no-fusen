@@ -1370,6 +1370,41 @@ async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
         ));
     }
     logger::log_info(&format!("[ARRANGE] calculated position count: {}", positions.len()));
+
+    let mut move_success_count = 0;
+    let mut move_failed_count = 0;
+    for position in &positions {
+        let label = get_window_label(&position.path);
+        let Some(window) = app.get_webview_window(&label) else {
+            logger::log_info(&format!(
+                "[ARRANGE] move skipped path={} label={} reason=window_not_found",
+                position.path, label
+            ));
+            move_failed_count += 1;
+            continue;
+        };
+
+        match window.set_position(tauri::LogicalPosition::new(position.x, position.y)) {
+            Ok(_) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] move success path={} label={} x={:.1} y={:.1}",
+                    position.path, label, position.x, position.y
+                ));
+                move_success_count += 1;
+            }
+            Err(e) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] move failed path={} label={} error={}",
+                    position.path, label, e
+                ));
+                move_failed_count += 1;
+            }
+        }
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] move completed success={} failed={}",
+        move_success_count, move_failed_count
+    ));
     Ok(())
 }
 
@@ -3488,8 +3523,13 @@ pub fn run() {
                 });
             let ctrl_n_shortcut_clone = ctrl_n_shortcut.clone();
 
+            // [仮] 2-b のトレイUI実装までの実機確認用トリガー。トレイUI完成後に削除予定
+            let arrange_shortcut = Shortcut::try_from("ctrl+shift+l")
+                .unwrap_or_else(|_| Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyL));
+            let arrange_shortcut_clone = arrange_shortcut.clone();
+
             // [Fix] Safely attempt to register shortcuts（Ctrl+Shift+H と Ctrl+N を同一プラグインに登録）
-            match ShortcutBuilder::new().with_shortcuts(["ctrl+shift+h"]) {
+            match ShortcutBuilder::new().with_shortcuts(["ctrl+shift+h", "ctrl+shift+l"]) {
                 Ok(builder) => {
                     let plugin = builder
                         .with_handler(move |app, shortcut, event| {
@@ -3501,6 +3541,14 @@ pub fn run() {
                                     logger::log_info("[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit");
                                     perflog::log_event("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
                                     let _ = app.emit("fusen:request_create_global", ());
+                                } else if shortcut == &arrange_shortcut_clone {
+                                    logger::log_info("[Shortcut] Ctrl+Shift+L: fusen_arrange_by_tag trigger");
+                                    let app_handle = app.clone();
+                                    tauri::async_runtime::spawn(async move {
+                                        if let Err(e) = fusen_arrange_by_tag(app_handle).await {
+                                            logger::log_warn(&format!("[Shortcut] Ctrl+Shift+L arrange failed: {}", e));
+                                        }
+                                    });
                                 } else {
                                     // --- Ctrl+Shift+H: 全付箋隠す/表示 ---
                                     if !can_do_visibility_op() { return; }
