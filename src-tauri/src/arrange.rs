@@ -81,15 +81,32 @@ pub(crate) fn calculate_arrange_by_tag_positions(
     }
 
     let mut positions = Vec::with_capacity(notes.len());
-    let mut current_x = work_area.x + START_OFFSET_X;
-    let start_y = work_area.y + START_OFFSET_Y;
+    let row_start_x = work_area.x + START_OFFSET_X;
+    let mut current_x = row_start_x;
+    let mut current_y = work_area.y + START_OFFSET_Y;
+    let mut row_max_bottom = current_y;
+    let work_area_right = work_area.x + work_area.width;
 
     for (_, group_notes) in groups {
         let columns = build_color_columns(group_notes);
+        let block_width = tag_block_width(&columns);
+
+        if current_x > row_start_x && current_x + block_width > work_area_right {
+            current_x = row_start_x;
+            current_y = row_max_bottom + ROW_GAP;
+            row_max_bottom = current_y;
+        }
 
         for column_notes in columns {
             let column_x = current_x;
-            append_column_positions(&mut positions, &column_notes, column_x, start_y, work_area);
+            let column_bottom = append_column_positions(
+                &mut positions,
+                &column_notes,
+                column_x,
+                current_y,
+                work_area,
+            );
+            row_max_bottom = row_max_bottom.max(column_bottom);
 
             let max_width = column_notes
                 .iter()
@@ -102,6 +119,19 @@ pub(crate) fn calculate_arrange_by_tag_positions(
     }
 
     positions
+}
+
+fn tag_block_width(columns: &[Vec<&ArrangeNote>]) -> f64 {
+    columns
+        .iter()
+        .map(|column_notes| {
+            column_notes
+                .iter()
+                .map(|note| note.width)
+                .fold(0.0_f64, f64::max)
+                + COLUMN_GAP
+        })
+        .sum()
 }
 
 fn build_color_columns(notes: Vec<&ArrangeNote>) -> Vec<Vec<&ArrangeNote>> {
@@ -142,10 +172,11 @@ fn append_column_positions(
     column_x: f64,
     start_y: f64,
     work_area: WorkArea,
-) {
+) -> f64 {
     let work_area_bottom = work_area.y + work_area.height;
     let mut previous_y = start_y;
     let mut previous_height = 0.0;
+    let mut max_bottom = start_y;
 
     for (index, note) in column_notes.iter().enumerate() {
         let full_stack_y = if index == 0 {
@@ -166,9 +197,12 @@ fn append_column_positions(
             y,
         });
 
+        max_bottom = max_bottom.max(y + note.height);
         previous_y = y;
         previous_height = note.height;
     }
+
+    max_bottom
 }
 
 fn contain_giant_note_top_left(
@@ -270,6 +304,28 @@ mod tests {
         let positions = calculate_arrange_by_tag_positions(&notes, work_area());
 
         assert!(position(&positions, "a1.md").x < position(&positions, "b1.md").x);
+    }
+
+    #[test]
+    fn tag_blocks_wrap_to_next_row_when_work_area_width_overflows() {
+        let notes = vec![
+            note("a1.md", &["A"], Some(COLOR_YELLOW)),
+            note("b1.md", &["B"], Some(COLOR_YELLOW)),
+        ];
+        let narrow_work_area = WorkArea {
+            x: 0.0,
+            y: 0.0,
+            width: 300.0,
+            height: 1000.0,
+        };
+
+        let positions = calculate_arrange_by_tag_positions(&notes, narrow_work_area);
+        let a = position(&positions, "a1.md");
+        let b = position(&positions, "b1.md");
+
+        assert_eq!(a.x, START_OFFSET_X);
+        assert_eq!(b.x, START_OFFSET_X);
+        assert_eq!(b.y, a.y + 100.0 + ROW_GAP);
     }
 
     #[test]
