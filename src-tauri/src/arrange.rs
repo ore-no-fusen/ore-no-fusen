@@ -19,9 +19,8 @@ const FIXED_COLORS: [&str; 5] = [
 const START_OFFSET_X: f64 = 40.0;
 const START_OFFSET_Y: f64 = 40.0;
 const COLUMN_GAP: f64 = 20.0;
-const TAG_GAP: f64 = 40.0;
-const ROW_GAP: f64 = 20.0;
-const OVERFLOW_STEP_Y: f64 = 40.0;
+const LANE_GAP: f64 = 40.0;
+const STACK_STEP_X: f64 = 18.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ArrangeNote {
@@ -53,6 +52,13 @@ enum ColorBucket {
     Other(String),
 }
 
+struct Lane<'a> {
+    columns: Vec<Vec<&'a ArrangeNote>>,
+    max_note_height: f64,
+    max_stack_len: usize,
+    natural_height: f64,
+}
+
 pub(crate) fn calculate_arrange_by_tag_positions(
     notes: &[ArrangeNote],
     work_area: WorkArea,
@@ -80,58 +86,108 @@ pub(crate) fn calculate_arrange_by_tag_positions(
         groups.push((String::new(), untagged_group));
     }
 
+    let lanes: Vec<Lane<'_>> = groups
+        .into_iter()
+        .map(|(_, group_notes)| build_lane(group_notes))
+        .collect();
+
     let mut positions = Vec::with_capacity(notes.len());
-    let row_start_x = work_area.x + START_OFFSET_X;
-    let mut current_x = row_start_x;
-    let mut current_y = work_area.y + START_OFFSET_Y;
-    let mut row_max_bottom = current_y;
-    let work_area_right = work_area.x + work_area.width;
 
-    for (_, group_notes) in groups {
-        let columns = build_color_columns(group_notes);
-        let block_width = tag_block_width(&columns);
+    if lanes.is_empty() {
+        return positions;
+    }
 
-        if current_x > row_start_x && current_x + block_width > work_area_right {
-            current_x = row_start_x;
-            current_y = row_max_bottom + ROW_GAP;
-            row_max_bottom = current_y;
+    let lane_start_x = work_area.x + START_OFFSET_X;
+    let first_lane_y = clamp(
+        work_area.y + START_OFFSET_Y,
+        work_area.y,
+        work_area.y + work_area.height,
+    );
+    let available_height = (work_area.y + work_area.height - first_lane_y).max(0.0);
+    let natural_total_height: f64 = lanes.iter().map(|lane| lane.natural_height).sum::<f64>()
+        + LANE_GAP * lanes.len().saturating_sub(1) as f64;
+    let compressed_lanes = natural_total_height > available_height;
+    let lane_step_y = if compressed_lanes {
+        available_height / lanes.len() as f64
+    } else {
+        0.0
+    };
+
+    let mut natural_y = first_lane_y;
+    for (lane_index, lane) in lanes.iter().enumerate() {
+        let lane_y = if compressed_lanes {
+            first_lane_y + lane_step_y * lane_index as f64
+        } else {
+            natural_y
+        };
+        let lane_height = if compressed_lanes {
+            if lanes.len() == 1 {
+                available_height
+            } else {
+                (lane_step_y - LANE_GAP).max(0.0)
+            }
+        } else {
+            lane.natural_height
+        };
+        let stack_step_y = stack_step_y(lane_height, lane.max_note_height, lane.max_stack_len);
+
+        let mut current_x = lane_start_x;
+        for column_notes in &lane.columns {
+            for (note_index, note) in column_notes.iter().enumerate() {
+                positions.push(ArrangedPosition {
+                    path: note.path.clone(),
+                    x: current_x + STACK_STEP_X * note_index as f64,
+                    y: clamp(
+                        lane_y + stack_step_y * note_index as f64,
+                        work_area.y,
+                        work_area.y + work_area.height,
+                    ),
+                });
+            }
+
+            current_x += column_width(column_notes) + COLUMN_GAP;
         }
 
-        for column_notes in columns {
-            let column_x = current_x;
-            let column_bottom = append_column_positions(
-                &mut positions,
-                &column_notes,
-                column_x,
-                current_y,
-                work_area,
-            );
-            row_max_bottom = row_max_bottom.max(column_bottom);
-
-            let max_width = column_notes
-                .iter()
-                .map(|note| note.width)
-                .fold(0.0_f64, f64::max);
-            current_x += max_width + COLUMN_GAP;
+        if !compressed_lanes {
+            natural_y += lane.natural_height + LANE_GAP;
         }
-
-        current_x += TAG_GAP;
     }
 
     positions
 }
 
-fn tag_block_width(columns: &[Vec<&ArrangeNote>]) -> f64 {
-    columns
+fn build_lane(notes: Vec<&ArrangeNote>) -> Lane<'_> {
+    let columns = build_color_columns(notes);
+    let max_note_height = columns
         .iter()
-        .map(|column_notes| {
-            column_notes
-                .iter()
-                .map(|note| note.width)
-                .fold(0.0_f64, f64::max)
-                + COLUMN_GAP
-        })
-        .sum()
+        .flat_map(|column| column.iter().map(|note| note.height))
+        .fold(0.0_f64, f64::max);
+    let max_stack_len = columns.iter().map(|column| column.len()).max().unwrap_or(0);
+    let natural_height = max_note_height * max_stack_len.max(1) as f64;
+
+    Lane {
+        columns,
+        max_note_height,
+        max_stack_len,
+        natural_height,
+    }
+}
+
+fn stack_step_y(lane_height: f64, note_height: f64, max_stack_len: usize) -> f64 {
+    if max_stack_len <= 1 {
+        return 0.0;
+    }
+
+    ((lane_height - note_height) / (max_stack_len - 1) as f64).clamp(0.0, note_height)
+}
+
+fn column_width(column_notes: &[&ArrangeNote]) -> f64 {
+    let max_width = column_notes
+        .iter()
+        .map(|note| note.width)
+        .fold(0.0_f64, f64::max);
+    let stack_width = STACK_STEP_X * column_notes.len().saturating_sub(1) as f64;
+    max_width + stack_width
 }
 
 fn build_color_columns(notes: Vec<&ArrangeNote>) -> Vec<Vec<&ArrangeNote>> {
@@ -146,11 +202,10 @@ fn build_color_columns(notes: Vec<&ArrangeNote>) -> Vec<Vec<&ArrangeNote>> {
     }
 
     let mut columns = Vec::new();
-    for mut column in fixed_columns {
+    for column in fixed_columns {
         if column.is_empty() {
             continue;
         }
-        column.sort_by(|a, b| a.path.cmp(&b.path));
         columns.push(column);
     }
 
@@ -164,65 +219,6 @@ fn build_color_columns(notes: Vec<&ArrangeNote>) -> Vec<Vec<&ArrangeNote>> {
     }
 
     columns
-}
-
-fn append_column_positions(
-    positions: &mut Vec<ArrangedPosition>,
-    column_notes: &[&ArrangeNote],
-    column_x: f64,
-    start_y: f64,
-    work_area: WorkArea,
-) -> f64 {
-    let work_area_bottom = work_area.y + work_area.height;
-    let mut previous_y = start_y;
-    let mut previous_height = 0.0;
-    let mut max_bottom = start_y;
-
-    for (index, note) in column_notes.iter().enumerate() {
-        let full_stack_y = if index == 0 {
-            start_y
-        } else {
-            previous_y + previous_height + ROW_GAP
-        };
-        let y = if index > 0 && full_stack_y + note.height > work_area_bottom {
-            previous_y + OVERFLOW_STEP_Y
-        } else {
-            full_stack_y
-        };
-        let (x, y) = contain_giant_note_top_left(column_x, y, *note, work_area);
-
-        positions.push(ArrangedPosition {
-            path: note.path.clone(),
-            x,
-            y,
-        });
-
-        max_bottom = max_bottom.max(y + note.height);
-        previous_y = y;
-        previous_height = note.height;
-    }
-
-    max_bottom
-}
-
-fn contain_giant_note_top_left(
-    x: f64,
-    y: f64,
-    note: &ArrangeNote,
-    work_area: WorkArea,
-) -> (f64, f64) {
-    let contained_x = if note.width > work_area.width {
-        clamp(x, work_area.x, work_area.x + work_area.width)
-    } else {
-        x
-    };
-    let contained_y = if note.height > work_area.height {
-        clamp(y, work_area.y, work_area.y + work_area.height)
-    } else {
-        y
-    };
-
-    (contained_x, contained_y)
 }
 
 fn clamp(value: f64, min: f64, max: f64) -> f64 {
@@ -274,116 +270,141 @@ mod tests {
             .unwrap()
     }
 
+    fn assert_all_tops_within_work_area(positions: &[ArrangedPosition], work_area: WorkArea) {
+        for position in positions {
+            assert!(
+                position.y >= work_area.y,
+                "{} y={}",
+                position.path,
+                position.y
+            );
+            assert!(
+                position.y <= work_area.y + work_area.height,
+                "{} y={}",
+                position.path,
+                position.y
+            );
+        }
+    }
+
     #[test]
-    fn color_order_is_yellow_red_blue_white_black() {
+    fn color_columns_keep_fixed_order_and_unknown_last() {
         let notes = vec![
             note("yellow.md", &["tag"], Some(COLOR_YELLOW)),
             note("red.md", &["tag"], Some(COLOR_RED)),
             note("blue.md", &["tag"], Some(COLOR_BLUE)),
             note("white.md", &["tag"], Some(COLOR_WHITE)),
             note("black.md", &["tag"], Some(COLOR_BLACK)),
+            note("unknown.md", &["tag"], Some("#123456")),
+            note("none.md", &["tag"], None),
         ];
 
         let positions = calculate_arrange_by_tag_positions(&notes, work_area());
 
+        assert_eq!(
+            position(&positions, "none.md").x - position(&positions, "yellow.md").x,
+            STACK_STEP_X
+        );
         assert!(position(&positions, "yellow.md").x < position(&positions, "red.md").x);
+        assert!(position(&positions, "none.md").x < position(&positions, "red.md").x);
         assert!(position(&positions, "red.md").x < position(&positions, "blue.md").x);
         assert!(position(&positions, "blue.md").x < position(&positions, "white.md").x);
         assert!(position(&positions, "white.md").x < position(&positions, "black.md").x);
+        assert!(position(&positions, "black.md").x < position(&positions, "unknown.md").x);
     }
 
     #[test]
-    fn tag_with_more_notes_is_placed_left() {
+    fn tags_are_vertical_lanes_by_note_count_and_untagged_last() {
         let notes = vec![
             note("a1.md", &["A"], Some(COLOR_YELLOW)),
             note("a2.md", &["A"], Some(COLOR_RED)),
             note("a3.md", &["A"], Some(COLOR_BLUE)),
             note("b1.md", &["B"], Some(COLOR_YELLOW)),
+            note("untagged.md", &[], Some(COLOR_YELLOW)),
         ];
 
         let positions = calculate_arrange_by_tag_positions(&notes, work_area());
 
-        assert!(position(&positions, "a1.md").x < position(&positions, "b1.md").x);
+        assert!(position(&positions, "a1.md").y < position(&positions, "b1.md").y);
+        assert!(position(&positions, "b1.md").y < position(&positions, "untagged.md").y);
+        assert_eq!(position(&positions, "a1.md").x, START_OFFSET_X);
+        assert_eq!(position(&positions, "b1.md").x, START_OFFSET_X);
+        assert_eq!(position(&positions, "untagged.md").x, START_OFFSET_X);
     }
 
     #[test]
-    fn tag_blocks_wrap_to_next_row_when_work_area_width_overflows() {
+    fn same_color_notes_are_stair_stepped_preserving_input_order() {
         let notes = vec![
-            note("a1.md", &["A"], Some(COLOR_YELLOW)),
-            note("b1.md", &["B"], Some(COLOR_YELLOW)),
+            note("newest.md", &["tag"], Some(COLOR_YELLOW)),
+            note("middle.md", &["tag"], Some(COLOR_YELLOW)),
+            note("oldest.md", &["tag"], Some(COLOR_YELLOW)),
         ];
-        let narrow_work_area = WorkArea {
+
+        let positions = calculate_arrange_by_tag_positions(&notes, work_area());
+        let newest = position(&positions, "newest.md");
+        let middle = position(&positions, "middle.md");
+        let oldest = position(&positions, "oldest.md");
+
+        assert_eq!(middle.x - newest.x, STACK_STEP_X);
+        assert_eq!(oldest.x - middle.x, STACK_STEP_X);
+        assert!(newest.y < middle.y);
+        assert!(middle.y < oldest.y);
+    }
+
+    #[test]
+    fn many_tags_and_colors_keep_all_note_tops_inside_work_area() {
+        let colors = [
+            Some(COLOR_YELLOW),
+            Some(COLOR_RED),
+            Some(COLOR_BLUE),
+            Some(COLOR_WHITE),
+            Some(COLOR_BLACK),
+        ];
+        let mut notes = Vec::new();
+        for tag_index in 0..24 {
+            for color in colors {
+                for note_index in 0..3 {
+                    let mut note = note(
+                        &format!("tag{}_{}_{}.md", tag_index, color.unwrap(), note_index),
+                        &[&format!("tag{}", tag_index)],
+                        color,
+                    );
+                    note.height = 180.0;
+                    notes.push(note);
+                }
+            }
+        }
+        let small_work_area = WorkArea {
             x: 0.0,
             y: 0.0,
-            width: 300.0,
-            height: 1000.0,
+            width: 900.0,
+            height: 320.0,
         };
 
-        let positions = calculate_arrange_by_tag_positions(&notes, narrow_work_area);
-        let a = position(&positions, "a1.md");
-        let b = position(&positions, "b1.md");
+        let positions = calculate_arrange_by_tag_positions(&notes, small_work_area);
 
-        assert_eq!(a.x, START_OFFSET_X);
-        assert_eq!(b.x, START_OFFSET_X);
-        assert_eq!(b.y, a.y + 100.0 + ROW_GAP);
+        assert_all_tops_within_work_area(&positions, small_work_area);
     }
 
     #[test]
-    fn untagged_group_is_placed_rightmost() {
-        let notes = vec![
-            note("untagged.md", &[], Some(COLOR_YELLOW)),
-            note("a1.md", &["A"], Some(COLOR_YELLOW)),
-            note("b1.md", &["B"], Some(COLOR_YELLOW)),
-        ];
-
-        let positions = calculate_arrange_by_tag_positions(&notes, work_area());
-
-        let untagged_x = position(&positions, "untagged.md").x;
-        assert!(position(&positions, "a1.md").x < untagged_x);
-        assert!(position(&positions, "b1.md").x < untagged_x);
-    }
-
-    #[test]
-    fn same_color_notes_are_stacked_vertically() {
+    fn sparse_lanes_use_large_stack_step_y() {
         let notes = vec![
             note("a.md", &["tag"], Some(COLOR_YELLOW)),
             note("b.md", &["tag"], Some(COLOR_YELLOW)),
+            note("c.md", &["tag"], Some(COLOR_YELLOW)),
         ];
 
         let positions = calculate_arrange_by_tag_positions(&notes, work_area());
         let first = position(&positions, "a.md");
         let second = position(&positions, "b.md");
+        let third = position(&positions, "c.md");
 
-        assert_eq!(first.x, second.x);
-        assert!(first.y < second.y);
+        assert_eq!(second.y - first.y, 100.0);
+        assert_eq!(third.y - second.y, 100.0);
     }
 
     #[test]
-    fn missing_background_color_is_treated_as_yellow() {
-        let notes = vec![
-            note("none.md", &["tag"], None),
-            note("red.md", &["tag"], Some(COLOR_RED)),
-        ];
-
-        let positions = calculate_arrange_by_tag_positions(&notes, work_area());
-
-        assert!(position(&positions, "none.md").x < position(&positions, "red.md").x);
-    }
-
-    #[test]
-    fn unknown_color_is_placed_right_of_black() {
-        let notes = vec![
-            note("black.md", &["tag"], Some(COLOR_BLACK)),
-            note("unknown.md", &["tag"], Some("#123456")),
-        ];
-
-        let positions = calculate_arrange_by_tag_positions(&notes, work_area());
-
-        assert!(position(&positions, "black.md").x < position(&positions, "unknown.md").x);
-    }
-
-    #[test]
-    fn overflow_uses_card_like_overlap_step() {
+    fn single_compressed_lane_uses_full_available_height_for_stack_step_y() {
         let notes = vec![
             note("a.md", &["tag"], Some(COLOR_YELLOW)),
             note("b.md", &["tag"], Some(COLOR_YELLOW)),
@@ -392,8 +413,8 @@ mod tests {
         let small_work_area = WorkArea {
             x: 0.0,
             y: 0.0,
-            width: 800.0,
-            height: 190.0,
+            width: 400.0,
+            height: 160.0,
         };
 
         let positions = calculate_arrange_by_tag_positions(&notes, small_work_area);
@@ -401,7 +422,36 @@ mod tests {
         let second = position(&positions, "b.md");
         let third = position(&positions, "c.md");
 
-        assert_eq!(second.y - first.y, OVERFLOW_STEP_Y);
-        assert_eq!(third.y - second.y, OVERFLOW_STEP_Y);
+        assert_all_tops_within_work_area(&positions, small_work_area);
+        assert_eq!(second.y - first.y, 10.0);
+        assert_eq!(third.y - second.y, 10.0);
+    }
+
+    #[test]
+    fn compressed_lanes_distribute_starts_before_bottom_edge() {
+        let mut notes = Vec::new();
+        for tag_index in 0..8 {
+            for note_index in 0..3 {
+                let mut note = note(
+                    &format!("tag{}_{}.md", tag_index, note_index),
+                    &[&format!("tag{}", tag_index)],
+                    Some(COLOR_YELLOW),
+                );
+                note.height = 120.0;
+                notes.push(note);
+            }
+        }
+        let small_work_area = WorkArea {
+            x: 0.0,
+            y: 0.0,
+            width: 600.0,
+            height: 360.0,
+        };
+
+        let positions = calculate_arrange_by_tag_positions(&notes, small_work_area);
+        let bottom = small_work_area.y + small_work_area.height;
+
+        assert_all_tops_within_work_area(&positions, small_work_area);
+        assert!(position(&positions, "tag7_0.md").y < bottom);
     }
 }
