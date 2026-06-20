@@ -1262,6 +1262,25 @@ fn sort_notes_by_seq_desc(notes: &mut Vec<arrange::ArrangeNote>) {
     notes.sort_by_cached_key(|note| std::cmp::Reverse(arrange_note_seq(note)));
 }
 
+fn update_note_window_position(path: &str, x: f64, y: f64) -> Result<(), String> {
+    let note = storage::read_note(path)?;
+    let re_window = regex::Regex::new(
+        r"window:\s*\{\s*x:\s*(-?[\d\.]+),\s*y:\s*(-?[\d\.]+),\s*width:\s*(-?[\d\.]+),\s*height:\s*(-?[\d\.]+)\s*\}"
+    ).map_err(|e| e.to_string())?;
+
+    let Some(caps) = re_window.captures(&note.body) else {
+        return Err("window metadata not found".to_string());
+    };
+    let width = caps.get(3).map(|m| m.as_str()).unwrap_or("400");
+    let height = caps.get(4).map(|m| m.as_str()).unwrap_or("300");
+    let replacement = format!(
+        "window: {{ x: {:.1}, y: {:.1}, width: {}, height: {} }}",
+        x, y, width, height
+    );
+    let updated_content = re_window.replace(&note.body, replacement.as_str()).to_string();
+    storage::write_note(path, &updated_content)
+}
+
 #[tauri::command]
 async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
     let note_paths: Vec<String> = {
@@ -1373,6 +1392,7 @@ async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
 
     let mut move_success_count = 0;
     let mut move_failed_count = 0;
+    let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
     for position in &positions {
         let label = get_window_label(&position.path);
         let Some(window) = app.get_webview_window(&label) else {
@@ -1391,6 +1411,7 @@ async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
                     position.path, label, position.x, position.y
                 ));
                 move_success_count += 1;
+                moved_positions.push((position.path.clone(), position.x, position.y));
             }
             Err(e) => {
                 logger::log_info(&format!(
@@ -1404,6 +1425,31 @@ async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
     logger::log_info(&format!(
         "[ARRANGE] move completed success={} failed={}",
         move_success_count, move_failed_count
+    ));
+
+    let mut frontmatter_success_count = 0;
+    let mut frontmatter_failed_count = 0;
+    for (path, x, y) in &moved_positions {
+        match update_note_window_position(path, *x, *y) {
+            Ok(_) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] frontmatter update success path={} x={:.1} y={:.1}",
+                    path, x, y
+                ));
+                frontmatter_success_count += 1;
+            }
+            Err(e) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] frontmatter update failed path={} error={}",
+                    path, e
+                ));
+                frontmatter_failed_count += 1;
+            }
+        }
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] frontmatter update completed success={} failed={}",
+        frontmatter_success_count, frontmatter_failed_count
     ));
     Ok(())
 }
