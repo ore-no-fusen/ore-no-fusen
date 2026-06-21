@@ -288,7 +288,7 @@ MVP「大事なことは貼っておけばいい」の延長線上にある機�
 | 第1段 | 位置計算ロジック `arrange.rs`（純粋関数） | ✅ cargo test 7件 pass（feature/arrange-clean） |
 | 2-a | 整列コマンド `fusen_arrange_by_tag`：付箋列挙→メタ取得→seqソート→arrange計算→位置反映→frontmatter更新 | ✅ 実装完了（部品①〜⑤）。実機で配置確認済み（横/縦あふれの課題が判明） |
 | 2-d | カンバン配置（タグ=縦レーン×色=列×同色=右下重ね）＋ folded=40px ＋ タグなしレーン深く詰める | ✅ 実装完了（arrange.rs 刷新・lib.rs で folded 伝搬・cargo test 9件 pass）。実機確認待ち |
-| 2-e | **黄赤青の列Xを全レーンで揃える（白黒は青の右に左詰め）＋ レーン間（行間）を広げる** | 次。実機の見た目要望（3.1 列揃え・LANE_GAP 拡大）。arrange.rs の列X計算を「色ごとの固定X（黄赤青は0枚でも空ける）」に変更 |
+| 2-e | 黄赤青の列Xを全レーンで揃える（白黒は青の右に左詰め）＋ レーン間（行間）を広げる | ✅ 実装完了（arrange.rs：黄赤青を固定列X・全レーン共通・0枚でも空ける／白黒は青の右の共通Xから左詰め／LANE_GAP 40→80／テスト11件 pass）。実機確認待ち |
 | 2-b | トレイメニューに「タグで整列」追加 | ✅ 実装完了（tray.rs にメニュー項目＋on_menu_event 分岐、lib.rs に run_fusen_arrange_by_tag 切り出し・cargo build/test 緑）。仮ショートカット Ctrl+Shift+L も併存。実機でメニュー表示確認待ち |
 | 2-c | undo（整列前スナップショット1段＋「整列前に戻す」） | 次。実機 |
 

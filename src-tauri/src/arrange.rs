@@ -19,10 +19,14 @@ const FIXED_COLORS: [&str; 5] = [
 const START_OFFSET_X: f64 = 40.0;
 const START_OFFSET_Y: f64 = 40.0;
 const COLUMN_GAP: f64 = 20.0;
-const LANE_GAP: f64 = 40.0;
+const LANE_GAP: f64 = 80.0;
 const STACK_STEP_X: f64 = 18.0;
 const FOLDED_HEIGHT: f64 = 40.0;
 const UNTAGGED_LANE_HEIGHT_WEIGHT: f64 = 0.5;
+const ALIGNED_COLOR_COUNT: usize = 3;
+const COLOR_YELLOW_INDEX: usize = 0;
+const COLOR_RED_INDEX: usize = 1;
+const COLOR_BLUE_INDEX: usize = 2;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ArrangeNote {
@@ -102,6 +106,10 @@ pub(crate) fn calculate_arrange_by_tag_positions(
     }
 
     let lane_start_x = work_area.x + START_OFFSET_X;
+    let fixed_column_xs = fixed_column_xs(&lanes, lane_start_x);
+    let extra_columns_start_x = fixed_column_xs[COLOR_BLUE_INDEX]
+        + max_lane_color_column_width(&lanes, COLOR_BLUE_INDEX)
+        + COLUMN_GAP;
     let first_lane_y = clamp(
         work_area.y + START_OFFSET_Y,
         work_area.y,
@@ -136,19 +144,33 @@ pub(crate) fn calculate_arrange_by_tag_positions(
         };
         let stack_step_y = stack_step_y(lane_height, lane.max_note_height, lane.max_stack_len);
 
-        let mut current_x = lane_start_x;
-        for column_notes in &lane.columns {
-            for (note_index, note) in column_notes.iter().enumerate() {
-                positions.push(ArrangedPosition {
-                    path: note.path.clone(),
-                    x: current_x + STACK_STEP_X * note_index as f64,
-                    y: clamp(
-                        lane_y + stack_step_y * note_index as f64,
-                        work_area.y,
-                        work_area.y + work_area.height,
-                    ),
-                });
+        for (column_index, column_notes) in
+            lane.columns.iter().take(ALIGNED_COLOR_COUNT).enumerate()
+        {
+            append_column_positions(
+                &mut positions,
+                column_notes,
+                fixed_column_xs[column_index],
+                lane_y,
+                stack_step_y,
+                work_area,
+            );
+        }
+
+        let mut current_x = extra_columns_start_x;
+        for column_notes in lane.columns.iter().skip(ALIGNED_COLOR_COUNT) {
+            if column_notes.is_empty() {
+                continue;
             }
+
+            append_column_positions(
+                &mut positions,
+                column_notes,
+                current_x,
+                lane_y,
+                stack_step_y,
+                work_area,
+            );
 
             current_x += column_width(column_notes) + COLUMN_GAP;
         }
@@ -179,6 +201,21 @@ fn build_lane(notes: Vec<&ArrangeNote>, is_untagged: bool) -> Lane<'_> {
         natural_height,
         is_untagged,
     }
+}
+
+fn fixed_column_xs(lanes: &[Lane<'_>], start_x: f64) -> [f64; ALIGNED_COLOR_COUNT] {
+    let yellow_x = start_x;
+    let red_x = yellow_x + max_lane_color_column_width(lanes, COLOR_YELLOW_INDEX) + COLUMN_GAP;
+    let blue_x = red_x + max_lane_color_column_width(lanes, COLOR_RED_INDEX) + COLUMN_GAP;
+
+    [yellow_x, red_x, blue_x]
+}
+
+fn max_lane_color_column_width(lanes: &[Lane<'_>], color_index: usize) -> f64 {
+    lanes
+        .iter()
+        .map(|lane| column_width(&lane.columns[color_index]))
+        .fold(0.0_f64, f64::max)
 }
 
 fn lane_height_weight(lane: &Lane<'_>) -> f64 {
@@ -222,6 +259,27 @@ fn column_width(column_notes: &[&ArrangeNote]) -> f64 {
     max_width + stack_width
 }
 
+fn append_column_positions(
+    positions: &mut Vec<ArrangedPosition>,
+    column_notes: &[&ArrangeNote],
+    column_x: f64,
+    lane_y: f64,
+    stack_step_y: f64,
+    work_area: WorkArea,
+) {
+    for (note_index, note) in column_notes.iter().enumerate() {
+        positions.push(ArrangedPosition {
+            path: note.path.clone(),
+            x: column_x + STACK_STEP_X * note_index as f64,
+            y: clamp(
+                lane_y + stack_step_y * note_index as f64,
+                work_area.y,
+                work_area.y + work_area.height,
+            ),
+        });
+    }
+}
+
 fn build_color_columns(notes: Vec<&ArrangeNote>) -> Vec<Vec<&ArrangeNote>> {
     let mut fixed_columns: Vec<Vec<&ArrangeNote>> = vec![Vec::new(); FIXED_COLORS.len()];
     let mut other_notes: Vec<&ArrangeNote> = Vec::new();
@@ -233,24 +291,16 @@ fn build_color_columns(notes: Vec<&ArrangeNote>) -> Vec<Vec<&ArrangeNote>> {
         }
     }
 
-    let mut columns = Vec::new();
-    for column in fixed_columns {
-        if column.is_empty() {
-            continue;
-        }
-        columns.push(column);
-    }
-
     if !other_notes.is_empty() {
         other_notes.sort_by(|a, b| {
             normalized_color(a)
                 .cmp(&normalized_color(b))
                 .then_with(|| a.path.cmp(&b.path))
         });
-        columns.push(other_notes);
+        fixed_columns.push(other_notes);
     }
 
-    columns
+    fixed_columns
 }
 
 fn clamp(value: f64, min: f64, max: f64) -> f64 {
@@ -339,7 +389,6 @@ mod tests {
             STACK_STEP_X
         );
         assert!(position(&positions, "yellow.md").x < position(&positions, "red.md").x);
-        assert!(position(&positions, "none.md").x < position(&positions, "red.md").x);
         assert!(position(&positions, "red.md").x < position(&positions, "blue.md").x);
         assert!(position(&positions, "blue.md").x < position(&positions, "white.md").x);
         assert!(position(&positions, "white.md").x < position(&positions, "black.md").x);
@@ -363,6 +412,53 @@ mod tests {
         assert_eq!(position(&positions, "a1.md").x, START_OFFSET_X);
         assert_eq!(position(&positions, "b1.md").x, START_OFFSET_X);
         assert_eq!(position(&positions, "untagged.md").x, START_OFFSET_X);
+    }
+
+    #[test]
+    fn yellow_red_blue_columns_share_fixed_x_across_lanes() {
+        let notes = vec![
+            note("a_yellow.md", &["A"], Some(COLOR_YELLOW)),
+            note("a_red.md", &["A"], Some(COLOR_RED)),
+            note("a_blue.md", &["A"], Some(COLOR_BLUE)),
+            note("b_yellow.md", &["B"], Some(COLOR_YELLOW)),
+            note("b_red.md", &["B"], Some(COLOR_RED)),
+            note("b_blue.md", &["B"], Some(COLOR_BLUE)),
+        ];
+
+        let positions = calculate_arrange_by_tag_positions(&notes, work_area());
+
+        assert_eq!(
+            position(&positions, "a_yellow.md").x,
+            position(&positions, "b_yellow.md").x
+        );
+        assert_eq!(
+            position(&positions, "a_red.md").x,
+            position(&positions, "b_red.md").x
+        );
+        assert_eq!(
+            position(&positions, "a_blue.md").x,
+            position(&positions, "b_blue.md").x
+        );
+    }
+
+    #[test]
+    fn missing_middle_color_keeps_next_fixed_color_x_aligned() {
+        let notes = vec![
+            note("a_yellow.md", &["A"], Some(COLOR_YELLOW)),
+            note("a_blue.md", &["A"], Some(COLOR_BLUE)),
+            note("b_yellow.md", &["B"], Some(COLOR_YELLOW)),
+            note("b_red.md", &["B"], Some(COLOR_RED)),
+            note("b_blue.md", &["B"], Some(COLOR_BLUE)),
+        ];
+
+        let positions = calculate_arrange_by_tag_positions(&notes, work_area());
+
+        assert_eq!(
+            position(&positions, "a_blue.md").x,
+            position(&positions, "b_blue.md").x
+        );
+        assert!(position(&positions, "a_yellow.md").x < position(&positions, "a_blue.md").x);
+        assert!(position(&positions, "b_red.md").x < position(&positions, "b_blue.md").x);
     }
 
     #[test]
