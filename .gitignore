@@ -92,3 +92,6 @@ wiki-temp/
 /packaging/msix/*.pfx
 /packaging/msix/*.cer
 /packaging/msix/*.msix
+
+# Local Rust verification build output
+/target-arrange-verify/

@@ -82,6 +82,44 @@ jobs:
     needs: release
     runs-on: windows-latest
     steps:
+      - name: Close superseded winget PRs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          PACKAGE_ID: ONFStudios.OreNoFusen
+          FORK_OWNER: ore-no-fusen
+          CURRENT_VERSION: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:CURRENT_VERSION -replace '^v', ''
+          $items = gh search prs --repo microsoft/winget-pkgs --state open "$env:PACKAGE_ID" --json number,title,url | ConvertFrom-Json
+
+          foreach ($item in $items) {
+            $pr = gh api "repos/microsoft/winget-pkgs/pulls/$($item.number)" | ConvertFrom-Json
+            $headRef = $pr.head.ref
+            $headOwner = $pr.head.repo.owner.login
+
+            if ($headOwner -ne $env:FORK_OWNER) {
+              continue
+            }
+            if (-not $headRef.StartsWith("$env:PACKAGE_ID-")) {
+              continue
+            }
+            if ($headRef.StartsWith("$env:PACKAGE_ID-$version-")) {
+              continue
+            }
+
+            Write-Output "Closing superseded winget PR #$($pr.number): $($pr.title)"
+            gh api -X PATCH "repos/microsoft/winget-pkgs/pulls/$($pr.number)" -f state=closed | Out-Null
+
+            Write-Output "Deleting superseded branch $headRef from $env:FORK_OWNER/winget-pkgs"
+            try {
+              gh api -X DELETE "repos/$env:FORK_OWNER/winget-pkgs/git/refs/heads/$headRef" | Out-Null
+            } catch {
+              Write-Output "Branch $headRef was already absent or could not be deleted."
+            }
+          }
+
       - uses: vedantmgoyal2009/winget-releaser@v2
         with:
           identifier: ONFStudios.OreNoFusen
