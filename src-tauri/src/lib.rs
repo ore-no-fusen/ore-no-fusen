@@ -9,7 +9,7 @@
 
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{State, Manager, AppHandle, Emitter};
+use tauri::{State, Manager, AppHandle, Emitter, Runtime};
 use raw_window_handle::HasWindowHandle;
 
 mod state;
@@ -1283,6 +1283,10 @@ fn update_note_window_position(path: &str, x: f64, y: f64) -> Result<(), String>
 
 #[tauri::command]
 async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
+    run_fusen_arrange_by_tag(app).await
+}
+
+pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
     let note_paths: Vec<String> = {
         let state = app.state::<Mutex<AppState>>();
         let app_state = state.lock().unwrap_or_else(|p| p.into_inner());

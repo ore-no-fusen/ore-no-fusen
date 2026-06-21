@@ -36,6 +36,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let label_settings = if is_en { "Settings" } else { "設定 (Settings)" };
     let label_new_note = if is_en { "New Note" } else { "新規メモ (New Note)" };
     let label_search = if is_en { "Search" } else { "検索 (Search)" }; // [NEW] 全文検索
+    let label_arrange_by_tag = if is_en { "Arrange by Tag" } else { "タグで整列 (Arrange by Tag)" };
     let label_filter = if is_en { "Filter by Tags" } else { "タグで絞り込む (Filter by Tags)" };
     let label_quit = if is_en { "Quit" } else { "終了 (Quit)" };
 
@@ -44,6 +45,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?; 
     let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
     let search_i = MenuItem::with_id(app, "open_search", label_search, true, None::<&str>)?; // [NEW] 全文検索
+    let arrange_by_tag_i = MenuItem::with_id(app, "arrange_by_tag", label_arrange_by_tag, true, None::<&str>)?;
     
     // Generate Tag Filter Submenu
     let world_menu = tauri::menu::Submenu::with_id(app, "choose_world", label_filter, true)?;
@@ -72,6 +74,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[
         &new_note_i, // [NEW] 最上部に配置
         &search_i, // [NEW] 全文検索
+        &arrange_by_tag_i,
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &hide_i, 
         &show_i,
@@ -158,6 +161,15 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                             let _ = win.unminimize();
                             let _ = win.set_focus();
                         }
+                    },
+                    "arrange_by_tag" => {
+                        crate::logger::log_info("[Tray] Arrange by Tag trigger");
+                        let app_handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = crate::run_fusen_arrange_by_tag(app_handle).await {
+                                crate::logger::log_warn(&format!("[Tray] Arrange by Tag failed: {}", e));
+                            }
+                        });
                     },
                     _ => {}
                 }
