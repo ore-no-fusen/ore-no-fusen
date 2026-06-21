@@ -21,8 +21,8 @@ const START_OFFSET_Y: f64 = 40.0;
 const COLUMN_GAP: f64 = 20.0;
 const LANE_GAP: f64 = 80.0;
 const STACK_STEP_X: f64 = 18.0;
-const STACK_STEP_Y_MIN: f64 = 28.0;
-const LANE_STEP_Y_MIN: f64 = 28.0;
+const STACK_STEP_Y_MIN: f64 = 50.0;
+const LANE_STEP_Y_MIN: f64 = 50.0;
 const FOLDED_HEIGHT: f64 = 40.0;
 const UNTAGGED_LANE_HEIGHT_WEIGHT: f64 = 0.5;
 const ALIGNED_COLOR_COUNT: usize = 3;
@@ -126,10 +126,23 @@ pub(crate) fn calculate_arrange_by_tag_positions(
     } else {
         0.0
     };
+    let lane_slots: Vec<f64> = if compressed_lanes {
+        lanes
+            .iter()
+            .map(|lane| lane_slot_height(lane, available_height, total_lane_weight))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let compressed_start_y = if compressed_lanes {
+        compressed_start_y(first_lane_y, &lane_slots, work_area)
+    } else {
+        first_lane_y
+    };
 
     let mut natural_y = first_lane_y;
-    let mut compressed_y = first_lane_y;
-    for lane in &lanes {
+    let mut compressed_y = compressed_start_y;
+    for (lane_index, lane) in lanes.iter().enumerate() {
         let lane_y = if compressed_lanes {
             compressed_y
         } else {
@@ -139,7 +152,7 @@ pub(crate) fn calculate_arrange_by_tag_positions(
             if lanes.len() == 1 {
                 available_height
             } else {
-                (lane_slot_height(lane, available_height, total_lane_weight) - LANE_GAP).max(0.0)
+                (lane_slots[lane_index] - LANE_GAP).max(0.0)
             }
         } else {
             lane.natural_height
@@ -180,7 +193,7 @@ pub(crate) fn calculate_arrange_by_tag_positions(
         if !compressed_lanes {
             natural_y += lane.natural_height + LANE_GAP;
         } else {
-            compressed_y += lane_slot_height(lane, available_height, total_lane_weight);
+            compressed_y += lane_slots[lane_index];
         }
     }
 
@@ -236,6 +249,20 @@ fn lane_slot_height(lane: &Lane<'_>, available_height: f64, total_lane_weight: f
     (available_height * lane_height_weight(lane) / total_lane_weight).max(LANE_STEP_Y_MIN)
 }
 
+fn compressed_start_y(first_lane_y: f64, lane_slots: &[f64], work_area: WorkArea) -> f64 {
+    let stack_span = lane_slots
+        .iter()
+        .take(lane_slots.len().saturating_sub(1))
+        .sum::<f64>();
+    let work_area_bottom = work_area.y + work_area.height;
+
+    if first_lane_y + stack_span > work_area_bottom {
+        (work_area_bottom - stack_span).max(work_area.y)
+    } else {
+        first_lane_y
+    }
+}
+
 fn effective_height(note: &ArrangeNote) -> f64 {
     if note.folded {
         FOLDED_HEIGHT
@@ -249,7 +276,8 @@ fn stack_step_y(lane_height: f64, note_height: f64, max_stack_len: usize) -> f64
         return 0.0;
     }
 
-    ((lane_height - note_height) / (max_stack_len - 1) as f64).clamp(STACK_STEP_Y_MIN, note_height)
+    ((lane_height - note_height) / (max_stack_len - 1) as f64)
+        .clamp(STACK_STEP_Y_MIN, note_height.max(STACK_STEP_Y_MIN))
 }
 
 fn column_width(column_notes: &[&ArrangeNote]) -> f64 {
@@ -269,12 +297,20 @@ fn append_column_positions(
     stack_step_y: f64,
     work_area: WorkArea,
 ) {
+    let stack_span = stack_step_y * column_notes.len().saturating_sub(1) as f64;
+    let work_area_bottom = work_area.y + work_area.height;
+    let column_y = if lane_y + stack_span > work_area_bottom {
+        (work_area_bottom - stack_span).max(work_area.y)
+    } else {
+        lane_y
+    };
+
     for (note_index, note) in column_notes.iter().enumerate() {
         positions.push(ArrangedPosition {
             path: note.path.clone(),
             x: column_x + STACK_STEP_X * note_index as f64,
             y: clamp(
-                lane_y + stack_step_y * note_index as f64,
+                column_y + stack_step_y * note_index as f64,
                 work_area.y,
                 work_area.y + work_area.height,
             ),
@@ -588,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn folded_notes_use_folded_height_for_stack_step_y() {
+    fn folded_notes_still_use_minimum_stack_step_y() {
         let mut notes = vec![
             note("a.md", &["tag"], Some(COLOR_YELLOW)),
             note("b.md", &["tag"], Some(COLOR_YELLOW)),
@@ -603,8 +639,8 @@ mod tests {
         let second = position(&positions, "b.md");
         let third = position(&positions, "c.md");
 
-        assert_eq!(second.y - first.y, FOLDED_HEIGHT);
-        assert_eq!(third.y - second.y, FOLDED_HEIGHT);
+        assert_eq!(second.y - first.y, STACK_STEP_Y_MIN);
+        assert_eq!(third.y - second.y, STACK_STEP_Y_MIN);
     }
 
     #[test]
