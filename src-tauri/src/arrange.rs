@@ -21,6 +21,8 @@ const START_OFFSET_Y: f64 = 40.0;
 const COLUMN_GAP: f64 = 20.0;
 const LANE_GAP: f64 = 40.0;
 const STACK_STEP_X: f64 = 18.0;
+const FOLDED_HEIGHT: f64 = 40.0;
+const UNTAGGED_LANE_HEIGHT_WEIGHT: f64 = 0.5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ArrangeNote {
@@ -29,6 +31,7 @@ pub(crate) struct ArrangeNote {
     pub background_color: Option<String>,
     pub width: f64,
     pub height: f64,
+    pub folded: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -57,6 +60,7 @@ struct Lane<'a> {
     max_note_height: f64,
     max_stack_len: usize,
     natural_height: f64,
+    is_untagged: bool,
 }
 
 pub(crate) fn calculate_arrange_by_tag_positions(
@@ -88,7 +92,7 @@ pub(crate) fn calculate_arrange_by_tag_positions(
 
     let lanes: Vec<Lane<'_>> = groups
         .into_iter()
-        .map(|(_, group_notes)| build_lane(group_notes))
+        .map(|(tag, group_notes)| build_lane(group_notes, tag.is_empty()))
         .collect();
 
     let mut positions = Vec::with_capacity(notes.len());
@@ -107,16 +111,17 @@ pub(crate) fn calculate_arrange_by_tag_positions(
     let natural_total_height: f64 = lanes.iter().map(|lane| lane.natural_height).sum::<f64>()
         + LANE_GAP * lanes.len().saturating_sub(1) as f64;
     let compressed_lanes = natural_total_height > available_height;
-    let lane_step_y = if compressed_lanes {
-        available_height / lanes.len() as f64
+    let total_lane_weight: f64 = if compressed_lanes {
+        lanes.iter().map(lane_height_weight).sum()
     } else {
         0.0
     };
 
     let mut natural_y = first_lane_y;
-    for (lane_index, lane) in lanes.iter().enumerate() {
+    let mut compressed_y = first_lane_y;
+    for lane in &lanes {
         let lane_y = if compressed_lanes {
-            first_lane_y + lane_step_y * lane_index as f64
+            compressed_y
         } else {
             natural_y
         };
@@ -124,7 +129,7 @@ pub(crate) fn calculate_arrange_by_tag_positions(
             if lanes.len() == 1 {
                 available_height
             } else {
-                (lane_step_y - LANE_GAP).max(0.0)
+                (lane_slot_height(lane, available_height, total_lane_weight) - LANE_GAP).max(0.0)
             }
         } else {
             lane.natural_height
@@ -150,17 +155,19 @@ pub(crate) fn calculate_arrange_by_tag_positions(
 
         if !compressed_lanes {
             natural_y += lane.natural_height + LANE_GAP;
+        } else {
+            compressed_y += lane_slot_height(lane, available_height, total_lane_weight);
         }
     }
 
     positions
 }
 
-fn build_lane(notes: Vec<&ArrangeNote>) -> Lane<'_> {
+fn build_lane(notes: Vec<&ArrangeNote>, is_untagged: bool) -> Lane<'_> {
     let columns = build_color_columns(notes);
     let max_note_height = columns
         .iter()
-        .flat_map(|column| column.iter().map(|note| note.height))
+        .flat_map(|column| column.iter().map(|note| effective_height(note)))
         .fold(0.0_f64, f64::max);
     let max_stack_len = columns.iter().map(|column| column.len()).max().unwrap_or(0);
     let natural_height = max_note_height * max_stack_len.max(1) as f64;
@@ -170,6 +177,31 @@ fn build_lane(notes: Vec<&ArrangeNote>) -> Lane<'_> {
         max_note_height,
         max_stack_len,
         natural_height,
+        is_untagged,
+    }
+}
+
+fn lane_height_weight(lane: &Lane<'_>) -> f64 {
+    if lane.is_untagged {
+        UNTAGGED_LANE_HEIGHT_WEIGHT
+    } else {
+        1.0
+    }
+}
+
+fn lane_slot_height(lane: &Lane<'_>, available_height: f64, total_lane_weight: f64) -> f64 {
+    if total_lane_weight == 0.0 {
+        return 0.0;
+    }
+
+    available_height * lane_height_weight(lane) / total_lane_weight
+}
+
+fn effective_height(note: &ArrangeNote) -> f64 {
+    if note.folded {
+        FOLDED_HEIGHT
+    } else {
+        note.height
     }
 }
 
@@ -251,6 +283,7 @@ mod tests {
             background_color: color.map(|value| value.to_string()),
             width: 100.0,
             height: 100.0,
+            folded: false,
         }
     }
 
@@ -425,6 +458,53 @@ mod tests {
         assert_all_tops_within_work_area(&positions, small_work_area);
         assert_eq!(second.y - first.y, 10.0);
         assert_eq!(third.y - second.y, 10.0);
+    }
+
+    #[test]
+    fn folded_notes_use_folded_height_for_stack_step_y() {
+        let mut notes = vec![
+            note("a.md", &["tag"], Some(COLOR_YELLOW)),
+            note("b.md", &["tag"], Some(COLOR_YELLOW)),
+            note("c.md", &["tag"], Some(COLOR_YELLOW)),
+        ];
+        for note in &mut notes {
+            note.folded = true;
+        }
+
+        let positions = calculate_arrange_by_tag_positions(&notes, work_area());
+        let first = position(&positions, "a.md");
+        let second = position(&positions, "b.md");
+        let third = position(&positions, "c.md");
+
+        assert_eq!(second.y - first.y, FOLDED_HEIGHT);
+        assert_eq!(third.y - second.y, FOLDED_HEIGHT);
+    }
+
+    #[test]
+    fn compressed_untagged_lane_gets_deeper_overlap_than_tagged_lane() {
+        let notes = vec![
+            note("tagged_1.md", &["tag"], Some(COLOR_YELLOW)),
+            note("tagged_2.md", &["tag"], Some(COLOR_YELLOW)),
+            note("tagged_3.md", &["tag"], Some(COLOR_YELLOW)),
+            note("untagged_1.md", &[], Some(COLOR_YELLOW)),
+            note("untagged_2.md", &[], Some(COLOR_YELLOW)),
+            note("untagged_3.md", &[], Some(COLOR_YELLOW)),
+        ];
+        let small_work_area = WorkArea {
+            x: 0.0,
+            y: 0.0,
+            width: 600.0,
+            height: 660.0,
+        };
+
+        let positions = calculate_arrange_by_tag_positions(&notes, small_work_area);
+        let tagged_step =
+            position(&positions, "tagged_2.md").y - position(&positions, "tagged_1.md").y;
+        let untagged_step =
+            position(&positions, "untagged_2.md").y - position(&positions, "untagged_1.md").y;
+
+        assert_all_tops_within_work_area(&positions, small_work_area);
+        assert!(untagged_step < tagged_step);
     }
 
     #[test]

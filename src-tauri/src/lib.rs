@@ -1324,7 +1324,7 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(app: tauri::AppHandle<R
                 continue;
             }
         };
-        let (_, _, width, height, background_color, _, tags, _) =
+        let (_, _, width, height, background_color, _, tags, folded) =
             logic::extract_meta_from_content(&content);
 
         let (Some(width), Some(height)) = (width, height) else {
@@ -1346,6 +1346,7 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(app: tauri::AppHandle<R
             background_color,
             width,
             height,
+            folded: folded.unwrap_or(false),
         });
     }
     logger::log_info(&format!("[ARRANGE] arrange note count: {}", notes.len()));
