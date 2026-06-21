@@ -21,6 +21,8 @@ const START_OFFSET_Y: f64 = 40.0;
 const COLUMN_GAP: f64 = 20.0;
 const LANE_GAP: f64 = 80.0;
 const STACK_STEP_X: f64 = 18.0;
+const STACK_STEP_Y_MIN: f64 = 28.0;
+const LANE_STEP_Y_MIN: f64 = 28.0;
 const FOLDED_HEIGHT: f64 = 40.0;
 const UNTAGGED_LANE_HEIGHT_WEIGHT: f64 = 0.5;
 const ALIGNED_COLOR_COUNT: usize = 3;
@@ -231,7 +233,7 @@ fn lane_slot_height(lane: &Lane<'_>, available_height: f64, total_lane_weight: f
         return 0.0;
     }
 
-    available_height * lane_height_weight(lane) / total_lane_weight
+    (available_height * lane_height_weight(lane) / total_lane_weight).max(LANE_STEP_Y_MIN)
 }
 
 fn effective_height(note: &ArrangeNote) -> f64 {
@@ -247,7 +249,7 @@ fn stack_step_y(lane_height: f64, note_height: f64, max_stack_len: usize) -> f64
         return 0.0;
     }
 
-    ((lane_height - note_height) / (max_stack_len - 1) as f64).clamp(0.0, note_height)
+    ((lane_height - note_height) / (max_stack_len - 1) as f64).clamp(STACK_STEP_Y_MIN, note_height)
 }
 
 fn column_width(column_notes: &[&ArrangeNote]) -> f64 {
@@ -552,8 +554,37 @@ mod tests {
         let third = position(&positions, "c.md");
 
         assert_all_tops_within_work_area(&positions, small_work_area);
-        assert_eq!(second.y - first.y, 10.0);
-        assert_eq!(third.y - second.y, 10.0);
+        assert_eq!(second.y - first.y, STACK_STEP_Y_MIN);
+        assert_eq!(third.y - second.y, STACK_STEP_Y_MIN);
+    }
+
+    #[test]
+    fn same_color_stack_step_y_never_goes_below_minimum() {
+        let notes = vec![
+            note("a.md", &["tag"], Some(COLOR_YELLOW)),
+            note("b.md", &["tag"], Some(COLOR_YELLOW)),
+            note("c.md", &["tag"], Some(COLOR_YELLOW)),
+            note("d.md", &["tag"], Some(COLOR_YELLOW)),
+        ];
+        let small_work_area = WorkArea {
+            x: 0.0,
+            y: 0.0,
+            width: 400.0,
+            height: 150.0,
+        };
+
+        let positions = calculate_arrange_by_tag_positions(&notes, small_work_area);
+
+        assert_all_tops_within_work_area(&positions, small_work_area);
+        assert!(
+            position(&positions, "b.md").y - position(&positions, "a.md").y >= STACK_STEP_Y_MIN
+        );
+        assert!(
+            position(&positions, "c.md").y - position(&positions, "b.md").y >= STACK_STEP_Y_MIN
+        );
+        assert!(
+            position(&positions, "d.md").y - position(&positions, "c.md").y >= STACK_STEP_Y_MIN
+        );
     }
 
     #[test]
@@ -629,5 +660,9 @@ mod tests {
 
         assert_all_tops_within_work_area(&positions, small_work_area);
         assert!(position(&positions, "tag7_0.md").y < bottom);
+        assert!(
+            position(&positions, "tag1_0.md").y - position(&positions, "tag0_0.md").y
+                >= LANE_STEP_Y_MIN
+        );
     }
 }
