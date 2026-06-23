@@ -61,6 +61,30 @@ enum ColorBucket {
     Other(String),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ColorRole {
+    Yellow,
+    Red,
+    Blue,
+    Extra,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum NotePlacement {
+    Kanban { tag: String, color_role: ColorRole },
+    Other,
+}
+
+struct LaneGroup<'a> {
+    tag: String,
+    notes: Vec<&'a ArrangeNote>,
+}
+
+struct GroupedNotes<'a> {
+    lanes: Vec<LaneGroup<'a>>,
+    bucket: Vec<&'a ArrangeNote>,
+}
+
 struct Lane<'a> {
     columns: Vec<Vec<&'a ArrangeNote>>,
     max_note_height: f64,
@@ -353,6 +377,88 @@ fn color_bucket(note: &ArrangeNote) -> ColorBucket {
     }
 }
 
+fn classify(note: &ArrangeNote) -> NotePlacement {
+    let Some(tag) = note.tags.first() else {
+        return NotePlacement::Other;
+    };
+
+    let color_role = match color_bucket(note) {
+        ColorBucket::Fixed(COLOR_YELLOW_INDEX) => ColorRole::Yellow,
+        ColorBucket::Fixed(COLOR_RED_INDEX) => ColorRole::Red,
+        ColorBucket::Fixed(COLOR_BLUE_INDEX) => ColorRole::Blue,
+        ColorBucket::Fixed(_) | ColorBucket::Other(_) => ColorRole::Extra,
+    };
+
+    NotePlacement::Kanban {
+        tag: tag.clone(),
+        color_role,
+    }
+}
+
+fn group_notes_by_kanban_lane(notes: &[ArrangeNote]) -> GroupedNotes<'_> {
+    let mut lanes_by_tag: BTreeMap<String, Vec<&ArrangeNote>> = BTreeMap::new();
+    let mut bucket = Vec::new();
+
+    for note in notes {
+        match classify(note) {
+            NotePlacement::Kanban {
+                tag,
+                color_role: ColorRole::Yellow | ColorRole::Red | ColorRole::Blue,
+            } => {
+                lanes_by_tag.entry(tag).or_default().push(note);
+            }
+            NotePlacement::Kanban {
+                color_role: ColorRole::Extra,
+                ..
+            }
+            | NotePlacement::Other => bucket.push(note),
+        }
+    }
+
+    let mut lanes: Vec<LaneGroup<'_>> = lanes_by_tag
+        .into_iter()
+        .map(|(tag, notes)| LaneGroup { tag, notes })
+        .collect();
+    lanes.sort_by(|a, b| {
+        let (a_yellow, a_red, a_blue) = lane_color_counts(a);
+        let (b_yellow, b_red, b_blue) = lane_color_counts(b);
+
+        b_yellow
+            .cmp(&a_yellow)
+            .then_with(|| b_red.cmp(&a_red))
+            .then_with(|| b_blue.cmp(&a_blue))
+            .then_with(|| a.tag.cmp(&b.tag))
+    });
+
+    GroupedNotes { lanes, bucket }
+}
+
+fn lane_color_counts(lane: &LaneGroup<'_>) -> (usize, usize, usize) {
+    let mut yellow = 0;
+    let mut red = 0;
+    let mut blue = 0;
+
+    for note in &lane.notes {
+        match classify(note) {
+            NotePlacement::Kanban {
+                color_role: ColorRole::Yellow,
+                ..
+            } => yellow += 1,
+            NotePlacement::Kanban {
+                color_role: ColorRole::Red,
+                ..
+            } => red += 1,
+            NotePlacement::Kanban {
+                color_role: ColorRole::Blue,
+                ..
+            } => blue += 1,
+            NotePlacement::Kanban { .. } | NotePlacement::Other => {}
+        }
+    }
+
+    (yellow, red, blue)
+}
+
 fn normalized_color(note: &ArrangeNote) -> String {
     note.background_color
         .as_deref()
@@ -406,6 +512,138 @@ mod tests {
                 position.y
             );
         }
+    }
+
+    fn note_paths(notes: &[&ArrangeNote]) -> Vec<String> {
+        notes.iter().map(|note| note.path.clone()).collect()
+    }
+
+    #[test]
+    fn classify_tagged_yellow_as_kanban_yellow() {
+        assert_eq!(
+            classify(&note("yellow.md", &["tag"], Some(COLOR_YELLOW))),
+            NotePlacement::Kanban {
+                tag: "tag".to_string(),
+                color_role: ColorRole::Yellow,
+            }
+        );
+    }
+
+    #[test]
+    fn classify_tagged_white_as_kanban_extra() {
+        assert_eq!(
+            classify(&note("white.md", &["tag"], Some(COLOR_WHITE))),
+            NotePlacement::Kanban {
+                tag: "tag".to_string(),
+                color_role: ColorRole::Extra,
+            }
+        );
+    }
+
+    #[test]
+    fn classify_tagged_unknown_color_as_kanban_extra() {
+        assert_eq!(
+            classify(&note("unknown.md", &["tag"], Some("#123456"))),
+            NotePlacement::Kanban {
+                tag: "tag".to_string(),
+                color_role: ColorRole::Extra,
+            }
+        );
+    }
+
+    #[test]
+    fn classify_untagged_blue_as_other() {
+        assert_eq!(
+            classify(&note("untagged_blue.md", &[], Some(COLOR_BLUE))),
+            NotePlacement::Other
+        );
+    }
+
+    #[test]
+    fn classify_untagged_none_as_other() {
+        assert_eq!(
+            classify(&note("untagged_none.md", &[], None)),
+            NotePlacement::Other
+        );
+    }
+
+    #[test]
+    fn kanban_lanes_sort_by_yellow_red_blue_counts_then_tag() {
+        let notes = vec![
+            note("b_yellow_1.md", &["B"], Some(COLOR_YELLOW)),
+            note("a_yellow_1.md", &["A"], Some(COLOR_YELLOW)),
+            note("b_yellow_2.md", &["B"], Some(COLOR_YELLOW)),
+            note("a_yellow_2.md", &["A"], Some(COLOR_YELLOW)),
+            note("b_blue.md", &["B"], Some(COLOR_BLUE)),
+            note("a_red.md", &["A"], Some(COLOR_RED)),
+        ];
+
+        let grouped = group_notes_by_kanban_lane(&notes);
+
+        assert_eq!(
+            grouped
+                .lanes
+                .iter()
+                .map(|lane| lane.tag.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A", "B"]
+        );
+    }
+
+    #[test]
+    fn white_black_and_untagged_notes_go_to_bucket() {
+        let notes = vec![
+            note("white.md", &["tag"], Some(COLOR_WHITE)),
+            note("black.md", &["tag"], Some(COLOR_BLACK)),
+            note("untagged.md", &[], Some(COLOR_YELLOW)),
+        ];
+
+        let grouped = group_notes_by_kanban_lane(&notes);
+
+        assert!(grouped.lanes.is_empty());
+        assert_eq!(
+            note_paths(&grouped.bucket),
+            vec!["white.md", "black.md", "untagged.md"]
+        );
+    }
+
+    #[test]
+    fn only_kanban_yellow_red_blue_notes_go_to_lanes() {
+        let notes = vec![
+            note("yellow.md", &["tag"], Some(COLOR_YELLOW)),
+            note("red.md", &["tag"], Some(COLOR_RED)),
+            note("blue.md", &["tag"], Some(COLOR_BLUE)),
+            note("white.md", &["tag"], Some(COLOR_WHITE)),
+            note("untagged_blue.md", &[], Some(COLOR_BLUE)),
+        ];
+
+        let grouped = group_notes_by_kanban_lane(&notes);
+
+        assert_eq!(grouped.lanes.len(), 1);
+        assert_eq!(
+            note_paths(&grouped.lanes[0].notes),
+            vec!["yellow.md", "red.md", "blue.md"]
+        );
+        assert_eq!(
+            note_paths(&grouped.bucket),
+            vec!["white.md", "untagged_blue.md"]
+        );
+    }
+
+    #[test]
+    fn lane_notes_preserve_input_order() {
+        let notes = vec![
+            note("first.md", &["tag"], Some(COLOR_BLUE)),
+            note("second.md", &["tag"], Some(COLOR_YELLOW)),
+            note("third.md", &["tag"], Some(COLOR_RED)),
+        ];
+
+        let grouped = group_notes_by_kanban_lane(&notes);
+
+        assert_eq!(
+            note_paths(&grouped.lanes[0].notes),
+            vec!["first.md", "second.md", "third.md"]
+        );
     }
 
     #[test]
