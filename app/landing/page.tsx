@@ -1671,6 +1671,9 @@ export default function LandingPage() {
                         <Link href="https://ore-no-fusen.github.io/ore-no-fusen/101_TERMS.html" target="_blank" className="hover:text-[#5C7A3E] transition-colors">
                             {isEn ? 'Terms of Service' : '利用規約'}
                         </Link>
+                        <Link href="/about-donation" className="hover:text-[#5C7A3E] transition-colors">
+                            {isEn ? 'Purchase Information' : 'ご購入について'}
+                        </Link>
                     </div>
                 </div>
             </footer>
