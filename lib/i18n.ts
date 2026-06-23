@@ -378,6 +378,7 @@ export const translations = {
         'settings.feedback.sendAnother': "続けて送る",
         'settings.feedback.errorEmpty': "内容を入力してください。",
         'settings.feedback.errorSend': "送信に失敗しました。",
+        'settings.support.menuTitle': "開発を応援する",
 
         // PWA (iPhone Viewer)
         'pwa.loginTitle': "PCに付箋を送る",
@@ -758,6 +759,7 @@ export const translations = {
         'settings.feedback.sendAnother': "Send another",
         'settings.feedback.errorEmpty': "Please enter a message.",
         'settings.feedback.errorSend': "Failed to send.",
+        'settings.support.menuTitle': "Support Development",
 
         // PWA (iPhone Viewer)
         'pwa.loginTitle': "Send Notes to PC",
