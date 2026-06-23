@@ -10,7 +10,7 @@
 "use client"
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
-import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText } from "lucide-react"
+import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText, Heart } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
 import { useSettings, type AppSettings } from "@/lib/settings-store"
@@ -48,6 +48,14 @@ type SettingsPageProps = {
 }
 
 const DISCORD_INGEST_SECRET_STORAGE_KEY = 'ore-no-fusen.feedback.discord_ingest_secret';
+const PRODUCTION_SUPPORT_PAGE_URL = 'https://ore-no-fusen.vercel.app/endroll';
+const DEVELOP_SUPPORT_PAGE_URL = 'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/endroll';
+
+function getSupportPageUrl(): string {
+    return process.env.NODE_ENV === 'development'
+        ? DEVELOP_SUPPORT_PAGE_URL
+        : PRODUCTION_SUPPORT_PAGE_URL;
+}
 
 function getStoredDiscordIngestSecret(): string {
     if (typeof window === 'undefined') return '';
@@ -216,6 +224,21 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         label="開発者とのやりとり"
                         isActive={activeSection === "conversation"}
                         onClick={() => setActiveSection("conversation")}
+                    />
+                    <SidebarItem
+                        icon={<Heart className="mr-3 h-4 w-4" />}
+                        label={t('settings.support.menuTitle')}
+                        isActive={false}
+                        onClick={async () => {
+                            const url = getSupportPageUrl()
+                            try {
+                                const { open } = await import('@tauri-apps/plugin-shell')
+                                await open(url)
+                            } catch (e) {
+                                console.error('Failed to open support page:', e)
+                                window.open(url, '_blank')
+                            }
+                        }}
                     />
 
                     <div className="pt-4 pb-2">
