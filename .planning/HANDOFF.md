@@ -1,6 +1,6 @@
 # 引き継ぎ（HANDOFF）— 新チャットはまずこれを読む
 
-更新日: 2026-06-24（新ルール3.0モック確定＋部品2-A完了）
+更新日: 2026-06-24（部品2-B完了・未コミット。test 129 pass / build OK）
 
 チャットが長くなったら、このファイルを最新化 → 新チャットで「ore-no-fusen-arrange/.planning/HANDOFF.md を読んで続けて」で再開。
 
@@ -43,19 +43,24 @@
 
 ### 実装済み
 - （旧コミット済み）arrange.rs 計算 / 2-a コマンド本体 / トレイ「タグで整列」/ 仮ショートカット Ctrl+Shift+L 等。※旧カンバン配置ロジックは 3.0 で作り直し対象。
-- （今回コミット）部品1 classify（振り分け）＋ 部品2-A レーン分類・レーン順ソート・バケツ振り分け＋テスト。cargo test 123 pass。**まだ既存 calculate_arrange_by_tag_positions には未接続**（純粋ロジック追加のみ）。
+- （コミット済み）部品1 classify（振り分け）＋ 部品2-A レーン分類・レーン順ソート・バケツ振り分け＋テスト。cargo test 123 pass。**まだ既存 calculate_arrange_by_tag_positions には未接続**（純粋ロジック追加のみ）。
+- （★未コミット）部品2-B 配置計算3.0をモックJSから Rust 移植。arrange.rs に新関数群を追加（既存本体 calculate_arrange_by_tag_positions は未接続のまま）。cargo test 129 pass / cargo build OK。**コミット待ち**。
+  - 新関数: `calculate_arrange_rule3_positions`(入口) / `layout_rule3`(全体) / `stair_rule3_metrics` / `compute_rule3_column_widths` / `compute_rule3_column_x` / `build_rule3_lane_layout` / 上げ目3関数(`lowest_non_colliding_rule3_y`,`previous_rule3_lane_lift_floor`,`constrained_rule3_lift_y`) / 不変条件チェック3関数(`check_rule3_no_cross_tag_collision`,`check_rule3_lane_top_monotonic`,`check_rule3_lane_y_bounds`)。
+  - 新関数はモック確定値(COL_GAP=16/LANE_GAP=48 等)を新 const で使用。既存 const(COLUMN_GAP=20/LANE_GAP=80=旧本体用)は残置。
+  - 既存 classify / group_notes_by_kanban_lane / lane_color_counts を再利用（一致確認済み）。
+  - ★2-Cで効くズレ(Codex報告・未修正): モックJSはバケツを「タグなし先・タグあり余り後」にソートするが、既存 group_notes_by_kanban_lane は入力順 push。**2-C接続時にバケツ順を揃えるか判断要**。
 
 ### 残り
-- **部品2-B**: 配置計算を 3.0 に作り直し＝列X算出（列幅詰め）・同色右下階段・LANE_GAP・上げ目（到達上限ロジック）・バケツ配置・単調性。モックの JS をそのまま Rust に移植する。
-- **部品2-C**: 新 arrange を `calculate_arrange_by_tag_positions` に接続（旧配置ロジック置換）＋既存テストを 3.0 仕様に更新/削除。
+- **部品2-C**: 新 `calculate_arrange_rule3_positions` を `calculate_arrange_by_tag_positions` に接続（旧配置ロジック置換）＋既存テストを 3.0 仕様に更新/削除。**上記バケツ順ズレをここで対応判断**（タグなし先頭にするか）。新関数の基準は `work_area.x/y + START_X/Y`。
 - **2-c undo**（整列前に戻す）← 最後の機能。未着手。
 - レーンの題（◆タグ名）= 将来課題（出さない）。
 
 ## 4. 次の一手
-1. Codex 残量確認（`token_status.json`・<20%なら依頼しない）
-2. 部品2-B（配置計算の作り直し）を Codex に依頼。視覚仕様は arrange-mock.html を正とする。1部品ずつ・緑なら即コミット・大ファイル全面書き換え禁止
-3. 部品2-C で接続＋既存テスト更新 → 実機確認（Ctrl+Shift+L）→ 2-c undo
-4. 整列が完成したら feature/arrange-clean を develop にマージ（ユーザー判断）
+1. **部品2-B のコミット**（ユーザーが「コミットして」と言ったら）。緑確認済み(test 129/build OK)。
+2. Codex 残量確認（`token_status.json`・<20%なら依頼しない）
+3. 部品2-C を Codex に依頼: 新 `calculate_arrange_rule3_positions` を `calculate_arrange_by_tag_positions` に接続。既存テストを 3.0 仕様に更新/削除。バケツ順ズレ(タグなし先頭)をここで対応判断 → 実機確認（Ctrl+Shift+L）
+4. 2-c undo（整列前に戻す）
+5. 整列が完成したら feature/arrange-clean を develop にマージ（ユーザー判断）
 
 ## 5. 検証の出し方（新ルール）
 Claude は自分で cargo/git/grep しない。Codex に「ビルド・テストして結果を要約で」と依頼し、結論・変更ファイル・テスト結果・未解決リスクだけ受け取る。
