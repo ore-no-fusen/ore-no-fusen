@@ -58,10 +58,13 @@
       "WebFetch(domain:ore-no-fusen.vercel.app)",
       "WebFetch(domain:ore-no-qr.vercel.app)",
       "PowerShell($p = \"D:\\\\Users\\\\uck\\\\Documents\\\\curry-project\\\\ore-no-fusen\\\\src-tauri\\\\target\\\\release\\\\bundle\\\\msi\\\\ore-no-fusen_3.6.0_x64_en-US.msi\"; if \\(Test-Path $p\\) { Get-Item $p | Select-Object FullName, @{N='MB';E={[math]::Round\\($_.Length/1MB,1\\)}}, LastWriteTime | Format-List } else { \"NOT FOUND: $p\" })",
-      "Read(//c/Program Files \\(x86\\)/Windows Kits/10/bin/**)"
+      "Read(//c/Program Files \\(x86\\)/Windows Kits/10/bin/**)",
+      "Read(//d/Users/uck/Documents/curry-project/ore-no-fusen-arrange/.planning/**)",
+      "Read(//d/Users/uck/Documents/curry-project/ore-no-fusen-arrange/docs-v2/**)"
     ],
     "additionalDirectories": [
-      "C:\\Users\\uck\\AppData\\Local\\ore-no-fusen"
+      "C:\\Users\\uck\\AppData\\Local\\ore-no-fusen",
+      "d:\\Users\\uck\\Documents\\curry-project\\ore-no-fusen-arrange\\docs-v2"
     ]
   },
   "hooks": {

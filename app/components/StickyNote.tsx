@@ -54,7 +54,8 @@ import { useSettings } from "@/lib/settings-store";
 import { getTranslation, type Language } from "@/lib/i18n";
 import ErrorBoundary from './ErrorBoundary';
 
-const RichTextEditor = lazy(() => import('./RichTextEditor'));
+const loadRichTextEditor = () => import('./RichTextEditor');
+const RichTextEditor = lazy(loadRichTextEditor);
 
 // ホバーフォーカスのレートリミット用変数
 let hoverFocusTimer: NodeJS.Timeout | null = null;
@@ -81,6 +82,11 @@ const StickyNote = memo(function StickyNote() {
         () => getTranslation(language),
         [language]
     );
+
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'test') return;
+        void loadRichTextEditor();
+    }, []);
 
 
     const [isNewNote, setIsNewNote] = useState(isNew);
@@ -244,6 +250,7 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => { isPinnedRef.current = isPinned; }, [isPinned]);
     const isEditingForListenerRef = useRef(isEditing);
     useEffect(() => { isEditingForListenerRef.current = isEditing; }, [isEditing]);
+    const shouldRenderEditor = isEditing || process.env.NODE_ENV !== 'test';
     const startEditingForListenerRef = useRef(startEditing);
     useEffect(() => { startEditingForListenerRef.current = startEditing; }, [startEditing]);
     const endEditingForListenerRef = useRef(endEditing);
@@ -1828,48 +1835,60 @@ const StickyNote = memo(function StickyNote() {
                     <div className="text-center text-gray-300 py-8 text-xs font-mono opacity-30">
                         Loading...
                     </div>
-                ) : isEditing ? (
-                    // 編集モード
+                ) : (
+                    <>
+                    {/* 編集モード */}
                     <div
                         className="editorHost notePaper flex flex-col cursor-text bg-transparent rounded mb-[var(--editor-margin-bottom)] w-full p-0"
                         ref={editorHostRef}
+                        aria-hidden={!isEditing}
+                        style={{
+                            position: isEditing ? 'relative' : 'absolute',
+                            inset: isEditing ? undefined : 0,
+                            visibility: isEditing ? 'visible' : 'hidden',
+                            pointerEvents: isEditing ? 'auto' : 'none',
+                            zIndex: isEditing ? 20 : 0,
+                        }}
                     >
                         {/* [再発防止] RichTextEditor内部で height: 100% を強制し、この白いエリアを埋め尽くす */}
-                        <Suspense fallback={<div className="w-full h-full" />}>
-                            <RichTextEditor
-                                ref={editorRef}
-                                value={editBody}
-                                onChange={(newValue) => {
-                                    setEditBody(newValue);
-                                    setSavePending(true);
-                                }}
-                                filePath={selectedFile?.path || ''}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Escape') handleEditBlur();
-                                    // Tabキーでツールバーへフォーカス移動
-                                    if (e.key === 'Tab' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        // ツールバー内の最初のボタンを探してフォーカス
-                                        const toolbar = document.querySelector('.hoverBar');
-                                        const firstButton = toolbar?.querySelector('button');
-                                        if (firstButton) {
-                                            (firstButton as HTMLElement).focus();
+                        {shouldRenderEditor && (
+                            <Suspense fallback={<div className="w-full h-full bg-transparent" />}>
+                                <RichTextEditor
+                                    ref={editorRef}
+                                    value={editBody}
+                                    onChange={(newValue) => {
+                                        setEditBody(newValue);
+                                        setSavePending(true);
+                                    }}
+                                    filePath={selectedFile?.path || ''}
+                                    onKeyDown={(e) => {
+                                        if (!isEditing) return;
+                                        if (e.key === 'Escape') handleEditBlur();
+                                        // Tabキーでツールバーへフォーカス移動
+                                        if (e.key === 'Tab' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            // ツールバー内の最初のボタンを探してフォーカス
+                                            const toolbar = document.querySelector('.hoverBar');
+                                            const firstButton = toolbar?.querySelector('button');
+                                            if (firstButton) {
+                                                (firstButton as HTMLElement).focus();
+                                            }
                                         }
-                                    }
-                                }}
-                                // エディタ自体は透明にして親の色を見せる
-                                backgroundColor="transparent"
-                                cursorPosition={cursorPosition}
-                                initialCoords={initialCoords}
-                                isNewNote={isNewNote}
-                                fontSize={noteFontSize}
-                                onBlur={handleEditBlur}
-                                onSelectionChange={handleSelectionChange}
-                                onFirstChar={handleFirstChar}
-                                onEnsureFilePath={handleFirstChar}
-                            />
-                        </Suspense>
-                        {floatBarCoords && (
+                                    }}
+                                    // エディタ自体は透明にして親の色を見せる
+                                    backgroundColor="transparent"
+                                    cursorPosition={cursorPosition}
+                                    initialCoords={initialCoords}
+                                    isNewNote={isNewNote}
+                                    fontSize={noteFontSize}
+                                    onBlur={isEditing ? handleEditBlur : undefined}
+                                    onSelectionChange={isEditing ? handleSelectionChange : undefined}
+                                    onFirstChar={isEditing ? handleFirstChar : undefined}
+                                    onEnsureFilePath={isEditing ? handleFirstChar : undefined}
+                                />
+                            </Suspense>
+                        )}
+                        {isEditing && floatBarCoords && (
                             <FloatingFormatBar
                                 top={floatBarCoords.top}
                                 left={floatBarCoords.left}
@@ -1882,39 +1901,39 @@ const StickyNote = memo(function StickyNote() {
                             />
                         )}
                     </div>
-                ) : (
-                    // 表示モード
-                    <MarkdownRenderer
-                        content={content}
-                        backgroundColor={noteBackgroundColor}
-                        fontSize={noteFontSize}
-                        isDraggableArea={isDraggableArea}
-                        onCheckboxToggle={handleToggleCheckbox}
-                        onImageResize={handleImageResize}
-                        onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            setIsNewNote(false); // 再編集時は新規ノート扱いを解除
-                            // クリック位置の行を特定し、その行末にカーソルを移動する
-                            const target = e.target as HTMLElement;
-                            const lineEl = target.closest('[data-line-index]');
-                            if (lineEl) {
-                                const lineIndex = parseInt(lineEl.getAttribute('data-line-index') || '0', 10);
-                                const lines = content.split('\n');
-                                let offset = 0;
-                                for (let i = 0; i < lineIndex; i++) {
-                                    offset += (lines[i]?.length ?? 0) + 1;
+                    {!isEditing && (
+                        <MarkdownRenderer
+                            content={content}
+                            backgroundColor={noteBackgroundColor}
+                            fontSize={noteFontSize}
+                            isDraggableArea={isDraggableArea}
+                            onCheckboxToggle={handleToggleCheckbox}
+                            onImageResize={handleImageResize}
+                            onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                setIsNewNote(false);
+                                const target = e.target as HTMLElement;
+                                const lineEl = target.closest('[data-line-index]');
+                                if (lineEl) {
+                                    const lineIndex = parseInt(lineEl.getAttribute('data-line-index') || '0', 10);
+                                    const lines = content.split('\n');
+                                    let offset = 0;
+                                    for (let i = 0; i < lineIndex; i++) {
+                                        offset += (lines[i]?.length ?? 0) + 1;
+                                    }
+                                    offset += lines[lineIndex]?.length ?? 0;
+                                    startEditing(offset);
+                                } else {
+                                    startEditing(content.length);
                                 }
-                                offset += lines[lineIndex]?.length ?? 0;
-                                startEditing(offset);
-                            } else {
-                                startEditing(content.length);
-                            }
-                        }}
-                        selectedFilePath={selectedFile?.path}
-                        resolvePath={resolvePath}
-                        onAnnotationClick={handleAnnotationClick}
-                        imageVersion={imageVersion}
-                    />
+                            }}
+                            selectedFilePath={selectedFile?.path}
+                            resolvePath={resolvePath}
+                            onAnnotationClick={handleAnnotationClick}
+                            imageVersion={imageVersion}
+                        />
+                    )}
+                    </>
                 )}
             </main>
 

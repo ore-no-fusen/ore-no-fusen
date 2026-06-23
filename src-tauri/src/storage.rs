@@ -158,6 +158,8 @@ fn extract_body_without_frontmatter(content: &str) -> String {
 pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
     let mut notes = Vec::new();
 
+    cleanup_zero_byte_note_stubs(folder_path);
+
     // WalkDir 中にリネームして混乱しないよう、先にパスを収集する
     let md_paths: Vec<PathBuf> = WalkDir::new(folder_path)
         .max_depth(1)
@@ -206,6 +208,60 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
     }
     notes.sort_by(|a, b| a.path.cmp(&b.path));
     notes
+}
+
+fn cleanup_zero_byte_note_stubs(folder_path: &str) {
+    let Ok(entries) = fs::read_dir(folder_path) else {
+        return;
+    };
+
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if is_zero_byte_note_stub(&path) {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+fn is_zero_byte_note_stub(path: &Path) -> bool {
+    if path.extension().is_some() {
+        return false;
+    }
+
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() || metadata.len() != 0 {
+        return false;
+    }
+
+    let Some(filename) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+
+    looks_like_note_stub_name(filename)
+}
+
+fn looks_like_note_stub_name(filename: &str) -> bool {
+    let parts: Vec<&str> = filename.splitn(3, '_').collect();
+    if parts.len() != 3 || parts[2].is_empty() {
+        return false;
+    }
+
+    parts[0].len() == 4
+        && parts[0].chars().all(|c| c.is_ascii_digit())
+        && is_ymd_date(parts[1])
+}
+
+fn is_ymd_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    value.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
 }
 
 /// フロントマターなしの .md ファイルを標準形式に移行する。
@@ -926,6 +982,30 @@ tags: ["important"]
 
         assert_eq!(notes.len(), 1);
         assert!(file_path.exists(), "既存の標準形式ファイルが消えてはいけない");
+    }
+
+    #[test]
+    fn test_list_notes_removes_zero_byte_extensionless_note_stubs() {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let stub_path = dir.path().join("0237_2026-06-17_17");
+        let non_empty_stub_path = dir.path().join("0238_2026-06-17_18");
+        let md_path = dir.path().join("0239_2026-06-17_19.md");
+        let unrelated_empty_path = dir.path().join("empty");
+
+        std::fs::write(&stub_path, "").unwrap();
+        std::fs::write(&non_empty_stub_path, "keep").unwrap();
+        std::fs::write(&md_path, "---\nseq: 239\n---\n\nbody").unwrap();
+        std::fs::write(&unrelated_empty_path, "").unwrap();
+
+        let notes = list_notes(&dir_path);
+
+        assert_eq!(notes.len(), 1);
+        assert!(!stub_path.exists(), "zero-byte extensionless note stub should be removed");
+        assert!(non_empty_stub_path.exists(), "non-empty extensionless file should be kept");
+        assert!(md_path.exists(), ".md note should be kept");
+        assert!(unrelated_empty_path.exists(), "unrelated empty file should be kept");
     }
 
     // === normalize_explorer_arg のテスト ===
