@@ -37,6 +37,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let label_new_note = if is_en { "New Note" } else { "新規メモ (New Note)" };
     let label_search = if is_en { "Search" } else { "検索 (Search)" }; // [NEW] 全文検索
     let label_arrange_by_tag = if is_en { "Arrange by Tag" } else { "タグで整列 (Arrange by Tag)" };
+    let label_arrange_undo = if is_en { "Undo Arrange" } else { "整列を元に戻す (Undo Arrange)" };
     let label_filter = if is_en { "Filter by Tags" } else { "タグで絞り込む (Filter by Tags)" };
     let label_quit = if is_en { "Quit" } else { "終了 (Quit)" };
 
@@ -46,6 +47,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
     let search_i = MenuItem::with_id(app, "open_search", label_search, true, None::<&str>)?; // [NEW] 全文検索
     let arrange_by_tag_i = MenuItem::with_id(app, "arrange_by_tag", label_arrange_by_tag, true, None::<&str>)?;
+    let arrange_undo_i = MenuItem::with_id(app, "arrange_undo", label_arrange_undo, true, None::<&str>)?;
     
     // Generate Tag Filter Submenu
     let world_menu = tauri::menu::Submenu::with_id(app, "choose_world", label_filter, true)?;
@@ -75,6 +77,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         &new_note_i, // [NEW] 最上部に配置
         &search_i, // [NEW] 全文検索
         &arrange_by_tag_i,
+        &arrange_undo_i,
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
         &hide_i, 
         &show_i,
@@ -168,6 +171,15 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                         tauri::async_runtime::spawn(async move {
                             if let Err(e) = crate::run_fusen_arrange_by_tag(app_handle).await {
                                 crate::logger::log_warn(&format!("[Tray] Arrange by Tag failed: {}", e));
+                            }
+                        });
+                    },
+                    "arrange_undo" => {
+                        crate::logger::log_info("[Tray] Undo Arrange trigger");
+                        let app_handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = crate::run_fusen_arrange_undo(app_handle).await {
+                                crate::logger::log_warn(&format!("[Tray] Undo Arrange failed: {}", e));
                             }
                         });
                     },

@@ -1,6 +1,6 @@
 # 引き継ぎ（HANDOFF）— 新チャットはまずこれを読む
 
-更新日: 2026-06-24（部品2-B完了・未コミット。test 129 pass / build OK）
+更新日: 2026-06-24（整列3.0=レーン+重ね方(z-order)完成。**undo 実装完了・build/test緑・コミット前・実機確認待ち**。確認OK後にコミット）
 
 チャットが長くなったら、このファイルを最新化 → 新チャットで「ore-no-fusen-arrange/.planning/HANDOFF.md を読んで続けて」で再開。
 
@@ -41,26 +41,27 @@
 - 確定値: STEP_X=18 / STEP_Y_MIN=50 / COL_GAP=16 / **LANE_GAP=48** / BUCKET_GAP=40。
 - 行の単調性必須（各レーン最上端topが直前より必ず下）。全付箋を主ディスプレイ集約・サイズ不変。
 
-### 実装済み
-- （旧コミット済み）arrange.rs 計算 / 2-a コマンド本体 / トレイ「タグで整列」/ 仮ショートカット Ctrl+Shift+L 等。※旧カンバン配置ロジックは 3.0 で作り直し対象。
-- （コミット済み）部品1 classify（振り分け）＋ 部品2-A レーン分類・レーン順ソート・バケツ振り分け＋テスト。cargo test 123 pass。**まだ既存 calculate_arrange_by_tag_positions には未接続**（純粋ロジック追加のみ）。
-- （★未コミット）部品2-B 配置計算3.0をモックJSから Rust 移植。arrange.rs に新関数群を追加（既存本体 calculate_arrange_by_tag_positions は未接続のまま）。cargo test 129 pass / cargo build OK。**コミット待ち**。
-  - 新関数: `calculate_arrange_rule3_positions`(入口) / `layout_rule3`(全体) / `stair_rule3_metrics` / `compute_rule3_column_widths` / `compute_rule3_column_x` / `build_rule3_lane_layout` / 上げ目3関数(`lowest_non_colliding_rule3_y`,`previous_rule3_lane_lift_floor`,`constrained_rule3_lift_y`) / 不変条件チェック3関数(`check_rule3_no_cross_tag_collision`,`check_rule3_lane_top_monotonic`,`check_rule3_lane_y_bounds`)。
-  - 新関数はモック確定値(COL_GAP=16/LANE_GAP=48 等)を新 const で使用。既存 const(COLUMN_GAP=20/LANE_GAP=80=旧本体用)は残置。
-  - 既存 classify / group_notes_by_kanban_lane / lane_color_counts を再利用（一致確認済み）。
-  - ★2-Cで効くズレ(Codex報告・未修正): モックJSはバケツを「タグなし先・タグあり余り後」にソートするが、既存 group_notes_by_kanban_lane は入力順 push。**2-C接続時にバケツ順を揃えるか判断要**。
+### 実装済み（すべてコミット済み）
+- （旧コミット済み）arrange.rs 計算 / 2-a コマンド本体 / トレイ「タグで整列」/ 仮ショートカット Ctrl+Shift+L 等。
+- 部品1 classify（振り分け）＋ 部品2-A レーン分類・レーン順ソート・バケツ振り分け＋テスト（コミット 40c9d1c）。
+- 部品2-B 配置計算3.0をモックJSから Rust 移植（新関数群追加・本体未接続）（コミット 4ee5d68・test 129）。
+  - 新関数: `calculate_arrange_rule3_positions`(入口) / `layout_rule3`(全体) / `stair_rule3_metrics` / `compute_rule3_column_widths` / `compute_rule3_column_x` / `build_rule3_lane_layout` / 上げ目3関数 / 不変条件チェック3関数。モック確定値(COL_GAP=16/LANE_GAP=48)使用。
+- **部品2-C ＋ 重ね方(z-order) 修正（コミット bce165d・test 120 / build OK・実機確認済み）**:
+  - 2-C: 本体 `calculate_arrange_by_tag_positions` を新 rule3 へ接続（thin wrapper・公開名/シグネチャ維持）。旧配置ロジック(圧縮レーン lane_slot 等)＋旧const＋旧ヘルパを削除。lib.rs/tray.rs 無変更。
+  - バケツ順: タグなし先・タグあり余り(白黒5色外)後にソート済み（モック準拠）。
+  - **z-order(重ね方の核心)**: lib.rs `run_fusen_arrange_by_tag` の配置適用に、整列後 Windows API `SetWindowPos`(HWND_TOP) で付箋を **positions 順に前面化**する処理を追加。`set_position` だけでは重なり順が変わらず、高い付箋が下の付箋のタイトルを覆っていた不具合を修正。実機 Ctrl+Shift+L で「同色階段が奥→手前・左上にタイトルが見える」を確認済み。
 
 ### 残り
-- **部品2-C**: 新 `calculate_arrange_rule3_positions` を `calculate_arrange_by_tag_positions` に接続（旧配置ロジック置換）＋既存テストを 3.0 仕様に更新/削除。**上記バケツ順ズレをここで対応判断**（タグなし先頭にするか）。新関数の基準は `work_area.x/y + START_X/Y`。
-- **2-c undo**（整列前に戻す）← 最後の機能。未着手。
+- **2-c undo（整列前に戻す）← 実装完了・build/test緑・コミット前・実機確認のみ残**。
+  - **仕様（確定）**: トレイ項目「整列を元に戻す (Undo Arrange)」のみ（ショートカットなし）／全付箋を戻す（FM含む）／直前1回ぶんのみ（再整列で上書き）。
+  - **実装（Codex・コミット前）**: state.rs に `AppState.arrange_undo: Option<Vec<(String,f64,f64)>>` 追加。lib.rs `run_fusen_arrange_by_tag` 内で移動前に全付箋の直前論理座標を snapshot→positions計算前に保存。`run_fusen_arrange_undo`(+command `fusen_arrange_undo`+handler登録) で take()→`set_position`＋`update_note_window_position`(frontmatter) で対称復元。tray.rs にメニュー項目＋"arrange_undo"ハンドラ追加。z-order復元は不要(仕様)。`cargo build`OK / `npm test` 175 passed。rustfmt未実行。
+  - **残**: 実機 Ctrl+Shift+L で整列→トレイ「整列を元に戻す」で元位置に戻るか（FM付箋含む）をユーザーが確認。OKならコミット指示待ち。
 - レーンの題（◆タグ名）= 将来課題（出さない）。
 
 ## 4. 次の一手
-1. **部品2-B のコミット**（ユーザーが「コミットして」と言ったら）。緑確認済み(test 129/build OK)。
-2. Codex 残量確認（`token_status.json`・<20%なら依頼しない）
-3. 部品2-C を Codex に依頼: 新 `calculate_arrange_rule3_positions` を `calculate_arrange_by_tag_positions` に接続。既存テストを 3.0 仕様に更新/削除。バケツ順ズレ(タグなし先頭)をここで対応判断 → 実機確認（Ctrl+Shift+L）
-4. 2-c undo（整列前に戻す）
-5. 整列が完成したら feature/arrange-clean を develop にマージ（ユーザー判断）
+1. **undo を実機確認**（ユーザー）: arrange ワークツリーで `npm run tauri dev`→整列→トレイ「整列を元に戻す」で元位置(FM含む)に戻るか。
+2. OK なら **コミット**（ユーザー指示後）。変更=state.rs / lib.rs / tray.rs（+HANDOFF.md）。NG なら原因調査→Codex で修正。
+3. 整列完成（undo含む）→ feature/arrange-clean を develop にマージ（ユーザー判断）。**次リリース織り込み希望**。
 
 ## 5. 検証の出し方（新ルール）
 Claude は自分で cargo/git/grep しない。Codex に「ビルド・テストして結果を要約で」と依頼し、結論・変更ファイル・テスト結果・未解決リスクだけ受け取る。

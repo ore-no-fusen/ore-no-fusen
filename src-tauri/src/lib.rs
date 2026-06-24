@@ -1485,6 +1485,11 @@ async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
     run_fusen_arrange_by_tag(app).await
 }
 
+#[tauri::command]
+async fn fusen_arrange_undo(app: tauri::AppHandle) -> Result<(), String> {
+    run_fusen_arrange_undo(app).await
+}
+
 pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<(), String> {
@@ -1499,6 +1504,7 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
     };
 
     let mut notes: Vec<arrange::ArrangeNote> = Vec::new();
+    let mut undo_snapshot: Vec<(String, f64, f64)> = Vec::new();
     for (label, window) in app.webview_windows() {
         if label == "main" {
             continue;
@@ -1545,6 +1551,10 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             "[ARRANGE] meta path={} tags={:?} color={:?} size={:.1}x{:.1} position={}",
             path, tags, background_color, width, height, position_text
         ));
+
+        if let Some((x, y)) = logical_position {
+            undo_snapshot.push((path.clone(), x, y));
+        }
 
         notes.push(arrange::ArrangeNote {
             path,
@@ -1603,6 +1613,16 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
         "[ARRANGE] calculated position count: {}",
         positions.len()
     ));
+
+    {
+        let state = app.state::<Mutex<AppState>>();
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.arrange_undo = if undo_snapshot.is_empty() {
+            None
+        } else {
+            Some(undo_snapshot)
+        };
+    }
 
     let mut move_success_count = 0;
     let mut move_failed_count = 0;
@@ -1677,6 +1697,89 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
     }
     logger::log_info(&format!(
         "[ARRANGE] frontmatter update completed success={} failed={}",
+        frontmatter_success_count, frontmatter_failed_count
+    ));
+    Ok(())
+}
+
+pub(crate) async fn run_fusen_arrange_undo<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<(), String> {
+    let undo_snapshot = {
+        let state = app.state::<Mutex<AppState>>();
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.arrange_undo.take()
+    };
+
+    let Some(undo_snapshot) = undo_snapshot else {
+        logger::log_info("[ARRANGE] undo: no snapshot");
+        return Ok(());
+    };
+
+    logger::log_info(&format!(
+        "[ARRANGE] undo: snapshot count={}",
+        undo_snapshot.len()
+    ));
+
+    let mut move_success_count = 0;
+    let mut move_failed_count = 0;
+    let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
+    for (path, x, y) in &undo_snapshot {
+        let label = get_window_label(path);
+        let Some(window) = app.get_webview_window(&label) else {
+            logger::log_info(&format!(
+                "[ARRANGE] undo move skipped path={} label={} reason=window_not_found",
+                path, label
+            ));
+            move_failed_count += 1;
+            continue;
+        };
+
+        match window.set_position(tauri::LogicalPosition::new(*x, *y)) {
+            Ok(_) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] undo move success path={} label={} x={:.1} y={:.1}",
+                    path, label, x, y
+                ));
+                move_success_count += 1;
+                moved_positions.push((path.clone(), *x, *y));
+            }
+            Err(e) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] undo move failed path={} label={} error={}",
+                    path, label, e
+                ));
+                move_failed_count += 1;
+            }
+        }
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] undo move completed success={} failed={}",
+        move_success_count, move_failed_count
+    ));
+
+    let mut frontmatter_success_count = 0;
+    let mut frontmatter_failed_count = 0;
+    for (path, x, y) in &moved_positions {
+        match update_note_window_position(path, *x, *y) {
+            Ok(_) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] undo frontmatter update success path={} x={:.1} y={:.1}",
+                    path, x, y
+                ));
+                frontmatter_success_count += 1;
+            }
+            Err(e) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] undo frontmatter update failed path={} error={}",
+                    path, e
+                ));
+                frontmatter_failed_count += 1;
+            }
+        }
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] undo frontmatter update completed success={} failed={}",
         frontmatter_success_count, frontmatter_failed_count
     ));
     Ok(())
@@ -3810,6 +3913,7 @@ pub fn run() {
             clipboard::fusen_save_annotated_image,
             fusen_is_sticky_note_focused,
             fusen_arrange_by_tag,
+            fusen_arrange_undo,
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
