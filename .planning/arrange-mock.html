@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arrange Rule 3.0 Mock</title>
+  <style>
+    :root {
+      --yellow: #f7e9b0;
+      --red: #ffcdd2;
+      --blue: #80d8ff;
+      --white: #fafaf0;
+      --black: #cfd8dc;
+      --other: #c8e6c9;
+      --ink: #222;
+      --muted: #67717c;
+      --line: #d9dee3;
+      --board: #fff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+      background: #eef1f4;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 54px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(248, 250, 252, 0.96);
+      backdrop-filter: blur(8px);
+      white-space: nowrap;
+      overflow-x: auto;
+    }
+
+    .title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-right: 6px;
+    }
+
+    .buttons {
+      display: inline-flex;
+      gap: 6px;
+    }
+
+    button {
+      border: 1px solid #aeb7c1;
+      background: #fff;
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #1f2933;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    button.active {
+      border-color: #2563eb;
+      background: #eaf1ff;
+      color: #1746a2;
+      font-weight: 700;
+    }
+
+    .legend {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+
+    .legend-note,
+    .legend::after {
+      padding-left: 8px;
+      border-left: 1px solid var(--line);
+      color: #4c5967;
+    }
+
+    .legend::after {
+      content: "付箋の見方: 「仕事 黄 1」= 代表タグ(tags[0]) / 付箋色 / 連番";
+    }
+
+    .swatch {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 3px;
+      vertical-align: -2px;
+    }
+
+    .wrap {
+      padding: 16px;
+    }
+
+    #board {
+      position: relative;
+      width: 1600px;
+      height: 900px;
+      min-width: 100%;
+      background:
+        linear-gradient(#f4f6f8 1px, transparent 1px),
+        linear-gradient(90deg, #f4f6f8 1px, transparent 1px),
+        var(--board);
+      background-size: 40px 40px;
+      border: 1px solid #cfd6dd;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+      overflow: visible;
+    }
+
+    .column-guide {
+      position: absolute;
+      top: 40px;
+      bottom: 24px;
+      width: 0;
+      border-left: 1px solid rgba(73, 85, 99, 0.14);
+      pointer-events: none;
+    }
+
+    .column-label {
+      position: absolute;
+      top: 16px;
+      transform: translateX(-2px);
+      color: #586574;
+      font-size: 11px;
+      font-weight: 700;
+      pointer-events: none;
+    }
+
+    .note {
+      position: absolute;
+      width: 180px;
+      min-height: 40px;
+      border: 1px solid rgba(20, 26, 34, 0.16);
+      border-radius: 8px;
+      box-shadow: 0 5px 12px rgba(15, 23, 42, 0.14);
+      overflow: hidden;
+    }
+
+    .note-title {
+      height: 30px;
+      padding: 6px 10px 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      background: rgba(255, 255, 255, 0.28);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 18px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .note-meta {
+      padding: 7px 10px;
+      color: rgba(0, 0, 0, 0.56);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .note.folded .note-title {
+      height: 28px;
+      padding-top: 5px;
+    }
+
+    .note.folded .note-meta {
+      display: none;
+    }
+
+    .bucket-label {
+      position: absolute;
+      padding: 3px 8px;
+      border: 1px solid #bbc6d1;
+      border-radius: 6px;
+      background: #fff;
+      color: #344050;
+      font-size: 12px;
+      font-weight: 700;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="title">整列ルール 3.0 HTMLモック</div>
+    <div class="buttons" id="patternButtons"></div>
+    <div class="legend" aria-label="legend">
+      <span><span class="swatch" style="background: var(--yellow)"></span>黄</span>
+      <span><span class="swatch" style="background: var(--red)"></span>赤</span>
+      <span><span class="swatch" style="background: var(--blue)"></span>青</span>
+      <span><span class="swatch" style="background: var(--white)"></span>白</span>
+      <span><span class="swatch" style="background: var(--black)"></span>黒</span>
+      <span><span class="swatch" style="background: var(--other)"></span>その他</span>
+      <span>黄・赤・青だけをタグ行に配置。白・黒・タグなし・5色外は右端の「タグなし」置き場へ集約。</span>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div id="board"></div>
+  </div>
+
+  <script>
+    const COLOR_HEX = {
+      yellow: "#f7e9b0",
+      red: "#ffcdd2",
+      blue: "#80d8ff",
+      white: "#fafaf0",
+      black: "#cfd8dc",
+      other: "#c8e6c9"
+    };
+
+    const COLOR_LABEL = {
+      yellow: "黄",
+      red: "赤",
+      blue: "青",
+      white: "白",
+      black: "黒",
+      other: "その他"
+    };
+
+    const MAIN_COLORS = ["yellow", "red", "blue"];
+    const START_X = 40;
+    const START_Y = 40;
+    const STEP_X = 18;
+    const STEP_Y_MIN = 50;
+    const COL_GAP = 16;
+    const LANE_GAP = 48;
+    const BUCKET_GAP = 40;
+    const BOARD_MIN_W = 1600;
+    const BOARD_MIN_H = 900;
+
+    const note = (tag, color, title, w = 180, h = 120) => ({ tag, color, title, w, h });
+
+    const patterns = [
+      {
+        id: "basic",
+        label: "基本セット",
+        notes: [
+          note("仕事", "yellow", "仕事 黄 1"),
+          note("仕事", "yellow", "仕事 黄 2"),
+          note("仕事", "yellow", "仕事 黄 3", 180, 40),
+          note("仕事", "blue", "仕事 青 1"),
+          note("仕事", "blue", "仕事 青 2"),
+          note("仕事", "white", "仕事 白 extra"),
+          note("家庭", "yellow", "家庭 黄 1"),
+          note("家庭", "blue", "家庭 青 1", 180, 40),
+          note("趣味", "red", "趣味 赤 1"),
+          note("旅行", "blue", "旅行 青 1"),
+          note("旅行", "blue", "旅行 青 2"),
+          note(null, "yellow", "タグなし 黄 1"),
+          note(null, "blue", "タグなし 青 1", 180, 40),
+          note(null, "white", "タグなし 白 1")
+        ]
+      },
+      {
+        id: "lift",
+        label: "上げ目多発",
+        notes: [
+          note("A計画", "yellow", "A 黄 1"),
+          note("A計画", "yellow", "A 黄 2"),
+          note("A計画", "red", "A 赤 1"),
+          note("A計画", "white", "A 白 extra", 180, 40),
+          note("B確認", "blue", "B 青 1"),
+          note("B確認", "blue", "B 青 2"),
+          note("C作業", "yellow", "C 黄 1"),
+          note("C作業", "yellow", "C 黄 2"),
+          note("D連絡", "red", "D 赤 1"),
+          note("E保留", "blue", "E 青 1", 180, 40),
+          note("F整理", "black", "F 黒 extra"),
+          note(null, "other", "タグなし 外 1")
+        ]
+      },
+      {
+        id: "bucket",
+        label: "その他大量",
+        notes: [
+          note("仕事", "yellow", "仕事 黄 1"),
+          note("仕事", "red", "仕事 赤 1"),
+          note("仕事", "blue", "仕事 青 1"),
+          note("仕事", "white", "仕事 白 extra"),
+          note("家庭", "yellow", "家庭 黄 1"),
+          note("家庭", "yellow", "家庭 黄 2"),
+          note("旅行", "blue", "旅行 青 1"),
+          note("趣味", "red", "趣味 赤 1", 180, 40),
+          note(null, "yellow", "タグなし 黄 1"),
+          note(null, "red", "タグなし 赤 2"),
+          note(null, "blue", "タグなし 青 3"),
+          note(null, "white", "タグなし 白 4", 180, 40),
+          note(null, "black", "タグなし 黒 5"),
+          note(null, "other", "タグなし 外 6"),
+          note(null, "yellow", "タグなし 黄 7"),
+          note(null, "blue", "タグなし 青 8"),
+          note(null, "white", "タグなし 白 9"),
+          note(null, "other", "タグなし 外 10", 180, 40)
+        ]
+      }
+    ];
+
+    const board = document.getElementById("board");
+    const buttons = document.getElementById("patternButtons");
+    let activePattern = patterns[0].id;
+
+    function isMainColor(color) {
+      return MAIN_COLORS.includes(color);
+    }
+
+    function groupByTag(notes) {
+      const tagMap = new Map();
+      const bucket = [];
+
+      notes.forEach((item, index) => {
+        const withIndex = { ...item, index };
+        if (item.tag && isMainColor(item.color)) {
+          if (!tagMap.has(item.tag)) tagMap.set(item.tag, []);
+          tagMap.get(item.tag).push(withIndex);
+        } else {
+          bucket.push({ ...withIndex, tag: item.tag || null, bucketRank: item.tag ? 1 : 0 });
+        }
+      });
+
+      bucket.sort((a, b) => a.bucketRank - b.bucketRank || a.index - b.index);
+
+      const laneColorCounts = (items) => MAIN_COLORS.reduce((counts, color) => {
+        counts[color] = items.filter((item) => item.color === color).length;
+        return counts;
+      }, {});
+
+      const compareLanes = (a, b) => {
+        const aCounts = laneColorCounts(a.items);
+        const bCounts = laneColorCounts(b.items);
+        return bCounts.yellow - aCounts.yellow
+          || bCounts.red - aCounts.red
+          || bCounts.blue - aCounts.blue
+          || a.tag.localeCompare(b.tag);
+      };
+
+      return {
+        lanes: Array.from(tagMap.entries())
+          .map(([tag, items]) => ({ tag, items }))
+          .sort(compareLanes),
+        bucket
+      };
+    }
+
+    function stairMetrics(items, stepY) {
+      if (!items.length) return { width: 0, height: 0, count: 0 };
+      let width = 0;
+      let height = 0;
+      items.forEach((item, i) => {
+        width = Math.max(width, item.w + STEP_X * i);
+        height = Math.max(height, item.h + stepY * i);
+      });
+      return { width, height, count: items.length };
+    }
+
+    function computeColumnWidths(lanes) {
+      const widths = { yellow: 0, red: 0, blue: 0 };
+      lanes.forEach((lane) => {
+        MAIN_COLORS.forEach((color) => {
+          const items = lane.items.filter((item) => item.color === color);
+          widths[color] = Math.max(widths[color], stairMetrics(items, STEP_Y_MIN).width);
+        });
+      });
+
+      MAIN_COLORS.forEach((color) => {
+        if (widths[color] === 0) widths[color] = 180;
+      });
+
+      return widths;
+    }
+
+    function computeColumnX(widths) {
+      const x = { yellow: START_X };
+      x.red = x.yellow + widths.yellow + COL_GAP;
+      x.blue = x.red + widths.red + COL_GAP;
+      return x;
+    }
+
+    function laneColorSet(lane) {
+      return new Set(lane.items.map((item) => item.color));
+    }
+
+    function disjoint(a, b) {
+      for (const value of a) {
+        if (b.has(value)) return false;
+      }
+      return true;
+    }
+
+    function rectsOverlap(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function buildLaneLayout(lane, columnX, columnWidths, proposedY) {
+      const placed = [];
+
+      MAIN_COLORS.forEach((color) => {
+        lane.items
+          .filter((item) => item.color === color)
+          .forEach((item, i) => {
+            placed.push({
+              ...item,
+              lane: lane.tag,
+              group: color,
+              x: columnX[color] + STEP_X * i,
+              y: proposedY + STEP_Y_MIN * i,
+              z: 10 + item.index
+            });
+          });
+      });
+
+      const right = placed.reduce((max, item) => Math.max(max, item.x + item.w), columnX.blue + columnWidths.blue);
+      const top = placed.reduce((min, item) => Math.min(min, item.y), proposedY);
+      const bottom = placed.reduce((max, item) => Math.max(max, item.y + item.h), proposedY);
+      return {
+        placed,
+        y: proposedY,
+        laneTop: top,
+        laneBottom: bottom,
+        right,
+        bottom,
+        height: bottom - top
+      };
+    }
+
+    function lowestNonCollidingY(candidateRects, fixedRects, baseY) {
+      let minY = START_Y;
+
+      fixedRects.forEach((fixed) => {
+        candidateRects.forEach((candidate) => {
+          const sameXRange = candidate.x < fixed.x + fixed.w && candidate.x + candidate.w > fixed.x;
+          if (!sameXRange) return;
+          const offsetY = candidate.y - baseY;
+          minY = Math.max(minY, fixed.y + fixed.h - offsetY);
+        });
+      });
+
+      return minY;
+    }
+
+    function previousLaneLiftFloor(previousLane) {
+      const yellowNotes = previousLane.placed.filter((item) => item.color === "yellow");
+      const candidates = yellowNotes.length ? yellowNotes : previousLane.placed;
+      const lowest = candidates.reduce((bottommost, item) => (
+        item.y + item.h > bottommost.y + bottommost.h ? item : bottommost
+      ));
+      return lowest.y + lowest.h / 2;
+    }
+
+    function constrainedLiftY(candidateRects, previousRects, baseY, previousLane) {
+      const nonCollidingY = lowestNonCollidingY(candidateRects, previousRects, baseY);
+      const intrusionCeilingY = previousLaneLiftFloor(previousLane);
+      const monotonicY = previousLane.laneTop + 1;
+      const safeY = Math.max(nonCollidingY, monotonicY);
+      return Math.min(baseY, Math.max(intrusionCeilingY, safeY));
+    }
+
+    function assertNoCrossTagCollision(notes) {
+      for (let i = 0; i < notes.length; i += 1) {
+        for (let j = i + 1; j < notes.length; j += 1) {
+          if (notes[i].lane !== notes[j].lane && rectsOverlap(notes[i], notes[j])) {
+            throw new Error(`別タグ同士の付箋が重なっています: ${notes[i].title} / ${notes[j].title}`);
+          }
+        }
+      }
+    }
+
+    function assertLaneTopMonotonic(lanes) {
+      for (let i = 1; i < lanes.length; i += 1) {
+        if (lanes[i].laneTop <= lanes[i - 1].laneTop) {
+          throw new Error(`レーンのtopが単調増加していません: ${lanes[i - 1].tag} / ${lanes[i].tag}`);
+        }
+      }
+    }
+
+    function assertLaneYBounds(lanes) {
+      lanes.forEach((lane) => {
+        lane.placed.forEach((item) => {
+          if (item.y < lane.laneTop || item.y + item.h > lane.laneBottom) {
+            throw new Error(`付箋がレーンY範囲外です: ${lane.tag} / ${item.title}`);
+          }
+        });
+      });
+    }
+
+    function layout(notes) {
+      const { lanes, bucket } = groupByTag(notes);
+      const columnWidths = computeColumnWidths(lanes);
+      const columnX = computeColumnX(columnWidths);
+      const laneLayouts = [];
+      const allNotes = [];
+      let cursorY = START_Y;
+
+      lanes.forEach((lane, laneIndex) => {
+        const baseY = cursorY;
+        const baseLayout = buildLaneLayout(lane, columnX, columnWidths, baseY);
+        let laneLayout = baseLayout;
+
+        if (laneIndex > 0 && disjoint(laneColorSet(lane), laneLayouts[laneIndex - 1].colors)) {
+          const liftedY = constrainedLiftY(
+            laneLayout.placed,
+            laneLayouts[laneIndex - 1].placed,
+            baseY,
+            laneLayouts[laneIndex - 1]
+          );
+          laneLayout = buildLaneLayout(lane, columnX, columnWidths, liftedY);
+        }
+
+        laneLayouts.push({ ...laneLayout, tag: lane.tag, colors: laneColorSet(lane) });
+        allNotes.push(...laneLayout.placed);
+        cursorY = baseLayout.bottom + LANE_GAP;
+      });
+
+      const firstLaneRight = laneLayouts[0]
+        ? laneLayouts[0].right
+        : columnX.blue + columnWidths.blue;
+      const bucketX = firstLaneRight + BUCKET_GAP;
+      const bucketY = START_Y;
+      const bucketPlaced = bucket.map((item, i) => ({
+        ...item,
+        lane: "タグなし",
+        originalTag: item.tag,
+        group: "bucket",
+        x: bucketX + STEP_X * i,
+        y: bucketY + STEP_Y_MIN * i,
+        z: 500 + i
+      }));
+      allNotes.push(...bucketPlaced);
+
+      assertNoCrossTagCollision(allNotes);
+      assertLaneTopMonotonic(laneLayouts);
+      assertLaneYBounds(laneLayouts);
+
+      const maxRight = allNotes.reduce((max, item) => Math.max(max, item.x + item.w), START_X);
+      const maxBottom = allNotes.reduce((max, item) => Math.max(max, item.y + item.h), START_Y);
+
+      return {
+        columnX,
+        columnWidths,
+        laneLayouts,
+        notes: allNotes,
+        bucket: { x: bucketX, y: bucketY, notes: bucketPlaced },
+        boardW: Math.max(BOARD_MIN_W, Math.ceil(maxRight + 80)),
+        boardH: Math.max(BOARD_MIN_H, Math.ceil(maxBottom + 80))
+      };
+    }
+
+    function createDiv(className, style, text) {
+      const div = document.createElement("div");
+      div.className = className;
+      if (style) Object.assign(div.style, style);
+      if (text !== undefined) div.textContent = text;
+      return div;
+    }
+
+    function render(pattern) {
+      const result = layout(pattern.notes);
+      board.innerHTML = "";
+      board.style.width = result.boardW + "px";
+      board.style.height = result.boardH + "px";
+
+      MAIN_COLORS.forEach((color) => {
+        board.appendChild(createDiv("column-guide", { left: result.columnX[color] + "px" }));
+        board.appendChild(createDiv("column-label", {
+          left: result.columnX[color] + "px"
+        }, `${COLOR_LABEL[color]}列 w=${Math.round(result.columnWidths[color])}`));
+      });
+
+      if (result.bucket.notes.length) {
+        board.appendChild(createDiv("bucket-label", {
+          left: result.bucket.x + "px",
+          top: (START_Y - 24) + "px"
+        }, "タグなし"));
+      }
+
+      result.notes
+        .sort((a, b) => a.z - b.z)
+        .forEach((item) => {
+          const div = createDiv("note" + (item.h <= 40 ? " folded" : ""), {
+            left: item.x + "px",
+            top: item.y + "px",
+            width: item.w + "px",
+            height: item.h + "px",
+            background: COLOR_HEX[item.color] || COLOR_HEX.other,
+            zIndex: String(item.z)
+          });
+          const title = createDiv("note-title", null, item.title);
+          const meta = createDiv("note-meta", null, `${item.lane} / ${COLOR_LABEL[item.color] || COLOR_LABEL.other} / ${item.group}`);
+          div.appendChild(title);
+          div.appendChild(meta);
+          board.appendChild(div);
+        });
+    }
+
+    function renderButtons() {
+      buttons.innerHTML = "";
+      patterns.forEach((pattern) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = pattern.label;
+        btn.className = pattern.id === activePattern ? "active" : "";
+        btn.addEventListener("click", () => {
+          activePattern = pattern.id;
+          renderButtons();
+          render(pattern);
+        });
+        buttons.appendChild(btn);
+      });
+    }
+
+    renderButtons();
+    render(patterns[0]);
+  </script>
+</body>
+</html>

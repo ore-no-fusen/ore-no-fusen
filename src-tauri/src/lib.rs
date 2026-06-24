@@ -7,26 +7,27 @@
  * - 各モジュールの統合 (State, Logic, Storage, etc.)
  */
 
+use raw_window_handle::HasWindowHandle;
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{State, Manager, AppHandle, Emitter};
-use raw_window_handle::HasWindowHandle;
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
-mod state;
-mod logic;
+mod arrange;
+mod capture; // [NEW] キャプチャ機能
+mod clipboard; // [NEW] クリップボード機能
+mod crash_guard;
 mod distribution;
+mod gdrive; // Google Drive 連携
+mod import; // インポート機能
+mod logger; // ログシステム
+mod logic;
+mod perflog; // パフォーマンス計測ログ（JSON Lines）
+mod settings;
+mod sound; // [NEW] サウンド機能
+mod state;
 mod storage;
 mod tray;
-mod logger;  // ログシステム
-mod settings; 
-mod capture; // [NEW] キャプチャ機能
-mod sound; // [NEW] サウンド機能
-mod clipboard; // [NEW] クリップボード機能
-mod import; // インポート機能
-mod gdrive; // Google Drive 連携
-mod webpush; // Web Push (VAPID + AES-128-GCM + APNs)
-mod perflog; // パフォーマンス計測ログ（JSON Lines）
-mod crash_guard; // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）
+mod webpush; // Web Push (VAPID + AES-128-GCM + APNs) // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）
 use state::{AppState, Note, NoteMeta, ProConfig};
 
 // --- Commands ---
@@ -63,8 +64,8 @@ fn startup_task_state_to_string(
 
 #[cfg(target_os = "windows")]
 fn get_startup_task() -> windows::core::Result<windows::ApplicationModel::StartupTask> {
-    use windows::ApplicationModel::StartupTask;
     use windows::core::HSTRING;
+    use windows::ApplicationModel::StartupTask;
 
     StartupTask::GetAsync(&HSTRING::from(STARTUP_TASK_ID))?.get()
 }
@@ -140,7 +141,11 @@ fn fusen_select_folder(state: State<'_, Mutex<AppState>>) -> Option<String> {
         let path = path_buf.to_string_lossy().to_string();
         let notes = storage::list_notes(&path);
 
-        logic::apply_set_folder(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path.clone(), notes);
+        logic::apply_set_folder(
+            &mut *state.lock().unwrap_or_else(|p| p.into_inner()),
+            path.clone(),
+            notes,
+        );
         Some(path)
     } else {
         None
@@ -155,7 +160,10 @@ fn fusen_pick_folder() -> Option<String> {
 }
 
 #[tauri::command]
-fn fusen_import_from_folder(source_path: String, target_path: String) -> Result<import::ImportStats, String> {
+fn fusen_import_from_folder(
+    source_path: String,
+    target_path: String,
+) -> Result<import::ImportStats, String> {
     import::import_markdown_files(&source_path, &target_path)
 }
 
@@ -163,9 +171,6 @@ fn fusen_import_from_folder(source_path: String, target_path: String) -> Result<
 fn fusen_backup(source_path: String, dest_path: String) -> Result<usize, String> {
     storage::backup_notes(&source_path, &dest_path)
 }
-
-
-
 
 #[tauri::command]
 fn fusen_set_always_on_top(window: tauri::Window, enabled: bool) -> Result<(), String> {
@@ -175,22 +180,31 @@ fn fusen_set_always_on_top(window: tauri::Window, enabled: bool) -> Result<(), S
     // 生Win32 SetWindowPos を直接使用することで Tauri 内部状態の影響を排除する。
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, HWND_TOPMOST, HWND_NOTOPMOST,
-            SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE,
-        };
-        use windows::Win32::Foundation::HWND;
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
 
         unsafe {
             if let Ok(handle) = window.window_handle() {
                 if let RawWindowHandle::Win32(win32_handle) = handle.as_raw() {
                     let hwnd = HWND(win32_handle.hwnd.get());
-                    let z_order = if enabled { HWND_TOPMOST } else { HWND_NOTOPMOST };
+                    let z_order = if enabled {
+                        HWND_TOPMOST
+                    } else {
+                        HWND_NOTOPMOST
+                    };
                     SetWindowPos(
-                        hwnd, z_order, 0, 0, 0, 0,
+                        hwnd,
+                        z_order,
+                        0,
+                        0,
+                        0,
+                        0,
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-                    ).map_err(|e| format!("SetWindowPos failed: {}", e))?;
+                    )
+                    .map_err(|e| format!("SetWindowPos failed: {}", e))?;
                 }
             }
         }
@@ -198,7 +212,48 @@ fn fusen_set_always_on_top(window: tauri::Window, enabled: bool) -> Result<(), S
 
     #[cfg(not(target_os = "windows"))]
     {
-        window.set_always_on_top(enabled).map_err(|e| e.to_string())?;
+        window
+            .set_always_on_top(enabled)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn bring_arranged_window_to_front_no_activate<R: Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use raw_window_handle::RawWindowHandle;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
+
+        unsafe {
+            let handle = window
+                .window_handle()
+                .map_err(|e| format!("window_handle failed: {}", e))?;
+            if let RawWindowHandle::Win32(win32_handle) = handle.as_raw() {
+                let hwnd = HWND(win32_handle.hwnd.get());
+                SetWindowPos(
+                    hwnd,
+                    HWND_TOP,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                )
+                .map_err(|e| format!("SetWindowPos(HWND_TOP) failed: {}", e))?;
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window;
     }
 
     Ok(())
@@ -222,12 +277,12 @@ fn fusen_set_opacity(
 
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, SetWindowLongPtrW, SetLayeredWindowAttributes,
-            GWL_EXSTYLE, LWA_ALPHA, WS_EX_LAYERED,
-        };
-        use windows::Win32::Foundation::{HWND, COLORREF};
         use raw_window_handle::RawWindowHandle;
+        use windows::Win32::Foundation::{COLORREF, HWND};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE,
+            LWA_ALPHA, WS_EX_LAYERED,
+        };
 
         let win = app
             .get_webview_window(&label)
@@ -244,8 +299,9 @@ fn fusen_set_opacity(
                         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex);
                     }
 
-                    SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA)
-                        .map_err(|e| format!("SetLayeredWindowAttributes({}) failed: {}", alpha, e))?;
+                    SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA).map_err(
+                        |e| format!("SetLayeredWindowAttributes({}) failed: {}", alpha, e),
+                    )?;
                 }
             }
         }
@@ -259,12 +315,15 @@ fn fusen_set_opacity(
     Ok(())
 }
 
-
 #[tauri::command]
 fn fusen_list_notes(state: State<'_, Mutex<AppState>>, folder_path: String) -> Vec<NoteMeta> {
     let notes = storage::list_notes(&folder_path);
-    
-    logic::apply_set_folder(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), folder_path, notes.clone());
+
+    logic::apply_set_folder(
+        &mut *state.lock().unwrap_or_else(|p| p.into_inner()),
+        folder_path,
+        notes.clone(),
+    );
     notes
 }
 
@@ -273,16 +332,23 @@ fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Note {
     let note = storage::read_note(&path).unwrap_or_else(|_| Note {
         body: String::new(),
         frontmatter: String::new(),
-        meta: NoteMeta { path: path.clone(), ..Default::default() },
+        meta: NoteMeta {
+            path: path.clone(),
+            ..Default::default()
+        },
     });
-    
+
     logic::apply_select_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path);
     note
 }
 
 /// ノート作成の共通ロジック。Mutex を lock したまま get_next_seq → write_note → apply_add_note
 /// を 1 トランザクションで実行する（pool 窓間の連番衝突を防ぐ Mutex 排他）。
-fn do_create_note(state: &Mutex<AppState>, folder_path: &str, context: &str) -> Result<Note, String> {
+fn do_create_note(
+    state: &Mutex<AppState>,
+    folder_path: &str,
+    context: &str,
+) -> Result<Note, String> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     // Mutex を lock して排他区間を開始
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
@@ -300,7 +366,11 @@ fn do_create_note(state: &Mutex<AppState>, folder_path: &str, context: &str) -> 
 }
 
 #[tauri::command]
-fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, context: String) -> Result<Note, String> {
+fn fusen_create_note(
+    state: State<'_, Mutex<AppState>>,
+    folder_path: String,
+    context: String,
+) -> Result<Note, String> {
     do_create_note(&state, &folder_path, &context)
 }
 
@@ -308,7 +378,11 @@ fn fusen_create_note(state: State<'_, Mutex<AppState>>, folder_path: String, con
 /// fusen_create_note と同等だが名前で用途を明示する（Pool 昇格後の遅延ファイル作成）。
 /// Mutex 排他で複数 pool 窓が同時呼び出した場合の連番衝突を防ぐ。
 #[tauri::command]
-fn fusen_create_note_lazy(state: State<'_, Mutex<AppState>>, folder_path: String, context: String) -> Result<Note, String> {
+fn fusen_create_note_lazy(
+    state: State<'_, Mutex<AppState>>,
+    folder_path: String,
+    context: String,
+) -> Result<Note, String> {
     perflog::log_event(
         &format!("lazy-{}", uuid::Uuid::new_v4()),
         "T2_FIRST_CHAR_RUST_ENTER",
@@ -334,7 +408,9 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
     let (folder_path, context, next_seq) = {
         let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
         let fp = app_state.folder_path.clone().ok_or("No folder set")?;
-        let ctx = app_state.notes.iter()
+        let ctx = app_state
+            .notes
+            .iter()
             .find(|n| n.path == path)
             .map(|n| n.context.clone())
             .unwrap_or_else(|| "copy".to_string());
@@ -342,9 +418,21 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
         (fp, ctx, seq)
     };
 
-    let new_frontmatter = logic::generate_frontmatter(next_seq, &context, &today, &today, Some(&bg_color), &tags, None, opacity);
+    let new_frontmatter = logic::generate_frontmatter(
+        next_seq,
+        &context,
+        &today,
+        &today,
+        Some(&bg_color),
+        &tags,
+        None,
+        opacity,
+    );
     let new_filename = logic::generate_filename(next_seq, &today, &context);
-    let new_path_str = std::path::Path::new(&folder_path).join(&new_filename).to_string_lossy().to_string();
+    let new_path_str = std::path::Path::new(&folder_path)
+        .join(&new_filename)
+        .to_string_lossy()
+        .to_string();
     let content = format!("{}\n\n{}", new_frontmatter, orig_body.trim());
 
     storage::write_note(&new_path_str, &content)?;
@@ -357,7 +445,10 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
         ..Default::default()
     };
 
-    logic::apply_add_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), meta.clone());
+    logic::apply_add_note(
+        &mut *state.lock().unwrap_or_else(|p| p.into_inner()),
+        meta.clone(),
+    );
 
     Ok(Note {
         body: orig_body.to_string(),
@@ -368,33 +459,36 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
 
 #[tauri::command]
 fn fusen_save_note(
-    state: State<'_, Mutex<AppState>>, 
-    path: String, 
-    body: String, 
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    body: String,
     frontmatter_raw: String,
-    allow_rename: bool
+    allow_rename: bool,
 ) -> Result<String, String> {
     // Read old content for change detection
     let old_note = storage::read_note(&path).ok();
-    let old_body = old_note.as_ref().map(|n| {
-        // storage::read_note returns full content as body currently
-        // We need to extract the actual body part to compare correctly with incoming 'body'
-        let (_, body) = logic::split_frontmatter(&n.body);
-        body.to_string()
-    }).unwrap_or_default();
+    let old_body = old_note
+        .as_ref()
+        .map(|n| {
+            // storage::read_note returns full content as body currently
+            // We need to extract the actual body part to compare correctly with incoming 'body'
+            let (_, body) = logic::split_frontmatter(&n.body);
+            body.to_string()
+        })
+        .unwrap_or_default();
 
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    
+
     // Logicに全て任せる
     let (new_path, effect) = logic::handle_save_note(
-        &mut app_state, 
-        &path, 
-        &body, 
+        &mut app_state,
+        &path,
+        &body,
         &old_body,
-        &frontmatter_raw, 
-        allow_rename
+        &frontmatter_raw,
+        allow_rename,
     )?;
-    
+
     // CommandはI/Oを実行するだけ
     match effect {
         logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
@@ -402,30 +496,29 @@ fn fusen_save_note(
             if std::path::Path::new(&old_path).exists() {
                 storage::rename_note(&old_path, &new_path)?;
             }
-        },
+        }
         logic::Effect::Batch(effects) => {
             for e in effects {
                 match e {
-                    logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
+                    logic::Effect::WriteNote { path, content } => {
+                        storage::write_note(&path, &content)?
+                    }
                     logic::Effect::RenameNote { old_path, new_path } => {
                         if std::path::Path::new(&old_path).exists() {
                             storage::rename_note(&old_path, &new_path)?;
                         }
-                    },
+                    }
                     logic::Effect::Batch(_) => {} // Nested batch not supported
                 }
             }
-        },
+        }
     }
-    
+
     Ok(new_path)
 }
 
 #[tauri::command]
-fn fusen_move_to_trash(
-    state: State<'_, Mutex<AppState>>,
-    path: String
-) -> Result<String, String> {
+fn fusen_move_to_trash(state: State<'_, Mutex<AppState>>, path: String) -> Result<String, String> {
     let current_path = Path::new(&path);
 
     // ファイルが既に存在しない場合（空のメモなど）は成功扱い（JS側でウィンドウを閉じる）
@@ -486,7 +579,7 @@ fn non_colliding_path(path: &Path) -> std::path::PathBuf {
 fn fusen_archive_note(
     state: State<'_, Mutex<AppState>>,
     path: String,
-    target_tag: Option<String>
+    target_tag: Option<String>,
 ) -> Result<String, String> {
     let current_path = std::path::Path::new(&path);
 
@@ -497,7 +590,10 @@ fn fusen_archive_note(
     // 2. Determine vault root
     let vault_root = {
         let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-        app_state.base_path.clone().or(app_state.folder_path.clone())
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
             .ok_or("Vault root not found")?
     };
     let vault_root_path = std::path::Path::new(&vault_root);
@@ -511,36 +607,44 @@ fn fusen_archive_note(
 
     if let Some(tag) = resolved_tag {
         let tag_dir = storage::ensure_tag_dir(vault_root_path, &tag)?;
-        let new_path = non_colliding_path(&tag_dir.join(current_path.file_name().ok_or("no name")?));
+        let new_path =
+            non_colliding_path(&tag_dir.join(current_path.file_name().ok_or("no name")?));
 
         storage::copy_associated_assets(current_path, &tag_dir)?;
         storage::write_note(&new_path.to_string_lossy(), &cleaned_content)?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         if let Err(e) = storage::delete_associated_assets(current_path) {
-            logger::log_warn(&format!("[archive] associated asset cleanup skipped: {}", e));
+            logger::log_warn(&format!(
+                "[archive] associated asset cleanup skipped: {}",
+                e
+            ));
         }
     } else {
         // タグなし → Archive フォルダへ
         let archive_dir = storage::ensure_archive_dir(vault_root_path)?;
-        let new_path = non_colliding_path(&archive_dir.join(current_path.file_name().ok_or("no name")?));
+        let new_path =
+            non_colliding_path(&archive_dir.join(current_path.file_name().ok_or("no name")?));
 
         storage::copy_associated_assets(current_path, &archive_dir)?;
         storage::write_note(&new_path.to_string_lossy(), &cleaned_content)?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         if let Err(e) = storage::delete_associated_assets(current_path) {
-            logger::log_warn(&format!("[archive] associated asset cleanup skipped: {}", e));
+            logger::log_warn(&format!(
+                "[archive] associated asset cleanup skipped: {}",
+                e
+            ));
         }
     }
-    
+
     // 4. Update state
     logic::apply_remove_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path);
-    
+
     // 5. Cleanup original assets? (Optional but requested as "移動")
-    // Note: copy_associated_assets used fs::copy. 
+    // Note: copy_associated_assets used fs::copy.
     // If we want "Move", we should delete original after successful move of the note.
     // However, since multiple notes might share assets (rare in this app but possible),
     // we'll stick to Copy-and-Success-Move for now.
-    
+
     // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
     Ok("Archived successfully".to_string())
 }
@@ -554,12 +658,13 @@ pub struct SearchHit {
 }
 
 #[tauri::command]
-fn fusen_search_notes(
-    state: State<'_, Mutex<AppState>>,
-    query: String
-) -> Vec<SearchHit> {
+fn fusen_search_notes(state: State<'_, Mutex<AppState>>, query: String) -> Vec<SearchHit> {
     let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    let folder_path = match app_state.base_path.as_ref().or(app_state.folder_path.as_ref()) {
+    let folder_path = match app_state
+        .base_path
+        .as_ref()
+        .or(app_state.folder_path.as_ref())
+    {
         Some(p) => p.clone(),
         None => {
             eprintln!("[Search] No folder path configured!");
@@ -575,20 +680,26 @@ fn fusen_search_notes(
 
 fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
     use std::io::BufRead;
-    
+
     let mut hits = Vec::new();
     let query_lower = query.to_lowercase();
-    
+
     for entry in walkdir::WalkDir::new(folder_path)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
             // tagsフォルダとTrashフォルダを除外（重複ヒット防止）
             let path_str = e.path().to_string_lossy();
-            if path_str.contains("\\Trash\\") || path_str.contains("/Trash/") || path_str.ends_with("Trash") {
+            if path_str.contains("\\Trash\\")
+                || path_str.contains("/Trash/")
+                || path_str.ends_with("Trash")
+            {
                 return false;
             }
-            if path_str.contains("\\tags\\") || path_str.contains("/tags/") || path_str.ends_with("tags") {
+            if path_str.contains("\\tags\\")
+                || path_str.contains("/tags/")
+                || path_str.ends_with("tags")
+            {
                 return false;
             }
             e.path().extension().map_or(false, |ext| ext == "md")
@@ -596,12 +707,12 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
     {
         if let Ok(file) = std::fs::File::open(entry.path()) {
             let reader = std::io::BufReader::new(file);
-            
+
             // [Fix Line Numbers] State machine to track Body lines only
             let mut is_frontmatter = false;
             let mut body_started = false; // [Fix] Track if we hit the first non-empty body line
             let mut body_line_counter = 0;
-            
+
             for (file_line_idx, line_res) in reader.lines().enumerate() {
                 if let Ok(line) = line_res {
                     // Check Frontmatter Start
@@ -609,7 +720,7 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
                         is_frontmatter = true;
                         continue;
                     }
-                    
+
                     // Check Frontmatter End
                     if is_frontmatter {
                         if line.trim() == "---" {
@@ -617,7 +728,7 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
                         }
                         continue;
                     }
-                    
+
                     // Body Logic
                     // Mimic trim_start(): skip leading blank lines
                     if !body_started {
@@ -629,7 +740,7 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
 
                     // Now we are in the "visible" body
                     body_line_counter += 1;
-                    
+
                     if line.to_lowercase().contains(&query_lower) {
                         let preview = if line.chars().count() > 80 {
                             let start: String = line.chars().take(80).collect();
@@ -650,12 +761,10 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
     hits
 }
 
-
 #[tauri::command]
 fn fusen_get_state(state: State<'_, Mutex<AppState>>) -> AppState {
     state.lock().unwrap_or_else(|p| p.into_inner()).clone()
 }
-
 
 #[tauri::command]
 fn fusen_open_containing_folder(path: String) -> Result<(), String> {
@@ -682,7 +791,8 @@ fn fusen_open_settings_folder() -> Result<(), String> {
 // 管理者ツール用: ログファイル（app.log）のあるフォルダを開く
 #[tauri::command]
 fn fusen_open_log_folder() -> Result<(), String> {
-    let app_data = std::env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA not found".to_string())?;
+    let app_data =
+        std::env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA not found".to_string())?;
     let log_dir = std::path::PathBuf::from(app_data).join("ore-no-fusen");
     std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
     storage::open_in_explorer(log_dir.to_string_lossy().as_ref())?;
@@ -723,27 +833,43 @@ async fn fusen_get_drive_queue_counts() -> Result<DriveQueueCounts, String> {
 
     // notes_to_iphone.json （PC→iPhone）の件数を取得。ファイル不在は 0 件扱い
     let to_iphone = match gdrive::download_json_with_migration(
-        &client, &token, "notes_to_iphone.json", "fusen_note.json"
-    ).await {
+        &client,
+        &token,
+        "notes_to_iphone.json",
+        "fusen_note.json",
+    )
+    .await
+    {
         Ok(v) => count_queue_items(&v),
         Err(_) => 0,
     };
 
     // notes_from_iphone.json （iPhone→PC）の件数を取得
     let from_iphone = match gdrive::download_json_with_migration(
-        &client, &token, "notes_from_iphone.json", "fusen_from_iphone.json"
-    ).await {
+        &client,
+        &token,
+        "notes_from_iphone.json",
+        "fusen_from_iphone.json",
+    )
+    .await
+    {
         Ok(v) => count_queue_items(&v),
         Err(_) => 0,
     };
 
-    Ok(DriveQueueCounts { to_iphone, from_iphone })
+    Ok(DriveQueueCounts {
+        to_iphone,
+        from_iphone,
+    })
 }
 
 /// 管理者ツール用: Drive 上の任意 JSON ファイルを取得して整形済み文字列として返す。
 /// fallback_filename が指定されていれば旧名からの自動移行を試みる。ファイル不在は空オブジェクト相当を返す。
 #[tauri::command]
-async fn fusen_read_drive_json(filename: String, fallback_filename: Option<String>) -> Result<String, String> {
+async fn fusen_read_drive_json(
+    filename: String,
+    fallback_filename: Option<String>,
+) -> Result<String, String> {
     let client = reqwest::Client::new();
     let token = gdrive::get_access_token(&client).await?;
     let value = if let Some(fallback) = fallback_filename {
@@ -759,7 +885,10 @@ async fn fusen_read_drive_json(filename: String, fallback_filename: Option<Strin
 }
 
 #[tauri::command]
-async fn fusen_delete_drive_queue_json(filename: String, fallback_filename: Option<String>) -> Result<(), String> {
+async fn fusen_delete_drive_queue_json(
+    filename: String,
+    fallback_filename: Option<String>,
+) -> Result<(), String> {
     let allowed = [
         "notes_to_iphone.json",
         "fusen_note.json",
@@ -785,58 +914,70 @@ async fn fusen_delete_drive_queue_json(filename: String, fallback_filename: Opti
 }
 
 #[tauri::command]
-fn fusen_add_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, app: tauri::AppHandle) -> Result<(), String> {
+fn fusen_add_tag(
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    tag: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    
+
     // Read current content
-    let content = storage::read_note(&path)
-        .map_err(|e| format!("Failed to read note: {}", e))?;
-    
+    let content = storage::read_note(&path).map_err(|e| format!("Failed to read note: {}", e))?;
+
     // Add tag
     let effect = logic::handle_add_tag(&mut *app_state, &path, &content.body, &tag)?;
-    
+
     // Execute effect
     if let logic::Effect::WriteNote { path, content } = effect {
-        storage::write_note(&path, &content)
-            .map_err(|e| format!("Failed to write note: {}", e))?;
+        storage::write_note(&path, &content).map_err(|e| format!("Failed to write note: {}", e))?;
     }
-    
+
     // Update tray menu
     drop(app_state);
     let _ = crate::tray::refresh_tray_menu(&app);
-    
+
     Ok(())
 }
 
 #[tauri::command]
-fn fusen_remove_tag(state: State<'_, Mutex<AppState>>, path: String, tag: String, app: tauri::AppHandle) -> Result<(), String> {
+fn fusen_remove_tag(
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    tag: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    
+
     // Read current content
-    let content = storage::read_note(&path)
-        .map_err(|e| format!("Failed to read note: {}", e))?;
-    
+    let content = storage::read_note(&path).map_err(|e| format!("Failed to read note: {}", e))?;
+
     // Remove tag
     let effect = logic::handle_remove_tag(&mut *app_state, &path, &content.body, &tag)?;
-    
+
     // Execute effect
     if let logic::Effect::WriteNote { path, content } = effect {
-        storage::write_note(&path, &content)
-            .map_err(|e| format!("Failed to write note: {}", e))?;
+        storage::write_note(&path, &content).map_err(|e| format!("Failed to write note: {}", e))?;
     }
-    
+
     // Update tray menu
     drop(app_state); // Release lock before calling refresh_tray_menu
     let _ = crate::tray::refresh_tray_menu(&app);
-    
+
     Ok(())
 }
 
 #[tauri::command]
-fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app: tauri::AppHandle) -> Result<usize, String> {
+fn fusen_delete_tag_globally(
+    state: State<'_, Mutex<AppState>>,
+    tag: String,
+    app: tauri::AppHandle,
+) -> Result<usize, String> {
     // CRITICAL FIX: Refresh notes list before processing to ensure we have the latest state
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    let base_path = app_state.base_path.clone()
+    let base_path = app_state
+        .base_path
+        .clone()
         .or(app_state.folder_path.clone())
         .ok_or("base_path is not set")?;
 
@@ -859,14 +1000,20 @@ fn fusen_delete_tag_globally(state: State<'_, Mutex<AppState>>, tag: String, app
             let tag_trimmed = tag.trim();
             if tags.iter().any(|t| t.trim() == tag_trimmed) {
                 // Remove tag
-                if let Ok(effect) = logic::handle_remove_tag(&mut *app_state, &path, &note.body, tag_trimmed) {
-                    if let logic::Effect::WriteNote { path: write_path, content } = effect {
+                if let Ok(effect) =
+                    logic::handle_remove_tag(&mut *app_state, &path, &note.body, tag_trimmed)
+                {
+                    if let logic::Effect::WriteNote {
+                        path: write_path,
+                        content,
+                    } = effect
+                    {
                         match storage::write_note(&write_path, &content) {
                             Ok(_) => {
                                 modified_count += 1;
                                 modified_paths.push(write_path);
-                            },
-                            Err(_e) => {},
+                            }
+                            Err(_e) => {}
                         }
                     }
                 }
@@ -894,7 +1041,11 @@ fn fusen_get_all_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
 
 #[tauri::command]
 fn fusen_get_active_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
-    state.lock().unwrap_or_else(|p| p.into_inner()).active_tags.clone()
+    state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .active_tags
+        .clone()
 }
 
 /// JSの getWindowLabel と同じアルゴリズムでウィンドウラベルを生成する
@@ -906,7 +1057,9 @@ fn normalize_path_for_label(path: &str) -> String {
     let mut prev_slash = false;
     for c in s.chars() {
         if c == '/' {
-            if !prev_slash { result.push(c); }
+            if !prev_slash {
+                result.push(c);
+            }
             prev_slash = true;
         } else {
             result.push(c);
@@ -914,12 +1067,16 @@ fn normalize_path_for_label(path: &str) -> String {
         }
     }
     // 末尾スラッシュ除去
-    while result.ends_with('/') { result.pop(); }
+    while result.ends_with('/') {
+        result.pop();
+    }
     result
 }
 
 fn to_radix36(mut n: u64) -> String {
-    if n == 0 { return "0".to_string(); }
+    if n == 0 {
+        return "0".to_string();
+    }
     const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
     let mut buf = Vec::new();
     while n > 0 {
@@ -934,7 +1091,10 @@ fn simple_hash_js(s: &str) -> String {
     let utf16: Vec<u16> = s.encode_utf16().collect();
     let mut hash: i32 = 0i32;
     for &c in &utf16 {
-        hash = hash.wrapping_shl(5).wrapping_sub(hash).wrapping_add(c as i32);
+        hash = hash
+            .wrapping_shl(5)
+            .wrapping_sub(hash)
+            .wrapping_add(c as i32);
     }
     to_radix36(hash.unsigned_abs() as u64)
 }
@@ -948,14 +1108,19 @@ pub fn get_window_label(path: &str) -> String {
 /// タグフィルタリングを直接Rust側で実行する関数
 /// [Refactor] タグフィルタリング結果（パス一覧）を計算する関数
 /// ウィンドウ操作は行わず、純粋なデータリストを返す（SSOT）
-fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[String]) -> Result<Vec<String>, String> {
+fn get_filtered_note_paths(
+    state: State<'_, Mutex<AppState>>,
+    active_tags: &[String],
+) -> Result<Vec<String>, String> {
     // 最新のノート一覧を取得
     let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    let base_path = app_state.base_path.clone()
+    let base_path = app_state
+        .base_path
+        .clone()
         .or(app_state.folder_path.clone())
         .ok_or("base_path is not set")?;
     drop(app_state);
-    
+
     // 全ノート取得 & タグ解析
     let mut all_notes = storage::list_notes(&base_path);
     for n in all_notes.iter_mut() {
@@ -964,18 +1129,23 @@ fn get_filtered_note_paths(state: State<'_, Mutex<AppState>>, active_tags: &[Str
             n.tags = tags;
         }
     }
-    
+
     // フィルタリング（OR条件）
     let selected: Vec<String> = active_tags.iter().map(|t| t.trim().to_string()).collect();
     let filtered_paths: Vec<String> = if selected.is_empty() {
         all_notes.into_iter().map(|n| n.path).collect()
     } else {
-        all_notes.into_iter()
-            .filter(|n| n.tags.iter().any(|tag| selected.contains(&tag.trim().to_string())))
+        all_notes
+            .into_iter()
+            .filter(|n| {
+                n.tags
+                    .iter()
+                    .any(|tag| selected.contains(&tag.trim().to_string()))
+            })
             .map(|n| n.path)
             .collect()
     };
-    
+
     Ok(filtered_paths)
 }
 
@@ -999,8 +1169,9 @@ pub(crate) fn count_missing_pool(current: usize, target: usize) -> usize {
     target.saturating_sub(current)
 }
 
-static LAST_IPHONE_NOTE_IDS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+static LAST_IPHONE_NOTE_IDS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
 pub fn can_do_visibility_op() -> bool {
     use std::sync::atomic::Ordering;
@@ -1010,7 +1181,10 @@ pub fn can_do_visibility_op() -> bool {
         .as_millis() as u64;
     let last = LAST_VISIBILITY_MS.load(Ordering::SeqCst);
     if now.saturating_sub(last) < 3000 {
-        eprintln!("[Visibility] クールダウン中のためスキップ ({}ms 経過)", now.saturating_sub(last));
+        eprintln!(
+            "[Visibility] クールダウン中のためスキップ ({}ms 経過)",
+            now.saturating_sub(last)
+        );
         return false;
     }
     LAST_VISIBILITY_MS.store(now, Ordering::SeqCst);
@@ -1023,9 +1197,9 @@ pub fn can_do_visibility_op() -> bool {
 /// ループで呼び出すとスタックが溢れる。この関数を代わりに使う。
 #[cfg(target_os = "windows")]
 pub fn win32_show_window_async<R: tauri::Runtime>(win: &tauri::WebviewWindow<R>, visible: bool) {
-    use windows::Win32::UI::WindowsAndMessaging::{ShowWindowAsync, SW_SHOW, SW_HIDE};
-    use windows::Win32::Foundation::HWND;
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindowAsync, SW_HIDE, SW_SHOW};
     unsafe {
         if let Ok(handle) = win.window_handle() {
             if let RawWindowHandle::Win32(h) = handle.as_raw() {
@@ -1038,7 +1212,11 @@ pub fn win32_show_window_async<R: tauri::Runtime>(win: &tauri::WebviewWindow<R>,
 
 /// [Shared] タグフィルタを適用し、Rust側から直接ウィンドウをhide/showする
 /// メインウィンドウがminimized状態でもJSに依存せず確実に動作する
-pub fn update_tag_filter<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_, Mutex<AppState>>, tags: &[String]) -> Result<(), String> {
+pub fn update_tag_filter<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: State<'_, Mutex<AppState>>,
+    tags: &[String],
+) -> Result<(), String> {
     eprintln!("[TagFilter] called. tags={:?}", tags);
 
     // 1. 計算 (Pure Logic)
@@ -1051,31 +1229,43 @@ pub fn update_tag_filter<R: tauri::Runtime>(app: &AppHandle<R>, state: State<'_,
     // window.show()/hide() を Rust から直接呼ぶと Win32 の SendMessage で
     // メインスレッドに同期的に届きスタック溢れの原因になる。
     // JS側（WebView2 PostMessage = 非同期）に委ねることでスタックを消費しない。
-    app.emit("fusen:sync_visible_notes", &visible_paths).map_err(|e| e.to_string())?;
+    app.emit("fusen:sync_visible_notes", &visible_paths)
+        .map_err(|e| e.to_string())?;
     eprintln!("[TagFilter] emit done.");
 
     Ok(())
 }
 
 #[tauri::command]
-fn fusen_set_active_tags(state: State<'_, Mutex<AppState>>, tags: Vec<String>, app: tauri::AppHandle) -> Result<(), String> {
+fn fusen_set_active_tags(
+    state: State<'_, Mutex<AppState>>,
+    tags: Vec<String>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
     app_state.active_tags = tags.clone();
     drop(app_state);
 
     // Shared Logic
     update_tag_filter(&app, state, &tags)?;
-    
+
     Ok(())
 }
 
 // UC-01: ベースパスの取得
 #[tauri::command]
 fn get_base_path(state: State<'_, Mutex<AppState>>) -> Option<String> {
-    let result = state.lock().unwrap_or_else(|p| p.into_inner()).base_path.clone();
+    let result = state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .base_path
+        .clone();
     logger::log_debug("get_base_path called");
     logger::log_debug(&format!("Returning: {:?}", result));
-    logger::log_debug(&format!("Type: {}", if result.is_none() { "None" } else { "Some" }));
+    logger::log_debug(&format!(
+        "Type: {}",
+        if result.is_none() { "None" } else { "Some" }
+    ));
     result
 }
 
@@ -1086,15 +1276,24 @@ fn fusen_path_exists(path: String) -> bool {
 }
 
 fn log_startup_distribution_diagnostics() {
-    logger::log_info(&format!("distribution_kind: {}", distribution::get_distribution_kind()));
+    logger::log_info(&format!(
+        "distribution_kind: {}",
+        distribution::get_distribution_kind()
+    ));
 
     match std::env::current_exe() {
         Ok(path) => logger::log_info(&format!("diagnostic current_exe: {:?}", path)),
         Err(e) => logger::log_warn(&format!("diagnostic current_exe failed: {}", e)),
     }
 
-    logger::log_info(&format!("diagnostic APPDATA: {:?}", std::env::var("APPDATA")));
-    logger::log_info(&format!("diagnostic LOCALAPPDATA: {:?}", std::env::var("LOCALAPPDATA")));
+    logger::log_info(&format!(
+        "diagnostic APPDATA: {:?}",
+        std::env::var("APPDATA")
+    ));
+    logger::log_info(&format!(
+        "diagnostic LOCALAPPDATA: {:?}",
+        std::env::var("LOCALAPPDATA")
+    ));
 
     match storage::load_settings() {
         Ok(settings) => {
@@ -1128,72 +1327,74 @@ fn setup_first_launch(
     state: State<'_, Mutex<AppState>>,
     use_default: bool,
     custom_path: Option<String>,
-    import_path: Option<String>
+    import_path: Option<String>,
 ) -> Result<String, String> {
     use std::path::PathBuf;
-    
+
     logger::log_action("Setup: User initiated first launch setup");
-    
+
     // 1. ベースパスを決定
     let base_path = if use_default {
         // 推奨パス: Documents/OreNoFusen
-        let docs = std::env::var("USERPROFILE")
-            .map_err(|_| {
-                logger::log_error("USERPROFILE environment variable not found");
-                "USERPROFILE not found".to_string()
-            })?;
-        PathBuf::from(docs).join("Documents").join("OreNoFusen")
-            .to_string_lossy().to_string()
+        let docs = std::env::var("USERPROFILE").map_err(|_| {
+            logger::log_error("USERPROFILE environment variable not found");
+            "USERPROFILE not found".to_string()
+        })?;
+        PathBuf::from(docs)
+            .join("Documents")
+            .join("OreNoFusen")
+            .to_string_lossy()
+            .to_string()
     } else {
         custom_path.ok_or_else(|| {
             logger::log_error("Custom path required but not provided");
             "Custom path required".to_string()
         })?
     };
-    
-    logger::log_action(&format!("Setup: Vault folder selected - {}", 
-        if use_default { "Default" } else { "Custom" }));
-    logger::log_debug(&format!("Vault folder: {}", logger::sanitize_path(&base_path)));
-    
-    storage::validate_storage_path(&base_path)
-        .map_err(|e| {
-            logger::log_error(&format!("Invalid vault directory: {}", e));
-            e
-        })?;
+
+    logger::log_action(&format!(
+        "Setup: Vault folder selected - {}",
+        if use_default { "Default" } else { "Custom" }
+    ));
+    logger::log_debug(&format!(
+        "Vault folder: {}",
+        logger::sanitize_path(&base_path)
+    ));
+
+    storage::validate_storage_path(&base_path).map_err(|e| {
+        logger::log_error(&format!("Invalid vault directory: {}", e));
+        e
+    })?;
 
     // 2. UC-03: フォルダ作成 + trashフォルダ作成
-    storage::ensure_directory(&base_path)
-        .map_err(|e| {
-            logger::log_error(&format!("Failed to create vault directory: {}", e));
-            e
-        })?;
-    storage::ensure_trash_dir(&PathBuf::from(&base_path))
-        .map_err(|e| {
-            logger::log_error(&format!("Failed to create trash directory: {}", e));
-            e
-        })?;
-    
+    storage::ensure_directory(&base_path).map_err(|e| {
+        logger::log_error(&format!("Failed to create vault directory: {}", e));
+        e
+    })?;
+    storage::ensure_trash_dir(&PathBuf::from(&base_path)).map_err(|e| {
+        logger::log_error(&format!("Failed to create trash directory: {}", e));
+        e
+    })?;
+
     // 3. UC-02: インポート（オプション）
     if let Some(import_from) = import_path {
         logger::log_action("Setup: Importing notes from existing folder");
-        storage::import_files(&import_from, &base_path)
-            .map_err(|e| {
-                logger::log_error(&format!("Failed to import files: {}", e));
-                e
-            })?;
+        storage::import_files(&import_from, &base_path).map_err(|e| {
+            logger::log_error(&format!("Failed to import files: {}", e));
+            e
+        })?;
     }
-    
+
     // 4. 設定保存
     // 既存の設定を読み込んで、base_pathだけを更新する
     let mut settings = storage::load_settings().unwrap_or_default();
     settings.base_path = Some(base_path.clone());
-    
-    storage::save_settings(&settings)
-        .map_err(|e| {
-            logger::log_error(&format!("Failed to save settings: {}", e));
-            e
-        })?;
-    
+
+    storage::save_settings(&settings).map_err(|e| {
+        logger::log_error(&format!("Failed to save settings: {}", e));
+        e
+    })?;
+
     // 5. AppState更新
     {
         let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
@@ -1203,36 +1404,33 @@ fn setup_first_launch(
 
     // [FIX] イベント発行: フロントエンドに設定変更を通知
     use tauri::Emitter; // Emitterトレイトが必要
-    app_handle.emit("settings_updated", &settings)
+    app_handle
+        .emit("settings_updated", &settings)
         .map_err(|e| {
             logger::log_error(&format!("Failed to emit settings_updated: {}", e));
             e.to_string()
         })?;
-    
+
     logger::log_info("Setup completed successfully");
     Ok(base_path)
 }
-
 
 #[tauri::command]
 fn show_context_menu(
     _app: AppHandle,
     _window: tauri::Window,
     state: State<'_, Mutex<AppState>>,
-    path: String
+    path: String,
 ) -> Result<(), String> {
     // Store the target path in AppState for later use
     {
         let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
         app_state.active_context_menu_path = Some(path.clone());
     }
-    
+
     // Menu will be created and shown on frontend using @tauri-apps/api/menu
     Ok(())
 }
-
-
-
 
 // 付箋ウィンドウ（main以外）がフォーカスされているか確認
 #[tauri::command]
@@ -1245,19 +1443,360 @@ async fn fusen_is_sticky_note_focused(app: tauri::AppHandle) -> bool {
     false
 }
 
+fn arrange_note_seq(note: &arrange::ArrangeNote) -> i32 {
+    let Some(filename) = std::path::Path::new(&note.path)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+    else {
+        return 0;
+    };
+    let (seq, _, _) = logic::parse_filename(&filename);
+    seq
+}
+
+fn sort_notes_by_seq_desc(notes: &mut Vec<arrange::ArrangeNote>) {
+    // Arrange order is decided here. Change only this function to switch ordering.
+    notes.sort_by_cached_key(|note| std::cmp::Reverse(arrange_note_seq(note)));
+}
+
+fn update_note_window_position(path: &str, x: f64, y: f64) -> Result<(), String> {
+    let note = storage::read_note(path)?;
+    let re_window = regex::Regex::new(
+        r"window:\s*\{\s*x:\s*(-?[\d\.]+),\s*y:\s*(-?[\d\.]+),\s*width:\s*(-?[\d\.]+),\s*height:\s*(-?[\d\.]+)\s*\}"
+    ).map_err(|e| e.to_string())?;
+
+    let Some(caps) = re_window.captures(&note.body) else {
+        return Err("window metadata not found".to_string());
+    };
+    let width = caps.get(3).map(|m| m.as_str()).unwrap_or("400");
+    let height = caps.get(4).map(|m| m.as_str()).unwrap_or("300");
+    let replacement = format!(
+        "window: {{ x: {:.1}, y: {:.1}, width: {}, height: {} }}",
+        x, y, width, height
+    );
+    let updated_content = re_window
+        .replace(&note.body, replacement.as_str())
+        .to_string();
+    storage::write_note(path, &updated_content)
+}
+
+#[tauri::command]
+async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
+    run_fusen_arrange_by_tag(app).await
+}
+
+#[tauri::command]
+async fn fusen_arrange_undo(app: tauri::AppHandle) -> Result<(), String> {
+    run_fusen_arrange_undo(app).await
+}
+
+pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<(), String> {
+    let note_paths: Vec<String> = {
+        let state = app.state::<Mutex<AppState>>();
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .notes
+            .iter()
+            .map(|note| note.path.clone())
+            .collect()
+    };
+
+    let mut notes: Vec<arrange::ArrangeNote> = Vec::new();
+    let mut undo_snapshot: Vec<(String, f64, f64)> = Vec::new();
+    for (label, window) in app.webview_windows() {
+        if label == "main" {
+            continue;
+        }
+
+        logger::log_info(&format!("[ARRANGE] note window: {}", label));
+
+        let logical_position = match (window.outer_position(), window.scale_factor()) {
+            (Ok(position), Ok(scale_factor)) if scale_factor != 0.0 => Some((
+                position.x as f64 / scale_factor,
+                position.y as f64 / scale_factor,
+            )),
+            _ => None,
+        };
+
+        let Some(path) = note_paths
+            .iter()
+            .find(|path| get_window_label(path) == label)
+            .cloned()
+        else {
+            logger::log_info(&format!("[ARRANGE] path not found for label: {}", label));
+            continue;
+        };
+
+        let content = match storage::read_note(&path) {
+            Ok(note) => note.body,
+            Err(e) => {
+                logger::log_info(&format!("[ARRANGE] read failed path={} error={}", path, e));
+                continue;
+            }
+        };
+        let (_, _, width, height, background_color, _, tags, folded) =
+            logic::extract_meta_from_content(&content);
+
+        let (Some(width), Some(height)) = (width, height) else {
+            logger::log_info(&format!("[ARRANGE] size missing path={}", path));
+            continue;
+        };
+
+        let position_text = logical_position
+            .map(|(x, y)| format!("{:.1},{:.1}", x, y))
+            .unwrap_or_else(|| "unknown".to_string());
+        logger::log_info(&format!(
+            "[ARRANGE] meta path={} tags={:?} color={:?} size={:.1}x{:.1} position={}",
+            path, tags, background_color, width, height, position_text
+        ));
+
+        if let Some((x, y)) = logical_position {
+            undo_snapshot.push((path.clone(), x, y));
+        }
+
+        notes.push(arrange::ArrangeNote {
+            path,
+            tags,
+            background_color,
+            width,
+            height,
+            folded: folded.unwrap_or(false),
+        });
+    }
+    logger::log_info(&format!("[ARRANGE] arrange note count: {}", notes.len()));
+
+    let monitor = match app.primary_monitor() {
+        Ok(Some(monitor)) => monitor,
+        Ok(None) => {
+            let message = "[ARRANGE] primary monitor not found".to_string();
+            logger::log_info(&message);
+            return Err(message);
+        }
+        Err(e) => {
+            let message = format!("[ARRANGE] primary monitor error: {}", e);
+            logger::log_info(&message);
+            return Err(message);
+        }
+    };
+    let scale_factor = monitor.scale_factor();
+    if scale_factor == 0.0 {
+        let message = "[ARRANGE] primary monitor scale factor is zero".to_string();
+        logger::log_info(&message);
+        return Err(message);
+    }
+
+    let monitor_work_area = monitor.work_area();
+    let work_area = arrange::WorkArea {
+        x: monitor_work_area.position.x as f64 / scale_factor,
+        y: monitor_work_area.position.y as f64 / scale_factor,
+        width: monitor_work_area.size.width as f64 / scale_factor,
+        height: monitor_work_area.size.height as f64 / scale_factor,
+    };
+    logger::log_info(&format!(
+        "[ARRANGE] primary monitor workArea logical x={:.1} y={:.1} width={:.1} height={:.1} scale={:.2}",
+        work_area.x, work_area.y, work_area.width, work_area.height, scale_factor
+    ));
+
+    sort_notes_by_seq_desc(&mut notes);
+    logger::log_info("[ARRANGE] sorted notes by seq desc");
+
+    let positions = arrange::calculate_arrange_by_tag_positions(&notes, work_area);
+    for position in &positions {
+        logger::log_info(&format!(
+            "[ARRANGE] calculated path={} -> x={:.1}, y={:.1}",
+            position.path, position.x, position.y
+        ));
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] calculated position count: {}",
+        positions.len()
+    ));
+
+    {
+        let state = app.state::<Mutex<AppState>>();
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.arrange_undo = if undo_snapshot.is_empty() {
+            None
+        } else {
+            Some(undo_snapshot)
+        };
+    }
+
+    let mut move_success_count = 0;
+    let mut move_failed_count = 0;
+    let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
+    for position in &positions {
+        let label = get_window_label(&position.path);
+        let Some(window) = app.get_webview_window(&label) else {
+            logger::log_info(&format!(
+                "[ARRANGE] move skipped path={} label={} reason=window_not_found",
+                position.path, label
+            ));
+            move_failed_count += 1;
+            continue;
+        };
+
+        match window.set_position(tauri::LogicalPosition::new(position.x, position.y)) {
+            Ok(_) => {
+                match bring_arranged_window_to_front_no_activate(&window) {
+                    Ok(_) => {
+                        logger::log_info(&format!(
+                            "[ARRANGE] z-order success path={} label={}",
+                            position.path, label
+                        ));
+                    }
+                    Err(e) => {
+                        logger::log_info(&format!(
+                            "[ARRANGE] z-order failed path={} label={} error={}",
+                            position.path, label, e
+                        ));
+                    }
+                }
+                logger::log_info(&format!(
+                    "[ARRANGE] move success path={} label={} x={:.1} y={:.1}",
+                    position.path, label, position.x, position.y
+                ));
+                move_success_count += 1;
+                moved_positions.push((position.path.clone(), position.x, position.y));
+            }
+            Err(e) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] move failed path={} label={} error={}",
+                    position.path, label, e
+                ));
+                move_failed_count += 1;
+            }
+        }
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] move completed success={} failed={}",
+        move_success_count, move_failed_count
+    ));
+
+    let mut frontmatter_success_count = 0;
+    let mut frontmatter_failed_count = 0;
+    for (path, x, y) in &moved_positions {
+        match update_note_window_position(path, *x, *y) {
+            Ok(_) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] frontmatter update success path={} x={:.1} y={:.1}",
+                    path, x, y
+                ));
+                frontmatter_success_count += 1;
+            }
+            Err(e) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] frontmatter update failed path={} error={}",
+                    path, e
+                ));
+                frontmatter_failed_count += 1;
+            }
+        }
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] frontmatter update completed success={} failed={}",
+        frontmatter_success_count, frontmatter_failed_count
+    ));
+    Ok(())
+}
+
+pub(crate) async fn run_fusen_arrange_undo<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<(), String> {
+    let undo_snapshot = {
+        let state = app.state::<Mutex<AppState>>();
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.arrange_undo.take()
+    };
+
+    let Some(undo_snapshot) = undo_snapshot else {
+        logger::log_info("[ARRANGE] undo: no snapshot");
+        return Ok(());
+    };
+
+    logger::log_info(&format!(
+        "[ARRANGE] undo: snapshot count={}",
+        undo_snapshot.len()
+    ));
+
+    let mut move_success_count = 0;
+    let mut move_failed_count = 0;
+    let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
+    for (path, x, y) in &undo_snapshot {
+        let label = get_window_label(path);
+        let Some(window) = app.get_webview_window(&label) else {
+            logger::log_info(&format!(
+                "[ARRANGE] undo move skipped path={} label={} reason=window_not_found",
+                path, label
+            ));
+            move_failed_count += 1;
+            continue;
+        };
+
+        match window.set_position(tauri::LogicalPosition::new(*x, *y)) {
+            Ok(_) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] undo move success path={} label={} x={:.1} y={:.1}",
+                    path, label, x, y
+                ));
+                move_success_count += 1;
+                moved_positions.push((path.clone(), *x, *y));
+            }
+            Err(e) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] undo move failed path={} label={} error={}",
+                    path, label, e
+                ));
+                move_failed_count += 1;
+            }
+        }
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] undo move completed success={} failed={}",
+        move_success_count, move_failed_count
+    ));
+
+    let mut frontmatter_success_count = 0;
+    let mut frontmatter_failed_count = 0;
+    for (path, x, y) in &moved_positions {
+        match update_note_window_position(path, *x, *y) {
+            Ok(_) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] undo frontmatter update success path={} x={:.1} y={:.1}",
+                    path, x, y
+                ));
+                frontmatter_success_count += 1;
+            }
+            Err(e) => {
+                logger::log_info(&format!(
+                    "[ARRANGE] undo frontmatter update failed path={} error={}",
+                    path, e
+                ));
+                frontmatter_failed_count += 1;
+            }
+        }
+    }
+    logger::log_info(&format!(
+        "[ARRANGE] undo frontmatter update completed success={} failed={}",
+        frontmatter_success_count, frontmatter_failed_count
+    ));
+    Ok(())
+}
+
 // [NEW] ウィンドウをAlt+Tab/タスクビューから除外する（WS_EX_TOOLWINDOW適用）
 #[tauri::command]
 async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongW, SetWindowLongW,
-            GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
-        };
-        use windows::Win32::UI::Shell::{ITaskbarList, TaskbarList};
-        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
-        use windows::Win32::Foundation::HWND;
         use raw_window_handle::RawWindowHandle;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+        use windows::Win32::UI::Shell::{ITaskbarList, TaskbarList};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        };
 
         unsafe {
             if let Ok(handle) = window.window_handle() {
@@ -1269,7 +1808,11 @@ async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
                     let new_style = (style as u32 | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0;
                     SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
                     // ITaskbarList::DeleteTab でシェルのAlt+Tabリストから直接削除
-                    if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(&TaskbarList, None, CLSCTX_INPROC_SERVER) {
+                    if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(
+                        &TaskbarList,
+                        None,
+                        CLSCTX_INPROC_SERVER,
+                    ) {
                         let _ = tbl.HrInit();
                         let _ = tbl.DeleteTab(hwnd);
                     }
@@ -1289,7 +1832,8 @@ async fn fusen_make_tool_window(window: tauri::Window) -> Result<(), String> {
 /// HWNDごとに元のWndProcを保存するグローバルマップ（最小化ブロック用）
 #[cfg(target_os = "windows")]
 fn original_wndprocs() -> &'static std::sync::Mutex<std::collections::HashMap<isize, isize>> {
-    static PROCS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<isize, isize>>> = std::sync::OnceLock::new();
+    static PROCS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<isize, isize>>> =
+        std::sync::OnceLock::new();
     PROCS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
@@ -1301,8 +1845,8 @@ unsafe extern "system" fn minimize_block_proc(
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
-    use windows::Win32::UI::WindowsAndMessaging::{WM_SYSCOMMAND, SC_MINIMIZE, CallWindowProcW};
     use windows::Win32::Foundation::LRESULT;
+    use windows::Win32::UI::WindowsAndMessaging::{CallWindowProcW, SC_MINIMIZE, WM_SYSCOMMAND};
     if msg == WM_SYSCOMMAND && (wparam.0 & 0xFFF0) == SC_MINIMIZE as usize {
         return LRESULT(0);
     }
@@ -1314,7 +1858,8 @@ unsafe extern "system" fn minimize_block_proc(
         .unwrap_or(0);
     if orig != 0 {
         type WndProcFn = unsafe extern "system" fn(
-            windows::Win32::Foundation::HWND, u32,
+            windows::Win32::Foundation::HWND,
+            u32,
             windows::Win32::Foundation::WPARAM,
             windows::Win32::Foundation::LPARAM,
         ) -> windows::Win32::Foundation::LRESULT;
@@ -1336,15 +1881,16 @@ async fn fusen_set_as_alt_tab_window(
 
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongW, SetWindowLongW,
-            GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
-        };
-        use windows::Win32::UI::Shell::{ITaskbarList, TaskbarList};
-        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
-        use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW, GWLP_WNDPROC};
-        use windows::Win32::Foundation::HWND;
         use raw_window_handle::RawWindowHandle;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+        use windows::Win32::UI::Shell::{ITaskbarList, TaskbarList};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowLongPtrW, GWLP_WNDPROC,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        };
 
         // 前のラベルを取得して新しいラベルを保存
         let prev_label = {
@@ -1367,21 +1913,30 @@ async fn fusen_set_as_alt_tab_window(
                             if let RawWindowHandle::Win32(win32_handle) = raw {
                                 let hwnd = HWND(win32_handle.hwnd.get());
                                 let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
-                                let new_style = (style as u32 | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0;
+                                let new_style =
+                                    (style as u32 | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0;
                                 SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
                                 // ITaskbarList::DeleteTab でシェルのAlt+Tabリストから直接削除
-                                if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(&TaskbarList, None, CLSCTX_INPROC_SERVER) {
+                                if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(
+                                    &TaskbarList,
+                                    None,
+                                    CLSCTX_INPROC_SERVER,
+                                ) {
                                     let _ = tbl.HrInit();
                                     let _ = tbl.DeleteTab(hwnd);
                                 }
                                 // 最小化ブロックのWndProcを解除して元に戻す
                                 if let Some(orig) = original_wndprocs()
-                                    .lock().unwrap_or_else(|p| p.into_inner())
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
                                     .remove(&hwnd.0)
                                 {
                                     SetWindowLongPtrW(hwnd, GWLP_WNDPROC, orig);
                                 }
-                                diag.push_str(&format!("; HIDE {} ({:#010x}->{:#010x})", prev, style, new_style));
+                                diag.push_str(&format!(
+                                    "; HIDE {} ({:#010x}->{:#010x})",
+                                    prev, style, new_style
+                                ));
                             }
                         }
                     },
@@ -1403,7 +1958,11 @@ async fn fusen_set_as_alt_tab_window(
                         let new_style = (style as u32 & !WS_EX_TOOLWINDOW.0) | WS_EX_APPWINDOW.0;
                         SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
                         // ITaskbarList::AddTab でシェルのAlt+Tabリストに直接追加
-                        if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(&TaskbarList, None, CLSCTX_INPROC_SERVER) {
+                        if let Ok(tbl) = CoCreateInstance::<_, ITaskbarList>(
+                            &TaskbarList,
+                            None,
+                            CLSCTX_INPROC_SERVER,
+                        ) {
                             let _ = tbl.HrInit();
                             let _ = tbl.AddTab(hwnd);
                         }
@@ -1412,7 +1971,8 @@ async fn fusen_set_as_alt_tab_window(
                         let orig = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
                         if orig != hook_proc {
                             original_wndprocs()
-                                .lock().unwrap_or_else(|p| p.into_inner())
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner())
                                 .entry(hwnd.0)
                                 .or_insert(orig);
                             SetWindowLongPtrW(hwnd, GWLP_WNDPROC, hook_proc);
@@ -1420,7 +1980,10 @@ async fn fusen_set_as_alt_tab_window(
                             diag.push_str("; WNDPROC_ALREADY_HOOKED");
                         }
                         let after = GetWindowLongW(hwnd, GWL_EXSTYLE);
-                        diag.push_str(&format!("; SHOW {:#010x}->{:#010x} verify={:#010x}", style, new_style, after));
+                        diag.push_str(&format!(
+                            "; SHOW {:#010x}->{:#010x} verify={:#010x}",
+                            style, new_style, after
+                        ));
                     }
                 }
             },
@@ -1451,7 +2014,7 @@ async fn fusen_set_as_alt_tab_window(
 #[tauri::command]
 async fn fusen_show_at_position(
     label: String,
-    phys_x: Option<i32>,   // None → SWP_NOMOVE (位置変更なし、サイズのみ適用)
+    phys_x: Option<i32>, // None → SWP_NOMOVE (位置変更なし、サイズのみ適用)
     phys_y: Option<i32>,
     phys_width: u32,
     phys_height: u32,
@@ -1459,25 +2022,37 @@ async fn fusen_show_at_position(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let perf_t_enter = std::time::Instant::now();
-    logger::log_info(&format!("[PERF|RUST_ENTER] fusen_show_at_position label={}", label));
+    logger::log_info(&format!(
+        "[PERF|RUST_ENTER] fusen_show_at_position label={}",
+        label
+    ));
 
     // T1_RUST_ENTER: 関数突入時刻を記録（run_id が Some の場合のみ）
     if let Some(rid) = &run_id {
-        perflog::log_event(rid, "T1_RUST_ENTER", Some(&label), None, serde_json::json!({}));
+        perflog::log_event(
+            rid,
+            "T1_RUST_ENTER",
+            Some(&label),
+            None,
+            serde_json::json!({}),
+        );
     }
 
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, SetForegroundWindow, SetLayeredWindowAttributes,
-            HWND_TOP, SET_WINDOW_POS_FLAGS, SWP_SHOWWINDOW, SWP_NOMOVE, LWA_ALPHA,
-        };
-        use windows::Win32::Foundation::{HWND, COLORREF};
         use raw_window_handle::RawWindowHandle;
+        use windows::Win32::Foundation::{COLORREF, HWND};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetForegroundWindow, SetLayeredWindowAttributes, SetWindowPos, HWND_TOP, LWA_ALPHA,
+            SET_WINDOW_POS_FLAGS, SWP_NOMOVE, SWP_SHOWWINDOW,
+        };
 
         if let Some(win) = app.get_webview_window(&label) {
             let perf_t_after_get_window = perf_t_enter.elapsed().as_millis();
-            logger::log_info(&format!("[PERF|RUST_AFTER_GET_WINDOW] elapsed_from_enter={}ms", perf_t_after_get_window));
+            logger::log_info(&format!(
+                "[PERF|RUST_AFTER_GET_WINDOW] elapsed_from_enter={}ms",
+                perf_t_after_get_window
+            ));
 
             unsafe {
                 if let Ok(handle) = win.window_handle() {
@@ -1497,17 +2072,27 @@ async fn fusen_show_at_position(
                             phys_width as i32,
                             phys_height as i32,
                             flags,
-                        ).map_err(|e| format!("SetWindowPos failed: {}", e))?;
+                        )
+                        .map_err(|e| format!("SetWindowPos failed: {}", e))?;
                         let perf_t_after_setpos = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!("[PERF|RUST_SETPOS] before={}ms after={}ms delta={}ms", perf_t_before_setpos, perf_t_after_setpos, perf_t_after_setpos - perf_t_before_setpos));
+                        logger::log_info(&format!(
+                            "[PERF|RUST_SETPOS] before={}ms after={}ms delta={}ms",
+                            perf_t_before_setpos,
+                            perf_t_after_setpos,
+                            perf_t_after_setpos - perf_t_before_setpos
+                        ));
 
                         // [Phase 19] Pool 昇格: α=0 → α=255 に変更（不透明化）
                         // pitfall 6: SetForegroundWindow より先に α=255 を設定する
                         // （透明のままフォーカスを取ると 1 文字目が消えるバグが発生する）
-                        SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA)
-                            .map_err(|e| format!("SetLayeredWindowAttributes(255) failed: {}", e))?;
+                        SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA).map_err(
+                            |e| format!("SetLayeredWindowAttributes(255) failed: {}", e),
+                        )?;
                         let perf_t_after_alpha = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!("[PERF|RUST_ALPHA_255] after={}ms", perf_t_after_alpha));
+                        logger::log_info(&format!(
+                            "[PERF|RUST_ALPHA_255] after={}ms",
+                            perf_t_after_alpha
+                        ));
 
                         // SetForegroundWindow でOSのフォアグラウンドに設定する。
                         // SetWindowPos だけでは document.hasFocus()=false のままで
@@ -1516,12 +2101,22 @@ async fn fusen_show_at_position(
                         // Windows のフォアグラウンド制限に引っかからない。
                         let _ = SetForegroundWindow(hwnd);
                         let perf_t_after_fg = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!("[PERF|RUST_SETFOREGROUND] after={}ms delta={}ms", perf_t_after_fg, perf_t_after_fg - perf_t_after_alpha));
+                        logger::log_info(&format!(
+                            "[PERF|RUST_SETFOREGROUND] after={}ms delta={}ms",
+                            perf_t_after_fg,
+                            perf_t_after_fg - perf_t_after_alpha
+                        ));
 
                         // T2_READY: SetForegroundWindow 後（エディタ focus 到達の直前）
                         if let Some(rid) = &run_id {
                             let elapsed = perf_t_enter.elapsed().as_millis() as u64;
-                            perflog::log_event(rid, "T2_READY", Some(&label), Some(elapsed), serde_json::json!({}));
+                            perflog::log_event(
+                                rid,
+                                "T2_READY",
+                                Some(&label),
+                                Some(elapsed),
+                                serde_json::json!({}),
+                            );
                         }
                     }
                 }
@@ -1533,7 +2128,12 @@ async fn fusen_show_at_position(
             let perf_t_before_show = perf_t_enter.elapsed().as_millis();
             let _ = win.show();
             let perf_t_after_show = perf_t_enter.elapsed().as_millis();
-            logger::log_info(&format!("[PERF|RUST_WINSHOW] before={}ms after={}ms delta={}ms", perf_t_before_show, perf_t_after_show, perf_t_after_show - perf_t_before_show));
+            logger::log_info(&format!(
+                "[PERF|RUST_WINSHOW] before={}ms after={}ms delta={}ms",
+                perf_t_before_show,
+                perf_t_after_show,
+                perf_t_after_show - perf_t_before_show
+            ));
         } else {
             logger::log_warn(&format!("[PERF|RUST] window not found label={}", label));
         }
@@ -1582,12 +2182,12 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
     tauri::WebviewWindowBuilder::new(
         app,
         &label,
-        tauri::WebviewUrl::App("/?path=&isPool=true".into())
+        tauri::WebviewUrl::App("/?path=&isPool=true".into()),
     )
     .title("Ore No Fusen")
     .transparent(false)
     .decorations(false)
-    .visible(false)  // 後から SW_SHOWNOACTIVATE で立てる
+    .visible(false) // 後から SW_SHOWNOACTIVATE で立てる
     .focused(false)
     .skip_taskbar(true)
     .build()
@@ -1595,14 +2195,13 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, SetWindowLongPtrW, SetLayeredWindowAttributes,
-            ShowWindow, SetWindowPos, GWL_EXSTYLE, SW_SHOWNOACTIVATE,
-            SWP_NOACTIVATE, SWP_NOSIZE, HWND_TOP, LWA_ALPHA,
-            WS_EX_LAYERED,
-        };
-        use windows::Win32::Foundation::{HWND, COLORREF};
         use raw_window_handle::RawWindowHandle;
+        use windows::Win32::Foundation::{COLORREF, HWND};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
+            ShowWindow, GWL_EXSTYLE, HWND_TOP, LWA_ALPHA, SWP_NOACTIVATE, SWP_NOSIZE,
+            SW_SHOWNOACTIVATE, WS_EX_LAYERED,
+        };
 
         if let Some(win) = app.get_webview_window(&label) {
             unsafe {
@@ -1628,7 +2227,8 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
                             0,
                             0,
                             SWP_NOACTIVATE | SWP_NOSIZE,
-                        ).map_err(|e| format!("SetWindowPos(-10000) failed: {}", e))?;
+                        )
+                        .map_err(|e| format!("SetWindowPos(-10000) failed: {}", e))?;
 
                         // α=0 のため見えないが、ShowWindow で OS に "表示" を伝える
                         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -1642,24 +2242,31 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-
 /// Pool 窓を常時 POOL_TARGET 個に維持する補充コマンド。
 /// 不足数を count_missing_pool で計算し、順次 1 個ずつ create（補充並列度 1）。
 /// LAST_POOL_CREATE_MS セーフティネット 500ms スロットルを尊重する。
 /// JS 側の T2_READY +5s トリガから非同期に呼ばれる。
 #[tauri::command]
 async fn fusen_replenish_pool(app: tauri::AppHandle) -> Result<(), String> {
-    let current_count = app.webview_windows().values()
+    let current_count = app
+        .webview_windows()
+        .values()
         .filter(|w| w.label().starts_with("pool-window-"))
         .count();
     let missing = count_missing_pool(current_count, POOL_TARGET);
 
     if missing == 0 {
-        logger::log_debug(&format!("[Pool] fusen_replenish_pool: pool full (current={})", current_count));
+        logger::log_debug(&format!(
+            "[Pool] fusen_replenish_pool: pool full (current={})",
+            current_count
+        ));
         return Ok(());
     }
 
-    logger::log_info(&format!("[Pool] fusen_replenish_pool: current={} missing={}", current_count, missing));
+    logger::log_info(&format!(
+        "[Pool] fusen_replenish_pool: current={} missing={}",
+        current_count, missing
+    ));
 
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -1679,7 +2286,7 @@ async fn fusen_replenish_pool(app: tauri::AppHandle) -> Result<(), String> {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as u64,
-                Ordering::SeqCst
+                Ordering::SeqCst,
             );
             if let Err(e) = create_pool_window_internal(&app2) {
                 logger::log_warn(&format!("[Pool] replenish #{}: create failed: {}", i, e));
@@ -1703,15 +2310,16 @@ async fn fusen_oauth_connect(app: tauri::AppHandle) -> Result<(), String> {
     gdrive::oauth_pkce_flow(&app).await?;
     let client = reqwest::Client::new();
     if let Ok(pc) = gdrive::register_pc_device(&client).await {
-        logger::log_info(&format!("[iphone receive] PC registered after OAuth id={} name={}", pc.pc_id, pc.pc_name));
+        logger::log_info(&format!(
+            "[iphone receive] PC registered after OAuth id={} name={}",
+            pc.pc_id, pc.pc_name
+        ));
     }
     Ok(())
 }
 
 #[tauri::command]
-async fn fusen_check_pro_setup(
-    state: tauri::State<'_, Mutex<AppState>>,
-) -> Result<bool, String> {
+async fn fusen_check_pro_setup(state: tauri::State<'_, Mutex<AppState>>) -> Result<bool, String> {
     let client = reqwest::Client::new();
     match gdrive::poll_push_config(&client, &state).await {
         Ok(_) => {
@@ -1750,7 +2358,12 @@ async fn fusen_diagnose_iphone_connection() -> Result<IphoneConnectionDiagnostic
         "vapid_keys.json",
     )
     .await
-    .map_err(|e| format!("Driveのpush_keys.jsonを読めませんでした。PC側のDrive再接続を試してください。詳細: {}", e))?;
+    .map_err(|e| {
+        format!(
+            "Driveのpush_keys.jsonを読めませんでした。PC側のDrive再接続を試してください。詳細: {}",
+            e
+        )
+    })?;
     let drive_keys: webpush::VapidKeys = serde_json::from_value(drive_keys_value)
         .map_err(|e| format!("Driveのpush_keys.jsonを解析できませんでした。PC側のDrive再接続を試してください。詳細: {}", e))?;
 
@@ -1760,7 +2373,10 @@ async fn fusen_diagnose_iphone_connection() -> Result<IphoneConnectionDiagnostic
 
     let mut details = Vec::new();
     details.push("iPhone送信用の合い鍵があります。".to_string());
-    details.push(format!("通知を受け取れるiPhone / iPadが{}台あります。", devices.len()));
+    details.push(format!(
+        "通知を受け取れるiPhone / iPadが{}台あります。",
+        devices.len()
+    ));
 
     let mut status = "ok".to_string();
     let mut summary = "安心してください。iPhone送信の準備はできています。".to_string();
@@ -1769,7 +2385,10 @@ async fn fusen_diagnose_iphone_connection() -> Result<IphoneConnectionDiagnostic
     if devices.is_empty() {
         status = "warning".to_string();
         summary = "通知を受け取れるiPhone / iPadが見つかりませんでした。".to_string();
-        action = Some("iPhone側で俺の付箋をホーム画面に追加し、同じGoogleアカウントで初期設定してください。".to_string());
+        action = Some(
+            "iPhone側で俺の付箋をホーム画面に追加し、同じGoogleアカウントで初期設定してください。"
+                .to_string(),
+        );
     }
 
     let _ = drive_keys;
@@ -1811,7 +2430,14 @@ async fn sync_vapid_keys_from_drive_or_create(
     client: &reqwest::Client,
     access_token: &str,
 ) -> Result<webpush::VapidKeys, String> {
-    match gdrive::download_json_with_migration(client, access_token, "push_keys.json", "vapid_keys.json").await {
+    match gdrive::download_json_with_migration(
+        client,
+        access_token,
+        "push_keys.json",
+        "vapid_keys.json",
+    )
+    .await
+    {
         Ok(value) => {
             let keys: webpush::VapidKeys = serde_json::from_value(value)
                 .map_err(|e| format!("push_keys parse error: {}", e))?;
@@ -1869,7 +2495,10 @@ fn classify_webpush_error(error: &str) -> String {
             error
         );
     }
-    if lower.contains("apns error: 5") || lower.contains("timeout") || lower.contains("reqwest error") {
+    if lower.contains("apns error: 5")
+        || lower.contains("timeout")
+        || lower.contains("reqwest error")
+    {
         return format!(
             "Push通信エラー: APNs/Push Serviceまたはネットワークが一時的に失敗しました。Driveキューは保存済みなので、時間を置いて再試行してください。詳細: {}",
             error
@@ -2003,12 +2632,19 @@ struct DriveTempCleanupSummary {
 const DRIVE_TEMP_RETENTION_DAYS: i64 = 30;
 const DRIVE_TEMP_PREVIEW_MAX_BYTES: u64 = 2 * 1024 * 1024;
 
-fn is_drive_temp_old(file: &gdrive::DriveTempMediaFile, now: chrono::DateTime<chrono::Utc>) -> bool {
+fn is_drive_temp_old(
+    file: &gdrive::DriveTempMediaFile,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
     let Some(modified_time) = &file.modified_time else {
         return false;
     };
     chrono::DateTime::parse_from_rfc3339(modified_time)
-        .map(|dt| now.signed_duration_since(dt.with_timezone(&chrono::Utc)).num_days() >= DRIVE_TEMP_RETENTION_DAYS)
+        .map(|dt| {
+            now.signed_duration_since(dt.with_timezone(&chrono::Utc))
+                .num_days()
+                >= DRIVE_TEMP_RETENTION_DAYS
+        })
         .unwrap_or(false)
 }
 
@@ -2044,7 +2680,9 @@ fn collect_temp_tokens_from_str(text: &str, names: &mut std::collections::HashSe
         while let Some(pos) = rest.find(prefix) {
             let candidate = &rest[pos..];
             let end = candidate
-                .find(|ch: char| ch.is_whitespace() || matches!(ch, ')' | '"' | '\'' | ',' | ']' | '}'))
+                .find(|ch: char| {
+                    ch.is_whitespace() || matches!(ch, ')' | '"' | '\'' | ',' | ']' | '}')
+                })
                 .unwrap_or(candidate.len());
             let name = candidate[..end].trim_matches(|ch| matches!(ch, '.' | ';' | ':'));
             if name.starts_with(prefix) {
@@ -2055,7 +2693,10 @@ fn collect_temp_tokens_from_str(text: &str, names: &mut std::collections::HashSe
     }
 }
 
-fn collect_temp_refs_from_value(value: &serde_json::Value, names: &mut std::collections::HashSet<String>) {
+fn collect_temp_refs_from_value(
+    value: &serde_json::Value,
+    names: &mut std::collections::HashSet<String>,
+) {
     match value {
         serde_json::Value::String(s) => collect_temp_tokens_from_str(s, names),
         serde_json::Value::Array(items) => {
@@ -2143,7 +2784,8 @@ async fn build_drive_temp_file_view(
         && file.size.unwrap_or(DRIVE_TEMP_PREVIEW_MAX_BYTES + 1) <= DRIVE_TEMP_PREVIEW_MAX_BYTES
     {
         match drive_temp_image_mime(&file.name) {
-            Some(mime) => match gdrive::download_binary_by_id(client, access_token, &file.id).await {
+            Some(mime) => match gdrive::download_binary_by_id(client, access_token, &file.id).await
+            {
                 Ok(bytes) => Some(format!(
                     "data:{};base64,{}",
                     mime,
@@ -2189,7 +2831,11 @@ async fn summarize_drive_temp_files_with_previews(
     for file in files {
         views.push(build_drive_temp_file_view(client, access_token, file, referenced, now).await);
     }
-    views.sort_by(|a, b| b.modified_time.cmp(&a.modified_time).then_with(|| a.name.cmp(&b.name)));
+    views.sort_by(|a, b| {
+        b.modified_time
+            .cmp(&a.modified_time)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     summary.files = views;
     summary
 }
@@ -2223,13 +2869,17 @@ async fn fusen_cleanup_drive_temp_files() -> Result<DriveTempCleanupSummary, Str
             Ok(_) => summary.deleted_count += 1,
             Err(e) => {
                 summary.failed_count += 1;
-                logger::log_info(&format!("[drive cleanup] delete failed {}: {}", file.name, e));
+                logger::log_info(&format!(
+                    "[drive cleanup] delete failed {}: {}",
+                    file.name, e
+                ));
             }
         }
     }
     let files = gdrive::list_temp_media_files(&client, &token).await?;
     let referenced = drive_referenced_temp_names(&client, &token).await?;
-    let mut updated = summarize_drive_temp_files_with_previews(&client, &token, &files, &referenced).await;
+    let mut updated =
+        summarize_drive_temp_files_with_previews(&client, &token, &files, &referenced).await;
     updated.deleted_count = summary.deleted_count;
     updated.failed_count = summary.failed_count;
     Ok(updated)
@@ -2255,14 +2905,18 @@ async fn fusen_cleanup_selected_drive_temp_files(
             Ok(_) => deleted_count += 1,
             Err(e) => {
                 failed_count += 1;
-                logger::log_info(&format!("[drive cleanup] selected delete failed {}: {}", file.name, e));
+                logger::log_info(&format!(
+                    "[drive cleanup] selected delete failed {}: {}",
+                    file.name, e
+                ));
             }
         }
     }
 
     let files = gdrive::list_temp_media_files(&client, &token).await?;
     let referenced = drive_referenced_temp_names(&client, &token).await?;
-    let mut summary = summarize_drive_temp_files_with_previews(&client, &token, &files, &referenced).await;
+    let mut summary =
+        summarize_drive_temp_files_with_previews(&client, &token, &files, &referenced).await;
     summary.deleted_count = deleted_count;
     summary.failed_count = failed_count;
     Ok(summary)
@@ -2282,7 +2936,11 @@ async fn upload_local_images_to_drive(
         let full = caps[0].to_string();
         let alt = &caps[1];
         let raw_path = &caps[2];
-        if raw_path.starts_with("http://") || raw_path.starts_with("https://") || raw_path.starts_with("data:") || raw_path.starts_with("fusen_img_") {
+        if raw_path.starts_with("http://")
+            || raw_path.starts_with("https://")
+            || raw_path.starts_with("data:")
+            || raw_path.starts_with("fusen_img_")
+        {
             continue;
         }
         let resolved = if raw_path.len() >= 2 && raw_path.chars().nth(1) == Some(':') {
@@ -2296,8 +2954,11 @@ async fn upload_local_images_to_drive(
             Ok(b) => b,
             Err(_) => continue,
         };
-        let ext = std::path::Path::new(&resolved).extension()
-            .and_then(|e| e.to_str()).unwrap_or("png").to_lowercase();
+        let ext = std::path::Path::new(&resolved)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png")
+            .to_lowercase();
         let mime = match ext.as_str() {
             "jpg" | "jpeg" => "image/jpeg",
             "gif" => "image/gif",
@@ -2308,7 +2969,10 @@ async fn upload_local_images_to_drive(
         let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
         let uid = &uuid::Uuid::new_v4().to_string()[..8];
         let filename = format!("fusen_img_{}_{}.{}", ts, uid, ext);
-        if gdrive::upload_binary(client, access_token, &filename, bytes, mime).await.is_ok() {
+        if gdrive::upload_binary(client, access_token, &filename, bytes, mime)
+            .await
+            .is_ok()
+        {
             result = result.replace(&full, &format!("![{}]({})", alt, filename));
         }
     }
@@ -2320,12 +2984,16 @@ fn strip_local_images(body: &str) -> String {
     let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
     re.replace_all(body, |caps: &regex::Captures| {
         let raw_path = &caps[2];
-        if raw_path.starts_with("http://") || raw_path.starts_with("https://") || raw_path.starts_with("data:") {
+        if raw_path.starts_with("http://")
+            || raw_path.starts_with("https://")
+            || raw_path.starts_with("data:")
+        {
             caps[0].to_string()
         } else {
             "[画像]".to_string()
         }
-    }).into_owned()
+    })
+    .into_owned()
 }
 
 /// body 中のローカル画像パスを base64 data URI に変換して埋め込む
@@ -2333,13 +3001,16 @@ fn strip_local_images(body: &str) -> String {
 /// data: URI はそのまま返す（http/https も変換しない）
 #[cfg(test)]
 fn embed_local_images(body: &str, note_dir: &std::path::Path) -> String {
-    use base64::{Engine as _, engine::general_purpose};
+    use base64::{engine::general_purpose, Engine as _};
     let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
     re.replace_all(body, |caps: &regex::Captures| {
         let alt = &caps[1];
         let raw_path = &caps[2];
         // data: / http: / https: はそのまま返す
-        if raw_path.starts_with("data:") || raw_path.starts_with("http://") || raw_path.starts_with("https://") {
+        if raw_path.starts_with("data:")
+            || raw_path.starts_with("http://")
+            || raw_path.starts_with("https://")
+        {
             return caps[0].to_string();
         }
         // 絶対パスまたは note_dir からの相対パスとして解決
@@ -2365,7 +3036,8 @@ fn embed_local_images(body: &str, note_dir: &std::path::Path) -> String {
         };
         let encoded = general_purpose::STANDARD.encode(&bytes);
         format!("![{}](data:{};base64,{})", alt, mime, encoded)
-    }).into_owned()
+    })
+    .into_owned()
 }
 
 #[tauri::command]
@@ -2375,7 +3047,9 @@ async fn fusen_send_to_iphone(
 ) -> Result<(), String> {
     let settings = storage::load_settings()?;
     if !settings.iphone_send_enabled {
-        return Err("iPhone送信は設定で無効です。設定画面のiPhone連携で有効にしてください。".to_string());
+        return Err(
+            "iPhone送信は設定で無効です。設定画面のiPhone連携で有効にしてください。".to_string(),
+        );
     }
 
     let client = reqwest::Client::new();
@@ -2383,7 +3057,9 @@ async fn fusen_send_to_iphone(
     // 1. ノートの内容を読む
     let note = {
         let guard = state.lock().unwrap_or_else(|p| p.into_inner());
-        let _folder = guard.folder_path.clone()
+        let _folder = guard
+            .folder_path
+            .clone()
             .ok_or_else(|| "Folder not set".to_string())?;
         drop(guard);
         std::fs::read_to_string(&path).map_err(|e| e.to_string())?
@@ -2403,7 +3079,9 @@ async fn fusen_send_to_iphone(
         (String::new(), note.clone())
     };
     let (_, _, _, _, _, _, note_tags, _) = logic::extract_meta_from_content(&frontmatter);
-    let note_dir = std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new("."));
+    let note_dir = std::path::Path::new(&path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
     let sent_at = chrono::Utc::now().to_rfc3339();
     let note_id = uuid::Uuid::new_v4().to_string();
 
@@ -2427,7 +3105,8 @@ async fn fusen_send_to_iphone(
     let access_token = gdrive::get_access_token(&client).await?;
 
     // Drive用: ローカル画像を Drive にアップロードして fusen_img_* 参照に変換
-    let body_rich = upload_local_images_to_drive(&client, &access_token, &body_content, note_dir).await;
+    let body_rich =
+        upload_local_images_to_drive(&client, &access_token, &body_content, note_dir).await;
 
     let note_json_drive = serde_json::json!({
         "id": note_id.clone(),
@@ -2486,7 +3165,12 @@ async fn fusen_send_to_iphone(
     let data = serde_json::json!({ "items": items });
     gdrive::upload_json(&client, &access_token, "notes_to_iphone.json", &data)
         .await
-        .map_err(|e| format!("iPhone送信用キューのDrive保存に失敗しました。Push通知は送らずに中止しました: {}", e))?;
+        .map_err(|e| {
+            format!(
+                "iPhone送信用キューのDrive保存に失敗しました。Push通知は送らずに中止しました: {}",
+                e
+            )
+        })?;
 
     // 5. 送信直前に Drive の push_devices.json を再取得する。
     // iPhone の購読更新後に古いメモリキャッシュで送ると APNs の VAPID 鍵不一致になり得る。
@@ -2496,7 +3180,10 @@ async fn fusen_send_to_iphone(
         guard.pro_configs.clone()
     };
     if pro_configs.is_empty() {
-        return Err("push_config not found in Google Drive. Please set up the iPhone app first.".to_string());
+        return Err(
+            "push_config not found in Google Drive. Please set up the iPhone app first."
+                .to_string(),
+        );
     }
 
     // 6. Web Push 全デバイスに順次送信（1台でも届けばOK）
@@ -2510,7 +3197,7 @@ async fn fusen_send_to_iphone(
             Ok(_) => {
                 send_success_count += 1;
                 eprintln!("[webpush] 送信成功: target={}", target);
-            },
+            }
             Err(e) => {
                 let classified = classify_webpush_error(&e);
                 eprintln!("[webpush] 送信失敗: target={} error={}", target, classified);
@@ -2526,7 +3213,10 @@ async fn fusen_send_to_iphone(
     );
     // 全デバイスが失敗した場合のみエラーとする
     if !pro_configs.is_empty() && send_errors.len() == pro_configs.len() {
-        return Err(format!("全デバイスへの送信が失敗しました: {}", send_errors.join(", ")));
+        return Err(format!(
+            "全デバイスへの送信が失敗しました: {}",
+            send_errors.join(", ")
+        ));
     }
 
     Ok(())
@@ -2537,15 +3227,11 @@ async fn fusen_send_to_iphone(
 /// iPhoneからの body 内の画像参照（fusen_img_*.* パターン）を
 /// Drive からダウンロードしてローカル保存し、絶対パスに書き換えた body を返す
 #[tauri::command]
-async fn fusen_download_iphone_images(
-    folder_path: String,
-    body: String,
-) -> Result<String, String> {
+async fn fusen_download_iphone_images(folder_path: String, body: String) -> Result<String, String> {
     use std::path::Path;
 
     // 画像ファイル名を抽出: ![](fusen_img_XXX.ext) → ["fusen_img_XXX.ext", ...]
-    let re = regex::Regex::new(r"!\[[^\]]*\]\((fusen_img_[^)]+)\)")
-        .map_err(|e| e.to_string())?;
+    let re = regex::Regex::new(r"!\[[^\]]*\]\((fusen_img_[^)]+)\)").map_err(|e| e.to_string())?;
 
     let filenames: Vec<String> = re
         .captures_iter(&body)
@@ -2567,7 +3253,8 @@ async fn fusen_download_iphone_images(
 
     // Drive接続・トークン取得
     let client = reqwest::Client::new();
-    let token = gdrive::get_access_token(&client).await
+    let token = gdrive::get_access_token(&client)
+        .await
         .map_err(|e| format!("Drive未接続: {}", e))?;
 
     // 各画像をダウンロードしてローカル保存
@@ -2576,10 +3263,8 @@ async fn fusen_download_iphone_images(
 
         // 既存ファイルはスキップ（冪等）
         if local_path.exists() {
-            rewritten = rewritten.replace(
-                &format!("({filename})"),
-                &format!("(assets/{filename})"),
-            );
+            rewritten =
+                rewritten.replace(&format!("({filename})"), &format!("(assets/{filename})"));
             continue;
         }
 
@@ -2587,10 +3272,8 @@ async fn fusen_download_iphone_images(
             Ok(bytes) => {
                 std::fs::write(&local_path, &bytes)
                     .map_err(|e| format!("画像保存失敗 {}: {}", filename, e))?;
-                rewritten = rewritten.replace(
-                    &format!("({filename})"),
-                    &format!("(assets/{filename})"),
-                );
+                rewritten =
+                    rewritten.replace(&format!("({filename})"), &format!("(assets/{filename})"));
             }
             Err(e) => {
                 logger::log_info(&format!("[assets] download failed {}: {}", filename, e));
@@ -2689,7 +3372,11 @@ fn collect_iphone_video_names(item: &serde_json::Value) -> Vec<String> {
 }
 
 fn iphone_item_targets_this_pc(item: &serde_json::Value, pc_id: &str) -> bool {
-    match item.get("targetPcId").and_then(|v| v.as_str()).map(str::trim) {
+    match item
+        .get("targetPcId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+    {
         Some(target_id) if !target_id.is_empty() => target_id == pc_id,
         _ => true,
     }
@@ -2743,11 +3430,16 @@ fn build_local_video_file_name(video_file_name: &str, original_file_name: &str) 
 
     let mut safe_stem = String::with_capacity(stem.len());
     for ch in stem.chars() {
-        let is_dangerous = matches!(ch, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || ch.is_control();
+        let is_dangerous =
+            matches!(ch, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || ch.is_control();
         safe_stem.push(if is_dangerous { '_' } else { ch });
     }
     let safe_stem = safe_stem.trim().trim_end_matches('.').to_string();
-    let safe_stem = if safe_stem.is_empty() { "video".to_string() } else { safe_stem };
+    let safe_stem = if safe_stem.is_empty() {
+        "video".to_string()
+    } else {
+        safe_stem
+    };
 
     let now = chrono::Local::now();
     let stamp = now.format("%Y%m%d_%H%M%S");
@@ -2756,7 +3448,10 @@ fn build_local_video_file_name(video_file_name: &str, original_file_name: &str) 
 
 /// `base_name`（拡張子付き）が既に存在する場合、`name_2.ext`, `name_3.ext`, ... と
 /// 連番を付けて空きを探す。最初の空きパスを返す。
-fn resolve_video_path_with_suffix(video_dir: &std::path::Path, base_name: &str) -> std::path::PathBuf {
+fn resolve_video_path_with_suffix(
+    video_dir: &std::path::Path,
+    base_name: &str,
+) -> std::path::PathBuf {
     let initial = video_dir.join(base_name);
     if !initial.exists() {
         return initial;
@@ -2786,7 +3481,9 @@ async fn download_iphone_video_to_assets(
     video_file_name: &str,
     original_file_name: &str,
 ) -> Result<(String, String), String> {
-    let video_dir = std::path::Path::new(folder_path).join("assets").join("video");
+    let video_dir = std::path::Path::new(folder_path)
+        .join("assets")
+        .join("video");
     std::fs::create_dir_all(&video_dir).map_err(|e| e.to_string())?;
 
     let desired_name = build_local_video_file_name(video_file_name, original_file_name);
@@ -2817,19 +3514,22 @@ async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
         &token,
         "notes_from_iphone.json",
         "fusen_from_iphone.json",
-    ).await {
+    )
+    .await
+    {
         Err(e) if e.contains("File not found") => return Ok(()),
         Err(e) => return Err(e),
         Ok(d) => d,
     };
 
-    let items: Vec<serde_json::Value> = if let Some(arr) = data.get("items").and_then(|v| v.as_array()) {
-        arr.clone()
-    } else if data.get("id").and_then(|v| v.as_str()).is_some() {
-        vec![data.clone()]
-    } else {
-        return Ok(());
-    };
+    let items: Vec<serde_json::Value> =
+        if let Some(arr) = data.get("items").and_then(|v| v.as_array()) {
+            arr.clone()
+        } else if data.get("id").and_then(|v| v.as_str()).is_some() {
+            vec![data.clone()]
+        } else {
+            return Ok(());
+        };
 
     let mut image_names = Vec::new();
     let mut video_names = Vec::new();
@@ -2892,7 +3592,14 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     };
 
     // 2. notes_from_iphone.json をダウンロード（旧名: fusen_from_iphone.json から自動移行）
-    let data = match gdrive::download_json_with_migration(client, &token, "notes_from_iphone.json", "fusen_from_iphone.json").await {
+    let data = match gdrive::download_json_with_migration(
+        client,
+        &token,
+        "notes_from_iphone.json",
+        "fusen_from_iphone.json",
+    )
+    .await
+    {
         Err(e) if e.contains("File not found") => return, // 静かにスキップ
         Err(e) => {
             logger::log_info(&format!("[poll] Drive download error: {}", e));
@@ -2902,15 +3609,16 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     };
 
     // 3. items 配列を取得（旧スキーマは自動変換して後方互換を維持）
-    let items: Vec<serde_json::Value> = if let Some(arr) = data.get("items").and_then(|v| v.as_array()) {
-        // 新スキーマ: { "items": [...] }
-        arr.clone()
-    } else if data.get("id").and_then(|v| v.as_str()).is_some() {
-        // 旧スキーマ: { "id": "...", "title": "...", ... }
-        vec![data.clone()]
-    } else {
-        return; // 不明なフォーマット
-    };
+    let items: Vec<serde_json::Value> =
+        if let Some(arr) = data.get("items").and_then(|v| v.as_array()) {
+            // 新スキーマ: { "items": [...] }
+            arr.clone()
+        } else if data.get("id").and_then(|v| v.as_str()).is_some() {
+            // 旧スキーマ: { "id": "...", "title": "...", ... }
+            vec![data.clone()]
+        } else {
+            return; // 不明なフォーマット
+        };
 
     // 4. 未処理アイテム（received_at なし）を抽出
     let unreceived_indices: Vec<usize> = items
@@ -2923,7 +3631,10 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     let target_mismatch_ids: Vec<String> = unreceived_indices
         .iter()
         .filter_map(|&idx| {
-            let target = items[idx].get("targetPcId").and_then(|v| v.as_str()).map(str::trim)?;
+            let target = items[idx]
+                .get("targetPcId")
+                .and_then(|v| v.as_str())
+                .map(str::trim)?;
             if !target.is_empty() && target != pc_id {
                 Some(target.to_string())
             } else {
@@ -2958,7 +3669,9 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
 
     // 5. 既処理IDセットで重複をフィルタリング
     let new_indices: Vec<usize> = {
-        let known_ids = LAST_IPHONE_NOTE_IDS.lock().unwrap_or_else(|p| p.into_inner());
+        let known_ids = LAST_IPHONE_NOTE_IDS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         pending_indices
             .into_iter()
             .filter(|&idx| {
@@ -2975,15 +3688,23 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
     // 6. 各アイテムを処理（emit + 通知）。Drive側の削除はJS保存成功後のackで行う。
     for &idx in &new_indices {
         let item = &items[idx];
-        let note_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let note_id = item
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-        let body  = item.get("body").and_then(|v| v.as_str()).unwrap_or("");
+        let body = item.get("body").and_then(|v| v.as_str()).unwrap_or("");
         let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("note");
         let video_refs = collect_iphone_videos(item);
         let first_original_file_name = video_refs
             .first()
             .map(|v| v.original_file_name.as_str())
-            .unwrap_or_else(|| item.get("originalFileName").and_then(|v| v.as_str()).unwrap_or(""));
+            .unwrap_or_else(|| {
+                item.get("originalFileName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+            });
         let mut pc_body = if title.is_empty() {
             body.to_string()
         } else if body.is_empty() {
@@ -3000,9 +3721,14 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         } else {
             build_context(title, body)
         };
-        let tags: Vec<String> = item.get("tags")
+        let tags: Vec<String> = item
+            .get("tags")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
 
         if item_type == "video" && !video_refs.is_empty() {
@@ -3025,16 +3751,21 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                         folder_path,
                         &video_ref.video_file_name,
                         &video_ref.original_file_name,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok((_local_rel_path, local_abs_path)) => {
-                            video_lines.push(format!("🎬 {}\n保存先:\n{}", display_name, local_abs_path));
+                            video_lines
+                                .push(format!("🎬 {}\n保存先:\n{}", display_name, local_abs_path));
                         }
                         Err(e) => {
-                            logger::log_info(&format!("[iphone video] download failed {}: {}", video_ref.video_file_name, e));
+                            logger::log_info(&format!(
+                                "[iphone video] download failed {}: {}",
+                                video_ref.video_file_name, e
+                            ));
                             video_lines.push(format!(
                                 "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
-                                display_name,
-                                video_ref.video_file_name
+                                display_name, video_ref.video_file_name
                             ));
                         }
                     }
@@ -3042,8 +3773,7 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                     logger::log_info("[iphone video] folder path is not set");
                     video_lines.push(format!(
                         "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
-                        display_name,
-                        video_ref.video_file_name
+                        display_name, video_ref.video_file_name
                     ));
                 }
             }
@@ -3070,16 +3800,19 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                 .show();
         }
 
-        if app.emit(
-            "fusen:note_from_iphone",
-            IphoneNotePayload {
-                id: note_id.clone(),
-                title: title.to_string(),
-                body: pc_body,
-                context,
-                tags,
-            },
-        ).is_ok() {
+        if app
+            .emit(
+                "fusen:note_from_iphone",
+                IphoneNotePayload {
+                    id: note_id.clone(),
+                    title: title.to_string(),
+                    body: pc_body,
+                    context,
+                    tags,
+                },
+            )
+            .is_ok()
+        {
             LAST_IPHONE_NOTE_IDS
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
@@ -3179,6 +3912,8 @@ pub fn run() {
             clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
             clipboard::fusen_save_annotated_image,
             fusen_is_sticky_note_focused,
+            fusen_arrange_by_tag,
+            fusen_arrange_undo,
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
@@ -3359,8 +4094,13 @@ pub fn run() {
                 });
             let ctrl_n_shortcut_clone = ctrl_n_shortcut.clone();
 
+            // [仮] 2-b のトレイUI実装までの実機確認用トリガー。トレイUI完成後に削除予定
+            let arrange_shortcut = Shortcut::try_from("ctrl+shift+l")
+                .unwrap_or_else(|_| Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyL));
+            let arrange_shortcut_clone = arrange_shortcut.clone();
+
             // [Fix] Safely attempt to register shortcuts（Ctrl+Shift+H と Ctrl+N を同一プラグインに登録）
-            match ShortcutBuilder::new().with_shortcuts(["ctrl+shift+h"]) {
+            match ShortcutBuilder::new().with_shortcuts(["ctrl+shift+h", "ctrl+shift+l"]) {
                 Ok(builder) => {
                     let plugin = builder
                         .with_handler(move |app, shortcut, event| {
@@ -3372,6 +4112,14 @@ pub fn run() {
                                     logger::log_info("[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit");
                                     perflog::log_event("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
                                     let _ = app.emit("fusen:request_create_global", ());
+                                } else if shortcut == &arrange_shortcut_clone {
+                                    logger::log_info("[Shortcut] Ctrl+Shift+L: fusen_arrange_by_tag trigger");
+                                    let app_handle = app.clone();
+                                    tauri::async_runtime::spawn(async move {
+                                        if let Err(e) = fusen_arrange_by_tag(app_handle).await {
+                                            logger::log_warn(&format!("[Shortcut] Ctrl+Shift+L arrange failed: {}", e));
+                                        }
+                                    });
                                 } else {
                                     // --- Ctrl+Shift+H: 全付箋隠す/表示 ---
                                     if !can_do_visibility_op() { return; }
@@ -3430,8 +4178,6 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
-
 
 #[cfg(test)]
 mod image_embed_tests {
@@ -3527,8 +4273,8 @@ mod image_embed_tests {
 #[cfg(test)]
 mod search_tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn test_search_logic() {
@@ -3574,7 +4320,10 @@ mod pool_tests {
         let state = Mutex::new(AppState::default());
         let n1 = do_create_note(&state, folder_path, "first").unwrap();
         let n2 = do_create_note(&state, folder_path, "second").unwrap();
-        assert_ne!(n1.meta.path, n2.meta.path, "連番が衝突してはいけない（Mutex 排他の効果）");
+        assert_ne!(
+            n1.meta.path, n2.meta.path,
+            "連番が衝突してはいけない（Mutex 排他の効果）"
+        );
     }
 
     /// Task 1: Pool 窓の WS_EX_LAYERED + α=0 + 画面外配置を確認
