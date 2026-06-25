@@ -27,10 +27,4 @@ export default defineConfig({
             use: { ...devices['Desktop Chrome'] },
         },
     ],
-    webServer: {
-        command: 'npm run dev:tauri',
-        url: 'http://localhost:3002',
-        reuseExistingServer: false,
-        timeout: 60000,
-    },
 });
