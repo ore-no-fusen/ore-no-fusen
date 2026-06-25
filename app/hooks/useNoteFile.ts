@@ -11,7 +11,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { readNote, saveNote, Note } from '@/app/api/notes';
-import { splitFrontMatter, updateFrontmatterValue } from '@/app/utils/splitFrontMatter';
+import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey } from '@/app/utils/splitFrontMatter';
 import { pathsEqual } from '@/app/utils/pathUtils';
 
 export type UseNoteFileOptions = {
@@ -33,6 +33,7 @@ export type UseNoteFileReturn = {
     loadNote: () => Promise<string>;
     saveNoteContent: (body: string, frontmatter: string, allowRename: boolean) => Promise<void>;
     updateFrontmatter: (key: string, value: any) => void;
+    removeFrontmatter: (key: string) => void;
     setSavePending: (pending: boolean) => void;
     setContent: (content: string) => void;
     setRawFrontmatter: React.Dispatch<React.SetStateAction<string>>;
@@ -169,6 +170,14 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
     }, []);
 
     /**
+     * フロントマターのキー行を削除する
+     */
+    const removeFrontmatter = useCallback((key: string) => {
+        setRawFrontmatter(prev => removeFrontmatterKey(prev, key));
+        setSavePending(true);
+    }, []);
+
+    /**
      * 自動保存ロジック（800msデバウンス、失敗時は最大3回リトライ）
      */
     useEffect(() => {
@@ -218,6 +227,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
         loadNote,
         saveNoteContent,
         updateFrontmatter,
+        removeFrontmatter,
         setSavePending,
         setContent,
         setRawFrontmatter,

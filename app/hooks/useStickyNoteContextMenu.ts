@@ -33,6 +33,7 @@ type UseStickyNoteContextMenuProps = {
     setNoteFontSize: (size: number) => void;
     globalFontSize: number;
     updateFrontmatter: (key: string, value: any) => void;
+    removeFrontmatter: (key: string) => void;
     shellRef: React.RefObject<HTMLDivElement>;
     setShowTagModal: (show: boolean) => void;
     setTagInputValue: (val: string) => void;
@@ -64,6 +65,7 @@ export function useStickyNoteContextMenu({
     setNoteFontSize,
     globalFontSize,
     updateFrontmatter,
+    removeFrontmatter,
     shellRef,
     setShowTagModal,
     setTagInputValue,
@@ -130,12 +132,12 @@ export function useStickyNoteContextMenu({
     const handleFontSizeChange = useCallback((newSize: number | null) => {
         if (newSize === null) {
             setNoteFontSize(globalFontSize);
-            updateFrontmatter('fontSize', '');
+            removeFrontmatter('fontSize');
         } else {
             setNoteFontSize(newSize);
             updateFrontmatter('fontSize', newSize);
         }
-    }, [updateFrontmatter, setNoteFontSize, globalFontSize]);
+    }, [updateFrontmatter, removeFrontmatter, setNoteFontSize, globalFontSize]);
 
     // 透明度変更
     const handleOpacityChange = useCallback(async (opacity: number) => {
