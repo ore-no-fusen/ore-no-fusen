@@ -94,7 +94,6 @@ export function updateFrontmatterGeometry(
         newFront = removeFrontmatterKey(newFront, 'width');
         newFront = removeFrontmatterKey(newFront, 'height');
         newFront = removeFrontmatterKey(newFront, 'fontFamily');
-        newFront = removeFrontmatterKey(newFront, 'fontSize');
         newFront = removeFrontmatterKey(newFront, 'lineHeight');
         newFront = removeFrontmatterKey(newFront, 'context');
     }
