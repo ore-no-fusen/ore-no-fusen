@@ -44,7 +44,7 @@ import { pathsEqual, getFileName } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
 import { resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
-import { playCheckboxSound } from '../utils/soundManager';
+import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
@@ -1530,6 +1530,24 @@ const StickyNote = memo(function StickyNote() {
         iphoneSendEnabled: settings.iphone_send_enabled,
     });
 
+    const handleArchiveFromHoverButton = useCallback(async () => {
+        if (!selectedFile || currentTags.length > 1) return;
+
+        try {
+            isDeletingRef.current = true;
+            await saveNoteContent(editBody, rawFrontmatter, false);
+            await playSaveSound();
+            await invoke('fusen_archive_note', { path: selectedFile.path, targetTag: currentTags[0] ?? null });
+            const win = getCurrentWindow();
+            await win.hide();
+            await win.destroy();
+        } catch (e) {
+            isDeletingRef.current = false;
+            console.error('Failed to archive note:', e);
+            alert(`${t('menu.archive_failed')}\n${e}`);
+        }
+    }, [selectedFile, currentTags, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
+
     /**
      * ローカルキーボードショートカット（この付箋ウィンドウがアクティブな時のみ有効）
      *
@@ -2047,6 +2065,26 @@ const StickyNote = memo(function StickyNote() {
                                     </span>
                                 )}
                             </div>
+                        )}
+                        {currentTags.length <= 1 && (
+                            <Tooltip text={t('menu.archive')} placement="top-right-arrow-shifted">
+                                <button
+                                    type="button"
+                                    aria-label={t('menu.archive')}
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleArchiveFromHoverButton();
+                                    }}
+                                    className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
+                                >
+                                    📦
+                                </button>
+                            </Tooltip>
                         )}
                         <Tooltip text={t('menu.delete')} hint="Ctrl+D" placement="top-right-arrow-shifted">
                             <button
