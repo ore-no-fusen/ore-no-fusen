@@ -427,6 +427,7 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
         &tags,
         None,
         opacity,
+        None,
     );
     let new_filename = logic::generate_filename(next_seq, &today, &context);
     let new_path_str = std::path::Path::new(&folder_path)
