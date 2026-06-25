@@ -1,25 +1,26 @@
-# 俺の付箋 ユーザーガイドの引っ越し先
+# 俺の付箋 ユーザーガイド
 
-ユーザーガイドは **GitHub Wiki** に移行しました。最新の内容は下記からご覧ください。
+ユーザー向けのヘルプは **GitHub Wiki** に移動しました。
+このファイルは、古いリンクを壊さないための案内ページです。
 
-👉 **[俺の付箋 Wiki（ユーザーマニュアル）](https://github.com/ore-no-fusen/ore-no-fusen/wiki)**
+## 開く場所
 
-## 章ごとのリンク
+- [俺の付箋 Wiki](https://github.com/ore-no-fusen/ore-no-fusen/wiki) — どこを読めばいいか選ぶトップページ
+- [漫画で学ぶ「俺の付箋」](https://github.com/ore-no-fusen/ore-no-fusen/wiki/漫画で学ぶ俺の付箋) — まず雰囲気を知りたい人向け
+- [困ったときに](https://github.com/ore-no-fusen/ore-no-fusen/wiki/05-困ったときに) — 動かない・届かない・見つからない時の解決ページ
 
-- [第1章 はじめに・インストール](https://github.com/ore-no-fusen/ore-no-fusen/wiki/01-はじめに-インストール)
-- [第2章 基本の使い方](https://github.com/ore-no-fusen/ore-no-fusen/wiki/02-基本の使い方)
-- [第3章 くわしい使い方](https://github.com/ore-no-fusen/ore-no-fusen/wiki/03-くわしい使い方)
-- [第4章 iPhone連携](https://github.com/ore-no-fusen/ore-no-fusen/wiki/04-iPhone連携)
-- [第5章 困ったときに](https://github.com/ore-no-fusen/ore-no-fusen/wiki/05-困ったときに)
-- [第6章 応援する・サポート](https://github.com/ore-no-fusen/ore-no-fusen/wiki/06-応援する-サポート)
+## 目的別
 
-## なぜ Wiki に移ったか
+| やりたいこと | 開くページ |
+|---|---|
+| はじめて入れる | [01 はじめに・インストール](https://github.com/ore-no-fusen/ore-no-fusen/wiki/01-はじめに-インストール) |
+| 付箋を作る・書く・探す | [02 基本の使い方](https://github.com/ore-no-fusen/ore-no-fusen/wiki/02-基本の使い方) |
+| 画像・表・アラームなどを使う | [03 くわしい使い方](https://github.com/ore-no-fusen/ore-no-fusen/wiki/03-くわしい使い方) |
+| iPhoneと連携する | [04 iPhone連携](https://github.com/ore-no-fusen/ore-no-fusen/wiki/04-iPhone連携) |
+| 動かない・届かない・見つからない | [05 困ったときに](https://github.com/ore-no-fusen/ore-no-fusen/wiki/05-困ったときに) |
+| 質問・要望・応援 | [06 応援する・サポート](https://github.com/ore-no-fusen/ore-no-fusen/wiki/06-応援する-サポート) |
 
-- 読者が完全に分かれる（開発者向けの設計書は VitePress 側、ユーザー向けは Wiki 側）
-- 章ごとに URL が立つ＋サイドバー＋検索が標準で付く
-- 「漫画で学ぶ俺の付箋」が既に Wiki にあるので、ユーザー向けの入口を統一できる
-- GitHub 上で直接編集できるので、気づいた時にすぐ直せる
+## このファイルについて
 
-## 旧 docs/ 版について
-
-このファイル（`docs/100_USER_GUIDE.md`）は古い置き場所への参考リンクとして残しています。今後の追記は Wiki 側にお願いします。
+今後のユーザー向けヘルプ更新は Wiki 側に集約します。
+開発者向けの設計書は [オンライン設計書](https://ore-no-fusen.github.io/ore-no-fusen/) を参照してください。
