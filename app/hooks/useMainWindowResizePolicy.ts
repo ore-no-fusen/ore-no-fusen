@@ -3,7 +3,7 @@
  *
  * 責務:
  * - 設定画面・セットアップ画面の開閉に応じてウィンドウサイズを自動切替
- *   - 設定/セットアップ表示中: 900x700（中央に表示）
+ *   - 設定/セットアップ表示中: 1280x860（中央に表示）
  *   - 通常のダッシュボード: 240x300（中央）
  *   - 検索オーバーレイ表示中: リサイズしない（SearchOverlayのサイズを保護）
  *   - アップデートダイアログ表示中: リサイズしない（useUpdateCheckが420x280に設定済み）
@@ -46,7 +46,7 @@ export function useMainWindowResizePolicy({
 
                 if (!isCheckingSetup && (setupRequired || isSettingsOpen)) {
                     // セットアップ中 or 設定画面表示中 → 大きく表示
-                    await win.setSize(new LogicalSize(1100, 760));
+                    await win.setSize(new LogicalSize(1280, 860));
                     await win.center();
                     await win.show();
                     await win.setFocus();
