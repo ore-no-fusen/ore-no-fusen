@@ -188,7 +188,7 @@ const StickyNote = memo(function StickyNote() {
 
 
     // スタイル関連（カスタムフックで一元管理）
-    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize } = useNoteStyles(note);
+    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize, setNoteFontSize } = useNoteStyles(note);
 
     // 削除・アーカイブ中の保存防止フラグ
     const isDeletingRef = useRef(false);
@@ -1509,6 +1509,8 @@ const StickyNote = memo(function StickyNote() {
         removeTagFromNote,
         isDeletingRef,
         setNoteBackgroundColor,
+        setNoteFontSize,
+        globalFontSize: settings.font_size,
         updateFrontmatter,
         shellRef,
         setShowTagModal,

@@ -30,6 +30,8 @@ type UseStickyNoteContextMenuProps = {
     removeTagFromNote: (path: string, tag: string) => Promise<void>;
     isDeletingRef: React.MutableRefObject<boolean>;
     setNoteBackgroundColor: (color: string) => void;
+    setNoteFontSize: (size: number) => void;
+    globalFontSize: number;
     updateFrontmatter: (key: string, value: any) => void;
     shellRef: React.RefObject<HTMLDivElement>;
     setShowTagModal: (show: boolean) => void;
@@ -59,6 +61,8 @@ export function useStickyNoteContextMenu({
     removeTagFromNote,
     isDeletingRef,
     setNoteBackgroundColor,
+    setNoteFontSize,
+    globalFontSize,
     updateFrontmatter,
     shellRef,
     setShowTagModal,
@@ -125,12 +129,13 @@ export function useStickyNoteContextMenu({
     // 文字サイズ変更（null を渡すとグローバルに戻す）
     const handleFontSizeChange = useCallback((newSize: number | null) => {
         if (newSize === null) {
-            // 空文字を設定 → 次回ロード時にグローバル値で表示
+            setNoteFontSize(globalFontSize);
             updateFrontmatter('fontSize', '');
         } else {
+            setNoteFontSize(newSize);
             updateFrontmatter('fontSize', newSize);
         }
-    }, [updateFrontmatter]);
+    }, [updateFrontmatter, setNoteFontSize, globalFontSize]);
 
     // 透明度変更
     const handleOpacityChange = useCallback(async (opacity: number) => {
