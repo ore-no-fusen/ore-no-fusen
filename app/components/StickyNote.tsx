@@ -44,6 +44,7 @@ import { pathsEqual, getFileName } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
 import { resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
+import { playCheckboxSound } from '../utils/soundManager';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
@@ -1119,6 +1120,10 @@ const StickyNote = memo(function StickyNote() {
             setContent(newText);
             setEditBody(newText);
             setSavePending(true);
+
+            if (!isChecked) {
+                void playCheckboxSound();
+            }
         }
     };
 
