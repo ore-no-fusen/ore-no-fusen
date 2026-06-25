@@ -28,7 +28,7 @@ import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時�
 import { getTranslation, type Language } from '@/lib/i18n';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 import { useUpdateCheck } from './hooks/useUpdateCheck';
-import { useMainWindowResizePolicy } from './hooks/useMainWindowResizePolicy';
+import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 
@@ -789,8 +789,9 @@ function OrchestratorContent() {
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
 
         if (win.label === 'main') {
-          console.log('[MAIN_WINDOW_DEBUG] Opening settings - resizing to 1280x860');
-          await win.setSize(new LogicalSize(1280, 860));
+          const { width, height } = await calcSettingsWindowSize();
+          console.log(`[MAIN_WINDOW_DEBUG] Opening settings - resizing to ${width}x${height}`);
+          await win.setSize(new LogicalSize(width, height));
           await win.center();
           await win.show();
           await win.unminimize();
@@ -894,7 +895,8 @@ function OrchestratorContent() {
           const { getCurrentWindow } = await import('@tauri-apps/api/window');
           const win = getCurrentWindow();
           const { LogicalSize } = await import('@tauri-apps/api/dpi');
-          await win.setSize(new LogicalSize(1280, 860));
+          const { width, height } = await calcSettingsWindowSize();
+          await win.setSize(new LogicalSize(width, height));
           await win.center();
           await win.show();
           await win.setFocus();

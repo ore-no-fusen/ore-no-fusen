@@ -89,7 +89,7 @@ winget install ore-no-fusen
 - 容量: 約 100MB
 - メモリ: 4GB以上推奨
 
-詳しいインストール手順は[ユーザーガイド](docs/100_USER_GUIDE.md#インストール)をご覧ください。
+詳しいインストール手順は[ユーザーガイド（Wiki・第1章）](https://github.com/ore-no-fusen/ore-no-fusen/wiki/01-はじめに-インストール)をご覧ください。
 
 ### ⚠️ インストール時の「SmartScreen」警告について
 
@@ -107,7 +107,7 @@ SmartScreen とは、Windows に搭載されたセキュリティ機能です。
 
 > 💡 **ご安心ください** — ore-no-fusen はオープンソースです。ソースコードは [GitHub](https://github.com/ore-no-fusen/ore-no-fusen) で全て公開されており、誰でも内容を確認できます。
 
-詳しいインストール手順は[ユーザーガイド](docs/100_USER_GUIDE.md#インストール)をご覧ください。
+詳しいインストール手順は[ユーザーガイド（Wiki・第1章）](https://github.com/ore-no-fusen/ore-no-fusen/wiki/01-はじめに-インストール)をご覧ください。
 
 ### 開発者向け
 
@@ -151,7 +151,7 @@ npm run tauri build
 3. **検索** - `Ctrl+F` で検索ウィンドウを開く
 4. **タグ付け** - 付箋の内容に `#タグ名` を記述
 
-詳しい使い方は[ユーザーガイド](docs/100_USER_GUIDE.md)をご覧ください。
+詳しい使い方は[ユーザーガイド（Wiki）](https://github.com/ore-no-fusen/ore-no-fusen/wiki)をご覧ください。
 
 ### Markdownの例
 
@@ -215,7 +215,7 @@ npm run tauri build
 ## 📖 ドキュメント
 
 - [オンラインドキュメント (GitHub Pages)](https://ore-no-fusen.github.io/ore-no-fusen/) - システム設計・仕様書
-- [ユーザーガイド](docs/100_USER_GUIDE.md) - 詳しい使い方
+- [ユーザーガイド（Wiki）](https://github.com/ore-no-fusen/ore-no-fusen/wiki) - 詳しい使い方（章分割・サイドバー付き）
 - [FAQ](docs/101_FAQ.md) - よくある質問
 - [開発ルール](AG_RULES.md) - 開発者向けルール
 

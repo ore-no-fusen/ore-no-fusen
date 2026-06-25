@@ -3,7 +3,7 @@
  *
  * 責務:
  * - 設定画面・セットアップ画面の開閉に応じてウィンドウサイズを自動切替
- *   - 設定/セットアップ表示中: 1280x860（中央に表示）
+ *   - 設定/セットアップ表示中: 画面に合わせて適応（横は内容が切れないように、縦はスクロール前提でほどよく）
  *   - 通常のダッシュボード: 240x300（中央）
  *   - 検索オーバーレイ表示中: リサイズしない（SearchOverlayのサイズを保護）
  *   - アップデートダイアログ表示中: リサイズしない（useUpdateCheckが420x280に設定済み）
@@ -12,6 +12,30 @@
  */
 
 import { useEffect } from 'react';
+
+/**
+ * モニタサイズに応じて設定ウィンドウのサイズを決める。
+ * 横: モニタの 90%、ただし [1280, 1600] に収める（内容が切れないよう最低 1280）
+ * 縦: モニタの 85%、ただし [720, 1000] に収める（スクロール前提のためそこまで大きくしない）
+ * モニタ取得に失敗した場合は安全側のデフォルト 1280x860 にフォールバック。
+ */
+export async function calcSettingsWindowSize(): Promise<{ width: number; height: number }> {
+    try {
+        const { currentMonitor } = await import('@tauri-apps/api/window');
+        const monitor = await currentMonitor();
+        if (monitor) {
+            const sf = monitor.scaleFactor ?? 1;
+            const logicalW = monitor.size.width / sf;
+            const logicalH = monitor.size.height / sf;
+            const width = Math.round(Math.min(1600, Math.max(1280, logicalW * 0.9)));
+            const height = Math.round(Math.min(1000, Math.max(720, logicalH * 0.85)));
+            return { width, height };
+        }
+    } catch (e) {
+        console.warn('[calcSettingsWindowSize] currentMonitor failed, falling back:', e);
+    }
+    return { width: 1280, height: 860 };
+}
 
 type UseMainWindowResizePolicyOptions = {
     setupRequired: boolean;
@@ -45,8 +69,9 @@ export function useMainWindowResizePolicy({
                 if (showUpdateDialog) return;
 
                 if (!isCheckingSetup && (setupRequired || isSettingsOpen)) {
-                    // セットアップ中 or 設定画面表示中 → 大きく表示
-                    await win.setSize(new LogicalSize(1280, 860));
+                    // セットアップ中 or 設定画面表示中 → モニタに合わせて大きく
+                    const { width, height } = await calcSettingsWindowSize();
+                    await win.setSize(new LogicalSize(width, height));
                     await win.center();
                     await win.show();
                     await win.setFocus();
