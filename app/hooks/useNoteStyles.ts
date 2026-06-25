@@ -43,7 +43,10 @@ export function useNoteStyles(note: Note | null) {
             setNoteBackgroundColor(note.meta.background_color);
         }
 
-        // （将来的に）フォントサイズの個別設定があればここで上書きする等の拡張が可能になる
+        // フォントサイズが個別に設定されているか
+        if (typeof note.meta.font_size === 'number') {
+            setNoteFontSize(note.meta.font_size);
+        }
     }, [note?.meta]);
 
     return {
