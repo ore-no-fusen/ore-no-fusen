@@ -27,7 +27,17 @@ URLバーなしのネイティブアプリ風で動作する（PWA起動時）�
 
 ### 1.1 各画面の役割
 
-banner・login・push・list・write の5画面それぞれの表示条件と役割を説明します。
+banner・login・push・list・write の5画面それぞれの表示条件と役割を説明します。各画面に画面 ID（`step` の値）と画面名（日本語）を付けて一覧にします。画面 ID は `app/viewer/page.tsx` の `step` state に対応します。
+
+<p class="table-caption">表 1.1-1　iPhone PWA の画面一覧</p>
+
+| 画面 ID（`step`） | 画面名 | 表示される条件 |
+|---|---|---|
+| `banner` | インストール案内 | Safari で URL を直接開いた（PWA ではない） |
+| `login` | ログイン | アクセストークンが無い（初回 or 期限切れ） |
+| `push` | 通知設定 | トークンあり ＋ `viewer_push_done` が未設定 |
+| `list` | メモ一覧 | トークンあり ＋ `viewer_push_done=true`（通常起動） |
+| `write` | 編集 | list からメモ選択・新規作成、または通知タップ |
 
 <!-- インストール案内 -->
 <div class="group-label group-safari">インストール案内画面 — Safariで /viewer を開いたとき（PWAではない）</div>
@@ -1350,5 +1360,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 16 | 1.15 | 26-05-31 | PWAの送信先PC選択は `pcName` を通常表示とし、同名PCが複数ある場合は `updatedAt` が最新の登録へ自動的に寄せる仕様を追記。`pcId` は受信判定・診断用の内部IDであり、通常操作でユーザーに選ばせないことを明記。 |
 | 17 | 1.16 | 26-05-31 | 設定画面の接続状態で Drive 未処理キューの中身確認と、ユーザー確認付きのキューJSON削除を行える仕様を追記。 |
 | 18 | 1.17 | 26-06-05 | PC→iPhone送信直前に `push_devices.json` を Drive から再取得する仕様を明記。予見可能なPush不整合はアプリ側で回避し、エラー時はユーザーが取れる復旧手順を表示する方針を追記。 |
+| 19 | 1.18 | 26-06-26 | §1.1 に iPhone PWA の画面一覧表（表 1.1-1）を追加。各画面に画面 ID（`step` = banner / login / push / list / write）と画面名を付け、PC 側設計書（002_PC §1.3）と体裁を統一。 |
 
 </div>
