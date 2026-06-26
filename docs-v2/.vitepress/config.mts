@@ -31,6 +31,7 @@ export default withMermaid(defineConfig({
       { text: '005', link: '/005_GLOSSARY' },
       { text: '006', link: '/006_ARCHITECTURE' },
       { text: '007', link: '/007_COMMUNICATION' },
+      { text: 'USER GUIDE', link: '/user-guide/' },
       { text: '100', link: '/100_PRIVACY' },
       { text: '101', link: '/101_TERMS' },
       { text: '200', link: '/200_SIRI_SETUP' }
@@ -50,6 +51,19 @@ export default withMermaid(defineConfig({
           { text: '005 用語集', link: '/005_GLOSSARY' },
           { text: '006 アーキテクチャ', link: '/006_ARCHITECTURE' },
           { text: '007 コミュニケーション設計', link: '/007_COMMUNICATION' },
+          {
+            text: 'ユーザーガイド',
+            collapsed: false,
+            items: [
+              { text: 'ヘルプトップ', link: '/user-guide/' },
+              { text: 'はじめに・インストール', link: '/user-guide/install' },
+              { text: '基本の使い方', link: '/user-guide/basic' },
+              { text: 'くわしい使い方', link: '/user-guide/advanced' },
+              { text: 'iPhone連携', link: '/user-guide/iphone' },
+              { text: '困ったときに', link: '/user-guide/troubleshooting' },
+              { text: '漫画で学ぶ', link: '/user-guide/comic' }
+            ]
+          },
           { text: '100 プライバシーポリシー', link: '/100_PRIVACY' },
           { text: '101 利用規約', link: '/101_TERMS' },
           { text: '200 Siri から PC に付箋を送る', link: '/200_SIRI_SETUP' }
