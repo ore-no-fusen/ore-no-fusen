@@ -120,6 +120,19 @@
   color: var(--c-text-muted);
 }
 
+.user-guide-page .vp-doc table {
+  table-layout: auto;
+  min-width: 560px;
+}
+
+.user-guide-page .vp-doc th:first-child,
+.user-guide-page .vp-doc td:first-child {
+  width: auto !important;
+  min-width: 120px !important;
+  max-width: none !important;
+  text-align: left !important;
+}
+
 /* =========================================================
  * E. アラートと注釈・Note
  * ========================================================= */

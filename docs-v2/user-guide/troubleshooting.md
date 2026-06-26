@@ -1,3 +1,7 @@
+---
+pageClass: user-guide-page
+---
+
 # 困ったときに
 
 症状から確認してください。

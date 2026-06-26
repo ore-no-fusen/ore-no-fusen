@@ -1,6 +1,7 @@
 ---
 layout: doc
 title: 俺の付箋 ユーザーガイド
+pageClass: user-guide-page
 ---
 
 <style>

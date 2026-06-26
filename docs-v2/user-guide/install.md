@@ -1,3 +1,7 @@
+---
+pageClass: user-guide-page
+---
+
 # はじめに・インストール
 
 俺の付箋は、Markdownで書けるWindows向けデスクトップ付箋アプリです。

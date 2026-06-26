@@ -1,3 +1,7 @@
+---
+pageClass: user-guide-page
+---
+
 # iPhone連携
 
 iPhoneで書いたメモ、画像、動画をPCの付箋として送れます。
