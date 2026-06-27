@@ -30,6 +30,16 @@ Sentry.init({
       delete event.request.data;
     }
 
+    const exception = event.exception?.values?.[0];
+    const isLegacyVercelInsightsSyntaxError =
+      exception?.type === 'SyntaxError' &&
+      exception.value?.includes("Unexpected token '<'") &&
+      exception.stacktrace?.frames?.some((frame) => frame.filename?.includes('_vercel/insights'));
+
+    if (isLegacyVercelInsightsSyntaxError) {
+      return null;
+    }
+
     return event;
   },
 });
