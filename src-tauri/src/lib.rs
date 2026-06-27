@@ -328,18 +328,14 @@ fn fusen_list_notes(state: State<'_, Mutex<AppState>>, folder_path: String) -> V
 }
 
 #[tauri::command]
-fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Note {
-    let note = storage::read_note(&path).unwrap_or_else(|_| Note {
-        body: String::new(),
-        frontmatter: String::new(),
-        meta: NoteMeta {
-            path: path.clone(),
-            ..Default::default()
-        },
-    });
+fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Note, String> {
+    // 読み込み失敗を握りつぶさず呼び出し側へ伝える。
+    // 以前は失敗時に空 Note を返していたため、frontend が「読込成功・中身は空」と誤認し、
+    // 開いていた付箋の作業コピーを空で上書きしてしまう不具合があった（データ空化の根本原因）。
+    let note = storage::read_note(&path)?;
 
     logic::apply_select_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path);
-    note
+    Ok(note)
 }
 
 /// ノート作成の共通ロジック。Mutex を lock したまま get_next_seq → write_note → apply_add_note
