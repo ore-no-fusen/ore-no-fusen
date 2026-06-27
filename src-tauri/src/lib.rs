@@ -983,6 +983,7 @@ fn fusen_delete_tag_globally(
 
     let mut modified_count = 0;
     let mut modified_paths: Vec<String> = Vec::new(); // Track modified paths
+    let mut failed_writes: Vec<String> = Vec::new();
 
     // Create a list of paths to process to avoid borrowing issues
     let paths: Vec<String> = app_state.notes.iter().map(|n| n.path.clone()).collect();
@@ -1010,7 +1011,9 @@ fn fusen_delete_tag_globally(
                                 modified_count += 1;
                                 modified_paths.push(write_path);
                             }
-                            Err(_e) => {}
+                            Err(e) => {
+                                failed_writes.push(format!("{}: {}", write_path, e));
+                            }
                         }
                     }
                 }
@@ -1025,6 +1028,14 @@ fn fusen_delete_tag_globally(
     // [NEW] Notify each modified window to reload
     for path in modified_paths {
         let _ = app.emit("fusen:reload_note", path);
+    }
+
+    if !failed_writes.is_empty() {
+        return Err(format!(
+            "Failed to delete tag from {} note(s): {}",
+            failed_writes.len(),
+            failed_writes.join("; ")
+        ));
     }
 
     Ok(modified_count)
