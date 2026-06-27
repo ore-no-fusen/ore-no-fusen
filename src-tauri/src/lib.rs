@@ -2546,6 +2546,15 @@ fn classify_webpush_error(error: &str) -> String {
     format!("Push送信エラー: {}", error)
 }
 
+fn is_retryable_webpush_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("apns error: 429")
+        || lower.contains("too many requests")
+        || lower.contains("apns error: 5")
+        || lower.contains("timeout")
+        || lower.contains("reqwest error")
+}
+
 #[cfg(test)]
 mod webpush_error_message_tests {
     use super::*;
@@ -3232,16 +3241,33 @@ async fn fusen_send_to_iphone(
     let total_targets = pro_configs.len();
     for (index, config) in pro_configs.iter().enumerate() {
         let target = webpush_device_label(index, total_targets, config);
-        match webpush::send_web_push(&client, config, &vapid_keys, &plaintext).await {
-            Ok(_) => {
-                send_success_count += 1;
-                eprintln!("[webpush] 送信成功: target={}", target);
+        let mut last_error: Option<String> = None;
+        for attempt in 1..=3 {
+            match webpush::send_web_push(&client, config, &vapid_keys, &plaintext).await {
+                Ok(_) => {
+                    send_success_count += 1;
+                    eprintln!("[webpush] 送信成功: target={} attempt={}", target, attempt);
+                    last_error = None;
+                    break;
+                }
+                Err(e) => {
+                    let retryable = is_retryable_webpush_error(&e);
+                    let classified = classify_webpush_error(&e);
+                    eprintln!(
+                        "[webpush] 送信失敗: target={} attempt={} retryable={} error={}",
+                        target, attempt, retryable, classified
+                    );
+                    last_error = Some(classified);
+                    if !retryable || attempt == 3 {
+                        break;
+                    }
+                    let delay_ms = if attempt == 1 { 500 } else { 1500 };
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                }
             }
-            Err(e) => {
-                let classified = classify_webpush_error(&e);
-                eprintln!("[webpush] 送信失敗: target={} error={}", target, classified);
-                send_errors.push(format!("{}: {}", target, classified));
-            }
+        }
+        if let Some(error) = last_error {
+            send_errors.push(format!("{}: {}", target, error));
         }
     }
     eprintln!(
