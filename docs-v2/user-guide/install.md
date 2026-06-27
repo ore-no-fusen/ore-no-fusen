@@ -1,3 +1,7 @@
+---
+pageClass: user-guide-page
+---
+
 # はじめに・インストール
 
 俺の付箋は、Markdownで書けるWindows向けデスクトップ付箋アプリです。
@@ -23,10 +27,10 @@ SmartScreenが出た場合は、配布元がこのリポジトリであること
 | 効果音 | 完了音が欲しいならオン |
 | データ保存場所 | こだわりがなければ初期値 |
 
-データは基本的にPCローカルのMarkdownファイルとして保存されます。
+付箋データは、PCローカルのMarkdownファイルとして保存されます。初期値は次の場所です。設定で別のフォルダを選んだ場合は、そのフォルダを確認してください。
 
 ```txt
-C:\Users\[ユーザー名]\AppData\Roaming\ore-no-fusen
+C:\Users\[ユーザー名]\Documents\OreNoFusen
 ```
 
-次: [基本の使い方](./basic)
+次: [基本の使い方](./basic.html)

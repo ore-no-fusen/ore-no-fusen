@@ -1,3 +1,7 @@
+---
+pageClass: user-guide-page
+---
+
 # くわしい使い方
 
 表、図、画像、アラーム、整列で付箋を作業台として使えます。
@@ -19,9 +23,7 @@
 
 ![カンバン整列の基本セット](/arrange/arrange-basic.png)
 
-::: important
-整列はメインディスプレイに集約されます。
-:::
+> 整列はメインディスプレイに集約されます。
 
 ## ショートカット
 
@@ -32,4 +34,4 @@
 | `Ctrl+Shift+H` | 全付箋を隠す / 戻す |
 | `Ctrl+Shift+L` | タグで整列 |
 
-次: [iPhone連携](./iphone)
+次: [iPhone連携](./iphone.html)

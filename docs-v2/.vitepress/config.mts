@@ -21,62 +21,53 @@ export default withMermaid(defineConfig({
   },
   themeConfig: {
     nav: [
-      { text: 'INDEX', link: '/' },
-      { text: '000-I', link: '/000_INTENTION_LAYER' },
-      { text: '000', link: '/000_REQUIREMENTS' },
-      { text: '001', link: '/001_OVERVIEW' },
-      { text: '002', link: '/002_PC' },
-      { text: '003', link: '/003_IPHONE' },
-      { text: '004', link: '/004_TEST' },
-      { text: '005', link: '/005_GLOSSARY' },
-      { text: '006', link: '/006_ARCHITECTURE' },
-      { text: '007', link: '/007_COMMUNICATION' },
-      { text: 'USER GUIDE', link: '/user-guide/' },
-      { text: '100', link: '/100_PRIVACY' },
-      { text: '101', link: '/101_TERMS' },
-      { text: '200', link: '/200_SIRI_SETUP' }
+      { text: 'ユーザーガイド', link: '/user-guide/' },
+      { text: '設計書ポータル', link: '/' }
     ],
 
-    sidebar: [
-      {
-        text: 'ドキュメント一覧',
-        items: [
-          { text: 'INDEX', link: '/' },
-          { text: '000-I Intention Layer', link: '/000_INTENTION_LAYER' },
-          { text: '000 要求仕様', link: '/000_REQUIREMENTS' },
-          { text: '001 システム全体像', link: '/001_OVERVIEW' },
-          { text: '002 PC版設計', link: '/002_PC' },
-          { text: '003 iPhone版設計', link: '/003_IPHONE' },
-          { text: '004 テスト仕様', link: '/004_TEST' },
-          { text: '005 用語集', link: '/005_GLOSSARY' },
-          { text: '006 アーキテクチャ', link: '/006_ARCHITECTURE' },
-          { text: '007 コミュニケーション設計', link: '/007_COMMUNICATION' },
-          {
-            text: 'ユーザーガイド',
-            collapsed: false,
-            items: [
-              { text: 'ヘルプトップ', link: '/user-guide/' },
-              { text: 'はじめに・インストール', link: '/user-guide/install' },
-              { text: '基本の使い方', link: '/user-guide/basic' },
-              { text: 'くわしい使い方', link: '/user-guide/advanced' },
-              { text: 'iPhone連携', link: '/user-guide/iphone' },
-              { text: '困ったときに', link: '/user-guide/troubleshooting' },
-              { text: '漫画で学ぶ', link: '/user-guide/comic' }
-            ]
-          },
-          { text: '100 プライバシーポリシー', link: '/100_PRIVACY' },
-          { text: '101 利用規約', link: '/101_TERMS' },
-          { text: '200 Siri から PC に付箋を送る', link: '/200_SIRI_SETUP' }
-        ]
-      }
-    ],
+    sidebar: {
+      '/user-guide/': [
+        {
+          text: 'ユーザーガイド',
+          items: [
+            { text: 'ヘルプトップ', link: '/user-guide/' },
+            { text: 'はじめに・インストール', link: '/user-guide/install' },
+            { text: '基本の使い方', link: '/user-guide/basic' },
+            { text: 'くわしい使い方', link: '/user-guide/advanced' },
+            { text: 'iPhone連携', link: '/user-guide/iphone' },
+            { text: '困ったときに', link: '/user-guide/troubleshooting' },
+            { text: '漫画で学ぶ', link: '/user-guide/comic' }
+          ]
+        }
+      ],
+      '/': [
+        {
+          text: '設計書一覧',
+          items: [
+            { text: 'INDEX', link: '/' },
+            { text: '000-I Intention Layer', link: '/000_INTENTION_LAYER' },
+            { text: '000 要求仕様', link: '/000_REQUIREMENTS' },
+            { text: '001 システム全体像', link: '/001_OVERVIEW' },
+            { text: '002 PC版設計', link: '/002_PC' },
+            { text: '003 iPhone版設計', link: '/003_IPHONE' },
+            { text: '004 テスト仕様', link: '/004_TEST' },
+            { text: '005 用語集', link: '/005_GLOSSARY' },
+            { text: '006 アーキテクチャ', link: '/006_ARCHITECTURE' },
+            { text: '007 コミュニケーション設計', link: '/007_COMMUNICATION' },
+            { text: '100 プライバシーポリシー', link: '/100_PRIVACY' },
+            { text: '101 利用規約', link: '/101_TERMS' },
+            { text: '200 Siri から PC に付箋を送る', link: '/200_SIRI_SETUP' }
+          ]
+        }
+      ]
+    },
 
     search: {
       provider: 'local'
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/uck/ore-no-fusen' }
+      { icon: 'github', link: 'https://github.com/ore-no-fusen/ore-no-fusen' }
     ]
   }
 }))
