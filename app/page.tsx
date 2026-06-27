@@ -455,25 +455,41 @@ function OrchestratorContent() {
         let targetPhysX: number | undefined;
         let targetPhysY: number | undefined;
         if (sourceMeta) {
-          const srcH = sourceMeta.physHeight ?? Math.round(300 * sourceMeta.scale);
+          const isCursorAnchor = sourceMeta.physHeight === undefined;
+          const srcH = isCursorAnchor ? 0 : sourceMeta.physHeight ?? Math.round(300 * sourceMeta.scale);
           const newW = Math.round(400 * sourceMeta.scale);
           const newH = Math.round(300 * sourceMeta.scale);
           const gap = Math.round(10 * sourceMeta.scale);
+          const anchorY = isCursorAnchor
+            ? Math.max(0, sourceMeta.physY - Math.round(54 * sourceMeta.scale))
+            : sourceMeta.physY;
           const leftX = sourceMeta.physX - newW - gap;
           if (leftX >= 0) {
             targetPhysX = leftX;
-            targetPhysY = sourceMeta.physY;
+            targetPhysY = anchorY;
           } else {
             const belowY = sourceMeta.physY + srcH + gap;
             let screenPhysBottom = belowY + newH + 1;
             try {
               const { monitorFromPoint } = await import('@tauri-apps/api/window');
-              const mon = await monitorFromPoint(sourceMeta.physX / sourceMeta.scale, sourceMeta.physY / sourceMeta.scale);
+              const mon = await monitorFromPoint(sourceMeta.physX, sourceMeta.physY);
               if (mon) screenPhysBottom = mon.workArea.position.y + mon.workArea.size.height;
             } catch (_) {}
             targetPhysX = sourceMeta.physX;
-            targetPhysY = belowY + newH <= screenPhysBottom ? belowY : sourceMeta.physY - newH - gap;
+            targetPhysY = belowY + newH <= screenPhysBottom ? belowY : anchorY - newH - gap;
           }
+          try {
+            const { monitorFromPoint } = await import('@tauri-apps/api/window');
+            const mon = await monitorFromPoint(sourceMeta.physX, sourceMeta.physY);
+            if (mon) {
+              const left = mon.workArea.position.x;
+              const top = mon.workArea.position.y;
+              const right = left + mon.workArea.size.width;
+              const bottom = top + mon.workArea.size.height;
+              targetPhysX = Math.min(Math.max(targetPhysX, left), Math.max(left, right - newW));
+              targetPhysY = Math.min(Math.max(targetPhysY, top), Math.max(top, bottom - newH));
+            }
+          } catch (_) {}
         }
 
         let sizeScale = sourceMeta?.scale;
@@ -538,18 +554,35 @@ function OrchestratorContent() {
           await openNoteWindow(newNote.meta.path, sourceMeta ? await (async () => {
             const lx = sourceMeta.physX / sourceMeta.scale;
             const ly = sourceMeta.physY / sourceMeta.scale;
-            const srcH = sourceMeta.physHeight ? sourceMeta.physHeight / sourceMeta.scale : 300;
+            const isCursorAnchor = sourceMeta.physHeight === undefined;
+            const srcH = isCursorAnchor ? 0 : sourceMeta.physHeight ? sourceMeta.physHeight / sourceMeta.scale : 300;
+            const anchorY = isCursorAnchor ? Math.max(0, ly - 54) : ly;
             const leftX = lx - 400 - 10;
-            if (leftX >= 0) return { x: leftX, y: ly, width: 400, height: 300 };
-            const belowY = ly + srcH + 10;
-            let screenLogBottom = belowY + 300 + 1;
+            let x = leftX >= 0 ? leftX : lx;
+            let clampedY = anchorY;
+            if (leftX < 0) {
+              const belowY = ly + srcH + 10;
+              let screenLogBottom = belowY + 300 + 1;
+              try {
+                const { monitorFromPoint } = await import('@tauri-apps/api/window');
+                const mon = await monitorFromPoint(lx, ly);
+                if (mon) screenLogBottom = (mon.workArea.position.y + mon.workArea.size.height) / sourceMeta.scale;
+              } catch (_) {}
+              clampedY = belowY + 300 <= screenLogBottom ? belowY : anchorY - 300 - 10;
+            }
             try {
               const { monitorFromPoint } = await import('@tauri-apps/api/window');
               const mon = await monitorFromPoint(lx, ly);
-              if (mon) screenLogBottom = (mon.workArea.position.y + mon.workArea.size.height) / sourceMeta.scale;
+              if (mon) {
+                const left = mon.workArea.position.x / sourceMeta.scale;
+                const top = mon.workArea.position.y / sourceMeta.scale;
+                const right = left + mon.workArea.size.width / sourceMeta.scale;
+                const bottom = top + mon.workArea.size.height / sourceMeta.scale;
+                x = Math.min(Math.max(x, left), Math.max(left, right - 400));
+                clampedY = Math.min(Math.max(clampedY, top), Math.max(top, bottom - 300));
+              }
             } catch (_) {}
-            const y = belowY + 300 <= screenLogBottom ? belowY : ly - 300 - 10;
-            return { x: lx, y, width: 400, height: 300 };
+            return { x, y: clampedY, width: 400, height: 300 };
           })() : undefined, true);
 
           invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
