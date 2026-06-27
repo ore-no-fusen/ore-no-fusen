@@ -28,8 +28,8 @@ export function openDraftsDB(): Promise<IDBDatabase> {
 async function serializeImages(images: { fileName: string; blob: Blob }[]): Promise<unknown[]> {
   return Promise.all(images.map(async (img: any) => {
     if (img.blob instanceof Blob) {
-      const data = await img.blob.arrayBuffer().catch(() => null);
-      return data ? { fileName: img.fileName, data, type: img.blob.type || 'image/jpeg' } : null;
+      const data = await img.blob.arrayBuffer();
+      return { fileName: img.fileName, data, type: img.blob.type || 'image/jpeg' };
     }
     return img; // すでに ArrayBuffer 形式
   })).then((r) => r.filter(Boolean));

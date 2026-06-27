@@ -67,6 +67,10 @@ function withGoogleAccount<T extends Record<string, unknown>>(entry: T, account:
   };
 }
 
+function isDriveFileNotFoundError(error: unknown, fileName: string): boolean {
+  return error instanceof Error && error.message === `${fileName} not found in Drive`;
+}
+
 /**
  * 責務: Drive の push_devices.json に自デバイスが存在しなければ静かに再登録する
  * 入力: accessToken
@@ -77,7 +81,13 @@ export async function silentReRegisterIfNeeded(accessToken: string): Promise<voi
   const deviceId = localStorage.getItem('viewer_device_id');
   if (!deviceId) return; // 一度も登録していない端末
 
-  const existing = await downloadFromDrive(accessToken, 'push_devices.json').catch(() => ({}));
+  let existing: any;
+  try {
+    existing = await downloadFromDrive(accessToken, 'push_devices.json');
+  } catch (error) {
+    if (!isDriveFileNotFoundError(error, 'push_devices.json')) return;
+    existing = {};
+  }
   const devices: any[] = existing?.devices ?? [];
   const account = await fetchGoogleAccount(accessToken).catch(() => null);
   const existingDevice = devices.find((d: any) => d.device_id === deviceId);
