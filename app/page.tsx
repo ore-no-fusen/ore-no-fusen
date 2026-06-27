@@ -1090,9 +1090,23 @@ function OrchestratorContent() {
             allowRename: false,
           });
           // タグ適用（tags が配列で存在する場合）
+          // 一時的な書込失敗はそのタグだけリトライで自動復旧する。最終的に失敗した場合は
+          // 黙殺せずログに残す（本文は保存済み。Driveキューは後段でackし重複作成を避ける）。
           if (tags && tags.length > 0) {
             for (const tag of tags) {
-              await invoke('fusen_add_tag', { path: newNote.meta.path, tag }).catch(() => {});
+              let tagAdded = false;
+              for (let attempt = 1; attempt <= 3 && !tagAdded; attempt++) {
+                try {
+                  await invoke('fusen_add_tag', { path: newNote.meta.path, tag });
+                  tagAdded = true;
+                } catch (tagError) {
+                  if (attempt < 3) {
+                    await new Promise((r) => setTimeout(r, 50 * attempt));
+                  } else {
+                    console.error(`[iphone] タグ付与に失敗（${attempt}回試行）: ${tag}`, tagError);
+                  }
+                }
+              }
             }
           }
           playCreateSound();
