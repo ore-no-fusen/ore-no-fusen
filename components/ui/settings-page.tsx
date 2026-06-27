@@ -1266,10 +1266,10 @@ function HelpSection({ t }: { t: (key: any) => string }) {
                     onClick={async () => {
                         try {
                             const { open } = await import('@tauri-apps/plugin-shell');
-                            await open('https://github.com/ore-no-fusen/ore-no-fusen/wiki');
+                            await open('https://ore-no-fusen.github.io/ore-no-fusen/user-guide/');
                         } catch (e) {
                             console.error('[HelpSection] open user guide failed:', e);
-                            window.open('https://github.com/ore-no-fusen/ore-no-fusen/wiki', '_blank');
+                            window.open('https://ore-no-fusen.github.io/ore-no-fusen/user-guide/', '_blank');
                         }
                     }}
                     className="shrink-0 rounded-md bg-sky-700 px-4 py-2 text-sm font-bold text-white hover:bg-sky-800 transition-colors"
@@ -3477,4 +3477,3 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
         </div>
     )
 }
-
