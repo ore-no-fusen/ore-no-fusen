@@ -1383,8 +1383,12 @@ fn setup_first_launch(
     }
 
     // 4. 設定保存
-    // 既存の設定を読み込んで、base_pathだけを更新する
-    let mut settings = storage::load_settings().unwrap_or_default();
+    // 既存の設定を読み込んで、base_pathだけを更新する。
+    // 設定ファイルが壊れている/一時的に読めない場合は握りつぶさず中断する。
+    // （load_settings はファイル不在なら Ok(既定) を返すため、? でエラーになるのは
+    //  「存在するが読めない/壊れている」時だけ。空の既定で全設定を上書き保存して
+    //  言語・同期設定などユーザー設定を丸ごと消す事故を防ぐ。）
+    let mut settings = storage::load_settings()?;
     settings.base_path = Some(base_path.clone());
 
     storage::save_settings(&settings).map_err(|e| {
