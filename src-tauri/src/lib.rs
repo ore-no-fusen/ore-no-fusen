@@ -1006,13 +1006,25 @@ fn fusen_delete_tag_globally(
                         content,
                     } = effect
                     {
-                        match storage::write_note(&write_path, &content) {
+                        // 一時的な書込失敗（ファイルロック等）は、その1枚だけ短いリトライで
+                        // 自動復旧を試みる。最大3回試して全滅した分だけ failed_writes に記録する。
+                        let mut write_result = storage::write_note(&write_path, &content);
+                        let mut attempts = 1;
+                        while write_result.is_err() && attempts < 3 {
+                            std::thread::sleep(std::time::Duration::from_millis(50 * attempts));
+                            write_result = storage::write_note(&write_path, &content);
+                            attempts += 1;
+                        }
+                        match write_result {
                             Ok(_) => {
                                 modified_count += 1;
                                 modified_paths.push(write_path);
                             }
                             Err(e) => {
-                                failed_writes.push(format!("{}: {}", write_path, e));
+                                failed_writes.push(format!(
+                                    "{} ({}回試行後): {}",
+                                    write_path, attempts, e
+                                ));
                             }
                         }
                     }
