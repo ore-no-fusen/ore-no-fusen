@@ -981,6 +981,21 @@ fn fusen_delete_tag_globally(
     // Reload all notes to get the most up-to-date list
     app_state.notes = storage::list_notes(&base_path);
 
+    // [事前チェック] 1枚でも書き換える前に、保存先フォルダが書き込み可能かを試し書きで確認する。
+    // 権限なし・フォルダ消失・ディスク満杯などの「全滅する失敗」をここで先に弾き、
+    // 付箋を中途半端に書き換えた状態を作らない（ユーザーに部分失敗を踏ませない）。
+    // 個別ファイルの一時ロックは検知時刻と書込時刻の差で見抜けないため、そこはリトライが受け持つ。
+    {
+        let probe_path = std::path::Path::new(&base_path).join(".fusen_write_probe.tmp");
+        if let Err(e) = std::fs::write(&probe_path, b"") {
+            return Err(format!(
+                "保存先フォルダに書き込めません。タグ削除を中止しました（付箋は変更していません）: {}",
+                e
+            ));
+        }
+        let _ = std::fs::remove_file(&probe_path);
+    }
+
     let mut modified_count = 0;
     let mut modified_paths: Vec<String> = Vec::new(); // Track modified paths
     let mut failed_writes: Vec<String> = Vec::new();
