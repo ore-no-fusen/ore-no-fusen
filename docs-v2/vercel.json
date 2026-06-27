@@ -1,0 +1,35 @@
+{
+  "buildCommand": "npm run docs:build",
+  "outputDirectory": ".vitepress/dist",
+  "installCommand": "npm ci",
+  "rewrites": [
+    {
+      "source": "/ore-no-fusen/assets/:path*",
+      "destination": "/assets/:path*"
+    },
+    {
+      "source": "/ore-no-fusen/promo/:path*",
+      "destination": "/promo/:path*"
+    },
+    {
+      "source": "/ore-no-fusen/vp-icons.css",
+      "destination": "/vp-icons.css"
+    },
+    {
+      "source": "/ore-no-fusen/user-guide/",
+      "destination": "/user-guide/index.html"
+    },
+    {
+      "source": "/ore-no-fusen/user-guide/:path",
+      "destination": "/user-guide/:path.html"
+    },
+    {
+      "source": "/ore-no-fusen/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/ore-no-fusen/:path*",
+      "destination": "/:path*"
+    }
+  ]
+}
