@@ -30,7 +30,10 @@ type UseStickyNoteContextMenuProps = {
     removeTagFromNote: (path: string, tag: string) => Promise<void>;
     isDeletingRef: React.MutableRefObject<boolean>;
     setNoteBackgroundColor: (color: string) => void;
+    setNoteFontSize: (size: number) => void;
+    globalFontSize: number;
     updateFrontmatter: (key: string, value: any) => void;
+    removeFrontmatter: (key: string) => void;
     shellRef: React.RefObject<HTMLDivElement>;
     setShowTagModal: (show: boolean) => void;
     setTagInputValue: (val: string) => void;
@@ -59,7 +62,10 @@ export function useStickyNoteContextMenu({
     removeTagFromNote,
     isDeletingRef,
     setNoteBackgroundColor,
+    setNoteFontSize,
+    globalFontSize,
     updateFrontmatter,
+    removeFrontmatter,
     shellRef,
     setShowTagModal,
     setTagInputValue,
@@ -121,6 +127,17 @@ export function useStickyNoteContextMenu({
             shellRef.current.style.setProperty('background-color', newColor, 'important');
         }
     }, [updateFrontmatter, setNoteBackgroundColor, shellRef]);
+
+    // 文字サイズ変更（null を渡すとグローバルに戻す）
+    const handleFontSizeChange = useCallback((newSize: number | null) => {
+        if (newSize === null) {
+            setNoteFontSize(globalFontSize);
+            removeFrontmatter('fontSize');
+        } else {
+            setNoteFontSize(newSize);
+            updateFrontmatter('fontSize', newSize);
+        }
+    }, [updateFrontmatter, removeFrontmatter, setNoteFontSize, globalFontSize]);
 
     // 透明度変更
     const handleOpacityChange = useCallback(async (opacity: number) => {
@@ -292,6 +309,16 @@ export function useStickyNoteContextMenu({
             ];
             const opacitySubmenu = await Submenu.new({ id: 'ctx_opacity_submenu', text: t('menu.changeOpacity'), items: opacityItems });
 
+            // 文字サイズサブメニュー
+            const fontSizeItems = [
+                await MenuItem.new({ id: 'ctx_fontsize_reset', text: t('menu.fontSize.reset'), action: () => handleFontSizeChange(null) }),
+                await MenuItem.new({ id: 'ctx_fontsize_small', text: t('menu.fontSize.small'), action: () => handleFontSizeChange(12) }),
+                await MenuItem.new({ id: 'ctx_fontsize_medium', text: t('menu.fontSize.medium'), action: () => handleFontSizeChange(16) }),
+                await MenuItem.new({ id: 'ctx_fontsize_large', text: t('menu.fontSize.large'), action: () => handleFontSizeChange(20) }),
+                await MenuItem.new({ id: 'ctx_fontsize_xlarge', text: t('menu.fontSize.xlarge'), action: () => handleFontSizeChange(28) })
+            ];
+            const fontSizeSubmenu = await Submenu.new({ id: 'ctx_fontsize_submenu', text: `📏 ${t('menu.changeFontSize')}`, items: fontSizeItems });
+
             const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
 
             // メニュー項目の構築
@@ -304,6 +331,7 @@ export function useStickyNoteContextMenu({
                 duplicateItem,
                 colorSubmenu,
                 opacitySubmenu,
+                fontSizeSubmenu,
                 separatorCommon
             ];
 
@@ -510,7 +538,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled, handleFontSizeChange]);
 
 
     // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）

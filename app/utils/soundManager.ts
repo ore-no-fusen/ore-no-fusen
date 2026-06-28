@@ -20,6 +20,142 @@ const SOUND_FILES: Record<SoundType, string> = {
     'delete': '/sounds/delete.wav',
 };
 
+const CHECK_COMPLETED_COUNT_KEY = 'ore-no-fusen.checkbox.completed_count';
+const CHECK_MILESTONE_INTERVAL = 100;
+
+function incrementCheckboxCompletedCount(): number {
+    if (typeof window === 'undefined') return 1;
+
+    try {
+        const current = Number.parseInt(localStorage.getItem(CHECK_COMPLETED_COUNT_KEY) ?? '0', 10);
+        const next = (Number.isFinite(current) ? current : 0) + 1;
+        localStorage.setItem(CHECK_COMPLETED_COUNT_KEY, String(next));
+        return next;
+    } catch {
+        return 1;
+    }
+}
+
+async function playCheckboxMilestoneSound(): Promise<void> {
+    const enabled = await isSoundEnabled();
+    if (!enabled || typeof window === 'undefined') return;
+
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) {
+        await playLocalSound('create', 0.45);
+        return;
+    }
+
+    try {
+        const context = new AudioContextClass();
+        const masterGain = context.createGain();
+        masterGain.gain.setValueAtTime(0.22, context.currentTime);
+        masterGain.connect(context.destination);
+
+        const notes = [
+            { frequency: 523.25, duration: 0.08 },
+            { frequency: 659.25, duration: 0.08 },
+            { frequency: 783.99, duration: 0.08 },
+            { frequency: 1046.5, duration: 0.16 },
+        ];
+
+        let startTime = context.currentTime;
+        for (const note of notes) {
+            const oscillator = context.createOscillator();
+            const overtone = context.createOscillator();
+            const noteGain = context.createGain();
+            const endTime = startTime + note.duration;
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(note.frequency, startTime);
+            overtone.type = 'triangle';
+            overtone.frequency.setValueAtTime(note.frequency * 2, startTime);
+
+            noteGain.gain.setValueAtTime(0.0001, startTime);
+            noteGain.gain.exponentialRampToValueAtTime(1.0, startTime + 0.01);
+            noteGain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+            oscillator.connect(noteGain);
+            overtone.connect(noteGain);
+            noteGain.connect(masterGain);
+
+            oscillator.start(startTime);
+            overtone.start(startTime);
+            oscillator.stop(endTime);
+            overtone.stop(endTime);
+
+            startTime = endTime;
+        }
+
+        setTimeout(() => {
+            context.close().catch(() => { });
+        }, Math.ceil((startTime - context.currentTime + 0.05) * 1000));
+    } catch (e) {
+        console.error('[SoundManager] Failed to play checkbox milestone sound:', e);
+        await playLocalSound('create', 0.45);
+    }
+}
+
+async function playCheckboxCompletionSound(): Promise<void> {
+    const enabled = await isSoundEnabled();
+    if (!enabled || typeof window === 'undefined') return;
+
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) {
+        await playLocalSound('save', 0.35);
+        return;
+    }
+
+    try {
+        const context = new AudioContextClass();
+        const masterGain = context.createGain();
+        masterGain.gain.setValueAtTime(0.18, context.currentTime);
+        masterGain.connect(context.destination);
+
+        const startTime = context.currentTime;
+        const duration = 0.165;
+        const notes = [
+            { frequency: 659, gain: 0.34, delay: 0 },
+            { frequency: 988, gain: 0.22, delay: 0 },
+            { frequency: 1318, gain: 0.15, delay: 0 },
+            { frequency: 1568, gain: 0.16, delay: 0.035 },
+        ];
+
+        for (const note of notes) {
+            const oscillator = context.createOscillator();
+            const overtone = context.createOscillator();
+            const noteGain = context.createGain();
+            const noteStart = startTime + note.delay;
+            const noteEnd = startTime + duration;
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+            overtone.type = 'sine';
+            overtone.frequency.setValueAtTime(note.frequency * 2, noteStart);
+
+            noteGain.gain.setValueAtTime(0.0001, noteStart);
+            noteGain.gain.exponentialRampToValueAtTime(note.gain, noteStart + 0.007);
+            noteGain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+
+            oscillator.connect(noteGain);
+            overtone.connect(noteGain);
+            noteGain.connect(masterGain);
+
+            oscillator.start(noteStart);
+            overtone.start(noteStart);
+            oscillator.stop(noteEnd);
+            overtone.stop(noteEnd);
+        }
+
+        setTimeout(() => {
+            context.close().catch(() => { });
+        }, Math.ceil((duration + 0.05) * 1000));
+    } catch (e) {
+        console.error('[SoundManager] Failed to play checkbox completion sound:', e);
+        await playLocalSound('save', 0.35);
+    }
+}
+
 /**
  * 実際に音を再生する（ローカル再生用）
  * page.tsx など、常駐するプロセスから呼ばれることを想定
@@ -91,4 +227,16 @@ export async function playSaveSound(): Promise<void> {
  */
 export async function playDeleteSound(): Promise<void> {
     return playSound('delete', 0.3);
+}
+
+/**
+ * チェックボックス完了時の効果音
+ */
+export async function playCheckboxSound(): Promise<void> {
+    const completedCount = incrementCheckboxCompletedCount();
+    if (completedCount % CHECK_MILESTONE_INTERVAL === 0) {
+        return playCheckboxMilestoneSound();
+    }
+
+    return playCheckboxCompletionSound();
 }

@@ -128,6 +128,25 @@ struct PushConfigKeys {
     auth: String,
 }
 
+fn parse_pc_devices_for_update(value: serde_json::Value) -> Result<Vec<PcDeviceInfo>, String> {
+    serde_json::from_value::<PcDevicesJson>(value)
+        .map_err(|e| format!("pc_devices parse error: {}", e))?
+        .pcs
+        .ok_or_else(|| "pc_devices parse error: missing pcs".to_string())
+}
+
+fn ensure_push_devices_writable(value: &serde_json::Value) -> Result<bool, String> {
+    if value.get("devices").and_then(|d| d.as_array()).is_some() {
+        return Ok(true);
+    }
+    if value.get("endpoint").and_then(|v| v.as_str()).is_some()
+        && value.get("keys").and_then(|v| v.as_object()).is_some()
+    {
+        return Ok(false);
+    }
+    Err("push_config parse error: missing devices".to_string())
+}
+
 #[derive(Deserialize)]
 struct TokenRefreshResponse {
     access_token: String,
@@ -891,10 +910,7 @@ pub async fn register_pc_device(client: &Client) -> Result<PcDeviceInfo, String>
     }
 
     let mut pcs = match download_json(client, &token, PC_DEVICES_FILE).await {
-        Ok(value) => serde_json::from_value::<PcDevicesJson>(value)
-            .map_err(|e| format!("pc_devices parse error: {}", e))?
-            .pcs
-            .unwrap_or_default(),
+        Ok(value) => parse_pc_devices_for_update(value)?,
         Err(e) if e.contains("File not found") => Vec::new(),
         Err(e) => return Err(e),
     };
@@ -914,10 +930,7 @@ pub async fn delete_pc_device_by_id(client: &Client, pc_id: &str) -> Result<(), 
     let token = get_access_token(client).await?;
 
     let mut pcs = match download_json(client, &token, PC_DEVICES_FILE).await {
-        Ok(value) => serde_json::from_value::<PcDevicesJson>(value)
-            .map_err(|e| format!("pc_devices parse error: {}", e))?
-            .pcs
-            .unwrap_or_default(),
+        Ok(value) => parse_pc_devices_for_update(value)?,
         Err(e) if e.contains("File not found") => Vec::new(),
         Err(e) => return Err(e),
     };
@@ -936,6 +949,10 @@ pub async fn delete_pc_device_by_id(client: &Client, pc_id: &str) -> Result<(), 
 pub async fn delete_push_device(client: &Client, device_id: &str) -> Result<(), String> {
     let token = get_access_token(client).await?;
     let mut value = download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json").await?;
+
+    if !ensure_push_devices_writable(&value)? {
+        return Ok(());
+    }
 
     if let Some(devices) = value.get_mut("devices").and_then(|d| d.as_array_mut()) {
         devices.retain(|d| d.get("device_id").and_then(|id| id.as_str()) != Some(device_id));

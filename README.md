@@ -90,7 +90,7 @@ FUSEN is designed as a fast thinking canvas where ideas can appear the moment th
 - Disk Space: Approx. 100MB
 - Memory: 4GB+ recommended
 
-For detailed instructions, see the [User Guide](docs/100_USER_GUIDE.md#インストール) (Currently in Japanese).
+For detailed instructions, see the [User Guide on Wiki (Ch.1)](https://github.com/ore-no-fusen/ore-no-fusen/wiki/01-はじめに-インストール) (Currently in Japanese).
 
 ### ⚠️ About "SmartScreen" Warning During Installation
 
@@ -150,7 +150,7 @@ Build artifacts will be generated in `src-tauri\target\release\bundle\nsis\`.
 3. **Search** - Press `Ctrl+F` to open the search window
 4. **Tagging** - Write `#tagname` within a note to automatically tag it
 
-For detailed usage, please see the [User Guide](docs/100_USER_GUIDE.md).
+For detailed usage, please see the [User Guide on Wiki](https://github.com/ore-no-fusen/ore-no-fusen/wiki).
 
 ### Markdown Example
 
@@ -214,7 +214,7 @@ Save frequently used links on sticky notes. Group them using tags.
 ## 📖 Documentation
 
 - [Online Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) - System specifications and architecture (JA)
-- [User Guide](docs/100_USER_GUIDE.md) - Detailed instructions (JA)
+- [User Guide on Wiki](https://github.com/ore-no-fusen/ore-no-fusen/wiki) - Detailed instructions (JA)
 - [FAQ](docs/101_FAQ.md) - Frequently asked questions (JA)
 - [Development Rules](AG_RULES.md) - Guidelines for developers
 

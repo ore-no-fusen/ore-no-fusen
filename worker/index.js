@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '4.0.2-pwa.1';
+const SW_VERSION = '4.4.0-pwa.1';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -167,12 +167,21 @@ function downloadImagesFromDrive(token, body) {
   }).then((results) => results.filter(Boolean)).catch(() => []);
 }
 
+function mergeImagesForBody(body, existingImages, newImages) {
+  const expectedNames = extractImageFileNames(body);
+  const existingByName = new Map((existingImages || []).filter((img) => img?.fileName).map((img) => [img.fileName, img]));
+  const newByName = new Map((newImages || []).filter((img) => img?.fileName).map((img) => [img.fileName, img]));
+  if (expectedNames.length === 0) return newImages || [];
+  return expectedNames
+    .map((fileName) => newByName.get(fileName) || existingByName.get(fileName))
+    .filter(Boolean);
+}
+
 /** fusen-drafts IndexedDB に保存する（Blob → ArrayBuffer 変換でiOS互換） */
 function saveToIndexedDB(id, title, body, images) {
   const imagePromises = (images || []).map(({ fileName, blob }) =>
     (blob && blob.arrayBuffer ? blob.arrayBuffer() : Promise.resolve(null))
       .then((ab) => ab ? { fileName, data: ab, type: blob.type || 'image/jpeg' } : null)
-      .catch(() => null)
   );
   return Promise.all(imagePromises).then((processed) => {
     const validImages = processed.filter(Boolean);
@@ -181,10 +190,24 @@ function saveToIndexedDB(id, title, body, images) {
       req.onupgradeneeded = () => req.result.createObjectStore('drafts');
       req.onsuccess = () => {
         const tx = req.result.transaction('drafts', 'readwrite');
-        tx.objectStore('drafts').put(
-          { id, title, body, created_at: nowJST(), images: validImages, received_pc: true, locked: true },
-          id
-        );
+        const store = tx.objectStore('drafts');
+        const getReq = store.get(id);
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          store.put(
+            {
+              ...existing,
+              id,
+              title,
+              body,
+              created_at: existing?.created_at || nowJST(),
+              images: mergeImagesForBody(body, existing?.images, validImages),
+              received_pc: true,
+              locked: true,
+            },
+            id
+          );
+        };
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(new Error('IndexedDB transaction failed'));
       };

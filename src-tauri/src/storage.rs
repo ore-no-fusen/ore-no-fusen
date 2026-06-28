@@ -126,6 +126,7 @@ pub fn import_files(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
                     Some("#f7e9b0"),
                     &[],
                     None, // folded
+                    None,
                     None
                 );
                 
@@ -196,13 +197,14 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
         let (x, y, width, height, background_color, always_on_top, tags, folded) =
             logic::extract_meta_from_content(&final_content);
         let opacity = logic::extract_opacity(&final_content);
+        let font_size = logic::extract_font_size(&final_content);
 
         notes.push(NoteMeta {
             path: actual_path.to_string_lossy().to_string(),
             seq,
             context,
             updated,
-            x, y, width, height, background_color, always_on_top, folded, opacity,
+            x, y, width, height, background_color, always_on_top, folded, opacity, font_size,
             tags,
         });
     }
@@ -284,7 +286,7 @@ fn migrate_to_frontmatter(path: &PathBuf, content: &str, folder_path: &str) -> R
     let new_filename = logic::generate_filename(seq, &today, &context);
     let new_path = PathBuf::from(folder_path).join(&new_filename);
 
-    let frontmatter = logic::generate_frontmatter(seq, &context, &today, &today, Some("#f7e9b0"), &[], None, None);
+    let frontmatter = logic::generate_frontmatter(seq, &context, &today, &today, Some("#f7e9b0"), &[], None, None, None);
     let new_content = format!("{}\n\n{}", frontmatter, content);
 
     if fs::write(&new_path, &new_content).is_err() {
@@ -320,6 +322,7 @@ pub fn read_note(path: &str) -> Result<Note, String> {
     // 2. コンテンツから拡張メタデータを解析（list_notesと同様のロジック）
     let (x, y, width, height, background_color, always_on_top, tags, folded) = logic::extract_meta_from_content(&content);
     let opacity = logic::extract_opacity(&content);
+    let font_size = logic::extract_font_size(&content);
 
     // 3. 正しい値をセットして返す
     Ok(Note {
@@ -339,6 +342,7 @@ pub fn read_note(path: &str) -> Result<Note, String> {
             tags,
             folded,
             opacity,
+            font_size,
         },
     })
 }

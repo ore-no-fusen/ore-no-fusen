@@ -163,6 +163,7 @@ export function useNoteList({
         );
         const savedDrafts = saveResults.filter((d): d is DraftRecord => d !== null);
         const allPendingSaved = savedDrafts.length === toSave.length;
+        const allSavedImagesComplete = savedDrafts.every((d) => !hasMissingImages(d));
 
         // IndexedDB 保存済み画像を Drive から削除（リソース解放）
         if (accessToken) {
@@ -173,7 +174,7 @@ export function useNoteList({
         }
 
         // Drive から読めた場合も、ローカル保存が全部成功したときだけ処理済みとして削除
-        if (driveItems.length > 0 && accessToken && allPendingSaved) {
+        if (driveItems.length > 0 && accessToken && allPendingSaved && allSavedImagesComplete) {
           deleteFileFromDrive(accessToken, 'notes_to_iphone.json').catch(() => {});
         }
 

@@ -21,6 +21,7 @@ export type NoteMeta = {
     width?: number;
     height?: number;
     background_color?: string;
+    font_size?: number;
     always_on_top?: boolean;
     folded?: boolean;
     opacity?: number;
@@ -68,4 +69,3 @@ export async function saveNote(
         allowRename
     });
 }
-

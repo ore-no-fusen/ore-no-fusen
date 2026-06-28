@@ -51,6 +51,20 @@
   text-align: center !important;
   white-space: nowrap !important;
 }
+
+.user-guide-page .vp-doc table {
+  table-layout: auto !important;
+  min-width: 0;
+}
+.user-guide-page .vp-doc table th:first-child,
+.user-guide-page .vp-doc table td:first-child {
+  width: auto !important;
+  min-width: 96px !important;
+  max-width: none !important;
+  padding-left: 14px !important;
+  padding-right: 14px !important;
+  text-align: left !important;
+}
 /* 表キャプション直後の要素（table / grid div）は上マージンを詰める */
 .vp-doc .table-caption + table,
 .vp-doc .table-caption + div {

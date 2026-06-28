@@ -44,6 +44,7 @@ import { pathsEqual, getFileName } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
 import { resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
+import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
@@ -161,6 +162,7 @@ const StickyNote = memo(function StickyNote() {
         loadNote,
         saveNoteContent,
         updateFrontmatter,
+        removeFrontmatter,
         setSavePending,
         setContent,
         setRawFrontmatter,
@@ -187,7 +189,7 @@ const StickyNote = memo(function StickyNote() {
 
 
     // スタイル関連（カスタムフックで一元管理）
-    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize } = useNoteStyles(note);
+    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize, setNoteFontSize } = useNoteStyles(note);
 
     // 削除・アーカイブ中の保存防止フラグ
     const isDeletingRef = useRef(false);
@@ -1119,6 +1121,10 @@ const StickyNote = memo(function StickyNote() {
             setContent(newText);
             setEditBody(newText);
             setSavePending(true);
+
+            if (!isChecked) {
+                void playCheckboxSound();
+            }
         }
     };
 
@@ -1504,7 +1510,10 @@ const StickyNote = memo(function StickyNote() {
         removeTagFromNote,
         isDeletingRef,
         setNoteBackgroundColor,
+        setNoteFontSize,
+        globalFontSize: settings.font_size,
         updateFrontmatter,
+        removeFrontmatter,
         shellRef,
         setShowTagModal,
         setTagInputValue,
@@ -1524,6 +1533,33 @@ const StickyNote = memo(function StickyNote() {
         resolveCreateFolderPath,
         iphoneSendEnabled: settings.iphone_send_enabled,
     });
+
+    const handleArchiveFromHoverButton = useCallback(async () => {
+        if (!selectedFile || currentTags.length > 1) return;
+
+        try {
+            isDeletingRef.current = true;
+            await saveNoteContent(editBody, rawFrontmatter, false);
+            await playSaveSound();
+            await invoke('fusen_archive_note', { path: selectedFile.path, targetTag: currentTags[0] ?? null });
+            const win = getCurrentWindow();
+            await win.hide();
+            await win.destroy();
+        } catch (e) {
+            isDeletingRef.current = false;
+            console.error('Failed to archive note:', e);
+            alert(`${t('menu.archive_failed')}\n${e}`);
+        }
+    }, [selectedFile, currentTags, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
+
+    const handleOpenTagFolder = useCallback(async (tag: string) => {
+        try {
+            await invoke('fusen_open_tag_folder', { tag });
+        } catch (e) {
+            console.error('Failed to open tag folder:', e);
+            alert(`${t('menu.openTagFolderFailed')}\n${e}`);
+        }
+    }, [t]);
 
     /**
      * ローカルキーボードショートカット（この付箋ウィンドウがアクティブな時のみ有効）
@@ -2026,14 +2062,29 @@ const StickyNote = memo(function StickyNote() {
                     <div className="flex items-center justify-end gap-1 pointer-events-auto">
                         {currentTags.length > 0 && (
                             <div className="flex gap-1 flex-wrap max-w-[250px] justify-end">
-                                {currentTags.slice(0, 3).map((tag: string, idx: number) => (
-                                    <span
-                                        key={idx}
-                                        className="text-[10px] px-2 py-[3px] bg-gray-200/80 text-gray-700 rounded border border-gray-300/80 whitespace-nowrap font-medium shadow-sm"
-                                    >
-                                        {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
-                                    </span>
-                                ))}
+                                {currentTags.slice(0, 3).map((tag: string, idx: number) => {
+                                    const openTagFolderLabel = t('menu.openTagFolder').replace('{tag}', tag);
+                                    return (
+                                        <Tooltip key={idx} text={openTagFolderLabel} placement="top-right-arrow-shifted">
+                                            <button
+                                                type="button"
+                                                aria-label={openTagFolderLabel}
+                                                onPointerDown={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                }}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleOpenTagFolder(tag);
+                                                }}
+                                                className="text-[10px] px-2 py-[3px] bg-gray-200/80 text-gray-700 rounded border border-gray-300/80 whitespace-nowrap font-medium shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors cursor-pointer"
+                                            >
+                                                {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
+                                            </button>
+                                        </Tooltip>
+                                    );
+                                })}
                                 {currentTags.length > 3 && (
                                     <span
                                         className="text-[10px] px-2 py-[3px] bg-gray-200/50 text-gray-500 rounded border border-gray-300/50 whitespace-nowrap font-medium"
@@ -2042,6 +2093,26 @@ const StickyNote = memo(function StickyNote() {
                                     </span>
                                 )}
                             </div>
+                        )}
+                        {currentTags.length <= 1 && (
+                            <Tooltip text={t('menu.archive')} placement="top-right-arrow-shifted">
+                                <button
+                                    type="button"
+                                    aria-label={t('menu.archive')}
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleArchiveFromHoverButton();
+                                    }}
+                                    className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
+                                >
+                                    📦
+                                </button>
+                            </Tooltip>
                         )}
                         <Tooltip text={t('menu.delete')} hint="Ctrl+D" placement="top-right-arrow-shifted">
                             <button

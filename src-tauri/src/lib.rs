@@ -328,18 +328,14 @@ fn fusen_list_notes(state: State<'_, Mutex<AppState>>, folder_path: String) -> V
 }
 
 #[tauri::command]
-fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Note {
-    let note = storage::read_note(&path).unwrap_or_else(|_| Note {
-        body: String::new(),
-        frontmatter: String::new(),
-        meta: NoteMeta {
-            path: path.clone(),
-            ..Default::default()
-        },
-    });
+fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Note, String> {
+    // 読み込み失敗を握りつぶさず呼び出し側へ伝える。
+    // 以前は失敗時に空 Note を返していたため、frontend が「読込成功・中身は空」と誤認し、
+    // 開いていた付箋の作業コピーを空で上書きしてしまう不具合があった（データ空化の根本原因）。
+    let note = storage::read_note(&path)?;
 
     logic::apply_select_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path);
-    note
+    Ok(note)
 }
 
 /// ノート作成の共通ロジック。Mutex を lock したまま get_next_seq → write_note → apply_add_note
@@ -427,6 +423,7 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
         &tags,
         None,
         opacity,
+        None,
     );
     let new_filename = logic::generate_filename(next_seq, &today, &context);
     let new_path_str = std::path::Path::new(&folder_path)
@@ -778,6 +775,29 @@ fn fusen_open_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn fusen_open_tag_folder(state: State<'_, Mutex<AppState>>, tag: String) -> Result<(), String> {
+    let vault_root = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("保存先フォルダが設定されていません")?
+    };
+    let tags_dir = Path::new(&vault_root).join("tags");
+    let tag_dir = tags_dir.join(tag);
+    let open_path = if tag_dir.exists() {
+        tag_dir
+    } else if tags_dir.exists() {
+        tags_dir
+    } else {
+        Path::new(&vault_root).to_path_buf()
+    };
+    storage::open_file(open_path.to_string_lossy().as_ref())?;
+    Ok(())
+}
+
 // 管理者ツール用: 設定ファイル（settings.json）のあるフォルダを開く
 #[tauri::command]
 fn fusen_open_settings_folder() -> Result<(), String> {
@@ -984,8 +1004,24 @@ fn fusen_delete_tag_globally(
     // Reload all notes to get the most up-to-date list
     app_state.notes = storage::list_notes(&base_path);
 
+    // [事前チェック] 1枚でも書き換える前に、保存先フォルダが書き込み可能かを試し書きで確認する。
+    // 権限なし・フォルダ消失・ディスク満杯などの「全滅する失敗」をここで先に弾き、
+    // 付箋を中途半端に書き換えた状態を作らない（ユーザーに部分失敗を踏ませない）。
+    // 個別ファイルの一時ロックは検知時刻と書込時刻の差で見抜けないため、そこはリトライが受け持つ。
+    {
+        let probe_path = std::path::Path::new(&base_path).join(".fusen_write_probe.tmp");
+        if let Err(e) = std::fs::write(&probe_path, b"") {
+            return Err(format!(
+                "保存先フォルダに書き込めません。タグ削除を中止しました（付箋は変更していません）: {}",
+                e
+            ));
+        }
+        let _ = std::fs::remove_file(&probe_path);
+    }
+
     let mut modified_count = 0;
     let mut modified_paths: Vec<String> = Vec::new(); // Track modified paths
+    let mut failed_writes: Vec<String> = Vec::new();
 
     // Create a list of paths to process to avoid borrowing issues
     let paths: Vec<String> = app_state.notes.iter().map(|n| n.path.clone()).collect();
@@ -1008,12 +1044,26 @@ fn fusen_delete_tag_globally(
                         content,
                     } = effect
                     {
-                        match storage::write_note(&write_path, &content) {
+                        // 一時的な書込失敗（ファイルロック等）は、その1枚だけ短いリトライで
+                        // 自動復旧を試みる。最大3回試して全滅した分だけ failed_writes に記録する。
+                        let mut write_result = storage::write_note(&write_path, &content);
+                        let mut attempts = 1;
+                        while write_result.is_err() && attempts < 3 {
+                            std::thread::sleep(std::time::Duration::from_millis(50 * attempts));
+                            write_result = storage::write_note(&write_path, &content);
+                            attempts += 1;
+                        }
+                        match write_result {
                             Ok(_) => {
                                 modified_count += 1;
                                 modified_paths.push(write_path);
                             }
-                            Err(_e) => {}
+                            Err(e) => {
+                                failed_writes.push(format!(
+                                    "{} ({}回試行後): {}",
+                                    write_path, attempts, e
+                                ));
+                            }
                         }
                     }
                 }
@@ -1028,6 +1078,14 @@ fn fusen_delete_tag_globally(
     // [NEW] Notify each modified window to reload
     for path in modified_paths {
         let _ = app.emit("fusen:reload_note", path);
+    }
+
+    if !failed_writes.is_empty() {
+        return Err(format!(
+            "Failed to delete tag from {} note(s): {}",
+            failed_writes.len(),
+            failed_writes.join("; ")
+        ));
     }
 
     Ok(modified_count)
@@ -1386,8 +1444,12 @@ fn setup_first_launch(
     }
 
     // 4. 設定保存
-    // 既存の設定を読み込んで、base_pathだけを更新する
-    let mut settings = storage::load_settings().unwrap_or_default();
+    // 既存の設定を読み込んで、base_pathだけを更新する。
+    // 設定ファイルが壊れている/一時的に読めない場合は握りつぶさず中断する。
+    // （load_settings はファイル不在なら Ok(既定) を返すため、? でエラーになるのは
+    //  「存在するが読めない/壊れている」時だけ。空の既定で全設定を上書き保存して
+    //  言語・同期設定などユーザー設定を丸ごと消す事故を防ぐ。）
+    let mut settings = storage::load_settings()?;
     settings.base_path = Some(base_path.clone());
 
     storage::save_settings(&settings).map_err(|e| {
@@ -2507,6 +2569,15 @@ fn classify_webpush_error(error: &str) -> String {
     format!("Push送信エラー: {}", error)
 }
 
+fn is_retryable_webpush_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("apns error: 429")
+        || lower.contains("too many requests")
+        || lower.contains("apns error: 5")
+        || lower.contains("timeout")
+        || lower.contains("reqwest error")
+}
+
 #[cfg(test)]
 mod webpush_error_message_tests {
     use super::*;
@@ -3193,16 +3264,33 @@ async fn fusen_send_to_iphone(
     let total_targets = pro_configs.len();
     for (index, config) in pro_configs.iter().enumerate() {
         let target = webpush_device_label(index, total_targets, config);
-        match webpush::send_web_push(&client, config, &vapid_keys, &plaintext).await {
-            Ok(_) => {
-                send_success_count += 1;
-                eprintln!("[webpush] 送信成功: target={}", target);
+        let mut last_error: Option<String> = None;
+        for attempt in 1..=3 {
+            match webpush::send_web_push(&client, config, &vapid_keys, &plaintext).await {
+                Ok(_) => {
+                    send_success_count += 1;
+                    eprintln!("[webpush] 送信成功: target={} attempt={}", target, attempt);
+                    last_error = None;
+                    break;
+                }
+                Err(e) => {
+                    let retryable = is_retryable_webpush_error(&e);
+                    let classified = classify_webpush_error(&e);
+                    eprintln!(
+                        "[webpush] 送信失敗: target={} attempt={} retryable={} error={}",
+                        target, attempt, retryable, classified
+                    );
+                    last_error = Some(classified);
+                    if !retryable || attempt == 3 {
+                        break;
+                    }
+                    let delay_ms = if attempt == 1 { 500 } else { 1500 };
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                }
             }
-            Err(e) => {
-                let classified = classify_webpush_error(&e);
-                eprintln!("[webpush] 送信失敗: target={} error={}", target, classified);
-                send_errors.push(format!("{}: {}", target, classified));
-            }
+        }
+        if let Some(error) = last_error {
+            send_errors.push(format!("{}: {}", target, error));
         }
     }
     eprintln!(
@@ -3894,6 +3982,7 @@ pub fn run() {
             fusen_archive_note,
             fusen_open_containing_folder,
             fusen_open_file,
+            fusen_open_tag_folder,
             fusen_open_settings_folder,
             fusen_open_log_folder,
             fusen_get_drive_folder_id,

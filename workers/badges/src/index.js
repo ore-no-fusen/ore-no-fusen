@@ -152,18 +152,8 @@ function svgResponse(svg) {
   });
 }
 
-function formatStaleTime(updatedAt) {
-  const date = new Date(updatedAt);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const hours = (date.getUTCHours() + 9) % 24;
-  const minutes = date.getUTCMinutes();
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
-
-function renderBadgeSvg({ label, message, color, updatedAt }, { stale = false } = {}) {
-  const staleTime = stale ? formatStaleTime(updatedAt) : null;
-  const displayMessage = staleTime ? `${message} stale ${staleTime}` : message;
+function renderBadgeSvg({ label, message, color }, { stale = false } = {}) {
+  const displayMessage = stale ? `${message} ※` : message;
   const leftWidth = textWidth(label) + 10;
   const rightWidth = textWidth(displayMessage) + 10;
   const width = leftWidth + rightWidth;

@@ -68,6 +68,7 @@ public/workbox-*.js.map
 
 # Sustainable Action Plan (Private)
 .planning/SUSTAINABLE_ACTION_PLAN.md
+.planning/STATE.md
 
 # LP速度証拠動画の作業ファイル（フレーム解析・中間出力用 / コミット対象外）
 promo/frames-debug/

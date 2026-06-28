@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:coverage:ui": "vitest --ui --coverage",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/run-e2e.mjs",
     "tauri": "tauri",
     "release": "npm run tauri build && node scripts/generate-latest-json.mjs",
     "prepare": "husky",

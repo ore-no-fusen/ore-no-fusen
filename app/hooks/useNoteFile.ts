@@ -9,9 +9,10 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { invoke } from '@tauri-apps/api/core';
 import { readNote, saveNote, Note } from '@/app/api/notes';
-import { splitFrontMatter, updateFrontmatterValue } from '@/app/utils/splitFrontMatter';
+import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey } from '@/app/utils/splitFrontMatter';
 import { pathsEqual } from '@/app/utils/pathUtils';
 
 export type UseNoteFileOptions = {
@@ -33,6 +34,7 @@ export type UseNoteFileReturn = {
     loadNote: () => Promise<string>;
     saveNoteContent: (body: string, frontmatter: string, allowRename: boolean) => Promise<void>;
     updateFrontmatter: (key: string, value: any) => void;
+    removeFrontmatter: (key: string) => void;
     setSavePending: (pending: boolean) => void;
     setContent: (content: string) => void;
     setRawFrontmatter: React.Dispatch<React.SetStateAction<string>>;
@@ -55,6 +57,9 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
     // path を ref で保持（stale closure 対策 - setDynamicUrlPath の非同期 setState を回避）
     const pathRef = useRef(path);
     pathRef.current = path; // レンダーごとに同期更新
+    // isNew を ref で保持（saveNoteContent の deps を [onPathChange] に保ったまま最新値を診断に使うため）
+    const isNewRef = useRef(isNew);
+    isNewRef.current = isNew;
     // [H-1 Safe Guard] 最初のロード完了前に空ボディで保存することを防ぐ
     // 新規ノートは最初から空で意図的なのでフラグをtrueで初期化する
     const hasLoadedRef = useRef(isNew);
@@ -127,7 +132,21 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
         if (!hasLoadedRef.current && body.trim() === '') {
             const msg = '[useNoteFile] BLOCKED: Attempted to save empty body before first successful load. Possible initialization race condition.';
             console.error(msg);
-            throw new Error(msg);
+            // [A] 空保存はスキップして静かに return する（throw による未処理例外＝Sentryノイズを出さない）。
+            //     saveNote を呼ぶ前に return するので空はディスクに届かない＝データ保護は維持。
+            // [B] なぜ空になったかを次回特定するための診断。本文・フルパスは送らない（PII回避）。
+            Sentry.captureMessage(msg, {
+                level: 'warning',
+                extra: {
+                    hasLoaded: hasLoadedRef.current,
+                    bodyLen: body.length,
+                    frontmatterLen: frontmatter.length,
+                    contentLen: contentRef.current.length,
+                    isNew: isNewRef.current,
+                    hasPath: !!pathRef.current,
+                },
+            });
+            return;
         }
 
         // [Safe Guard] Prevent saving empty content if the note hasn't been loaded yet.
@@ -135,7 +154,21 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
         if (body.trim() === '' && !frontmatter) {
             const msg = '[useNoteFile] BLOCKED: Attempted to save empty content and empty frontmatter. This indicates initialization failure.';
             console.error(msg);
-            throw new Error(msg);
+            // [A] 空保存はスキップして静かに return する（throw による未処理例外＝Sentryノイズを出さない）。
+            //     saveNote を呼ぶ前に return するので空はディスクに届かない＝データ保護は維持。
+            // [B] なぜ空になったかを次回特定するための診断。本文・フルパスは送らない（PII回避）。
+            Sentry.captureMessage(msg, {
+                level: 'warning',
+                extra: {
+                    hasLoaded: hasLoadedRef.current,
+                    bodyLen: body.length,
+                    frontmatterLen: frontmatter.length,
+                    contentLen: contentRef.current.length,
+                    isNew: isNewRef.current,
+                    hasPath: !!pathRef.current,
+                },
+            });
+            return;
         }
 
         try {
@@ -165,6 +198,14 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
      */
     const updateFrontmatter = useCallback((key: string, value: any) => {
         setRawFrontmatter(prev => updateFrontmatterValue(prev, key, value));
+        setSavePending(true);
+    }, []);
+
+    /**
+     * フロントマターのキー行を削除する
+     */
+    const removeFrontmatter = useCallback((key: string) => {
+        setRawFrontmatter(prev => removeFrontmatterKey(prev, key));
         setSavePending(true);
     }, []);
 
@@ -218,6 +259,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
         loadNote,
         saveNoteContent,
         updateFrontmatter,
+        removeFrontmatter,
         setSavePending,
         setContent,
         setRawFrontmatter,

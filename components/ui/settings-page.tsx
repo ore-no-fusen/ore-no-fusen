@@ -1254,6 +1254,29 @@ function HelpSection({ t }: { t: (key: any) => string }) {
                 <h3 className="font-bold text-amber-900">{t('settings.help.trouble.title')}</h3>
                 <p className="mt-1 text-sm leading-6 text-amber-800">{t('settings.help.trouble.body')}</p>
             </div>
+
+            {/* ===== 完全版ユーザーガイドへの導線（最下部・もっと詳しく見たい人向け） ===== */}
+            <div className="rounded-lg border border-sky-200 bg-sky-50 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <h3 className="font-bold text-sky-900">{t('settings.help.fullGuide.title')}</h3>
+                    <p className="mt-1 text-sm leading-6 text-sky-800">{t('settings.help.fullGuide.body')}</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={async () => {
+                        try {
+                            const { open } = await import('@tauri-apps/plugin-shell');
+                            await open('https://ore-no-fusen.github.io/ore-no-fusen/user-guide/');
+                        } catch (e) {
+                            console.error('[HelpSection] open user guide failed:', e);
+                            window.open('https://ore-no-fusen.github.io/ore-no-fusen/user-guide/', '_blank');
+                        }
+                    }}
+                    className="shrink-0 rounded-md bg-sky-700 px-4 py-2 text-sm font-bold text-white hover:bg-sky-800 transition-colors"
+                >
+                    {t('settings.help.fullGuide.link')}
+                </button>
+            </div>
         </div>
     )
 }
@@ -3454,4 +3477,3 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
         </div>
     )
 }
-
