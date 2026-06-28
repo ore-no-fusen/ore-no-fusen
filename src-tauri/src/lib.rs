@@ -775,6 +775,29 @@ fn fusen_open_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn fusen_open_tag_folder(state: State<'_, Mutex<AppState>>, tag: String) -> Result<(), String> {
+    let vault_root = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("保存先フォルダが設定されていません")?
+    };
+    let tags_dir = Path::new(&vault_root).join("tags");
+    let tag_dir = tags_dir.join(tag);
+    let open_path = if tag_dir.exists() {
+        tag_dir
+    } else if tags_dir.exists() {
+        tags_dir
+    } else {
+        Path::new(&vault_root).to_path_buf()
+    };
+    storage::open_file(open_path.to_string_lossy().as_ref())?;
+    Ok(())
+}
+
 // 管理者ツール用: 設定ファイル（settings.json）のあるフォルダを開く
 #[tauri::command]
 fn fusen_open_settings_folder() -> Result<(), String> {
@@ -3959,6 +3982,7 @@ pub fn run() {
             fusen_archive_note,
             fusen_open_containing_folder,
             fusen_open_file,
+            fusen_open_tag_folder,
             fusen_open_settings_folder,
             fusen_open_log_folder,
             fusen_get_drive_folder_id,

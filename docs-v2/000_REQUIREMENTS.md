@@ -696,7 +696,7 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
         デスクトップ領域は有限であり、常に現在進行形の情報のみを配置したいため。
       </td>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-OR-03-01</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;"><strong>アーカイブ</strong>: 通常ノートは <code>Archive/</code> フォルダへ移動。タグ付きノートは最初のタグフォルダ（例: <code>tags/Work/</code>）へ移動し、関連アセット（<code>assets/</code>内の画像）も同時に移動する。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;"><strong>タグフォルダへ移動</strong>: 通常ノートは <code>Archive/</code> フォルダへ移動。タグ付きノートは最初のタグフォルダ（例: <code>tags/Work/</code>）へ移動し、関連アセット（<code>assets/</code>内の画像）も同時に移動する。付箋右下のタグバッジを押すと、そのタグフォルダを開く。タグフォルダがまだ存在しない場合は親の <code>tags/</code> フォルダを開き、<code>tags/</code> 自体がまだ存在しない場合は保存先フォルダを開く。</td>
     </tr>
     <tr>
       <td style=" text-align:center;">SPEC-OR-03-02</td>
@@ -777,7 +777,7 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-UI-02-02</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;"><strong>閲覧モード時</strong>: フォルダを開く / 新規メモ / 色を変更 / 常に手前 / タグ / アーカイブ / 削除 の7項目を基本構造とする。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;"><strong>閲覧モード時</strong>: フォルダを開く / 新規メモ / 色を変更 / 常に手前 / タグ / タグフォルダへ移動 / 削除 の7項目を基本構造とする。</td>
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-UI-02-03</td>

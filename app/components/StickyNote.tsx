@@ -1552,6 +1552,15 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [selectedFile, currentTags, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
 
+    const handleOpenTagFolder = useCallback(async (tag: string) => {
+        try {
+            await invoke('fusen_open_tag_folder', { tag });
+        } catch (e) {
+            console.error('Failed to open tag folder:', e);
+            alert(`${t('menu.openTagFolderFailed')}\n${e}`);
+        }
+    }, [t]);
+
     /**
      * ローカルキーボードショートカット（この付箋ウィンドウがアクティブな時のみ有効）
      *
@@ -2053,14 +2062,29 @@ const StickyNote = memo(function StickyNote() {
                     <div className="flex items-center justify-end gap-1 pointer-events-auto">
                         {currentTags.length > 0 && (
                             <div className="flex gap-1 flex-wrap max-w-[250px] justify-end">
-                                {currentTags.slice(0, 3).map((tag: string, idx: number) => (
-                                    <span
-                                        key={idx}
-                                        className="text-[10px] px-2 py-[3px] bg-gray-200/80 text-gray-700 rounded border border-gray-300/80 whitespace-nowrap font-medium shadow-sm"
-                                    >
-                                        {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
-                                    </span>
-                                ))}
+                                {currentTags.slice(0, 3).map((tag: string, idx: number) => {
+                                    const openTagFolderLabel = t('menu.openTagFolder').replace('{tag}', tag);
+                                    return (
+                                        <Tooltip key={idx} text={openTagFolderLabel} placement="top-right-arrow-shifted">
+                                            <button
+                                                type="button"
+                                                aria-label={openTagFolderLabel}
+                                                onPointerDown={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                }}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleOpenTagFolder(tag);
+                                                }}
+                                                className="text-[10px] px-2 py-[3px] bg-gray-200/80 text-gray-700 rounded border border-gray-300/80 whitespace-nowrap font-medium shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors cursor-pointer"
+                                            >
+                                                {tag.length > 4 ? `${tag.substring(0, 4)}...` : tag}
+                                            </button>
+                                        </Tooltip>
+                                    );
+                                })}
                                 {currentTags.length > 3 && (
                                     <span
                                         className="text-[10px] px-2 py-[3px] bg-gray-200/50 text-gray-500 rounded border border-gray-300/50 whitespace-nowrap font-medium"
