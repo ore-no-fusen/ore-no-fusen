@@ -19,12 +19,12 @@ const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
 const IS_TAURI_BUILD = process.env.IS_TAURI_BUILD === "true";
 const SITE_DESCRIPTION =
-  "消えそうな思考を、逃がさない。\n\n思考を構造化し、\nAIで図解や資料へつなげる。";
+  "FUSEN is a local-first sticky notes app for developers working with AI coding tools. Capture small bits of context on Windows and hand them off to/from iPhone with Google Drive.";
 
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "俺の付箋",
+  name: "FUSEN",
   alternateName: "FUSEN — My Sticky Notes for Windows",
   applicationCategory: "ProductivityApplication",
   operatingSystem: "Windows",
@@ -40,9 +40,17 @@ const structuredData = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "俺の付箋 — Win+iPhone を繋ぐ、軽い付箋アプリ",
+  title: "FUSEN — My Sticky Notes for AI Coding Tools",
   description: SITE_DESCRIPTION,
   keywords: [
+    "sticky notes for AI coding tools",
+    "AI coding notes",
+    "local-first sticky notes",
+    "Windows sticky notes app",
+    "developer notes app",
+    "Google Drive handoff notes",
+    "iPhone notes to Windows",
+    "winget sticky notes",
     "俺の付箋",
     "FUSEN",
     "My Sticky Notes",
@@ -64,8 +72,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: SITE_URL,
-    siteName: "俺の付箋",
-    title: "FUSEN — My Sticky Notes for Windows",
+    siteName: "FUSEN",
+    title: "FUSEN — My Sticky Notes for AI Coding Tools",
     description: SITE_DESCRIPTION,
     images: [
       {
@@ -79,9 +87,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    site: "@uchikiman",
-    creator: "@uchikiman",
-    title: "FUSEN — My Sticky Notes for Windows",
+    site: "@onfstudio",
+    creator: "@onfstudio",
+    title: "FUSEN — My Sticky Notes for AI Coding Tools",
     description: SITE_DESCRIPTION,
     images: [OG_IMAGE],
   },

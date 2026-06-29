@@ -1,7 +1,7 @@
 {
   "name": "俺の付箋",
   "short_name": "付箋",
-  "description": "PCの付箋をiPhoneで受け取るセットアップ",
+  "description": "Local-first sticky notes for developers working with AI coding tools.",
   "start_url": "/viewer",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -19,5 +19,4 @@
     }
   ]
 }
-
 
