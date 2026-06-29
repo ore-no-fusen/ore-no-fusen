@@ -44,7 +44,7 @@ export default function LandingPage() {
     const isEn = lang === 'en';
 
     useEffect(() => {
-        document.title = isEn ? 'FUSEN — My Sticky Notes for Windows' : '俺の付箋（Ore-no-Fusen）';
+        document.title = isEn ? 'FUSEN — My Sticky Notes for AI Coding Tools' : '俺の付箋（Ore-no-Fusen）';
     }, [isEn]);
 
     // PC→iPhone 連携アニメーション
@@ -1636,7 +1636,7 @@ export default function LandingPage() {
                             📖 {isEn ? 'View on GitHub' : 'GitHubを見る'}
                         </Link>
                         <Link
-                            href="https://x.com/uchikiman"
+                            href="https://x.com/onfstudio"
                             target="_blank"
                             className="text-[#5C7A3E] hover:text-[#3A5020] transition-colors"
                         >
@@ -1665,6 +1665,17 @@ export default function LandingPage() {
                         </div>
                     </div>
                     <div className="border-t border-[#C0B098]/40 pt-4 flex justify-center gap-8 text-sm text-[#7A6A50] font-medium">
+                        <Link href="/use-cases/ai-coding-sticky-notes" className="hover:text-[#5C7A3E] transition-colors">
+                            {isEn ? 'AI coding notes' : 'AIコーディング向け付箋'}
+                        </Link>
+                        <Link href="/use-cases/windows-sticky-notes" className="hover:text-[#5C7A3E] transition-colors">
+                            {isEn ? 'Windows sticky notes' : 'Windows付箋'}
+                        </Link>
+                        <Link href="/use-cases/iphone-google-drive-notes" className="hover:text-[#5C7A3E] transition-colors">
+                            {isEn ? 'iPhone handoff' : 'iPhone連携'}
+                        </Link>
+                    </div>
+                    <div className="flex justify-center gap-8 text-sm text-[#7A6A50] font-medium">
                         <Link href="https://ore-no-fusen.github.io/ore-no-fusen/100_PRIVACY.html" target="_blank" className="hover:text-[#5C7A3E] transition-colors">
                             {isEn ? 'Privacy Policy' : 'プライバシーポリシー'}
                         </Link>

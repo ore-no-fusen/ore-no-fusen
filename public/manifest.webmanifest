@@ -1,7 +1,7 @@
 {
     "name": "俺の付箋",
     "short_name": "付箋",
-    "description": "Obsidian VaultのMarkdownを付箋UIで表示",
+    "description": "Local-first sticky notes for developers working with AI coding tools.",
     "start_url": "/viewer",
     "display": "standalone",
     "background_color": "#faf6ee",

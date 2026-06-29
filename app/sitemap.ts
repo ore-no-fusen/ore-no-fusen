@@ -24,5 +24,23 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.5,
     },
+    {
+      url: `${SITE_URL}/use-cases/ai-coding-sticky-notes`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/use-cases/windows-sticky-notes`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.75,
+    },
+    {
+      url: `${SITE_URL}/use-cases/iphone-google-drive-notes`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
   ];
 }

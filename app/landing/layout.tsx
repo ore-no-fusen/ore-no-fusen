@@ -3,12 +3,20 @@ import type { Metadata } from "next";
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
 const LANDING_DESCRIPTION =
-  "消えそうな思考を、逃がさない。思考を構造化し、AIで図解や資料へつなげる。";
+  "FUSEN is a local-first sticky notes app for developers working with AI coding tools. Capture small bits of context on Windows and hand them off to/from iPhone with Google Drive.";
 
 export const metadata: Metadata = {
-  title: "FUSEN — My Sticky Notes for Windows",
+  title: "FUSEN — My Sticky Notes for AI Coding Tools",
   description: LANDING_DESCRIPTION,
   keywords: [
+    "sticky notes for AI coding tools",
+    "AI coding notes",
+    "local-first sticky notes",
+    "Windows sticky notes app",
+    "developer notes app",
+    "Google Drive handoff notes",
+    "iPhone notes to Windows",
+    "winget sticky notes",
     "Windows 付箋アプリ",
     "iPhone メモ PC 送信",
     "Google Drive メモ 同期",
@@ -25,8 +33,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: `${SITE_URL}/landing`,
-    siteName: "俺の付箋",
-    title: "FUSEN — My Sticky Notes for Windows",
+    siteName: "FUSEN",
+    title: "FUSEN — My Sticky Notes for AI Coding Tools",
     description: LANDING_DESCRIPTION,
     images: [
       {
@@ -40,7 +48,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "FUSEN — My Sticky Notes for Windows",
+    title: "FUSEN — My Sticky Notes for AI Coding Tools",
     description: LANDING_DESCRIPTION,
     images: [OG_IMAGE],
   },
