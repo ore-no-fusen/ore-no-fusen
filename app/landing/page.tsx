@@ -2,19 +2,19 @@
  * ランディングページ (LandingPage) - 「思考を現実へ」ブランド再設計版
  *
  * 構成（依頼書順 + ラスコー保持）:
- *  0. Hero            「消えそうな思考を、逃がさない。」+ 0.3秒の証拠 + CTA + 製品スクショ
+ *  0. Hero            「消えそうな願いを、逃がさない。」+ 0.3秒の証拠 + CTA + 製品スクショ
  *  1. 共感             あとでやろうで消える
  *  2. ラスコー         思想の根拠（残す）
  *  3. 解決フロー       思考 → 固定 → 視界 → 決心 → 行動 → 現実
  *  4. 速さの証拠       0.04 秒の実測動画
  *  5. 機能             思想の言い換えとして
- *  6. PC↔iPhone        思考をどこでも逃がさない
+ *  6. PC↔iPhone        願いをどこでも逃がさない
  *  7. 棲み分け         Sticky Notes / Excel の、あいだ
  *  8. 体験デモ
  *  9. オレノフ動画
  * 10. 活用ギャラリー   「こんな使い方もあるのか」（動画の余韻の直後）
  * 11. プライバシー
- * 12. 最後のCTA
+ * 12. 最後のCTA（付箋に願いを。）
  */
 
 'use client';
@@ -173,7 +173,7 @@ export default function LandingPage() {
 
             {/* ==============================
                 0. Hero
-                「消えそうな思考を、逃がさない。」
+                「消えそうな願いを、逃がさない。」
             ============================== */}
             <section className="relative overflow-hidden py-24 sm:py-32 px-6 min-h-[88vh] flex items-center">
                 <div
@@ -194,12 +194,12 @@ export default function LandingPage() {
                     <h1 className="text-[2.4rem] sm:text-5xl lg:text-[3.8rem] font-extrabold leading-[1.15] tracking-tight mb-8 text-[#2C1F0E]">
                         {isEn ? (
                             <>
-                                Don&apos;t let your thoughts<br />
+                                Don&apos;t let your wish<br />
                                 <span className="text-[#5C7A3E]">slip away.</span>
                             </>
                         ) : (
                             <>
-                                消えそうな思考を、<br />
+                                消えそうな願いを、<br />
                                 <span className="text-[#5C7A3E]">逃がさない。</span>
                             </>
                         )}
@@ -209,13 +209,13 @@ export default function LandingPage() {
                     <p className="text-base sm:text-lg text-[#6A5540] leading-relaxed mb-10 max-w-xl mx-auto">
                         {isEn ? (
                             <>
-                                Opens in 0.3 seconds.<br />
-                                Always visible. Your resolve stays put.
+                                Ready to write in 0.3 seconds.<br />
+                                Always there.
                             </>
                         ) : (
                             <>
-                                0.3秒で開く。常に見える。<br />
-                                決心が、消えない。
+                                0.3秒で書ける。<br />
+                                ずっと、そこにある。
                             </>
                         )}
                     </p>
@@ -398,7 +398,7 @@ export default function LandingPage() {
                     >
                         <div className="h-2 -mx-3.5 -mt-3 mb-3 rounded-t-sm" style={{ backgroundColor: '#8BAF75' }} />
                         <p className="text-[12px] font-semibold text-[#1E3A10] leading-snug">
-                            {isEn ? 'Today\'s resolve' : '今日の決心'}
+                            {isEn ? 'Pin a wish.' : '付箋に願いを。'}
                         </p>
                     </div>
                 </div>
@@ -544,7 +544,10 @@ export default function LandingPage() {
                                 <span className="font-bold text-[#3A2C18]">All of them do the same thing.</span><br />
                                 <br />
                                 Put a thought where you can see it,<br />
-                                and it stops slipping away.
+                                and it stops slipping away.<br />
+                                <br />
+                                Some say those paintings were<br />
+                                not records, but wishes.
                             </>
                         ) : (
                             <>
@@ -552,7 +555,10 @@ export default function LandingPage() {
                                 <span className="font-bold text-[#3A2C18]">やっていることは同じ。</span><br />
                                 <br />
                                 思考を、視界に置く。<br />
-                                それだけで、逃げなくなる。
+                                それだけで、逃げなくなる。<br />
+                                <br />
+                                あの壁画は、記録ではなく<br />
+                                願いだったという説がある。
                             </>
                         )}
                     </div>
@@ -798,7 +804,7 @@ export default function LandingPage() {
                                 topColor: '#B88060',
                                 rotation: '-rotate-1',
                                 tag: 'iPhone',
-                                title: 'Thoughts you carry.',
+                                title: 'Wishes you carry.',
                                 text: 'Send a chosen note to your iPhone. Catch one on the way home. They land back on your desktop.',
                                 textColor: '#3A1810',
                             },
@@ -835,7 +841,7 @@ export default function LandingPage() {
                                 topColor: '#B88060',
                                 rotation: '-rotate-1',
                                 tag: 'iPhone',
-                                title: '思考を、どこでも逃がさない。',
+                                title: '願いを、どこでも逃がさない。',
                                 text: '選んだ付箋を iPhone へ送る。帰り道に書いたメモは、家のデスクトップに帰ってくる。',
                                 textColor: '#3A1810',
                             },
@@ -918,9 +924,9 @@ export default function LandingPage() {
                         </p>
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-4 tracking-tight">
                             {isEn ? (
-                                <>Carry your thoughts <span className="text-[#5C7A3E]">anywhere.</span></>
+                                <>Carry your wishes <span className="text-[#5C7A3E]">anywhere.</span></>
                             ) : (
-                                <>思考を、<span className="text-[#5C7A3E]">どこでも逃がさない。</span></>
+                                <>願いを、<span className="text-[#5C7A3E]">どこでも逃がさない。</span></>
                             )}
                         </h2>
                         <p className="text-[#8A7055] max-w-xl mx-auto leading-relaxed">
@@ -1563,24 +1569,10 @@ export default function LandingPage() {
             {/* ==============================
                 12. 最後のCTA（円環）
             ============================== */}
-            <section className="py-28 sm:py-32 px-6" style={{ backgroundColor: '#EDE4D3' }}>
+            <section className="py-36 sm:py-44 px-6" style={{ backgroundColor: '#EDE4D3' }}>
                 <div className="max-w-2xl mx-auto text-center">
-                    <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-[#2C1F0E] leading-tight mb-12 tracking-tight">
-                        {isEn ? (
-                            <>
-                                Pin a slipping thought.<br />
-                                <span className="text-[#5C7A3E]">Right now.</span>
-                            </>
-                        ) : (
-                            <>
-                                消えそうな思考を、<br />
-                                <span className="text-[#5C7A3E]">いま、固定する。</span>
-                            </>
-                        )}
-                    </h2>
-
                     <div
-                        className="relative -rotate-1 rounded-sm px-10 py-12 mb-10 inline-block"
+                        className="relative -rotate-1 rounded-sm px-10 py-12 inline-block"
                         style={{
                             backgroundColor: '#EDD87A',
                             boxShadow: '4px 6px 24px rgba(0,0,0,0.16)',
@@ -1592,6 +1584,12 @@ export default function LandingPage() {
                             style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }}
                         />
 
+                        <p className="text-2xl sm:text-3xl font-bold text-[#3A2C00] text-center">
+                            {isEn ? 'Pin a wish.' : '付箋に願いを。'}
+                        </p>
+                    </div>
+
+                    <div className="mt-10">
                         <Link
                             href={downloadUrl}
                             target="_blank"
@@ -1618,7 +1616,7 @@ export default function LandingPage() {
                                 {isEn ? 'Get it from Microsoft Store' : 'Microsoft Store から入れる'}
                             </Link>
                         </div>
-                        <p className="text-xs text-[#7A6200] mt-4">
+                        <p className="text-xs text-[#9A8468] mt-4">
                             {isEn ? 'Free · 1-min install · Your data stays with you' : '無料 ・ インストール 1 分 ・ データはあなたの手元に'}
                         </p>
                     </div>
