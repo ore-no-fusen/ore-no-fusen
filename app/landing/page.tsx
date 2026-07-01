@@ -14,7 +14,7 @@
  *  9. オレノフ動画
  * 10. 活用ギャラリー   「こんな使い方もあるのか」（動画の余韻の直後）
  * 11. プライバシー
- * 12. 最後のCTA
+ * 12. 最後のCTA（付箋に願いを。）
  */
 
 'use client';
@@ -1569,24 +1569,10 @@ export default function LandingPage() {
             {/* ==============================
                 12. 最後のCTA（円環）
             ============================== */}
-            <section className="py-28 sm:py-32 px-6" style={{ backgroundColor: '#EDE4D3' }}>
+            <section className="py-36 sm:py-44 px-6" style={{ backgroundColor: '#EDE4D3' }}>
                 <div className="max-w-2xl mx-auto text-center">
-                    <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-[#2C1F0E] leading-tight mb-12 tracking-tight">
-                        {isEn ? (
-                            <>
-                                Pin a slipping thought.<br />
-                                <span className="text-[#5C7A3E]">Right now.</span>
-                            </>
-                        ) : (
-                            <>
-                                消えそうな思考を、<br />
-                                <span className="text-[#5C7A3E]">いま、固定する。</span>
-                            </>
-                        )}
-                    </h2>
-
                     <div
-                        className="relative -rotate-1 rounded-sm px-10 py-12 mb-10 inline-block"
+                        className="relative -rotate-1 rounded-sm px-10 py-12 inline-block"
                         style={{
                             backgroundColor: '#EDD87A',
                             boxShadow: '4px 6px 24px rgba(0,0,0,0.16)',
@@ -1598,6 +1584,12 @@ export default function LandingPage() {
                             style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }}
                         />
 
+                        <p className="text-2xl sm:text-3xl font-bold text-[#3A2C00] text-center">
+                            {isEn ? 'Pin a wish.' : '付箋に願いを。'}
+                        </p>
+                    </div>
+
+                    <div className="mt-10">
                         <Link
                             href={downloadUrl}
                             target="_blank"
@@ -1624,7 +1616,7 @@ export default function LandingPage() {
                                 {isEn ? 'Get it from Microsoft Store' : 'Microsoft Store から入れる'}
                             </Link>
                         </div>
-                        <p className="text-xs text-[#7A6200] mt-4">
+                        <p className="text-xs text-[#9A8468] mt-4">
                             {isEn ? 'Free · 1-min install · Your data stays with you' : '無料 ・ インストール 1 分 ・ データはあなたの手元に'}
                         </p>
                     </div>
