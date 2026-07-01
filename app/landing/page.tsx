@@ -8,7 +8,7 @@
  *  3. 解決フロー       思考 → 固定 → 視界 → 決心 → 行動 → 現実
  *  4. 速さの証拠       0.04 秒の実測動画
  *  5. 機能             思想の言い換えとして
- *  6. PC↔iPhone        思考をどこでも逃がさない
+ *  6. PC↔iPhone        願いをどこでも逃がさない
  *  7. 棲み分け         Sticky Notes / Excel の、あいだ
  *  8. 体験デモ
  *  9. オレノフ動画
@@ -804,7 +804,7 @@ export default function LandingPage() {
                                 topColor: '#B88060',
                                 rotation: '-rotate-1',
                                 tag: 'iPhone',
-                                title: 'Thoughts you carry.',
+                                title: 'Wishes you carry.',
                                 text: 'Send a chosen note to your iPhone. Catch one on the way home. They land back on your desktop.',
                                 textColor: '#3A1810',
                             },
@@ -841,7 +841,7 @@ export default function LandingPage() {
                                 topColor: '#B88060',
                                 rotation: '-rotate-1',
                                 tag: 'iPhone',
-                                title: '思考を、どこでも逃がさない。',
+                                title: '願いを、どこでも逃がさない。',
                                 text: '選んだ付箋を iPhone へ送る。帰り道に書いたメモは、家のデスクトップに帰ってくる。',
                                 textColor: '#3A1810',
                             },
@@ -924,9 +924,9 @@ export default function LandingPage() {
                         </p>
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-4 tracking-tight">
                             {isEn ? (
-                                <>Carry your thoughts <span className="text-[#5C7A3E]">anywhere.</span></>
+                                <>Carry your wishes <span className="text-[#5C7A3E]">anywhere.</span></>
                             ) : (
-                                <>思考を、<span className="text-[#5C7A3E]">どこでも逃がさない。</span></>
+                                <>願いを、<span className="text-[#5C7A3E]">どこでも逃がさない。</span></>
                             )}
                         </h2>
                         <p className="text-[#8A7055] max-w-xl mx-auto leading-relaxed">
