@@ -2,7 +2,7 @@
  * ランディングページ (LandingPage) - 「思考を現実へ」ブランド再設計版
  *
  * 構成（依頼書順 + ラスコー保持）:
- *  0. Hero            「消えそうな思考を、逃がさない。」+ 0.3秒の証拠 + CTA + 製品スクショ
+ *  0. Hero            「消えそうな願いを、逃がさない。」+ 0.3秒の証拠 + CTA + 製品スクショ
  *  1. 共感             あとでやろうで消える
  *  2. ラスコー         思想の根拠（残す）
  *  3. 解決フロー       思考 → 固定 → 視界 → 決心 → 行動 → 現実
@@ -194,12 +194,12 @@ export default function LandingPage() {
                     <h1 className="text-[2.4rem] sm:text-5xl lg:text-[3.8rem] font-extrabold leading-[1.15] tracking-tight mb-8 text-[#2C1F0E]">
                         {isEn ? (
                             <>
-                                Don&apos;t let your thoughts<br />
+                                Don&apos;t let your wish<br />
                                 <span className="text-[#5C7A3E]">slip away.</span>
                             </>
                         ) : (
                             <>
-                                消えそうな思考を、<br />
+                                消えそうな願いを、<br />
                                 <span className="text-[#5C7A3E]">逃がさない。</span>
                             </>
                         )}
@@ -209,13 +209,13 @@ export default function LandingPage() {
                     <p className="text-base sm:text-lg text-[#6A5540] leading-relaxed mb-10 max-w-xl mx-auto">
                         {isEn ? (
                             <>
-                                Opens in 0.3 seconds.<br />
-                                Always visible. Your resolve stays put.
+                                Ready to write in 0.3 seconds.<br />
+                                Always there.
                             </>
                         ) : (
                             <>
-                                0.3秒で開く。常に見える。<br />
-                                決心が、消えない。
+                                0.3秒で書ける。<br />
+                                ずっと、そこにある。
                             </>
                         )}
                     </p>
@@ -398,7 +398,7 @@ export default function LandingPage() {
                     >
                         <div className="h-2 -mx-3.5 -mt-3 mb-3 rounded-t-sm" style={{ backgroundColor: '#8BAF75' }} />
                         <p className="text-[12px] font-semibold text-[#1E3A10] leading-snug">
-                            {isEn ? 'Today\'s resolve' : '今日の決心'}
+                            {isEn ? 'Pin a wish.' : '付箋に願いを。'}
                         </p>
                     </div>
                 </div>
@@ -544,7 +544,10 @@ export default function LandingPage() {
                                 <span className="font-bold text-[#3A2C18]">All of them do the same thing.</span><br />
                                 <br />
                                 Put a thought where you can see it,<br />
-                                and it stops slipping away.
+                                and it stops slipping away.<br />
+                                <br />
+                                Some say those paintings were<br />
+                                not records, but wishes.
                             </>
                         ) : (
                             <>
@@ -552,7 +555,10 @@ export default function LandingPage() {
                                 <span className="font-bold text-[#3A2C18]">やっていることは同じ。</span><br />
                                 <br />
                                 思考を、視界に置く。<br />
-                                それだけで、逃げなくなる。
+                                それだけで、逃げなくなる。<br />
+                                <br />
+                                あの壁画は、記録ではなく<br />
+                                願いだったという説がある。
                             </>
                         )}
                     </div>
