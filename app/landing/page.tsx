@@ -173,7 +173,7 @@ export default function LandingPage() {
 
             {/* ==============================
                 0. Hero
-                「消えそうな思考を、逃がさない。」
+                「消えそうな願いを、逃がさない。」
             ============================== */}
             <section className="relative overflow-hidden py-24 sm:py-32 px-6 min-h-[88vh] flex items-center">
                 <div
