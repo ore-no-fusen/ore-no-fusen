@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { MermaidModalProps } from './types';
+import { renderSecureMermaid } from '../utils/mermaid';
 
 // ---------------------------------------------------------------------------
 // MermaidModal: Mermaid コードの入力・プレビュー・挿入
@@ -24,10 +25,8 @@ export function MermaidModal({ onCancel, onInsert }: MermaidModalProps) {
     setIsRendering(true);
     setPreviewError(null);
     try {
-      const { default: mermaid } = await import('mermaid');
-      mermaid.initialize({ startOnLoad: false });
       const id = `mermaid-preview-${Date.now()}`;
-      const { svg } = await mermaid.render(id, mermaidCode);
+      const svg = await renderSecureMermaid(id, mermaidCode);
       setPreviewSvg(svg);
     } catch (err: unknown) {
       setPreviewError('構文エラー: ' + (err instanceof Error ? err.message : String(err)));

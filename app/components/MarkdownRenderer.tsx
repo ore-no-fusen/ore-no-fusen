@@ -14,6 +14,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath, isLinkTarget } from '../utils/pathUtils';
+import { renderSecureMermaid } from '../utils/mermaid';
 
 /**
  * Mermaid図ブロックコンポーネント
@@ -29,21 +30,10 @@ function MermaidBlock({ code }: { code: string }) {
         let cancelled = false;
         setError('');
         setSvg('');
-        import('mermaid').then(({ default: mermaid }) => {
-            mermaid.initialize({
-                startOnLoad: false,
-                theme: 'neutral',
-                securityLevel: 'loose',
-            });
-            mermaid.render(idRef.current, code)
-                .then(({ svg: rendered }) => {
-                    if (!cancelled) setSvg(rendered);
-                })
-                .catch((err: unknown) => {
-                    if (!cancelled) setError(String(err));
-                });
+        renderSecureMermaid(idRef.current, code).then((rendered) => {
+            if (!cancelled) setSvg(rendered);
         }).catch((err: unknown) => {
-            if (!cancelled) setError(`mermaidロード失敗: ${String(err)}`);
+            if (!cancelled) setError(String(err));
         });
         return () => { cancelled = true; };
     }, [code]);
