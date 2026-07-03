@@ -18,6 +18,7 @@ mod clipboard; // [NEW] クリップボード機能
 mod crash_guard;
 mod distribution;
 mod gdrive; // Google Drive 連携
+mod hotkey_manager;
 mod import; // インポート機能
 mod logger; // ログシステム
 mod logic;
@@ -4227,90 +4228,7 @@ pub fn run() {
 
             tray::create_tray(app.handle())?;
 
-            // [NEW] グローバルショートカット: Ctrl+Shift+H（全隠し/表示） + Ctrl+N（新規付箋）
-            use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState, Code, Modifiers, Shortcut};
-
-            // 付箋の表示/非表示状態を追跡するための静的変数
-            use std::sync::atomic::{AtomicBool, Ordering};
-            static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
-
-            // settings.json の shortcut_new_note を読み込み（無ければ "ctrl+n" をデフォルト使用）
-            let shortcut_new_note_str = storage::load_settings()
-                .ok()
-                .and_then(|s| s.shortcut_new_note)
-                .unwrap_or_else(|| "ctrl+n".to_string());
-            logger::log_info(&format!("[Shortcut] Ctrl+N ショートカット設定: {}", shortcut_new_note_str));
-
-            // shortcut_new_note を Shortcut に変換（parse 失敗時は ctrl+n にフォールバック）
-            let ctrl_n_shortcut = Shortcut::try_from(shortcut_new_note_str.as_str())
-                .unwrap_or_else(|_| {
-                    logger::log_warn("[Shortcut] shortcut_new_note の parse に失敗。ctrl+n にフォールバック。");
-                    Shortcut::new(Some(Modifiers::CONTROL), Code::KeyN)
-                });
-            let ctrl_n_shortcut_clone = ctrl_n_shortcut.clone();
-
-            // [仮] 2-b のトレイUI実装までの実機確認用トリガー。トレイUI完成後に削除予定
-            let arrange_shortcut = Shortcut::try_from("ctrl+shift+l")
-                .unwrap_or_else(|_| Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyL));
-            let arrange_shortcut_clone = arrange_shortcut.clone();
-
-            // [Fix] Safely attempt to register shortcuts（Ctrl+Shift+H と Ctrl+N を同一プラグインに登録）
-            match ShortcutBuilder::new().with_shortcuts(["ctrl+shift+h", "ctrl+shift+l"]) {
-                Ok(builder) => {
-                    let plugin = builder
-                        .with_handler(move |app, shortcut, event| {
-                            if event.state == ShortcutState::Pressed {
-                                if shortcut == &ctrl_n_shortcut_clone {
-                                    // --- グローバル Ctrl+N: 常に fusen:request_create_global を emit ---
-                                    // フォーカスチェックは削除。付箋にフォーカスがある状態でも新規作成を許可する。
-                                    // 二重作成はメインウィンドウの 400ms グローバルスロットルで防ぐ。
-                                    logger::log_info("[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit");
-                                    perflog::log_event("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
-                                    let _ = app.emit("fusen:request_create_global", ());
-                                } else if shortcut == &arrange_shortcut_clone {
-                                    logger::log_info("[Shortcut] Ctrl+Shift+L: fusen_arrange_by_tag trigger");
-                                    let app_handle = app.clone();
-                                    tauri::async_runtime::spawn(async move {
-                                        if let Err(e) = fusen_arrange_by_tag(app_handle).await {
-                                            logger::log_warn(&format!("[Shortcut] Ctrl+Shift+L arrange failed: {}", e));
-                                        }
-                                    });
-                                } else {
-                                    // --- Ctrl+Shift+H: 全付箋隠す/表示 ---
-                                    if !can_do_visibility_op() { return; }
-                                    let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
-                                    NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
-                                    let visible = is_hidden; // was hidden → now show (true)
-                                    let _ = app.emit("fusen:set_all_notes_visible", visible);
-
-                                    logger::log_info(&format!(
-                                        "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",
-                                        if is_hidden { "SHOWN" } else { "HIDDEN" }
-                                    ));
-                                }
-                            }
-                        })
-                        .build();
-
-                    match app.handle().plugin(plugin) {
-                        Ok(_) => {
-                            // プラグイン登録後に ctrl+n を追加登録
-                            use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                            if let Err(e) = app.handle().global_shortcut().register(ctrl_n_shortcut) {
-                                logger::log_warn(&format!("[Shortcut] Ctrl+N 追加登録失敗: {}", e));
-                            } else {
-                                logger::log_info("[Shortcut] Ctrl+N グローバルショートカット登録成功");
-                            }
-                        },
-                        Err(e) => {
-                            logger::log_warn(&format!("Failed to initialize global shortcut plugin: {}", e));
-                        }
-                    }
-                },
-                Err(e) => {
-                    logger::log_warn(&format!("Failed to register global shortcuts (might be conflicting): {}", e));
-                }
-            }
+            hotkey_manager::register_global_shortcuts(app);
 
             // iPhone受信: バックグラウンドポーリングループ（30秒間隔）
             {
