@@ -17,6 +17,7 @@ mod capture; // [NEW] キャプチャ機能
 mod clipboard; // [NEW] クリップボード機能
 mod crash_guard;
 mod distribution;
+mod double_tap;
 mod gdrive; // Google Drive 連携
 mod hotkey_manager;
 mod import; // インポート機能
