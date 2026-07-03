@@ -87,6 +87,15 @@ pub struct Settings {
     /// グローバルショートカットのカスタマイズ（例: "ctrl+shift+m"）。None の場合は "ctrl+n" をデフォルトとして使用。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_new_note: Option<String>,
+    /// 新規付箋のトリガー方式。None の場合は "shortcut" として扱う。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_note_trigger: Option<String>,
+    /// 表示/非表示切替ショートカット。None の場合は "ctrl+shift+h" をデフォルトとして使用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_toggle_visibility: Option<String>,
+    /// 整列ショートカット。None の場合は "ctrl+shift+l" をデフォルトとして使用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_arrange: Option<String>,
     /// この PC を一意に識別する UUID。Drive 上の PC 登録と紐づく。
     /// 旧バージョンでは別ファイル %LOCALAPPDATA%\ore-no-fusen\pc_device.json に保存していたが、
     /// アンインストール時に失われると Drive 上にゴミの登録が残るため、settings.json に移管した。
@@ -118,6 +127,9 @@ impl Default for Settings {
             sound_enabled: default_sound_enabled(),
             iphone_send_enabled: false,
             shortcut_new_note: None,
+            new_note_trigger: None,
+            shortcut_toggle_visibility: None,
+            shortcut_arrange: None,
             pc_id: None,
         }
     }

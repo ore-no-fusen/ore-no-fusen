@@ -4072,6 +4072,9 @@ pub fn run() {
             fusen_arrange_undo,
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
+            hotkey_manager::hotkey_get_bindings,
+            hotkey_manager::hotkey_check,
+            hotkey_manager::hotkey_apply,
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
             fusen_replenish_pool,     // [NEW] Pool 補充オーケストレーション（T2_READY+5s トリガ）
             fusen_show_at_position, // [NEW] プールウィンドウをShow+リサイズ+移動を原子的に実行
