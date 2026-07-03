@@ -3,15 +3,15 @@
 ## 1. ブランチ運用の判断
 
 変更内容を見て、アプリに影響するかどうかでリリース経路を分ける。
-普段の作業開始地点は `develop` とし、README バッジのようにアプリへ影響しない変更だけ `main` 向け PR にする。
+普段の作業開始地点は常に `develop` とする。LP のようにアプリ本体へ影響しない変更も、まず `develop` に入れて開発環境で確認し、確認後に `Do Non-App Release` で `main` へ反映する。
 
 ```mermaid
 flowchart TD
     A["変更内容を確認"]
     B{"アプリに影響する?"}
-    C["develop から docs/* ブランチ作成"]
-    D["README / docs / LP のみ修正"]
-    E["main へ PR"]
+    C["develop で非アプリ変更"]
+    D["開発環境で確認"]
+    E["Do Non-App Release で main へ反映"]
     F["develop で修正"]
     G["専用ブランチで開発"]
     H["develop へ PR"]
@@ -34,13 +34,13 @@ flowchart TD
 
 | 変更種別 | 作業ブランチ | PR先 | 例 |
 |---------|-------------|------|----|
-| アプリに影響しない変更 | `develop` から `docs/*` ブランチを作成 | `main` | `README.md`、READMEバッジ、`docs/`、LP、GitHub表示文言 |
+| アプリに影響しない変更 | `develop`、または `develop` から小さい作業ブランチを作成 | `develop` | LP、README、READMEバッジ、`docs/`、GitHub表示文言 |
 | アプリに影響する小さい変更 | `develop` で修正、または `develop` から小さい作業ブランチを作成 | `develop` | 軽微なバグ修正、UI文言、設定の小変更 |
 | アプリに影響する大きい変更 | 専用ブランチを作成 | `develop` | 新機能、同期処理、保存処理、Tauri/Rust側の変更 |
 
-アプリに影響しない変更は、作業ブランチを `develop` から作り、PR 先だけ `main` にする。
-`main` だけで変更を作らない。非影響変更の `main` 向け PR は、`develop` 起点で作った変更を `main` に載せるためのもの。
-`main` に入った時点で GitHub README や公開ドキュメントの表示を更新できる。
+アプリに影響しない変更も、作業ブランチを `develop` から作り、PR 先は `develop` にする。
+`main` だけで変更を作らない。非影響変更は `develop` に入れて確認してから、手動ワークフロー `Do Non-App Release` で許可されたファイルだけを `main` に載せる。
+`main` に入った時点で本番 LP や GitHub README などの表示を更新できる。
 アプリに影響する変更は `develop` に集め、通常リリース手順で `main` へ反映する。
 
 #### 補足（運用上の注意・v4.0.0 で確定）
@@ -48,7 +48,31 @@ flowchart TD
 - **CI / ビルド設定（`test.yml`・`release.yml` 等）は「アプリに影響する側」** として扱う＝ `develop` で変更する（`main` 直接にしない）。
 - **普段の作業ブランチは `develop`。`main` に居座らない**（誤って `main` でアプリコードを触る事故を防ぐ）。
 - **`main` と `develop` をズレたまま放置しない。** `main` だけで変更を作らない。Do Release の「`main` → `develop` 戻し」は、リリース処理中に `main` 側で作られるバージョン更新などを `develop` に戻すためのもの。ズレを放置すると Do Release のマージで衝突する（v4.0.0 で `.gitignore` の衝突が実際に発生した）。
+- **LP の本番反映は `Do Non-App Release` を使う。** `Do Release` はアプリリリース用であり、バージョン更新、タグ作成、リリースビルド、Tauri ビルドを伴う。LP だけの更新では使わない。
 - **Do Release / winget の二重テスト回避:** `test.yml` の `rust` ジョブは、**bot（`github-actions[bot]` / `orenofusen-winget-releaser[bot]`）による push なら `develop` / `main` どちらでもスキップ**する（`if` で「`push` イベント かつ bot actor」を除外）。理由は、Do Release や winget の bot push にぶら下がってテストが並走し、本命のリリース処理（`release.yml` / winget ジョブ）の邪魔になるのを防ぐため。人間による push と Pull Request では通常どおり実行される。
+
+### 非アプリ変更（LP）の本番反映
+
+LP だけを本番更新する場合は、アプリリリース用の `Do Release` ではなく、手動ワークフロー `Do Non-App Release` を使う。
+この経路は `develop` で確認済みの LP 関連ファイルだけを `main` にコピーし、バージョン更新、タグ作成、GitHub Release 作成、Tauri ビルド、Rust / Next.js のリリースビルドを行わない。
+
+**表 1-2　Do Non-App Release の対象ファイル**
+
+| 対象 | 反映されるパス |
+|------|----------------|
+| `landing` | `app/landing/**`、`app/sitemap.ts`、`app/robots.ts`、`public/screenshots/**` |
+
+手順:
+
+1. LP 変更を `develop` に入れる。
+2. `develop` に push する。
+3. 開発環境または Preview 環境で LP を確認する。
+4. GitHub Actions の **Do Non-App Release** を開く。
+5. **Run workflow** を押し、`target` は `landing` のまま実行する。
+6. 必要なら `message` に本番反映用のコミットメッセージを入れる。
+7. `main` に LP 関連ファイルだけが反映されたことを確認する。
+
+`Do Non-App Release` はタグを作らないため、アプリリリース用の `release.yml` は起動しない。`test.yml` も bot push をスキップする設定になっているため、Tauri の重い再ビルドを避けつつ、本番 LP のデプロイだけを進められる。
 
 ---
 
@@ -289,3 +313,4 @@ git push origin main --tags
 | 11 | 26-06-19 | 5. 開発からリリースまでの流れ | 必須ゲート表などの「ユーザー」表現を、開発者か付箋アプリ利用者か明確化（`docs/` は開発者向け手順と利用者向けガイドの両方を含む旨を明記）。 |
 | 12 | 26-06-19 | 全章（表・図） | すべての表に表番号・表名（表 N-M）、すべての図に図番号・図名（図 N-M）を付与。表名は表の上、図名は図の下に配置。 |
 | 13 | 26-06-19 | 5. 開発からリリースまでの流れ | リリース手順に不適だった「データロスト禁止」注記を削除（実装原則であり、内容は `docs-v2/` の「データロスト防止ゲート」等に既出）。ゲート No.1 を「実装は最小単位で行う」に簡潔化。 |
+| 14 | 26-07-04 | 1. ブランチ運用の判断 | LP などの非アプリ変更も `develop` で確認してから `Do Non-App Release` で `main` へ反映する運用に変更。`Do Release` と非アプリ反映ルートを分離。 |

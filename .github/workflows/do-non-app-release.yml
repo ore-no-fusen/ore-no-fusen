@@ -1,0 +1,112 @@
+name: Do Non-App Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Non-app area to publish from develop to main'
+        required: true
+        default: landing
+        type: choice
+        options:
+          - landing
+      message:
+        description: 'Commit message (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: do-non-app-release
+  cancel-in-progress: false
+
+jobs:
+  do-non-app-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.WINGET_APP_ID }}
+          private-key: ${{ secrets.WINGET_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          fetch-depth: 0
+          ref: main
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch branches
+        run: |
+          git fetch origin main develop
+
+      - name: Verify branch state
+        run: |
+          git checkout main
+          git reset --hard origin/main
+          git rev-parse --verify origin/develop
+
+      - name: Copy allowed non-app files from develop
+        env:
+          TARGET: ${{ github.event.inputs.target }}
+        run: |
+          if [ "$TARGET" != "landing" ]; then
+            echo "Unsupported target: $TARGET"
+            exit 1
+          fi
+
+          rm -rf app/landing public/screenshots
+
+          git checkout origin/develop -- \
+            app/landing \
+            app/sitemap.ts \
+            app/robots.ts \
+            public/screenshots
+
+      - name: Validate changed paths
+        run: |
+          CHANGED="$(git diff --name-only)"
+          if [ -z "$CHANGED" ]; then
+            echo "No non-app changes to publish."
+            exit 0
+          fi
+
+          echo "$CHANGED"
+
+          DISALLOWED="$(echo "$CHANGED" | grep -Ev '^(app/landing/|app/sitemap\.ts$|app/robots\.ts$|public/screenshots/)' || true)"
+          if [ -n "$DISALLOWED" ]; then
+            echo "Disallowed paths detected:"
+            echo "$DISALLOWED"
+            exit 1
+          fi
+
+          VERSION_CHANGES="$(echo "$CHANGED" | grep -E '^(package\.json|package-lock\.json|src-tauri/Cargo\.toml|src-tauri/Cargo\.lock|packaging/msix/AppxManifest\.xml)$' || true)"
+          if [ -n "$VERSION_CHANGES" ]; then
+            echo "Version/app release files must not change in this workflow:"
+            echo "$VERSION_CHANGES"
+            exit 1
+          fi
+
+      - name: Commit and push main
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          MSG="${{ github.event.inputs.message }}"
+          COMMIT_MSG="${MSG:-chore(non-app): publish landing updates from develop}"
+
+          git add app/landing app/sitemap.ts app/robots.ts public/screenshots
+          git commit -m "$COMMIT_MSG"
+          git push origin main
