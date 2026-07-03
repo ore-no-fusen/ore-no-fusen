@@ -75,7 +75,7 @@ jobs:
 
       - name: Validate changed paths
         run: |
-          CHANGED="$(git diff --name-only)"
+          CHANGED="$(git diff --cached --name-only)"
           if [ -z "$CHANGED" ]; then
             echo "No non-app changes to publish."
             exit 0
@@ -99,7 +99,7 @@ jobs:
 
       - name: Commit and push main
         run: |
-          if git diff --quiet; then
+          if git diff --cached --quiet; then
             echo "No changes to commit."
             exit 0
           fi
