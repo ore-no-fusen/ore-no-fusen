@@ -2,19 +2,19 @@
  * ランディングページ (LandingPage) - 「思考を現実へ」ブランド再設計版
  *
  * 構成（依頼書順 + ラスコー保持）:
- *  0. Hero            「消えそうなひらめきを、逃がさない。」+ 0.3秒の証拠 + CTA + 製品スクショ
+ *  0. Hero            「消えそうな願いを、逃がさない。」+ 0.3秒の証拠 + CTA + 製品スクショ
  *  1. 共感             あとでやろうで消える
  *  2. ラスコー         思想の根拠（残す）
  *  3. 解決フロー       思考 → 固定 → 視界 → 決心 → 行動 → 現実
  *  4. 速さの証拠       0.04 秒の実測動画
  *  5. 機能             思想の言い換えとして
- *  6. PC↔iPhone        ひらめきをどこでも逃がさない
+ *  6. PC↔iPhone        願いをどこでも逃がさない
  *  7. 棲み分け         Sticky Notes / Excel の、あいだ
  *  8. 体験デモ
  *  9. オレノフ動画
  * 10. 活用ギャラリー   「こんな使い方もあるのか」（動画の余韻の直後）
  * 11. プライバシー
- * 12. 最後のCTA（ひらめきを付箋に。）
+ * 12. 最後のCTA（付箋に願いを。）
  */
 
 'use client';
@@ -173,7 +173,7 @@ export default function LandingPage() {
 
             {/* ==============================
                 0. Hero
-                「消えそうなひらめきを、逃がさない。」
+                「消えそうな願いを、逃がさない。」
             ============================== */}
             <section className="relative overflow-hidden py-24 sm:py-32 px-6 min-h-[88vh] flex items-center">
                 <div
@@ -194,13 +194,13 @@ export default function LandingPage() {
                     <h1 className="text-[2.4rem] sm:text-5xl lg:text-[3.8rem] font-extrabold leading-[1.15] tracking-tight mb-8 text-[#2C1F0E]">
                         {isEn ? (
                             <>
-                                Don&apos;t let your <span className="text-[#5C7A3E]">spark</span><br />
-                                slip away.
+                                Don&apos;t let your wish<br />
+                                <span className="text-[#5C7A3E]">slip away.</span>
                             </>
                         ) : (
                             <>
-                                消えそうな<span className="text-[#5C7A3E]">ひらめき</span>を、<br />
-                                逃がさない。
+                                消えそうな願いを、<br />
+                                <span className="text-[#5C7A3E]">逃がさない。</span>
                             </>
                         )}
                     </h1>
@@ -399,7 +399,7 @@ export default function LandingPage() {
                     >
                         <div className="h-2 -mx-3.5 -mt-3 mb-3 rounded-t-sm" style={{ backgroundColor: '#8BAF75' }} />
                         <p className="text-[12px] font-semibold text-[#1E3A10] leading-snug">
-                            {isEn ? 'Pin a spark.' : 'ひらめきを付箋に。'}
+                            {isEn ? 'Pin a wish.' : '付箋に願いを。'}
                         </p>
                     </div>
                 </div>
@@ -548,7 +548,7 @@ export default function LandingPage() {
                                 and it stops slipping away.<br />
                                 <br />
                                 Some say those paintings were<br />
-                                not records, but prayers.
+                                not records, but wishes.
                             </>
                         ) : (
                             <>
@@ -559,7 +559,7 @@ export default function LandingPage() {
                                 それだけで、逃げなくなる。<br />
                                 <br />
                                 あの壁画は、記録ではなく<br />
-                                祈りだったという説がある。
+                                願いだったという説がある。
                             </>
                         )}
                     </div>
@@ -842,7 +842,7 @@ export default function LandingPage() {
                                 topColor: '#B88060',
                                 rotation: '-rotate-1',
                                 tag: 'iPhone',
-                                title: 'ひらめきを、どこでも逃がさない。',
+                                title: '願いを、どこでも逃がさない。',
                                 text: '選んだ付箋を iPhone へ送る。帰り道に書いたメモは、家のデスクトップに帰ってくる。',
                                 textColor: '#3A1810',
                             },
@@ -925,9 +925,9 @@ export default function LandingPage() {
                         </p>
                         <h2 className="text-3xl sm:text-4xl font-bold text-[#2C1F0E] mb-4 tracking-tight">
                             {isEn ? (
-                                <>Carry your <span className="text-[#5C7A3E]">sparks</span> anywhere.</>
+                                <>Carry your wishes <span className="text-[#5C7A3E]">anywhere.</span></>
                             ) : (
-                                <><span className="text-[#5C7A3E]">ひらめき</span>を、どこでも逃がさない。</>
+                                <>願いを、<span className="text-[#5C7A3E]">どこでも逃がさない。</span></>
                             )}
                         </h2>
                         <p className="text-[#8A7055] max-w-xl mx-auto leading-relaxed">
@@ -1586,7 +1586,7 @@ export default function LandingPage() {
                         />
 
                         <p className="text-2xl sm:text-3xl font-bold text-[#3A2C00] text-center">
-                            {isEn ? 'Pin a spark.' : 'ひらめきを付箋に。'}
+                            {isEn ? 'Pin a wish.' : '付箋に願いを。'}
                         </p>
                     </div>
 
