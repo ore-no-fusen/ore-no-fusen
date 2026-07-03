@@ -322,13 +322,14 @@ export default function LandingPage() {
                             }}
                         >
                             <Image
-                                src="/screenshots/ScreenShot_OreNoFusen.png"
+                                src="/screenshots/ScreenShot_OreNoFusen-lcp.jpg"
                                 alt={isEn
                                     ? 'FUSEN sticky notes pinned on a Windows desktop'
                                     : 'Windows デスクトップに貼られた俺の付箋'}
                                 width={1200}
-                                height={800}
+                                height={675}
                                 priority
+                                sizes="(min-width: 768px) 768px, calc(100vw - 48px)"
                                 className="w-full h-auto block"
                             />
                         </div>
@@ -341,13 +342,13 @@ export default function LandingPage() {
                 </div>
 
                 {/* 「常に見える」を体現する装飾付箋（背景の縁から覗かせる） */}
-                <div className="pointer-events-none absolute inset-0 hidden md:block" aria-hidden="true">
+                <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
                     {/* 左下 - 黄 */}
                     <div
                         className="absolute"
                         style={{
                             bottom: '6%',
-                            left: '-1.5%',
+                            left: '3%',
                             width: 168,
                             padding: '14px 16px 18px',
                             backgroundColor: '#EDD87A',
@@ -367,7 +368,7 @@ export default function LandingPage() {
                         className="absolute"
                         style={{
                             top: '12%',
-                            right: '-1.5%',
+                            right: '3%',
                             width: 152,
                             padding: '14px 16px 18px',
                             backgroundColor: '#9DC0D0',
@@ -387,7 +388,7 @@ export default function LandingPage() {
                         className="absolute"
                         style={{
                             bottom: '14%',
-                            right: '2%',
+                            right: '6%',
                             width: 140,
                             padding: '12px 14px 16px',
                             backgroundColor: '#A8C890',
@@ -702,7 +703,7 @@ export default function LandingPage() {
                                 loop
                                 playsInline
                                 preload="metadata"
-                                poster="/screenshots/ScreenShot_OreNoFusen.png"
+                                poster="/screenshots/ScreenShot_OreNoFusen-lcp.jpg"
                                 className="w-full h-auto block"
                             >
                                 <source src="/promo/speed-proof.mp4" type="video/mp4" />

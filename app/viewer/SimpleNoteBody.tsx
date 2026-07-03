@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
+import { renderSecureMermaid } from '../utils/mermaid';
 
 // Mermaid ブロック描画コンポーネント
 function MermaidBlock({ code, index }: { code: string; index: number }) {
@@ -9,12 +10,8 @@ function MermaidBlock({ code, index }: { code: string; index: number }) {
   useEffect(() => {
     if (!containerRef.current) return;
     const id = `mermaid-${index}-${Date.now()}`;
-    import('mermaid')
-      .then(({ default: mermaid }) => {
-        mermaid.initialize({ startOnLoad: false });
-        return mermaid.render(id, code);
-      })
-      .then(({ svg }) => {
+    renderSecureMermaid(id, code)
+      .then((svg) => {
         if (containerRef.current) {
           containerRef.current.innerHTML = svg;
         }

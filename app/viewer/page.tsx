@@ -24,6 +24,7 @@ import {
 import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
 import { silentReRegisterIfNeeded } from './lib/push';
 import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from './editor-helpers';
+import { renderSecureMermaid } from '../utils/mermaid';
 
 // ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
@@ -189,13 +190,11 @@ export default function ViewerPage() {
       const mermaidDivs = Array.from(el.querySelectorAll<HTMLElement>('[data-mermaid-code]'));
       if (mermaidDivs.length > 0) {
         try {
-          const { default: mermaid } = await import('mermaid');
-          mermaid.initialize({ startOnLoad: false });
           for (let idx = 0; idx < mermaidDivs.length; idx++) {
             const div = mermaidDivs[idx];
             const code = div.getAttribute('data-mermaid-code') ?? '';
             try {
-              const { svg } = await mermaid.render(`mermaid-h-${idx}-${Date.now()}`, code);
+              const svg = await renderSecureMermaid(`mermaid-h-${idx}-${Date.now()}`, code);
               if (el.contains(div)) {
                 div.innerHTML = svg;
                 div.style.cssText = 'display:block;margin:4px 0;max-width:100%;overflow-x:auto;';

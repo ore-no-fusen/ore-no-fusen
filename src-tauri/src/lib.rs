@@ -3377,11 +3377,77 @@ fn build_context(title: &str, body: &str) -> String {
     if !title.is_empty() {
         return title.to_string();
     }
+    if is_image_only_body(body) {
+        return "画像".to_string();
+    }
     let first_line = body.lines().next().unwrap_or("").trim();
     if !first_line.is_empty() {
         return first_line.chars().take(10).collect();
     }
     chrono::Local::now().format("%H:%M").to_string()
+}
+
+fn is_image_only_body(body: &str) -> bool {
+    let mut saw_image = false;
+    for line in body.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if !is_markdown_image_line(line) {
+            return false;
+        }
+        saw_image = true;
+    }
+    saw_image
+}
+
+fn is_markdown_image_line(line: &str) -> bool {
+    if !line.starts_with("![") || !line.ends_with(')') {
+        return false;
+    }
+    let Some(target_start) = line.find("](") else {
+        return false;
+    };
+    let target = &line[target_start + 2..line.len() - 1];
+    target.starts_with("fusen_img_") || target.starts_with("assets/fusen_img_")
+}
+
+#[cfg(test)]
+mod iphone_context_tests {
+    use super::*;
+
+    #[test]
+    fn image_only_iphone_body_uses_image_context() {
+        assert_eq!(
+            build_context("", "![](fusen_img_20260630_235053_1.jpg)"),
+            "画像"
+        );
+        assert_eq!(
+            build_context("", "![](assets/fusen_img_20260630_235053_1.jpg)"),
+            "画像"
+        );
+    }
+
+    #[test]
+    fn image_only_context_allows_multiple_image_lines() {
+        let body = "![](fusen_img_1.jpg)\n\n![memo](fusen_img_2.jpg)";
+
+        assert_eq!(build_context("", body), "画像");
+    }
+
+    #[test]
+    fn non_image_body_keeps_existing_context_behavior() {
+        assert_eq!(build_context("", "hello world memo"), "hello worl");
+        assert_eq!(
+            build_context("", "![](fusen_img_1.jpg)\ncaption"),
+            "![](fusen_"
+        );
+    }
+
+    #[test]
+    fn explicit_title_still_wins() {
+        assert_eq!(
+            build_context("タイトル", "![](fusen_img_20260630_235053_1.jpg)"),
+            "タイトル"
+        );
+    }
 }
 
 #[derive(Clone, serde::Serialize)]
