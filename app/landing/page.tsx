@@ -322,13 +322,14 @@ export default function LandingPage() {
                             }}
                         >
                             <Image
-                                src="/screenshots/ScreenShot_OreNoFusen.png"
+                                src="/screenshots/ScreenShot_OreNoFusen-lcp.jpg"
                                 alt={isEn
                                     ? 'FUSEN sticky notes pinned on a Windows desktop'
                                     : 'Windows デスクトップに貼られた俺の付箋'}
                                 width={1200}
-                                height={800}
+                                height={675}
                                 priority
+                                sizes="(min-width: 768px) 768px, calc(100vw - 48px)"
                                 className="w-full h-auto block"
                             />
                         </div>
@@ -702,7 +703,7 @@ export default function LandingPage() {
                                 loop
                                 playsInline
                                 preload="metadata"
-                                poster="/screenshots/ScreenShot_OreNoFusen.png"
+                                poster="/screenshots/ScreenShot_OreNoFusen-lcp.jpg"
                                 className="w-full h-auto block"
                             >
                                 <source src="/promo/speed-proof.mp4" type="video/mp4" />
