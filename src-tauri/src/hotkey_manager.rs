@@ -8,7 +8,7 @@ use tauri_plugin_global_shortcut::{
     Builder as ShortcutBuilder, Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
 
-use crate::{can_do_visibility_op, fusen_arrange_by_tag, logger, perflog, storage};
+use crate::{can_do_visibility_op, double_tap::{self, DoubleTapTarget}, fusen_arrange_by_tag, logger, perflog, storage};
 
 static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
 
@@ -206,6 +206,8 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                         } else {
                             logger::log_info("[Shortcut] Ctrl+N グローバルショートカット登録成功");
                         }
+                    } else if let Err(e) = sync_double_tap_hook(app.handle(), &bindings.new_note_trigger) {
+                        logger::log_warn(&format!("[Shortcut] double tap hook start failed: {}", e));
                     }
                 },
                 Err(e) => {
@@ -216,6 +218,23 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
         Err(e) => {
             logger::log_warn(&format!("Failed to register global shortcuts (might be conflicting): {}", e));
         }
+    }
+}
+
+fn trigger_to_double_tap_target(trigger: &str) -> Option<DoubleTapTarget> {
+    match trigger {
+        TRIGGER_DOUBLE_CTRL => Some(DoubleTapTarget::Ctrl),
+        TRIGGER_DOUBLE_SHIFT => Some(DoubleTapTarget::Shift),
+        _ => None,
+    }
+}
+
+fn sync_double_tap_hook(app: &AppHandle, trigger: &str) -> Result<(), String> {
+    if let Some(target) = trigger_to_double_tap_target(trigger) {
+        double_tap::start(app.clone(), target)
+    } else {
+        double_tap::stop();
+        Ok(())
     }
 }
 
@@ -325,6 +344,27 @@ pub(crate) fn hotkey_apply(
         bindings.shortcuts.insert(action, new_shortcut);
     }
     if action == HotKeyAction::NewNote {
+        if let Err(e) = sync_double_tap_hook(&app, &requested_trigger) {
+            logger::log_warn(&format!("[Shortcut] hotkey_apply double tap sync failed: {}", e));
+            if new_registered {
+                if let Some(new_shortcut) = requested_shortcut {
+                    if let Err(unregister_error) = app.global_shortcut().unregister(new_shortcut) {
+                        logger::log_warn(&format!("[Shortcut] hotkey_apply hook rollback unregister failed: {}", unregister_error));
+                    }
+                }
+            }
+            if old_registered {
+                if let Err(rollback_error) = app.global_shortcut().register(old_shortcut) {
+                    logger::log_warn(&format!("[Shortcut] hotkey_apply hook rollback register failed: {}", rollback_error));
+                }
+            }
+            if let Err(rollback_error) = sync_double_tap_hook(&app, &old_trigger) {
+                logger::log_warn(&format!("[Shortcut] hotkey_apply hook rollback failed: {}", rollback_error));
+            }
+            return Err(e);
+        }
+    }
+    if action == HotKeyAction::NewNote {
         bindings.new_note_trigger = requested_trigger;
     }
 
@@ -343,6 +383,11 @@ pub(crate) fn hotkey_apply(
         }
         bindings.shortcuts.insert(action, old_shortcut);
         bindings.new_note_trigger = old_trigger;
+        if action == HotKeyAction::NewNote {
+            if let Err(rollback_error) = sync_double_tap_hook(&app, &bindings.new_note_trigger) {
+                logger::log_warn(&format!("[Shortcut] hotkey_apply save rollback hook failed: {}", rollback_error));
+            }
+        }
         return Err(e);
     }
 
