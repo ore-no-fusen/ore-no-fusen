@@ -20,6 +20,10 @@ const DEFAULT_SETTINGS: AppSettings = {
     font_size: 12,
     sound_enabled: true,
     iphone_send_enabled: false,
+    shortcut_new_note: 'ctrl+n',
+    new_note_trigger: 'shortcut',
+    shortcut_toggle_visibility: 'ctrl+shift+h',
+    shortcut_arrange: 'ctrl+shift+l',
 };
 
 // キャッシュ
@@ -81,6 +85,10 @@ async function getSettings(): Promise<AppSettings> {
                     font_size: parsed.font_size ?? parsed.fontSize ?? DEFAULT_SETTINGS.font_size,
                     sound_enabled: parsed.sound_enabled ?? parsed.soundEnabled ?? DEFAULT_SETTINGS.sound_enabled,
                     iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
+                    shortcut_new_note: parsed.shortcut_new_note ?? DEFAULT_SETTINGS.shortcut_new_note,
+                    new_note_trigger: parsed.new_note_trigger ?? DEFAULT_SETTINGS.new_note_trigger,
+                    shortcut_toggle_visibility: parsed.shortcut_toggle_visibility ?? DEFAULT_SETTINGS.shortcut_toggle_visibility,
+                    shortcut_arrange: parsed.shortcut_arrange ?? DEFAULT_SETTINGS.shortcut_arrange,
                 };
             } else {
                 settingsCache = DEFAULT_SETTINGS;
@@ -96,6 +104,10 @@ async function getSettings(): Promise<AppSettings> {
                 font_size: loaded.font_size,
                 sound_enabled: loaded.sound_enabled,
                 iphone_send_enabled: loaded.iphone_send_enabled,
+                shortcut_new_note: loaded.shortcut_new_note,
+                new_note_trigger: loaded.new_note_trigger,
+                shortcut_toggle_visibility: loaded.shortcut_toggle_visibility,
+                shortcut_arrange: loaded.shortcut_arrange,
             }
             settingsCache = { ...DEFAULT_SETTINGS, ...normalized };
         }
@@ -115,4 +127,3 @@ export async function isSoundEnabled(): Promise<boolean> {
     const settings = await getSettings();
     return settings.sound_enabled;
 }
-

@@ -10,12 +10,14 @@
 "use client"
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText, Heart } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
 import { useSettings, type AppSettings } from "@/lib/settings-store"
 // ★翻訳関数をインポート
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
+import { formatShortcutLabel, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
 import {
     ackFeedbackConversationMessages,
     getDeveloperFeedbackApiBaseUrl,
@@ -130,6 +132,8 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 return <GeneralSection settings={settings} onUpdate={updateSetting} t={t} />
             case "appearance":
                 return <AppearanceSection settings={settings} onUpdate={updateSetting} t={t} />
+            case "hotkeys":
+                return <HotkeySection settings={settings} saveSettings={saveSettings} />
             case "data":
                 return <DataSection
                     settings={settings}
@@ -183,6 +187,12 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         label={t('settings.appearance')}
                         isActive={activeSection === "appearance"}
                         onClick={() => setActiveSection("appearance")}
+                    />
+                    <SidebarItem
+                        icon={<Keyboard className="mr-3 h-4 w-4" />}
+                        label="ホットキー"
+                        isActive={activeSection === "hotkeys"}
+                        onClick={() => setActiveSection("hotkeys")}
                     />
                     <SidebarItem
                         icon={<Database className="mr-3 h-4 w-4" />}
@@ -442,6 +452,301 @@ type DataSectionProps = SectionProps & {
     setBackupDestPath: (path: string) => void;
     isBackingUp: boolean;
     setIsBackingUp: (val: boolean) => void;
+}
+
+type HotkeyAction = 'new_note' | 'toggle_visibility' | 'arrange';
+type NewNoteTrigger = 'shortcut' | 'double_ctrl' | 'double_shift';
+type HotkeyBindings = {
+    new_note_trigger: NewNoteTrigger;
+    new_note: string;
+    toggle_visibility: string;
+    arrange: string;
+}
+type HotkeyCheckResult = {
+    available: boolean;
+    reason: 'ok' | 'self' | 'internal' | 'external';
+    conflict_action?: HotkeyAction | null;
+}
+
+const HOTKEY_ACTION_LABELS: Record<HotkeyAction, string> = {
+    new_note: '新規付箋',
+    toggle_visibility: '表示切替',
+    arrange: '整列',
+}
+
+function HotkeySection({ settings, saveSettings }: {
+    settings: AppSettings;
+    saveSettings: (settings: AppSettings) => Promise<void>;
+}) {
+    const [bindings, setBindings] = useState<HotkeyBindings | null>(null)
+    const [captureAction, setCaptureAction] = useState<HotkeyAction | null>(null)
+    const [candidateShortcut, setCandidateShortcut] = useState<string | null>(null)
+    const [checkResult, setCheckResult] = useState<HotkeyCheckResult | null>(null)
+    const [message, setMessage] = useState("")
+    const [isSaving, setIsSaving] = useState(false)
+
+    const loadBindings = useCallback(async (): Promise<HotkeyBindings | null> => {
+        try {
+            const result = await invoke<HotkeyBindings>('hotkey_get_bindings')
+            setBindings(result)
+            return result
+        } catch (e) {
+            setMessage(`ホットキー設定の読み込みに失敗しました: ${String(e)}`)
+            return null
+        }
+    }, [])
+
+    useEffect(() => {
+        loadBindings()
+    }, [loadBindings])
+
+    useEffect(() => {
+        if (!captureAction) return
+
+        const onKeyDown = async (event: KeyboardEvent) => {
+            event.preventDefault()
+            event.stopPropagation()
+
+            if (event.key === 'Escape') {
+                setCaptureAction(null)
+                setCandidateShortcut(null)
+                setCheckResult(null)
+                setMessage("")
+                return
+            }
+
+            const shortcut = keyboardEventToShortcut(event)
+            if (!shortcut) {
+                setMessage("修飾キーと通常キーを組み合わせて押してください。Esc でキャンセルできます。")
+                return
+            }
+
+            setCandidateShortcut(shortcut)
+            try {
+                const result = await invoke<HotkeyCheckResult>('hotkey_check', {
+                    action: captureAction,
+                    shortcut,
+                })
+                setCheckResult(result)
+                setMessage(hotkeyCheckMessage(result))
+            } catch (e) {
+                setCheckResult(null)
+                setMessage(`判定に失敗しました: ${String(e)}`)
+            }
+        }
+
+        window.addEventListener('keydown', onKeyDown, true)
+        return () => window.removeEventListener('keydown', onKeyDown, true)
+    }, [captureAction])
+
+    const beginCapture = (action: HotkeyAction) => {
+        setCaptureAction(action)
+        setCandidateShortcut(null)
+        setCheckResult(null)
+        setMessage("押してください...（Escでキャンセル）")
+    }
+
+    const applyShortcut = async () => {
+        if (!bindings || !captureAction || !candidateShortcut || !checkResult?.available) return
+        setIsSaving(true)
+        try {
+            await invoke('hotkey_apply', {
+                action: captureAction,
+                config: captureAction === 'new_note'
+                    ? { shortcut: candidateShortcut, new_note_trigger: 'shortcut' }
+                    : { shortcut: candidateShortcut },
+            })
+            const nextBindings = await loadBindings()
+            if (nextBindings) await syncSettingsStore(settings, saveSettings, nextBindings)
+            setCaptureAction(null)
+            setCandidateShortcut(null)
+            setCheckResult(null)
+            setMessage("保存しました。")
+        } catch (e) {
+            setMessage(`保存に失敗しました: ${String(e)}`)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const applyNewNoteTrigger = async (trigger: NewNoteTrigger) => {
+        if (!bindings) return
+        setIsSaving(true)
+        try {
+            await invoke('hotkey_apply', {
+                action: 'new_note',
+                config: trigger === 'shortcut'
+                    ? { shortcut: bindings.new_note, new_note_trigger: 'shortcut' }
+                    : { new_note_trigger: trigger },
+            })
+            const nextBindings = await loadBindings()
+            if (nextBindings) await syncSettingsStore(settings, saveSettings, nextBindings)
+            setMessage("保存しました。")
+        } catch (e) {
+            setMessage(`保存に失敗しました: ${String(e)}`)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    if (!bindings) {
+        return <div className="text-sm text-muted-foreground">ホットキー設定を読み込み中...</div>
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">ホットキー</h2>
+                <p className="text-gray-500 text-sm">新規付箋、表示切替、整列のグローバルホットキーを設定します。</p>
+            </div>
+            <Separator />
+
+            <div className="space-y-4">
+                <div className="rounded-lg border p-4 space-y-4">
+                    <div>
+                        <Label className="text-base font-bold text-gray-900">新規付箋トリガー</Label>
+                        <p className="text-sm text-muted-foreground mt-1">付箋を作る操作を選びます。</p>
+                    </div>
+
+                    <label className="flex items-center justify-between gap-4 rounded-md border border-gray-100 bg-gray-50 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="radio"
+                                name="new-note-trigger"
+                                checked={bindings.new_note_trigger === 'shortcut'}
+                                onChange={() => applyNewNoteTrigger('shortcut')}
+                            />
+                            <div>
+                                <p className="text-sm font-semibold text-gray-800">カスタムキー</p>
+                                <p className="text-xs text-gray-500">{formatShortcutLabel(bindings.new_note)}</p>
+                            </div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => beginCapture('new_note')}>
+                            変更
+                        </Button>
+                    </label>
+
+                    <label className="flex items-start gap-3 rounded-md border border-gray-100 px-4 py-3">
+                        <input
+                            type="radio"
+                            name="new-note-trigger"
+                            className="mt-1"
+                            checked={bindings.new_note_trigger === 'double_ctrl'}
+                            onChange={() => applyNewNoteTrigger('double_ctrl')}
+                        />
+                        <div>
+                            <p className="text-sm font-semibold text-gray-800">Ctrl 2回押し</p>
+                            <p className="text-xs text-gray-500 mt-1">※ 2回押しは他のアプリとキーを奪い合いません（同じ操作を使うアプリがあると両方反応します）</p>
+                        </div>
+                    </label>
+
+                    <label className="flex items-start gap-3 rounded-md border border-gray-100 px-4 py-3">
+                        <input
+                            type="radio"
+                            name="new-note-trigger"
+                            className="mt-1"
+                            checked={bindings.new_note_trigger === 'double_shift'}
+                            onChange={() => applyNewNoteTrigger('double_shift')}
+                        />
+                        <div>
+                            <p className="text-sm font-semibold text-gray-800">Shift 2回押し</p>
+                            <p className="text-xs text-gray-500 mt-1">※ 2回押しは他のアプリとキーを奪い合いません（同じ操作を使うアプリがあると両方反応します）</p>
+                        </div>
+                    </label>
+                </div>
+
+                <HotkeyShortcutRow
+                    title="表示切替"
+                    description="すべての付箋の表示/非表示を切り替えます。"
+                    shortcut={bindings.toggle_visibility}
+                    onChange={() => beginCapture('toggle_visibility')}
+                />
+                <HotkeyShortcutRow
+                    title="整列"
+                    description="タグごとに付箋を整列します。"
+                    shortcut={bindings.arrange}
+                    onChange={() => beginCapture('arrange')}
+                />
+
+                {captureAction && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <p className="text-sm font-bold text-blue-950">{HOTKEY_ACTION_LABELS[captureAction]} の変更</p>
+                                <p className="text-sm text-blue-800 mt-1">
+                                    {candidateShortcut ? formatShortcutLabel(candidateShortcut) : "押してください..."}
+                                </p>
+                                {message && (
+                                    <p className={`mt-2 text-sm ${checkResult?.available ? 'text-green-700' : checkResult ? 'text-red-700' : 'text-blue-700'}`}>
+                                        {message}
+                                    </p>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <Button variant="ghost" size="sm" onClick={() => {
+                                    setCaptureAction(null)
+                                    setCandidateShortcut(null)
+                                    setCheckResult(null)
+                                    setMessage("")
+                                }}>
+                                    キャンセル
+                                </Button>
+                                <Button size="sm" disabled={!checkResult?.available || isSaving} onClick={applyShortcut}>
+                                    {isSaving ? '保存中' : '保存'}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {!captureAction && message && (
+                    <p className="text-sm text-gray-600">{message}</p>
+                )}
+            </div>
+        </div>
+    )
+}
+
+async function syncSettingsStore(settings: AppSettings, saveSettings: (settings: AppSettings) => Promise<void>, bindings: HotkeyBindings) {
+    await saveSettings({
+        ...settings,
+        shortcut_new_note: bindings.new_note,
+        new_note_trigger: bindings.new_note_trigger,
+        shortcut_toggle_visibility: bindings.toggle_visibility,
+        shortcut_arrange: bindings.arrange,
+    })
+}
+
+function HotkeyShortcutRow({ title, description, shortcut, onChange }: {
+    title: string;
+    description: string;
+    shortcut: string;
+    onChange: () => void;
+}) {
+    return (
+        <div className="flex items-center justify-between rounded-lg border p-4">
+            <div>
+                <Label className="text-base font-bold text-gray-900">{title}</Label>
+                <p className="text-sm text-muted-foreground mt-1">{description}</p>
+            </div>
+            <div className="flex items-center gap-3">
+                <code className="rounded-md border bg-gray-50 px-3 py-1.5 text-sm font-semibold text-gray-800">
+                    {formatShortcutLabel(shortcut)}
+                </code>
+                <Button variant="outline" size="sm" onClick={onChange}>
+                    変更
+                </Button>
+            </div>
+        </div>
+    )
+}
+
+function hotkeyCheckMessage(result: HotkeyCheckResult): string {
+    if (result.reason === 'ok' || result.reason === 'self') return '✅ 使用できます'
+    if (result.reason === 'internal' && result.conflict_action) {
+        return `❌ このショートカットは「${HOTKEY_ACTION_LABELS[result.conflict_action]}」に割当済みです。`
+    }
+    return '❌ このショートカットは既に他のアプリまたはWindowsで使用されています。別のショートカットを選択してください。'
 }
 
 function GeneralSection({ settings, onUpdate, t }: SectionProps) {

@@ -420,6 +420,8 @@ pub(crate) fn hotkey_apply(
         return Err(e);
     }
 
+    state.register_failures.write().unwrap_or_else(|e| e.into_inner()).retain(|failure| failure.action != action.id());
+
     Ok(())
 }
 
