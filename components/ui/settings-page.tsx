@@ -621,7 +621,11 @@ function HotkeySection({ settings, saveSettings }: {
                                 <p className="text-xs text-gray-500">{formatShortcutLabel(bindings.new_note)}</p>
                             </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => beginCapture('new_note')}>
+                        <Button variant="outline" size="sm" onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            beginCapture('new_note')
+                        }}>
                             変更
                         </Button>
                     </label>
