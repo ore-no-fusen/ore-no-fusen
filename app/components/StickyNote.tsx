@@ -45,6 +45,7 @@ import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateF
 import { resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
+import { matchesShortcut } from '../utils/shortcutKey';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
@@ -1565,7 +1566,7 @@ const StickyNote = memo(function StickyNote() {
      * ローカルキーボードショートカット（この付箋ウィンドウがアクティブな時のみ有効）
      *
      * ショートカット一覧:
-     *   Ctrl+N  → 新規付箋作成（ローカル: ここで定義）
+     *   新規付箋ショートカット → 新規付箋作成（ローカル: ここで定義）
      *   Ctrl+F  → 全文検索（ローカル: ここで定義）
      *   Ctrl+Shift+H → 全付箋の表示/非表示トグル（グローバル: src-tauri/src/lib.rs で定義）
      */
@@ -1586,8 +1587,8 @@ const StickyNote = memo(function StickyNote() {
                 await handleDeleteNote();
                 return;
             }
-            // [New] Ctrl+N: 新規付箋作成
-            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            // [New] 設定された新規付箋ショートカット: 新規付箋作成
+            if ((settings.new_note_trigger ?? 'shortcut') === 'shortcut' && matchesShortcut(e, settings.shortcut_new_note ?? 'ctrl+n')) {
                 e.preventDefault();
                 // [NEW] JS 1.2s スロットル撤去: Pool アーキテクチャで webview 新規作成しないためクラッシュ原因が消えた
                 // フォールバック側（openNoteWindow）は page.tsx の 400ms global throttle + Rust 500ms で保護
@@ -1629,7 +1630,7 @@ const StickyNote = memo(function StickyNote() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [editBodyRef, handleDeleteNote, resolveCreateFolderPath]);
+    }, [editBodyRef, handleDeleteNote, resolveCreateFolderPath, settings.new_note_trigger, settings.shortcut_new_note]);
 
     // ============================================================
     // レンダリング

@@ -34,6 +34,13 @@ export function keyboardEventToShortcut(event: Pick<KeyboardEvent, 'key' | 'ctrl
     return [...modifiers, key].join('+');
 }
 
+export function matchesShortcut(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>, shortcut: string | null | undefined): boolean {
+    if (!shortcut) return false;
+    const eventShortcut = keyboardEventToShortcut(event);
+    if (!eventShortcut) return false;
+    return eventShortcut === normalizeShortcut(shortcut);
+}
+
 export function formatShortcutLabel(shortcut: string): string {
     return shortcut
         .split('+')
@@ -54,6 +61,14 @@ export function formatShortcutLabel(shortcut: string): string {
             }
         })
         .join(' + ');
+}
+
+function normalizeShortcut(shortcut: string): string {
+    return shortcut
+        .split('+')
+        .map(part => part.trim().toLowerCase())
+        .filter(Boolean)
+        .join('+');
 }
 
 function normalizeKey(key: string): string | null {

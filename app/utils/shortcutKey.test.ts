@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatShortcutLabel, keyboardEventToShortcut } from './shortcutKey';
+import { formatShortcutLabel, keyboardEventToShortcut, matchesShortcut } from './shortcutKey';
 
 function keyEvent(input: {
     key: string;
@@ -54,5 +54,18 @@ describe('formatShortcutLabel', () => {
     it('formats shortcut labels for display', () => {
         expect(formatShortcutLabel('ctrl+shift+h')).toBe('Ctrl + Shift + H');
         expect(formatShortcutLabel('super+space')).toBe('Win + Space');
+    });
+});
+
+describe('matchesShortcut', () => {
+    it('matches normalized shortcut strings', () => {
+        expect(matchesShortcut(keyEvent({ key: 'N', ctrlKey: true, altKey: true }), 'ctrl+alt+n')).toBe(true);
+        expect(matchesShortcut(keyEvent({ key: 'h', ctrlKey: true, shiftKey: true }), ' CTRL + SHIFT + H ')).toBe(true);
+    });
+
+    it('does not match different shortcuts or disabled values', () => {
+        expect(matchesShortcut(keyEvent({ key: 'n', ctrlKey: true }), 'ctrl+alt+n')).toBe(false);
+        expect(matchesShortcut(keyEvent({ key: 'n', ctrlKey: true }), null)).toBe(false);
+        expect(matchesShortcut(keyEvent({ key: 'n' }), 'n')).toBe(false);
     });
 });
