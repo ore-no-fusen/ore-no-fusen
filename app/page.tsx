@@ -40,6 +40,15 @@ type AppState = {
   selected_path: string | null;
 };
 
+type HotkeyRegisterFailure = {
+  action: string;
+  shortcut: string;
+};
+
+type HotkeyRegisterFailuresResponse = {
+  failures: HotkeyRegisterFailure[];
+};
+
 // [NEW] 最初からウィンドウを表示するためのフック
 
 
@@ -185,6 +194,7 @@ function OrchestratorContent() {
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
+  const [hotkeyRegisterFailureMessage, setHotkeyRegisterFailureMessage] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
   // [NEW] アップデートチェック（useUpdateCheckに委譲）
@@ -192,6 +202,7 @@ function OrchestratorContent() {
     = useUpdateCheck({ isMainWindow });
 
   const isSearchOpenRef = useRef(false);
+  const hotkeyRegisterFailuresCheckedRef = useRef(false);
   useEffect(() => { isSearchOpenRef.current = isSearchOpen; }, [isSearchOpen]);
 
 
@@ -691,6 +702,32 @@ function OrchestratorContent() {
     setup();
     return () => { safeUnlisten(unlisten); };
   }, [isMainWindow, handleCreateNote]);
+
+  useEffect(() => {
+    if (!isMainWindow || hotkeyRegisterFailuresCheckedRef.current) return;
+    hotkeyRegisterFailuresCheckedRef.current = true;
+
+    const checkHotkeyRegisterFailures = async () => {
+      try {
+        const result = await invoke<HotkeyRegisterFailuresResponse>('hotkey_get_register_failures');
+        if (!result.failures || result.failures.length === 0) return;
+
+        const shortcutNames = result.failures.map(f => f.shortcut).join(' / ');
+        setHotkeyRegisterFailureMessage(
+          `グローバルホットキーを登録できませんでした。\n${shortcutNames} は既に使用されています。\n設定画面を開きますか？`
+        );
+
+        const win = getCurrentWindow();
+        await win.show();
+        await win.unminimize();
+        await win.setFocus();
+      } catch (e) {
+        console.warn('[Hotkey] Failed to check register failures:', e);
+      }
+    };
+
+    checkHotkeyRegisterFailures();
+  }, [isMainWindow]);
 
   // [FIX] メインウィンドウの「閉じる」を「隠す」に変更 (検索ウィンドウ再表示不具合修正)
   useEffect(() => {
@@ -1439,7 +1476,7 @@ function OrchestratorContent() {
 
   }, [handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog;
+  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage;
 
   // [DEBUG] isDashboard状態の詳細ログ
   useEffect(() => {
@@ -1456,7 +1493,7 @@ function OrchestratorContent() {
       }
     };
     logState();
-  }, [isDashboard, isMainWindow, isSearchOpen, isCheckingSetup, setupRequired, isSettingsOpen]);
+  }, [isDashboard, isMainWindow, isSearchOpen, isCheckingSetup, setupRequired, isSettingsOpen, hotkeyRegisterFailureMessage]);
 
   // [FIX] ダッシュボードモード時にメインウィンドウを確実に隠す
   useEffect(() => {
@@ -1502,6 +1539,26 @@ function OrchestratorContent() {
         cancelText={tUpdate('update.cancel')}
         onConfirm={handleUpdateConfirm}
         onCancel={handleUpdateCancel}
+      />
+    );
+  }
+
+  if (hotkeyRegisterFailureMessage) {
+    return (
+      <ConfirmDialog
+        isOpen={!!hotkeyRegisterFailureMessage}
+        title="グローバルホットキー"
+        message={hotkeyRegisterFailureMessage}
+        confirmText="はい"
+        cancelText="いいえ"
+        onConfirm={() => {
+          setHotkeyRegisterFailureMessage(null);
+          setIsCheckingSetup(false);
+          setSetupRequired(false);
+          setSettingsDefaultTab('general');
+          setIsSettingsOpen(true);
+        }}
+        onCancel={() => setHotkeyRegisterFailureMessage(null)}
       />
     );
   }

@@ -4074,6 +4074,7 @@ pub fn run() {
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
             hotkey_manager::hotkey_get_bindings,
+            hotkey_manager::hotkey_get_register_failures,
             hotkey_manager::hotkey_check,
             hotkey_manager::hotkey_apply,
             fusen_create_pool_window, // [NEW] プールウィンドウ生成

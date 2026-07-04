@@ -45,6 +45,7 @@ impl HotKeyAction {
 #[derive(Clone)]
 pub(crate) struct HotKeyState {
     inner: Arc<RwLock<HotKeyBindings>>,
+    register_failures: Arc<RwLock<Vec<HotKeyRegisterFailure>>>,
 }
 
 #[derive(Clone)]
@@ -68,6 +69,17 @@ pub(crate) struct HotKeyCheckResponse {
     conflict_action: Option<String>,
 }
 
+#[derive(Clone, Serialize)]
+pub(crate) struct HotKeyRegisterFailure {
+    action: String,
+    shortcut: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct HotKeyRegisterFailuresResponse {
+    failures: Vec<HotKeyRegisterFailure>,
+}
+
 #[derive(Deserialize)]
 pub(crate) struct HotKeyApplyConfig {
     shortcut: Option<String>,
@@ -78,6 +90,7 @@ impl HotKeyState {
     fn load() -> Self {
         Self {
             inner: Arc::new(RwLock::new(load_bindings())),
+            register_failures: Arc::new(RwLock::new(Vec::new())),
         }
     }
 }
@@ -152,12 +165,7 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
     let bindings = hotkey_state.inner.read().unwrap_or_else(|e| e.into_inner()).clone();
 
     // [Fix] Safely attempt to register shortcuts（Ctrl+Shift+H と Ctrl+N を同一プラグインに登録）
-    match ShortcutBuilder::new().with_shortcuts([
-        bindings.shortcuts[&HotKeyAction::ToggleVisibility],
-        bindings.shortcuts[&HotKeyAction::Arrange],
-    ]) {
-        Ok(builder) => {
-            let plugin = builder
+    let plugin = ShortcutBuilder::new()
                 .with_handler(move |app, shortcut, event| {
                     if event.state == ShortcutState::Pressed {
                         let current = state_for_handler.inner.read().unwrap_or_else(|e| e.into_inner()).clone();
@@ -199,26 +207,40 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
 
             match app.handle().plugin(plugin) {
                 Ok(_) => {
-                    // プラグイン登録後に new_note を追加登録
+                    register_startup_shortcut(app.handle(), &hotkey_state, &bindings, HotKeyAction::ToggleVisibility);
+                    register_startup_shortcut(app.handle(), &hotkey_state, &bindings, HotKeyAction::Arrange);
                     if bindings.new_note_trigger == TRIGGER_SHORTCUT {
-                        if let Err(e) = app.handle().global_shortcut().register(bindings.shortcuts[&HotKeyAction::NewNote]) {
-                            logger::log_warn(&format!("[Shortcut] Ctrl+N 追加登録失敗: {}", e));
-                        } else {
-                            logger::log_info("[Shortcut] Ctrl+N グローバルショートカット登録成功");
-                        }
+                        register_startup_shortcut(app.handle(), &hotkey_state, &bindings, HotKeyAction::NewNote);
                     } else if let Err(e) = sync_double_tap_hook(app.handle(), &bindings.new_note_trigger) {
                         logger::log_warn(&format!("[Shortcut] double tap hook start failed: {}", e));
                     }
                 },
                 Err(e) => {
                     logger::log_warn(&format!("Failed to initialize global shortcut plugin: {}", e));
+                    push_register_failure(&hotkey_state, HotKeyAction::ToggleVisibility, &bindings.shortcuts[&HotKeyAction::ToggleVisibility]);
+                    push_register_failure(&hotkey_state, HotKeyAction::Arrange, &bindings.shortcuts[&HotKeyAction::Arrange]);
+                    if bindings.new_note_trigger == TRIGGER_SHORTCUT {
+                        push_register_failure(&hotkey_state, HotKeyAction::NewNote, &bindings.shortcuts[&HotKeyAction::NewNote]);
+                    }
                 }
             }
-        },
-        Err(e) => {
-            logger::log_warn(&format!("Failed to register global shortcuts (might be conflicting): {}", e));
-        }
+}
+
+fn register_startup_shortcut(app: &AppHandle, state: &HotKeyState, bindings: &HotKeyBindings, action: HotKeyAction) {
+    let shortcut = bindings.shortcuts[&action];
+    if let Err(e) = app.global_shortcut().register(shortcut) {
+        logger::log_warn(&format!("[Shortcut] {} 登録失敗: {}", action.id(), e));
+        push_register_failure(state, action, &shortcut);
+    } else if action == HotKeyAction::NewNote {
+        logger::log_info("[Shortcut] Ctrl+N グローバルショートカット登録成功");
     }
+}
+
+fn push_register_failure(state: &HotKeyState, action: HotKeyAction, shortcut: &Shortcut) {
+    state.register_failures.write().unwrap_or_else(|e| e.into_inner()).push(HotKeyRegisterFailure {
+        action: action.id().to_string(),
+        shortcut: shortcut_to_string(shortcut),
+    });
 }
 
 fn trigger_to_double_tap_target(trigger: &str) -> Option<DoubleTapTarget> {
@@ -246,6 +268,13 @@ pub(crate) fn hotkey_get_bindings(state: State<'_, HotKeyState>) -> HotKeyBindin
         new_note: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::NewNote]),
         toggle_visibility: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::ToggleVisibility]),
         arrange: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::Arrange]),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn hotkey_get_register_failures(state: State<'_, HotKeyState>) -> HotKeyRegisterFailuresResponse {
+    HotKeyRegisterFailuresResponse {
+        failures: state.register_failures.read().unwrap_or_else(|e| e.into_inner()).clone(),
     }
 }
 
