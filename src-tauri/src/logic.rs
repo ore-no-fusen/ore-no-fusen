@@ -76,15 +76,15 @@ pub fn split_frontmatter(src: &str) -> (&str, &str) {
     ("", src)
 }
 
-/// タグフォルダへ整理する際に、アプリ固有のフィールドを除去する。
-/// Obsidian互換フィールド（tags, created, updated）は保持する。
+/// タグフォルダへ整理する際に、ウィンドウ状態などの一時的なフィールドを除去する。
+/// 色は分類に使う情報なので保持する。Obsidian互換フィールド（tags, created, updated）も保持する。
 pub fn strip_sticky_fields(content: &str) -> String {
     let (front, body) = split_frontmatter(content);
     if front.is_empty() {
         return content.to_string();
     }
 
-    const REMOVE_KEYS: &[&str] = &["type", "seq", "window", "backgroundColor", "folded", "alwaysOnTop", "opacity", "fontSize"];
+    const REMOVE_KEYS: &[&str] = &["type", "seq", "window", "folded", "alwaysOnTop", "opacity", "fontSize"];
 
     let cleaned_lines: Vec<&str> = front
         .lines()
@@ -1267,18 +1267,18 @@ tags: [OreNoFusen, 開発プロセス]
     }
 
     #[test]
-    fn test_strip_sticky_fields_removes_app_fields() {
+    fn test_strip_sticky_fields_removes_temporary_fields_and_preserves_color() {
         let content = "---\ntype: sticky\nseq: 96\ncreated: 2026-03-15\nupdated: 2026-03-15\nbackgroundColor: #f7e9b0\ntags: [仕事]\nwindow: { x: 100, y: 100, width: 400, height: 300 }\nfolded: false\n---\n\n本文";
         let result = strip_sticky_fields(content);
 
-        // アプリ固有フィールドが除去されていること
+        // 一時的なウィンドウ状態フィールドが除去されていること
         assert!(!result.contains("type:"), "type が残っている");
         assert!(!result.contains("seq:"), "seq が残っている");
-        assert!(!result.contains("backgroundColor:"), "backgroundColor が残っている");
         assert!(!result.contains("window:"), "window が残っている");
         assert!(!result.contains("folded:"), "folded が残っている");
 
-        // Obsidian互換フィールドが保持されていること
+        // 分類・参照に使うフィールドが保持されていること
+        assert!(result.contains("backgroundColor:"), "backgroundColor が消えた");
         assert!(result.contains("created:"), "created が消えた");
         assert!(result.contains("updated:"), "updated が消えた");
         assert!(result.contains("tags:"), "tags が消えた");
