@@ -464,7 +464,7 @@ type HotkeyBindings = {
 }
 type HotkeyCheckResult = {
     available: boolean;
-    reason: 'ok' | 'self' | 'internal' | 'external';
+    reason: 'ok' | 'self' | 'internal' | 'external' | 'reserved';
     conflict_action?: HotkeyAction | null;
 }
 
@@ -747,6 +747,7 @@ function HotkeyShortcutRow({ title, description, shortcut, onChange }: {
 
 function hotkeyCheckMessage(result: HotkeyCheckResult): string {
     if (result.reason === 'ok' || result.reason === 'self') return '✅ 使用できます'
+    if (result.reason === 'reserved') return '❌ コピーや貼り付けなどの基本操作のため割り当てできません。'
     if (result.reason === 'internal' && result.conflict_action) {
         return `❌ このショートカットは「${HOTKEY_ACTION_LABELS[result.conflict_action]}」に割当済みです。`
     }

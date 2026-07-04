@@ -16,6 +16,7 @@ const KEY_ALIASES: Record<string, string> = {
     'Delete': 'delete',
     'Enter': 'enter',
     'Tab': 'tab',
+    'Space': 'space',
 };
 
 export function keyboardEventToShortcut(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>): string | null {
@@ -38,11 +39,11 @@ export function matchesShortcut(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | '
     if (!shortcut) return false;
     const eventShortcut = keyboardEventToShortcut(event);
     if (!eventShortcut) return false;
-    return eventShortcut === normalizeShortcut(shortcut);
+    return normalizeShortcutString(eventShortcut) === normalizeShortcutString(shortcut);
 }
 
 export function formatShortcutLabel(shortcut: string): string {
-    return shortcut
+    return normalizeShortcutString(shortcut)
         .split('+')
         .filter(Boolean)
         .map(part => {
@@ -63,12 +64,48 @@ export function formatShortcutLabel(shortcut: string): string {
         .join(' + ');
 }
 
-function normalizeShortcut(shortcut: string): string {
-    return shortcut
+export function normalizeShortcutString(shortcut: string): string {
+    const modifiers = new Set<string>();
+    let key: string | null = null;
+
+    shortcut
         .split('+')
-        .map(part => part.trim().toLowerCase())
+        .map(part => part.trim())
         .filter(Boolean)
-        .join('+');
+        .forEach(part => {
+            const lower = part.toLowerCase();
+            switch (lower) {
+                case 'control':
+                case 'ctrl':
+                    modifiers.add('ctrl');
+                    return;
+                case 'alt':
+                    modifiers.add('alt');
+                    return;
+                case 'shift':
+                    modifiers.add('shift');
+                    return;
+                case 'meta':
+                case 'super':
+                case 'command':
+                case 'cmd':
+                    modifiers.add('super');
+                    return;
+            }
+
+            key = normalizeShortcutPart(part);
+        });
+
+    const orderedModifiers = ['ctrl', 'alt', 'shift', 'super'].filter(modifier => modifiers.has(modifier));
+    return [...orderedModifiers, ...(key ? [key] : [])].join('+');
+}
+
+function normalizeShortcutPart(part: string): string {
+    if (/^Key[A-Z]$/i.test(part)) return part.slice(3).toLowerCase();
+    if (/^Digit[0-9]$/i.test(part)) return part.slice(5);
+    const aliased = KEY_ALIASES[part] ?? KEY_ALIASES[part.toLowerCase()];
+    if (aliased) return aliased;
+    return part.toLowerCase();
 }
 
 function normalizeKey(key: string): string | null {

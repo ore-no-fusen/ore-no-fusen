@@ -15,6 +15,7 @@ static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
 const TRIGGER_SHORTCUT: &str = "shortcut";
 const TRIGGER_DOUBLE_CTRL: &str = "double_ctrl";
 const TRIGGER_DOUBLE_SHIFT: &str = "double_shift";
+const RESERVED_BASIC_SHORTCUT_KEYS: &[&str] = &["c", "v", "x", "z", "y", "a", "s"];
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum HotKeyAction {
@@ -286,6 +287,13 @@ pub(crate) fn hotkey_check(
     shortcut: String,
 ) -> Result<HotKeyCheckResponse, String> {
     let action = HotKeyAction::parse(&action)?;
+    if is_reserved_basic_shortcut(&shortcut) {
+        return Ok(HotKeyCheckResponse {
+            available: false,
+            reason: "reserved".to_string(),
+            conflict_action: None,
+        });
+    }
     let shortcut = parse_requested_shortcut(&shortcut)?;
 
     {
@@ -342,7 +350,11 @@ pub(crate) fn hotkey_apply(
     let requested_shortcut = if action == HotKeyAction::NewNote && requested_trigger != TRIGGER_SHORTCUT {
         None
     } else {
-        Some(parse_requested_shortcut(config.shortcut.as_deref().unwrap_or(""))?)
+        let shortcut = config.shortcut.as_deref().unwrap_or("");
+        if is_reserved_basic_shortcut(shortcut) {
+            return Err("reserved shortcut".to_string());
+        }
+        Some(parse_requested_shortcut(shortcut)?)
     };
 
     let mut bindings = state.inner.write().unwrap_or_else(|e| e.into_inner());
@@ -432,6 +444,38 @@ fn parse_requested_shortcut(shortcut: &str) -> Result<Shortcut, String> {
     Shortcut::try_from(shortcut).map_err(|e| e.to_string())
 }
 
+fn is_reserved_basic_shortcut(shortcut: &str) -> bool {
+    let mut has_ctrl = false;
+    let mut has_other_modifier = false;
+    let mut key: Option<String> = None;
+
+    for part in shortcut.split('+') {
+        let part = part.trim().to_ascii_lowercase();
+        if part.is_empty() {
+            continue;
+        }
+        match part.as_str() {
+            "ctrl" | "control" => has_ctrl = true,
+            "shift" | "alt" | "super" | "meta" | "command" | "cmd" => has_other_modifier = true,
+            _ => {
+                let normalized_key = if part.len() == 4 && part.starts_with("key") {
+                    part[3..].to_string()
+                } else {
+                    part
+                };
+                key = Some(normalized_key);
+            }
+        }
+    }
+
+    has_ctrl
+        && !has_other_modifier
+        && key
+            .as_deref()
+            .map(|value| RESERVED_BASIC_SHORTCUT_KEYS.contains(&value))
+            .unwrap_or(false)
+}
+
 fn save_bindings(bindings: &HotKeyBindings) -> Result<(), String> {
     let mut settings = storage::load_settings().unwrap_or_default();
     settings.shortcut_new_note = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::NewNote]));
@@ -439,4 +483,21 @@ fn save_bindings(bindings: &HotKeyBindings) -> Result<(), String> {
     settings.shortcut_toggle_visibility = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::ToggleVisibility]));
     settings.shortcut_arrange = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::Arrange]));
     storage::save_settings(&settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_reserved_basic_shortcut;
+
+    #[test]
+    fn reserved_basic_shortcut_rejects_ctrl_c() {
+        assert!(is_reserved_basic_shortcut("ctrl+c"));
+        assert!(is_reserved_basic_shortcut("control+KeyC"));
+    }
+
+    #[test]
+    fn reserved_basic_shortcut_allows_ctrl_shift_c() {
+        assert!(!is_reserved_basic_shortcut("ctrl+shift+c"));
+        assert!(!is_reserved_basic_shortcut("shift+control+KeyC"));
+    }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatShortcutLabel, keyboardEventToShortcut, matchesShortcut } from './shortcutKey';
+import { formatShortcutLabel, keyboardEventToShortcut, matchesShortcut, normalizeShortcutString } from './shortcutKey';
 
 function keyEvent(input: {
     key: string;
@@ -54,6 +54,7 @@ describe('formatShortcutLabel', () => {
     it('formats shortcut labels for display', () => {
         expect(formatShortcutLabel('ctrl+shift+h')).toBe('Ctrl + Shift + H');
         expect(formatShortcutLabel('super+space')).toBe('Win + Space');
+        expect(formatShortcutLabel('shift+control+KeyH')).toBe('Ctrl + Shift + H');
     });
 });
 
@@ -61,11 +62,24 @@ describe('matchesShortcut', () => {
     it('matches normalized shortcut strings', () => {
         expect(matchesShortcut(keyEvent({ key: 'N', ctrlKey: true, altKey: true }), 'ctrl+alt+n')).toBe(true);
         expect(matchesShortcut(keyEvent({ key: 'h', ctrlKey: true, shiftKey: true }), ' CTRL + SHIFT + H ')).toBe(true);
+        expect(matchesShortcut(keyEvent({ key: 'N', ctrlKey: true }), 'control+KeyN')).toBe(true);
     });
 
     it('does not match different shortcuts or disabled values', () => {
         expect(matchesShortcut(keyEvent({ key: 'n', ctrlKey: true }), 'ctrl+alt+n')).toBe(false);
         expect(matchesShortcut(keyEvent({ key: 'n', ctrlKey: true }), null)).toBe(false);
         expect(matchesShortcut(keyEvent({ key: 'n' }), 'n')).toBe(false);
+    });
+});
+
+describe('normalizeShortcutString', () => {
+    it('normalizes plugin shortcut strings', () => {
+        expect(normalizeShortcutString('shift+control+KeyH')).toBe('ctrl+shift+h');
+        expect(normalizeShortcutString('control+KeyN')).toBe('ctrl+n');
+        expect(normalizeShortcutString('control+Digit1')).toBe('ctrl+1');
+    });
+
+    it('orders modifiers consistently', () => {
+        expect(normalizeShortcutString('super+shift+alt+control+KeyN')).toBe('ctrl+alt+shift+super+n');
     });
 });
