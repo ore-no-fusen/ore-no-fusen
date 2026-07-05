@@ -39,6 +39,10 @@ describe('Mermaid security behavior in browser', () => {
                     startOnLoad: false,
                     theme: 'neutral',
                     securityLevel: 'strict',
+                    htmlLabels: false,
+                    flowchart: {
+                        htmlLabels: false,
+                    },
                 });
 
                 const code = [
@@ -95,6 +99,46 @@ describe('Mermaid security behavior in browser', () => {
             expect(result.hasOnError).toBe(false);
             expect(result.hasOnClick).toBe(false);
             expect(observedRequests).toEqual([]);
+        } finally {
+            await browser.close();
+        }
+    }, 30000);
+
+    it('flowchart の日本語ラベルを sanitize 後も SVG text として残す', async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+
+        try {
+            await page.setContent('<!doctype html><html><body></body></html>');
+            await page.addScriptTag({ path: require.resolve('mermaid/dist/mermaid.min.js') });
+
+            const rawSvg = await page.evaluate(async () => {
+                (window as any).mermaid.initialize({
+                    startOnLoad: false,
+                    theme: 'neutral',
+                    securityLevel: 'strict',
+                    htmlLabels: false,
+                    flowchart: {
+                        htmlLabels: false,
+                    },
+                });
+
+                const code = [
+                    'flowchart LR',
+                    '  A["🍳 レシピにする"] --> B["Recipes/ フォルダに.md が作られる"]',
+                    '  B --> C["黒い新付箋が開く= それがレシピ本体"]',
+                ].join('\n');
+
+                const rendered = await (window as any).mermaid.render('mermaid-label-browser-check', code);
+                return rendered.svg;
+            });
+
+            const sanitizedSvg = sanitizeMermaidSvg(rawSvg);
+            expect(sanitizedSvg).not.toContain('foreignObject');
+            expect(sanitizedSvg).toContain('<text');
+            expect(sanitizedSvg).toContain('レシピにする');
+            expect(sanitizedSvg).toContain('Recipes/');
+            expect(sanitizedSvg).toContain('黒い新付箋が開く');
         } finally {
             await browser.close();
         }
