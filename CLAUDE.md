@@ -44,6 +44,12 @@ iPhone → Drive（notes_from_iphone.json + 画像）→ PC が受信・付箋�
 - 各付箋は独立した Tauri window
 - 同期は Rust backend + Tauri event 経由のみ
 
+**フォルダの役割（紛らわしいペアに注意）**
+- `app/components/` = アプリ固有コンポーネント。`components/ui/` = shadcn/ui 汎用部品
+- `app/utils/` = 汎用ユーティリティ。`lib/` = 設定ストア（settings-store）・i18n
+- `worker/` = iPhone PWA の Service Worker。`workers/badges/` = READMEバッジ用 Cloudflare Worker（アプリとは無関係）
+- `docs-v2/` = 仕様書（正）。`docs/` = 運用手順・ユーザー向け文書
+
 ---
 
 ## 作業ルール

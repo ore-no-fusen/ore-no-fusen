@@ -217,7 +217,6 @@ npm run tauri build
 - [オンラインドキュメント (GitHub Pages)](https://ore-no-fusen.github.io/ore-no-fusen/) - システム設計・仕様書
 - [ユーザーガイド（Wiki）](https://github.com/ore-no-fusen/ore-no-fusen/wiki) - 詳しい使い方（章分割・サイドバー付き）
 - [FAQ](docs/101_FAQ.md) - よくある質問
-- [開発ルール](AG_RULES.md) - 開発者向けルール
 
 ---
 
