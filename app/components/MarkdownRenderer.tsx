@@ -163,6 +163,7 @@ export type MarkdownRendererProps = {
     fontSize: number;
     isDraggableArea?: boolean;
     singleLinePreview?: boolean; // [New] ミニマイズ時用。1行のみ表示し省略するモード
+    recipeMode?: boolean;
     onCheckboxToggle: (lineIndex: number) => void;
     onImageResize: (newScale: number, baseOffset: number, originalText: string) => void;
     onDoubleClick: (e: React.MouseEvent) => void;
@@ -173,12 +174,26 @@ export type MarkdownRendererProps = {
     imageVersion?: number;
 };
 
+export function getEmptyNotePlaceholder(backgroundColor: string): string {
+    switch (backgroundColor.trim().toLowerCase()) {
+        case '#f7e9b0':
+            return 'アイデア、違和感、こんなときをメモ';
+        case '#ffcdd2':
+            return '課題、TODO、試したことをメモ';
+        case '#80d8ff':
+            return '結果、決定事項、次回の作戦をメモ';
+        default:
+            return '（空のメモ）';
+    }
+}
+
 export default function MarkdownRenderer({
     content,
     backgroundColor,
     fontSize,
     isDraggableArea = false,
     singleLinePreview = false,
+    recipeMode = false,
     onCheckboxToggle,
     onImageResize,
     onDoubleClick,
@@ -455,9 +470,26 @@ export default function MarkdownRenderer({
                                     key={i}
                                     data-line-index={i}
                                     className={`${lineClass} font-bold text-[1.1em]`}
+                                    style={recipeMode ? { color: '#d9480f' } : undefined}
                                 >
                                     <span data-src-start={baseOffset + 2} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
                                         {renderLineContent(line.substring(2), baseOffset + 2)}
+                                    </span>
+                                </div>
+                            );
+                        }
+
+                        // レシピ小見出し (## で始まる)
+                        if (recipeMode && line.startsWith('## ')) {
+                            return (
+                                <div
+                                    key={i}
+                                    data-line-index={i}
+                                    className={`${lineClass} font-bold text-[1.0em]`}
+                                    style={{ color: '#d9480f' }}
+                                >
+                                    <span data-src-start={baseOffset + 3} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
+                                        {renderLineContent(line.substring(3), baseOffset + 3)}
                                     </span>
                                 </div>
                             );
@@ -488,6 +520,28 @@ export default function MarkdownRenderer({
                                         className={isChecked ? 'line-through opacity-60' : 'no-underline opacity-100'}
                                         data-src-start={textStart}
                                     >
+                                        {renderLineContent(text, textStart)}
+                                    </span>
+                                </div>
+                            );
+                        }
+
+                        // レシピ番号付きリスト
+                        const orderedListMatch = recipeMode ? line.match(/^(\d+\.\s+)(.*)$/) : null;
+                        if (orderedListMatch) {
+                            const marker = orderedListMatch[1];
+                            const text = orderedListMatch[2];
+                            const textStart = baseOffset + marker.length;
+                            return (
+                                <div key={i} data-line-index={i} className={lineClass}>
+                                    <span
+                                        className="mr-[8px] shrink-0 inline-block text-right"
+                                        style={{ color: '#1971c2' }}
+                                        data-src-start={baseOffset}
+                                    >
+                                        {marker}
+                                    </span>
+                                    <span data-src-start={textStart}>
                                         {renderLineContent(text, textStart)}
                                     </span>
                                 </div>
@@ -526,7 +580,7 @@ export default function MarkdownRenderer({
                 </div>
             ) : (
                 <div className="text-[#999] p-2">
-                    （空のメモ）
+                    {getEmptyNotePlaceholder(backgroundColor)}
                 </div>
             )}
         </article>

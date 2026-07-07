@@ -20,6 +20,8 @@ describe('i18n Utility', () => {
         expect(t('settings.help.workflow.title')).toBe('よくある使い方');
         expect(t('settings.help.contextTable.title')).toBe('右クリックメニュー早見表');
         expect(t('menu.openHelp')).toBe('使い方を開く');
+        expect(t('menu.colors.yellow')).toBe('黄 - アイデア保存');
+        expect(t('menu.colors.black')).toBe('黒 - レシピ・手順');
     });
 
     it('returns correct translation for English', () => {
@@ -31,6 +33,8 @@ describe('i18n Utility', () => {
         expect(t('settings.help.workflow.title')).toBe('Common Workflows');
         expect(t('settings.help.contextTable.title')).toBe('Right-Click Menu Reference');
         expect(t('menu.openHelp')).toBe('Open Help');
+        expect(t('menu.colors.yellow')).toBe('Yellow - ideas');
+        expect(t('menu.colors.black')).toBe('Black - recipes');
     });
 
     it('returns key if translation is missing', () => {
