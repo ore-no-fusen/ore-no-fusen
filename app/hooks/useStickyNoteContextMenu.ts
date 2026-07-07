@@ -22,6 +22,12 @@ export function filterAssignableTags(tags: string[]): string[] {
     return tags.filter((tag) => !isReservedTag(tag));
 }
 
+type TagContextMenuItemKind = 'tag' | 'tag_del' | 'archive_tag';
+
+export function contextMenuTagItemId(kind: TagContextMenuItemKind, index: number): string {
+    return `ctx_${kind}_${index}`;
+}
+
 export type ShortcutShelfMenuState = {
     visible: boolean;
     isRegistered: boolean;
@@ -450,9 +456,9 @@ export function useStickyNoteContextMenu({
 
                 if (freshTags.length > 0) {
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                    for (const tag of freshTags) {
+                    for (const [index, tag] of freshTags.entries()) {
                         tagSubItems.push(await MenuItem.new({
-                            id: `ctx_tag_del_${tag}`,
+                            id: contextMenuTagItemId('tag_del', index),
                             text: `❌ ${tag}`,
                             action: () => {
                                 setTagToDelete(tag);
@@ -480,10 +486,10 @@ export function useStickyNoteContextMenu({
 
                 if (assignableTags.length > 0) {
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                    for (const tag of assignableTags) {
+                    for (const [index, tag] of assignableTags.entries()) {
                         const isChecked = currentTags.includes(tag);
                         tagSubItems.push(await MenuItem.new({
-                            id: `ctx_tag_${tag}`,
+                            id: contextMenuTagItemId('tag', index),
                             text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
                             action: async () => {
                                 if (!selectedFile) return;
@@ -580,9 +586,9 @@ export function useStickyNoteContextMenu({
             if (currentTags.length > 1) {
                 // 複数タグ: サブメニューで移動先を選択
                 const archiveSubItems: any[] = [];
-                for (const tag of currentTags) {
+                for (const [index, tag] of currentTags.entries()) {
                     archiveSubItems.push(await MenuItem.new({
-                        id: `ctx_archive_tag_${tag}`,
+                        id: contextMenuTagItemId('archive_tag', index),
                         text: `🏷️ ${tag}`,
                         action: () => doArchive(tag)
                     }));

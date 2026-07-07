@@ -4,7 +4,7 @@
  * 対象要件: SEND-02（右クリック「iPhoneに送る」から fusen_send_to_iphone を invoke する）
  */
 import { describe, it, expect, vi } from 'vitest';
-import { filterAssignableTags, getShortcutShelfMenuState } from './useStickyNoteContextMenu';
+import { contextMenuTagItemId, filterAssignableTags, getShortcutShelfMenuState } from './useStickyNoteContextMenu';
 
 // Wave 1 で有効化される — Plan 03 完了まで TODO
 // invoke のモック
@@ -25,6 +25,24 @@ describe('filterAssignableTags', () => {
 
   it('keeps non-reserved tags visible', () => {
     expect(filterAssignableTags(['recipes', 'my-qa', 'term-note'])).toEqual(['recipes', 'my-qa', 'term-note']);
+  });
+});
+
+describe('contextMenuTagItemId', () => {
+  it('uses stable ASCII ids instead of raw tag names', () => {
+    const tags = ['仕事/重要', 'foo:bar', 'recipe', '空 白'];
+    const ids = tags.map((_tag, index) => contextMenuTagItemId('tag', index));
+
+    expect(ids).toEqual(['ctx_tag_0', 'ctx_tag_1', 'ctx_tag_2', 'ctx_tag_3']);
+    expect(ids.join('|')).not.toContain('仕事');
+    expect(ids.join('|')).not.toContain('foo:bar');
+    expect(ids.join('|')).not.toContain('空 白');
+  });
+
+  it('keeps ids unique across tag menu groups', () => {
+    expect(contextMenuTagItemId('tag', 0)).toBe('ctx_tag_0');
+    expect(contextMenuTagItemId('tag_del', 0)).toBe('ctx_tag_del_0');
+    expect(contextMenuTagItemId('archive_tag', 0)).toBe('ctx_archive_tag_0');
   });
 });
 
