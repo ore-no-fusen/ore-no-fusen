@@ -22,6 +22,7 @@ enum HotKeyAction {
     NewNote,
     ToggleVisibility,
     Arrange,
+    QuickLauncher,
 }
 
 impl HotKeyAction {
@@ -30,6 +31,7 @@ impl HotKeyAction {
             HotKeyAction::NewNote => "new_note",
             HotKeyAction::ToggleVisibility => "toggle_visibility",
             HotKeyAction::Arrange => "arrange",
+            HotKeyAction::QuickLauncher => "quick_launcher",
         }
     }
 
@@ -38,6 +40,7 @@ impl HotKeyAction {
             "new_note" => Ok(HotKeyAction::NewNote),
             "toggle_visibility" => Ok(HotKeyAction::ToggleVisibility),
             "arrange" => Ok(HotKeyAction::Arrange),
+            "quick_launcher" => Ok(HotKeyAction::QuickLauncher),
             _ => Err(format!("unknown hotkey action: {}", value)),
         }
     }
@@ -61,6 +64,7 @@ pub(crate) struct HotKeyBindingsResponse {
     new_note: String,
     toggle_visibility: String,
     arrange: String,
+    quick_launcher: String,
 }
 
 #[derive(Serialize)]
@@ -123,11 +127,17 @@ fn load_bindings() -> HotKeyBindings {
         Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyL),
         "[Shortcut] shortcut_arrange の parse に失敗。ctrl+shift+l にフォールバック。",
     );
+    let quick_launcher = parse_shortcut_or_default(
+        settings.shortcut_quick_launcher.as_deref().unwrap_or("ctrl+p"),
+        Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP),
+        "[Shortcut] shortcut_quick_launcher の parse に失敗。ctrl+p にフォールバック。",
+    );
 
     let mut shortcuts = HashMap::new();
     shortcuts.insert(HotKeyAction::NewNote, new_note);
     shortcuts.insert(HotKeyAction::ToggleVisibility, toggle_visibility);
     shortcuts.insert(HotKeyAction::Arrange, arrange);
+    shortcuts.insert(HotKeyAction::QuickLauncher, quick_launcher);
 
     HotKeyBindings {
         shortcuts,
@@ -187,6 +197,9 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                                     logger::log_warn(&format!("[Shortcut] Ctrl+Shift+L arrange failed: {}", e));
                                 }
                             });
+                        } else if current.shortcuts.get(&HotKeyAction::QuickLauncher).map(|registered| shortcut == registered).unwrap_or(false) {
+                            logger::log_info("[Shortcut] Ctrl+P: fusen:toggle_quick_launcher emit");
+                            let _ = app.emit("fusen:toggle_quick_launcher", ());
                         } else if current.shortcuts.get(&HotKeyAction::ToggleVisibility).map(|registered| shortcut == registered).unwrap_or(false) {
                             // --- Ctrl+Shift+H: 全付箋隠す/表示 ---
                             if !can_do_visibility_op() { return; }
@@ -210,6 +223,7 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                 Ok(_) => {
                     register_startup_shortcut(app.handle(), &hotkey_state, &bindings, HotKeyAction::ToggleVisibility);
                     register_startup_shortcut(app.handle(), &hotkey_state, &bindings, HotKeyAction::Arrange);
+                    register_startup_shortcut(app.handle(), &hotkey_state, &bindings, HotKeyAction::QuickLauncher);
                     if bindings.new_note_trigger == TRIGGER_SHORTCUT {
                         register_startup_shortcut(app.handle(), &hotkey_state, &bindings, HotKeyAction::NewNote);
                     } else if let Err(e) = sync_double_tap_hook(app.handle(), &bindings.new_note_trigger) {
@@ -220,6 +234,7 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                     logger::log_warn(&format!("Failed to initialize global shortcut plugin: {}", e));
                     push_register_failure(&hotkey_state, HotKeyAction::ToggleVisibility, &bindings.shortcuts[&HotKeyAction::ToggleVisibility]);
                     push_register_failure(&hotkey_state, HotKeyAction::Arrange, &bindings.shortcuts[&HotKeyAction::Arrange]);
+                    push_register_failure(&hotkey_state, HotKeyAction::QuickLauncher, &bindings.shortcuts[&HotKeyAction::QuickLauncher]);
                     if bindings.new_note_trigger == TRIGGER_SHORTCUT {
                         push_register_failure(&hotkey_state, HotKeyAction::NewNote, &bindings.shortcuts[&HotKeyAction::NewNote]);
                     }
@@ -269,6 +284,7 @@ pub(crate) fn hotkey_get_bindings(state: State<'_, HotKeyState>) -> HotKeyBindin
         new_note: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::NewNote]),
         toggle_visibility: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::ToggleVisibility]),
         arrange: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::Arrange]),
+        quick_launcher: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::QuickLauncher]),
     }
 }
 
@@ -482,12 +498,23 @@ fn save_bindings(bindings: &HotKeyBindings) -> Result<(), String> {
     settings.new_note_trigger = Some(bindings.new_note_trigger.clone());
     settings.shortcut_toggle_visibility = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::ToggleVisibility]));
     settings.shortcut_arrange = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::Arrange]));
+    settings.shortcut_quick_launcher = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::QuickLauncher]));
     storage::save_settings(&settings)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_reserved_basic_shortcut;
+    use std::sync::Mutex;
+
+    use tempfile::tempdir;
+
+    use super::{
+        is_reserved_basic_shortcut, load_bindings, save_bindings, shortcut_to_string, HotKeyAction,
+    };
+    use crate::storage;
+    use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
+
+    static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn reserved_basic_shortcut_rejects_ctrl_c() {
@@ -499,5 +526,54 @@ mod tests {
     fn reserved_basic_shortcut_allows_ctrl_shift_c() {
         assert!(!is_reserved_basic_shortcut("ctrl+shift+c"));
         assert!(!is_reserved_basic_shortcut("shift+control+KeyC"));
+    }
+
+    #[test]
+    fn hotkey_action_parses_quick_launcher() {
+        let action = HotKeyAction::parse("quick_launcher").unwrap();
+        assert_eq!(action.id(), "quick_launcher");
+        assert!(HotKeyAction::parse("unknown").is_err());
+    }
+
+    #[test]
+    fn load_bindings_defaults_quick_launcher_to_ctrl_p() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap();
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let bindings = load_bindings();
+        assert_eq!(
+            bindings.shortcuts[&HotKeyAction::QuickLauncher],
+            Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP),
+        );
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn save_bindings_persists_quick_launcher_shortcut() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap();
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let mut bindings = load_bindings();
+        let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyP);
+        bindings.shortcuts.insert(HotKeyAction::QuickLauncher, shortcut);
+        save_bindings(&bindings).unwrap();
+
+        let settings = storage::load_settings().unwrap();
+        assert_eq!(settings.shortcut_quick_launcher, Some(shortcut_to_string(&shortcut)));
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
     }
 }

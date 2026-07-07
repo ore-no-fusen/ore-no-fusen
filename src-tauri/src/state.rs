@@ -35,6 +35,35 @@ pub struct Note {
     pub meta: NoteMeta,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RecipeUsageMeta {
+    pub launches: i32,
+    pub recipe_improvements: i32,
+    pub recipe_last_used: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct RecipeCandidate {
+    pub path: String,
+    pub title: String,
+    pub preview: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(serde::Serialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct RecipeCandidates {
+    pub yellows: Vec<RecipeCandidate>,
+    pub pinks: Vec<RecipeCandidate>,
+}
+
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct CreateRecipeNoteRequest {
+    pub title: String,
+    pub body: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct AppState {
     pub base_path: Option<String>,
@@ -96,6 +125,9 @@ pub struct Settings {
     /// 整列ショートカット。None の場合は "ctrl+shift+l" をデフォルトとして使用。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_arrange: Option<String>,
+    /// クイックランチャーショートカット。None の場合は "ctrl+p" をデフォルトとして使用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_quick_launcher: Option<String>,
     /// この PC を一意に識別する UUID。Drive 上の PC 登録と紐づく。
     /// 旧バージョンでは別ファイル %LOCALAPPDATA%\ore-no-fusen\pc_device.json に保存していたが、
     /// アンインストール時に失われると Drive 上にゴミの登録が残るため、settings.json に移管した。
@@ -130,6 +162,7 @@ impl Default for Settings {
             new_note_trigger: None,
             shortcut_toggle_visibility: None,
             shortcut_arrange: None,
+            shortcut_quick_launcher: None,
             pc_id: None,
         }
     }

@@ -7,7 +7,7 @@
  * - 状態更新ロジックの計算 (`Effect`の生成)
  */
 
-use crate::state::{AppState, NoteMeta};
+use crate::state::{AppState, NoteMeta, RecipeCandidate, RecipeCandidates, RecipeUsageMeta};
 
 // ロジック層: 副作用なし、純粋関数のみ
 
@@ -149,6 +149,136 @@ pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &s
         "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: Untitled{}{}{}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
         seq, created, updated, color_line, tags_line, folded_line, opacity_line, font_size_line
     )
+}
+
+pub const RESERVED_TAGS: [&str; 5] = ["recipe", "link", "term", "qa", "shortcut"];
+
+pub fn normalize_reserved_tag(tag: &str) -> String {
+    tag.trim().to_lowercase()
+}
+
+pub fn is_reserved_tag(tag: &str) -> bool {
+    RESERVED_TAGS.contains(&normalize_reserved_tag(tag).as_str())
+}
+
+pub fn non_reserved_tags(tags: &[String]) -> Vec<String> {
+    tags.iter()
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty() && !is_reserved_tag(tag))
+        .collect()
+}
+
+pub fn recipe_tags_from_request(tags: &[String]) -> Vec<String> {
+    let mut result = non_reserved_tags(tags);
+    if !result.iter().any(|tag| normalize_reserved_tag(tag) == "recipe") {
+        result.push("recipe".to_string());
+    }
+    result
+}
+
+pub fn tags_share_non_reserved_tag(a: &[String], b: &[String]) -> bool {
+    let left: std::collections::HashSet<String> = non_reserved_tags(a)
+        .into_iter()
+        .map(|tag| tag.to_lowercase())
+        .collect();
+    non_reserved_tags(b)
+        .into_iter()
+        .any(|tag| left.contains(&tag.to_lowercase()))
+}
+
+pub fn generate_recipe_frontmatter(seq: i32, title: &str, created: &str, updated: &str, tags: &[String]) -> String {
+    format!(
+        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: {}\nbackgroundColor: \"#cfd8dc\"\ntags: [{}]\nlaunches: 0\nrecipeImprovements: 0\nrecipeLastUsed:\nwindow: {{ x: 120, y: 80, width: 460, height: 560 }}\n---\n",
+        seq, created, updated, title, tags.join(", ")
+    )
+}
+
+fn extract_i32_field(content: &str, key: &str) -> i32 {
+    let re = regex::Regex::new(&format!(r"(?m)^{}:[ \t]*(-?\d+)[ \t]*$", regex::escape(key))).unwrap();
+    re.captures(content)
+        .and_then(|c| c[1].parse::<i32>().ok())
+        .unwrap_or(0)
+}
+
+fn extract_optional_string_field(content: &str, key: &str) -> Option<String> {
+    let re = regex::Regex::new(&format!(r"(?m)^{}:[ \t]*(.*)$", regex::escape(key))).unwrap();
+    re.captures(content)
+        .map(|c| c[1].trim().trim_matches('"').trim_matches('\'').to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn extract_recipe_usage_meta(content: &str) -> RecipeUsageMeta {
+    RecipeUsageMeta {
+        launches: extract_i32_field(content, "launches"),
+        recipe_improvements: extract_i32_field(content, "recipeImprovements"),
+        recipe_last_used: extract_optional_string_field(content, "recipeLastUsed"),
+    }
+}
+
+pub fn build_return_recipe_content(
+    current_content: &str,
+    returned_body: &str,
+    improved: bool,
+    used_at: &str,
+    updated_at: &str,
+) -> String {
+    if !improved {
+        return update_frontmatter_value(current_content, "recipeLastUsed", used_at.to_string());
+    }
+
+    let (front, _) = split_frontmatter(current_content);
+    let base_content = if front.is_empty() {
+        returned_body.to_string()
+    } else {
+        format!("{}\n\n{}", front.trim_end(), returned_body.trim_start())
+    };
+
+    let mut next_content = update_frontmatter_value(&base_content, "recipeLastUsed", used_at.to_string());
+    let usage = extract_recipe_usage_meta(&next_content);
+    next_content = update_frontmatter_value(
+        &next_content,
+        "recipeImprovements",
+        (usage.recipe_improvements + 1).to_string(),
+    );
+    next_content = update_frontmatter_value(&next_content, "updated", updated_at.to_string());
+    next_content
+}
+
+pub struct RecipeCandidateInput {
+    pub path: String,
+    pub title: String,
+    pub body: String,
+    pub background_color: Option<String>,
+    pub tags: Vec<String>,
+}
+
+fn body_preview(body: &str, limit: usize) -> String {
+    body.chars().take(limit).collect()
+}
+
+pub fn filter_recipe_candidates(source_tags: &[String], candidates: Vec<RecipeCandidateInput>) -> RecipeCandidates {
+    let mut result = RecipeCandidates::default();
+
+    for candidate in candidates {
+        if !tags_share_non_reserved_tag(source_tags, &candidate.tags) {
+            continue;
+        }
+
+        let item = RecipeCandidate {
+            path: candidate.path,
+            title: candidate.title,
+            preview: body_preview(candidate.body.trim(), 200),
+            tags: candidate.tags,
+        };
+
+        match candidate.background_color.as_deref() {
+            Some("#f7e9b0") => result.yellows.push(item),
+            Some("#ffcdd2") => result.pinks.push(item),
+            _ => {}
+        }
+    }
+
+    result
 }
 
 pub fn extract_opacity(content: &str) -> Option<f64> {
@@ -667,6 +797,108 @@ mod tests {
     fn generate_frontmatter_with_tags() {
         let fm = generate_frontmatter(1, "ctx", "2024-01-01", "2024-01-01", None, &vec!["tag1".to_string(), "tag2".to_string()], None, None, None);
         assert!(fm.contains("tags: [tag1, tag2]"));
+    }
+
+    #[test]
+    fn reserved_tag_detection_matches_frontend_rules() {
+        assert!(is_reserved_tag(" recipe "));
+        assert!(is_reserved_tag("SHORTCUT"));
+        assert!(!is_reserved_tag("recipes"));
+    }
+
+    #[test]
+    fn generate_recipe_frontmatter_contains_recipe_fields() {
+        let tags = vec!["work".to_string(), "recipe".to_string()];
+        let fm = generate_recipe_frontmatter(7, "手順", "2026-07-05T12:00:00+09:00", "2026-07-05T12:00:00+09:00", &tags);
+
+        assert!(fm.contains("seq: 7"));
+        assert!(fm.contains("title: 手順"));
+        assert!(fm.contains("backgroundColor: \"#cfd8dc\""));
+        assert!(fm.contains("tags: [work, recipe]"));
+        assert!(fm.contains("launches: 0"));
+        assert!(fm.contains("recipeImprovements: 0"));
+        assert!(fm.contains("recipeLastUsed:"));
+    }
+
+    #[test]
+    fn extract_recipe_usage_meta_handles_empty_last_used() {
+        let content = "---\nlaunches: 3\nrecipeImprovements: 2\nrecipeLastUsed:\n---";
+        let meta = extract_recipe_usage_meta(content);
+
+        assert_eq!(meta.launches, 3);
+        assert_eq!(meta.recipe_improvements, 2);
+        assert_eq!(meta.recipe_last_used, None);
+    }
+
+    #[test]
+    fn build_return_recipe_content_updates_usage_without_body_when_not_improved() {
+        let content = "---\nupdated: 2026-07-01\nrecipeImprovements: 4\nrecipeLastUsed:\n---\n\n\nold body";
+        let result = build_return_recipe_content(
+            content,
+            "new body",
+            false,
+            "2026-07-05T10:20:30+09:00",
+            "2026-07-05",
+        );
+
+        assert!(result.contains("updated: 2026-07-01"));
+        assert!(result.contains("recipeImprovements: 4"));
+        assert!(result.contains("recipeLastUsed: 2026-07-05T10:20:30+09:00"));
+        assert!(result.ends_with("---\n\n\nold body"));
+        assert!(!result.contains("new body"));
+    }
+
+    #[test]
+    fn build_return_recipe_content_updates_body_and_improvement_count() {
+        let content = "---\nupdated: 2026-07-01\nrecipeImprovements: 4\nrecipeLastUsed:\n---\n\nold body";
+        let result = build_return_recipe_content(
+            content,
+            "new body",
+            true,
+            "2026-07-05T10:20:30+09:00",
+            "2026-07-05",
+        );
+
+        assert!(result.contains("updated: 2026-07-05"));
+        assert!(result.contains("recipeImprovements: 5"));
+        assert!(result.contains("recipeLastUsed: 2026-07-05T10:20:30+09:00"));
+        assert!(result.ends_with("new body"));
+        assert!(!result.ends_with("old body"));
+    }
+
+    #[test]
+    fn filter_recipe_candidates_uses_non_reserved_common_tags_and_colors() {
+        let source_tags = vec!["work".to_string(), "recipe".to_string()];
+        let candidates = vec![
+            RecipeCandidateInput {
+                path: "yellow.md".to_string(),
+                title: "yellow".to_string(),
+                body: "yellow body".to_string(),
+                background_color: Some("#f7e9b0".to_string()),
+                tags: vec!["work".to_string()],
+            },
+            RecipeCandidateInput {
+                path: "pink.md".to_string(),
+                title: "pink".to_string(),
+                body: "pink body".to_string(),
+                background_color: Some("#ffcdd2".to_string()),
+                tags: vec!["work".to_string(), "shortcut".to_string()],
+            },
+            RecipeCandidateInput {
+                path: "reserved_only.md".to_string(),
+                title: "reserved".to_string(),
+                body: "reserved body".to_string(),
+                background_color: Some("#f7e9b0".to_string()),
+                tags: vec!["recipe".to_string()],
+            },
+        ];
+
+        let result = filter_recipe_candidates(&source_tags, candidates);
+
+        assert_eq!(result.yellows.len(), 1);
+        assert_eq!(result.yellows[0].path, "yellow.md");
+        assert_eq!(result.pinks.len(), 1);
+        assert_eq!(result.pinks[0].path, "pink.md");
     }
 
     #[test]

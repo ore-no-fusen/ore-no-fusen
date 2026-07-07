@@ -423,6 +423,50 @@ pub fn ensure_trash_dir(parent_path: &Path) -> Result<PathBuf, String> {
     Ok(trash_dir)
 }
 
+pub fn ensure_recipes_dir(parent_path: &Path) -> Result<PathBuf, String> {
+    let recipes_dir = parent_path.join("Recipes");
+    if !recipes_dir.exists() {
+        fs::create_dir(&recipes_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(recipes_dir)
+}
+
+pub fn list_recipe_material_note_paths(parent_path: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(parent_path) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+                paths.push(path);
+            }
+        }
+    }
+
+    let tags_dir = parent_path.join("tags");
+    if tags_dir.exists() {
+        for entry in WalkDir::new(&tags_dir).into_iter().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if entry.file_type().is_file()
+                && path.extension().map_or(false, |ext| ext == "md")
+                && !has_excluded_recipe_material_component(path)
+            {
+                paths.push(path.to_path_buf());
+            }
+        }
+    }
+
+    paths.sort();
+    paths
+}
+
+fn has_excluded_recipe_material_component(path: &Path) -> bool {
+    path.components().any(|component| {
+        let name = component.as_os_str().to_string_lossy();
+        name == "Trash" || name == "Archive" || name == "Recipes"
+    })
+}
+
 pub fn ensure_tag_dir(parent_path: &Path, tag: &str) -> Result<PathBuf, String> {
     let tags_dir = parent_path.join("tags");
     if !tags_dir.exists() {
@@ -895,6 +939,45 @@ mod tests {
         
         assert!(archive_dir.exists());
         assert!(archive_dir.ends_with("Archive"));
+    }
+
+    #[test]
+    fn test_ensure_recipes_dir() {
+        let dir = tempdir().unwrap();
+        let recipes_dir = ensure_recipes_dir(dir.path()).unwrap();
+
+        assert!(recipes_dir.exists());
+        assert!(recipes_dir.ends_with("Recipes"));
+    }
+
+    #[test]
+    fn test_list_recipe_material_note_paths_scans_root_and_tags_only() {
+        let dir = tempdir().unwrap();
+        let root_note = dir.path().join("0001_2026-07-05_root.md");
+        let tag_dir = dir.path().join("tags").join("work");
+        let trash_dir = dir.path().join("Trash");
+        let archive_dir = dir.path().join("Archive");
+        let recipes_dir = dir.path().join("Recipes");
+        let nested_archive_dir = dir.path().join("tags").join("Archive");
+
+        fs::create_dir_all(&tag_dir).unwrap();
+        fs::create_dir_all(&trash_dir).unwrap();
+        fs::create_dir_all(&archive_dir).unwrap();
+        fs::create_dir_all(&recipes_dir).unwrap();
+        fs::create_dir_all(&nested_archive_dir).unwrap();
+
+        fs::write(&root_note, "root").unwrap();
+        fs::write(tag_dir.join("0002_2026-07-05_tag.md"), "tag").unwrap();
+        fs::write(trash_dir.join("0003_2026-07-05_trash.md"), "trash").unwrap();
+        fs::write(archive_dir.join("0004_2026-07-05_archive.md"), "archive").unwrap();
+        fs::write(recipes_dir.join("0005_2026-07-05_recipe.md"), "recipe").unwrap();
+        fs::write(nested_archive_dir.join("0006_2026-07-05_nested_archive.md"), "nested").unwrap();
+
+        let paths = list_recipe_material_note_paths(dir.path());
+
+        assert_eq!(paths.len(), 2);
+        assert!(paths.contains(&root_note));
+        assert!(paths.iter().any(|p| p.ends_with("0002_2026-07-05_tag.md")));
     }
 
 

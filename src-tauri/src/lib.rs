@@ -10,7 +10,7 @@
 use raw_window_handle::HasWindowHandle;
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Listener, Manager, Runtime, State};
 
 mod arrange;
 mod capture; // [NEW] キャプチャ機能
@@ -22,6 +22,7 @@ mod gdrive; // Google Drive 連携
 mod hotkey_manager;
 mod import; // インポート機能
 mod logger; // ログシステム
+mod launcher;
 mod logic;
 mod perflog; // パフォーマンス計測ログ（JSON Lines）
 mod settings;
@@ -30,7 +31,7 @@ mod state;
 mod storage;
 mod tray;
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs) // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）
-use state::{AppState, Note, NoteMeta, ProConfig};
+use state::{AppState, CreateRecipeNoteRequest, Note, NoteMeta, ProConfig, RecipeCandidates};
 
 // --- Commands ---
 
@@ -389,6 +390,106 @@ fn fusen_create_note_lazy(
         serde_json::json!({}),
     );
     do_create_note(&state, &folder_path, &context)
+}
+
+fn read_recipe_candidate_input(path: &Path) -> Option<logic::RecipeCandidateInput> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let (_, body) = logic::split_frontmatter(&content);
+    let (_, _, _, _, background_color, _, tags, _) = logic::extract_meta_from_content(&content);
+    let filename = path.file_name()?.to_string_lossy().to_string();
+    let (_, _, context) = logic::parse_filename(&filename);
+
+    Some(logic::RecipeCandidateInput {
+        path: path.to_string_lossy().to_string(),
+        title: context,
+        body: body.to_string(),
+        background_color,
+        tags,
+    })
+}
+
+fn recipe_source_tags(source: &Note) -> Vec<String> {
+    source.meta.tags.clone()
+}
+
+#[tauri::command]
+fn fusen_get_recipe_candidates(
+    state: State<'_, Mutex<AppState>>,
+    source_path: String,
+) -> Result<RecipeCandidates, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
+    };
+
+    let source = storage::read_note(&source_path)?;
+    let source_tags = recipe_source_tags(&source);
+    let source_pathbuf = Path::new(&source_path);
+    let candidates = storage::list_recipe_material_note_paths(Path::new(&base_path))
+        .into_iter()
+        .filter(|path| path != source_pathbuf)
+        .filter_map(|path| read_recipe_candidate_input(&path))
+        .collect();
+
+    Ok(logic::filter_recipe_candidates(&source_tags, candidates))
+}
+
+#[tauri::command]
+fn fusen_create_recipe_note(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    request: CreateRecipeNoteRequest,
+) -> Result<String, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
+    };
+    let base_path = Path::new(&base_path);
+    let recipes_dir = storage::ensure_recipes_dir(base_path)?;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let now = chrono::Local::now().to_rfc3339();
+    let title = if request.title.trim().is_empty() {
+        "recipe".to_string()
+    } else {
+        request.title.trim().to_string()
+    };
+    let safe_title = logic::sanitize_context(&title);
+    let context = if safe_title.is_empty() { "recipe".to_string() } else { safe_title };
+    let tags = logic::recipe_tags_from_request(&request.tags);
+    let next_seq = storage::get_next_seq(&recipes_dir.to_string_lossy());
+    let filename = logic::generate_filename(next_seq, &today, &context);
+    let path = recipes_dir.join(filename);
+    let frontmatter = logic::generate_recipe_frontmatter(next_seq, &title, &now, &now, &tags);
+    let content = format!("{}\n\n{}", frontmatter, request.body);
+
+    storage::write_note(&path.to_string_lossy(), &content)?;
+    launcher::emit_launcher_shelf_changed(&app);
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn fusen_return_recipe(path: String, body: String, improved: bool) -> Result<(), String> {
+    let note = storage::read_note(&path)?;
+    let now = chrono::Local::now();
+    let used_at = now.to_rfc3339();
+    let updated_at = now.format("%Y-%m-%d").to_string();
+    let content = logic::build_return_recipe_content(
+        &note.body,
+        &body,
+        improved,
+        &used_at,
+        &updated_at,
+    );
+    storage::write_note(&path, &content)
 }
 
 #[tauri::command]
@@ -4037,6 +4138,9 @@ pub fn run() {
             fusen_read_note,
             fusen_create_note,
             fusen_create_note_lazy,
+            fusen_get_recipe_candidates,
+            fusen_create_recipe_note,
+            fusen_return_recipe,
             fusen_duplicate_note,
             fusen_save_note,
             fusen_move_to_trash,
@@ -4077,6 +4181,14 @@ pub fn run() {
             hotkey_manager::hotkey_get_register_failures,
             hotkey_manager::hotkey_check,
             hotkey_manager::hotkey_apply,
+            launcher::fusen_quick_open_notes,
+            launcher::fusen_open_quick_note,
+            launcher::fusen_rename_quick_note,
+            launcher::fusen_reorder_quick_note,
+            launcher::fusen_remove_from_shelf,
+            launcher::fusen_get_launcher_state,
+            launcher::fusen_set_launcher_last_tab,
+            launcher::fusen_toggle_quick_launcher,
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
             fusen_replenish_pool,     // [NEW] Pool 補充オーケストレーション（T2_READY+5s トリガ）
             fusen_show_at_position, // [NEW] プールウィンドウをShow+リサイズ+移動を原子的に実行
@@ -4110,6 +4222,8 @@ pub fn run() {
                 if label == "main" {
                     // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
                     api.prevent_close();
+                } else if label == "quick_launcher" {
+                    // Quick launcher is a transient utility window; closing it must not exit the app.
                 } else {
                     // 付箋ウィンドウをタスクバーから「ウィンドウを閉じる」→ アプリ終了
                     // ※JSからの削除・アーカイブ時は destroy() を使うためここには来ない
@@ -4234,6 +4348,14 @@ pub fn run() {
             tray::create_tray(app.handle())?;
 
             hotkey_manager::register_global_shortcuts(app);
+            // クイックランチャー窓を隠したまま作り置き（Ctrl+P の初回表示を速くする）
+            launcher::preload_quick_launcher(app.handle());
+            {
+                let app_handle = app.handle().clone();
+                app.listen("fusen:toggle_quick_launcher", move |_| {
+                    launcher::handle_toggle_event(app_handle.clone());
+                });
+            }
 
             // iPhone受信: バックグラウンドポーリングループ（30秒間隔）
             {
@@ -4365,6 +4487,35 @@ mod search_tests {
 
         let hits = search_notes_logic(dir.path().to_str().unwrap(), "Hello");
         assert_eq!(hits.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod recipe_candidate_tests {
+    use super::*;
+
+    #[test]
+    fn source_tags_for_recipe_candidates_come_from_meta_not_body() {
+        let source = Note {
+            body: "本文だけでfrontmatterは含まれない".to_string(),
+            frontmatter: String::new(),
+            meta: NoteMeta {
+                tags: vec!["work".to_string()],
+                ..Default::default()
+            },
+        };
+        let candidates = vec![logic::RecipeCandidateInput {
+            path: "yellow.md".to_string(),
+            title: "yellow".to_string(),
+            body: "candidate".to_string(),
+            background_color: Some("#f7e9b0".to_string()),
+            tags: vec!["work".to_string()],
+        }];
+
+        let result = logic::filter_recipe_candidates(&recipe_source_tags(&source), candidates);
+
+        assert_eq!(result.yellows.len(), 1);
+        assert_eq!(result.yellows[0].path, "yellow.md");
     }
 }
 
