@@ -4222,8 +4222,8 @@ pub fn run() {
                 if label == "main" {
                     // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
                     api.prevent_close();
-                } else if label == "quick_launcher" {
-                    // Quick launcher is a transient utility window; closing it must not exit the app.
+                } else if label == "quick_launcher" || label == "recipe-create" {
+                    // Transient utility windows; closing them must not exit the app.
                 } else {
                     // 付箋ウィンドウをタスクバーから「ウィンドウを閉じる」→ アプリ終了
                     // ※JSからの削除・アーカイブ時は destroy() を使うためここには来ない
