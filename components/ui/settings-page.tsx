@@ -454,13 +454,14 @@ type DataSectionProps = SectionProps & {
     setIsBackingUp: (val: boolean) => void;
 }
 
-type HotkeyAction = 'new_note' | 'toggle_visibility' | 'arrange';
+type HotkeyAction = 'new_note' | 'toggle_visibility' | 'arrange' | 'quick_launcher';
 type NewNoteTrigger = 'shortcut' | 'double_ctrl' | 'double_shift';
 type HotkeyBindings = {
     new_note_trigger: NewNoteTrigger;
     new_note: string;
     toggle_visibility: string;
     arrange: string;
+    quick_launcher: string;
 }
 type HotkeyCheckResult = {
     available: boolean;
@@ -468,10 +469,19 @@ type HotkeyCheckResult = {
     conflict_action?: HotkeyAction | null;
 }
 
-const HOTKEY_ACTION_LABELS: Record<HotkeyAction, string> = {
-    new_note: '新規付箋',
-    toggle_visibility: '表示切替',
-    arrange: '整列',
+const HOTKEY_ACTION_LABELS: Record<AppSettings['language'], Record<HotkeyAction, string>> = {
+    ja: {
+        new_note: '新規付箋',
+        toggle_visibility: '表示切替',
+        arrange: '整列',
+        quick_launcher: 'クイックランチャー',
+    },
+    en: {
+        new_note: 'New note',
+        toggle_visibility: 'Toggle visibility',
+        arrange: 'Arrange',
+        quick_launcher: 'Quick launcher',
+    },
 }
 
 function HotkeySection({ settings, saveSettings }: {
@@ -484,6 +494,8 @@ function HotkeySection({ settings, saveSettings }: {
     const [checkResult, setCheckResult] = useState<HotkeyCheckResult | null>(null)
     const [message, setMessage] = useState("")
     const [isSaving, setIsSaving] = useState(false)
+    const hotkeyActionLabels = HOTKEY_ACTION_LABELS[settings.language]
+    const isEn = settings.language === 'en'
 
     const loadBindings = useCallback(async (): Promise<HotkeyBindings | null> => {
         try {
@@ -528,7 +540,7 @@ function HotkeySection({ settings, saveSettings }: {
                     shortcut,
                 })
                 setCheckResult(result)
-                setMessage(hotkeyCheckMessage(result))
+                setMessage(hotkeyCheckMessage(result, hotkeyActionLabels))
             } catch (e) {
                 setCheckResult(null)
                 setMessage(`判定に失敗しました: ${String(e)}`)
@@ -537,7 +549,7 @@ function HotkeySection({ settings, saveSettings }: {
 
         window.addEventListener('keydown', onKeyDown, true)
         return () => window.removeEventListener('keydown', onKeyDown, true)
-    }, [captureAction])
+    }, [captureAction, hotkeyActionLabels])
 
     const beginCapture = (action: HotkeyAction) => {
         setCaptureAction(action)
@@ -671,12 +683,18 @@ function HotkeySection({ settings, saveSettings }: {
                     shortcut={bindings.arrange}
                     onChange={() => beginCapture('arrange')}
                 />
+                <HotkeyShortcutRow
+                    title={isEn ? 'Quick launcher' : 'クイックランチャー'}
+                    description={isEn ? 'Shows or hides the quick launcher.' : 'クイックランチャーの表示/非表示を切り替えます。'}
+                    shortcut={bindings.quick_launcher}
+                    onChange={() => beginCapture('quick_launcher')}
+                />
 
                 {captureAction && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                         <div className="flex items-center justify-between gap-4">
                             <div>
-                                <p className="text-sm font-bold text-blue-950">{HOTKEY_ACTION_LABELS[captureAction]} の変更</p>
+                                <p className="text-sm font-bold text-blue-950">{hotkeyActionLabels[captureAction]} の変更</p>
                                 <p className="text-sm text-blue-800 mt-1">
                                     {candidateShortcut ? formatShortcutLabel(candidateShortcut) : "押してください..."}
                                 </p>
@@ -718,6 +736,7 @@ async function syncSettingsStore(settings: AppSettings, saveSettings: (settings:
         new_note_trigger: bindings.new_note_trigger,
         shortcut_toggle_visibility: bindings.toggle_visibility,
         shortcut_arrange: bindings.arrange,
+        shortcut_quick_launcher: bindings.quick_launcher,
     })
 }
 
@@ -745,11 +764,11 @@ function HotkeyShortcutRow({ title, description, shortcut, onChange }: {
     )
 }
 
-function hotkeyCheckMessage(result: HotkeyCheckResult): string {
+function hotkeyCheckMessage(result: HotkeyCheckResult, labels: Record<HotkeyAction, string>): string {
     if (result.reason === 'ok' || result.reason === 'self') return '✅ 使用できます'
     if (result.reason === 'reserved') return '❌ コピーや貼り付けなどの基本操作のため割り当てできません。'
     if (result.reason === 'internal' && result.conflict_action) {
-        return `❌ このショートカットは「${HOTKEY_ACTION_LABELS[result.conflict_action]}」に割当済みです。`
+        return `❌ このショートカットは「${labels[result.conflict_action]}」に割当済みです。`
     }
     return '❌ このショートカットは既に他のアプリまたはWindowsで使用されています。別のショートカットを選択してください。'
 }

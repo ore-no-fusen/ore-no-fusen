@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     new_note_trigger: 'shortcut',
     shortcut_toggle_visibility: 'ctrl+shift+h',
     shortcut_arrange: 'ctrl+shift+l',
+    shortcut_quick_launcher: 'ctrl+p',
 };
 
 // キャッシュ
@@ -89,6 +90,7 @@ async function getSettings(): Promise<AppSettings> {
                     new_note_trigger: parsed.new_note_trigger ?? DEFAULT_SETTINGS.new_note_trigger,
                     shortcut_toggle_visibility: parsed.shortcut_toggle_visibility ?? DEFAULT_SETTINGS.shortcut_toggle_visibility,
                     shortcut_arrange: parsed.shortcut_arrange ?? DEFAULT_SETTINGS.shortcut_arrange,
+                    shortcut_quick_launcher: parsed.shortcut_quick_launcher ?? DEFAULT_SETTINGS.shortcut_quick_launcher,
                 };
             } else {
                 settingsCache = DEFAULT_SETTINGS;
@@ -108,6 +110,7 @@ async function getSettings(): Promise<AppSettings> {
                 new_note_trigger: loaded.new_note_trigger,
                 shortcut_toggle_visibility: loaded.shortcut_toggle_visibility,
                 shortcut_arrange: loaded.shortcut_arrange,
+                shortcut_quick_launcher: loaded.shortcut_quick_launcher,
             }
             settingsCache = { ...DEFAULT_SETTINGS, ...normalized };
         }

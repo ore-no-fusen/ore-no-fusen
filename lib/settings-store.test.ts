@@ -49,6 +49,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         expect(result.current.settings.language).toBe('ja');
         expect(result.current.settings.font_size).toBe(16);
         expect(result.current.settings.iphone_send_enabled).toBe(false);
+        expect(result.current.settings.shortcut_quick_launcher).toBe('ctrl+p');
     });
 
     it('loads settings from localStorage if available', async () => {
@@ -80,6 +81,7 @@ describe('useSettings Hook (Browser Mode)', () => {
             font_size: 16,
             sound_enabled: true,
             shortcut_new_note: 'ctrl+shift+m',
+            shortcut_quick_launcher: 'ctrl+alt+p',
         };
         localStorageMock.setItem('ore-no-fusen-settings', JSON.stringify(savedSettings));
 
@@ -90,6 +92,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         // shortcut_new_note は AppSettings 型に含まれないが、localStorage 上に存在し後方互換で読めることを確認
         const raw = JSON.parse(localStorageMock.getItem('ore-no-fusen-settings') as string);
         expect(raw.shortcut_new_note).toBe('ctrl+shift+m');
+        expect(result.current.settings.shortcut_quick_launcher).toBe('ctrl+alt+p');
 
         // 既存フィールドが壊れていないことを確認（後方互換）
         expect(result.current.settings.language).toBe('ja');
