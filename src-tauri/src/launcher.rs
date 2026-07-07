@@ -129,7 +129,7 @@ fn read_quick_item(path: &Path, tag: &str) -> Option<QuickOpenItem> {
 }
 
 fn recipe_note_paths(base_path: &Path) -> Vec<PathBuf> {
-    let recipes_dir = base_path.join("Recipes");
+    let recipes_dir = base_path.join(storage::RECIPES_DIR_NAME);
     let mut paths = Vec::new();
     if let Ok(entries) = fs::read_dir(recipes_dir) {
         for entry in entries.filter_map(|entry| entry.ok()) {

@@ -13,6 +13,8 @@ use walkdir::WalkDir;
 use crate::state::{Note, NoteMeta};
 use crate::logic;
 
+pub const RECIPES_DIR_NAME: &str = "Recipes";
+
 // UC-01: 設定ファイル管理
 pub use crate::state::Settings;
 
@@ -416,19 +418,19 @@ pub fn get_next_seq(folder_path: &str) -> i32 {
 }
 
 pub fn ensure_trash_dir(parent_path: &Path) -> Result<PathBuf, String> {
-    let trash_dir = parent_path.join("Trash");
-    if !trash_dir.exists() {
-        fs::create_dir(&trash_dir).map_err(|e| e.to_string())?;
+    ensure_named_dir(parent_path, "Trash")
+}
+
+pub fn ensure_named_dir(parent_path: &Path, name: &str) -> Result<PathBuf, String> {
+    let named_dir = parent_path.join(name);
+    if !named_dir.exists() {
+        fs::create_dir(&named_dir).map_err(|e| e.to_string())?;
     }
-    Ok(trash_dir)
+    Ok(named_dir)
 }
 
 pub fn ensure_recipes_dir(parent_path: &Path) -> Result<PathBuf, String> {
-    let recipes_dir = parent_path.join("Recipes");
-    if !recipes_dir.exists() {
-        fs::create_dir(&recipes_dir).map_err(|e| e.to_string())?;
-    }
-    Ok(recipes_dir)
+    ensure_named_dir(parent_path, RECIPES_DIR_NAME)
 }
 
 pub fn list_recipe_material_note_paths(parent_path: &Path) -> Vec<PathBuf> {
@@ -463,7 +465,7 @@ pub fn list_recipe_material_note_paths(parent_path: &Path) -> Vec<PathBuf> {
 fn has_excluded_recipe_material_component(path: &Path) -> bool {
     path.components().any(|component| {
         let name = component.as_os_str().to_string_lossy();
-        name == "Trash" || name == "Archive" || name == "Recipes"
+        name == "Trash" || name == "Archive" || name == RECIPES_DIR_NAME
     })
 }
 
@@ -939,6 +941,16 @@ mod tests {
         
         assert!(archive_dir.exists());
         assert!(archive_dir.ends_with("Archive"));
+    }
+
+    #[test]
+    fn test_ensure_named_dir_creates_and_reuses_dir() {
+        let dir = tempdir().unwrap();
+        let named_dir = ensure_named_dir(dir.path(), "Custom").unwrap();
+        let reused_dir = ensure_named_dir(dir.path(), "Custom").unwrap();
+
+        assert!(named_dir.exists());
+        assert_eq!(reused_dir, named_dir);
     }
 
     #[test]
