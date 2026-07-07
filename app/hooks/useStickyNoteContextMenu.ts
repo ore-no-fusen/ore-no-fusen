@@ -14,6 +14,36 @@ import { NoteMeta } from '@/app/api/notes';
 import { playDeleteSound, playSaveSound } from '../utils/soundManager';
 import { TranslationKey, Language } from '@/lib/i18n';
 import { getFeedbackConversationUnreadState } from '@/app/utils/feedbackConversation';
+import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
+import { isReservedTag, normalizeTagForReservation } from '@/app/utils/reservedTags';
+import { addTag as addRawTag, removeTag as removeRawTag } from '@/app/api/tags';
+
+export function filterAssignableTags(tags: string[]): string[] {
+    return tags.filter((tag) => !isReservedTag(tag));
+}
+
+export type ShortcutShelfMenuState = {
+    visible: boolean;
+    isRegistered: boolean;
+    label: string | null;
+};
+
+function hasReservedTag(tags: string[], target: 'recipe' | 'shortcut'): boolean {
+    return tags.some((tag) => normalizeTagForReservation(tag) === target);
+}
+
+export function getShortcutShelfMenuState(tags: string[]): ShortcutShelfMenuState {
+    if (hasReservedTag(tags, 'recipe')) {
+        return { visible: false, isRegistered: false, label: null };
+    }
+
+    const isRegistered = hasReservedTag(tags, 'shortcut');
+    return {
+        visible: true,
+        isRegistered,
+        label: isRegistered ? '📌 お気に入りを解除' : '📌 お気に入りに登録',
+    };
+}
 
 type UseStickyNoteContextMenuProps = {
     selectedFile: NoteMeta | null;
@@ -30,6 +60,7 @@ type UseStickyNoteContextMenuProps = {
     removeTagFromNote: (path: string, tag: string) => Promise<void>;
     isDeletingRef: React.MutableRefObject<boolean>;
     setNoteBackgroundColor: (color: string) => void;
+    noteBackgroundColor: string;
     setNoteFontSize: (size: number) => void;
     globalFontSize: number;
     updateFrontmatter: (key: string, value: any) => void;
@@ -62,6 +93,7 @@ export function useStickyNoteContextMenu({
     removeTagFromNote,
     isDeletingRef,
     setNoteBackgroundColor,
+    noteBackgroundColor,
     setNoteFontSize,
     globalFontSize,
     updateFrontmatter,
@@ -153,6 +185,25 @@ export function useStickyNoteContextMenu({
             alert(`透明度の変更に失敗しました\n${e}`);
         }
     }, [updateFrontmatter]);
+
+    const handleToggleShortcutShelf = useCallback(async () => {
+        if (!selectedFile) return;
+
+        const state = getShortcutShelfMenuState(currentTags);
+        if (!state.visible) return;
+
+        if (state.isRegistered) {
+            await removeRawTag(selectedFile.path, 'shortcut');
+            onToast?.('📌 お気に入りを解除しました');
+        } else {
+            await addRawTag(selectedFile.path, 'shortcut');
+            onToast?.('📌 お気に入りに登録しました');
+        }
+
+        const { emit } = await import('@tauri-apps/api/event');
+        await emit('fusen:reload_note', { path: selectedFile.path });
+        await emit(LAUNCHER_SHELF_CHANGED_EVENT);
+    }, [currentTags, onToast, selectedFile]);
 
     /**
      * コンテキストメニュー表示
@@ -320,6 +371,9 @@ export function useStickyNoteContextMenu({
             const fontSizeSubmenu = await Submenu.new({ id: 'ctx_fontsize_submenu', text: `📏 ${t('menu.changeFontSize')}`, items: fontSizeItems });
 
             const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
+            const canCreateRecipe = selectedFile?.path && noteBackgroundColor.toLowerCase() === '#80d8ff';
+            // レシピ付箋では意味がおかしくなる項目（アラーム・タグフォルダへ移動）を出さない
+            const isRecipeNote = currentTags.some((tag) => normalizeTagForReservation(tag) === 'recipe');
 
             // メニュー項目の構築
             let menuItems: any[] = [
@@ -335,8 +389,52 @@ export function useStickyNoteContextMenu({
                 separatorCommon
             ];
 
+            if (canCreateRecipe) {
+                menuItems.push(await MenuItem.new({
+                    id: 'ctx_create_recipe',
+                    text: '🍳 レシピにする',
+                    // 元の付箋の窓に重ねず、専用ウィンドウで開く（元付箋を一切触らない）
+                    action: async () => {
+                        const p = selectedFile?.path;
+                        if (!p) return;
+                        try {
+                            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                            const label = 'recipe-create';
+                            const existing = await WebviewWindow.getByLabel(label);
+                            if (existing) { await existing.setFocus(); return; }
+                            const { encodeNotePathForUrl } = await import('../utils/pathUtils');
+                            const w = new WebviewWindow(label, {
+                                url: `/recipe-create?path=${encodeNotePathForUrl(p)}`,
+                                title: 'レシピにする',
+                                width: 760,
+                                height: 860,
+                                minWidth: 640,
+                                minHeight: 620,
+                                center: true,
+                                resizable: true,
+                                focus: true,
+                            });
+                            w.once('tauri://error', (e) => console.error('[recipe-create] window error', e));
+                        } catch (e) {
+                            console.error('Failed to open recipe create window', e);
+                        }
+                    }
+                }));
+                menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            }
+
             // タグサブメニューの構築
             let tagSubItems: any[] = [];
+
+            const shortcutShelfMenuState = getShortcutShelfMenuState(currentTags);
+            if (selectedFile && shortcutShelfMenuState.visible && shortcutShelfMenuState.label) {
+                menuItems.push(await MenuItem.new({
+                    id: 'ctx_shortcut_shelf',
+                    text: shortcutShelfMenuState.label,
+                    action: handleToggleShortcutShelf
+                }));
+                menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            }
 
             if (isTagDeleteMode) {
                 // =============== 削除モード ===============
@@ -378,9 +476,11 @@ export function useStickyNoteContextMenu({
 
                 tagSubItems.push(tagNewItem);
 
-                if (freshTags.length > 0) {
+                const assignableTags = filterAssignableTags(freshTags);
+
+                if (assignableTags.length > 0) {
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                    for (const tag of freshTags) {
+                    for (const tag of assignableTags) {
                         const isChecked = currentTags.includes(tag);
                         tagSubItems.push(await MenuItem.new({
                             id: `ctx_tag_${tag}`,
@@ -413,13 +513,15 @@ export function useStickyNoteContextMenu({
             const tagSubmenu = await Submenu.new({ id: 'ctx_tags_submenu', text: `🏷️ ${t('menu.tags')}`, items: tagSubItems });
             menuItems.push(tagSubmenu);
 
-            // アラーム
-            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-            menuItems.push(await MenuItem.new({
-                id: 'ctx_set_alarm',
-                text: `⏰ ${t('menu.setAlarm')}`,
-                action: () => onSetAlarm()
-            }));
+            // アラーム（レシピ付箋には出さない）
+            if (!isRecipeNote) {
+                menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+                menuItems.push(await MenuItem.new({
+                    id: 'ctx_set_alarm',
+                    text: `⏰ ${t('menu.setAlarm')}`,
+                    action: () => onSetAlarm()
+                }));
+            }
 
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
@@ -472,6 +574,8 @@ export function useStickyNoteContextMenu({
                 }
             };
 
+            // タグフォルダへ移動（レシピ付箋には出さない。Recipes/ から連れ出して棚が壊れるため）
+            if (!isRecipeNote) {
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             if (currentTags.length > 1) {
                 // 複数タグ: サブメニューで移動先を選択
@@ -501,6 +605,7 @@ export function useStickyNoteContextMenu({
                     text: `📦 ${t('menu.archive')}`,
                     action: () => doArchive()
                 }));
+            }
             }
 
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
@@ -538,7 +643,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled, handleFontSizeChange]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled, handleFontSizeChange, noteBackgroundColor, handleToggleShortcutShelf]);
 
 
     // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）

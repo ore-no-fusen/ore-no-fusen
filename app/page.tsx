@@ -16,7 +16,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
-import { pathsEqual, normalizePath, getFileName } from './utils/pathUtils';
+import { pathsEqual, normalizePath, getFileName, encodeNotePathForUrl } from './utils/pathUtils';
 import { playLocalSound, playCreateSound, SoundType } from './utils/soundManager';
 import { type NoteMeta } from './api/notes';
 import StickyNote from './components/StickyNote';
@@ -301,7 +301,7 @@ function OrchestratorContent() {
   }, []);
 
   // ウィンドウ生成
-  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number }, isNew?: boolean, fromIphone?: boolean) => {
+  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
 
     try {
@@ -330,9 +330,11 @@ function OrchestratorContent() {
 
         markWindowInProgress(label);
         try {
-          const safePath = path.replace(/\\/g, '/');
-          const pathParam = encodeURIComponent(safePath);
-          const url = isNew ? `/?path=${pathParam}&isNew=1` : `/?path=${pathParam}`;
+          const pathParam = encodeNotePathForUrl(path);
+          // 色が分かっている場合は初期描画から正しい色にする（黄色フラッシュ防止）
+          const bgHex = /^#[0-9a-fA-F]{6}$/.test(meta?.background_color || '') ? meta!.background_color! : null;
+          const bgParam = bgHex ? `&bg=${encodeURIComponent(bgHex)}` : '';
+          const url = isNew ? `/?path=${pathParam}&isNew=1${bgParam}` : `/?path=${pathParam}${bgParam}`;
           const width = meta?.width || 400;
           const height = meta?.height || 300;
           const x = meta?.x;
@@ -345,7 +347,9 @@ function OrchestratorContent() {
             decorations: false,
             alwaysOnTop: meta?.always_on_top || false,
             visible: true, // 即時表示
-            backgroundColor: [247, 233, 176, 255], // デフォルト付箋色 #f7e9b0 - 最初から黄色
+            backgroundColor: bgHex
+              ? [parseInt(bgHex.slice(1, 3), 16), parseInt(bgHex.slice(3, 5), 16), parseInt(bgHex.slice(5, 7), 16), 255] as [number, number, number, number]
+              : [247, 233, 176, 255], // 色不明時は従来どおり黄色 #f7e9b0
             width,
             height,
             x,
@@ -623,8 +627,9 @@ function OrchestratorContent() {
     if (!isMainWindow) return; // [FIX] プールウィンドウからの過剰反応を防ぐ Guard
 
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ path: string; isNew?: boolean }>('fusen:open_note', (event) => {
-      openNoteWindow(event.payload.path, undefined, event.payload.isNew);
+    const promise = listen<{ path: string; isNew?: boolean; backgroundColor?: string }>('fusen:open_note', (event) => {
+      const bg = event.payload.backgroundColor;
+      openNoteWindow(event.payload.path, bg ? { background_color: bg } : undefined, event.payload.isNew);
     });
 
     promise.then((u) => { unlisten = u; });

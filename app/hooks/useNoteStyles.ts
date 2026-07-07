@@ -4,9 +4,14 @@ import { useSettings } from '@/lib/settings-store';
 import { Note } from '@/app/api/notes';
 import { safeUnlisten } from '@/app/utils/safeUnlisten';
 
-export function useNoteStyles(note: Note | null) {
+export function useNoteStyles(note: Note | null, initialBackgroundColor?: string | null) {
     const { settings } = useSettings();
-    const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
+    // 開く側が色を知っている場合はそれを初期値にする（黄色フラッシュ防止）。無ければ従来どおり黄色
+    const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>(
+        initialBackgroundColor && /^#[0-9a-fA-F]{6}$/.test(initialBackgroundColor)
+            ? initialBackgroundColor
+            : '#f7e9b0'
+    );
     const [noteFontSize, setNoteFontSize] = useState<number>(16);
 
     // 1. グローバル設定の適用 (フォントサイズ)

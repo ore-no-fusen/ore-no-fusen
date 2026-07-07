@@ -40,15 +40,17 @@ import Tooltip from './Tooltip';
 
 
 // ユーティリティ
-import { pathsEqual, getFileName } from '../utils/pathUtils';
+import { pathsEqual, getFileName, decodeNotePathFromUrl } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
 import { resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
 import { matchesShortcut } from '../utils/shortcutKey';
+import { appendImprovementHistoryLine, createImprovementHistoryLine, getChangedRecipeSections } from '../utils/recipeFormat';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
+import { returnRecipe } from '@/app/api/recipes';
 import { invoke } from '@tauri-apps/api/core';
 
 // 設定・国際化
@@ -66,7 +68,10 @@ const StickyNote = memo(function StickyNote() {
     const searchParams = useSearchParams();
     // [NEW] プールモード判定と動的パス
     const isPoolParams = searchParams.get('isPool') === 'true';
-    const [dynamicUrlPath, setDynamicUrlPath] = useState<string | null>(searchParams.get('path') || null);
+    const [dynamicUrlPath, setDynamicUrlPath] = useState<string | null>(() => {
+        const pathParam = searchParams.get('path');
+        return pathParam ? decodeNotePathFromUrl(pathParam) : null;
+    });
     const [isPool, setIsPool] = useState<boolean>(isPoolParams);
     const isPoolRef = useRef(isPoolParams);
     const [isNewState, setIsNewState] = useState<boolean>(searchParams.get('isNew') === '1');
@@ -142,6 +147,8 @@ const StickyNote = memo(function StickyNote() {
     const lazyFolderPathRef = useRef<string>('');
     // 文字入力と画像貼り付けが同時に lazy 作成を要求しても 1 回にまとめる
     const lazyCreatePromiseRef = useRef<Promise<string | null> | null>(null);
+    const originalRecipeBodyRef = useRef<string | null>(null);
+    const originalRecipePathRef = useRef<string | null>(null);
 
     // アラーム用 refs（setInterval内でstale closureを避けるため）
     const rawFrontmatterForAlarmRef = useRef('');
@@ -190,7 +197,7 @@ const StickyNote = memo(function StickyNote() {
 
 
     // スタイル関連（カスタムフックで一元管理）
-    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize, setNoteFontSize } = useNoteStyles(note);
+    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize, setNoteFontSize } = useNoteStyles(note, searchParams.get('bg'));
 
     // 削除・アーカイブ中の保存防止フラグ
     const isDeletingRef = useRef(false);
@@ -314,6 +321,7 @@ const StickyNote = memo(function StickyNote() {
         removeTagFromNote,
         deleteTagFromAllNotes
     } = useTagManager();
+    const isRecipeNote = currentTags.some((tag: string) => tag.trim().toLowerCase() === 'recipe');
 
     // 初期ロード時に全タグを取得
     useEffect(() => {
@@ -321,6 +329,19 @@ const StickyNote = memo(function StickyNote() {
     }, [loadAllTags]);
 
     // スクリーンキャプチャ
+    useEffect(() => {
+        const path = selectedFile?.path ?? null;
+        if (!path || !isRecipeNote) {
+            originalRecipeBodyRef.current = null;
+            originalRecipePathRef.current = null;
+            return;
+        }
+        if (!loading && originalRecipePathRef.current !== path) {
+            originalRecipeBodyRef.current = content;
+            originalRecipePathRef.current = path;
+        }
+    }, [content, isRecipeNote, loading, selectedFile?.path]);
+
     const { captureScreen } = useScreenCapture({
         currentFilePath: urlPath,
         noteSeq: selectedFile?.seq || 0,
@@ -1188,7 +1209,7 @@ const StickyNote = memo(function StickyNote() {
                 });
             } catch (err) {
                 console.error('[Tag] Failed to add tag:', err);
-                alert('タグの追加に失敗しました。');
+                alert(err instanceof Error ? err.message : 'タグの追加に失敗しました。');
             }
         }
         setShowTagModal(false);
@@ -1511,6 +1532,7 @@ const StickyNote = memo(function StickyNote() {
         removeTagFromNote,
         isDeletingRef,
         setNoteBackgroundColor,
+        noteBackgroundColor,
         setNoteFontSize,
         globalFontSize: settings.font_size,
         updateFrontmatter,
@@ -1552,6 +1574,28 @@ const StickyNote = memo(function StickyNote() {
             alert(`${t('menu.archive_failed')}\n${e}`);
         }
     }, [selectedFile, currentTags, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
+
+    const handleReturnRecipe = useCallback(async () => {
+        if (!selectedFile?.path || !isRecipeNote) return;
+
+        try {
+            const originalBody = originalRecipeBodyRef.current ?? content;
+            const changed = getChangedRecipeSections(originalBody, content);
+            const returnedBody = changed.length > 0
+                ? appendImprovementHistoryLine(content, createImprovementHistoryLine(new Date(), changed))
+                : content;
+
+            isDeletingRef.current = true;
+            await returnRecipe(selectedFile.path, returnedBody, changed.length > 0);
+            const win = getCurrentWindow();
+            await win.hide();
+            await win.destroy();
+        } catch (e) {
+            isDeletingRef.current = false;
+            console.error('Failed to return recipe:', e);
+            alert(`レシピを返せませんでした\n${e}`);
+        }
+    }, [content, isRecipeNote, selectedFile?.path]);
 
     const handleOpenTagFolder = useCallback(async (tag: string) => {
         try {
@@ -1857,6 +1901,7 @@ const StickyNote = memo(function StickyNote() {
                                 fontSize={noteFontSize}
                                 isDraggableArea={false}
                                 singleLinePreview={true} // [New] 省略表示モード
+                                recipeMode={isRecipeNote}
                                 onCheckboxToggle={handleToggleCheckbox}
                                 onImageResize={handleImageResize}
                                 onDoubleClick={(e) => {
@@ -1944,6 +1989,7 @@ const StickyNote = memo(function StickyNote() {
                             backgroundColor={noteBackgroundColor}
                             fontSize={noteFontSize}
                             isDraggableArea={isDraggableArea}
+                            recipeMode={isRecipeNote}
                             onCheckboxToggle={handleToggleCheckbox}
                             onImageResize={handleImageResize}
                             onDoubleClick={(e) => {
@@ -2095,7 +2141,27 @@ const StickyNote = memo(function StickyNote() {
                                 )}
                             </div>
                         )}
-                        {currentTags.length <= 1 && (
+                        {isRecipeNote && (
+                            <Tooltip text="レシピを閉じる" placement="top-right-arrow-shifted">
+                                <button
+                                    type="button"
+                                    aria-label="レシピを閉じる"
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleReturnRecipe();
+                                    }}
+                                    className="h-[24px] px-2 rounded text-[12px] leading-none flex items-center justify-center gap-1 text-gray-600 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-orange-100 hover:text-orange-700 hover:border-orange-200 transition-colors whitespace-nowrap"
+                                >
+                                    ↩ レシピを閉じる
+                                </button>
+                            </Tooltip>
+                        )}
+                        {currentTags.length <= 1 && !isRecipeNote && (
                             <Tooltip text={t('menu.archive')} placement="top-right-arrow-shifted">
                                 <button
                                     type="button"
@@ -2150,6 +2216,7 @@ const StickyNote = memo(function StickyNote() {
                     onCancel={() => setAnnotationTarget(null)}
                 />
             )}
+
 
             {/* 新規タグ追加モーダル */}
             {showTagModal && (

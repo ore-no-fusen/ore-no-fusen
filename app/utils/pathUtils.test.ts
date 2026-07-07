@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     createLinkTargetRegex,
+    decodeNotePathFromUrl,
+    encodeNotePathForUrl,
     isAbsoluteOrExternalPath,
     isLinkTarget,
     normalizePath,
@@ -12,6 +14,12 @@ describe('pathUtils', () => {
     it('keeps existing path comparison behavior', () => {
         expect(pathsEqual('C:\\Users\\uck\\note.md', 'c:/users/uck/note.md')).toBe(true);
         expect(normalizePath('C:\\Users\\uck\\note.md\\')).toBe('c:/users/uck/note.md');
+    });
+
+    it('round-trips note paths for URL query parameters without losing subfolders', () => {
+        const path = 'D:\\Users\\uck\\Documents\\OreNoFusen\\Recipes\\0004_2026-07-06_eeeee.md';
+        expect(decodeURIComponent(encodeNotePathForUrl(path))).toBe(path);
+        expect(decodeNotePathFromUrl('D:/Users/uck/Documents/OreNoFusen/Recipes/0004_2026-07-06_eeeee.md')).toBe(path);
     });
 
     it('detects absolute and external paths without treating relative paths as absolute', () => {

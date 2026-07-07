@@ -39,6 +39,18 @@ export function pathsEqual(path1: string, path2: string): boolean {
     return normalizePath(path1) === normalizePath(path2);
 }
 
+export function encodeNotePathForUrl(path: string): string {
+    return encodeURIComponent(path);
+}
+
+export function decodeNotePathFromUrl(path: string): string {
+    const decoded = path;
+    if (/^[a-zA-Z]:\//.test(decoded)) {
+        return decoded.replace(/\//g, '\\');
+    }
+    return decoded;
+}
+
 /**
  * 絶対パスまたは外部リソースかどうかを判定する
  * - Windows drive paths: C:\foo, C:/foo
@@ -74,4 +86,3 @@ export function isLinkTarget(text: string): boolean {
 export function getFileName(path: string): string {
     return path.split(/[\\/]/).pop() || path;
 }
-

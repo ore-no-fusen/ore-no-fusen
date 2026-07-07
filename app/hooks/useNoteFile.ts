@@ -69,6 +69,21 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
     /**
      * ノートファイルを読み込む
      */
+    const loadedPathRef = useRef<string | null>(isNew ? path : null);
+    const loadFailedPathRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (isNew) {
+            hasLoadedRef.current = true;
+            loadedPathRef.current = path;
+            loadFailedPathRef.current = null;
+            return;
+        }
+        if (path && (!loadedPathRef.current || !pathsEqual(loadedPathRef.current, path))) {
+            hasLoadedRef.current = false;
+        }
+    }, [path, isNew]);
+
     const loadNote = useCallback(async (): Promise<string> => {
         if (!path) return '';
 
@@ -97,11 +112,15 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
             setRawFrontmatter(front);
             setContent(body);
             hasLoadedRef.current = true;
+            loadedPathRef.current = path;
+            loadFailedPathRef.current = null;
 
             console.log('[DBG:loadNote] END body=', JSON.stringify(body.slice(0, 50)));
             return body;
         } catch (error) {
             console.error('[useNoteFile] Failed to load note:', error);
+            hasLoadedRef.current = false;
+            loadFailedPathRef.current = path;
             return '';
         } finally {
             setLoading(false);
@@ -128,6 +147,25 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
         // 先頭の設定欄（---で囲まれた部分）が存在していても、
         // ロード前の空ボディ保存はデータ消失を引き起こすため防ぐ
         console.log('[DBG:saveNoteContent] START path=', currentPath.slice(-30), 'body=', JSON.stringify(body.slice(0, 50)), 'fm=', JSON.stringify(frontmatter.slice(0, 30)), 'hasLoaded=', hasLoadedRef.current);
+
+        if (
+            !isNewRef.current &&
+            (!hasLoadedRef.current || !loadedPathRef.current || !pathsEqual(loadedPathRef.current, currentPath))
+        ) {
+            const msg = '[useNoteFile] BLOCKED: Attempted to save an existing note before a successful load for the current path.';
+            console.error(msg);
+            Sentry.captureMessage(msg, {
+                level: 'warning',
+                extra: {
+                    currentPath,
+                    loadedPath: loadedPathRef.current,
+                    loadFailedPath: loadFailedPathRef.current,
+                    bodyLen: body.length,
+                    frontmatterLen: frontmatter.length,
+                },
+            });
+            return;
+        }
 
         if (!hasLoadedRef.current && body.trim() === '') {
             const msg = '[useNoteFile] BLOCKED: Attempted to save empty body before first successful load. Possible initialization race condition.';
@@ -187,6 +225,8 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
             setRawFrontmatter(frontmatter);
             hasLoadedRef.current = true; // 保存成功 = ロード済みとみなす（以降の auto-save を有効化）
             console.log('[DBG:saveNoteContent] END saved ok body=', JSON.stringify(body.slice(0, 50)));
+            loadedPathRef.current = newPath;
+            loadFailedPathRef.current = null;
         } catch (e) {
             console.error('[useNoteFile] Failed to save note:', e);
             throw e;
