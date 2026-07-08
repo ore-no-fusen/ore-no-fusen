@@ -7,10 +7,55 @@ pub(crate) enum TapEvent {
     OtherKeyDown,
 }
 
+impl TapEvent {
+    fn label(self) -> &'static str {
+        match self {
+            TapEvent::TargetDown => "target_down",
+            TapEvent::TargetUp => "target_up",
+            TapEvent::OtherKeyDown => "other_key_down",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DoubleTapTarget {
     Ctrl,
     Shift,
+}
+
+impl DoubleTapTarget {
+    fn label(self) -> &'static str {
+        match self {
+            DoubleTapTarget::Ctrl => "Ctrl",
+            DoubleTapTarget::Shift => "Shift",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DoubleTapOutcome {
+    Fired,
+    Failed(DoubleTapFailure),
+    Ignored,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DoubleTapFailure {
+    TargetRepeatedWhileDown,
+    OtherKeyWhileTargetDown,
+    OtherKeyBetweenTaps,
+    Timeout { elapsed_ms: u64, window_ms: u64 },
+}
+
+impl DoubleTapFailure {
+    fn reason(self) -> &'static str {
+        match self {
+            DoubleTapFailure::TargetRepeatedWhileDown => "target_repeated_while_down",
+            DoubleTapFailure::OtherKeyWhileTargetDown => "other_key_while_target_down",
+            DoubleTapFailure::OtherKeyBetweenTaps => "other_key_between_taps",
+            DoubleTapFailure::Timeout { .. } => "timeout",
+        }
+    }
 }
 
 pub(crate) struct DoubleTapDetector {
@@ -32,38 +77,45 @@ impl DoubleTapDetector {
         }
     }
 
-    /// イベントと時刻(ms)を与え、2回押し成立時のみ true
-    pub fn on_event(&mut self, event: TapEvent, now_ms: u64) -> bool {
+    /// イベントと時刻(ms)を与え、2回押し成立または失敗理由を返す
+    pub fn on_event(&mut self, event: TapEvent, now_ms: u64) -> DoubleTapOutcome {
         match event {
             TapEvent::TargetDown => self.on_target_down(now_ms),
             TapEvent::TargetUp => {
                 self.on_target_up(now_ms);
-                false
-            },
-            TapEvent::OtherKeyDown => {
-                self.on_other_key_down();
-                false
-            },
+                DoubleTapOutcome::Ignored
+            }
+            TapEvent::OtherKeyDown => self.on_other_key_down(),
         }
     }
 
-    fn on_target_down(&mut self, now_ms: u64) -> bool {
+    fn on_target_down(&mut self, now_ms: u64) -> DoubleTapOutcome {
         if self.target_down {
-            return false;
+            return DoubleTapOutcome::Failed(DoubleTapFailure::TargetRepeatedWhileDown);
         }
 
         if let Some(last_up) = self.last_clean_tap_up_ms {
-            if !self.between_taps_dirty && now_ms.saturating_sub(last_up) <= self.window_ms {
+            let elapsed_ms = now_ms.saturating_sub(last_up);
+            if self.between_taps_dirty {
                 self.reset();
-                return true;
+                return DoubleTapOutcome::Failed(DoubleTapFailure::OtherKeyBetweenTaps);
             }
+            if elapsed_ms <= self.window_ms {
+                self.reset();
+                return DoubleTapOutcome::Fired;
+            }
+            self.reset();
+            return DoubleTapOutcome::Failed(DoubleTapFailure::Timeout {
+                elapsed_ms,
+                window_ms: self.window_ms,
+            });
         }
 
         self.target_down = true;
         self.current_tap_dirty = false;
         self.last_clean_tap_up_ms = None;
         self.between_taps_dirty = false;
-        false
+        DoubleTapOutcome::Ignored
     }
 
     fn on_target_up(&mut self, now_ms: u64) {
@@ -82,11 +134,15 @@ impl DoubleTapDetector {
         self.between_taps_dirty = false;
     }
 
-    fn on_other_key_down(&mut self) {
+    fn on_other_key_down(&mut self) -> DoubleTapOutcome {
         if self.target_down {
             self.current_tap_dirty = true;
+            DoubleTapOutcome::Failed(DoubleTapFailure::OtherKeyWhileTargetDown)
         } else if self.last_clean_tap_up_ms.is_some() {
             self.between_taps_dirty = true;
+            DoubleTapOutcome::Failed(DoubleTapFailure::OtherKeyBetweenTaps)
+        } else {
+            DoubleTapOutcome::Ignored
         }
     }
 
@@ -109,23 +165,28 @@ mod windows_hook {
     use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::Threading::GetCurrentThreadId;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        VK_LCONTROL, VK_LSHIFT, VK_RCONTROL, VK_RSHIFT,
+        GetAsyncKeyState, VK_CONTROL, VK_LCONTROL, VK_LSHIFT, VK_RCONTROL, VK_RSHIFT, VK_SHIFT,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, KBDLLHOOKSTRUCT, MSG, PeekMessageW, PostThreadMessageW,
-        SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, PM_NOREMOVE, WH_KEYBOARD_LL, WM_KEYDOWN,
+        CallNextHookEx, GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowTextW,
+        GetWindowThreadProcessId, PeekMessageW, PostThreadMessageW, SetWindowsHookExW,
+        UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_KEYBOARD_LL, WM_KEYDOWN,
         WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
-    use super::{DoubleTapDetector, DoubleTapTarget, TapEvent};
+    use super::{DoubleTapDetector, DoubleTapOutcome, DoubleTapTarget, TapEvent};
     use crate::{logger, perflog};
 
-    const WINDOW_MS: u64 = 350;
+    const WINDOW_MS: u64 = 650;
+    const NOISE_WINDOW_MS: u64 = 300;
+    const VK_C: u32 = 0x43;
+    const VK_V: u32 = 0x56;
 
     struct CallbackState {
         target: DoubleTapTarget,
         detector: DoubleTapDetector,
         sender: mpsc::Sender<()>,
+        last_target_down_ms: Option<u64>,
     }
 
     struct HookRuntime {
@@ -140,7 +201,14 @@ mod windows_hook {
     static RUNTIME: OnceLock<Mutex<Option<HookRuntime>>> = OnceLock::new();
 
     pub(crate) fn start(app_handle: AppHandle, target: DoubleTapTarget) -> Result<(), String> {
-        if RUNTIME.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|r| r.target == target).unwrap_or(false) {
+        if RUNTIME
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|r| r.target == target)
+            .unwrap_or(false)
+        {
             return Ok(());
         }
 
@@ -160,14 +228,22 @@ mod windows_hook {
                 target,
                 detector: DoubleTapDetector::new(WINDOW_MS),
                 sender: callback_tx,
+                last_target_down_ms: None,
             };
-            *CALLBACK_STATE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = Some(state);
+            *CALLBACK_STATE
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(state);
 
-            let hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), HINSTANCE(0), 0) };
+            let hook =
+                unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), HINSTANCE(0), 0) };
             let hook = match hook {
                 Ok(hook) => hook,
                 Err(e) => {
-                    *CALLBACK_STATE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    *CALLBACK_STATE
+                        .get_or_init(|| Mutex::new(None))
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = None;
                     let _ = ready_tx.send(Err(e.to_string()));
                     return;
                 }
@@ -183,20 +259,34 @@ mod windows_hook {
                 }
             }
 
-            *CALLBACK_STATE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *CALLBACK_STATE
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = None;
         });
 
         let emit_thread = thread::spawn(move || {
             for _ in fire_rx {
-                logger::log_info("[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit");
-                perflog::log_event("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
+                logger::log_info(
+                    "[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit",
+                );
+                perflog::log_event(
+                    "ctrl-n-global",
+                    "GLOBAL_CTRL_N_PRESSED",
+                    None,
+                    None,
+                    serde_json::json!({}),
+                );
                 let _ = app_handle.emit("fusen:request_create_global", ());
             }
         });
 
         match ready_rx.recv().map_err(|e| e.to_string())? {
             Ok((hook, thread_id)) => {
-                *RUNTIME.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = Some(HookRuntime {
+                *RUNTIME
+                    .get_or_init(|| Mutex::new(None))
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(HookRuntime {
                     target,
                     hook,
                     thread_id,
@@ -204,23 +294,29 @@ mod windows_hook {
                     emit_thread,
                 });
                 Ok(())
-            },
+            }
             Err(e) => {
                 drop(fire_tx);
                 let _ = hook_thread.join();
                 let _ = emit_thread.join();
                 Err(e)
-            },
+            }
         }
     }
 
     pub(crate) fn stop() {
-        let runtime = RUNTIME.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()).take();
+        let runtime = RUNTIME
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
         if let Some(runtime) = runtime {
             if let Err(e) = unsafe { UnhookWindowsHookEx(HHOOK(runtime.hook)) } {
                 logger::log_warn(&format!("[Shortcut] double tap unhook failed: {}", e));
             }
-            if let Err(e) = unsafe { PostThreadMessageW(runtime.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) } {
+            if let Err(e) =
+                unsafe { PostThreadMessageW(runtime.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }
+            {
                 logger::log_warn(&format!("[Shortcut] double tap thread quit failed: {}", e));
             }
             let _ = runtime.hook_thread.join();
@@ -233,18 +329,164 @@ mod windows_hook {
             let event = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
             let message = wparam.0 as u32;
 
-            if let Some(state) = CALLBACK_STATE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            if let Some(state) = CALLBACK_STATE
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_mut()
+            {
                 if let Some(tap_event) = map_event(event.vkCode, message, state.target) {
-                    // プライバシー方針: 対象修飾キー以外は「他キーが押された」という事実だけを
-                    // 判定に使う。キーコードや入力内容は保持・記録・ログ出力しない。
-                        if state.detector.on_event(tap_event, event.time as u64) {
+                    if tap_event == TapEvent::TargetDown {
+                        state.last_target_down_ms = Some(event.time as u64);
+                    }
+                    if matches!(tap_event, TapEvent::TargetDown | TapEvent::TargetUp) {
+                        logger::log_info(&format!(
+                            "[ShortcutDiag] {}*2 event={} vk_code={} scan_code={} message={} flags={:?} event_time={}",
+                            state.target.label(),
+                            tap_event.label(),
+                            event.vkCode,
+                            event.scanCode,
+                            message,
+                            event.flags,
+                            event.time,
+                        ));
+                    }
+                    if should_ignore_noise(state, tap_event, event.vkCode, event.time as u64) {
+                        logger::log_info(&format!(
+                            "[Shortcut] {}*2 noise ignored: event={} vk_code={} scan_code={} message={} flags={:?} event_time={}{}",
+                            state.target.label(),
+                            tap_event.label(),
+                            event.vkCode,
+                            event.scanCode,
+                            message,
+                            event.flags,
+                            event.time,
+                            diagnostic_context(event.vkCode),
+                        ));
+                        return unsafe { CallNextHookEx(HHOOK(0), code, wparam, lparam) };
+                    }
+                    match state.detector.on_event(tap_event, event.time as u64) {
+                        DoubleTapOutcome::Fired => {
+                            logger::log_info(&format!(
+                                "[Shortcut] {}*2 detected within {}ms",
+                                state.target.label(),
+                                WINDOW_MS,
+                            ));
                             let _ = state.sender.send(());
                         }
+                        DoubleTapOutcome::Failed(reason) => {
+                            let context = diagnostic_context(event.vkCode);
+                            logger::log_info(&format!(
+                                "[Shortcut] {}*2 ignored: reason={} event={} vk_code={} scan_code={} message={} flags={:?} event_time={}{}{}",
+                                state.target.label(),
+                                reason.reason(),
+                                tap_event.label(),
+                                event.vkCode,
+                                event.scanCode,
+                                message,
+                                event.flags,
+                                event.time,
+                                match reason {
+                                    super::DoubleTapFailure::Timeout {
+                                        elapsed_ms,
+                                        window_ms,
+                                    } => {
+                                        format!(
+                                            " elapsed_ms={} window_ms={}",
+                                            elapsed_ms, window_ms
+                                        )
+                                    }
+                                    _ => String::new(),
+                                },
+                                context,
+                            ));
+                        }
+                        DoubleTapOutcome::Ignored => {}
+                    }
                 }
             }
         }
 
         unsafe { CallNextHookEx(HHOOK(0), code, wparam, lparam) }
+    }
+
+    fn should_ignore_noise(
+        state: &CallbackState,
+        tap_event: TapEvent,
+        vk_code: u32,
+        event_time_ms: u64,
+    ) -> bool {
+        if state.target != DoubleTapTarget::Ctrl
+            || tap_event != TapEvent::OtherKeyDown
+            || !matches!(vk_code, VK_C | VK_V)
+        {
+            return false;
+        }
+
+        let Some(last_target_down_ms) = state.last_target_down_ms else {
+            return false;
+        };
+        if event_time_ms.saturating_sub(last_target_down_ms) > NOISE_WINDOW_MS {
+            return false;
+        }
+
+        !async_key_is_down(vk_code)
+            && (async_key_is_down(VK_CONTROL.0 as u32)
+                || async_key_is_down(VK_LCONTROL.0 as u32)
+                || async_key_is_down(VK_RCONTROL.0 as u32))
+    }
+
+    fn async_key_is_down(vk_code: u32) -> bool {
+        let state = unsafe { GetAsyncKeyState(vk_code as i32) } as u16;
+        (state & 0x8000) != 0
+    }
+
+    fn diagnostic_context(vk_code: u32) -> String {
+        let hwnd = unsafe { GetForegroundWindow() };
+        let mut pid = 0u32;
+        let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        let title = window_text(hwnd);
+        let class_name = window_class(hwnd);
+        let vk_state = async_key_state(vk_code);
+        let ctrl_state = async_key_state(VK_CONTROL.0 as u32);
+        let lctrl_state = async_key_state(VK_LCONTROL.0 as u32);
+        let rctrl_state = async_key_state(VK_RCONTROL.0 as u32);
+
+        format!(
+            " fg_hwnd=0x{:x} fg_pid={} fg_tid={} fg_class=\"{}\" fg_title=\"{}\" async_vk={} async_ctrl={} async_lctrl={} async_rctrl={}",
+            hwnd.0 as isize,
+            pid,
+            thread_id,
+            class_name,
+            title,
+            vk_state,
+            ctrl_state,
+            lctrl_state,
+            rctrl_state,
+        )
+    }
+
+    fn async_key_state(vk_code: u32) -> String {
+        let state = unsafe { GetAsyncKeyState(vk_code as i32) };
+        let raw = state as u16;
+        format!(
+            "raw=0x{:04x}/down={}/recent={}",
+            raw,
+            (raw & 0x8000) != 0,
+            (raw & 0x0001) != 0,
+        )
+    }
+
+    fn window_text(hwnd: HWND) -> String {
+        let mut buffer = [0u16; 256];
+        let len = unsafe { GetWindowTextW(hwnd, &mut buffer) };
+        String::from_utf16_lossy(&buffer[..len.max(0) as usize])
+    }
+
+    fn window_class(hwnd: HWND) -> String {
+        let mut buffer = [0u16; 256];
+        let len = unsafe { GetClassNameW(hwnd, &mut buffer) };
+        String::from_utf16_lossy(&buffer[..len.max(0) as usize])
     }
 
     fn map_event(vk_code: u32, message: u32, target: DoubleTapTarget) -> Option<TapEvent> {
@@ -255,14 +497,14 @@ mod windows_hook {
                 } else {
                     Some(TapEvent::OtherKeyDown)
                 }
-            },
+            }
             WM_KEYUP | WM_SYSKEYUP => {
                 if event_matches_target(vk_code, target) {
                     Some(TapEvent::TargetUp)
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
         }
     }
@@ -270,11 +512,15 @@ mod windows_hook {
     fn event_matches_target(vk_code: u32, target: DoubleTapTarget) -> bool {
         match target {
             DoubleTapTarget::Ctrl => {
-                vk_code == VK_LCONTROL.0 as u32 || vk_code == VK_RCONTROL.0 as u32
-            },
+                vk_code == VK_CONTROL.0 as u32
+                    || vk_code == VK_LCONTROL.0 as u32
+                    || vk_code == VK_RCONTROL.0 as u32
+            }
             DoubleTapTarget::Shift => {
-                vk_code == VK_LSHIFT.0 as u32 || vk_code == VK_RSHIFT.0 as u32
-            },
+                vk_code == VK_SHIFT.0 as u32
+                    || vk_code == VK_LSHIFT.0 as u32
+                    || vk_code == VK_RSHIFT.0 as u32
+            }
         }
     }
 }
@@ -292,71 +538,160 @@ pub(crate) fn stop() {}
 
 #[cfg(test)]
 mod tests {
-    use super::{DoubleTapDetector, TapEvent};
+    use super::{DoubleTapDetector, DoubleTapFailure, DoubleTapOutcome, TapEvent};
+
+    const WINDOW_MS: u64 = 650;
 
     #[test]
     fn fires_on_normal_double_tap() {
-        let mut detector = DoubleTapDetector::new(350);
+        let mut detector = DoubleTapDetector::new(WINDOW_MS);
 
-        assert!(!detector.on_event(TapEvent::TargetDown, 1000));
-        assert!(!detector.on_event(TapEvent::TargetUp, 1030));
-        assert!(detector.on_event(TapEvent::TargetDown, 1200));
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1000),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetUp, 1030),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1200),
+            DoubleTapOutcome::Fired
+        );
     }
 
     #[test]
     fn does_not_fire_when_other_key_is_used_with_target() {
-        let mut detector = DoubleTapDetector::new(350);
+        let mut detector = DoubleTapDetector::new(WINDOW_MS);
 
-        assert!(!detector.on_event(TapEvent::TargetDown, 1000));
-        assert!(!detector.on_event(TapEvent::OtherKeyDown, 1010));
-        assert!(!detector.on_event(TapEvent::TargetUp, 1030));
-        assert!(!detector.on_event(TapEvent::TargetDown, 1200));
-        assert!(!detector.on_event(TapEvent::OtherKeyDown, 1210));
-        assert!(!detector.on_event(TapEvent::TargetUp, 1230));
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1000),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::OtherKeyDown, 1010),
+            DoubleTapOutcome::Failed(DoubleTapFailure::OtherKeyWhileTargetDown),
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetUp, 1030),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1200),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::OtherKeyDown, 1210),
+            DoubleTapOutcome::Failed(DoubleTapFailure::OtherKeyWhileTargetDown),
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetUp, 1230),
+            DoubleTapOutcome::Ignored
+        );
     }
 
     #[test]
     fn does_not_fire_after_window_expires() {
-        let mut detector = DoubleTapDetector::new(350);
+        let mut detector = DoubleTapDetector::new(WINDOW_MS);
 
-        assert!(!detector.on_event(TapEvent::TargetDown, 1000));
-        assert!(!detector.on_event(TapEvent::TargetUp, 1030));
-        assert!(!detector.on_event(TapEvent::TargetDown, 1400));
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1000),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetUp, 1030),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1700),
+            DoubleTapOutcome::Failed(DoubleTapFailure::Timeout {
+                elapsed_ms: 670,
+                window_ms: WINDOW_MS,
+            }),
+        );
     }
 
     #[test]
     fn ignores_repeated_down_while_target_is_down() {
-        let mut detector = DoubleTapDetector::new(350);
+        let mut detector = DoubleTapDetector::new(WINDOW_MS);
 
-        assert!(!detector.on_event(TapEvent::TargetDown, 1000));
-        assert!(!detector.on_event(TapEvent::TargetDown, 1010));
-        assert!(!detector.on_event(TapEvent::TargetUp, 1030));
-        assert!(detector.on_event(TapEvent::TargetDown, 1200));
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1000),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1010),
+            DoubleTapOutcome::Failed(DoubleTapFailure::TargetRepeatedWhileDown),
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetUp, 1030),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1200),
+            DoubleTapOutcome::Fired
+        );
     }
 
     #[test]
     fn triple_tap_fires_only_once() {
-        let mut detector = DoubleTapDetector::new(350);
+        let mut detector = DoubleTapDetector::new(WINDOW_MS);
         let mut fires = 0;
 
-        if detector.on_event(TapEvent::TargetDown, 1000) { fires += 1; }
-        if detector.on_event(TapEvent::TargetUp, 1030) { fires += 1; }
-        if detector.on_event(TapEvent::TargetDown, 1200) { fires += 1; }
-        if detector.on_event(TapEvent::TargetUp, 1230) { fires += 1; }
-        if detector.on_event(TapEvent::TargetDown, 1300) { fires += 1; }
+        if detector.on_event(TapEvent::TargetDown, 1000) == DoubleTapOutcome::Fired {
+            fires += 1;
+        }
+        if detector.on_event(TapEvent::TargetUp, 1030) == DoubleTapOutcome::Fired {
+            fires += 1;
+        }
+        if detector.on_event(TapEvent::TargetDown, 1200) == DoubleTapOutcome::Fired {
+            fires += 1;
+        }
+        if detector.on_event(TapEvent::TargetUp, 1230) == DoubleTapOutcome::Fired {
+            fires += 1;
+        }
+        if detector.on_event(TapEvent::TargetDown, 1300) == DoubleTapOutcome::Fired {
+            fires += 1;
+        }
 
         assert_eq!(fires, 1);
     }
 
     #[test]
     fn can_fire_again_from_down_after_failed_attempt() {
-        let mut detector = DoubleTapDetector::new(350);
+        let mut detector = DoubleTapDetector::new(WINDOW_MS);
 
-        assert!(!detector.on_event(TapEvent::TargetDown, 1000));
-        assert!(!detector.on_event(TapEvent::TargetUp, 1030));
-        assert!(!detector.on_event(TapEvent::OtherKeyDown, 1100));
-        assert!(!detector.on_event(TapEvent::TargetDown, 1200));
-        assert!(!detector.on_event(TapEvent::TargetUp, 1230));
-        assert!(detector.on_event(TapEvent::TargetDown, 1300));
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1000),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetUp, 1030),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::OtherKeyDown, 1100),
+            DoubleTapOutcome::Failed(DoubleTapFailure::OtherKeyBetweenTaps),
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1200),
+            DoubleTapOutcome::Failed(DoubleTapFailure::OtherKeyBetweenTaps),
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetUp, 1230),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1300),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetUp, 1330),
+            DoubleTapOutcome::Ignored
+        );
+        assert_eq!(
+            detector.on_event(TapEvent::TargetDown, 1400),
+            DoubleTapOutcome::Fired
+        );
     }
 }

@@ -135,6 +135,8 @@ const StickyNote = memo(function StickyNote() {
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
     const isCapturingRef = useRef(false);
     const isPromotingRef = useRef(false); // 付箋表示中はフォーカスが外れても編集モードを維持する
+    const lastJsDoubleCtrlDownMsRef = useRef<number | null>(null);
+    const lastJsDoubleCtrlFireMsRef = useRef<number>(0);
     // [REMOVED] lastCtrlNRef (JS 1.2s スロットル) は Pool アーキテクチャ移行により不要になった
     // フォールバック側は page.tsx 400ms グローバルスロットル + Rust 500ms セーフティで保護
 
@@ -1616,6 +1618,19 @@ const StickyNote = memo(function StickyNote() {
      */
     useEffect(() => {
         const handleKeyDown = async (e: KeyboardEvent) => {
+            if ((settings.new_note_trigger ?? 'shortcut') === 'double_ctrl' && e.key === 'Control' && !e.repeat) {
+                const now = performance.now();
+                const lastDown = lastJsDoubleCtrlDownMsRef.current;
+                const elapsed = lastDown === null ? Number.POSITIVE_INFINITY : now - lastDown;
+                if (elapsed >= 40 && elapsed <= 650 && now - lastJsDoubleCtrlFireMsRef.current > 400) {
+                    lastJsDoubleCtrlFireMsRef.current = now;
+                    lastJsDoubleCtrlDownMsRef.current = null;
+                    invoke('fusen_debug_log', { message: `[Shortcut] Ctrl*2 JS fallback detected elapsed_ms=${Math.round(elapsed)} label=${getCurrentWindow().label}` }).catch(() => { });
+                    emit('fusen:request_create_global');
+                    return;
+                }
+                lastJsDoubleCtrlDownMsRef.current = now;
+            }
             // [New] F2: 編集モードに入る
             if (e.key === 'F2') {
                 e.preventDefault();
