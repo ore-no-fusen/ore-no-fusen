@@ -3,7 +3,7 @@ import { createImprovementHistoryLine, getChangedCrystalSections, splitCrystalSe
 import { buildTermDraft, TERM_SPEC } from './termFormat';
 
 describe('buildTermDraft', () => {
-    it('splits the first two content lines into meaning and the rest into usage', () => {
+    it('splits the first two content lines into summary and the rest into meaning', () => {
         const draft = buildTermDraft({
             sourceTitle: '語彙',
             sourceBody: `
@@ -20,12 +20,15 @@ describe('buildTermDraft', () => {
         });
 
         expect(splitCrystalSections(TERM_SPEC, draft)).toMatchObject({
-            意味: '意味1\n意味2',
-            '例・使い方': '例1\n\n例2',
+            一言でいうと: '意味1\n意味2',
+            訳: '',
+            意味: '例1\n\n例2',
+            '例・使い方': '',
+            関連ワード: '',
         });
     });
 
-    it('flattens headings and preserves indentation in usage lines', () => {
+    it('flattens headings and preserves indentation in meaning lines', () => {
         const draft = buildTermDraft({
             sourceTitle: '字下げ',
             sourceBody: '# 見出し\n## 説明\n- 親\n  - 子\n    続き',
@@ -33,8 +36,8 @@ describe('buildTermDraft', () => {
         });
 
         expect(splitCrystalSections(TERM_SPEC, draft)).toMatchObject({
-            意味: '見出し\n説明',
-            '例・使い方': '- 親\n  - 子\n    続き',
+            一言でいうと: '見出し\n説明',
+            意味: '- 親\n  - 子\n    続き',
         });
     });
 
@@ -54,8 +57,8 @@ https://example.com
         });
 
         expect(splitCrystalSections(TERM_SPEC, draft)).toMatchObject({
-            意味: '意味1\n意味2',
-            '例・使い方': '例',
+            一言でいうと: '意味1\n意味2',
+            意味: '例',
             補足: '## 参考\n\n- https://example.com\n\n## 画像\n\n- ![画面](screen.png)',
         });
     });
@@ -87,15 +90,15 @@ describe('TERM_SPEC', () => {
             date: '2026-07-08',
         });
         const changed = original
-            .replace('意味', '別の意味')
-            .replace('例', '別の例')
-            .replace('- 26-07-08 初版', '- 26-07-08 初版\n- 26-07-09 例・使い方');
+            .replace('意味\n説明', '別の意味\n説明')
+            .replace('\n例\n\n# 例・使い方', '\n別の例\n\n# 例・使い方')
+            .replace('- 26-07-08 初版', '- 26-07-08 初版\n- 26-07-09 意味');
 
         const changedSections = getChangedCrystalSections(TERM_SPEC, original, changed);
 
-        expect(changedSections).toEqual(['意味', '例・使い方']);
-        expect(createImprovementHistoryLine(TERM_SPEC, '2026-07-09', ['補足', '意味'])).toBe(
-            '- 26-07-09 意味・補足',
+        expect(changedSections).toEqual(['一言でいうと', '意味']);
+        expect(createImprovementHistoryLine(TERM_SPEC, '2026-07-09', ['補足', '意味', '訳'])).toBe(
+            '- 26-07-09 訳・意味・補足',
         );
     });
 });

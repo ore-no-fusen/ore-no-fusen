@@ -7,8 +7,8 @@ import {
     trimOuterBlankLines,
 } from './crystalFormat';
 
-export const TERM_SECTION_NAMES = ['意味', '例・使い方', 'きっかけ', '補足', '改善履歴'] as const;
-export const TRACKED_TERM_SECTION_NAMES = ['意味', '例・使い方', 'きっかけ', '補足'] as const;
+export const TERM_SECTION_NAMES = ['一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足', '改善履歴'] as const;
+export const TRACKED_TERM_SECTION_NAMES = ['一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足'] as const;
 export const TERM_SPEC: CrystalSpec = {
     sectionNames: TERM_SECTION_NAMES,
     trackedSectionNames: TRACKED_TERM_SECTION_NAMES,
@@ -52,30 +52,30 @@ function uniqueNonEmpty(lines: string[]): string[] {
     return result;
 }
 
-function splitMeaningAndUsage(lines: string[]): { meaning: string; usage: string } {
+function splitSummaryAndMeaning(lines: string[]): { summary: string; meaning: string } {
+    const summaryLines: string[] = [];
     const meaningLines: string[] = [];
-    const usageLines: string[] = [];
-    let meaningContentLineCount = 0;
+    let summaryContentLineCount = 0;
 
     for (const line of lines) {
-        if (meaningContentLineCount < 2) {
+        if (summaryContentLineCount < 2) {
             if (!line.trim()) {
                 continue;
             }
-            meaningLines.push(line);
-            meaningContentLineCount += 1;
+            summaryLines.push(line);
+            summaryContentLineCount += 1;
             continue;
         }
 
-        if (usageLines.length === 0 && !line.trim()) {
+        if (meaningLines.length === 0 && !line.trim()) {
             continue;
         }
-        usageLines.push(line);
+        meaningLines.push(line);
     }
 
     return {
+        summary: trimOuterBlankLines(summaryLines.join('\n')),
         meaning: trimOuterBlankLines(meaningLines.join('\n')),
-        usage: trimOuterBlankLines(usageLines.join('\n')),
     };
 }
 
@@ -97,7 +97,7 @@ export function buildTermDraft(input: TermDraftInput): string {
         bodyLines.push(isMarkdownHeadingLine(line) ? stripMarkdownHeadingPrefix(line) : line);
     }
 
-    const { meaning, usage } = splitMeaningAndUsage(bodyLines);
+    const { summary, meaning } = splitSummaryAndMeaning(bodyLines);
     const supplementLines: string[] = [];
     const uniqueReferences = uniqueNonEmpty(references);
     const uniqueImages = uniqueNonEmpty(images);
@@ -113,8 +113,11 @@ export function buildTermDraft(input: TermDraftInput): string {
     }
 
     return joinCrystalSections(TERM_SPEC, {
+        一言でいうと: summary,
+        訳: '',
         意味: meaning,
-        '例・使い方': usage,
+        '例・使い方': '',
+        関連ワード: '',
         きっかけ: buildSourceNoteLine(date, input.sourceTitle),
         補足: supplementLines.join('\n'),
         改善履歴: `- ${date} 初版`,
