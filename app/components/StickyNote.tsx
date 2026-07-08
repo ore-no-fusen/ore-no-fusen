@@ -47,6 +47,12 @@ import { safeUnlisten } from '../utils/safeUnlisten';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
 import { matchesShortcut } from '../utils/shortcutKey';
 import { appendImprovementHistoryLine, createImprovementHistoryLine, getChangedRecipeSections } from '../utils/recipeFormat';
+import {
+    appendImprovementHistoryLine as appendCrystalImprovementHistoryLine,
+    createImprovementHistoryLine as createCrystalImprovementHistoryLine,
+    getChangedCrystalSections,
+} from '../utils/crystalFormat';
+import { QA_SPEC } from '../utils/qaFormat';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
@@ -324,6 +330,8 @@ const StickyNote = memo(function StickyNote() {
         deleteTagFromAllNotes
     } = useTagManager();
     const isRecipeNote = currentTags.some((tag: string) => tag.trim().toLowerCase() === 'recipe');
+    const isQaNote = !isRecipeNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'qa');
+    const isCrystalNote = isRecipeNote || isQaNote;
 
     // 初期ロード時に全タグを取得
     useEffect(() => {
@@ -333,7 +341,7 @@ const StickyNote = memo(function StickyNote() {
     // スクリーンキャプチャ
     useEffect(() => {
         const path = selectedFile?.path ?? null;
-        if (!path || !isRecipeNote) {
+        if (!path || !isCrystalNote) {
             originalRecipeBodyRef.current = null;
             originalRecipePathRef.current = null;
             return;
@@ -342,7 +350,7 @@ const StickyNote = memo(function StickyNote() {
             originalRecipeBodyRef.current = content;
             originalRecipePathRef.current = path;
         }
-    }, [content, isRecipeNote, loading, selectedFile?.path]);
+    }, [content, isCrystalNote, loading, selectedFile?.path]);
 
     const { captureScreen } = useScreenCapture({
         currentFilePath: urlPath,
@@ -1578,26 +1586,40 @@ const StickyNote = memo(function StickyNote() {
     }, [selectedFile, currentTags, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
 
     const handleReturnRecipe = useCallback(async () => {
-        if (!selectedFile?.path || !isRecipeNote) return;
+        if (!selectedFile?.path || !isCrystalNote) return;
 
         try {
             const originalBody = originalRecipeBodyRef.current ?? content;
-            const changed = getChangedRecipeSections(originalBody, content);
-            const returnedBody = changed.length > 0
-                ? appendImprovementHistoryLine(content, createImprovementHistoryLine(new Date(), changed))
-                : content;
+            let changedCount: number;
+            let returnedBody: string;
+            if (isRecipeNote) {
+                const changed = getChangedRecipeSections(originalBody, content);
+                changedCount = changed.length;
+                returnedBody = changedCount > 0
+                    ? appendImprovementHistoryLine(content, createImprovementHistoryLine(new Date(), changed))
+                    : content;
+            } else {
+                const changed = getChangedCrystalSections(QA_SPEC, originalBody, content);
+                changedCount = changed.length;
+                returnedBody = changedCount > 0
+                    ? appendCrystalImprovementHistoryLine(
+                        content,
+                        createCrystalImprovementHistoryLine(QA_SPEC, new Date(), changed),
+                    )
+                    : content;
+            }
 
             isDeletingRef.current = true;
-            await returnRecipe(selectedFile.path, returnedBody, changed.length > 0);
+            await returnRecipe(selectedFile.path, returnedBody, changedCount > 0);
             const win = getCurrentWindow();
             await win.hide();
             await win.destroy();
         } catch (e) {
             isDeletingRef.current = false;
-            console.error('Failed to return recipe:', e);
-            alert(`レシピを返せませんでした\n${e}`);
+            console.error(isRecipeNote ? 'Failed to return recipe:' : 'Failed to return QA:', e);
+            alert(`${isRecipeNote ? 'レシピ' : 'QA'}を返せませんでした\n${e}`);
         }
-    }, [content, isRecipeNote, selectedFile?.path]);
+    }, [content, isCrystalNote, isRecipeNote, selectedFile?.path]);
 
     const handleOpenTagFolder = useCallback(async (tag: string) => {
         try {
@@ -1915,7 +1937,7 @@ const StickyNote = memo(function StickyNote() {
                                 fontSize={noteFontSize}
                                 isDraggableArea={false}
                                 singleLinePreview={true} // [New] 省略表示モード
-                                recipeMode={isRecipeNote}
+                                recipeMode={isCrystalNote}
                                 onCheckboxToggle={handleToggleCheckbox}
                                 onImageResize={handleImageResize}
                                 onDoubleClick={(e) => {
@@ -2003,7 +2025,7 @@ const StickyNote = memo(function StickyNote() {
                             backgroundColor={noteBackgroundColor}
                             fontSize={noteFontSize}
                             isDraggableArea={isDraggableArea}
-                            recipeMode={isRecipeNote}
+                            recipeMode={isCrystalNote}
                             onCheckboxToggle={handleToggleCheckbox}
                             onImageResize={handleImageResize}
                             onDoubleClick={(e) => {
@@ -2155,11 +2177,11 @@ const StickyNote = memo(function StickyNote() {
                                 )}
                             </div>
                         )}
-                        {isRecipeNote && (
-                            <Tooltip text="レシピを閉じる" placement="top-right-arrow-shifted">
+                        {isCrystalNote && (
+                            <Tooltip text={isRecipeNote ? 'レシピを閉じる' : 'QAを閉じる'} placement="top-right-arrow-shifted">
                                 <button
                                     type="button"
-                                    aria-label="レシピを閉じる"
+                                    aria-label={isRecipeNote ? 'レシピを閉じる' : 'QAを閉じる'}
                                     onPointerDown={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
@@ -2171,11 +2193,11 @@ const StickyNote = memo(function StickyNote() {
                                     }}
                                     className="h-[24px] px-2 rounded text-[12px] leading-none flex items-center justify-center gap-1 text-gray-600 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-orange-100 hover:text-orange-700 hover:border-orange-200 transition-colors whitespace-nowrap"
                                 >
-                                    ↩ レシピを閉じる
+                                    ↩ {isRecipeNote ? 'レシピ' : 'QA'}を閉じる
                                 </button>
                             </Tooltip>
                         )}
-                        {currentTags.length <= 1 && !isRecipeNote && (
+                        {currentTags.length <= 1 && !isCrystalNote && (
                             <Tooltip text={t('menu.archive')} placement="top-right-arrow-shifted">
                                 <button
                                     type="button"
