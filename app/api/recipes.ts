@@ -30,6 +30,10 @@ export async function createQaNote(request: CreateRecipeNoteRequest): Promise<st
     return await invoke<string>('fusen_create_qa_note', { request });
 }
 
+export async function createTermNote(request: CreateRecipeNoteRequest): Promise<string> {
+    return await invoke<string>('fusen_create_term_note', { request });
+}
+
 export async function returnRecipe(path: string, body: string, improved: boolean): Promise<void> {
     await invoke('fusen_return_recipe', { path, body, improved });
 }
