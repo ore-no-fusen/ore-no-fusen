@@ -52,6 +52,31 @@ function uniqueNonEmpty(lines: string[]): string[] {
     return result;
 }
 
+export function splitTermNameAndBody(sourceBody: string): { name: string; rest: string } {
+    const lines = normalizeLineEndings(sourceBody).split('\n');
+    const nameLineIndex = lines.findIndex((line) => {
+        if (!line.trim()) {
+            return false;
+        }
+        return !isUrlLine(line) && !isImageMarkdownLine(line);
+    });
+
+    if (nameLineIndex === -1) {
+        return {
+            name: '',
+            rest: lines.join('\n'),
+        };
+    }
+
+    const nameLine = lines[nameLineIndex];
+    const restLines = lines.filter((_, index) => index !== nameLineIndex);
+
+    return {
+        name: isMarkdownHeadingLine(nameLine) ? stripMarkdownHeadingPrefix(nameLine) : nameLine.trim(),
+        rest: restLines.join('\n'),
+    };
+}
+
 function splitSummaryAndMeaning(lines: string[]): { summary: string; meaning: string } {
     const summaryLines: string[] = [];
     const meaningLines: string[] = [];

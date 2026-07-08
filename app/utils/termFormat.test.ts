@@ -1,6 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import { createImprovementHistoryLine, getChangedCrystalSections, splitCrystalSections } from './crystalFormat';
-import { buildTermDraft, TERM_SPEC } from './termFormat';
+import { buildTermDraft, splitTermNameAndBody, TERM_SPEC } from './termFormat';
+
+describe('splitTermNameAndBody', () => {
+    it('uses the first content line as the term name', () => {
+        expect(splitTermNameAndBody('RAG\n検索拡張生成')).toEqual({
+            name: 'RAG',
+            rest: '検索拡張生成',
+        });
+    });
+
+    it('flattens a heading used as the term name', () => {
+        expect(splitTermNameAndBody('# RAG\n検索拡張生成')).toEqual({
+            name: 'RAG',
+            rest: '検索拡張生成',
+        });
+    });
+
+    it('skips leading blank lines before the term name', () => {
+        expect(splitTermNameAndBody('\n\nRAG\n検索拡張生成')).toEqual({
+            name: 'RAG',
+            rest: '\n\n検索拡張生成',
+        });
+    });
+
+    it('does not use a URL line as the term name and keeps it in the rest', () => {
+        expect(splitTermNameAndBody('https://example.com\nRAG\n検索拡張生成')).toEqual({
+            name: 'RAG',
+            rest: 'https://example.com\n検索拡張生成',
+        });
+    });
+
+    it('returns empty name and body for empty input', () => {
+        expect(splitTermNameAndBody('')).toEqual({
+            name: '',
+            rest: '',
+        });
+    });
+});
 
 describe('buildTermDraft', () => {
     it('splits the first two content lines into summary and the rest into meaning', () => {

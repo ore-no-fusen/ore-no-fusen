@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { createTermNote } from '@/app/api/recipes';
-import { buildTermDraft } from '@/app/utils/termFormat';
+import { buildTermDraft, splitTermNameAndBody } from '@/app/utils/termFormat';
 import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 
 type TermCreateModalProps = {
@@ -27,10 +27,11 @@ export default function TermCreateModal({
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        setTitle(sourceTitle?.trim() ?? '');
+        const { name, rest } = splitTermNameAndBody(sourceBody);
+        setTitle(name || sourceTitle?.trim() || '');
         setDraftBody(buildTermDraft({
             sourceTitle,
-            sourceBody,
+            sourceBody: rest,
             date: new Date(),
         }));
     }, [sourceBody, sourceTitle]);
