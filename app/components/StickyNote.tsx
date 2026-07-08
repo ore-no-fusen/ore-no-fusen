@@ -53,6 +53,7 @@ import {
     getChangedCrystalSections,
 } from '../utils/crystalFormat';
 import { QA_SPEC } from '../utils/qaFormat';
+import { TERM_SPEC } from '../utils/termFormat';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
@@ -331,7 +332,9 @@ const StickyNote = memo(function StickyNote() {
     } = useTagManager();
     const isRecipeNote = currentTags.some((tag: string) => tag.trim().toLowerCase() === 'recipe');
     const isQaNote = !isRecipeNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'qa');
-    const isCrystalNote = isRecipeNote || isQaNote;
+    const isTermNote = !isRecipeNote && !isQaNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'term');
+    const isCrystalNote = isRecipeNote || isQaNote || isTermNote;
+    const crystalNoteLabel = isRecipeNote ? 'レシピ' : isQaNote ? 'QA' : '用語';
 
     // 初期ロード時に全タグを取得
     useEffect(() => {
@@ -1598,13 +1601,22 @@ const StickyNote = memo(function StickyNote() {
                 returnedBody = changedCount > 0
                     ? appendImprovementHistoryLine(content, createImprovementHistoryLine(new Date(), changed))
                     : content;
-            } else {
+            } else if (isQaNote) {
                 const changed = getChangedCrystalSections(QA_SPEC, originalBody, content);
                 changedCount = changed.length;
                 returnedBody = changedCount > 0
                     ? appendCrystalImprovementHistoryLine(
                         content,
                         createCrystalImprovementHistoryLine(QA_SPEC, new Date(), changed),
+                    )
+                    : content;
+            } else {
+                const changed = getChangedCrystalSections(TERM_SPEC, originalBody, content);
+                changedCount = changed.length;
+                returnedBody = changedCount > 0
+                    ? appendCrystalImprovementHistoryLine(
+                        content,
+                        createCrystalImprovementHistoryLine(TERM_SPEC, new Date(), changed),
                     )
                     : content;
             }
@@ -1616,10 +1628,10 @@ const StickyNote = memo(function StickyNote() {
             await win.destroy();
         } catch (e) {
             isDeletingRef.current = false;
-            console.error(isRecipeNote ? 'Failed to return recipe:' : 'Failed to return QA:', e);
-            alert(`${isRecipeNote ? 'レシピ' : 'QA'}を返せませんでした\n${e}`);
+            console.error(`Failed to return ${isRecipeNote ? 'recipe' : isQaNote ? 'QA' : 'term'}:`, e);
+            alert(`${crystalNoteLabel}を返せませんでした\n${e}`);
         }
-    }, [content, isCrystalNote, isRecipeNote, selectedFile?.path]);
+    }, [content, crystalNoteLabel, isCrystalNote, isQaNote, isRecipeNote, selectedFile?.path]);
 
     const handleOpenTagFolder = useCallback(async (tag: string) => {
         try {
@@ -2178,10 +2190,10 @@ const StickyNote = memo(function StickyNote() {
                             </div>
                         )}
                         {isCrystalNote && (
-                            <Tooltip text={isRecipeNote ? 'レシピを閉じる' : 'QAを閉じる'} placement="top-right-arrow-shifted">
+                            <Tooltip text={`${crystalNoteLabel}を閉じる`} placement="top-right-arrow-shifted">
                                 <button
                                     type="button"
-                                    aria-label={isRecipeNote ? 'レシピを閉じる' : 'QAを閉じる'}
+                                    aria-label={`${crystalNoteLabel}を閉じる`}
                                     onPointerDown={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
@@ -2193,7 +2205,7 @@ const StickyNote = memo(function StickyNote() {
                                     }}
                                     className="h-[24px] px-2 rounded text-[12px] leading-none flex items-center justify-center gap-1 text-gray-600 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-orange-100 hover:text-orange-700 hover:border-orange-200 transition-colors whitespace-nowrap"
                                 >
-                                    ↩ {isRecipeNote ? 'レシピ' : 'QA'}を閉じる
+                                    ↩ {crystalNoteLabel}を閉じる
                                 </button>
                             </Tooltip>
                         )}
