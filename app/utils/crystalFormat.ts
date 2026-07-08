@@ -31,6 +31,13 @@ export function formatDateYYMMDD(date: Date | string): string {
     return `${year}-${month}-${day}`;
 }
 
+export function buildSourceNoteLine(date: Date | string, sourceTitle?: string | null): string {
+    const formattedDate = formatDateYYMMDD(date);
+    const title = sourceTitle?.trim() ?? '';
+
+    return title ? `- ${formattedDate} 付箋『${title}』から作成` : `- ${formattedDate} 付箋から作成`;
+}
+
 export function splitCrystalSections(spec: CrystalSpec, body: string): Record<string, string> {
     const sections = Object.fromEntries(spec.sectionNames.map((name) => [name, '']));
     const sectionNameSet = new Set<string>(spec.sectionNames);

@@ -7,14 +7,14 @@ import {
     trimOuterBlankLines,
 } from './crystalFormat';
 
-export const QA_SECTION_NAMES = ['問い', '答え', 'きっかけ', '根拠・補足', '改善履歴'] as const;
-export const TRACKED_QA_SECTION_NAMES = ['問い', '答え', 'きっかけ', '根拠・補足'] as const;
-export const QA_SPEC: CrystalSpec = {
-    sectionNames: QA_SECTION_NAMES,
-    trackedSectionNames: TRACKED_QA_SECTION_NAMES,
+export const TERM_SECTION_NAMES = ['意味', '例・使い方', 'きっかけ', '補足', '改善履歴'] as const;
+export const TRACKED_TERM_SECTION_NAMES = ['意味', '例・使い方', 'きっかけ', '補足'] as const;
+export const TERM_SPEC: CrystalSpec = {
+    sectionNames: TERM_SECTION_NAMES,
+    trackedSectionNames: TRACKED_TERM_SECTION_NAMES,
 };
 
-export interface QaDraftInput {
+export interface TermDraftInput {
     sourceTitle?: string | null;
     sourceBody: string;
     date: Date | string;
@@ -52,10 +52,36 @@ function uniqueNonEmpty(lines: string[]): string[] {
     return result;
 }
 
-export function buildQaDraft(input: QaDraftInput): string {
+function splitMeaningAndUsage(lines: string[]): { meaning: string; usage: string } {
+    const meaningLines: string[] = [];
+    const usageLines: string[] = [];
+    let meaningContentLineCount = 0;
+
+    for (const line of lines) {
+        if (meaningContentLineCount < 2) {
+            if (!line.trim()) {
+                continue;
+            }
+            meaningLines.push(line);
+            meaningContentLineCount += 1;
+            continue;
+        }
+
+        if (usageLines.length === 0 && !line.trim()) {
+            continue;
+        }
+        usageLines.push(line);
+    }
+
+    return {
+        meaning: trimOuterBlankLines(meaningLines.join('\n')),
+        usage: trimOuterBlankLines(usageLines.join('\n')),
+    };
+}
+
+export function buildTermDraft(input: TermDraftInput): string {
     const date = formatDateYYMMDD(input.date);
-    const sourceTitle = input.sourceTitle?.trim() ?? '';
-    const answerLines: string[] = [];
+    const bodyLines: string[] = [];
     const references: string[] = [];
     const images: string[] = [];
 
@@ -68,9 +94,10 @@ export function buildQaDraft(input: QaDraftInput): string {
             images.push(line);
             continue;
         }
-        answerLines.push(isMarkdownHeadingLine(line) ? stripMarkdownHeadingPrefix(line) : line);
+        bodyLines.push(isMarkdownHeadingLine(line) ? stripMarkdownHeadingPrefix(line) : line);
     }
 
+    const { meaning, usage } = splitMeaningAndUsage(bodyLines);
     const supplementLines: string[] = [];
     const uniqueReferences = uniqueNonEmpty(references);
     const uniqueImages = uniqueNonEmpty(images);
@@ -85,11 +112,11 @@ export function buildQaDraft(input: QaDraftInput): string {
         supplementLines.push('## 画像', '', ...uniqueImages.map((line) => `- ${line}`));
     }
 
-    return joinCrystalSections(QA_SPEC, {
-        問い: sourceTitle,
-        答え: trimOuterBlankLines(answerLines.join('\n')),
-        きっかけ: buildSourceNoteLine(date, sourceTitle),
-        '根拠・補足': supplementLines.join('\n'),
+    return joinCrystalSections(TERM_SPEC, {
+        意味: meaning,
+        '例・使い方': usage,
+        きっかけ: buildSourceNoteLine(date, input.sourceTitle),
+        補足: supplementLines.join('\n'),
         改善履歴: `- ${date} 初版`,
     });
 }
