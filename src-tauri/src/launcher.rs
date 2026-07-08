@@ -143,9 +143,26 @@ fn recipe_note_paths(base_path: &Path) -> Vec<PathBuf> {
     paths
 }
 
+fn qa_note_paths(base_path: &Path) -> Vec<PathBuf> {
+    let qa_dir = base_path.join(storage::QA_DIR_NAME);
+    let mut paths = Vec::new();
+    if let Ok(entries) = fs::read_dir(qa_dir) {
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+                paths.push(path);
+            }
+        }
+    }
+    paths.sort();
+    paths
+}
+
 fn quick_note_paths(base_path: &Path, tab: &str) -> Vec<PathBuf> {
     if tab == "recipe" {
         recipe_note_paths(base_path)
+    } else if tab == "qa" {
+        qa_note_paths(base_path)
     } else {
         storage::list_recipe_material_note_paths(base_path)
     }
@@ -275,10 +292,25 @@ fn remove_from_shelf_at_base(base_path: &Path, path: &Path) -> Result<Option<Pat
     let path_str = path.to_string_lossy().to_string();
     let note = storage::read_note(&path_str)?;
     let is_recipe = note_has_tag(&note.meta.tags, "recipe");
+    let is_qa = note_has_tag(&note.meta.tags, "qa");
     let is_shortcut = note_has_tag(&note.meta.tags, "shortcut");
 
     if is_recipe {
         let updated_content = remove_tag_from_content(&note.body, "recipe");
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| "invalid note path".to_string())?;
+        let new_path = collision_free_root_path(base_path, file_name);
+        let new_path_str = new_path.to_string_lossy().to_string();
+        storage::write_note(&new_path_str, &updated_content)?;
+        if new_path != path {
+            fs::remove_file(path).map_err(|e| e.to_string())?;
+        }
+        return Ok(Some(new_path));
+    }
+
+    if is_qa {
+        let updated_content = remove_tag_from_content(&note.body, "qa");
         let file_name = path
             .file_name()
             .ok_or_else(|| "invalid note path".to_string())?;
@@ -583,6 +615,28 @@ mod tests {
     }
 
     #[test]
+    fn qa_tab_reads_qa_dir_only_and_requires_qa_tag() {
+        let dir = tempdir().unwrap();
+        let qa_dir = dir.path().join(storage::QA_DIR_NAME);
+        fs::create_dir(&qa_dir).unwrap();
+        let root_qa = dir.path().join("0001_2026-07-05_root.md");
+        let qa_note = qa_dir.join("0002_2026-07-05_qa.md");
+        let qa_without_tag = qa_dir.join("0003_2026-07-05_plain.md");
+
+        fs::write(&root_qa, note_content("work, qa")).unwrap();
+        fs::write(&qa_note, note_content("work, qa")).unwrap();
+        fs::write(&qa_without_tag, note_content("work")).unwrap();
+
+        let items: Vec<QuickOpenItem> = quick_note_paths(dir.path(), "qa")
+            .into_iter()
+            .filter_map(|path| read_quick_item(&path, "qa"))
+            .collect();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].path, qa_note.to_string_lossy());
+    }
+
+    #[test]
     fn reorder_uses_current_display_order_before_moving_unpersisted_path() {
         let current = vec!["a.md".to_string(), "b.md".to_string(), "c.md".to_string()];
 
@@ -605,6 +659,23 @@ mod tests {
         assert!(!source.exists());
         let content = fs::read_to_string(moved).unwrap();
         assert!(!content.contains("recipe"));
+        assert!(content.contains("tags: [work]"));
+    }
+
+    #[test]
+    fn remove_from_shelf_moves_qa_to_root_and_removes_qa_tag() {
+        let dir = tempdir().unwrap();
+        let qa_dir = dir.path().join(storage::QA_DIR_NAME);
+        fs::create_dir(&qa_dir).unwrap();
+        let source = qa_dir.join("qa-note.md");
+        fs::write(&source, note_content("work, qa")).unwrap();
+
+        let moved = remove_from_shelf_at_base(dir.path(), &source).unwrap().unwrap();
+
+        assert_eq!(moved, dir.path().join("qa-note.md"));
+        assert!(!source.exists());
+        let content = fs::read_to_string(moved).unwrap();
+        assert!(!content.contains("qa"));
         assert!(content.contains("tags: [work]"));
     }
 

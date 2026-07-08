@@ -56,6 +56,7 @@ export function emptyMessageForTab(tab: LauncherTab): string {
         case 'shortcut':
             return '付箋を右クリック → お気に入りに登録 で追加できます。';
         case 'qa':
+            return '付箋を右クリック → ❓ QAにする で最初のQAを作れます。';
         case 'term':
             return 'この棚は今後のバージョンで使えるようになります。';
     }
@@ -418,7 +419,7 @@ export default function QuickLauncher() {
                                             : 'text-zinc-200 hover:bg-zinc-800'
                                     }`}
                                 >
-                                    <span className="text-base">{item.is_recipe ? '🍳' : '📌'}</span>
+                                    <span className="text-base">{activeTab === 'qa' ? '❓' : item.is_recipe ? '🍳' : '📌'}</span>
                                     <span className="truncate">{truncateRecipeName(item.title || '無題')}</span>
                                     <span className="flex items-center justify-end gap-0.5">
                                         <span className="mr-1 text-[11px] text-zinc-500 group-hover:hidden">{item.launches}</span>

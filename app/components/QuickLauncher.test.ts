@@ -25,7 +25,7 @@ describe('QuickLauncher logic', () => {
     it('selects the specified empty-state message for each tab', () => {
         expect(emptyMessageForTab('recipe')).toBe('青付箋を右クリック → レシピにする で最初のレシピを作れます。');
         expect(emptyMessageForTab('shortcut')).toBe('付箋を右クリック → お気に入りに登録 で追加できます。');
-        expect(emptyMessageForTab('qa')).toBe('この棚は今後のバージョンで使えるようになります。');
+        expect(emptyMessageForTab('qa')).toBe('付箋を右クリック → ❓ QAにする で最初のQAを作れます。');
         expect(emptyMessageForTab('term')).toBe('この棚は今後のバージョンで使えるようになります。');
     });
 
