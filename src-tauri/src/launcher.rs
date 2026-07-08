@@ -158,11 +158,28 @@ fn qa_note_paths(base_path: &Path) -> Vec<PathBuf> {
     paths
 }
 
+fn term_note_paths(base_path: &Path) -> Vec<PathBuf> {
+    let terms_dir = base_path.join(storage::TERMS_DIR_NAME);
+    let mut paths = Vec::new();
+    if let Ok(entries) = fs::read_dir(terms_dir) {
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+                paths.push(path);
+            }
+        }
+    }
+    paths.sort();
+    paths
+}
+
 fn quick_note_paths(base_path: &Path, tab: &str) -> Vec<PathBuf> {
     if tab == "recipe" {
         recipe_note_paths(base_path)
     } else if tab == "qa" {
         qa_note_paths(base_path)
+    } else if tab == "term" {
+        term_note_paths(base_path)
     } else {
         storage::list_recipe_material_note_paths(base_path)
     }
@@ -293,6 +310,7 @@ fn remove_from_shelf_at_base(base_path: &Path, path: &Path) -> Result<Option<Pat
     let note = storage::read_note(&path_str)?;
     let is_recipe = note_has_tag(&note.meta.tags, "recipe");
     let is_qa = note_has_tag(&note.meta.tags, "qa");
+    let is_term = note_has_tag(&note.meta.tags, "term");
     let is_shortcut = note_has_tag(&note.meta.tags, "shortcut");
 
     if is_recipe {
@@ -311,6 +329,20 @@ fn remove_from_shelf_at_base(base_path: &Path, path: &Path) -> Result<Option<Pat
 
     if is_qa {
         let updated_content = remove_tag_from_content(&note.body, "qa");
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| "invalid note path".to_string())?;
+        let new_path = collision_free_root_path(base_path, file_name);
+        let new_path_str = new_path.to_string_lossy().to_string();
+        storage::write_note(&new_path_str, &updated_content)?;
+        if new_path != path {
+            fs::remove_file(path).map_err(|e| e.to_string())?;
+        }
+        return Ok(Some(new_path));
+    }
+
+    if is_term {
+        let updated_content = remove_tag_from_content(&note.body, "term");
         let file_name = path
             .file_name()
             .ok_or_else(|| "invalid note path".to_string())?;
@@ -637,6 +669,28 @@ mod tests {
     }
 
     #[test]
+    fn term_tab_reads_terms_dir_only_and_requires_term_tag() {
+        let dir = tempdir().unwrap();
+        let terms_dir = dir.path().join(storage::TERMS_DIR_NAME);
+        fs::create_dir(&terms_dir).unwrap();
+        let root_term = dir.path().join("0001_2026-07-05_root.md");
+        let term_note = terms_dir.join("0002_2026-07-05_term.md");
+        let term_without_tag = terms_dir.join("0003_2026-07-05_plain.md");
+
+        fs::write(&root_term, note_content("work, term")).unwrap();
+        fs::write(&term_note, note_content("work, term")).unwrap();
+        fs::write(&term_without_tag, note_content("work")).unwrap();
+
+        let items: Vec<QuickOpenItem> = quick_note_paths(dir.path(), "term")
+            .into_iter()
+            .filter_map(|path| read_quick_item(&path, "term"))
+            .collect();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].path, term_note.to_string_lossy());
+    }
+
+    #[test]
     fn reorder_uses_current_display_order_before_moving_unpersisted_path() {
         let current = vec!["a.md".to_string(), "b.md".to_string(), "c.md".to_string()];
 
@@ -676,6 +730,23 @@ mod tests {
         assert!(!source.exists());
         let content = fs::read_to_string(moved).unwrap();
         assert!(!content.contains("qa"));
+        assert!(content.contains("tags: [work]"));
+    }
+
+    #[test]
+    fn remove_from_shelf_moves_term_to_root_and_removes_term_tag() {
+        let dir = tempdir().unwrap();
+        let terms_dir = dir.path().join(storage::TERMS_DIR_NAME);
+        fs::create_dir(&terms_dir).unwrap();
+        let source = terms_dir.join("term-note.md");
+        fs::write(&source, note_content("work, term")).unwrap();
+
+        let moved = remove_from_shelf_at_base(dir.path(), &source).unwrap().unwrap();
+
+        assert_eq!(moved, dir.path().join("term-note.md"));
+        assert!(!source.exists());
+        let content = fs::read_to_string(moved).unwrap();
+        assert!(!content.contains("term"));
         assert!(content.contains("tags: [work]"));
     }
 

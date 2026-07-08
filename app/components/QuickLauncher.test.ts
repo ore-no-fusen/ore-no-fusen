@@ -26,7 +26,7 @@ describe('QuickLauncher logic', () => {
         expect(emptyMessageForTab('recipe')).toBe('青付箋を右クリック → レシピにする で最初のレシピを作れます。');
         expect(emptyMessageForTab('shortcut')).toBe('付箋を右クリック → お気に入りに登録 で追加できます。');
         expect(emptyMessageForTab('qa')).toBe('付箋を右クリック → ❓ QAにする で最初のQAを作れます。');
-        expect(emptyMessageForTab('term')).toBe('この棚は今後のバージョンで使えるようになります。');
+        expect(emptyMessageForTab('term')).toBe('付箋を右クリック → 📖 用語にする で最初の用語を作れます。');
     });
 
     it('moves selection with wraparound', () => {
