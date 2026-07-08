@@ -14,6 +14,7 @@ use crate::state::{Note, NoteMeta};
 use crate::logic;
 
 pub const RECIPES_DIR_NAME: &str = "Recipes";
+pub const QA_DIR_NAME: &str = "QA";
 
 // UC-01: 設定ファイル管理
 pub use crate::state::Settings;
@@ -433,6 +434,10 @@ pub fn ensure_recipes_dir(parent_path: &Path) -> Result<PathBuf, String> {
     ensure_named_dir(parent_path, RECIPES_DIR_NAME)
 }
 
+pub fn ensure_qa_dir(parent_path: &Path) -> Result<PathBuf, String> {
+    ensure_named_dir(parent_path, QA_DIR_NAME)
+}
+
 pub fn list_recipe_material_note_paths(parent_path: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
@@ -465,7 +470,7 @@ pub fn list_recipe_material_note_paths(parent_path: &Path) -> Vec<PathBuf> {
 fn has_excluded_recipe_material_component(path: &Path) -> bool {
     path.components().any(|component| {
         let name = component.as_os_str().to_string_lossy();
-        name == "Trash" || name == "Archive" || name == RECIPES_DIR_NAME
+        name == "Trash" || name == "Archive" || name == RECIPES_DIR_NAME || name == QA_DIR_NAME
     })
 }
 
@@ -963,6 +968,15 @@ mod tests {
     }
 
     #[test]
+    fn test_ensure_qa_dir() {
+        let dir = tempdir().unwrap();
+        let qa_dir = ensure_qa_dir(dir.path()).unwrap();
+
+        assert!(qa_dir.exists());
+        assert!(qa_dir.ends_with("QA"));
+    }
+
+    #[test]
     fn test_list_recipe_material_note_paths_scans_root_and_tags_only() {
         let dir = tempdir().unwrap();
         let root_note = dir.path().join("0001_2026-07-05_root.md");
@@ -970,13 +984,17 @@ mod tests {
         let trash_dir = dir.path().join("Trash");
         let archive_dir = dir.path().join("Archive");
         let recipes_dir = dir.path().join("Recipes");
+        let qa_dir = dir.path().join("QA");
         let nested_archive_dir = dir.path().join("tags").join("Archive");
+        let nested_qa_dir = dir.path().join("tags").join("QA");
 
         fs::create_dir_all(&tag_dir).unwrap();
         fs::create_dir_all(&trash_dir).unwrap();
         fs::create_dir_all(&archive_dir).unwrap();
         fs::create_dir_all(&recipes_dir).unwrap();
+        fs::create_dir_all(&qa_dir).unwrap();
         fs::create_dir_all(&nested_archive_dir).unwrap();
+        fs::create_dir_all(&nested_qa_dir).unwrap();
 
         fs::write(&root_note, "root").unwrap();
         fs::write(tag_dir.join("0002_2026-07-05_tag.md"), "tag").unwrap();
@@ -984,6 +1002,8 @@ mod tests {
         fs::write(archive_dir.join("0004_2026-07-05_archive.md"), "archive").unwrap();
         fs::write(recipes_dir.join("0005_2026-07-05_recipe.md"), "recipe").unwrap();
         fs::write(nested_archive_dir.join("0006_2026-07-05_nested_archive.md"), "nested").unwrap();
+        fs::write(qa_dir.join("0007_2026-07-05_qa.md"), "qa").unwrap();
+        fs::write(nested_qa_dir.join("0008_2026-07-05_nested_qa.md"), "nested qa").unwrap();
 
         let paths = list_recipe_material_note_paths(dir.path());
 
