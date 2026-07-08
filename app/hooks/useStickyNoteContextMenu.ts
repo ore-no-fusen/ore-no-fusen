@@ -395,42 +395,74 @@ export function useStickyNoteContextMenu({
                 separatorCommon
             ];
 
-            if (canCreateRecipe) {
+            if (selectedFile?.path) {
+                const crystalItems: any[] = [];
+                if (canCreateRecipe) {
+                    crystalItems.push(await MenuItem.new({
+                        id: 'ctx_create_recipe',
+                        text: '🍳 レシピにする',
+                        // 元の付箋の窓に重ねず、専用ウィンドウで開く（元付箋を一切触らない）
+                        action: async () => {
+                            const p = selectedFile?.path;
+                            if (!p) return;
+                            try {
+                                const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                                const label = 'recipe-create';
+                                const existing = await WebviewWindow.getByLabel(label);
+                                if (existing) { await existing.setFocus(); return; }
+                                const { encodeNotePathForUrl } = await import('../utils/pathUtils');
+                                const w = new WebviewWindow(label, {
+                                    url: `/recipe-create?path=${encodeNotePathForUrl(p)}`,
+                                    title: 'レシピにする',
+                                    width: 760,
+                                    height: 860,
+                                    minWidth: 640,
+                                    minHeight: 620,
+                                    center: true,
+                                    resizable: true,
+                                    focus: true,
+                                });
+                                w.once('tauri://error', (e) => console.error('[recipe-create] window error', e));
+                            } catch (e) {
+                                console.error('Failed to open recipe create window', e);
+                            }
+                        }
+                    }));
+                }
+                crystalItems.push(await MenuItem.new({
+                    id: 'ctx_create_qa',
+                    text: '❓ QAにする',
+                    // 元の付箋の窓に重ねず、専用ウィンドウで開く（元付箋を一切触らない）
+                    action: async () => {
+                        const p = selectedFile?.path;
+                        if (!p) return;
+                        try {
+                            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                            const label = 'qa-create';
+                            const existing = await WebviewWindow.getByLabel(label);
+                            if (existing) { await existing.setFocus(); return; }
+                            const { encodeNotePathForUrl } = await import('../utils/pathUtils');
+                            const w = new WebviewWindow(label, {
+                                url: `/qa-create?path=${encodeNotePathForUrl(p)}`,
+                                title: 'QAにする',
+                                width: 760,
+                                height: 860,
+                                minWidth: 640,
+                                minHeight: 620,
+                                center: true,
+                                resizable: true,
+                                focus: true,
+                            });
+                            w.once('tauri://error', (e) => console.error('[qa-create] window error', e));
+                        } catch (e) {
+                            console.error('Failed to open QA create window', e);
+                        }
+                    }
+                }));
                 menuItems.push(await Submenu.new({
                     id: 'ctx_crystal_submenu',
                     text: '💎 結晶にする',
-                    items: [
-                        await MenuItem.new({
-                            id: 'ctx_create_recipe',
-                            text: '🍳 レシピにする',
-                            // 元の付箋の窓に重ねず、専用ウィンドウで開く（元付箋を一切触らない）
-                            action: async () => {
-                                const p = selectedFile?.path;
-                                if (!p) return;
-                                try {
-                                    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-                                    const label = 'recipe-create';
-                                    const existing = await WebviewWindow.getByLabel(label);
-                                    if (existing) { await existing.setFocus(); return; }
-                                    const { encodeNotePathForUrl } = await import('../utils/pathUtils');
-                                    const w = new WebviewWindow(label, {
-                                        url: `/recipe-create?path=${encodeNotePathForUrl(p)}`,
-                                        title: 'レシピにする',
-                                        width: 760,
-                                        height: 860,
-                                        minWidth: 640,
-                                        minHeight: 620,
-                                        center: true,
-                                        resizable: true,
-                                        focus: true,
-                                    });
-                                    w.once('tauri://error', (e) => console.error('[recipe-create] window error', e));
-                                } catch (e) {
-                                    console.error('Failed to open recipe create window', e);
-                                }
-                            }
-                        })
-                    ]
+                    items: crystalItems
                 }));
                 menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             }
