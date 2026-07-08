@@ -1625,7 +1625,6 @@ const StickyNote = memo(function StickyNote() {
                 if (elapsed >= 40 && elapsed <= 650 && now - lastJsDoubleCtrlFireMsRef.current > 400) {
                     lastJsDoubleCtrlFireMsRef.current = now;
                     lastJsDoubleCtrlDownMsRef.current = null;
-                    invoke('fusen_debug_log', { message: `[Shortcut] Ctrl*2 JS fallback detected elapsed_ms=${Math.round(elapsed)} label=${getCurrentWindow().label}` }).catch(() => { });
                     emit('fusen:request_create_global');
                     return;
                 }

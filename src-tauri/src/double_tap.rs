@@ -7,16 +7,6 @@ pub(crate) enum TapEvent {
     OtherKeyDown,
 }
 
-impl TapEvent {
-    fn label(self) -> &'static str {
-        match self {
-            TapEvent::TargetDown => "target_down",
-            TapEvent::TargetUp => "target_up",
-            TapEvent::OtherKeyDown => "other_key_down",
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DoubleTapTarget {
     Ctrl,
@@ -168,8 +158,7 @@ mod windows_hook {
         GetAsyncKeyState, VK_CONTROL, VK_LCONTROL, VK_LSHIFT, VK_RCONTROL, VK_RSHIFT, VK_SHIFT,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowTextW,
-        GetWindowThreadProcessId, PeekMessageW, PostThreadMessageW, SetWindowsHookExW,
+        CallNextHookEx, GetMessageW, PeekMessageW, PostThreadMessageW, SetWindowsHookExW,
         UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_KEYBOARD_LL, WM_KEYDOWN,
         WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
@@ -339,30 +328,7 @@ mod windows_hook {
                     if tap_event == TapEvent::TargetDown {
                         state.last_target_down_ms = Some(event.time as u64);
                     }
-                    if matches!(tap_event, TapEvent::TargetDown | TapEvent::TargetUp) {
-                        logger::log_info(&format!(
-                            "[ShortcutDiag] {}*2 event={} vk_code={} scan_code={} message={} flags={:?} event_time={}",
-                            state.target.label(),
-                            tap_event.label(),
-                            event.vkCode,
-                            event.scanCode,
-                            message,
-                            event.flags,
-                            event.time,
-                        ));
-                    }
                     if should_ignore_noise(state, tap_event, event.vkCode, event.time as u64) {
-                        logger::log_info(&format!(
-                            "[Shortcut] {}*2 noise ignored: event={} vk_code={} scan_code={} message={} flags={:?} event_time={}{}",
-                            state.target.label(),
-                            tap_event.label(),
-                            event.vkCode,
-                            event.scanCode,
-                            message,
-                            event.flags,
-                            event.time,
-                            diagnostic_context(event.vkCode),
-                        ));
                         return unsafe { CallNextHookEx(HHOOK(0), code, wparam, lparam) };
                     }
                     match state.detector.on_event(tap_event, event.time as u64) {
@@ -375,17 +341,10 @@ mod windows_hook {
                             let _ = state.sender.send(());
                         }
                         DoubleTapOutcome::Failed(reason) => {
-                            let context = diagnostic_context(event.vkCode);
                             logger::log_info(&format!(
-                                "[Shortcut] {}*2 ignored: reason={} event={} vk_code={} scan_code={} message={} flags={:?} event_time={}{}{}",
+                                "[Shortcut] {}*2 ignored: reason={}{}",
                                 state.target.label(),
                                 reason.reason(),
-                                tap_event.label(),
-                                event.vkCode,
-                                event.scanCode,
-                                message,
-                                event.flags,
-                                event.time,
                                 match reason {
                                     super::DoubleTapFailure::Timeout {
                                         elapsed_ms,
@@ -398,7 +357,6 @@ mod windows_hook {
                                     }
                                     _ => String::new(),
                                 },
-                                context,
                             ));
                         }
                         DoubleTapOutcome::Ignored => {}
@@ -439,54 +397,6 @@ mod windows_hook {
     fn async_key_is_down(vk_code: u32) -> bool {
         let state = unsafe { GetAsyncKeyState(vk_code as i32) } as u16;
         (state & 0x8000) != 0
-    }
-
-    fn diagnostic_context(vk_code: u32) -> String {
-        let hwnd = unsafe { GetForegroundWindow() };
-        let mut pid = 0u32;
-        let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
-        let title = window_text(hwnd);
-        let class_name = window_class(hwnd);
-        let vk_state = async_key_state(vk_code);
-        let ctrl_state = async_key_state(VK_CONTROL.0 as u32);
-        let lctrl_state = async_key_state(VK_LCONTROL.0 as u32);
-        let rctrl_state = async_key_state(VK_RCONTROL.0 as u32);
-
-        format!(
-            " fg_hwnd=0x{:x} fg_pid={} fg_tid={} fg_class=\"{}\" fg_title=\"{}\" async_vk={} async_ctrl={} async_lctrl={} async_rctrl={}",
-            hwnd.0 as isize,
-            pid,
-            thread_id,
-            class_name,
-            title,
-            vk_state,
-            ctrl_state,
-            lctrl_state,
-            rctrl_state,
-        )
-    }
-
-    fn async_key_state(vk_code: u32) -> String {
-        let state = unsafe { GetAsyncKeyState(vk_code as i32) };
-        let raw = state as u16;
-        format!(
-            "raw=0x{:04x}/down={}/recent={}",
-            raw,
-            (raw & 0x8000) != 0,
-            (raw & 0x0001) != 0,
-        )
-    }
-
-    fn window_text(hwnd: HWND) -> String {
-        let mut buffer = [0u16; 256];
-        let len = unsafe { GetWindowTextW(hwnd, &mut buffer) };
-        String::from_utf16_lossy(&buffer[..len.max(0) as usize])
-    }
-
-    fn window_class(hwnd: HWND) -> String {
-        let mut buffer = [0u16; 256];
-        let len = unsafe { GetClassNameW(hwnd, &mut buffer) };
-        String::from_utf16_lossy(&buffer[..len.max(0) as usize])
     }
 
     fn map_event(vk_code: u32, message: u32, target: DoubleTapTarget) -> Option<TapEvent> {
