@@ -176,6 +176,10 @@ pub fn qa_tags_from_request(tags: &[String]) -> Vec<String> {
     tags_from_request_with_reserved(tags, "qa")
 }
 
+pub fn term_tags_from_request(tags: &[String]) -> Vec<String> {
+    tags_from_request_with_reserved(tags, "term")
+}
+
 fn tags_from_request_with_reserved(tags: &[String], reserved_tag: &str) -> Vec<String> {
     let mut result = non_reserved_tags(tags);
     if !result.iter().any(|tag| normalize_reserved_tag(tag) == reserved_tag) {

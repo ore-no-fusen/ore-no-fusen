@@ -499,6 +499,29 @@ fn create_qa_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Re
     Ok(path.to_string_lossy().to_string())
 }
 
+fn create_term_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Result<String, String> {
+    let terms_dir = storage::ensure_terms_dir(base_path)?;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let now = chrono::Local::now().to_rfc3339();
+    let title = if request.title.trim().is_empty() {
+        "term".to_string()
+    } else {
+        request.title.trim().to_string()
+    };
+    let safe_title = logic::sanitize_context(&title);
+    let context = if safe_title.is_empty() { "term".to_string() } else { safe_title };
+    let tags = logic::term_tags_from_request(&request.tags);
+    let next_seq = storage::get_next_seq(&terms_dir.to_string_lossy());
+    let filename = logic::generate_filename(next_seq, &today, &context);
+    let path = terms_dir.join(filename);
+    let frontmatter = logic::generate_recipe_frontmatter(next_seq, &title, &now, &now, &tags);
+    let content = format!("{}\n\n{}", frontmatter, request.body);
+
+    storage::write_note(&path.to_string_lossy(), &content)?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn fusen_create_qa_note(
     app: AppHandle,
@@ -514,6 +537,27 @@ fn fusen_create_qa_note(
             .ok_or("base_path is not set")?
     };
     let path = create_qa_note_file(Path::new(&base_path), request)?;
+
+    launcher::emit_launcher_shelf_changed(&app);
+
+    Ok(path)
+}
+
+#[tauri::command]
+fn fusen_create_term_note(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    request: CreateRecipeNoteRequest,
+) -> Result<String, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
+    };
+    let path = create_term_note_file(Path::new(&base_path), request)?;
 
     launcher::emit_launcher_shelf_changed(&app);
 
@@ -4185,6 +4229,7 @@ pub fn run() {
             fusen_get_recipe_candidates,
             fusen_create_recipe_note,
             fusen_create_qa_note,
+            fusen_create_term_note,
             fusen_return_recipe,
             fusen_duplicate_note,
             fusen_save_note,
@@ -4594,6 +4639,60 @@ mod qa_note_tests {
         assert!(content.contains("recipeImprovements: 0"));
         assert!(content.contains("recipeLastUsed:"));
         assert!(content.ends_with("# 問い\n\n質問"));
+    }
+}
+
+#[cfg(test)]
+mod term_note_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn create_term_note_file_writes_term_note_with_recipe_meta_fields() {
+        let dir = tempdir().unwrap();
+        let path = create_term_note_file(
+            dir.path(),
+            CreateRecipeNoteRequest {
+                title: "用語".to_string(),
+                body: "# 意味\n\n説明".to_string(),
+                tags: vec!["work".to_string(), "recipe".to_string(), "qa".to_string(), "term".to_string()],
+            },
+        ).unwrap();
+
+        let path = std::path::PathBuf::from(path);
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert!(path.starts_with(dir.path().join("Terms")));
+        assert!(content.contains("seq: 1"));
+        assert!(content.contains("title: 用語"));
+        assert!(content.contains("backgroundColor: \"#cfd8dc\""));
+        assert!(content.contains("tags: [work, term]"));
+        assert!(content.contains("launches: 0"));
+        assert!(content.contains("recipeImprovements: 0"));
+        assert!(content.contains("recipeLastUsed:"));
+        assert!(content.ends_with("# 意味\n\n説明"));
+    }
+
+    #[test]
+    fn create_term_note_file_uses_term_default_for_empty_title() {
+        let dir = tempdir().unwrap();
+        let path = create_term_note_file(
+            dir.path(),
+            CreateRecipeNoteRequest {
+                title: "   ".to_string(),
+                body: "# 意味\n\n説明".to_string(),
+                tags: vec![],
+            },
+        ).unwrap();
+
+        let path = std::path::PathBuf::from(path);
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert!(path.starts_with(dir.path().join("Terms")));
+        assert!(path.file_name().unwrap().to_string_lossy().contains("_term.md"));
+        assert!(content.contains("title: term"));
+        assert!(content.contains("tags: [term]"));
     }
 }
 
