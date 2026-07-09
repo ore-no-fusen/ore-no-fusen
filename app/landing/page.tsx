@@ -23,6 +23,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Check, Copy, Download, Globe, Volume2, VolumeX } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { trackDonationEvent } from '@/app/utils/analytics';
 
 export default function LandingPage() {
     const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
@@ -254,6 +255,16 @@ export default function LandingPage() {
                                 ? 'Signed · No SmartScreen warning · Auto-updates'
                                 : '署名済み ・ SmartScreen の警告が出ません ・ 自動更新'}
                         </p>
+
+                        <Link
+                            href="/endroll"
+                            onClick={() => trackDonationEvent('donation_cta_click', {
+                                donation_source: 'landing_hero',
+                            })}
+                            className="text-xs font-semibold text-[#7A6A50] underline-offset-4 hover:text-[#5C7A3E] hover:underline"
+                        >
+                            {isEn ? 'Support development' : '開発を支援する'}
+                        </Link>
 
                         {/* winget */}
                         <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-[#7A6A50] mt-2">

@@ -18,6 +18,7 @@ import { useSettings, type AppSettings } from "@/lib/settings-store"
 // ★翻訳関数をインポート
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 import { formatShortcutLabel, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
+import { trackDonationEvent } from "@/app/utils/analytics"
 import {
     ackFeedbackConversationMessages,
     getDeveloperFeedbackApiBaseUrl,
@@ -241,6 +242,9 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         isActive={false}
                         onClick={async () => {
                             const url = getSupportPageUrl()
+                            trackDonationEvent('donation_cta_click', {
+                                donation_source: 'desktop_settings_sidebar',
+                            })
                             try {
                                 const { open } = await import('@tauri-apps/plugin-shell')
                                 await open(url)

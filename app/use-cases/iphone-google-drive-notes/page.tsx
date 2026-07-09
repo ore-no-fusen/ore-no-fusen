@@ -6,7 +6,14 @@ const SITE_URL = "https://ore-no-fusen.vercel.app";
 export const metadata: Metadata = {
   title: "Send Notes Between iPhone and Windows with Google Drive | FUSEN",
   description:
-    "FUSEN helps you hand off small notes between iPhone and Windows through Google Drive, so ideas can move from mobile to desktop and back.",
+    "FUSEN helps you send small notes between iPhone and Windows through Google Drive, so ideas can move from mobile to desktop and back.",
+  keywords: [
+    "send notes from iPhone to Windows",
+    "iPhone Windows notes Google Drive",
+    "Google Drive handoff notes",
+    "iPhone PC メモ 送る",
+    "Google Drive メモ 同期",
+  ],
   alternates: {
     canonical: `${SITE_URL}/use-cases/iphone-google-drive-notes`,
   },
