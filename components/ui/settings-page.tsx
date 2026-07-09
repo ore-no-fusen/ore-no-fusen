@@ -19,6 +19,25 @@ import { useSettings, type AppSettings } from "@/lib/settings-store"
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 import { formatShortcutLabel, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
 import { trackDonationEvent } from "@/app/utils/analytics"
+import { saveCrystalFormats } from "@/app/api/crystalFormats"
+import {
+    DEFAULT_CRYSTAL_FORMATS,
+    loadCrystalFormats,
+    normalizeCrystalFormats,
+    type CrystalFormats,
+    type CrystalSectionConfig,
+    type CrystalType,
+    type CrystalTypeFormat,
+} from "@/app/utils/crystalFormatConfig"
+import {
+    CRYSTAL_TYPE_LABELS,
+    ROLE_LABELS,
+    addFreeSection,
+    cloneCrystalFormats,
+    moveFreeSection,
+    removeFreeSection,
+    resetCrystalTypeFormat,
+} from "@/app/utils/crystalFormatEditor"
 import {
     ackFeedbackConversationMessages,
     getDeveloperFeedbackApiBaseUrl,
@@ -135,6 +154,8 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 return <AppearanceSection settings={settings} onUpdate={updateSetting} t={t} />
             case "hotkeys":
                 return <HotkeySection settings={settings} saveSettings={saveSettings} />
+            case "crystal-format":
+                return <CrystalFormatSection />
             case "data":
                 return <DataSection
                     settings={settings}
@@ -194,6 +215,12 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         label="ホットキー"
                         isActive={activeSection === "hotkeys"}
                         onClick={() => setActiveSection("hotkeys")}
+                    />
+                    <SidebarItem
+                        icon={<FileText className="mr-3 h-4 w-4" />}
+                        label="結晶フォーマット"
+                        isActive={activeSection === "crystal-format"}
+                        onClick={() => setActiveSection("crystal-format")}
                     />
                     <SidebarItem
                         icon={<Database className="mr-3 h-4 w-4" />}
@@ -727,6 +754,223 @@ function HotkeySection({ settings, saveSettings }: {
 
                 {!captureAction && message && (
                     <p className="text-sm text-gray-600">{message}</p>
+                )}
+            </div>
+        </div>
+    )
+}
+
+function CrystalFormatSection() {
+    const [formats, setFormats] = useState<CrystalFormats | null>(null)
+    const [activeType, setActiveType] = useState<CrystalType>('recipe')
+    const [message, setMessage] = useState("")
+    const [isSaving, setIsSaving] = useState(false)
+
+    useEffect(() => {
+        let cancelled = false
+        loadCrystalFormats()
+            .then((loaded) => {
+                if (!cancelled) setFormats(cloneCrystalFormats(loaded))
+            })
+            .catch((e) => {
+                console.error('[CrystalFormatSection] Failed to load formats:', e)
+                if (!cancelled) {
+                    setFormats(cloneCrystalFormats(DEFAULT_CRYSTAL_FORMATS))
+                    setMessage("読み込みに失敗したため既定値を表示しています。")
+                }
+            })
+        return () => { cancelled = true }
+    }, [])
+
+    const updateActiveFormat = useCallback((updater: (format: CrystalTypeFormat) => CrystalTypeFormat) => {
+        setFormats((current) => current ? {
+            ...current,
+            [activeType]: updater(current[activeType]),
+        } : current)
+        setMessage("")
+    }, [activeType])
+
+    const updateSection = (index: number, patch: Partial<CrystalSectionConfig>) => {
+        updateActiveFormat((format) => ({
+            sections: format.sections.map((section, sectionIndex) => {
+                if (sectionIndex !== index) return { ...section }
+                const next = { ...section, ...patch }
+                return next.slot === 'history' ? { ...next, tracked: false } : next
+            }),
+        }))
+    }
+
+    const resetCurrentType = () => {
+        if (!window.confirm(`${CRYSTAL_TYPE_LABELS[activeType]} のフォーマットを既定に戻しますか？`)) return
+        updateActiveFormat(() => resetCrystalTypeFormat(activeType))
+        setMessage("既定に戻しました。保存すると反映されます。")
+    }
+
+    const handleSave = async () => {
+        if (!formats || isSaving) return
+        const trimmed = cloneCrystalFormats(formats)
+        for (const type of Object.keys(CRYSTAL_TYPE_LABELS) as CrystalType[]) {
+            for (const section of trimmed[type].sections) {
+                section.label = section.label.trim()
+                if (!section.label) {
+                    setMessage("節名は空にできません。")
+                    return
+                }
+                if (section.slot === 'history') {
+                    section.tracked = false
+                }
+            }
+        }
+
+        setIsSaving(true)
+        try {
+            const normalized = normalizeCrystalFormats(trimmed)
+            await saveCrystalFormats(normalized)
+            setFormats(cloneCrystalFormats(normalized))
+            setMessage("保存しました。")
+        } catch (e) {
+            console.error('[CrystalFormatSection] Failed to save formats:', e)
+            setMessage(`保存に失敗しました: ${String(e)}`)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    if (!formats) {
+        return <div className="text-sm text-muted-foreground">結晶フォーマットを読み込み中...</div>
+    }
+
+    const format = formats[activeType]
+
+    return (
+        <div className="space-y-6">
+            <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">結晶フォーマット</h2>
+                <p className="text-gray-500 text-sm">レシピ、QA、用語の節名と並びを調整します。</p>
+            </div>
+            <Separator />
+
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                変更は新しく作る結晶にだけ効きます。既存の結晶は変わりません。
+            </div>
+
+            <div className="flex gap-2">
+                {(Object.keys(CRYSTAL_TYPE_LABELS) as CrystalType[]).map((type) => (
+                    <Button
+                        key={type}
+                        type="button"
+                        variant={activeType === type ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                            setActiveType(type)
+                            setMessage("")
+                        }}
+                    >
+                        {CRYSTAL_TYPE_LABELS[type]}
+                    </Button>
+                ))}
+            </div>
+
+            <div className="rounded-lg border p-4 space-y-3">
+                {format.sections.map((section, index) => {
+                    const isFree = section.slot === 'free'
+                    const isHistory = section.slot === 'history'
+                    const canMoveUp = isFree && index > 1
+                    const canMoveDown = isFree && format.sections[index + 1]?.slot !== 'history'
+
+                    return (
+                        <div key={`${section.slot}-${index}`} className="flex items-center gap-3 rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
+                            <div className="flex w-16 shrink-0 items-center gap-1">
+                                {isFree ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            className="text-xs text-gray-500 disabled:opacity-30"
+                                            disabled={!canMoveUp}
+                                            onClick={() => updateActiveFormat((current) => moveFreeSection(current, index, 'up'))}
+                                            aria-label="上へ移動"
+                                        >
+                                            ▲
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="text-xs text-gray-500 disabled:opacity-30"
+                                            disabled={!canMoveDown}
+                                            onClick={() => updateActiveFormat((current) => moveFreeSection(current, index, 'down'))}
+                                            aria-label="下へ移動"
+                                        >
+                                            ▼
+                                        </button>
+                                    </>
+                                ) : (
+                                    <span className="text-sm text-gray-400" title="固定">🔒</span>
+                                )}
+                            </div>
+
+                            <Input
+                                value={section.label}
+                                onChange={(event) => updateSection(index, { label: event.target.value })}
+                                className="h-9 flex-1 bg-white"
+                            />
+
+                            <span className="w-16 shrink-0 rounded-full border border-gray-200 bg-white px-2 py-1 text-center text-xs font-bold text-gray-600">
+                                {ROLE_LABELS[section.slot]}
+                            </span>
+
+                            <label className="flex w-24 shrink-0 items-center gap-2 text-sm text-gray-600">
+                                <input
+                                    type="checkbox"
+                                    checked={!isHistory && section.tracked}
+                                    disabled={isHistory}
+                                    onChange={(event) => updateSection(index, { tracked: event.target.checked })}
+                                />
+                                数える
+                            </label>
+
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={!isFree}
+                                onClick={() => updateActiveFormat((current) => removeFreeSection(current, index))}
+                                className="shrink-0 text-red-500 disabled:text-gray-300"
+                            >
+                                削除
+                            </Button>
+                        </div>
+                    )
+                })}
+
+                <div className="flex flex-wrap gap-2 pt-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateActiveFormat(addFreeSection)}
+                    >
+                        ＋自由節を追加
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={resetCurrentType}
+                    >
+                        既定に戻す
+                    </Button>
+                    <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                    >
+                        <Save className="mr-2 h-4 w-4" />
+                        {isSaving ? '保存中...' : '保存'}
+                    </Button>
+                </div>
+
+                {message && (
+                    <p className="text-sm text-muted-foreground">{message}</p>
                 )}
             </div>
         </div>
