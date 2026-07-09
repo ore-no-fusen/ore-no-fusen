@@ -28,9 +28,11 @@ export default function TermCreateModal({
 
     useEffect(() => {
         const { name, rest } = splitTermNameAndBody(sourceBody);
-        setTitle(name || sourceTitle?.trim() || '');
+        const initialTermName = name || sourceTitle?.trim() || '';
+        setTitle(initialTermName);
         setDraftBody(buildTermDraft({
             sourceTitle,
+            termName: initialTermName,
             sourceBody: rest,
             date: new Date(),
         }));

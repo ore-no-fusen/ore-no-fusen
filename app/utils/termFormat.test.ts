@@ -43,6 +43,7 @@ describe('buildTermDraft', () => {
     it('splits the first two content lines into summary and the rest into meaning', () => {
         const draft = buildTermDraft({
             sourceTitle: '語彙',
+            termName: '  RAG  ',
             sourceBody: `
 
 意味1
@@ -57,6 +58,7 @@ describe('buildTermDraft', () => {
         });
 
         expect(splitCrystalSections(TERM_SPEC, draft)).toMatchObject({
+            用語: 'RAG',
             一言でいうと: '意味1\n意味2',
             訳: '',
             意味: '例1\n\n例2',
@@ -73,6 +75,7 @@ describe('buildTermDraft', () => {
         });
 
         expect(splitCrystalSections(TERM_SPEC, draft)).toMatchObject({
+            用語: '',
             一言でいうと: '見出し\n説明',
             意味: '- 親\n  - 子\n    続き',
         });
@@ -103,6 +106,7 @@ https://example.com
     it('builds source note lines with and without a title', () => {
         const titled = buildTermDraft({
             sourceTitle: '  用語メモ  ',
+            termName: '  RAG  ',
             sourceBody: '意味',
             date: '2026-07-08',
         });
@@ -112,9 +116,11 @@ https://example.com
             date: '26-07-08',
         });
 
+        expect(splitCrystalSections(TERM_SPEC, titled).用語).toBe('RAG');
         expect(splitCrystalSections(TERM_SPEC, titled).きっかけ).toBe(
             '- 26-07-08 付箋『用語メモ』から作成',
         );
+        expect(splitCrystalSections(TERM_SPEC, untitled).用語).toBe('');
         expect(splitCrystalSections(TERM_SPEC, untitled).きっかけ).toBe('- 26-07-08 付箋から作成');
     });
 });
@@ -123,19 +129,21 @@ describe('TERM_SPEC', () => {
     it('returns changed sections and creates history lines in document order', () => {
         const original = buildTermDraft({
             sourceTitle: '用語',
+            termName: 'RAG',
             sourceBody: '意味\n説明\n例',
             date: '2026-07-08',
         });
         const changed = original
+            .replace('RAG', 'GraphRAG')
             .replace('意味\n説明', '別の意味\n説明')
             .replace('\n例\n\n# 例・使い方', '\n別の例\n\n# 例・使い方')
             .replace('- 26-07-08 初版', '- 26-07-08 初版\n- 26-07-09 意味');
 
         const changedSections = getChangedCrystalSections(TERM_SPEC, original, changed);
 
-        expect(changedSections).toEqual(['一言でいうと', '意味']);
-        expect(createImprovementHistoryLine(TERM_SPEC, '2026-07-09', ['補足', '意味', '訳'])).toBe(
-            '- 26-07-09 訳・意味・補足',
+        expect(changedSections).toEqual(['用語', '一言でいうと', '意味']);
+        expect(createImprovementHistoryLine(TERM_SPEC, '2026-07-09', ['補足', '意味', '訳', '用語'])).toBe(
+            '- 26-07-09 用語・訳・意味・補足',
         );
     });
 });

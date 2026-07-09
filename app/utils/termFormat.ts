@@ -7,8 +7,8 @@ import {
     trimOuterBlankLines,
 } from './crystalFormat';
 
-export const TERM_SECTION_NAMES = ['一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足', '改善履歴'] as const;
-export const TRACKED_TERM_SECTION_NAMES = ['一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足'] as const;
+export const TERM_SECTION_NAMES = ['用語', '一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足', '改善履歴'] as const;
+export const TRACKED_TERM_SECTION_NAMES = ['用語', '一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足'] as const;
 export const TERM_SPEC: CrystalSpec = {
     sectionNames: TERM_SECTION_NAMES,
     trackedSectionNames: TRACKED_TERM_SECTION_NAMES,
@@ -16,6 +16,7 @@ export const TERM_SPEC: CrystalSpec = {
 
 export interface TermDraftInput {
     sourceTitle?: string | null;
+    termName?: string | null;
     sourceBody: string;
     date: Date | string;
 }
@@ -138,6 +139,7 @@ export function buildTermDraft(input: TermDraftInput): string {
     }
 
     return joinCrystalSections(TERM_SPEC, {
+        用語: input.termName?.trim() ?? '',
         一言でいうと: summary,
         訳: '',
         意味: meaning,
