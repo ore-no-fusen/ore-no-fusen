@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { createTermNote } from '@/app/api/recipes';
 import { buildTermDraft, splitTermNameAndBody } from '@/app/utils/termFormat';
+import { loadCrystalFormats, type CrystalTypeFormat } from '@/app/utils/crystalFormatConfig';
 import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 
 type TermCreateModalProps = {
@@ -23,10 +24,20 @@ export default function TermCreateModal({
 }: TermCreateModalProps) {
     const [title, setTitle] = useState(sourceTitle?.trim() ?? '');
     const [draftBody, setDraftBody] = useState('');
+    const [termFormat, setTermFormat] = useState<CrystalTypeFormat | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        let cancelled = false;
+        loadCrystalFormats().then((formats) => {
+            if (!cancelled) setTermFormat(formats.term);
+        });
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        if (!termFormat) return;
         const { name, rest } = splitTermNameAndBody(sourceBody);
         const initialTermName = name || sourceTitle?.trim() || '';
         setTitle(initialTermName);
@@ -35,8 +46,8 @@ export default function TermCreateModal({
             termName: initialTermName,
             sourceBody: rest,
             date: new Date(),
-        }));
-    }, [sourceBody, sourceTitle]);
+        }, termFormat));
+    }, [sourceBody, sourceTitle, termFormat]);
 
     const handleCreate = useCallback(async () => {
         if (isCreating) return;

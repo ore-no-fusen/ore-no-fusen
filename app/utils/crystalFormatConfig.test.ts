@@ -1,18 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { getChangedCrystalSections, joinCrystalSections, splitCrystalSections } from './crystalFormat';
 import {
     DEFAULT_CRYSTAL_FORMATS,
     configToSpec,
     loadCrystalFormats,
     normalizeCrystalFormats,
     type CrystalFormats,
+    type CrystalTypeFormat,
 } from './crystalFormatConfig';
+import { buildRecipeDraft } from './recipeFormat';
 import {
     RECIPE_SECTION_NAMES,
     TRACKED_RECIPE_SECTION_NAMES,
 } from './recipeFormat';
-import { QA_SPEC } from './qaFormat';
-import { TERM_SPEC } from './termFormat';
+import { buildQaDraft, QA_SPEC } from './qaFormat';
+import { buildTermDraft, TERM_SPEC } from './termFormat';
 
 vi.mock('@tauri-apps/api/core', () => ({
     invoke: vi.fn(),
@@ -135,6 +138,122 @@ describe('crystalFormatConfig', () => {
             sectionNames: ['Q', 'A', 'Free 1', 'Source', 'Free 2', 'Supplement', 'History'],
             trackedSectionNames: ['Q', 'Free 1', 'Source', 'Supplement'],
         });
+    });
+
+    it('T5 uses renamed config labels while preserving slot contents', () => {
+        const recipeFormat: CrystalTypeFormat = {
+            sections: [
+                { label: 'When', slot: 'situation', tracked: true },
+                { label: 'Do', slot: 'steps', tracked: true },
+                { label: 'Extra', slot: 'supplement', tracked: true },
+                { label: 'History', slot: 'history', tracked: false },
+            ],
+        };
+        const recipe = splitCrystalSections(configToSpec(recipeFormat), buildRecipeDraft({
+            blueBody: 'blue\nhttps://example.com',
+            yellowBody: 'yellow1\nyellow2\nyellow3',
+            pinkBodies: ['pink'],
+            date: '2026-07-10',
+        }, recipeFormat));
+
+        expect(recipe.When).toBe('yellow1\nyellow2');
+        expect(recipe.Do).toBe('1. blue\n2. pink');
+        expect(recipe.Extra).toContain('https://example.com');
+
+        const qaFormat: CrystalTypeFormat = {
+            sections: [
+                { label: 'Question', slot: 'question', tracked: true },
+                { label: 'Answer', slot: 'answer', tracked: true },
+                { label: 'Source', slot: 'source', tracked: true },
+                { label: 'Evidence', slot: 'supplement', tracked: true },
+                { label: 'History', slot: 'history', tracked: false },
+            ],
+        };
+        const qa = splitCrystalSections(configToSpec(qaFormat), buildQaDraft({
+            sourceTitle: 'Title',
+            sourceBody: '# Heading\nbody\n![img](a.png)',
+            date: '2026-07-10',
+        }, qaFormat));
+
+        expect(qa.Question).toBe('Title');
+        expect(qa.Answer).toBe('Heading\nbody');
+        expect(qa.Source).toContain('Title');
+        expect(qa.Evidence).toContain('![img](a.png)');
+
+        const termFormat: CrystalTypeFormat = {
+            sections: [
+                { label: 'Term', slot: 'name', tracked: true },
+                { label: 'Gist', slot: 'gist', tracked: true },
+                { label: 'Meaning', slot: 'detail', tracked: true },
+                { label: 'Source', slot: 'source', tracked: true },
+                { label: 'Extra', slot: 'supplement', tracked: true },
+                { label: 'History', slot: 'history', tracked: false },
+            ],
+        };
+        const term = splitCrystalSections(configToSpec(termFormat), buildTermDraft({
+            sourceTitle: 'Source note',
+            termName: 'RAG',
+            sourceBody: 'one\ntwo\nthree\nhttps://example.com',
+            date: '2026-07-10',
+        }, termFormat));
+
+        expect(term.Term).toBe('RAG');
+        expect(term.Gist).toBe('one\ntwo');
+        expect(term.Meaning).toBe('three');
+        expect(term.Source).toContain('Source note');
+        expect(term.Extra).toContain('https://example.com');
+    });
+
+    it('T6 inserts empty free sections at configured positions', () => {
+        const format: CrystalTypeFormat = {
+            sections: [
+                { label: 'Question', slot: 'question', tracked: true },
+                { label: 'Memo', slot: 'free', tracked: true },
+                { label: 'Answer', slot: 'answer', tracked: true },
+                { label: 'Source', slot: 'source', tracked: true },
+                { label: 'Supplement', slot: 'supplement', tracked: true },
+                { label: 'History', slot: 'history', tracked: false },
+            ],
+        };
+        const spec = configToSpec(format);
+        const draft = buildQaDraft({
+            sourceTitle: 'Title',
+            sourceBody: 'body',
+            date: '2026-07-10',
+        }, format);
+
+        expect(spec.sectionNames).toEqual(['Question', 'Memo', 'Answer', 'Source', 'Supplement', 'History']);
+        expect(splitCrystalSections(spec, draft).Memo).toBe('');
+        expect(draft.indexOf('# Memo')).toBeLessThan(draft.indexOf('# Answer'));
+    });
+
+    it('T7 ignores changes in sections marked tracked=false', () => {
+        const format: CrystalTypeFormat = {
+            sections: [
+                { label: 'Question', slot: 'question', tracked: true },
+                { label: 'Answer', slot: 'answer', tracked: false },
+                { label: 'Source', slot: 'source', tracked: false },
+                { label: 'Supplement', slot: 'supplement', tracked: false },
+                { label: 'History', slot: 'history', tracked: false },
+            ],
+        };
+        const spec = configToSpec(format);
+        const original = joinCrystalSections(spec, {
+            Question: 'same',
+            Answer: 'before',
+            Source: 'before',
+            Supplement: 'before',
+            History: '',
+        });
+        const changed = joinCrystalSections(spec, {
+            Question: 'same',
+            Answer: 'after',
+            Source: 'after',
+            Supplement: 'after',
+            History: 'after',
+        });
+
+        expect(getChangedCrystalSections(spec, original, changed)).toEqual([]);
     });
 
     it('T8 loads persisted formats and absorbs missing, failed, and broken input', async () => {

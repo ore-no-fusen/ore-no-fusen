@@ -5,6 +5,7 @@ import { emit } from '@tauri-apps/api/event';
 import { createRecipeNote, getRecipeCandidates, RecipeCandidate } from '@/app/api/recipes';
 import { readNote } from '@/app/api/notes';
 import { buildRecipeDraft } from '@/app/utils/recipeFormat';
+import { loadCrystalFormats, type CrystalTypeFormat } from '@/app/utils/crystalFormatConfig';
 import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 import { splitFrontMatter } from '@/app/utils/splitFrontMatter';
 
@@ -44,6 +45,7 @@ export default function RecipeCreateModal({
     const [selectedYellowPath, setSelectedYellowPath] = useState<string | null>(null);
     const [selectedPinkPaths, setSelectedPinkPaths] = useState<string[]>([]);
     const [draftBody, setDraftBody] = useState('');
+    const [recipeFormat, setRecipeFormat] = useState<CrystalTypeFormat | null>(null);
     const [isDraftEdited, setIsDraftEdited] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
@@ -53,6 +55,14 @@ export default function RecipeCreateModal({
         if (!isDraftEdited) return true;
         return window.confirm('手編集した叩き台を材料から作り直します。よろしいですか？');
     }, [isDraftEdited]);
+
+    useEffect(() => {
+        let cancelled = false;
+        loadCrystalFormats().then((formats) => {
+            if (!cancelled) setRecipeFormat(formats.recipe);
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -77,6 +87,7 @@ export default function RecipeCreateModal({
     useEffect(() => {
         let cancelled = false;
         const regenerate = async () => {
+            if (!recipeFormat) return;
             const yellowBody = selectedYellowPath ? await readNoteBody(selectedYellowPath) : null;
             const pinkBodies = await Promise.all(selectedPinkPaths.map((path) => readNoteBody(path)));
             if (cancelled) return;
@@ -86,7 +97,7 @@ export default function RecipeCreateModal({
                 yellowBody,
                 pinkBodies,
                 date: todayString(),
-            });
+            }, recipeFormat);
             setDraftBody(draft);
             setIsDraftEdited(false);
             setError(null);
@@ -99,7 +110,7 @@ export default function RecipeCreateModal({
         });
 
         return () => { cancelled = true; };
-    }, [selectedPinkPaths, selectedYellowPath, sourceBody]);
+    }, [recipeFormat, selectedPinkPaths, selectedYellowPath, sourceBody]);
 
     const togglePink = useCallback((path: string) => {
         if (!confirmOverwriteDraft()) return;

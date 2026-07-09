@@ -10,6 +10,7 @@ import {
     trimOuterBlankLines,
     truncateCrystalName,
 } from './crystalFormat';
+import { configToSpec, type CrystalTypeFormat } from './crystalFormatConfigCore';
 
 export const RECIPE_SECTION_NAMES = ['こんなとき', 'どうする', '補足', '改善履歴'] as const;
 export const TRACKED_RECIPE_SECTION_NAMES = ['こんなとき', 'どうする', '補足'] as const;
@@ -29,6 +30,15 @@ export interface RecipeDraftInput {
 const RECIPE_SPEC: CrystalSpec = {
     sectionNames: RECIPE_SECTION_NAMES,
     trackedSectionNames: TRACKED_RECIPE_SECTION_NAMES,
+};
+
+const DEFAULT_RECIPE_FORMAT: CrystalTypeFormat = {
+    sections: [
+        { label: RECIPE_SECTION_NAMES[0], slot: 'situation', tracked: true },
+        { label: RECIPE_SECTION_NAMES[1], slot: 'steps', tracked: true },
+        { label: RECIPE_SECTION_NAMES[2], slot: 'supplement', tracked: true },
+        { label: RECIPE_SECTION_NAMES[3], slot: 'history', tracked: false },
+    ],
 };
 
 function nonEmptyLines(text: string): string[] {
@@ -100,7 +110,7 @@ export function appendImprovementHistoryLine(body: string, historyLine: string):
     return appendCrystalImprovementHistoryLine(body, historyLine);
 }
 
-export function buildRecipeDraft(input: RecipeDraftInput): string {
+export function buildRecipeDraft(input: RecipeDraftInput, format: CrystalTypeFormat = DEFAULT_RECIPE_FORMAT): string {
     const yellowLines = nonEmptyMaterialLines(input.yellowBody ?? '');
     const blueLines = nonEmptyMaterialLines(input.blueBody);
     // こんなとき = 黄のみ（無ければ空。青は こんなとき に回さない）
@@ -147,23 +157,20 @@ export function buildRecipeDraft(input: RecipeDraftInput): string {
         supplementLines.push('## 画像', '', ...uniqueImages.map((line) => `- ${line}`));
     }
 
-    return [
-        '# こんなとき',
-        '',
-        situationLines.join('\n'),
-        '',
-        '# どうする',
-        '',
-        ...steps.map((step, index) => `${index + 1}. ${step}`),
-        '',
-        '# 補足',
-        '',
-        supplementLines.join('\n'),
-        '',
-        '# 改善履歴',
-        '',
-        `- ${formatDateYYMMDD(input.date)} 初版`,
-    ].join('\n');
+    const contentBySlot = {
+        situation: situationLines.join('\n'),
+        steps: steps.map((step, index) => `${index + 1}. ${step}`).join('\n'),
+        supplement: supplementLines.join('\n'),
+        history: `- ${formatDateYYMMDD(input.date)} 初版`,
+    };
+    const sections = Object.fromEntries(format.sections.map((section) => [section.label, '']));
+    for (const section of format.sections) {
+        if (section.slot in contentBySlot) {
+            sections[section.label] = contentBySlot[section.slot as keyof typeof contentBySlot];
+        }
+    }
+
+    return joinCrystalSections(configToSpec(format), sections);
 }
 
 export function truncateRecipeName(name: string, maxLength = 10): string {

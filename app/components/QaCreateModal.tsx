@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { createQaNote } from '@/app/api/recipes';
 import { buildQaDraft } from '@/app/utils/qaFormat';
+import { loadCrystalFormats, type CrystalTypeFormat } from '@/app/utils/crystalFormatConfig';
 import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 
 type QaCreateModalProps = {
@@ -23,16 +24,26 @@ export default function QaCreateModal({
 }: QaCreateModalProps) {
     const [title, setTitle] = useState('');
     const [draftBody, setDraftBody] = useState('');
+    const [qaFormat, setQaFormat] = useState<CrystalTypeFormat | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        let cancelled = false;
+        loadCrystalFormats().then((formats) => {
+            if (!cancelled) setQaFormat(formats.qa);
+        });
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        if (!qaFormat) return;
         setDraftBody(buildQaDraft({
             sourceTitle,
             sourceBody,
             date: new Date(),
-        }));
-    }, [sourceBody, sourceTitle]);
+        }, qaFormat));
+    }, [qaFormat, sourceBody, sourceTitle]);
 
     const handleCreate = useCallback(async () => {
         if (isCreating) return;

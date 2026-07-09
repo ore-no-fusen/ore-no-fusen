@@ -46,14 +46,17 @@ import { resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
 import { matchesShortcut } from '../utils/shortcutKey';
-import { appendImprovementHistoryLine, createImprovementHistoryLine, getChangedRecipeSections } from '../utils/recipeFormat';
 import {
     appendImprovementHistoryLine as appendCrystalImprovementHistoryLine,
     createImprovementHistoryLine as createCrystalImprovementHistoryLine,
     getChangedCrystalSections,
 } from '../utils/crystalFormat';
-import { QA_SPEC } from '../utils/qaFormat';
-import { TERM_SPEC } from '../utils/termFormat';
+import {
+    configToSpec,
+    DEFAULT_CRYSTAL_FORMATS,
+    loadCrystalFormats,
+    type CrystalFormats,
+} from '../utils/crystalFormatConfig';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
@@ -158,6 +161,7 @@ const StickyNote = memo(function StickyNote() {
     const lazyCreatePromiseRef = useRef<Promise<string | null> | null>(null);
     const originalRecipeBodyRef = useRef<string | null>(null);
     const originalRecipePathRef = useRef<string | null>(null);
+    const crystalFormatsRef = useRef<CrystalFormats>(DEFAULT_CRYSTAL_FORMATS);
 
     // アラーム用 refs（setInterval内でstale closureを避けるため）
     const rawFrontmatterForAlarmRef = useRef('');
@@ -335,6 +339,14 @@ const StickyNote = memo(function StickyNote() {
     const isTermNote = !isRecipeNote && !isQaNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'term');
     const isCrystalNote = isRecipeNote || isQaNote || isTermNote;
     const crystalNoteLabel = isRecipeNote ? 'レシピ' : isQaNote ? 'QA' : '用語';
+
+    useEffect(() => {
+        let cancelled = false;
+        loadCrystalFormats().then((formats) => {
+            if (!cancelled) crystalFormatsRef.current = formats;
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     // 初期ロード時に全タグを取得
     useEffect(() => {
@@ -1593,33 +1605,16 @@ const StickyNote = memo(function StickyNote() {
 
         try {
             const originalBody = originalRecipeBodyRef.current ?? content;
-            let changedCount: number;
-            let returnedBody: string;
-            if (isRecipeNote) {
-                const changed = getChangedRecipeSections(originalBody, content);
-                changedCount = changed.length;
-                returnedBody = changedCount > 0
-                    ? appendImprovementHistoryLine(content, createImprovementHistoryLine(new Date(), changed))
-                    : content;
-            } else if (isQaNote) {
-                const changed = getChangedCrystalSections(QA_SPEC, originalBody, content);
-                changedCount = changed.length;
-                returnedBody = changedCount > 0
-                    ? appendCrystalImprovementHistoryLine(
-                        content,
-                        createCrystalImprovementHistoryLine(QA_SPEC, new Date(), changed),
-                    )
-                    : content;
-            } else {
-                const changed = getChangedCrystalSections(TERM_SPEC, originalBody, content);
-                changedCount = changed.length;
-                returnedBody = changedCount > 0
-                    ? appendCrystalImprovementHistoryLine(
-                        content,
-                        createCrystalImprovementHistoryLine(TERM_SPEC, new Date(), changed),
-                    )
-                    : content;
-            }
+            const crystalType = isRecipeNote ? 'recipe' : isQaNote ? 'qa' : 'term';
+            const spec = configToSpec(crystalFormatsRef.current[crystalType]);
+            const changed = getChangedCrystalSections(spec, originalBody, content);
+            const changedCount = changed.length;
+            const returnedBody = changedCount > 0
+                ? appendCrystalImprovementHistoryLine(
+                    content,
+                    createCrystalImprovementHistoryLine(spec, new Date(), changed),
+                )
+                : content;
 
             isDeletingRef.current = true;
             await returnRecipe(selectedFile.path, returnedBody, changedCount > 0);

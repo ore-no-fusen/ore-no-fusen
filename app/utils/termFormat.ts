@@ -6,12 +6,27 @@ import {
     normalizeLineEndings,
     trimOuterBlankLines,
 } from './crystalFormat';
+import { configToSpec, type CrystalTypeFormat } from './crystalFormatConfigCore';
 
 export const TERM_SECTION_NAMES = ['用語', '一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足', '改善履歴'] as const;
 export const TRACKED_TERM_SECTION_NAMES = ['用語', '一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足'] as const;
 export const TERM_SPEC: CrystalSpec = {
     sectionNames: TERM_SECTION_NAMES,
     trackedSectionNames: TRACKED_TERM_SECTION_NAMES,
+};
+
+const DEFAULT_TERM_FORMAT: CrystalTypeFormat = {
+    sections: [
+        { label: TERM_SECTION_NAMES[0], slot: 'name', tracked: true },
+        { label: TERM_SECTION_NAMES[1], slot: 'gist', tracked: true },
+        { label: TERM_SECTION_NAMES[2], slot: 'free', tracked: true },
+        { label: TERM_SECTION_NAMES[3], slot: 'detail', tracked: true },
+        { label: TERM_SECTION_NAMES[4], slot: 'free', tracked: true },
+        { label: TERM_SECTION_NAMES[5], slot: 'free', tracked: true },
+        { label: TERM_SECTION_NAMES[6], slot: 'source', tracked: true },
+        { label: TERM_SECTION_NAMES[7], slot: 'supplement', tracked: true },
+        { label: TERM_SECTION_NAMES[8], slot: 'history', tracked: false },
+    ],
 };
 
 export interface TermDraftInput {
@@ -105,7 +120,7 @@ function splitSummaryAndMeaning(lines: string[]): { summary: string; meaning: st
     };
 }
 
-export function buildTermDraft(input: TermDraftInput): string {
+export function buildTermDraft(input: TermDraftInput, format: CrystalTypeFormat = DEFAULT_TERM_FORMAT): string {
     const date = formatDateYYMMDD(input.date);
     const bodyLines: string[] = [];
     const references: string[] = [];
@@ -138,15 +153,20 @@ export function buildTermDraft(input: TermDraftInput): string {
         supplementLines.push('## 画像', '', ...uniqueImages.map((line) => `- ${line}`));
     }
 
-    return joinCrystalSections(TERM_SPEC, {
-        用語: input.termName?.trim() ?? '',
-        一言でいうと: summary,
-        訳: '',
-        意味: meaning,
-        '例・使い方': '',
-        関連ワード: '',
-        きっかけ: buildSourceNoteLine(date, input.sourceTitle),
-        補足: supplementLines.join('\n'),
-        改善履歴: `- ${date} 初版`,
-    });
+    const contentBySlot = {
+        name: input.termName?.trim() ?? '',
+        gist: summary,
+        detail: meaning,
+        source: buildSourceNoteLine(date, input.sourceTitle),
+        supplement: supplementLines.join('\n'),
+        history: `- ${date} 初版`,
+    };
+    const sections = Object.fromEntries(format.sections.map((section) => [section.label, '']));
+    for (const section of format.sections) {
+        if (section.slot in contentBySlot) {
+            sections[section.label] = contentBySlot[section.slot as keyof typeof contentBySlot];
+        }
+    }
+
+    return joinCrystalSections(configToSpec(format), sections);
 }

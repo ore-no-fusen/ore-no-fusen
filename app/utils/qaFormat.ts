@@ -6,12 +6,23 @@ import {
     normalizeLineEndings,
     trimOuterBlankLines,
 } from './crystalFormat';
+import { configToSpec, type CrystalTypeFormat } from './crystalFormatConfigCore';
 
 export const QA_SECTION_NAMES = ['問い', '答え', 'きっかけ', '根拠・補足', '改善履歴'] as const;
 export const TRACKED_QA_SECTION_NAMES = ['問い', '答え', 'きっかけ', '根拠・補足'] as const;
 export const QA_SPEC: CrystalSpec = {
     sectionNames: QA_SECTION_NAMES,
     trackedSectionNames: TRACKED_QA_SECTION_NAMES,
+};
+
+const DEFAULT_QA_FORMAT: CrystalTypeFormat = {
+    sections: [
+        { label: QA_SECTION_NAMES[0], slot: 'question', tracked: true },
+        { label: QA_SECTION_NAMES[1], slot: 'answer', tracked: true },
+        { label: QA_SECTION_NAMES[2], slot: 'source', tracked: true },
+        { label: QA_SECTION_NAMES[3], slot: 'supplement', tracked: true },
+        { label: QA_SECTION_NAMES[4], slot: 'history', tracked: false },
+    ],
 };
 
 export interface QaDraftInput {
@@ -52,7 +63,7 @@ function uniqueNonEmpty(lines: string[]): string[] {
     return result;
 }
 
-export function buildQaDraft(input: QaDraftInput): string {
+export function buildQaDraft(input: QaDraftInput, format: CrystalTypeFormat = DEFAULT_QA_FORMAT): string {
     const date = formatDateYYMMDD(input.date);
     const sourceTitle = input.sourceTitle?.trim() ?? '';
     const answerLines: string[] = [];
@@ -85,11 +96,19 @@ export function buildQaDraft(input: QaDraftInput): string {
         supplementLines.push('## 画像', '', ...uniqueImages.map((line) => `- ${line}`));
     }
 
-    return joinCrystalSections(QA_SPEC, {
-        問い: sourceTitle,
-        答え: trimOuterBlankLines(answerLines.join('\n')),
-        きっかけ: buildSourceNoteLine(date, sourceTitle),
-        '根拠・補足': supplementLines.join('\n'),
-        改善履歴: `- ${date} 初版`,
-    });
+    const contentBySlot = {
+        question: sourceTitle,
+        answer: trimOuterBlankLines(answerLines.join('\n')),
+        source: buildSourceNoteLine(date, sourceTitle),
+        supplement: supplementLines.join('\n'),
+        history: `- ${date} 初版`,
+    };
+    const sections = Object.fromEntries(format.sections.map((section) => [section.label, '']));
+    for (const section of format.sections) {
+        if (section.slot in contentBySlot) {
+            sections[section.label] = contentBySlot[section.slot as keyof typeof contentBySlot];
+        }
+    }
+
+    return joinCrystalSections(configToSpec(format), sections);
 }

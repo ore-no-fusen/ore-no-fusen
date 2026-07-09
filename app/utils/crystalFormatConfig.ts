@@ -1,4 +1,3 @@
-import type { CrystalSpec } from './crystalFormat';
 import {
     RECIPE_SECTION_NAMES,
     TRACKED_RECIPE_SECTION_NAMES,
@@ -12,37 +11,23 @@ import {
     TRACKED_TERM_SECTION_NAMES,
 } from './termFormat';
 import { getCrystalFormatsRaw } from '../api/crystalFormats';
+import {
+    configToSpec,
+    type CrystalFormats,
+    type CrystalSectionConfig,
+    type CrystalSlot,
+    type CrystalType,
+    type CrystalTypeFormat,
+} from './crystalFormatConfigCore';
 
-export type CrystalType = 'recipe' | 'qa' | 'term';
-export type CrystalSlot =
-    | 'situation'
-    | 'steps'
-    | 'question'
-    | 'answer'
-    | 'name'
-    | 'gist'
-    | 'detail'
-    | 'source'
-    | 'supplement'
-    | 'history'
-    | 'free';
-
-export interface CrystalSectionConfig {
-    label: string;
-    slot: CrystalSlot;
-    tracked: boolean;
-}
-
-export interface CrystalTypeFormat {
-    sections: CrystalSectionConfig[];
-}
-
-export interface CrystalFormats {
-    version: 1;
-    recipe: CrystalTypeFormat;
-    qa: CrystalTypeFormat;
-    term: CrystalTypeFormat;
-}
+export {
+    configToSpec,
+    type CrystalFormats,
+    type CrystalSectionConfig,
+    type CrystalSlot,
+    type CrystalType,
+    type CrystalTypeFormat,
+} from './crystalFormatConfigCore';
 
 const TYPE_ORDER: CrystalType[] = ['recipe', 'qa', 'term'];
 const KEY_SLOTS: Record<CrystalType, CrystalSlot> = {
@@ -190,15 +175,6 @@ export function normalizeCrystalFormats(input: unknown): CrystalFormats {
     }
 
     return normalized;
-}
-
-export function configToSpec(format: CrystalTypeFormat): CrystalSpec {
-    return {
-        sectionNames: format.sections.map((section) => section.label),
-        trackedSectionNames: format.sections
-            .filter((section) => section.tracked)
-            .map((section) => section.label),
-    };
 }
 
 export async function loadCrystalFormats(): Promise<CrystalFormats> {
