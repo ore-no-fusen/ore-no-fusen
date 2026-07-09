@@ -26,7 +26,7 @@ export const ROLE_LABELS: Record<CrystalSectionConfig['slot'], string> = {
     free: '自由',
 };
 
-export function cloneCrystalTypeFormat(format: CrystalTypeFormat): CrystalTypeFormat {
+function cloneCrystalTypeFormat(format: CrystalTypeFormat): CrystalTypeFormat {
     return {
         sections: format.sections.map((section) => ({ ...section })),
     };
