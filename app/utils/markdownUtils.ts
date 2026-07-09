@@ -43,3 +43,20 @@ export function resolvePath(baseFile: string, relativePath: string): string {
     return absPath;
 }
 
+function resolvePathFromDirectory(baseDir: string, relativePath: string): string {
+    const normalizedBaseDir = baseDir.replace(/[\\/]+$/, '');
+    return `${normalizedBaseDir}/${relativePath}`.replace(/\//g, '\\').replace(/\\\\+/g, '\\');
+}
+
+export function buildImagePathCandidates(baseFile: string, relativePath: string, basePath?: string | null): string[] {
+    if (isAbsoluteOrExternalPath(relativePath)) {
+        return [relativePath];
+    }
+
+    const candidates = [resolvePath(baseFile, relativePath)];
+    if (basePath) {
+        candidates.push(resolvePathFromDirectory(basePath, relativePath));
+    }
+
+    return Array.from(new Set(candidates));
+}

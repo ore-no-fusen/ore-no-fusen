@@ -8,7 +8,7 @@ import {
     normalizePath,
     pathsEqual,
 } from './pathUtils';
-import { resolvePath } from './markdownUtils';
+import { buildImagePathCandidates, resolvePath } from './markdownUtils';
 
 describe('pathUtils', () => {
     it('keeps existing path comparison behavior', () => {
@@ -64,5 +64,36 @@ describe('resolvePath', () => {
 
     it('continues to resolve relative image paths against the note directory', () => {
         expect(resolvePath(baseFile, 'assets/test.png')).toBe('C:\\Users\\uck\\Documents\\OreNoFusen\\assets\\test.png');
+    });
+});
+
+describe('buildImagePathCandidates', () => {
+    it('keeps note directory resolution first and adds base path fallback for relative images', () => {
+        expect(buildImagePathCandidates(
+            'C:\\Users\\uck\\Documents\\OreNoFusen\\Terms\\term.md',
+            'assets/test.png',
+            'C:\\Users\\uck\\Documents\\OreNoFusen',
+        )).toEqual([
+            'C:\\Users\\uck\\Documents\\OreNoFusen\\Terms\\assets\\test.png',
+            'C:\\Users\\uck\\Documents\\OreNoFusen\\assets\\test.png',
+        ]);
+    });
+
+    it('does not add duplicate fallback candidates', () => {
+        expect(buildImagePathCandidates(
+            'C:\\Users\\uck\\Documents\\OreNoFusen\\note.md',
+            'assets/test.png',
+            'C:\\Users\\uck\\Documents\\OreNoFusen',
+        )).toEqual([
+            'C:\\Users\\uck\\Documents\\OreNoFusen\\assets\\test.png',
+        ]);
+    });
+
+    it('does not rewrite absolute or external image paths', () => {
+        expect(buildImagePathCandidates(
+            'C:\\Users\\uck\\Documents\\OreNoFusen\\Terms\\term.md',
+            'https://example.com/test.png',
+            'C:\\Users\\uck\\Documents\\OreNoFusen',
+        )).toEqual(['https://example.com/test.png']);
     });
 });

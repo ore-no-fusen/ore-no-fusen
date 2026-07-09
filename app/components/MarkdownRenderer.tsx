@@ -15,6 +15,7 @@ import { open } from '@tauri-apps/plugin-shell';
 import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath, isLinkTarget } from '../utils/pathUtils';
 import { renderSecureMermaid } from '../utils/mermaid';
+import { buildImagePathCandidates } from '../utils/markdownUtils';
 
 /**
  * Mermaid図ブロックコンポーネント
@@ -169,6 +170,7 @@ export type MarkdownRendererProps = {
     onDoubleClick: (e: React.MouseEvent) => void;
     onPointerDown?: (e: React.PointerEvent) => void;
     selectedFilePath?: string;
+    basePath?: string | null;
     resolvePath: (baseFile: string, relativePath: string) => string;
     onAnnotationClick?: (absolutePath: string) => void;
     imageVersion?: number;
@@ -199,6 +201,7 @@ export default function MarkdownRenderer({
     onDoubleClick,
     onPointerDown,
     selectedFilePath = '',
+    basePath = null,
     resolvePath,
     onAnnotationClick,
     imageVersion = 0,
@@ -294,8 +297,11 @@ export default function MarkdownRenderer({
 
             // 画像URLを解決（相対パス対応）
             let url = urlRaw;
+            let fallbackSrcs: string[] = [];
             if (selectedFilePath && !isAbsoluteOrExternalPath(urlRaw)) {
-                url = resolvePath(selectedFilePath, urlRaw);
+                const candidates = buildImagePathCandidates(selectedFilePath, urlRaw, basePath);
+                url = candidates[0] ?? resolvePath(selectedFilePath, urlRaw);
+                fallbackSrcs = candidates.slice(1);
             }
 
             // スケール解析: ![alt|1.5](url)
@@ -328,6 +334,7 @@ export default function MarkdownRenderer({
                         scale={scale}
                         baseOffset={baseOffset + index}
                         markdownFallback={fullMatch}
+                        fallbackSrcs={fallbackSrcs}
                         onResizeEnd={(s) => onImageResize(s, baseOffset + index, fullMatch)}
                         contentReadOnly={false}
                         onAnnotationClick={onAnnotationClick}

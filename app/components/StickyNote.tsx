@@ -105,7 +105,6 @@ const StickyNote = memo(function StickyNote() {
         void loadRichTextEditor();
     }, []);
 
-
     const [isNewNote, setIsNewNote] = useState(isNew);
 
     // フローティングフォーマットバー
@@ -119,6 +118,21 @@ const StickyNote = memo(function StickyNote() {
     // 画像アノテーションモーダル
     const [annotationTarget, setAnnotationTarget] = useState<{ path: string; url: string } | null>(null);
     const [imageVersion, setImageVersion] = useState(0);
+    const [basePath, setBasePath] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        invoke<string | null>('get_base_path')
+            .then((path) => {
+                if (!cancelled) setBasePath(path);
+            })
+            .catch(() => {
+                if (!cancelled) setBasePath(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     // タグモーダル
     const [showTagModal, setShowTagModal] = useState(false);
@@ -1952,6 +1966,7 @@ const StickyNote = memo(function StickyNote() {
                                     toggleMinimize();
                                 }}
                                 selectedFilePath={selectedFile?.path}
+                                basePath={basePath}
                                 resolvePath={resolvePath}
                             />
                         </div>
@@ -2054,6 +2069,7 @@ const StickyNote = memo(function StickyNote() {
                                 }
                             }}
                             selectedFilePath={selectedFile?.path}
+                            basePath={basePath}
                             resolvePath={resolvePath}
                             onAnnotationClick={handleAnnotationClick}
                             imageVersion={imageVersion}
