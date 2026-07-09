@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 
 const LAUNCHER_ORDER_FILE: &str = "launcher_order.json";
+const CRYSTAL_FORMATS_FILE: &str = "crystal_formats.json";
 const QUICK_LAUNCHER_LABEL: &str = "quick_launcher";
 pub(crate) const LAUNCHER_SHELF_CHANGED_EVENT: &str = "fusen:launcher_shelf_changed";
 const TABS: [&str; 4] = ["recipe", "shortcut", "qa", "term"];
@@ -94,6 +95,29 @@ fn save_launcher_order_to_path(path: &Path, order: &LauncherOrder) -> Result<(),
     let content = serde_json::to_string_pretty(&normalize_order(order.clone()))
         .map_err(|e| e.to_string())?;
     fs::write(path, content).map_err(|e| e.to_string())
+}
+
+fn crystal_formats_path() -> Result<PathBuf, String> {
+    let settings_path = storage::get_settings_path()?;
+    let dir = settings_path
+        .parent()
+        .ok_or_else(|| "settings directory not found".to_string())?;
+    Ok(dir.join(CRYSTAL_FORMATS_FILE))
+}
+
+fn load_crystal_formats_from_path(path: &Path) -> Result<Option<String>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    fs::read_to_string(path).map(Some).map_err(|e| e.to_string())
+}
+
+fn save_crystal_formats_to_path(path: &Path, json: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(path, json).map_err(|e| e.to_string())
 }
 
 fn base_path_from_state(state: &State<'_, Mutex<AppState>>) -> Result<String, String> {
@@ -526,6 +550,18 @@ pub(crate) fn fusen_set_launcher_last_tab(tab: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub(crate) fn fusen_get_crystal_formats() -> Result<Option<String>, String> {
+    load_crystal_formats_from_path(&crystal_formats_path()?)
+}
+
+#[tauri::command]
+pub(crate) fn fusen_save_crystal_formats(app: AppHandle, json: String) -> Result<(), String> {
+    save_crystal_formats_to_path(&crystal_formats_path()?, &json)?;
+    app.emit("fusen:crystal_formats_updated", ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub(crate) fn fusen_toggle_quick_launcher(app: AppHandle) -> Result<(), String> {
     toggle_quick_launcher(app)
 }
@@ -612,6 +648,28 @@ mod tests {
         assert_eq!(loaded.last_tab, "qa");
         assert_eq!(loaded.orders["qa"], vec!["a.md"]);
         assert!(loaded.orders.contains_key("recipe"));
+    }
+
+    #[test]
+    fn crystal_formats_missing_file_returns_none() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(CRYSTAL_FORMATS_FILE);
+
+        let loaded = load_crystal_formats_from_path(&path).unwrap();
+
+        assert_eq!(loaded, None);
+    }
+
+    #[test]
+    fn crystal_formats_round_trips_raw_json_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nested").join(CRYSTAL_FORMATS_FILE);
+        let json = r#"{"version":1,"recipe":{"sections":[]}}"#;
+
+        save_crystal_formats_to_path(&path, json).unwrap();
+        let loaded = load_crystal_formats_from_path(&path).unwrap();
+
+        assert_eq!(loaded, Some(json.to_string()));
     }
 
     #[test]

@@ -11,6 +11,7 @@ import {
     TERM_SECTION_NAMES,
     TRACKED_TERM_SECTION_NAMES,
 } from './termFormat';
+import { getCrystalFormatsRaw } from '../api/crystalFormats';
 
 export type CrystalType = 'recipe' | 'qa' | 'term';
 export type CrystalSlot =
@@ -198,4 +199,17 @@ export function configToSpec(format: CrystalTypeFormat): CrystalSpec {
             .filter((section) => section.tracked)
             .map((section) => section.label),
     };
+}
+
+export async function loadCrystalFormats(): Promise<CrystalFormats> {
+    try {
+        const raw = await getCrystalFormatsRaw();
+        if (raw === null) {
+            return cloneDefaults();
+        }
+
+        return normalizeCrystalFormats(JSON.parse(raw));
+    } catch {
+        return cloneDefaults();
+    }
 }

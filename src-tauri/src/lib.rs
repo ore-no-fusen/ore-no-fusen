@@ -4278,6 +4278,8 @@ pub fn run() {
             launcher::fusen_remove_from_shelf,
             launcher::fusen_get_launcher_state,
             launcher::fusen_set_launcher_last_tab,
+            launcher::fusen_get_crystal_formats,
+            launcher::fusen_save_crystal_formats,
             launcher::fusen_toggle_quick_launcher,
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
             fusen_replenish_pool,     // [NEW] Pool 補充オーケストレーション（T2_READY+5s トリガ）

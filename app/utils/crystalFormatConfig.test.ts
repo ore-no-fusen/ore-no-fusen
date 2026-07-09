@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import {
     DEFAULT_CRYSTAL_FORMATS,
     configToSpec,
+    loadCrystalFormats,
     normalizeCrystalFormats,
     type CrystalFormats,
 } from './crystalFormatConfig';
@@ -12,7 +14,17 @@ import {
 import { QA_SPEC } from './qaFormat';
 import { TERM_SPEC } from './termFormat';
 
+vi.mock('@tauri-apps/api/core', () => ({
+    invoke: vi.fn(),
+}));
+
+const mockedInvoke = vi.mocked(invoke);
+
 describe('crystalFormatConfig', () => {
+    beforeEach(() => {
+        mockedInvoke.mockReset();
+    });
+
     it('T1 converts defaults to existing specs', () => {
         expect(configToSpec(DEFAULT_CRYSTAL_FORMATS.recipe)).toEqual({
             sectionNames: RECIPE_SECTION_NAMES,
@@ -122,6 +134,42 @@ describe('crystalFormatConfig', () => {
         expect(configToSpec(normalized.qa)).toEqual({
             sectionNames: ['Q', 'A', 'Free 1', 'Source', 'Free 2', 'Supplement', 'History'],
             trackedSectionNames: ['Q', 'Free 1', 'Source', 'Supplement'],
+        });
+    });
+
+    it('T8 loads persisted formats and absorbs missing, failed, and broken input', async () => {
+        mockedInvoke.mockResolvedValueOnce(null);
+        await expect(loadCrystalFormats()).resolves.toEqual(DEFAULT_CRYSTAL_FORMATS);
+
+        mockedInvoke.mockRejectedValueOnce(new Error('unavailable'));
+        await expect(loadCrystalFormats()).resolves.toEqual(DEFAULT_CRYSTAL_FORMATS);
+
+        mockedInvoke.mockResolvedValueOnce('{');
+        await expect(loadCrystalFormats()).resolves.toEqual(DEFAULT_CRYSTAL_FORMATS);
+
+        mockedInvoke.mockResolvedValueOnce(JSON.stringify({
+            version: 1,
+            recipe: {
+                sections: [
+                    { label: 'Steps', slot: 'steps', tracked: true },
+                    { label: 'History', slot: 'history', tracked: true },
+                    { label: 'Situation', slot: 'situation', tracked: true },
+                    { label: 'Supplement', slot: 'supplement', tracked: false },
+                ],
+            },
+        }));
+
+        await expect(loadCrystalFormats()).resolves.toMatchObject({
+            recipe: {
+                sections: [
+                    { label: 'Situation', slot: 'situation', tracked: true },
+                    { label: 'Steps', slot: 'steps', tracked: true },
+                    { label: 'Supplement', slot: 'supplement', tracked: false },
+                    { label: 'History', slot: 'history', tracked: false },
+                ],
+            },
+            qa: DEFAULT_CRYSTAL_FORMATS.qa,
+            term: DEFAULT_CRYSTAL_FORMATS.term,
         });
     });
 });
