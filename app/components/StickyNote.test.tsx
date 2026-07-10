@@ -33,6 +33,8 @@ const mockWindow = {
     listen: vi.fn().mockReturnValue(Promise.resolve(() => { })),
     close: vi.fn(),
     emit: vi.fn(),
+    isFocused: vi.fn().mockResolvedValue(false),
+    setFocus: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -51,6 +53,10 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 vi.mock('@tauri-apps/api/window', () => ({
     getCurrentWindow: () => mockWindow,
+}));
+
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+    WebviewWindow: mockWebviewWindow,
 }));
 
 vi.mock('@tauri-apps/api/menu', () => {
@@ -99,6 +105,8 @@ vi.mock('./RichTextEditor', () => {
 describe('StickyNote Component', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockWebviewWindow.getByLabel.mockResolvedValue(null);
+        mockWindow.isFocused.mockResolvedValue(false);
 
         // Default mock responses
         mockInvoke.mockImplementation((cmd, args) => {
@@ -116,6 +124,29 @@ describe('StickyNote Component', () => {
                     return Promise.resolve(null);
             }
         });
+    });
+
+    it('600msホバー後に前面化し、クイックランチャー表示中はフォーカスを奪わない', async () => {
+        const hasFocusSpy = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+        const { container } = render(<StickyNote />);
+        await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
+        const shell = container.querySelector('.noteShell') as HTMLElement;
+
+        fireEvent.pointerEnter(shell);
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 500)); });
+        expect(mockWindow.setFocus).not.toHaveBeenCalled();
+        await waitFor(() => expect(mockWindow.setFocus).toHaveBeenCalledTimes(1), { timeout: 500 });
+
+        mockWindow.setFocus.mockClear();
+        mockWebviewWindow.getByLabel.mockResolvedValue({
+            isVisible: vi.fn().mockResolvedValue(true),
+        });
+        fireEvent.pointerLeave(shell);
+        fireEvent.pointerEnter(shell);
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 650)); });
+        expect(mockWindow.setFocus).not.toHaveBeenCalled();
+
+        hasFocusSpy.mockRestore();
     });
 
     // --- Regression Tests ---

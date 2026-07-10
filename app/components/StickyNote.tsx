@@ -1777,20 +1777,26 @@ const StickyNote = memo(function StickyNote() {
             onPointerDown={handleDragStart}
             onPointerEnter={() => {
                 setIsHover(true);
-                // [FIX] 複数ウィンドウを連続で横切った際のTauriクラッシュを防ぐため、150ms滞在した時のみフォーカスする
+                // [FIX] 複数ウィンドウを連続で横切った際のTauriクラッシュを防ぐため、600ms滞在した時のみフォーカスする
                 if (!document.hasFocus()) {
                     if (hoverFocusTimer) clearTimeout(hoverFocusTimer);
                     hoverFocusTimer = setTimeout(async () => {
                         try {
+                            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                             const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                            const quickLauncher = await WebviewWindow.getByLabel('quick_launcher');
+                            if (quickLauncher && await quickLauncher.isVisible()) {
+                                console.log('[Focus] クイックランチャー表示中のため、付箋の前面化を抑止します');
+                                return;
+                            }
                             if (!(await getCurrentWindow().isFocused())) {
-                                console.log('[Focus] 150ms滞在を確認。ウィンドウをアクティブにします');
+                                console.log('[Focus] 600ms滞在を確認。ウィンドウをアクティブにします');
                                 await getCurrentWindow().setFocus();
                             }
                         } catch (e) {
                             console.error('Failed to focus window on hover', e);
                         }
-                    }, 150);
+                    }, 600);
                 }
             }}
             onPointerLeave={() => {
