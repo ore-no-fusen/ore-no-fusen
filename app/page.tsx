@@ -31,6 +31,7 @@ import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
+import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
 
 // Global AppState type definition
 type AppState = {
@@ -289,7 +290,7 @@ function OrchestratorContent() {
 
   const isWindowInProgress = useCallback((label: string): boolean => {
     const queue = (window as any).__WINDOW_QUEUE__;
-    return queue.inProgress.has(label);
+    return isDuplicateWindowCreationRequest(label, queue.inProgress);
   }, []);
   const markWindowInProgress = useCallback((label: string): void => {
     const queue = (window as any).__WINDOW_QUEUE__;
@@ -318,17 +319,18 @@ function OrchestratorContent() {
     await enqueueWindowCreation(async () => {
       try {
         if (isWindowInProgress(label)) return;
+        markWindowInProgress(label);
+
         const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         const existing = await WebviewWindow.getByLabel(label);
-        if (existing) { await existing.unminimize(); await existing.show(); await existing.setFocus(); return; }
+        if (existing) { unmarkWindowInProgress(label); await existing.unminimize(); await existing.show(); await existing.setFocus(); return; }
 
         const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
         const allWindows = await getAllWebviewWindows();
         for (const win of allWindows) {
-          try { if (win.label === label) { await win.show(); await win.unminimize(); await win.setFocus(); return; } } catch (e) { }
+          try { if (win.label === label) { unmarkWindowInProgress(label); await win.show(); await win.unminimize(); await win.setFocus(); return; } } catch (e) { }
         }
 
-        markWindowInProgress(label);
         try {
           const pathParam = encodeNotePathForUrl(path);
           // 色が分かっている場合は初期描画から正しい色にする（黄色フラッシュ防止）
@@ -358,30 +360,40 @@ function OrchestratorContent() {
             focus: true,
           });
 
-          win.once('tauri://created', async () => {
-            try {
+          await new Promise<void>((resolve) => {
+            const settleCreation = () => resolve();
+
+            void win.once('tauri://created', async () => {
+              try {
               // opacity: 0（完全透明＝見えない）や不正値は 1.0 にフォールバックする。
               // 旧データで 0 が入っていても付箋が消えないようにする二重防御。
               const safeOpacity = (typeof meta?.opacity === 'number' && meta.opacity > 0 && meta.opacity <= 1) ? meta.opacity : 1.0;
               await invoke('fusen_set_opacity', { windowLabel: label, opacity: safeOpacity });
-            } catch (e) {
+              } catch (e) {
               console.warn('[付箋表示] 透明度の適用に失敗しました:', e);
-            }
-            if (fromIphone) {
+              }
+              if (fromIphone) {
               // iPhone受信ウィンドウ: Alt+Tab窓として登録（フォーカスはすでに渡し済み）
               try {
                 await invoke('fusen_set_as_alt_tab_window', { label });
               } catch (e) {
                 console.warn('[付箋表示] Alt+Tab登録に失敗しました:', e);
               }
-            } else {
+              } else {
               try { await win.setFocus(); } catch (e) { /* 表示自体は成功しているので無視 */ }
               try {
                 await invoke('fusen_make_tool_window');
               } catch (e) {
                 console.warn('[付箋表示] ツールウィンドウ化に失敗しました:', e);
               }
-            }
+              }
+              settleCreation();
+            });
+
+            void win.once('tauri://error', (event) => {
+              console.error('[莉倡ｮ玖｡ｨ遉ｺ] 繧ｦ繧｣繝ｳ繝峨え菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆:', event);
+              settleCreation();
+            });
           });
           if (!fromIphone) {
             try { await win.setFocus(); } catch (e) { /* 作成直後は失敗することがある */ }
