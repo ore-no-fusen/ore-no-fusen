@@ -20,7 +20,7 @@ export type UseScreenCaptureOptions = {
 
 export type UseScreenCaptureReturn = {
     isCapturing: boolean;
-    captureScreen: () => Promise<void>;
+    captureScreen: () => Promise<boolean>;
 };
 
 export function useScreenCapture({
@@ -33,17 +33,23 @@ export function useScreenCapture({
     /**
      * スクリーンキャプチャを実行する
      */
-    const captureScreen = useCallback(async () => {
+    const captureScreen = useCallback(async (): Promise<boolean> => {
         if (isCapturingRef.current) {
             console.log('[useScreenCapture] Already capturing, skipping');
-            return;
+            return false;
         }
+
+        const currentWin = getCurrentWindow();
+        let windowRestored = false;
+        const restoreWindow = async () => {
+            await currentWin.show();
+            await currentWin.setFocus();
+            windowRestored = true;
+        };
 
         try {
             isCapturingRef.current = true;
             console.log('[useScreenCapture] Starting capture flow');
-
-            const currentWin = getCurrentWindow();
 
             // アクティブな要素からフォーカスを外す
             if (document.activeElement instanceof HTMLElement) {
@@ -57,20 +63,14 @@ export function useScreenCapture({
             // アニメーション完了を待つ
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            // キャプチャ実行（タイムアウト30秒）
+            // キャプチャ実行（タイムアウトはバックエンド側に集約）
             console.log('[useScreenCapture] Invoking backend capture, seq:', noteSeq);
-            const capturePromise = invoke<string>('fusen_capture_screen', { noteSeq });
-            const timeoutPromise = new Promise<string>((_, reject) =>
-                setTimeout(() => reject(new Error('Capture timed out (30s)')), 30000)
-            );
-
-            const imagePath = await Promise.race([capturePromise, timeoutPromise]);
+            const imagePath = await invoke<string>('fusen_capture_screen', { noteSeq });
             console.log('[useScreenCapture] Backend returned image path:', imagePath);
 
             // ウィンドウを表示
             console.log('[useScreenCapture] Showing window again...');
-            await currentWin.show();
-            await currentWin.setFocus();
+            await restoreWindow();
 
             // フォーカス復帰を待つ
             await new Promise(r => setTimeout(r, 400));
@@ -102,12 +102,23 @@ export function useScreenCapture({
 
             console.log('[useScreenCapture] Markdown to insert:', imageMarkdown);
             onInsertMarkdown(imageMarkdown);
+            return true;
         } catch (e) {
-            console.error('[useScreenCapture] Capture failed:', e);
-            // エラー時もウィンドウを表示
-            await getCurrentWindow().show();
-            throw e;
+            const message = e instanceof Error ? e.message : String(e);
+            if (message.includes('Capture timed out') || message.includes('no image selected')) {
+                console.warn('[useScreenCapture] Capture canceled or timed out:', e);
+            } else {
+                console.error('[useScreenCapture] Capture failed:', e);
+            }
+            return false;
         } finally {
+            if (!windowRestored) {
+                try {
+                    await restoreWindow();
+                } catch (restoreError) {
+                    console.error('[useScreenCapture] Failed to restore window:', restoreError);
+                }
+            }
             isCapturingRef.current = false;
             console.log('[useScreenCapture] Capture flow completed');
         }

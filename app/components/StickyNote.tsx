@@ -1852,9 +1852,14 @@ const StickyNote = memo(function StickyNote() {
                     onCapture={async () => {
                         if (isCapturingRef.current) return;
                         isCapturingRef.current = true;
-                        await captureScreen();
-                        isCapturingRef.current = false;
-                        await endEditing();
+                        try {
+                            const inserted = await captureScreen();
+                            if (inserted) {
+                                await endEditing();
+                            }
+                        } finally {
+                            isCapturingRef.current = false;
+                        }
                     }}
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}
