@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 
@@ -11,6 +12,7 @@ const LAUNCHER_ORDER_FILE: &str = "launcher_order.json";
 const CRYSTAL_FORMATS_FILE: &str = "crystal_formats.json";
 const QUICK_LAUNCHER_LABEL: &str = "quick_launcher";
 pub(crate) const LAUNCHER_SHELF_CHANGED_EVENT: &str = "fusen:launcher_shelf_changed";
+static TOGGLE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 const TABS: [&str; 4] = ["recipe", "shortcut", "qa", "term"];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -567,8 +569,23 @@ pub(crate) fn fusen_toggle_quick_launcher(app: AppHandle) -> Result<(), String> 
 }
 
 pub(crate) fn handle_toggle_event(app: AppHandle) {
-    if let Err(e) = toggle_quick_launcher(app) {
-        logger::log_warn(&format!("[Launcher] toggle failed: {}", e));
+    if TOGGLE_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        logger::log_debug("[Launcher] toggle ignored while another toggle is in progress");
+        return;
+    }
+
+    let app_for_toggle = app.clone();
+    if let Err(e) = app.run_on_main_thread(move || {
+        if let Err(e) = toggle_quick_launcher(app_for_toggle) {
+            logger::log_warn(&format!("[Launcher] toggle failed: {}", e));
+        }
+        TOGGLE_IN_PROGRESS.store(false, Ordering::Release);
+    }) {
+        TOGGLE_IN_PROGRESS.store(false, Ordering::Release);
+        logger::log_warn(&format!("[Launcher] toggle scheduling failed: {}", e));
     }
 }
 

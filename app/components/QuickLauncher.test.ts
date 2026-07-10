@@ -4,6 +4,7 @@ import {
     nextSelectionIndex,
     nextTab,
     normalizeLauncherTab,
+    shouldCloseLauncherAfterBlur,
     tabToReservedTag,
 } from './QuickLauncher';
 import { LAUNCHER_SHELF_CHANGED_EVENT, shouldReloadLauncherForEvent } from '../utils/launcherEvents';
@@ -47,5 +48,11 @@ describe('QuickLauncher logic', () => {
     it('reloads launcher items for shelf changed events only', () => {
         expect(shouldReloadLauncherForEvent(LAUNCHER_SHELF_CHANGED_EVENT)).toBe(true);
         expect(shouldReloadLauncherForEvent('fusen:reload_note')).toBe(false);
+    });
+
+    it('closes after blur only when unlocked and still unfocused', () => {
+        expect(shouldCloseLauncherAfterBlur(false, false)).toBe(true);
+        expect(shouldCloseLauncherAfterBlur(false, true)).toBe(false);
+        expect(shouldCloseLauncherAfterBlur(true, false)).toBe(false);
     });
 });

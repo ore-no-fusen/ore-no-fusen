@@ -82,6 +82,10 @@ export function nextTab(current: LauncherTab, direction: 'left' | 'right'): Laun
     return LAUNCHER_TABS[nextIndex].key;
 }
 
+export function shouldCloseLauncherAfterBlur(locked: boolean, isFocused: boolean): boolean {
+    return !locked && !isFocused;
+}
+
 
 function useDebouncedValue(value: string, delayMs: number): string {
     const [debounced, setDebounced] = useState(value);
@@ -209,13 +213,37 @@ export default function QuickLauncher() {
     }, [activeTab, debouncedQuery, reloadItems]);
 
     useEffect(() => {
-        const onWindowBlur = () => {
-            if (!lockedRef.current) {
-                closeLauncherWindow().catch(() => {});
+        let blurTimer: number | null = null;
+
+        const cancelPendingBlur = () => {
+            if (blurTimer !== null) {
+                window.clearTimeout(blurTimer);
+                blurTimer = null;
             }
         };
+
+        const onWindowBlur = () => {
+            cancelPendingBlur();
+            blurTimer = window.setTimeout(async () => {
+                blurTimer = null;
+                try {
+                    const isFocused = await getCurrentWindow().isFocused();
+                    if (shouldCloseLauncherAfterBlur(lockedRef.current, isFocused)) {
+                        await closeLauncherWindow();
+                    }
+                } catch (e) {
+                    console.error('[QuickLauncher] failed to verify window focus after blur:', e);
+                }
+            }, 120);
+        };
+
         window.addEventListener('blur', onWindowBlur);
-        return () => window.removeEventListener('blur', onWindowBlur);
+        window.addEventListener('focus', cancelPendingBlur);
+        return () => {
+            cancelPendingBlur();
+            window.removeEventListener('blur', onWindowBlur);
+            window.removeEventListener('focus', cancelPendingBlur);
+        };
     }, []);
 
     useEffect(() => {
