@@ -5,12 +5,14 @@ import { emit } from '@tauri-apps/api/event';
 import { createRecipeNote, getRecipeCandidates, RecipeCandidate } from '@/app/api/recipes';
 import { readNote } from '@/app/api/notes';
 import { buildRecipeDraft } from '@/app/utils/recipeFormat';
+import { splitTermNameAndBody } from '@/app/utils/termFormat';
 import { loadCrystalFormats, type CrystalTypeFormat } from '@/app/utils/crystalFormatConfig';
 import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 import { splitFrontMatter } from '@/app/utils/splitFrontMatter';
 
 type RecipeCreateModalProps = {
     sourcePath: string;
+    sourceTitle?: string | null;
     sourceBody: string;
     sourceTags: string[];
     onClose: () => void;
@@ -32,12 +34,15 @@ async function readNoteBody(path: string): Promise<string> {
 
 export default function RecipeCreateModal({
     sourcePath,
+    sourceTitle,
     sourceBody,
     sourceTags,
     onClose,
     onCreated,
 }: RecipeCreateModalProps) {
-    const [title, setTitle] = useState('');
+    const [title, setTitle] = useState(
+        splitTermNameAndBody(sourceBody).name || sourceTitle?.trim() || '',
+    );
     const [candidates, setCandidates] = useState<{ yellows: RecipeCandidate[]; pinks: RecipeCandidate[] }>({
         yellows: [],
         pinks: [],

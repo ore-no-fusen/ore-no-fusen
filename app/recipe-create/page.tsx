@@ -12,7 +12,7 @@ function RecipeCreateInner() {
     const params = useSearchParams();
     const rawPath = params.get('path') ?? '';
     const path = decodeNotePathFromUrl(rawPath);
-    const [source, setSource] = useState<{ body: string; tags: string[] } | null>(null);
+    const [source, setSource] = useState<{ title: string; body: string; tags: string[] } | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -25,11 +25,13 @@ function RecipeCreateInner() {
             .then((note) => {
                 if (cancelled) return;
                 const { front, body } = splitFrontMatter(note.body);
+                const titleMatch = front.match(/(?:^|\n)title:\s*(.+)/);
                 const tagMatch = front.match(/(?:^|\n)tags:\s*\[([^\]]*)\]/);
+                const title = titleMatch ? titleMatch[1].trim().replace(/^['"]|['"]$/g, '') : '';
                 const tags = tagMatch
                     ? tagMatch[1].split(',').map((t) => t.trim()).filter(Boolean)
                     : [];
-                setSource({ body, tags });
+                setSource({ title, body, tags });
             })
             .catch((e) => {
                 if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -53,6 +55,7 @@ function RecipeCreateInner() {
     return (
         <RecipeCreateModal
             sourcePath={path}
+            sourceTitle={source.title}
             sourceBody={source.body}
             sourceTags={source.tags}
             onClose={closeWindow}
