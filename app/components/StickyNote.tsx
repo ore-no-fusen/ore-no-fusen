@@ -1632,6 +1632,7 @@ const StickyNote = memo(function StickyNote() {
 
             isDeletingRef.current = true;
             await returnRecipe(selectedFile.path, returnedBody, changedCount > 0);
+            await playSaveSound();
             const win = getCurrentWindow();
             await win.hide();
             await win.destroy();
