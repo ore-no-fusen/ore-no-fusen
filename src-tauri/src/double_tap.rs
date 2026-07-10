@@ -13,6 +13,12 @@ pub(crate) enum DoubleTapTarget {
     Shift,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DoubleTapBinding {
+    pub target: DoubleTapTarget,
+    pub event: &'static str,
+}
+
 impl DoubleTapTarget {
     fn label(self) -> &'static str {
         match self {
@@ -163,7 +169,7 @@ mod windows_hook {
         WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
-    use super::{DoubleTapDetector, DoubleTapOutcome, DoubleTapTarget, TapEvent};
+    use super::{DoubleTapBinding, DoubleTapDetector, DoubleTapOutcome, DoubleTapTarget, TapEvent};
     use crate::{logger, perflog};
 
     const WINDOW_MS: u64 = 650;
@@ -171,15 +177,19 @@ mod windows_hook {
     const VK_C: u32 = 0x43;
     const VK_V: u32 = 0x56;
 
-    struct CallbackState {
-        target: DoubleTapTarget,
+    struct BindingState {
+        binding: DoubleTapBinding,
         detector: DoubleTapDetector,
-        sender: mpsc::Sender<()>,
         last_target_down_ms: Option<u64>,
     }
 
+    struct CallbackState {
+        bindings: Vec<BindingState>,
+        sender: mpsc::Sender<&'static str>,
+    }
+
     struct HookRuntime {
-        target: DoubleTapTarget,
+        bindings: Vec<DoubleTapBinding>,
         hook: isize,
         thread_id: u32,
         hook_thread: JoinHandle<()>,
@@ -189,13 +199,18 @@ mod windows_hook {
     static CALLBACK_STATE: OnceLock<Mutex<Option<CallbackState>>> = OnceLock::new();
     static RUNTIME: OnceLock<Mutex<Option<HookRuntime>>> = OnceLock::new();
 
-    pub(crate) fn start(app_handle: AppHandle, target: DoubleTapTarget) -> Result<(), String> {
+    pub(crate) fn start(app_handle: AppHandle, bindings: Vec<DoubleTapBinding>) -> Result<(), String> {
+        if bindings.is_empty() {
+            stop();
+            return Ok(());
+        }
+
         if RUNTIME
             .get_or_init(|| Mutex::new(None))
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
-            .map(|r| r.target == target)
+            .map(|r| r.bindings == bindings)
             .unwrap_or(false)
         {
             return Ok(());
@@ -203,9 +218,10 @@ mod windows_hook {
 
         stop();
 
-        let (fire_tx, fire_rx) = mpsc::channel::<()>();
+        let (fire_tx, fire_rx) = mpsc::channel::<&'static str>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(isize, u32), String>>();
         let callback_tx = fire_tx.clone();
+        let callback_bindings = bindings.clone();
         let hook_thread = thread::spawn(move || {
             let thread_id = unsafe { GetCurrentThreadId() };
             let mut queue_msg = MSG::default();
@@ -213,11 +229,17 @@ mod windows_hook {
                 let _ = PeekMessageW(&mut queue_msg, HWND(0), 0, 0, PM_NOREMOVE);
             }
 
+            let binding_states = callback_bindings
+                .into_iter()
+                .map(|binding| BindingState {
+                    binding,
+                    detector: DoubleTapDetector::new(WINDOW_MS),
+                    last_target_down_ms: None,
+                })
+                .collect();
             let state = CallbackState {
-                target,
-                detector: DoubleTapDetector::new(WINDOW_MS),
+                bindings: binding_states,
                 sender: callback_tx,
-                last_target_down_ms: None,
             };
             *CALLBACK_STATE
                 .get_or_init(|| Mutex::new(None))
@@ -255,18 +277,22 @@ mod windows_hook {
         });
 
         let emit_thread = thread::spawn(move || {
-            for _ in fire_rx {
-                logger::log_info(
-                    "[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit",
-                );
-                perflog::log_event(
-                    "ctrl-n-global",
-                    "GLOBAL_CTRL_N_PRESSED",
-                    None,
-                    None,
-                    serde_json::json!({}),
-                );
-                let _ = app_handle.emit("fusen:request_create_global", ());
+            for event in fire_rx {
+                if event == "fusen:request_create_global" {
+                    logger::log_info(
+                        "[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit",
+                    );
+                    perflog::log_event(
+                        "ctrl-n-global",
+                        "GLOBAL_CTRL_N_PRESSED",
+                        None,
+                        None,
+                        serde_json::json!({}),
+                    );
+                } else {
+                    logger::log_info(&format!("[Shortcut] double tap fired → {} emit", event));
+                }
+                let _ = app_handle.emit(event, ());
             }
         });
 
@@ -276,7 +302,7 @@ mod windows_hook {
                     .get_or_init(|| Mutex::new(None))
                     .lock()
                     .unwrap_or_else(|e| e.into_inner()) = Some(HookRuntime {
-                    target,
+                    bindings,
                     hook,
                     thread_id,
                     hook_thread,
@@ -324,42 +350,44 @@ mod windows_hook {
                 .unwrap_or_else(|e| e.into_inner())
                 .as_mut()
             {
-                if let Some(tap_event) = map_event(event.vkCode, message, state.target) {
-                    if tap_event == TapEvent::TargetDown {
-                        state.last_target_down_ms = Some(event.time as u64);
-                    }
-                    if should_ignore_noise(state, tap_event, event.vkCode, event.time as u64) {
-                        return unsafe { CallNextHookEx(HHOOK(0), code, wparam, lparam) };
-                    }
-                    match state.detector.on_event(tap_event, event.time as u64) {
-                        DoubleTapOutcome::Fired => {
-                            logger::log_info(&format!(
-                                "[Shortcut] {}*2 detected within {}ms",
-                                state.target.label(),
-                                WINDOW_MS,
-                            ));
-                            let _ = state.sender.send(());
+                for binding_state in &mut state.bindings {
+                    if let Some(tap_event) = map_event(event.vkCode, message, binding_state.binding.target) {
+                        if tap_event == TapEvent::TargetDown {
+                            binding_state.last_target_down_ms = Some(event.time as u64);
                         }
-                        DoubleTapOutcome::Failed(reason) => {
-                            logger::log_info(&format!(
-                                "[Shortcut] {}*2 ignored: reason={}{}",
-                                state.target.label(),
-                                reason.reason(),
-                                match reason {
-                                    super::DoubleTapFailure::Timeout {
-                                        elapsed_ms,
-                                        window_ms,
-                                    } => {
-                                        format!(
-                                            " elapsed_ms={} window_ms={}",
-                                            elapsed_ms, window_ms
-                                        )
+                        if should_ignore_noise(binding_state, tap_event, event.vkCode, event.time as u64) {
+                            continue;
+                        }
+                        match binding_state.detector.on_event(tap_event, event.time as u64) {
+                            DoubleTapOutcome::Fired => {
+                                logger::log_info(&format!(
+                                    "[Shortcut] {}*2 detected within {}ms",
+                                    binding_state.binding.target.label(),
+                                    WINDOW_MS,
+                                ));
+                                let _ = state.sender.send(binding_state.binding.event);
+                            }
+                            DoubleTapOutcome::Failed(reason) => {
+                                logger::log_info(&format!(
+                                    "[Shortcut] {}*2 ignored: reason={}{}",
+                                    binding_state.binding.target.label(),
+                                    reason.reason(),
+                                    match reason {
+                                        super::DoubleTapFailure::Timeout {
+                                            elapsed_ms,
+                                            window_ms,
+                                        } => {
+                                            format!(
+                                                " elapsed_ms={} window_ms={}",
+                                                elapsed_ms, window_ms
+                                            )
+                                        }
+                                        _ => String::new(),
                                     }
-                                    _ => String::new(),
-                                },
-                            ));
+                                ));
+                            }
+                            DoubleTapOutcome::Ignored => {}
                         }
-                        DoubleTapOutcome::Ignored => {}
                     }
                 }
             }
@@ -369,12 +397,12 @@ mod windows_hook {
     }
 
     fn should_ignore_noise(
-        state: &CallbackState,
+        state: &BindingState,
         tap_event: TapEvent,
         vk_code: u32,
         event_time_ms: u64,
     ) -> bool {
-        if state.target != DoubleTapTarget::Ctrl
+        if state.binding.target != DoubleTapTarget::Ctrl
             || tap_event != TapEvent::OtherKeyDown
             || !matches!(vk_code, VK_C | VK_V)
         {
@@ -439,7 +467,7 @@ mod windows_hook {
 pub(crate) use windows_hook::{start, stop};
 
 #[cfg(not(windows))]
-pub(crate) fn start(_app_handle: tauri::AppHandle, _target: DoubleTapTarget) -> Result<(), String> {
+pub(crate) fn start(_app_handle: tauri::AppHandle, _bindings: Vec<DoubleTapBinding>) -> Result<(), String> {
     Ok(())
 }
 

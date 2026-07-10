@@ -8,7 +8,7 @@ use tauri_plugin_global_shortcut::{
     Builder as ShortcutBuilder, Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
 
-use crate::{can_do_visibility_op, double_tap::{self, DoubleTapTarget}, fusen_arrange_by_tag, logger, perflog, storage, triple_right_click};
+use crate::{can_do_visibility_op, double_tap::{self, DoubleTapBinding, DoubleTapTarget}, fusen_arrange_by_tag, logger, perflog, storage, triple_right_click};
 
 static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
 
@@ -274,7 +274,7 @@ fn trigger_to_double_tap_target(trigger: &str) -> Option<DoubleTapTarget> {
 
 fn sync_double_tap_hook(app: &AppHandle, trigger: &str) -> Result<(), String> {
     if let Some(target) = trigger_to_double_tap_target(trigger) {
-        double_tap::start(app.clone(), target)
+        double_tap::start(app.clone(), vec![DoubleTapBinding { target, event: "fusen:request_create_global" }])
     } else {
         double_tap::stop();
         Ok(())
