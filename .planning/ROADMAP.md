@@ -263,6 +263,22 @@ Plans:
 - [ ] 19-04-replenish-global-shortcut-PLAN.md — Wave 4: Pool 補充オーケストレーション + グローバル Ctrl+N + settings.json カスタマイズ
 - [ ] 19-05-perf-verification-checkpoint-PLAN.md — Wave 5: 5 サンプル計測 + REQUIREMENTS 追記 + 手動検証チェックポイント
 
+### Phase 20: 起動時データ保護と最小レスキューモード
+
+**Goal:** 設定・保存先の読み込み異常を初回起動と誤認せず、書き込みを止め、直前の正常状態1世代から最低限の復旧ができる
+**Requirements**: SAFE-01, SAFE-02
+**Depends on:** Phase 19
+**Success Criteria** (what must be TRUE):
+  1. 設定または保存先が読めない起動では、初期付箋を作らず、自動保存・削除・設定上書きを行わない
+  2. 正常起動時の設定・保存先識別情報・データ件数を、通常設定とは独立した復旧情報として1世代だけ保持する
+  3. 復旧情報の保存先が存在し同一データと確認できる場合だけ、自動的に前回の正常状態へ戻る
+  4. 自動判定できない場合は通常画面ではなく最小レスキュー画面を開き、保存先の読み取り診断後に再接続できる
+  5. 復旧操作は既存データを上書き・削除せず、失敗しても復旧前の状態を保持する
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 20 to break down)
+
 ---
 
 ## Progress
@@ -288,3 +304,4 @@ Plans:
 | 17. コンポーネント分割 | v5.0 | Complete | 2026-05-02 |
 | 18. エディタ連携 + 再起動復元 | v5.0 | Complete | 2026-05-02 |
 | 19. 起動性能300ms達成（Pool） | v6.0 | Complete | 2026-05-02 |
+| 20. 起動時データ保護と最小レスキューモード | safety | Pending | — |

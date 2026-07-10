@@ -48,6 +48,11 @@
 - [ ] **PERF-07**: グローバル Ctrl+N で他アプリ focus 時も付箋作成可能
 - [ ] **PERF-08**: settings.json でショートカットをカスタマイズ可能
 
+### 起動時データ保護・復旧 (SAFE) — Phase 20
+
+- [ ] **SAFE-01**: 設定または保存先の読み込みに失敗した状態を初回起動として扱わず、初期付箋の作成・自動保存・設定上書きを停止する
+- [ ] **SAFE-02**: 最後に正常確認できた設定と保存先情報を1世代だけ独立保持し、同一データと確認できる場合は自動復旧、確認できない場合は最小レスキュー画面から復旧できる
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -81,12 +86,14 @@
 | PERF-06 | Phase 19 | Pending |
 | PERF-07 | Phase 19 | Pending |
 | PERF-08 | Phase 19 | Pending |
+| SAFE-01 | Phase 20 | Pending |
+| SAFE-02 | Phase 20 | Pending |
 
 **Coverage:**
-- v5.0 requirements: 20 total
-- Mapped to phases: 20
+- requirements: 22 total
+- Mapped to phases: 22
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-10*
-*Last updated: 2026-04-10 after initial definition*
+*Last updated: 2026-07-11 after startup data-loss prevention requirements were added*
