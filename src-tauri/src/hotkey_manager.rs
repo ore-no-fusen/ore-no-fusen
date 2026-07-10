@@ -8,7 +8,7 @@ use tauri_plugin_global_shortcut::{
     Builder as ShortcutBuilder, Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
 
-use crate::{can_do_visibility_op, double_tap::{self, DoubleTapTarget}, fusen_arrange_by_tag, logger, perflog, storage};
+use crate::{can_do_visibility_op, double_tap::{self, DoubleTapTarget}, fusen_arrange_by_tag, logger, perflog, storage, triple_right_click};
 
 static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
 
@@ -56,6 +56,7 @@ pub(crate) struct HotKeyState {
 struct HotKeyBindings {
     shortcuts: HashMap<HotKeyAction, Shortcut>,
     new_note_trigger: String,
+    quick_launcher_triple_right_click: bool,
 }
 
 #[derive(Serialize)]
@@ -142,6 +143,7 @@ fn load_bindings() -> HotKeyBindings {
     HotKeyBindings {
         shortcuts,
         new_note_trigger: normalize_trigger(settings.new_note_trigger.as_deref()),
+        quick_launcher_triple_right_click: settings.quick_launcher_triple_right_click.unwrap_or(false),
     }
 }
 
@@ -229,6 +231,9 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                     } else if let Err(e) = sync_double_tap_hook(app.handle(), &bindings.new_note_trigger) {
                         logger::log_warn(&format!("[Shortcut] double tap hook start failed: {}", e));
                     }
+                    if let Err(e) = sync_quick_launcher_triple_right_click(app.handle(), bindings.quick_launcher_triple_right_click) {
+                        logger::log_warn(&format!("[Shortcut] triple right click hook start failed: {}", e));
+                    }
                 },
                 Err(e) => {
                     logger::log_warn(&format!("Failed to initialize global shortcut plugin: {}", e));
@@ -272,6 +277,18 @@ fn sync_double_tap_hook(app: &AppHandle, trigger: &str) -> Result<(), String> {
         double_tap::start(app.clone(), target)
     } else {
         double_tap::stop();
+        Ok(())
+    }
+}
+
+pub(crate) fn sync_quick_launcher_triple_right_click<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    enabled: bool,
+) -> Result<(), String> {
+    if enabled {
+        triple_right_click::start(app.clone())
+    } else {
+        triple_right_click::stop();
         Ok(())
     }
 }
@@ -499,6 +516,7 @@ fn save_bindings(bindings: &HotKeyBindings) -> Result<(), String> {
     settings.shortcut_toggle_visibility = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::ToggleVisibility]));
     settings.shortcut_arrange = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::Arrange]));
     settings.shortcut_quick_launcher = Some(shortcut_to_string(&bindings.shortcuts[&HotKeyAction::QuickLauncher]));
+    settings.quick_launcher_triple_right_click = Some(bindings.quick_launcher_triple_right_click);
     storage::save_settings(&settings)
 }
 

@@ -25,6 +25,7 @@ export type AppSettings = {
     shortcut_toggle_visibility?: string
     shortcut_arrange?: string
     shortcut_quick_launcher?: string
+    quick_launcher_triple_right_click?: boolean
     /**
      * この PC を一意に識別する UUID。Rust 側が自動生成し settings.json に保存する。
      * ユーザーには見せない内部フィールド。フロントは設定 UI には出さず、保存時に Rust に往復させて消えないようにする。
@@ -45,6 +46,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     shortcut_toggle_visibility: "ctrl+shift+h",
     shortcut_arrange: "ctrl+shift+l",
     shortcut_quick_launcher: "ctrl+p",
+    quick_launcher_triple_right_click: false,
 }
 
 
@@ -98,6 +100,7 @@ export function useSettings() {
                         shortcut_toggle_visibility: parsed.shortcut_toggle_visibility ?? DEFAULT_SETTINGS.shortcut_toggle_visibility,
                         shortcut_arrange: parsed.shortcut_arrange ?? DEFAULT_SETTINGS.shortcut_arrange,
                         shortcut_quick_launcher: parsed.shortcut_quick_launcher ?? DEFAULT_SETTINGS.shortcut_quick_launcher,
+                        quick_launcher_triple_right_click: parsed.quick_launcher_triple_right_click ?? DEFAULT_SETTINGS.quick_launcher_triple_right_click,
                     }
                     setSettings(migrated)
                 }
@@ -119,6 +122,7 @@ export function useSettings() {
                     shortcut_toggle_visibility: loaded.shortcut_toggle_visibility,
                     shortcut_arrange: loaded.shortcut_arrange,
                     shortcut_quick_launcher: loaded.shortcut_quick_launcher,
+                    quick_launcher_triple_right_click: loaded.quick_launcher_triple_right_click,
                     pc_id: loaded.pc_id,
                 }
                 setSettings({ ...DEFAULT_SETTINGS, ...normalized })

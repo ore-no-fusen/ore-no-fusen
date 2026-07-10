@@ -30,6 +30,7 @@ mod sound; // [NEW] サウンド機能
 mod state;
 mod storage;
 mod tray;
+mod triple_right_click;
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs) // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）
 use state::{AppState, CreateRecipeNoteRequest, Note, NoteMeta, ProConfig, RecipeCandidates};
 

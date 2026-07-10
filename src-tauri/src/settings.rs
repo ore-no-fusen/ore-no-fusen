@@ -42,6 +42,12 @@ pub fn save_settings<R: Runtime>(
 
     // 1. ファイルに保存
     storage::save_settings(&settings)?;
+    if let Err(e) = crate::hotkey_manager::sync_quick_launcher_triple_right_click(
+        &app,
+        settings.quick_launcher_triple_right_click.unwrap_or(false),
+    ) {
+        crate::logger::log_warn(&format!("[Shortcut] triple right click hook sync failed: {}", e));
+    }
 
     // 2. メモリ上の AppState を同期
     {

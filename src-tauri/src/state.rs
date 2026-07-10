@@ -128,6 +128,8 @@ pub struct Settings {
     /// クイックランチャーショートカット。None の場合は "ctrl+p" をデフォルトとして使用。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_quick_launcher: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_launcher_triple_right_click: Option<bool>,
     /// この PC を一意に識別する UUID。Drive 上の PC 登録と紐づく。
     /// 旧バージョンでは別ファイル %LOCALAPPDATA%\ore-no-fusen\pc_device.json に保存していたが、
     /// アンインストール時に失われると Drive 上にゴミの登録が残るため、settings.json に移管した。
@@ -163,6 +165,7 @@ impl Default for Settings {
             shortcut_toggle_visibility: None,
             shortcut_arrange: None,
             shortcut_quick_launcher: None,
+            quick_launcher_triple_right_click: None,
             pc_id: None,
         }
     }
