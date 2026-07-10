@@ -738,7 +738,7 @@ function HotkeySection({ settings, saveSettings }: {
                 <div className="flex items-center justify-between rounded-lg border p-4">
                     <div>
                         <Label className="text-base font-bold text-gray-900">
-                            {isEn ? 'Open with triple right-click too' : '右クリック3連打でも開く'}
+                            {isEn ? 'Open Quick Launcher with triple right-click' : '右クリック3連打でクイックランチャーを開く'}
                         </Label>
                         <p className="text-sm text-muted-foreground mt-1">
                             {isEn
