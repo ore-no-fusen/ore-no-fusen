@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { TranslationKey } from '@/lib/i18n';
+import { formatAlarmDateTime } from '@/app/utils/alarmDateTime';
 
 type AlarmDialogProps = {
     isOpen: boolean;
@@ -182,20 +183,50 @@ export default function AlarmDialog({
                 {/* 絶対タブ */}
                 {activeTab === 'absolute' && (
                     <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <input
-                            type="datetime-local"
-                            value={datetimeValue}
-                            onChange={(e) => setDatetimeValue(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '8px',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '6px',
-                                fontSize: '0.875rem',
-                                color: '#374151',
-                                boxSizing: 'border-box',
-                            }}
-                        />
+                        <div style={{ position: 'relative' }}>
+                            <div
+                                aria-hidden="true"
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 36px 8px 12px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '6px',
+                                    fontSize: '0.875rem',
+                                    color: '#374151',
+                                    boxSizing: 'border-box',
+                                    backgroundColor: '#fff',
+                                }}
+                            >
+                                {formatAlarmDateTime(datetimeValue)}
+                            </div>
+                            <span
+                                aria-hidden="true"
+                                style={{
+                                    position: 'absolute',
+                                    right: '11px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: '#374151',
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                ▦
+                            </span>
+                            <input
+                                type="datetime-local"
+                                aria-label={formatAlarmDateTime(datetimeValue)}
+                                value={datetimeValue}
+                                onChange={(e) => setDatetimeValue(e.target.value)}
+                                style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    opacity: 0,
+                                    cursor: 'pointer',
+                                }}
+                            />
+                        </div>
                         <button
                             onClick={handleAbsoluteSet}
                             disabled={!datetimeValue}
