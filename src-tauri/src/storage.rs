@@ -625,11 +625,29 @@ fn normalize_explorer_arg(path: &str) -> String {
     }
 }
 
+/// Markdown の `[label](path)` から抽出された Windows パスには、構文を閉じる
+/// `)` が末尾に混入することがある。元のパスが存在する場合はそのまま優先し、
+/// 存在しない場合だけ `)` を1つ除いた実在パスへ補正する。
+fn resolve_open_file_path(path: &str) -> String {
+    if std::path::Path::new(path).exists() {
+        return path.to_string();
+    }
+
+    if let Some(without_markdown_closing) = path.strip_suffix(')') {
+        if std::path::Path::new(without_markdown_closing).exists() {
+            return without_markdown_closing.to_string();
+        }
+    }
+
+    path.to_string()
+}
+
 pub fn open_file(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        let arg_path = normalize_explorer_arg(path);
+        let resolved_path = resolve_open_file_path(path);
+        let arg_path = normalize_explorer_arg(&resolved_path);
 
         // Open file or folder with default application (explorer handles both)
         Command::new("explorer")
@@ -1190,6 +1208,31 @@ tags: ["important"]
         assert_eq!(
             normalize_explorer_arg("C:\\Users\\uck\\AppData\\Local\\ore-no-fusen\\some folder\\"),
             "C:\\Users\\uck\\AppData\\Local\\ore-no-fusen\\some folder"
+        );
+    }
+
+    #[test]
+    fn resolve_open_file_path_removes_markdown_closing_parenthesis_when_needed() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("linked-note.md");
+        std::fs::write(&file_path, "test").unwrap();
+
+        let markdown_extracted = format!("{})", file_path.to_string_lossy());
+        assert_eq!(
+            resolve_open_file_path(&markdown_extracted),
+            file_path.to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn resolve_open_file_path_preserves_real_parenthesis_in_filename() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("linked-note).md)");
+        std::fs::write(&file_path, "test").unwrap();
+
+        assert_eq!(
+            resolve_open_file_path(&file_path.to_string_lossy()),
+            file_path.to_string_lossy()
         );
     }
 }
