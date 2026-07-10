@@ -632,6 +632,21 @@ function HotkeySection({ settings, saveSettings }: {
         }
     }
 
+    const updateQuickLauncherTripleRightClick = async (enabled: boolean) => {
+        setIsSaving(true)
+        try {
+            await saveSettings({
+                ...settings,
+                quick_launcher_triple_right_click: enabled,
+            })
+            setMessage("保存しました。")
+        } catch (e) {
+            setMessage(`保存に失敗しました: ${String(e)}`)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
     if (!bindings) {
         return <div className="text-sm text-muted-foreground">ホットキー設定を読み込み中...</div>
     }
@@ -720,6 +735,23 @@ function HotkeySection({ settings, saveSettings }: {
                     shortcut={bindings.quick_launcher}
                     onChange={() => beginCapture('quick_launcher')}
                 />
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div>
+                        <Label className="text-base font-bold text-gray-900">
+                            {isEn ? 'Open with triple right-click too' : '右クリック3連打でも開く'}
+                        </Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            {isEn
+                                ? 'Works over other apps. Clicks are not intercepted.'
+                                : '他アプリの上でも効きます。クリックは奪いません'}
+                        </p>
+                    </div>
+                    <Switch
+                        checked={settings.quick_launcher_triple_right_click ?? false}
+                        disabled={isSaving}
+                        onCheckedChange={updateQuickLauncherTripleRightClick}
+                    />
+                </div>
 
                 {captureAction && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
