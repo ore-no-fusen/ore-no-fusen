@@ -1422,16 +1422,21 @@ function OrchestratorContent() {
               } else {
                 setLoadingStatus("ようこそノートを作成中...");
                 try {
+                  const welcomeNoteColor = '#f7e9b0';
                   const newNote = await invoke<{ meta: { path: string }; frontmatter: string }>(
                     'fusen_create_note', { folderPath: savedFolder, context: 'はじめての付箋（消してOK）' }
+                  );
+                  const welcomeFrontmatter = (newNote.frontmatter || '').replace(
+                    /^backgroundColor:.*$/m,
+                    `backgroundColor: ${welcomeNoteColor}`,
                   );
                   await invoke('fusen_save_note', {
                     path: newNote.meta.path,
                     body: '👋 ようこそ。これが最初の付箋です。\n\n- [ ] このチェックを押してみる\n- [ ] 右上の「＋」で新しく1枚作る\n- [ ] このメモを右クリック→色を変えてみる\n- [ ] 左下の「？」で詳しい使い方を見る\n\n消したくなったら、付箋の上にマウスをのせて右下の🗑️',
-                    frontmatterRaw: newNote.frontmatter || '',
+                    frontmatterRaw: welcomeFrontmatter,
                     allowRename: false,
                   });
-                  await openNoteWindow(newNote.meta.path, {});
+                  await openNoteWindow(newNote.meta.path, { background_color: welcomeNoteColor });
                 } catch (e) {
                   log(`[起動処理] ウェルカムノート作成失敗: ${e}`);
                   await handleCreateNote(savedFolder, 'ようこそ'); // fallback
