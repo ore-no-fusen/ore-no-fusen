@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     "俺の付箋",
   ],
   alternates: {
-    canonical: `${SITE_URL}/landing`,
+    canonical: SITE_URL,
   },
   openGraph: {
     type: "website",
