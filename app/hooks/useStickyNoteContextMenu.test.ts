@@ -4,7 +4,7 @@
  * 対象要件: SEND-02（右クリック「iPhoneに送る」から fusen_send_to_iphone を invoke する）
  */
 import { describe, it, expect, vi } from 'vitest';
-import { contextMenuTagItemId, filterAssignableTags, getShortcutShelfMenuState } from './useStickyNoteContextMenu';
+import { contextMenuTagItemId, filterAssignableTags, getOpenFolderRequest, getShortcutShelfMenuState } from './useStickyNoteContextMenu';
 
 // Wave 1 で有効化される — Plan 03 完了まで TODO
 // invoke のモック
@@ -69,5 +69,25 @@ describe('getShortcutShelfMenuState', () => {
       isRegistered: true,
       label: '📌 お気に入りを解除',
     });
+  });
+});
+
+describe('getOpenFolderRequest', () => {
+  it('selects the saved note in its containing folder', () => {
+    expect(getOpenFolderRequest('C:\\notes\\note.md', 'C:\\notes')).toEqual({
+      command: 'fusen_open_containing_folder',
+      path: 'C:\\notes\\note.md',
+    });
+  });
+
+  it('opens the base folder for an unsaved empty note', () => {
+    expect(getOpenFolderRequest(undefined, 'C:\\notes')).toEqual({
+      command: 'fusen_open_file',
+      path: 'C:\\notes',
+    });
+  });
+
+  it('returns no request when neither note nor base folder exists', () => {
+    expect(getOpenFolderRequest(undefined, null)).toBeNull();
   });
 });

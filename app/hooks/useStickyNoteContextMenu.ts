@@ -51,6 +51,16 @@ export function getShortcutShelfMenuState(tags: string[]): ShortcutShelfMenuStat
     };
 }
 
+export function getOpenFolderRequest(selectedPath: string | null | undefined, basePath: string | null | undefined) {
+    if (selectedPath) {
+        return { command: 'fusen_open_containing_folder', path: selectedPath } as const;
+    }
+    if (basePath) {
+        return { command: 'fusen_open_file', path: basePath } as const;
+    }
+    return null;
+}
+
 type UseStickyNoteContextMenuProps = {
     selectedFile: NoteMeta | null;
     isPool: boolean;
@@ -154,14 +164,18 @@ export function useStickyNoteContextMenu({
 
     // フォルダを開く
     const handleOpenFolder = useCallback(async () => {
-        if (!selectedFile) return;
+        let targetPath = selectedFile?.path ?? '';
         try {
-            await invoke('fusen_open_containing_folder', { path: selectedFile.path });
+            const basePath = selectedFile ? null : await resolveCreateFolderPath();
+            const request = getOpenFolderRequest(selectedFile?.path, basePath);
+            if (!request) throw new Error('保存先フォルダが設定されていません');
+            targetPath = request.path;
+            await invoke(request.command, { path: request.path });
         } catch (e) {
             console.error('Failed to open folder:', e);
-            alert(`フォルダを開けませんでした。\n${selectedFile.path}`);
+            alert(`フォルダを開けませんでした。\n${targetPath || String(e)}`);
         }
-    }, [selectedFile]);
+    }, [selectedFile, resolveCreateFolderPath]);
 
     // 背景色変更
     const handleColorChange = useCallback((newColor: string) => {

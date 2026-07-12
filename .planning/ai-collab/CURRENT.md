@@ -180,3 +180,10 @@
 - Success remains visible until explicitly closed and shows the verified destination, copied file count, execution time, and persisted next-prompt time.
 - Failure explicitly states that the existing backup is retained and remains visible until closed.
 - Data Management > automatic backup > Details now shows the previous execution time, next confirmation schedule, and one-generation retention.
+
+## 2026-07-12 open folder from an empty note
+
+- Context-menu `フォルダを開く` now preserves the saved-note behavior (select the Markdown file in Explorer).
+- For an unsaved empty/pool note, it reuses the existing safe create-folder resolver and opens the current base folder instead of doing nothing.
+- Missing base-folder resolution now produces an explicit error rather than a silent no-op.
+- Added request-selection regression tests for saved, unsaved, and missing-path cases.
