@@ -24,6 +24,7 @@ import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
+import BackupResultDialog from './components/BackupResultDialog';
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
@@ -49,6 +50,11 @@ type HotkeyRegisterFailure = {
 type HotkeyRegisterFailuresResponse = {
   failures: HotkeyRegisterFailure[];
 };
+
+type BackupRecord = { path: string; created_at: string; file_count: number };
+type MonthlyBackupResult =
+  | { status: 'success'; record: BackupRecord; nextPromptAt?: string }
+  | { status: 'error'; message: string };
 
 // [NEW] 最初からウィンドウを表示するためのフック
 
@@ -197,6 +203,7 @@ function OrchestratorContent() {
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
   const [hotkeyRegisterFailureMessage, setHotkeyRegisterFailureMessage] = useState<string | null>(null);
   const [showMonthlyBackupPrompt, setShowMonthlyBackupPrompt] = useState(false);
+  const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
   const monthlyBackupCheckedRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
@@ -1500,7 +1507,7 @@ function OrchestratorContent() {
 
   }, [handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt;
+  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !monthlyBackupResult;
 
   useEffect(() => {
     if (!isDashboard || monthlyBackupCheckedRef.current) return;
@@ -1577,6 +1584,23 @@ function OrchestratorContent() {
   // [FIX] アップデートダイアログは最優先で表示（isDashboard より前に判定）
   // isDashboard=true だとメインウィンドウが非表示になるため、先にreturnしないと届かない
   if (isHidingAfterUpdate) return null;
+  if (monthlyBackupResult) {
+    return (
+      <BackupResultDialog
+        status={monthlyBackupResult.status}
+        path={monthlyBackupResult.status === 'success' ? monthlyBackupResult.record.path : undefined}
+        fileCount={monthlyBackupResult.status === 'success' ? monthlyBackupResult.record.file_count : undefined}
+        completedAt={monthlyBackupResult.status === 'success' ? monthlyBackupResult.record.created_at : undefined}
+        nextPromptAt={monthlyBackupResult.status === 'success' ? monthlyBackupResult.nextPromptAt : undefined}
+        errorMessage={monthlyBackupResult.status === 'error' ? monthlyBackupResult.message : undefined}
+        onClose={async () => {
+          setMonthlyBackupResult(null);
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          await getCurrentWindow().hide();
+        }}
+      />
+    );
+  }
   if (showMonthlyBackupPrompt) {
     return (
       <ConfirmDialog
@@ -1587,14 +1611,13 @@ function OrchestratorContent() {
         cancelText="今回はしない"
         onConfirm={async () => {
           try {
-            await invoke('fusen_run_monthly_backup');
-            alert('月次安全バックアップが完了しました。');
+            const record = await invoke<BackupRecord>('fusen_run_monthly_backup');
+            const latestSettings = await invoke<{ monthly_backup_next_prompt?: string }>('get_settings');
+            setMonthlyBackupResult({ status: 'success', record, nextPromptAt: latestSettings.monthly_backup_next_prompt });
           } catch (e) {
-            alert('月次安全バックアップに失敗しました。既存のバックアップは保持されています。\n\n' + String(e));
+            setMonthlyBackupResult({ status: 'error', message: String(e) });
           } finally {
             setShowMonthlyBackupPrompt(false);
-            const { getCurrentWindow } = await import('@tauri-apps/api/window');
-            await getCurrentWindow().hide();
           }
         }}
         onCancel={async () => {

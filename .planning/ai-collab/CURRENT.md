@@ -173,3 +173,10 @@
 - iPhone items 2-4 are now independent collapsed detail cards (initial setup, connected devices, connection diagnostics); their summary rows remain visible while account data, QR codes, device actions, and diagnostics stay hidden until opened.
 - Removed the remaining small content icons from Data import/manual-backup headings. Detail controls now keep the single label `詳細`; open state is represented consistently by a rotating chevron instead of changing the wording to `詳細を閉じる` or `詳細を表示中`.
 - Follow-up TypeScript verification passed.
+
+## 2026-07-12 monthly backup result screen
+
+- Replaced the browser `alert()` after periodic backup with an app-native success/error result screen.
+- Success remains visible until explicitly closed and shows the verified destination, copied file count, execution time, and persisted next-prompt time.
+- Failure explicitly states that the existing backup is retained and remains visible until closed.
+- Data Management > automatic backup > Details now shows the previous execution time, next confirmation schedule, and one-generation retention.
