@@ -331,7 +331,42 @@ pub(crate) fn emit_launcher_shelf_changed(app: &AppHandle) {
     }
 }
 
-fn remove_from_shelf_at_base(base_path: &Path, path: &Path) -> Result<Option<PathBuf>, String> {
+pub(crate) fn handle_note_trashed(app: &AppHandle, old_path: &str, new_path: &str) -> Result<(), String> {
+    let mut order = load_launcher_order()?;
+    remove_path_from_orders(&mut order, old_path);
+    remove_path_from_orders(&mut order, new_path);
+    save_launcher_order(&order)?;
+    emit_launcher_shelf_changed(app);
+    Ok(())
+}
+
+fn move_crystal_to_local_trash(path: &Path, content: &str) -> Result<PathBuf, String> {
+    let parent = path.parent().ok_or_else(|| "invalid note parent".to_string())?;
+    let trash_dir = storage::ensure_trash_dir(parent)?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "invalid note path".to_string())?;
+    let new_path = collision_free_root_path(&trash_dir, file_name);
+    let new_path_str = new_path.to_string_lossy().to_string();
+
+    storage::copy_associated_assets(path, &trash_dir)?;
+    storage::write_note(&new_path_str, content)?;
+    if let Err(e) = storage::delete_associated_assets(path) {
+        logger::log_warn(&format!("[Launcher] crystal asset cleanup skipped: {}", e));
+    }
+    fs::remove_file(path).map_err(|e| {
+        let _ = fs::remove_file(&new_path);
+        e.to_string()
+    })?;
+
+    if let Err(e) = storage::append_trash_operation(path, &new_path, "quick_launcher") {
+        logger::log_warn(&format!("[Launcher] trash operation log failed: {}", e));
+    }
+
+    Ok(new_path)
+}
+
+fn remove_from_shelf_at_base(_base_path: &Path, path: &Path) -> Result<Option<PathBuf>, String> {
     let path_str = path.to_string_lossy().to_string();
     let note = storage::read_note(&path_str)?;
     let is_recipe = note_has_tag(&note.meta.tags, "recipe");
@@ -340,45 +375,15 @@ fn remove_from_shelf_at_base(base_path: &Path, path: &Path) -> Result<Option<Pat
     let is_shortcut = note_has_tag(&note.meta.tags, "shortcut");
 
     if is_recipe {
-        let updated_content = remove_tag_from_content(&note.body, "recipe");
-        let file_name = path
-            .file_name()
-            .ok_or_else(|| "invalid note path".to_string())?;
-        let new_path = collision_free_root_path(base_path, file_name);
-        let new_path_str = new_path.to_string_lossy().to_string();
-        storage::write_note(&new_path_str, &updated_content)?;
-        if new_path != path {
-            fs::remove_file(path).map_err(|e| e.to_string())?;
-        }
-        return Ok(Some(new_path));
+        return move_crystal_to_local_trash(path, &note.body).map(Some);
     }
 
     if is_qa {
-        let updated_content = remove_tag_from_content(&note.body, "qa");
-        let file_name = path
-            .file_name()
-            .ok_or_else(|| "invalid note path".to_string())?;
-        let new_path = collision_free_root_path(base_path, file_name);
-        let new_path_str = new_path.to_string_lossy().to_string();
-        storage::write_note(&new_path_str, &updated_content)?;
-        if new_path != path {
-            fs::remove_file(path).map_err(|e| e.to_string())?;
-        }
-        return Ok(Some(new_path));
+        return move_crystal_to_local_trash(path, &note.body).map(Some);
     }
 
     if is_term {
-        let updated_content = remove_tag_from_content(&note.body, "term");
-        let file_name = path
-            .file_name()
-            .ok_or_else(|| "invalid note path".to_string())?;
-        let new_path = collision_free_root_path(base_path, file_name);
-        let new_path_str = new_path.to_string_lossy().to_string();
-        storage::write_note(&new_path_str, &updated_content)?;
-        if new_path != path {
-            fs::remove_file(path).map_err(|e| e.to_string())?;
-        }
-        return Ok(Some(new_path));
+        return move_crystal_to_local_trash(path, &note.body).map(Some);
     }
 
     if is_shortcut {
@@ -526,7 +531,27 @@ pub(crate) fn fusen_remove_from_shelf(
 ) -> Result<(), String> {
     let base_path = base_path_from_state(&state)?;
     let path_buf = PathBuf::from(&path);
+
+    let note = storage::read_note(&path)?;
+    let is_crystal = note_has_tag(&note.meta.tags, "recipe")
+        || note_has_tag(&note.meta.tags, "qa")
+        || note_has_tag(&note.meta.tags, "term");
+    if is_crystal {
+        let label = crate::get_window_label(&path);
+        if app.get_webview_window(&label).is_some() {
+            app
+                .emit_to(
+                    &label,
+                    "fusen:move_to_crystal_trash",
+                    serde_json::json!({ "path": path }),
+                )
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
+
     let moved_to = remove_from_shelf_at_base(Path::new(&base_path), &path_buf)?;
+    let crystal_was_moved = moved_to.is_some();
 
     let mut order = load_launcher_order()?;
     remove_path_from_orders(&mut order, &path);
@@ -535,6 +560,19 @@ pub(crate) fn fusen_remove_from_shelf(
     }
     save_launcher_order(&order)?;
     emit_launcher_shelf_changed(&app);
+
+    if crystal_was_moved {
+        let label = crate::get_window_label(&path);
+        let app_for_close = app.clone();
+        if let Err(e) = app.run_on_main_thread(move || {
+            if let Some(window) = app_for_close.get_webview_window(&label) {
+                let _ = window.hide();
+                let _ = window.destroy();
+            }
+        }) {
+            logger::log_warn(&format!("[Launcher] failed to schedule crystal window close: {}", e));
+        }
+    }
     Ok(())
 }
 
@@ -593,6 +631,7 @@ pub(crate) fn handle_toggle_event(app: AppHandle) {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
 
     fn item(path: &str, title: &str, tags: &[&str]) -> QuickOpenItem {
         QuickOpenItem {
@@ -775,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_from_shelf_moves_recipe_to_root_and_removes_recipe_tag() {
+    fn remove_from_shelf_moves_recipe_to_its_trash_and_keeps_recipe_tag() {
         let dir = tempdir().unwrap();
         let recipes = dir.path().join("Recipes");
         fs::create_dir(&recipes).unwrap();
@@ -784,15 +823,14 @@ mod tests {
 
         let moved = remove_from_shelf_at_base(dir.path(), &source).unwrap().unwrap();
 
-        assert_eq!(moved, dir.path().join("recipe-note.md"));
+        assert_eq!(moved, recipes.join("Trash").join("recipe-note.md"));
         assert!(!source.exists());
         let content = fs::read_to_string(moved).unwrap();
-        assert!(!content.contains("recipe"));
-        assert!(content.contains("tags: [work]"));
+        assert!(content.contains("tags: [work, recipe]"));
     }
 
     #[test]
-    fn remove_from_shelf_moves_qa_to_root_and_removes_qa_tag() {
+    fn remove_from_shelf_moves_qa_to_its_trash_and_keeps_qa_tag() {
         let dir = tempdir().unwrap();
         let qa_dir = dir.path().join(storage::QA_DIR_NAME);
         fs::create_dir(&qa_dir).unwrap();
@@ -801,15 +839,14 @@ mod tests {
 
         let moved = remove_from_shelf_at_base(dir.path(), &source).unwrap().unwrap();
 
-        assert_eq!(moved, dir.path().join("qa-note.md"));
+        assert_eq!(moved, qa_dir.join("Trash").join("qa-note.md"));
         assert!(!source.exists());
         let content = fs::read_to_string(moved).unwrap();
-        assert!(!content.contains("qa"));
-        assert!(content.contains("tags: [work]"));
+        assert!(content.contains("tags: [work, qa]"));
     }
 
     #[test]
-    fn remove_from_shelf_moves_term_to_root_and_removes_term_tag() {
+    fn remove_from_shelf_moves_term_to_its_trash_and_keeps_term_tag() {
         let dir = tempdir().unwrap();
         let terms_dir = dir.path().join(storage::TERMS_DIR_NAME);
         fs::create_dir(&terms_dir).unwrap();
@@ -818,11 +855,10 @@ mod tests {
 
         let moved = remove_from_shelf_at_base(dir.path(), &source).unwrap().unwrap();
 
-        assert_eq!(moved, dir.path().join("term-note.md"));
+        assert_eq!(moved, terms_dir.join("Trash").join("term-note.md"));
         assert!(!source.exists());
         let content = fs::read_to_string(moved).unwrap();
-        assert!(!content.contains("term"));
-        assert!(content.contains("tags: [work]"));
+        assert!(content.contains("tags: [work, term]"));
     }
 
     #[test]

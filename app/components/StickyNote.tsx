@@ -44,6 +44,7 @@ import { pathsEqual, getFileName, decodeNotePathFromUrl } from '../utils/pathUti
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
 import { resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
+import { shouldHandleCrystalTrashRequest } from '../utils/crystalTrashRequest';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
 import { matchesShortcut } from '../utils/shortcutKey';
 import {
@@ -1595,6 +1596,40 @@ const StickyNote = memo(function StickyNote() {
         resolveCreateFolderPath,
         iphoneSendEnabled: settings.iphone_send_enabled,
     });
+
+    const handleDeleteNoteRef = useRef(handleDeleteNote);
+    handleDeleteNoteRef.current = handleDeleteNote;
+    const crystalTrashTargetRef = useRef({ path: selectedFile?.path ?? null, tags: currentTags });
+    crystalTrashTargetRef.current = { path: selectedFile?.path ?? null, tags: currentTags };
+
+    useEffect(() => {
+        let cancelled = false;
+        let unlisten: (() => void) | undefined;
+
+        listen<{ path: string }>('fusen:move_to_crystal_trash', (event) => {
+            const target = crystalTrashTargetRef.current;
+            if (!shouldHandleCrystalTrashRequest(event.payload.path, target.path, target.tags)) {
+                console.warn('Ignored crystal trash request for a different or non-crystal note');
+                return;
+            }
+            handleDeleteNoteRef.current().catch((error) => {
+                console.error('Failed to move crystal to trash:', error);
+            });
+        }).then((dispose) => {
+            if (cancelled) {
+                safeUnlisten(dispose);
+            } else {
+                unlisten = dispose;
+            }
+        }).catch((error) => {
+            console.error('Failed to listen for crystal trash request:', error);
+        });
+
+        return () => {
+            cancelled = true;
+            safeUnlisten(unlisten);
+        };
+    }, []);
 
     const handleArchiveFromHoverButton = useCallback(async () => {
         if (!selectedFile || currentTags.length > 1) return;

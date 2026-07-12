@@ -34,6 +34,83 @@ mod triple_right_click;
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs) // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）
 use state::{AppState, CreateRecipeNoteRequest, Note, NoteMeta, ProConfig, RecipeCandidates};
 
+static TRASH_OPERATIONS_IN_FLIGHT: std::sync::LazyLock<
+    Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+static TRASH_BURST_GUARD: std::sync::LazyLock<Mutex<TrashBurstGuard>> =
+    std::sync::LazyLock::new(|| Mutex::new(TrashBurstGuard::default()));
+
+#[derive(Default)]
+struct TrashBurstGuard {
+    last: Option<(String, std::time::Instant)>,
+}
+
+impl TrashBurstGuard {
+    fn allow(&mut self, path: &str, now: std::time::Instant) -> bool {
+        let key = path.to_lowercase();
+        if let Some((last_path, last_at)) = &self.last {
+            if *last_path != key && now.duration_since(*last_at) < std::time::Duration::from_secs(2) {
+                return false;
+            }
+        }
+        self.last = Some((key, now));
+        true
+    }
+}
+
+#[derive(serde::Serialize)]
+struct TrashMoveResult {
+    moved: bool,
+    path: String,
+}
+
+fn try_begin_trash_operation(path: &str) -> bool {
+    if !TRASH_BURST_GUARD
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .allow(path, std::time::Instant::now())
+    {
+        logger::log_warn("[trash] burst request for a different path blocked");
+        return false;
+    }
+    TRASH_OPERATIONS_IN_FLIGHT
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(path.to_lowercase())
+}
+
+fn finish_trash_operation(path: &str) {
+    TRASH_OPERATIONS_IN_FLIGHT
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(&path.to_lowercase());
+}
+
+#[cfg(test)]
+mod trash_operation_tests {
+    use super::{finish_trash_operation, try_begin_trash_operation, TrashBurstGuard};
+
+    #[test]
+    fn duplicate_trash_operation_is_rejected_until_first_finishes() {
+        let path = "C:/test/duplicate-trash-operation.md";
+        finish_trash_operation(path);
+        assert!(try_begin_trash_operation(path));
+        assert!(!try_begin_trash_operation(path));
+        finish_trash_operation(path);
+        assert!(try_begin_trash_operation(path));
+        finish_trash_operation(path);
+    }
+
+    #[test]
+    fn burst_guard_blocks_a_different_path_within_two_seconds() {
+        let mut guard = TrashBurstGuard::default();
+        let start = std::time::Instant::now();
+        assert!(guard.allow("C:/notes/a.md", start));
+        assert!(!guard.allow("C:/notes/b.md", start + std::time::Duration::from_millis(10)));
+        assert!(guard.allow("C:/notes/b.md", start + std::time::Duration::from_secs(2)));
+    }
+}
+
 // --- Commands ---
 
 #[tauri::command]
@@ -172,8 +249,166 @@ fn fusen_import_from_folder(
 }
 
 #[tauri::command]
-fn fusen_backup(source_path: String, dest_path: String) -> Result<usize, String> {
-    storage::backup_notes(&source_path, &dest_path)
+fn fusen_backup(app: AppHandle, source_path: String, dest_path: String, include_trash: bool) -> Result<usize, String> {
+    let count = storage::backup_notes_with_options(&source_path, &dest_path, include_trash)?;
+    let mut settings = storage::load_settings()?;
+    settings.backup_history.insert(0, state::BackupRecord {
+        path: dest_path,
+        created_at: chrono::Local::now().to_rfc3339(),
+        file_count: count,
+    });
+    settings.backup_history.truncate(2);
+    storage::save_settings(&settings)?;
+    let _ = app.emit("settings_updated", &settings);
+    Ok(count)
+}
+
+#[tauri::command]
+fn fusen_monthly_backup_due() -> Result<bool, String> {
+    let settings = storage::load_settings()?;
+    if !settings.monthly_backup_enabled {
+        return Ok(false);
+    }
+    let Some(next_prompt) = settings.monthly_backup_next_prompt else {
+        return Ok(true);
+    };
+    let next = chrono::DateTime::parse_from_rfc3339(&next_prompt)
+        .map_err(|_| "月次バックアップの確認日時が不正です".to_string())?;
+    Ok(chrono::Local::now() >= next.with_timezone(&chrono::Local))
+}
+
+#[tauri::command]
+fn fusen_snooze_monthly_backup(app: AppHandle) -> Result<(), String> {
+    let mut settings = storage::load_settings()?;
+    settings.monthly_backup_skip_count = settings.monthly_backup_skip_count.saturating_add(1);
+    if settings.monthly_backup_skip_count >= 2 {
+        settings.monthly_backup_enabled = false;
+        settings.monthly_backup_next_prompt = None;
+    } else {
+        settings.monthly_backup_next_prompt = Some(
+            (chrono::Local::now() + chrono::Duration::days(7)).to_rfc3339(),
+        );
+    }
+    storage::save_settings(&settings)?;
+    let _ = app.emit("settings_updated", &settings);
+    Ok(())
+}
+
+#[tauri::command]
+fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, String> {
+    let mut settings = storage::load_settings()?;
+    let source_path = settings.base_path.clone().ok_or("データ保存場所が未設定です")?;
+    let user_profile = std::env::var("USERPROFILE")
+        .map_err(|_| "USERPROFILE not found".to_string())?;
+    let root = Path::new(&user_profile).join("Documents").join("OreNoFusen_Backup");
+    let current = root.join("Monthly");
+    let pending = root.join("Monthly_pending");
+    let previous = root.join("Monthly_previous");
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    if pending.exists() {
+        std::fs::remove_dir_all(&pending).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir(&pending).map_err(|e| e.to_string())?;
+    let pending_str = pending.to_string_lossy().to_string();
+    let count = match storage::backup_notes_with_options(
+        &source_path,
+        &pending_str,
+        settings.backup_include_trash,
+    ) {
+        Ok(count) => count,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&pending);
+            return Err(error);
+        }
+    };
+    let copied_count = walkdir::WalkDir::new(&pending).into_iter().filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file()).count();
+    if count != copied_count {
+        let _ = std::fs::remove_dir_all(&pending);
+        return Err("月次バックアップの検証に失敗しました".to_string());
+    }
+    if previous.exists() {
+        std::fs::remove_dir_all(&previous).map_err(|e| e.to_string())?;
+    }
+    if current.exists() {
+        std::fs::rename(&current, &previous).map_err(|e| e.to_string())?;
+    }
+    if let Err(e) = std::fs::rename(&pending, &current) {
+        if previous.exists() {
+            let _ = std::fs::rename(&previous, &current);
+        }
+        return Err(e.to_string());
+    }
+    if previous.exists() {
+        let _ = std::fs::remove_dir_all(&previous);
+    }
+    let record = state::BackupRecord {
+        path: current.to_string_lossy().to_string(),
+        created_at: chrono::Local::now().to_rfc3339(),
+        file_count: count,
+    };
+    settings.monthly_backup_record = Some(record.clone());
+    settings.monthly_backup_skip_count = 0;
+    settings.monthly_backup_next_prompt = Some(
+        (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days)).to_rfc3339(),
+    );
+    storage::save_settings(&settings)?;
+    let _ = app.emit("settings_updated", &settings);
+    Ok(record)
+}
+
+#[tauri::command]
+fn fusen_restore_backup(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    backup_path: String,
+) -> Result<String, String> {
+    let source = Path::new(&backup_path);
+    if !source.is_dir() {
+        return Err("バックアップ先が見つかりません".to_string());
+    }
+    let markdown_count = walkdir::WalkDir::new(source)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md"))
+        .count();
+    if markdown_count == 0 {
+        return Err("復旧できるMarkdownファイルがありません".to_string());
+    }
+    let user_profile = std::env::var("USERPROFILE")
+        .map_err(|_| "USERPROFILE not found".to_string())?;
+    let recovery_root = Path::new(&user_profile)
+        .join("Documents")
+        .join("OreNoFusen_Recovery");
+    std::fs::create_dir_all(&recovery_root).map_err(|e| e.to_string())?;
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let recovery = recovery_root.join(format!("OreNoFusen_recovered_{}", timestamp));
+    std::fs::create_dir(&recovery).map_err(|e| e.to_string())?;
+    let recovery_str = recovery.to_string_lossy().to_string();
+    if let Err(e) = storage::backup_notes(&backup_path, &recovery_str) {
+        let _ = std::fs::remove_dir_all(&recovery);
+        return Err(e);
+    }
+    let recovered_markdown_count = walkdir::WalkDir::new(&recovery)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md"))
+        .count();
+    if recovered_markdown_count != markdown_count {
+        let _ = std::fs::remove_dir_all(&recovery);
+        return Err("復旧コピーの検証に失敗しました".to_string());
+    }
+    let mut settings = storage::load_settings()?;
+    settings.base_path = Some(recovery_str.clone());
+    storage::save_settings(&settings)?;
+    {
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.base_path = Some(recovery_str.clone());
+        app_state.folder_path = Some(recovery_str.clone());
+        app_state.notes = storage::list_notes(&recovery_str);
+    }
+    let _ = app.emit("settings_updated", &settings);
+    Ok(recovery_str)
 }
 
 #[tauri::command]
@@ -707,12 +942,34 @@ fn fusen_save_note(
 }
 
 #[tauri::command]
-fn fusen_move_to_trash(state: State<'_, Mutex<AppState>>, path: String) -> Result<String, String> {
+fn fusen_move_to_trash(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+) -> Result<TrashMoveResult, String> {
+    if !try_begin_trash_operation(&path) {
+        logger::log_warn("[trash] duplicate in-flight request ignored");
+        return Ok(TrashMoveResult { moved: false, path });
+    }
+
+    let result = move_note_to_trash_once(&app, &state, &path);
+    finish_trash_operation(&path);
+    result
+}
+
+fn move_note_to_trash_once(
+    app: &AppHandle,
+    state: &State<'_, Mutex<AppState>>,
+    path: &str,
+) -> Result<TrashMoveResult, String> {
     let current_path = Path::new(&path);
 
-    // ファイルが既に存在しない場合（空のメモなど）は成功扱い（JS側でウィンドウを閉じる）
+    // 多重要求や移動済みファイルは成功扱いにするが、UI側へ再実行させない。
     if !current_path.exists() {
-        return Ok("Already deleted".to_string());
+        return Ok(TrashMoveResult {
+            moved: false,
+            path: path.to_string(),
+        });
     }
 
     let parent = current_path.parent().ok_or("no parent")?;
@@ -731,9 +988,18 @@ fn fusen_move_to_trash(state: State<'_, Mutex<AppState>>, path: String) -> Resul
     }
 
     logic::apply_remove_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path);
+    if let Err(e) = storage::append_trash_operation(current_path, &new_path, "note_window") {
+        logger::log_warn(&format!("[trash] operation log failed: {}", e));
+    }
+    if let Err(e) = launcher::handle_note_trashed(&app, &path, &new_path_str) {
+        logger::log_warn(&format!("[trash] launcher cleanup skipped: {}", e));
+    }
 
     // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
-    Ok(new_path_str)
+    Ok(TrashMoveResult {
+        moved: true,
+        path: new_path_str,
+    })
 }
 
 fn non_colliding_path(path: &Path) -> std::path::PathBuf {
@@ -1643,6 +1909,11 @@ fn setup_first_launch(
     //  言語・同期設定などユーザー設定を丸ごと消す事故を防ぐ。）
     let mut settings = storage::load_settings()?;
     settings.base_path = Some(base_path.clone());
+    if settings.monthly_backup_next_prompt.is_none() && settings.monthly_backup_record.is_none() {
+        settings.monthly_backup_next_prompt = Some(
+            (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days)).to_rfc3339(),
+        );
+    }
 
     storage::save_settings(&settings).map_err(|e| {
         logger::log_error(&format!("Failed to save settings: {}", e));
@@ -4288,6 +4559,10 @@ pub fn run() {
             fusen_pick_folder,
             fusen_import_from_folder,
             fusen_backup,
+            fusen_monthly_backup_due,
+            fusen_snooze_monthly_backup,
+            fusen_run_monthly_backup,
+            fusen_restore_backup,
             fusen_oauth_connect,
             fusen_check_pro_setup,
             fusen_list_push_devices,

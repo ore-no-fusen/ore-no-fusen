@@ -196,6 +196,8 @@ function OrchestratorContent() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
   const [hotkeyRegisterFailureMessage, setHotkeyRegisterFailureMessage] = useState<string | null>(null);
+  const [showMonthlyBackupPrompt, setShowMonthlyBackupPrompt] = useState(false);
+  const monthlyBackupCheckedRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
   // [NEW] アップデートチェック（useUpdateCheckに委譲）
@@ -1498,7 +1500,31 @@ function OrchestratorContent() {
 
   }, [handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage;
+  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt;
+
+  useEffect(() => {
+    if (!isDashboard || monthlyBackupCheckedRef.current) return;
+    monthlyBackupCheckedRef.current = true;
+    const checkMonthlyBackup = async () => {
+      try {
+        const due = await invoke<boolean>('fusen_monthly_backup_due');
+        if (!due) return;
+        setShowMonthlyBackupPrompt(true);
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        await win.setSize(new LogicalSize(720, 460));
+        await win.center();
+        await win.unminimize();
+        await win.show();
+        await win.setFocus();
+      } catch (e) {
+        console.error('[MonthlyBackup] confirmation check failed:', e);
+      }
+    };
+    const timer = setTimeout(checkMonthlyBackup, 1000);
+    return () => clearTimeout(timer);
+  }, [isDashboard]);
 
   // [DEBUG] isDashboard状態の詳細ログ
   useEffect(() => {
@@ -1551,6 +1577,38 @@ function OrchestratorContent() {
   // [FIX] アップデートダイアログは最優先で表示（isDashboard より前に判定）
   // isDashboard=true だとメインウィンドウが非表示になるため、先にreturnしないと届かない
   if (isHidingAfterUpdate) return null;
+  if (showMonthlyBackupPrompt) {
+    return (
+      <ConfirmDialog
+        isOpen
+        title="月次安全バックアップ"
+        message="前回の安全バックアップから約30日が経過しました。今、バックアップを実施しますか？\n\n保存先: Documents\\OreNoFusen_Backup\\Monthly"
+        confirmText="バックアップする"
+        cancelText="今回はしない"
+        onConfirm={async () => {
+          try {
+            await invoke('fusen_run_monthly_backup');
+            alert('月次安全バックアップが完了しました。');
+          } catch (e) {
+            alert('月次安全バックアップに失敗しました。既存のバックアップは保持されています。\n\n' + String(e));
+          } finally {
+            setShowMonthlyBackupPrompt(false);
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+            await getCurrentWindow().hide();
+          }
+        }}
+        onCancel={async () => {
+          try {
+            await invoke('fusen_snooze_monthly_backup');
+          } finally {
+            setShowMonthlyBackupPrompt(false);
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+            await getCurrentWindow().hide();
+          }
+        }}
+      />
+    );
+  }
   if (showUpdateDialog && pendingUpdate) {
     return (
       <ConfirmDialog

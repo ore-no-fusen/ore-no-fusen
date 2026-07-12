@@ -19,6 +19,7 @@ import { useSettings, type AppSettings } from "@/lib/settings-store"
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 import { formatShortcutLabel, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
 import { trackDonationEvent } from "@/app/utils/analytics"
+import { monthlyBackupToggleChanges } from "@/app/utils/monthlyBackupSettings"
 import { saveCrystalFormats } from "@/app/api/crystalFormats"
 import {
     DEFAULT_CRYSTAL_FORMATS,
@@ -85,10 +86,11 @@ function getStoredDiscordIngestSecret(): string {
 }
 
 export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnected, baseFolderMissing, missingFolderPath }: SettingsPageProps) {
-    const [activeSection, setActiveSection] = useState(defaultTab ?? "general")
+    const normalizeSection = (section?: string) => section === "appearance" ? "general" : (section ?? "general")
+    const [activeSection, setActiveSection] = useState(normalizeSection(defaultTab))
 
     useEffect(() => {
-        if (defaultTab) setActiveSection(defaultTab)
+        if (defaultTab) setActiveSection(normalizeSection(defaultTab))
     }, [defaultTab])
 
     useEffect(() => {
@@ -144,14 +146,15 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
         const newSettings = { ...settings, [key]: value }
         saveSettings(newSettings)
     }
+    const updateSettings = (changes: Partial<AppSettings>) => {
+        saveSettings({ ...settings, ...changes })
+    }
 
     // コンテンツの切り替えロジック（データをプロップスとして渡す）
     const renderContent = () => {
         switch (activeSection) {
             case "general":
                 return <GeneralSection settings={settings} onUpdate={updateSetting} t={t} />
-            case "appearance":
-                return <AppearanceSection settings={settings} onUpdate={updateSetting} t={t} />
             case "hotkeys":
                 return <HotkeySection settings={settings} saveSettings={saveSettings} />
             case "crystal-format":
@@ -160,6 +163,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 return <DataSection
                     settings={settings}
                     onUpdate={updateSetting}
+                    onUpdateMany={updateSettings}
                     t={t}
                     importSourcePath={importSourcePath}
                     setImportSourcePath={setImportSourcePath}
@@ -188,14 +192,14 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
     }
 
     return (
-        <div className="flex h-screen w-full overflow-hidden bg-white text-foreground">
+        <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-foreground">
             {/* サイドバー */}
-            <aside className="w-64 border-r bg-gray-50/50 p-6">
-                <div className="mb-6 flex items-center gap-2 px-2 py-4">
+            <aside className="w-60 shrink-0 border-r border-slate-200 bg-white px-4 py-5">
+                <div className="mb-5 flex items-center gap-2 px-2 py-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                         <Settings className="h-5 w-5" />
                     </div>
-                    <span className="text-xl font-black tracking-tighter">{t('settings.title')}</span>
+                    <span className="text-lg font-bold tracking-tight">{t('settings.title')}</span>
                 </div>
                 <nav className="space-y-1">
                     <SidebarItem
@@ -203,24 +207,6 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         label={t('settings.general')}
                         isActive={activeSection === "general"}
                         onClick={() => setActiveSection("general")}
-                    />
-                    <SidebarItem
-                        icon={<Monitor className="mr-3 h-4 w-4" />}
-                        label={t('settings.appearance')}
-                        isActive={activeSection === "appearance"}
-                        onClick={() => setActiveSection("appearance")}
-                    />
-                    <SidebarItem
-                        icon={<Keyboard className="mr-3 h-4 w-4" />}
-                        label="ホットキー"
-                        isActive={activeSection === "hotkeys"}
-                        onClick={() => setActiveSection("hotkeys")}
-                    />
-                    <SidebarItem
-                        icon={<FileText className="mr-3 h-4 w-4" />}
-                        label="結晶フォーマット"
-                        isActive={activeSection === "crystal-format"}
-                        onClick={() => setActiveSection("crystal-format")}
                     />
                     <SidebarItem
                         icon={<Database className="mr-3 h-4 w-4" />}
@@ -236,20 +222,32 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         badge={iphoneDriveDisconnected}
                     />
                     <SidebarItem
-                        icon={<Info className="mr-3 h-4 w-4" />}
-                        label={t('settings.about')}
-                        isActive={activeSection === "about"}
-                        onClick={() => setActiveSection("about")}
+                        icon={<Keyboard className="mr-3 h-4 w-4" />}
+                        label="ホットキー"
+                        isActive={activeSection === "hotkeys"}
+                        onClick={() => setActiveSection("hotkeys")}
+                    />
+                    <SidebarItem
+                        icon={<FileText className="mr-3 h-4 w-4" />}
+                        label="ひな形"
+                        isActive={activeSection === "crystal-format"}
+                        onClick={() => setActiveSection("crystal-format")}
                     />
                     <div className="pt-4 pb-2">
                         <Separator />
-                        <span className="text-xs font-bold text-muted-foreground px-4 py-2 block uppercase tracking-wider">Help & Feedback</span>
+                        <span className="text-xs font-semibold text-muted-foreground px-4 py-2 block uppercase tracking-wider">Help & Support</span>
                     </div>
                     <SidebarItem
                         icon={<HelpCircle className="mr-3 h-4 w-4" />}
                         label={t('settings.help.menuTitle')}
                         isActive={activeSection === "help"}
                         onClick={() => setActiveSection("help")}
+                    />
+                    <SidebarItem
+                        icon={<Info className="mr-3 h-4 w-4" />}
+                        label={t('settings.about')}
+                        isActive={activeSection === "about"}
+                        onClick={() => setActiveSection("about")}
                     />
                     <SidebarItem
                         icon={<div className="mr-3 h-4 w-4">📨</div>}
@@ -296,8 +294,9 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
             </aside>
 
             {/* メインコンテンツエリア */}
-            <main className="flex flex-1 flex-col overflow-hidden bg-white">
-                <div className="flex-1 overflow-y-auto p-10 pt-12">
+            <main className="flex flex-1 flex-col overflow-hidden bg-slate-50">
+                <div className="flex-1 overflow-y-auto px-8 py-10">
+                    <div className="mx-auto w-full max-w-5xl">
                     {baseFolderMissing && (
                         <div className="mb-8 rounded-lg border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">!</div>
@@ -326,10 +325,11 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         </div>
                     )}
                     {renderContent()}
+                    </div>
                 </div>
 
                 {/* フッター - 設定完了ボタン */}
-                <div className="border-t bg-gray-50/30 px-10 py-6 flex justify-end gap-3">
+                <div className="border-t border-slate-200 bg-white px-8 py-4 flex justify-end gap-3">
                     <Button
                         variant="default"
                         size="lg"
@@ -454,7 +454,7 @@ function SidebarItem({
     return (
         <Button
             variant={isActive ? "secondary" : "ghost"}
-            className={`w-full justify-start ${isActive ? "bg-secondary font-medium" : ""}`}
+            className={`h-10 w-full justify-start rounded-lg px-3 ${isActive ? "bg-slate-100 font-semibold text-slate-950" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}
             onClick={onClick}
         >
             {icon}
@@ -475,6 +475,7 @@ type SectionProps = {
 
 // DataSection用の拡張Props
 type DataSectionProps = SectionProps & {
+    onUpdateMany: (changes: Partial<AppSettings>) => void;
     importSourcePath: string;
     setImportSourcePath: (path: string) => void;
     isImporting: boolean;
@@ -525,8 +526,8 @@ function HotkeySection({ settings, saveSettings }: {
     const [checkResult, setCheckResult] = useState<HotkeyCheckResult | null>(null)
     const [message, setMessage] = useState("")
     const [isSaving, setIsSaving] = useState(false)
+    const [expandedAction, setExpandedAction] = useState<HotkeyAction | null>(null)
     const hotkeyActionLabels = HOTKEY_ACTION_LABELS[settings.language]
-    const isEn = settings.language === 'en'
 
     const loadBindings = useCallback(async (): Promise<HotkeyBindings | null> => {
         try {
@@ -655,16 +656,21 @@ function HotkeySection({ settings, saveSettings }: {
         <div className="space-y-6">
             <div className="mb-8">
                 <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">ホットキー</h2>
-                <p className="text-gray-500 text-sm">新規付箋、表示切替、整列のグローバルホットキーを設定します。</p>
+                <p className="text-gray-500 text-sm">よく使う順に確認できます。変更するときだけ「詳細」を開いてください。</p>
             </div>
             <Separator />
 
             <div className="space-y-4">
-                <div className="rounded-lg border p-4 space-y-4">
-                    <div>
-                        <Label className="text-base font-bold text-gray-900">新規付箋トリガー</Label>
-                        <p className="text-sm text-muted-foreground mt-1">付箋を作る操作を選びます。</p>
-                    </div>
+                <HotkeyShortcutRow
+                    number="1"
+                    title="新規付箋作成トリガー"
+                    description="新しい付箋をすぐに作ります。"
+                    shortcut={bindings.new_note_trigger === 'shortcut' ? bindings.new_note : bindings.new_note_trigger === 'double_ctrl' ? 'Ctrl 2回押し' : 'Shift 2回押し'}
+                    defaultShortcut="Ctrl+N"
+                    expanded={expandedAction === 'new_note'}
+                    onToggle={() => setExpandedAction(expandedAction === 'new_note' ? null : 'new_note')}
+                >
+                    <div className="space-y-3">
 
                     <label className="flex items-center justify-between gap-4 rounded-md border border-gray-100 bg-gray-50 px-4 py-3">
                         <div className="flex items-center gap-3">
@@ -715,43 +721,49 @@ function HotkeySection({ settings, saveSettings }: {
                             <p className="text-xs text-gray-500 mt-1">※ 2回押しは他のアプリとキーを奪い合いません（同じ操作を使うアプリがあると両方反応します）</p>
                         </div>
                     </label>
-                </div>
+                    </div>
+                </HotkeyShortcutRow>
 
                 <HotkeyShortcutRow
-                    title="表示切替"
-                    description="すべての付箋の表示/非表示を切り替えます。"
-                    shortcut={bindings.toggle_visibility}
-                    onChange={() => beginCapture('toggle_visibility')}
-                />
+                    number="2"
+                    title="クイックランチャートリガー"
+                    description="クイックランチャーを表示・非表示にします。"
+                    shortcut={bindings.quick_launcher}
+                    defaultShortcut="Ctrl+P"
+                    expanded={expandedAction === 'quick_launcher'}
+                    onToggle={() => setExpandedAction(expandedAction === 'quick_launcher' ? null : 'quick_launcher')}
+                >
+                    <Button variant="outline" size="sm" onClick={() => beginCapture('quick_launcher')}>キーを変更</Button>
+                    <div className="mt-4 flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
+                        <div>
+                            <p className="text-sm font-semibold text-gray-800">右クリック3連打でも開く</p>
+                            <p className="mt-1 text-xs text-gray-500">他アプリの上でも使えます。クリックは奪いません。</p>
+                        </div>
+                        <Switch checked={settings.quick_launcher_triple_right_click ?? false} disabled={isSaving} onCheckedChange={updateQuickLauncherTripleRightClick} />
+                    </div>
+                </HotkeyShortcutRow>
                 <HotkeyShortcutRow
+                    number="3"
                     title="整列"
                     description="タグごとに付箋を整列します。"
                     shortcut={bindings.arrange}
-                    onChange={() => beginCapture('arrange')}
-                />
+                    defaultShortcut="Ctrl+Shift+L"
+                    expanded={expandedAction === 'arrange'}
+                    onToggle={() => setExpandedAction(expandedAction === 'arrange' ? null : 'arrange')}
+                >
+                    <Button variant="outline" size="sm" onClick={() => beginCapture('arrange')}>キーを変更</Button>
+                </HotkeyShortcutRow>
                 <HotkeyShortcutRow
-                    title={isEn ? 'Quick launcher' : 'クイックランチャー'}
-                    description={isEn ? 'Shows or hides the quick launcher.' : 'クイックランチャーの表示/非表示を切り替えます。'}
-                    shortcut={bindings.quick_launcher}
-                    onChange={() => beginCapture('quick_launcher')}
-                />
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                    <div>
-                        <Label className="text-base font-bold text-gray-900">
-                            {isEn ? 'Open Quick Launcher with triple right-click' : '右クリック3連打でクイックランチャーを開く'}
-                        </Label>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            {isEn
-                                ? 'Works over other apps. Clicks are not intercepted.'
-                                : '他アプリの上でも効きます。クリックは奪いません'}
-                        </p>
-                    </div>
-                    <Switch
-                        checked={settings.quick_launcher_triple_right_click ?? false}
-                        disabled={isSaving}
-                        onCheckedChange={updateQuickLauncherTripleRightClick}
-                    />
-                </div>
+                    number="4"
+                    title="全付箋の非表示・表示"
+                    description="すべての付箋をまとめて隠す、または元に戻します。"
+                    shortcut={bindings.toggle_visibility}
+                    defaultShortcut="Ctrl+Shift+H"
+                    expanded={expandedAction === 'toggle_visibility'}
+                    onToggle={() => setExpandedAction(expandedAction === 'toggle_visibility' ? null : 'toggle_visibility')}
+                >
+                    <Button variant="outline" size="sm" onClick={() => beginCapture('toggle_visibility')}>キーを変更</Button>
+                </HotkeyShortcutRow>
 
                 {captureAction && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -833,7 +845,7 @@ function CrystalFormatSection() {
     }
 
     const resetCurrentType = () => {
-        if (!window.confirm(`${CRYSTAL_TYPE_LABELS[activeType]} のフォーマットを既定に戻しますか？`)) return
+        if (!window.confirm(`${CRYSTAL_TYPE_LABELS[activeType]} のひな形を既定に戻しますか？`)) return
         updateActiveFormat(() => resetCrystalTypeFormat(activeType))
         setMessage("既定に戻しました。保存すると反映されます。")
     }
@@ -869,7 +881,7 @@ function CrystalFormatSection() {
     }
 
     if (!formats) {
-        return <div className="text-sm text-muted-foreground">結晶フォーマットを読み込み中...</div>
+        return <div className="text-sm text-muted-foreground">ひな形を読み込み中...</div>
     }
 
     const format = formats[activeType]
@@ -877,28 +889,33 @@ function CrystalFormatSection() {
     return (
         <div className="space-y-6">
             <div className="mb-8">
-                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">結晶フォーマット</h2>
-                <p className="text-gray-500 text-sm">レシピ、QA、用語の節名と並びを調整します。</p>
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">レシピ・QA・用語のひな形</h2>
+                <p className="text-gray-500 text-sm">新しく作るときの、節名・役割・並び順を設定します。</p>
             </div>
             <Separator />
 
             <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                変更は新しく作る結晶にだけ効きます。既存の結晶は変わりません。
+                変更は新しく作るレシピ・QA・用語にだけ効きます。既存の内容は変わりません。
             </div>
 
-            <div className="flex gap-2">
-                {(Object.keys(CRYSTAL_TYPE_LABELS) as CrystalType[]).map((type) => (
+            <div className="grid gap-4">
+                {(Object.keys(CRYSTAL_TYPE_LABELS) as CrystalType[]).map((type, index) => (
                     <Button
                         key={type}
                         type="button"
                         variant={activeType === type ? "default" : "outline"}
-                        size="sm"
+                        className={`h-auto justify-start rounded-xl p-5 text-left ${activeType === type ? '' : 'bg-white'}`}
                         onClick={() => {
                             setActiveType(type)
                             setMessage("")
                         }}
                     >
-                        {CRYSTAL_TYPE_LABELS[type]}
+                        <span className={`mr-4 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${activeType === type ? 'bg-white text-slate-950' : 'bg-slate-950 text-white'}`}>{index + 1}</span>
+                        <span>
+                            <span className="block text-base font-bold">{CRYSTAL_TYPE_LABELS[type]}のひな形</span>
+                            <span className={`mt-1 block text-sm font-normal ${activeType === type ? 'text-slate-200' : 'text-slate-500'}`}>節名・役割・並び順を設定します。</span>
+                        </span>
+                        <span className="ml-auto flex items-center text-sm font-semibold">詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${activeType === type ? 'rotate-90' : ''}`} /></span>
                     </Button>
                 ))}
             </div>
@@ -1020,27 +1037,66 @@ async function syncSettingsStore(settings: AppSettings, saveSettings: (settings:
     })
 }
 
-function HotkeyShortcutRow({ title, description, shortcut, onChange }: {
+function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortcut, expanded, onToggle, children }: {
+    number: string;
     title: string;
     description: string;
     shortcut: string;
-    onChange: () => void;
+    defaultShortcut: string;
+    expanded: boolean;
+    onToggle: () => void;
+    children: React.ReactNode;
 }) {
     return (
-        <div className="flex items-center justify-between rounded-lg border p-4">
-            <div>
-                <Label className="text-base font-bold text-gray-900">{title}</Label>
-                <p className="text-sm text-muted-foreground mt-1">{description}</p>
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <div className="flex items-center justify-between gap-5 p-5">
+                <div className="flex min-w-0 items-start gap-4">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">{number}</span>
+                    <div>
+                        <Label className="text-base font-bold text-gray-900">{title}</Label>
+                        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+                    </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-5">
+                    <div className="text-right">
+                        <p className="text-xs text-gray-500">現在</p>
+                        <code className="text-sm font-semibold text-gray-900">{formatShortcutLabel(shortcut)}</code>
+                        <p className="mt-1 text-xs text-gray-500">デフォルト {formatShortcutLabel(defaultShortcut)}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={expanded}>
+                        詳細
+                        <ChevronRight className={`ml-1 h-4 w-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                    </Button>
+                </div>
             </div>
-            <div className="flex items-center gap-3">
-                <code className="rounded-md border bg-gray-50 px-3 py-1.5 text-sm font-semibold text-gray-800">
-                    {formatShortcutLabel(shortcut)}
-                </code>
-                <Button variant="outline" size="sm" onClick={onChange}>
-                    変更
-                </Button>
-            </div>
+            {expanded && <div className="border-t border-gray-100 bg-slate-50/70 p-5">{children}</div>}
         </div>
+    )
+}
+
+function SettingsItemCard({ number, title, description, current, children, important = false }: {
+    number: number;
+    title: string;
+    description: string;
+    current?: string;
+    children: React.ReactNode;
+    important?: boolean;
+}) {
+    return (
+        <details className={`group overflow-hidden rounded-xl border bg-white ${important ? 'border-blue-300 shadow-sm' : 'border-slate-200'}`}>
+            <summary className="flex cursor-pointer list-none items-center gap-4 p-5 hover:bg-slate-50/70">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${important ? 'bg-blue-700' : 'bg-slate-950'}`}>{number}</span>
+                <div className="min-w-0 flex-1">
+                    <div className="text-base font-bold text-slate-950">{title}</div>
+                    <p className="mt-1 text-sm text-slate-500">{description}</p>
+                </div>
+                {current && <span className="max-w-56 truncate text-right text-sm font-medium text-slate-700">{current}</span>}
+                <span className="flex items-center text-sm font-semibold text-slate-700">
+                    詳細<ChevronRight className="ml-1 h-4 w-4 transition-transform group-open:rotate-90" />
+                </span>
+            </summary>
+            <div className="border-t border-slate-100 bg-slate-50/60 p-5">{children}</div>
+        </details>
     )
 }
 
@@ -1112,6 +1168,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             </div>
             <Separator />
             <div className="grid gap-4">
+                <SettingsItemCard number={1} title="言語" description="画面に表示する言語を選びます。" current={settings.language === 'ja' ? '日本語' : 'English'}>
                 <div className="grid gap-2">
                     <Label>{t('settings.general.language')}</Label>
                     <div className="flex gap-2">
@@ -1131,9 +1188,11 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                         </Button>
                     </div>
                 </div>
+                </SettingsItemCard>
 
                 {/* 自動起動スイッチ */}
-                <div className="flex items-center justify-between rounded-lg border p-4">
+                <SettingsItemCard number={2} title="自動起動" description="Windowsへのサインイン時に俺の付箋を起動します。" current={autoStartChecked ? 'オン' : 'オフ'}>
+                <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.general.autoStart')}</Label>
                         <p className="text-sm text-muted-foreground">{t('settings.general.autoStartDesc')}</p>
@@ -1188,9 +1247,11 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                         }}
                     />
                 </div>
+                </SettingsItemCard>
 
                 {/* 効果音スイッチ */}
-                <div className="flex items-center justify-between rounded-lg border p-4">
+                <SettingsItemCard number={3} title="効果音" description="保存や削除などの操作音を設定します。" current={settings.sound_enabled ? 'オン' : 'オフ'}>
+                <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.general.sound')}</Label>
                         <p className="text-sm text-muted-foreground">{t('settings.general.soundDesc')}</p>
@@ -1200,26 +1261,17 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                         onCheckedChange={(val) => onUpdate("sound_enabled", val)}
                     />
                 </div>
-            </div>
-        </div>
-    )
-}
-
-function AppearanceSection({ settings, onUpdate, t }: SectionProps) {
-    return (
-        <div className="space-y-6">
-            <div className="mb-8">
-                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.appearance.title')}</h2>
-                <p className="text-gray-500 text-sm">{t('settings.appearance.description')}</p>
-            </div>
-            <Separator />
-
-            <div className="space-y-4 pt-4">
+                </SettingsItemCard>
+                <SettingsItemCard number={4} title="文字サイズ" description="付箋本文の文字の大きさを調整します。" current={`${settings.font_size}px`}>
+            <section className="space-y-4">
+                <div>
+                    <h3 className="text-lg font-semibold text-slate-900">{t('settings.appearance.title')}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{t('settings.appearance.description')}</p>
+                </div>
                 <div className="flex justify-between">
                     <Label>{t('settings.appearance.fontSize')}</Label>
                     <span className="text-sm text-muted-foreground">{t('settings.appearance.fontSizeCurrent')}: {settings.font_size}px</span>
                 </div>
-                {/* スライダーの値と連携 */}
                 <Slider
                     defaultValue={[settings.font_size]}
                     value={[settings.font_size]}
@@ -1234,6 +1286,8 @@ function AppearanceSection({ settings, onUpdate, t }: SectionProps) {
                         {t('settings.appearance.preview')}
                     </p>
                 </div>
+            </section>
+                </SettingsItemCard>
             </div>
         </div>
     )
@@ -1251,7 +1305,12 @@ function DataSection({
     setBackupDestPath,
     isBackingUp,
     setIsBackingUp,
+    onUpdateMany,
 }: DataSectionProps) {
+    const [showPeriodicDetails, setShowPeriodicDetails] = useState(false)
+    const [showOtherBackups, setShowOtherBackups] = useState(false)
+    const [showManualBackup, setShowManualBackup] = useState(false)
+    const [showImport, setShowImport] = useState(false)
     const handleSelectFolder = async () => {
         try {
             const { invoke } = await import("@tauri-apps/api/core")
@@ -1266,50 +1325,96 @@ function DataSection({
     }
 
     return (
-        <div className="space-y-6">
-            <div className="mb-8">
-                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{t('settings.data.title')}</h2>
+        <div className="flex flex-col gap-8">
+            <div className="order-1 mb-2">
+                <h2 className="text-2xl font-bold tracking-tight text-slate-950 mb-2">{t('settings.data.title')}</h2>
                 <p className="text-gray-500 text-sm">{t('settings.data.description')}</p>
-            </div>
-            <Separator />
-
-            <div className="grid gap-4">
-                <div className="grid gap-2">
-                    <Label htmlFor="path">{t('settings.data.basePath')}</Label>
-                    <div className="flex gap-2">
-                        <Input
-                            id="path"
-                            value={settings.base_path}
-                            readOnly
-                            placeholder={t('settings.data.basePathPlaceholder')}
-                            className="font-mono text-sm bg-muted"
-                        />
-                        <Button variant="outline" onClick={handleSelectFolder}>
-                            <FolderOpen className="mr-2 h-4 w-4" /> {t('settings.data.browse')}
-                        </Button>
+                <div className="mt-6 flex items-center gap-4 rounded-xl border border-blue-200 border-l-4 border-l-blue-600 bg-white px-5 py-4 shadow-sm">
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-3 text-sm font-bold text-slate-950"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-700 text-xs font-bold text-white">1</span>データ保存先（最重要）</div>
+                        <p className="mt-1 text-xs text-slate-500">いつ使う: 初回設定時と保存場所を変えたいとき。ここを変えると、付箋・画像・タグの保存先が切り替わります。</p>
+                        <div className="mt-2 break-all font-mono text-sm font-medium text-slate-800">{settings.base_path || '未設定'}</div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                        {settings.base_path ? t('settings.data.selected') : t('settings.data.notSet')}
-                    </p>
+                    <Button variant="outline" onClick={handleSelectFolder}>
+                        <FolderOpen className="mr-2 h-4 w-4" />保存場所を変更
+                    </Button>
                 </div>
-
+            </div>
+            <div className="order-3 rounded-xl rounded-b-none border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="mb-4 flex items-center gap-3 text-base font-bold text-slate-950"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">3</span>バックアップ</h3>
+                <h4 className="mb-1 text-sm font-semibold text-slate-900">自動バックアップ</h4>
+                <p className="text-xs text-slate-500">いつ使う: 日常のデータ保護。設定した間隔で確認し、承認すると1世代のバックアップを作ります。</p>
+            <div className="grid gap-0 divide-y divide-slate-100">
+                <div className="flex items-center justify-between py-5">
+                    <div className="pr-4">
+                        <Label htmlFor="monthly-backup">自動バックアップをする</Label>
+                        <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">
+                            おすすめは「する」。実行前に必ず確認します。
+                        </p>
+                    </div>
+                    <Switch
+                        id="monthly-backup"
+                        checked={settings.monthly_backup_enabled}
+                        onCheckedChange={(checked) => {
+                            onUpdateMany(monthlyBackupToggleChanges(checked))
+                        }}
+                    />
+                </div>
+                <div className="flex justify-end py-3">
+                    <Button variant="ghost" size="sm" onClick={() => setShowPeriodicDetails((value) => !value)}>
+                        詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showPeriodicDetails ? 'rotate-90' : ''}`} />
+                    </Button>
+                </div>
+                <div className={showPeriodicDetails ? "divide-y divide-slate-100" : "hidden"}>
+                <div className="flex items-center justify-between py-5">
+                    <div>
+                        <Label htmlFor="monthly-backup-interval">{t('settings.data.monthlyInterval')}</Label>
+                        <p className="mt-1 text-xs text-muted-foreground">{t('settings.data.monthlyIntervalDesc')}</p>
+                    </div>
+                    <select
+                        id="monthly-backup-interval"
+                        className="rounded-md border bg-white px-3 py-2 text-sm"
+                        value={settings.monthly_backup_interval_days}
+                        onChange={(event) => onUpdate('monthly_backup_interval_days', Number(event.target.value))}
+                    >
+                        <option value={30}>30日</option>
+                        <option value={60}>60日</option>
+                        <option value={90}>90日</option>
+                    </select>
+                </div>
+                <div className="py-5 text-sm text-slate-600">
+                    <div className="font-medium text-slate-900">保存先</div>
+                    <div className="mt-1 break-all font-mono text-xs">Documents\OreNoFusen_Backup\Monthly</div>
+                    <div className="mt-3">保持数: 1世代</div>
+                    <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                            type="checkbox"
+                            checked={settings.backup_include_trash}
+                            onChange={(event) => onUpdate('backup_include_trash', event.target.checked)}
+                        />
+                        {t('settings.data.includeTrash')}
+                    </label>
+                </div>
+                </div>
+            </div>
             </div>
 
             {/* --- インポートセクション --- */}
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-6">
+            <div className="order-2 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between mb-4">
                     <div>
                         <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <Database className="h-4 w-4" />
-                            {t('settings.data.import')}
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">2</span>{t('settings.data.import')}
                         </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            {t('settings.data.importDesc')}
-                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">いつ使う: 既存のMarkdownデータを移すとき。選んだフォルダの .md と関連画像を付箋として取り込みます。</p>
+                        <p className="mt-1 text-xs text-slate-500">取り込み元: {importSourcePath || '未選択'}</p>
                     </div>
+                    <Button variant="ghost" size="sm" onClick={() => setShowImport((value) => !value)}>
+                        詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showImport ? 'rotate-90' : ''}`} />
+                    </Button>
                 </div>
 
-                <div className="flex flex-col gap-3">
+                <div className={showImport ? "flex flex-col gap-3" : "hidden"}>
                     <div className="flex gap-2">
                         <Input
                             readOnly
@@ -1377,21 +1482,106 @@ function DataSection({
                 </div>
             </div>
 
+            <div className="order-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">4</span>データ復旧
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1 mb-1">いつ使う: データが壊れた、または元に戻したいとき。バックアップ原本を守りながら復旧コピーを作り、新しい保存先として切り替えます。</p>
+                <p className="mb-4 text-xs text-slate-500">既定: 自動バックアップから復旧</p>
+                <div className="space-y-3">
+                    <div className="rounded-lg bg-slate-50 p-4">
+                        <div className="text-sm font-semibold">{t('settings.data.recommendedMonthly')}</div>
+                        {settings.monthly_backup_record ? (
+                            <>
+                                <div className="mt-1 break-all font-mono text-xs text-slate-600">{settings.monthly_backup_record.path}</div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                    {new Date(settings.monthly_backup_record.created_at).toLocaleString()} · {settings.monthly_backup_record.file_count} files
+                                </div>
+                                <div className="mt-3 flex justify-end">
+                                    <Button variant="outline" onClick={async () => {
+                                        try {
+                                            const recoveredPath = await invoke<string>('fusen_restore_backup', { backupPath: settings.monthly_backup_record?.path })
+                                            alert(t('settings.data.restoreDone') + recoveredPath)
+                                            const { exit } = await import('@tauri-apps/plugin-process')
+                                            await exit(0)
+                                        } catch (e) {
+                                            alert(t('settings.data.restoreFailed') + String(e))
+                                        }
+                                    }}>
+                                        <RefreshCw className="mr-2 h-4 w-4" /> {t('settings.data.restoreButton')}
+                                    </Button>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="mt-1 text-xs text-slate-500">{t('settings.data.noMonthlyBackup')}</div>
+                        )}
+                    </div>
+                    {showOtherBackups && [0, 1].map((index) => {
+                        const record = settings.backup_history?.[index]
+                        return (
+                            <div key={index} className="rounded-md border bg-white p-3">
+                                <div className="text-sm font-semibold">
+                                    {index === 0 ? t('settings.data.lastBackup') : t('settings.data.previousBackup')}
+                                </div>
+                                {record ? (
+                                    <>
+                                        <div className="mt-1 break-all font-mono text-xs text-slate-600">{record.path}</div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            {new Date(record.created_at).toLocaleString()} · {record.file_count} files
+                                        </div>
+                                        <div className="mt-3 flex justify-end">
+                                            <Button variant="outline" onClick={async () => {
+                                                try {
+                                                    const recoveredPath = await invoke<string>('fusen_restore_backup', { backupPath: record.path })
+                                                    alert(t('settings.data.restoreDone') + recoveredPath)
+                                                    const { exit } = await import('@tauri-apps/plugin-process')
+                                                    await exit(0)
+                                                } catch (e) {
+                                                    alert(t('settings.data.restoreFailed') + String(e))
+                                                }
+                                            }}>
+                                                <RefreshCw className="mr-2 h-4 w-4" /> {t('settings.data.restoreButton')}
+                                            </Button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="mt-1 text-xs text-slate-500">{t('settings.data.noBackup')}</div>
+                                )}
+                            </div>
+                        )
+                    })}
+                    <div className="flex justify-end">
+                        <Button variant="ghost" size="sm" onClick={() => setShowOtherBackups((value) => !value)}>
+                            詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showOtherBackups ? 'rotate-90' : ''}`} />
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
             {/* --- バックアップセクション --- */}
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-6">
+            <div className="order-4 -mt-8 rounded-xl rounded-t-none border border-t-0 border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between mb-4">
                     <div>
                         <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <Database className="h-4 w-4" />
-                            {t('settings.data.backup')}
+                            手動バックアップ
                         </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            {t('settings.data.backupDesc')}
-                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">いつ使う: 大きな作業の前や外付けドライブへ保管したいとき。選んだ場所へ現在のデータをコピーします。</p>
+                        <p className="mt-1 text-xs text-slate-500">保存先: {backupDestPath || '未選択'}</p>
                     </div>
+                    <Button variant="ghost" size="sm" onClick={() => setShowManualBackup((value) => !value)}>
+                        詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showManualBackup ? 'rotate-90' : ''}`} />
+                    </Button>
                 </div>
 
-                <div className="flex flex-col gap-3">
+                <div className={showManualBackup ? "flex flex-col gap-3" : "hidden"}>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                            type="checkbox"
+                            checked={settings.backup_include_trash}
+                            onChange={(event) => onUpdate('backup_include_trash', event.target.checked)}
+                        />
+                        {t('settings.data.includeTrash')}
+                    </label>
                     <div className="flex gap-2">
                         <Input
                             readOnly
@@ -1423,6 +1613,7 @@ function DataSection({
                                     const count = await invoke<number>("fusen_backup", {
                                         sourcePath: settings.base_path,
                                         destPath: backupDestPath,
+                                        includeTrash: settings.backup_include_trash,
                                     });
                                     alert(t('settings.data.backupDone') + count + '件');
                                 } catch (e) {
@@ -1771,6 +1962,7 @@ function HelpSection({ t }: { t: (key: any) => string }) {
             <Separator />
 
             {/* ===== B案: 最初の5分（縦並びオンボーディング） ===== */}
+            <SettingsItemCard number={1} title="最初の5分" description="初めて使うときの基本操作を順番に確認します。">
             <section>
                 <div className="mb-4">
                     <div className="flex items-center gap-2">
@@ -1802,8 +1994,10 @@ function HelpSection({ t }: { t: (key: any) => string }) {
                     ))}
                 </ol>
             </section>
+            </SettingsItemCard>
 
             {/* ===== A案: やりたいことから探す（アコーディオン） ===== */}
+            <SettingsItemCard number={2} title="やりたいことから探す" description="目的を選んで必要な操作だけ確認します。">
             <section>
                 <div className="mb-4">
                     <span className="text-xs font-bold uppercase tracking-[0.2em] text-sky-700">{t('settings.help.goals.title')}</span>
@@ -1833,10 +2027,10 @@ function HelpSection({ t }: { t: (key: any) => string }) {
                     })}
                 </div>
             </section>
-
-            <Separator />
+            </SettingsItemCard>
 
             {/* ===== 既存の参照テーブル群（情報を求める人向けに残す） ===== */}
+            <SettingsItemCard number={3} title="一覧・トラブル解決" description="操作一覧、ショートカット、困ったときの確認先です。">
             <HelpTable
                 title={t('settings.help.contextTable.title')}
                 firstHeader={t('settings.help.table.action')}
@@ -1886,6 +2080,7 @@ function HelpSection({ t }: { t: (key: any) => string }) {
                     {t('settings.help.fullGuide.link')}
                 </button>
             </div>
+            </SettingsItemCard>
         </div>
     )
 }
@@ -2810,6 +3005,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             </div>
 
             {/* 📁 データの場所 */}
+            <SettingsItemCard number={1} title="データの場所" description="付箋、設定、ログの保存フォルダを確認します。">
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -2872,8 +3068,10 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     </div>
                 </div>
             </section>
+            </SettingsItemCard>
 
             {/* ☁️ 外部サービス */}
+            <SettingsItemCard number={2} title="外部サービス" description="Google Driveと送受信データを確認します。">
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -2923,6 +3121,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     </div>
                 </div>
             </section>
+            </SettingsItemCard>
 
             {/* JSON モーダル */}
             {jsonViewer && (
@@ -2997,6 +3196,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             )}
 
             {/* 🩺 診断情報 */}
+            <SettingsItemCard number={3} title="診断情報" description="問い合わせや不具合調査に使う情報を確認します。">
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -3029,8 +3229,10 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     {diagLoading && !diagText ? t('settings.advanced.diagnostics.loading') : diagText}
                 </pre>
             </section>
+            </SettingsItemCard>
 
             {/* 🔄 接続状態 */}
+            <SettingsItemCard number={4} title="接続状態" description="PC、iPhone、送受信キューの状態を確認します。">
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -3246,8 +3448,10 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     </>
                 )}
             </section>
+            </SettingsItemCard>
 
             {/* 🧹 Drive 一時ファイル */}
+            <SettingsItemCard number={5} title="Drive一時ファイル" description="送受信後に残った古い一時ファイルを確認します。">
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -3389,8 +3593,10 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     )}
                 </div>
             </section>
+            </SettingsItemCard>
 
             {/* 開発者専用 */}
+            <SettingsItemCard number={6} title="開発者専用" description="開発・運用担当者だけが使う管理機能です。">
             <section className="border-t border-slate-200 pt-8">
                 <div className="mb-4">
                     <p className="text-xs font-bold uppercase tracking-widest text-red-500">Developer Only</p>
@@ -3507,6 +3713,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     )}
                 </div>
             </section>
+            </SettingsItemCard>
 
         </div>
     )
@@ -3758,7 +3965,8 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
             <Separator />
 
             {/* ① ON/OFF スイッチ */}
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-5">
+            <SettingsItemCard number={1} title="iPhone連携を使う" description="PCの付箋をiPhoneへ送れるようにします。" current={sendEnabled ? 'オン' : 'オフ'}>
+            <div className="flex items-center justify-between">
                 <div className="min-w-0 pr-6">
                     <Label className="text-base font-bold text-gray-900">{t('settings.iphone.sendEnabled')}</Label>
                     <p className="mt-1 text-sm text-gray-500">
@@ -3770,6 +3978,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                     onCheckedChange={(val) => onUpdate("iphone_send_enabled", val)}
                 />
             </div>
+            </SettingsItemCard>
 
             {/* OFF のときの注釈 */}
             {!sendEnabled && (
@@ -3779,8 +3988,10 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
             )}
 
             {/* ② 接続セットアップ（OFFのときはグレーアウト） */}
-            <div className={!sendEnabled ? 'opacity-40 pointer-events-none select-none' : ''}>
-                <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-5">
+            <div className={!sendEnabled ? 'hidden' : ''}>
+                <div className="space-y-4">
+                <SettingsItemCard number={2} title="初期設定" description="PCとiPhoneを同じGoogleアカウントで接続します。" current={overallStatus.label}>
+                <div className="space-y-5">
                     {/* ヘッダ：状態バッジ */}
                     <div className="flex items-start justify-between gap-4">
                         <div>
@@ -3938,10 +4149,12 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                         <span className="font-semibold">次にやること：</span>{nextAction}
                     </div>
                 </div>
+                </SettingsItemCard>
 
                 {/* ③ 接続済み iPhone 一覧（接続済みで端末がいるときだけ） */}
+                <SettingsItemCard number={3} title="接続済み端末" description="接続済みのiPhone・iPadを確認、追加、削除します。" current={`${devices?.length ?? 0}台`}>
                 {pcConnected && hasRegisteredDevice && (
-                    <div className="mt-6 rounded-lg border border-slate-200 bg-white p-6 space-y-3">
+                    <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <h3 className="font-semibold text-gray-800 text-sm">接続済みのiPhone / iPad</h3>
                             <button
@@ -3993,6 +4206,9 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                         </div>
                     </div>
                 )}
+                {(!pcConnected || !hasRegisteredDevice) && (
+                    <p className="text-sm text-slate-500">初期設定が完了すると、接続済み端末をここで管理できます。</p>
+                )}
 
                 {/* ④ もう一台のiPhone / iPadを追加（接続済み&登録済みのときだけ折りたたみで表示） */}
                 {pcConnected && hasRegisteredDevice && (
@@ -4034,8 +4250,10 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                         </div>
                     </details>
                 )}
+                </SettingsItemCard>
 
-                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
+                <SettingsItemCard number={4} title="接続診断" description="iPhoneへ送れないときに接続状態を確認します。">
+                <div>
                     <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
                             <h3 className="text-sm font-semibold text-slate-800">困ったときの接続診断</h3>
@@ -4081,6 +4299,8 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                             </details>
                         </div>
                     )}
+                </div>
+                </SettingsItemCard>
                 </div>
             </div>
         </div>

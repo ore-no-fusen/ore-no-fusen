@@ -86,6 +86,10 @@ export function shouldCloseLauncherAfterBlur(locked: boolean, isFocused: boolean
     return !locked && !isFocused;
 }
 
+export function removeActionLabel(tab: LauncherTab): string {
+    return tab === 'shortcut' ? '棚から外す' : 'ゴミ箱へ移動';
+}
+
 
 function useDebouncedValue(value: string, delayMs: number): string {
     const [debounced, setDebounced] = useState(value);
@@ -325,7 +329,7 @@ export default function QuickLauncher() {
         if (!targetItem) return;
         const targetPath = targetItem.path;
         setContextMenu(null);
-        if (!window.confirm('棚から外しますか？（付箋は消えません）')) {
+        if (activeTab === 'shortcut' && !window.confirm('お気に入りから外しますか？（付箋は消えません）')) {
             return;
         }
 
@@ -479,8 +483,8 @@ export default function QuickLauncher() {
                                         </button>
                                         <button
                                             type="button"
-                                            title="棚から外す"
-                                            aria-label="棚から外す"
+                                            title={removeActionLabel(activeTab)}
+                                            aria-label={removeActionLabel(activeTab)}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedIndex(index);
@@ -536,7 +540,7 @@ export default function QuickLauncher() {
                         className="block w-full px-3 py-1.5 text-left text-red-200 hover:bg-red-950"
                         onClick={() => handleRemove()}
                     >
-                        棚から外す
+                        {removeActionLabel(activeTab)}
                     </button>
                 </div>
             )}

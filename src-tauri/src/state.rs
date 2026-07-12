@@ -95,6 +95,13 @@ pub struct ProConfig {
 }
 
 // NEW: UC-01 - 設定ファイル用の構造体
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct BackupRecord {
+    pub path: String,
+    pub created_at: String,
+    pub file_count: usize,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Settings {
     #[serde(alias = "basePath")]
@@ -135,6 +142,20 @@ pub struct Settings {
     /// アンインストール時に失われると Drive 上にゴミの登録が残るため、settings.json に移管した。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pc_id: Option<String>,
+    #[serde(default)]
+    pub backup_history: Vec<BackupRecord>,
+    #[serde(default = "default_monthly_backup_enabled")]
+    pub monthly_backup_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monthly_backup_next_prompt: Option<String>,
+    #[serde(default)]
+    pub monthly_backup_skip_count: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monthly_backup_record: Option<BackupRecord>,
+    #[serde(default = "default_monthly_backup_interval_days")]
+    pub monthly_backup_interval_days: i64,
+    #[serde(default)]
+    pub backup_include_trash: bool,
 }
 
 fn default_language() -> String { 
@@ -150,6 +171,8 @@ fn default_language() -> String {
 fn default_font_size() -> f64 { 16.0 }
 fn default_sound_enabled() -> bool { true }
 fn default_auto_start() -> bool { true }
+fn default_monthly_backup_enabled() -> bool { true }
+fn default_monthly_backup_interval_days() -> i64 { 30 }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -167,6 +190,13 @@ impl Default for Settings {
             shortcut_quick_launcher: None,
             quick_launcher_triple_right_click: None,
             pc_id: None,
+            backup_history: Vec::new(),
+            monthly_backup_enabled: default_monthly_backup_enabled(),
+            monthly_backup_next_prompt: None,
+            monthly_backup_skip_count: 0,
+            monthly_backup_record: None,
+            monthly_backup_interval_days: default_monthly_backup_interval_days(),
+            backup_include_trash: false,
         }
     }
 }

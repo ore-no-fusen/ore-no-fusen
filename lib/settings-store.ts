@@ -31,6 +31,13 @@ export type AppSettings = {
      * ユーザーには見せない内部フィールド。フロントは設定 UI には出さず、保存時に Rust に往復させて消えないようにする。
      */
     pc_id?: string
+    backup_history?: Array<{ path: string; created_at: string; file_count: number }>
+    monthly_backup_enabled: boolean
+    monthly_backup_next_prompt?: string
+    monthly_backup_skip_count?: number
+    monthly_backup_record?: { path: string; created_at: string; file_count: number }
+    monthly_backup_interval_days: number
+    backup_include_trash: boolean
 }
 
 // デフォルト値（Rust側 state.rs の default_auto_start() と統一）
@@ -47,6 +54,11 @@ const DEFAULT_SETTINGS: AppSettings = {
     shortcut_arrange: "ctrl+shift+l",
     shortcut_quick_launcher: "ctrl+p",
     quick_launcher_triple_right_click: false,
+    backup_history: [],
+    monthly_backup_enabled: true,
+    monthly_backup_skip_count: 0,
+    backup_include_trash: false,
+    monthly_backup_interval_days: 30,
 }
 
 
@@ -101,6 +113,13 @@ export function useSettings() {
                         shortcut_arrange: parsed.shortcut_arrange ?? DEFAULT_SETTINGS.shortcut_arrange,
                         shortcut_quick_launcher: parsed.shortcut_quick_launcher ?? DEFAULT_SETTINGS.shortcut_quick_launcher,
                         quick_launcher_triple_right_click: parsed.quick_launcher_triple_right_click ?? DEFAULT_SETTINGS.quick_launcher_triple_right_click,
+                        backup_history: parsed.backup_history ?? DEFAULT_SETTINGS.backup_history,
+                        monthly_backup_enabled: parsed.monthly_backup_enabled ?? true,
+                        monthly_backup_next_prompt: parsed.monthly_backup_next_prompt,
+                        monthly_backup_skip_count: parsed.monthly_backup_skip_count ?? 0,
+                        monthly_backup_record: parsed.monthly_backup_record,
+                        backup_include_trash: parsed.backup_include_trash ?? false,
+                        monthly_backup_interval_days: parsed.monthly_backup_interval_days ?? 30,
                     }
                     setSettings(migrated)
                 }
@@ -124,6 +143,13 @@ export function useSettings() {
                     shortcut_quick_launcher: loaded.shortcut_quick_launcher,
                     quick_launcher_triple_right_click: loaded.quick_launcher_triple_right_click,
                     pc_id: loaded.pc_id,
+                    backup_history: loaded.backup_history ?? [],
+                    monthly_backup_enabled: loaded.monthly_backup_enabled ?? true,
+                    monthly_backup_next_prompt: loaded.monthly_backup_next_prompt,
+                    monthly_backup_skip_count: loaded.monthly_backup_skip_count ?? 0,
+                    monthly_backup_record: loaded.monthly_backup_record,
+                    backup_include_trash: loaded.backup_include_trash ?? false,
+                    monthly_backup_interval_days: loaded.monthly_backup_interval_days ?? 30,
                 }
                 setSettings({ ...DEFAULT_SETTINGS, ...normalized })
             }

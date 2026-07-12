@@ -27,6 +27,27 @@ pub fn get_settings_path() -> Result<PathBuf, String> {
     Ok(config_dir.join("settings.json"))
 }
 
+pub fn append_trash_operation(source: &Path, destination: &Path, origin: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    let settings_path = get_settings_path()?;
+    let config_dir = settings_path.parent().ok_or("config directory not found")?;
+    fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+    let log_path = config_dir.join("trash_operations.jsonl");
+    let record = serde_json::json!({
+        "timestamp": chrono::Local::now().to_rfc3339(),
+        "source": source.to_string_lossy(),
+        "destination": destination.to_string_lossy(),
+        "origin": origin,
+    });
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+        .map_err(|e| e.to_string())?;
+    writeln!(file, "{}", record).map_err(|e| e.to_string())
+}
+
 pub fn load_settings() -> Result<Settings, String> {
     let path = get_settings_path()?;
     if !path.exists() {
@@ -666,6 +687,10 @@ pub fn open_file(path: &str) -> Result<(), String> {
 /// tags/, assets/ を含むすべてのファイルを対象とする。
 /// 戻り値: コピーしたファイル数
 pub fn backup_notes(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
+    backup_notes_with_options(source_dir, dest_dir, true)
+}
+
+pub fn backup_notes_with_options(source_dir: &str, dest_dir: &str, include_trash: bool) -> Result<usize, String> {
     let src = std::path::Path::new(source_dir);
     let dst = std::path::Path::new(dest_dir);
 
@@ -677,17 +702,23 @@ pub fn backup_notes(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
     }
 
     let mut count = 0;
-    backup_dir_recursive(src, dst, &mut count)?;
+    backup_dir_recursive(src, dst, &mut count, include_trash)?;
     Ok(count)
 }
 
-fn backup_dir_recursive(src: &std::path::Path, dst: &std::path::Path, count: &mut usize) -> Result<(), String> {
+fn backup_dir_recursive(src: &std::path::Path, dst: &std::path::Path, count: &mut usize, include_trash: bool) -> Result<(), String> {
     for entry in fs::read_dir(src).map_err(|e| e.to_string())?.filter_map(|e| e.ok()) {
         let path = entry.path();
         let dest = dst.join(entry.file_name());
         if path.is_dir() {
+            let is_trash = entry.file_name().to_string_lossy().eq_ignore_ascii_case("Trash");
+            if is_trash && !include_trash && dest.exists() {
+                fs::remove_dir_all(&dest).map_err(|e| e.to_string())?;
+            }
             fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
-            backup_dir_recursive(&path, &dest, count)?;
+            if include_trash || !is_trash {
+                backup_dir_recursive(&path, &dest, count, include_trash)?;
+            }
         } else {
             fs::copy(&path, &dest).map_err(|e| e.to_string())?;
             *count += 1;
@@ -703,6 +734,45 @@ mod tests {
     use tempfile::tempdir;
 
     static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn backup_excludes_trash_contents_by_default_option_and_keeps_empty_folder() {
+        let source = tempdir().unwrap();
+        let destination = tempdir().unwrap();
+        fs::write(source.path().join("note.md"), "note").unwrap();
+        fs::create_dir_all(source.path().join("Trash")).unwrap();
+        fs::write(source.path().join("Trash").join("deleted.md"), "deleted").unwrap();
+        fs::create_dir_all(destination.path().join("Trash")).unwrap();
+        fs::write(destination.path().join("Trash").join("old.md"), "old").unwrap();
+
+        let count = backup_notes_with_options(
+            source.path().to_string_lossy().as_ref(),
+            destination.path().to_string_lossy().as_ref(),
+            false,
+        ).unwrap();
+
+        assert_eq!(count, 1);
+        assert!(destination.path().join("note.md").exists());
+        assert!(destination.path().join("Trash").is_dir());
+        assert_eq!(fs::read_dir(destination.path().join("Trash")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn backup_includes_trash_contents_when_requested() {
+        let source = tempdir().unwrap();
+        let destination = tempdir().unwrap();
+        fs::create_dir_all(source.path().join("Trash")).unwrap();
+        fs::write(source.path().join("Trash").join("deleted.md"), "deleted").unwrap();
+
+        let count = backup_notes_with_options(
+            source.path().to_string_lossy().as_ref(),
+            destination.path().to_string_lossy().as_ref(),
+            true,
+        ).unwrap();
+
+        assert_eq!(count, 1);
+        assert!(destination.path().join("Trash").join("deleted.md").exists());
+    }
 
     // === write_note と read_note のテスト ===
     // ファイルI/O操作の基本
@@ -817,6 +887,36 @@ mod tests {
         let saved = std::fs::read_to_string(get_settings_path().unwrap()).unwrap();
         let saved_settings: Settings = serde_json::from_str(&saved).unwrap();
         assert_eq!(saved_settings.base_path, Some(raw_base_path_str));
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn trash_operation_log_records_source_destination_and_origin() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        append_trash_operation(
+            Path::new("C:/notes/source.md"),
+            Path::new("C:/notes/Trash/source.md"),
+            "quick_launcher",
+        )
+        .unwrap();
+
+        let log = fs::read_to_string(
+            get_settings_path().unwrap().parent().unwrap().join("trash_operations.jsonl"),
+        )
+        .unwrap();
+        let record: serde_json::Value = serde_json::from_str(log.trim()).unwrap();
+        assert_eq!(record["origin"], "quick_launcher");
+        assert!(record["source"].as_str().unwrap().contains("source.md"));
+        assert!(record["destination"].as_str().unwrap().contains("Trash"));
 
         if let Some(value) = old_appdata {
             std::env::set_var("APPDATA", value);

@@ -416,4 +416,51 @@ describe('StickyNote Component', () => {
         });
     });
 
+    it('停止したアラームは監視周期を過ぎても再発火しない', async () => {
+        vi.useFakeTimers();
+        const play = vi.fn().mockResolvedValue(undefined);
+        const pause = vi.fn();
+        class AudioMock {
+            play = play;
+            pause = pause;
+            currentTime = 0;
+            volume = 1;
+        }
+        vi.stubGlobal('Audio', AudioMock);
+
+        mockInvoke.mockImplementation((cmd, args) => {
+            if (cmd === 'fusen_read_note') {
+                return Promise.resolve({
+                    meta: { path: 'd:/test/note.md', width: 200, height: 200 },
+                    body: '---\ntags: []\nalarm_at: "2000-01-01T00:00:00+09:00"\nalarm_sound: true\n---\nTest Content',
+                });
+            }
+            if (cmd === 'fusen_save_note') return Promise.resolve(args?.path || 'd:/test/note.md');
+            if (cmd === 'fusen_get_all_tags') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+
+        render(<StickyNote />);
+        await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+
+        const stopBar = screen.getByText(/タップして止める/);
+        expect(play).toHaveBeenCalledTimes(1);
+        fireEvent.click(stopBar);
+        await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+        const playCountAfterStop = play.mock.calls.length;
+
+        // アラーム監視（10秒）と音の反復（3秒）の両周期を超えても再発火しない。
+        await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+
+        expect(screen.queryByText(/タップして止める/)).toBeNull();
+        expect(play).toHaveBeenCalledTimes(playCountAfterStop);
+        expect(mockInvoke).toHaveBeenCalledWith(
+            'fusen_save_note',
+            expect.objectContaining({ frontmatterRaw: expect.not.stringContaining('alarm_at:') }),
+        );
+
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+    });
+
 });

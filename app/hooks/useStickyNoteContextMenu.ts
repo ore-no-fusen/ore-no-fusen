@@ -84,6 +84,11 @@ type UseStickyNoteContextMenuProps = {
     iphoneSendEnabled: boolean;
 };
 
+type TrashMoveResult = {
+    moved: boolean;
+    path: string;
+};
+
 export function useStickyNoteContextMenu({
     selectedFile,
     isPool,
@@ -130,11 +135,13 @@ export function useStickyNoteContextMenu({
         if (isDeletingRef.current) return;
         try {
             isDeletingRef.current = true;
-            await playDeleteSound();
             // selectedFile がある場合のみファイルを削除（Pool未保存窓は対象外）
             if (selectedFile) {
-                await invoke('fusen_move_to_trash', { path: selectedFile.path });
+                await saveNoteContent(editBody, rawFrontmatter, false);
+                const result = await invoke<TrashMoveResult>('fusen_move_to_trash', { path: selectedFile.path });
+                if (!result.moved) return;
             }
+            await playDeleteSound();
             const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
             await win.hide();
             await win.destroy();
@@ -143,7 +150,7 @@ export function useStickyNoteContextMenu({
             console.error('Failed to delete note:', e);
             alert(`削除に失敗しました\n${e}`);
         }
-    }, [selectedFile, isPool, isDeletingRef]);
+    }, [selectedFile, isPool, isDeletingRef, editBody, rawFrontmatter, saveNoteContent]);
 
     // フォルダを開く
     const handleOpenFolder = useCallback(async () => {

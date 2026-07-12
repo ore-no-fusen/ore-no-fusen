@@ -4,6 +4,7 @@ import {
     nextSelectionIndex,
     nextTab,
     normalizeLauncherTab,
+    removeActionLabel,
     shouldCloseLauncherAfterBlur,
     tabToReservedTag,
 } from './QuickLauncher';
@@ -54,5 +55,12 @@ describe('QuickLauncher logic', () => {
         expect(shouldCloseLauncherAfterBlur(false, false)).toBe(true);
         expect(shouldCloseLauncherAfterBlur(false, true)).toBe(false);
         expect(shouldCloseLauncherAfterBlur(true, false)).toBe(false);
+    });
+
+    it('uses crystal trash for crystals and shelf removal for favorites', () => {
+        expect(removeActionLabel('shortcut')).toBe('棚から外す');
+        expect(removeActionLabel('recipe')).toBe('ゴミ箱へ移動');
+        expect(removeActionLabel('qa')).toBe('ゴミ箱へ移動');
+        expect(removeActionLabel('term')).toBe('ゴミ箱へ移動');
     });
 });

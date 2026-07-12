@@ -26,6 +26,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     shortcut_arrange: 'ctrl+shift+l',
     shortcut_quick_launcher: 'ctrl+p',
     quick_launcher_triple_right_click: false,
+    monthly_backup_enabled: true,
+    backup_include_trash: false,
+    monthly_backup_interval_days: 30,
 };
 
 // キャッシュ
