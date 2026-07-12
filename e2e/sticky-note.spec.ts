@@ -398,10 +398,9 @@ test.describe('そこに残る', () => {
         await expect(page.getByText('データ管理').first()).toBeVisible({ timeout: 5000 });
         await page.getByText('データ管理').first().click();
 
-        // 保存先フォルダのパスが表示されていることを確認
-        await expect(page.locator('input#path')).toBeVisible({ timeout: 3000 });
-        const pathValue = await page.locator('input#path').inputValue();
-        expect(pathValue).toBe('C:/test');
+        // 現在の保存先と、変更操作の入口が表示されていることを確認
+        await expect(page.getByText('C:/test', { exact: true })).toBeVisible({ timeout: 3000 });
+        await expect(page.getByRole('button', { name: '保存場所を変更' })).toBeVisible();
     });
 });
 

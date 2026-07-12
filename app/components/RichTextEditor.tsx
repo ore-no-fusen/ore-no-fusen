@@ -295,7 +295,7 @@ function buildDecorations(state: EditorState): DecorationSet {
             const titleEnd = line.to;
 
             decorations.push(
-                Decoration.mark({ class: 'cm-md-marker' }).range(markerStart, markerEnd - 1),
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(markerStart, markerEnd - 1),
                 Decoration.mark({ class: 'cm-md-h1' }).range(titleStart, titleEnd)
             );
             // continue; // [Fix] Allow other decorations (bold/link) inside header
@@ -306,14 +306,14 @@ function buildDecorations(state: EditorState): DecorationSet {
         const listMatch = !taskMatch && text.match(/^([\-\*\+]\s+)(.*)$/);
 
         if (taskMatch) {
-            const markerLen = taskMatch[1].length;
+            const markerLen = checkboxMarkerDecorationLength(taskMatch[1]);
             decorations.push(
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from, line.from + markerLen)
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from, line.from + markerLen)
             );
         } else if (listMatch) {
-            const markerLen = listMatch[1].length;
+            const markerLen = markdownMarkerDecorationLength(listMatch[1]);
             decorations.push(
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from, line.from + markerLen)
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from, line.from + markerLen)
             );
         }
 
@@ -322,11 +322,11 @@ function buildDecorations(state: EditorState): DecorationSet {
         let lMatch;
         while ((lMatch = linkRegex.exec(text)) !== null) {
             decorations.push(
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from + lMatch.index, line.from + lMatch.index + 1), // [
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from + lMatch.index, line.from + lMatch.index + 1), // [
                 Decoration.mark({ class: 'cm-md-link-text' }).range(line.from + lMatch.index + 1, line.from + lMatch.index + 1 + lMatch[1].length),
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from + lMatch.index + 1 + lMatch[1].length, line.from + lMatch.index + 1 + lMatch[1].length + 2), // ](
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from + lMatch.index + 1 + lMatch[1].length, line.from + lMatch.index + 1 + lMatch[1].length + 2), // ](
                 Decoration.mark({ class: 'cm-md-link-url' }).range(line.from + lMatch.index + 3 + lMatch[1].length, line.from + lMatch.index + 3 + lMatch[1].length + lMatch[2].length),
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from + lMatch.index + 3 + lMatch[1].length + lMatch[2].length, line.from + lMatch.index + 4 + lMatch[1].length + lMatch[2].length) // )
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from + lMatch.index + 3 + lMatch[1].length + lMatch[2].length, line.from + lMatch.index + 4 + lMatch[1].length + lMatch[2].length) // )
             );
         }
 
@@ -344,7 +344,8 @@ function buildDecorations(state: EditorState): DecorationSet {
             // 開始 ** マーカー
             decorations.push(
                 Decoration.mark({
-                    class: 'cm-md-marker cm-md-bold-marker'
+                    class: 'cm-md-marker cm-md-bold-marker',
+                    inclusive: false,
                 }).range(startPos, openMarkerEnd)
             );
 
@@ -360,7 +361,8 @@ function buildDecorations(state: EditorState): DecorationSet {
             // 終了 ** マーカー
             decorations.push(
                 Decoration.mark({
-                    class: 'cm-md-marker cm-md-bold-marker'
+                    class: 'cm-md-marker cm-md-bold-marker',
+                    inclusive: false,
                 }).range(closeMarkerStart, closeMarkerEnd)
             );
         }
@@ -370,6 +372,14 @@ function buildDecorations(state: EditorState): DecorationSet {
     decorations.sort((a, b) => a.from - b.from || a.startSide - b.startSide);
 
     return Decoration.set(decorations, true);
+}
+
+export function checkboxMarkerDecorationLength(marker: string): number {
+    return markdownMarkerDecorationLength(marker);
+}
+
+export function markdownMarkerDecorationLength(marker: string): number {
+    return marker.trimEnd().length;
 }
 
 
