@@ -1,7 +1,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import ResizableImage from './ResizableImage';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import ResizableImage, { clearConvertedFileSrcCache } from './ResizableImage';
 
 vi.mock('@tauri-apps/api/core', () => ({
     convertFileSrc: (src: string) => `asset://${src}`,
@@ -11,7 +11,32 @@ afterEach(() => {
     cleanup();
 });
 
+beforeEach(() => {
+    clearConvertedFileSrcCache();
+});
+
 describe('ResizableImage', () => {
+    it('reuses a converted local image URL immediately when the image remounts', async () => {
+        const props = {
+            src: 'C:/Users/uck/Pictures/screen.png',
+            alt: 'screen',
+            baseOffset: 0,
+            onResizeEnd: vi.fn(),
+        };
+        const first = render(<ResizableImage {...props} />);
+
+        await waitFor(() => {
+            expect(screen.getByRole('img', { name: 'screen' }).getAttribute('src'))
+                .toBe('asset://C:/Users/uck/Pictures/screen.png');
+        });
+        first.unmount();
+
+        render(<ResizableImage {...props} />);
+
+        expect(screen.getByRole('img', { name: 'screen' }).getAttribute('src'))
+            .toBe('asset://C:/Users/uck/Pictures/screen.png');
+    });
+
     it('shows the markdown source when image loading fails', () => {
         render(
             <ResizableImage

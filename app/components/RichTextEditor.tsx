@@ -20,6 +20,8 @@ import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUtils';
 
+export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
+
 // Helper to resolve relative path (same as in StickyNote)
 const resolvePath = (baseFile: string, relativePath: string) => {
     if (!baseFile) return relativePath;
@@ -59,6 +61,9 @@ class ImageWidget extends WidgetType {
         container.className = 'cm-image-widget';
         container.style.display = 'inline-block';
         container.style.verticalAlign = 'bottom';
+        container.addEventListener('click', (event) => {
+            forwardImageClickToEditor(event.target, view.dom);
+        });
 
         const resolvedSrc = resolvePath(this.filePath, this.src);
 
@@ -440,6 +445,18 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
 const LINK_REGEX = createLinkTargetRegex();
 export function buildClipboardImageMarkdown(savedPath: string): string {
     return `![image](${savedPath})\n`;
+}
+
+export function shouldExitEditingForImageClick(target: EventTarget | null): boolean {
+    return target instanceof Element
+        && target.tagName === 'IMG'
+        && target.closest('.cm-image-widget') !== null;
+}
+
+export function forwardImageClickToEditor(target: EventTarget | null, editorDom: HTMLElement): boolean {
+    if (!shouldExitEditingForImageClick(target)) return false;
+    editorDom.dispatchEvent(new CustomEvent(IMAGE_WIDGET_CLICK_EVENT));
+    return true;
 }
 
 const linkDecorationField = ViewPlugin.fromClass(class {
@@ -1438,6 +1455,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
         viewRef.current = view;
 
+        const handleImageWidgetClick = () => latestOnBlurRef.current?.();
+        view.dom.addEventListener(IMAGE_WIDGET_CLICK_EVENT, handleImageWidgetClick);
         // [NEW] 初期選択処理（作成直後に一度だけ予約）
         if (isNewNote) {
             // [FIX] rAF x2 でレイアウト確定後に「1回だけ」フォーカス＆カーソル先頭配置する。
@@ -1476,6 +1495,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
         }
 
         return () => {
+            view.dom.removeEventListener(IMAGE_WIDGET_CLICK_EVENT, handleImageWidgetClick);
             view.destroy();
             viewRef.current = null;
         };

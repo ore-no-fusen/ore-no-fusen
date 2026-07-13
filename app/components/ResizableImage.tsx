@@ -25,10 +25,27 @@ export interface ResizableImageProps {
 }
 
 const EMPTY_FALLBACK_SRCS: string[] = [];
+const MAX_CONVERTED_SRC_CACHE_ENTRIES = 256;
+const convertedFileSrcCache = new Map<string, string>();
+
+function rememberConvertedFileSrc(src: string, assetUrl: string) {
+    convertedFileSrcCache.delete(src);
+    convertedFileSrcCache.set(src, assetUrl);
+    if (convertedFileSrcCache.size > MAX_CONVERTED_SRC_CACHE_ENTRIES) {
+        const oldestKey = convertedFileSrcCache.keys().next().value;
+        if (oldestKey !== undefined) convertedFileSrcCache.delete(oldestKey);
+    }
+}
+
+export function clearConvertedFileSrcCache() {
+    convertedFileSrcCache.clear();
+}
 
 function initialDisplaySrc(src: string): string {
     const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(src);
-    return isLocalPath ? 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' : src;
+    return isLocalPath
+        ? convertedFileSrcCache.get(src) ?? 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+        : src;
 }
 
 export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick, markdownFallback, fallbackSrcs = EMPTY_FALLBACK_SRCS }: ResizableImageProps) {
@@ -70,6 +87,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                     const { convertFileSrc } = await import('@tauri-apps/api/core');
                     const assetUrl = convertFileSrc(activeSrc);
                     if (active) {
+                        rememberConvertedFileSrc(activeSrc, assetUrl);
                         setDisplaySrc(prev => prev !== assetUrl ? assetUrl : prev);
                     }
                 } catch (e) {
