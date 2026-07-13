@@ -302,7 +302,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">!</div>
                             <div className="flex-1 text-sm leading-6 text-amber-900">
                                 <p className="font-bold text-amber-900 mb-1">
-                                    保存先フォルダが見つかりませんでした。
+                                    保存先フォルダを現在利用できません。
                                 </p>
                                 {missingFolderPath && (
                                     <p className="text-xs text-amber-800 mb-2 font-mono break-all">
@@ -310,7 +310,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                                     </p>
                                 )}
                                 <p className="text-amber-800 mb-3">
-                                    自動で新しいデフォルトフォルダを作成しました。場所を変更したいときは「データ管理」タブから保存先を編集してください。
+                                    安全のため付箋の読み書きを停止し、以前の保存場所は変更していません。外付けドライブや同期フォルダを再接続するか、「データ管理」から保存先を変更してください。
                                 </p>
                                 {activeSection !== 'data' && (
                                     <button
