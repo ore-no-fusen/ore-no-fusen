@@ -1,3 +1,10 @@
+## 2026-07-14 compact folded note width
+
+- Changed folded sticky notes to use the smaller of their current width and 320 logical pixels.
+- Kept the existing original width/height restoration path when unfolding.
+- Added focused tests for wide notes, high-DPI scaling, and already-narrow notes.
+- Updated docs-v2/002_PC.md §6.2 and revision history 2.29.
+
 ## 2026-07-13 checkbox marker color boundary
 
 - Limited the orange checkbox marker decoration to `- [ ]` / `- [x]`, excluding trailing whitespace.

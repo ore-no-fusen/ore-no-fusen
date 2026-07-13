@@ -12,6 +12,19 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getWindowGeometry } from '@/app/api/window';
 import { PhysicalSize } from '@tauri-apps/api/dpi';
 
+export const FOLDED_MAX_WIDTH = 320;
+
+export function calculateFoldedPhysicalSize(
+    currentWidth: number,
+    scaleFactor: number,
+    logicalHeight: number,
+): { width: number; height: number } {
+    return {
+        width: Math.min(currentWidth, Math.round(FOLDED_MAX_WIDTH * scaleFactor)),
+        height: Math.round(logicalHeight * scaleFactor),
+    };
+}
+
 export type UseWindowManagerOptions = {
     onGeometryChange: (geometry: { x: number; y: number; width: number; height: number }) => void;
     onAutoExpand?: () => void; // [New] リサイズ操作により自動展開された際に呼ばれるコールバック
@@ -94,9 +107,9 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
             const factor = await win.scaleFactor();
             // 呼び出し元の計算式があればそれを使用し、なければデフォルト40px
             const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
-            const targetHeight = Math.round(logicalHeight * factor);
+            const foldedSize = calculateFoldedPhysicalSize(size.width, factor, logicalHeight);
 
-            await win.setSize(new PhysicalSize(size.width, targetHeight));
+            await win.setSize(new PhysicalSize(foldedSize.width, foldedSize.height));
             setIsMinimized(true);
         }
     }, [isMinimized]);
