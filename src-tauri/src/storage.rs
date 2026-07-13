@@ -146,6 +146,102 @@ fn read_settings_file(path: &Path) -> Result<Settings, String> {
     serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
+fn corrupt_settings_archive_path(
+    settings_path: &Path,
+    timestamp: &str,
+    backup: bool,
+) -> PathBuf {
+    let file_name = if backup {
+        format!("settings.backup-corrupt-{}.json", timestamp)
+    } else {
+        format!("settings.corrupt-{}.json", timestamp)
+    };
+    settings_path.parent().unwrap_or(Path::new(".")).join(file_name)
+}
+
+/// 両方とも存在し、両方とも読めない設定だけを、安全な既定設定へ置き換える。
+/// テストで任意の設定パスを使えるよう、I/O本体はパス引数で分離する。
+fn recover_corrupt_settings_at(
+    settings_path: &Path,
+    base_path: &Path,
+    timestamp: &str,
+) -> Result<Settings, String> {
+    let backup_path = settings_backup_path(settings_path);
+    if !settings_path.exists()
+        || !backup_path.exists()
+        || read_settings_file(settings_path).is_ok()
+        || read_settings_file(&backup_path).is_ok()
+    {
+        return Err("settings primary and backup are not both invalid".to_string());
+    }
+
+    fs::create_dir_all(base_path)
+        .map_err(|e| format!("failed to create recovery vault: {}", e))?;
+    check_storage_health(&base_path.to_string_lossy())?;
+
+    let primary_archive = corrupt_settings_archive_path(settings_path, timestamp, false);
+    let backup_archive = corrupt_settings_archive_path(settings_path, timestamp, true);
+    fs::copy(settings_path, &primary_archive)
+        .map_err(|e| format!("failed to archive corrupt settings: {}", e))?;
+    if let Err(e) = fs::copy(&backup_path, &backup_archive) {
+        let _ = fs::remove_file(&primary_archive);
+        return Err(format!("failed to archive corrupt settings backup: {}", e));
+    }
+
+    let mut settings = Settings::default();
+    settings.base_path = Some(base_path.to_string_lossy().to_string());
+    let content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    let temp_path = settings_path.with_extension("json.recovery.tmp");
+    let write_result = (|| -> Result<(), String> {
+        let mut file = fs::File::create(&temp_path).map_err(|e| e.to_string())?;
+        file.write_all(content.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|e| e.to_string())?;
+        drop(file);
+        read_settings_file(&temp_path)
+            .map_err(|e| format!("recovered settings validation failed: {}", e))?;
+        fs::remove_file(settings_path).map_err(|e| e.to_string())?;
+        fs::remove_file(&backup_path).map_err(|e| e.to_string())?;
+        fs::rename(&temp_path, settings_path).map_err(|e| e.to_string())?;
+        fs::copy(settings_path, &backup_path).map_err(|e| e.to_string())?;
+        read_settings_file(settings_path)?;
+        read_settings_file(&backup_path)?;
+        Ok(())
+    })();
+    if let Err(e) = write_result {
+        let _ = fs::remove_file(&temp_path);
+        let _ = fs::remove_file(settings_path);
+        let _ = fs::remove_file(&backup_path);
+        let _ = fs::copy(&primary_archive, settings_path);
+        let _ = fs::copy(&backup_archive, &backup_path);
+        return Err(format!("failed to install recovered settings: {}", e));
+    }
+
+    Ok(settings)
+}
+
+pub fn recover_corrupt_settings_to_safe_default() -> Result<Settings, String> {
+    let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let settings_path = get_settings_path()?;
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let documents = std::env::var("USERPROFILE")
+        .map(|home| PathBuf::from(home).join("Documents").join("OreNoFusen"));
+    let app_managed = settings_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("Notes");
+
+    let base_path = documents
+        .ok()
+        .filter(|path| {
+            fs::create_dir_all(path).is_ok()
+                && check_storage_health(&path.to_string_lossy()).is_ok()
+        })
+        .unwrap_or(app_managed);
+
+    recover_corrupt_settings_at(&settings_path, &base_path, &timestamp)
+}
+
 fn recovery_draft_path(note_path: &str) -> Result<PathBuf, String> {
     let settings_path = get_settings_path()?;
     let config_dir = settings_path.parent().ok_or("config directory not found")?;
@@ -1182,6 +1278,93 @@ mod tests {
         } else {
             std::env::remove_var("APPDATA");
         }
+    }
+
+    #[test]
+    fn recover_corrupt_settings_archives_both_invalid_generations() {
+        let root = tempdir().unwrap();
+        let settings_path = root.path().join("settings.json");
+        let backup_path = settings_backup_path(&settings_path);
+        let vault = root.path().join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(&backup_path, "{broken-backup").unwrap();
+
+        recover_corrupt_settings_at(&settings_path, &vault, "20260714-123456").unwrap();
+
+        assert!(root.path().join("settings.corrupt-20260714-123456.json").exists());
+        assert!(root.path().join("settings.backup-corrupt-20260714-123456.json").exists());
+    }
+
+    #[test]
+    fn recover_corrupt_settings_writes_valid_primary_and_backup() {
+        let root = tempdir().unwrap();
+        let settings_path = root.path().join("settings.json");
+        let backup_path = settings_backup_path(&settings_path);
+        let vault = root.path().join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(&backup_path, "{broken-backup").unwrap();
+
+        let recovered =
+            recover_corrupt_settings_at(&settings_path, &vault, "20260714-123456").unwrap();
+
+        assert_eq!(
+            recovered.base_path.as_deref(),
+            Some(vault.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            read_settings_file(&settings_path).unwrap().base_path,
+            recovered.base_path
+        );
+        assert_eq!(
+            read_settings_file(&backup_path).unwrap().base_path,
+            recovered.base_path
+        );
+    }
+
+    #[test]
+    fn recover_corrupt_settings_is_not_used_when_backup_is_valid() {
+        let root = tempdir().unwrap();
+        let settings_path = root.path().join("settings.json");
+        let backup_path = settings_backup_path(&settings_path);
+        let vault = root.path().join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(
+            &backup_path,
+            serde_json::to_string(&Settings::default()).unwrap(),
+        )
+        .unwrap();
+
+        let error = match recover_corrupt_settings_at(
+            &settings_path,
+            &vault,
+            "20260714-123456",
+        ) {
+            Ok(_) => panic!("valid backup must keep the normal backup recovery path"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("both invalid"));
+        assert!(backup_path.exists());
+        assert!(!root.path().join("settings.corrupt-20260714-123456.json").exists());
+    }
+
+    #[test]
+    fn recovered_settings_load_normally_on_next_start() {
+        let root = tempdir().unwrap();
+        let settings_path = root.path().join("settings.json");
+        let backup_path = settings_backup_path(&settings_path);
+        let vault = root.path().join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(&backup_path, "{broken-backup").unwrap();
+
+        recover_corrupt_settings_at(&settings_path, &vault, "20260714-123456").unwrap();
+
+        assert!(read_settings_file(&settings_path).is_ok());
+        assert!(read_settings_file(&backup_path).is_ok());
     }
 
     #[test]

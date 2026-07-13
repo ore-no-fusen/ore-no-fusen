@@ -622,6 +622,32 @@ fn do_create_note(
     })
 }
 
+const SETTINGS_RECOVERY_NOTICE_BODY: &str = "設定ファイルを読み込めなかったため、安全な初期設定で起動しました。\n\n付箋ファイルは削除していません。一部の設定は初期値に戻っています。\n\n以前の付箋が表示されない場合は、設定の「データ管理」から取り込めます。\n\nこの付箋は確認後に削除できます。";
+
+fn create_settings_recovery_notice(
+    state: &Mutex<AppState>,
+    folder_path: &str,
+) -> Result<Note, String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    let next_seq = storage::get_next_seq(folder_path);
+    let mut data = logic::build_create_note_data(
+        folder_path,
+        "設定を安全な初期状態へ復旧しました",
+        next_seq,
+        &today,
+    );
+    data.body = SETTINGS_RECOVERY_NOTICE_BODY.to_string();
+    data.content = format!("{}\n\n{}", data.frontmatter, data.body);
+    storage::write_note(&data.path_str, &data.content)?;
+    logic::apply_add_note(&mut app_state, data.meta.clone());
+    Ok(Note {
+        body: data.body,
+        frontmatter: data.frontmatter,
+        meta: data.meta,
+    })
+}
+
 #[tauri::command]
 fn fusen_create_note(
     state: State<'_, Mutex<AppState>>,
@@ -4745,8 +4771,39 @@ pub fn run() {
                     }
                 },
                 Err(e) => {
-                    logger::log_warn(&format!("設定ファイルが見つからないか無効です: {}", e));
-                    logger::log_info("初回起動またはクリーンインストールを検出しました");
+                    logger::log_warn(&format!("設定ファイルを読み込めません: {}", e));
+                    match storage::recover_corrupt_settings_to_safe_default() {
+                        Ok(settings) => {
+                            if let Some(base_path) = settings.base_path.clone() {
+                                let state: State<Mutex<AppState>> = app.state();
+                                {
+                                    let mut app_state =
+                                        state.lock().unwrap_or_else(|p| p.into_inner());
+                                    app_state.base_path = Some(base_path.clone());
+                                    app_state.folder_path = Some(base_path.clone());
+                                }
+                                match create_settings_recovery_notice(&state, &base_path) {
+                                    Ok(note) => logger::log_warn(&format!(
+                                        "設定を安全な初期状態へ復旧し、案内付箋を作成しました: {}",
+                                        logger::sanitize_path(&note.meta.path)
+                                    )),
+                                    Err(notice_error) => logger::log_error(&format!(
+                                        "設定の自動復旧後に案内付箋を作成できませんでした: {}",
+                                        notice_error
+                                    )),
+                                }
+                            } else {
+                                logger::log_error("設定の自動復旧後も保存先がありません");
+                            }
+                        }
+                        Err(recovery_error) => {
+                            logger::log_error(&format!(
+                                "設定の自動復旧を実行できませんでした: {}",
+                                recovery_error
+                            ));
+                            logger::log_info("設定ファイルが存在しない場合は初回セットアップへ進みます");
+                        }
+                    }
                 }
             }
             
@@ -5113,6 +5170,24 @@ mod pool_tests {
             n1.meta.path, n2.meta.path,
             "連番が衝突してはいけない（Mutex 排他の効果）"
         );
+    }
+
+    #[test]
+    fn settings_recovery_notice_is_a_yellow_note_with_recovery_guidance() {
+        let tmp = tempdir().unwrap();
+        let state = Mutex::new(AppState::default());
+
+        let note =
+            create_settings_recovery_notice(&state, tmp.path().to_str().unwrap()).unwrap();
+
+        let saved = std::fs::read_to_string(&note.meta.path).unwrap();
+        assert!(
+            saved.contains("backgroundColor: '#f7e9b0'")
+                || saved.contains("backgroundColor: #f7e9b0")
+        );
+        assert!(saved.contains("設定ファイルを読み込めなかったため"));
+        assert!(saved.contains("付箋ファイルは削除していません"));
+        assert!(saved.contains("データ管理"));
     }
 
     /// Task 1: Pool 窓の WS_EX_LAYERED + α=0 + 画面外配置を確認
