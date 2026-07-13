@@ -438,6 +438,9 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
 // [New] Link Detection Logic
 // URL and Windows Path Regex (Drive Letter & UNC)
 const LINK_REGEX = createLinkTargetRegex();
+export function buildClipboardImageMarkdown(savedPath: string): string {
+    return `![image](${savedPath})\n`;
+}
 
 const linkDecorationField = ViewPlugin.fromClass(class {
     decorations: DecorationSet;
@@ -1341,7 +1344,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                             .then((savedPath) => {
                                                 // Insert markdown: ![image](path)
                                                 // Use "image" as alt text, can be changed later
-                                                const markdown = `![image](${savedPath})`;
+                                                const markdown = buildClipboardImageMarkdown(savedPath);
 
                                                 view.dispatch({
                                                     changes: {
