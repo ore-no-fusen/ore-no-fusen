@@ -1,3 +1,11 @@
+## 2026-07-13 checkbox marker color boundary
+
+- Limited the orange checkbox marker decoration to `- [ ]` / `- [x]`, excluding trailing whitespace.
+- Marked the decoration as non-inclusive so text inserted after the marker does not inherit its color.
+- Added a focused regression test for the marker boundary.
+- Audited headings, normal lists, links, and bold markers; normal lists had the same trailing-space risk and now use the same non-inclusive boundary.
+- Updated sticky-note E2E 3.5 from the removed `input#path` to the current read-only path display and `保存場所を変更` button.
+
 ## 2026-07-12 crystal purpose exploration
 
 - Expanded `docs-v2/002_PC.md` §11.1 with the core purpose: save what worked, find it next time, reuse and improve it until the user becomes skilled almost without noticing.
@@ -187,3 +195,94 @@
 - For an unsaved empty/pool note, it reuses the existing safe create-folder resolver and opens the current base folder instead of doing nothing.
 - Missing base-folder resolution now produces an explicit error rather than a silent no-op.
 - Added request-selection regression tests for saved, unsaved, and missing-path cases.
+## 2026-07-13 安定化マスタープラン
+
+- 提案した10項目すべてを、機能追加を伴わない必須の安定化作業として整理した。
+- `.planning/ROBUSTNESS-PLAN.md` を追加し、Phase 20〜27として、起動・設定の安全化、復旧ドラフト、保存競合防止、ファイル操作の安全化、バックアップ復元保証、PC–iPhone同期の冪等化、障害回帰テスト、診断基盤の統合を計画した。
+- ローカル保存と世代管理を安定させてから、Drive・Service Worker同期を変更する順序に固定した。
+- 各フェーズは個別に検証・切り戻し可能とする。実装はまだ開始していない。
+- 100万人規模での運用負荷と変更リスクを再評価し、計画を縮小版へ改訂した。
+- データ損失に直結する7項目は必須とし、削除・移動の全面共通化、複雑な復旧UI、独自ログ基盤は行わない。
+- 8フェーズ構成を、PCローカル保護、復旧保証、同期安全化、品質ゲートの4段階へ整理した。
+
+## 2026-07-13 設定ファイルの安全化
+
+- `settings.json` への直接上書きを、一時ファイルへの書き込み・同期・再読込検証後の交換へ変更した。
+- 現在の正常設定を `settings.json.bak` として1世代保持し、本体破損時は正常なバックアップを読み込む。
+- 本体とバックアップの両方が壊れている場合はエラーとし、既定値で設定全体を上書きしない。
+- 設定保存コマンドは既存設定の読み込み失敗を握りつぶさず、保存前に中断する。
+- 設定関連Rustテスト4件、Rust全体テスト（186件成功・2件ignore）、VitePress設計書ビルドが通過した。
+
+## 2026-07-13 保存先異常の検知
+
+- 保存先の存在、ディレクトリ種別、一覧読取、試し書き、ディスク同期、確認ファイル削除を検証するRustコマンドを追加した。
+- 設定済み保存先が利用不能でも既定フォルダを自動作成・設定せず、元のbase_pathを保持して付箋復元を停止するよう変更した。
+- 設定画面には再接続または明示的な保存先変更を案内し、異常が解消するまで閉じない。
+- 自動保存失敗表示へ、保存先接続・空き容量・権限の確認と画面を閉じない案内を追加した。
+- 保存先診断Rustテスト3件、Rust全体テスト（189件成功・2件ignore）、TypeScript、Vitest全体、VitePress設計書ビルドが通過した。
+- ユーザー方針: 以後の重い全体テストと実機確認は第1段階の最後にまとめる。各小修正では対象を絞った最小テストだけ実施する。
+
+## 2026-07-13 保存失敗時だけの復旧コピー
+
+- 正常時の処理を重くしないため、常時ドラフト保存は採用しなかった。
+- 通常保存が失敗した場合だけ、書き込む予定だった完全な付箋内容を `%APPDATA%/OreNoFusen/recovery-drafts` へ原子的に退避する。
+- 次回読込時は通常ファイルより新しい復旧コピーだけを使用し、通常保存成功後に対応コピーを削除する。
+- 正常保存前の800ms以内に強制終了した場合の入力は、負荷とのトレードオフとして保護対象外とする。
+- 対象Rustテスト2件が通過。全体テストと実機確認は第1段階の最後にまとめて実施する。
+
+## 2026-07-13 iPhone→PC再受信の重複防止
+
+- PC保存成功後・Drive ack前にアプリが終了すると、再起動後に同じ受信IDから付箋が重複作成される穴を確認した。
+- 受信IDはSHA-256ハッシュとして付箋の管理情報へ保存し、再受信時に同じハッシュがあれば画像再取得・付箋再作成を行わずackだけ再試行する。
+- 新規受信でも、既存確認と付箋作成をRustのAppState排他内で行い、同時処理による重複を防ぐ。
+- 該当仕様は `docs-v2/003_IPHONE.md` 図3-4、改版1.19。
+- 全体テストと実機確認は第1段階の最後にまとめ、今回は対象RustテストとTypeScript確認だけを行う。
+
+## 2026-07-14 復旧コピーの最小診断ログ
+
+- 新しいログ基盤は追加せず、既存Rustログへ保存障害時だけ3種類を記録する。
+- 記録対象は、復旧コピー作成成功、通常保存と復旧コピー作成の両方の失敗、次回読込時の復旧コピー使用。
+- 付箋本文とフルパスは記録せず、`sanitize_path` を通したファイル名だけを使用する。
+- 正常保存時の追加ログ・追加I/Oは行わない。
+- 該当仕様は `docs-v2/002_PC.md` §7.1.3、改版2.24。
+- 検証済み: 復旧コピー対象Rustテスト2件、Rust全体194件成功・2件ignore、Vitest全体成功、TypeScript成功、VitePressビルド成功、データ安全性E2E 3件成功・1件skip。
+- 実機確認待ち: (1) 一時保存先を切断してbase_pathが保持され警告が出ること、(2) 保存失敗後に復旧内容が再表示され正常保存後に復旧コピーが消えること、(3) iPhone→PC保存後・Drive ack前相当のキューを再受信して付箋が重複しないこと。
+- 正常保存時の軽量化: 復旧パスの確認だけで `recovery-drafts` を作成していた処理を修正し、通常保存失敗時だけフォルダを作る。削除も対象ファイルが存在する場合だけ行う。
+## 2026-07-13 editor shortcut settings and scope correction
+
+- Added settings for exactly four existing RichTextEditor actions: bold, heading, bullet list, and checkbox.
+- Preserved the existing four global hotkey settings; removed the mistakenly added enable switches and F2/search/delete settings before completing this work.
+- Editor shortcut capture rejects duplicates against all four global and four editor shortcut values, persists through the existing settings path, and rebuilds the editor keymap when settings change.
+- Regression prevention: when a request contains a term that can name both a UI control and an app action (for example "checkbox"), restate the concrete action list before implementation; do not expand the list without confirmation. Before handoff, compare the final action list with that restatement and audit `git diff` for out-of-scope fields.
+- Verification passed: TypeScript, focused tests (19), full Vitest (46 files / 308 tests), Rust `cargo check`, and VitePress docs build.
+## 2026-07-14 画像貼り付け後の入力位置調査
+
+- クリップボード画像の貼り付けは `app/components/RichTextEditor.tsx` で画像Markdownだけを挿入し、カーソルを閉じ `)` の直後へ置いているため、画像の右側に見えて次の入力位置が分かりにくい。
+- 最小修正案は、貼り付ける内容を `![image](path)\n` とし、カーソルを改行後へ置くこと。通常のテキスト貼り付けや画面キャプチャ機能には触れない。
+- `src-tauri/src/logic.rs` は先頭の画像Markdownを除外し、次の空でないテキスト行をファイル名候補にする実装・テストが既にあるため、希望するファイル名動作は可能。
+- ファイル名のリネーム確定は現状、編集終了時（付箋外クリック・Esc・ウィンドウblur等）の `allowRename=true` 保存で行われる。
+- 実装済み: 画像Markdown末尾へ改行を追加し、カーソルを次行へ置くよう変更。通常のテキスト貼り付けと画面キャプチャ処理は変更していない。
+- `RichTextEditor.imagePaste.test.ts` を追加し、貼り付け文字列が改行で終わることを確認。
+- 検証済み: 対象Vitest 1件、画像行を除外するRustテスト3件。
+## 2026-07-14 画像クリックで編集終了する動作の調査
+
+- 現状は `StickyNote.tsx` の外側クリック判定が `editorHost` 内を一律除外し、画像プレビューもその内側にあるため、画像をクリックしても編集終了しない。
+- `ImageWidget.ignoreEvent()` も画像内イベントをCodeMirrorの編集操作から除外しているため、通常のフォーカス離脱では編集終了しない。
+- 最小修正案は、編集モードの画像本体クリックだけを検出して既存の `onBlur` / `handleEditBlur` を呼ぶこと。画像右下のリサイズハンドル、ドラッグ、通常テキスト、表示モードには適用しない。
+- 編集終了時は既存の `allowRename=true` 保存を通るため、画像の次行に入力したテキストによるファイル名確定も同時に行われる。
+- 実装済み: 編集中の画像本体クリックだけを既存の編集終了処理へ接続し、保存とファイル名確定が行われるようにした。
+- リサイズハンドル、画像ウィジェット外の画像、通常テキストでは編集終了しない判定テストを追加。
+- 検証済み: 対象Vitest 2件、TypeScript、差分チェック。
+- 実機確認: 画像クリックで編集終了するようになったが、モード切替時に画像が一瞬フラッシュする。
+- 原因: 編集用CodeMirror画像から表示用`MarkdownRenderer`画像へDOMを作り直し、`ResizableImage`がローカルパスを非同期でasset URLへ変換するまで1×1透明GIFを初期表示するため。
+- フラッシュは必須ではない。最小改善案は変換済みasset URLをプロセス内キャッシュし、同じ画像の表示モード再生成時は最初から実画像URLを使うこと。ファイル内容や保存処理は変更しない。
+- 実装済み: ローカル画像の変換済みasset URLを最大256件のメモリキャッシュへ保持し、同じ画像の再マウント時は透明GIFを挟まず最初から実画像URLを使用する。
+- キャッシュ対象はURL文字列だけで、画像データ・追加ディスクI/O・追加変換処理は持たない。上限超過時は最古のエントリを削除する。
+- 検証済み: `ResizableImage` / 画像クリック対象Vitest 6件、TypeScript、差分チェック。
+- 実機確認で画像クリックによる編集終了が動作しないことを確認。
+- 根本原因: `ImageWidget.ignoreEvent() = true` のため、CodeMirror の `eventBelongsToEditor()` が画像ウィジェット由来のクリックを除外し、追加した `EditorView.domEventHandlers.click` へ到達しない。
+- 前回テストはクリック対象の要素判定だけで、CodeMirrorのイベント遮断経路を検証していなかった。
+- 再修正案: 画像ウィジェット内で画像本体クリックを直接受け、CodeMirrorのイベント処理を経由せず既存の編集終了コールバックへ通知する。リサイズハンドルは通知対象外のままにする。
+- 再修正済み: 画像ウィジェット内のネイティブclickから専用イベント `fusen:image-widget-click` をエディタDOMへ直接通知し、既存の編集終了コールバックを呼ぶよう変更。到達しなかったCodeMirror clickハンドラは削除。
+- テストを専用イベントの到達確認へ変更し、画像本体では1回通知、リサイズハンドルとウィジェット外画像では通知しないことを確認。
+- 検証済み: 対象Vitest 2件、TypeScript、差分チェック。
