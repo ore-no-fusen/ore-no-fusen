@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     shortcut_toggle_visibility: 'ctrl+shift+h',
     shortcut_arrange: 'ctrl+shift+l',
     shortcut_quick_launcher: 'ctrl+p',
+    shortcut_bold: 'ctrl+b', shortcut_heading: 'ctrl+h', shortcut_bullet_list: 'ctrl+l', shortcut_checkbox: 'ctrl+shift+c',
     quick_launcher_triple_right_click: false,
     monthly_backup_enabled: true,
     backup_include_trash: false,
@@ -95,6 +96,10 @@ async function getSettings(): Promise<AppSettings> {
                     shortcut_toggle_visibility: parsed.shortcut_toggle_visibility ?? DEFAULT_SETTINGS.shortcut_toggle_visibility,
                     shortcut_arrange: parsed.shortcut_arrange ?? DEFAULT_SETTINGS.shortcut_arrange,
                     shortcut_quick_launcher: parsed.shortcut_quick_launcher ?? DEFAULT_SETTINGS.shortcut_quick_launcher,
+                    shortcut_bold: parsed.shortcut_bold ?? DEFAULT_SETTINGS.shortcut_bold,
+                    shortcut_heading: parsed.shortcut_heading ?? DEFAULT_SETTINGS.shortcut_heading,
+                    shortcut_bullet_list: parsed.shortcut_bullet_list ?? DEFAULT_SETTINGS.shortcut_bullet_list,
+                    shortcut_checkbox: parsed.shortcut_checkbox ?? DEFAULT_SETTINGS.shortcut_checkbox,
                     quick_launcher_triple_right_click: parsed.quick_launcher_triple_right_click ?? DEFAULT_SETTINGS.quick_launcher_triple_right_click,
                 };
             } else {
@@ -116,6 +121,8 @@ async function getSettings(): Promise<AppSettings> {
                 shortcut_toggle_visibility: loaded.shortcut_toggle_visibility,
                 shortcut_arrange: loaded.shortcut_arrange,
                 shortcut_quick_launcher: loaded.shortcut_quick_launcher,
+                shortcut_bold: loaded.shortcut_bold, shortcut_heading: loaded.shortcut_heading,
+                shortcut_bullet_list: loaded.shortcut_bullet_list, shortcut_checkbox: loaded.shortcut_checkbox,
                 quick_launcher_triple_right_click: loaded.quick_launcher_triple_right_click,
             }
             settingsCache = { ...DEFAULT_SETTINGS, ...normalized };

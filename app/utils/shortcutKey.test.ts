@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatShortcutLabel, keyboardEventToShortcut, matchesShortcut, normalizeShortcutString } from './shortcutKey';
+import { formatShortcutLabel, hasShortcutConflict, keyboardEventToShortcut, matchesShortcut, normalizeShortcutString } from './shortcutKey';
 
 function keyEvent(input: {
     key: string;
@@ -47,6 +47,13 @@ describe('keyboardEventToShortcut', () => {
 
     it('returns null for unsupported keys', () => {
         expect(keyboardEventToShortcut(keyEvent({ key: '!', ctrlKey: true }))).toBeNull();
+    });
+});
+
+describe('hasShortcutConflict', () => {
+    it('detects equivalent shortcuts and ignores missing values', () => {
+        expect(hasShortcutConflict('ctrl+shift+c', ['Shift+Control+KeyC', undefined])).toBe(true);
+        expect(hasShortcutConflict('ctrl+b', ['ctrl+h', 'ctrl+l'])).toBe(false);
     });
 });
 

@@ -246,6 +246,9 @@ export interface RichTextEditorProps {
     onFirstChar?: () => void;
     // Pool 窓用: 画像貼り付けなど文字入力以外でも保存先ファイルを確保する
     onEnsureFilePath?: () => Promise<string | null>;
+    formatShortcuts?: {
+        bold?: string; heading?: string; bulletList?: string; checkbox?: string;
+    };
 }
 
 // 外部から呼べるメソッドの型定義
@@ -443,6 +446,7 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
 // [New] Link Detection Logic
 // URL and Windows Path Regex (Drive Letter & UNC)
 const LINK_REGEX = createLinkTargetRegex();
+
 export function buildClipboardImageMarkdown(savedPath: string): string {
     return `![image](${savedPath})\n`;
 }
@@ -457,6 +461,17 @@ export function forwardImageClickToEditor(target: EventTarget | null, editorDom:
     if (!shouldExitEditingForImageClick(target)) return false;
     editorDom.dispatchEvent(new CustomEvent(IMAGE_WIDGET_CLICK_EVENT));
     return true;
+}
+
+export function shortcutToCodeMirrorKey(shortcut: string): string {
+    return shortcut.split('+').map((part, index, parts) => {
+        const key = part.trim().toLowerCase();
+        if (key === 'ctrl' || key === 'control') return 'Ctrl';
+        if (key === 'meta' || key === 'super') return 'Meta';
+        if (key === 'shift') return 'Shift';
+        if (key === 'alt') return 'Alt';
+        return index === parts.length - 1 ? key : part;
+    }).join('-');
 }
 
 const linkDecorationField = ViewPlugin.fromClass(class {
@@ -632,7 +647,7 @@ const moveFromImageLineEnd = (view: EditorView, direction: 'left' | 'right'): bo
 };
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
-    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath } = props;
+    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath, formatShortcuts } = props;
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
@@ -1105,7 +1120,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             preventDefault: true,
                         },
                         {
-                            key: 'Mod-b',
+                            key: shortcutToCodeMirrorKey(formatShortcuts?.bold ?? 'ctrl+b'),
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
@@ -1128,7 +1143,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         },
                         // Ctrl+H: 見出し1トグル
                         {
-                            key: 'Mod-h',
+                            key: shortcutToCodeMirrorKey(formatShortcuts?.heading ?? 'ctrl+h'),
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
@@ -1154,7 +1169,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         },
                         // Ctrl+L: 箇条書きトグル
                         {
-                            key: 'Mod-l',
+                            key: shortcutToCodeMirrorKey(formatShortcuts?.bulletList ?? 'ctrl+l'),
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
@@ -1181,7 +1196,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         },
                         // Ctrl+Shift+C: チェックボックストグル
                         {
-                            key: 'Mod-Shift-c',
+                            key: shortcutToCodeMirrorKey(formatShortcuts?.checkbox ?? 'ctrl+shift+c'),
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
@@ -1454,9 +1469,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
         });
 
         viewRef.current = view;
-
         const handleImageWidgetClick = () => latestOnBlurRef.current?.();
         view.dom.addEventListener(IMAGE_WIDGET_CLICK_EVENT, handleImageWidgetClick);
+
         // [NEW] 初期選択処理（作成直後に一度だけ予約）
         if (isNewNote) {
             // [FIX] rAF x2 でレイアウト確定後に「1回だけ」フォーカス＆カーソル先頭配置する。
@@ -1499,8 +1514,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             view.destroy();
             viewRef.current = null;
         };
+        // 設定画面で編集ショートカットを変更した場合だけキーマップを再作成する。
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // 起動時に一度だけ作成
+    }, [formatShortcuts?.bold, formatShortcuts?.heading, formatShortcuts?.bulletList, formatShortcuts?.checkbox]);
 
     // [New] Ready flag initialization
     useEffect(() => {

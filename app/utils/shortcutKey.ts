@@ -100,6 +100,11 @@ export function normalizeShortcutString(shortcut: string): string {
     return [...orderedModifiers, ...(key ? [key] : [])].join('+');
 }
 
+export function hasShortcutConflict(candidate: string, shortcuts: Array<string | null | undefined>): boolean {
+    const normalizedCandidate = normalizeShortcutString(candidate)
+    return shortcuts.some((shortcut) => shortcut != null && normalizeShortcutString(shortcut) === normalizedCandidate)
+}
+
 function normalizeShortcutPart(part: string): string {
     if (/^Key[A-Z]$/i.test(part)) return part.slice(3).toLowerCase();
     if (/^Digit[0-9]$/i.test(part)) return part.slice(5);

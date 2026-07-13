@@ -2068,6 +2068,12 @@ const StickyNote = memo(function StickyNote() {
                                     initialCoords={initialCoords}
                                     isNewNote={isNewNote}
                                     fontSize={noteFontSize}
+                                    formatShortcuts={{
+                                        bold: settings.shortcut_bold,
+                                        heading: settings.shortcut_heading,
+                                        bulletList: settings.shortcut_bullet_list,
+                                        checkbox: settings.shortcut_checkbox,
+                                    }}
                                     onBlur={isEditing ? handleEditBlur : undefined}
                                     onSelectionChange={isEditing ? handleSelectionChange : undefined}
                                     onFirstChar={isEditing ? handleFirstChar : undefined}

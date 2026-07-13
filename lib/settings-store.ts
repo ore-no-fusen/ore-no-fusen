@@ -25,6 +25,10 @@ export type AppSettings = {
     shortcut_toggle_visibility?: string
     shortcut_arrange?: string
     shortcut_quick_launcher?: string
+    shortcut_bold?: string
+    shortcut_heading?: string
+    shortcut_bullet_list?: string
+    shortcut_checkbox?: string
     quick_launcher_triple_right_click?: boolean
     /**
      * この PC を一意に識別する UUID。Rust 側が自動生成し settings.json に保存する。
@@ -53,6 +57,10 @@ const DEFAULT_SETTINGS: AppSettings = {
     shortcut_toggle_visibility: "ctrl+shift+h",
     shortcut_arrange: "ctrl+shift+l",
     shortcut_quick_launcher: "ctrl+p",
+    shortcut_bold: "ctrl+b",
+    shortcut_heading: "ctrl+h",
+    shortcut_bullet_list: "ctrl+l",
+    shortcut_checkbox: "ctrl+shift+c",
     quick_launcher_triple_right_click: false,
     backup_history: [],
     monthly_backup_enabled: true,
@@ -112,6 +120,10 @@ export function useSettings() {
                         shortcut_toggle_visibility: parsed.shortcut_toggle_visibility ?? DEFAULT_SETTINGS.shortcut_toggle_visibility,
                         shortcut_arrange: parsed.shortcut_arrange ?? DEFAULT_SETTINGS.shortcut_arrange,
                         shortcut_quick_launcher: parsed.shortcut_quick_launcher ?? DEFAULT_SETTINGS.shortcut_quick_launcher,
+                        shortcut_bold: parsed.shortcut_bold ?? DEFAULT_SETTINGS.shortcut_bold,
+                        shortcut_heading: parsed.shortcut_heading ?? DEFAULT_SETTINGS.shortcut_heading,
+                        shortcut_bullet_list: parsed.shortcut_bullet_list ?? DEFAULT_SETTINGS.shortcut_bullet_list,
+                        shortcut_checkbox: parsed.shortcut_checkbox ?? DEFAULT_SETTINGS.shortcut_checkbox,
                         quick_launcher_triple_right_click: parsed.quick_launcher_triple_right_click ?? DEFAULT_SETTINGS.quick_launcher_triple_right_click,
                         backup_history: parsed.backup_history ?? DEFAULT_SETTINGS.backup_history,
                         monthly_backup_enabled: parsed.monthly_backup_enabled ?? true,
@@ -141,6 +153,10 @@ export function useSettings() {
                     shortcut_toggle_visibility: loaded.shortcut_toggle_visibility,
                     shortcut_arrange: loaded.shortcut_arrange,
                     shortcut_quick_launcher: loaded.shortcut_quick_launcher,
+                    shortcut_bold: loaded.shortcut_bold,
+                    shortcut_heading: loaded.shortcut_heading,
+                    shortcut_bullet_list: loaded.shortcut_bullet_list,
+                    shortcut_checkbox: loaded.shortcut_checkbox,
                     quick_launcher_triple_right_click: loaded.quick_launcher_triple_right_click,
                     pc_id: loaded.pc_id,
                     backup_history: loaded.backup_history ?? [],

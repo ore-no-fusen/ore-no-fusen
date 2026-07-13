@@ -50,6 +50,10 @@ describe('useSettings Hook (Browser Mode)', () => {
         expect(result.current.settings.font_size).toBe(16);
         expect(result.current.settings.iphone_send_enabled).toBe(false);
         expect(result.current.settings.shortcut_quick_launcher).toBe('ctrl+p');
+        expect(result.current.settings.shortcut_bold).toBe('ctrl+b');
+        expect(result.current.settings.shortcut_heading).toBe('ctrl+h');
+        expect(result.current.settings.shortcut_bullet_list).toBe('ctrl+l');
+        expect(result.current.settings.shortcut_checkbox).toBe('ctrl+shift+c');
     });
 
     it('loads settings from localStorage if available', async () => {

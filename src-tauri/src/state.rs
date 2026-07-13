@@ -135,6 +135,10 @@ pub struct Settings {
     /// クイックランチャーショートカット。None の場合は "ctrl+p" をデフォルトとして使用。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_quick_launcher: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub shortcut_bold: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub shortcut_heading: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub shortcut_bullet_list: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub shortcut_checkbox: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quick_launcher_triple_right_click: Option<bool>,
     /// この PC を一意に識別する UUID。Drive 上の PC 登録と紐づく。
@@ -188,6 +192,7 @@ impl Default for Settings {
             shortcut_toggle_visibility: None,
             shortcut_arrange: None,
             shortcut_quick_launcher: None,
+            shortcut_bold: None, shortcut_heading: None, shortcut_bullet_list: None, shortcut_checkbox: None,
             quick_launcher_triple_right_click: None,
             pc_id: None,
             backup_history: Vec::new(),

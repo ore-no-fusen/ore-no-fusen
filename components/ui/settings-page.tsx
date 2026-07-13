@@ -17,7 +17,7 @@ import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database,
 import { useSettings, type AppSettings } from "@/lib/settings-store"
 // ★翻訳関数をインポート
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
-import { formatShortcutLabel, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
+import { formatShortcutLabel, hasShortcutConflict, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
 import { trackDonationEvent } from "@/app/utils/analytics"
 import { monthlyBackupToggleChanges } from "@/app/utils/monthlyBackupSettings"
 import { saveCrystalFormats } from "@/app/api/crystalFormats"
@@ -765,6 +765,11 @@ function HotkeySection({ settings, saveSettings }: {
                     <Button variant="outline" size="sm" onClick={() => beginCapture('toggle_visibility')}>キーを変更</Button>
                 </HotkeyShortcutRow>
 
+                <LocalShortcutRow number="5" title="太字" description="選択範囲を太字にします。" settingKey="shortcut_bold" defaultShortcut="Ctrl+B" settings={settings} saveSettings={saveSettings} />
+                <LocalShortcutRow number="6" title="見出し" description="選択行を見出しにします。" settingKey="shortcut_heading" defaultShortcut="Ctrl+H" settings={settings} saveSettings={saveSettings} />
+                <LocalShortcutRow number="7" title="箇条書き" description="選択行を箇条書きにします。" settingKey="shortcut_bullet_list" defaultShortcut="Ctrl+L" settings={settings} saveSettings={saveSettings} />
+                <LocalShortcutRow number="8" title="チェックボックス" description="選択行をチェック項目にします。" settingKey="shortcut_checkbox" defaultShortcut="Ctrl+Shift+C" settings={settings} saveSettings={saveSettings} />
+
                 {captureAction && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                         <div className="flex items-center justify-between gap-4">
@@ -802,6 +807,42 @@ function HotkeySection({ settings, saveSettings }: {
             </div>
         </div>
     )
+}
+
+function LocalShortcutRow({ number, title, description, settingKey, defaultShortcut, settings, saveSettings }: {
+    number: string; title: string; description: string;
+    settingKey: 'shortcut_bold' | 'shortcut_heading' | 'shortcut_bullet_list' | 'shortcut_checkbox';
+    defaultShortcut: string; settings: AppSettings; saveSettings: (settings: AppSettings) => Promise<void>;
+}) {
+    const [capturing, setCapturing] = useState(false)
+    const shortcut = settings[settingKey] ?? defaultShortcut.toLowerCase()
+    useEffect(() => {
+        if (!capturing) return
+        const handler = (event: KeyboardEvent) => {
+            event.preventDefault(); event.stopPropagation()
+            if (event.key === 'Escape') { setCapturing(false); return }
+            const next = keyboardEventToShortcut(event)
+            if (!next) return
+            const shortcutKeys: Array<keyof AppSettings> = [
+                'shortcut_new_note', 'shortcut_quick_launcher', 'shortcut_arrange', 'shortcut_toggle_visibility',
+                'shortcut_bold', 'shortcut_heading', 'shortcut_bullet_list', 'shortcut_checkbox',
+            ]
+            const otherShortcuts = shortcutKeys.filter((key) => key !== settingKey).map((key) => typeof settings[key] === 'string' ? settings[key] as string : undefined)
+            if (hasShortcutConflict(next, otherShortcuts)) {
+                window.alert('そのキーは別のショートカットで使用されています。')
+                setCapturing(false)
+                return
+            }
+            void saveSettings({ ...settings, [settingKey]: next }).finally(() => setCapturing(false))
+        }
+        window.addEventListener('keydown', handler, true)
+        return () => window.removeEventListener('keydown', handler, true)
+    }, [capturing, saveSettings, settingKey, settings])
+    return <HotkeyShortcutRow number={number} title={title} description={description} shortcut={shortcut} defaultShortcut={defaultShortcut} expanded={capturing} onToggle={() => setCapturing(!capturing)}>
+        <div className="flex items-center justify-between gap-4">
+            <Button variant="outline" size="sm" onClick={() => setCapturing(true)}>{capturing ? 'キーを押してください' : 'キーを変更'}</Button>
+        </div>
+    </HotkeyShortcutRow>
 }
 
 function CrystalFormatSection() {
