@@ -28,12 +28,12 @@ pub fn save_settings<R: Runtime>(
     state: State<'_, Mutex<AppState>>,
     mut settings: AppSettings
 ) -> Result<(), String> {
+    // 存在する設定が壊れている場合は、既定値で上書きせず保存を中断する。
+    let existing_settings = storage::load_settings()?;
     // pc_id は UI から書き換えさせない内部フィールド。
     // フロントから空（=フロントが知らない or 古いフロント）で来ても既存値を保持する。
     if settings.pc_id.as_ref().map_or(true, |s| s.trim().is_empty()) {
-        if let Ok(existing) = storage::load_settings() {
-            settings.pc_id = existing.pc_id;
-        }
+        settings.pc_id = existing_settings.pc_id.clone();
     }
 
     if let Some(base_path) = &settings.base_path {

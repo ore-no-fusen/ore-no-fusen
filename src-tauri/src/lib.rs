@@ -571,10 +571,32 @@ fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<No
     // 読み込み失敗を握りつぶさず呼び出し側へ伝える。
     // 以前は失敗時に空 Note を返していたため、frontend が「読込成功・中身は空」と誤認し、
     // 開いていた付箋の作業コピーを空で上書きしてしまう不具合があった（データ空化の根本原因）。
-    let note = storage::read_note(&path)?;
+    let mut note = storage::read_note(&path)?;
+    if let Some(recovered_content) = storage::load_newer_recovery_draft(&path) {
+        logger::log_warn(&format!(
+            "[recovery] newer recovery copy loaded file={}",
+            logger::sanitize_path(&path)
+        ));
+        note.body = recovered_content;
+    }
 
     logic::apply_select_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path);
     Ok(note)
+}
+
+fn preserve_failed_save(path: &str, content: &str, save_error: String) -> String {
+    let file_name = logger::sanitize_path(path);
+    match storage::save_recovery_draft(path, content) {
+        Ok(()) => logger::log_warn(&format!(
+            "[recovery] normal save failed; recovery copy saved file={}",
+            file_name
+        )),
+        Err(_) => logger::log_error(&format!(
+            "[recovery] normal save and recovery copy both failed file={}",
+            file_name
+        )),
+    }
+    save_error
 }
 
 /// ノート作成の共通ロジック。Mutex を lock したまま get_next_seq → write_note → apply_add_note
@@ -607,6 +629,70 @@ fn fusen_create_note(
     context: String,
 ) -> Result<Note, String> {
     do_create_note(&state, &folder_path, &context)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IphoneNoteCreateResult {
+    note: Note,
+    created: bool,
+}
+
+fn iphone_source_hash(note_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(note_id.as_bytes()))
+}
+
+#[tauri::command]
+fn fusen_has_iphone_note(folder_path: String, note_id: String) -> bool {
+    let source_hash = iphone_source_hash(&note_id);
+    storage::find_note_by_iphone_source_hash(&folder_path, &source_hash).is_some()
+}
+
+/// iPhone受信付箋を、受信ID単位で一度だけ作成する。
+/// AppState の排他中に既存確認と作成を行い、同時実行でも重複させない。
+#[tauri::command]
+fn fusen_create_iphone_note(
+    state: State<'_, Mutex<AppState>>,
+    folder_path: String,
+    context: String,
+    body: String,
+    note_id: String,
+) -> Result<IphoneNoteCreateResult, String> {
+    let source_hash = iphone_source_hash(&note_id);
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+
+    if let Some(path) = storage::find_note_by_iphone_source_hash(&folder_path, &source_hash) {
+        return Ok(IphoneNoteCreateResult {
+            note: storage::read_note(&path)?,
+            created: false,
+        });
+    }
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let next_seq = storage::get_next_seq(&folder_path);
+    let mut data = logic::build_create_note_data(&folder_path, &context, next_seq, &today);
+    let closing_fence = data
+        .frontmatter
+        .rfind("---")
+        .ok_or_else(|| "付箋の管理情報を作成できませんでした".to_string())?;
+    data.frontmatter.insert_str(
+        closing_fence,
+        &format!("iphone_source_hash: {}\n", source_hash),
+    );
+    data.content = format!("{}\n\n{}", data.frontmatter, body);
+    data.body = body;
+    storage::write_note(&data.path_str, &data.content)?;
+    logic::apply_add_note(&mut app_state, data.meta.clone());
+
+    Ok(IphoneNoteCreateResult {
+        note: Note {
+            body: data.body,
+            frontmatter: data.frontmatter,
+            meta: data.meta,
+        },
+        created: true,
+    })
 }
 
 /// 1 文字目入力時にのみ呼ぶ lazy ファイル作成コマンド。
@@ -915,7 +1001,11 @@ fn fusen_save_note(
 
     // CommandはI/Oを実行するだけ
     match effect {
-        logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
+        logic::Effect::WriteNote { path, content } => {
+            if let Err(error) = storage::write_note(&path, &content) {
+                return Err(preserve_failed_save(&path, &content, error));
+            }
+        }
         logic::Effect::RenameNote { old_path, new_path } => {
             if std::path::Path::new(&old_path).exists() {
                 storage::rename_note(&old_path, &new_path)?;
@@ -925,7 +1015,9 @@ fn fusen_save_note(
             for e in effects {
                 match e {
                     logic::Effect::WriteNote { path, content } => {
-                        storage::write_note(&path, &content)?
+                        if let Err(error) = storage::write_note(&path, &content) {
+                            return Err(preserve_failed_save(&path, &content, error));
+                        }
                     }
                     logic::Effect::RenameNote { old_path, new_path } => {
                         if std::path::Path::new(&old_path).exists() {
@@ -936,6 +1028,11 @@ fn fusen_save_note(
                 }
             }
         }
+    }
+
+    storage::clear_recovery_draft(&path);
+    if new_path != path {
+        storage::clear_recovery_draft(&new_path);
     }
 
     Ok(new_path)
@@ -1789,6 +1886,11 @@ fn get_base_path(state: State<'_, Mutex<AppState>>) -> Option<String> {
 #[tauri::command]
 fn fusen_path_exists(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
+}
+
+#[tauri::command]
+fn fusen_check_storage_health(path: String) -> Result<(), String> {
+    storage::check_storage_health(&path)
 }
 
 fn log_startup_distribution_diagnostics() {
@@ -4497,6 +4599,8 @@ pub fn run() {
             fusen_list_notes,
             fusen_read_note,
             fusen_create_note,
+            fusen_has_iphone_note,
+            fusen_create_iphone_note,
             fusen_create_note_lazy,
             fusen_get_recipe_candidates,
             fusen_create_recipe_note,
@@ -4526,6 +4630,7 @@ pub fn run() {
             show_context_menu,
             get_base_path,
             fusen_path_exists,
+            fusen_check_storage_health,
             setup_first_launch,
             settings::get_settings,  // ← 「settings箱の中の」と指定！
             settings::save_settings,  // ← 「settings箱の中の」と指定！

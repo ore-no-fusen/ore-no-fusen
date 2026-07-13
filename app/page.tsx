@@ -1137,21 +1137,35 @@ function OrchestratorContent() {
       async (event) => {
         const { id, title, body, context, tags } = event.payload;
         try {
-          const newNote = await invoke<{ body: string; frontmatter: string; meta: { path: string } }>(
-            'fusen_create_note',
-            { folderPath, context }
-          );
+          // 前回はPC保存まで成功し、Driveのack前に終了した可能性がある。
+          // 同じ受信IDの付箋があれば、画像の再取得や付箋の再作成をせずackだけ再試行する。
+          const alreadySaved = await invoke<boolean>('fusen_has_iphone_note', {
+            folderPath,
+            noteId: id,
+          });
+          if (alreadySaved) {
+            await invoke('fusen_ack_iphone_note', { noteId: id });
+            return;
+          }
           // 画像参照をローカルパスに解決（画像なしの場合は body がそのまま返る）
           const resolvedBody = await invoke<string>('fusen_download_iphone_images', {
             folderPath,
             body: body || '',
           });
-          await invoke('fusen_save_note', {
-            path: newNote.meta.path,
+          const received = await invoke<{
+            note: { body: string; frontmatter: string; meta: { path: string } };
+            created: boolean;
+          }>('fusen_create_iphone_note', {
+            folderPath,
+            context,
             body: resolvedBody,
-            frontmatterRaw: newNote.frontmatter || '',
-            allowRename: false,
+            noteId: id,
           });
+          const newNote = received.note;
+          if (!received.created) {
+            await invoke('fusen_ack_iphone_note', { noteId: id });
+            return;
+          }
           // タグ適用（tags が配列で存在する場合）
           // 一時的な書込失敗はそのタグだけリトライで自動復旧する。最終的に失敗した場合は
           // 黙殺せずログに残す（本文は保存済み。Driveキューは後段でackし重複作成を避ける）。
@@ -1231,16 +1245,13 @@ function OrchestratorContent() {
 
         let needsSetup = !folderPath || folderPath.trim() === '';
 
-        // base_path に文字列はあっても、フォルダ自体が消えていたら再セットアップさせる
+        // 設定済みの保存先が使えない場合は、設定を書き換えず再接続・変更を促す。
         if (!needsSetup && folderPath) {
           try {
-            const exists = await invoke<boolean>('fusen_path_exists', { path: folderPath });
-            if (!exists) {
-              console.warn('[checkSetup] base_path folder is missing:', folderPath);
-              needsSetup = true;
-            }
+            await invoke<void>('fusen_check_storage_health', { path: folderPath });
           } catch (e) {
-            console.error('[checkSetup] fusen_path_exists failed, assuming setup required:', e);
+            console.error('[checkSetup] storage health check failed:', e);
+            setRecoveredMissingFolder(folderPath);
             needsSetup = true;
           }
         }
@@ -1331,23 +1342,18 @@ function OrchestratorContent() {
         try {
           const basePath = await invoke<string | null>('get_base_path');
 
-          // base_path にパスはあっても、フォルダ自体が消えていたら
-          // 「はじめて起動」と同じルートに合流させる（デフォルトフォルダ再作成＋設定画面表示＋ウェルカム）
+          // 設定済みの保存先が利用不能でも、自動で別フォルダへ切り替えない。
           let baseFolderMissing = false;
           if (basePath) {
             try {
-              const exists = await invoke<boolean>('fusen_path_exists', { path: basePath });
-              if (!exists) {
-                log(`[起動処理] 保存先フォルダが見つかりません: ${basePath} → 再セットアップします`);
-                baseFolderMissing = true;
-              }
+              await invoke<void>('fusen_check_storage_health', { path: basePath });
             } catch (e) {
-              log(`[起動処理] 保存先フォルダの確認に失敗、再セットアップします: ${e}`);
+              log(`[起動処理] 保存先フォルダを利用できません。設定は変更せず復元を停止します: ${e}`);
               baseFolderMissing = true;
             }
           }
 
-          if (!basePath || baseFolderMissing) {
+          if (!basePath) {
             setLoadingStatus("保存先フォルダを準備中...");
             try {
               await invoke<string>('setup_first_launch', { useDefault: true, importPath: null });
@@ -1356,16 +1362,17 @@ function OrchestratorContent() {
               setLoadingStatus("保存先の準備に失敗しました");
               return;
             }
-            // フォルダが消えていたケースでは、ユーザーが状況を把握できるよう設定画面を前面に出す
-            if (baseFolderMissing) {
-              setRecoveredMissingFolder(basePath ?? null);
-              setSetupRequired(true);
-              const win = getCurrentWindow();
-              if (win.label === 'main') {
-                await win.show();
-                await win.setFocus();
-              }
+          }
+          if (baseFolderMissing) {
+            setRecoveredMissingFolder(basePath);
+            setSetupRequired(true);
+            setIsCheckingSetup(false);
+            const win = getCurrentWindow();
+            if (win.label === 'main') {
+              await win.show();
+              await win.setFocus();
             }
+            return;
           }
           const savedFolder = await invoke<string | null>('get_base_path') ?? '';
           logStartupStep('2/6', `保存先フォルダを確認しました: ${savedFolder || '未設定'}`);
@@ -1676,6 +1683,17 @@ function OrchestratorContent() {
       baseFolderMissing={!!recoveredMissingFolder}
       missingFolderPath={recoveredMissingFolder}
       onClose={async () => {
+      if (setupRequired) {
+        const configuredPath = await invoke<string | null>('get_base_path');
+        if (!configuredPath) return;
+        try {
+          await invoke<void>('fusen_check_storage_health', { path: configuredPath });
+        } catch (e) {
+          console.error('[Settings] storage is still unavailable:', e);
+          setRecoveredMissingFolder(configuredPath);
+          return;
+        }
+      }
       // 設定画面を閉じる時の処理
       setIsSettingsOpen(false);
       // フォルダ消失通知は一度確認したら消す

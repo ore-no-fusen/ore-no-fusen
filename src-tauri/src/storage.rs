@@ -8,14 +8,18 @@
  */
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use walkdir::WalkDir;
+use sha2::{Digest, Sha256};
 use crate::state::{Note, NoteMeta};
 use crate::logic;
 
 pub const RECIPES_DIR_NAME: &str = "Recipes";
 pub const QA_DIR_NAME: &str = "QA";
 pub const TERMS_DIR_NAME: &str = "Terms";
+static SETTINGS_IO_LOCK: Mutex<()> = Mutex::new(());
 
 // UC-01: 設定ファイル管理
 pub use crate::state::Settings;
@@ -49,12 +53,30 @@ pub fn append_trash_operation(source: &Path, destination: &Path, origin: &str) -
 }
 
 pub fn load_settings() -> Result<Settings, String> {
+    let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let path = get_settings_path()?;
     if !path.exists() {
         return Ok(Settings::default());
     }
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+
+    match read_settings_file(&path) {
+        Ok(settings) => Ok(settings),
+        Err(primary_error) => {
+            let backup_path = settings_backup_path(&path);
+            if !backup_path.exists() {
+                return Err(format!(
+                    "settings.json is invalid and no backup exists: {}",
+                    primary_error
+                ));
+            }
+            read_settings_file(&backup_path).map_err(|backup_error| {
+                format!(
+                    "settings.json and its backup are invalid: primary={}; backup={}",
+                    primary_error, backup_error
+                )
+            })
+        }
+    }
 }
 
 pub fn save_settings(settings: &Settings) -> Result<(), String> {
@@ -62,13 +84,142 @@ pub fn save_settings(settings: &Settings) -> Result<(), String> {
         validate_storage_path(base_path)?;
     }
 
+    let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let path = get_settings_path()?;
+    let temp_path = path.with_extension("json.tmp");
+    let rollback_path = path.with_extension("json.rollback");
+    let backup_path = settings_backup_path(&path);
     let content = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    fs::write(path, content).map_err(|e| e.to_string())
+
+    let _ = fs::remove_file(&temp_path);
+    let _ = fs::remove_file(&rollback_path);
+
+    let mut temp_file = fs::File::create(&temp_path).map_err(|e| e.to_string())?;
+    temp_file
+        .write_all(content.as_bytes())
+        .and_then(|_| temp_file.sync_all())
+        .map_err(|e| {
+            let _ = fs::remove_file(&temp_path);
+            e.to_string()
+        })?;
+    drop(temp_file);
+
+    // 書き込んだ一時ファイルを実際の Settings として再読込できる場合だけ交換する。
+    read_settings_file(&temp_path).map_err(|e| {
+        let _ = fs::remove_file(&temp_path);
+        format!("temporary settings validation failed: {}", e)
+    })?;
+
+    if path.exists() {
+        // 壊れた現行ファイルで、最後の正常バックアップを上書きしない。
+        if read_settings_file(&path).is_ok() {
+            fs::copy(&path, &backup_path).map_err(|e| {
+                let _ = fs::remove_file(&temp_path);
+                format!("failed to preserve settings backup: {}", e)
+            })?;
+        }
+
+        fs::rename(&path, &rollback_path).map_err(|e| {
+            let _ = fs::remove_file(&temp_path);
+            format!("failed to stage current settings: {}", e)
+        })?;
+    }
+
+    if let Err(e) = fs::rename(&temp_path, &path) {
+        if rollback_path.exists() {
+            let _ = fs::rename(&rollback_path, &path);
+        }
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!("failed to install new settings: {}", e));
+    }
+
+    let _ = fs::remove_file(&rollback_path);
+    Ok(())
+}
+
+fn settings_backup_path(settings_path: &Path) -> PathBuf {
+    settings_path.with_extension("json.bak")
+}
+
+fn read_settings_file(path: &Path) -> Result<Settings, String> {
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+fn recovery_draft_path(note_path: &str) -> Result<PathBuf, String> {
+    let settings_path = get_settings_path()?;
+    let config_dir = settings_path.parent().ok_or("config directory not found")?;
+    let recovery_dir = config_dir.join("recovery-drafts");
+    let digest = Sha256::digest(note_path.to_lowercase().as_bytes());
+    Ok(recovery_dir.join(format!("{:x}.md", digest)))
+}
+
+/// 通常保存が失敗した場合だけ、最新内容をアプリ管理領域へ退避する。
+pub fn save_recovery_draft(note_path: &str, content: &str) -> Result<(), String> {
+    let draft_path = recovery_draft_path(note_path)?;
+    let recovery_dir = draft_path.parent().ok_or("recovery directory not found")?;
+    fs::create_dir_all(recovery_dir).map_err(|e| e.to_string())?;
+    write_note(&draft_path.to_string_lossy(), content)
+}
+
+pub fn clear_recovery_draft(note_path: &str) {
+    let Ok(draft_path) = recovery_draft_path(note_path) else {
+        return;
+    };
+    if draft_path.exists() {
+        let _ = fs::remove_file(draft_path);
+    }
+}
+
+/// 通常ファイルより新しい復旧コピーだけを返す。
+pub fn load_newer_recovery_draft(note_path: &str) -> Option<String> {
+    let draft_path = recovery_draft_path(note_path).ok()?;
+    let note_modified = fs::metadata(note_path).ok()?.modified().ok()?;
+    let draft_modified = fs::metadata(&draft_path).ok()?.modified().ok()?;
+    if draft_modified <= note_modified {
+        return None;
+    }
+    fs::read_to_string(draft_path).ok()
 }
 
 pub fn ensure_directory(path: &str) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|e| e.to_string())
+}
+
+/// 保存先が現在読み書き可能かを、既存データを変更せずに確認する。
+pub fn check_storage_health(path: &str) -> Result<(), String> {
+    let target = Path::new(path);
+    if !target.exists() {
+        return Err("保存先フォルダが見つかりません".to_string());
+    }
+    if !target.is_dir() {
+        return Err("保存先に指定された場所はフォルダではありません".to_string());
+    }
+
+    fs::read_dir(target)
+        .map_err(|e| format!("保存先フォルダを読み取れません: {}", e))?;
+
+    let probe_name = format!(
+        ".fusen_storage_probe_{}_{}.tmp",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    );
+    let probe_path = target.join(probe_name);
+    let probe_result = (|| -> Result<(), String> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe_path)
+            .map_err(|e| format!("保存先フォルダへ書き込めません: {}", e))?;
+        file.write_all(b"OreNoFusen storage health check")
+            .and_then(|_| file.sync_all())
+            .map_err(|e| format!("保存先への書き込みを完了できません: {}", e))
+    })();
+
+    let remove_result = fs::remove_file(&probe_path);
+    probe_result?;
+    remove_result.map_err(|e| format!("保存先の確認用ファイルを削除できません: {}", e))?;
+    Ok(())
 }
 
 pub fn validate_storage_path(path: &str) -> Result<(), String> {
@@ -370,6 +521,26 @@ pub fn read_note(path: &str) -> Result<Note, String> {
             font_size,
         },
     })
+}
+
+/// iPhone 受信IDのハッシュを持つ付箋を検索する。
+/// 再受信時の重複作成防止にだけ使用し、本文は比較しない。
+pub fn find_note_by_iphone_source_hash(folder_path: &str, source_hash: &str) -> Option<String> {
+    let marker = format!("iphone_source_hash: {}", source_hash);
+    WalkDir::new(folder_path)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry.file_type().is_file()
+                && entry.path().extension().and_then(|ext| ext.to_str()) == Some("md")
+        })
+        .find_map(|entry| {
+            let content = fs::read_to_string(entry.path()).ok()?;
+            content
+                .lines()
+                .any(|line| line.trim() == marker)
+                .then(|| entry.path().to_string_lossy().to_string())
+        })
 }
 
 pub fn write_note(path: &str, content: &str) -> Result<(), String> {
@@ -865,6 +1036,47 @@ mod tests {
     }
 
     #[test]
+    fn storage_health_accepts_readable_writable_directory_and_cleans_probe() {
+        let dir = tempdir().unwrap();
+        check_storage_health(&dir.path().to_string_lossy()).unwrap();
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn storage_health_rejects_missing_directory() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        let error = check_storage_health(&missing.to_string_lossy()).unwrap_err();
+        assert!(error.contains("見つかりません"));
+    }
+
+    #[test]
+    fn storage_health_rejects_file_path() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("not-a-directory");
+        fs::write(&file, "data").unwrap();
+        let error = check_storage_health(&file.to_string_lossy()).unwrap_err();
+        assert!(error.contains("フォルダではありません"));
+    }
+
+    #[test]
+    fn finds_received_iphone_note_by_exact_source_hash() {
+        let dir = tempdir().unwrap();
+        let note_path = dir.path().join("received.md");
+        fs::write(
+            &note_path,
+            "---\niphone_source_hash: abc123\n---\nreceived body",
+        )
+        .unwrap();
+
+        assert_eq!(
+            find_note_by_iphone_source_hash(&dir.path().to_string_lossy(), "abc123"),
+            Some(note_path.to_string_lossy().to_string())
+        );
+        assert!(find_note_by_iphone_source_hash(&dir.path().to_string_lossy(), "abc").is_none());
+    }
+
+    #[test]
     fn test_save_settings_keeps_original_base_path_string() {
         let _guard = SETTINGS_ENV_LOCK.lock().unwrap();
         let appdata_dir = tempdir().unwrap();
@@ -887,6 +1099,149 @@ mod tests {
         let saved = std::fs::read_to_string(get_settings_path().unwrap()).unwrap();
         let saved_settings: Settings = serde_json::from_str(&saved).unwrap();
         assert_eq!(saved_settings.base_path, Some(raw_base_path_str));
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn save_settings_keeps_one_valid_previous_generation() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let mut first = Settings::default();
+        first.language = "ja".to_string();
+        save_settings(&first).unwrap();
+
+        let mut second = first.clone();
+        second.language = "en".to_string();
+        save_settings(&second).unwrap();
+
+        let settings_path = get_settings_path().unwrap();
+        let current = read_settings_file(&settings_path).unwrap();
+        let previous = read_settings_file(&settings_backup_path(&settings_path)).unwrap();
+        assert_eq!(current.language, "en");
+        assert_eq!(previous.language, "ja");
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn load_settings_recovers_from_valid_backup_when_primary_is_corrupt() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let mut first = Settings::default();
+        first.language = "ja".to_string();
+        save_settings(&first).unwrap();
+        let mut second = first.clone();
+        second.language = "en".to_string();
+        save_settings(&second).unwrap();
+
+        fs::write(get_settings_path().unwrap(), "{broken").unwrap();
+        let recovered = load_settings().unwrap();
+        assert_eq!(recovered.language, "ja");
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn load_settings_fails_when_primary_and_backup_are_both_corrupt() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let settings_path = get_settings_path().unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(settings_backup_path(&settings_path), "{broken-backup").unwrap();
+
+        let error = match load_settings() {
+            Ok(_) => panic!("corrupt primary and backup must not load"),
+            Err(error) => error,
+        };
+        assert!(error.contains("settings.json and its backup are invalid"));
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn recovery_draft_is_used_only_when_newer_than_note() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let note_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+        let note_path = note_dir.path().join("note.md");
+        let note_path_str = note_path.to_string_lossy().to_string();
+
+        write_note(&note_path_str, "saved").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        save_recovery_draft(&note_path_str, "recovered").unwrap();
+        assert_eq!(load_newer_recovery_draft(&note_path_str).as_deref(), Some("recovered"));
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        write_note(&note_path_str, "newer saved").unwrap();
+        assert!(load_newer_recovery_draft(&note_path_str).is_none());
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn successful_save_can_clear_recovery_draft() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+        let note_path = "D:/notes/example.md";
+
+        save_recovery_draft(note_path, "recovered").unwrap();
+        let draft_path = recovery_draft_path(note_path).unwrap();
+        assert!(draft_path.exists());
+        clear_recovery_draft(note_path);
+        assert!(!draft_path.exists());
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn recovery_lookup_does_not_create_directory_during_normal_save() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let draft_path = recovery_draft_path("D:/notes/normal.md").unwrap();
+        assert!(!draft_path.parent().unwrap().exists());
+        clear_recovery_draft("D:/notes/normal.md");
+        assert!(!draft_path.parent().unwrap().exists());
 
         if let Some(value) = old_appdata {
             std::env::set_var("APPDATA", value);
