@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect } from 'react';
+import Image from 'next/image';
 
 export default function LoadingScreen({ message = "Loading..." }: { message?: string }) {
     useEffect(() => {
@@ -42,16 +43,20 @@ export default function LoadingScreen({ message = "Loading..." }: { message?: st
             style={{ WebkitAppRegion: 'drag' } as any}>
 
             {/* Background Glow */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] bg-yellow-500/20 rounded-full blur-[60px] pointer-events-none"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] bg-sky-400/15 rounded-full blur-[60px] pointer-events-none"></div>
 
             <div className="relative z-10 flex flex-col items-center">
                 {/* Animated Icon Container */}
                 <div className="relative mb-6">
-                    <div className="absolute inset-0 bg-yellow-400 rounded-xl blur-lg opacity-40 animate-pulse"></div>
-                    <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl shadow-2xl flex items-center justify-center transform rotate-6 animate-[bounce_2s_infinite]">
-                        <span className="text-3xl filter drop-shadow-md">📝</span>
-                        {/* Corner Fold */}
-                        <div className="absolute top-0 right-0 border-t-[12px] border-r-[12px] border-t-white/30 border-r-transparent"></div>
+                    <div className="absolute inset-1 bg-sky-400 rounded-xl blur-lg opacity-25 animate-pulse"></div>
+                    <div className="relative h-16 w-16 animate-[bounce_2s_infinite] drop-shadow-2xl">
+                        <Image
+                            src="/icon-192.png"
+                            alt="俺の付箋"
+                            width={64}
+                            height={64}
+                            priority
+                        />
                     </div>
                 </div>
 
