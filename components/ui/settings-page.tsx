@@ -34,6 +34,7 @@ import {
     CRYSTAL_TYPE_LABELS,
     ROLE_LABELS,
     addFreeSection,
+    addNamedFreeSection,
     cloneCrystalFormats,
     moveFreeSection,
     removeFreeSection,
@@ -1032,6 +1033,17 @@ function CrystalFormatSection() {
                 })}
 
                 <div className="flex flex-wrap gap-2 pt-2">
+                    {activeType === 'recipe' && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={format.sections.some((section) => section.label === '事前条件')}
+                            onClick={() => updateActiveFormat((current) => addNamedFreeSection(current, '事前条件'))}
+                        >
+                            ＋事前条件
+                        </Button>
+                    )}
                     <Button
                         type="button"
                         variant="outline"

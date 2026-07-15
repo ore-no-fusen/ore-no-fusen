@@ -6,6 +6,7 @@ import {
     normalizeLauncherTab,
     removeActionLabel,
     shouldCloseLauncherAfterBlur,
+    isLatestLauncherRequest,
     tabToReservedTag,
 } from './QuickLauncher';
 import { LAUNCHER_SHELF_CHANGED_EVENT, shouldReloadLauncherForEvent } from '../utils/launcherEvents';
@@ -62,5 +63,10 @@ describe('QuickLauncher logic', () => {
         expect(removeActionLabel('recipe')).toBe('ゴミ箱へ移動');
         expect(removeActionLabel('qa')).toBe('ゴミ箱へ移動');
         expect(removeActionLabel('term')).toBe('ゴミ箱へ移動');
+    });
+
+    it('accepts only the latest overlapping search response', () => {
+        expect(isLatestLauncherRequest(3, 3)).toBe(true);
+        expect(isLatestLauncherRequest(2, 3)).toBe(false);
     });
 });

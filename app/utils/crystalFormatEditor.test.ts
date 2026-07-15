@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     addFreeSection,
+    addNamedFreeSection,
     moveFreeSection,
     removeFreeSection,
     resetCrystalTypeFormat,
@@ -17,11 +18,19 @@ describe('crystalFormatEditor helpers', () => {
 
     it('T9 removes only free sections', () => {
         const withFree = addFreeSection(DEFAULT_CRYSTAL_FORMATS.recipe);
-        const removed = removeFreeSection(withFree, 3);
+        const removed = removeFreeSection(withFree, withFree.sections.length - 2);
         const unchanged = removeFreeSection(DEFAULT_CRYSTAL_FORMATS.recipe, 1);
 
         expect(removed).toEqual(DEFAULT_CRYSTAL_FORMATS.recipe);
         expect(unchanged).toEqual(DEFAULT_CRYSTAL_FORMATS.recipe);
+    });
+
+    it('adds the recipe candidate once before history', () => {
+        const added = addNamedFreeSection(DEFAULT_CRYSTAL_FORMATS.recipe, '事前条件');
+        const duplicate = addNamedFreeSection(added, '事前条件');
+
+        expect(added.sections.at(-2)).toMatchObject({ label: '事前条件', slot: 'free', tracked: true });
+        expect(duplicate).toEqual(added);
     });
 
     it('T10 moves free sections without crossing key or history', () => {

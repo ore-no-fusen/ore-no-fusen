@@ -14,7 +14,6 @@ import { NoteMeta } from '@/app/api/notes';
 import { playDeleteSound, playSaveSound } from '../utils/soundManager';
 import { TranslationKey, Language } from '@/lib/i18n';
 import { getFeedbackConversationUnreadState } from '@/app/utils/feedbackConversation';
-import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 import { isReservedTag, normalizeTagForReservation } from '@/app/utils/reservedTags';
 import { addTag as addRawTag, removeTag as removeRawTag } from '@/app/api/tags';
 
@@ -229,7 +228,6 @@ export function useStickyNoteContextMenu({
 
         const { emit } = await import('@tauri-apps/api/event');
         await emit('fusen:reload_note', { path: selectedFile.path });
-        await emit(LAUNCHER_SHELF_CHANGED_EVENT);
     }, [currentTags, onToast, selectedFile]);
 
     /**

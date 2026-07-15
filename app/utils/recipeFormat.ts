@@ -12,8 +12,8 @@ import {
 } from './crystalFormat';
 import { configToSpec, type CrystalTypeFormat } from './crystalFormatConfigCore';
 
-export const RECIPE_SECTION_NAMES = ['こんなとき', 'どうする', '補足', '改善履歴'] as const;
-export const TRACKED_RECIPE_SECTION_NAMES = ['こんなとき', 'どうする', '補足'] as const;
+export const RECIPE_SECTION_NAMES = ['こんなとき', 'どうする', 'きっかけ', '補足', '改善履歴'] as const;
+export const TRACKED_RECIPE_SECTION_NAMES = ['こんなとき', 'どうする', 'きっかけ', '補足'] as const;
 
 export type RecipeSectionName = (typeof RECIPE_SECTION_NAMES)[number];
 export type TrackedRecipeSectionName = (typeof TRACKED_RECIPE_SECTION_NAMES)[number];
@@ -36,8 +36,9 @@ const DEFAULT_RECIPE_FORMAT: CrystalTypeFormat = {
     sections: [
         { label: RECIPE_SECTION_NAMES[0], slot: 'situation', tracked: true },
         { label: RECIPE_SECTION_NAMES[1], slot: 'steps', tracked: true },
-        { label: RECIPE_SECTION_NAMES[2], slot: 'supplement', tracked: true },
-        { label: RECIPE_SECTION_NAMES[3], slot: 'history', tracked: false },
+        { label: RECIPE_SECTION_NAMES[2], slot: 'source', tracked: true },
+        { label: RECIPE_SECTION_NAMES[3], slot: 'supplement', tracked: true },
+        { label: RECIPE_SECTION_NAMES[4], slot: 'history', tracked: false },
     ],
 };
 
@@ -111,12 +112,10 @@ export function appendImprovementHistoryLine(body: string, historyLine: string):
 }
 
 export function buildRecipeDraft(input: RecipeDraftInput, format: CrystalTypeFormat = DEFAULT_RECIPE_FORMAT): string {
-    const yellowLines = nonEmptyMaterialLines(input.yellowBody ?? '');
     const blueLines = nonEmptyMaterialLines(input.blueBody);
-    // こんなとき = 黄のみ（無ければ空。青は こんなとき に回さない）
-    const situationLines = yellowLines.slice(0, 2);
     const references: string[] = [];
     const images: string[] = [];
+    const yellowTriggerCandidates: string[] = [];
     const pinkStepCandidates: string[] = [];
     const blueStepCandidates: string[] = [];
 
@@ -132,7 +131,9 @@ export function buildRecipeDraft(input: RecipeDraftInput, format: CrystalTypeFor
         stepCandidates.push(stripListPrefix(line));
     };
 
-    // どうする = 青（起点なので優先して先頭）＋ 桃。青は常にここに入る
+    for (const line of nonEmptyMaterialLines(input.yellowBody ?? '')) {
+        collectLine(line, yellowTriggerCandidates);
+    }
     for (const line of blueLines) {
         collectLine(line, blueStepCandidates);
     }
@@ -140,7 +141,11 @@ export function buildRecipeDraft(input: RecipeDraftInput, format: CrystalTypeFor
         collectLine(line, pinkStepCandidates);
     }
 
-    const blueSteps = uniqueNonEmpty(blueStepCandidates);
+    const blueContent = uniqueNonEmpty(blueStepCandidates);
+    // 青の1行目が検索の鍵、残りが手順。黄色は具体的な出来事を思い出すきっかけ。
+    const situationLines = blueContent.slice(0, 1);
+    const blueSteps = blueContent.slice(1);
+    const triggerLines = uniqueNonEmpty(yellowTriggerCandidates).slice(0, 2);
     const pinkSteps = uniqueNonEmpty(pinkStepCandidates);
     const steps = uniqueNonEmpty([...blueSteps, ...pinkSteps]).slice(0, 7);
     const supplementLines: string[] = [];
@@ -148,18 +153,16 @@ export function buildRecipeDraft(input: RecipeDraftInput, format: CrystalTypeFor
     const uniqueImages = uniqueNonEmpty(images);
 
     if (uniqueReferences.length > 0) {
-        supplementLines.push('## 参考', '', ...uniqueReferences.map((line) => `- ${line}`));
+        supplementLines.push('## 参考', ...uniqueReferences.map((line) => `- ${line}`));
     }
     if (uniqueImages.length > 0) {
-        if (supplementLines.length > 0) {
-            supplementLines.push('');
-        }
-        supplementLines.push('## 画像', '', ...uniqueImages.map((line) => `- ${line}`));
+        supplementLines.push('## 画像', ...uniqueImages.map((line) => `- ${line}`));
     }
 
     const contentBySlot = {
         situation: situationLines.join('\n'),
         steps: steps.map((step, index) => `${index + 1}. ${step}`).join('\n'),
+        source: triggerLines.join('\n'),
         supplement: supplementLines.join('\n'),
         history: `- ${formatDateYYMMDD(input.date)} 初版`,
     };

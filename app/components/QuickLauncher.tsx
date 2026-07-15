@@ -90,6 +90,10 @@ export function removeActionLabel(tab: LauncherTab): string {
     return tab === 'shortcut' ? '棚から外す' : 'ゴミ箱へ移動';
 }
 
+export function isLatestLauncherRequest(requestId: number, currentRequestId: number): boolean {
+    return requestId === currentRequestId;
+}
+
 
 function useDebouncedValue(value: string, delayMs: number): string {
     const [debounced, setDebounced] = useState(value);
@@ -119,6 +123,7 @@ export default function QuickLauncher() {
     const [renameTarget, setRenameTarget] = useState<{ path: string; value: string } | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const lockedRef = useRef(false);
+    const requestGenerationRef = useRef(0);
     const debouncedQuery = useDebouncedValue(query, 120);
 
     useEffect(() => {
@@ -126,17 +131,22 @@ export default function QuickLauncher() {
     }, [isLocked]);
 
     const reloadItems = useCallback(async (tab: LauncherTab, search: string) => {
+        const requestId = ++requestGenerationRef.current;
         setIsLoading(true);
         setError(null);
         try {
             const nextItems = await quickOpenNotes(tabToReservedTag(tab), search);
+            if (!isLatestLauncherRequest(requestId, requestGenerationRef.current)) return;
             setItems(nextItems);
             setSelectedIndex((current) => Math.min(current, Math.max(nextItems.length - 1, 0)));
         } catch (e) {
+            if (!isLatestLauncherRequest(requestId, requestGenerationRef.current)) return;
             setItems([]);
             setError(e instanceof Error ? e.message : String(e));
         } finally {
-            setIsLoading(false);
+            if (isLatestLauncherRequest(requestId, requestGenerationRef.current)) {
+                setIsLoading(false);
+            }
         }
     }, []);
 
@@ -452,7 +462,7 @@ export default function QuickLauncher() {
                                     }`}
                                 >
                                     <span className="text-base">{activeTab === 'qa' ? '❓' : activeTab === 'term' ? '📖' : item.is_recipe ? '🍳' : '📌'}</span>
-                                    <span className="truncate">{truncateRecipeName(item.title || '無題')}</span>
+                                    <span className="truncate">{truncateRecipeName(item.title || '無題', 20)}</span>
                                     <span className="flex items-center justify-end gap-0.5">
                                         <span className="mr-1 text-[11px] text-zinc-500 group-hover:hidden">{item.launches}</span>
                                         <button

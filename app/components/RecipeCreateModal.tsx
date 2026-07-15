@@ -9,6 +9,8 @@ import { splitTermNameAndBody } from '@/app/utils/termFormat';
 import { loadCrystalFormats, type CrystalTypeFormat } from '@/app/utils/crystalFormatConfig';
 import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 import { splitFrontMatter } from '@/app/utils/splitFrontMatter';
+import { getCrystalNameFromSection, removeEmptyCrystalSections } from '@/app/utils/crystalFormat';
+import { configToSpec } from '@/app/utils/crystalFormatConfigCore';
 
 type RecipeCreateModalProps = {
     sourcePath: string;
@@ -40,9 +42,8 @@ export default function RecipeCreateModal({
     onClose,
     onCreated,
 }: RecipeCreateModalProps) {
-    const [title, setTitle] = useState(
-        splitTermNameAndBody(sourceBody).name || sourceTitle?.trim() || '',
-    );
+    const fallbackTitle =
+        splitTermNameAndBody(sourceBody).name || sourceTitle?.trim() || '';
     const [candidates, setCandidates] = useState<{ yellows: RecipeCandidate[]; pinks: RecipeCandidate[] }>({
         yellows: [],
         pinks: [],
@@ -140,9 +141,15 @@ export default function RecipeCreateModal({
         setIsCreating(true);
         setError(null);
         try {
+            const spec = recipeFormat ? configToSpec(recipeFormat) : null;
+            const body = spec ? removeEmptyCrystalSections(spec, draftBody) : draftBody;
+            const situationLabel = recipeFormat?.sections.find((section) => section.slot === 'situation')?.label;
+            const title = spec && situationLabel
+                ? getCrystalNameFromSection(spec, draftBody, situationLabel) || fallbackTitle
+                : fallbackTitle;
             const path = await createRecipeNote({
                 title,
-                body: draftBody,
+                body,
                 tags: sourceTags,
             });
             await emit('fusen:open_note', { path, isNew: false, backgroundColor: '#cfd8dc' });
@@ -155,7 +162,7 @@ export default function RecipeCreateModal({
         } finally {
             setIsCreating(false);
         }
-    }, [draftBody, isCreating, onClose, onCreated, sourceTags, title]);
+    }, [draftBody, fallbackTitle, isCreating, onClose, onCreated, recipeFormat, sourceTags]);
 
     const noCandidates = !isLoading && candidates.yellows.length === 0 && candidates.pinks.length === 0;
 
@@ -183,19 +190,6 @@ export default function RecipeCreateModal({
                         ×
                     </button>
                 </div>
-
-                <label className="flex flex-col gap-1">
-                    <span className="text-sm font-bold">短い名前</span>
-                    <input
-                        autoFocus
-                        type="text"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
-                        placeholder="短い名前（15文字くらいまで）"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                    />
-                    <span className="text-xs text-gray-500">一覧では先頭10文字が表示されます</span>
-                </label>
 
                 <section className="flex flex-col gap-2">
                     <h4 className="text-sm font-bold">材料（候補選択）</h4>
@@ -259,8 +253,10 @@ export default function RecipeCreateModal({
 
                 <label className="flex flex-col gap-1">
                     <span className="text-sm font-bold">叩き台</span>
+                    <span className="text-xs text-gray-500">そのまま作れます。不要な行だけ削ってください</span>
                     {error && <div className="text-sm text-red-600">{error}</div>}
                     <textarea
+                        autoFocus
                         className="min-h-[160px] flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-orange-500 bg-gray-50"
                         value={draftBody}
                         onChange={(e) => {

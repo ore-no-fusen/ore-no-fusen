@@ -730,7 +730,7 @@ fn fusen_create_note_lazy(
     folder_path: String,
     context: String,
 ) -> Result<Note, String> {
-    perflog::log_event(
+    crate::perf_event!(
         &format!("lazy-{}", uuid::Uuid::new_v4()),
         "T2_FIRST_CHAR_RUST_ENTER",
         None,
@@ -1536,6 +1536,7 @@ fn fusen_add_tag(
 
     // Update tray menu
     drop(app_state);
+    launcher::emit_launcher_shelf_changed_for_tag(&app, &tag);
     let _ = crate::tray::refresh_tray_menu(&app);
 
     Ok(())
@@ -1563,6 +1564,7 @@ fn fusen_remove_tag(
 
     // Update tray menu
     drop(app_state); // Release lock before calling refresh_tray_menu
+    launcher::emit_launcher_shelf_changed_for_tag(&app, &tag);
     let _ = crate::tray::refresh_tray_menu(&app);
 
     Ok(())
@@ -2673,16 +2675,12 @@ async fn fusen_show_at_position(
     phys_height: u32,
     run_id: Option<String>, // perflog 計測用 run_id（None なら perflog 記録しない）
     app: tauri::AppHandle,
-) -> Result<(), String> {
-    let perf_t_enter = std::time::Instant::now();
-    logger::log_info(&format!(
-        "[PERF|RUST_ENTER] fusen_show_at_position label={}",
-        label
-    ));
+) -> Result<bool, String> {
+    let perf_started = perflog::enabled().then(std::time::Instant::now);
 
     // T1_RUST_ENTER: 関数突入時刻を記録（run_id が Some の場合のみ）
     if let Some(rid) = &run_id {
-        perflog::log_event(
+        crate::perf_event!(
             rid,
             "T1_RUST_ENTER",
             Some(&label),
@@ -2701,12 +2699,6 @@ async fn fusen_show_at_position(
         };
 
         if let Some(win) = app.get_webview_window(&label) {
-            let perf_t_after_get_window = perf_t_enter.elapsed().as_millis();
-            logger::log_info(&format!(
-                "[PERF|RUST_AFTER_GET_WINDOW] elapsed_from_enter={}ms",
-                perf_t_after_get_window
-            ));
-
             unsafe {
                 if let Ok(handle) = win.window_handle() {
                     if let RawWindowHandle::Win32(h) = handle.as_raw() {
@@ -2716,7 +2708,6 @@ async fn fusen_show_at_position(
                         } else {
                             SWP_SHOWWINDOW | SWP_NOMOVE
                         };
-                        let perf_t_before_setpos = perf_t_enter.elapsed().as_millis();
                         SetWindowPos(
                             hwnd,
                             HWND_TOP,
@@ -2727,13 +2718,6 @@ async fn fusen_show_at_position(
                             flags,
                         )
                         .map_err(|e| format!("SetWindowPos failed: {}", e))?;
-                        let perf_t_after_setpos = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!(
-                            "[PERF|RUST_SETPOS] before={}ms after={}ms delta={}ms",
-                            perf_t_before_setpos,
-                            perf_t_after_setpos,
-                            perf_t_after_setpos - perf_t_before_setpos
-                        ));
 
                         // [Phase 19] Pool 昇格: α=0 → α=255 に変更（不透明化）
                         // pitfall 6: SetForegroundWindow より先に α=255 を設定する
@@ -2741,11 +2725,6 @@ async fn fusen_show_at_position(
                         SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA).map_err(
                             |e| format!("SetLayeredWindowAttributes(255) failed: {}", e),
                         )?;
-                        let perf_t_after_alpha = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!(
-                            "[PERF|RUST_ALPHA_255] after={}ms",
-                            perf_t_after_alpha
-                        ));
 
                         // SetForegroundWindow でOSのフォアグラウンドに設定する。
                         // SetWindowPos だけでは document.hasFocus()=false のままで
@@ -2753,21 +2732,16 @@ async fn fusen_show_at_position(
                         // このコマンドはユーザー操作（+ボタン等）直後に呼ばれるため
                         // Windows のフォアグラウンド制限に引っかからない。
                         let _ = SetForegroundWindow(hwnd);
-                        let perf_t_after_fg = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!(
-                            "[PERF|RUST_SETFOREGROUND] after={}ms delta={}ms",
-                            perf_t_after_fg,
-                            perf_t_after_fg - perf_t_after_alpha
-                        ));
 
                         // T2_READY: SetForegroundWindow 後（エディタ focus 到達の直前）
                         if let Some(rid) = &run_id {
-                            let elapsed = perf_t_enter.elapsed().as_millis() as u64;
-                            perflog::log_event(
+                            let elapsed = perf_started
+                                .map(|started| started.elapsed().as_millis() as u64);
+                            crate::perf_event!(
                                 rid,
                                 "T2_READY",
                                 Some(&label),
-                                Some(elapsed),
+                                elapsed,
                                 serde_json::json!({}),
                             );
                         }
@@ -2778,27 +2752,30 @@ async fn fusen_show_at_position(
             // Tauri の内部 visibility 状態を更新しない。
             // win.show() で Tauri 状態を同期しないと、後続の Tauri API 呼び出し時に
             // tao が "hidden" 判定してウィンドウを非表示にするバグが発生する。
-            let perf_t_before_show = perf_t_enter.elapsed().as_millis();
             let _ = win.show();
-            let perf_t_after_show = perf_t_enter.elapsed().as_millis();
-            logger::log_info(&format!(
-                "[PERF|RUST_WINSHOW] before={}ms after={}ms delta={}ms",
-                perf_t_before_show,
-                perf_t_after_show,
-                perf_t_after_show - perf_t_before_show
-            ));
         } else {
-            logger::log_warn(&format!("[PERF|RUST] window not found label={}", label));
+            logger::log_warn(&format!("window not found label={}", label));
         }
     }
 
     #[cfg(not(target_os = "windows"))]
-    let _ = (label, phys_x, phys_y, phys_width, phys_height, run_id, app);
+    let _ = (
+        label,
+        phys_x,
+        phys_y,
+        phys_width,
+        phys_height,
+        run_id,
+        app,
+        perf_started,
+    );
 
-    let perf_t_exit = perf_t_enter.elapsed().as_millis();
-    logger::log_info(&format!("[PERF|RUST_EXIT] total={}ms", perf_t_exit));
+    Ok(perflog::enabled())
+}
 
-    Ok(())
+#[tauri::command]
+fn fusen_perf_note_ready(run_id: String, elapsed_ms: u64) -> Result<(), String> {
+    perflog::log_note_ready(&run_id, elapsed_ms)
 }
 
 #[tauri::command]
@@ -4687,6 +4664,7 @@ pub fn run() {
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
             fusen_replenish_pool,     // [NEW] Pool 補充オーケストレーション（T2_READY+5s トリガ）
             fusen_show_at_position, // [NEW] プールウィンドウをShow+リサイズ+移動を原子的に実行
+            fusen_perf_note_ready,
             fusen_pick_folder,
             fusen_import_from_folder,
             fusen_backup,

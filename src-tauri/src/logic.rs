@@ -406,6 +406,9 @@ pub fn handle_save_note(
 
     // Extract content fields from NEW frontmatter_raw
     let (_, _, _, _, new_color, new_aot, new_tags, new_folded) = extract_meta_from_content(frontmatter_raw);
+    let is_crystal_note = new_tags.iter().any(|tag| {
+        matches!(tag.trim().to_lowercase().as_str(), "recipe" | "qa" | "term")
+    });
     let new_opacity = extract_opacity(frontmatter_raw);
     let new_font_size = extract_font_size(frontmatter_raw);
 
@@ -422,7 +425,7 @@ pub fn handle_save_note(
     let final_updated = if content_changed { today } else { old_updated };
 
     // Rule A: If allow_rename is false, skip ALL rename logic
-    if !allow_rename {
+    if !allow_rename || is_crystal_note {
         println!("[DEBUG logic] allowRename=false. Skipping rename check. Path={}", current_path);
         
         let final_frontmatter = update_updated_field(frontmatter_raw, &final_updated);
@@ -770,6 +773,29 @@ mod tests {
         let body = "![image](assets/pasted_20260608.png)\n\nこの画面を調べる";
 
         assert_eq!(select_context_line(body), "この画面を調べる");
+    }
+
+    #[test]
+    fn crystal_edit_does_not_rename_from_section_heading() {
+        let mut state = AppState::default();
+        let path = std::env::temp_dir()
+            .join("0001_2026-07-15_元の名前.md")
+            .to_string_lossy()
+            .to_string();
+        let frontmatter = "---\nupdated: 2026-07-15\ntags: [qa]\n---";
+
+        let (new_path, effect) = handle_save_note(
+            &mut state,
+            &path,
+            "# 問い\n変更した問い",
+            "# 問い\n元の問い",
+            frontmatter,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(new_path, path);
+        assert!(matches!(effect, Effect::WriteNote { .. }));
     }
 
     #[test]

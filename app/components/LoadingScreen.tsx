@@ -18,11 +18,14 @@ export default function LoadingScreen({ message = "Loading..." }: { message?: st
 
                 // Tauri環境かどうかの簡易チェック（あるいはtry-catchで握りつぶす）
                 const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                const { LogicalSize } = await import('@tauri-apps/api/dpi');
                 const win = getCurrentWindow();
                 // メインウィンドウの場合のみ表示（念のため）
                 if (win.label === 'main') {
                     // 少し遅延させて、レンダリングが確実に完了してから表示
                     setTimeout(async () => {
+                        await win.setSize(new LogicalSize(240, 300));
+                        await win.center();
                         await win.show();
                         await win.setFocus();
                     }, 100);

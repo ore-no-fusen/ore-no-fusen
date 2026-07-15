@@ -89,7 +89,8 @@ describe('crystalFormatConfig', () => {
             recipe: {
                 sections: [
                     DEFAULT_CRYSTAL_FORMATS.recipe.sections[1],
-                    { ...DEFAULT_CRYSTAL_FORMATS.recipe.sections[3], tracked: true },
+                    { ...DEFAULT_CRYSTAL_FORMATS.recipe.sections[4], tracked: true },
+                    DEFAULT_CRYSTAL_FORMATS.recipe.sections[3],
                     DEFAULT_CRYSTAL_FORMATS.recipe.sections[2],
                     DEFAULT_CRYSTAL_FORMATS.recipe.sections[0],
                 ],
@@ -100,6 +101,7 @@ describe('crystalFormatConfig', () => {
             'situation',
             'steps',
             'supplement',
+            'source',
             'history',
         ]);
         expect(normalized.recipe.sections.at(-1)?.tracked).toBe(false);
@@ -145,6 +147,7 @@ describe('crystalFormatConfig', () => {
             sections: [
                 { label: 'When', slot: 'situation', tracked: true },
                 { label: 'Do', slot: 'steps', tracked: true },
+                { label: 'Trigger', slot: 'source', tracked: true },
                 { label: 'Extra', slot: 'supplement', tracked: true },
                 { label: 'History', slot: 'history', tracked: false },
             ],
@@ -156,8 +159,9 @@ describe('crystalFormatConfig', () => {
             date: '2026-07-10',
         }, recipeFormat));
 
-        expect(recipe.When).toBe('yellow1\nyellow2');
-        expect(recipe.Do).toBe('1. blue\n2. pink');
+        expect(recipe.When).toBe('blue');
+        expect(recipe.Do).toBe('1. pink');
+        expect(recipe.Trigger).toBe('yellow1\nyellow2');
         expect(recipe.Extra).toContain('https://example.com');
 
         const qaFormat: CrystalTypeFormat = {
@@ -175,9 +179,9 @@ describe('crystalFormatConfig', () => {
             date: '2026-07-10',
         }, qaFormat));
 
-        expect(qa.Question).toBe('Title');
-        expect(qa.Answer).toBe('Heading\nbody');
-        expect(qa.Source).toContain('Title');
+        expect(qa.Question).toBe('Heading');
+        expect(qa.Answer).toBe('body');
+        expect(qa.Source).toBe('');
         expect(qa.Evidence).toContain('![img](a.png)');
 
         const termFormat: CrystalTypeFormat = {
@@ -198,13 +202,13 @@ describe('crystalFormatConfig', () => {
         }, termFormat));
 
         expect(term.Term).toBe('RAG');
-        expect(term.Gist).toBe('one\ntwo');
-        expect(term.Meaning).toBe('three');
-        expect(term.Source).toContain('Source note');
+        expect(term.Gist).toBe('one');
+        expect(term.Meaning).toBe('two\nthree');
+        expect(term.Source).toBe('');
         expect(term.Extra).toContain('https://example.com');
     });
 
-    it('T6 inserts empty free sections at configured positions', () => {
+    it('T6 shows empty free sections in the editable draft', () => {
         const format: CrystalTypeFormat = {
             sections: [
                 { label: 'Question', slot: 'question', tracked: true },
@@ -273,6 +277,7 @@ describe('crystalFormatConfig', () => {
                     { label: 'Steps', slot: 'steps', tracked: true },
                     { label: 'History', slot: 'history', tracked: true },
                     { label: 'Situation', slot: 'situation', tracked: true },
+                    { label: 'Trigger', slot: 'source', tracked: true },
                     { label: 'Supplement', slot: 'supplement', tracked: false },
                 ],
             },
@@ -283,6 +288,7 @@ describe('crystalFormatConfig', () => {
                 sections: [
                     { label: 'Situation', slot: 'situation', tracked: true },
                     { label: 'Steps', slot: 'steps', tracked: true },
+                    { label: 'Trigger', slot: 'source', tracked: true },
                     { label: 'Supplement', slot: 'supplement', tracked: false },
                     { label: 'History', slot: 'history', tracked: false },
                 ],

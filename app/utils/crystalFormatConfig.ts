@@ -36,7 +36,7 @@ const KEY_SLOTS: Record<CrystalType, CrystalSlot> = {
     term: 'name',
 };
 const REQUIRED_SLOTS: Record<CrystalType, readonly CrystalSlot[]> = {
-    recipe: ['situation', 'steps', 'supplement', 'history'],
+    recipe: ['situation', 'steps', 'source', 'supplement', 'history'],
     qa: ['question', 'answer', 'source', 'supplement', 'history'],
     term: ['name', 'gist', 'detail', 'source', 'supplement', 'history'],
 };
@@ -47,8 +47,9 @@ export const DEFAULT_CRYSTAL_FORMATS: CrystalFormats = {
         sections: [
             { label: RECIPE_SECTION_NAMES[0], slot: 'situation', tracked: true },
             { label: RECIPE_SECTION_NAMES[1], slot: 'steps', tracked: true },
-            { label: RECIPE_SECTION_NAMES[2], slot: 'supplement', tracked: true },
-            { label: RECIPE_SECTION_NAMES[3], slot: 'history', tracked: false },
+            { label: RECIPE_SECTION_NAMES[2], slot: 'source', tracked: true },
+            { label: RECIPE_SECTION_NAMES[3], slot: 'supplement', tracked: true },
+            { label: RECIPE_SECTION_NAMES[4], slot: 'history', tracked: false },
         ],
     },
     qa: {
@@ -67,10 +68,9 @@ export const DEFAULT_CRYSTAL_FORMATS: CrystalFormats = {
             { label: TERM_SECTION_NAMES[2], slot: 'free', tracked: true },
             { label: TERM_SECTION_NAMES[3], slot: 'detail', tracked: true },
             { label: TERM_SECTION_NAMES[4], slot: 'free', tracked: true },
-            { label: TERM_SECTION_NAMES[5], slot: 'free', tracked: true },
-            { label: TERM_SECTION_NAMES[6], slot: 'source', tracked: true },
-            { label: TERM_SECTION_NAMES[7], slot: 'supplement', tracked: true },
-            { label: TERM_SECTION_NAMES[8], slot: 'history', tracked: false },
+            { label: TERM_SECTION_NAMES[5], slot: 'source', tracked: true },
+            { label: TERM_SECTION_NAMES[6], slot: 'supplement', tracked: true },
+            { label: TERM_SECTION_NAMES[7], slot: 'history', tracked: false },
         ],
     },
 };

@@ -49,6 +49,17 @@ export function addFreeSection(format: CrystalTypeFormat): CrystalTypeFormat {
     return { sections };
 }
 
+export function addNamedFreeSection(format: CrystalTypeFormat, label: string): CrystalTypeFormat {
+    const sections = format.sections.map((section) => ({ ...section }));
+    if (sections.some((section) => section.label === label)) {
+        return { sections };
+    }
+    const historyIndex = sections.findIndex((section) => section.slot === 'history');
+    const insertIndex = historyIndex === -1 ? sections.length : historyIndex;
+    sections.splice(insertIndex, 0, { label, slot: 'free', tracked: true });
+    return { sections };
+}
+
 export function removeFreeSection(format: CrystalTypeFormat, index: number): CrystalTypeFormat {
     const sections = format.sections.map((section) => ({ ...section }));
     if (sections[index]?.slot !== 'free') {

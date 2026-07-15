@@ -8,6 +8,7 @@ import {
     splitRecipeSections,
     truncateRecipeName,
 } from './recipeFormat';
+import { getCrystalNameFromSection } from './crystalFormat';
 
 const SAMPLE_RECIPE = `# こんなとき
 
@@ -29,10 +30,11 @@ AI開発で新しい機能を作る時
 - 26-07-05 初版`;
 
 describe('splitRecipeSections', () => {
-    it('splits the four recipe sections', () => {
+    it('splits the five recipe sections', () => {
         expect(splitRecipeSections(SAMPLE_RECIPE)).toEqual({
             こんなとき: 'AI開発で新しい機能を作る時',
             どうする: '1. 要件を出す\n2. 方針を決める',
+            きっかけ: '',
             補足: '## 参考\n\n- https://example.com',
             改善履歴: '- 26-07-05 初版',
         });
@@ -42,12 +44,14 @@ describe('splitRecipeSections', () => {
         expect(splitRecipeSections('')).toEqual({
             こんなとき: '',
             どうする: '',
+            きっかけ: '',
             補足: '',
             改善履歴: '',
         });
         expect(splitRecipeSections('# どうする\n\n1. 動く')).toMatchObject({
             こんなとき: '',
             どうする: '1. 動く',
+            きっかけ: '',
             補足: '',
             改善履歴: '',
         });
@@ -57,24 +61,20 @@ describe('splitRecipeSections', () => {
         const joined = joinRecipeSections({
             こんなとき: '困った時',
             どうする: '1. 動く',
+            きっかけ: '',
             補足: '## 参考',
             改善履歴: '- 26-07-05 初版',
         });
 
         expect(joined).toBe(`# こんなとき
-
 困った時
-
 # どうする
-
 1. 動く
+# きっかけ
 
 # 補足
-
 ## 参考
-
 # 改善履歴
-
 - 26-07-05 初版`);
     });
 });
@@ -111,11 +111,24 @@ describe('improvement history', () => {
     it('creates the improvement history section when it is missing', () => {
         const appended = appendImprovementHistoryLine('# こんなとき\n\n困った時', '- 26-07-12 こんなとき');
 
-        expect(appended).toContain('# 改善履歴\n\n- 26-07-12 こんなとき');
+        expect(appended).toContain('# 改善履歴\n- 26-07-12 こんなとき');
     });
 });
 
 describe('buildRecipeDraft', () => {
+    it('uses the first situation line as the shared name', () => {
+        const spec = {
+            sectionNames: ['こんなとき', 'どうする', 'きっかけ', '補足', '改善履歴'],
+            trackedSectionNames: ['こんなとき', 'どうする', 'きっかけ', '補足'],
+        } as const;
+        const draft = buildRecipeDraft({
+            blueBody: '設定変更で困ったとき\n確認する',
+            yellowBody: '設定変更で困ったとき\n再設定するとき',
+            date: '2026-07-15',
+        });
+        expect(getCrystalNameFromSection(spec, draft, 'こんなとき')).toBe('設定変更で困ったとき');
+    });
+
     it('builds a draft from yellow, pink, and blue notes without frontmatter separators', () => {
         const draft = buildRecipeDraft({
             blueBody: `最初に状況を確認する
@@ -129,31 +142,32 @@ https://example.com
 
         expect(draft).not.toContain('---');
         expect(splitRecipeSections(draft)).toMatchObject({
-            こんなとき: 'AI開発で詰まった時\n次の一手が必要な時',
-            どうする: '1. 最初に状況を確認する\n2. 最後にテストする\n3. 要件を書く\n4. 方針を決める',
-            補足: '## 参考\n\n- https://example.com\n\n## 画像\n\n- ![画面](screen.png)',
+            こんなとき: '最初に状況を確認する',
+            どうする: '1. 最後にテストする\n2. 要件を書く\n3. 方針を決める',
+            きっかけ: 'AI開発で詰まった時\n次の一手が必要な時',
+            補足: '## 参考\n- https://example.com\n## 画像\n- ![画面](screen.png)',
             改善履歴: '- 26-07-05 初版',
         });
     });
 
-    it('leaves the situation empty when yellow is missing', () => {
+    it('uses the first blue line as the situation when yellow is missing', () => {
         const draft = buildRecipeDraft({
             blueBody: '青の冒頭\n二行目\n三行目',
             pinkBodies: [],
             date: '26-07-05',
         });
 
-        expect(splitRecipeSections(draft).こんなとき).toBe('');
+        expect(splitRecipeSections(draft).こんなとき).toBe('青の冒頭');
     });
 
-    it('puts all blue lines into steps when yellow is missing', () => {
+    it('puts blue lines after the first into steps when yellow is missing', () => {
         const draft = buildRecipeDraft({
             blueBody: '青の冒頭\n二行目\n三行目',
             pinkBodies: [],
             date: '26-07-05',
         });
 
-        expect(splitRecipeSections(draft).どうする).toBe('1. 青の冒頭\n2. 二行目\n3. 三行目');
+        expect(splitRecipeSections(draft).どうする).toBe('1. 二行目\n2. 三行目');
     });
 
     it('limits steps to seven when source has eight or more step lines', () => {
@@ -176,20 +190,20 @@ https://example.com
         });
 
         expect(splitRecipeSections(draft)['どうする']).toBe(
-            '1. 青1\n2. 青2\n3. 桃1\n4. 桃2\n5. 桃3\n6. 桃4\n7. 桃5',
+            '1. 青2\n2. 桃1\n3. 桃2\n4. 桃3\n5. 桃4\n6. 桃5\n7. 桃6',
         );
     });
 
     it('moves URL-only pink notes to references and keeps them out of steps', () => {
         const draft = buildRecipeDraft({
-            blueBody: '確認する',
+            blueBody: '確認が必要なとき\n確認する',
             pinkBodies: ['https://example.com'],
             date: '2026-07-05',
         });
         const sections = splitRecipeSections(draft);
 
         expect(sections.どうする).toBe('1. 確認する');
-        expect(sections.補足).toBe('## 参考\n\n- https://example.com');
+        expect(sections.補足).toBe('## 参考\n- https://example.com');
     });
 
     it('puts blue into steps and neutralizes material headings', () => {
@@ -202,9 +216,9 @@ https://example.com
         });
         const sections = splitRecipeSections(draft);
 
-        expect(sections.こんなとき).toBe('');
+        expect(sections.こんなとき).toBe('やったこと２６／7');
         expect(sections.どうする.split('\n').some((line) => line.startsWith('# '))).toBe(false);
-        expect(sections.どうする.startsWith('1. やったこと２６／7')).toBe(true);
+        expect(sections.どうする.startsWith('1. 7/4 手順ランチャ機能の検討かいし')).toBe(true);
         expect(sections.どうする).toContain('Ctrl+P クイックアクセス機能 実装依頼');
     });
 });

@@ -1,5 +1,4 @@
 import {
-    buildSourceNoteLine,
     type CrystalSpec,
     formatDateYYMMDD,
     joinCrystalSections,
@@ -8,8 +7,8 @@ import {
 } from './crystalFormat';
 import { configToSpec, type CrystalTypeFormat } from './crystalFormatConfigCore';
 
-export const TERM_SECTION_NAMES = ['用語', '一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足', '改善履歴'] as const;
-export const TRACKED_TERM_SECTION_NAMES = ['用語', '一言でいうと', '訳', '意味', '例・使い方', '関連ワード', 'きっかけ', '補足'] as const;
+export const TERM_SECTION_NAMES = ['用語', '一言でいうと', '原語・訳', '意味', '関連ワード', 'きっかけ', '補足', '改善履歴'] as const;
+export const TRACKED_TERM_SECTION_NAMES = ['用語', '一言でいうと', '原語・訳', '意味', '関連ワード', 'きっかけ', '補足'] as const;
 export const TERM_SPEC: CrystalSpec = {
     sectionNames: TERM_SECTION_NAMES,
     trackedSectionNames: TRACKED_TERM_SECTION_NAMES,
@@ -22,10 +21,9 @@ const DEFAULT_TERM_FORMAT: CrystalTypeFormat = {
         { label: TERM_SECTION_NAMES[2], slot: 'free', tracked: true },
         { label: TERM_SECTION_NAMES[3], slot: 'detail', tracked: true },
         { label: TERM_SECTION_NAMES[4], slot: 'free', tracked: true },
-        { label: TERM_SECTION_NAMES[5], slot: 'free', tracked: true },
-        { label: TERM_SECTION_NAMES[6], slot: 'source', tracked: true },
-        { label: TERM_SECTION_NAMES[7], slot: 'supplement', tracked: true },
-        { label: TERM_SECTION_NAMES[8], slot: 'history', tracked: false },
+        { label: TERM_SECTION_NAMES[5], slot: 'source', tracked: true },
+        { label: TERM_SECTION_NAMES[6], slot: 'supplement', tracked: true },
+        { label: TERM_SECTION_NAMES[7], slot: 'history', tracked: false },
     ],
 };
 
@@ -96,15 +94,15 @@ export function splitTermNameAndBody(sourceBody: string): { name: string; rest: 
 function splitSummaryAndMeaning(lines: string[]): { summary: string; meaning: string } {
     const summaryLines: string[] = [];
     const meaningLines: string[] = [];
-    let summaryContentLineCount = 0;
+    let hasSummaryContent = false;
 
     for (const line of lines) {
-        if (summaryContentLineCount < 2) {
+        if (!hasSummaryContent) {
             if (!line.trim()) {
                 continue;
             }
             summaryLines.push(line);
-            summaryContentLineCount += 1;
+            hasSummaryContent = true;
             continue;
         }
 
@@ -144,20 +142,17 @@ export function buildTermDraft(input: TermDraftInput, format: CrystalTypeFormat 
     const uniqueImages = uniqueNonEmpty(images);
 
     if (uniqueReferences.length > 0) {
-        supplementLines.push('## 参考', '', ...uniqueReferences.map((line) => `- ${line}`));
+        supplementLines.push('## 参考', ...uniqueReferences.map((line) => `- ${line}`));
     }
     if (uniqueImages.length > 0) {
-        if (supplementLines.length > 0) {
-            supplementLines.push('');
-        }
-        supplementLines.push('## 画像', '', ...uniqueImages.map((line) => `- ${line}`));
+        supplementLines.push('## 画像', ...uniqueImages.map((line) => `- ${line}`));
     }
 
     const contentBySlot = {
         name: input.termName?.trim() ?? '',
         gist: summary,
         detail: meaning,
-        source: buildSourceNoteLine(date, input.sourceTitle),
+        source: '',
         supplement: supplementLines.join('\n'),
         history: `- ${date} 初版`,
     };

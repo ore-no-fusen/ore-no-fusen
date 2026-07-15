@@ -47,6 +47,7 @@ import { safeUnlisten } from '../utils/safeUnlisten';
 import { shouldHandleCrystalTrashRequest } from '../utils/crystalTrashRequest';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
 import { matchesShortcut } from '../utils/shortcutKey';
+import { buildPerfReadyPayload } from '../utils/perfMeasurement';
 import {
     appendImprovementHistoryLine as appendCrystalImprovementHistoryLine,
     createImprovementHistoryLine as createCrystalImprovementHistoryLine,
@@ -79,6 +80,7 @@ const StickyNote = memo(function StickyNote() {
     const searchParams = useSearchParams();
     // [NEW] プールモード判定と動的パス
     const isPoolParams = searchParams.get('isPool') === 'true';
+    const isStartupRestore = searchParams.get('startupRestore') === '1';
     const [dynamicUrlPath, setDynamicUrlPath] = useState<string | null>(() => {
         const pathParam = searchParams.get('path');
         return pathParam ? decodeNotePathFromUrl(pathParam) : null;
@@ -222,6 +224,25 @@ const StickyNote = memo(function StickyNote() {
         },
         onSaveError: () => setShowSaveError(true),
     });
+
+    const startupReadyEmittedRef = useRef(false);
+    useEffect(() => {
+        if (!isStartupRestore || loading || startupReadyEmittedRef.current) return;
+
+        let cancelled = false;
+        const notifyReady = async () => {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            if (cancelled || startupReadyEmittedRef.current) return;
+            startupReadyEmittedRef.current = true;
+            const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            await emit('fusen:startup_note_ready', { label: getCurrentWebviewWindow().label });
+        };
+        void notifyReady();
+        return () => {
+            cancelled = true;
+        };
+    }, [isStartupRestore, loading]);
 
 
     // スタイル関連（カスタムフックで一元管理）
@@ -687,14 +708,10 @@ const StickyNote = memo(function StickyNote() {
             const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const thisWin = getCurrentWebviewWindow();
 
-            const u = await thisWin.listen<{ path?: string, folderPath?: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string }>('fusen:promote_from_pool', async (event) => {
+            const u = await thisWin.listen<{ path?: string, folderPath?: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string, perfEnabled?: boolean, perfStartedAt?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
-                const perfT0 = event.payload.t0;
                 isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
-                if (perfT0) {
-                    invoke('fusen_debug_log', { message: `[PERF|T_PROMOTE_START] elapsed=${Date.now() - perfT0}ms (pool window received promote event)` }).catch(() => { });
-                }
 
                 let promotedBody: string | undefined;
                 if (event.payload.isNew) {
@@ -750,9 +767,6 @@ const StickyNote = memo(function StickyNote() {
                 // page.tsx が fusen_show_at_position（α=255 + SetWindowPos + SetForegroundWindow）を
                 // 既に呼び済みのため、ここでの再呼び出しは不要（二重呼び出しで SetLayeredWindowAttributes が失敗する）。
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position already done by page.tsx pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => { });
-                if (perfT0) {
-                    invoke('fusen_debug_log', { message: `[PERF|T1_VISIBLE] elapsed=${Date.now() - perfT0}ms (window shown at position by page.tsx)` }).catch(() => { });
-                }
 
                 // 実際の位置を確認（await しない: IPC 遅延で setTimeout 開始が遅れるのを防ぐ）
                 thisWin.outerPosition().then(p => {
@@ -777,8 +791,14 @@ const StickyNote = memo(function StickyNote() {
                         editorRef.current?.focus();
                     }
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus+cursor applied, editorRef=${!!editorRef.current}` }).catch(() => { });
-                    if (perfT0) {
-                        invoke('fusen_debug_log', { message: `[PERF|T2_READY] elapsed=${Date.now() - perfT0}ms (editor focused, ready for input)` }).catch(() => { });
+                    const perfPayload = buildPerfReadyPayload(
+                        event.payload.perfEnabled === true,
+                        event.payload.runId,
+                        event.payload.perfStartedAt,
+                        Date.now(),
+                    );
+                    if (perfPayload) {
+                        invoke('fusen_perf_note_ready', perfPayload).catch(() => { });
                     }
                 }, 50);
             });
@@ -1734,9 +1754,7 @@ const StickyNote = memo(function StickyNote() {
                     invoke('fusen_debug_log', { message: '[CREATE_REQ] Ctrl+N skipped: folderPath unresolved' }).catch(() => { });
                     return;
                 }
-                    // [PERF] 起動時間計測: T0 = Ctrl+N 押下時刻
                     const t0 = Date.now();
-                    invoke('fusen_debug_log', { message: `[PERF|T0] Ctrl+N keydown t0=${t0}` }).catch(() => { });
                     const win = getCurrentWindow();
                     let sourcePhysX: number | undefined;
                     let sourcePhysY: number | undefined;

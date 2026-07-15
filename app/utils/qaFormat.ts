@@ -1,5 +1,4 @@
 import {
-    buildSourceNoteLine,
     type CrystalSpec,
     formatDateYYMMDD,
     joinCrystalSections,
@@ -66,11 +65,23 @@ function uniqueNonEmpty(lines: string[]): string[] {
 export function buildQaDraft(input: QaDraftInput, format: CrystalTypeFormat = DEFAULT_QA_FORMAT): string {
     const date = formatDateYYMMDD(input.date);
     const sourceTitle = input.sourceTitle?.trim() ?? '';
+    const sourceLines = normalizeLineEndings(input.sourceBody).split('\n');
+    const questionLineIndex = sourceLines.findIndex(
+        (line) => line.trim() && !isUrlLine(line) && !isImageMarkdownLine(line),
+    );
+    const question = questionLineIndex >= 0
+        ? (isMarkdownHeadingLine(sourceLines[questionLineIndex])
+            ? stripMarkdownHeadingPrefix(sourceLines[questionLineIndex])
+            : sourceLines[questionLineIndex].trim())
+        : sourceTitle;
     const answerLines: string[] = [];
     const references: string[] = [];
     const images: string[] = [];
 
-    for (const line of normalizeLineEndings(input.sourceBody).split('\n')) {
+    for (const [index, line] of sourceLines.entries()) {
+        if (index === questionLineIndex) {
+            continue;
+        }
         if (isUrlLine(line)) {
             references.push(line);
             continue;
@@ -87,19 +98,16 @@ export function buildQaDraft(input: QaDraftInput, format: CrystalTypeFormat = DE
     const uniqueImages = uniqueNonEmpty(images);
 
     if (uniqueReferences.length > 0) {
-        supplementLines.push('## 参考', '', ...uniqueReferences.map((line) => `- ${line}`));
+        supplementLines.push('## 参考', ...uniqueReferences.map((line) => `- ${line}`));
     }
     if (uniqueImages.length > 0) {
-        if (supplementLines.length > 0) {
-            supplementLines.push('');
-        }
-        supplementLines.push('## 画像', '', ...uniqueImages.map((line) => `- ${line}`));
+        supplementLines.push('## 画像', ...uniqueImages.map((line) => `- ${line}`));
     }
 
     const contentBySlot = {
-        question: sourceTitle,
+        question,
         answer: trimOuterBlankLines(answerLines.join('\n')),
-        source: buildSourceNoteLine(date, sourceTitle),
+        source: '',
         supplement: supplementLines.join('\n'),
         history: `- ${date} 初版`,
     };

@@ -192,6 +192,7 @@ function OrchestratorContent() {
   const [recoveredMissingFolder, setRecoveredMissingFolder] = useState<string | null>(null);
   const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
   const readyPoolWindowsRef = useRef<Set<string>>(new Set()); // リスナー登録完了済みのプールウィンドウ
+  const crystalPoolWindowsRef = useRef<Map<string, string>>(new Map()); // 結晶パス → 昇格済みPool窓
   // [NEW] Pool 枯渇時トースト
   const [poolWaitToast, setPoolWaitToast] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [files, setFiles] = useState<NoteMeta[]>([]);
@@ -311,16 +312,17 @@ function OrchestratorContent() {
   }, []);
 
   // ウィンドウ生成
-  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string }, isNew?: boolean, fromIphone?: boolean) => {
+  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
+    const startupRestore = meta?.startup_restore === true;
 
     try {
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
       const existing = await WebviewWindow.getByLabel(label);
       if (existing) {
-        await existing.show();
+        if (!startupRestore) await existing.show();
         await existing.unminimize();
-        await existing.setFocus();
+        if (!startupRestore) await existing.setFocus();
         return;
       }
     } catch (e) { console.warn(`[付箋表示] 既存ウィンドウ確認に失敗しました: ${label}`, e); }
@@ -332,12 +334,30 @@ function OrchestratorContent() {
 
         const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         const existing = await WebviewWindow.getByLabel(label);
-        if (existing) { unmarkWindowInProgress(label); await existing.unminimize(); await existing.show(); await existing.setFocus(); return; }
+        if (existing) {
+          unmarkWindowInProgress(label);
+          await existing.unminimize();
+          if (!startupRestore) {
+            await existing.show();
+            await existing.setFocus();
+          }
+          return;
+        }
 
         const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
         const allWindows = await getAllWebviewWindows();
         for (const win of allWindows) {
-          try { if (win.label === label) { unmarkWindowInProgress(label); await win.show(); await win.unminimize(); await win.setFocus(); return; } } catch (e) { }
+          try {
+            if (win.label === label) {
+              unmarkWindowInProgress(label);
+              await win.unminimize();
+              if (!startupRestore) {
+                await win.show();
+                await win.setFocus();
+              }
+              return;
+            }
+          } catch (e) { }
         }
 
         try {
@@ -345,7 +365,8 @@ function OrchestratorContent() {
           // 色が分かっている場合は初期描画から正しい色にする（黄色フラッシュ防止）
           const bgHex = /^#[0-9a-fA-F]{6}$/.test(meta?.background_color || '') ? meta!.background_color! : null;
           const bgParam = bgHex ? `&bg=${encodeURIComponent(bgHex)}` : '';
-          const url = isNew ? `/?path=${pathParam}&isNew=1${bgParam}` : `/?path=${pathParam}${bgParam}`;
+          const startupParam = startupRestore ? '&startupRestore=1' : '';
+          const url = isNew ? `/?path=${pathParam}&isNew=1${bgParam}${startupParam}` : `/?path=${pathParam}${bgParam}${startupParam}`;
           const width = meta?.width || 400;
           const height = meta?.height || 300;
           const x = meta?.x;
@@ -357,7 +378,7 @@ function OrchestratorContent() {
             transparent: false,
             decorations: false,
             alwaysOnTop: meta?.always_on_top || false,
-            visible: true, // 即時表示
+            visible: !startupRestore,
             backgroundColor: bgHex
               ? [parseInt(bgHex.slice(1, 3), 16), parseInt(bgHex.slice(3, 5), 16), parseInt(bgHex.slice(5, 7), 16), 255] as [number, number, number, number]
               : [247, 233, 176, 255], // 色不明時は従来どおり黄色 #f7e9b0
@@ -366,7 +387,7 @@ function OrchestratorContent() {
             x,
             y,
             skipTaskbar: true,
-            focus: true,
+            focus: !startupRestore,
           });
 
           await new Promise<void>((resolve) => {
@@ -389,7 +410,9 @@ function OrchestratorContent() {
                 console.warn('[付箋表示] Alt+Tab登録に失敗しました:', e);
               }
               } else {
-              try { await win.setFocus(); } catch (e) { /* 表示自体は成功しているので無視 */ }
+              if (!startupRestore) {
+                try { await win.setFocus(); } catch (e) { /* 表示自体は成功しているので無視 */ }
+              }
               try {
                 await invoke('fusen_make_tool_window');
               } catch (e) {
@@ -404,7 +427,7 @@ function OrchestratorContent() {
               settleCreation();
             });
           });
-          if (!fromIphone) {
+          if (!fromIphone && !startupRestore) {
             try { await win.setFocus(); } catch (e) { /* 作成直後は失敗することがある */ }
           }
 
@@ -485,7 +508,6 @@ function OrchestratorContent() {
         localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
         const ts = new Date().toLocaleTimeString('ja-JP');
         console.log(`[TRACE:CREATE | ${ts}] Pool promote (lazy): ${poolWindow.label} folder=${targetFolder}`);
-        invoke('fusen_debug_log', { message: `[PERF|T_PROMOTE_START] t0=${perfT0} → pool promote start` }).catch(() => {});
 
         // 表示位置を計算
         let targetPhysX: number | undefined;
@@ -538,8 +560,9 @@ function OrchestratorContent() {
         // [NEW] fusen_show_at_position: α=255 + SetWindowPos + SetForegroundWindow を 1 invoke で完結
         // Atomic Coordination Constraint 厳守: 複数 await invoke を直列に並べない
         const runId = `create-${now}`;
+        let perfEnabled = false;
         try {
-          await invoke('fusen_show_at_position', {
+          perfEnabled = await invoke<boolean>('fusen_show_at_position', {
             label: poolWindow.label,
             physX: targetPhysX ?? null,
             physY: targetPhysY ?? null,
@@ -562,6 +585,8 @@ function OrchestratorContent() {
           targetPhysHeight,
           t0: perfT0,
           runId,
+          perfEnabled,
+          perfStartedAt: perfT0 ?? now,
         });
 
         await playCreateSound();
@@ -648,9 +673,76 @@ function OrchestratorContent() {
     if (!isMainWindow) return; // [FIX] プールウィンドウからの過剰反応を防ぐ Guard
 
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ path: string; isNew?: boolean; backgroundColor?: string }>('fusen:open_note', (event) => {
+    const promise = listen<{ path: string; isNew?: boolean; backgroundColor?: string; content?: string; isCrystal?: boolean }>('fusen:open_note', async (event) => {
       const bg = event.payload.backgroundColor;
-      openNoteWindow(event.payload.path, bg ? { background_color: bg } : undefined, event.payload.isNew);
+      const notePath = event.payload.path;
+      if (event.payload.isCrystal && event.payload.content !== undefined) {
+        const key = normalizePath(notePath);
+        const mappedLabel = crystalPoolWindowsRef.current.get(key);
+        if (mappedLabel) {
+          const mappedWindow = await WebviewWindow.getByLabel(mappedLabel);
+          if (mappedWindow) {
+            await mappedWindow.show();
+            await mappedWindow.unminimize();
+            await mappedWindow.setFocus();
+            return;
+          }
+          crystalPoolWindowsRef.current.delete(key);
+        }
+
+        const allWindows = await (await import('@tauri-apps/api/webviewWindow')).getAllWebviewWindows();
+        const poolWindow = allWindows.find((win) =>
+          win.label.startsWith('pool-window-')
+          && readyPoolWindowsRef.current.has(win.label)
+          && !usedPoolWindowsRef.current.has(win.label)
+          && !localStorage.getItem(`promoted_${win.label}`),
+        );
+        if (poolWindow) {
+          usedPoolWindowsRef.current.add(poolWindow.label);
+          localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
+          crystalPoolWindowsRef.current.set(key, poolWindow.label);
+          const token = `crystal-${Date.now()}-${Math.random()}`;
+          const hydrated = new Promise<void>(async (resolve) => {
+            let settled = false;
+            const dispose = await listen<{ label: string; token: string }>('fusen:pool_promote_ready', (ready) => {
+              if (ready.payload.label !== poolWindow.label || ready.payload.token !== token) return;
+              if (!settled) {
+                settled = true;
+                dispose();
+                resolve();
+              }
+            });
+            setTimeout(() => {
+              if (!settled) {
+                settled = true;
+                dispose();
+                resolve();
+              }
+            }, 500);
+          });
+          const { emitTo } = await import('@tauri-apps/api/event');
+          await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
+            path: notePath,
+            isNew: false,
+            content: event.payload.content,
+            backgroundColor: bg,
+            hydrateToken: token,
+          });
+          await hydrated;
+          await poolWindow.center();
+          await invoke('fusen_show_at_position', {
+            label: poolWindow.label,
+            physX: null,
+            physY: null,
+            physWidth: 400,
+            physHeight: 300,
+            runId: null,
+          });
+          invoke('fusen_create_pool_window').catch(() => {});
+          return;
+        }
+      }
+      await openNoteWindow(notePath, bg ? { background_color: bg } : undefined, event.payload.isNew);
     });
 
     promise.then((u) => { unlisten = u; });
@@ -1021,9 +1113,6 @@ function OrchestratorContent() {
     const promise = listen<{ folderPath: string; context: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number; sourcePhysWidth?: number; sourcePhysHeight?: number; t0?: number }>('fusen:request_create', async (event) => {
       const { folderPath, context, sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight, t0 } = event.payload;
       invoke('fusen_debug_log', { message: `[CREATE_REQ] page.tsx received: sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale} sourcePhysWidth=${sourcePhysWidth} sourcePhysHeight=${sourcePhysHeight}` }).catch(() => { });
-      if (t0) {
-        invoke('fusen_debug_log', { message: `[PERF|T_PAGE_RECV] elapsed=${Date.now() - t0}ms (page.tsx received request_create)` }).catch(() => { });
-      }
       if (!folderPath) {
         console.warn('[RequestCreate] No folder path in request');
         return;
@@ -1404,37 +1493,68 @@ function OrchestratorContent() {
 
               if (notes.length > 0) {
                 setLoadingStatus(`${notes.length} 件のノートを復元中...`);
-                logStartupStep('6/6', `付箋ウィンドウを順番に開きます: 0/${notes.length}`);
+                logStartupStep('6/6', `付箋ウィンドウを非表示で準備します: 0/${notes.length}`);
+
+                const startupLabels = new Set(notes.map((note) => getWindowLabel(note.path)));
+                const readyLabels = new Set<string>();
+                let resolveAllReady: (() => void) | undefined;
+                const allReady = new Promise<void>((resolve) => {
+                  resolveAllReady = resolve;
+                });
+                const unlistenStartupReady = await listen<{ label: string }>('fusen:startup_note_ready', (event) => {
+                  const label = event.payload?.label;
+                  if (!startupLabels.has(label)) return;
+                  readyLabels.add(label);
+                  setLoadingStatus(`付箋を準備中 (${readyLabels.size}/${notes.length})...`);
+                  if (readyLabels.size === startupLabels.size) resolveAllReady?.();
+                });
 
                 for (let i = 0; i < notes.length; i++) {
                   const note = notes[i];
                   const noteStartedAt = performance.now();
                   const noteName = note.path.split(/[\\/]/).pop();
-                  setLoadingStatus(`ノートを開いています (${i + 1}/${notes.length}): ${noteName}...`);
-                  await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height, opacity: note.opacity });
+                  setLoadingStatus(`付箋ウィンドウを準備中 (${i + 1}/${notes.length})...`);
+                  await openNoteWindow(note.path, {
+                    x: note.x,
+                    y: note.y,
+                    width: note.width,
+                    height: note.height,
+                    opacity: note.opacity,
+                    startup_restore: true,
+                  });
                   logStartupStep('6/6', `付箋 ${i + 1}/${notes.length} ${noteName} ${Math.round(performance.now() - noteStartedAt)}ms`);
-
                 }
-                logStartupStep('6/6', `付箋ウィンドウをすべて開きました: ${notes.length}/${notes.length}`);
 
-                setLoadingStatus("仕上げ処理...");
-                logStartupStep('6/6', 'メインウィンドウを片付けて起動を完了します');
-                setTimeout(async () => {
-                  try {
-                    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-                    const mainWindow = await WebviewWindow.getByLabel('main');
-                    if (mainWindow) {
-                      await mainWindow.minimize();
-                      setIsCheckingSetup(false);
-                      logStartupStep('6/6', '起動完了: 復元処理が終わりました');
-                      startPoolReplenishInBackground();
-                    }
-                  } catch (e) {
-                    log(`[起動処理] 最小化エラー: ${e}`);
-                    setLoadingStatus("最小化失敗: " + String(e));
-                    setTimeout(() => setIsCheckingSetup(false), 2000);
-                  }
-                }, 100);
+                if (readyLabels.size < startupLabels.size) {
+                  await Promise.race([
+                    allReady,
+                    new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+                  ]);
+                }
+                unlistenStartupReady();
+                if (readyLabels.size < startupLabels.size) {
+                  logStartupStep('6/6', `描画待ちを10秒で終了しました: ${readyLabels.size}/${notes.length}件準備完了`);
+                } else {
+                  logStartupStep('6/6', `付箋の本文描画が完了しました: ${notes.length}/${notes.length}`);
+                }
+
+                setLoadingStatus("付箋を表示しています...");
+                logStartupStep('6/6', '準備済みの付箋をまとめて表示します');
+                try {
+                  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                  const noteWindows = await Promise.all(
+                    [...startupLabels].map((label) => WebviewWindow.getByLabel(label)),
+                  );
+                  await Promise.all(noteWindows.filter((win): win is WebviewWindow => win !== null).map((win) => win.show()));
+                  const mainWindow = await WebviewWindow.getByLabel('main');
+                  if (mainWindow) await mainWindow.minimize();
+                  setIsCheckingSetup(false);
+                  logStartupStep('6/6', '起動完了: すべての付箋を表示しました');
+                  startPoolReplenishInBackground();
+                } catch (e) {
+                  log(`[起動処理] 一括表示エラー: ${e}`);
+                  setLoadingStatus("付箋の表示に失敗しました: " + String(e));
+                }
               } else {
                 setLoadingStatus("ようこそノートを作成中...");
                 try {
@@ -1512,7 +1632,7 @@ function OrchestratorContent() {
     // I will stick to what was inside checkAndRestore in the broken file as it seemed to combine logic
     // Actually, looking at the broken file line 1066.
 
-  }, [handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
+  }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
   const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !monthlyBackupResult;
 

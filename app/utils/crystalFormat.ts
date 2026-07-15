@@ -70,9 +70,36 @@ export function splitCrystalSections(spec: CrystalSpec, body: string): Record<st
 
 export function joinCrystalSections(spec: CrystalSpec, sections: Record<string, string>): string {
     return spec.sectionNames
-        .flatMap((name) => [`# ${name}`, '', trimOuterBlankLines(sections[name]), ''])
-        .slice(0, -1)
+        .map((name) => ({ name, content: trimOuterBlankLines(sections[name] ?? '') }))
+        .flatMap(({ name, content }) => [`# ${name}`, content])
         .join('\n');
+}
+
+export function removeEmptyCrystalSections(spec: CrystalSpec, body: string): string {
+    const sections = splitCrystalSections(spec, body);
+    return spec.sectionNames
+        .map((name) => ({ name, content: trimOuterBlankLines(sections[name] ?? '') }))
+        .filter(({ content }) => content.length > 0)
+        .flatMap(({ name, content }) => [`# ${name}`, content])
+        .join('\n');
+}
+
+export function getCrystalNameFromSection(
+    spec: CrystalSpec,
+    body: string,
+    sectionName: string,
+    maxLength = 20,
+): string {
+    const section = splitCrystalSections(spec, body)[sectionName] ?? '';
+    const firstLine = normalizeLineEndings(section)
+        .split('\n')
+        .map((line) => line.trim())
+        .find(Boolean) ?? '';
+    const withoutListMarker = firstLine
+        .replace(/^\d+[.)]\s+/, '')
+        .replace(/^[-*+]\s+\[[ xX]\]\s+/, '')
+        .trim();
+    return Array.from(withoutListMarker).slice(0, maxLength).join('');
 }
 
 export function getChangedCrystalSections(
@@ -104,7 +131,7 @@ export function appendImprovementHistoryLine(body: string, historyLine: string):
 
     if (historyHeadingIndex === -1) {
         const base = normalized.trimEnd();
-        return `${base}${base ? '\n\n' : ''}# ${IMPROVEMENT_HISTORY_SECTION}\n\n${historyLine}`;
+        return `${base}${base ? '\n' : ''}# ${IMPROVEMENT_HISTORY_SECTION}\n${historyLine}`;
     }
 
     const nextHeadingIndex = lines.findIndex((line, index) => index > historyHeadingIndex && /^# .+$/.test(line));
@@ -112,7 +139,7 @@ export function appendImprovementHistoryLine(body: string, historyLine: string):
     const before = lines.slice(0, insertIndex).join('\n').trimEnd();
     const after = lines.slice(insertIndex).join('\n');
 
-    return `${before}\n${historyLine}${after ? `\n\n${after}` : ''}`;
+    return `${before}\n${historyLine}${after ? `\n${after}` : ''}`;
 }
 
 export function truncateCrystalName(name: string, maxLength = 10): string {

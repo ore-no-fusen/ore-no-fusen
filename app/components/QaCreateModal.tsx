@@ -7,6 +7,8 @@ import { buildQaDraft } from '@/app/utils/qaFormat';
 import { splitTermNameAndBody } from '@/app/utils/termFormat';
 import { loadCrystalFormats, type CrystalTypeFormat } from '@/app/utils/crystalFormatConfig';
 import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
+import { getCrystalNameFromSection, removeEmptyCrystalSections } from '@/app/utils/crystalFormat';
+import { configToSpec } from '@/app/utils/crystalFormatConfigCore';
 
 type QaCreateModalProps = {
     sourceTitle?: string | null;
@@ -23,9 +25,8 @@ export default function QaCreateModal({
     onClose,
     onCreated,
 }: QaCreateModalProps) {
-    const [title, setTitle] = useState(
-        splitTermNameAndBody(sourceBody).name || sourceTitle?.trim() || '',
-    );
+    const fallbackTitle =
+        splitTermNameAndBody(sourceBody).name || sourceTitle?.trim() || '';
     const [draftBody, setDraftBody] = useState('');
     const [qaFormat, setQaFormat] = useState<CrystalTypeFormat | null>(null);
     const [isCreating, setIsCreating] = useState(false);
@@ -53,9 +54,15 @@ export default function QaCreateModal({
         setIsCreating(true);
         setError(null);
         try {
+            const spec = qaFormat ? configToSpec(qaFormat) : null;
+            const body = spec ? removeEmptyCrystalSections(spec, draftBody) : draftBody;
+            const questionLabel = qaFormat?.sections.find((section) => section.slot === 'question')?.label;
+            const title = spec && questionLabel
+                ? getCrystalNameFromSection(spec, draftBody, questionLabel) || fallbackTitle
+                : fallbackTitle;
             const path = await createQaNote({
                 title,
-                body: draftBody,
+                body,
                 tags: sourceTags,
             });
             await emit('fusen:open_note', { path, isNew: false, backgroundColor: '#cfd8dc' });
@@ -68,7 +75,7 @@ export default function QaCreateModal({
         } finally {
             setIsCreating(false);
         }
-    }, [draftBody, isCreating, onClose, onCreated, sourceTags, title]);
+    }, [draftBody, fallbackTitle, isCreating, onClose, onCreated, qaFormat, sourceTags]);
 
     return (
         <div
@@ -96,22 +103,11 @@ export default function QaCreateModal({
                 </div>
 
                 <label className="flex flex-col gap-1">
-                    <span className="text-sm font-bold">短い名前</span>
-                    <input
-                        autoFocus
-                        type="text"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 bg-gray-50"
-                        placeholder="短い名前（15文字くらいまで）"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                    />
-                    <span className="text-xs text-gray-500">一覧では先頭10文字が表示されます</span>
-                </label>
-
-                <label className="flex flex-col gap-1">
                     <span className="text-sm font-bold">叩き台</span>
+                    <span className="text-xs text-gray-500">そのまま作れます。不要な行だけ削ってください</span>
                     {error && <div className="text-sm text-red-600">{error}</div>}
                     <textarea
+                        autoFocus
                         className="min-h-[360px] flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-slate-500 bg-gray-50"
                         value={draftBody}
                         onChange={(e) => setDraftBody(e.target.value)}

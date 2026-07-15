@@ -10,13 +10,16 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach, assert } from 'vitest';
+import { emit as emitEvent } from '@tauri-apps/api/event';
 import StickyNote from './StickyNote';
 
 // Mock Next.js hooks
+let mockStartupRestore = false;
 vi.mock('next/navigation', () => ({
     useSearchParams: () => ({
         get: (key: string) => {
             if (key === 'path') return 'd:/test/note.md';
+            if (key === 'startupRestore') return mockStartupRestore ? '1' : null;
             return null;
         },
     }),
@@ -57,6 +60,7 @@ vi.mock('@tauri-apps/api/window', () => ({
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
     WebviewWindow: mockWebviewWindow,
+    getCurrentWebviewWindow: () => ({ label: 'note-startup' }),
 }));
 
 vi.mock('@tauri-apps/api/menu', () => {
@@ -105,6 +109,7 @@ vi.mock('./RichTextEditor', () => {
 describe('StickyNote Component', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockStartupRestore = false;
         mockWebviewWindow.getByLabel.mockResolvedValue(null);
         mockWindow.isFocused.mockResolvedValue(false);
 
@@ -123,6 +128,18 @@ describe('StickyNote Component', () => {
                 default:
                     return Promise.resolve(null);
             }
+        });
+    });
+
+    it('起動時復元では本文の読込み後に準備完了を通知する', async () => {
+        mockStartupRestore = true;
+
+        render(<StickyNote />);
+
+        await waitFor(() => {
+            expect(vi.mocked(emitEvent)).toHaveBeenCalledWith('fusen:startup_note_ready', {
+                label: 'note-startup',
+            });
         });
     });
 
