@@ -15,6 +15,7 @@ import StickyNote from './StickyNote';
 
 // Mock Next.js hooks
 let mockStartupRestore = false;
+let mockNoteTags: string[] = [];
 vi.mock('next/navigation', () => ({
     useSearchParams: () => ({
         get: (key: string) => {
@@ -110,6 +111,7 @@ describe('StickyNote Component', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockStartupRestore = false;
+        mockNoteTags = [];
         mockWebviewWindow.getByLabel.mockResolvedValue(null);
         mockWindow.isFocused.mockResolvedValue(false);
 
@@ -118,7 +120,7 @@ describe('StickyNote Component', () => {
             switch (cmd) {
                 case 'fusen_read_note':
                     return Promise.resolve({
-                        meta: { path: 'd:/test/note.md', width: 200, height: 200 },
+                        meta: { path: 'd:/test/note.md', width: 200, height: 200, tags: mockNoteTags },
                         body: '---\ntags: []\n---\nTest Content'
                     });
                 case 'fusen_save_note':
@@ -129,6 +131,19 @@ describe('StickyNote Component', () => {
                     return Promise.resolve(null);
             }
         });
+    });
+
+    it('タグなしではアーカイブへの移動と表示する', async () => {
+        render(<StickyNote />);
+
+        expect(await screen.findByRole('button', { name: 'アーカイブへ移動' })).not.toBeNull();
+    });
+
+    it('タグが1個なら移動先のタグ名を表示する', async () => {
+        mockNoteTags = ['仕事'];
+        render(<StickyNote />);
+
+        expect(await screen.findByRole('button', { name: '「仕事」フォルダへ移動' })).not.toBeNull();
     });
 
     it('起動時復元では本文の読込み後に準備完了を通知する', async () => {

@@ -1707,6 +1707,10 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [t]);
 
+    const archiveButtonLabel = currentTags.length === 0
+        ? t('menu.archiveNoTag')
+        : t('menu.archiveToTag').replace('{tag}', currentTags[0]);
+
     /**
      * ローカルキーボードショートカット（この付箋ウィンドウがアクティブな時のみ有効）
      *
@@ -2292,10 +2296,10 @@ const StickyNote = memo(function StickyNote() {
                             </Tooltip>
                         )}
                         {currentTags.length <= 1 && !isCrystalNote && (
-                            <Tooltip text={t('menu.archive')} placement="top-right-arrow-shifted">
+                            <Tooltip text={archiveButtonLabel} placement="top-right-arrow-shifted">
                                 <button
                                     type="button"
-                                    aria-label={t('menu.archive')}
+                                    aria-label={archiveButtonLabel}
                                     onPointerDown={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
