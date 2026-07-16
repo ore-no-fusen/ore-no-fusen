@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { createRecipeNote, getRecipeCandidates, RecipeCandidate } from '@/app/api/recipes';
 import { readNote } from '@/app/api/notes';
@@ -44,12 +44,10 @@ export default function RecipeCreateModal({
 }: RecipeCreateModalProps) {
     const fallbackTitle =
         splitTermNameAndBody(sourceBody).name || sourceTitle?.trim() || '';
-    const [candidates, setCandidates] = useState<{ yellows: RecipeCandidate[]; pinks: RecipeCandidate[] }>({
+    const [candidates, setCandidates] = useState<{ yellows: RecipeCandidate[] }>({
         yellows: [],
-        pinks: [],
     });
     const [selectedYellowPath, setSelectedYellowPath] = useState<string | null>(null);
-    const [selectedPinkPaths, setSelectedPinkPaths] = useState<string[]>([]);
     const [draftBody, setDraftBody] = useState('');
     const [recipeFormat, setRecipeFormat] = useState<CrystalTypeFormat | null>(null);
     const [isDraftEdited, setIsDraftEdited] = useState(false);
@@ -77,7 +75,7 @@ export default function RecipeCreateModal({
         getRecipeCandidates(sourcePath)
             .then((result) => {
                 if (cancelled) return;
-                setCandidates(result);
+                setCandidates({ yellows: result.yellows });
             })
             .catch((e) => {
                 if (cancelled) return;
@@ -95,13 +93,11 @@ export default function RecipeCreateModal({
         const regenerate = async () => {
             if (!recipeFormat) return;
             const yellowBody = selectedYellowPath ? await readNoteBody(selectedYellowPath) : null;
-            const pinkBodies = await Promise.all(selectedPinkPaths.map((path) => readNoteBody(path)));
             if (cancelled) return;
 
             const draft = buildRecipeDraft({
                 blueBody: sourceBody,
                 yellowBody,
-                pinkBodies,
                 date: todayString(),
             }, recipeFormat);
             setDraftBody(draft);
@@ -116,20 +112,7 @@ export default function RecipeCreateModal({
         });
 
         return () => { cancelled = true; };
-    }, [recipeFormat, selectedPinkPaths, selectedYellowPath, sourceBody]);
-
-    const togglePink = useCallback((path: string) => {
-        if (!confirmOverwriteDraft()) return;
-        setSelectedPinkPaths((prev) => {
-            if (prev.includes(path)) {
-                return prev.filter((item) => item !== path);
-            }
-            if (prev.length >= 3) {
-                return prev;
-            }
-            return [...prev, path];
-        });
-    }, [confirmOverwriteDraft]);
+    }, [recipeFormat, selectedYellowPath, sourceBody]);
 
     const selectYellow = useCallback((path: string | null) => {
         if (!confirmOverwriteDraft()) return;
@@ -164,7 +147,7 @@ export default function RecipeCreateModal({
         }
     }, [draftBody, fallbackTitle, isCreating, onClose, onCreated, recipeFormat, sourceTags]);
 
-    const noCandidates = !isLoading && candidates.yellows.length === 0 && candidates.pinks.length === 0;
+    const noCandidates = !isLoading && candidates.yellows.length === 0;
 
     return (
         <div
@@ -198,7 +181,7 @@ export default function RecipeCreateModal({
 
                     {candidates.yellows.length > 0 && (
                         <div className="flex flex-col gap-2">
-                            <div className="text-xs font-bold text-gray-500">黄色（0〜1件）</div>
+                            <div className="text-xs font-bold text-gray-500">黄色（0〜1件）— 選ぶと「きっかけ」に入ります</div>
                             {candidates.yellows.map((candidate) => (
                                 <label key={candidate.path} className="flex gap-2 p-2 border border-gray-200 rounded-lg bg-[#fffdf2]">
                                     <input
@@ -220,29 +203,6 @@ export default function RecipeCreateModal({
                             >
                                 黄色の選択を外す
                             </button>
-                        </div>
-                    )}
-
-                    {candidates.pinks.length > 0 && (
-                        <div className="flex flex-col gap-2">
-                            <div className="text-xs font-bold text-gray-500">桃（0〜3件）</div>
-                            {candidates.pinks.map((candidate) => {
-                                const checked = selectedPinkPaths.includes(candidate.path);
-                                return (
-                                    <label key={candidate.path} className="flex gap-2 p-2 border border-gray-200 rounded-lg bg-[#fff5f7]">
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            disabled={!checked && selectedPinkPaths.length >= 3}
-                                            onChange={() => togglePink(candidate.path)}
-                                        />
-                                        <span className="min-w-0">
-                                            <span className="block text-sm font-bold truncate">{candidate.title}</span>
-                                            <span className="block text-xs text-gray-600 whitespace-pre-wrap break-words">{candidate.preview}</span>
-                                        </span>
-                                    </label>
-                                );
-                            })}
                         </div>
                     )}
                 </section>
