@@ -920,20 +920,42 @@ fn fusen_create_term_note(
     Ok(path)
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReturnRecipeGeometry {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
 #[tauri::command]
-fn fusen_return_recipe(path: String, body: String, improved: bool) -> Result<(), String> {
+fn fusen_return_recipe(
+    path: String,
+    body: String,
+    improved: bool,
+    geometry: ReturnRecipeGeometry,
+) -> Result<String, String> {
     let note = storage::read_note(&path)?;
     let now = chrono::Local::now();
     let used_at = now.to_rfc3339();
     let updated_at = now.format("%Y-%m-%d").to_string();
+    let geometry_value = format!(
+        "{{ x: {}, y: {}, width: {}, height: {} }}",
+        geometry.x, geometry.y, geometry.width, geometry.height
+    );
+    let content_with_geometry =
+        logic::update_frontmatter_value(&note.body, "window", geometry_value);
     let content = logic::build_return_recipe_content(
-        &note.body,
+        &content_with_geometry,
         &body,
         improved,
         &used_at,
         &updated_at,
     );
-    storage::write_note(&path, &content)
+    storage::write_note(&path, &content)?;
+    launcher::invalidate_quick_open_content(&path);
+    Ok(content)
 }
 
 #[tauri::command]

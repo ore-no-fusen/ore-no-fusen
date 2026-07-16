@@ -37,6 +37,7 @@ import ConfirmDialog from './ConfirmDialog';
 import AlarmDialog from './AlarmDialog';
 import SaveErrorToast from './SaveErrorToast';
 import Tooltip from './Tooltip';
+import StickyActionIcon from './StickyActionIcon';
 
 
 // ユーティリティ
@@ -63,7 +64,10 @@ import {
 // API
 import { NoteMeta } from '@/app/api/notes';
 import { returnRecipe } from '@/app/api/recipes';
+import { hideReturnedCrystalWindow } from '@/app/utils/crystalWindowLifecycle';
+import { extractHydratedNoteMeta } from '@/app/utils/hydratedNoteMeta';
 import { invoke } from '@tauri-apps/api/core';
+import { getWindowGeometry } from '@/app/api/window';
 
 // 設定・国際化
 import { useSettings } from "@/lib/settings-store";
@@ -204,6 +208,7 @@ const StickyNote = memo(function StickyNote() {
         setSavePending,
         setContent,
         setRawFrontmatter,
+        hydrateLoadedContent,
         pathRef: noteFilePathRef
     } = useNoteFile({
         path: urlPath,
@@ -708,7 +713,7 @@ const StickyNote = memo(function StickyNote() {
             const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const thisWin = getCurrentWebviewWindow();
 
-            const u = await thisWin.listen<{ path?: string, folderPath?: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string, perfEnabled?: boolean, perfStartedAt?: number }>('fusen:promote_from_pool', async (event) => {
+            const u = await thisWin.listen<{ path?: string, folderPath?: string, isNew?: boolean, content?: string, frontmatter?: string, backgroundColor?: string, hydrateToken?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string, perfEnabled?: boolean, perfStartedAt?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
                 isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
@@ -727,6 +732,24 @@ const StickyNote = memo(function StickyNote() {
                         promotedBody = body;
                         setContent(promotedBody);
                     }
+                } else if (event.payload.path && event.payload.content !== undefined) {
+                    setIsNewState(false);
+                    setIsNewNote(false);
+                    const hydratedMeta = extractHydratedNoteMeta(event.payload.content);
+                    promotedBody = hydrateLoadedContent(
+                        event.payload.path,
+                        event.payload.content,
+                        hydratedMeta,
+                    );
+                    setSelectedFile({
+                        path: event.payload.path,
+                        seq: 0,
+                        context: getFileName(event.payload.path),
+                        updated: '',
+                        ...hydratedMeta,
+                    });
+                    setCurrentTags(hydratedMeta.tags ?? []);
+                    originalRecipeBodyRef.current = promotedBody;
                 }
 
                 // [NEW] Pool lazy 用フォルダパスを保存（1 文字目で fusen_create_note_lazy に渡す）
@@ -775,6 +798,15 @@ const StickyNote = memo(function StickyNote() {
 
                 // CodeMirror のレイアウトを再計算させる（hidden→visible 時に必要）
                 window.dispatchEvent(new Event('resize'));
+
+                if (event.payload.hydrateToken) {
+                    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                    await emit('fusen:pool_promote_ready', {
+                        label: thisWin.label,
+                        token: event.payload.hydrateToken,
+                    });
+                }
 
                 // Rust が SetForegroundWindow をアトミックに完了済みのため、長い待機は不要。
                 // rAF 1回でレイアウト確定を待つだけで十分（ITaskbarList 待機の 300ms は不要）。
@@ -1705,12 +1737,18 @@ const StickyNote = memo(function StickyNote() {
                 )
                 : content;
 
+            const geometry = await getWindowGeometry();
             isDeletingRef.current = true;
-            await returnRecipe(selectedFile.path, returnedBody, changedCount > 0);
+            const savedContent = await returnRecipe(selectedFile.path, returnedBody, changedCount > 0, geometry);
+            const { front: savedFront, body: savedBody } = splitFrontMatter(savedContent);
+            setRawFrontmatter(savedFront);
+            setContent(savedBody);
+            setEditBody(savedBody);
+            originalRecipeBodyRef.current = savedBody;
             await playSaveSound();
             const win = getCurrentWindow();
-            await win.hide();
-            await win.destroy();
+            await hideReturnedCrystalWindow(win);
+            isDeletingRef.current = false;
         } catch (e) {
             isDeletingRef.current = false;
             console.error(`Failed to return ${isRecipeNote ? 'recipe' : isQaNote ? 'QA' : 'term'}:`, e);
@@ -2333,7 +2371,7 @@ const StickyNote = memo(function StickyNote() {
                                     }}
                                     className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
                                 >
-                                    📦
+                                    <StickyActionIcon kind="archive" />
                                 </button>
                             </Tooltip>
                         )}
@@ -2352,7 +2390,7 @@ const StickyNote = memo(function StickyNote() {
                                 }}
                                 className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-red-100 hover:text-red-600 hover:border-red-200 transition-colors"
                             >
-                                🗑
+                                <StickyActionIcon kind="delete" />
                             </button>
                         </Tooltip>
                     </div>

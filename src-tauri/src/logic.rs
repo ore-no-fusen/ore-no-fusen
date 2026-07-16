@@ -887,6 +887,26 @@ mod tests {
     }
 
     #[test]
+    fn return_recipe_geometry_is_preserved_in_same_content_update() {
+        let current = "---\ntags: [qa]\nlaunches: 1\n---\nold";
+        let with_geometry = update_frontmatter_value(
+            current,
+            "window",
+            "{ x: 120, y: 80, width: 587, height: 701 }".to_string(),
+        );
+        let result = build_return_recipe_content(
+            &with_geometry,
+            "new",
+            true,
+            "2026-07-16T10:00:00+09:00",
+            "2026-07-16",
+        );
+
+        assert!(result.contains("window: { x: 120, y: 80, width: 587, height: 701 }"));
+        assert!(result.ends_with("new"));
+    }
+
+    #[test]
     fn build_return_recipe_content_updates_body_and_improvement_count() {
         let content = "---\nupdated: 2026-07-01\nrecipeImprovements: 4\nrecipeLastUsed:\n---\n\nold body";
         let result = build_return_recipe_content(

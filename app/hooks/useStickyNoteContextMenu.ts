@@ -426,22 +426,52 @@ export function useStickyNoteContextMenu({
                             if (!p) return;
                             try {
                                 const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                                const { emitTo, listen } = await import('@tauri-apps/api/event');
                                 const label = 'recipe-create';
-                                const existing = await WebviewWindow.getByLabel(label);
-                                if (existing) { await existing.setFocus(); return; }
+                                let existing = await WebviewWindow.getByLabel(label);
                                 const { encodeNotePathForUrl } = await import('../utils/pathUtils');
-                                const w = new WebviewWindow(label, {
-                                    url: `/recipe-create?path=${encodeNotePathForUrl(p)}`,
-                                    title: 'レシピにする',
-                                    width: 760,
-                                    height: 860,
-                                    minWidth: 640,
-                                    minHeight: 620,
-                                    center: true,
-                                    resizable: true,
-                                    focus: true,
+                                if (!existing) {
+                                    existing = new WebviewWindow(label, {
+                                        url: `/recipe-create?path=${encodeNotePathForUrl(p)}`,
+                                        title: 'レシピにする', width: 760, height: 860,
+                                        minWidth: 640, minHeight: 620, center: true,
+                                        resizable: true, visible: false, focus: false, skipTaskbar: true,
+                                    });
+                                    await new Promise<void>((resolve, reject) => {
+                                        existing!.once('tauri://created', () => resolve());
+                                        existing!.once('tauri://error', (e) => reject(e));
+                                    });
+                                }
+                                const hostToken = `recipe-host-${Date.now()}-${Math.random()}`;
+                                await new Promise<void>(async (resolve) => {
+                                    let settled = false;
+                                    const unlisten = await listen<{ token?: string }>('fusen:recipe_draft_host_ready', (event) => {
+                                        if (event.payload.token !== hostToken || settled) return;
+                                        settled = true;
+                                        unlisten();
+                                        resolve();
+                                    });
+                                    const started = Date.now();
+                                    while (!settled && Date.now() - started < 2000) {
+                                        await emitTo(label, 'fusen:recipe_draft_ping', { token: hostToken }).catch(() => {});
+                                        await new Promise((wait) => setTimeout(wait, 25));
+                                    }
+                                    if (!settled) { settled = true; unlisten(); resolve(); }
                                 });
-                                w.once('tauri://error', (e) => console.error('[recipe-create] window error', e));
+                                const token = `recipe-draft-${Date.now()}-${Math.random()}`;
+                                const ready = new Promise<void>(async (resolve) => {
+                                    const unlisten = await listen<{ token: string }>('fusen:recipe_draft_ready', (event) => {
+                                        if (event.payload.token !== token) return;
+                                        unlisten();
+                                        resolve();
+                                    });
+                                    setTimeout(() => { unlisten(); resolve(); }, 3000);
+                                });
+                                await emitTo(label, 'fusen:prepare_recipe_draft', { path: p, token });
+                                await ready;
+                                await existing.show();
+                                await existing.setSkipTaskbar(false);
+                                await existing.setFocus();
                             } catch (e) {
                                 console.error('Failed to open recipe create window', e);
                             }

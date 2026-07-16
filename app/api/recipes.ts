@@ -18,6 +18,13 @@ export type CreateRecipeNoteRequest = {
     tags: string[];
 };
 
+export type CrystalWindowGeometry = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+};
+
 export async function getRecipeCandidates(sourcePath: string): Promise<RecipeCandidates> {
     return await invoke<RecipeCandidates>('fusen_get_recipe_candidates', { sourcePath });
 }
@@ -34,6 +41,6 @@ export async function createTermNote(request: CreateRecipeNoteRequest): Promise<
     return await invoke<string>('fusen_create_term_note', { request });
 }
 
-export async function returnRecipe(path: string, body: string, improved: boolean): Promise<void> {
-    await invoke('fusen_return_recipe', { path, body, improved });
+export async function returnRecipe(path: string, body: string, improved: boolean, geometry: CrystalWindowGeometry): Promise<string> {
+    return await invoke<string>('fusen_return_recipe', { path, body, improved, geometry });
 }

@@ -8,7 +8,7 @@ use tauri_plugin_global_shortcut::{
     Builder as ShortcutBuilder, Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
 
-use crate::{can_do_visibility_op, double_tap::{self, DoubleTapBinding, DoubleTapTarget}, fusen_arrange_by_tag, logger, perflog, storage, triple_right_click};
+use crate::{can_do_visibility_op, double_tap::{self, DoubleTapBinding, DoubleTapTarget}, fusen_arrange_by_tag, logger, storage, triple_right_click};
 
 static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
 
@@ -189,7 +189,7 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                             // フォーカスチェックは削除。付箋にフォーカスがある状態でも新規作成を許可する。
                             // 二重作成はメインウィンドウの 400ms グローバルスロットルで防ぐ。
                             logger::log_info("[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit");
-                            perflog::log_event("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
+                            crate::perf_event!("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
                             let _ = app.emit("fusen:request_create_global", ());
                         } else if current.shortcuts.get(&HotKeyAction::Arrange).map(|registered| shortcut == registered).unwrap_or(false) {
                             logger::log_info("[Shortcut] Ctrl+Shift+L: fusen_arrange_by_tag trigger");

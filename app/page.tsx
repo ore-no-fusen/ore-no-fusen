@@ -33,6 +33,8 @@ import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMa
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
+import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
+import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
 
 // Global AppState type definition
 type AppState = {
@@ -193,6 +195,27 @@ function OrchestratorContent() {
   const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
   const readyPoolWindowsRef = useRef<Set<string>>(new Set()); // リスナー登録完了済みのプールウィンドウ
   const crystalPoolWindowsRef = useRef<Map<string, string>>(new Map()); // 結晶パス → 昇格済みPool窓
+  useEffect(() => {
+    if (!isMainWindow) return;
+    const prepare = async () => {
+      if (await WebviewWindow.getByLabel('recipe-create')) return;
+      new WebviewWindow('recipe-create', {
+        url: '/recipe-create',
+        title: 'レシピにする',
+        width: 760,
+        height: 860,
+        minWidth: 640,
+        minHeight: 620,
+        center: true,
+        resizable: true,
+        visible: false,
+        focus: false,
+        skipTaskbar: true,
+      });
+    };
+    const timer = setTimeout(() => { prepare().catch(() => {}); }, 0);
+    return () => clearTimeout(timer);
+  }, [isMainWindow]);
   // [NEW] Pool 枯渇時トースト
   const [poolWaitToast, setPoolWaitToast] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [files, setFiles] = useState<NoteMeta[]>([]);
@@ -673,7 +696,7 @@ function OrchestratorContent() {
     if (!isMainWindow) return; // [FIX] プールウィンドウからの過剰反応を防ぐ Guard
 
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ path: string; isNew?: boolean; backgroundColor?: string; content?: string; isCrystal?: boolean }>('fusen:open_note', async (event) => {
+    const promise = listen<{ path: string; isNew?: boolean; backgroundColor?: string; content?: string; isCrystal?: boolean; x?: number; y?: number; width?: number; height?: number }>('fusen:open_note', async (event) => {
       const bg = event.payload.backgroundColor;
       const notePath = event.payload.path;
       if (event.payload.isCrystal && event.payload.content !== undefined) {
@@ -691,35 +714,32 @@ function OrchestratorContent() {
         }
 
         const allWindows = await (await import('@tauri-apps/api/webviewWindow')).getAllWebviewWindows();
-        const poolWindow = allWindows.find((win) =>
-          win.label.startsWith('pool-window-')
-          && readyPoolWindowsRef.current.has(win.label)
-          && !usedPoolWindowsRef.current.has(win.label)
-          && !localStorage.getItem(`promoted_${win.label}`),
+        const poolWindow = selectReadyInvisibleNote(
+          allWindows,
+          readyPoolWindowsRef.current,
+          usedPoolWindowsRef.current,
+          (label) => Boolean(localStorage.getItem(`promoted_${label}`)),
         );
         if (poolWindow) {
           usedPoolWindowsRef.current.add(poolWindow.label);
           localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
           crystalPoolWindowsRef.current.set(key, poolWindow.label);
           const token = `crystal-${Date.now()}-${Math.random()}`;
-          const hydrated = new Promise<void>(async (resolve) => {
-            let settled = false;
-            const dispose = await listen<{ label: string; token: string }>('fusen:pool_promote_ready', (ready) => {
-              if (ready.payload.label !== poolWindow.label || ready.payload.token !== token) return;
-              if (!settled) {
-                settled = true;
-                dispose();
-                resolve();
-              }
-            });
-            setTimeout(() => {
-              if (!settled) {
-                settled = true;
-                dispose();
-                resolve();
-              }
-            }, 500);
+          let resolveHydrated: (() => void) | undefined;
+          const hydrated = new Promise<void>((resolve) => { resolveHydrated = resolve; });
+          let settled = false;
+          const disposeHydrated = await listen<{ label: string; token: string }>('fusen:pool_promote_ready', (ready) => {
+            if (ready.payload.label !== poolWindow.label || ready.payload.token !== token || settled) return;
+            settled = true;
+            disposeHydrated();
+            resolveHydrated?.();
           });
+          setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            disposeHydrated();
+            resolveHydrated?.();
+          }, 500);
           const { emitTo } = await import('@tauri-apps/api/event');
           await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
             path: notePath,
@@ -729,13 +749,24 @@ function OrchestratorContent() {
             hydrateToken: token,
           });
           await hydrated;
-          await poolWindow.center();
+          const scaleFactor = await poolWindow.scaleFactor().catch(() => 1);
+          const physicalSize = physicalCrystalWindowSize(
+            event.payload.width,
+            event.payload.height,
+            scaleFactor,
+          );
+          const physicalPosition = physicalCrystalWindowPosition(
+            event.payload.x,
+            event.payload.y,
+            scaleFactor,
+          );
+          if (!physicalPosition) await poolWindow.center();
           await invoke('fusen_show_at_position', {
             label: poolWindow.label,
-            physX: null,
-            physY: null,
-            physWidth: 400,
-            physHeight: 300,
+            physX: physicalPosition?.x ?? null,
+            physY: physicalPosition?.y ?? null,
+            physWidth: physicalSize.width,
+            physHeight: physicalSize.height,
             runId: null,
           });
           invoke('fusen_create_pool_window').catch(() => {});

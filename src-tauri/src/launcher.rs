@@ -120,6 +120,13 @@ fn invalidate_quick_open_content_cache() {
         .clear();
 }
 
+pub(crate) fn invalidate_quick_open_content(path: &str) {
+    quick_open_content_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(Path::new(path));
+}
+
 fn invalidate_shortcut_cache_for_tag(
     cache: &Mutex<HashMap<PathBuf, Vec<QuickOpenItem>>>,
     tag: &str,
@@ -761,6 +768,28 @@ fn launcher_background_color(content: &str) -> Option<String> {
     None
 }
 
+fn launcher_window_geometry(content: &str) -> (Option<i32>, Option<i32>, Option<u32>, Option<u32>) {
+    let Some(window) = content.lines().find_map(|line| line.trim().strip_prefix("window:")) else {
+        return (None, None, None, None);
+    };
+    let mut x = None;
+    let mut y = None;
+    let mut width = None;
+    let mut height = None;
+    for field in window.trim().trim_matches(['{', '}']).split(',') {
+        let Some((key, value)) = field.split_once(':') else { continue };
+        let parsed = value.trim().parse::<u32>().ok();
+        match key.trim() {
+            "x" => x = value.trim().parse::<i32>().ok(),
+            "y" => y = value.trim().parse::<i32>().ok(),
+            "width" => width = parsed.filter(|value| (200..=2000).contains(value)),
+            "height" => height = parsed.filter(|value| (120..=2000).contains(value)),
+            _ => {}
+        }
+    }
+    (x, y, width, height)
+}
+
 fn run_quick_open_after_read<Emit, Persist>(
     content: &str,
     emit_open: Emit,
@@ -782,6 +811,7 @@ where
 pub(crate) fn fusen_open_quick_note(app: AppHandle, path: String) -> Result<(), String> {
     let content = cached_quick_open_content(Path::new(&path))?;
     let tags = parse_launcher_tags(&content);
+    let (x, y, width, height) = launcher_window_geometry(&content);
     let is_crystal = tags.iter().any(|tag| {
         matches!(logic::normalize_reserved_tag(tag).as_str(), "recipe" | "qa" | "term")
     });
@@ -795,7 +825,11 @@ pub(crate) fn fusen_open_quick_note(app: AppHandle, path: String) -> Result<(), 
                     "path": emit_path,
                     "backgroundColor": background_color,
                     "content": content,
-                    "isCrystal": is_crystal
+                    "isCrystal": is_crystal,
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height
                 }),
             )
             .map_err(|e| e.to_string())
@@ -1137,6 +1171,13 @@ mod tests {
         .unwrap();
 
         assert_eq!(&*calls.borrow(), &["emit:#cfd8dc", "write"]);
+    }
+
+    #[test]
+    fn quick_open_lightweight_style_parser_preserves_color_and_window_size() {
+        let content = "---\nbackgroundColor: \"#cfd8dc\"\nwindow: { x: 10, y: 20, width: 640, height: 520 }\n---\nbody";
+        assert_eq!(launcher_background_color(content).as_deref(), Some("#cfd8dc"));
+        assert_eq!(launcher_window_geometry(content), (Some(10), Some(20), Some(640), Some(520)));
     }
 
     #[test]

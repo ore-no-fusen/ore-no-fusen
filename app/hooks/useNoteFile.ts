@@ -11,7 +11,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import * as Sentry from '@sentry/nextjs';
 import { invoke } from '@tauri-apps/api/core';
-import { readNote, saveNote, Note } from '@/app/api/notes';
+import { readNote, saveNote, Note, NoteMeta } from '@/app/api/notes';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey } from '@/app/utils/splitFrontMatter';
 import { pathsEqual } from '@/app/utils/pathUtils';
 
@@ -38,6 +38,7 @@ export type UseNoteFileReturn = {
     setSavePending: (pending: boolean) => void;
     setContent: (content: string) => void;
     setRawFrontmatter: React.Dispatch<React.SetStateAction<string>>;
+    hydrateLoadedContent: (path: string, rawContent: string, meta?: Partial<NoteMeta>) => string;
     pathRef: React.MutableRefObject<string | null>; // 同期アクセス用（stale closure 対策）
 };
 
@@ -126,6 +127,23 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
             setLoading(false);
         }
     }, [path]); // content を依存配列から除去 → loadNote が毎回再生成されなくなる
+
+    const hydrateLoadedContent = useCallback((loadedPath: string, rawContent: string, meta?: Partial<NoteMeta>): string => {
+        const { front, body } = splitFrontMatter(rawContent);
+        pathRef.current = loadedPath;
+        loadedPathRef.current = loadedPath;
+        loadFailedPathRef.current = null;
+        hasLoadedRef.current = true;
+        setNote({
+            body: rawContent,
+            frontmatter: front,
+            meta: { path: loadedPath, seq: 0, context: '', updated: '', ...meta },
+        });
+        setRawFrontmatter(front);
+        setContent(body);
+        setLoading(false);
+        return body;
+    }, []);
 
     /**
      * ノートを保存する（リネーム対応）
@@ -303,6 +321,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
         setSavePending,
         setContent,
         setRawFrontmatter,
+        hydrateLoadedContent,
         pathRef
     };
 }

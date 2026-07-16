@@ -170,7 +170,7 @@ mod windows_hook {
     };
 
     use super::{DoubleTapBinding, DoubleTapDetector, DoubleTapOutcome, DoubleTapTarget, TapEvent};
-    use crate::{logger, perflog};
+    use crate::logger;
 
     const WINDOW_MS: u64 = 650;
     const NOISE_WINDOW_MS: u64 = 300;
@@ -282,7 +282,7 @@ mod windows_hook {
                     logger::log_info(
                         "[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit",
                     );
-                    perflog::log_event(
+                    crate::perf_event!(
                         "ctrl-n-global",
                         "GLOBAL_CTRL_N_PRESSED",
                         None,

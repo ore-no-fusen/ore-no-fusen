@@ -1,207 +1,152 @@
-## 2026-07-14 compact folded note width
+## 2026-07-17 インポート付箋の表示設定統一・自動整列
 
-- Changed folded sticky notes to use the smaller of their current width and 320 logical pixels.
-- Kept the existing original width/height restoration path when unfolding.
-- Added focused tests for wide notes, high-DPI scaling, and already-narrow notes.
-- Updated docs-v2/002_PC.md §6.2 and revision history 2.29.
+- インポート時に window / folded / alwaysOnTop / opacity / fontSize を除去し、全体文字サイズへ統一する。本文・タグ・背景色は保持する。
+- コピー後にRust AppStateの付箋一覧を保存場所から再走査し、インポート付箋を整列対象へ正式登録する。
+- メインウィンドウが全インポート付箋の生成完了を待ってから `fusen_arrange_by_tag` を実行する。
 
-## 2026-07-13 checkbox marker color boundary
+## 2026-07-17 タグ整列の巨大付箋・折りたたみ幅を修正
 
-- Limited the orange checkbox marker decoration to `- [ ]` / `- [x]`, excluding trailing whitespace.
-- Marked the decoration as non-inclusive so text inserted after the marker does not inherit its color.
-- Added a focused regression test for the marker boundary.
-- Audited headings, normal lists, links, and bold markers; normal lists had the same trailing-space risk and now use the same non-inclusive boundary.
-- Updated sticky-note E2E 3.5 from the removed `input#path` to the current read-only path display and `保存場所を変更` button.
+- 折りたたみ付箋はfrontmatterの展開幅ではなく、整列時にTauriウィンドウから取得した実表示幅をDPI換算して使う。
+- 整列結果のX位置を主ディスプレイ作業領域へ補正し、巨大付箋が後続列を画面外へ押し出さないようにした。
+- 付箋サイズと縦方向のタグレーン規則は変更しない。
 
-## 2026-07-12 crystal purpose exploration
+## 2026-07-17 インポート後に付箋を即時表示
 
-- Expanded `docs-v2/002_PC.md` §11.1 with the core purpose: save what worked, find it next time, reuse and improve it until the user becomes skilled almost without noticing.
-- Added a lifecycle diagram, a current-feature mapping table, and an AI-agent instruction recipe example.
-- Captured a high-priority todo for cross-searching crystal names, bodies, and tags while preserving the existing Ctrl+P shelf behavior.
+- Rustのインポート結果へコピー成功したMarkdownの保存先パスを追加した。
+- インポート完了後、一覧同期に加えて各パスへ `fusen:open_note` を送り、再起動せずデスクトップへ表示し直す。
+- コピー元を残す仕様は変更していない。
 
-## 2026-07-12 yellow welcome note
+## 2026-07-17 しまった付箋を戻す説明を追加
 
-- Explicitly saves and opens the first-launch welcome note with the semantic yellow color (`#f7e9b0`).
-- The change is limited to the first-launch guide note; normal and existing notes are unchanged.
+- データ管理の見出しを「Markdownのインポート＆しまったタグのインポート」へ変更した。
+- `tags/` 内の戻したいタグフォルダを選ぶこと、付箋はデータ保存場所直下へコピーされてデスクトップへ戻ること、元のタグフォルダにも残ることを明記した。
+- インポート処理自体は変更していない。
 
-## 2026-07-12 Search Console duplicate canonical fix
+## 2026-07-17 右下ツールチップの矢印位置を補正
 
-- Unified the landing page canonical URL on the public root URL (`https://ore-no-fusen.vercel.app`).
-- Removed the duplicate `/landing` entry from the sitemap while keeping the existing Vercel root rewrite behavior.
-- Scope is limited to search indexing metadata; Tauri and viewer behavior are unchanged.
+- 右寄せツールチップの固定18px補正を廃止し、対象ボタンの幅から中央位置を計算して矢印を合わせるよう変更した。
+- タグ・しまう・削除・結晶を閉じる各ボタンで、文言の長さにかかわらず矢印が対象中央を指す。
 
-## 2026-07-10 quick launcher triple right click settings UI
+## 2026-07-17 「タグへしまう」へ表示を整理
 
-- Added a HotkeySection switch for `quick_launcher_triple_right_click` below the quick launcher shortcut row.
-- The switch treats missing settings as false and saves immediately through the existing settings store path.
-- Verification passed: `npx vitest run`, `npm run lint`, `npx tsc --noEmit`.
+- デスクトップから片付けてタグ別フォルダまたは Archive へ移す操作を「しまう」で統一した。
+- タグ0個は「アーカイブへしまう」、タグ1個は「「タグ名」へしまう」、共通メニューは「タグへしまう」と表示する。移動処理は変更しない。
 
-## 2026-07-10 quick launcher triple right click Rust
+## 2026-07-16 レシピ材料候補を黄色だけに整理
 
-- Added `src-tauri/src/triple_right_click.rs` with an OS-independent right-button triple-down detector and a Windows `WH_MOUSE_LL` hook that passes clicks through.
-- Wired `quick_launcher_triple_right_click` settings through Rust/TS settings and synced the hook on startup and settings save.
-- Reused the existing quick launcher toggle event path (`fusen:toggle_quick_launcher`) used by Ctrl+P.
-- Verification passed: `cargo test`, `npx tsc --noEmit`, `npx vitest run`.
+- 「レシピにする」の材料選択から桃色候補を削除し、黄色候補だけを0〜1件選べる形にした。
+- 黄色の見出しへ、選択内容が叩き台の「きっかけ」に入ることを明記した。青付箋2行目以降だけで「どうする」を作る。
+- `docs-v2/002_PC.md` §11.3の材料選択・生成ルールを実装に同期した。
 
-## 2026-07-10 return crystal close sound
+## 2026-07-16 付箋右下の移動先表示を明確化
 
-- Added `playSaveSound()` after successful `returnRecipe(...)` in `app/components/StickyNote.tsx`, before hiding/destroying the window.
-- Reused existing save sound because there is no dedicated return/stow sound helper.
-- Verification passed: `npx vitest run`, `npm run lint`, `npx tsc --noEmit`.
+- タグ0個では「アーカイブへ移動」、タグ1個では「「タグ名」フォルダへ移動」と表示するよう、ツールチップとアクセシブル名を切り替えた。移動処理は変更していない。
+- 回帰テスト2件を追加し、StickyNote対象テスト、TypeScript、差分チェックに成功した。
 
-## 2026-07-09 Phase D Part D-5 launcher term tab
+## 2026-07-15 結晶作成を「削るだけ」へ改善
 
-- Implemented `term_note_paths` in `src-tauri/src/launcher.rs` to scan `Terms/`, connected the `term` quick launcher tab, and added term shelf removal by stripping `term` then moving the file to root.
-- Added launcher Rust tests for `term` tab scanning and removing a term from shelf.
-- Updated `app/components/QuickLauncher.tsx` so term rows use `📖` and the empty-state message points to `📖 用語にする`.
-- Existing test updated: `app/components/QuickLauncher.test.ts` term empty-state expected string only.
-- Verification passed: `cargo test`, `npx vitest run`, `npm run lint`, `npx tsc --noEmit`.
+- 26-07-16追加: 用語の入力対応を1行目=用語、2行目=一言でいうと、3行目以降=意味へ変更。デフォルトは「原語・訳」「関連ワード」を含む8節とし、「例・使い方」を除外する。
+- 26-07-16追加: ひな形設定では手順だけに「事前条件」の追加候補を用意し、QA・用語は自由節追加だけとする。同名候補の重複追加は防止する。
+- 26-07-16検証: 対象Vitest 22件、TypeScript、VitePress設計書ビルド、差分チェックに成功。実機では用語3行以上の振り分けと、手順設定の「＋事前条件」を確認する。
 
-## 2026-07-09 Phase D Part D-3 term creation flow
+- 追加改善: 独立した保存名入力を廃止し、QA=問い、用語=用語、手順=こんなときの先頭行から20文字を、クイックランチャー名とファイル名へ共通利用する。
+- 手順の材料配置を修正し、青1行目=こんなとき、青2行目以降=どうする、黄色先頭2行=具体的な出来事を思い出すきっかけ、桃=追加手順とした。新規手順だけに適用する。
+- QA・用語の「きっかけ」は空欄とし、作成日＋元付箋タイトルの意味の薄い自動文を廃止した。未入力なら作成後に見出しごと除外する。
+- クイックランチャーの表示上限を10文字から20文字へ変更した。
+- 作成後の結晶本文編集では通常付箋用の自動ファイル名変更を行わず、`# 問い` 等へ誤リネームされる問題を防止した。
+- 作成画面は名前を別入力させず、入力フォーカスを叩き台へ置く。
+- QAの問いを本文1行目、答えを2行目以降へ変更した。
+- 作成画面ではひな形の全項目を表示し、作成時だけ空項目を見出しごと除去する。
+- 見出し・本文間と参考・画像内の固定空行を廃止し、結晶付箋をコンパクトにした。改善履歴の追加でも空行を増やさない。
+- 対象Vitest 39件とTypeScript確認済み。設計書 `docs-v2/002_PC.md` §11.2・11.3・11.8・11.9、改版2.20へ反映。
 
-- Added `createTermNote` in `app/api/recipes.ts` for `fusen_create_term_note`.
-- Added `app/components/TermCreateModal.tsx` copied from QA flow with term labels, `buildTermDraft`, source-title initial short name, and term note creation emits.
-- Added `app/term-create/page.tsx` copied from QA create page for source note loading and modal display.
-- Added `📖 用語にする` to the crystal context submenu under `❓ QAにする`, opening `/term-create?path=...` with the QA window sizing pattern.
-- Added `term-create` to the Rust CloseRequested transient-window exception in `src-tauri/src/lib.rs`.
-- Verification passed: `npx vitest run`, `npm run lint`, `npx tsc --noEmit`, `npm run build` (`/term-create` generated), `cargo test`.
+## 2026-07-15 俺のファミリー構想
 
-## 2026-07-09 Phase D Part D-2 term Rust command
+- 俺の付箋のデータを使う独立アプリ群として、俺のQA、俺の用語、俺の手順書を育てる構想を整理した。
+- 知識が育つ順番を、俺の付箋（気づき）→ 俺のQA（Why / なぜ）→ 俺の用語（What / なに）→ 俺の手順書（How / どうやる）とした。
+- 開発順は、中心となる俺のQA、次に俺の用語、最後に俺の手順書とする。
+- 専門アプリ側に詳しい原本を残し、俺の付箋へは数行の要点と原本への入口を返す。
+- 各アプリは俺の付箋がなくても単独利用できる形にする。
+- 構想ノート `.planning/notes/2026-07-15-ore-no-family.md` と種 `.planning/seeds/ore-no-qa.md` に記録した。
 
-- Implemented Terms storage support in `src-tauri/src/storage.rs`: `TERMS_DIR_NAME`, `ensure_terms_dir`, and recipe-material exclusion for root/nested `Terms`.
-- Added `term_tags_from_request` in `src-tauri/src/logic.rs` through the existing reserved-tag helper.
-- Added `create_term_note_file`, `fusen_create_term_note`, invoke registration, and term file I/O tests in `src-tauri/src/lib.rs`.
-- Existing test updated: `storage::tests::test_list_recipe_material_note_paths_scans_root_and_tags_only` now includes root/nested `Terms` exclusion cases.
-- Verification passed: `cargo test`, `npx tsc --noEmit`.
+## 2026-07-14 折りたたみ付箋の幅を縮小
 
-## 2026-07-09 Phase D Part D-1 termFormat
+- 折りたたんだ付箋の幅を、現在の幅と論理320ピクセルのうち小さい方に変更した。
+- 展開時に元の幅と高さへ戻す既存処理は維持した。
+- 幅の広い付箋、高DPI表示、すでに幅の狭い付箋に絞ったテストを追加した。
+- `docs-v2/002_PC.md` §6.2と改版履歴2.29を更新した。
 
-- Implemented `app/utils/termFormat.ts` as the pure draft builder for term crystals.
-- Added `TERM_SPEC`, section constants, `TermDraftInput`, and `buildTermDraft`.
-- Shared source-note trigger generation through `buildSourceNoteLine` in `app/utils/crystalFormat.ts`; `qaFormat.ts` imports it with unchanged public API/output.
-- Added `app/utils/termFormat.test.ts` for meaning/usage split, heading flattening, indentation preservation, URL/image evacuation, trigger title handling, and TERM_SPEC document-order behavior.
-- Verification passed: `npx vitest run`, `npm run lint`, `npx tsc --noEmit`.
+## 2026-07-14 復旧コピーの最小診断ログ
 
-## 2026-07-06 Part 10.2 launcher UAT fixes
+- 新しいログ基盤は追加せず、既存Rustログへ保存障害時だけ3種類を記録する。
+- 記録対象は、復旧コピー作成成功、通常保存と復旧コピー作成の両方の失敗、次回読込時の復旧コピー使用。
+- 付箋本文とフルパスは記録せず、`sanitize_path` を通したファイル名だけを使用する。
+- 正常保存時の追加ログ・追加I/Oは行わない。
+- 該当仕様は `docs-v2/002_PC.md` §7.1.3、改版2.24。
+- 検証済み: 復旧コピー対象Rustテスト2件、Rust全体194件成功・2件ignore、Vitest全体成功、TypeScript成功、VitePressビルド成功、データ安全性E2E 3件成功・1件skip。
+- 実機確認待ち: (1) 一時保存先を切断してbase_pathが保持され警告が出ること、(2) 保存失敗後に復旧内容が再表示され正常保存後に復旧コピーが消えること、(3) iPhone→PC保存後・Drive ack前相当のキューを再受信して付箋が重複しないこと。
+- 正常保存時の軽量化: 復旧パスの確認だけで `recovery-drafts` を作成していた処理を修正し、通常保存失敗時だけフォルダを作る。削除も対象ファイルが存在する場合だけ行う。
 
-- E: Added `fusen:launcher_shelf_changed` shelf-change event wiring for recipe creation, shortcut shelf toggle, remove from shelf, and reorder.
-- E: QuickLauncher now listens for the shelf-change event and reloads the current tab/query even while locked.
-- F: QuickLauncher lock button now reuses the normal sticky-note pin icon and pin toggle WebAudio sound helper.
-- Verification passed: `cargo test`, `npx vitest run`, `npm run lint`.
+## 2026-07-14 画像貼り付け後の入力位置調査
 
-## 2026-07-08 右クリックメニュー調査
+- クリップボード画像の貼り付けは `app/components/RichTextEditor.tsx` で画像Markdownだけを挿入し、カーソルを閉じ `)` の直後へ置いているため、画像の右側に見えて次の入力位置が分かりにくい。
+- 最小修正案は、貼り付ける内容を `![image](path)\n` とし、カーソルを改行後へ置くこと。通常のテキスト貼り付けや画面キャプチャ機能には触れない。
+- `src-tauri/src/logic.rs` は先頭の画像Markdownを除外し、次の空でないテキスト行をファイル名候補にする実装・テストが既にあるため、希望するファイル名動作は可能。
+- ファイル名のリネーム確定は現状、編集終了時（付箋外クリック・Esc・ウィンドウblur等）の `allowRename=true` 保存で行われる。
+- 実装済み: 画像Markdown末尾へ改行を追加し、カーソルを次行へ置くよう変更。通常のテキスト貼り付けと画面キャプチャ処理は変更していない。
+- `RichTextEditor.imagePaste.test.ts` を追加し、貼り付け文字列が改行で終わることを確認。
+- 検証済み: 対象Vitest 1件、画像行を除外するRustテスト3件。
 
-- 症状: 一部の付箋で右クリックメニューが表示されない。
-- ユーザー提示ログは pool 昇格、lazy 付箋作成、保存/リネーム判定のログで、右クリックメニューの直接エラーではなさそう。
-- 現時点の有力候補: `app/hooks/useStickyNoteContextMenu.ts` が Tauri のネイティブメニューIDをタグ名から直接作っている（`ctx_tag_${tag}`, `ctx_tag_del_${tag}`, `ctx_archive_tag_${tag}`）。特定のタグ名、重複しやすいタグ状態、または安全でない文字を含むタグがあると、ネイティブメニュー作成が途中で失敗し、その付箋だけメニューが出ない可能性がある。
-- 履歴確認: タグ名をIDに使う実装自体は以前からあるが、2026-07-07 の変更で「お気に入り」「レシピ」まわりのメニュー分岐が増えている。最近増えたタグ状態や予約タグ混在によって、以前から潜んでいた弱点が今回表面化した可能性が高い。
-- 修正済み: タグ名を Tauri ネイティブメニューIDへ直接入れず、`ctx_tag_0` のような安定した連番IDを使うように変更。表示テキストと action に渡すタグ値は従来通り。
-- テスト追加済み: 日本語、空白、記号を含むタグ名がメニューIDへ混ざらないこと、タグ系メニューグループ間でIDが分かれることを単体テストで確認。
-- 検証済み: `npx vitest run app/hooks/useStickyNoteContextMenu.test.ts`、`npx tsc --noEmit --pretty false`。
-## 2026-07-10 openNoteWindow duplicate race fix
+## 2026-07-14 画像クリックで編集終了する動作の調査
 
-- Fixed `app/page.tsx` so note window creation keeps the label in progress until `tauri://created` or `tauri://error` is received.
-- Moved in-progress marking to the start of queued creation work; duplicate queued requests wait for creation to settle, then use the existing window focus path.
-- Added `app/utils/windowCreation.ts` and `app/utils/windowCreation.test.ts` for same-label in-progress detection.
-- Verification passed: `npx vitest run`, `npm run lint`, `npx tsc --noEmit`.
-## 2026-07-10 UAT crystal name prefill and settings copy
+- 現状は `StickyNote.tsx` の外側クリック判定が `editorHost` 内を一律除外し、画像プレビューもその内側にあるため、画像をクリックしても編集終了しない。
+- `ImageWidget.ignoreEvent()` も画像内イベントをCodeMirrorの編集操作から除外しているため、通常のフォーカス離脱では編集終了しない。
+- 最小修正案は、編集モードの画像本体クリックだけを検出して既存の `onBlur` / `handleEditBlur` を呼ぶこと。画像右下のリサイズハンドル、ドラッグ、通常テキスト、表示モードには適用しない。
+- 編集終了時は既存の `allowRename=true` 保存を通るため、画像の次行に入力したテキストによるファイル名確定も同時に行われる。
+- 実装済み: 編集中の画像本体クリックだけを既存の編集終了処理へ接続し、保存とファイル名確定が行われるようにした。
+- リサイズハンドル、画像ウィジェット外の画像、通常テキストでは編集終了しない判定テストを追加。
+- 検証済み: 対象Vitest 2件、TypeScript、差分チェック。
+- 実機確認: 画像クリックで編集終了するようになったが、モード切替時に画像が一瞬フラッシュする。
+- 原因: 編集用CodeMirror画像から表示用`MarkdownRenderer`画像へDOMを作り直し、`ResizableImage`がローカルパスを非同期でasset URLへ変換するまで1×1透明GIFを初期表示するため。
+- フラッシュは必須ではない。最小改善案は変換済みasset URLをプロセス内キャッシュし、同じ画像の表示モード再生成時は最初から実画像URLを使うこと。ファイル内容や保存処理は変更しない。
+- 実装済み: ローカル画像の変換済みasset URLを最大256件のメモリキャッシュへ保持し、同じ画像の再マウント時は透明GIFを挟まず最初から実画像URLを使用する。
+- キャッシュ対象はURL文字列だけで、画像データ・追加ディスクI/O・追加変換処理は持たない。上限超過時は最古のエントリを削除する。
+- 検証済み: `ResizableImage` / 画像クリック対象Vitest 6件、TypeScript、差分チェック。
+- 実機確認で画像クリックによる編集終了が動作しないことを確認。
+- 根本原因: `ImageWidget.ignoreEvent() = true` のため、CodeMirror の `eventBelongsToEditor()` が画像ウィジェット由来のクリックを除外し、追加した `EditorView.domEventHandlers.click` へ到達しない。
+- 前回テストはクリック対象の要素判定だけで、CodeMirrorのイベント遮断経路を検証していなかった。
+- 再修正案: 画像ウィジェット内で画像本体クリックを直接受け、CodeMirrorのイベント処理を経由せず既存の編集終了コールバックへ通知する。リサイズハンドルは通知対象外のままにする。
+- 再修正済み: 画像ウィジェット内のネイティブclickから専用イベント `fusen:image-widget-click` をエディタDOMへ直接通知し、既存の編集終了コールバックを呼ぶよう変更。到達しなかったCodeMirror clickハンドラは削除。
+- テストを専用イベントの到達確認へ変更し、画像本体では1回通知、リサイズハンドルとウィジェット外画像では通知しないことを確認。
+- 検証済み: 対象Vitest 2件、TypeScript、差分チェック。
 
-- Prefilled recipe and QA short names from the first usable source-body line, falling back to the source note title.
-- Kept recipe and QA draft bodies unchanged; only term creation continues to remove the selected name line.
-- Clarified that triple right-click opens the quick launcher in the Japanese settings label.
-- Verification passed: `npx vitest run` (41 files, 282 tests), `npm run lint`, `npx tsc --noEmit`.
-## 2026-07-10 sticky note hover focus delay
+## 2026-07-14 設定二重破損時の最小自動復旧
 
-- Changed sticky-note hover activation from 150ms to 600ms.
-- Sticky notes now skip hover focus while the `quick_launcher` window is visible.
-- Added a regression test for the delay and launcher focus guard.
-- Updated `docs-v2/002_PC.md` §5.3.4, §11.5, and revision history 2.13.
-## 2026-07-10 markdown Windows link closing parenthesis
+- `settings.json` と `settings.json.bak` が両方存在し、両方とも読めない場合だけを自動復旧対象とした。正常設定、正常な `.bak` からの復旧、本当の初回起動は従来経路のまま。
+- 壊れた2世代は日時付きファイルへ退避し、`Documents/OreNoFusen`、利用不能ならアプリ管理領域 `Notes` を安全確認して既定設定を原子的に再作成する。
+- 復旧した起動では、異常・データ非削除・データ管理からの取り込みを伝える黄色い案内付箋を1枚作り、通常利用を継続する。次回起動は正常設定を読むため重複作成しない。
+- 新規Rustテスト5件、設定関連Rustテスト9件、Rust全体198件成功・2件ignore、Vitest全体311件、TypeScript、VitePress設計書ビルドが通過した。
+- `cargo fmt --check` は今回の差分外を含む既存Rustファイル全体の未整形・末尾空白で失敗するため、変更箇所だけを手動でrustfmt準拠に整えた。
+- 実機確認待ち: 両設定を壊した状態で起動し、黄色い案内付箋、新規付箋作成、再起動後の同一付箋復元、案内付箋非重複を確認する。
 
-- Fixed `fusen_open_file` path resolution so unquoted Markdown links such as `[name](D:\\path\\file.md)` do not pass the closing `)` to Explorer.
-- The original path wins when it exists; the closing `)` is removed only when the corrected candidate exists, preserving legitimate filenames ending in `)`.
-- Added Rust regression tests and updated `docs-v2/002_PC.md` §5.3.1 / revision 2.14.
-- Verification passed: `cargo test` (178 passed, 2 ignored).
+## 2026-07-14 低負荷な性能計測基盤
 
-## 2026-07-11 alarm weekday display
+- `PERF_LOG` を明示した場合だけ性能計測を有効にした。通常起動では無効という判断をキャッシュし、時刻取得、イベント文字列、IPC、ファイルを生成しない。
+- イベントごとの同期的なファイル開閉・書き込みを、最大256イベントの非同期チャネルと一つのバックグラウンド書き込み処理へ置き換えた。キューが満杯・切断済みの場合は付箋を遅らせず計測を破棄し、次に受け付けたイベントで破棄件数を報告する。
+- 既存の要求時刻とRust側の構造化計測点を維持しながら、新規付箋の重要経路から旧フロントエンド性能ログIPC呼び出し6件を削除した。
+- 検索文字列、付箋タイトル、タグ、本文、パスを記録せず、クイックランチャーの切り替え完了と検索完了を構造化して計測するようにした。
+- 既存のT2_READY 300ミリ秒失敗判定を維持しながら、オフライン解析に結果件数、破棄件数、p50・p95・p99を追加した。
+- 検証済み: Rust性能ログテスト4件、解析テスト3件、TypeScript、Vitest全体317件、Rust全体（200件成功・2件無視）、VitePressビルド。
+- 手動計測は未実施。明示的な `PERF_LOG` パスを指定して起動し、新規付箋とクイックランチャーを操作した後、終了するか書き込み完了を待って `npm run perf:check` を実行する。
 
-- Root cause: the alarm dialog delegated its visible date/weekday formatting to Chromium's native `datetime-local` control, which rendered the Japanese weekday as empty parentheses on the affected Windows environment.
-- Kept the native date/time picker as the interaction layer, but replaced its visible field with an app-formatted `YYYY/MM/DD (曜) HH:mm` value.
-- Added unit coverage for all seven Japanese weekdays and invalid date-time values.
-- Verification passed: `npx vitest run app/utils/alarmDateTime.test.ts`, `npm test`, `npm run lint`, `npx tsc --noEmit --pretty false`.
+## 2026-07-13 チェックボックス記号の色境界
 
-## 2026-07-11 alarm refire investigation
+- オレンジ色にするチェックボックス記号を `- [ ]` / `- [x]` までに限定し、末尾の空白を除外した。
+- 記号の直後に入力した文字が色を引き継がないよう、装飾を非包括にした。
+- 記号の境界に絞った回帰テストを追加した。
+- 見出し、通常リスト、リンク、太字記号も監査した。通常リストにも同じ末尾空白の危険があったため、同様に非包括へ変更した。
+- 付箋E2E 3.5を、削除済みの `input#path` から、現在の読み取り専用パス表示と「保存場所を変更」ボタンに更新した。
 
-- Added a reproduction test that loads an expired alarm, lets it fire, clicks the stop bar, then advances 20 seconds (past both the 3-second sound loop and 10-second alarm polling intervals).
-- The alarm did not fire again: the stop bar stayed absent, audio play count did not increase, and the saved frontmatter no longer contained `alarm_at`.
-- Result: the normal single-window path does not reproduce refiring. A real observation likely needs an external condition such as a second window for the same note or stale alarm metadata being reloaded after a failed/competing save.
-- Verification passed: targeted Vitest reproduction and `npx tsc --noEmit --pretty false`.
-## 2026-07-11 quick launcher hang and transient blur
-
-- Root cause: triple-right-click toggle events performed WebView window operations directly from the event thread, with no in-flight guard; Windows could report the app as not responding with an unpainted launcher window.
-- Routed toggle window operations through Tauri's main UI thread and ignored duplicate toggles while one is in progress.
-- Replaced immediate blur-close with a 120ms delayed Tauri `isFocused()` verification, so QA/tab clicks do not hide the launcher on transient WebView2 blur.
-- Added frontend logic coverage and updated `docs-v2/002_PC.md` §11.5 / revision 2.15.
-- Verification passed: `cargo test` (178 passed, 2 ignored), `npm test`, `npx tsc --noEmit --pretty false`, and `npm run docs:build` from `docs-v2`.
-## 2026-07-11 crystal removal stays in crystal area
-
-- Changed launcher removal for recipe / QA / term from de-crystallizing into the normal note root to moving into `Recipes/Trash`, `QA/Trash`, or `Terms/Trash`.
-- Crystal reserved tags are preserved for recoverability; the direct-folder scanners exclude nested Trash automatically.
-- Open crystal windows are hidden and destroyed on the Tauri main thread after a successful move.
-- Favorites keep the existing behavior: remove only the `shortcut` tag without deleting the note.
-- Updated launcher wording/tests and `docs-v2/002_PC.md` §11.5 / revision 2.16.
-- Follow-up decision: launcher crystal × and the crystal-window trash button are the same no-confirmation action.
-- Open crystal windows now save their latest body/frontmatter before moving through the existing `fusen_move_to_trash` path; closed crystals move directly to their own `Recipes/Trash`, `QA/Trash`, or `Terms/Trash`.
-- Trash completion removes stale launcher ordering entries and emits the shelf-change event so the launcher list updates.
-- Crash hardening: the crystal trash listener is registered once and calls the latest handler through a ref; Rust accepts only one in-flight trash operation per normalized path.
-- `fusen_move_to_trash` now returns `{ moved, path }`; duplicate/in-flight/already-moved requests return `moved: false`, so only the real move plays the delete sound and destroys the window.
-- Backup recovery: successful backup destinations are retained as the latest two `backup_history` entries and shown in Data Management.
-- Restore validates the selected backup, copies it to `Documents/OreNoFusen_Recovery/OreNoFusen_recovered_TIMESTAMP`, verifies Markdown counts, switches `base_path`, then exits normally with instructions to start the app again without modifying the backup original.
-- Monthly safety backup is enabled by default, asks before copying, retains one verified generation at `Documents/OreNoFusen_Backup/Monthly`, retries a first dismissal after 7 days, and disables further prompts after a second dismissal. The restore UI recommends it before the two manual backup records.
-- Settings policy: safe defaults must work without configuration; users may override them. There is no cross-page/global reset. Only complex settings may offer a reset inside that specific item. Monthly reminder interval defaults to 30 days with 60/90-day choices.
-- Settings visual cleanup: simplified the shell to a restrained slate/white palette, narrowed the navigation, constrained content width, standardized data cards, removed dashed and broad warning treatments, removed the periodic-backup reset button, and renamed user-facing monthly backup copy to periodic safety backup where interval choices make "monthly" inaccurate.
-- Settings navigation order now follows importance: General, Data, iPhone, Hotkeys, Templates; Help & Support order is Guide, About, Feedback, Developer conversation, Support. Appearance was merged into General because it contained only font size.
-- Data management is ordered by real workflow: 1 storage location, 2 import, 3 backup (automatic + manual), 4 recovery. Every stage states when to use it and what the operation changes. Storage location remains the visually strongest item.
-- Root-cause correction: launcher trash uses targeted `emit_to` with the requested path; each note rejects mismatched paths and non-crystal tags.
-- Defense in depth: Rust blocks a burst of trash operations targeting different paths within two seconds, preventing a broadcast/listener bug from moving every open note.
-- Minimal recovery audit: every successful trash move appends timestamp/source/destination/origin metadata to `%APPDATA%/OreNoFusen/trash_operations.jsonl`; note bodies are not logged.
-- Verification passed: `cargo test` (178 passed, 2 ignored), `npx vitest run app/components/QuickLauncher.test.ts`, `npx tsc --noEmit --pretty false`, and `npm run docs:build` from `docs-v2`.
-
-## 2026-07-12 settings hotkey progressive disclosure
-
-- Reordered Hotkeys by expected use: new note, quick launcher, arrange, then hide/show all notes.
-- Each row now shows only its current value and default value; editing, alternate triggers, and quick-launcher triple-right-click are shown under that row's Details control.
-- Registration, conflict checking, and persistence behavior were not changed.
-- Updated `docs-v2/002_PC.md` §10.1 to define the same order and progressive-disclosure rule.
-- Verification passed: `npx tsc --noEmit --pretty false`, full `npm test -- --run`, and the `docs-v2` VitePress build.
-
-## 2026-07-12 numbered settings overview
-
-- Adopted a shared numbered-card pattern so each page exposes its item count and purpose before detailed controls.
-- Applied the pattern to General, Data, iPhone, Hotkeys, Templates, Help, and Advanced tools; detailed explanations and controls remain progressively disclosed.
-- Fixed automatic backup re-enabling: enabled state, skip count, and next-prompt reset are now persisted in one atomic settings update instead of three stale-state updates.
-- Added focused regression tests for the automatic-backup toggle patch.
-- Verification passed: TypeScript, focused automatic-backup tests (2), full Vitest suite, and VitePress docs build.
-- Next production build compiled and type-checked successfully, then failed during page-data collection because `.next/server/pages-manifest.json` disappeared; this is consistent with a concurrently used `.next` directory rather than a source compilation failure.
-- In-app browser visual verification was unavailable; verify card spacing, expansion, and iPhone conditional rows in the running Tauri app.
-- Follow-up visual consistency: removed the legacy database icon before Data Management item 1, so the numbered circle is the sole leading marker.
-- iPhone items 2-4 are now independent collapsed detail cards (initial setup, connected devices, connection diagnostics); their summary rows remain visible while account data, QR codes, device actions, and diagnostics stay hidden until opened.
-- Removed the remaining small content icons from Data import/manual-backup headings. Detail controls now keep the single label `詳細`; open state is represented consistently by a rotating chevron instead of changing the wording to `詳細を閉じる` or `詳細を表示中`.
-- Follow-up TypeScript verification passed.
-
-## 2026-07-12 monthly backup result screen
-
-- Replaced the browser `alert()` after periodic backup with an app-native success/error result screen.
-- Success remains visible until explicitly closed and shows the verified destination, copied file count, execution time, and persisted next-prompt time.
-- Failure explicitly states that the existing backup is retained and remains visible until closed.
-- Data Management > automatic backup > Details now shows the previous execution time, next confirmation schedule, and one-generation retention.
-
-## 2026-07-12 open folder from an empty note
-
-- Context-menu `フォルダを開く` now preserves the saved-note behavior (select the Markdown file in Explorer).
-- For an unsaved empty/pool note, it reuses the existing safe create-folder resolver and opens the current base folder instead of doing nothing.
-- Missing base-folder resolution now produces an explicit error rather than a silent no-op.
-- Added request-selection regression tests for saved, unsaved, and missing-path cases.
 ## 2026-07-13 安定化マスタープラン
 
 - 提案した10項目すべてを、機能追加を伴わない必須の安定化作業として整理した。
@@ -245,59 +190,324 @@
 - 該当仕様は `docs-v2/003_IPHONE.md` 図3-4、改版1.19。
 - 全体テストと実機確認は第1段階の最後にまとめ、今回は対象RustテストとTypeScript確認だけを行う。
 
-## 2026-07-14 復旧コピーの最小診断ログ
+## 2026-07-13 エディターショートカット設定と範囲修正
 
-- 新しいログ基盤は追加せず、既存Rustログへ保存障害時だけ3種類を記録する。
-- 記録対象は、復旧コピー作成成功、通常保存と復旧コピー作成の両方の失敗、次回読込時の復旧コピー使用。
-- 付箋本文とフルパスは記録せず、`sanitize_path` を通したファイル名だけを使用する。
-- 正常保存時の追加ログ・追加I/Oは行わない。
-- 該当仕様は `docs-v2/002_PC.md` §7.1.3、改版2.24。
-- 検証済み: 復旧コピー対象Rustテスト2件、Rust全体194件成功・2件ignore、Vitest全体成功、TypeScript成功、VitePressビルド成功、データ安全性E2E 3件成功・1件skip。
-- 実機確認待ち: (1) 一時保存先を切断してbase_pathが保持され警告が出ること、(2) 保存失敗後に復旧内容が再表示され正常保存後に復旧コピーが消えること、(3) iPhone→PC保存後・Drive ack前相当のキューを再受信して付箋が重複しないこと。
-- 正常保存時の軽量化: 復旧パスの確認だけで `recovery-drafts` を作成していた処理を修正し、通常保存失敗時だけフォルダを作る。削除も対象ファイルが存在する場合だけ行う。
-## 2026-07-13 editor shortcut settings and scope correction
+- RichTextEditorに既存の4操作（太字、見出し、箇条書き、チェックボックス）だけを設定として追加した。
+- 既存のグローバルホットキー4件は維持し、誤って追加した有効化切り替えとF2・検索・削除の設定は、作業完了前に削除した。
+- エディターショートカット入力では、4件のグローバル値と4件のエディター値すべてとの重複を拒否し、既存の設定経路で保存し、設定変更時にエディターのキーマップを再構築する。
+- 再発防止: 「チェックボックス」のようにUI部品とアプリ操作の両方を指し得る語が依頼に含まれる場合は、実装前に具体的な操作一覧を言い直し、確認なしで範囲を広げない。引き渡し前に最終的な操作一覧と言い直した内容を比較し、`git diff` で範囲外の項目がないか監査する。
+- 検証済み: TypeScript、対象テスト19件、Vitest全体（46ファイル・308テスト）、Rust `cargo check`、VitePress設計書ビルド。
 
-- Added settings for exactly four existing RichTextEditor actions: bold, heading, bullet list, and checkbox.
-- Preserved the existing four global hotkey settings; removed the mistakenly added enable switches and F2/search/delete settings before completing this work.
-- Editor shortcut capture rejects duplicates against all four global and four editor shortcut values, persists through the existing settings path, and rebuilds the editor keymap when settings change.
-- Regression prevention: when a request contains a term that can name both a UI control and an app action (for example "checkbox"), restate the concrete action list before implementation; do not expand the list without confirmation. Before handoff, compare the final action list with that restatement and audit `git diff` for out-of-scope fields.
-- Verification passed: TypeScript, focused tests (19), full Vitest (46 files / 308 tests), Rust `cargo check`, and VitePress docs build.
-## 2026-07-14 画像貼り付け後の入力位置調査
+## 2026-07-12 クリスタルの目的を整理
 
-- クリップボード画像の貼り付けは `app/components/RichTextEditor.tsx` で画像Markdownだけを挿入し、カーソルを閉じ `)` の直後へ置いているため、画像の右側に見えて次の入力位置が分かりにくい。
-- 最小修正案は、貼り付ける内容を `![image](path)\n` とし、カーソルを改行後へ置くこと。通常のテキスト貼り付けや画面キャプチャ機能には触れない。
-- `src-tauri/src/logic.rs` は先頭の画像Markdownを除外し、次の空でないテキスト行をファイル名候補にする実装・テストが既にあるため、希望するファイル名動作は可能。
-- ファイル名のリネーム確定は現状、編集終了時（付箋外クリック・Esc・ウィンドウblur等）の `allowRename=true` 保存で行われる。
-- 実装済み: 画像Markdown末尾へ改行を追加し、カーソルを次行へ置くよう変更。通常のテキスト貼り付けと画面キャプチャ処理は変更していない。
-- `RichTextEditor.imagePaste.test.ts` を追加し、貼り付け文字列が改行で終わることを確認。
-- 検証済み: 対象Vitest 1件、画像行を除外するRustテスト3件。
-## 2026-07-14 画像クリックで編集終了する動作の調査
+- `docs-v2/002_PC.md` §11.1へ、「うまくいったことを残し、次回見つけ、再利用と改善を重ねるうちに、いつの間にか上達する」という中心目的を追加した。
+- ライフサイクル図、現行機能との対応表、AIエージェント指示レシピの例を追加した。
+- Ctrl+Pの棚動作を維持しながら、クリスタルの名前・本文・タグを横断検索する優先度の高いTodoを記録した。
 
-- 現状は `StickyNote.tsx` の外側クリック判定が `editorHost` 内を一律除外し、画像プレビューもその内側にあるため、画像をクリックしても編集終了しない。
-- `ImageWidget.ignoreEvent()` も画像内イベントをCodeMirrorの編集操作から除外しているため、通常のフォーカス離脱では編集終了しない。
-- 最小修正案は、編集モードの画像本体クリックだけを検出して既存の `onBlur` / `handleEditBlur` を呼ぶこと。画像右下のリサイズハンドル、ドラッグ、通常テキスト、表示モードには適用しない。
-- 編集終了時は既存の `allowRename=true` 保存を通るため、画像の次行に入力したテキストによるファイル名確定も同時に行われる。
-- 実装済み: 編集中の画像本体クリックだけを既存の編集終了処理へ接続し、保存とファイル名確定が行われるようにした。
-- リサイズハンドル、画像ウィジェット外の画像、通常テキストでは編集終了しない判定テストを追加。
-- 検証済み: 対象Vitest 2件、TypeScript、差分チェック。
-- 実機確認: 画像クリックで編集終了するようになったが、モード切替時に画像が一瞬フラッシュする。
-- 原因: 編集用CodeMirror画像から表示用`MarkdownRenderer`画像へDOMを作り直し、`ResizableImage`がローカルパスを非同期でasset URLへ変換するまで1×1透明GIFを初期表示するため。
-- フラッシュは必須ではない。最小改善案は変換済みasset URLをプロセス内キャッシュし、同じ画像の表示モード再生成時は最初から実画像URLを使うこと。ファイル内容や保存処理は変更しない。
-- 実装済み: ローカル画像の変換済みasset URLを最大256件のメモリキャッシュへ保持し、同じ画像の再マウント時は透明GIFを挟まず最初から実画像URLを使用する。
-- キャッシュ対象はURL文字列だけで、画像データ・追加ディスクI/O・追加変換処理は持たない。上限超過時は最古のエントリを削除する。
-- 検証済み: `ResizableImage` / 画像クリック対象Vitest 6件、TypeScript、差分チェック。
-- 実機確認で画像クリックによる編集終了が動作しないことを確認。
-- 根本原因: `ImageWidget.ignoreEvent() = true` のため、CodeMirror の `eventBelongsToEditor()` が画像ウィジェット由来のクリックを除外し、追加した `EditorView.domEventHandlers.click` へ到達しない。
-- 前回テストはクリック対象の要素判定だけで、CodeMirrorのイベント遮断経路を検証していなかった。
-- 再修正案: 画像ウィジェット内で画像本体クリックを直接受け、CodeMirrorのイベント処理を経由せず既存の編集終了コールバックへ通知する。リサイズハンドルは通知対象外のままにする。
-- 再修正済み: 画像ウィジェット内のネイティブclickから専用イベント `fusen:image-widget-click` をエディタDOMへ直接通知し、既存の編集終了コールバックを呼ぶよう変更。到達しなかったCodeMirror clickハンドラは削除。
-- テストを専用イベントの到達確認へ変更し、画像本体では1回通知、リサイズハンドルとウィジェット外画像では通知しないことを確認。
-- 検証済み: 対象Vitest 2件、TypeScript、差分チェック。
-## 2026-07-14 設定二重破損時の最小自動復旧
+## 2026-07-12 黄色いウェルカム付箋
 
-- `settings.json` と `settings.json.bak` が両方存在し、両方とも読めない場合だけを自動復旧対象とした。正常設定、正常な `.bak` からの復旧、本当の初回起動は従来経路のまま。
-- 壊れた2世代は日時付きファイルへ退避し、`Documents/OreNoFusen`、利用不能ならアプリ管理領域 `Notes` を安全確認して既定設定を原子的に再作成する。
-- 復旧した起動では、異常・データ非削除・データ管理からの取り込みを伝える黄色い案内付箋を1枚作り、通常利用を継続する。次回起動は正常設定を読むため重複作成しない。
-- 新規Rustテスト5件、設定関連Rustテスト9件、Rust全体198件成功・2件ignore、Vitest全体311件、TypeScript、VitePress設計書ビルドが通過した。
-- `cargo fmt --check` は今回の差分外を含む既存Rustファイル全体の未整形・末尾空白で失敗するため、変更箇所だけを手動でrustfmt準拠に整えた。
-- 実機確認待ち: 両設定を壊した状態で起動し、黄色い案内付箋、新規付箋作成、再起動後の同一付箋復元、案内付箋非重複を確認する。
+- 初回起動の案内付箋を、意味上の黄色（`#f7e9b0`）として明示的に保存して開くようにした。
+- 変更対象は初回起動の案内付箋だけで、通常の付箋と既存付箋は変更していない。
+
+## 2026-07-12 Search Consoleの重複canonical修正
+
+- ランディングページのcanonical URLを公開ルートURL（`https://ore-no-fusen.vercel.app`）へ統一した。
+- Vercelの既存ルート書き換えを維持しながら、サイトマップから重複する `/landing` を削除した。
+- 対象は検索インデックス用メタデータだけで、TauriとViewerの動作は変更していない。
+
+## 2026-07-12 設定ホットキーの段階的な詳細表示
+
+- ホットキーを想定利用順に、新規付箋、クイックランチャー、整列、全付箋の表示・非表示へ並べ替えた。
+- 各行には現在値と既定値だけを表示し、編集、代替操作、クイックランチャーの右クリック3回は、その行の「詳細」内に表示するようにした。
+- 登録、競合確認、保存の動作は変更していない。
+- 同じ並び順と段階表示の規則を定義するよう `docs-v2/002_PC.md` §10.1を更新した。
+- 検証済み: `npx tsc --noEmit --pretty false`、`npm test -- --run` 全体、`docs-v2` のVitePressビルド。
+
+## 2026-07-12 番号付き設定画面の概要
+
+- 詳細な操作より先に、各ページの項目数と目的が分かる共通の番号付きカードを採用した。
+- 一般、データ、iPhone、ホットキー、テンプレート、ヘルプ、高度なツールへ適用し、詳しい説明と操作は段階的に表示する形を維持した。
+- 自動バックアップの再有効化を修正した。有効状態、見送り回数、次回確認時刻のリセットを、古い状態を使う3回の更新ではなく、一つの原子的な設定更新で保存するようにした。
+- 自動バックアップ切り替え修正に絞った回帰テストを追加した。
+- 検証済み: TypeScript、自動バックアップ対象テスト2件、Vitest全体、VitePress設計書ビルド。
+- 次回製品ビルドはコンパイルと型確認に成功した後、`.next/server/pages-manifest.json` が消えたためページデータ収集で失敗した。ソースのコンパイル失敗ではなく、同じ `.next` ディレクトリが並行利用された状態と整合する。
+- アプリ内ブラウザでの見た目確認は利用できなかった。実行中のTauriアプリで、カード間隔、展開、iPhoneの条件付き行を確認する必要がある。
+- 見た目の一貫性を追加調整し、データ管理の項目1にあった旧データベースアイコンを削除して、番号の丸だけを先頭記号にした。
+- iPhoneの項目2〜4を、それぞれ独立した折りたたみ詳細カード（初期設定、接続端末、接続診断）にした。概要行は常に表示し、アカウント情報、QRコード、端末操作、診断は開くまで隠す。
+- データの取り込みと手動バックアップの見出しに残っていた小アイコンを削除した。詳細操作の文言は `詳細` に統一し、開閉状態は `詳細を閉じる` や `詳細を表示中` へ変えず、山形記号の回転で一貫して表す。
+- 追加のTypeScript検証に合格した。
+
+## 2026-07-12 定期バックアップ結果画面
+
+- 定期バックアップ後のブラウザ `alert()` を、アプリ内の成功・失敗結果画面へ置き換えた。
+- 成功画面は明示的に閉じるまで表示し、検証済みの保存先、コピーしたファイル数、実行日時、保存済みの次回確認時刻を示す。
+- 失敗画面には既存バックアップが維持されることを明記し、閉じるまで表示する。
+- データ管理 > 自動バックアップ > 詳細に、前回実行日時、次回確認予定、1世代保持を表示するようにした。
+
+## 2026-07-12 空の付箋からフォルダを開く
+
+- 右クリックメニューの `フォルダを開く` は、保存済み付箋では従来どおりExplorerでMarkdownファイルを選択する。
+- 未保存の空付箋・プール付箋では、何もしない状態から、既存の安全な作成先フォルダ解決処理を再利用して現在の基本フォルダを開くようにした。
+- 基本フォルダを解決できない場合は、無言で終わらず明示的なエラーを出すようにした。
+- 保存済み、未保存、パスなしの場合を確認する要求選択の回帰テストを追加した。
+
+## 2026-07-11 アラームの曜日表示
+
+- 根本原因: アラーム画面の日付・曜日表示をChromium標準の `datetime-local` コントロールに任せており、影響を受けたWindows環境では日本語の曜日が空の括弧として表示されていた。
+- 日時選択の操作には標準コントロールを維持し、見える入力欄だけをアプリ側で整形した `YYYY/MM/DD (曜) HH:mm` へ置き換えた。
+- 日本語の7曜日すべてと不正な日時値を確認する単体テストを追加した。
+- 検証済み: `npx vitest run app/utils/alarmDateTime.test.ts`、`npm test`、`npm run lint`、`npx tsc --noEmit --pretty false`。
+
+## 2026-07-11 アラーム再発火の調査
+
+- 期限切れアラームを読み込んで発火させ、停止バーを押した後、3秒の音声ループと10秒のアラーム監視間隔を超える20秒まで進める再現テストを追加した。
+- アラームは再発火せず、停止バーは非表示のまま、音声再生回数も増えず、保存されたfrontmatterから `alarm_at` が消えていた。
+- 結果: 通常の単一ウィンドウ経路では再発火しなかった。実機での発生には、同じ付箋の2つ目のウィンドウや、保存失敗・競合後に古いアラーム情報が再読込されるなど、外部条件が必要な可能性がある。
+- 検証済み: 対象Vitest再現テスト、`npx tsc --noEmit --pretty false`。
+
+## 2026-07-11 クイックランチャーの停止と一時的なblur
+
+- 根本原因: 右クリック3回の切り替えイベントが、処理中の重複防止なしにイベントスレッドから直接WebViewウィンドウを操作していた。そのため、未描画のランチャーウィンドウとともにWindowsがアプリを応答なしと判断する場合があった。
+- ウィンドウ切り替え操作をTauriのメインUIスレッドへ送り、一つの切り替え処理中は重複要求を無視するようにした。
+- blur直後に閉じる処理を、120ミリ秒後のTauri `isFocused()` 確認へ置き換え、QAやタブのクリックによるWebView2の一時的なblurでランチャーが隠れないようにした。
+- フロントエンドのロジックテストを追加し、`docs-v2/002_PC.md` §11.5と改版2.15を更新した。
+- 検証済み: `cargo test`（178件成功、2件無視）、`npm test`、`npx tsc --noEmit --pretty false`、`docs-v2` の `npm run docs:build`。
+
+## 2026-07-11 クリスタルの削除先をクリスタル領域内に維持
+
+- ランチャーからレシピ・QA・用語を外す処理を、通常付箋のルートへ戻す方式から、`Recipes/Trash`、`QA/Trash`、`Terms/Trash` へ移動する方式に変更した。
+- 復旧可能にするためクリスタルの予約タグを維持し、直下フォルダ走査では入れ子のTrashを自動的に除外する。
+- 開いているクリスタルウィンドウは、移動成功後にTauriのメインスレッドで隠して破棄する。
+- お気に入りは従来どおり、付箋を削除せず `shortcut` タグだけを外す。
+- ランチャーの文言とテスト、`docs-v2/002_PC.md` §11.5、改版2.16を更新した。
+- 追加判断: ランチャーのクリスタル×とクリスタルウィンドウのゴミ箱ボタンは、どちらも確認なしの同じ操作とする。
+- 開いているクリスタルは既存の `fusen_move_to_trash` 経路で最新本文とfrontmatterを保存してから移動し、閉じているクリスタルは各 `Recipes/Trash`、`QA/Trash`、`Terms/Trash` へ直接移動する。
+- ゴミ箱への移動完了時に、古いランチャー並び順を削除して棚変更イベントを発行し、ランチャー一覧を更新する。
+- クラッシュ対策として、クリスタルのゴミ箱監視を一度だけ登録し、ref経由で最新処理を呼ぶ。Rust側は正規化したパスごとに一つのゴミ箱処理だけを受け付ける。
+- `fusen_move_to_trash` は `{ moved, path }` を返すようにし、重複・処理中・移動済み要求は `moved: false` を返す。実際に移動した場合だけ削除音を鳴らしてウィンドウを破棄する。
+- バックアップ復旧では、成功した保存先を最新2件の `backup_history` として保持し、データ管理画面に表示する。
+- 復元では選択したバックアップを検証し、`Documents/OreNoFusen_Recovery/OreNoFusen_recovered_TIMESTAMP` へコピーしてMarkdown件数を確認する。その後 `base_path` を切り替え、元のバックアップを変更せず、再起動案内とともに正常終了する。
+- 定期安全バックアップは既定で有効とし、コピー前に確認する。検証済みの1世代を `Documents/OreNoFusen_Backup/Monthly` に保持し、初回辞退後は7日後に再確認し、2回目の辞退後は案内を停止する。復元画面では2件の手動バックアップより先に推奨する。
+- 設定方針: 設定なしでも安全な既定値で動作し、利用者が上書きできるようにする。ページ横断の全体リセットは設けず、複雑な設定だけ個別項目内でリセット可能とする。定期確認は30日を既定とし、60日・90日も選択できる。
+- 設定画面の整理では、外枠を落ち着いたスレート色と白に簡素化し、ナビゲーションを狭め、本文幅を制限し、データカードを統一した。破線や広範な警告表現、定期バックアップのリセットボタンを削除し、間隔を選べるため不正確だった「月次」を利用者向けには「定期安全バックアップ」へ改称した。
+- 設定ナビゲーションは重要度順に「一般、データ、iPhone、ホットキー、テンプレート」とした。ヘルプとサポートは「ガイド、アプリ情報、フィードバック、開発者との会話、支援」の順にし、文字サイズだけだった外観設定は一般へ統合した。
+- データ管理は実際の流れに合わせ、1. 保存場所、2. 取り込み、3. バックアップ（自動・手動）、4. 復旧の順にした。各段階に利用場面と変更内容を記載し、保存場所を視覚的に最も強い項目として維持した。
+- 根本原因への修正として、ランチャーのゴミ箱操作は要求パスを指定した `emit_to` を使い、各付箋はパス不一致とクリスタル以外のタグを拒否する。
+- 多層防御として、Rust側で2秒以内に異なるパスを対象とする連続ゴミ箱操作を阻止し、ブロードキャストや監視処理の不具合で開いている全付箋が移動することを防ぐ。
+- 最小限の復旧監査として、ゴミ箱への移動成功ごとに日時・移動元・移動先・操作元の情報を `%APPDATA%/OreNoFusen/trash_operations.jsonl` へ追記する。付箋本文は記録しない。
+- 検証済み: `cargo test`（178件成功、2件無視）、`npx vitest run app/components/QuickLauncher.test.ts`、`npx tsc --noEmit --pretty false`、`docs-v2` の `npm run docs:build`。
+
+## 2026-07-10 クイックランチャーの右クリック3回設定画面
+
+- クイックランチャーのショートカット行の下に、`quick_launcher_triple_right_click` の切り替えを追加した。
+- 設定が存在しない場合は無効として扱い、既存の設定保存経路ですぐ保存する。
+- 検証済み: `npx vitest run`、`npm run lint`、`npx tsc --noEmit`。
+
+## 2026-07-10 クイックランチャーの右クリック3回Rust処理
+
+- OS非依存の右ボタン3回押下検出器と、クリックを通過させるWindows `WH_MOUSE_LL` フックを `src-tauri/src/triple_right_click.rs` に追加した。
+- `quick_launcher_triple_right_click` をRust/TypeScriptの設定へ接続し、起動時と設定保存時にフックを同期した。
+- Ctrl+Pと同じ既存のクイックランチャー切り替えイベント（`fusen:toggle_quick_launcher`）を再利用した。
+- 検証済み: `cargo test`、`npx tsc --noEmit`、`npx vitest run`。
+
+## 2026-07-10 クリスタルを戻したときの終了音
+
+- `app/components/StickyNote.tsx` で `returnRecipe(...)` が成功した後、ウィンドウを隠して破棄する前に `playSaveSound()` を追加した。
+- 戻す・収納する専用の音声処理がないため、既存の保存音を再利用した。
+- 検証済み: `npx vitest run`、`npm run lint`、`npx tsc --noEmit`。
+
+## 2026-07-10 `openNoteWindow` の重複競合修正
+
+- `app/page.tsx` を修正し、付箋ウィンドウ作成時は `tauri://created` または `tauri://error` を受け取るまでラベルを処理中として保持するようにした。
+- キューへ入れた作成処理の先頭で処理中を記録し、重複要求は作成完了を待ってから既存のウィンドウフォーカス処理を使うようにした。
+- 同じラベルの処理中判定用に `app/utils/windowCreation.ts` と `app/utils/windowCreation.test.ts` を追加した。
+- 検証済み: `npx vitest run`、`npm run lint`、`npx tsc --noEmit`。
+
+## 2026-07-10 UATでのクリスタル名初期値と設定文言
+
+- レシピとQAの短い名前を、元付箋本文の最初の有効な行から初期入力し、該当行がなければ元付箋タイトルを使うようにした。
+- レシピとQAの下書き本文は変更せず、選んだ名前の行を削除するのは用語作成だけに維持した。
+- 日本語の設定ラベルで、右クリック3回によりクイックランチャーが開くことを明確にした。
+- 検証済み: `npx vitest run`（41ファイル、282テスト）、`npm run lint`、`npx tsc --noEmit`。
+
+## 2026-07-10 付箋のホバーによるフォーカス遅延
+
+- 付箋のホバーによるアクティブ化を150ミリ秒から600ミリ秒へ変更した。
+- `quick_launcher` ウィンドウの表示中は、付箋をホバーしてもフォーカスを移さないようにした。
+- 遅延とランチャー表示中のフォーカス抑止に対する回帰テストを追加した。
+- `docs-v2/002_PC.md` §5.3.4、§11.5、改版履歴2.13を更新した。
+
+## 2026-07-10 Windows用Markdownリンク末尾の閉じ括弧
+
+- `[name](D:\\path\\file.md)` のような引用符なしMarkdownリンクで、末尾の `)` をExplorerへ渡さないよう `fusen_open_file` のパス解決を修正した。
+- 元のパスが存在すれば元を優先し、修正候補が存在する場合だけ閉じ括弧を除去することで、末尾が `)` の正当なファイル名を維持した。
+- Rustの回帰テストを追加し、`docs-v2/002_PC.md` §5.3.1と改版2.14を更新した。
+- 検証済み: `cargo test`（178件成功、2件無視）。
+
+## 2026-07-09 フェーズD D-5 ランチャーの用語タブ
+
+- `src-tauri/src/launcher.rs` に `Terms/` を走査する `term_note_paths` を実装し、クイックランチャーの `term` タブへ接続した。棚から用語を外す処理は、`term` タグを外してファイルをルートへ移動する形で追加した。
+- `term` タブの走査と、用語を棚から外す処理のRustテストを追加した。
+- 用語行に `📖` を使い、空表示の案内を `📖 用語にする` とするよう `app/components/QuickLauncher.tsx` を更新した。
+- 既存の `app/components/QuickLauncher.test.ts` は、用語タブの空表示で期待する文字列だけを更新した。
+- 検証済み: `cargo test`、`npx vitest run`、`npm run lint`、`npx tsc --noEmit`。
+
+## 2026-07-09 フェーズD D-3 用語作成の流れ
+
+- `fusen_create_term_note` を呼ぶ `createTermNote` を `app/api/recipes.ts` に追加した。
+- QA作成処理を基に、用語用ラベル、`buildTermDraft`、元付箋タイトルを使った短い名前の初期値、用語付箋作成イベントを備える `app/components/TermCreateModal.tsx` を追加した。
+- 元付箋を読み込み、作成画面を表示する `app/term-create/page.tsx` を追加した。
+- クリスタルの右クリックサブメニューで `❓ QAにする` の下に `📖 用語にする` を追加し、QA画面と同じ寸法で `/term-create?path=...` を開くようにした。
+- `src-tauri/src/lib.rs` の一時ウィンドウ用CloseRequested例外へ `term-create` を追加した。
+- 検証済み: `npx vitest run`、`npm run lint`、`npx tsc --noEmit`、`npm run build`（`/term-create` 生成確認）、`cargo test`。
+
+## 2026-07-09 フェーズD D-2 用語用Rustコマンド
+
+- `src-tauri/src/storage.rs` に、`TERMS_DIR_NAME`、`ensure_terms_dir`、ルートおよび入れ子の `Terms` をレシピ素材から除外する処理を追加した。
+- 既存の予約タグ処理を使い、`src-tauri/src/logic.rs` に `term_tags_from_request` を追加した。
+- `src-tauri/src/lib.rs` に `create_term_note_file`、`fusen_create_term_note`、invoke登録、用語ファイルの入出力テストを追加した。
+- 既存テスト `storage::tests::test_list_recipe_material_note_paths_scans_root_and_tags_only` に、ルートおよび入れ子の `Terms` を除外するケースを追加した。
+- 検証済み: `cargo test`、`npx tsc --noEmit`。
+
+## 2026-07-09 フェーズD D-1 用語フォーマット
+
+- 用語クリスタルの純粋な下書き生成処理として `app/utils/termFormat.ts` を実装した。
+- `TERM_SPEC`、各セクション定数、`TermDraftInput`、`buildTermDraft` を追加した。
+- 元付箋への導線生成を `app/utils/crystalFormat.ts` の `buildSourceNoteLine` として共通化し、`qaFormat.ts` は公開APIと出力を変えずに利用するようにした。
+- 意味と使用例の分割、見出しの平坦化、インデント維持、URL・画像の退避、導線タイトル、`TERM_SPEC` の文書順を確認する `app/utils/termFormat.test.ts` を追加した。
+- 検証済み: `npx vitest run`、`npm run lint`、`npx tsc --noEmit`。
+
+## 2026-07-08 右クリックメニュー調査
+
+- 症状: 一部の付箋で右クリックメニューが表示されない。
+- ユーザー提示ログは pool 昇格、lazy 付箋作成、保存/リネーム判定のログで、右クリックメニューの直接エラーではなさそう。
+- 現時点の有力候補: `app/hooks/useStickyNoteContextMenu.ts` が Tauri のネイティブメニューIDをタグ名から直接作っている（`ctx_tag_${tag}`, `ctx_tag_del_${tag}`, `ctx_archive_tag_${tag}`）。特定のタグ名、重複しやすいタグ状態、または安全でない文字を含むタグがあると、ネイティブメニュー作成が途中で失敗し、その付箋だけメニューが出ない可能性がある。
+- 履歴確認: タグ名をIDに使う実装自体は以前からあるが、2026-07-07 の変更で「お気に入り」「レシピ」まわりのメニュー分岐が増えている。最近増えたタグ状態や予約タグ混在によって、以前から潜んでいた弱点が今回表面化した可能性が高い。
+- 修正済み: タグ名を Tauri ネイティブメニューIDへ直接入れず、`ctx_tag_0` のような安定した連番IDを使うように変更。表示テキストと action に渡すタグ値は従来通り。
+- テスト追加済み: 日本語、空白、記号を含むタグ名がメニューIDへ混ざらないこと、タグ系メニューグループ間でIDが分かれることを単体テストで確認。
+- 検証済み: `npx vitest run app/hooks/useStickyNoteContextMenu.test.ts`、`npx tsc --noEmit --pretty false`。
+
+## 2026-07-06 パート10.2 ランチャーUAT修正
+
+- E: レシピ作成、ショートカット棚の切り替え、棚から外す操作、並び替えに `fusen:launcher_shelf_changed` イベントを接続した。
+- E: QuickLauncherは棚変更イベントを監視し、固定中でも現在のタブと検索条件で再読込するようにした。
+- F: QuickLauncherの固定ボタンは、通常付箋のピンアイコンとピン切り替え用WebAudio音声処理を再利用するようにした。
+- 検証済み: `cargo test`、`npx vitest run`、`npm run lint`。
+## 2026-07-15 性能基準値と一連動作の計測
+
+- 新規付箋のイベントはプールウィンドウIDをまたいで集計し、クイックランチャー検索はタブ別に集計するよう性能集計を修正した。
+- 既存の `fusen_show_at_position` 応答に計測有効フラグを載せた。通常実行ではIPCを増やさず、計測時だけエディタのフォーカス後に完了イベントを非同期送信する。
+- 新規付箋の要求・キー入力からエディタ準備完了までの基準値は、5回で161 / 184 / 197 / 202 / 250ms。p50は197ms、p95/p99は250msで、300ms超過は0件だった。
+- 計測の完全性は、不正JSONL 0行、キュー破棄0件で、要求した5回をすべて記録できた。
+- クイックランチャーの基準値は、表示p50 69ms / p95 128ms、お気に入り検索p50 956ms / p95 1497ms、QA検索p50 31ms / p95 58ms、用語検索p50 61ms / p95 91ms。最初の改善対象をお気に入り検索とした。
+- 性能関連Vitest 9件、TypeScript、Rust 201件合格・2件無視、VitePressビルドに合格した。全Vitestは並行変更中の結晶フォーマット関連12件が失敗したが、性能改善の対象外であり変更しなかった。
+
+## 2026-07-15 お気に入り検索の調査
+
+- 現在の保存先はMarkdown候補49ファイル（ルート8件、tags配下41件）、合計約2.1万文字だけだが、お気に入り検索は956ms、1497msを記録した。PowerShellによる単純な読み込み・走査は34msだった。
+- `fusen_quick_open_notes` は検索文字が変わるたびに `launcher_order.json` を読み直し、ルートとtags配下を走査し、候補ファイルをすべて読み、付箋メタデータを完全解析していた。
+- `storage::read_note` は呼び出しごとに、メタデータ、透明度・文字サイズ、レシピ利用情報などの正規表現を複数再コンパイルする。1ファイル当たり約10回の正規表現コンパイルが、デバッグ実行時の検索を大幅に遅くしていた。
+- `QuickLauncher.reloadItems` に古い要求を捨てる仕組みがなく、検索が重なると古い応答が新しい検索結果を上書きする可能性があった。
+- 最小修正として、Rustで絞り込み前のお気に入り棚をキャッシュし、検索時はキャッシュ内だけを絞り込み、既存の棚変更操作で破棄する方針とした。フロントには要求世代の判定を追加する。
+
+## 2026-07-15 お気に入り検索キャッシュの実装
+
+- 保存先パス別に、絞り込み前のお気に入り棚を保持するRustメモリキャッシュを追加した。繰り返し検索では `launcher_order.json` の再読込と付箋ファイルの再走査を行わない。
+- 初回キャッシュ作成で画面処理を止めないようバックグラウンド予熱を追加し、既存の棚変更操作と起動回数更新時にキャッシュを破棄するようにした。
+- ファイル名、タグ、起動回数、レシピ判定だけを読む軽量なお気に入り解析を追加し、通常付箋の完全なメタデータ解析を避けた。
+- `QuickLauncher` に要求世代の判定を追加し、古い応答が最新の検索結果を上書きしないようにした。
+- 実装前に `docs-v2/002_PC.md` §11.5を更新し、再利用、保存先分離、破棄、軽量解析、応答順序のRust・フロント回帰テストを追加した。
+- ランチャーRustテスト21件、QuickLauncher・性能関連フロントテスト18件、TypeScript、Rust全体206件合格・2件無視、VitePressビルド、`git diff --check` に合格した。
+- 全Vitestには並行変更中の `crystalFormat.test.ts` に対象外の失敗が1件残っていた。
+
+## 2026-07-15 お気に入り登録のキャッシュ反映デグレ修正
+
+- デグレ内容: 右クリック登録で `shortcut` タグは保存されたが、フロントだけの棚変更イベントでは新しいRustキャッシュを破棄できず、再起動まで登録前の一覧が表示された。
+- `docs-v2/002_PC.md` §11.5を更新し、`shortcut` タグ保存、キャッシュ破棄、棚変更通知をRustコマンド内で一体実行し、フロントから通知を重複送信しない仕様にした。
+- 回帰テスト `shortcut_tag_change_invalidates_cache_but_normal_tag_change_does_not` を追加し、`shortcut` 変更時の必須破棄と、通常タグ変更時にキャッシュを維持することの両方を確認した。
+- `fusen_add_tag` と `fusen_remove_tag` をテスト済みのRust破棄・通知経路へ接続し、フロント側の重複通知を削除した。
+- 回帰テスト、コンテキストメニュー・QuickLauncher関連フロント20件、TypeScript、Rust全体208件合格・2件無視、VitePressビルド、`git diff --check` に合格した。
+- 実機確認では、右クリック登録後に再起動せずお気に入りタブへ表示された。
+- 修正後の実測は、お気に入り検索43件、成功43件、拒否0件、失敗0件、p50/p95/p99はいずれも0ms。不正ログ0行、イベント破棄0件だった。修正前はp50 956ms / p95 1497ms。
+- お気に入り検索キャッシュの改善は完了。次の候補はクイックランチャー表示時間（基準値p50 69ms / p95 128ms）。
+
+## 2026-07-15 クイックランチャー表示時間の内訳計測
+
+- 表示処理は、表示状態確認、中央配置、表示、フォーカス、表示通知を同期的に順番実行している。従来の計測は合計時間だけで、遅い区間を特定できなかった。
+- `PERF_LOG` 有効時だけ、表示状態確認、中央配置、表示、フォーカス、非表示、初回ウィンドウ生成の区間時間を既存の1イベントへ追加した。通常起動では区間ごとの時刻取得とJSON生成を行わない。
+- 数値区間と成功状態だけがメタデータへ入る回帰テストを追加した。
+- 対象Rustテスト、VitePressビルド、`git diff --check` に合格。実機で表示・非表示を繰り返す内訳計測待ち。
+- 実機操作ではランチャー内の閉じる処理を使ったため、Rustトグル経路の内訳イベントは記録されず、検索イベント6件だけだった。これは計測経路の相違であり、検索の失敗・破棄は0件。
+- 新たな体感課題として「ランチャーで選択してから付箋が出るまで」が報告された。調査の結果、選択後に同じファイルの読込、起動回数の同期書込、キャッシュ全破棄、同じファイルの再読込、完全メタデータ解析を終えてから開くイベントを送っている。さらに閉じた付箋はWebViewウィンドウを毎回新規生成する。
+- 最小改善候補は、開くイベントを先に送り、起動回数更新をバックグラウンド化し、色取得の重複読込・完全解析を避けること。WebView作り置きは効果が大きい可能性があるが別段階の中規模変更とする。
+
+## 2026-07-16 ランチャー選択後の付箋表示を先行
+
+- `docs-v2/002_PC.md` §11.5を先に更新し、ファイル内容を1回だけ読み、付箋を開くイベントを起動回数の書込みより先に送る仕様を追加した。
+- 背景色はfrontmatterの `backgroundColor` 行だけを軽量解析し、通常付箋の完全メタデータ解析と同期的な2回目のファイル読込を削除した。
+- 起動回数の書込みは開くイベント送信後に実行する。別スレッドにはせず、古い内容の遅延書込みがユーザー編集を上書きする競合を避けた。付箋ウィンドウ生成と書込みは並行して進む。
+- 回帰テストで、開く通知が書込みより先であること、背景色を渡すこと、起動回数、本文、frontmatterを維持することを確認した。
+- 対象テスト、Rust全体210件合格・2件無視、VitePressビルド、`git diff --check` に合格。実機体感確認待ち。
+
+## 2026-07-16 見えない付箋による結晶の初回・再表示高速化
+
+- 性能方針を「見えない付箋群を温め、必要な瞬間だけ表示する」とした。結晶数に比例してWebViewを増やさず、固定数の汎用Pool窓を初回用に使う。
+- アプリ起動後、レシピ・QA・用語の一覧と本文をバックグラウンドでメモリキャッシュする。ランチャー選択時はキャッシュ済み本文を使い、ディスク再読込を避ける。
+- 初回選択では、準備完了・未使用の見えないPool付箋へ本文を反映し、2回の描画完了通知を受けてから表示する。灰色の枠や空本文を先に表示しない。Poolがなければ従来生成へフォールバックする。
+- 結晶パスと昇格済みPool窓を対応付け、同じ結晶の二重生成を防ぐ。使用後は汎用Pool窓を1枚バックグラウンド補充する。
+- 結晶を返す操作は保存後に非表示とし、WebViewを破棄しない。返却結果のfrontmatter・本文・比較基準を画面状態へ反映し、2回目以降の再表示と改善履歴の重複防止を両立した。ゴミ箱移動は従来どおり破棄する。
+- 初回Pool選択2件、返却時非破棄1件、QuickLauncher9件の対象テストに合格。TypeScript、Rust全体210件合格・2件無視。実機確認待ち。
+- QA作成の遅さも調査済み。たたき台WebView生成と元付箋再読込、確定後のQAファイル書込と別WebView生成・再読込を直列実行している。結晶の共通基盤確認後、QAたたき台画面の作り置きへ進む。
+- 初回実機では速度改善を確認したが、Pool既定の黄色と400×300が残るデグレを確認した。本文だけを高速経路へ接続し、表示側が参照するノート色と保存済みサイズを渡していなかったことが原因。
+- 背景色を読込済みノート状態へ接続し、frontmatterの `window` 行から幅・高さだけを軽量解析してPool昇格時へ適用した。完全メタデータ解析は復活させていない。
+- 色・サイズの軽量解析回帰テスト、見えない付箋選択3件、TypeScript、Rust対象テストに合格。色・サイズの実機再確認待ち。
+- 色修正後の実機で、`qa` タグなどが画面状態へ同期されず、QA本文が通常付箋UIとして表示されるデグレを確認した。Pool昇格時に本文だけを復元し、結晶判定・表示属性を一括復元していなかったことが原因。
+- frontmatterからタグ、背景色、文字サイズ、透明度、常時前面、折り畳み、位置・サイズを一括復元する `extractHydratedNoteMeta` を追加し、読込済みノート状態とタグ状態へ接続した。
+- メタデータ一括復元、見えない付箋選択、返却保持の回帰テスト4件、TypeScript、Rust対象テストに合格。実機再確認待ち。
+## 2026-07-16 起動時の付箋一括表示
+
+- 起動中は240x300のメインウィンドウを画面中央に1つ表示し、復元進捗を表示する。
+- 起動時の既存付箋だけを非表示・非フォーカスで生成し、本文読込み後の描画完了イベントを全件待ってからまとめて表示する。
+- 1件の異常で永久待機しないよう10秒で描画待ちを終了する。通常の新規付箋、iPhone受信、結晶表示は従来どおり。
+- 検証済み: 起動時準備完了イベントの新規テストを含むStickyNote 11件、Pool 10件、TypeScript。設計書 `docs-v2/002_PC.md` §4.1・改版2.36へ反映。
+- Tauri向けNext.js本番ビルドとVitePress設計書ビルド、差分チェックに成功。検証後に作業範囲外の未追跡 `app/utils/crystalWindowLifecycle.test.ts` が外部から追加され、対応する本体がまだ無いため、その後の全体TypeScript再実行だけは同ファイルで失敗した（今回の変更ファイルには触れない）。
+- 実機確認待ち: 中央に起動中画面が1つだけ出ること、進捗が増えること、空の付箋が途中表示されず最後にまとめて出ること、各本文・位置・色が正しいこと。
+## 2026-07-16 結晶作成画面のコンパクト化
+
+- QA・用語・手順の用途名見出しと「叩き台」の重複見出しを削除し、説明を1行へ集約した。
+- 作成画面の外側スクロールを廃止し、本文欄へ残り高さを割り当て、キャンセル・作成ボタンを常時下部に表示する。
+- 手順は材料候補領域だけを最大36%の内部スクロールとし、叩き台を画面外へ押し出さない。
+- 設計書 `docs-v2/002_PC.md` §11.8・11.9、改版2.37へ反映。
+- 検証済み: TypeScript、VitePress設計書ビルド、差分チェック。Tauri向けNext.jsビルドはコンパイル・型検査まで成功した後、変更外の既存ページ `/endroll`、再試行では `/api/siri-send` のページ収集が見つからず停止した。
+- 実機確認待ち: QA・用語で外側スクロールが出ず本文欄だけスクロールすること、手順で材料だけスクロールし作成ボタンが常時見えること。
+## 2026-07-16 起動画面のアイコン統一
+
+- 起動中画面のオレンジ色メモ絵文字を、既存 `public/icon-192.png` のFアプリアイコンへ変更した。
+- 跳ねる動き、バージョン、復元進捗は維持し、背景の光だけFアイコンに合わせて弱い青へ変更した。
+- 設計書 `docs-v2/002_PC.md` §4.1、改版2.38へ反映。
+- 検証済み: TypeScript、VitePress設計書ビルド、差分チェック。実機では起動時にFアイコンが表示されることを確認する。
+## 2026-07-16 右下操作アイコンの描画安定化
+
+- 付箋右下のアーカイブ・削除ボタンは操作可能でも、OS絵文字の字形だけがまれに表示されないことを確認した。
+- OSフォントに依存する `📦` と `🗑` を、既存の `lucide-react` による固定SVGへ置き換えた。操作条件、当たり判定、処理内容は変更していない。
+- 両アイコンが文字ではなくSVGとして描画される回帰テストを追加した。
+- 対象テスト2件とTypeScript型検査に合格。実機で再利用付箋を繰り返し開いた場合の表示確認待ち。
+## 2026-07-16 結晶の位置・サイズ保存と復元
+
+- 実データを確認し、`Terms/0004...` と `QA/0002...` など一部の結晶に `window` が無いこと、`folded` は今回の原因ではないことを確認した。
+- 見えない付箋から表示する際、保存済みの論理位置・サイズを表示先のDPI倍率に合わせて物理座標へ変換するよう修正した。保存値が無い場合だけ結晶標準サイズ460×560を使い、位置は中央とする。
+- 結晶を返す際に現在の位置・サイズを取得し、本文・利用回数・改善履歴と同じRust処理内で1回だけ書き込むよう変更した。二重書込みは増やしていない。
+- これにより初回に標準サイズを使った既存結晶も、返却後は次回からユーザーが決めた位置・サイズを復元する。
+- 検証済み: 結晶周辺Vitest 9件、StickyNote関連15件、TypeScript、Rust全212件（2件無視）、VitePress設計書ビルドに合格。実機で初回表示と返却後の再表示確認待ち。
+## 2026-07-17 レシピ叩き台画面の作り置き
+
+- 対象を「通常付箋でレシピにするを選んでから、叩き台が操作可能になるまで」に限定した。
+- 従来は操作のたびに760×860の専用WebViewを新規作成し、その後に元付箋読込みと材料候補走査を開始していた。
+- メイン画面起動後にレシピ作成WebViewを非表示で1枚だけ準備し、右クリック時は対象パスをイベントで渡す方式へ変更した。
+- 元付箋・材料候補・叩き台生成が完了した通知を受けてから表示する。キャンセル時は閉じずに非表示へ戻し、次回も同じWebViewを再利用する。
+- 作り置きがまだ準備中の場合はping/応答でリスナー準備を確認してから要求を渡し、要求の取りこぼしを防ぐ。3秒で応答しない場合も操作を永久停止させない。
+- 検証済み: RecipeCreateModal・右クリック関連12件、TypeScript、VitePress設計書ビルドに合格。実機で初回・2回目の叩き台表示速度を確認待ち。
+- 変更後の自動確認: `RecipeCreateModal` と右クリック関連テストは 12/12 合格（叩き台UI生成テスト 108ms）、TypeScript型検査合格、Tauri向けNext.js製品ビルド合格。
+- 変更前後の処理差: クリックごとのWebView新規生成 1回→0回、Next.js/React画面起動 1回→0回。元付箋読込・材料候補検索・叩き台生成は各1回のままで、今回の対象外。
+- 起動時の作り置き処理が重複していたため1本へ修正。通常機能への追加負荷はアプリ起動時の非表示WebView 1枚だけ。
+- 自動テスト環境ではTauri実ウィンドウのクリックから表示までの実時間は取得できないため、エンドツーエンドの短縮msは未確定。変更後の実機確認では初回と2回目を分けて確認する。

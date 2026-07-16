@@ -19,6 +19,7 @@ type RecipeCreateModalProps = {
     sourceTags: string[];
     onClose: () => void;
     onCreated?: () => void;
+    onReady?: () => void;
 };
 
 function todayString(): string {
@@ -41,6 +42,7 @@ export default function RecipeCreateModal({
     sourceTags,
     onClose,
     onCreated,
+    onReady,
 }: RecipeCreateModalProps) {
     const fallbackTitle =
         splitTermNameAndBody(sourceBody).name || sourceTitle?.trim() || '';
@@ -148,6 +150,10 @@ export default function RecipeCreateModal({
     }, [draftBody, fallbackTitle, isCreating, onClose, onCreated, recipeFormat, sourceTags]);
 
     const noCandidates = !isLoading && candidates.yellows.length === 0;
+
+    useEffect(() => {
+        if (!isLoading && recipeFormat && draftBody) onReady?.();
+    }, [draftBody, isLoading, onReady, recipeFormat]);
 
     return (
         <div

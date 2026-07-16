@@ -1,19 +1,40 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import RecipeCreateModal from '../components/RecipeCreateModal';
 import { readNote } from '../api/notes';
 import { splitFrontMatter } from '../utils/splitFrontMatter';
 import { decodeNotePathFromUrl } from '../utils/pathUtils';
+import { emit, listen } from '@tauri-apps/api/event';
 
 function RecipeCreateInner() {
     const params = useSearchParams();
     const rawPath = params.get('path') ?? '';
-    const path = decodeNotePathFromUrl(rawPath);
+    const initialPath = decodeNotePathFromUrl(rawPath);
+    const [path, setPath] = useState(initialPath);
+    const [readyToken, setReadyToken] = useState<string | null>(null);
     const [source, setSource] = useState<{ title: string; body: string; tags: string[] } | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        let unlistenPing: (() => void) | undefined;
+        listen<{ path: string; token: string }>('fusen:prepare_recipe_draft', (event) => {
+            setSource(null);
+            setError(null);
+            setReadyToken(event.payload.token);
+            setPath(event.payload.path);
+        }).then((u) => {
+            unlisten = u;
+            emit('fusen:recipe_draft_host_ready').catch(() => {});
+        });
+        listen<{ token: string }>('fusen:recipe_draft_ping', (event) => {
+            emit('fusen:recipe_draft_host_ready', { token: event.payload.token }).catch(() => {});
+        }).then((u) => { unlistenPing = u; });
+        return () => { unlisten?.(); unlistenPing?.(); };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -41,9 +62,12 @@ function RecipeCreateInner() {
         };
     }, [path]);
 
-    const closeWindow = () => {
-        getCurrentWindow().close().catch(() => {});
-    };
+    const closeWindow = () => { getCurrentWindow().hide().catch(() => {}); };
+    const notifyReady = useCallback(() => {
+        if (!readyToken) return;
+        emit('fusen:recipe_draft_ready', { token: readyToken }).catch(() => {});
+        setReadyToken(null);
+    }, [readyToken]);
 
     if (error) {
         return <div className="p-4 text-sm text-red-400">{error}</div>;
@@ -54,11 +78,13 @@ function RecipeCreateInner() {
 
     return (
         <RecipeCreateModal
+            key={path}
             sourcePath={path}
             sourceTitle={source.title}
             sourceBody={source.body}
             sourceTags={source.tags}
             onClose={closeWindow}
+            onReady={notifyReady}
         />
     );
 }
