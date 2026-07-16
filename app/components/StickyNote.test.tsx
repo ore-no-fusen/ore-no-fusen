@@ -13,6 +13,10 @@ import { describe, it, expect, vi, beforeEach, afterEach, assert } from 'vitest'
 import { emit as emitEvent } from '@tauri-apps/api/event';
 import StickyNote from './StickyNote';
 
+const { mockArchiveMenuPopup } = vi.hoisted(() => ({
+    mockArchiveMenuPopup: vi.fn(),
+}));
+
 // Mock Next.js hooks
 let mockStartupRestore = false;
 let mockNoteTags: string[] = [];
@@ -65,7 +69,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 }));
 
 vi.mock('@tauri-apps/api/menu', () => {
-    const Menu = { new: vi.fn().mockResolvedValue({ popup: vi.fn() }) };
+    const Menu = { new: vi.fn().mockResolvedValue({ popup: mockArchiveMenuPopup }) };
     const MenuItem = { new: vi.fn() };
     const PredefinedMenuItem = { new: vi.fn() };
     const Submenu = { new: vi.fn() };
@@ -114,6 +118,7 @@ describe('StickyNote Component', () => {
         mockNoteTags = [];
         mockWebviewWindow.getByLabel.mockResolvedValue(null);
         mockWindow.isFocused.mockResolvedValue(false);
+        mockArchiveMenuPopup.mockReset();
 
         // Default mock responses
         mockInvoke.mockImplementation((cmd, args) => {
@@ -151,6 +156,20 @@ describe('StickyNote Component', () => {
         render(<StickyNote />);
 
         expect(await screen.findByRole('button', { name: 'しまう先を選ぶ' })).not.toBeNull();
+    });
+
+    it('複数タグのしまうボタンは付箋上の指定位置に選択メニューを開く', async () => {
+        mockNoteTags = ['APL知識', 'OreNoFusen'];
+        render(<StickyNote />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'しまう先を選ぶ' }), {
+            clientX: 320,
+            clientY: 240,
+        });
+
+        await waitFor(() => expect(mockArchiveMenuPopup).toHaveBeenCalledOnce());
+        expect(mockArchiveMenuPopup.mock.calls[0][0]).toMatchObject({ x: 320, y: 240 });
+        expect(mockArchiveMenuPopup.mock.calls[0][1]).toBe(mockWindow);
     });
 
     it('起動時復元では本文の読込み後に準備完了を通知する', async () => {
