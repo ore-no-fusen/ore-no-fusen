@@ -242,10 +242,18 @@ fn fusen_pick_folder() -> Option<String> {
 
 #[tauri::command]
 fn fusen_import_from_folder(
+    state: State<'_, Mutex<AppState>>,
     source_path: String,
     target_path: String,
 ) -> Result<import::ImportStats, String> {
-    import::import_markdown_files(&source_path, &target_path)
+    let stats = import::import_markdown_files(&source_path, &target_path)?;
+    let notes = storage::list_notes(&target_path);
+    logic::apply_set_folder(
+        &mut *state.lock().unwrap_or_else(|p| p.into_inner()),
+        target_path,
+        notes,
+    );
+    Ok(stats)
 }
 
 #[tauri::command]
@@ -1185,10 +1193,9 @@ fn fusen_archive_note(
 
     if let Some(tag) = resolved_tag {
         let tag_dir = storage::ensure_tag_dir(vault_root_path, &tag)?;
-        let new_path =
-            non_colliding_path(&tag_dir.join(current_path.file_name().ok_or("no name")?));
+        let new_path = tag_dir.join(current_path.file_name().ok_or("no name")?);
 
-        storage::copy_associated_assets(current_path, &tag_dir)?;
+        storage::overwrite_associated_assets(current_path, &tag_dir)?;
         storage::write_note(&new_path.to_string_lossy(), &cleaned_content)?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         if let Err(e) = storage::delete_associated_assets(current_path) {
@@ -1200,10 +1207,9 @@ fn fusen_archive_note(
     } else {
         // タグなし → Archive フォルダへ
         let archive_dir = storage::ensure_archive_dir(vault_root_path)?;
-        let new_path =
-            non_colliding_path(&archive_dir.join(current_path.file_name().ok_or("no name")?));
+        let new_path = archive_dir.join(current_path.file_name().ok_or("no name")?);
 
-        storage::copy_associated_assets(current_path, &archive_dir)?;
+        storage::overwrite_associated_assets(current_path, &archive_dir)?;
         storage::write_note(&new_path.to_string_lossy(), &cleaned_content)?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         if let Err(e) = storage::delete_associated_assets(current_path) {
@@ -2167,11 +2173,16 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
 
         logger::log_info(&format!("[ARRANGE] note window: {}", label));
 
-        let logical_position = match (window.outer_position(), window.scale_factor()) {
-            (Ok(position), Ok(scale_factor)) if scale_factor != 0.0 => Some((
+        let window_scale_factor = window.scale_factor().ok().filter(|factor| *factor != 0.0);
+        let logical_position = match (window.outer_position(), window_scale_factor) {
+            (Ok(position), Some(scale_factor)) => Some((
                 position.x as f64 / scale_factor,
                 position.y as f64 / scale_factor,
             )),
+            _ => None,
+        };
+        let current_window_width = match (window.outer_size(), window_scale_factor) {
+            (Ok(size), Some(scale_factor)) => Some(size.width as f64 / scale_factor),
             _ => None,
         };
 
@@ -2211,13 +2222,15 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             undo_snapshot.push((path.clone(), x, y));
         }
 
+        let folded = folded.unwrap_or(false);
+        let arrange_width = arrange::arrange_width_for_window(width, folded, current_window_width);
         notes.push(arrange::ArrangeNote {
             path,
             tags,
             background_color,
-            width,
+            width: arrange_width,
             height,
-            folded: folded.unwrap_or(false),
+            folded,
         });
     }
     logger::log_info(&format!("[ARRANGE] arrange note count: {}", notes.len()));

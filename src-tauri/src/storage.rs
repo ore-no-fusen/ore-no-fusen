@@ -801,6 +801,18 @@ fn get_assets_regex() -> &'static regex::Regex {
 }
 
 pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Result<(), String> {
+    copy_associated_assets_with_policy(note_path, target_note_dir, false)
+}
+
+pub fn overwrite_associated_assets(note_path: &Path, target_note_dir: &Path) -> Result<(), String> {
+    copy_associated_assets_with_policy(note_path, target_note_dir, true)
+}
+
+fn copy_associated_assets_with_policy(
+    note_path: &Path,
+    target_note_dir: &Path,
+    overwrite: bool,
+) -> Result<(), String> {
     let content = fs::read_to_string(note_path).map_err(|e| e.to_string())?;
     let re = get_assets_regex();
 
@@ -818,8 +830,7 @@ pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Resul
             let asset_filename = src_asset_path.file_name().ok_or("No asset filename")?;
             let dest_asset_path = target_assets_dir.join(asset_filename);
             
-            // すでに存在する場合はスキップまたは上書き
-            if !dest_asset_path.exists() {
+            if overwrite || !dest_asset_path.exists() {
                 fs::copy(&src_asset_path, &dest_asset_path).map_err(|e| e.to_string())?;
             }
         }
@@ -1001,6 +1012,27 @@ mod tests {
     use tempfile::tempdir;
 
     static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn overwrite_associated_assets_keeps_the_later_image() {
+        let source = tempdir().unwrap();
+        let destination = tempdir().unwrap();
+        fs::create_dir_all(source.path().join("assets")).unwrap();
+        fs::create_dir_all(destination.path().join("assets")).unwrap();
+        fs::write(
+            source.path().join("note.md"),
+            "![image](assets/shared.png)",
+        ).unwrap();
+        fs::write(source.path().join("assets/shared.png"), "later").unwrap();
+        fs::write(destination.path().join("assets/shared.png"), "earlier").unwrap();
+
+        overwrite_associated_assets(&source.path().join("note.md"), destination.path()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.path().join("assets/shared.png")).unwrap(),
+            "later"
+        );
+    }
 
     #[test]
     fn backup_excludes_trash_contents_by_default_option_and_keeps_empty_folder() {

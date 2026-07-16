@@ -1652,13 +1652,33 @@ const StickyNote = memo(function StickyNote() {
     }, []);
 
     const handleArchiveFromHoverButton = useCallback(async () => {
-        if (!selectedFile || currentTags.length > 1) return;
+        if (!selectedFile) return;
 
+        if (currentTags.length > 1) {
+            try {
+                const { Menu, MenuItem } = await import('@tauri-apps/api/menu');
+                const items = await Promise.all(currentTags.map((tag) => MenuItem.new({
+                    text: `🏷️ ${tag}`,
+                    action: () => archiveToTag(tag),
+                })));
+                const menu = await Menu.new({ items });
+                await menu.popup();
+            } catch (e) {
+                console.error('Failed to show archive destination menu:', e);
+            }
+            return;
+        }
+
+        await archiveToTag(currentTags[0] ?? null);
+    }, [selectedFile, currentTags]);
+
+    const archiveToTag = useCallback(async (targetTag: string | null) => {
+        if (!selectedFile) return;
         try {
             isDeletingRef.current = true;
             await saveNoteContent(editBody, rawFrontmatter, false);
             await playSaveSound();
-            await invoke('fusen_archive_note', { path: selectedFile.path, targetTag: currentTags[0] ?? null });
+            await invoke('fusen_archive_note', { path: selectedFile.path, targetTag });
             const win = getCurrentWindow();
             await win.hide();
             await win.destroy();
@@ -1667,7 +1687,7 @@ const StickyNote = memo(function StickyNote() {
             console.error('Failed to archive note:', e);
             alert(`${t('menu.archive_failed')}\n${e}`);
         }
-    }, [selectedFile, currentTags, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
+    }, [selectedFile, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
 
     const handleReturnRecipe = useCallback(async () => {
         if (!selectedFile?.path || !isCrystalNote) return;
@@ -1709,6 +1729,8 @@ const StickyNote = memo(function StickyNote() {
 
     const archiveButtonLabel = currentTags.length === 0
         ? t('menu.archiveNoTag')
+        : currentTags.length > 1
+            ? t('menu.archiveSelectTag')
         : t('menu.archiveToTag').replace('{tag}', currentTags[0]);
 
     /**
@@ -2295,7 +2317,7 @@ const StickyNote = memo(function StickyNote() {
                                 </button>
                             </Tooltip>
                         )}
-                        {currentTags.length <= 1 && !isCrystalNote && (
+                        {!isCrystalNote && (
                             <Tooltip text={archiveButtonLabel} placement="top-right-arrow-shifted">
                                 <button
                                     type="button"

@@ -146,6 +146,13 @@ describe('StickyNote Component', () => {
         expect(await screen.findByRole('button', { name: '「仕事」へしまう' })).not.toBeNull();
     });
 
+    it('タグが複数でもしまう先を選ぶボタンを表示する', async () => {
+        mockNoteTags = ['APL知識', 'OreNoFusen'];
+        render(<StickyNote />);
+
+        expect(await screen.findByRole('button', { name: 'しまう先を選ぶ' })).not.toBeNull();
+    });
+
     it('起動時復元では本文の読込み後に準備完了を通知する', async () => {
         mockStartupRestore = true;
 

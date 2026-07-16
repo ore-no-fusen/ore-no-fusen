@@ -20,6 +20,7 @@ import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 import { formatShortcutLabel, hasShortcutConflict, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
 import { trackDonationEvent } from "@/app/utils/analytics"
 import { monthlyBackupToggleChanges } from "@/app/utils/monthlyBackupSettings"
+import { refreshImportedNotes, type ImportStats } from "@/app/utils/importRefresh"
 import { saveCrystalFormats } from "@/app/api/crystalFormats"
 import {
     DEFAULT_CRYSTAL_FORMATS,
@@ -1480,7 +1481,8 @@ function DataSection({
                         <h3 className="font-bold text-slate-800 flex items-center gap-2">
                             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">2</span>{t('settings.data.import')}
                         </h3>
-                        <p className="text-sm text-muted-foreground mt-1">いつ使う: 既存のMarkdownデータを移すとき。選んだフォルダの .md と関連画像を付箋として取り込みます。</p>
+                        <p className="text-sm text-muted-foreground mt-1">{t('settings.data.importDesc')}</p>
+                        <p className="mt-1 text-xs text-slate-500">{t('settings.data.importTagDesc')}</p>
                         <p className="mt-1 text-xs text-slate-500">取り込み元: {importSourcePath || '未選択'}</p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setShowImport((value) => !value)}>
@@ -1518,8 +1520,7 @@ function DataSection({
                                 setIsImporting(true);
                                 try {
                                     const { invoke } = await import("@tauri-apps/api/core");
-                                    type Stats = { total_files: number, imported_md: number, imported_images: number, skipped: number, errors: string[] };
-                                    const stats = await invoke<Stats>("fusen_import_from_folder", {
+                                    const stats = await invoke<ImportStats>("fusen_import_from_folder", {
                                         sourcePath: importSourcePath,
                                         targetPath: settings.base_path
                                     });
@@ -1534,9 +1535,9 @@ function DataSection({
 
                                     alert(msg);
 
-                                    // 付箋一覧を再描画
+                                    // 付箋一覧を同期し、今回取り込んだ付箋をデスクトップへ表示し直す
                                     const { emit } = await import("@tauri-apps/api/event");
-                                    await emit("fusen:notes_updated");
+                                    await refreshImportedNotes(stats, emit);
                                 } catch (e) {
                                     console.error("インポート失敗:", e);
                                     alert("インポートに失敗しました: " + String(e));

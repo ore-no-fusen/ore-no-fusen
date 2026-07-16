@@ -753,6 +753,23 @@ function OrchestratorContent() {
     };
   }, [isMainWindow, openNoteWindow]);
 
+  // インポートした付箋をすべて生成してから、正式登録済みの全付箋をタグで整列する。
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen<{ paths: string[] }>('fusen:open_imported_notes', async (event) => {
+      for (const path of event.payload.paths) {
+        await openNoteWindow(path, undefined, false);
+      }
+      await invoke('fusen_arrange_by_tag');
+    });
+    promise.then((u) => { unlisten = u; });
+    return () => {
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
+    };
+  }, [isMainWindow, openNoteWindow]);
+
   // プールウィンドウのリスナー登録完了シグナルを受け取る
   useEffect(() => {
     if (!isMainWindow) return;
