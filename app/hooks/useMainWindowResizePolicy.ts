@@ -55,26 +55,16 @@ export function useMainWindowResizePolicy({
     useEffect(() => {
         let cancelled = false;
         const resize = async () => {
-            let debug: (message: string) => void = console.log;
             try {
                 const { getCurrentWindow } = await import('@tauri-apps/api/window');
                 const { LogicalSize } = await import('@tauri-apps/api/dpi');
-                const { invoke } = await import('@tauri-apps/api/core');
                 const win = getCurrentWindow();
-                debug = (message: string) => {
-                    console.log(message);
-                    invoke('fusen_debug_log', { message }).catch(() => {});
-                };
 
                 // メインウィンドウ以外（付箋・プールウィンドウなど）はリサイズしない
                 if (win.label !== 'main') return;
 
                 const settingsVisible = !isCheckingSetup && (setupRequired || isSettingsOpen);
-                debug(`[WINDOW_SIZE] policy start settings=${isSettingsOpen} setup=${setupRequired} checking=${isCheckingSetup} search=${isSearchOpen} update=${showUpdateDialog} settingsVisible=${settingsVisible}`);
-                if (cancelled) {
-                    debug('[WINDOW_SIZE] policy cancelled before resize');
-                    return;
-                }
+                if (cancelled) return;
 
                 // 検索オーバーレイ表示中はリサイズしない（setSize(600,450)を上書きしないよう）
                 if (isSearchOpen) return;
@@ -85,37 +75,21 @@ export function useMainWindowResizePolicy({
                 if (settingsVisible) {
                     // セットアップ中 or 設定画面表示中 → モニタに合わせて大きく
                     const { width, height } = await calcSettingsWindowSize();
-                    if (cancelled) {
-                        debug('[WINDOW_SIZE] policy expand cancelled');
-                        return;
-                    }
-                    debug(`[WINDOW_SIZE] policy expand request=${width}x${height}`);
+                    if (cancelled) return;
                     await win.show();
                     await win.unminimize();
-                    if (cancelled) {
-                        debug('[WINDOW_SIZE] policy expand cancelled after show');
-                        return;
-                    }
+                    if (cancelled) return;
                     await win.setSize(new LogicalSize(width, height));
                     await win.center();
                     await win.setFocus();
-                    const actual = await win.outerSize();
-                    debug(`[WINDOW_SIZE] policy expand actual=${actual.width}x${actual.height}`);
                 } else if (!isCheckingSetup && !isSettingsOpen) {
                     // 通常のダッシュボード → 小さく表示
-                    if (cancelled) {
-                        debug('[WINDOW_SIZE] policy compact cancelled');
-                        return;
-                    }
-                    debug('[WINDOW_SIZE] policy compact request=240x300');
+                    if (cancelled) return;
                     await win.setSize(new LogicalSize(240, 300));
                     await win.center();
-                    const actual = await win.outerSize();
-                    debug(`[WINDOW_SIZE] policy compact actual=${actual.width}x${actual.height}`);
                 }
             } catch (e) {
                 console.error('[useMainWindowResizePolicy] failed:', e);
-                debug(`[WINDOW_SIZE] policy error=${e instanceof Error ? e.message : String(e)}`);
             }
         };
         resize();

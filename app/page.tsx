@@ -1065,10 +1065,6 @@ function OrchestratorContent() {
           await win.unminimize();
           await win.setSize(new LogicalSize(width, height));
           await win.center();
-          const actual = await win.outerSize();
-          const sizeLog = `[WINDOW_SIZE] open_settings requested=${width}x${height} actual=${actual.width}x${actual.height}`;
-          console.log(sizeLog);
-          invoke('fusen_debug_log', { message: sizeLog }).catch(() => {});
         }
       } catch (e) {
         // 拡大に失敗しても設定を開く。リサイズポリシーが再試行する。
