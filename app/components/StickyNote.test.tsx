@@ -136,14 +136,14 @@ describe('StickyNote Component', () => {
     it('タグなしではアーカイブへの移動と表示する', async () => {
         render(<StickyNote />);
 
-        expect(await screen.findByRole('button', { name: 'アーカイブへ移動' })).not.toBeNull();
+        expect(await screen.findByRole('button', { name: 'アーカイブへしまう' })).not.toBeNull();
     });
 
     it('タグが1個なら移動先のタグ名を表示する', async () => {
         mockNoteTags = ['仕事'];
         render(<StickyNote />);
 
-        expect(await screen.findByRole('button', { name: '「仕事」フォルダへ移動' })).not.toBeNull();
+        expect(await screen.findByRole('button', { name: '「仕事」へしまう' })).not.toBeNull();
     });
 
     it('起動時復元では本文の読込み後に準備完了を通知する', async () => {
