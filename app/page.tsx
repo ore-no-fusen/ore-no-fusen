@@ -36,6 +36,7 @@ import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
 import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
 import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
 import { runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
+import { FreshRequestQueue } from './utils/freshRequestQueue';
 
 // Global AppState type definition
 type AppState = {
@@ -48,6 +49,14 @@ type AppState = {
 type HotkeyRegisterFailure = {
   action: string;
   shortcut: string;
+};
+
+type CreateNoteRequest = {
+  overrideFolder?: string;
+  overrideContext?: string;
+  sourceMeta?: { physX: number; physY: number; scale: number; physWidth?: number; physHeight?: number };
+  duplicatePath?: string;
+  perfT0?: number;
 };
 
 type HotkeyRegisterFailuresResponse = {
@@ -469,26 +478,19 @@ function OrchestratorContent() {
 
   // [Fix] Synchronous lock for creation
   const isCreatingRef = useRef(false);
+  const createRequestQueueRef = useRef(new FreshRequestQueue<CreateNoteRequest>(4, 1500));
 
-  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
-    // 400ms グローバルスロットル（フォールバック側のクラッシュ防止）
+  const createNoteImmediately = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
 
-    if (now - globalLastCreateTime < 400) {
-      console.warn('[CREATE] Blocked by global throttle');
-      return;
-    }
-
     const targetFolder = overrideFolder || folderPath || folderPathRef.current;
-    if (!targetFolder || isCreatingRef.current) {
-      console.warn('[CREATE] No folder or already creating. targetFolder:', targetFolder, 'creating:', isCreatingRef.current);
+    if (!targetFolder) {
+      console.warn('[CREATE] No folder. targetFolder:', targetFolder);
       return;
     }
 
     globalLastCreateTime = now;
-    isCreatingRef.current = true;
-    setIsCreating(true);
 
     try {
       // ============================================================
@@ -677,11 +679,46 @@ function OrchestratorContent() {
       }
     } catch (e) {
       console.error('handleCreateNote failed', e);
+    }
+  }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
+
+  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
+    const accepted = createRequestQueueRef.current.push({
+      overrideFolder,
+      overrideContext,
+      sourceMeta,
+      duplicatePath,
+      perfT0,
+    }, Date.now());
+    if (!accepted) {
+      console.warn('[CREATE] Request queue full; dropping new request');
+      return;
+    }
+    if (isCreatingRef.current) return;
+
+    isCreatingRef.current = true;
+    setIsCreating(true);
+    try {
+      let request = createRequestQueueRef.current.take(Date.now());
+      while (request) {
+        const throttleWait = Math.max(0, 400 - (Date.now() - globalLastCreateTime));
+        if (throttleWait > 0) {
+          await new Promise((resolve) => setTimeout(resolve, throttleWait));
+        }
+        await createNoteImmediately(
+          request.overrideFolder,
+          request.overrideContext,
+          request.sourceMeta,
+          request.duplicatePath,
+          request.perfT0,
+        );
+        request = createRequestQueueRef.current.take(Date.now());
+      }
     } finally {
       isCreatingRef.current = false;
       setIsCreating(false);
     }
-  }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
+  }, [createNoteImmediately]);
 
   const handleFileSelect = useCallback(async (file: NoteMeta) => {
     await openNoteWindow(file.path, { x: file.x, y: file.y, width: file.width, height: file.height, opacity: file.opacity });
@@ -1014,10 +1051,6 @@ function OrchestratorContent() {
       const tab = event?.payload?.tab ?? 'general';
       try {
         console.log('[MAIN_WINDOW_DEBUG] Settings open requested');
-        // [FIX] Force clear loading state to ensure settings panel renders even if init is slow/reloaded
-        // (Same fix as fusen:open_search handler)
-        setIsCheckingSetup(false);
-        setSetupRequired(false);
         // 小さい初期画面へ設定本文が先に描画されないよう、表示前にウィンドウを拡大する。
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
@@ -1026,8 +1059,16 @@ function OrchestratorContent() {
         if (win.label === 'main') {
           const { width, height } = await calcSettingsWindowSize();
           console.log(`[MAIN_WINDOW_DEBUG] Opening settings - resizing to ${width}x${height}`);
+          // 非表示中にサイズを変えてから show すると、Windows が以前の小さい
+          // WINDOWPLACEMENT を復元するため、先に表示・復元してから拡大する。
+          await win.show();
+          await win.unminimize();
           await win.setSize(new LogicalSize(width, height));
           await win.center();
+          const actual = await win.outerSize();
+          const sizeLog = `[WINDOW_SIZE] open_settings requested=${width}x${height} actual=${actual.width}x${actual.height}`;
+          console.log(sizeLog);
+          invoke('fusen_debug_log', { message: sizeLog }).catch(() => {});
         }
       } catch (e) {
         // 拡大に失敗しても設定を開く。リサイズポリシーが再試行する。
@@ -1035,13 +1076,13 @@ function OrchestratorContent() {
       }
 
       setSettingsDefaultTab(tab);
+      setSetupRequired(false);
+      setIsCheckingSetup(false);
       setIsSettingsOpen(true);
 
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
-        await win.show();
-        await win.unminimize();
         await win.setFocus();
         console.log('[MAIN_WINDOW_DEBUG] Settings window shown');
       } catch (e) {

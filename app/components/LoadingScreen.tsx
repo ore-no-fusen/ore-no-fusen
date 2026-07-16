@@ -12,6 +12,8 @@ import Image from 'next/image';
 
 export default function LoadingScreen({ message = "Loading..." }: { message?: string }) {
     useEffect(() => {
+        let cancelled = false;
+        let showTimer: ReturnType<typeof setTimeout> | undefined;
         const showWindow = async () => {
             try {
                 // クライアントサイドでのみ実行
@@ -22,9 +24,10 @@ export default function LoadingScreen({ message = "Loading..." }: { message?: st
                 const { LogicalSize } = await import('@tauri-apps/api/dpi');
                 const win = getCurrentWindow();
                 // メインウィンドウの場合のみ表示（念のため）
-                if (win.label === 'main') {
+                if (win.label === 'main' && !cancelled) {
                     // 少し遅延させて、レンダリングが確実に完了してから表示
-                    setTimeout(async () => {
+                    showTimer = setTimeout(async () => {
+                        if (cancelled) return;
                         await win.setSize(new LogicalSize(240, 300));
                         await win.center();
                         await win.show();
@@ -36,6 +39,10 @@ export default function LoadingScreen({ message = "Loading..." }: { message?: st
             }
         };
         showWindow();
+        return () => {
+            cancelled = true;
+            if (showTimer) clearTimeout(showTimer);
+        };
     }, []);
 
     return (
