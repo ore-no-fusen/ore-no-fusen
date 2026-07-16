@@ -35,6 +35,7 @@ import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
 import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
 import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
+import { runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
 
 // Global AppState type definition
 type AppState = {
@@ -1010,16 +1011,14 @@ function OrchestratorContent() {
 
     let unlisten: (() => void) | undefined;
     const promise = listen('fusen:open_settings', async (event: any) => {
+      const tab = event?.payload?.tab ?? 'general';
       try {
         console.log('[MAIN_WINDOW_DEBUG] Settings open requested');
         // [FIX] Force clear loading state to ensure settings panel renders even if init is slow/reloaded
         // (Same fix as fusen:open_search handler)
         setIsCheckingSetup(false);
         setSetupRequired(false);
-        const tab = event?.payload?.tab ?? 'general';
-        setSettingsDefaultTab(tab);
-        setIsSettingsOpen(true);
-        // ウィンドウを前面に
+        // 小さい初期画面へ設定本文が先に描画されないよう、表示前にウィンドウを拡大する。
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
@@ -1029,14 +1028,24 @@ function OrchestratorContent() {
           console.log(`[MAIN_WINDOW_DEBUG] Opening settings - resizing to ${width}x${height}`);
           await win.setSize(new LogicalSize(width, height));
           await win.center();
-          await win.show();
-          await win.unminimize();
-          await win.setFocus();
-          console.log('[MAIN_WINDOW_DEBUG] Settings window shown');
         }
       } catch (e) {
-        // ウィンドウ操作に失敗しても致命的ではないため無視
+        // 拡大に失敗しても設定を開く。リサイズポリシーが再試行する。
         console.warn('[open_settings] Window operation failed:', e);
+      }
+
+      setSettingsDefaultTab(tab);
+      setIsSettingsOpen(true);
+
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        await win.show();
+        await win.unminimize();
+        await win.setFocus();
+        console.log('[MAIN_WINDOW_DEBUG] Settings window shown');
+      } catch (e) {
+        console.warn('[open_settings] Window show failed:', e);
       }
     });
 
@@ -1546,9 +1555,6 @@ function OrchestratorContent() {
                 const startupLabels = new Set(notes.map((note) => getWindowLabel(note.path)));
                 const readyLabels = new Set<string>();
                 let resolveAllReady: (() => void) | undefined;
-                const allReady = new Promise<void>((resolve) => {
-                  resolveAllReady = resolve;
-                });
                 const unlistenStartupReady = await listen<{ label: string }>('fusen:startup_note_ready', (event) => {
                   const label = event.payload?.label;
                   if (!startupLabels.has(label)) return;
@@ -1557,8 +1563,7 @@ function OrchestratorContent() {
                   if (readyLabels.size === startupLabels.size) resolveAllReady?.();
                 });
 
-                for (let i = 0; i < notes.length; i++) {
-                  const note = notes[i];
+                await runWithConcurrency(notes, 2, async (note, i) => {
                   const noteStartedAt = performance.now();
                   const noteName = note.path.split(/[\\/]/).pop();
                   setLoadingStatus(`付箋ウィンドウを準備中 (${i + 1}/${notes.length})...`);
@@ -1571,17 +1576,22 @@ function OrchestratorContent() {
                     startup_restore: true,
                   });
                   logStartupStep('6/6', `付箋 ${i + 1}/${notes.length} ${noteName} ${Math.round(performance.now() - noteStartedAt)}ms`);
-                }
+                });
 
                 if (readyLabels.size < startupLabels.size) {
-                  await Promise.race([
-                    allReady,
-                    new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
-                  ]);
+                  await waitForStartupReady(
+                    startupLabels,
+                    readyLabels,
+                    (resolve) => {
+                      resolveAllReady = resolve;
+                      return () => { resolveAllReady = undefined; };
+                    },
+                    4_000,
+                  );
                 }
                 unlistenStartupReady();
                 if (readyLabels.size < startupLabels.size) {
-                  logStartupStep('6/6', `描画待ちを10秒で終了しました: ${readyLabels.size}/${notes.length}件準備完了`);
+                  logStartupStep('6/6', `描画待ちを4秒で終了しました: ${readyLabels.size}/${notes.length}件準備完了`);
                 } else {
                   logStartupStep('6/6', `付箋の本文描画が完了しました: ${notes.length}/${notes.length}`);
                 }

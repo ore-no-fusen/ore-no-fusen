@@ -95,30 +95,6 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
         if (defaultTab) setActiveSection(normalizeSection(defaultTab))
     }, [defaultTab])
 
-    useEffect(() => {
-        let cancelled = false
-
-        const resizeWindow = async () => {
-            try {
-                const { getCurrentWindow } = await import("@tauri-apps/api/window")
-                const { LogicalSize } = await import("@tauri-apps/api/dpi")
-                const win = getCurrentWindow()
-                if (cancelled || win.label !== "main") return
-                await win.setSize(new LogicalSize(1100, 760))
-                await win.center()
-            } catch {
-                // Browser preview does not have a Tauri window.
-            }
-        }
-
-        resizeWindow()
-        const retry = window.setTimeout(resizeWindow, 150)
-        return () => {
-            cancelled = true
-            window.clearTimeout(retry)
-        }
-    }, [])
-
     // ★ここで「倉庫番」を呼び出し！
     // loading: 読み込み中かどうか
     // settings: 現在の設定データ
@@ -196,7 +172,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
     return (
         <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-foreground">
             {/* サイドバー */}
-            <aside className="w-60 shrink-0 border-r border-slate-200 bg-white px-4 py-5">
+            <aside className="w-60 shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-4 py-5">
                 <div className="mb-5 flex items-center gap-2 px-2 py-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                         <Settings className="h-5 w-5" />
