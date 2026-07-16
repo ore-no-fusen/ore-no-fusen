@@ -275,6 +275,21 @@ pub(crate) fn arrange_width_for_window(
     }
 }
 
+pub(crate) fn arrange_size_for_window(
+    stored_width: Option<f64>,
+    stored_height: Option<f64>,
+    folded: bool,
+    current_window_size: Option<(f64, f64)>,
+) -> Option<(f64, f64)> {
+    let current_width = current_window_size.map(|(width, _)| width);
+    let width = stored_width
+        .or(current_width)
+        .map(|width| arrange_width_for_window(width, folded, current_width))?;
+    let height = stored_height.or(current_window_size.map(|(_, height)| height))?;
+    (width.is_finite() && width > 0.0 && height.is_finite() && height > 0.0)
+        .then_some((width, height))
+}
+
 fn clamp_note_x_to_work_area(x: f64, note_width: f64, work_area: WorkArea) -> f64 {
     let left = work_area.x;
     let rightmost_x = if note_width.is_finite() && note_width > 0.0 {
@@ -909,6 +924,14 @@ mod tests {
     fn folded_note_uses_its_current_window_width() {
         assert_eq!(arrange_width_for_window(1200.0, true, Some(286.0)), 286.0);
         assert_eq!(arrange_width_for_window(1200.0, false, Some(286.0)), 1200.0);
+    }
+
+    #[test]
+    fn imported_note_without_stored_size_uses_current_window_size() {
+        assert_eq!(
+            arrange_size_for_window(None, None, false, Some((640.0, 480.0))),
+            Some((640.0, 480.0))
+        );
     }
 
     #[test]

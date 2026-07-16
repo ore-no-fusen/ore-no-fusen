@@ -1683,18 +1683,24 @@ const StickyNote = memo(function StickyNote() {
         };
     }, []);
 
-    const handleArchiveFromHoverButton = useCallback(async () => {
+    const handleArchiveFromHoverButton = useCallback(async (x: number, y: number) => {
         if (!selectedFile) return;
 
         if (currentTags.length > 1) {
             try {
-                const { Menu, MenuItem } = await import('@tauri-apps/api/menu');
+                const [{ Menu, MenuItem }, { LogicalPosition }] = await Promise.all([
+                    import('@tauri-apps/api/menu'),
+                    import('@tauri-apps/api/dpi'),
+                ]);
                 const items = await Promise.all(currentTags.map((tag) => MenuItem.new({
                     text: `🏷️ ${tag}`,
                     action: () => archiveToTag(tag),
                 })));
-                const menu = await Menu.new({ items });
-                await menu.popup();
+                const menu = await Menu.new({
+                    id: `archive_destination_${Date.now()}`,
+                    items,
+                });
+                await menu.popup(new LogicalPosition(x, y), getCurrentWindow());
             } catch (e) {
                 console.error('Failed to show archive destination menu:', e);
             }
@@ -2367,7 +2373,7 @@ const StickyNote = memo(function StickyNote() {
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        handleArchiveFromHoverButton();
+                                        handleArchiveFromHoverButton(e.clientX, e.clientY);
                                     }}
                                     className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
                                 >

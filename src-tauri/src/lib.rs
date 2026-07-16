@@ -2203,8 +2203,11 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             )),
             _ => None,
         };
-        let current_window_width = match (window.outer_size(), window_scale_factor) {
-            (Ok(size), Some(scale_factor)) => Some(size.width as f64 / scale_factor),
+        let current_window_size = match (window.outer_size(), window_scale_factor) {
+            (Ok(size), Some(scale_factor)) => Some((
+                size.width as f64 / scale_factor,
+                size.height as f64 / scale_factor,
+            )),
             _ => None,
         };
 
@@ -2227,7 +2230,10 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
         let (_, _, width, height, background_color, _, tags, folded) =
             logic::extract_meta_from_content(&content);
 
-        let (Some(width), Some(height)) = (width, height) else {
+        let folded = folded.unwrap_or(false);
+        let Some((width, height)) =
+            arrange::arrange_size_for_window(width, height, folded, current_window_size)
+        else {
             logger::log_info(&format!("[ARRANGE] size missing path={}", path));
             continue;
         };
@@ -2244,13 +2250,11 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             undo_snapshot.push((path.clone(), x, y));
         }
 
-        let folded = folded.unwrap_or(false);
-        let arrange_width = arrange::arrange_width_for_window(width, folded, current_window_width);
         notes.push(arrange::ArrangeNote {
             path,
             tags,
             background_color,
-            width: arrange_width,
+            width,
             height,
             folded,
         });
