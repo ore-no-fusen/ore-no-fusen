@@ -16,6 +16,31 @@ import { TranslationKey, Language } from '@/lib/i18n';
 import { getFeedbackConversationUnreadState } from '@/app/utils/feedbackConversation';
 import { getUserTags, isReservedTag, normalizeTagForReservation } from '@/app/utils/reservedTags';
 import { addTag as addRawTag, removeTag as removeRawTag } from '@/app/api/tags';
+import { formatShortcutLabel } from '@/app/utils/shortcutKey';
+
+type HotkeyBindings = {
+    arrange: string;
+};
+
+export function getAppOperationMenuLabels(bindings: HotkeyBindings, language: Language) {
+    const arrangeShortcut = formatShortcutLabel(bindings.arrange).replace(/ \+ /g, '+');
+    if (language === 'en') {
+        return {
+            submenu: '⚙️ App Actions',
+            search: 'Search  Ctrl+F',
+            arrange: `Arrange by Tag  ${arrangeShortcut}`,
+            undoArrange: 'Undo Arrange',
+            settings: 'Settings',
+        };
+    }
+    return {
+        submenu: '⚙️ アプリ操作',
+        search: '検索  Ctrl+F',
+        arrange: `タグで整列  ${arrangeShortcut}`,
+        undoArrange: '整列を元に戻す',
+        settings: '設定',
+    };
+}
 
 export function filterAssignableTags(tags: string[]): string[] {
     return getUserTags(tags);
@@ -383,7 +408,7 @@ export function useStickyNoteContextMenu({
                 await MenuItem.new({ id: 'ctx_opacity_light', text: t('menu.opacity.light'), action: () => handleOpacityChange(0.7) }),
                 await MenuItem.new({ id: 'ctx_opacity_heavy', text: t('menu.opacity.heavy'), action: () => handleOpacityChange(0.4) })
             ];
-            const opacitySubmenu = await Submenu.new({ id: 'ctx_opacity_submenu', text: t('menu.changeOpacity'), items: opacityItems });
+            const opacitySubmenu = await Submenu.new({ id: 'ctx_opacity_submenu', text: `◐ ${t('menu.changeOpacity')}`, items: opacityItems });
 
             // 文字サイズサブメニュー
             const fontSizeItems = [
@@ -733,6 +758,46 @@ export function useStickyNoteContextMenu({
             }
             }
 
+            const hotkeyBindings = await invoke<HotkeyBindings>('hotkey_get_bindings').catch(() => ({
+                arrange: 'ctrl+shift+l',
+            }));
+            const appOperationLabels = getAppOperationMenuLabels(hotkeyBindings, language);
+            const appOperationSubmenu = await Submenu.new({
+                id: 'ctx_app_operations',
+                text: appOperationLabels.submenu,
+                items: [
+                    await MenuItem.new({
+                        id: 'ctx_app_search',
+                        text: appOperationLabels.search,
+                        action: async () => {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            await emit('fusen:open_search');
+                        },
+                    }),
+                    await MenuItem.new({
+                        id: 'ctx_app_arrange',
+                        text: appOperationLabels.arrange,
+                        action: () => invoke('fusen_arrange_by_tag'),
+                    }),
+                    await MenuItem.new({
+                        id: 'ctx_app_arrange_undo',
+                        text: appOperationLabels.undoArrange,
+                        action: () => invoke('fusen_arrange_undo'),
+                    }),
+                    await PredefinedMenuItem.new({ item: 'Separator' }),
+                    await MenuItem.new({
+                        id: 'ctx_app_settings',
+                        text: appOperationLabels.settings,
+                        action: async () => {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            await emit('fusen:open_settings', {});
+                        },
+                    }),
+                ],
+            });
+
+            menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+            menuItems.push(appOperationSubmenu);
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_open_help',

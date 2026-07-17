@@ -18,22 +18,37 @@ use crate::storage;
 use std::sync::Mutex;
 
 fn format_shortcut_for_menu(shortcut: &str) -> String {
-    shortcut
-        .split('+')
-        .map(|part| match part.trim().to_ascii_lowercase().as_str() {
-            "ctrl" | "control" => "Ctrl".to_string(),
-            "shift" => "Shift".to_string(),
-            "alt" => "Alt".to_string(),
-            "super" | "win" | "meta" => "Win".to_string(),
+    let mut modifiers = Vec::new();
+    let mut keys = Vec::new();
+
+    for part in shortcut.split('+') {
+        let trimmed = part.trim();
+        match trimmed.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => modifiers.push((0, "Ctrl".to_string())),
+            "shift" => modifiers.push((1, "Shift".to_string())),
+            "alt" => modifiers.push((2, "Alt".to_string())),
+            "super" | "win" | "meta" => modifiers.push((3, "Win".to_string())),
             _ => {
-                let part = part.trim();
-                if part.len() == 1 {
-                    part.to_ascii_uppercase()
+                let lower = trimmed.to_ascii_lowercase();
+                let display = if lower.starts_with("key") && trimmed.len() == 4 {
+                    trimmed[3..].to_ascii_uppercase()
+                } else if lower.starts_with("digit") && trimmed.len() == 6 {
+                    trimmed[5..].to_string()
+                } else if trimmed.len() == 1 {
+                    trimmed.to_ascii_uppercase()
                 } else {
-                    part.to_string()
-                }
+                    trimmed.to_string()
+                };
+                keys.push(display);
             }
-        })
+        }
+    }
+
+    modifiers.sort_by_key(|(order, _)| *order);
+    modifiers
+        .into_iter()
+        .map(|(_, label)| label)
+        .chain(keys)
         .collect::<Vec<_>>()
         .join("+")
 }
@@ -96,7 +111,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         &new_note_shortcut,
         is_en,
     );
-    let label_search = if is_en { "Search" } else { "検索 (Search)" }; // [NEW] 全文検索
+    let label_search = menu_label(if is_en { "Search" } else { "検索 (Search)" }, "Ctrl+F", is_en);
     let label_arrange_by_tag = menu_label(
         if is_en { "Arrange by Tag" } else { "タグで整列 (Arrange by Tag)" },
         &arrange_shortcut,
@@ -265,6 +280,8 @@ mod tests {
     fn formats_saved_shortcuts_for_tray_display() {
         assert_eq!(format_shortcut_for_menu("ctrl+shift+l"), "Ctrl+Shift+L");
         assert_eq!(format_shortcut_for_menu("super+n"), "Win+N");
+        assert_eq!(format_shortcut_for_menu("Shift+Control+KeyL"), "Ctrl+Shift+L");
+        assert_eq!(format_shortcut_for_menu("Control+Digit1"), "Ctrl+1");
     }
 
     #[test]
