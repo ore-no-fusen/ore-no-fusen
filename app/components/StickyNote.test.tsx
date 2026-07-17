@@ -205,27 +205,14 @@ describe('StickyNote Component', () => {
             .toBeLessThan(vi.mocked(emitEvent).mock.invocationCallOrder[0]);
     });
 
-    it('600msホバー後に前面化し、クイックランチャー表示中はフォーカスを奪わない', async () => {
-        const hasFocusSpy = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    it('ホバーだけでは付箋を前面化しない', async () => {
         const { container } = render(<StickyNote />);
         await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
         const shell = container.querySelector('.noteShell') as HTMLElement;
 
         fireEvent.pointerEnter(shell);
-        await act(async () => { await new Promise(resolve => setTimeout(resolve, 500)); });
-        expect(mockWindow.setFocus).not.toHaveBeenCalled();
-        await waitFor(() => expect(mockWindow.setFocus).toHaveBeenCalledTimes(1), { timeout: 500 });
-
-        mockWindow.setFocus.mockClear();
-        mockWebviewWindow.getByLabel.mockResolvedValue({
-            isVisible: vi.fn().mockResolvedValue(true),
-        });
-        fireEvent.pointerLeave(shell);
-        fireEvent.pointerEnter(shell);
         await act(async () => { await new Promise(resolve => setTimeout(resolve, 650)); });
         expect(mockWindow.setFocus).not.toHaveBeenCalled();
-
-        hasFocusSpy.mockRestore();
     });
 
     // --- Regression Tests ---
