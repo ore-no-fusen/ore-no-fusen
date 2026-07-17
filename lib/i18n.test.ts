@@ -21,6 +21,8 @@ describe('i18n Utility', () => {
         expect(t('settings.help.menuTitle')).toBe('使い方');
         expect(t('settings.help.workflow.title')).toBe('よくある使い方');
         expect(t('settings.help.contextTable.title')).toBe('右クリックメニュー早見表');
+        expect(t('settings.help.contextTable.archive.action')).toBe('タグフォルダへしまう');
+        expect(t('menu.archive')).toBe('タグフォルダへしまう');
         expect(t('menu.openHelp')).toBe('使い方を開く');
         expect(t('menu.colors.yellow')).toBe('黄 - アイデア保存');
         expect(t('menu.colors.black')).toBe('黒 - レシピ・手順');

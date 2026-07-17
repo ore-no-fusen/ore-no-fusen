@@ -1975,11 +1975,15 @@ function HelpSection({ t }: { t: (key: any) => string }) {
         ['settings.help.contextTable.newNote.action', 'settings.help.contextTable.newNote.when'],
         ['settings.help.contextTable.duplicate.action', 'settings.help.contextTable.duplicate.when'],
         ['settings.help.contextTable.color.action', 'settings.help.contextTable.color.when'],
+        ['settings.help.contextTable.opacity.action', 'settings.help.contextTable.opacity.when'],
+        ['settings.help.contextTable.fontSize.action', 'settings.help.contextTable.fontSize.when'],
         ['settings.help.contextTable.tags.action', 'settings.help.contextTable.tags.when'],
         ['settings.help.contextTable.alarm.action', 'settings.help.contextTable.alarm.when'],
         ['settings.help.contextTable.iphone.action', 'settings.help.contextTable.iphone.when'],
+        ['settings.help.contextTable.crystal.action', 'settings.help.contextTable.crystal.when'],
         ['settings.help.contextTable.archive.action', 'settings.help.contextTable.archive.when'],
         ['settings.help.contextTable.help.action', 'settings.help.contextTable.help.when'],
+        ['settings.help.contextTable.conversation.action', 'settings.help.contextTable.conversation.when'],
         ['settings.help.contextTable.delete.action', 'settings.help.contextTable.delete.when'],
     ];
     const shortcutRows = [
