@@ -19,6 +19,8 @@ const TABS: [&str; 4] = ["recipe", "shortcut", "qa", "term"];
 pub struct LauncherOrder {
     pub last_tab: String,
     pub orders: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub selected_tags: HashMap<String, String>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -148,6 +150,7 @@ impl Default for LauncherOrder {
         Self {
             last_tab: "recipe".to_string(),
             orders,
+            selected_tags: HashMap::new(),
         }
     }
 }
@@ -169,6 +172,7 @@ fn normalize_order(mut order: LauncherOrder) -> LauncherOrder {
         order.orders.entry(tab.to_string()).or_default();
     }
     order.orders.retain(|tab, _| TABS.contains(&tab.as_str()));
+    order.selected_tags.retain(|tab, _| TABS.contains(&tab.as_str()));
     order
 }
 
@@ -959,6 +963,18 @@ pub(crate) fn fusen_set_launcher_last_tab(tab: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub(crate) fn fusen_set_launcher_tag_filter(tab: String, tag: String) -> Result<(), String> {
+    let tab = validate_tab(&tab)?.to_string();
+    let mut order = load_launcher_order()?;
+    if tag.trim().is_empty() || tag == "__all__" {
+        order.selected_tags.remove(&tab);
+    } else {
+        order.selected_tags.insert(tab, tag);
+    }
+    save_launcher_order(&order)
+}
+
+#[tauri::command]
 pub(crate) fn fusen_get_crystal_formats() -> Result<Option<String>, String> {
     load_crystal_formats_from_path(&crystal_formats_path()?)
 }
@@ -1210,6 +1226,7 @@ mod tests {
         let mut order = LauncherOrder::default();
         order.last_tab = "qa".to_string();
         order.orders.insert("qa".to_string(), vec!["a.md".to_string()]);
+        order.selected_tags.insert("qa".to_string(), "work".to_string());
 
         save_launcher_order_to_path(&path, &order).unwrap();
         let loaded = load_launcher_order_from_path(&path).unwrap();
@@ -1217,6 +1234,7 @@ mod tests {
         assert_eq!(loaded.last_tab, "qa");
         assert_eq!(loaded.orders["qa"], vec!["a.md"]);
         assert!(loaded.orders.contains_key("recipe"));
+        assert_eq!(loaded.selected_tags["qa"], "work");
     }
 
     #[test]

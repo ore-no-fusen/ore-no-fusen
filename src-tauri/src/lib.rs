@@ -821,7 +821,7 @@ fn fusen_create_recipe_note(
     let context = if safe_title.is_empty() { "recipe".to_string() } else { safe_title };
     let tags = logic::recipe_tags_from_request(&request.tags);
     let next_seq = storage::get_next_seq(&recipes_dir.to_string_lossy());
-    let filename = logic::generate_filename(next_seq, &today, &context);
+    let filename = logic::generate_crystal_filename("Reci", next_seq, &today, &context);
     let path = recipes_dir.join(filename);
     let frontmatter = logic::generate_recipe_frontmatter(next_seq, &title, &now, &now, &tags);
     let content = format!("{}\n\n{}", frontmatter, request.body);
@@ -845,7 +845,7 @@ fn create_qa_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Re
     let context = if safe_title.is_empty() { "qa".to_string() } else { safe_title };
     let tags = logic::qa_tags_from_request(&request.tags);
     let next_seq = storage::get_next_seq(&qa_dir.to_string_lossy());
-    let filename = logic::generate_filename(next_seq, &today, &context);
+    let filename = logic::generate_crystal_filename("QA", next_seq, &today, &context);
     let path = qa_dir.join(filename);
     let frontmatter = logic::generate_recipe_frontmatter(next_seq, &title, &now, &now, &tags);
     let content = format!("{}\n\n{}", frontmatter, request.body);
@@ -868,7 +868,7 @@ fn create_term_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> 
     let context = if safe_title.is_empty() { "term".to_string() } else { safe_title };
     let tags = logic::term_tags_from_request(&request.tags);
     let next_seq = storage::get_next_seq(&terms_dir.to_string_lossy());
-    let filename = logic::generate_filename(next_seq, &today, &context);
+    let filename = logic::generate_crystal_filename("Term", next_seq, &today, &context);
     let path = terms_dir.join(filename);
     let frontmatter = logic::generate_recipe_frontmatter(next_seq, &title, &now, &now, &tags);
     let content = format!("{}\n\n{}", frontmatter, request.body);
@@ -1308,6 +1308,20 @@ pub struct SearchHit {
     pub path: String,
     pub line: usize,
     pub preview: String,
+    pub kind: Option<String>,
+}
+
+fn crystal_kind_for_path(path: &Path) -> Option<String> {
+    let parent = path.parent()?.file_name()?.to_string_lossy();
+    if parent.eq_ignore_ascii_case(storage::QA_DIR_NAME) {
+        Some("QA".to_string())
+    } else if parent.eq_ignore_ascii_case(storage::RECIPES_DIR_NAME) {
+        Some("Reci".to_string())
+    } else if parent.eq_ignore_ascii_case(storage::TERMS_DIR_NAME) {
+        Some("Term".to_string())
+    } else {
+        None
+    }
 }
 
 #[tauri::command]
@@ -1405,6 +1419,7 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
                             path: entry.path().to_string_lossy().to_string(),
                             line: body_line_counter,
                             preview,
+                            kind: crystal_kind_for_path(entry.path()),
                         });
                     }
                 }
@@ -4827,6 +4842,7 @@ pub fn run() {
             launcher::fusen_remove_from_shelf,
             launcher::fusen_get_launcher_state,
             launcher::fusen_set_launcher_last_tab,
+            launcher::fusen_set_launcher_tag_filter,
             launcher::fusen_get_crystal_formats,
             launcher::fusen_save_crystal_formats,
             launcher::fusen_toggle_quick_launcher,
@@ -5165,6 +5181,20 @@ mod search_tests {
         let hits = search_notes_logic(dir.path().to_str().unwrap(), "Hello");
         assert_eq!(hits.len(), 2);
     }
+
+    #[test]
+    fn search_marks_existing_and_new_crystal_names_by_parent_folder() {
+        let dir = tempdir().unwrap();
+        let qa_dir = dir.path().join("QA");
+        fs::create_dir(&qa_dir).unwrap();
+        fs::write(qa_dir.join("0001_2026-07-18_旧形式.md"), "検索対象").unwrap();
+        fs::write(qa_dir.join("QA0002_2026-07-18_新形式.md"), "検索対象").unwrap();
+
+        let hits = search_notes_logic(dir.path().to_str().unwrap(), "検索対象");
+
+        assert_eq!(hits.len(), 2);
+        assert!(hits.iter().all(|hit| hit.kind.as_deref() == Some("QA")));
+    }
 }
 
 #[cfg(test)]
@@ -5218,6 +5248,7 @@ mod qa_note_tests {
         let content = fs::read_to_string(&path).unwrap();
 
         assert!(path.starts_with(dir.path().join("QA")));
+        assert!(path.file_name().unwrap().to_string_lossy().starts_with("QA0001_"));
         assert!(content.contains("seq: 1"));
         assert!(content.contains("title: 質問"));
         assert!(content.contains("backgroundColor: \"#cfd8dc\""));
@@ -5251,6 +5282,7 @@ mod term_note_tests {
         let content = fs::read_to_string(&path).unwrap();
 
         assert!(path.starts_with(dir.path().join("Terms")));
+        assert!(path.file_name().unwrap().to_string_lossy().starts_with("Term0001_"));
         assert!(content.contains("seq: 1"));
         assert!(content.contains("title: 用語"));
         assert!(content.contains("backgroundColor: \"#cfd8dc\""));

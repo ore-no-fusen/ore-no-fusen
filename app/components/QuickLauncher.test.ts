@@ -7,11 +7,22 @@ import {
     removeActionLabel,
     shouldCloseLauncherAfterBlur,
     isLatestLauncherRequest,
+    filterLauncherItemsByTag,
+    launcherTagOptions,
+    UNCLASSIFIED_TAG_FILTER,
     tabToReservedTag,
 } from './QuickLauncher';
 import { LAUNCHER_SHELF_CHANGED_EVENT, shouldReloadLauncherForEvent } from '../utils/launcherEvents';
 
 describe('QuickLauncher logic', () => {
+    const item = (path: string, tags: string[]) => ({
+        path,
+        title: path,
+        tags,
+        launches: 0,
+        is_recipe: false,
+    });
+
     it('maps tabs to reserved tags', () => {
         expect(tabToReservedTag('shortcut')).toBe('shortcut');
         expect(tabToReservedTag('qa')).toBe('qa');
@@ -68,5 +79,26 @@ describe('QuickLauncher logic', () => {
     it('accepts only the latest overlapping search response', () => {
         expect(isLatestLauncherRequest(3, 3)).toBe(true);
         expect(isLatestLauncherRequest(2, 3)).toBe(false);
+    });
+
+    it('builds user-tag categories without system tags and adds unclassified', () => {
+        const items = [
+            item('a', ['recipe', '開発']),
+            item('b', ['qa', '調査', '開発']),
+            item('c', ['term']),
+        ];
+
+        expect(launcherTagOptions(items)).toEqual(['開発', '調査', UNCLASSIFIED_TAG_FILTER]);
+    });
+
+    it('filters launcher items by user tag or unclassified', () => {
+        const items = [
+            item('a', ['shortcut', '開発']),
+            item('b', ['qa', '調査']),
+            item('c', ['term']),
+        ];
+
+        expect(filterLauncherItemsByTag(items, '開発').map((value) => value.path)).toEqual(['a']);
+        expect(filterLauncherItemsByTag(items, UNCLASSIFIED_TAG_FILTER).map((value) => value.path)).toEqual(['c']);
     });
 });

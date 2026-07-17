@@ -13,6 +13,7 @@ export type QuickOpenItem = {
 export type LauncherState = {
     last_tab?: LauncherTab;
     orders: Record<LauncherTab, string[]>;
+    selected_tags?: Partial<Record<LauncherTab, string>>;
 };
 
 export async function getLauncherState(): Promise<LauncherState> {
@@ -21,6 +22,10 @@ export async function getLauncherState(): Promise<LauncherState> {
 
 export async function setLauncherLastTab(tab: LauncherTab): Promise<void> {
     await invoke('fusen_set_launcher_last_tab', { tab });
+}
+
+export async function setLauncherTagFilter(tab: LauncherTab, tag: string): Promise<void> {
+    await invoke('fusen_set_launcher_tag_filter', { tab, tag });
 }
 
 export async function quickOpenNotes(tab: LauncherTab, query: string): Promise<QuickOpenItem[]> {

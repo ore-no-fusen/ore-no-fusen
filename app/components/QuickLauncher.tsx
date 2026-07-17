@@ -13,8 +13,10 @@ import {
     renameQuickNote,
     reorderQuickNote,
     setLauncherLastTab,
+    setLauncherTagFilter,
 } from '../api/launcher';
 import { truncateRecipeName } from '../utils/recipeFormat';
+import { getUserTags } from '../utils/reservedTags';
 import PinTackIcon from './PinTackIcon';
 import { playPinToggleSound } from '../utils/pinToggleSound';
 import { LAUNCHER_SHELF_CHANGED_EVENT, shouldReloadLauncherForEvent } from '../utils/launcherEvents';
@@ -94,6 +96,29 @@ export function isLatestLauncherRequest(requestId: number, currentRequestId: num
     return requestId === currentRequestId;
 }
 
+export const ALL_TAGS_FILTER = '__all__';
+export const UNCLASSIFIED_TAG_FILTER = '__unclassified__';
+
+export function launcherTagOptions(items: QuickOpenItem[]): string[] {
+    const seen = new Set<string>();
+    let hasUnclassified = false;
+    for (const item of items) {
+        const userTags = getUserTags(item.tags);
+        if (userTags.length === 0) hasUnclassified = true;
+        userTags.forEach((tag) => seen.add(tag));
+    }
+    const tags = Array.from(seen).sort((a, b) => a.localeCompare(b, 'ja'));
+    return hasUnclassified ? [...tags, UNCLASSIFIED_TAG_FILTER] : tags;
+}
+
+export function filterLauncherItemsByTag(items: QuickOpenItem[], filter: string): QuickOpenItem[] {
+    if (!filter || filter === ALL_TAGS_FILTER) return items;
+    if (filter === UNCLASSIFIED_TAG_FILTER) {
+        return items.filter((item) => getUserTags(item.tags).length === 0);
+    }
+    return items.filter((item) => getUserTags(item.tags).includes(filter));
+}
+
 
 function useDebouncedValue(value: string, delayMs: number): string {
     const [debounced, setDebounced] = useState(value);
@@ -115,6 +140,7 @@ export default function QuickLauncher() {
     const [activeTab, setActiveTab] = useState<LauncherTab>('recipe');
     const [query, setQuery] = useState('');
     const [items, setItems] = useState<QuickOpenItem[]>([]);
+    const [tagFilters, setTagFilters] = useState<Partial<Record<LauncherTab, string>>>({});
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [isLocked, setIsLocked] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -156,6 +182,7 @@ export default function QuickLauncher() {
             .then((state) => {
                 if (cancelled) return;
                 setActiveTab(normalizeLauncherTab(state.last_tab));
+                setTagFilters(state.selected_tags ?? {});
             })
             .catch(() => {
                 if (!cancelled) setActiveTab('recipe');
@@ -285,7 +312,31 @@ export default function QuickLauncher() {
         }
     }, []);
 
-    const selectedItem = useMemo(() => items[selectedIndex] ?? null, [items, selectedIndex]);
+    const activeTagFilter = tagFilters[activeTab] ?? ALL_TAGS_FILTER;
+    const tagOptions = useMemo(() => launcherTagOptions(items), [items]);
+    const displayTagOptions = useMemo(() => {
+        if (activeTagFilter !== ALL_TAGS_FILTER && !tagOptions.includes(activeTagFilter)) {
+            return [activeTagFilter, ...tagOptions];
+        }
+        return tagOptions;
+    }, [activeTagFilter, tagOptions]);
+    const visibleItems = useMemo(
+        () => filterLauncherItemsByTag(items, activeTagFilter),
+        [items, activeTagFilter],
+    );
+    const selectedItem = useMemo(() => visibleItems[selectedIndex] ?? null, [visibleItems, selectedIndex]);
+
+    const selectTagFilter = useCallback((tag: string) => {
+        setTagFilters((current) => ({ ...current, [activeTab]: tag }));
+        setSelectedIndex(0);
+        setContextMenu(null);
+        inputRef.current?.focus();
+        setLauncherTagFilter(activeTab, tag).catch(() => {});
+    }, [activeTab]);
+
+    useEffect(() => {
+        setSelectedIndex((current) => Math.min(current, Math.max(visibleItems.length - 1, 0)));
+    }, [visibleItems.length]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         if (e.key === 'Escape') {
@@ -309,7 +360,7 @@ export default function QuickLauncher() {
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
             setSelectedIndex((current) =>
-                nextSelectionIndex(current, items.length, e.key === 'ArrowUp' ? 'up' : 'down'),
+                nextSelectionIndex(current, visibleItems.length, e.key === 'ArrowUp' ? 'up' : 'down'),
             );
             return;
         }
@@ -318,7 +369,7 @@ export default function QuickLauncher() {
             e.preventDefault();
             openItem(selectedItem).catch((error) => setError(String(error)));
         }
-    }, [activeTab, contextMenu, items.length, openItem, selectedItem, switchTab]);
+    }, [activeTab, contextMenu, openItem, selectedItem, switchTab, visibleItems.length]);
 
     const handleReorder = useCallback(async (direction: 'up' | 'down', item?: QuickOpenItem) => {
         const targetItem = item ?? contextMenu?.item;
@@ -418,6 +469,34 @@ export default function QuickLauncher() {
                     ))}
                 </div>
 
+                <div className="flex min-h-7 gap-1 overflow-x-auto pb-0.5" aria-label="タグ区分">
+                    <button
+                        type="button"
+                        onClick={() => selectTagFilter(ALL_TAGS_FILTER)}
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
+                            activeTagFilter === ALL_TAGS_FILTER
+                                ? 'bg-sky-500 text-white'
+                                : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                        }`}
+                    >
+                        すべて
+                    </button>
+                    {displayTagOptions.map((tag) => (
+                        <button
+                            key={tag}
+                            type="button"
+                            onClick={() => selectTagFilter(tag)}
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
+                                activeTagFilter === tag
+                                    ? 'bg-sky-500 text-white'
+                                    : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                            }`}
+                        >
+                            {tag === UNCLASSIFIED_TAG_FILTER ? '未分類' : tag}
+                        </button>
+                    ))}
+                </div>
+
                 <input
                     ref={inputRef}
                     value={query}
@@ -437,13 +516,13 @@ export default function QuickLauncher() {
                 )}
 
                 <div className="min-h-0 flex-1 overflow-y-auto rounded border border-zinc-800 bg-zinc-900/70">
-                    {items.length === 0 && !isLoading ? (
+                    {visibleItems.length === 0 && !isLoading ? (
                         <div className="flex h-full items-center justify-center px-5 text-center text-sm leading-6 text-zinc-500">
-                            {emptyMessageForTab(activeTab)}
+                            {items.length === 0 ? emptyMessageForTab(activeTab) : 'このタグに該当する項目はありません。'}
                         </div>
                     ) : (
                         <div className="py-1">
-                            {items.map((item, index) => (
+                            {visibleItems.map((item, index) => (
                                 <div
                                     key={item.path}
                                     role="button"
@@ -512,7 +591,7 @@ export default function QuickLauncher() {
                 </div>
 
                 <div className="flex h-5 items-center justify-between text-[11px] text-zinc-600">
-                    <span>{isLoading ? '読み込み中' : `${items.length} 件`}</span>
+                    <span>{isLoading ? '読み込み中' : `${visibleItems.length} / ${items.length} 件`}</span>
                     <span>{isLocked ? 'ロック中' : 'Esc / blur で閉じる'}</span>
                 </div>
             </div>

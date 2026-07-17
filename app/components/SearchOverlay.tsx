@@ -18,6 +18,7 @@ type SearchHit = {
     path: string;
     line: number;
     preview: string;
+    kind?: 'QA' | 'Reci' | 'Term' | null;
 };
 
 type SearchOverlayProps = {
@@ -231,6 +232,7 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
                                 }`}
                         >
                             <div className="text-xs text-gray-500 truncate">
+                                {hit.kind && <span className="mr-1 font-bold text-blue-600">[{hit.kind}]</span>}
                                 {getFileName(hit.path)} : {hit.line}行目
                             </div>
                             <div className="text-sm text-gray-700 truncate">

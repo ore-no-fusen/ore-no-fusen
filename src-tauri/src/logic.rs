@@ -21,7 +21,11 @@ pub enum Effect {
 pub fn parse_filename(filename: &str) -> (i32, String, String) {
     let parts: Vec<&str> = filename.split('_').collect();
     if parts.len() >= 3 {
-        let seq = parts[0].parse::<i32>().unwrap_or(0);
+        let sequence_part = ["Reci", "Term", "QA"]
+            .iter()
+            .find_map(|prefix| parts[0].strip_prefix(prefix))
+            .unwrap_or(parts[0]);
+        let seq = sequence_part.parse::<i32>().unwrap_or(0);
         let updated = parts[1].to_string();
         let context = parts[2..].join("_").trim_end_matches(".md").to_string();
         (seq, updated, context)
@@ -60,6 +64,10 @@ pub fn select_context_line(body: &str) -> &str {
 
 pub fn generate_filename(seq: i32, date: &str, context: &str) -> String {
     format!("{:04}_{}_{}.md", seq, date, context)
+}
+
+pub fn generate_crystal_filename(prefix: &str, seq: i32, date: &str, context: &str) -> String {
+    format!("{}{:04}_{}_{}.md", prefix, seq, date, context)
 }
 
 pub fn split_frontmatter(src: &str) -> (&str, &str) {
@@ -995,6 +1003,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_filename_supports_crystal_prefixes() {
+        assert_eq!(
+            parse_filename("QA0042_2026-07-18_質問.md"),
+            (42, "2026-07-18".to_string(), "質問".to_string())
+        );
+        assert_eq!(
+            parse_filename("Reci0007_2026-07-18_手順.md"),
+            (7, "2026-07-18".to_string(), "手順".to_string())
+        );
+        assert_eq!(
+            parse_filename("Term0100_2026-07-18_用語.md"),
+            (100, "2026-07-18".to_string(), "用語".to_string())
+        );
+    }
+
+    #[test]
     fn parse_filename_large_seq_number() {
         // 大きなシーケンス番号
         let (seq, _date, _context) = parse_filename("9999_2026-01-12_テスト.md");
@@ -1041,6 +1065,14 @@ mod tests {
     fn generate_filename_large_number() {
         let filename = generate_filename(9999, "2026-01-12", "最後のメモ");
         assert_eq!(filename, "9999_2026-01-12_最後のメモ.md");
+    }
+
+    #[test]
+    fn generate_crystal_filename_adds_type_before_sequence() {
+        assert_eq!(
+            generate_crystal_filename("QA", 3, "2026-07-18", "質問"),
+            "QA0003_2026-07-18_質問.md"
+        );
     }
 
     // === parse と generate の往復テスト ===
