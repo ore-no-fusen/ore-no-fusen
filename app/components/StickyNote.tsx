@@ -43,7 +43,7 @@ import StickyActionIcon from './StickyActionIcon';
 // ユーティリティ
 import { pathsEqual, getFileName, decodeNotePathFromUrl } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
-import { resolvePath } from '../utils/markdownUtils';
+import { buildFoldedPreview, resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { shouldHandleCrystalTrashRequest } from '../utils/crystalTrashRequest';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
@@ -2087,7 +2087,7 @@ const StickyNote = memo(function StickyNote() {
                             }}
                         >
                             <MarkdownRenderer
-                                content={content}
+                                content={buildFoldedPreview(content)}
                                 backgroundColor="transparent"
                                 fontSize={noteFontSize}
                                 isDraggableArea={false}
