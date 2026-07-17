@@ -394,7 +394,11 @@ fn query_matches(item: &QuickOpenItem, query: &str) -> bool {
 
     let needle = trimmed.to_lowercase();
     item.title.to_lowercase().contains(&needle)
-        || item.tags.iter().any(|tag| tag.to_lowercase().contains(&needle))
+        || item
+            .tags
+            .iter()
+            .filter(|tag| !logic::is_reserved_tag(tag))
+            .any(|tag| tag.to_lowercase().contains(&needle))
 }
 
 fn apply_query_filter(items: Vec<QuickOpenItem>, query: &str) -> Vec<QuickOpenItem> {
@@ -1253,20 +1257,22 @@ mod tests {
     }
 
     #[test]
-    fn query_filter_matches_title_and_tags_case_insensitively() {
+    fn query_filter_matches_title_and_user_tags_case_insensitively() {
         let items = vec![
             item("a.md", "Release Checklist", &["work"]),
-            item("b.md", "Other", &["QA"]),
+            item("b.md", "Other", &["QA", "Support"]),
             item("c.md", "Other", &["term"]),
         ];
 
         let by_title = apply_query_filter(items.clone(), "release");
-        let by_tag = apply_query_filter(items, "qa");
+        let by_tag = apply_query_filter(items.clone(), "support");
+        let by_system_tag = apply_query_filter(items, "qa");
 
         assert_eq!(by_title.len(), 1);
         assert_eq!(by_title[0].path, "a.md");
         assert_eq!(by_tag.len(), 1);
         assert_eq!(by_tag[0].path, "b.md");
+        assert!(by_system_tag.is_empty());
     }
 
     #[test]

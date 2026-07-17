@@ -48,6 +48,7 @@ import { safeUnlisten } from '../utils/safeUnlisten';
 import { shouldHandleCrystalTrashRequest } from '../utils/crystalTrashRequest';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
 import { matchesShortcut } from '../utils/shortcutKey';
+import { getUserTags } from '../utils/reservedTags';
 import { buildPerfReadyPayload } from '../utils/perfMeasurement';
 import {
     appendImprovementHistoryLine as appendCrystalImprovementHistoryLine,
@@ -382,6 +383,7 @@ const StickyNote = memo(function StickyNote() {
     const isTermNote = !isRecipeNote && !isQaNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'term');
     const isCrystalNote = isRecipeNote || isQaNote || isTermNote;
     const crystalNoteLabel = isRecipeNote ? 'レシピ' : isQaNote ? 'QA' : '用語';
+    const currentUserTags = useMemo(() => getUserTags(currentTags), [currentTags]);
 
     useEffect(() => {
         let cancelled = false;
@@ -1729,13 +1731,13 @@ const StickyNote = memo(function StickyNote() {
     const handleArchiveFromHoverButton = useCallback(async (x: number, y: number) => {
         if (!selectedFile) return;
 
-        if (currentTags.length > 1) {
+        if (currentUserTags.length > 1) {
             try {
                 const [{ Menu, MenuItem }, { LogicalPosition }] = await Promise.all([
                     import('@tauri-apps/api/menu'),
                     import('@tauri-apps/api/dpi'),
                 ]);
-                const items = await Promise.all(currentTags.map((tag) => MenuItem.new({
+                const items = await Promise.all(currentUserTags.map((tag) => MenuItem.new({
                     text: `🏷️ ${tag}`,
                     action: () => archiveToTag(tag),
                 })));
@@ -1750,8 +1752,8 @@ const StickyNote = memo(function StickyNote() {
             return;
         }
 
-        await archiveToTag(currentTags[0] ?? null);
-    }, [archiveToTag, selectedFile, currentTags]);
+        await archiveToTag(currentUserTags[0] ?? null);
+    }, [archiveToTag, selectedFile, currentUserTags]);
 
     const handleReturnRecipe = useCallback(async () => {
         if (!selectedFile?.path || !isCrystalNote) return;
@@ -1797,11 +1799,11 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [t]);
 
-    const archiveButtonLabel = currentTags.length === 0
+    const archiveButtonLabel = currentUserTags.length === 0
         ? t('menu.archiveNoTag')
-        : currentTags.length > 1
+        : currentUserTags.length > 1
             ? t('menu.archiveSelectTag')
-        : t('menu.archiveToTag').replace('{tag}', currentTags[0]);
+        : t('menu.archiveToTag').replace('{tag}', currentUserTags[0]);
 
     /**
      * ローカルキーボードショートカット（この付箋ウィンドウがアクティブな時のみ有効）
@@ -2333,9 +2335,9 @@ const StickyNote = memo(function StickyNote() {
                     style={{ opacity: isHover ? 1 : 0, transition: 'opacity 0.2s ease' }}
                 >
                     <div className="flex items-center justify-end gap-1 pointer-events-auto">
-                        {currentTags.length > 0 && (
+                        {currentUserTags.length > 0 && (
                             <div className="flex gap-1 flex-wrap max-w-[250px] justify-end">
-                                {currentTags.slice(0, 3).map((tag: string, idx: number) => {
+                                {currentUserTags.slice(0, 3).map((tag: string, idx: number) => {
                                     const openTagFolderLabel = t('menu.openTagFolder').replace('{tag}', tag);
                                     return (
                                         <Tooltip key={idx} text={openTagFolderLabel} placement="top-right-arrow-shifted">
@@ -2358,11 +2360,11 @@ const StickyNote = memo(function StickyNote() {
                                         </Tooltip>
                                     );
                                 })}
-                                {currentTags.length > 3 && (
+                                {currentUserTags.length > 3 && (
                                     <span
                                         className="text-[10px] px-2 py-[3px] bg-gray-200/50 text-gray-500 rounded border border-gray-300/50 whitespace-nowrap font-medium"
                                     >
-                                        +{currentTags.length - 3}
+                                        +{currentUserTags.length - 3}
                                     </span>
                                 )}
                             </div>

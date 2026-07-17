@@ -98,7 +98,7 @@ fn color_bucket(note: &ArrangeNote) -> ColorBucket {
 }
 
 fn classify(note: &ArrangeNote) -> NotePlacement {
-    let Some(tag) = note.tags.first() else {
+    let Some(tag) = note.tags.iter().find(|tag| !crate::logic::is_reserved_tag(tag)) else {
         return NotePlacement::Other;
     };
 
@@ -762,6 +762,29 @@ mod tests {
         assert_eq!(
             classify(&note("untagged_none.md", &[], None)),
             NotePlacement::Other
+        );
+    }
+
+    #[test]
+    fn classify_system_tag_only_as_other() {
+        assert_eq!(
+            classify(&note("favorite.md", &["shortcut"], Some(COLOR_YELLOW))),
+            NotePlacement::Other
+        );
+    }
+
+    #[test]
+    fn classify_by_first_user_tag_after_system_tag() {
+        assert_eq!(
+            classify(&note(
+                "favorite-work.md",
+                &["shortcut", "仕事", "調査"],
+                Some(COLOR_YELLOW),
+            )),
+            NotePlacement::Kanban {
+                tag: "仕事".to_string(),
+                color_role: ColorRole::Yellow,
+            }
         );
     }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isReservedTag, normalizeTagForReservation, RESERVED_TAGS } from './reservedTags';
+import { getUserTags, isReservedTag, normalizeTagForReservation, RESERVED_TAGS } from './reservedTags';
 
 describe('reservedTags', () => {
     it('defines the five reserved tags', () => {
@@ -21,5 +21,13 @@ describe('reservedTags', () => {
 
     it('normalizes tags for reservation checks', () => {
         expect(normalizeTagForReservation(' Term ')).toBe('term');
+    });
+
+    it('returns only user classification tags while preserving their order', () => {
+        expect(getUserTags(['shortcut', '仕事', 'QA', '調査', 'term'])).toEqual(['仕事', '調査']);
+    });
+
+    it('treats a favorite-only note as having no user tags', () => {
+        expect(getUserTags([' SHORTCUT '])).toEqual([]);
     });
 });

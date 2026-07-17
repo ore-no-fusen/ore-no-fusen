@@ -807,11 +807,21 @@ function OrchestratorContent() {
             physHeight: physicalSize.height,
             runId: null,
           });
+          await invoke('fusen_register_crystal_arrange_window', {
+            label: poolWindow.label,
+            path: notePath,
+          }).catch((error) => console.warn('[結晶整列] ウィンドウ登録に失敗しました:', error));
           invoke('fusen_create_pool_window').catch(() => {});
           return;
         }
       }
       await openNoteWindow(notePath, bg ? { background_color: bg } : undefined, event.payload.isNew);
+      if (event.payload.isCrystal) {
+        await invoke('fusen_register_crystal_arrange_window', {
+          label: getWindowLabel(notePath),
+          path: notePath,
+        }).catch((error) => console.warn('[結晶整列] ウィンドウ登録に失敗しました:', error));
+      }
     });
 
     promise.then((u) => { unlisten = u; });
@@ -820,7 +830,7 @@ function OrchestratorContent() {
       if (unlisten) safeUnlisten(unlisten);
       else safeUnlistenWhenResolved(promise);
     };
-  }, [isMainWindow, openNoteWindow]);
+  }, [getWindowLabel, isMainWindow, openNoteWindow]);
 
   // インポートした付箋をすべて生成してから、正式登録済みの全付箋をタグで整列する。
   useEffect(() => {

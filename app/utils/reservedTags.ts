@@ -11,3 +11,8 @@ export function normalizeTagForReservation(tag: string): string {
 export function isReservedTag(tag: string): tag is ReservedTag {
     return RESERVED_TAG_SET.has(normalizeTagForReservation(tag));
 }
+
+/** ユーザーが分類のために付けたタグだけを、記録順を保って返す。 */
+export function getUserTags(tags: string[]): string[] {
+    return tags.filter((tag) => !isReservedTag(tag));
+}

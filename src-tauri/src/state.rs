@@ -74,6 +74,10 @@ pub struct AppState {
     pub active_world: Option<String>,
     pub active_tags: Vec<String>,
     pub arrange_undo: Option<Vec<(String, f64, f64)>>,
+    /// 開いている結晶を整列へ含めるための、ウィンドウラベル→ファイルパス対応。
+    /// 通常付箋一覧とは分離し、起動復元の対象にはしない。
+    #[serde(default)]
+    pub arrange_crystal_windows: std::collections::HashMap<String, String>,
     /// Alt+Tabに表示する付箋ウィンドウのラベル（最後にフォーカスされたもの）
     pub last_alt_tab_window: Option<String>,
     /// Pro機能の設定（Web Push サブスクリプション情報・マルチデバイス対応）

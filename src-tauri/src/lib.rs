@@ -1183,6 +1183,53 @@ fn non_colliding_path(path: &Path) -> std::path::PathBuf {
     }
 }
 
+fn resolve_archive_user_tag(
+    target_tag: Option<String>,
+    tags: &[String],
+) -> Result<Option<String>, String> {
+    match target_tag {
+        Some(tag) if logic::is_reserved_tag(&tag) => {
+            Err("system tags cannot be used as archive destinations".to_string())
+        }
+        Some(tag) => Ok(Some(tag)),
+        None => Ok(logic::non_reserved_tags(tags).into_iter().next()),
+    }
+}
+
+#[cfg(test)]
+mod archive_user_tag_tests {
+    use super::resolve_archive_user_tag;
+
+    fn tags(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn falls_back_to_first_user_tag() {
+        assert_eq!(
+            resolve_archive_user_tag(None, &tags(&["shortcut", "仕事", "調査"])).unwrap(),
+            Some("仕事".to_string())
+        );
+    }
+
+    #[test]
+    fn system_tag_only_falls_back_to_archive() {
+        assert_eq!(
+            resolve_archive_user_tag(None, &tags(&["shortcut"])).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_explicit_system_tag_destination() {
+        assert!(resolve_archive_user_tag(
+            Some(" SHORTCUT ".to_string()),
+            &tags(&["仕事", "shortcut"]),
+        )
+        .is_err());
+    }
+}
+
 #[tauri::command]
 fn fusen_archive_note(
     state: State<'_, Mutex<AppState>>,
@@ -1211,7 +1258,7 @@ fn fusen_archive_note(
     let cleaned_content = logic::strip_sticky_fields(&content.body);
 
     // target_tag が指定されていればそのタグフォルダへ、なければ従来通り
-    let resolved_tag = target_tag.or_else(|| tags.into_iter().next());
+    let resolved_tag = resolve_archive_user_tag(target_tag, &tags)?;
 
     if let Some(tag) = resolved_tag {
         let tag_dir = storage::ensure_tag_dir(vault_root_path, &tag)?;
@@ -2163,6 +2210,66 @@ fn update_note_window_position(path: &str, x: f64, y: f64) -> Result<(), String>
     storage::write_note(path, &updated_content)
 }
 
+fn is_crystal_tags(tags: &[String]) -> bool {
+    tags.iter().any(|tag| {
+        matches!(
+            logic::normalize_reserved_tag(tag).as_str(),
+            "recipe" | "qa" | "term"
+        )
+    })
+}
+
+fn arrange_tags_for_window(tags: Vec<String>, is_crystal: bool) -> Vec<String> {
+    if is_crystal { Vec::new() } else { tags }
+}
+
+#[cfg(test)]
+mod crystal_arrange_tests {
+    use super::{arrange_tags_for_window, is_crystal_tags};
+
+    fn tags(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn recognizes_the_three_crystal_types() {
+        assert!(is_crystal_tags(&tags(&["仕事", "recipe"])));
+        assert!(is_crystal_tags(&tags(&["QA"])));
+        assert!(is_crystal_tags(&tags(&["term"])));
+        assert!(!is_crystal_tags(&tags(&["shortcut", "仕事"])));
+    }
+
+    #[test]
+    fn crystal_is_always_arranged_as_unclassified() {
+        assert!(arrange_tags_for_window(tags(&["recipe", "仕事"]), true).is_empty());
+    }
+
+    #[test]
+    fn normal_note_keeps_its_tags_for_arrangement() {
+        assert_eq!(
+            arrange_tags_for_window(tags(&["shortcut", "仕事"]), false),
+            tags(&["shortcut", "仕事"])
+        );
+    }
+}
+
+#[tauri::command]
+fn fusen_register_crystal_arrange_window(
+    state: State<'_, Mutex<AppState>>,
+    label: String,
+    path: String,
+) -> Result<(), String> {
+    let note = storage::read_note(&path)?;
+    let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&note.body);
+    if !is_crystal_tags(&tags) {
+        return Err("only crystal windows can be registered for crystal arrangement".to_string());
+    }
+
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    app_state.arrange_crystal_windows.insert(label, path);
+    Ok(())
+}
+
 #[tauri::command]
 async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
     run_fusen_arrange_by_tag(app).await
@@ -2185,9 +2292,16 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             .map(|note| note.path.clone())
             .collect()
     };
+    let crystal_window_paths = {
+        let state = app.state::<Mutex<AppState>>();
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.arrange_crystal_windows.clone()
+    };
 
     let mut notes: Vec<arrange::ArrangeNote> = Vec::new();
     let mut undo_snapshot: Vec<(String, f64, f64)> = Vec::new();
+    let mut window_labels_by_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for (label, window) in app.webview_windows() {
         if label == "main" {
             continue;
@@ -2211,14 +2325,17 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             _ => None,
         };
 
-        let Some(path) = note_paths
+        let normal_path = note_paths
             .iter()
             .find(|path| get_window_label(path) == label)
-            .cloned()
-        else {
+            .cloned();
+        let crystal_path = crystal_window_paths.get(&label).cloned();
+        let is_crystal = normal_path.is_none() && crystal_path.is_some();
+        let Some(path) = normal_path.or(crystal_path) else {
             logger::log_info(&format!("[ARRANGE] path not found for label: {}", label));
             continue;
         };
+        window_labels_by_path.insert(path.clone(), label.clone());
 
         let content = match storage::read_note(&path) {
             Ok(note) => note.body,
@@ -2229,6 +2346,7 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
         };
         let (_, _, width, height, background_color, _, tags, folded) =
             logic::extract_meta_from_content(&content);
+        let tags = arrange_tags_for_window(tags, is_crystal);
 
         let folded = folded.unwrap_or(false);
         let Some((width, height)) =
@@ -2322,7 +2440,10 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
     let mut move_failed_count = 0;
     let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
     for position in &positions {
-        let label = get_window_label(&position.path);
+        let label = window_labels_by_path
+            .get(&position.path)
+            .cloned()
+            .unwrap_or_else(|| get_window_label(&position.path));
         let Some(window) = app.get_webview_window(&label) else {
             logger::log_info(&format!(
                 "[ARRANGE] move skipped path={} label={} reason=window_not_found",
@@ -2419,7 +2540,15 @@ pub(crate) async fn run_fusen_arrange_undo<R: Runtime>(
     let mut move_failed_count = 0;
     let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
     for (path, x, y) in &undo_snapshot {
-        let label = get_window_label(path);
+        let label = {
+            let state = app.state::<Mutex<AppState>>();
+            let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+            app_state
+                .arrange_crystal_windows
+                .iter()
+                .find_map(|(label, crystal_path)| (crystal_path == path).then(|| label.clone()))
+                .unwrap_or_else(|| get_window_label(path))
+        };
         let Some(window) = app.get_webview_window(&label) else {
             logger::log_info(&format!(
                 "[ARRANGE] undo move skipped path={} label={} reason=window_not_found",
@@ -4639,6 +4768,7 @@ pub fn run() {
             fusen_set_opacity,
             fusen_select_folder,
             fusen_list_notes,
+            fusen_register_crystal_arrange_window,
             fusen_read_note,
             fusen_create_note,
             fusen_has_iphone_note,

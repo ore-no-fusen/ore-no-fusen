@@ -14,11 +14,11 @@ import { NoteMeta } from '@/app/api/notes';
 import { playDeleteSound, playSaveSound } from '../utils/soundManager';
 import { TranslationKey, Language } from '@/lib/i18n';
 import { getFeedbackConversationUnreadState } from '@/app/utils/feedbackConversation';
-import { isReservedTag, normalizeTagForReservation } from '@/app/utils/reservedTags';
+import { getUserTags, isReservedTag, normalizeTagForReservation } from '@/app/utils/reservedTags';
 import { addTag as addRawTag, removeTag as removeRawTag } from '@/app/api/tags';
 
 export function filterAssignableTags(tags: string[]): string[] {
-    return tags.filter((tag) => !isReservedTag(tag));
+    return getUserTags(tags);
 }
 
 type TagContextMenuItemKind = 'tag' | 'tag_del' | 'archive_tag';
@@ -571,9 +571,10 @@ export function useStickyNoteContextMenu({
                     }
                 }));
 
-                if (freshTags.length > 0) {
+                const deletableTags = filterAssignableTags(freshTags);
+                if (deletableTags.length > 0) {
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                    for (const [index, tag] of freshTags.entries()) {
+                    for (const [index, tag] of deletableTags.entries()) {
                         tagSubItems.push(await MenuItem.new({
                             id: contextMenuTagItemId('tag_del', index),
                             text: `❌ ${tag}`,
@@ -700,10 +701,11 @@ export function useStickyNoteContextMenu({
             // タグフォルダへ移動（レシピ付箋には出さない。Recipes/ から連れ出して棚が壊れるため）
             if (!isRecipeNote) {
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-            if (currentTags.length > 1) {
+            const archiveTags = getUserTags(currentTags);
+            if (archiveTags.length > 1) {
                 // 複数タグ: サブメニューで移動先を選択
                 const archiveSubItems: any[] = [];
-                for (const [index, tag] of currentTags.entries()) {
+                for (const [index, tag] of archiveTags.entries()) {
                     archiveSubItems.push(await MenuItem.new({
                         id: contextMenuTagItemId('archive_tag', index),
                         text: `🏷️ ${tag}`,
