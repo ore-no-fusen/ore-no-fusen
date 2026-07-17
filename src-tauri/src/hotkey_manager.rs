@@ -467,6 +467,15 @@ pub(crate) fn hotkey_apply(
 
     state.register_failures.write().unwrap_or_else(|e| e.into_inner()).retain(|failure| failure.action != action.id());
 
+    // 保存済みのキー／2回押し設定をトレイ表示へ即時反映する。
+    drop(bindings);
+    let app_handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Err(e) = crate::tray::refresh_tray_menu(&app_handle) {
+            logger::log_warn(&format!("[Shortcut] tray refresh failed: {}", e));
+        }
+    });
+
     Ok(())
 }
 
