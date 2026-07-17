@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectReadyInvisibleNote } from './invisibleNotePool';
+import { selectReadyInvisibleNote, shouldEditPromotedPoolNote } from './invisibleNotePool';
 
 describe('初回用の見えない付箋', () => {
     it('準備済みかつ未使用のPool窓だけを選ぶ', () => {
@@ -27,5 +27,16 @@ describe('初回用の見えない付箋', () => {
             () => false,
         );
         expect(selected).toBeUndefined();
+    });
+});
+
+describe('Pool昇格後の表示モード', () => {
+    it('新規付箋は従来どおり編集モードで開く', () => {
+        expect(shouldEditPromotedPoolNote(true)).toBe(true);
+    });
+
+    it('クイックランチャーから開く既存結晶は表示モードで開く', () => {
+        expect(shouldEditPromotedPoolNote(false)).toBe(false);
+        expect(shouldEditPromotedPoolNote(undefined)).toBe(false);
     });
 });

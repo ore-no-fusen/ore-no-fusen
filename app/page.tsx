@@ -15,7 +15,7 @@ import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { listen } from '@tauri-apps/api/event';
+import { emitTo, listen } from '@tauri-apps/api/event';
 import { pathsEqual, normalizePath, getFileName, encodeNotePathForUrl } from './utils/pathUtils';
 import { playLocalSound, playCreateSound, SoundType } from './utils/soundManager';
 import { type NoteMeta } from './api/notes';
@@ -743,6 +743,7 @@ function OrchestratorContent() {
         if (mappedLabel) {
           const mappedWindow = await WebviewWindow.getByLabel(mappedLabel);
           if (mappedWindow) {
+            await emitTo(mappedLabel, 'fusen:show_in_view_mode');
             await mappedWindow.show();
             await mappedWindow.unminimize();
             await mappedWindow.setFocus();
@@ -778,7 +779,6 @@ function OrchestratorContent() {
             disposeHydrated();
             resolveHydrated?.();
           }, 500);
-          const { emitTo } = await import('@tauri-apps/api/event');
           await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
             path: notePath,
             isNew: false,

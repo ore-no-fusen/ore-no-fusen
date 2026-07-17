@@ -66,6 +66,7 @@ import { NoteMeta } from '@/app/api/notes';
 import { returnRecipe } from '@/app/api/recipes';
 import { hideReturnedCrystalWindow } from '@/app/utils/crystalWindowLifecycle';
 import { extractHydratedNoteMeta } from '@/app/utils/hydratedNoteMeta';
+import { shouldEditPromotedPoolNote } from '@/app/utils/invisibleNotePool';
 import { invoke } from '@tauri-apps/api/core';
 import { getWindowGeometry } from '@/app/api/window';
 
@@ -783,8 +784,12 @@ const StickyNote = memo(function StickyNote() {
                 // handleFirstChar で fusen_create_note_lazy が成功した後に isPool を解除する。
                 // ここで setIsPool(false) すると urlPath=null のまま「No path parameter」になる。
 
-                // 待機中にフォーカスが外れて編集モードが解除されている可能性があるため、明示的に編集モードを開始
-                startEditing();
+                const opensInEditMode = shouldEditPromotedPoolNote(event.payload.isNew);
+                if (opensInEditMode) {
+                    startEditing();
+                } else {
+                    setIsEditing(false);
+                }
                 // [FIX] startEditing() は stale な initialContent（""）で editBody を上書きするため、
                 // 複製・新規ノートのコンテンツを直接 setEditBody で反映する。
                 if (promotedBody !== undefined) {
@@ -816,12 +821,13 @@ const StickyNote = memo(function StickyNote() {
                 // rAF 1回でレイアウト確定を待つだけで十分（ITaskbarList 待機の 300ms は不要）。
                 setTimeout(async () => {
                     isPromotingRef.current = false; // 付箋表示中フラグ OFF
-                    // フォーカスが外れて編集モードが解除された場合に備えて、強制的に編集モードをONにする
-                    setIsEditing(true);
+                    setIsEditing(opensInEditMode);
                     // React 再レンダリング + CodeMirror レイアウト確定を rAF 1回で待つ
                     await new Promise(r => requestAnimationFrame(r));
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus attempt: editorRef=${!!editorRef.current}` }).catch(() => { });
-                    if (event.payload.isNew) {
+                    if (!opensInEditMode) {
+                        // クイックランチャーは検索・閲覧の入口なので、結晶本文へ編集フォーカスを移さない。
+                    } else if (event.payload.isNew) {
                         editorRef.current?.focusAndSelectFirstLine();
                     } else {
                         editorRef.current?.focus();
@@ -851,6 +857,22 @@ const StickyNote = memo(function StickyNote() {
             safeUnlisten(unlisten);
         };
     }, [hydrateLoadedContent, isPool, noteFilePathRef, setContent, setCurrentTags, setEditBody, setIsEditing, setRawFrontmatter, startEditing]);
+
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        const setup = async () => {
+            const currentWindow = getCurrentWindow();
+            if (typeof currentWindow.listen !== 'function') return;
+            unlisten = await currentWindow.listen('fusen:show_in_view_mode', async () => {
+                if (isEditingForListenerRef.current) {
+                    await endEditingForListenerRef.current();
+                }
+                setIsEditing(false);
+            });
+        };
+        setup();
+        return () => safeUnlisten(unlisten);
+    }, [setIsEditing]);
 
     // [NEW] Pool 窓 ready 厳格化: CodeMirror マウント完了 + rAF 1 回経過後に emit
     // setTimeout 禁止（RESEARCH pitfall 6 / Pattern 3）
