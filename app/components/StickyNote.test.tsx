@@ -20,6 +20,7 @@ const { mockArchiveMenuPopup } = vi.hoisted(() => ({
 // Mock Next.js hooks
 let mockStartupRestore = false;
 let mockNoteTags: string[] = [];
+let mockNoteFolded = false;
 vi.mock('next/navigation', () => ({
     useSearchParams: () => ({
         get: (key: string) => {
@@ -43,6 +44,9 @@ const mockWindow = {
     emit: vi.fn(),
     isFocused: vi.fn().mockResolvedValue(false),
     setFocus: vi.fn().mockResolvedValue(undefined),
+    innerSize: vi.fn().mockResolvedValue({ width: 400, height: 300 }),
+    scaleFactor: vi.fn().mockResolvedValue(1),
+    setSize: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -116,6 +120,7 @@ describe('StickyNote Component', () => {
         vi.clearAllMocks();
         mockStartupRestore = false;
         mockNoteTags = [];
+        mockNoteFolded = false;
         mockWebviewWindow.getByLabel.mockResolvedValue(null);
         mockWindow.isFocused.mockResolvedValue(false);
         mockArchiveMenuPopup.mockReset();
@@ -125,7 +130,7 @@ describe('StickyNote Component', () => {
             switch (cmd) {
                 case 'fusen_read_note':
                     return Promise.resolve({
-                        meta: { path: 'd:/test/note.md', width: 200, height: 200, tags: mockNoteTags },
+                        meta: { path: 'd:/test/note.md', width: 200, height: 200, tags: mockNoteTags, folded: mockNoteFolded },
                         body: '---\ntags: []\n---\nTest Content'
                     });
                 case 'fusen_save_note':
@@ -182,6 +187,22 @@ describe('StickyNote Component', () => {
                 label: 'note-startup',
             });
         });
+        expect(mockWindow.setSize).not.toHaveBeenCalled();
+    });
+
+    it('起動時の折りたたみ付箋はサイズ反映後に準備完了を通知する', async () => {
+        mockStartupRestore = true;
+        mockNoteFolded = true;
+
+        render(<StickyNote />);
+
+        await waitFor(() => expect(mockWindow.setSize).toHaveBeenCalled());
+        await waitFor(() => expect(vi.mocked(emitEvent)).toHaveBeenCalledWith(
+            'fusen:startup_note_ready',
+            { label: 'note-startup' },
+        ));
+        expect(mockWindow.setSize.mock.invocationCallOrder[0])
+            .toBeLessThan(vi.mocked(emitEvent).mock.invocationCallOrder[0]);
     });
 
     it('600msホバー後に前面化し、クイックランチャー表示中はフォーカスを奪わない', async () => {

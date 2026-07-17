@@ -231,8 +231,9 @@ const StickyNote = memo(function StickyNote() {
     });
 
     const startupReadyEmittedRef = useRef(false);
+    const [startupWindowStateReady, setStartupWindowStateReady] = useState(!isStartupRestore);
     useEffect(() => {
-        if (!isStartupRestore || loading || startupReadyEmittedRef.current) return;
+        if (!isStartupRestore || loading || !startupWindowStateReady || startupReadyEmittedRef.current) return;
 
         let cancelled = false;
         const notifyReady = async () => {
@@ -247,7 +248,7 @@ const StickyNote = memo(function StickyNote() {
         return () => {
             cancelled = true;
         };
-    }, [isStartupRestore, loading]);
+    }, [isStartupRestore, loading, startupWindowStateReady]);
 
 
     // スタイル関連（カスタムフックで一元管理）
@@ -359,7 +360,7 @@ const StickyNote = memo(function StickyNote() {
         setSavePending(true);
     }, [isPool, setRawFrontmatter, setSavePending]); // isDeletingRef は ref（安定）
 
-    const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize, setIsMinimized } = useWindowManager({
+    const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize } = useWindowManager({
         onGeometryChange: handleGeometryChange,
         onAutoExpand: handleAutoExpand,
         getMinimizedHeight // [New]
@@ -437,16 +438,19 @@ const StickyNote = memo(function StickyNote() {
     const initialSyncDone = useRef(false);
     useEffect(() => {
         if (!initialSyncDone.current && note?.meta) {
-            if (note.meta.folded) {
-                if (note.meta.width && note.meta.height) {
-                    setOriginalSize(note.meta.width, note.meta.height);
-                }
-                setIsMinimized(true);
-                toggleMinimize(); // Apply minimisation (size change)
-            }
             initialSyncDone.current = true;
+            const applyInitialWindowState = async () => {
+                if (note.meta.folded) {
+                    if (note.meta.width && note.meta.height) {
+                        setOriginalSize(note.meta.width, note.meta.height);
+                    }
+                    await toggleMinimize();
+                }
+                setStartupWindowStateReady(true);
+            };
+            void applyInitialWindowState();
         }
-    }, [note, toggleMinimize, setOriginalSize, setIsMinimized]);
+    }, [note, toggleMinimize, setOriginalSize]);
 
     // ピン留め状態の同期（初期ロード完了時および変更時）
     useEffect(() => {
@@ -846,7 +850,7 @@ const StickyNote = memo(function StickyNote() {
             mounted = false;
             safeUnlisten(unlisten);
         };
-    }, [isPool, noteFilePathRef, setContent, setEditBody, setIsEditing, setRawFrontmatter, startEditing]);
+    }, [hydrateLoadedContent, isPool, noteFilePathRef, setContent, setCurrentTags, setEditBody, setIsEditing, setRawFrontmatter, startEditing]);
 
     // [NEW] Pool 窓 ready 厳格化: CodeMirror マウント完了 + rAF 1 回経過後に emit
     // setTimeout 禁止（RESEARCH pitfall 6 / Pattern 3）
@@ -1683,6 +1687,23 @@ const StickyNote = memo(function StickyNote() {
         };
     }, []);
 
+    const archiveToTag = useCallback(async (targetTag: string | null) => {
+        if (!selectedFile) return;
+        try {
+            isDeletingRef.current = true;
+            await saveNoteContent(editBody, rawFrontmatter, false);
+            await playSaveSound();
+            await invoke('fusen_archive_note', { path: selectedFile.path, targetTag });
+            const win = getCurrentWindow();
+            await win.hide();
+            await win.destroy();
+        } catch (e) {
+            isDeletingRef.current = false;
+            console.error('Failed to archive note:', e);
+            alert(`${t('menu.archive_failed')}\n${e}`);
+        }
+    }, [selectedFile, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
+
     const handleArchiveFromHoverButton = useCallback(async (x: number, y: number) => {
         if (!selectedFile) return;
 
@@ -1708,24 +1729,7 @@ const StickyNote = memo(function StickyNote() {
         }
 
         await archiveToTag(currentTags[0] ?? null);
-    }, [selectedFile, currentTags]);
-
-    const archiveToTag = useCallback(async (targetTag: string | null) => {
-        if (!selectedFile) return;
-        try {
-            isDeletingRef.current = true;
-            await saveNoteContent(editBody, rawFrontmatter, false);
-            await playSaveSound();
-            await invoke('fusen_archive_note', { path: selectedFile.path, targetTag });
-            const win = getCurrentWindow();
-            await win.hide();
-            await win.destroy();
-        } catch (e) {
-            isDeletingRef.current = false;
-            console.error('Failed to archive note:', e);
-            alert(`${t('menu.archive_failed')}\n${e}`);
-        }
-    }, [selectedFile, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
+    }, [archiveToTag, selectedFile, currentTags]);
 
     const handleReturnRecipe = useCallback(async () => {
         if (!selectedFile?.path || !isCrystalNote) return;
@@ -1760,7 +1764,7 @@ const StickyNote = memo(function StickyNote() {
             console.error(`Failed to return ${isRecipeNote ? 'recipe' : isQaNote ? 'QA' : 'term'}:`, e);
             alert(`${crystalNoteLabel}を返せませんでした\n${e}`);
         }
-    }, [content, crystalNoteLabel, isCrystalNote, isQaNote, isRecipeNote, selectedFile?.path]);
+    }, [content, crystalNoteLabel, isCrystalNote, isQaNote, isRecipeNote, selectedFile?.path, setContent, setEditBody, setRawFrontmatter]);
 
     const handleOpenTagFolder = useCallback(async (tag: string) => {
         try {
