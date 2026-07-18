@@ -29,6 +29,7 @@ import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時�
 import { getTranslation, type Language } from '@/lib/i18n';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
@@ -1870,7 +1871,10 @@ function OrchestratorContent() {
       <ConfirmDialog
         isOpen={showUpdateDialog}
         title={tUpdate('update.title')}
-        message={tUpdate('update.message').replace('{version}', pendingUpdate.version)}
+        message={(isStoreMigrationBridgeVersion(pendingUpdate.version)
+          ? tUpdate('update.storeMigrationMessage')
+          : tUpdate('update.message'))
+          .replace('{version}', pendingUpdate.version)}
         confirmText={tUpdate('update.confirm')}
         cancelText={tUpdate('update.cancel')}
         onConfirm={handleUpdateConfirm}

@@ -404,6 +404,7 @@ export const translations = {
         // アップデート
         'update.title': 'アップデートがあります',
         'update.message': 'バージョン {version} が利用可能です。\n今すぐアップデートしますか？\n（ダウンロード後に自動で再起動します）',
+        'update.storeMigrationMessage': 'バージョン {version} は、Microsoft Store 版へ移行するための最終デスクトップ更新です。\n\nまずこの更新を適用してください。再起動後、設定 →「このアプリについて」→「Microsoft Store 版へ移行」からStore版をインストールし、付箋と設定を確認してから旧版をアンインストールしてください。',
         'update.confirm': 'アップデートする',
         'update.cancel': 'あとで',
 
@@ -837,6 +838,7 @@ export const translations = {
         // Update
         'update.title': 'Update Available',
         'update.message': 'Version {version} is available.\nWould you like to update now?\n(The app will restart automatically after download.)',
+        'update.storeMigrationMessage': 'Version {version} is the final desktop update for moving to the Microsoft Store edition.\n\nInstall this update first. After restart, open Settings → About → Move to the Microsoft Store edition. Verify your notes and settings before uninstalling the old edition.',
         'update.confirm': 'Update Now',
         'update.cancel': 'Later',
 

@@ -668,3 +668,5 @@
 - `winget install --id 9N4MW0V2MVVG --source msstore`、Store自動更新、旧版を先に削除しない移行手順を統一した。
 - VitePress製品ビルドと`git diff --check`に成功し、旧「MSIXお試し版」「MSI本気版」「setup.exe」案内の残存なしを確認した。
 - developのDocs workflowはbuild成功後、`github-pages` environmentへ入る前にstepなしで失敗した。main専用environment保護が原因と推定し、developではbuildのみ・mainだけdeployへ変更する案を保留中。
+- Docs workflowをdevelopではbuildのみ、mainまたは手動実行時だけdeployするよう修正し、Actions run 29658767858でbuild成功・deploy skip・workflow成功を確認した。
+- 5.0.0だけをStore移行ブリッジ版と判定する共通関数と9件のテストを追加。旧版のTauri Updaterで5.0.0を検出した場合、更新後に設定画面からStore版を導入し、データ確認後に旧版を削除する専用メッセージを表示する。
