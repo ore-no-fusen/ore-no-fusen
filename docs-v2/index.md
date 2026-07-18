@@ -164,7 +164,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <tr><td><span class="doc-badge badge-005">005</span></td><td><strong><a href="./005_GLOSSARY">用語集</a></strong></td><td>専門用語・略語一覧</td></tr>
   <tr><td><span class="doc-badge badge-006">006</span></td><td><strong><a href="./006_ARCHITECTURE">4+1 Viewアーキテクチャ</a></strong></td><td>4+1 View Model・システム全体俯瞰図</td></tr>
   <tr><td><span class="doc-badge badge-007">007</span></td><td><strong><a href="./007_COMMUNICATION">コミュニケーション設計</a></strong></td><td>ユーザーと開発者の 1 対 1 掲示板・安全な日次確認</td></tr>
-  <tr><td><span class="doc-badge badge-008">008</span></td><td><strong><a href="./008_DISTRIBUTION">配布設計（MSIX / MSI）</a></strong></td><td>MSIX お試し版と MSI 本気版の配布形態・共有データ・制約</td></tr>
+  <tr><td><span class="doc-badge badge-008">008</span></td><td><strong><a href="./008_DISTRIBUTION">配布設計（Microsoft Store MSIX）</a></strong></td><td>5.0.0移行開始から5.1.0 MSIX一本化までの配布・更新・データ移行</td></tr>
   <tr><td><span class="doc-badge badge-100">100</span></td><td><strong><a href="./100_PRIVACY">プライバシーポリシー</a></strong></td><td>Google Drive連携・ログ・データ削除方針</td></tr>
   <tr><td><span class="doc-badge badge-101">101</span></td><td><strong><a href="./101_TERMS">利用規約</a></strong></td><td>利用条件・免責事項・外部サービスの扱い</td></tr>
   <tr><td><span class="doc-badge badge-200">200</span></td><td><strong><a href="./200_SIRI_SETUP">Siri から PC に付箋を送る</a></strong></td><td>iPhone のショートカット App を使った音声送信の設定手順（実験的）</td></tr>
@@ -341,7 +341,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
         <span class="doc-badge badge-008">008</span>
         <div class="doc-card-title">
           <a href="./008_DISTRIBUTION">配布設計（MSIX / MSI）</a>
-          <div class="doc-subtitle">MSIX お試し版と MSI 本気版の配布設計</div>
+          <div class="doc-subtitle">Microsoft Store MSIXへの一本化と既存版からの移行設計</div>
         </div>
       </div>
       <div class="toc-list">

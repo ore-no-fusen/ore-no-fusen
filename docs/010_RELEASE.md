@@ -246,7 +246,7 @@ flowchart TD
 
 **図 5-1　開発からリリースまでの全体フロー**
 
-> **補足（`release.yml` の自動処理）:** タグ push を起点に `release.yml` が走り、① リリースノート自動生成 → ② `tauri-action` でビルド・署名・GitHubリリース作成 → ③ 署名なし MSIX 生成（Actions アーティファクト保存）→ ④ `winget` へ自動公開（`ONFStudios.OreNoFusen`）まで自動で行う。**MSIX のストア提出だけは手動**（第7章）。
+> **補足（移行中の`release.yml`）:** 5.0.0は最終NSIS・MSIとStore提出用MSIXを生成する。Store提出用MSIXはGitHub Releaseへ添付せず、`store-msix` Actions artifactへ保存する。5.1.0以降はMSIXだけを生成し、community wingetへのPRは行わない。一般公開完了はDo Release時点ではなく、Microsoft Storeの認定・公開時点とする。
 
 ---
 
@@ -260,13 +260,16 @@ npm run tauri build
 
 ---
 
-## 7. MSIX（ストアお試し版）の扱い
+## 7. Microsoft Store MSIXの扱い
 
-- **MSIX は毎回 CI（`release.yml`）で生成する**が、**署名はしない**。署名はストア提出時に Microsoft が代行するため、ローカルで自己署名する必要はない。
-- **署名なし MSIX はローカルではテストしない。** アプリ機能の動作確認は MSI 版で行う（普段のテストも MSI でやる）。
-- **MSIX 固有部分（自動起動 StartupTask / 自動更新の Store 委譲分岐）は v4.0.0 前に自己署名ビルドで一度実機確認済み**。以降は MSIX 固有コードを変えない限り再確認は不要。
-- ストア提出は**メジャーアップデートのときだけ手動で行う**（`packaging\msix\build-msix.ps1` で署名なし MSIX を作り、Partner Center に手動アップロード）。詳細手順は `.planning/msix-plan.md` §8。
-- **AppxManifest（MSIX）の Version は Do Release が自動更新する。** 本体バージョンに合わせ `X.Y.Z.0`（4桁・第4桁は Store が予約するため 0 固定）へ書き換えてコミットするので、**手で版番号を上げる必要はない**。MSIX をビルドする時点では既に正しい版番号が入っている。
+- **5.0.0は移行開始版**としてNSIS・MSI・Store MSIXの3形式を最後に提供する。旧版のTauri updaterは5.0.0の移行案内を届けるため維持する。
+- **5.1.0は移行完了版**とし、Store MSIXだけを正式配布する。MSI・NSIS、`latest.json`、`.sig`、community winget PRの新規生成を終了する。
+- Store提出用MSIXは未署名で生成し、`validate-msix.ps1`でIdentity、Publisher、Version、x64、未署名状態を確認する。
+- 未署名MSIXはGitHub Release Assetsへ置かず、Release workflowの`store-msix` artifactとして30日保存する。
+- Store提出は`Microsoft Store Submit` workflowへRelease tagとRelease run IDを入力し、最初にdry runを行う。詳細は`docs/store-submission.md`を参照する。
+- Microsoft Storeが認定後の配布用MSIXへ正式署名し、自動更新を提供する。
+- `AppxManifest.xml`のVersionはDo Releaseが本体`X.Y.Z`に合わせて`X.Y.Z.0`へ更新する。
+- Store公開後、`winget install --id 9N4MW0V2MVVG --source msstore`とStore自動更新を実機確認する。
 
 ---
 

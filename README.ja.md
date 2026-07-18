@@ -12,12 +12,10 @@ Markdownで書ける、美しい付箋アプリ
 
 [![GitHub release](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/release.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Downloads](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/downloads-total.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-[![Downloads Latest](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/downloads-latest.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
-**累計1,000ダウンロードありがとうございます。**
+**GitHub配布版は累計2,800ダウンロードを達成しました。現在の正式版はMicrosoft Storeで提供しています。**
 
-[ダウンロード](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest) • [オンラインドキュメント](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app) • [🎥 漫画で学ぶ](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
+[Microsoft Store](https://apps.microsoft.com/detail/9N4MW0V2MVVG) • [オンラインドキュメント](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [ランディングページ](https://ore-no-fusen.vercel.app) • [🎥 漫画で学ぶ](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
 
 </div>
 
@@ -30,12 +28,10 @@ Markdownで書ける、デスクトップ付箋。
 
 ## インストール（10秒）
 ```bash
-winget install ore-no-fusen
+winget install --id 9N4MW0V2MVVG --source msstore
 ```
 
-またはダウンロードページから：
-
-[最新リリース](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
+または[Microsoft Store](https://apps.microsoft.com/detail/9N4MW0V2MVVG)からインストールできます。
 
 
 ## コンセプト
@@ -79,35 +75,17 @@ winget install ore-no-fusen
 
 ### 一般ユーザー向け（推奨）
 
-1. [最新リリースページ](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)を開く
-2. 最新版の **`ore-no-fusen_x.x.x_x64-setup.exe`** をダウンロード
-3. ダウンロードしたファイルをダブルクリックしてインストール
-4. インストール完了後、スタートメニューから「俺の付箋」を起動
+1. [Microsoft Storeの商品ページ](https://apps.microsoft.com/detail/9N4MW0V2MVVG)を開く
+2. 「入手」または「インストール」を選ぶ
+3. インストール完了後、スタートメニューから「俺の付箋」を起動
+4. 以後の更新はMicrosoft Storeから自動的に配信される
 
 **システム要件:**
 - OS: Windows 10/11 (64-bit)
 - 容量: 約 100MB
 - メモリ: 4GB以上推奨
 
-詳しいインストール手順は[ユーザーガイド（Wiki・第1章）](https://github.com/ore-no-fusen/ore-no-fusen/wiki/01-はじめに-インストール)をご覧ください。
-
-### ⚠️ インストール時の「SmartScreen」警告について
-
-インストール時に「**Windows によって PC が保護されました**」という画面が表示される場合があります。
-
-**これは何？**  
-SmartScreen とは、Windows に搭載されたセキュリティ機能です。ダウンロード数が少ないアプリや、有料の「コード署名証明書」を持たないアプリに対して自動的に警告を表示します。ウイルスを検出したわけではありません。
-
-**対処方法:**
-
-1. 「詳細情報」をクリック
-2. 「実行」ボタンが表示されるのでクリック
-
-これで通常通りインストールできます。
-
-> 💡 **ご安心ください** — ore-no-fusen はオープンソースです。ソースコードは [GitHub](https://github.com/ore-no-fusen/ore-no-fusen) で全て公開されており、誰でも内容を確認できます。
-
-詳しいインストール手順は[ユーザーガイド（Wiki・第1章）](https://github.com/ore-no-fusen/ore-no-fusen/wiki/01-はじめに-インストール)をご覧ください。
+旧MSI・NSIS版を利用している場合は、先にStore版を導入して付箋と設定を確認してから旧版をアンインストールしてください。
 
 ### 開発者向け
 
@@ -138,7 +116,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-ビルド成果物は `src-tauri\target\release\bundle\nsis\` に生成されます。
+Store提出用MSIXはrelease実行ファイルとresourcesを作成後、`packaging/msix/build-msix.ps1`で生成します。
 
 ---
 

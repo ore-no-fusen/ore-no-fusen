@@ -10,13 +10,31 @@ pageClass: user-guide-page
 
 | 手順 | やること |
 |---|---|
-| 1 | [Releases](https://github.com/ore-no-fusen/ore-no-fusen/releases) を開く |
-| 2 | 最新版の `ore-no-fusen_x.x.x_x64-setup.exe` をダウンロード |
-| 3 | インストーラーを起動 |
+| 1 | [Microsoft Store](https://apps.microsoft.com/detail/9N4MW0V2MVVG) を開く |
+| 2 | 「入手」または「インストール」を選ぶ |
+| 3 | Storeによるインストール完了を待つ |
 | 4 | スタートメニューから「俺の付箋」を起動 |
 
+コマンドで導入する場合は、Microsoft Storeと同じ正式版をwingetからインストールできます。
+
+```powershell
+winget install --id 9N4MW0V2MVVG --source msstore
+```
+
+::: info
+更新はMicrosoft Storeから自動的に配信されます。GitHub ReleaseのMSI・NSISは5.0.0の既存利用者向け移行版が最後です。
+:::
+
+## 旧MSI・NSIS版から移行する
+
+1. 旧版をアンインストールせず、先にMicrosoft Store版をインストールします。
+2. 旧版を終了してからStore版を起動します。
+3. 付箋、画像、タグ、保存先、設定が引き継がれていることを確認します。
+4. Store版を終了し、Windowsの「インストールされているアプリ」から旧版をアンインストールします。
+5. Store版を再起動し、データが残っていることを確認します。
+
 ::: warning
-SmartScreenが出た場合は、配布元がこのリポジトリであることを確認してから実行してください。
+旧版とStore版は同時起動できません。旧版を先にアンインストールせず、Store版でデータを確認してから削除してください。
 :::
 
 ## 初回に見る設定

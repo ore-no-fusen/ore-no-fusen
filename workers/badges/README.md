@@ -13,9 +13,9 @@ README用のバッジSVGを返す Cloudflare Worker。
 
 ```text
 /badges/release.svg
-/badges/downloads-total.svg
-/badges/downloads-latest.svg
 ```
+
+旧`downloads-total.svg` / `downloads-latest.svg` endpointは互換性のため残る場合があるが、Store版の取得・インストール数を表さないためREADMEでは使用しない。
 
 ## Cloudflare resources
 

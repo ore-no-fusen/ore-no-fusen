@@ -659,3 +659,12 @@
 - LPの上下CTA、wingetコピー、SmartScreen説明、Windows use-caseのJSON-LDをStore版へ統一した。Store Product IDは既存の`9N4MW0V2MVVG`を使用する。
 - 検証済み: TypeScript、全Vitest 361件、Next.js製品ビルド、MSIX再生成・内容検査、`git diff --check`。
 - 未実施: 設計書・README・ユーザーガイド同期、5.0.0移行ダイアログの実機確認、GitHub Actions上のartifact受け渡し確認、コミット・プッシュ。
+
+## 2026-07-19 Phase 21 文書同期
+
+- `docs-v2/008_DISTRIBUTION.md`をv2.0へ全面改版し、5.0.0移行開始版（NSIS・MSI・Store MSIX）と5.1.0一本化完了版（Store MSIXのみ）を仕様化した。
+- README日英、ユーザーガイドのインストール、配布索引、リリース手順、Store提出手順、Vercel説明、バッジWorker説明をStore版へ同期した。
+- GitHub downloadバッジをREADMEから外し、旧GitHub配布実績2,800件は過去実績として固定注記した。
+- `winget install --id 9N4MW0V2MVVG --source msstore`、Store自動更新、旧版を先に削除しない移行手順を統一した。
+- VitePress製品ビルドと`git diff --check`に成功し、旧「MSIXお試し版」「MSI本気版」「setup.exe」案内の残存なしを確認した。
+- developのDocs workflowはbuild成功後、`github-pages` environmentへ入る前にstepなしで失敗した。main専用environment保護が原因と推定し、developではbuildのみ・mainだけdeployへ変更する案を保留中。

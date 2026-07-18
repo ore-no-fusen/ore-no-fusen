@@ -12,12 +12,10 @@ A beautiful sticky notes app with Markdown support.
 
 [![GitHub release](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/release.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Downloads](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/downloads-total.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases)
-[![Downloads Latest](https://ore-no-fusen-badges.ore-no-fusen-g8.workers.dev/badges/downloads-latest.svg)](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest)
 
-**Thanks for 1,000+ downloads.**
+**The former GitHub-distributed edition reached 2,800 downloads. The current official edition is distributed through Microsoft Store.**
 
-[Download](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest) • [Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [Landing Page](https://ore-no-fusen.vercel.app) • [🎥 Comic Guide](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
+[Microsoft Store](https://apps.microsoft.com/detail/9N4MW0V2MVVG) • [Documentation](https://ore-no-fusen.github.io/ore-no-fusen/) • [FAQ](docs/101_FAQ.md) • [Landing Page](https://ore-no-fusen.vercel.app) • [🎥 Comic Guide](https://github.com/ore-no-fusen/ore-no-fusen/wiki/%E6%BC%AB%E7%94%BB%E3%81%A7%E5%AD%A6%E3%81%B6%E4%BF%BA%E3%81%AE%E4%BB%98%E7%AE%8B)
 
 </div>
 
@@ -30,12 +28,10 @@ Markdown sticky notes for your desktop.
 
 ## Install (10 sec)
 ```bash
-winget install ore-no-fusen
+winget install --id 9N4MW0V2MVVG --source msstore
 ```
 
-Or download from:
-
-[Latest release](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest).
+Or install it from [Microsoft Store](https://apps.microsoft.com/detail/9N4MW0V2MVVG).
 
 
 ## Concept
@@ -80,33 +76,17 @@ FUSEN is designed as a fast thinking canvas where ideas can appear the moment th
 
 ### For General Users (Recommended)
 
-1. Go to the [latest release page](https://github.com/ore-no-fusen/ore-no-fusen/releases/latest).
-2. Download the latest **`ore-no-fusen_x.x.x_x64-setup.exe`**.
-3. Double-click the downloaded file to install.
-4. After installation, launch "俺の付箋" (FUSEN) from the Start menu.
+1. Open the [Microsoft Store listing](https://apps.microsoft.com/detail/9N4MW0V2MVVG).
+2. Select **Get** or **Install**.
+3. Launch FUSEN from the Start menu.
+4. Future updates are delivered automatically through Microsoft Store.
 
 **System Requirements:**
 - OS: Windows 10/11 (64-bit)
 - Disk Space: Approx. 100MB
 - Memory: 4GB+ recommended
 
-For detailed instructions, see the [User Guide on Wiki (Ch.1)](https://github.com/ore-no-fusen/ore-no-fusen/wiki/01-はじめに-インストール) (Currently in Japanese).
-
-### ⚠️ About "SmartScreen" Warning During Installation
-
-During installation, you might see a screen saying "**Windows protected your PC**".
-
-**What is this?**  
-SmartScreen is a Windows security feature. It automatically displays a warning for apps with low download counts or apps that don't have a paid "code signing certificate." It does not mean a virus was detected.
-
-**How to resolve:**
-
-1. Click on "More info".
-2. A "Run anyway" button will appear. Click it.
-
-You can then proceed with the installation normally.
-
-> 💡 **Rest assured** — FUSEN is open source. The entire source code is available on [GitHub](https://github.com/ore-no-fusen/ore-no-fusen) for anyone to review.
+If you use an older MSI or NSIS edition, install the Store edition first, verify your notes and settings, and only then uninstall the old edition.
 
 ### For Developers
 
@@ -137,7 +117,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-Build artifacts will be generated in `src-tauri\target\release\bundle\nsis\`.
+After building the release executable and resources, create the Store submission MSIX with `packaging/msix/build-msix.ps1`.
 
 ---
 
