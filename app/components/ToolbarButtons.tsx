@@ -14,6 +14,8 @@ import Tooltip from './Tooltip';
 import PinTackIcon from './PinTackIcon';
 import { getTranslation, type Language } from '@/lib/i18n';
 import { playPinToggleSound } from '../utils/pinToggleSound';
+import { STICKY_ACTION_SYMBOLS } from '@/app/utils/stickyActionSymbols';
+import { STICKY_ICON_BUTTON_SIZE } from '@/app/utils/stickyControlStyles';
 
 export type ToolbarButtonsProps = {
     isEditing: boolean;
@@ -31,6 +33,7 @@ export type ToolbarButtonsProps = {
     onAlarmClick?: () => void;
     alarmAtStr?: string | null;
     alarmTooltip?: string;
+    newNoteShortcutHint?: string;
 };
 
 export default function ToolbarButtons({
@@ -49,6 +52,7 @@ export default function ToolbarButtons({
     onAlarmClick,
     alarmAtStr,
     alarmTooltip,
+    newNoteShortcutHint,
 }: ToolbarButtonsProps) {
     const t = getTranslation(language ?? 'ja');
     // 通常モード時：ツールバー（折りたたみ + ピン）
@@ -64,7 +68,7 @@ export default function ToolbarButtons({
                         <button
                             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                             onClick={() => onAlarmClick()}
-                            className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[13px]"
+                            className={`${STICKY_ICON_BUTTON_SIZE} text-gray-600 hover:bg-gray-200 px-2 rounded flex items-center justify-center text-[13px]`}
                         >
                             ⏰
                         </button>
@@ -73,16 +77,16 @@ export default function ToolbarButtons({
 
                 {/* 新規作成ボタン (左端) */}
                 {onCreateNewNote && (
-                    <Tooltip text={t('tooltip.newNote')} hint="Ctrl+N" placement="top-right-arrow-shifted">
+                    <Tooltip text={t('tooltip.newNote')} hint={newNoteShortcutHint} placement="top-right-arrow-shifted">
                         <button
                             onPointerDown={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                             }}
                             onClick={() => onCreateNewNote()}
-                            className={`text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[14px] ${isWelcome ? 'animate-bounce text-orange-500 font-bold' : ''}`}
+                            className={`${STICKY_ICON_BUTTON_SIZE} text-gray-600 hover:bg-gray-200 px-2 rounded flex items-center justify-center text-[14px] ${isWelcome ? 'animate-bounce text-orange-500 font-bold' : ''}`}
                         >
-                            ＋
+                            {STICKY_ACTION_SYMBOLS.newNote}
                         </button>
                     </Tooltip>
                 )}
@@ -95,7 +99,7 @@ export default function ToolbarButtons({
                             e.stopPropagation();
                         }}
                         onClick={() => onToggleMinimize()}
-                        className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[14px]"
+                        className={`${STICKY_ICON_BUTTON_SIZE} text-gray-600 hover:bg-gray-200 px-2 rounded flex items-center justify-center text-[14px]`}
                     >
                         {isMinimized ? '▽' : '△'}
                     </button>
@@ -113,7 +117,7 @@ export default function ToolbarButtons({
                                 playPinToggleSound(Boolean(isPinned));
                                 onTogglePin();
                             }}
-                            className={`px-2 min-w-[28px] rounded flex items-center justify-center transition-all duration-200 text-[16px] ${isPinned
+                            className={`${STICKY_ICON_BUTTON_SIZE} px-2 rounded flex items-center justify-center transition-all duration-200 text-[16px] ${isPinned
                                 ? 'text-red-600 bg-red-50 hover:bg-red-100 scale-100 opacity-100'
                                 : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600 scale-95 opacity-70 hover:opacity-100'
                                 }`}

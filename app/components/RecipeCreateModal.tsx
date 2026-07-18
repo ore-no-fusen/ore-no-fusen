@@ -11,6 +11,8 @@ import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 import { splitFrontMatter } from '@/app/utils/splitFrontMatter';
 import { getCrystalNameFromSection, removeEmptyCrystalSections } from '@/app/utils/crystalFormat';
 import { configToSpec } from '@/app/utils/crystalFormatConfigCore';
+import CrystalCreateModalShell from './CrystalCreateModalShell';
+import { NOTE_COLORS } from '@/app/utils/noteAppearance';
 
 type RecipeCreateModalProps = {
     sourcePath: string;
@@ -137,7 +139,7 @@ export default function RecipeCreateModal({
                 body,
                 tags: sourceTags,
             });
-            await emit('fusen:open_note', { path, isNew: false, backgroundColor: '#cfd8dc' });
+            await emit('fusen:open_note', { path, isNew: false, backgroundColor: NOTE_COLORS.gray });
             await emit(LAUNCHER_SHELF_CHANGED_EVENT);
             onCreated?.();
             onClose();
@@ -156,26 +158,13 @@ export default function RecipeCreateModal({
     }, [draftBody, isLoading, onReady, recipeFormat]);
 
     return (
-        <div
-            className="fixed inset-0 z-[1000] flex items-stretch justify-center bg-black/50 backdrop-blur-sm p-2"
-            onPointerDown={(e) => {
-                e.stopPropagation();
-                if (e.target === e.currentTarget) onClose();
-            }}
+        <CrystalCreateModalShell
+            onClose={onClose}
+            onCreate={handleCreate}
+            createLabel="レシピを作る"
+            isCreating={isCreating}
+            accent="orange"
         >
-            <div
-                className="relative bg-white p-3 rounded-xl shadow-2xl flex min-h-0 flex-col gap-2 w-full max-w-[680px] overflow-hidden text-gray-800"
-                onPointerDown={(e) => e.stopPropagation()}
-            >
-                <button
-                    type="button"
-                    aria-label="閉じる"
-                    className="absolute right-2 top-2 z-10 px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 rounded"
-                    onClick={onClose}
-                >
-                    ×
-                </button>
-
                 <section className="flex max-h-[36%] shrink-0 flex-col gap-1 overflow-y-auto pr-1">
                     <h4 className="pr-8 text-xs font-bold text-gray-600">材料を選ぶ</h4>
                     {isLoading && <div className="text-sm text-gray-500">材料を探しています...</div>}
@@ -227,25 +216,6 @@ export default function RecipeCreateModal({
                         }}
                     />
                 </label>
-
-                <div className="flex shrink-0 justify-end gap-2">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        キャンセル
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleCreate}
-                        disabled={isCreating}
-                        className="px-6 py-2 text-sm font-bold text-white bg-orange-600 rounded-lg disabled:opacity-50 hover:bg-orange-700 transition-colors shadow-md"
-                    >
-                        レシピを作る
-                    </button>
-                </div>
-            </div>
-        </div>
+        </CrystalCreateModalShell>
     );
 }

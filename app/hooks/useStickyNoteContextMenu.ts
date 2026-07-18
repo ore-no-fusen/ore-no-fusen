@@ -17,8 +17,13 @@ import { getFeedbackConversationUnreadState } from '@/app/utils/feedbackConversa
 import { getUserTags, isReservedTag, normalizeTagForReservation } from '@/app/utils/reservedTags';
 import { addTag as addRawTag, removeTag as removeRawTag } from '@/app/api/tags';
 import { formatShortcutLabel } from '@/app/utils/shortcutKey';
+import { STICKY_ACTION_SYMBOLS } from '@/app/utils/stickyActionSymbols';
+import { NOTE_COLORS, NOTE_FONT_SIZES } from '@/app/utils/noteAppearance';
+import { formatNewNoteTriggerLabel } from '@/app/utils/newNoteTriggerLabel';
 
 type HotkeyBindings = {
+    new_note_trigger: string;
+    new_note: string;
     arrange: string;
 };
 
@@ -321,6 +326,11 @@ export function useStickyNoteContextMenu({
 
             // メニューオープン時に常に最新のタグ一覧を取得（stale state 回避）
             const freshTags = await invoke<string[]>('fusen_get_all_tags');
+            const hotkeyBindings = await invoke<HotkeyBindings>('hotkey_get_bindings').catch(() => ({
+                new_note_trigger: 'shortcut',
+                new_note: 'ctrl+n',
+                arrange: 'ctrl+shift+l',
+            }));
 
             // ファイル名アイテム
             const filenameItem = await MenuItem.new({
@@ -341,7 +351,7 @@ export function useStickyNoteContextMenu({
             // 新規メモ作成
             const newNoteItem = await MenuItem.new({
                 id: 'ctx_new_note',
-                text: `✨ ${t('menu.newNote')}  Ctrl+N`,
+                text: `${STICKY_ACTION_SYMBOLS.newNote} ${t('menu.newNote')}  ${formatNewNoteTriggerLabel(hotkeyBindings.new_note_trigger, hotkeyBindings.new_note, language)}`,
                 action: async () => {
                     try {
                         const { emit } = await import('@tauri-apps/api/event');
@@ -369,7 +379,7 @@ export function useStickyNoteContextMenu({
             // 複製
             const duplicateItem = await MenuItem.new({
                 id: 'ctx_duplicate',
-                text: `📋 複製`,
+                text: `📋 ${t('menu.duplicate')}`,
                 action: async () => {
                     try {
                         if (!selectedFile) return;
@@ -394,11 +404,11 @@ export function useStickyNoteContextMenu({
 
             // 色変更サブメニュー
             const colorItems = [
-                await MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange('#f7e9b0') }),
-                await MenuItem.new({ id: 'ctx_color_pink', text: `🌸 ${t('menu.colors.pink')}`, action: () => handleColorChange('#ffcdd2') }),
-                await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange('#80d8ff') }),
-                await MenuItem.new({ id: 'ctx_color_white', text: `⬜ ${t('menu.colors.white')}`, action: () => handleColorChange('#fafaf0') }),
-                await MenuItem.new({ id: 'ctx_color_black', text: `⬛ ${t('menu.colors.black')}`, action: () => handleColorChange('#cfd8dc') })
+                await MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange(NOTE_COLORS.yellow) }),
+                await MenuItem.new({ id: 'ctx_color_pink', text: `🌸 ${t('menu.colors.pink')}`, action: () => handleColorChange(NOTE_COLORS.pink) }),
+                await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange(NOTE_COLORS.blue) }),
+                await MenuItem.new({ id: 'ctx_color_white', text: `⬜ ${t('menu.colors.white')}`, action: () => handleColorChange(NOTE_COLORS.white) }),
+                await MenuItem.new({ id: 'ctx_color_black', text: `⬛ ${t('menu.colors.black')}`, action: () => handleColorChange(NOTE_COLORS.gray) })
             ];
             const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: `🎨 ${t('menu.changeColor')}`, items: colorItems });
 
@@ -413,15 +423,15 @@ export function useStickyNoteContextMenu({
             // 文字サイズサブメニュー
             const fontSizeItems = [
                 await MenuItem.new({ id: 'ctx_fontsize_reset', text: t('menu.fontSize.reset'), action: () => handleFontSizeChange(null) }),
-                await MenuItem.new({ id: 'ctx_fontsize_small', text: t('menu.fontSize.small'), action: () => handleFontSizeChange(12) }),
-                await MenuItem.new({ id: 'ctx_fontsize_medium', text: t('menu.fontSize.medium'), action: () => handleFontSizeChange(16) }),
-                await MenuItem.new({ id: 'ctx_fontsize_large', text: t('menu.fontSize.large'), action: () => handleFontSizeChange(20) }),
-                await MenuItem.new({ id: 'ctx_fontsize_xlarge', text: t('menu.fontSize.xlarge'), action: () => handleFontSizeChange(28) })
+                await MenuItem.new({ id: 'ctx_fontsize_small', text: t('menu.fontSize.small'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.small) }),
+                await MenuItem.new({ id: 'ctx_fontsize_medium', text: t('menu.fontSize.medium'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.medium) }),
+                await MenuItem.new({ id: 'ctx_fontsize_large', text: t('menu.fontSize.large'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.large) }),
+                await MenuItem.new({ id: 'ctx_fontsize_xlarge', text: t('menu.fontSize.xlarge'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.extraLarge) })
             ];
             const fontSizeSubmenu = await Submenu.new({ id: 'ctx_fontsize_submenu', text: `📏 ${t('menu.changeFontSize')}`, items: fontSizeItems });
 
             const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
-            const canCreateRecipe = selectedFile?.path && noteBackgroundColor.toLowerCase() === '#80d8ff';
+            const canCreateRecipe = selectedFile?.path && noteBackgroundColor.toLowerCase() === NOTE_COLORS.blue;
             // レシピ付箋では意味がおかしくなる項目（アラーム・タグフォルダへ移動）を出さない
             const isRecipeNote = currentTags.some((tag) => normalizeTagForReservation(tag) === 'recipe');
 
@@ -444,7 +454,7 @@ export function useStickyNoteContextMenu({
                 if (canCreateRecipe) {
                     crystalItems.push(await MenuItem.new({
                         id: 'ctx_create_recipe',
-                        text: '🍳 レシピにする',
+                        text: `🍳 ${t('menu.makeRecipe')}`,
                         // 元の付箋の窓に重ねず、専用ウィンドウで開く（元付箋を一切触らない）
                         action: async () => {
                             const p = selectedFile?.path;
@@ -505,7 +515,7 @@ export function useStickyNoteContextMenu({
                 }
                 crystalItems.push(await MenuItem.new({
                     id: 'ctx_create_qa',
-                    text: '❓ QAにする',
+                    text: `❓ ${t('menu.makeQa')}`,
                     // 元の付箋の窓に重ねず、専用ウィンドウで開く（元付箋を一切触らない）
                     action: async () => {
                         const p = selectedFile?.path;
@@ -535,7 +545,7 @@ export function useStickyNoteContextMenu({
                 }));
                 crystalItems.push(await MenuItem.new({
                     id: 'ctx_create_term',
-                    text: '📖 用語にする',
+                    text: `📖 ${t('menu.makeTerm')}`,
                     // 元の付箋の窓に重ねず、専用ウィンドウで開く（元付箋を一切触らない）
                     action: async () => {
                         const p = selectedFile?.path;
@@ -565,7 +575,7 @@ export function useStickyNoteContextMenu({
                 }));
                 menuItems.push(await Submenu.new({
                     id: 'ctx_crystal_submenu',
-                    text: '💎 結晶にする',
+                    text: `💎 ${t('menu.crystallize')}`,
                     items: crystalItems
                 }));
                 menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
@@ -578,7 +588,7 @@ export function useStickyNoteContextMenu({
             if (selectedFile && shortcutShelfMenuState.visible && shortcutShelfMenuState.label) {
                 menuItems.push(await MenuItem.new({
                     id: 'ctx_shortcut_shelf',
-                    text: shortcutShelfMenuState.label,
+                    text: `📌 ${shortcutShelfMenuState.isRegistered ? t('menu.favoriteRemove') : t('menu.favoriteAdd')}`,
                     action: handleToggleShortcutShelf
                 }));
                 menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
@@ -586,10 +596,10 @@ export function useStickyNoteContextMenu({
 
             if (isTagDeleteMode) {
                 // =============== 削除モード ===============
-                tagSubItems.push(await MenuItem.new({ id: 'header_del', text: '🗑️ 削除モード (タグを選択して削除)', enabled: false }));
+                tagSubItems.push(await MenuItem.new({ id: 'header_del', text: `🗑️ ${t('menu.tagDeleteHint')}`, enabled: false }));
                 tagSubItems.push(await MenuItem.new({
                     id: 'ctx_exit_mode',
-                    text: '🔙 通常モードに戻る',
+                    text: `🔙 ${t('menu.tagDeleteBack')}`,
                     action: () => {
                         shouldReopenMenu.current = true;
                         setIsTagDeleteMode(false);
@@ -650,7 +660,7 @@ export function useStickyNoteContextMenu({
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                     tagSubItems.push(await MenuItem.new({
                         id: 'ctx_enter_del_mode',
-                        text: '🗑️ 削除モードにする',
+                        text: `🗑️ ${t('menu.tagDeleteStart')}`,
                         action: () => {
                             shouldReopenMenu.current = true;
                             setIsTagDeleteMode(true);
@@ -740,27 +750,24 @@ export function useStickyNoteContextMenu({
                 archiveSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                 archiveSubItems.push(await MenuItem.new({
                     id: 'ctx_archive_no_tag',
-                    text: `📁 Archive（タグなし）`,
+                    text: `📁 ${t('menu.archiveWithoutTag')}`,
                     action: () => doArchive(undefined)
                 }));
                 menuItems.push(await Submenu.new({
                     id: 'ctx_archive_submenu',
-                    text: `📦 ${t('menu.archive')}`,
+                    text: `${STICKY_ACTION_SYMBOLS.archive} ${t('menu.archive')}`,
                     items: archiveSubItems
                 }));
             } else {
                 // 0 or 1タグ: 従来通り直接実行
                 menuItems.push(await MenuItem.new({
                     id: 'ctx_archive',
-                    text: `📦 ${t('menu.archive')}`,
+                    text: `${STICKY_ACTION_SYMBOLS.archive} ${t('menu.archive')}`,
                     action: () => doArchive()
                 }));
             }
             }
 
-            const hotkeyBindings = await invoke<HotkeyBindings>('hotkey_get_bindings').catch(() => ({
-                arrange: 'ctrl+shift+l',
-            }));
             const appOperationLabels = getAppOperationMenuLabels(hotkeyBindings, language);
             const appOperationSubmenu = await Submenu.new({
                 id: 'ctx_app_operations',
@@ -801,7 +808,7 @@ export function useStickyNoteContextMenu({
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_open_help',
-                text: `❔ ${t('menu.openHelp')}`,
+                text: `${STICKY_ACTION_SYMBOLS.help} ${t('menu.openHelp')}`,
                 action: async () => {
                     const { emit } = await import('@tauri-apps/api/event');
                     await emit('fusen:open_settings', { tab: 'help' });
@@ -810,8 +817,8 @@ export function useStickyNoteContextMenu({
             menuItems.push(await MenuItem.new({
                 id: 'ctx_open_developer_conversation',
                 text: getFeedbackConversationUnreadState()
-                    ? '📨 開発者とのやりとり  ● 新着あり'
-                    : '📨 開発者とのやりとり',
+                    ? `📨 ${t('menu.developerConversation')}  ● ${t('menu.newMessage')}`
+                    : `📨 ${t('menu.developerConversation')}`,
                 action: async () => {
                     const { emit } = await import('@tauri-apps/api/event');
                     await emit('fusen:open_settings', { tab: 'conversation' });
@@ -822,7 +829,7 @@ export function useStickyNoteContextMenu({
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
             menuItems.push(await MenuItem.new({
                 id: 'ctx_delete',
-                text: `🗑️ ${t('menu.delete')}  Ctrl+D`,
+                text: `${STICKY_ACTION_SYMBOLS.delete} ${t('menu.delete')}  Ctrl+D`,
                 action: handleDeleteNote
             }));
 

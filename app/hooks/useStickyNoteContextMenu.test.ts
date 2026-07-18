@@ -94,7 +94,11 @@ describe('getOpenFolderRequest', () => {
 
 describe('getAppOperationMenuLabels', () => {
   it('shows the fixed search key and the configured arrange key in Japanese', () => {
-    expect(getAppOperationMenuLabels({ arrange: 'Shift+Control+KeyL' }, 'ja')).toEqual({
+    expect(getAppOperationMenuLabels({
+      new_note_trigger: 'shortcut',
+      new_note: 'ctrl+n',
+      arrange: 'Shift+Control+KeyL',
+    }, 'ja')).toEqual({
       submenu: '⚙️ アプリ操作',
       search: '検索  Ctrl+F',
       arrange: 'タグで整列  Ctrl+Shift+L',

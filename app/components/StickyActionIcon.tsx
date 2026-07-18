@@ -1,12 +1,14 @@
 import React from 'react';
-import { Archive, Trash2 } from 'lucide-react';
+import { STICKY_ACTION_SYMBOLS } from '@/app/utils/stickyActionSymbols';
 
 type StickyActionIconProps = {
     kind: 'archive' | 'delete';
 };
 
 export default function StickyActionIcon({ kind }: StickyActionIconProps) {
-    const Icon = kind === 'archive' ? Archive : Trash2;
+    const symbol = kind === 'archive'
+        ? STICKY_ACTION_SYMBOLS.archive
+        : STICKY_ACTION_SYMBOLS.delete;
 
-    return <Icon aria-hidden="true" size={15} strokeWidth={2} />;
+    return <span aria-hidden="true" className="text-[15px] leading-none">{symbol}</span>;
 }

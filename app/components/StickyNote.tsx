@@ -30,6 +30,8 @@ import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 // UIコンポーネント
 import type { RichTextEditorRef } from './RichTextEditor';
 import ToolbarButtons from './ToolbarButtons';
+import { formatNewNoteTriggerLabel } from '@/app/utils/newNoteTriggerLabel';
+import { STICKY_ICON_BUTTON_SIZE } from '@/app/utils/stickyControlStyles';
 import FloatingFormatBar from './FloatingFormatBar';
 import MarkdownRenderer from './MarkdownRenderer';
 import ImageAnnotationModal from './ImageAnnotationModal';
@@ -1996,6 +1998,7 @@ const StickyNote = memo(function StickyNote() {
                     onAlarmClick={() => setShowAlarmDialog(true)}
                     alarmAtStr={alarmAtStr}
                     alarmTooltip={alarmTooltip || t('menu.setAlarm')}
+                    newNoteShortcutHint={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, language)}
                     onCreateNewNote={async () => {
                         const folderPath = await resolveCreateFolderPath();
                         if (!folderPath) {
@@ -2374,7 +2377,7 @@ const StickyNote = memo(function StickyNote() {
                                         e.stopPropagation();
                                         handleArchiveFromHoverButton(e.clientX, e.clientY);
                                     }}
-                                    className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
+                                    className={`${STICKY_ICON_BUTTON_SIZE} px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors`}
                                 >
                                     <StickyActionIcon kind="archive" />
                                 </button>
@@ -2393,7 +2396,7 @@ const StickyNote = memo(function StickyNote() {
                                     e.stopPropagation();
                                     handleDeleteNote();
                                 }}
-                                className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-red-100 hover:text-red-600 hover:border-red-200 transition-colors"
+                                className={`${STICKY_ICON_BUTTON_SIZE} px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-red-100 hover:text-red-600 hover:border-red-200 transition-colors`}
                             >
                                 <StickyActionIcon kind="delete" />
                             </button>

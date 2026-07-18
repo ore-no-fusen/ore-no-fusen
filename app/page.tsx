@@ -37,6 +37,7 @@ import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
 import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
 import { runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
 import { FreshRequestQueue } from './utils/freshRequestQueue';
+import { NOTE_COLORS } from './utils/noteAppearance';
 
 // Global AppState type definition
 type AppState = {
@@ -1663,7 +1664,7 @@ function OrchestratorContent() {
               } else {
                 setLoadingStatus("ようこそノートを作成中...");
                 try {
-                  const welcomeNoteColor = '#f7e9b0';
+                  const welcomeNoteColor = NOTE_COLORS.yellow;
                   const newNote = await invoke<{ meta: { path: string }; frontmatter: string }>(
                     'fusen_create_note', { folderPath: savedFolder, context: 'はじめての付箋（消してOK）' }
                   );

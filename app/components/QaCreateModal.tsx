@@ -9,6 +9,8 @@ import { loadCrystalFormats, type CrystalTypeFormat } from '@/app/utils/crystalF
 import { LAUNCHER_SHELF_CHANGED_EVENT } from '@/app/utils/launcherEvents';
 import { getCrystalNameFromSection, removeEmptyCrystalSections } from '@/app/utils/crystalFormat';
 import { configToSpec } from '@/app/utils/crystalFormatConfigCore';
+import CrystalCreateModalShell from './CrystalCreateModalShell';
+import { NOTE_COLORS } from '@/app/utils/noteAppearance';
 
 type QaCreateModalProps = {
     sourceTitle?: string | null;
@@ -65,7 +67,7 @@ export default function QaCreateModal({
                 body,
                 tags: sourceTags,
             });
-            await emit('fusen:open_note', { path, isNew: false, backgroundColor: '#cfd8dc' });
+            await emit('fusen:open_note', { path, isNew: false, backgroundColor: NOTE_COLORS.gray });
             await emit(LAUNCHER_SHELF_CHANGED_EVENT);
             onCreated?.();
             onClose();
@@ -78,26 +80,12 @@ export default function QaCreateModal({
     }, [draftBody, fallbackTitle, isCreating, onClose, onCreated, qaFormat, sourceTags]);
 
     return (
-        <div
-            className="fixed inset-0 z-[1000] flex items-stretch justify-center bg-black/50 backdrop-blur-sm p-2"
-            onPointerDown={(e) => {
-                e.stopPropagation();
-                if (e.target === e.currentTarget) onClose();
-            }}
+        <CrystalCreateModalShell
+            onClose={onClose}
+            onCreate={handleCreate}
+            createLabel="QAを作る"
+            isCreating={isCreating}
         >
-            <div
-                className="relative bg-white p-3 rounded-xl shadow-2xl flex min-h-0 flex-col gap-2 w-full max-w-[680px] overflow-hidden text-gray-800"
-                onPointerDown={(e) => e.stopPropagation()}
-            >
-                <button
-                    type="button"
-                    aria-label="閉じる"
-                    className="absolute right-2 top-2 z-10 px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 rounded"
-                    onClick={onClose}
-                >
-                    ×
-                </button>
-
                 <label className="flex min-h-0 flex-1 flex-col gap-1">
                     <span className="pr-8 text-xs text-gray-500">そのまま作れます。不要な行だけ削除してください</span>
                     {error && <div className="text-sm text-red-600">{error}</div>}
@@ -109,25 +97,6 @@ export default function QaCreateModal({
                         onChange={(e) => setDraftBody(e.target.value)}
                     />
                 </label>
-
-                <div className="flex shrink-0 justify-end gap-2">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        キャンセル
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleCreate}
-                        disabled={isCreating}
-                        className="px-6 py-2 text-sm font-bold text-white bg-slate-700 rounded-lg disabled:opacity-50 hover:bg-slate-800 transition-colors shadow-md"
-                    >
-                        QAを作る
-                    </button>
-                </div>
-            </div>
-        </div>
+        </CrystalCreateModalShell>
     );
 }

@@ -13,6 +13,7 @@ import Script from "next/script";   // ← 追加
 import "./shadcn.css";
 import "./globals.css";
 import RegisterPWA from "./RegisterPWA";
+import { NOTE_COLORS } from './utils/noteAppearance';
 import { Analytics } from "@vercel/analytics/next";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
@@ -128,7 +129,7 @@ export default function RootLayout({
           __html: `
           if (new URLSearchParams(location.search).has('path')) {
             var s = document.createElement('style');
-            s.textContent = 'html,body{background:#f7e9b0!important}';
+            s.textContent = 'html,body{background:${NOTE_COLORS.yellow}!important}';
             document.head.appendChild(s);
           }
           (function() {

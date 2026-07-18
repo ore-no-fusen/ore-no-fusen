@@ -16,6 +16,7 @@ import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath, isLinkTarget } from '../utils/pathUtils';
 import { renderSecureMermaid } from '../utils/mermaid';
 import { buildImagePathCandidates } from '../utils/markdownUtils';
+import { NOTE_COLORS } from '@/app/utils/noteAppearance';
 
 /**
  * Mermaid図ブロックコンポーネント
@@ -178,11 +179,11 @@ export type MarkdownRendererProps = {
 
 export function getEmptyNotePlaceholder(backgroundColor: string): string {
     switch (backgroundColor.trim().toLowerCase()) {
-        case '#f7e9b0':
+        case NOTE_COLORS.yellow:
             return 'アイデア、違和感、こんなときをメモ';
-        case '#ffcdd2':
+        case NOTE_COLORS.pink:
             return '課題、TODO、試したことをメモ';
-        case '#80d8ff':
+        case NOTE_COLORS.blue:
             return '結果、決定事項、次回の作戦をメモ';
         default:
             return '（空のメモ）';

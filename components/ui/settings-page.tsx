@@ -18,6 +18,7 @@ import { useSettings, type AppSettings } from "@/lib/settings-store"
 // ★翻訳関数をインポート
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 import { formatShortcutLabel, hasShortcutConflict, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
+import { formatNewNoteTriggerLabel } from "@/app/utils/newNoteTriggerLabel"
 import { trackDonationEvent } from "@/app/utils/analytics"
 import { monthlyBackupToggleChanges } from "@/app/utils/monthlyBackupSettings"
 import { refreshImportedNotes, type ImportStats } from "@/app/utils/importRefresh"
@@ -157,7 +158,10 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
             case "iphone":
                 return <IphoneSection settings={settings} onUpdate={updateSetting} t={t} iphoneDriveDisconnected={iphoneDriveDisconnected ?? false} />
             case "help":
-                return <HelpSection t={t} />
+                return <HelpSection
+                    t={t}
+                    newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language)}
+                />
             case "feedback":
                 return <FeedbackSection t={t} />
             case "conversation":
@@ -1915,13 +1919,14 @@ function StepIllustration({ kind }: { kind: 'write' | 'pin' | 'iphone' }) {
     );
 }
 
-function HelpSection({ t }: { t: (key: any) => string }) {
+function HelpSection({ t, newNoteTriggerLabel }: { t: (key: any) => string; newNoteTriggerLabel: string }) {
+    const withNewNoteTrigger = (value: string) => value.replace(/Ctrl\s*\+\s*N/g, newNoteTriggerLabel);
     const onboardingSteps = [
         {
             kind: 'write' as const,
             title: t('settings.help.onboarding.step1.title'),
             body: t('settings.help.onboarding.step1.body'),
-            hint: t('settings.help.onboarding.step1.hint'),
+            hint: withNewNoteTrigger(t('settings.help.onboarding.step1.hint')),
         },
         {
             kind: 'pin' as const,
@@ -2097,7 +2102,7 @@ function HelpSection({ t }: { t: (key: any) => string }) {
                 title={t('settings.help.shortcutTable.title')}
                 firstHeader={t('settings.help.table.keys')}
                 secondHeader={t('settings.help.table.action')}
-                rows={shortcutRows.map(([keys, action]) => [t(keys), t(action)])}
+                rows={shortcutRows.map(([keys, action], index) => [index === 0 ? newNoteTriggerLabel : t(keys), t(action)])}
             />
 
             <HelpTable
