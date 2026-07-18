@@ -53,6 +53,17 @@
 - [ ] **SAFE-01**: 設定または保存先の読み込みに失敗した状態を初回起動として扱わず、初期付箋の作成・自動保存・設定上書きを停止する
 - [ ] **SAFE-02**: `settings.json` と直前世代が両方壊れた場合は初回起動と誤認せず、壊れた設定を退避して安全な既定保存先と正常設定を再作成し、黄色い案内付箋で異常を伝えた後も通常利用を継続できる
 
+### MSIX単一配布 (DIST) — Phase 21
+
+- [ ] **DIST-01**: 正式配布物を Microsoft Store 提出用 MSIX に一本化し、MSI/NSIS の新規公開を停止する
+- [ ] **DIST-02**: すべての正式リリースを Partner Center へ安全に提出し、Store を唯一の自動更新経路とする
+- [ ] **DIST-03**: winget で Store 版を導入でき、既存 community package 利用者に明確な移行経路を提供する
+- [ ] **DIST-04**: MSI/NSIS 版から MSIX 版へ移行しても、既存の付箋・画像・設定を失わない
+- [ ] **DIST-05**: MSIX StartupTask による自動起動 ON/OFF と、Windows 側で再有効化が必要な場合の案内が正しく動作する
+- [ ] **DIST-06**: 本番経路から Tauri updater とレジストリ自動起動への依存を除き、開発時の非パッケージ実行は維持する
+- [ ] **DIST-07**: 設計書、ユーザーガイド、README、ランディングページ、リリース手順、アプリ内の版表示を MSIX 正式版へ統一する
+- [ ] **DIST-08**: Store署名版で新規導入、上書き更新、旧版移行、winget、自動起動、保存、アンインストール時データ保持を実機検証する
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -88,14 +99,23 @@
 | PERF-08 | Phase 19 | Complete |
 | SAFE-01 | Phase 20 | Pending (実機確認待ち) |
 | SAFE-02 | Phase 20 | Pending (実機確認待ち) |
+| DIST-01 | Phase 21 | Planned |
+| DIST-02 | Phase 21 | Planned |
+| DIST-03 | Phase 21 | Planned |
+| DIST-04 | Phase 21 | Planned |
+| DIST-05 | Phase 21 | Planned |
+| DIST-06 | Phase 21 | Planned |
+| DIST-07 | Phase 21 | Planned |
+| DIST-08 | Phase 21 | Planned |
 
 **Coverage:**
-- requirements: 22 total
+- requirements: 30 total
 - Complete: 20
 - Pending (Phase 20 実機確認待ち): 2
-- Mapped to phases: 22
+- Planned (Phase 21): 8
+- Mapped to phases: 30
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-10*
-*Last updated: 2026-07-11 after startup data-loss prevention requirements were added*
+*Last updated: 2026-07-18 after MSIX single-distribution requirements were added*

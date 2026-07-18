@@ -21,17 +21,13 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Check, Copy, Download, Globe, Volume2, VolumeX } from 'lucide-react';
+import { Check, Copy, Globe, Volume2, VolumeX } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { trackDonationEvent } from '@/app/utils/analytics';
 
 export default function LandingPage() {
-    const version = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
-    const latestReleaseUrl = 'https://github.com/ore-no-fusen/ore-no-fusen/releases/latest';
     const microsoftStoreUrl = 'https://apps.microsoft.com/detail/9N4MW0V2MVVG';
-    const downloadUrl = version
-        ? `https://github.com/ore-no-fusen/ore-no-fusen/releases/download/v${version}/ore-no-fusen_${version}_x64-setup.exe`
-        : latestReleaseUrl;
+    const wingetCommand = 'winget install --id 9N4MW0V2MVVG --source msstore';
 
     const [lang, setLang] = useState<'ja' | 'en'>('ja');
 
@@ -131,7 +127,7 @@ export default function LandingPage() {
     };
 
     const copyWingetCommand = () => {
-        navigator.clipboard.writeText('winget install ore-no-fusen').catch(() => { });
+        navigator.clipboard.writeText(wingetCommand).catch(() => { });
         setWingetCopied(true);
         setTimeout(() => setWingetCopied(false), 2500);
         trackEvent('winget_install_copy');
@@ -224,36 +220,20 @@ export default function LandingPage() {
                     {/* CTA */}
                     <div className="flex flex-col items-center gap-3">
                         <Link
-                            href={downloadUrl}
-                            target="_blank"
-                            onClick={() => trackEvent('download_click')}
-                            className="inline-flex items-center justify-center gap-3 px-10 py-4 bg-[#5C7A3E] hover:bg-[#4A6730] text-[#F5EDD8] rounded-xl font-bold text-lg shadow-[0_6px_20px_rgba(92,122,62,0.35)] hover:shadow-[0_8px_28px_rgba(92,122,62,0.5)] transition-all duration-300 hover:-translate-y-0.5"
-                        >
-                            <Download className="w-5 h-5" />
-                            {isEn ? 'Download for Windows' : 'Windowsに入れる（無料）'}
-                        </Link>
-                        <p className="text-xs text-[#9A8468]">
-                            {isEn
-                                ? 'Windows 10/11 · Free · Your data stays with you'
-                                : 'Windows 10/11 ・ 無料 ・ データはあなたの手元'}
-                        </p>
-
-                        {/* Microsoft Store（署名済み・SmartScreen 警告が出ない安全な道） */}
-                        <Link
                             href={microsoftStoreUrl}
                             target="_blank"
                             onClick={() => trackEvent('store_click')}
-                            className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm border-2 border-[#5C7A3E] text-[#5C7A3E] bg-white/60 hover:bg-[#5C7A3E] hover:text-[#F5EDD8] transition-all duration-300"
+                            className="inline-flex items-center justify-center gap-3 px-10 py-4 bg-[#5C7A3E] hover:bg-[#4A6730] text-[#F5EDD8] rounded-xl font-bold text-lg shadow-[0_6px_20px_rgba(92,122,62,0.35)] hover:shadow-[0_8px_28px_rgba(92,122,62,0.5)] transition-all duration-300 hover:-translate-y-0.5"
                         >
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                 <path d="M3 3h8.5v8.5H3V3zm9.5 0H21v8.5h-8.5V3zM3 12.5h8.5V21H3v-8.5zm9.5 0H21V21h-8.5v-8.5z" />
                             </svg>
                             {isEn ? 'Get it from Microsoft Store' : 'Microsoft Store から入れる'}
                         </Link>
                         <p className="text-xs text-[#9A8468]">
                             {isEn
-                                ? 'Signed · No SmartScreen warning · Auto-updates'
-                                : '署名済み ・ SmartScreen の警告が出ません ・ 自動更新'}
+                                ? 'Windows 10/11 · Free · Signed · Automatic updates'
+                                : 'Windows 10/11 ・ 無料 ・ 署名済み ・ 自動更新'}
                         </p>
 
                         <Link
@@ -270,7 +250,7 @@ export default function LandingPage() {
                         <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-[#7A6A50] mt-2">
                             <span>{isEn ? 'or via Command Prompt:' : 'コマンドプロンプトでも入れられます:'}</span>
                             <code className="px-2 py-1 rounded bg-[#2C1F0E]/85 text-[#F0E0A0] font-mono select-all">
-                                winget install ore-no-fusen
+                                {wingetCommand}
                             </code>
                             <button
                                 type="button"
@@ -284,38 +264,9 @@ export default function LandingPage() {
                         </div>
                         <p className="text-xs text-[#9A8468]">
                             {isEn
-                                ? 'If you know winget, this is recommended because Windows warnings are less likely. Press Win+R, type cmd, press Enter, then paste this command.'
-                                : 'winget が分かる方はこちらがおすすめです。Windowsの警告が出にくいです。Win+R → cmd → Enter でコマンドプロンプトを開き、このコマンドを貼り付けて実行します。'}
+                                ? 'This installs the same Microsoft Store edition. Press Win+R, type cmd, press Enter, then paste the command.'
+                                : 'Microsoft Store と同じ正式版をインストールします。Win+R → cmd → Enter でコマンドプロンプトを開き、貼り付けて実行します。'}
                         </p>
-
-                        <details className="text-xs text-[#7A6A50] mt-1 max-w-md">
-                            <summary className="cursor-pointer hover:text-[#5C7A3E] select-none">
-                                {isEn ? 'ℹ️ Windows SmartScreen warning? — click here' : 'ℹ️ SmartScreen の警告が出たら？'}
-                            </summary>
-                            <div className="mt-2 pl-4 leading-relaxed text-left">
-                                {isEn ? (
-                                    <>
-                                        The installer is not Authenticode-signed (yet), so SmartScreen may warn on first launch.
-                                        Click <strong>「More info」</strong> → <strong>「Run anyway」</strong> to proceed.
-                                        You can also{' '}
-                                        <Link href={latestReleaseUrl} target="_blank" className="text-[#5C7A3E] underline">
-                                            verify the SHA-256 hash
-                                        </Link>{' '}
-                                        on the release page.
-                                    </>
-                                ) : (
-                                    <>
-                                        インストーラに Authenticode 署名を付けていないため、初回起動で SmartScreen が警告を出します。
-                                        <strong>「詳細情報」</strong> → <strong>「実行」</strong> で進めます。
-                                        心配な方は{' '}
-                                        <Link href={latestReleaseUrl} target="_blank" className="text-[#5C7A3E] underline">
-                                            リリースページの SHA-256 ハッシュ
-                                        </Link>{' '}
-                                        でファイルを検証できます。
-                                    </>
-                                )}
-                            </div>
-                        </details>
                     </div>
 
                     {/* 製品スクリーンショット（まず「何のソフトか」を一目で伝える） */}
@@ -1603,31 +1554,20 @@ export default function LandingPage() {
 
                     <div className="mt-10">
                         <Link
-                            href={downloadUrl}
+                            href={microsoftStoreUrl}
                             target="_blank"
-                            onClick={() => trackEvent('download_click_cta')}
+                            onClick={() => trackEvent('store_click_cta')}
                             className="inline-flex items-center gap-2 px-8 py-4 rounded-sm font-bold text-base text-[#F5EDD8] transition-all duration-200 hover:-translate-y-0.5"
                             style={{
                                 backgroundColor: '#5C7A3E',
                                 boxShadow: '2px 3px 10px rgba(92,122,62,0.35)',
                             }}
                         >
-                            <Download className="w-5 h-5" />
-                            {isEn ? 'Download for Windows' : 'ダウンロード（Windows）'}
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M3 3h8.5v8.5H3V3zm9.5 0H21v8.5h-8.5V3zM3 12.5h8.5V21H3v-8.5zm9.5 0H21V21h-8.5v-8.5z" />
+                            </svg>
+                            {isEn ? 'Get it from Microsoft Store' : 'Microsoft Store から入れる'}
                         </Link>
-                        <div className="mt-4">
-                            <Link
-                                href={microsoftStoreUrl}
-                                target="_blank"
-                                onClick={() => trackEvent('store_click_cta')}
-                                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-sm font-bold text-sm border-2 border-[#5C7A3E] text-[#3A5020] bg-white/50 hover:bg-[#5C7A3E] hover:text-[#F5EDD8] transition-all duration-200"
-                            >
-                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                    <path d="M3 3h8.5v8.5H3V3zm9.5 0H21v8.5h-8.5V3zM3 12.5h8.5V21H3v-8.5zm9.5 0H21V21h-8.5v-8.5z" />
-                                </svg>
-                                {isEn ? 'Get it from Microsoft Store' : 'Microsoft Store から入れる'}
-                            </Link>
-                        </div>
                         <p className="text-xs text-[#9A8468] mt-4">
                             {isEn ? 'Free · 1-min install · Your data stays with you' : '無料 ・ インストール 1 分 ・ データはあなたの手元に'}
                         </p>

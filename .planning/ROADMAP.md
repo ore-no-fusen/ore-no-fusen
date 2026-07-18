@@ -279,6 +279,27 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd-plan-phase 20 to break down)
 
+### Phase 21: MSIX正式版への一本化
+
+**Goal:** Microsoft Store を主配布経路とする MSIX 正式版へ一本化し、winget、更新、既存ユーザー移行、自動起動を安全に継続する
+**Requirements**: DIST-01, DIST-02, DIST-03, DIST-04, DIST-05, DIST-06, DIST-07, DIST-08
+**Depends on:** Phase 20
+**Success Criteria** (what must be TRUE):
+  1. 移行開始版5.0.0で最後のNSIS・MSIとStore MSIXを提供し、移行完了版5.1.0以降の正式配布物はStore MSIXの1種類となる
+  2. アプリの各リリースが Store 提出工程を通り、Store が唯一の自動更新経路になる
+  3. winget から Store 版を導入でき、従来の community package 利用者に移行手順がある
+  4. MSI/NSIS 版から MSIX 版へ移行しても付箋・画像・設定を失わない
+  5. MSIX の StartupTask で設定画面の自動起動 ON/OFF が動作し、Windows 側で無効化された場合の案内が表示される
+  6. 設計書・ユーザーガイド・README・リリース手順・画面表示が MSIX 正式版に統一される
+**Plans:** 5 plans
+
+Plans:
+- [ ] 21-00-MIGRATION-RELEASE-PLAN.md — 5.0.0移行開始から5.1.0一本化完了までのリリース運用
+- [ ] 21-01-PLAN.md — MSIX単一成果物とStore提出パイプライン
+- [ ] 21-02-PLAN.md — 実行時の配布分岐・更新・自動起動・版表示の整理
+- [ ] 21-03-PLAN.md — winget移行、既存ユーザー移行、設計書・マニュアル同期
+- [ ] 21-04-PLAN.md — Store署名版による更新・移行・自動起動の統合検証
+
 ---
 
 ## Progress
@@ -305,3 +326,4 @@ Plans:
 | 18. エディタ連携 + 再起動復元 | v5.0 | Complete | 2026-05-02 |
 | 19. 起動性能300ms達成（Pool） | v6.0 | Complete | 2026-05-02 |
 | 20. 起動時データ保護と最小レスキューモード | safety | In Progress（実装・自動テスト済み、実機確認待ち） | — |
+| 21. MSIX正式版への一本化 | distribution | Planned | — |

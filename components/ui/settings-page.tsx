@@ -1694,6 +1694,7 @@ function DataSection({
 }
 
 function AboutSection({ t }: { t: (key: any) => string }) {
+    const microsoftStoreUrl = 'https://apps.microsoft.com/detail/9N4MW0V2MVVG'
     const [version, setVersion] = React.useState<string>('...')
     const [distribution, setDistribution] = React.useState<'msix' | 'desktop'>('desktop')
 
@@ -1749,7 +1750,7 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                         <p className="text-sm text-muted-foreground">OreNoFusen</p>
                         <p className="text-xs text-muted-foreground pt-1">{t('settings.about.version')} {version}</p>
                         <p className="text-xs font-medium text-muted-foreground">
-                            {isMsix ? t('settings.about.editionTrial') : t('settings.about.editionStandard')}
+                            {isMsix ? t('settings.about.editionStore') : t('settings.about.editionMigration')}
                         </p>
                     </div>
                 </div>
@@ -1759,28 +1760,26 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                         {t('settings.about.appDesc')}
                     </p>
 
-                    {isMsix && (
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                            {t('settings.about.trialNote')}
-                        </p>
-                    )}
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                        {isMsix ? t('settings.about.storeNote') : t('settings.about.migrationNote')}
+                    </p>
 
                     <div className="space-y-2 pt-2">
-                        {isMsix && (
+                        {!isMsix && (
                             <Button
                                 variant="outline"
                                 className="w-full justify-start h-12 text-base font-normal"
                                 onClick={async () => {
                                     try {
                                         const { open } = await import('@tauri-apps/plugin-shell');
-                                        await open('https://ore-no-fusen.vercel.app');
+                                        await open(microsoftStoreUrl);
                                     } catch (e) {
                                         console.error('Failed to open link:', e);
                                     }
                                 }}
                             >
                                 <ExternalLink className="mr-3 h-5 w-5" />
-                                {t('settings.about.getStandard')}
+                                {t('settings.about.openStore')}
                             </Button>
                         )}
                         <Button

@@ -4,13 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'GitHub Release tag to submit, for example v3.6.2'
+        description: 'Release tag to validate, for example v5.0.0'
         required: true
         type: string
-      package_pattern:
-        description: 'Release asset glob for the Store MSIX package'
+      release_run_id:
+        description: 'Successful Release workflow run ID containing the store-msix artifact'
         required: true
-        default: '*.msix'
         type: string
       product_id:
         description: 'Optional Store product ID. If empty, vars.MICROSOFT_STORE_PRODUCT_ID is used.'
@@ -28,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   store-submit:
@@ -35,15 +35,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download MSIX from GitHub Release
+      - name: Download MSIX from Release workflow artifact
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
           RELEASE_TAG: ${{ inputs.release_tag }}
-          PACKAGE_PATTERN: ${{ inputs.package_pattern }}
         run: |
+          if ($env:RELEASE_RUN_ID -notmatch '^\d+$') {
+            throw "release_run_id must be a numeric GitHub Actions run ID."
+          }
+
           New-Item -ItemType Directory -Force release-store | Out-Null
-          gh release download $env:RELEASE_TAG --pattern $env:PACKAGE_PATTERN --dir release-store
+          gh run download $env:RELEASE_RUN_ID --repo $env:GITHUB_REPOSITORY --name store-msix --dir release-store
 
           $packages = @(Get-ChildItem release-store -File | Where-Object {
             $_.Extension -in @('.msix', '.msixbundle', '.msixupload', '.appx', '.appxbundle', '.appxupload')
@@ -52,11 +56,21 @@ jobs:
           if ($packages.Count -ne 1) {
             Write-Host "Downloaded files:"
             Get-ChildItem release-store -File | Format-Table Name, Length
-            throw "Expected exactly one Store package, found $($packages.Count). Adjust package_pattern."
+            throw "Expected exactly one Store package in the store-msix artifact, found $($packages.Count)."
           }
 
           "STORE_PACKAGE=$($packages[0].FullName)" >> $env:GITHUB_ENV
           Write-Host "Selected Store package: $($packages[0].FullName)"
+
+      - name: Validate Store MSIX
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          powershell -ExecutionPolicy Bypass -File packaging\msix\validate-msix.ps1 `
+            -PackagePath "$env:STORE_PACKAGE" `
+            -ExpectedVersion "$version.0"
 
       - name: Dry run summary
         if: ${{ !inputs.submit_to_store }}
@@ -66,6 +80,7 @@ jobs:
         run: |
           Write-Host "Dry run only. No Partner Center submission was created."
           Write-Host "Package: $env:STORE_PACKAGE"
+          Write-Host "Release workflow run: ${{ inputs.release_run_id }}"
           Write-Host "Product ID configured: $([bool]$env:PRODUCT_ID)"
           Write-Host "After the first Store submission is published, rerun with submit_to_store=true and safety_ack=FIRST_STORE_SUBMISSION_PASSED."
 

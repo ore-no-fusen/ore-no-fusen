@@ -639,3 +639,23 @@
 - Tauri製品ビルドはローカル署名省略で成功し、NSISとMSIの4.4.2インストーラーを生成した。通常実行では秘密鍵をローカルへ置かないため、更新成果物の署名段階だけ失敗する。
 - Tauri CLIが `__TAURI_BUNDLE_TYPE` をバイナリへ追加できず、自動更新でパッケージ種別を識別できない可能性を警告している。インストーラー生成は成功しているが、本番リリース前に依存バージョン整合またはGitHub Actions上の署名ビルド結果を確認する。
 - `REQUIREMENTS.md` は出荷済みPhase 15〜19の20要件をCompleteへ同期し、Phase 20のSAFE-01/02だけ実機確認待ちとしてPendingを維持した。
+# 2026-07-18 MSIX正式版への一本化計画
+
+- Phase 21を追加し、正式配布をMicrosoft Store向けMSIXへ一本化する方針を確定した。
+- wingetは継続し、最終的にStore Product IDを使う`msstore`経路へ移行する。
+- 実装前の主要ゲートは、Phase 20実機確認、Store identity確定、旧MSI/NSISからのデータ移行検証、Store署名版検証とした。
+- 4計画に分割: MSIX-only CI/Store提出、実行時分岐整理、winget・旧版移行・文書同期、Store署名版統合検証。
+- 最大の懸念は、旧版がMSIXへ自動置換されないこと、community winget IDとStore Product IDが別であること、StartupTaskの`DisabledByUser`をアプリから強制解除できないこと。
+- LP監査を追加実施。`app/landing/page.tsx` の上下GitHub setup.exe CTA・旧winget、`app/use-cases/windows-sticky-notes/page.tsx` の構造化データ/SEO導線、LP専用公開workflowをPhase 21-03/04の修正・検証対象へ追加した。
+- GitHub downloadバッジはRelease assetのdownload_count集計でStore利用を計測できないため、Store切替時に削除する計画を追加。旧2.8k等を残す場合は「GitHub配布時代の累計」と固定注記し、今後の取得・インストールはPartner Centerで確認する。
+- バージョン移行方針を確定。5.0.0はNSIS・MSI・Store MSIXの3形式を最後に提供する移行開始版、5.1.0はStore MSIXだけにする移行完了版。詳細を`21-00-MIGRATION-RELEASE-PLAN.md`へ記録した。
+
+## 2026-07-19 Phase 21 実装開始（Wave 1）
+
+- `release.yml`のStore提出用MSIXを一般公開せず、固定名`store-msix`のActions artifactとして30日保存するよう変更した。
+- `store-submit.yml`はGitHub Release Assetsではなく、指定したRelease workflow run IDから同じartifactを取得するよう変更した。
+- `validate-msix.ps1`を追加し、Identity Name、Publisher、Version、x64、未署名状態を提出前に検査するようにした。古い手元MSIXの内部Versionが3.6.5.0だった問題を実際に検出し、再生成後の4.4.2.0で合格した。
+- 設定画面のStore版「お試し版」・MSI「通常版」を廃止し、Store版を正式版、非MSIX版をデスクトップ移行版としてStore商品ページへの移行ボタンを追加した。Tauri Updaterは5.0.0移行案内配信のため維持する。
+- LPの上下CTA、wingetコピー、SmartScreen説明、Windows use-caseのJSON-LDをStore版へ統一した。Store Product IDは既存の`9N4MW0V2MVVG`を使用する。
+- 検証済み: TypeScript、全Vitest 361件、Next.js製品ビルド、MSIX再生成・内容検査、`git diff --check`。
+- 未実施: 設計書・README・ユーザーガイド同期、5.0.0移行ダイアログの実機確認、GitHub Actions上のartifact受け渡し確認、コミット・プッシュ。
