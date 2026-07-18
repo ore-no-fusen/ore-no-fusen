@@ -140,6 +140,24 @@ Tauri updaterは5.0.0を既存NSIS利用者へ届けるためだけに維持し�
 
 ## 8 リリースフロー
 
+5.0.0では、既存版へ更新通知を送る前にStore版を利用可能にします。
+
+```mermaid
+flowchart TD
+    A["修正・自動テスト・実機確認"] --> B["developへコミット・プッシュ"]
+    B --> C["Build Store Packageで5.0.0 MSIXを非公開生成"]
+    C --> D["Actions artifactから未署名MSIXを取得"]
+    D --> E["Partner Centerへ提出"]
+    E --> F["Microsoft Store審査・署名・一般公開"]
+    F --> G["Store導入・winget msstoreを実機確認"]
+    G --> H["Do Release 5.0.0で最終NSIS・MSIと更新通知を公開"]
+    H --> I["Do Non-App ReleaseでLPをStore主導へ切替"]
+```
+
+<p class="mermaid-caption">図 8-1 5.0.0のStore先行公開フロー</p>
+
+`Build Store Package`は入力版をActions runner内だけへ一時反映し、タグ、GitHub Release、NSIS、MSI、updater metadata、LP、リポジトリの版番号を変更しません。
+
 ```mermaid
 flowchart TD
     A["修正・自動テスト・実機確認"] --> B["developへコミット・プッシュ"]
@@ -152,7 +170,7 @@ flowchart TD
     H --> I["Store自動更新・winget msstore反映確認"]
 ```
 
-<p class="mermaid-caption">図 8-1 5.1.0以降のリリースフロー</p>
+<p class="mermaid-caption">図 8-2 5.1.0以降のリリースフロー</p>
 
 Do Releaseは一般公開の完了ではなく、Store提出用MSIXを作る起点です。Microsoft Storeで公開された時点を一般公開完了とします。
 

@@ -5,7 +5,8 @@
 - 5.0.0はNSIS・MSI・Store MSIXを提供する移行開始版。
 - 5.1.0以降はStore MSIXだけを正式配布する。
 - 未署名MSIXをGitHub Release Assetsへ置かない。
-- Release workflowの`store-msix` artifactをPartner Centerへ提出する。
+- 初回5.0.0は`Build Store Package` workflowの`store-msix` artifactをPartner Centerへ先行提出する。
+- 5.0.0のDo ReleaseはStore一般公開と導入確認が終わるまで実行しない。
 - 初回提出と自動提出有効化前は必ず手動確認する。
 
 ## Repository設定
@@ -27,21 +28,22 @@ AZURE_AD_APPLICATION_SECRET
 
 ## 提出前提
 
-1. `Do Release`が成功している。
-2. タグに対応する`Release` workflowが成功している。
-3. Release workflowのrun IDを控えている。
+1. Actionsの`Build Store Package`へ`5.0.0`を入力し、workflowが成功している。
+2. workflowがタグ、GitHub Release、NSIS・MSI、更新通知を作成していないことを確認している。
+3. Build Store Package workflowのrun IDを控えている。
 4. runのArtifactsに`store-msix`が1件ある。
 5. MSIXのIdentity、Publisher、Version、x64、未署名検査が成功している。
 
 ## 初回または手動提出
 
-1. GitHub ActionsのRelease runから`store-msix` artifactを取得する。
+1. GitHub ActionsのBuild Store Package runから`store-msix` artifactを取得する。
 2. Partner Centerで製品`9N4MW0V2MVVG`の新しい申請を作成する。
 3. artifact内の`ore-no-fusen.msix`をアップロードする。
 4. Package IdentityとVersionを確認する。
 5. 説明、画像、プライバシー、年齢区分、制限付きCapabilityの説明を確認する。
 6. 認定へ提出する。
 7. flightまたは一般公開後、Storeから実際にインストールする。
+8. `winget --source msstore`でも導入できることを確認してから、`Do Release 5.0.0`を実行する。
 
 Storeが認定後の配布用MSIXへ署名するため、提出ファイルは未署名でよい。
 
@@ -52,7 +54,7 @@ Storeが認定後の配布用MSIXへ署名するため、提出ファイルは�
 1. Actionsから`Microsoft Store Submit`を開く。
 2. `Run workflow`を選ぶ。
 3. `release_tag`へ例として`v5.0.0`を入力する。
-4. `release_run_id`へ成功したRelease workflow run IDを入力する。
+4. `release_run_id`へ`store-msix`を持つBuild Store PackageまたはRelease workflow run IDを入力する。
 5. 最初は`submit_to_store=false`でdry runする。
 6. artifact、Version、Product IDの表示を確認する。
 7. 実提出時だけ`submit_to_store=true`にする。

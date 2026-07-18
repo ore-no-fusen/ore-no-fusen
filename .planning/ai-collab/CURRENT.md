@@ -686,3 +686,10 @@
 - `app/use-cases/windows-sticky-notes/page.tsx`の構造化データと導入説明もGitHub Releases／community wingetへ戻した。
 - TypeScript、本番Next.jsビルド、差分検査に成功。Store認定・一般公開と`msstore`動作確認後、LPとSEO導線をStore版へ切り替える。
 - LPを遅らせるのは初回Store登録時だけ。一般公開後は同じ商品ページURLを継続利用し、5.1.0以降の更新審査中もLPはStore導線のまま維持する。初回切替は`Do Non-App Release`を使用する。
+
+## 2026-07-19 Store版5.0.0の先行非公開ビルド
+
+- Do Releaseを先に実行すると既存利用者が従来版5.0.0へ更新し、後から公開されるStore版へ移行しない懸念を確認。
+- 手動`Build Store Package` workflowを追加。入力版をrunner内だけへ一時反映し、`--no-bundle`でNSIS・MSIを作らず、未署名MSIXだけを`store-msix`非公開artifactへ30日保存する。
+- タグ、GitHub Release、Tauri updater metadata、LP、リポジトリの版番号・コミットを作成しない。
+- 新しい順序はStore 5.0.0の認定・一般公開・winget確認を先に完了し、その後Do Release 5.0.0とLP切替を行う。

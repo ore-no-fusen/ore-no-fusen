@@ -246,7 +246,7 @@ flowchart TD
 
 **図 5-1　開発からリリースまでの全体フロー**
 
-> **補足（移行中の`release.yml`）:** 5.0.0は最終NSIS・MSIとStore提出用MSIXを生成する。Store提出用MSIXはGitHub Releaseへ添付せず、`store-msix` Actions artifactへ保存する。5.1.0以降はMSIXだけを生成し、community wingetへのPRは行わない。一般公開完了はDo Release時点ではなく、Microsoft Storeの認定・公開時点とする。
+> **補足（5.0.0のStore先行公開）:** 最初に`Build Store Package`へ`5.0.0`を入力し、非公開の`store-msix` artifactだけを生成してPartner Centerへ提出する。Store一般公開と`winget msstore`導入確認が終わるまでDo Releaseは実行しない。その後のDo Release 5.0.0で最終NSIS・MSIと既存利用者向け更新通知を公開する。
 
 ---
 
@@ -265,8 +265,8 @@ npm run tauri build
 - **5.0.0は移行開始版**としてNSIS・MSI・Store MSIXの3形式を最後に提供する。旧版のTauri updaterは5.0.0の移行案内を届けるため維持する。
 - **5.1.0は移行完了版**とし、Store MSIXだけを正式配布する。MSI・NSIS、`latest.json`、`.sig`、community winget PRの新規生成を終了する。
 - Store提出用MSIXは未署名で生成し、`validate-msix.ps1`でIdentity、Publisher、Version、x64、未署名状態を確認する。
-- 未署名MSIXはGitHub Release Assetsへ置かず、Release workflowの`store-msix` artifactとして30日保存する。
-- Store提出は`Microsoft Store Submit` workflowへRelease tagとRelease run IDを入力し、最初にdry runを行う。詳細は`docs/store-submission.md`を参照する。
+- 未署名MSIXはGitHub Release Assetsへ置かず、`Build Store Package`またはRelease workflowの`store-msix` artifactとして30日保存する。
+- 初回5.0.0は`Build Store Package`のartifactを手動提出する。初回公開後の自動提出は`Microsoft Store Submit` workflowへ版とartifactのrun IDを入力し、最初にdry runを行う。詳細は`docs/store-submission.md`を参照する。
 - Microsoft Storeが認定後の配布用MSIXへ正式署名し、自動更新を提供する。
 - `AppxManifest.xml`のVersionはDo Releaseが本体`X.Y.Z`に合わせて`X.Y.Z.0`へ更新する。
 - Store公開後、`winget install --id 9N4MW0V2MVVG --source msstore`とStore自動更新を実機確認する。

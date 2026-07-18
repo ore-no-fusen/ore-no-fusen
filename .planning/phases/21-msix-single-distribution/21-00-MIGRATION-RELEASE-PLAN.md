@@ -14,6 +14,16 @@
 
 ## Release A: 5.0.0 移行開始版
 
+### 公開順序
+
+1. `Build Store Package`で5.0.0の未署名MSIXだけを非公開artifactとして生成する。
+2. Partner Centerへ提出し、Storeの認定・一般公開を完了する。
+3. Storeと`winget --source msstore`から5.0.0を導入できることを確認する。
+4. `Do Release 5.0.0`で最終NSIS・MSIとTauri updater通知を公開する。
+5. `Do Non-App Release`でLPをStore主導へ切り替える。
+
+Storeが利用可能になる前に旧版へ5.0.0の更新通知を送らない。
+
 ### 配布物
 
 1. 最終NSIS: GitHub Releaseに配置し、既存Tauri Updaterの対象にする。

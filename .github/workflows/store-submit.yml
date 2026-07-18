@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       release_run_id:
-        description: 'Successful Release workflow run ID containing the store-msix artifact'
+        description: 'Successful Build Store Package or Release run ID containing store-msix'
         required: true
         type: string
       product_id:
@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download MSIX from Release workflow artifact
+      - name: Download MSIX from private workflow artifact
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,7 +80,7 @@ jobs:
         run: |
           Write-Host "Dry run only. No Partner Center submission was created."
           Write-Host "Package: $env:STORE_PACKAGE"
-          Write-Host "Release workflow run: ${{ inputs.release_run_id }}"
+          Write-Host "Source workflow run: ${{ inputs.release_run_id }}"
           Write-Host "Product ID configured: $([bool]$env:PRODUCT_ID)"
           Write-Host "After the first Store submission is published, rerun with submit_to_store=true and safety_ack=FIRST_STORE_SUBMISSION_PASSED."
 
