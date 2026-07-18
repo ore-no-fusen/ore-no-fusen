@@ -685,3 +685,4 @@
 - `app/landing/page.tsx`の主CTA・最終CTAをGitHub ReleaseのNSISへ戻し、wingetは移行前のcommunity IDを維持した。Storeリンクは公開完了まで表示しない。
 - `app/use-cases/windows-sticky-notes/page.tsx`の構造化データと導入説明もGitHub Releases／community wingetへ戻した。
 - TypeScript、本番Next.jsビルド、差分検査に成功。Store認定・一般公開と`msstore`動作確認後、LPとSEO導線をStore版へ切り替える。
+- LPを遅らせるのは初回Store登録時だけ。一般公開後は同じ商品ページURLを継続利用し、5.1.0以降の更新審査中もLPはStore導線のまま維持する。初回切替は`Do Non-App Release`を使用する。

@@ -32,6 +32,8 @@
 
 - Store公開まではLPの旧ダウンロード導線を維持する。
 - Store公開確認後、LPの主ボタンをStoreへ変更し、旧版は「既存利用者向け移行版」と明示する。
+- 初回のStore一般公開後は商品ページURLを継続利用できるため、5.1.0以降の更新審査中にLPをGitHub版へ戻さない。
+- 初回のLP切替はアプリの版を上げず、`Do Non-App Release`でLP関連ファイルだけをmainへ反映する。
 - GitHub Release本文、README、ユーザーガイドに移行手順を掲載する。
 - 旧community winget利用者へStore版コマンドを案内する。
 
