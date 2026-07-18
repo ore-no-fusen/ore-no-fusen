@@ -670,3 +670,11 @@
 - developのDocs workflowはbuild成功後、`github-pages` environmentへ入る前にstepなしで失敗した。main専用environment保護が原因と推定し、developではbuildのみ・mainだけdeployへ変更する案を保留中。
 - Docs workflowをdevelopではbuildのみ、mainまたは手動実行時だけdeployするよう修正し、Actions run 29658767858でbuild成功・deploy skip・workflow成功を確認した。
 - 5.0.0だけをStore移行ブリッジ版と判定する共通関数と9件のテストを追加。旧版のTauri Updaterで5.0.0を検出した場合、更新後に設定画面からStore版を導入し、データ確認後に旧版を削除する専用メッセージを表示する。
+
+## 2026-07-19 Phase 21 5.0.0リリース準備確認
+
+- 設定画面とLPの実機確認はユーザー確認で問題なし。
+- developの最終Test workflow 2件（29658981028、29658767856）は成功。
+- Do Releaseへ`5.0.0`を入力すると、package.json、Cargo.toml/Cargo.lock、package-lock.json、MSIX manifestの`5.0.0.0`を一括更新・検査するため、事前の手動バージョン変更は不要。
+- MSIX manifest冒頭に残っていた「識別子はダミー」という旧説明を、確定済み本番IdentityとMicrosoft認定署名の説明へ修正。実行内容・Identity値は変更していない。
+- 次の公開操作はDo Release 5.0.0。これはmain・本番LP・GitHub Releaseを更新するため、ユーザーの明示指示後に実施する。
