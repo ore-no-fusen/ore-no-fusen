@@ -694,3 +694,5 @@
 - タグ、GitHub Release、Tauri updater metadata、LP、リポジトリの版番号・コミットを作成しない。
 - 新しい順序はStore 5.0.0の認定・一般公開・winget確認を先に完了し、その後Do Release 5.0.0とLP切替を行う。
 - 初回run 29662856541は5.0.0実行ファイルの`--no-bundle`ビルドまで成功したが、通常bundleが作る`target/release/resources/icon.ico`がなくMSIX梱包前に停止。workflowで同じicon resourceだけを明示配置する最小修正を行い、NSIS・MSI無効化は維持する。
+- 修正後run 29663975222は全step成功。`store-msix`非公開artifact（約52.7MB）を生成し、Version 5.0.0.0、Identity `ONFStudios.FUSEN`、本番Publisher、x64、未署名をActions内とローカルの2回検証した。
+- ローカル確認用MSIXは`C:\tmp\ore-no-fusen-store-29663975222\ore-no-fusen.msix`、SHA-256は`362E6875D0ECA67527BCBDED8FE0D0E1A53A8490618EE87A4DFE6D9E340CFE78`。リポジトリ版は4.4.2のまま、v5.0.0タグ・GitHub Release・更新通知・LP変更は未作成。
