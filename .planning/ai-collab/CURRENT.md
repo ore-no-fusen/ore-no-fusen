@@ -693,3 +693,4 @@
 - 手動`Build Store Package` workflowを追加。入力版をrunner内だけへ一時反映し、`--no-bundle`でNSIS・MSIを作らず、未署名MSIXだけを`store-msix`非公開artifactへ30日保存する。
 - タグ、GitHub Release、Tauri updater metadata、LP、リポジトリの版番号・コミットを作成しない。
 - 新しい順序はStore 5.0.0の認定・一般公開・winget確認を先に完了し、その後Do Release 5.0.0とLP切替を行う。
+- 初回run 29662856541は5.0.0実行ファイルの`--no-bundle`ビルドまで成功したが、通常bundleが作る`target/release/resources/icon.ico`がなくMSIX梱包前に停止。workflowで同じicon resourceだけを明示配置する最小修正を行い、NSIS・MSI無効化は維持する。

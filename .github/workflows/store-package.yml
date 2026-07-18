@@ -108,6 +108,13 @@ jobs:
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
         run: npm run tauri build -- --no-bundle --ci
 
+      - name: Prepare resources normally created by the bundler
+        shell: pwsh
+        run: |
+          $resourcesPath = 'src-tauri/target/release/resources'
+          New-Item -ItemType Directory -Path $resourcesPath -Force | Out-Null
+          Copy-Item -LiteralPath 'src-tauri/icons/icon.ico' -Destination "$resourcesPath/icon.ico" -Force
+
       - name: Build unsigned Store MSIX
         run: powershell -ExecutionPolicy Bypass -File packaging\msix\build-msix.ps1
 
