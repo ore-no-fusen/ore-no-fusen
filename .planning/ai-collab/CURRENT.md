@@ -678,3 +678,10 @@
 - Do Releaseへ`5.0.0`を入力すると、package.json、Cargo.toml/Cargo.lock、package-lock.json、MSIX manifestの`5.0.0.0`を一括更新・検査するため、事前の手動バージョン変更は不要。
 - MSIX manifest冒頭に残っていた「識別子はダミー」という旧説明を、確定済み本番IdentityとMicrosoft認定署名の説明へ修正。実行内容・Identity値は変更していない。
 - 次の公開操作はDo Release 5.0.0。これはmain・本番LP・GitHub Releaseを更新するため、ユーザーの明示指示後に実施する。
+
+## 2026-07-19 Store公開前のLP導線へ修正
+
+- Store未登録のままDo Releaseすると、本番LPが利用不能なStore導線へ切り替わる問題を確認。
+- `app/landing/page.tsx`の主CTA・最終CTAをGitHub ReleaseのNSISへ戻し、wingetは移行前のcommunity IDを維持した。Storeリンクは公開完了まで表示しない。
+- `app/use-cases/windows-sticky-notes/page.tsx`の構造化データと導入説明もGitHub Releases／community wingetへ戻した。
+- TypeScript、本番Next.jsビルド、差分検査に成功。Store認定・一般公開と`msstore`動作確認後、LPとSEO導線をStore版へ切り替える。
