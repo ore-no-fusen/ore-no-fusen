@@ -706,3 +706,6 @@
 - WindowsApps配下の版付き実行ファイルを直接参照せず、Package Family NameとApplication Id `OreNoFusen`から作る固定AUMIDを`explorer.exe shell:AppsFolder`経由で起動する。更新後も同じリンクを使い、アイコンはAppDataの安定パスへ保存する。
 - 検証済み: Rustショートカット単体2件、Rustコンパイル、TypeScript、全Vitest、設定後方互換4件、VitePressビルド、差分チェック。
 - Store署名版で要実機確認: Storeの［開く］、初回確認の両選択、デスクトップ作成、外部ランチャー登録、設定からの再作成・削除、ショートカット起動、5.0.0→5.1.0更新後の起動。
+- 実装コミット`465ec82`をdevelopへpushし、`Build Store Package` run `29666724589`で5.0.0非公開MSIXを再生成。全step成功し、タグ・Release・LP公開なしを確認した。
+- 新artifact ID `8435990831`、サイズ52,704,869 bytes（圧縮後）。ローカルMSIXは`C:\tmp\ore-no-fusen-store-29666724589\ore-no-fusen.msix`、サイズ52,734,077 bytes、SHA-256 `3072509E46CC1C9A0010EFAC5C0CDAE6862F39F8F1103420EA9263716938994A`。
+- ローカル再検査でIdentity `ONFStudios.FUSEN`、Publisher本番値、Version `5.0.0.0`、x64、未署名を確認。展開した実行ファイルに` shell:AppsFolder`起動処理が含まれることも確認した。
