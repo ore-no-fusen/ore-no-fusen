@@ -252,7 +252,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                     style={{
                         position: 'absolute',
                         top: '4px',
-                        right: '4px',
+                        left: '4px',
                         width: '24px',
                         height: '24px',
                         display: 'flex',

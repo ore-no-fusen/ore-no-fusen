@@ -12,8 +12,17 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi';
+import { AnnotationHistory } from '../utils/annotationHistory';
 
 type Tool = 'pen' | 'highlight' | 'arrow' | 'rect' | 'callout';
+type AnnotationNode = import('konva/lib/Shape').Shape | import('konva/lib/Group').Group;
+
+export const DEFAULT_ANNOTATION_SETTINGS = {
+    tool: 'highlight' as Tool,
+    color: '#00FF00',
+    strokeWidth: 15,
+    highlightOpacity: 0.5,
+} as const;
 
 interface Props {
     absolutePath: string;
@@ -50,23 +59,24 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     const containerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<import('konva/lib/Stage').Stage | null>(null);
     const drawLayerRef = useRef<import('konva/lib/Layer').Layer | null>(null);
+    const historyRef = useRef(new AnnotationHistory<AnnotationNode>());
     // Refs for current drawing state (avoid stale closures)
-    const toolRef = useRef<Tool>('pen');
-    const colorRef = useRef<string>('#ef4444');
-    const strokeWidthRef = useRef<number>(3);
+    const toolRef = useRef<Tool>(DEFAULT_ANNOTATION_SETTINGS.tool);
+    const colorRef = useRef<string>(DEFAULT_ANNOTATION_SETTINGS.color);
+    const strokeWidthRef = useRef<number>(DEFAULT_ANNOTATION_SETTINGS.strokeWidth);
     const isDrawingRef = useRef(false);
     const currentShapeRef = useRef<import('konva/lib/Shape').Shape | null>(null);
     const pointsRef = useRef<number[]>([]);
     const originRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
     // UI state (for toolbar rendering)
-    const [tool, setTool] = useState<Tool>('pen');
-    const [color, setColor] = useState<string>('#ef4444');
-    const [strokeWidth, setStrokeWidth] = useState<number>(3);
-    const [highlightOpacity, setHighlightOpacity] = useState<number>(0.6);
-    const highlightOpacityRef = useRef<number>(0.6);
+    const [tool, setTool] = useState<Tool>(DEFAULT_ANNOTATION_SETTINGS.tool);
+    const [color, setColor] = useState<string>(DEFAULT_ANNOTATION_SETTINGS.color);
+    const [strokeWidth, setStrokeWidth] = useState<number>(DEFAULT_ANNOTATION_SETTINGS.strokeWidth);
+    const [highlightOpacity, setHighlightOpacity] = useState<number>(DEFAULT_ANNOTATION_SETTINGS.highlightOpacity);
+    const highlightOpacityRef = useRef<number>(DEFAULT_ANNOTATION_SETTINGS.highlightOpacity);
     const [isSaving, setIsSaving] = useState(false);
-    const [historyCount, setHistoryCount] = useState(0); // for undo button enable
+    const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 });
 
     // natural dimensions of the image (for pixelRatio on export)
     const naturalSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -78,6 +88,10 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     useEffect(() => { strokeWidthRef.current = strokeWidth; }, [strokeWidth]);
     useEffect(() => { highlightOpacityRef.current = highlightOpacity; }, [highlightOpacity]);
 
+    const syncHistoryCounts = useCallback(() => {
+        setHistoryCounts(historyRef.current.counts);
+    }, []);
+
     // ─── Init Konva Stage ────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
@@ -85,6 +99,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         let stage: import('konva/lib/Stage').Stage;
         let layer: import('konva/lib/Layer').Layer;
         let imgLayer: import('konva/lib/Layer').Layer;
+        const history = historyRef.current;
 
         const init = async () => {
             const Konva = (await import('konva')).default;
@@ -179,7 +194,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                     }));
                     layer.add(label);
                     layer.batchDraw();
-                    setHistoryCount(layer.children.length);
+                    history.record(label);
+                    syncHistoryCounts();
                     return;
                 }
 
@@ -262,9 +278,11 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             stage.on('mouseup touchend', () => {
                 if (!isDrawingRef.current) return;
                 isDrawingRef.current = false;
+                const completedShape = currentShapeRef.current;
                 currentShapeRef.current = null;
                 pointsRef.current = [];
-                setHistoryCount(layer.children.length);
+                if (completedShape) history.record(completedShape);
+                syncHistoryCounts();
             });
         };
 
@@ -272,18 +290,20 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         return () => {
             cancelled = true;
             if (blobUrl) URL.revokeObjectURL(blobUrl);
+            history.reset();
             stageRef.current?.destroy();
             stageRef.current = null;
             drawLayerRef.current = null;
         };
-    }, [displayUrl]);
+    }, [displayUrl, syncHistoryCounts]);
 
     // ─── Undo ────────────────────────────────────────────────────────────
     const handleToolChange = useCallback((t: Tool) => {
         setTool(t);
         if (t === 'highlight') {
-            setColor('#FFFF00');
-            setStrokeWidth(24);
+            setColor(DEFAULT_ANNOTATION_SETTINGS.color);
+            setStrokeWidth(DEFAULT_ANNOTATION_SETTINGS.strokeWidth);
+            setHighlightOpacity(DEFAULT_ANNOTATION_SETTINGS.highlightOpacity);
         } else if (t === 'pen') {
             setColor('#ef4444');
             setStrokeWidth(3);
@@ -293,12 +313,16 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     const handleUndo = useCallback(() => {
         const layer = drawLayerRef.current;
         if (!layer) return;
-        const children = layer.children;
-        if (children.length === 0) return;
-        children[children.length - 1].destroy();
-        layer.batchDraw();
-        setHistoryCount(layer.children.length);
-    }, []);
+        historyRef.current.undo(layer);
+        syncHistoryCounts();
+    }, [syncHistoryCounts]);
+
+    const handleRedo = useCallback(() => {
+        const layer = drawLayerRef.current;
+        if (!layer) return;
+        historyRef.current.redo(layer);
+        syncHistoryCounts();
+    }, [syncHistoryCounts]);
 
     // ─── Save ────────────────────────────────────────────────────────────
     const handleSave = useCallback(async () => {
@@ -339,11 +363,19 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onCancel();
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z') handleUndo();
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) handleRedo();
+                else handleUndo();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                handleRedo();
+            }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [onCancel, handleUndo]);
+    }, [onCancel, handleUndo, handleRedo]);
 
     return (
         <div
@@ -441,13 +473,22 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
                 {/* ── Footer buttons ── */}
                 <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
-                    <button
-                        onClick={handleUndo}
-                        disabled={historyCount === 0}
-                        className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                        元に戻す
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleUndo}
+                            disabled={historyCounts.undo === 0}
+                            className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            元に戻す
+                        </button>
+                        <button
+                            onClick={handleRedo}
+                            disabled={historyCounts.redo === 0}
+                            className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            やり直す
+                        </button>
+                    </div>
                     <div className="flex gap-2">
                         <button
                             onClick={onCancel}

@@ -16,6 +16,7 @@ import { getTranslation, type Language } from '@/lib/i18n';
 import { playPinToggleSound } from '../utils/pinToggleSound';
 import { STICKY_ACTION_SYMBOLS } from '@/app/utils/stickyActionSymbols';
 import { STICKY_ICON_BUTTON_SIZE } from '@/app/utils/stickyControlStyles';
+import StickyActionIcon from './StickyActionIcon';
 
 export type ToolbarButtonsProps = {
     isEditing: boolean;
@@ -34,6 +35,10 @@ export type ToolbarButtonsProps = {
     alarmAtStr?: string | null;
     alarmTooltip?: string;
     newNoteShortcutHint?: string;
+    archiveLabel?: string;
+    onArchive?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    deleteLabel?: string;
+    onDelete?: () => void;
 };
 
 export default function ToolbarButtons({
@@ -53,15 +58,20 @@ export default function ToolbarButtons({
     alarmAtStr,
     alarmTooltip,
     newNoteShortcutHint,
+    archiveLabel,
+    onArchive,
+    deleteLabel,
+    onDelete,
 }: ToolbarButtonsProps) {
     const t = getTranslation(language ?? 'ja');
     // 通常モード時：ツールバー（折りたたみ + ピン）
     if (!isEditing) {
         return (
             <div
-                className={`hoverBar flex flex-row justify-end items-center gap-[2px] p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show || isWelcome ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
+                className={`hoverBar flex flex-col items-end p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show || isWelcome ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
                     }`}
             >
+                <div data-testid="sticky-primary-actions" className="flex flex-row items-center gap-[2px]">
                 {/* アラームボタン（アラームがセットされている時のみ表示） */}
                 {onAlarmClick && alarmAtStr && (
                     <Tooltip text={alarmTooltip || ''} placement="top-right">
@@ -133,6 +143,52 @@ export default function ToolbarButtons({
                             )}
                         </button>
                     </Tooltip>
+                )}
+                </div>
+
+                {!isMinimized && (onArchive || onDelete) && (
+                    <div data-testid="sticky-caution-actions" className="mt-3 flex flex-col items-center gap-1">
+                        {onArchive && archiveLabel && (
+                            <Tooltip text={archiveLabel} placement="top-right-shifted">
+                                <button
+                                    type="button"
+                                    aria-label={archiveLabel}
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onArchive(e);
+                                    }}
+                                    className={`${STICKY_ICON_BUTTON_SIZE} px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors`}
+                                >
+                                    <StickyActionIcon kind="archive" />
+                                </button>
+                            </Tooltip>
+                        )}
+                        {onDelete && (
+                            <Tooltip text={deleteLabel || t('menu.delete')} hint="Ctrl+D" placement="top-right-shifted">
+                                <button
+                                    type="button"
+                                    aria-label={deleteLabel || t('menu.delete')}
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onDelete();
+                                    }}
+                                    className={`${STICKY_ICON_BUTTON_SIZE} px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-red-100 hover:text-red-600 hover:border-red-200 transition-colors`}
+                                >
+                                    <StickyActionIcon kind="delete" />
+                                </button>
+                            </Tooltip>
+                        )}
+                    </div>
                 )}
             </div>
         );

@@ -39,7 +39,6 @@ import ConfirmDialog from './ConfirmDialog';
 import AlarmDialog from './AlarmDialog';
 import SaveErrorToast from './SaveErrorToast';
 import Tooltip from './Tooltip';
-import StickyActionIcon from './StickyActionIcon';
 
 
 // ユーティリティ
@@ -1994,6 +1993,16 @@ const StickyNote = memo(function StickyNote() {
                     }}
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}
+                    archiveLabel={isCrystalNote ? `${crystalNoteLabel}を閉じる` : archiveButtonLabel}
+                    onArchive={(e) => {
+                        if (isCrystalNote) {
+                            handleReturnRecipe();
+                        } else {
+                            handleArchiveFromHoverButton(e.clientX, e.clientY);
+                        }
+                    }}
+                    deleteLabel={t('menu.delete')}
+                    onDelete={() => handleDeleteNote()}
                     language={language}
                     onAlarmClick={() => setShowAlarmDialog(true)}
                     alarmAtStr={alarmAtStr}
@@ -2305,7 +2314,7 @@ const StickyNote = memo(function StickyNote() {
             {/* タグ表示エリア（右下、ホバー時のみ） */}
             {!isEditing && !isMinimized && (
                 <div
-                    className="absolute bottom-ui-offset-y right-ui-offset-x z-tags pointer-events-none flex justify-end"
+                    className="absolute bottom-ui-offset-y right-[36px] z-tags pointer-events-none flex justify-end"
                     style={{ opacity: isHover ? 1 : 0, transition: 'opacity 0.2s ease' }}
                 >
                     <div className="flex items-center justify-end gap-1 pointer-events-auto">
@@ -2343,64 +2352,6 @@ const StickyNote = memo(function StickyNote() {
                                 )}
                             </div>
                         )}
-                        {isCrystalNote && (
-                            <Tooltip text={`${crystalNoteLabel}を閉じる`} placement="top-right-arrow-shifted">
-                                <button
-                                    type="button"
-                                    aria-label={`${crystalNoteLabel}を閉じる`}
-                                    onPointerDown={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                    }}
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleReturnRecipe();
-                                    }}
-                                    className="h-[24px] px-2 rounded text-[12px] leading-none flex items-center justify-center gap-1 text-gray-600 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-orange-100 hover:text-orange-700 hover:border-orange-200 transition-colors whitespace-nowrap"
-                                >
-                                    ↩ {crystalNoteLabel}を閉じる
-                                </button>
-                            </Tooltip>
-                        )}
-                        {!isCrystalNote && (
-                            <Tooltip text={archiveButtonLabel} placement="top-right-arrow-shifted">
-                                <button
-                                    type="button"
-                                    aria-label={archiveButtonLabel}
-                                    onPointerDown={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                    }}
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleArchiveFromHoverButton(e.clientX, e.clientY);
-                                    }}
-                                    className={`${STICKY_ICON_BUTTON_SIZE} px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors`}
-                                >
-                                    <StickyActionIcon kind="archive" />
-                                </button>
-                            </Tooltip>
-                        )}
-                        <Tooltip text={t('menu.delete')} hint="Ctrl+D" placement="top-right-arrow-shifted">
-                            <button
-                                type="button"
-                                aria-label={t('menu.delete')}
-                                onPointerDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                }}
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleDeleteNote();
-                                }}
-                                className={`${STICKY_ICON_BUTTON_SIZE} px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-red-100 hover:text-red-600 hover:border-red-200 transition-colors`}
-                            >
-                                <StickyActionIcon kind="delete" />
-                            </button>
-                        </Tooltip>
                     </div>
                 </div>
             )}

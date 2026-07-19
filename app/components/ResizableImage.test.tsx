@@ -16,6 +16,27 @@ beforeEach(() => {
 });
 
 describe('ResizableImage', () => {
+    it('places the annotation action at the image top-left away from the note toolbar', async () => {
+        const { container } = render(
+            <ResizableImage
+                src="C:/Users/uck/Pictures/screen.png"
+                alt="screen"
+                baseOffset={0}
+                onResizeEnd={vi.fn()}
+                onAnnotationClick={vi.fn()}
+            />
+        );
+
+        const annotation = container.querySelector('.annotation-hint') as HTMLElement;
+        expect(annotation).toBeTruthy();
+        expect(annotation.style.left).toBe('4px');
+        expect(annotation.style.right).toBe('');
+        await waitFor(() => {
+            expect(screen.getByRole('img', { name: 'screen' }).getAttribute('src'))
+                .toBe('asset://C:/Users/uck/Pictures/screen.png');
+        });
+    });
+
     it('reuses a converted local image URL immediately when the image remounts', async () => {
         const props = {
             src: 'C:/Users/uck/Pictures/screen.png',
