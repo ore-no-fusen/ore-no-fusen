@@ -78,8 +78,9 @@ FUSEN is designed as a fast thinking canvas where ideas can appear the moment th
 
 1. Open the [Microsoft Store listing](https://apps.microsoft.com/detail/9N4MW0V2MVVG).
 2. Select **Get** or **Install**.
-3. Launch FUSEN from the Start menu.
-4. Future updates are delivered automatically through Microsoft Store.
+3. Select **Open** on the Store page after installation.
+4. On first launch, choose whether to create the **俺の付箋（Store版）** desktop shortcut. You can also create it later from Settings.
+5. Future updates are delivered automatically through Microsoft Store.
 
 **System Requirements:**
 - OS: Windows 10/11 (64-bit)

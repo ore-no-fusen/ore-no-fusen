@@ -35,6 +35,9 @@ pub fn save_settings<R: Runtime>(
     if settings.pc_id.as_ref().map_or(true, |s| s.trim().is_empty()) {
         settings.pc_id = existing_settings.pc_id.clone();
     }
+    // 内部の初回確認状態は、古いフロントや保存途中の画面から false が届いても戻さない。
+    settings.desktop_shortcut_prompted =
+        settings.desktop_shortcut_prompted || existing_settings.desktop_shortcut_prompted;
 
     if let Some(base_path) = &settings.base_path {
         storage::validate_storage_path(base_path)?;

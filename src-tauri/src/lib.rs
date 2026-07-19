@@ -17,6 +17,7 @@ mod capture; // [NEW] キャプチャ機能
 mod clipboard; // [NEW] クリップボード機能
 mod crash_guard;
 mod distribution;
+mod desktop_shortcut;
 mod double_tap;
 mod gdrive; // Google Drive 連携
 mod hotkey_manager;
@@ -4777,6 +4778,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_distribution_info,
+            desktop_shortcut::fusen_get_desktop_shortcut_state,
+            desktop_shortcut::fusen_create_desktop_shortcut,
+            desktop_shortcut::fusen_remove_desktop_shortcut,
+            desktop_shortcut::fusen_should_prompt_desktop_shortcut,
+            desktop_shortcut::fusen_mark_desktop_shortcut_prompted,
             fusen_get_startup_state,
             fusen_set_startup_enabled,
             fusen_set_always_on_top,

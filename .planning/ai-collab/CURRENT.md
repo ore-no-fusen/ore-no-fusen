@@ -696,3 +696,13 @@
 - 初回run 29662856541は5.0.0実行ファイルの`--no-bundle`ビルドまで成功したが、通常bundleが作る`target/release/resources/icon.ico`がなくMSIX梱包前に停止。workflowで同じicon resourceだけを明示配置する最小修正を行い、NSIS・MSI無効化は維持する。
 - 修正後run 29663975222は全step成功。`store-msix`非公開artifact（約52.7MB）を生成し、Version 5.0.0.0、Identity `ONFStudios.FUSEN`、本番Publisher、x64、未署名をActions内とローカルの2回検証した。
 - ローカル確認用MSIXは`C:\tmp\ore-no-fusen-store-29663975222\ore-no-fusen.msix`、SHA-256は`362E6875D0ECA67527BCBDED8FE0D0E1A53A8490618EE87A4DFE6D9E340CFE78`。リポジトリ版は4.4.2のまま、v5.0.0タグ・GitHub Release・更新通知・LP変更は未作成。
+
+## 2026-07-19 Store版の初回起動・デスクトップショートカット
+
+- Storeはインストールだけではアプリ処理を実行しないため、Store画面の［開く］までを導入手順とし、ユーザーガイドと提出後確認へ反映した。LPの同案内はStore一般公開後の切替時に反映する。
+- MSIX版の初回起動時に「デスクトップにショートカットを作成しますか？」を1回表示し、［作成する］［今回は作成しない］を選べるようにした。
+- 設定の「全般」へ、デスクトップショートカットの作成・作り直し・削除を追加した。初回に作らなかった場合も後から作成できる。
+- 移行期間の旧NSIS・MSI版と区別するため、MSIX版は「俺の付箋（Store版）.lnk」とし、既存`ore-no-fusen.lnk`を上書きしない。
+- WindowsApps配下の版付き実行ファイルを直接参照せず、Package Family NameとApplication Id `OreNoFusen`から作る固定AUMIDを`explorer.exe shell:AppsFolder`経由で起動する。更新後も同じリンクを使い、アイコンはAppDataの安定パスへ保存する。
+- 検証済み: Rustショートカット単体2件、Rustコンパイル、TypeScript、全Vitest、設定後方互換4件、VitePressビルド、差分チェック。
+- Store署名版で要実機確認: Storeの［開く］、初回確認の両選択、デスクトップ作成、外部ランチャー登録、設定からの再作成・削除、ショートカット起動、5.0.0→5.1.0更新後の起動。

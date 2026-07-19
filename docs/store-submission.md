@@ -42,8 +42,10 @@ AZURE_AD_APPLICATION_SECRET
 4. Package IdentityとVersionを確認する。
 5. 説明、画像、プライバシー、年齢区分、制限付きCapabilityの説明を確認する。
 6. 認定へ提出する。
-7. flightまたは一般公開後、Storeから実際にインストールする。
-8. `winget --source msstore`でも導入できることを確認してから、`Do Release 5.0.0`を実行する。
+7. flightまたは一般公開後、Storeから実際にインストールし、Store画面の［開く］から初回起動する。
+8. 初回確認の［作成する］で「俺の付箋（Store版）」がデスクトップに作られ、そのショートカットから起動できることを確認する。
+9. 設定画面からショートカットの作り直しと削除ができることを確認する。
+10. `winget --source msstore`でも導入できることを確認してから、`Do Release 5.0.0`を実行する。
 
 Storeが認定後の配布用MSIXへ署名するため、提出ファイルは未署名でよい。
 

@@ -115,6 +115,9 @@ pub struct Settings {
     #[serde(alias = "autoStart")]
     #[serde(default = "default_auto_start")]
     pub auto_start: bool,
+    /// MSIX版でデスクトップショートカットの初回確認を表示済みか。
+    #[serde(default)]
+    pub desktop_shortcut_prompted: bool,
     #[serde(alias = "fontSize")]
     #[serde(default = "default_font_size")]
     pub font_size: f64,
@@ -188,6 +191,7 @@ impl Default for Settings {
             base_path: None,
             language: default_language(),
             auto_start: default_auto_start(),
+            desktop_shortcut_prompted: false,
             font_size: default_font_size(),
             sound_enabled: default_sound_enabled(),
             iphone_send_enabled: false,

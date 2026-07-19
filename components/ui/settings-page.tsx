@@ -1147,6 +1147,9 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
     const [startupDistribution, setStartupDistribution] = useState<"unknown" | "desktop" | "msix">("unknown")
     const [startupState, setStartupState] = useState("desktop")
     const [startupMessage, setStartupMessage] = useState("")
+    const [desktopShortcutExists, setDesktopShortcutExists] = useState(false)
+    const [desktopShortcutBusy, setDesktopShortcutBusy] = useState(false)
+    const [desktopShortcutMessage, setDesktopShortcutMessage] = useState("")
     const startupDisabledByUserMessage = t('settings.general.autoStartDisabledByUser')
 
     useEffect(() => {
@@ -1156,7 +1159,9 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             try {
                 const { invoke } = await import("@tauri-apps/api/core")
                 const distribution = await invoke<string>("fusen_get_distribution_info")
+                const shortcutExists = await invoke<boolean>("fusen_get_desktop_shortcut_state")
                 if (cancelled) return
+                setDesktopShortcutExists(shortcutExists)
 
                 if (distribution !== "msix") {
                     setStartupDistribution("desktop")
@@ -1191,6 +1196,37 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             await open("ms-settings:startupapps")
         } catch (e) {
             console.error("[AutoStart] Failed to open Windows startup settings:", e)
+        }
+    }
+
+    const createDesktopShortcut = async () => {
+        setDesktopShortcutBusy(true)
+        setDesktopShortcutMessage("")
+        try {
+            const { invoke } = await import("@tauri-apps/api/core")
+            const path = await invoke<string>("fusen_create_desktop_shortcut")
+            await invoke("fusen_mark_desktop_shortcut_prompted")
+            setDesktopShortcutExists(true)
+            setDesktopShortcutMessage(`作成しました: ${path}`)
+        } catch (e) {
+            setDesktopShortcutMessage(`作成できませんでした: ${String(e)}`)
+        } finally {
+            setDesktopShortcutBusy(false)
+        }
+    }
+
+    const removeDesktopShortcut = async () => {
+        setDesktopShortcutBusy(true)
+        setDesktopShortcutMessage("")
+        try {
+            const { invoke } = await import("@tauri-apps/api/core")
+            await invoke("fusen_remove_desktop_shortcut")
+            setDesktopShortcutExists(false)
+            setDesktopShortcutMessage("デスクトップから削除しました。")
+        } catch (e) {
+            setDesktopShortcutMessage(`削除できませんでした: ${String(e)}`)
+        } finally {
+            setDesktopShortcutBusy(false)
         }
     }
 
@@ -1283,8 +1319,28 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </div>
                 </SettingsItemCard>
 
+                <SettingsItemCard number={3} title="デスクトップショートカット" description="デスクトップや外部ランチャーから起動するためのショートカットを管理します。" current={desktopShortcutExists ? '作成済み' : '未作成'}>
+                    <div className="space-y-3">
+                        <div>
+                            <Label className="text-base">{startupDistribution === 'msix' ? '俺の付箋（Store版）' : '俺の付箋'}</Label>
+                            <p className="text-sm text-muted-foreground">Store版は従来版と区別できる名前で作成します。アプリ更新後も同じショートカットを使えます。</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <Button onClick={createDesktopShortcut} disabled={desktopShortcutBusy || startupDistribution === 'unknown'}>
+                                {desktopShortcutExists ? 'ショートカットを作り直す' : 'ショートカットを作成'}
+                            </Button>
+                            {desktopShortcutExists && (
+                                <Button variant="outline" onClick={removeDesktopShortcut} disabled={desktopShortcutBusy}>
+                                    ショートカットを削除
+                                </Button>
+                            )}
+                        </div>
+                        {desktopShortcutMessage && <p className="text-sm text-slate-600 break-all">{desktopShortcutMessage}</p>}
+                    </div>
+                </SettingsItemCard>
+
                 {/* 効果音スイッチ */}
-                <SettingsItemCard number={3} title="効果音" description="保存や削除などの操作音を設定します。" current={settings.sound_enabled ? 'オン' : 'オフ'}>
+                <SettingsItemCard number={4} title="効果音" description="保存や削除などの操作音を設定します。" current={settings.sound_enabled ? 'オン' : 'オフ'}>
                 <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.general.sound')}</Label>
@@ -1296,7 +1352,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                     />
                 </div>
                 </SettingsItemCard>
-                <SettingsItemCard number={4} title="文字サイズ" description="付箋本文の文字の大きさを調整します。" current={`${settings.font_size}px`}>
+                <SettingsItemCard number={5} title="文字サイズ" description="付箋本文の文字の大きさを調整します。" current={`${settings.font_size}px`}>
             <section className="space-y-4">
                 <div>
                     <h3 className="text-lg font-semibold text-slate-900">{t('settings.appearance.title')}</h3>

@@ -239,6 +239,8 @@ function OrchestratorContent() {
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
   const [hotkeyRegisterFailureMessage, setHotkeyRegisterFailureMessage] = useState<string | null>(null);
   const [showMonthlyBackupPrompt, setShowMonthlyBackupPrompt] = useState(false);
+  const [showDesktopShortcutPrompt, setShowDesktopShortcutPrompt] = useState(false);
+  const desktopShortcutPromptCheckedRef = useRef(false);
   const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
   const monthlyBackupCheckedRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
@@ -1741,7 +1743,29 @@ function OrchestratorContent() {
 
   }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !monthlyBackupResult;
+  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
+
+  useEffect(() => {
+    if (!isMainWindow || isCheckingSetup || setupRequired || isSettingsOpen || desktopShortcutPromptCheckedRef.current) return;
+    desktopShortcutPromptCheckedRef.current = true;
+    const checkDesktopShortcut = async () => {
+      try {
+        const shouldPrompt = await invoke<boolean>('fusen_should_prompt_desktop_shortcut');
+        if (!shouldPrompt) return;
+        setShowDesktopShortcutPrompt(true);
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        await win.setSize(new LogicalSize(640, 380));
+        await win.center();
+        await win.unminimize();
+        await win.show();
+        await win.setFocus();
+      } catch (e) {
+        console.error('[DesktopShortcut] initial prompt check failed:', e);
+      }
+    };
+    checkDesktopShortcut();
+  }, [isMainWindow, isCheckingSetup, setupRequired, isSettingsOpen]);
 
   useEffect(() => {
     if (!isDashboard || monthlyBackupCheckedRef.current) return;
@@ -1879,6 +1903,33 @@ function OrchestratorContent() {
         cancelText={tUpdate('update.cancel')}
         onConfirm={handleUpdateConfirm}
         onCancel={handleUpdateCancel}
+      />
+    );
+  }
+
+  if (showDesktopShortcutPrompt) {
+    return (
+      <ConfirmDialog
+        isOpen
+        title="デスクトップショートカット"
+        message={'デスクトップにショートカットを作成しますか？\n毎日使う場合は作成をおすすめします。\n後から設定画面でも作成できます。\n\n作成される名前: 俺の付箋（Store版）'}
+        confirmText="作成する"
+        cancelText="今回は作成しない"
+        onConfirm={async () => {
+          try {
+            await invoke<string>('fusen_create_desktop_shortcut');
+            await invoke('fusen_mark_desktop_shortcut_prompted');
+            setShowDesktopShortcutPrompt(false);
+            await getCurrentWindow().hide();
+          } catch (e) {
+            alert(`ショートカットを作成できませんでした。\n\n${String(e)}`);
+          }
+        }}
+        onCancel={async () => {
+          await invoke('fusen_mark_desktop_shortcut_prompted');
+          setShowDesktopShortcutPrompt(false);
+          await getCurrentWindow().hide();
+        }}
       />
     );
   }

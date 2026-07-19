@@ -17,6 +17,7 @@ export type AppSettings = {
     base_path: string
     language: "ja" | "en"
     auto_start: boolean
+    desktop_shortcut_prompted: boolean
     font_size: number
     sound_enabled: boolean
     iphone_send_enabled: boolean
@@ -49,6 +50,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     base_path: "",
     language: "ja",
     auto_start: true,
+    desktop_shortcut_prompted: false,
     font_size: 16,
     sound_enabled: true,
     iphone_send_enabled: false,
@@ -112,6 +114,7 @@ export function useSettings() {
                         base_path: parsed.base_path ?? parsed.basePath ?? DEFAULT_SETTINGS.base_path,
                         language: parsed.language ?? DEFAULT_SETTINGS.language,
                         auto_start: parsed.auto_start ?? parsed.autoStart ?? DEFAULT_SETTINGS.auto_start,
+                        desktop_shortcut_prompted: parsed.desktop_shortcut_prompted ?? false,
                         font_size: parsed.font_size ?? parsed.fontSize ?? DEFAULT_SETTINGS.font_size,
                         sound_enabled: parsed.sound_enabled ?? parsed.soundEnabled ?? DEFAULT_SETTINGS.sound_enabled,
                         iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
@@ -145,6 +148,7 @@ export function useSettings() {
                     base_path: loaded.base_path,
                     language: loaded.language,
                     auto_start: loaded.auto_start,
+                    desktop_shortcut_prompted: loaded.desktop_shortcut_prompted ?? false,
                     font_size: loaded.font_size,
                     sound_enabled: loaded.sound_enabled,
                     iphone_send_enabled: loaded.iphone_send_enabled,
