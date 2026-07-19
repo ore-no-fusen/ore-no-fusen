@@ -239,7 +239,7 @@ export default function LandingPage() {
                         </p>
 
                         <Link
-                            href="/endroll"
+                            href={isEn ? '/endroll?lang=en' : '/endroll'}
                             onClick={() => trackDonationEvent('donation_cta_click', {
                                 donation_source: 'landing_hero',
                             })}

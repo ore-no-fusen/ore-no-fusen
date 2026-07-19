@@ -9,6 +9,7 @@ export type Supporter = {
 
 interface Props {
     supporters?: Supporter[];
+    language?: 'ja' | 'en';
 }
 
 const defaultSupporters: Supporter[] = [
@@ -75,7 +76,8 @@ function Lantern() {
     );
 }
 
-export default function EndrollMatsuri({ supporters = defaultSupporters }: Props) {
+export default function EndrollMatsuri({ supporters = defaultSupporters, language = 'ja' }: Props) {
+    const isEnglish = language === 'en';
     const sortedSupporters = [...supporters].sort((a, b) => a.joinedAt - b.joinedAt);
     const count = sortedSupporters.length;
     const hasSupporters = count > 0;
@@ -104,7 +106,7 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                                 textAlign: 'center',
                             }}
                         >
-                            創設メンバー
+                            {isEnglish ? 'Founding supporter' : '創設メンバー'}
                         </div>
                     )}
                     <div
@@ -183,7 +185,7 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                         textAlign: 'center',
                     }}
                 >
-                    {count}人が応援
+                    {isEnglish ? `${count} supporters` : `${count}人が応援`}
                 </div>
                 <div
                     style={{
@@ -196,7 +198,9 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                         textAlign: 'center',
                     }}
                 >
-                    あなたの名前も、ここに。今なら大きく、上に。
+                    {isEnglish
+                        ? 'Your name can be here too—larger and closer to the top while the roll is young.'
+                        : 'あなたの名前も、ここに。今なら大きく、上に。'}
                 </div>
             </div>
         </>
@@ -204,7 +208,7 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
 
     return (
         <section
-            aria-label="応援してくれた人たちの奉納帳"
+            aria-label={isEnglish ? 'Roll of supporters' : '応援してくれた人たちの奉納帳'}
             style={{
                 maxWidth: '100%',
                 margin: '0 auto',
@@ -255,7 +259,7 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                             lineHeight: 1.4,
                         }}
                     >
-                        俺の付箋
+                        {isEnglish ? 'Ore No Fusen' : '俺の付箋'}
                     </div>
                     <h2
                         style={{
@@ -266,7 +270,7 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                             margin: '2px 0 0',
                         }}
                     >
-                        奉納帳
+                        {isEnglish ? 'Supporter Roll' : '奉納帳'}
                     </h2>
                 </div>
                 <Lantern />
@@ -315,7 +319,7 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                                 lineHeight: 1.6,
                             }}
                         >
-                            奉納帳は、まだ まっさらです
+                            {isEnglish ? 'The supporter roll is still blank.' : '奉納帳は、まだ まっさらです'}
                         </div>
                         <div
                             style={{
@@ -327,7 +331,7 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                                 maxWidth: '320px',
                             }}
                         >
-                            あなたが、最初の灯に。
+                            {isEnglish ? 'Be the first light.' : 'あなたが、最初の灯に。'}
                         </div>
                         <div
                             style={{
@@ -338,7 +342,9 @@ export default function EndrollMatsuri({ supporters = defaultSupporters }: Props
                                 maxWidth: '340px',
                             }}
                         >
-                            一番乗りの名前は、いちばん大きく・いちばん上に・ずっと。
+                            {isEnglish
+                                ? 'The first supporter’s name will remain the largest and at the very top.'
+                                : '一番乗りの名前は、いちばん大きく・いちばん上に・ずっと。'}
                         </div>
                     </div>
                 )}

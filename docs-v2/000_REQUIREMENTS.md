@@ -1105,8 +1105,8 @@ v2.17 | 2026-07-19 | USDM (Universal Specification Describing Manner)
   </thead>
   <tbody>
     <tr>
-            <td rowspan="3" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_NF_05</td>
-      <td rowspan="3" style="vertical-align:top; background-color:#f8fafc;">
+            <td rowspan="4" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_NF_05</td>
+      <td rowspan="4" style="vertical-align:top; background-color:#f8fafc;">
         <strong>【要求】</strong><br>
         環境に縛られず、様々な言語話者が直感的にツールを使用できること。<br><br>
         <strong>【理由】</strong><br>
@@ -1120,8 +1120,12 @@ v2.17 | 2026-07-19 | USDM (Universal Specification Describing Manner)
       <td style="border-bottom: 1px dotted #cbd5e1;">サポート言語は日本語（<code>ja</code>）および英語（<code>en</code>）を基本とする。設定画面からも強制切替可能。</td>
     </tr>
     <tr>
-      <td style=" text-align:center;">SPEC-NF-05-03</td>
-      <td style="">コンテキストメニュー・ツールバーヒント・各種ボタンはすべて翻訳ファイルのキー（<code>lib/i18n.ts</code>）を通じた動的出力とする。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-03</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">コンテキストメニュー・ツールバーヒント・各種ボタンはすべて翻訳定義を通じた動的出力とする。</td>
+    </tr>
+    <tr>
+      <td style="text-align:center;">SPEC-NF-05-04</td>
+      <td>英語UIから開くWebページには言語を引き継ぎ、サポートページを英語で表示する。利用者が編集した名称・支援者名・コメントなどのユーザーデータは自動翻訳しない。</td>
     </tr>
   </tbody>
 </table>

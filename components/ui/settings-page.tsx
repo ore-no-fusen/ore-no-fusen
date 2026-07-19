@@ -19,6 +19,7 @@ import { useSettings, type AppSettings } from "@/lib/settings-store"
 import { getTranslation, type TranslationKey, type Language } from "@/lib/i18n"
 import { formatShortcutLabel, hasShortcutConflict, keyboardEventToShortcut } from "@/app/utils/shortcutKey"
 import { formatNewNoteTriggerLabel } from "@/app/utils/newNoteTriggerLabel"
+import { getSettingsPageText } from "@/app/utils/settingsPageText"
 import { trackDonationEvent } from "@/app/utils/analytics"
 import { monthlyBackupToggleChanges } from "@/app/utils/monthlyBackupSettings"
 import { refreshImportedNotes, type ImportStats } from "@/app/utils/importRefresh"
@@ -38,6 +39,7 @@ import {
     addFreeSection,
     addNamedFreeSection,
     cloneCrystalFormats,
+    localizeDefaultCrystalFormatsIfUntouched,
     moveFreeSection,
     removeFreeSection,
     resetCrystalTypeFormat,
@@ -77,10 +79,11 @@ const DISCORD_INGEST_SECRET_STORAGE_KEY = 'ore-no-fusen.feedback.discord_ingest_
 const PRODUCTION_SUPPORT_PAGE_URL = 'https://ore-no-fusen.vercel.app/endroll';
 const DEVELOP_SUPPORT_PAGE_URL = 'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/endroll';
 
-function getSupportPageUrl(): string {
-    return process.env.NODE_ENV === 'development'
+function getSupportPageUrl(language: Language): string {
+    const baseUrl = process.env.NODE_ENV === 'development'
         ? DEVELOP_SUPPORT_PAGE_URL
         : PRODUCTION_SUPPORT_PAGE_URL;
+    return language === 'en' ? `${baseUrl}?lang=en` : baseUrl;
 }
 
 function getStoredDiscordIngestSecret(): string {
@@ -104,6 +107,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
 
     // ★翻訳関数を設定の言語から作成
     const t = useMemo(() => getTranslation((settings.language as Language) || 'ja'), [settings.language])
+    const ui = useMemo(() => getSettingsPageText((settings.language as Language) || 'ja'), [settings.language])
 
     // インポート機能用State
     const [importSourcePath, setImportSourcePath] = useState("")
@@ -135,9 +139,9 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
             case "general":
                 return <GeneralSection settings={settings} onUpdate={updateSetting} t={t} />
             case "hotkeys":
-                return <HotkeySection settings={settings} saveSettings={saveSettings} />
+                return <HotkeySection settings={settings} saveSettings={saveSettings} ui={ui} />
             case "crystal-format":
-                return <CrystalFormatSection />
+                return <CrystalFormatSection language={settings.language} ui={ui} />
             case "data":
                 return <DataSection
                     settings={settings}
@@ -205,13 +209,13 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                     />
                     <SidebarItem
                         icon={<Keyboard className="mr-3 h-4 w-4" />}
-                        label="ホットキー"
+                        label={ui.sidebar.hotkeys}
                         isActive={activeSection === "hotkeys"}
                         onClick={() => setActiveSection("hotkeys")}
                     />
                     <SidebarItem
                         icon={<FileText className="mr-3 h-4 w-4" />}
-                        label="ひな形"
+                        label={ui.sidebar.templates}
                         isActive={activeSection === "crystal-format"}
                         onClick={() => setActiveSection("crystal-format")}
                     />
@@ -239,7 +243,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                     />
                     <SidebarItem
                         icon={<Inbox className="mr-3 h-4 w-4" />}
-                        label="開発者とのやりとり"
+                        label={ui.sidebar.conversation}
                         isActive={activeSection === "conversation"}
                         onClick={() => setActiveSection("conversation")}
                     />
@@ -248,7 +252,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                         label={t('settings.support.menuTitle')}
                         isActive={false}
                         onClick={async () => {
-                            const url = getSupportPageUrl()
+                            const url = getSupportPageUrl(settings.language)
                             trackDonationEvent('donation_cta_click', {
                                 donation_source: 'desktop_settings_sidebar',
                             })
@@ -482,6 +486,7 @@ type HotkeyCheckResult = {
     reason: 'ok' | 'self' | 'internal' | 'external' | 'reserved';
     conflict_action?: HotkeyAction | null;
 }
+type SettingsPageText = ReturnType<typeof getSettingsPageText>;
 
 const HOTKEY_ACTION_LABELS: Record<AppSettings['language'], Record<HotkeyAction, string>> = {
     ja: {
@@ -498,9 +503,10 @@ const HOTKEY_ACTION_LABELS: Record<AppSettings['language'], Record<HotkeyAction,
     },
 }
 
-function HotkeySection({ settings, saveSettings }: {
+function HotkeySection({ settings, saveSettings, ui }: {
     settings: AppSettings;
     saveSettings: (settings: AppSettings) => Promise<void>;
+    ui: SettingsPageText;
 }) {
     const [bindings, setBindings] = useState<HotkeyBindings | null>(null)
     const [captureAction, setCaptureAction] = useState<HotkeyAction | null>(null)
@@ -517,10 +523,10 @@ function HotkeySection({ settings, saveSettings }: {
             setBindings(result)
             return result
         } catch (e) {
-            setMessage(`ホットキー設定の読み込みに失敗しました: ${String(e)}`)
+            setMessage(ui.hotkeys.loadFailed + String(e))
             return null
         }
-    }, [])
+    }, [ui.hotkeys.loadFailed])
 
     useEffect(() => {
         loadBindings()
@@ -543,7 +549,7 @@ function HotkeySection({ settings, saveSettings }: {
 
             const shortcut = keyboardEventToShortcut(event)
             if (!shortcut) {
-                setMessage("修飾キーと通常キーを組み合わせて押してください。Esc でキャンセルできます。")
+                setMessage(ui.hotkeys.pressCombination)
                 return
             }
 
@@ -554,22 +560,22 @@ function HotkeySection({ settings, saveSettings }: {
                     shortcut,
                 })
                 setCheckResult(result)
-                setMessage(hotkeyCheckMessage(result, hotkeyActionLabels))
+                setMessage(hotkeyCheckMessage(result, hotkeyActionLabels, ui))
             } catch (e) {
                 setCheckResult(null)
-                setMessage(`判定に失敗しました: ${String(e)}`)
+                setMessage(ui.hotkeys.checkFailed + String(e))
             }
         }
 
         window.addEventListener('keydown', onKeyDown, true)
         return () => window.removeEventListener('keydown', onKeyDown, true)
-    }, [captureAction, hotkeyActionLabels])
+    }, [captureAction, hotkeyActionLabels, ui])
 
     const beginCapture = (action: HotkeyAction) => {
         setCaptureAction(action)
         setCandidateShortcut(null)
         setCheckResult(null)
-        setMessage("押してください...（Escでキャンセル）")
+        setMessage(ui.hotkeys.pressCancel)
     }
 
     const applyShortcut = async () => {
@@ -587,9 +593,9 @@ function HotkeySection({ settings, saveSettings }: {
             setCaptureAction(null)
             setCandidateShortcut(null)
             setCheckResult(null)
-            setMessage("保存しました。")
+            setMessage(ui.common.saved)
         } catch (e) {
-            setMessage(`保存に失敗しました: ${String(e)}`)
+            setMessage(ui.common.saveFailed + String(e))
         } finally {
             setIsSaving(false)
         }
@@ -607,9 +613,9 @@ function HotkeySection({ settings, saveSettings }: {
             })
             const nextBindings = await loadBindings()
             if (nextBindings) await syncSettingsStore(settings, saveSettings, nextBindings)
-            setMessage("保存しました。")
+            setMessage(ui.common.saved)
         } catch (e) {
-            setMessage(`保存に失敗しました: ${String(e)}`)
+            setMessage(ui.common.saveFailed + String(e))
         } finally {
             setIsSaving(false)
         }
@@ -622,35 +628,36 @@ function HotkeySection({ settings, saveSettings }: {
                 ...settings,
                 quick_launcher_triple_right_click: enabled,
             })
-            setMessage("保存しました。")
+            setMessage(ui.common.saved)
         } catch (e) {
-            setMessage(`保存に失敗しました: ${String(e)}`)
+            setMessage(ui.common.saveFailed + String(e))
         } finally {
             setIsSaving(false)
         }
     }
 
     if (!bindings) {
-        return <div className="text-sm text-muted-foreground">ホットキー設定を読み込み中...</div>
+        return <div className="text-sm text-muted-foreground">{ui.hotkeys.loading}</div>
     }
 
     return (
         <div className="space-y-6">
             <div className="mb-8">
-                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">ホットキー</h2>
-                <p className="text-gray-500 text-sm">よく使う順に確認できます。変更するときだけ「詳細」を開いてください。</p>
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{ui.hotkeys.title}</h2>
+                <p className="text-gray-500 text-sm">{ui.hotkeys.description}</p>
             </div>
             <Separator />
 
             <div className="space-y-4">
                 <HotkeyShortcutRow
                     number="1"
-                    title="新規付箋作成トリガー"
-                    description="新しい付箋をすぐに作ります。"
-                    shortcut={bindings.new_note_trigger === 'shortcut' ? bindings.new_note : bindings.new_note_trigger === 'double_ctrl' ? 'Ctrl 2回押し' : 'Shift 2回押し'}
+                    title={ui.hotkeys.newTitle}
+                    description={ui.hotkeys.newDescription}
+                    shortcut={bindings.new_note_trigger === 'shortcut' ? bindings.new_note : bindings.new_note_trigger === 'double_ctrl' ? ui.hotkeys.doubleCtrl : ui.hotkeys.doubleShift}
                     defaultShortcut="Ctrl+N"
                     expanded={expandedAction === 'new_note'}
                     onToggle={() => setExpandedAction(expandedAction === 'new_note' ? null : 'new_note')}
+                    ui={ui}
                 >
                     <div className="space-y-3">
 
@@ -663,7 +670,7 @@ function HotkeySection({ settings, saveSettings }: {
                                 onChange={() => applyNewNoteTrigger('shortcut')}
                             />
                             <div>
-                                <p className="text-sm font-semibold text-gray-800">カスタムキー</p>
+                                <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.customKey}</p>
                                 <p className="text-xs text-gray-500">{formatShortcutLabel(bindings.new_note)}</p>
                             </div>
                         </div>
@@ -672,7 +679,7 @@ function HotkeySection({ settings, saveSettings }: {
                             event.stopPropagation()
                             beginCapture('new_note')
                         }}>
-                            変更
+                            {ui.hotkeys.change}
                         </Button>
                     </label>
 
@@ -685,8 +692,8 @@ function HotkeySection({ settings, saveSettings }: {
                             onChange={() => applyNewNoteTrigger('double_ctrl')}
                         />
                         <div>
-                            <p className="text-sm font-semibold text-gray-800">Ctrl 2回押し</p>
-                            <p className="text-xs text-gray-500 mt-1">※ 2回押しは他のアプリとキーを奪い合いません（同じ操作を使うアプリがあると両方反応します）</p>
+                            <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.doubleCtrl}</p>
+                            <p className="text-xs text-gray-500 mt-1">{ui.hotkeys.doublePressNote}</p>
                         </div>
                     </label>
 
@@ -699,8 +706,8 @@ function HotkeySection({ settings, saveSettings }: {
                             onChange={() => applyNewNoteTrigger('double_shift')}
                         />
                         <div>
-                            <p className="text-sm font-semibold text-gray-800">Shift 2回押し</p>
-                            <p className="text-xs text-gray-500 mt-1">※ 2回押しは他のアプリとキーを奪い合いません（同じ操作を使うアプリがあると両方反応します）</p>
+                            <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.doubleShift}</p>
+                            <p className="text-xs text-gray-500 mt-1">{ui.hotkeys.doublePressNote}</p>
                         </div>
                     </label>
                     </div>
@@ -708,57 +715,60 @@ function HotkeySection({ settings, saveSettings }: {
 
                 <HotkeyShortcutRow
                     number="2"
-                    title="クイックランチャートリガー"
-                    description="クイックランチャーを表示・非表示にします。"
+                    title={ui.hotkeys.launcherTitle}
+                    description={ui.hotkeys.launcherDescription}
                     shortcut={bindings.quick_launcher}
                     defaultShortcut="Ctrl+P"
                     expanded={expandedAction === 'quick_launcher'}
                     onToggle={() => setExpandedAction(expandedAction === 'quick_launcher' ? null : 'quick_launcher')}
+                    ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('quick_launcher')}>キーを変更</Button>
+                    <Button variant="outline" size="sm" onClick={() => beginCapture('quick_launcher')}>{ui.hotkeys.changeKey}</Button>
                     <div className="mt-4 flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
                         <div>
-                            <p className="text-sm font-semibold text-gray-800">右クリック3連打でも開く</p>
-                            <p className="mt-1 text-xs text-gray-500">他アプリの上でも使えます。クリックは奪いません。</p>
+                            <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.tripleClick}</p>
+                            <p className="mt-1 text-xs text-gray-500">{ui.hotkeys.tripleClickDescription}</p>
                         </div>
                         <Switch checked={settings.quick_launcher_triple_right_click ?? false} disabled={isSaving} onCheckedChange={updateQuickLauncherTripleRightClick} />
                     </div>
                 </HotkeyShortcutRow>
                 <HotkeyShortcutRow
                     number="3"
-                    title="整列"
-                    description="タグごとに付箋を整列します。"
+                    title={ui.hotkeys.arrangeTitle}
+                    description={ui.hotkeys.arrangeDescription}
                     shortcut={bindings.arrange}
                     defaultShortcut="Ctrl+Shift+L"
                     expanded={expandedAction === 'arrange'}
                     onToggle={() => setExpandedAction(expandedAction === 'arrange' ? null : 'arrange')}
+                    ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('arrange')}>キーを変更</Button>
+                    <Button variant="outline" size="sm" onClick={() => beginCapture('arrange')}>{ui.hotkeys.changeKey}</Button>
                 </HotkeyShortcutRow>
                 <HotkeyShortcutRow
                     number="4"
-                    title="全付箋の非表示・表示"
-                    description="すべての付箋をまとめて隠す、または元に戻します。"
+                    title={ui.hotkeys.visibilityTitle}
+                    description={ui.hotkeys.visibilityDescription}
                     shortcut={bindings.toggle_visibility}
                     defaultShortcut="Ctrl+Shift+H"
                     expanded={expandedAction === 'toggle_visibility'}
                     onToggle={() => setExpandedAction(expandedAction === 'toggle_visibility' ? null : 'toggle_visibility')}
+                    ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('toggle_visibility')}>キーを変更</Button>
+                    <Button variant="outline" size="sm" onClick={() => beginCapture('toggle_visibility')}>{ui.hotkeys.changeKey}</Button>
                 </HotkeyShortcutRow>
 
-                <LocalShortcutRow number="5" title="太字" description="選択範囲を太字にします。" settingKey="shortcut_bold" defaultShortcut="Ctrl+B" settings={settings} saveSettings={saveSettings} />
-                <LocalShortcutRow number="6" title="見出し" description="選択行を見出しにします。" settingKey="shortcut_heading" defaultShortcut="Ctrl+H" settings={settings} saveSettings={saveSettings} />
-                <LocalShortcutRow number="7" title="箇条書き" description="選択行を箇条書きにします。" settingKey="shortcut_bullet_list" defaultShortcut="Ctrl+L" settings={settings} saveSettings={saveSettings} />
-                <LocalShortcutRow number="8" title="チェックボックス" description="選択行をチェック項目にします。" settingKey="shortcut_checkbox" defaultShortcut="Ctrl+Shift+C" settings={settings} saveSettings={saveSettings} />
+                <LocalShortcutRow number="5" title={ui.hotkeys.bold} description={ui.hotkeys.boldDescription} settingKey="shortcut_bold" defaultShortcut="Ctrl+B" settings={settings} saveSettings={saveSettings} ui={ui} />
+                <LocalShortcutRow number="6" title={ui.hotkeys.heading} description={ui.hotkeys.headingDescription} settingKey="shortcut_heading" defaultShortcut="Ctrl+H" settings={settings} saveSettings={saveSettings} ui={ui} />
+                <LocalShortcutRow number="7" title={ui.hotkeys.bullets} description={ui.hotkeys.bulletsDescription} settingKey="shortcut_bullet_list" defaultShortcut="Ctrl+L" settings={settings} saveSettings={saveSettings} ui={ui} />
+                <LocalShortcutRow number="8" title={ui.hotkeys.checkbox} description={ui.hotkeys.checkboxDescription} settingKey="shortcut_checkbox" defaultShortcut="Ctrl+Shift+C" settings={settings} saveSettings={saveSettings} ui={ui} />
 
                 {captureAction && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                         <div className="flex items-center justify-between gap-4">
                             <div>
-                                <p className="text-sm font-bold text-blue-950">{hotkeyActionLabels[captureAction]} の変更</p>
+                                <p className="text-sm font-bold text-blue-950">{hotkeyActionLabels[captureAction]}{ui.hotkeys.changeSuffix}</p>
                                 <p className="text-sm text-blue-800 mt-1">
-                                    {candidateShortcut ? formatShortcutLabel(candidateShortcut) : "押してください..."}
+                                    {candidateShortcut ? formatShortcutLabel(candidateShortcut) : ui.hotkeys.press}
                                 </p>
                                 {message && (
                                     <p className={`mt-2 text-sm ${checkResult?.available ? 'text-green-700' : checkResult ? 'text-red-700' : 'text-blue-700'}`}>
@@ -773,10 +783,10 @@ function HotkeySection({ settings, saveSettings }: {
                                     setCheckResult(null)
                                     setMessage("")
                                 }}>
-                                    キャンセル
+                                    {ui.common.cancel}
                                 </Button>
                                 <Button size="sm" disabled={!checkResult?.available || isSaving} onClick={applyShortcut}>
-                                    {isSaving ? '保存中' : '保存'}
+                                    {isSaving ? ui.common.saving : ui.common.save}
                                 </Button>
                             </div>
                         </div>
@@ -791,10 +801,11 @@ function HotkeySection({ settings, saveSettings }: {
     )
 }
 
-function LocalShortcutRow({ number, title, description, settingKey, defaultShortcut, settings, saveSettings }: {
+function LocalShortcutRow({ number, title, description, settingKey, defaultShortcut, settings, saveSettings, ui }: {
     number: string; title: string; description: string;
     settingKey: 'shortcut_bold' | 'shortcut_heading' | 'shortcut_bullet_list' | 'shortcut_checkbox';
     defaultShortcut: string; settings: AppSettings; saveSettings: (settings: AppSettings) => Promise<void>;
+    ui: SettingsPageText;
 }) {
     const [capturing, setCapturing] = useState(false)
     const shortcut = settings[settingKey] ?? defaultShortcut.toLowerCase()
@@ -811,7 +822,7 @@ function LocalShortcutRow({ number, title, description, settingKey, defaultShort
             ]
             const otherShortcuts = shortcutKeys.filter((key) => key !== settingKey).map((key) => typeof settings[key] === 'string' ? settings[key] as string : undefined)
             if (hasShortcutConflict(next, otherShortcuts)) {
-                window.alert('そのキーは別のショートカットで使用されています。')
+                window.alert(ui.hotkeys.conflict)
                 setCapturing(false)
                 return
             }
@@ -819,15 +830,15 @@ function LocalShortcutRow({ number, title, description, settingKey, defaultShort
         }
         window.addEventListener('keydown', handler, true)
         return () => window.removeEventListener('keydown', handler, true)
-    }, [capturing, saveSettings, settingKey, settings])
-    return <HotkeyShortcutRow number={number} title={title} description={description} shortcut={shortcut} defaultShortcut={defaultShortcut} expanded={capturing} onToggle={() => setCapturing(!capturing)}>
+    }, [capturing, saveSettings, settingKey, settings, ui.hotkeys.conflict])
+    return <HotkeyShortcutRow number={number} title={title} description={description} shortcut={shortcut} defaultShortcut={defaultShortcut} expanded={capturing} onToggle={() => setCapturing(!capturing)} ui={ui}>
         <div className="flex items-center justify-between gap-4">
-            <Button variant="outline" size="sm" onClick={() => setCapturing(true)}>{capturing ? 'キーを押してください' : 'キーを変更'}</Button>
+            <Button variant="outline" size="sm" onClick={() => setCapturing(true)}>{capturing ? ui.hotkeys.pressKey : ui.hotkeys.changeKey}</Button>
         </div>
     </HotkeyShortcutRow>
 }
 
-function CrystalFormatSection() {
+function CrystalFormatSection({ language, ui }: { language: Language; ui: SettingsPageText }) {
     const [formats, setFormats] = useState<CrystalFormats | null>(null)
     const [activeType, setActiveType] = useState<CrystalType>('recipe')
     const [message, setMessage] = useState("")
@@ -837,17 +848,17 @@ function CrystalFormatSection() {
         let cancelled = false
         loadCrystalFormats()
             .then((loaded) => {
-                if (!cancelled) setFormats(cloneCrystalFormats(loaded))
+                if (!cancelled) setFormats(localizeDefaultCrystalFormatsIfUntouched(loaded, language))
             })
             .catch((e) => {
                 console.error('[CrystalFormatSection] Failed to load formats:', e)
                 if (!cancelled) {
                     setFormats(cloneCrystalFormats(DEFAULT_CRYSTAL_FORMATS))
-                    setMessage("読み込みに失敗したため既定値を表示しています。")
+                    setMessage(ui.templates.loadFailed)
                 }
             })
         return () => { cancelled = true }
-    }, [])
+    }, [language, ui.templates.loadFailed])
 
     const updateActiveFormat = useCallback((updater: (format: CrystalTypeFormat) => CrystalTypeFormat) => {
         setFormats((current) => current ? {
@@ -868,9 +879,9 @@ function CrystalFormatSection() {
     }
 
     const resetCurrentType = () => {
-        if (!window.confirm(`${CRYSTAL_TYPE_LABELS[activeType]} のひな形を既定に戻しますか？`)) return
-        updateActiveFormat(() => resetCrystalTypeFormat(activeType))
-        setMessage("既定に戻しました。保存すると反映されます。")
+        if (!window.confirm(`${ui.templates.types[activeType]}${ui.templates.resetConfirmSuffix}`)) return
+        updateActiveFormat(() => resetCrystalTypeFormat(activeType, language))
+        setMessage(ui.templates.resetDone)
     }
 
     const handleSave = async () => {
@@ -880,7 +891,7 @@ function CrystalFormatSection() {
             for (const section of trimmed[type].sections) {
                 section.label = section.label.trim()
                 if (!section.label) {
-                    setMessage("節名は空にできません。")
+                    setMessage(ui.templates.emptyLabel)
                     return
                 }
                 if (section.slot === 'history') {
@@ -894,17 +905,17 @@ function CrystalFormatSection() {
             const normalized = normalizeCrystalFormats(trimmed)
             await saveCrystalFormats(normalized)
             setFormats(cloneCrystalFormats(normalized))
-            setMessage("保存しました。")
+            setMessage(ui.common.saved)
         } catch (e) {
             console.error('[CrystalFormatSection] Failed to save formats:', e)
-            setMessage(`保存に失敗しました: ${String(e)}`)
+            setMessage(ui.common.saveFailed + String(e))
         } finally {
             setIsSaving(false)
         }
     }
 
     if (!formats) {
-        return <div className="text-sm text-muted-foreground">ひな形を読み込み中...</div>
+        return <div className="text-sm text-muted-foreground">{ui.templates.loading}</div>
     }
 
     const format = formats[activeType]
@@ -912,13 +923,13 @@ function CrystalFormatSection() {
     return (
         <div className="space-y-6">
             <div className="mb-8">
-                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">レシピ・QA・用語のひな形</h2>
-                <p className="text-gray-500 text-sm">新しく作るときの、節名・役割・並び順を設定します。</p>
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{ui.templates.title}</h2>
+                <p className="text-gray-500 text-sm">{ui.templates.description}</p>
             </div>
             <Separator />
 
             <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                変更は新しく作るレシピ・QA・用語にだけ効きます。既存の内容は変わりません。
+                {ui.templates.notice}
             </div>
 
             <div className="grid gap-4">
@@ -935,10 +946,10 @@ function CrystalFormatSection() {
                     >
                         <span className={`mr-4 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${activeType === type ? 'bg-white text-slate-950' : 'bg-slate-950 text-white'}`}>{index + 1}</span>
                         <span>
-                            <span className="block text-base font-bold">{CRYSTAL_TYPE_LABELS[type]}のひな形</span>
-                            <span className={`mt-1 block text-sm font-normal ${activeType === type ? 'text-slate-200' : 'text-slate-500'}`}>節名・役割・並び順を設定します。</span>
+                            <span className="block text-base font-bold">{ui.templates.types[type]}{ui.templates.suffix}</span>
+                            <span className={`mt-1 block text-sm font-normal ${activeType === type ? 'text-slate-200' : 'text-slate-500'}`}>{ui.templates.cardDescription}</span>
                         </span>
-                        <span className="ml-auto flex items-center text-sm font-semibold">詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${activeType === type ? 'rotate-90' : ''}`} /></span>
+                        <span className="ml-auto flex items-center text-sm font-semibold">{ui.common.details}<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${activeType === type ? 'rotate-90' : ''}`} /></span>
                     </Button>
                 ))}
             </div>
@@ -960,7 +971,7 @@ function CrystalFormatSection() {
                                             className="text-xs text-gray-500 disabled:opacity-30"
                                             disabled={!canMoveUp}
                                             onClick={() => updateActiveFormat((current) => moveFreeSection(current, index, 'up'))}
-                                            aria-label="上へ移動"
+                                            aria-label={ui.templates.moveUp}
                                         >
                                             ▲
                                         </button>
@@ -969,13 +980,13 @@ function CrystalFormatSection() {
                                             className="text-xs text-gray-500 disabled:opacity-30"
                                             disabled={!canMoveDown}
                                             onClick={() => updateActiveFormat((current) => moveFreeSection(current, index, 'down'))}
-                                            aria-label="下へ移動"
+                                            aria-label={ui.templates.moveDown}
                                         >
                                             ▼
                                         </button>
                                     </>
                                 ) : (
-                                    <span className="text-sm text-gray-400" title="固定">🔒</span>
+                                    <span className="text-sm text-gray-400" title={ui.templates.fixed}>🔒</span>
                                 )}
                             </div>
 
@@ -986,7 +997,7 @@ function CrystalFormatSection() {
                             />
 
                             <span className="w-16 shrink-0 rounded-full border border-gray-200 bg-white px-2 py-1 text-center text-xs font-bold text-gray-600">
-                                {ROLE_LABELS[section.slot]}
+                                {ui.templates.roles[section.slot]}
                             </span>
 
                             <label className="flex w-24 shrink-0 items-center gap-2 text-sm text-gray-600">
@@ -996,7 +1007,7 @@ function CrystalFormatSection() {
                                     disabled={isHistory}
                                     onChange={(event) => updateSection(index, { tracked: event.target.checked })}
                                 />
-                                数える
+                                {ui.templates.tracked}
                             </label>
 
                             <Button
@@ -1007,7 +1018,7 @@ function CrystalFormatSection() {
                                 onClick={() => updateActiveFormat((current) => removeFreeSection(current, index))}
                                 className="shrink-0 text-red-500 disabled:text-gray-300"
                             >
-                                削除
+                                {ui.common.delete}
                             </Button>
                         </div>
                     )
@@ -1019,19 +1030,19 @@ function CrystalFormatSection() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled={format.sections.some((section) => section.label === '事前条件')}
-                            onClick={() => updateActiveFormat((current) => addNamedFreeSection(current, '事前条件'))}
+                            disabled={format.sections.some((section) => section.label === ui.templates.prerequisiteLabel)}
+                            onClick={() => updateActiveFormat((current) => addNamedFreeSection(current, ui.templates.prerequisiteLabel))}
                         >
-                            ＋事前条件
+                            {ui.templates.prerequisite}
                         </Button>
                     )}
                     <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => updateActiveFormat(addFreeSection)}
+                        onClick={() => updateActiveFormat((current) => addFreeSection(current, ui.templates.newSection))}
                     >
-                        ＋自由節を追加
+                        {ui.templates.addFree}
                     </Button>
                     <Button
                         type="button"
@@ -1039,7 +1050,7 @@ function CrystalFormatSection() {
                         size="sm"
                         onClick={resetCurrentType}
                     >
-                        既定に戻す
+                        {ui.templates.reset}
                     </Button>
                     <Button
                         type="button"
@@ -1048,7 +1059,7 @@ function CrystalFormatSection() {
                         disabled={isSaving}
                     >
                         <Save className="mr-2 h-4 w-4" />
-                        {isSaving ? '保存中...' : '保存'}
+                        {isSaving ? ui.common.saving : ui.common.save}
                     </Button>
                 </div>
 
@@ -1071,7 +1082,7 @@ async function syncSettingsStore(settings: AppSettings, saveSettings: (settings:
     })
 }
 
-function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortcut, expanded, onToggle, children }: {
+function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortcut, expanded, onToggle, children, ui }: {
     number: string;
     title: string;
     description: string;
@@ -1080,6 +1091,7 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
     expanded: boolean;
     onToggle: () => void;
     children: React.ReactNode;
+    ui: SettingsPageText;
 }) {
     return (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
@@ -1093,12 +1105,12 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
                 </div>
                 <div className="flex shrink-0 items-center gap-5">
                     <div className="text-right">
-                        <p className="text-xs text-gray-500">現在</p>
+                        <p className="text-xs text-gray-500">{ui.common.current}</p>
                         <code className="text-sm font-semibold text-gray-900">{formatShortcutLabel(shortcut)}</code>
-                        <p className="mt-1 text-xs text-gray-500">デフォルト {formatShortcutLabel(defaultShortcut)}</p>
+                        <p className="mt-1 text-xs text-gray-500">{ui.common.defaultLabel} {formatShortcutLabel(defaultShortcut)}</p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={expanded}>
-                        詳細
+                        {ui.common.details}
                         <ChevronRight className={`ml-1 h-4 w-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />
                     </Button>
                 </div>
@@ -1134,13 +1146,13 @@ function SettingsItemCard({ number, title, description, current, children, impor
     )
 }
 
-function hotkeyCheckMessage(result: HotkeyCheckResult, labels: Record<HotkeyAction, string>): string {
-    if (result.reason === 'ok' || result.reason === 'self') return '✅ 使用できます'
-    if (result.reason === 'reserved') return '❌ コピーや貼り付けなどの基本操作のため割り当てできません。'
+function hotkeyCheckMessage(result: HotkeyCheckResult, labels: Record<HotkeyAction, string>, ui: SettingsPageText): string {
+    if (result.reason === 'ok' || result.reason === 'self') return ui.hotkeys.available
+    if (result.reason === 'reserved') return ui.hotkeys.reserved
     if (result.reason === 'internal' && result.conflict_action) {
-        return `❌ このショートカットは「${labels[result.conflict_action]}」に割当済みです。`
+        return `${ui.hotkeys.internalPrefix}${labels[result.conflict_action]}${ui.hotkeys.internalSuffix}`
     }
-    return '❌ このショートカットは既に他のアプリまたはWindowsで使用されています。別のショートカットを選択してください。'
+    return ui.hotkeys.external
 }
 
 function GeneralSection({ settings, onUpdate, t }: SectionProps) {

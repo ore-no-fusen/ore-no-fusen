@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
     addFreeSection,
     addNamedFreeSection,
+    getLocalizedDefaultCrystalFormats,
+    localizeDefaultCrystalFormatsIfUntouched,
     moveFreeSection,
     removeFreeSection,
     resetCrystalTypeFormat,
@@ -64,5 +66,21 @@ describe('crystalFormatEditor helpers', () => {
         expect(reset).toEqual(DEFAULT_CRYSTAL_FORMATS.term);
         expect(reset).not.toBe(DEFAULT_CRYSTAL_FORMATS.term);
         expect(reset.sections[0]).not.toBe(DEFAULT_CRYSTAL_FORMATS.term.sections[0]);
+    });
+
+    it('shows untouched default template labels in English', () => {
+        const localized = localizeDefaultCrystalFormatsIfUntouched(DEFAULT_CRYSTAL_FORMATS, 'en');
+
+        expect(localized.recipe.sections.map((section) => section.label)).toEqual([
+            'When to Use', 'Steps', 'Source', 'Notes', 'Improvement History',
+        ]);
+        expect(getLocalizedDefaultCrystalFormats('en').term.sections[0].label).toBe('Term');
+    });
+
+    it('does not overwrite user-customized template labels in English mode', () => {
+        const customized = getLocalizedDefaultCrystalFormats('ja');
+        customized.qa.sections[0].label = 'My Question';
+
+        expect(localizeDefaultCrystalFormatsIfUntouched(customized, 'en')).toEqual(customized);
     });
 });
