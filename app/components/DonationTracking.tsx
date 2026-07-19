@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
-import type React from 'react';
+import React, { useEffect } from 'react';
 import { trackDonationEvent } from '@/app/utils/analytics';
 
 type DonationPageTrackerProps = {
