@@ -78,4 +78,4 @@ pageClass: user-guide-page
 
 変更した操作は、設定保存後にトレイメニュー、付箋の右クリックメニュー、ツールチップ、アプリ内の使い方へ反映されます。検索の `Ctrl+F` は固定です。
 
-次: [iPhone連携](./iphone.html)
+次: [iPhone連携](/user-guide/iphone)

@@ -33,4 +33,23 @@ describe('BackupResultDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: '閉じる' }))
         expect(onClose).toHaveBeenCalledOnce()
     })
+
+    it('shows all fixed result text in English when English is selected', () => {
+        render(
+            <BackupResultDialog
+                language="en"
+                status="success"
+                path="C:\\Users\\test\\Documents\\OreNoFusen_Backup\\Monthly"
+                fileCount={3}
+                completedAt="2026-07-22T10:00:00+09:00"
+                onClose={() => undefined}
+            />,
+        )
+
+        expect(screen.getByText('Backup completed')).toBeTruthy()
+        expect(screen.getByText('Files saved')).toBeTruthy()
+        expect(screen.getByText('3')).toBeTruthy()
+        expect(screen.getByText('Completed at')).toBeTruthy()
+        expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
+    })
 })

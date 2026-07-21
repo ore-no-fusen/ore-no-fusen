@@ -73,4 +73,4 @@ Store版の自動起動をWindows側で無効にした場合、アプリだけ�
 C:\Users\[ユーザー名]\Documents\OreNoFusen
 ```
 
-次: [基本の使い方](./basic.html)
+次: [基本の使い方](/user-guide/basic)

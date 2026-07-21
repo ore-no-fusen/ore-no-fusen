@@ -12,12 +12,12 @@ Ore No Fusen is a Windows desktop sticky-note app with Markdown support. This gu
 
 ## Choose what you need
 
-- [Install and get started](./install.html)
-- [Basic use](./basic.html)
-- [Advanced use](./advanced.html)
-- [iPhone Sync](./iphone.html)
-- [Troubleshooting](./troubleshooting.html)
-- [Comic guide](./comic.html)
+- [Install and get started](/en/user-guide/install)
+- [Basic use](/en/user-guide/basic)
+- [Advanced use](/en/user-guide/advanced)
+- [iPhone Sync](/en/user-guide/iphone)
+- [Troubleshooting](/en/user-guide/troubleshooting)
+- [Comic guide](/en/user-guide/comic)
 
 ::: tip
 New installations use the Microsoft Store version. Updates are delivered by Microsoft Store.

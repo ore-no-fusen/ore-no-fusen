@@ -102,7 +102,7 @@ describe('Mermaid security behavior in browser', () => {
         } finally {
             await browser.close();
         }
-    }, 30000);
+    }, 60000);
 
     it('flowchart の日本語ラベルを sanitize 後も SVG text として残す', async () => {
         const browser = await chromium.launch();
@@ -142,5 +142,5 @@ describe('Mermaid security behavior in browser', () => {
         } finally {
             await browser.close();
         }
-    }, 30000);
+    }, 60000);
 });

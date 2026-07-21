@@ -27,6 +27,7 @@ import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確
 import BackupResultDialog from './components/BackupResultDialog';
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
+import { useSettings } from '@/lib/settings-store';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
@@ -78,7 +79,8 @@ let globalLastCreateTime = 0;
 
 
 
-function TagSelector() {
+function TagSelector({ language = 'ja' }: { language?: Language }) {
+  const isEnglish = language === 'en';
   const [allTags, setAllTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -133,14 +135,14 @@ function TagSelector() {
             <div className="w-16 h-16 bg-purple-600 rounded-3xl flex items-center justify-center shadow-xl shadow-purple-500/30 mx-auto mb-4">
               <span className="text-3xl">🌍</span>
             </div>
-            <h3 className="text-2xl font-black text-gray-900 tracking-tight">タグを選択</h3>
-            <p className="text-sm text-gray-500 mt-2">選択したタグを持つ付箋のみを表示</p>
+            <h3 className="text-2xl font-black text-gray-900 tracking-tight">{isEnglish ? 'Select Tags' : 'タグを選択'}</h3>
+            <p className="text-sm text-gray-500 mt-2">{isEnglish ? 'Show only notes with the selected tags.' : '選択したタグを持つ付箋のみを表示'}</p>
           </div>
           <div className="flex-1 overflow-y-auto mb-6" style={{ WebkitAppRegion: 'no-drag' } as any}>
             {isLoading ? (
-              <div className="text-center text-gray-400">読み込み中...</div>
+              <div className="text-center text-gray-400">{isEnglish ? 'Loading...' : '読み込み中...'}</div>
             ) : allTags.length === 0 ? (
-              <div className="text-center text-gray-400">タグがありません</div>
+              <div className="text-center text-gray-400">{isEnglish ? 'No tags found.' : 'タグがありません'}</div>
             ) : (
               <div className="space-y-2">
                 {allTags.map(tag => (
@@ -153,8 +155,8 @@ function TagSelector() {
             )}
           </div>
           <div className="flex gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
-            <button onClick={handleClose} className="flex-1 py-5 text-sm font-black text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest">Cancel</button>
-            <button onClick={handleApply} className="flex-[2] py-5 text-sm font-black text-white bg-purple-600 hover:bg-purple-700 rounded-2xl shadow-xl shadow-purple-500/40 transition-all active:scale-95">Apply ({selectedTags.length} selected)</button>
+            <button onClick={handleClose} className="flex-1 py-5 text-sm font-black text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest">{isEnglish ? 'Cancel' : 'キャンセル'}</button>
+            <button onClick={handleApply} className="flex-[2] py-5 text-sm font-black text-white bg-purple-600 hover:bg-purple-700 rounded-2xl shadow-xl shadow-purple-500/40 transition-all active:scale-95">{isEnglish ? `Apply (${selectedTags.length} selected)` : `適用（${selectedTags.length}件選択）`}</button>
           </div>
         </div>
       </div>
@@ -173,6 +175,7 @@ function OrchestratorContent() {
   const tagSelector = searchParams.get('tagSelector');
   const isPool = searchParams.get('isPool') === 'true'; // [NEW] プール判定
   const isMainWindow = !path && !tagSelector && !isPool; // [FIX] プールウィンドウをメインウィンドウ扱いしない
+  const [language, setLanguage] = useState<Language>('ja');
 
   useEffect(() => {
     const logWindowIdentity = async () => {
@@ -928,13 +931,16 @@ function OrchestratorContent() {
 
     const checkHotkeyRegisterFailures = async () => {
       try {
+        const currentSettings = await invoke<{ language?: Language }>('get_settings');
+        const currentLanguage: Language = currentSettings?.language === 'en' ? 'en' : 'ja';
+        setLanguage(currentLanguage);
         const result = await invoke<HotkeyRegisterFailuresResponse>('hotkey_get_register_failures');
         if (!result.failures || result.failures.length === 0) return;
 
         const shortcutNames = result.failures.map(f => f.shortcut).join(' / ');
-        setHotkeyRegisterFailureMessage(
-          `グローバルホットキーを登録できませんでした。\n${shortcutNames} は既に使用されています。\n設定画面を開きますか？`
-        );
+        setHotkeyRegisterFailureMessage(currentLanguage === 'en'
+          ? `The global hotkey could not be registered.\n${shortcutNames} is already in use.\nOpen Settings?`
+          : `グローバルホットキーを登録できませんでした。\n${shortcutNames} は既に使用されています。\n設定画面を開きますか？`);
 
         const win = getCurrentWindow();
         await win.show();
@@ -1001,6 +1007,9 @@ function OrchestratorContent() {
         const unlistenSettings = await listen<any>('settings_updated', async (event) => {
           console.log('[ORCHESTRATOR] Settings updated:', event.payload);
           const newSettings = event.payload;
+          if (newSettings?.language === 'en' || newSettings?.language === 'ja') {
+            setLanguage(newSettings.language);
+          }
           if (newSettings && newSettings.base_path) {
             setFolderPath(newSettings.base_path);
             await syncState();
@@ -1526,6 +1535,7 @@ function OrchestratorContent() {
         } catch {
           // 設定を読めない場合だけOS言語へフォールバックする。
         }
+        setLanguage(startupLanguage);
         const startupIsEnglish = startupLanguage === 'en';
         // [HELPER] Log to both Console and Terminal (via Rust)
         const log = (msg: string) => {
@@ -1853,9 +1863,9 @@ function OrchestratorContent() {
     hideWindow();
   }, [isDashboard]);
 
-  if (searchParams.get('tagSelector') === '1') return <TagSelector />;
+  if (searchParams.get('tagSelector') === '1') return <TagSelector language={language} />;
   if (searchParams.get('path') || searchParams.get('isPool') === 'true') return (
-    <ErrorBoundary>
+    <ErrorBoundary language={language}>
       <StickyNote />
     </ErrorBoundary>
   );
@@ -1866,6 +1876,7 @@ function OrchestratorContent() {
   if (monthlyBackupResult) {
     return (
       <BackupResultDialog
+        language={language}
         status={monthlyBackupResult.status}
         path={monthlyBackupResult.status === 'success' ? monthlyBackupResult.record.path : undefined}
         fileCount={monthlyBackupResult.status === 'success' ? monthlyBackupResult.record.file_count : undefined}
@@ -1884,17 +1895,18 @@ function OrchestratorContent() {
     return (
       <ConfirmDialog
         isOpen
-        title="月次安全バックアップ"
-        message="前回の安全バックアップから約30日が経過しました。今、バックアップを実施しますか？\n\n保存先: Documents\\OreNoFusen_Backup\\Monthly"
-        confirmText="バックアップする"
-        cancelText="今回はしない"
+        title={language === 'en' ? 'Monthly Safety Backup' : '月次安全バックアップ'}
+        message={language === 'en' ? 'About 30 days have passed since the last safety backup. Back up now?\n\nDestination: Documents\\OreNoFusen_Backup\\Monthly' : '前回の安全バックアップから約30日が経過しました。今、バックアップを実施しますか？\n\n保存先: Documents\\OreNoFusen_Backup\\Monthly'}
+        confirmText={language === 'en' ? 'Back Up' : 'バックアップする'}
+        cancelText={language === 'en' ? 'Not Now' : '今回はしない'}
         onConfirm={async () => {
           try {
             const record = await invoke<BackupRecord>('fusen_run_monthly_backup');
             const latestSettings = await invoke<{ monthly_backup_next_prompt?: string }>('get_settings');
             setMonthlyBackupResult({ status: 'success', record, nextPromptAt: latestSettings.monthly_backup_next_prompt });
           } catch (e) {
-            setMonthlyBackupResult({ status: 'error', message: String(e) });
+            console.error('[MonthlyBackup] Failed:', e);
+            setMonthlyBackupResult({ status: 'error', message: language === 'en' ? 'The backup could not be completed. Please check the destination and try again.' : String(e) });
           } finally {
             setShowMonthlyBackupPrompt(false);
           }
@@ -1932,10 +1944,10 @@ function OrchestratorContent() {
     return (
       <ConfirmDialog
         isOpen
-        title="デスクトップショートカット"
-        message={'デスクトップにショートカットを作成しますか？\n毎日使う場合は作成をおすすめします。\n後から設定画面でも作成できます。\n\n作成される名前: 俺の付箋（Store版）'}
-        confirmText="作成する"
-        cancelText="今回は作成しない"
+        title={language === 'en' ? 'Desktop Shortcut' : 'デスクトップショートカット'}
+        message={language === 'en' ? 'Create a desktop shortcut?\nWe recommend one if you use the app every day.\nYou can also create it later in Settings.\n\nShortcut name: Ore No Fusen (Store)' : 'デスクトップにショートカットを作成しますか？\n毎日使う場合は作成をおすすめします。\n後から設定画面でも作成できます。\n\n作成される名前: 俺の付箋（Store版）'}
+        confirmText={language === 'en' ? 'Create' : '作成する'}
+        cancelText={language === 'en' ? 'Not Now' : '今回は作成しない'}
         onConfirm={async () => {
           try {
             await invoke<string>('fusen_create_desktop_shortcut');
@@ -1943,7 +1955,8 @@ function OrchestratorContent() {
             setShowDesktopShortcutPrompt(false);
             await getCurrentWindow().hide();
           } catch (e) {
-            alert(`ショートカットを作成できませんでした。\n\n${String(e)}`);
+            console.error('[DesktopShortcut] Failed:', e);
+            alert(language === 'en' ? 'The shortcut could not be created. Please try again from Settings > General.' : `ショートカットを作成できませんでした。\n\n${String(e)}`);
           }
         }}
         onCancel={async () => {
@@ -1959,10 +1972,10 @@ function OrchestratorContent() {
     return (
       <ConfirmDialog
         isOpen={!!hotkeyRegisterFailureMessage}
-        title="グローバルホットキー"
+        title={language === 'en' ? 'Global Hotkey' : 'グローバルホットキー'}
         message={hotkeyRegisterFailureMessage}
-        confirmText="はい"
-        cancelText="いいえ"
+        confirmText={language === 'en' ? 'Yes' : 'はい'}
+        cancelText={language === 'en' ? 'No' : 'いいえ'}
         onConfirm={() => {
           setHotkeyRegisterFailureMessage(null);
           setIsCheckingSetup(false);
@@ -2041,6 +2054,7 @@ function OrchestratorContent() {
 
         {/* [NEW] Pool 枯渇時トースト（isPool=false の付箋ウィンドウ上には表示されないため main ウィンドウに置く） */}
         <PoolWaitToast
+          language={language}
           x={poolWaitToast.x}
           y={poolWaitToast.y}
           visible={poolWaitToast.visible}
@@ -2050,7 +2064,7 @@ function OrchestratorContent() {
         {/* Search Overlay */}
         {isSearchOpen && (
           <div className="fixed inset-0 bg-black/20 z-40">
-            <SearchOverlay onClose={async () => {
+            <SearchOverlay language={language} onClose={async () => {
               const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
               dbg(`[Search] onClose triggered. Caller: ${searchCaller}`);
               setIsSearchOpen(false); // UIを先に閉じる
@@ -2101,9 +2115,11 @@ function OrchestratorContent() {
 }
 
 export default function Home() {
+  const { settings } = useSettings();
+  const language: Language = settings.language === 'en' ? 'en' : 'ja';
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <ErrorBoundary>
+      <ErrorBoundary language={language}>
         <OrchestratorContent />
       </ErrorBoundary>
     </Suspense>

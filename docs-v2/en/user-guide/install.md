@@ -50,4 +50,4 @@ The old version and Store version cannot run at the same time. Verify your data 
 If you disable Ore No Fusen in Windows **Startup apps**, the app cannot force Windows to enable it again. Follow the link shown in Settings and enable it in Windows.
 :::
 
-Next: [Basic use](./basic.html)
+Next: [Basic use](/en/user-guide/basic)

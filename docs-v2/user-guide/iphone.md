@@ -34,4 +34,4 @@ iPhoneで書いたメモ、画像、動画をPCの付箋として送れます。
 3. 必要なら画像・動画を添付
 4. **PCに送る** を押す
 
-届かない時: [困ったときに](./troubleshooting.html)
+届かない時: [困ったときに](/user-guide/troubleshooting)

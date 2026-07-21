@@ -21,4 +21,4 @@ iPhone notes, images, and videos can be sent to the PC through your own Google D
 2. Enter the note body and optionally attach an image or video.
 3. Select **Send to PC**.
 
-If it does not arrive, see [Troubleshooting](./troubleshooting.html).
+If it does not arrive, see [Troubleshooting](/en/user-guide/troubleshooting).

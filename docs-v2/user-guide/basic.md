@@ -64,4 +64,4 @@ pageClass: user-guide-page
 
 付箋そのものに対する色変更、タグ、しまう、削除などの操作とは分けて表示されます。
 
-次: [くわしい使い方](./advanced.html)
+次: [くわしい使い方](/user-guide/advanced)

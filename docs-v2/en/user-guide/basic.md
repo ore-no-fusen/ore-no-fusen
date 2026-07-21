@@ -29,4 +29,4 @@ Favorites and tags are different. A favorite appears in Quick Launcher; its inte
 
 Right-click a note and open **⚙️ App Actions** to search, arrange notes by tag, undo arrangement, or open Settings.
 
-Next: [Advanced use](./advanced.html)
+Next: [Advanced use](/en/user-guide/advanced)

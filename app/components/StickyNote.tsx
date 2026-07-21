@@ -2472,8 +2472,10 @@ const StickyNote = memo(function StickyNote() {
 // [NEW] ErrorBoundaryでラップしてエクスポート
 // エラー発生時に付箋ウィンドウが白画面にならず、再試行ボタン付きエラー UI を表示する
 export default function StickyNoteWithBoundary() {
+    const { settings } = useSettings();
+    const language: Language = settings.language === 'en' ? 'en' : 'ja';
     return (
-        <ErrorBoundary>
+        <ErrorBoundary language={language}>
             <StickyNote />
         </ErrorBoundary>
     );

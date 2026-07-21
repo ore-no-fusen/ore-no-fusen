@@ -1117,7 +1117,7 @@ v2.17 | 2026-07-19 | USDM (Universal Specification Describing Manner)
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-02</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;">サポート言語は日本語（<code>ja</code>）および英語（<code>en</code>）を基本とする。設定画面からも強制切替可能。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">サポート言語は日本語（<code>ja</code>）および英語（<code>en</code>）を基本とする。設定画面からも強制切替可能。初回確認、検索、待機表示、確認・エラーなどの共通UIも選択言語へ追従する。</td>
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-03</td>
@@ -1388,5 +1388,6 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 | 8 | v2.16 | 26-05-31 | SPEC-IP-01-02 の VAPID 鍵説明を **3 者（ユーザー / 俺の付箋アプリ開発者 / 悪意ある第三者）** の語彙に統一。「開発者」「第三者」表記の揺れを解消し、設計書 003「3.0 鍵の前提」と 005「0 登場人物と関係」への参照を追加。 |
 | 9 | v2.17 | 26-07-19 | §8.2へMicrosoft Storeの［開く］、MSIX初回起動時の確認、「俺の付箋（Store版）」ショートカット、設定画面からの再作成、更新後の継続利用要件を追加。 |
 | 10 | **v2.18** | 26-07-19 | SPEC-NF-05-06を追加。日英ユーザーガイド、Store MSIX標準導入、winget補助導入、5.0.0旧版移行、現行実装との整合を要求化。 |
+| 11 | **v2.19** | 26-07-22 | SPEC-NF-05-02へ、初回確認・検索・待機表示・確認・エラーを含む共通UIの選択言語追従を明記。 |
 
 </div>

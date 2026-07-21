@@ -39,4 +39,4 @@ Below each type tab, Quick Launcher shows **All**, user tags, and **Unclassified
 
 Except for fixed search, shortcuts can be changed in Settings. After saving, the tray menu, note context menu, tooltips, and in-app help display the new keys.
 
-Next: [iPhone Sync](./iphone.html)
+Next: [iPhone Sync](/en/user-guide/iphone)
