@@ -64,6 +64,8 @@ import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 
+const SettingsLanguageContext = React.createContext<Language>('ja')
+
 // [NEW] Props定義
 type SettingsPageProps = {
     onClose?: () => void;
@@ -164,12 +166,13 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
             case "help":
                 return <HelpSection
                     t={t}
+                    language={settings.language}
                     newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language)}
                 />
             case "feedback":
                 return <FeedbackSection t={t} />
             case "conversation":
-                return <DeveloperConversationSection />
+                return <DeveloperConversationSection language={settings.language} />
             case "advanced":
                 return <AdvancedSection settings={settings} t={t} />
             default:
@@ -178,6 +181,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
     }
 
     return (
+        <SettingsLanguageContext.Provider value={settings.language}>
         <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-foreground">
             {/* サイドバー */}
             <aside className="w-60 shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-4 py-5">
@@ -280,7 +284,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
             </aside>
 
             {/* メインコンテンツエリア */}
-            <main className="flex flex-1 flex-col overflow-hidden bg-slate-50">
+            <main className="flex flex-1 flex-col overflow-hidden bg-slate-50" data-settings-content>
                 <div className="flex-1 overflow-y-auto px-8 py-10">
                     <div className="mx-auto w-full max-w-5xl">
                     {baseFolderMissing && (
@@ -288,15 +292,17 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">!</div>
                             <div className="flex-1 text-sm leading-6 text-amber-900">
                                 <p className="font-bold text-amber-900 mb-1">
-                                    保存先フォルダを現在利用できません。
+                                    {settings.language === 'en' ? 'The save folder is currently unavailable.' : '保存先フォルダを現在利用できません。'}
                                 </p>
                                 {missingFolderPath && (
                                     <p className="text-xs text-amber-800 mb-2 font-mono break-all">
-                                        以前の場所: {missingFolderPath}
+                                        {settings.language === 'en' ? 'Previous location' : '以前の場所'}: {missingFolderPath}
                                     </p>
                                 )}
                                 <p className="text-amber-800 mb-3">
-                                    安全のため付箋の読み書きを停止し、以前の保存場所は変更していません。外付けドライブや同期フォルダを再接続するか、「データ管理」から保存先を変更してください。
+                                    {settings.language === 'en'
+                                        ? 'To protect your data, note access is paused and the previous location is unchanged. Reconnect the external or synced folder, or change the save location in Data Management.'
+                                        : '安全のため付箋の読み書きを停止し、以前の保存場所は変更していません。外付けドライブや同期フォルダを再接続するか、「データ管理」から保存先を変更してください。'}
                                 </p>
                                 {activeSection !== 'data' && (
                                     <button
@@ -304,7 +310,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                                         onClick={() => setActiveSection('data')}
                                         className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100 transition-colors"
                                     >
-                                        データ管理タブを開く →
+                                        {settings.language === 'en' ? 'Open Data Management →' : 'データ管理タブを開く →'}
                                     </button>
                                 )}
                             </div>
@@ -357,11 +363,17 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                                         frontmatter: string
                                     }>("fusen_create_note", {
                                         folderPath: basePath,
-                                        context: "はじめての付箋（消してOK）"
+                                        context: settings.language === 'en' ? "Your first note (safe to delete)" : "はじめての付箋（消してOK）"
                                     })
 
                                     // 初期内容を設定
-                                    const initialContent = `はじめの付箋(消してOK)
+                                    const initialContent = settings.language === 'en'
+                                        ? `Your first note (safe to delete)
+
+Write right away
+**Add emphasis**
+It stays here!`
+                                        : `はじめの付箋(消してOK)
 
 すぐ書ける
 **強調できる**
@@ -412,7 +424,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
 
                             } catch (e) {
                                 console.error("設定の保存に失敗:", e)
-                                alert("設定の保存に失敗しました: " + String(e))
+                                alert((settings.language === 'en' ? "Failed to save settings: " : "設定の保存に失敗しました: ") + String(e))
                             }
                         }}
                     >
@@ -422,6 +434,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 </div>
             </main>
         </div>
+        </SettingsLanguageContext.Provider>
     )
 }
 
@@ -955,6 +968,8 @@ function CrystalFormatSection({ language, ui }: { language: Language; ui: Settin
             </div>
 
             <div className="rounded-lg border p-4 space-y-3">
+                <p className="text-xs text-slate-500">{ui.templates.fixedHelp}</p>
+                <p className="text-xs text-slate-500">{ui.templates.trackHelp}</p>
                 {format.sections.map((section, index) => {
                     const isFree = section.slot === 'free'
                     const isHistory = section.slot === 'history'
@@ -1128,6 +1143,7 @@ function SettingsItemCard({ number, title, description, current, children, impor
     children: React.ReactNode;
     important?: boolean;
 }) {
+    const language = React.useContext(SettingsLanguageContext)
     return (
         <details className={`group overflow-hidden rounded-xl border bg-white ${important ? 'border-blue-300 shadow-sm' : 'border-slate-200'}`}>
             <summary className="flex cursor-pointer list-none items-center gap-4 p-5 hover:bg-slate-50/70">
@@ -1138,7 +1154,7 @@ function SettingsItemCard({ number, title, description, current, children, impor
                 </div>
                 {current && <span className="max-w-56 truncate text-right text-sm font-medium text-slate-700">{current}</span>}
                 <span className="flex items-center text-sm font-semibold text-slate-700">
-                    詳細<ChevronRight className="ml-1 h-4 w-4 transition-transform group-open:rotate-90" />
+                    {language === 'en' ? 'Details' : '詳細'}<ChevronRight className="ml-1 h-4 w-4 transition-transform group-open:rotate-90" />
                 </span>
             </summary>
             <div className="border-t border-slate-100 bg-slate-50/60 p-5">{children}</div>
@@ -1156,6 +1172,7 @@ function hotkeyCheckMessage(result: HotkeyCheckResult, labels: Record<HotkeyActi
 }
 
 function GeneralSection({ settings, onUpdate, t }: SectionProps) {
+    const isEnglish = settings.language === 'en'
     const [startupDistribution, setStartupDistribution] = useState<"unknown" | "desktop" | "msix">("unknown")
     const [startupState, setStartupState] = useState("desktop")
     const [startupMessage, setStartupMessage] = useState("")
@@ -1219,9 +1236,9 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             const path = await invoke<string>("fusen_create_desktop_shortcut")
             await invoke("fusen_mark_desktop_shortcut_prompted")
             setDesktopShortcutExists(true)
-            setDesktopShortcutMessage(`作成しました: ${path}`)
+            setDesktopShortcutMessage(isEnglish ? `Created: ${path}` : `作成しました: ${path}`)
         } catch (e) {
-            setDesktopShortcutMessage(`作成できませんでした: ${String(e)}`)
+            setDesktopShortcutMessage(isEnglish ? `Could not create the shortcut: ${String(e)}` : `作成できませんでした: ${String(e)}`)
         } finally {
             setDesktopShortcutBusy(false)
         }
@@ -1234,9 +1251,9 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             const { invoke } = await import("@tauri-apps/api/core")
             await invoke("fusen_remove_desktop_shortcut")
             setDesktopShortcutExists(false)
-            setDesktopShortcutMessage("デスクトップから削除しました。")
+            setDesktopShortcutMessage(isEnglish ? "Removed from the desktop." : "デスクトップから削除しました。")
         } catch (e) {
-            setDesktopShortcutMessage(`削除できませんでした: ${String(e)}`)
+            setDesktopShortcutMessage(isEnglish ? `Could not remove the shortcut: ${String(e)}` : `削除できませんでした: ${String(e)}`)
         } finally {
             setDesktopShortcutBusy(false)
         }
@@ -1250,7 +1267,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             </div>
             <Separator />
             <div className="grid gap-4">
-                <SettingsItemCard number={1} title="言語" description="画面に表示する言語を選びます。" current={settings.language === 'ja' ? '日本語' : 'English'}>
+                <SettingsItemCard number={1} title={t('settings.general.language')} description={isEnglish ? 'Choose the language used throughout the app.' : '画面に表示する言語を選びます。'} current={settings.language === 'ja' ? '日本語' : 'English'}>
                 <div className="grid gap-2">
                     <Label>{t('settings.general.language')}</Label>
                     <div className="flex gap-2">
@@ -1273,7 +1290,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </SettingsItemCard>
 
                 {/* 自動起動スイッチ */}
-                <SettingsItemCard number={2} title="自動起動" description="Windowsへのサインイン時に俺の付箋を起動します。" current={autoStartChecked ? 'オン' : 'オフ'}>
+                <SettingsItemCard number={2} title={t('settings.general.autoStart')} description={t('settings.general.autoStartDesc')} current={autoStartChecked ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}>
                 <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.general.autoStart')}</Label>
@@ -1331,19 +1348,19 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </div>
                 </SettingsItemCard>
 
-                <SettingsItemCard number={3} title="デスクトップショートカット" description="デスクトップや外部ランチャーから起動するためのショートカットを管理します。" current={desktopShortcutExists ? '作成済み' : '未作成'}>
+                <SettingsItemCard number={3} title={isEnglish ? 'Desktop Shortcut' : 'デスクトップショートカット'} description={isEnglish ? 'Manage the shortcut used to launch the app from the desktop or an external launcher.' : 'デスクトップや外部ランチャーから起動するためのショートカットを管理します。'} current={desktopShortcutExists ? (isEnglish ? 'Created' : '作成済み') : (isEnglish ? 'Not created' : '未作成')}>
                     <div className="space-y-3">
                         <div>
-                            <Label className="text-base">{startupDistribution === 'msix' ? '俺の付箋（Store版）' : '俺の付箋'}</Label>
-                            <p className="text-sm text-muted-foreground">Store版は従来版と区別できる名前で作成します。アプリ更新後も同じショートカットを使えます。</p>
+                            <Label className="text-base">{startupDistribution === 'msix' ? (isEnglish ? 'Ore No Fusen (Store)' : '俺の付箋（Store版）') : (isEnglish ? 'Ore No Fusen' : '俺の付箋')}</Label>
+                            <p className="text-sm text-muted-foreground">{isEnglish ? 'The Store shortcut uses a distinct name and remains valid after app updates.' : 'Store版は従来版と区別できる名前で作成します。アプリ更新後も同じショートカットを使えます。'}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <Button onClick={createDesktopShortcut} disabled={desktopShortcutBusy || startupDistribution === 'unknown'}>
-                                {desktopShortcutExists ? 'ショートカットを作り直す' : 'ショートカットを作成'}
+                                {desktopShortcutExists ? (isEnglish ? 'Recreate Shortcut' : 'ショートカットを作り直す') : (isEnglish ? 'Create Shortcut' : 'ショートカットを作成')}
                             </Button>
                             {desktopShortcutExists && (
                                 <Button variant="outline" onClick={removeDesktopShortcut} disabled={desktopShortcutBusy}>
-                                    ショートカットを削除
+                                    {isEnglish ? 'Remove Shortcut' : 'ショートカットを削除'}
                                 </Button>
                             )}
                         </div>
@@ -1352,7 +1369,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </SettingsItemCard>
 
                 {/* 効果音スイッチ */}
-                <SettingsItemCard number={4} title="効果音" description="保存や削除などの操作音を設定します。" current={settings.sound_enabled ? 'オン' : 'オフ'}>
+                <SettingsItemCard number={4} title={t('settings.general.sound')} description={t('settings.general.soundDesc')} current={settings.sound_enabled ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}>
                 <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.general.sound')}</Label>
@@ -1364,7 +1381,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                     />
                 </div>
                 </SettingsItemCard>
-                <SettingsItemCard number={5} title="文字サイズ" description="付箋本文の文字の大きさを調整します。" current={`${settings.font_size}px`}>
+                <SettingsItemCard number={5} title={isEnglish ? 'Font Size' : '文字サイズ'} description={isEnglish ? 'Adjust the text size used in sticky notes.' : '付箋本文の文字の大きさを調整します。'} current={`${settings.font_size}px`}>
             <section className="space-y-4">
                 <div>
                     <h3 className="text-lg font-semibold text-slate-900">{t('settings.appearance.title')}</h3>
@@ -1409,6 +1426,7 @@ function DataSection({
     setIsBackingUp,
     onUpdateMany,
 }: DataSectionProps) {
+    const isEnglish = settings.language === 'en'
     const [showPeriodicDetails, setShowPeriodicDetails] = useState(false)
     const [showOtherBackups, setShowOtherBackups] = useState(false)
     const [showManualBackup, setShowManualBackup] = useState(false)
@@ -1422,7 +1440,7 @@ function DataSection({
             }
         } catch (e) {
             console.error("フォルダ選択に失敗:", e)
-            alert("フォルダ選択に失敗しました: " + String(e))
+            alert((isEnglish ? "Folder selection failed: " : "フォルダ選択に失敗しました: ") + String(e))
         }
     }
 
@@ -1433,25 +1451,25 @@ function DataSection({
                 <p className="text-gray-500 text-sm">{t('settings.data.description')}</p>
                 <div className="mt-6 flex items-center gap-4 rounded-xl border border-blue-200 border-l-4 border-l-blue-600 bg-white px-5 py-4 shadow-sm">
                     <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-3 text-sm font-bold text-slate-950"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-700 text-xs font-bold text-white">1</span>データ保存先（最重要）</div>
-                        <p className="mt-1 text-xs text-slate-500">いつ使う: 初回設定時と保存場所を変えたいとき。ここを変えると、付箋・画像・タグの保存先が切り替わります。</p>
-                        <div className="mt-2 break-all font-mono text-sm font-medium text-slate-800">{settings.base_path || '未設定'}</div>
+                        <div className="flex items-center gap-3 text-sm font-bold text-slate-950"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-700 text-xs font-bold text-white">1</span>{isEnglish ? 'Data Save Location (Most Important)' : 'データ保存先（最重要）'}</div>
+                        <p className="mt-1 text-xs text-slate-500">{isEnglish ? 'Use this during initial setup or when changing where data is stored. Notes, images, and tags will use this location.' : 'いつ使う: 初回設定時と保存場所を変えたいとき。ここを変えると、付箋・画像・タグの保存先が切り替わります。'}</p>
+                        <div className="mt-2 break-all font-mono text-sm font-medium text-slate-800">{settings.base_path || (isEnglish ? 'Not set' : '未設定')}</div>
                     </div>
                     <Button variant="outline" onClick={handleSelectFolder}>
-                        <FolderOpen className="mr-2 h-4 w-4" />保存場所を変更
+                        <FolderOpen className="mr-2 h-4 w-4" />{isEnglish ? 'Change Save Location' : '保存場所を変更'}
                     </Button>
                 </div>
             </div>
             <div className="order-3 rounded-xl rounded-b-none border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="mb-4 flex items-center gap-3 text-base font-bold text-slate-950"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">3</span>バックアップ</h3>
-                <h4 className="mb-1 text-sm font-semibold text-slate-900">自動バックアップ</h4>
-                <p className="text-xs text-slate-500">いつ使う: 日常のデータ保護。設定した間隔で確認し、承認すると1世代のバックアップを作ります。</p>
+                <h3 className="mb-4 flex items-center gap-3 text-base font-bold text-slate-950"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">3</span>{t('settings.data.backup')}</h3>
+                <h4 className="mb-1 text-sm font-semibold text-slate-900">{isEnglish ? 'Automatic Backup' : '自動バックアップ'}</h4>
+                <p className="text-xs text-slate-500">{isEnglish ? 'Use this for routine data protection. At the configured interval, the app asks before creating one backup generation.' : 'いつ使う: 日常のデータ保護。設定した間隔で確認し、承認すると1世代のバックアップを作ります。'}</p>
             <div className="grid gap-0 divide-y divide-slate-100">
                 <div className="flex items-center justify-between py-5">
                     <div className="pr-4">
-                        <Label htmlFor="monthly-backup">自動バックアップをする</Label>
+                        <Label htmlFor="monthly-backup">{isEnglish ? 'Enable automatic backups' : '自動バックアップをする'}</Label>
                         <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">
-                            おすすめは「する」。実行前に必ず確認します。
+                            {isEnglish ? 'Recommended. The app always asks before running a backup.' : 'おすすめは「する」。実行前に必ず確認します。'}
                         </p>
                     </div>
                     <Switch
@@ -1464,7 +1482,7 @@ function DataSection({
                 </div>
                 <div className="flex justify-end py-3">
                     <Button variant="ghost" size="sm" onClick={() => setShowPeriodicDetails((value) => !value)}>
-                        詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showPeriodicDetails ? 'rotate-90' : ''}`} />
+                        {isEnglish ? 'Details' : '詳細'}<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showPeriodicDetails ? 'rotate-90' : ''}`} />
                     </Button>
                 </div>
                 <div className={showPeriodicDetails ? "divide-y divide-slate-100" : "hidden"}>
@@ -1479,34 +1497,34 @@ function DataSection({
                         value={settings.monthly_backup_interval_days}
                         onChange={(event) => onUpdate('monthly_backup_interval_days', Number(event.target.value))}
                     >
-                        <option value={30}>30日</option>
-                        <option value={60}>60日</option>
-                        <option value={90}>90日</option>
+                        <option value={30}>{isEnglish ? '30 days' : '30日'}</option>
+                        <option value={60}>{isEnglish ? '60 days' : '60日'}</option>
+                        <option value={90}>{isEnglish ? '90 days' : '90日'}</option>
                     </select>
                 </div>
                 <div className="py-5 text-sm text-slate-600">
-                    <div className="font-medium text-slate-900">保存先</div>
+                    <div className="font-medium text-slate-900">{isEnglish ? 'Destination' : '保存先'}</div>
                     <div className="mt-1 break-all font-mono text-xs">Documents\OreNoFusen_Backup\Monthly</div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
                         <div className="rounded-lg bg-slate-50 px-3 py-2">
-                            <div className="text-xs text-slate-400">前回の実行</div>
+                            <div className="text-xs text-slate-400">{isEnglish ? 'Last run' : '前回の実行'}</div>
                             <div className="mt-1 font-medium text-slate-800">
                                 {settings.monthly_backup_record
-                                    ? new Date(settings.monthly_backup_record.created_at).toLocaleString('ja-JP')
-                                    : 'まだありません'}
+                                    ? new Date(settings.monthly_backup_record.created_at).toLocaleString(isEnglish ? 'en-US' : 'ja-JP')
+                                    : (isEnglish ? 'Not yet' : 'まだありません')}
                             </div>
                         </div>
                         <div className="rounded-lg bg-slate-50 px-3 py-2">
-                            <div className="text-xs text-slate-400">次回の確認予定</div>
+                            <div className="text-xs text-slate-400">{isEnglish ? 'Next reminder' : '次回の確認予定'}</div>
                             <div className="mt-1 font-medium text-slate-800">
                                 {settings.monthly_backup_next_prompt
-                                    ? new Date(settings.monthly_backup_next_prompt).toLocaleString('ja-JP')
-                                    : '未設定'}
+                                    ? new Date(settings.monthly_backup_next_prompt).toLocaleString(isEnglish ? 'en-US' : 'ja-JP')
+                                    : (isEnglish ? 'Not set' : '未設定')}
                             </div>
                         </div>
                         <div className="rounded-lg bg-slate-50 px-3 py-2">
-                            <div className="text-xs text-slate-400">保持数</div>
-                            <div className="mt-1 font-medium text-slate-800">1世代</div>
+                            <div className="text-xs text-slate-400">{isEnglish ? 'Retention' : '保持数'}</div>
+                            <div className="mt-1 font-medium text-slate-800">{isEnglish ? '1 generation' : '1世代'}</div>
                         </div>
                     </div>
                     <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
@@ -1531,10 +1549,10 @@ function DataSection({
                         </h3>
                         <p className="text-sm text-muted-foreground mt-1">{t('settings.data.importDesc')}</p>
                         <p className="mt-1 text-xs text-slate-500">{t('settings.data.importTagDesc')}</p>
-                        <p className="mt-1 text-xs text-slate-500">取り込み元: {importSourcePath || '未選択'}</p>
+                        <p className="mt-1 text-xs text-slate-500">{isEnglish ? 'Source' : '取り込み元'}: {importSourcePath || (isEnglish ? 'Not selected' : '未選択')}</p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setShowImport((value) => !value)}>
-                        詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showImport ? 'rotate-90' : ''}`} />
+                        {isEnglish ? 'Details' : '詳細'}<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showImport ? 'rotate-90' : ''}`} />
                     </Button>
                 </div>
 
@@ -1573,11 +1591,11 @@ function DataSection({
                                         targetPath: settings.base_path
                                     });
 
-                                    let msg = `インポート完了！\n\n`;
-                                    msg += `📝 ノート: ${stats.imported_md}件\n`;
-                                    msg += `🖼️ 画像: ${stats.imported_images}件\n`;
+                                    let msg = isEnglish ? `Import complete!\n\n` : `インポート完了！\n\n`;
+                                    msg += isEnglish ? `📝 Notes: ${stats.imported_md}\n` : `📝 ノート: ${stats.imported_md}件\n`;
+                                    msg += isEnglish ? `🖼️ Images: ${stats.imported_images}\n` : `🖼️ 画像: ${stats.imported_images}件\n`;
                                     if (stats.errors.length > 0) {
-                                        msg += `⚠️ エラー: ${stats.errors.length}件\n`;
+                                        msg += isEnglish ? `⚠️ Errors: ${stats.errors.length}\n` : `⚠️ エラー: ${stats.errors.length}件\n`;
                                         console.error("Import Errors:", stats.errors);
                                     }
 
@@ -1588,7 +1606,7 @@ function DataSection({
                                     await refreshImportedNotes(stats, emit);
                                 } catch (e) {
                                     console.error("インポート失敗:", e);
-                                    alert("インポートに失敗しました: " + String(e));
+                                    alert((isEnglish ? "Import failed: " : "インポートに失敗しました: ") + String(e));
                                 } finally {
                                     setIsImporting(false);
                                     setImportSourcePath("");
@@ -1607,10 +1625,10 @@ function DataSection({
 
             <div className="order-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">4</span>データ復旧
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-bold text-white">4</span>{isEnglish ? 'Data Recovery' : 'データ復旧'}
                 </h3>
-                <p className="text-sm text-muted-foreground mt-1 mb-1">いつ使う: データが壊れた、または元に戻したいとき。バックアップ原本を守りながら復旧コピーを作り、新しい保存先として切り替えます。</p>
-                <p className="mb-4 text-xs text-slate-500">既定: 自動バックアップから復旧</p>
+                <p className="text-sm text-muted-foreground mt-1 mb-1">{isEnglish ? 'Use this when data is damaged or must be restored. A recovery copy is created without modifying the original backup, then becomes the new save location.' : 'いつ使う: データが壊れた、または元に戻したいとき。バックアップ原本を守りながら復旧コピーを作り、新しい保存先として切り替えます。'}</p>
+                <p className="mb-4 text-xs text-slate-500">{isEnglish ? 'Default: restore from automatic backup' : '既定: 自動バックアップから復旧'}</p>
                 <div className="space-y-3">
                     <div className="rounded-lg bg-slate-50 p-4">
                         <div className="text-sm font-semibold">{t('settings.data.recommendedMonthly')}</div>
@@ -1675,7 +1693,7 @@ function DataSection({
                     })}
                     <div className="flex justify-end">
                         <Button variant="ghost" size="sm" onClick={() => setShowOtherBackups((value) => !value)}>
-                            詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showOtherBackups ? 'rotate-90' : ''}`} />
+                            {isEnglish ? 'Details' : '詳細'}<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showOtherBackups ? 'rotate-90' : ''}`} />
                         </Button>
                     </div>
                 </div>
@@ -1686,13 +1704,13 @@ function DataSection({
                 <div className="flex items-start justify-between mb-4">
                     <div>
                         <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            手動バックアップ
+                            {isEnglish ? 'Manual Backup' : '手動バックアップ'}
                         </h3>
-                        <p className="text-sm text-muted-foreground mt-1">いつ使う: 大きな作業の前や外付けドライブへ保管したいとき。選んだ場所へ現在のデータをコピーします。</p>
-                        <p className="mt-1 text-xs text-slate-500">保存先: {backupDestPath || '未選択'}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{isEnglish ? 'Use this before major work or to keep a copy on an external drive. Current data is copied to the selected location.' : 'いつ使う: 大きな作業の前や外付けドライブへ保管したいとき。選んだ場所へ現在のデータをコピーします。'}</p>
+                        <p className="mt-1 text-xs text-slate-500">{isEnglish ? 'Destination' : '保存先'}: {backupDestPath || (isEnglish ? 'Not selected' : '未選択')}</p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setShowManualBackup((value) => !value)}>
-                        詳細<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showManualBackup ? 'rotate-90' : ''}`} />
+                        {isEnglish ? 'Details' : '詳細'}<ChevronRight className={`ml-1 h-4 w-4 transition-transform ${showManualBackup ? 'rotate-90' : ''}`} />
                     </Button>
                 </div>
 
@@ -1738,10 +1756,10 @@ function DataSection({
                                         destPath: backupDestPath,
                                         includeTrash: settings.backup_include_trash,
                                     });
-                                    alert(t('settings.data.backupDone') + count + '件');
+                                    alert(t('settings.data.backupDone') + count + (isEnglish ? '' : '件'));
                                 } catch (e) {
                                     console.error("バックアップ失敗:", e);
-                                    alert("バックアップに失敗しました: " + String(e));
+                                    alert((isEnglish ? "Backup failed: " : "バックアップに失敗しました: ") + String(e));
                                 } finally {
                                     setIsBackingUp(false);
                                     setBackupDestPath("");
@@ -1986,7 +2004,8 @@ function StepIllustration({ kind }: { kind: 'write' | 'pin' | 'iphone' }) {
     );
 }
 
-function HelpSection({ t, newNoteTriggerLabel }: { t: (key: any) => string; newNoteTriggerLabel: string }) {
+function HelpSection({ t, newNoteTriggerLabel, language }: { t: (key: any) => string; newNoteTriggerLabel: string; language: Language }) {
+    const isEnglish = language === 'en'
     const withNewNoteTrigger = (value: string) => value.replace(/Ctrl\s*\+\s*N/g, newNoteTriggerLabel);
     const onboardingSteps = [
         {
@@ -2089,7 +2108,7 @@ function HelpSection({ t, newNoteTriggerLabel }: { t: (key: any) => string; newN
             <Separator />
 
             {/* ===== B案: 最初の5分（縦並びオンボーディング） ===== */}
-            <SettingsItemCard number={1} title="最初の5分" description="初めて使うときの基本操作を順番に確認します。">
+            <SettingsItemCard number={1} title={t('settings.help.onboarding.title')} description={isEnglish ? 'Review the basic steps for getting started.' : '初めて使うときの基本操作を順番に確認します。'}>
             <section>
                 <div className="mb-4">
                     <div className="flex items-center gap-2">
@@ -2124,7 +2143,7 @@ function HelpSection({ t, newNoteTriggerLabel }: { t: (key: any) => string; newN
             </SettingsItemCard>
 
             {/* ===== A案: やりたいことから探す（アコーディオン） ===== */}
-            <SettingsItemCard number={2} title="やりたいことから探す" description="目的を選んで必要な操作だけ確認します。">
+            <SettingsItemCard number={2} title={t('settings.help.goals.title')} description={isEnglish ? 'Choose a goal and review only the actions you need.' : '目的を選んで必要な操作だけ確認します。'}>
             <section>
                 <div className="mb-4">
                     <span className="text-xs font-bold uppercase tracking-[0.2em] text-sky-700">{t('settings.help.goals.title')}</span>
@@ -2157,7 +2176,7 @@ function HelpSection({ t, newNoteTriggerLabel }: { t: (key: any) => string; newN
             </SettingsItemCard>
 
             {/* ===== 既存の参照テーブル群（情報を求める人向けに残す） ===== */}
-            <SettingsItemCard number={3} title="一覧・トラブル解決" description="操作一覧、ショートカット、困ったときの確認先です。">
+            <SettingsItemCard number={3} title={isEnglish ? 'References & Troubleshooting' : '一覧・トラブル解決'} description={isEnglish ? 'Review actions, shortcuts, and troubleshooting references.' : '操作一覧、ショートカット、困ったときの確認先です。'}>
             <HelpTable
                 title={t('settings.help.contextTable.title')}
                 firstHeader={t('settings.help.table.action')}
@@ -2449,7 +2468,8 @@ function getFeedbackApiTargetLabel(apiBaseUrl: string): string {
     return 'custom'
 }
 
-function DeveloperConversationSection() {
+function DeveloperConversationSection({ language }: { language: Language }) {
+    const isEnglish = language === 'en'
     const conversationIdentity = useMemo(() => getOrCreateFeedbackConversationIdentity(), [])
     const feedbackApiBaseUrl = getFeedbackApiBaseUrl()
     const feedbackApiTargetLabel = getFeedbackApiTargetLabel(feedbackApiBaseUrl)
@@ -2530,15 +2550,15 @@ function DeveloperConversationSection() {
     return (
         <div className="max-w-4xl space-y-6">
             <div>
-                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">開発者とのやりとり</h2>
-                <p className="text-gray-500 text-sm">返信はここにだけ表示されます。付箋として自動表示されることはありません。</p>
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{isEnglish ? 'Developer Messages' : '開発者とのやりとり'}</h2>
+                <p className="text-gray-500 text-sm">{isEnglish ? 'Replies appear only here. They are never shown automatically as sticky notes.' : '返信はここにだけ表示されます。付箋として自動表示されることはありません。'}</p>
                 <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                         <span>
-                            接続先: <span className="font-semibold text-slate-900">{feedbackApiTargetLabel}</span>
+                            {isEnglish ? 'Server' : '接続先'}: <span className="font-semibold text-slate-900">{feedbackApiTargetLabel}</span>
                         </span>
                         <span className="break-all">
-                            会話ID: <span className="font-mono text-slate-900">{conversationIdentity.conversationId}</span>
+                            {isEnglish ? 'Conversation ID' : '会話ID'}: <span className="font-mono text-slate-900">{conversationIdentity.conversationId}</span>
                         </span>
                     </div>
                     <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{feedbackApiBaseUrl}</div>
@@ -2548,10 +2568,10 @@ function DeveloperConversationSection() {
             <div className="border rounded-lg overflow-hidden bg-white">
                 <div className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
                     {loading && messages.length === 0 ? (
-                        <div className="text-sm text-gray-500">読み込み中...</div>
+                        <div className="text-sm text-gray-500">{isEnglish ? 'Loading...' : '読み込み中...'}</div>
                     ) : messages.length === 0 ? (
                         <div className="rounded-md border border-dashed bg-white p-6 text-sm text-gray-500">
-                            まだやりとりはありません。下の入力欄からメッセージを送れます。
+                            {isEnglish ? 'No messages yet. You can send one using the field below.' : 'まだやりとりはありません。下の入力欄からメッセージを送れます。'}
                         </div>
                     ) : (
                         messages.map((message) => (
@@ -2564,7 +2584,7 @@ function DeveloperConversationSection() {
                                     : 'bg-white text-gray-900 border-gray-200'
                                     }`}>
                                     <div className={`text-xs font-bold mb-1 ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
-                                        {message.authorType === 'user' ? 'ユーザー' : 'アプリ開発者'}
+                                        {message.authorType === 'user' ? (isEnglish ? 'You' : 'ユーザー') : (isEnglish ? 'Developer' : 'アプリ開発者')}
                                     </div>
                                     <div className="whitespace-pre-wrap break-words">{message.body}</div>
                                 </div>
@@ -2576,23 +2596,23 @@ function DeveloperConversationSection() {
                 <div className="border-t p-4 space-y-3">
                     {error && (
                         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                            通信に失敗しました。時間をおいて再試行してください。
+                            {isEnglish ? 'Communication failed. Please wait and try again.' : '通信に失敗しました。時間をおいて再試行してください。'}
                         </div>
                     )}
                     <textarea
                         className="flex min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        placeholder="開発者に伝えたいことを書いてください"
+                        placeholder={isEnglish ? 'Write a message to the developer' : '開発者に伝えたいことを書いてください'}
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                     />
                     <div className="flex justify-between items-center">
                         <Button variant="outline" onClick={loadMessages} disabled={loading || sending}>
                             <RefreshCw className="mr-2 h-4 w-4" />
-                            更新
+                            {isEnglish ? 'Refresh' : '更新'}
                         </Button>
                         <Button onClick={sendMessage} disabled={sending || !draft.trim()}>
                             <Send className="mr-2 h-4 w-4" />
-                            {sending ? '送信中...' : '送信'}
+                            {sending ? (isEnglish ? 'Sending...' : '送信中...') : (isEnglish ? 'Send' : '送信')}
                         </Button>
                     </div>
                 </div>
@@ -2626,6 +2646,7 @@ type PushDeviceItem = {
 type DriveQueueCounts = { to_iphone: number; from_iphone: number };
 
 function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any) => string }) {
+    const isEnglish = settings.language === 'en'
     const [driveFolderLoading, setDriveFolderLoading] = useState(false)
 
     // 接続状態
@@ -2717,10 +2738,12 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
         fallback: string,
     ) => {
         const label = direction === 'from_iphone'
-            ? 'PCへの未受信キュー'
-            : 'iPhoneへの未送信キュー'
+            ? (isEnglish ? 'queue waiting to be received on PC' : 'PCへの未受信キュー')
+            : (isEnglish ? 'queue waiting to be sent to iPhone' : 'iPhoneへの未送信キュー')
         const ok = window.confirm(
-            `${label}を削除します。\n\nまだ届いていない付箋は復元できません。\n中身を確認してから削除することをおすすめします。\n\n削除しますか？`
+            isEnglish
+                ? `Delete the ${label}?\n\nSticky notes that have not arrived cannot be recovered. Review the contents before deleting.\n\nDelete it?`
+                : `${label}を削除します。\n\nまだ届いていない付箋は復元できません。\n中身を確認してから削除することをおすすめします。\n\n削除しますか？`
         )
         if (!ok) return
 
@@ -2737,7 +2760,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             }
         } catch (e) {
             console.error('[AdvancedSection] delete drive queue failed:', e)
-            window.alert(`削除に失敗しました: ${String(e)}`)
+            window.alert(isEnglish ? `Deletion failed: ${String(e)}` : `削除に失敗しました: ${String(e)}`)
         } finally {
             setQueueDeleting(null)
         }
@@ -2806,7 +2829,25 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                 driveEmail = account?.emailAddress ?? null
             } catch { driveEmail = null }
 
-            const lines = [
+            const lines = isEnglish ? [
+                '=== Ore No Fusen Diagnostics ===',
+                `App: ${appVersion}`,
+                `OS: ${osType} ${osVer} ${osArch}`,
+                `Language: ${settings.language}`,
+                `Data location: ${basePath || '(not set)'}`,
+                `Data folder exists: ${baseExists === null ? '(not checked)' : baseExists ? 'yes' : 'no'}`,
+                `Note files: ${noteCount === null ? '(unavailable)' : noteCount}`,
+                `pc_id: ${settings.pc_id ?? '(not generated)'}`,
+                'Settings file: %APPDATA%\\OreNoFusen\\settings.json',
+                'Log folder: %LOCALAPPDATA%\\ore-no-fusen\\',
+                `Drive connection: ${driveEmail ? `connected (${driveEmail})` : 'not connected'}`,
+                `Registered PCs: ${pcs === null ? '(unavailable)' : pcs.length}`,
+                `Registered iPhones / iPads: ${iphones === null ? '(unavailable)' : iphones.length}`,
+                `Waiting to be sent to iPhone: ${queueCounts === null ? '(unavailable)' : queueCounts.to_iphone}`,
+                `Waiting to be received on PC: ${queueCounts === null ? '(unavailable)' : queueCounts.from_iphone}`,
+                `Retrieved at: ${new Date().toISOString()}`,
+                '================================',
+            ] : [
                 '=== 俺の付箋 診断情報 ===',
                 `アプリ: ${appVersion}`,
                 `OS: ${osType} ${osVer} ${osArch}`,
@@ -2815,8 +2856,8 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                 `保存先フォルダ実在: ${baseExists === null ? '(未確認)' : baseExists ? 'はい' : 'いいえ'}`,
                 `付箋ファイル数: ${noteCount === null ? '(未取得)' : `${noteCount} 件`}`,
                 `pc_id: ${settings.pc_id ?? '(未生成)'}`,
-                `設定ファイル: %APPDATA%\\OreNoFusen\\settings.json`,
-                `ログフォルダ: %LOCALAPPDATA%\\ore-no-fusen\\`,
+                '設定ファイル: %APPDATA%\\OreNoFusen\\settings.json',
+                'ログフォルダ: %LOCALAPPDATA%\\ore-no-fusen\\',
                 `Drive 接続: ${driveEmail ? `接続済み (${driveEmail})` : '未接続'}`,
                 `登録 PC: ${pcs === null ? '(未取得)' : `${pcs.length} 台`}`,
                 `登録 iPhone / iPad: ${iphones === null ? '(未取得)' : `${iphones.length} 台`}`,
@@ -2828,7 +2869,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setDiagText(lines.join('\n'))
         } catch (e) {
             console.error('[AdvancedSection] build diagnostics failed:', e)
-            setDiagText(`診断情報の取得に失敗しました: ${e}`)
+            setDiagText(isEnglish ? `Failed to retrieve diagnostics: ${e}` : `診断情報の取得に失敗しました: ${e}`)
         } finally {
             setDiagLoading(false)
         }
@@ -2861,7 +2902,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setDriveTempSummary(summary)
             setSelectedDriveTempFileIds((ids) => ids.filter((id) => summary.files?.some((file) => file.id === id && file.canDelete)))
         } catch (e) {
-            setDriveTempMessage('一時ファイルの確認に失敗しました: ' + String(e))
+            setDriveTempMessage((isEnglish ? 'Failed to check temporary files: ' : '一時ファイルの確認に失敗しました: ') + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -2879,7 +2920,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
     const cleanupSelectedDriveTempFiles = async () => {
         const selectedCount = selectedDriveTempFileIds.length
         if (selectedCount === 0) return
-        if (!confirm(`選択したDrive一時ファイル ${selectedCount} 個を削除します。\n\n設定ファイルやキューは削除しません。送受信中ではないことを確認してください。\n\n削除しますか？`)) return
+        if (!confirm(isEnglish ? `Delete ${selectedCount} selected Drive temporary files?\n\nSettings and queue files are not deleted. Make sure no transfer is in progress.\n\nDelete them?` : `選択したDrive一時ファイル ${selectedCount} 個を削除します。\n\n設定ファイルやキューは削除しません。送受信中ではないことを確認してください。\n\n削除しますか？`)) return
         setDriveTempLoading(true)
         setDriveTempMessage(null)
         try {
@@ -2889,9 +2930,9 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             })
             setDriveTempSummary(summary)
             setSelectedDriveTempFileIds([])
-            setDriveTempMessage(`選択した一時ファイルを削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
+            setDriveTempMessage(isEnglish ? `Deleted selected temporary files: ${summary.deletedCount}${summary.failedCount ? ` / Failed: ${summary.failedCount}` : ''}` : `選択した一時ファイルを削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
         } catch (e) {
-            setDriveTempMessage('選択した一時ファイルの削除に失敗しました: ' + String(e))
+            setDriveTempMessage((isEnglish ? 'Failed to delete selected temporary files: ' : '選択した一時ファイルの削除に失敗しました: ') + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -2899,7 +2940,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
 
     const cleanupDriveTempFiles = async () => {
         if (!driveTempSummary || driveTempSummary.oldCount === 0) return
-        if (!confirm(`${driveTempSummary.retentionDays}日以上前の一時ファイル ${driveTempSummary.oldCount} 個を削除します。よろしいですか？`)) return
+        if (!confirm(isEnglish ? `Delete ${driveTempSummary.oldCount} temporary files older than ${driveTempSummary.retentionDays} days?` : `${driveTempSummary.retentionDays}日以上前の一時ファイル ${driveTempSummary.oldCount} 個を削除します。よろしいですか？`)) return
         setDriveTempLoading(true)
         setDriveTempMessage(null)
         try {
@@ -2907,9 +2948,9 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             const summary = await invoke<DriveTempCleanupSummary>('fusen_cleanup_drive_temp_files')
             setDriveTempSummary(summary)
             setSelectedDriveTempFileIds([])
-            setDriveTempMessage(`削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
+            setDriveTempMessage(isEnglish ? `Deleted: ${summary.deletedCount}${summary.failedCount ? ` / Failed: ${summary.failedCount}` : ''}` : `削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
         } catch (e) {
-            setDriveTempMessage('一時ファイルの削除に失敗しました: ' + String(e))
+            setDriveTempMessage((isEnglish ? 'Failed to delete temporary files: ' : '一時ファイルの削除に失敗しました: ') + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -3007,7 +3048,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             }
         } catch (e) {
             console.error('[AdvancedSection] open folder failed:', e)
-            alert(`フォルダを開けませんでした: ${e}`)
+            alert(isEnglish ? `Could not open the folder: ${e}` : `フォルダを開けませんでした: ${e}`)
         }
     }
 
@@ -3038,7 +3079,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
     const runDiscordIngest = async () => {
         const secret = discordIngestSecret.trim()
         if (!secret) {
-            setDiscordIngestError('ingest secret を入力してください。')
+            setDiscordIngestError(isEnglish ? 'Enter the ingest secret.' : 'ingest secret を入力してください。')
             setDiscordIngestResult(null)
             return
         }
@@ -3092,7 +3133,9 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
     const runFeedbackUnreadCheck = async () => {
         const identity = getFeedbackConversationIdentity()
         if (!identity) {
-            setFeedbackUnreadCheckError('会話IDがまだありません。先に「開発者とのやりとり」からメッセージを送信してください。')
+            setFeedbackUnreadCheckError(isEnglish
+                ? 'There is no conversation ID yet. Send a message from Developer Messages first.'
+                : '会話IDがまだありません。先に「開発者とのやりとり」からメッセージを送信してください。')
             setFeedbackUnreadCheckResult(null)
             return
         }
@@ -3132,7 +3175,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             </div>
 
             {/* 📁 データの場所 */}
-            <SettingsItemCard number={1} title="データの場所" description="付箋、設定、ログの保存フォルダを確認します。">
+            <SettingsItemCard number={1} title={t('settings.advanced.locations.title')} description={isEnglish ? 'Review the folders used for notes, settings, and logs.' : '付箋、設定、ログの保存フォルダを確認します。'}>
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -3198,7 +3241,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             </SettingsItemCard>
 
             {/* ☁️ 外部サービス */}
-            <SettingsItemCard number={2} title="外部サービス" description="Google Driveと送受信データを確認します。">
+            <SettingsItemCard number={2} title={t('settings.advanced.external.title')} description={isEnglish ? 'Review Google Drive and transferred data.' : 'Google Driveと送受信データを確認します。'}>
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -3323,7 +3366,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             )}
 
             {/* 🩺 診断情報 */}
-            <SettingsItemCard number={3} title="診断情報" description="問い合わせや不具合調査に使う情報を確認します。">
+            <SettingsItemCard number={3} title={t('settings.advanced.diagnostics.title')} description={isEnglish ? 'Review information used for support and troubleshooting.' : '問い合わせや不具合調査に使う情報を確認します。'}>
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -3359,7 +3402,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             </SettingsItemCard>
 
             {/* 🔄 接続状態 */}
-            <SettingsItemCard number={4} title="接続状態" description="PC、iPhone、送受信キューの状態を確認します。">
+            <SettingsItemCard number={4} title={t('settings.advanced.connection.title')} description={isEnglish ? 'Review PC, iPhone, and transfer queue status.' : 'PC、iPhone、送受信キューの状態を確認します。'}>
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
@@ -3410,7 +3453,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                             disabled={connLoading}
                                         >
                                             <FileJson className="h-3.5 w-3.5 mr-1" />
-                                            中身
+                                            {isEnglish ? 'Contents' : '中身'}
                                         </Button>
                                         <Button
                                             variant="outline"
@@ -3420,7 +3463,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                             className="text-red-600 hover:text-red-700"
                                         >
                                             <Trash2 className="h-3.5 w-3.5 mr-1" />
-                                            {queueDeleting === 'to_iphone' ? '削除中' : '削除'}
+                                            {queueDeleting === 'to_iphone' ? (isEnglish ? 'Deleting' : '削除中') : (isEnglish ? 'Delete' : '削除')}
                                         </Button>
                                     </div>
                                 </div>
@@ -3445,7 +3488,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                             disabled={connLoading}
                                         >
                                             <FileJson className="h-3.5 w-3.5 mr-1" />
-                                            中身
+                                            {isEnglish ? 'Contents' : '中身'}
                                         </Button>
                                         <Button
                                             variant="outline"
@@ -3455,7 +3498,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                             className="text-red-600 hover:text-red-700"
                                         >
                                             <Trash2 className="h-3.5 w-3.5 mr-1" />
-                                            {queueDeleting === 'from_iphone' ? '削除中' : '削除'}
+                                            {queueDeleting === 'from_iphone' ? (isEnglish ? 'Deleting' : '削除中') : (isEnglish ? 'Delete' : '削除')}
                                         </Button>
                                     </div>
                                 </div>
@@ -3464,22 +3507,22 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
 
                         {pcs && !thisPcRegistered && (
                             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                <p className="font-bold">このPCはDrive上のPC一覧に登録されていません</p>
+                                <p className="font-bold">{isEnglish ? 'This PC is not registered in the Drive PC list' : 'このPCはDrive上のPC一覧に登録されていません'}</p>
                                 <p className="mt-1 leading-relaxed">
-                                    iPhone / PWA から送った付箋がこのPCに届かない場合があります。設定の「iPhone連携」でPC側のDriveを再接続してください。
+                                    {isEnglish ? 'Notes sent from iPhone or the PWA may not reach this PC. Reconnect Drive on the PC from iPhone Sync.' : 'iPhone / PWA から送った付箋がこのPCに届かない場合があります。設定の「iPhone連携」でPC側のDriveを再接続してください。'}
                                 </p>
-                                <p className="mt-2 font-mono text-xs text-amber-800">このPCのID: ...{shortDeviceId(settings.pc_id)}</p>
+                                <p className="mt-2 font-mono text-xs text-amber-800">{isEnglish ? 'This PC ID' : 'このPCのID'}: ...{shortDeviceId(settings.pc_id)}</p>
                             </div>
                         )}
 
                         {duplicatePcNames.length > 0 && (
                             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                <p className="font-bold">同じ名前のPCが複数登録されています</p>
+                                <p className="font-bold">{isEnglish ? 'Multiple PCs have the same name' : '同じ名前のPCが複数登録されています'}</p>
                                 <p className="mt-1 leading-relaxed">
-                                    PWAでは名前だけだと区別しづらいため、送信先のID末尾も確認してください。古い登録は下のPC一覧から削除できます。
+                                    {isEnglish ? 'Names alone can be ambiguous in the PWA. Check the end of the destination ID. Old registrations can be removed from the PC list below.' : 'PWAでは名前だけだと区別しづらいため、送信先のID末尾も確認してください。古い登録は下のPC一覧から削除できます。'}
                                 </p>
                                 <p className="mt-2 text-xs text-amber-800">
-                                    {duplicatePcNames.map(([name, count]) => `${name} (${count}件)`).join(' / ')}
+                                    {duplicatePcNames.map(([name, count]) => `${name} (${count}${isEnglish ? '' : '件'})`).join(' / ')}
                                 </p>
                             </div>
                         )}
@@ -3508,7 +3551,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                                     {t('settings.advanced.connection.registeredAt')}: {formatDate(pc.registeredAt)}
                                                 </p>
                                                 <p className="text-[10px] text-slate-400 mt-0.5 font-mono break-all">
-                                                    ID: {pc.pcId} / 末尾 ...{shortDeviceId(pc.pcId)} / 更新: {formatDate(pc.updatedAt)}
+                                                    ID: {pc.pcId} / {isEnglish ? 'ending' : '末尾'} ...{shortDeviceId(pc.pcId)} / {isEnglish ? 'updated' : '更新'}: {formatDate(pc.updatedAt)}
                                                 </p>
                                             </div>
                                             <button
@@ -3578,41 +3621,43 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             </SettingsItemCard>
 
             {/* 🧹 Drive 一時ファイル */}
-            <SettingsItemCard number={5} title="Drive一時ファイル" description="送受信後に残った古い一時ファイルを確認します。">
+            <SettingsItemCard number={5} title={isEnglish ? 'Drive Temporary Files' : 'Drive一時ファイル'} description={isEnglish ? 'Review old temporary files left after transfers.' : '送受信後に残った古い一時ファイルを確認します。'}>
             <section>
                 <div className="mb-4 flex items-center gap-2 text-slate-900">
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-700">
                         <Trash2 className="h-5 w-5" />
                     </div>
-                    <h3 className="text-base font-bold flex-1">Drive 一時ファイル</h3>
+                    <h3 className="text-base font-bold flex-1">{isEnglish ? 'Drive Temporary Files' : 'Drive 一時ファイル'}</h3>
                     <Button variant="outline" size="sm" onClick={loadDriveTempSummary} disabled={driveTempLoading}>
-                        {driveTempLoading ? '確認中...' : '確認'}
+                        {driveTempLoading ? (isEnglish ? 'Checking...' : '確認中...') : (isEnglish ? 'Check' : '確認')}
                     </Button>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
                     <p className="text-xs text-slate-500">
-                        送受信後に Drive に残った画像・動画の一時ファイルだけを確認・削除します。設定ファイルやキューは触りません。
+                        {isEnglish ? 'Review and delete only temporary image and video files left in Drive after transfers. Settings and queue files are not touched.' : '送受信後に Drive に残った画像・動画の一時ファイルだけを確認・削除します。設定ファイルやキューは触りません。'}
                     </p>
 
                     {driveTempSummary && (
                         <div className="grid gap-3 sm:grid-cols-2">
                             <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-3">
-                                <div className="text-xs font-medium text-gray-500">残っている一時ファイル</div>
+                                <div className="text-xs font-medium text-gray-500">{isEnglish ? 'Remaining temporary files' : '残っている一時ファイル'}</div>
                                 <div className="mt-1 text-2xl font-bold text-gray-900">
-                                    {driveTempSummary.totalCount} 個
+                                    {driveTempSummary.totalCount}{isEnglish ? '' : ' 個'}
                                 </div>
                                 <div className="text-xs text-gray-400">{formatBytes(driveTempSummary.totalBytes)}</div>
                             </div>
                             <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-3">
                                 <div className="text-xs font-medium text-gray-500">
-                                    {driveTempSummary.retentionDays}日以上前の削除候補
+                                    {isEnglish ? `Deletion candidates older than ${driveTempSummary.retentionDays} days` : `${driveTempSummary.retentionDays}日以上前の削除候補`}
                                 </div>
                                 <div className="mt-1 text-2xl font-bold text-gray-900">
-                                    {driveTempSummary.oldCount} 個
+                                    {driveTempSummary.oldCount}{isEnglish ? '' : ' 個'}
                                 </div>
                                 <div className="text-xs text-gray-400">
                                     {formatBytes(driveTempSummary.oldBytes)}
-                                    {driveTempSummary.skippedReferencedCount > 0 && ` / 使用中 ${driveTempSummary.skippedReferencedCount} 個は保護`}
+                                    {driveTempSummary.skippedReferencedCount > 0 && (isEnglish
+                                        ? ` / ${driveTempSummary.skippedReferencedCount} in-use files protected`
+                                        : ` / 使用中 ${driveTempSummary.skippedReferencedCount} 個は保護`)}
                                 </div>
                             </div>
                         </div>
@@ -3622,11 +3667,11 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                         <div className="rounded-md border border-slate-200 bg-slate-50">
                             <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
                                 <div>
-                                    <p className="text-sm font-bold text-slate-900">削除するファイルを選択</p>
-                                    <p className="text-xs text-slate-500">画像はサムネイルを表示します。使用中のファイルは保護されます。</p>
+                                    <p className="text-sm font-bold text-slate-900">{isEnglish ? 'Select files to delete' : '削除するファイルを選択'}</p>
+                                    <p className="text-xs text-slate-500">{isEnglish ? 'Images show thumbnails. Files currently in use are protected.' : '画像はサムネイルを表示します。使用中のファイルは保護されます。'}</p>
                                 </div>
                                 <p className="text-xs text-slate-500">
-                                    選択中: {selectedDriveTempFileIds.length} 個
+                                    {isEnglish ? 'Selected' : '選択中'}: {selectedDriveTempFileIds.length}{isEnglish ? '' : ' 個'}
                                 </p>
                             </div>
                             <div className="max-h-80 overflow-y-auto divide-y divide-slate-200">
@@ -3660,20 +3705,20 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <p className="min-w-0 break-all text-sm font-semibold text-slate-900">{file.name}</p>
                                                     {file.isReferenced && (
-                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">使用中・保護</span>
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">{isEnglish ? 'In use · Protected' : '使用中・保護'}</span>
                                                     )}
                                                     {file.isOld && (
-                                                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-600">{driveTempSummary.retentionDays}日以上前</span>
+                                                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-600">{isEnglish ? `Older than ${driveTempSummary.retentionDays} days` : `${driveTempSummary.retentionDays}日以上前`}</span>
                                                     )}
                                                 </div>
                                                 {file.previewText && (
                                                     <p className="mt-1 max-h-10 overflow-hidden text-xs text-slate-600">{file.previewText}</p>
                                                 )}
                                                 <p className="mt-1 text-xs text-slate-500">
-                                                    {formatBytes(file.size ?? 0)} ・ 更新: {formatDate(file.modifiedTime ?? '')}
+                                                    {formatBytes(file.size ?? 0)} · {isEnglish ? 'Updated' : '更新'}: {formatDate(file.modifiedTime ?? '')}
                                                 </p>
                                                 {!file.canDelete && (
-                                                    <p className="mt-1 text-xs text-amber-700">notes_to_iphone / notes_from_iphone から参照されているため削除しません。</p>
+                                                    <p className="mt-1 text-xs text-amber-700">{isEnglish ? 'Not deleted because a transfer queue still references this file.' : 'notes_to_iphone / notes_from_iphone から参照されているため削除しません。'}</p>
                                                 )}
                                             </div>
                                         </label>
@@ -3684,13 +3729,15 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     )}
 
                     {!driveTempSummary && !driveTempLoading && (
-                        <p className="text-sm text-slate-400 italic">「確認」を押すと一時ファイルの状況を取得します。</p>
+                        <p className="text-sm text-slate-400 italic">{isEnglish ? 'Click “Check” to retrieve temporary-file status.' : '「確認」を押すと一時ファイルの状況を取得します。'}</p>
                     )}
 
                     {driveTempSummary && (
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-xs text-gray-400">
-                                対象: fusen_img_* / fusen_video_* のみ。notes_* と push_* は残します。
+                                {isEnglish
+                                    ? 'Targets only fusen_img_* and fusen_video_*. notes_* and push_* are kept.'
+                                    : '対象: fusen_img_* / fusen_video_* のみ。notes_* と push_* は残します。'}
                             </p>
                             <div className="flex flex-wrap gap-2 sm:justify-end">
                                 <Button
@@ -3700,7 +3747,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                     disabled={driveTempLoading || selectedDriveTempFileIds.length === 0}
                                     className="border-red-200 text-red-600 hover:bg-red-50"
                                 >
-                                    選択した一時ファイルを削除
+                                    {isEnglish ? 'Delete Selected Temporary Files' : '選択した一時ファイルを削除'}
                                 </Button>
                                 <Button
                                     variant="outline"
@@ -3709,7 +3756,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                     disabled={driveTempLoading || driveTempSummary.oldCount === 0}
                                     className="border-red-200 text-red-600 hover:bg-red-50"
                                 >
-                                    古い一時ファイルを削除
+                                    {isEnglish ? 'Delete Old Temporary Files' : '古い一時ファイルを削除'}
                                 </Button>
                             </div>
                         </div>
@@ -3723,13 +3770,15 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             </SettingsItemCard>
 
             {/* 開発者専用 */}
-            <SettingsItemCard number={6} title="開発者専用" description="開発・運用担当者だけが使う管理機能です。">
+            <SettingsItemCard number={6} title={isEnglish ? 'Developer Only' : '開発者専用'} description={isEnglish ? 'Administrative functions for development and operations only.' : '開発・運用担当者だけが使う管理機能です。'}>
             <section className="border-t border-slate-200 pt-8">
                 <div className="mb-4">
                     <p className="text-xs font-bold uppercase tracking-widest text-red-500">Developer Only</p>
-                    <h3 className="mt-1 text-base font-bold text-slate-900">開発者専用</h3>
+                    <h3 className="mt-1 text-base font-bold text-slate-900">{isEnglish ? 'Developer Only' : '開発者専用'}</h3>
                     <p className="mt-1 text-xs text-slate-500">
-                        アプリ開発者がVercel/Firebase/Discordの管理用secretを持っている場合だけ使う領域です。
+                        {isEnglish
+                            ? 'Use this area only when the app developer has administrative secrets for Vercel, Firebase, or Discord.'
+                            : 'アプリ開発者がVercel/Firebase/Discordの管理用secretを持っている場合だけ使う領域です。'}
                     </p>
                 </div>
 
@@ -3737,13 +3786,15 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-red-50 text-red-700">
                         <Inbox className="h-5 w-5" />
                     </div>
-                    <h4 className="text-base font-bold">Discord返信取り込み</h4>
+                    <h4 className="text-base font-bold">{isEnglish ? 'Import Discord Replies' : 'Discord返信取り込み'}</h4>
                 </div>
                 <div className="rounded-lg border border-red-200 bg-red-50/40 px-5 py-4 space-y-4">
                     <div>
-                        <p className="text-sm font-bold text-slate-900">手動ingest</p>
+                        <p className="text-sm font-bold text-slate-900">{isEnglish ? 'Manual Import' : '手動ingest'}</p>
                         <p className="text-xs text-slate-600 mt-1">
-                            Discordの開発者返信を、現在のフィードバックAPIへ手動で取り込みます。secretは保存されません。
+                            {isEnglish
+                                ? 'Manually import developer replies from Discord into the current feedback API. The secret is not saved unless you enable the option below.'
+                                : 'Discordの開発者返信を、現在のフィードバックAPIへ手動で取り込みます。下の設定を有効にしない限り、secretは保存されません。'}
                         </p>
                     </div>
                     <div className="flex items-end gap-3">
@@ -3766,7 +3817,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                     onChange={(e) => updateShouldSaveDiscordIngestSecret(e.target.checked)}
                                     className="h-4 w-4 rounded border-slate-300"
                                 />
-                                このPCにingest secretを保存する
+                                {isEnglish ? 'Save the ingest secret on this PC' : 'このPCにingest secretを保存する'}
                             </label>
                         </div>
                         <Button
@@ -3776,7 +3827,9 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                             className="shrink-0 bg-white"
                         >
                             <RefreshCw className={`h-4 w-4 mr-1.5 ${discordIngestLoading ? 'animate-spin' : ''}`} />
-                            {discordIngestLoading ? '取り込み中' : '取り込み実行'}
+                            {discordIngestLoading
+                                ? (isEnglish ? 'Importing...' : '取り込み中')
+                                : (isEnglish ? 'Run Import' : '取り込み実行')}
                         </Button>
                     </div>
                     {discordIngestError && (
@@ -3786,9 +3839,11 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     )}
                     {discordIngestResult && (
                         <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                            <p className="font-bold text-slate-900">取り込み: {discordIngestResult.ingested} 件</p>
+                            <p className="font-bold text-slate-900">
+                                {isEnglish ? `Imported: ${discordIngestResult.ingested}` : `取り込み: ${discordIngestResult.ingested} 件`}
+                            </p>
                             <p className="mt-1 text-xs text-slate-500">
-                                rejected: {discordIngestResult.rejected.length} 件
+                                {isEnglish ? `Rejected: ${discordIngestResult.rejected.length}` : `rejected: ${discordIngestResult.rejected.length} 件`}
                             </p>
                             {discordIngestResult.rejected.length > 0 && (
                                 <pre className="mt-2 max-h-32 overflow-auto rounded bg-slate-50 p-2 text-xs font-mono text-slate-600">
@@ -3803,13 +3858,15 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     <div className="flex h-9 w-9 items-center justify-center rounded-md bg-red-50 text-red-700">
                         <RefreshCw className="h-5 w-5" />
                     </div>
-                    <h4 className="text-base font-bold">開発者返信の未読チェック</h4>
+                    <h4 className="text-base font-bold">{isEnglish ? 'Check Unread Developer Replies' : '開発者返信の未読チェック'}</h4>
                 </div>
                 <div className="rounded-lg border border-red-200 bg-red-50/40 px-5 py-4 space-y-4">
                     <div>
-                        <p className="text-sm font-bold text-slate-900">手動未読チェック</p>
+                        <p className="text-sm font-bold text-slate-900">{isEnglish ? 'Manual Unread Check' : '手動未読チェック'}</p>
                         <p className="text-xs text-slate-600 mt-1">
-                            現在のPCの会話IDで返信を確認し、右クリックメニュー用の新着状態だけを更新します。ここでは既読化しません。
+                            {isEnglish
+                                ? 'Check replies using this PC’s conversation ID and update only the new-reply indicator used by the context menu. This does not mark replies as read.'
+                                : '現在のPCの会話IDで返信を確認し、右クリックメニュー用の新着状態だけを更新します。ここでは既読化しません。'}
                         </p>
                     </div>
                     <div>
@@ -3820,7 +3877,9 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                             className="bg-white"
                         >
                             <RefreshCw className={`h-4 w-4 mr-1.5 ${feedbackUnreadCheckLoading ? 'animate-spin' : ''}`} />
-                            {feedbackUnreadCheckLoading ? '確認中' : '未読チェック実行'}
+                            {feedbackUnreadCheckLoading
+                                ? (isEnglish ? 'Checking...' : '確認中')
+                                : (isEnglish ? 'Check Unread Replies' : '未読チェック実行')}
                         </Button>
                     </div>
                     {feedbackUnreadCheckError && (
@@ -3831,10 +3890,14 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     {feedbackUnreadCheckResult && (
                         <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                             <p className="font-bold text-slate-900">
-                                未読返信: {feedbackUnreadCheckResult.unreadCount} 件
+                                {isEnglish
+                                    ? `Unread replies: ${feedbackUnreadCheckResult.unreadCount}`
+                                    : `未読返信: ${feedbackUnreadCheckResult.unreadCount} 件`}
                             </p>
                             <p className="mt-1 text-xs text-slate-500">
-                                右クリック表示: {feedbackUnreadCheckResult.hasUnread ? '新着あり' : '新着なし'}
+                                {isEnglish
+                                    ? `Context-menu indicator: ${feedbackUnreadCheckResult.hasUnread ? 'New reply' : 'No new replies'}`
+                                    : `右クリック表示: ${feedbackUnreadCheckResult.hasUnread ? '新着あり' : '新着なし'}`}
                             </p>
                         </div>
                     )}
@@ -3904,10 +3967,10 @@ function endpointLabel(endpoint: string): string {
     return 'Other'
 }
 
-function formatDate(iso: string): string {
-    if (!iso) return '不明'
+function formatDate(iso: string, isEnglish = false): string {
+    if (!iso) return isEnglish ? 'Unknown' : '不明'
     try {
-        return new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        return new Date(iso).toLocaleString(isEnglish ? 'en-US' : 'ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
     } catch {
         return iso
     }
@@ -3955,6 +4018,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
   t: (key: any) => string;
   iphoneDriveDisconnected: boolean;
 }) {
+    const isEnglish = settings.language === 'en'
     const [status, setStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading')
     const [isConnecting, setIsConnecting] = useState(false)
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -4024,11 +4088,11 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
             await invoke('fusen_oauth_connect')
             await invoke('fusen_ensure_push_keys')
             const account = await loadPcAccount()
-            if (!account?.emailAddress) throw new Error('Googleアカウント情報を取得できませんでした')
+            if (!account?.emailAddress) throw new Error(isEnglish ? 'Could not retrieve Google account information' : 'Googleアカウント情報を取得できませんでした')
             await loadDevices()
             setStatus('connected')
         } catch (e: unknown) {
-            setErrorMsg('接続に失敗しました: ' + String(e))
+            setErrorMsg((isEnglish ? 'Connection failed: ' : '接続に失敗しました: ') + String(e))
             setStatus('disconnected')
         } finally {
             setIsConnecting(false)
@@ -4047,18 +4111,18 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
 
     // 「次に何をすればよいか」の一文。状況に応じて切り替える
     const nextAction = (() => {
-        if (!sendEnabled) return '上の「iPhone送信を有効にする」をONにしてください。'
-        if (hasAccountMismatch) return 'PCとiPhoneで同じGoogleアカウントに再接続してください。'
-        if (!pcConnected) return 'Step 1：PCをGoogleドライブに接続してください。'
-        if (!hasRegisteredDevice) return 'Step 2：iPhoneでQRコードを開き、「ホーム画面に追加」してください。'
-        return '準備完了です。付箋を右クリック →「iPhoneに表示」で送れます。'
+        if (!sendEnabled) return isEnglish ? 'Turn on “Enable iPhone Send” above.' : '上の「iPhone送信を有効にする」をONにしてください。'
+        if (hasAccountMismatch) return isEnglish ? 'Reconnect the PC and iPhone using the same Google account.' : 'PCとiPhoneで同じGoogleアカウントに再接続してください。'
+        if (!pcConnected) return isEnglish ? 'Step 1: Connect the PC to Google Drive.' : 'Step 1：PCをGoogleドライブに接続してください。'
+        if (!hasRegisteredDevice) return isEnglish ? 'Step 2: Open the QR code on iPhone and add the app to the Home Screen.' : 'Step 2：iPhoneでQRコードを開き、「ホーム画面に追加」してください。'
+        return isEnglish ? 'Ready. Right-click a note and choose “Send to iPhone”.' : '準備完了です。付箋を右クリック →「iPhoneに表示」で送れます。'
     })()
 
     const overallStatus: { label: string; tone: 'gray' | 'amber' | 'green' } = (() => {
         if (!sendEnabled) return { label: 'OFF', tone: 'gray' }
-        if (hasAccountMismatch) return { label: '確認が必要', tone: 'amber' }
-        if (accountsReady) return { label: '準備完了', tone: 'green' }
-        return { label: 'セットアップ中', tone: 'gray' }
+        if (hasAccountMismatch) return { label: isEnglish ? 'Action required' : '確認が必要', tone: 'amber' }
+        if (accountsReady) return { label: isEnglish ? 'Ready' : '準備完了', tone: 'green' }
+        return { label: isEnglish ? 'Setting up' : 'セットアップ中', tone: 'gray' }
     })()
 
     const handleCopy = () => {
@@ -4086,18 +4150,18 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
     return (
         <div className="space-y-6">
             <div className="mb-4">
-                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">iPhone連携</h2>
-                <p className="text-gray-500 text-sm">PCで書いた付箋をiPhoneに送れるようにします。</p>
+                <h2 className="text-3xl font-black tracking-tight text-gray-900 mb-2">{isEnglish ? 'iPhone Sync' : 'iPhone連携'}</h2>
+                <p className="text-gray-500 text-sm">{isEnglish ? 'Send sticky notes written on your PC to iPhone.' : 'PCで書いた付箋をiPhoneに送れるようにします。'}</p>
             </div>
             <Separator />
 
             {/* ① ON/OFF スイッチ */}
-            <SettingsItemCard number={1} title="iPhone連携を使う" description="PCの付箋をiPhoneへ送れるようにします。" current={sendEnabled ? 'オン' : 'オフ'}>
+            <SettingsItemCard number={1} title={isEnglish ? 'Use iPhone Sync' : 'iPhone連携を使う'} description={isEnglish ? 'Allow PC sticky notes to be sent to iPhone.' : 'PCの付箋をiPhoneへ送れるようにします。'} current={sendEnabled ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}>
             <div className="flex items-center justify-between">
                 <div className="min-w-0 pr-6">
                     <Label className="text-base font-bold text-gray-900">{t('settings.iphone.sendEnabled')}</Label>
                     <p className="mt-1 text-sm text-gray-500">
-                        OFFのとき：右クリックメニューには表示されますが、iPhoneへ送信できません。
+                        {isEnglish ? 'When off: the command remains visible in the right-click menu, but notes cannot be sent.' : 'OFFのとき：右クリックメニューには表示されますが、iPhoneへ送信できません。'}
                     </p>
                 </div>
                 <Switch
@@ -4110,20 +4174,20 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
             {/* OFF のときの注釈 */}
             {!sendEnabled && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    上の「iPhone送信を有効にする」をONにすると、下のセットアップ手順が使えるようになります。
+                    {isEnglish ? 'Turn on “Enable iPhone Send” above to use the setup steps below.' : '上の「iPhone送信を有効にする」をONにすると、下のセットアップ手順が使えるようになります。'}
                 </div>
             )}
 
             {/* ② 接続セットアップ（OFFのときはグレーアウト） */}
             <div className={!sendEnabled ? 'hidden' : ''}>
                 <div className="space-y-4">
-                <SettingsItemCard number={2} title="初期設定" description="PCとiPhoneを同じGoogleアカウントで接続します。" current={overallStatus.label}>
+                <SettingsItemCard number={2} title={isEnglish ? 'Initial Setup' : '初期設定'} description={isEnglish ? 'Connect the PC and iPhone using the same Google account.' : 'PCとiPhoneを同じGoogleアカウントで接続します。'} current={overallStatus.label}>
                 <div className="space-y-5">
                     {/* ヘッダ：状態バッジ */}
                     <div className="flex items-start justify-between gap-4">
                         <div>
-                            <h3 className="text-lg font-bold text-gray-900">セットアップ</h3>
-                            <p className="text-sm text-gray-500 mt-1">上から順に進めてください。完了したステップは ✓ になります。</p>
+                            <h3 className="text-lg font-bold text-gray-900">{isEnglish ? 'Setup' : 'セットアップ'}</h3>
+                            <p className="text-sm text-gray-500 mt-1">{isEnglish ? 'Complete the steps in order. Finished steps show a check mark.' : '上から順に進めてください。完了したステップは ✓ になります。'}</p>
                         </div>
                         <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
                             overallStatus.tone === 'green'
@@ -4145,9 +4209,9 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                 {pcConnected ? '✓' : '1'}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-gray-800">PCをGoogleドライブに接続</p>
+                                <p className="text-sm font-semibold text-gray-800">{isEnglish ? 'Connect the PC to Google Drive' : 'PCをGoogleドライブに接続'}</p>
                                 {status === 'loading' ? (
-                                    <p className="text-xs text-gray-400 mt-1">確認中...</p>
+                                    <p className="text-xs text-gray-400 mt-1">{isEnglish ? 'Checking...' : '確認中...'}</p>
                                 ) : pcConnected ? (
                                     <div className="mt-2 flex items-center gap-2">
                                         {pcAccount?.photoLink && (
@@ -4155,17 +4219,17 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                         )}
                                         <span className="text-sm text-gray-700 truncate">{pcAccount?.emailAddress}</span>
                                         <Button variant="outline" size="sm" onClick={handleConnect} disabled={isConnecting} className="ml-auto">
-                                            再接続
+                                            {isEnglish ? 'Reconnect' : '再接続'}
                                         </Button>
                                     </div>
                                 ) : (
                                     <div className="mt-2">
-                                        <p className="text-xs text-gray-500 mb-2">付箋データをPCとiPhoneで受け渡すため、あなたのGoogleドライブに接続します。</p>
+                                        <p className="text-xs text-gray-500 mb-2">{isEnglish ? 'Connect to your Google Drive to transfer sticky note data between the PC and iPhone.' : '付箋データをPCとiPhoneで受け渡すため、あなたのGoogleドライブに接続します。'}</p>
                                         <Button onClick={handleConnect} disabled={isConnecting} size="sm">
                                             {isConnecting ? (
-                                                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />接続中...</>
+                                                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />{isEnglish ? 'Connecting...' : '接続中...'}</>
                                             ) : (
-                                                <><Smartphone className="mr-2 h-4 w-4" />Googleドライブに接続</>
+                                                <><Smartphone className="mr-2 h-4 w-4" />{isEnglish ? 'Connect to Google Drive' : 'Googleドライブに接続'}</>
                                             )}
                                         </Button>
                                     </div>
@@ -4175,7 +4239,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                 )}
                                 {iphoneDriveDisconnected && pcConnected && (
                                     <p className="text-xs text-amber-700 bg-amber-50 rounded p-2 mt-2">
-                                        Driveとの接続が切れている可能性があります。「再接続」を試してください。
+                                        {isEnglish ? 'The Drive connection may be disconnected. Try reconnecting.' : 'Driveとの接続が切れている可能性があります。「再接続」を試してください。'}
                                     </p>
                                 )}
                             </div>
@@ -4191,12 +4255,12 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                 {hasRegisteredDevice ? '✓' : '2'}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-gray-800">iPhone版をホーム画面に追加</p>
+                                <p className="text-sm font-semibold text-gray-800">{isEnglish ? 'Add the iPhone app to the Home Screen' : 'iPhone版をホーム画面に追加'}</p>
                                 {hasRegisteredDevice ? (
-                                    <p className="text-xs text-green-700 mt-1">追加済みです。iPhone側からも俺の付箋が起動できます。</p>
+                                    <p className="text-xs text-green-700 mt-1">{isEnglish ? 'Added. Ore No Fusen can now be launched from the iPhone.' : '追加済みです。iPhone側からも俺の付箋が起動できます。'}</p>
                                 ) : (
                                     <>
-                                        <p className="text-xs text-gray-500 mt-1 mb-3">QRコードをiPhoneのカメラで読み取り、SafariでURLを開いて「ホーム画面に追加」してください。</p>
+                                        <p className="text-xs text-gray-500 mt-1 mb-3">{isEnglish ? 'Scan the QR code with the iPhone camera, open the URL in Safari, and choose “Add to Home Screen”.' : 'QRコードをiPhoneのカメラで読み取り、SafariでURLを開いて「ホーム画面に追加」してください。'}</p>
                                         <div className="flex items-start gap-4">
                                             <div className="flex-shrink-0">
                                                 <QrCodeCanvas url={PWA_URL} />
@@ -4213,10 +4277,10 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                                             : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                                                     }`}
                                                 >
-                                                    {copied ? '✓ コピーしました' : 'URLをコピー'}
+                                                    {copied ? (isEnglish ? '✓ Copied' : '✓ コピーしました') : (isEnglish ? 'Copy URL' : 'URLをコピー')}
                                                 </button>
                                                 <p className="text-[11px] text-gray-400 leading-relaxed">
-                                                    SafariでURLを開く → 共有ボタン → 「ホーム画面に追加」
+                                                    {isEnglish ? 'Open the URL in Safari → Share → Add to Home Screen' : 'SafariでURLを開く → 共有ボタン → 「ホーム画面に追加」'}
                                                 </p>
                                             </div>
                                         </div>
@@ -4247,18 +4311,18 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                 {hasAccountMismatch ? '!' : hasRegisteredDevice ? '✓' : '3'}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-gray-800">iPhone側で同じGoogleアカウントに接続</p>
+                                <p className="text-sm font-semibold text-gray-800">{isEnglish ? 'Connect the same Google account on iPhone' : 'iPhone側で同じGoogleアカウントに接続'}</p>
                                 {hasAccountMismatch ? (
                                     <p className="text-xs text-amber-800 mt-1">
-                                        PCとiPhoneで違うGoogleアカウントが使われています。同じアカウントで再接続してください。
+                                        {isEnglish ? 'The PC and iPhone use different Google accounts. Reconnect them with the same account.' : 'PCとiPhoneで違うGoogleアカウントが使われています。同じアカウントで再接続してください。'}
                                     </p>
                                 ) : hasRegisteredDevice ? (
                                     <p className="text-xs text-green-700 mt-1">
-                                        {registeredDeviceEmails[0] ?? '通知デバイスが登録されました。'}
+                                        {registeredDeviceEmails[0] ?? (isEnglish ? 'A notification device was registered.' : '通知デバイスが登録されました。')}
                                     </p>
                                 ) : (
                                     <p className="text-xs text-gray-500 mt-1">
-                                        iPhone版アプリを開いたら、PCと同じGoogleアカウントでログインしてください。ここに ✓ が付けば完了です。
+                                        {isEnglish ? 'Open the iPhone app and sign in with the same Google account as the PC. This step is complete when a check mark appears.' : 'iPhone版アプリを開いたら、PCと同じGoogleアカウントでログインしてください。ここに ✓ が付けば完了です。'}
                                     </p>
                                 )}
                             </div>
@@ -4273,23 +4337,23 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                 ? 'bg-amber-50 text-amber-800 border border-amber-200'
                                 : 'bg-blue-50 text-blue-800 border border-blue-200'
                     }`}>
-                        <span className="font-semibold">次にやること：</span>{nextAction}
+                        <span className="font-semibold">{isEnglish ? 'Next: ' : '次にやること：'}</span>{nextAction}
                     </div>
                 </div>
                 </SettingsItemCard>
 
                 {/* ③ 接続済み iPhone 一覧（接続済みで端末がいるときだけ） */}
-                <SettingsItemCard number={3} title="接続済み端末" description="接続済みのiPhone・iPadを確認、追加、削除します。" current={`${devices?.length ?? 0}台`}>
+                <SettingsItemCard number={3} title={isEnglish ? 'Connected Devices' : '接続済み端末'} description={isEnglish ? 'Review, add, or remove connected iPhones and iPads.' : '接続済みのiPhone・iPadを確認、追加、削除します。'} current={isEnglish ? `${devices?.length ?? 0} devices` : `${devices?.length ?? 0}台`}>
                 {pcConnected && hasRegisteredDevice && (
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-800 text-sm">接続済みのiPhone / iPad</h3>
+                            <h3 className="font-semibold text-gray-800 text-sm">{isEnglish ? 'Connected iPhones / iPads' : '接続済みのiPhone / iPad'}</h3>
                             <button
                                 onClick={loadDevices}
                                 disabled={devicesLoading}
                                 className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1"
                             >
-                                {devicesLoading ? '読み込み中...' : '更新'}
+                                {devicesLoading ? (isEnglish ? 'Loading...' : '読み込み中...') : (isEnglish ? 'Refresh' : '更新')}
                             </button>
                         </div>
                         <div className="space-y-2">
@@ -4299,7 +4363,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                         <div className="text-sm font-medium text-gray-700">
                                             {d.device_name ?? endpointLabel(d.endpoint)}
                                         </div>
-                                        <div className="text-xs text-gray-400 mt-0.5">{formatDate(d.registered_at)}</div>
+                                        <div className="text-xs text-gray-400 mt-0.5">{formatDate(d.registered_at, isEnglish)}</div>
                                         {d.google_account_email && (
                                             <div className={`text-xs mt-0.5 ${pcEmail && d.google_account_email.toLowerCase() !== pcEmail ? 'text-amber-700 font-medium' : 'text-gray-500'}`}>
                                                 {d.google_account_email}
@@ -4312,21 +4376,21 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                     <button
                                         disabled={deletingId === d.device_id}
                                         onClick={async () => {
-                                            if (!confirm(`「${d.device_name ?? 'このデバイス'}」を削除しますか？\nこのiPhoneで再登録するまで送信できなくなります。`)) return
+                                            if (!confirm(isEnglish ? `Remove “${d.device_name ?? 'this device'}”?\nYou cannot send to this iPhone until it is registered again.` : `「${d.device_name ?? 'このデバイス'}」を削除しますか？\nこのiPhoneで再登録するまで送信できなくなります。`)) return
                                             setDeletingId(d.device_id)
                                             try {
                                                 const { invoke } = await import('@tauri-apps/api/core')
                                                 await invoke('fusen_delete_push_device', { deviceId: d.device_id })
                                                 setDevices(prev => prev ? prev.filter(x => x.device_id !== d.device_id) : prev)
                                             } catch (e) {
-                                                alert('削除に失敗しました: ' + String(e))
+                                                alert((isEnglish ? 'Removal failed: ' : '削除に失敗しました: ') + String(e))
                                             } finally {
                                                 setDeletingId(null)
                                             }
                                         }}
                                         className="text-xs text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-40"
                                     >
-                                        {deletingId === d.device_id ? '削除中...' : '削除'}
+                                        {deletingId === d.device_id ? (isEnglish ? 'Removing...' : '削除中...') : (isEnglish ? 'Remove' : '削除')}
                                     </button>
                                 </div>
                             ))}
@@ -4334,7 +4398,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                     </div>
                 )}
                 {(!pcConnected || !hasRegisteredDevice) && (
-                    <p className="text-sm text-slate-500">初期設定が完了すると、接続済み端末をここで管理できます。</p>
+                    <p className="text-sm text-slate-500">{isEnglish ? 'Connected devices can be managed here after initial setup is complete.' : '初期設定が完了すると、接続済み端末をここで管理できます。'}</p>
                 )}
 
                 {/* ④ もう一台のiPhone / iPadを追加（接続済み&登録済みのときだけ折りたたみで表示） */}
@@ -4343,13 +4407,13 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                         <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 hover:bg-slate-50/70 rounded-lg">
                             <Smartphone className="h-4 w-4 shrink-0 text-slate-500" />
                             <span className="flex-1 text-sm font-semibold text-slate-700">
-                                もう一台のiPhone / iPadを追加する
+                                {isEnglish ? 'Add another iPhone / iPad' : 'もう一台のiPhone / iPadを追加する'}
                             </span>
                             <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
                         </summary>
                         <div className="px-5 pb-5 pt-1 border-t border-slate-100">
                             <p className="text-xs text-gray-500 mb-3 mt-3">
-                                追加したいiPhone / iPadのSafariで、下のURLを開いて「ホーム画面に追加」してください。
+                                {isEnglish ? 'On the iPhone or iPad you want to add, open the URL below in Safari and choose “Add to Home Screen”.' : '追加したいiPhone / iPadのSafariで、下のURLを開いて「ホーム画面に追加」してください。'}
                             </p>
                             <div className="flex items-start gap-4">
                                 <div className="flex-shrink-0">
@@ -4367,10 +4431,10 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                                 : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                                         }`}
                                     >
-                                        {copied ? '✓ コピーしました' : 'URLをコピー'}
+                                        {copied ? (isEnglish ? '✓ Copied' : '✓ コピーしました') : (isEnglish ? 'Copy URL' : 'URLをコピー')}
                                     </button>
                                     <p className="text-[11px] text-gray-400 leading-relaxed">
-                                        SafariでURLを開く → 共有ボタン → 「ホーム画面に追加」
+                                        {isEnglish ? 'Open the URL in Safari → Share → Add to Home Screen' : 'SafariでURLを開く → 共有ボタン → 「ホーム画面に追加」'}
                                     </p>
                                 </div>
                             </div>
@@ -4379,13 +4443,13 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                 )}
                 </SettingsItemCard>
 
-                <SettingsItemCard number={4} title="接続診断" description="iPhoneへ送れないときに接続状態を確認します。">
+                <SettingsItemCard number={4} title={isEnglish ? 'Connection Diagnostics' : '接続診断'} description={isEnglish ? 'Check the connection when notes cannot be sent to iPhone.' : 'iPhoneへ送れないときに接続状態を確認します。'}>
                 <div>
                     <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                            <h3 className="text-sm font-semibold text-slate-800">困ったときの接続診断</h3>
+                            <h3 className="text-sm font-semibold text-slate-800">{isEnglish ? 'Connection Troubleshooting' : '困ったときの接続診断'}</h3>
                             <p className="mt-1 text-xs leading-5 text-slate-500">
-                                iPhone送信でエラーが出たときに、送信準備だけを確認します。通知は送信しません。
+                                {isEnglish ? 'Check readiness when iPhone sending fails. This does not send a notification.' : 'iPhone送信でエラーが出たときに、送信準備だけを確認します。通知は送信しません。'}
                             </p>
                         </div>
                         <Button
@@ -4396,7 +4460,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                             className="shrink-0"
                         >
                             <Activity className={`mr-2 h-4 w-4 ${diagnosticLoading ? 'animate-pulse' : ''}`} />
-                            {diagnosticLoading ? '診断中' : '接続を診断'}
+                            {diagnosticLoading ? (isEnglish ? 'Diagnosing' : '診断中') : (isEnglish ? 'Diagnose Connection' : '接続を診断')}
                         </Button>
                     </div>
 
@@ -4417,7 +4481,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                 <p className="mt-1">{diagnostic.action}</p>
                             )}
                             <details className="mt-2">
-                                <summary className="cursor-pointer text-xs font-medium opacity-80">確認できたこと</summary>
+                                <summary className="cursor-pointer text-xs font-medium opacity-80">{isEnglish ? 'Diagnostic details' : '確認できたこと'}</summary>
                                 <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 opacity-90">
                                     {diagnostic.details.map((detail) => (
                                         <li key={detail}>{detail}</li>

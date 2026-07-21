@@ -4,6 +4,8 @@ pageClass: user-guide-page
 
 # 漫画で学ぶ俺の付箋
 
+[English](/en/user-guide/comic)
+
 全9話をこのページで続けて読めます。
 
 ## 第1話 爆速起動

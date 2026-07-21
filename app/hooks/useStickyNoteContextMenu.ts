@@ -128,6 +128,15 @@ type TrashMoveResult = {
     path: string;
 };
 
+export function releaseDeleteLockWhenMoveIsRejected(
+    result: TrashMoveResult,
+    isDeletingRef: { current: boolean },
+): boolean {
+    if (result.moved) return false;
+    isDeletingRef.current = false;
+    return true;
+}
+
 export function useStickyNoteContextMenu({
     selectedFile,
     isPool,
@@ -178,7 +187,7 @@ export function useStickyNoteContextMenu({
             if (selectedFile) {
                 await saveNoteContent(editBody, rawFrontmatter, false);
                 const result = await invoke<TrashMoveResult>('fusen_move_to_trash', { path: selectedFile.path });
-                if (!result.moved) return;
+                if (releaseDeleteLockWhenMoveIsRejected(result, isDeletingRef)) return;
             }
             await playDeleteSound();
             const win = (await import('@tauri-apps/api/window')).getCurrentWindow();

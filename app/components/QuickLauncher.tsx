@@ -20,6 +20,8 @@ import { getUserTags } from '../utils/reservedTags';
 import PinTackIcon from './PinTackIcon';
 import { playPinToggleSound } from '../utils/pinToggleSound';
 import { LAUNCHER_SHELF_CHANGED_EVENT, shouldReloadLauncherForEvent } from '../utils/launcherEvents';
+import { useSettings } from '@/lib/settings-store';
+import type { Language } from '@/lib/i18n';
 
 type LauncherTabConfig = {
     key: LauncherTab;
@@ -51,16 +53,17 @@ export function tabToReservedTag(tab: LauncherTab): LauncherTab {
     return tab;
 }
 
-export function emptyMessageForTab(tab: LauncherTab): string {
+export function emptyMessageForTab(tab: LauncherTab, language: Language = 'ja'): string {
+    const isEnglish = language === 'en';
     switch (tab) {
         case 'recipe':
-            return '青付箋を右クリック → レシピにする で最初のレシピを作れます。';
+            return isEnglish ? 'Right-click a blue note and choose “Create Recipe” to make your first recipe.' : '青付箋を右クリック → レシピにする で最初のレシピを作れます。';
         case 'shortcut':
-            return '付箋を右クリック → お気に入りに登録 で追加できます。';
+            return isEnglish ? 'Right-click a note and choose “Add to Favorites” to add it here.' : '付箋を右クリック → お気に入りに登録 で追加できます。';
         case 'qa':
-            return '付箋を右クリック → ❓ QAにする で最初のQAを作れます。';
+            return isEnglish ? 'Right-click a note and choose “❓ Create Q&A” to make your first Q&A.' : '付箋を右クリック → ❓ QAにする で最初のQAを作れます。';
         case 'term':
-            return '付箋を右クリック → 📖 用語にする で最初の用語を作れます。';
+            return isEnglish ? 'Right-click a note and choose “📖 Create Term” to make your first term.' : '付箋を右クリック → 📖 用語にする で最初の用語を作れます。';
     }
 }
 
@@ -88,8 +91,10 @@ export function shouldCloseLauncherAfterBlur(locked: boolean, isFocused: boolean
     return !locked && !isFocused;
 }
 
-export function removeActionLabel(tab: LauncherTab): string {
-    return tab === 'shortcut' ? '棚から外す' : 'ゴミ箱へ移動';
+export function removeActionLabel(tab: LauncherTab, language: Language = 'ja'): string {
+    return language === 'en'
+        ? (tab === 'shortcut' ? 'Remove from Favorites' : 'Move to Trash')
+        : (tab === 'shortcut' ? '棚から外す' : 'ゴミ箱へ移動');
 }
 
 export function isLatestLauncherRequest(requestId: number, currentRequestId: number): boolean {
@@ -137,6 +142,15 @@ async function closeLauncherWindow() {
 }
 
 export default function QuickLauncher() {
+    const { settings } = useSettings();
+    const language = settings.language;
+    const isEnglish = language === 'en';
+    const launcherTabs = LAUNCHER_TABS.map((tab) => ({
+        ...tab,
+        label: isEnglish
+            ? ({ shortcut: 'Favorites', qa: 'Q&A', term: 'Terms', recipe: 'Recipes' } as const)[tab.key]
+            : tab.label,
+    }));
     const [activeTab, setActiveTab] = useState<LauncherTab>('recipe');
     const [query, setQuery] = useState('');
     const [items, setItems] = useState<QuickOpenItem[]>([]);
@@ -390,7 +404,9 @@ export default function QuickLauncher() {
         if (!targetItem) return;
         const targetPath = targetItem.path;
         setContextMenu(null);
-        if (activeTab === 'shortcut' && !window.confirm('お気に入りから外しますか？（付箋は消えません）')) {
+        if (activeTab === 'shortcut' && !window.confirm(isEnglish
+            ? 'Remove this item from Favorites? The note will not be deleted.'
+            : 'お気に入りから外しますか？（付箋は消えません）')) {
             return;
         }
 
@@ -400,7 +416,7 @@ export default function QuickLauncher() {
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         }
-    }, [activeTab, contextMenu, debouncedQuery, reloadItems]);
+    }, [activeTab, contextMenu, debouncedQuery, isEnglish, reloadItems]);
 
     const startRename = useCallback((item?: QuickOpenItem) => {
         const targetItem = item ?? contextMenu?.item;
@@ -445,7 +461,7 @@ export default function QuickLauncher() {
                             : 'text-gray-400 opacity-70 scale-95 hover:bg-zinc-800 hover:text-gray-200 hover:opacity-100'
                     }`}
                     aria-pressed={isLocked}
-                    title="ロック"
+                    title={isEnglish ? 'Lock' : 'ロック'}
                 >
                     <PinTackIcon active={isLocked} />
                 </button>
@@ -453,7 +469,7 @@ export default function QuickLauncher() {
 
             <div className="flex h-[calc(100vh-2rem)] flex-col gap-2 p-2">
                 <div className="grid grid-cols-4 gap-1">
-                    {LAUNCHER_TABS.map((tab) => (
+                    {launcherTabs.map((tab) => (
                         <button
                             key={tab.key}
                             type="button"
@@ -469,7 +485,7 @@ export default function QuickLauncher() {
                     ))}
                 </div>
 
-                <div className="flex min-h-7 gap-1 overflow-x-auto pb-0.5" aria-label="タグ区分">
+                <div className="flex min-h-7 gap-1 overflow-x-auto pb-0.5" aria-label={isEnglish ? 'Tag filter' : 'タグ区分'}>
                     <button
                         type="button"
                         onClick={() => selectTagFilter(ALL_TAGS_FILTER)}
@@ -479,7 +495,7 @@ export default function QuickLauncher() {
                                 : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
                         }`}
                     >
-                        すべて
+                        {isEnglish ? 'All' : 'すべて'}
                     </button>
                     {displayTagOptions.map((tag) => (
                         <button
@@ -492,7 +508,7 @@ export default function QuickLauncher() {
                                     : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
                             }`}
                         >
-                            {tag === UNCLASSIFIED_TAG_FILTER ? '未分類' : tag}
+                            {tag === UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Unclassified' : '未分類') : tag}
                         </button>
                     ))}
                 </div>
@@ -505,7 +521,7 @@ export default function QuickLauncher() {
                         setSelectedIndex(0);
                     }}
                     className="h-9 rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-sky-400"
-                    placeholder="検索"
+                    placeholder={isEnglish ? 'Search' : '検索'}
                     autoFocus
                 />
 
@@ -518,7 +534,7 @@ export default function QuickLauncher() {
                 <div className="min-h-0 flex-1 overflow-y-auto rounded border border-zinc-800 bg-zinc-900/70">
                     {visibleItems.length === 0 && !isLoading ? (
                         <div className="flex h-full items-center justify-center px-5 text-center text-sm leading-6 text-zinc-500">
-                            {items.length === 0 ? emptyMessageForTab(activeTab) : 'このタグに該当する項目はありません。'}
+                            {items.length === 0 ? emptyMessageForTab(activeTab, language) : (isEnglish ? 'No items match this tag.' : 'このタグに該当する項目はありません。')}
                         </div>
                     ) : (
                         <div className="py-1">
@@ -541,13 +557,13 @@ export default function QuickLauncher() {
                                     }`}
                                 >
                                     <span className="text-base">{activeTab === 'qa' ? '❓' : activeTab === 'term' ? '📖' : item.is_recipe ? '🍳' : '📌'}</span>
-                                    <span className="truncate">{truncateRecipeName(item.title || '無題', 20)}</span>
+                                    <span className="truncate">{truncateRecipeName(item.title || (isEnglish ? 'Untitled' : '無題'), 20)}</span>
                                     <span className="flex items-center justify-end gap-0.5">
                                         <span className="mr-1 text-[11px] text-zinc-500 group-hover:hidden">{item.launches}</span>
                                         <button
                                             type="button"
-                                            title="上へ"
-                                            aria-label="上へ"
+                                            title={isEnglish ? 'Move up' : '上へ'}
+                                            aria-label={isEnglish ? 'Move up' : '上へ'}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedIndex(index);
@@ -559,8 +575,8 @@ export default function QuickLauncher() {
                                         </button>
                                         <button
                                             type="button"
-                                            title="下へ"
-                                            aria-label="下へ"
+                                            title={isEnglish ? 'Move down' : '下へ'}
+                                            aria-label={isEnglish ? 'Move down' : '下へ'}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedIndex(index);
@@ -572,8 +588,8 @@ export default function QuickLauncher() {
                                         </button>
                                         <button
                                             type="button"
-                                            title={removeActionLabel(activeTab)}
-                                            aria-label={removeActionLabel(activeTab)}
+                                            title={removeActionLabel(activeTab, language)}
+                                            aria-label={removeActionLabel(activeTab, language)}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedIndex(index);
@@ -591,8 +607,8 @@ export default function QuickLauncher() {
                 </div>
 
                 <div className="flex h-5 items-center justify-between text-[11px] text-zinc-600">
-                    <span>{isLoading ? '読み込み中' : `${visibleItems.length} / ${items.length} 件`}</span>
-                    <span>{isLocked ? 'ロック中' : 'Esc / blur で閉じる'}</span>
+                    <span>{isLoading ? (isEnglish ? 'Loading' : '読み込み中') : `${visibleItems.length} / ${items.length}${isEnglish ? '' : ' 件'}`}</span>
+                    <span>{isLocked ? (isEnglish ? 'Locked' : 'ロック中') : (isEnglish ? 'Close with Esc or blur' : 'Esc / blur で閉じる')}</span>
                 </div>
             </div>
 
@@ -607,21 +623,21 @@ export default function QuickLauncher() {
                         className="block w-full px-3 py-1.5 text-left hover:bg-zinc-800"
                         onClick={() => handleReorder('up')}
                     >
-                        上へ移動
+                        {isEnglish ? 'Move Up' : '上へ移動'}
                     </button>
                     <button
                         type="button"
                         className="block w-full px-3 py-1.5 text-left hover:bg-zinc-800"
                         onClick={() => handleReorder('down')}
                     >
-                        下へ移動
+                        {isEnglish ? 'Move Down' : '下へ移動'}
                     </button>
                     <button
                         type="button"
                         className="block w-full px-3 py-1.5 text-left hover:bg-zinc-800"
                         onClick={() => startRename()}
                     >
-                        名前を変更
+                        {isEnglish ? 'Rename' : '名前を変更'}
                     </button>
                     <div className="my-1 h-px bg-zinc-800" />
                     <button
@@ -629,7 +645,7 @@ export default function QuickLauncher() {
                         className="block w-full px-3 py-1.5 text-left text-red-200 hover:bg-red-950"
                         onClick={() => handleRemove()}
                     >
-                        {removeActionLabel(activeTab)}
+                        {removeActionLabel(activeTab, language)}
                     </button>
                 </div>
             )}
@@ -643,7 +659,7 @@ export default function QuickLauncher() {
                         className="flex w-full max-w-sm flex-col gap-3 rounded-lg bg-zinc-900 p-4 shadow-xl"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="text-sm font-bold text-zinc-100">名前を変更</div>
+                        <div className="text-sm font-bold text-zinc-100">{isEnglish ? 'Rename' : '名前を変更'}</div>
                         <input
                             autoFocus
                             type="text"
@@ -666,7 +682,7 @@ export default function QuickLauncher() {
                                 className="px-3 py-1.5 text-zinc-400 hover:text-zinc-200"
                                 onClick={() => setRenameTarget(null)}
                             >
-                                キャンセル
+                                {isEnglish ? 'Cancel' : 'キャンセル'}
                             </button>
                             <button
                                 type="button"
@@ -674,7 +690,7 @@ export default function QuickLauncher() {
                                 disabled={!renameTarget.value.trim()}
                                 onClick={submitRename}
                             >
-                                変更
+                                {isEnglish ? 'Rename' : '変更'}
                             </button>
                         </div>
                     </div>

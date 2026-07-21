@@ -38,26 +38,6 @@ use state::{AppState, CreateRecipeNoteRequest, Note, NoteMeta, ProConfig, Recipe
 static TRASH_OPERATIONS_IN_FLIGHT: std::sync::LazyLock<
     Mutex<std::collections::HashSet<String>>,
 > = std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
-static TRASH_BURST_GUARD: std::sync::LazyLock<Mutex<TrashBurstGuard>> =
-    std::sync::LazyLock::new(|| Mutex::new(TrashBurstGuard::default()));
-
-#[derive(Default)]
-struct TrashBurstGuard {
-    last: Option<(String, std::time::Instant)>,
-}
-
-impl TrashBurstGuard {
-    fn allow(&mut self, path: &str, now: std::time::Instant) -> bool {
-        let key = path.to_lowercase();
-        if let Some((last_path, last_at)) = &self.last {
-            if *last_path != key && now.duration_since(*last_at) < std::time::Duration::from_secs(2) {
-                return false;
-            }
-        }
-        self.last = Some((key, now));
-        true
-    }
-}
 
 #[derive(serde::Serialize)]
 struct TrashMoveResult {
@@ -66,14 +46,6 @@ struct TrashMoveResult {
 }
 
 fn try_begin_trash_operation(path: &str) -> bool {
-    if !TRASH_BURST_GUARD
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .allow(path, std::time::Instant::now())
-    {
-        logger::log_warn("[trash] burst request for a different path blocked");
-        return false;
-    }
     TRASH_OPERATIONS_IN_FLIGHT
         .lock()
         .unwrap_or_else(|p| p.into_inner())
@@ -89,7 +61,7 @@ fn finish_trash_operation(path: &str) {
 
 #[cfg(test)]
 mod trash_operation_tests {
-    use super::{finish_trash_operation, try_begin_trash_operation, TrashBurstGuard};
+    use super::{finish_trash_operation, try_begin_trash_operation};
 
     #[test]
     fn duplicate_trash_operation_is_rejected_until_first_finishes() {
@@ -103,12 +75,15 @@ mod trash_operation_tests {
     }
 
     #[test]
-    fn burst_guard_blocks_a_different_path_within_two_seconds() {
-        let mut guard = TrashBurstGuard::default();
-        let start = std::time::Instant::now();
-        assert!(guard.allow("C:/notes/a.md", start));
-        assert!(!guard.allow("C:/notes/b.md", start + std::time::Duration::from_millis(10)));
-        assert!(guard.allow("C:/notes/b.md", start + std::time::Duration::from_secs(2)));
+    fn different_paths_can_be_deleted_without_an_artificial_delay() {
+        let first = "C:/notes/a.md";
+        let second = "C:/notes/b.md";
+        finish_trash_operation(first);
+        finish_trash_operation(second);
+        assert!(try_begin_trash_operation(first));
+        assert!(try_begin_trash_operation(second));
+        finish_trash_operation(first);
+        finish_trash_operation(second);
     }
 }
 

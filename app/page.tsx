@@ -223,6 +223,7 @@ function OrchestratorContent() {
         visible: false,
         focus: false,
         skipTaskbar: true,
+        alwaysOnTop: true,
       });
     };
     const timer = setTimeout(() => { prepare().catch(() => {}); }, 0);
@@ -1587,18 +1588,18 @@ function OrchestratorContent() {
           // ノート復元を即座に開始
           (async () => {
             try {
-              setLoadingStatus("ノート一覧を取得中...");
+              setLoadingStatus(startupIsEnglish ? 'Loading the note list...' : 'ノート一覧を取得中...');
               logStartupStep('3/6', '保存先フォルダから付箋ファイル一覧を取得しています');
               await invoke('fusen_list_notes', { folderPath: savedFolder });
               logStartupStep('3/6', '付箋ファイル一覧の取得が完了しました');
 
-              setLoadingStatus("状態を同期中...");
+              setLoadingStatus(startupIsEnglish ? 'Synchronizing app state...' : '状態を同期中...');
               logStartupStep('4/6', 'Rust側の状態をフロントへ同期しています');
               const state = await syncState();
               logStartupStep('4/6', `状態同期が完了しました: ${state ? '成功' : '失敗'}`);
 
               if (!state) {
-                setLoadingStatus("同期に失敗しました");
+                setLoadingStatus(startupIsEnglish ? 'Synchronization failed' : '同期に失敗しました');
                 log('[起動処理] エラー: 状態オブジェクトが空です');
                 return;
               }
@@ -1610,7 +1611,7 @@ function OrchestratorContent() {
               logStartupStep('5/6', `復元する付箋を確定しました: ${notes.length}件`);
 
               if (notes.length > 0) {
-                setLoadingStatus(`${notes.length} 件のノートを復元中...`);
+                setLoadingStatus(startupIsEnglish ? `Restoring ${notes.length} notes...` : `${notes.length} 件のノートを復元中...`);
                 logStartupStep('6/6', `付箋ウィンドウを非表示で準備します: 0/${notes.length}`);
 
                 const startupLabels = new Set(notes.map((note) => getWindowLabel(note.path)));
@@ -1620,14 +1621,18 @@ function OrchestratorContent() {
                   const label = event.payload?.label;
                   if (!startupLabels.has(label)) return;
                   readyLabels.add(label);
-                  setLoadingStatus(`付箋を準備中 (${readyLabels.size}/${notes.length})...`);
+                  setLoadingStatus(startupIsEnglish
+                    ? `Preparing notes (${readyLabels.size}/${notes.length})...`
+                    : `付箋を準備中 (${readyLabels.size}/${notes.length})...`);
                   if (readyLabels.size === startupLabels.size) resolveAllReady?.();
                 });
 
                 await runWithConcurrency(notes, 2, async (note, i) => {
                   const noteStartedAt = performance.now();
                   const noteName = note.path.split(/[\\/]/).pop();
-                  setLoadingStatus(`付箋ウィンドウを準備中 (${i + 1}/${notes.length})...`);
+                  setLoadingStatus(startupIsEnglish
+                    ? `Preparing note windows (${i + 1}/${notes.length})...`
+                    : `付箋ウィンドウを準備中 (${i + 1}/${notes.length})...`);
                   await openNoteWindow(note.path, {
                     x: note.x,
                     y: note.y,
@@ -1657,7 +1662,7 @@ function OrchestratorContent() {
                   logStartupStep('6/6', `付箋の本文描画が完了しました: ${notes.length}/${notes.length}`);
                 }
 
-                setLoadingStatus("付箋を表示しています...");
+                setLoadingStatus(startupIsEnglish ? 'Showing notes...' : '付箋を表示しています...');
                 logStartupStep('6/6', '準備済みの付箋をまとめて表示します');
                 try {
                   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
@@ -1672,14 +1677,17 @@ function OrchestratorContent() {
                   startPoolReplenishInBackground();
                 } catch (e) {
                   log(`[起動処理] 一括表示エラー: ${e}`);
-                  setLoadingStatus("付箋の表示に失敗しました: " + String(e));
+                  setLoadingStatus((startupIsEnglish ? 'Failed to show notes: ' : '付箋の表示に失敗しました: ') + String(e));
                 }
               } else {
-                setLoadingStatus("ようこそノートを作成中...");
+                setLoadingStatus(startupIsEnglish ? 'Creating your welcome note...' : 'ようこそノートを作成中...');
                 try {
                   const welcomeNoteColor = NOTE_COLORS.yellow;
                   const newNote = await invoke<{ meta: { path: string }; frontmatter: string }>(
-                    'fusen_create_note', { folderPath: savedFolder, context: 'はじめての付箋（消してOK）' }
+                    'fusen_create_note', {
+                      folderPath: savedFolder,
+                      context: startupIsEnglish ? 'Your first note (safe to delete)' : 'はじめての付箋（消してOK）',
+                    }
                   );
                   const welcomeFrontmatter = (newNote.frontmatter || '').replace(
                     /^backgroundColor:.*$/m,
@@ -1687,14 +1695,16 @@ function OrchestratorContent() {
                   );
                   await invoke('fusen_save_note', {
                     path: newNote.meta.path,
-                    body: '👋 ようこそ。これが最初の付箋です。\n\n- [ ] このチェックを押してみる\n- [ ] 右上の「＋」で新しく1枚作る\n- [ ] このメモを右クリック→色を変えてみる\n- [ ] 左下の「？」で詳しい使い方を見る\n\n消したくなったら、付箋の上にマウスをのせて右下の🗑️',
+                    body: startupIsEnglish
+                      ? '👋 Welcome. This is your first note.\n\n- [ ] Try this checkbox\n- [ ] Use “+” at the top right to create another note\n- [ ] Right-click this note and change its color\n- [ ] Open “?” at the bottom left for more help\n\nTo delete this note, point to it and use 🗑️.'
+                      : '👋 ようこそ。これが最初の付箋です。\n\n- [ ] このチェックを押してみる\n- [ ] 右上の「＋」で新しく1枚作る\n- [ ] このメモを右クリック→色を変えてみる\n- [ ] 左下の「？」で詳しい使い方を見る\n\n消したくなったら、付箋の上にマウスをのせて右下の🗑️',
                     frontmatterRaw: welcomeFrontmatter,
                     allowRename: false,
                   });
                   await openNoteWindow(newNote.meta.path, { background_color: welcomeNoteColor });
                 } catch (e) {
                   log(`[起動処理] ウェルカムノート作成失敗: ${e}`);
-                  await handleCreateNote(savedFolder, 'ようこそ'); // fallback
+                  await handleCreateNote(savedFolder, startupIsEnglish ? 'Welcome' : 'ようこそ'); // fallback
                 }
                 setTimeout(async () => {
                   try {
@@ -1716,20 +1726,21 @@ function OrchestratorContent() {
               }
             } catch (e) {
               log(`[起動処理] 内部エラー: ${e}`);
-              setLoadingStatus("エラー: " + String(e));
+              setLoadingStatus((startupIsEnglish ? 'Error: ' : 'エラー: ') + String(e));
               setTimeout(() => setIsCheckingSetup(false), 3000);
             }
           })();
         } catch (e) {
           log(`[起動処理] 重大なエラー: ${e}`);
-          setLoadingStatus("重大なエラー: " + String(e));
+          setLoadingStatus((startupIsEnglish ? 'Critical error: ' : '重大なエラー: ') + String(e));
           setTimeout(() => setIsCheckingSetup(false), 3000);
         }
       };
 
       checkAndRestore().catch(e => {
         invoke('fusen_debug_log', { message: `[起動処理] セットアップ確認中に例外発生: ${e}` }).catch(() => { });
-        setLoadingStatus("確認失敗: " + String(e));
+        const fallbackEnglish = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('en');
+        setLoadingStatus((fallbackEnglish ? 'Startup check failed: ' : '確認失敗: ') + String(e));
         setTimeout(() => setIsCheckingSetup(false), 3000);
       });
     }

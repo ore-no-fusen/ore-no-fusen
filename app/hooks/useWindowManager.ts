@@ -89,12 +89,17 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
             // 元のサイズに復元
             if (originalSizeRef.current) {
                 isMinimizedRef.current = false; // setSize前に同期更新（resizeイベントが正しく処理されるよう）
-                await win.setSize(
-                    new PhysicalSize(
-                        originalSizeRef.current.width,
-                        originalSizeRef.current.height
-                    )
-                );
+                try {
+                    await win.setSize(
+                        new PhysicalSize(
+                            originalSizeRef.current.width,
+                            originalSizeRef.current.height
+                        )
+                    );
+                } catch (error) {
+                    isMinimizedRef.current = true;
+                    throw error;
+                }
             }
             setIsMinimized(false);
         } else {
@@ -104,13 +109,18 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
             isMinimizedRef.current = true; // setSize前に同期更新（resizeイベントで保存されないよう）
 
             // DPIスケールファクターを考慮して高さを設定
-            const factor = await win.scaleFactor();
-            // 呼び出し元の計算式があればそれを使用し、なければデフォルト40px
-            const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
-            const foldedSize = calculateFoldedPhysicalSize(size.width, factor, logicalHeight);
+            try {
+                const factor = await win.scaleFactor();
+                // 呼び出し元の計算式があればそれを使用し、なければデフォルト40px
+                const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
+                const foldedSize = calculateFoldedPhysicalSize(size.width, factor, logicalHeight);
 
-            await win.setSize(new PhysicalSize(foldedSize.width, foldedSize.height));
-            setIsMinimized(true);
+                await win.setSize(new PhysicalSize(foldedSize.width, foldedSize.height));
+                setIsMinimized(true);
+            } catch (error) {
+                isMinimizedRef.current = false;
+                throw error;
+            }
         }
     }, [isMinimized]);
 

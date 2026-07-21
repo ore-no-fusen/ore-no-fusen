@@ -4,7 +4,7 @@
  * 対象要件: SEND-02（右クリック「iPhoneに送る」から fusen_send_to_iphone を invoke する）
  */
 import { describe, it, expect, vi } from 'vitest';
-import { contextMenuTagItemId, filterAssignableTags, getAppOperationMenuLabels, getOpenFolderRequest, getShortcutShelfMenuState } from './useStickyNoteContextMenu';
+import { contextMenuTagItemId, filterAssignableTags, getAppOperationMenuLabels, getOpenFolderRequest, getShortcutShelfMenuState, releaseDeleteLockWhenMoveIsRejected } from './useStickyNoteContextMenu';
 
 // Wave 1 で有効化される — Plan 03 完了まで TODO
 // invoke のモック
@@ -89,6 +89,22 @@ describe('getOpenFolderRequest', () => {
 
   it('returns no request when neither note nor base folder exists', () => {
     expect(getOpenFolderRequest(undefined, null)).toBeNull();
+  });
+});
+
+describe('releaseDeleteLockWhenMoveIsRejected', () => {
+  it('allows a retry after the backend rejects a duplicate or burst delete request', () => {
+    const deleting = { current: true };
+
+    expect(releaseDeleteLockWhenMoveIsRejected({ moved: false, path: 'C:\\notes\\note.md' }, deleting)).toBe(true);
+    expect(deleting.current).toBe(false);
+  });
+
+  it('keeps the lock until the window is closed after a successful move', () => {
+    const deleting = { current: true };
+
+    expect(releaseDeleteLockWhenMoveIsRejected({ moved: true, path: 'C:\\notes\\Trash\\note.md' }, deleting)).toBe(false);
+    expect(deleting.current).toBe(true);
   });
 });
 

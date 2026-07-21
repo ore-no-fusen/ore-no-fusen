@@ -8,12 +8,17 @@ import { readNote } from '../api/notes';
 import { splitFrontMatter } from '../utils/splitFrontMatter';
 import { decodeNotePathFromUrl } from '../utils/pathUtils';
 import { emit, listen } from '@tauri-apps/api/event';
+import { useSettings } from '@/lib/settings-store';
+import { nextRecipeDraftRequest } from '../utils/recipeDraftRequest';
 
 function RecipeCreateInner() {
+    const { settings } = useSettings();
+    const isEnglish = settings.language === 'en';
     const params = useSearchParams();
     const rawPath = params.get('path') ?? '';
     const initialPath = decodeNotePathFromUrl(rawPath);
-    const [path, setPath] = useState(initialPath);
+    const [request, setRequest] = useState({ path: initialPath, revision: initialPath ? 1 : 0 });
+    const path = request.path;
     const [readyToken, setReadyToken] = useState<string | null>(null);
     const [source, setSource] = useState<{ title: string; body: string; tags: string[] } | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -25,7 +30,7 @@ function RecipeCreateInner() {
             setSource(null);
             setError(null);
             setReadyToken(event.payload.token);
-            setPath(event.payload.path);
+            setRequest((current) => nextRecipeDraftRequest(current, event.payload.path));
         }).then((u) => {
             unlisten = u;
             emit('fusen:recipe_draft_host_ready').catch(() => {});
@@ -39,7 +44,7 @@ function RecipeCreateInner() {
     useEffect(() => {
         let cancelled = false;
         if (!path) {
-            setError('元の付箋が指定されていません');
+            setError(isEnglish ? 'No source note was specified' : '元の付箋が指定されていません');
             return;
         }
         readNote(path)
@@ -60,7 +65,7 @@ function RecipeCreateInner() {
         return () => {
             cancelled = true;
         };
-    }, [path]);
+    }, [isEnglish, path, request.revision]);
 
     const closeWindow = () => { getCurrentWindow().hide().catch(() => {}); };
     const notifyReady = useCallback(() => {
@@ -73,7 +78,7 @@ function RecipeCreateInner() {
         return <div className="p-4 text-sm text-red-400">{error}</div>;
     }
     if (!source) {
-        return <div className="p-4 text-sm text-zinc-400">読み込み中...</div>;
+        return <div className="p-4 text-sm text-zinc-400">{isEnglish ? 'Loading...' : '読み込み中...'}</div>;
     }
 
     return (
@@ -91,7 +96,7 @@ function RecipeCreateInner() {
 
 export default function RecipeCreatePage() {
     return (
-        <Suspense fallback={<div className="p-4 text-sm text-zinc-400">読み込み中...</div>}>
+        <Suspense fallback={<div className="p-4 text-sm text-zinc-400">Loading...</div>}>
             <RecipeCreateInner />
         </Suspense>
     );

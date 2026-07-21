@@ -1,6 +1,7 @@
 'use client';
 
 import React, { type ReactNode } from 'react';
+import type { Language } from '@/lib/i18n';
 
 type CrystalCreateModalShellProps = {
     children: ReactNode;
@@ -9,6 +10,7 @@ type CrystalCreateModalShellProps = {
     createLabel: string;
     isCreating: boolean;
     accent?: 'slate' | 'orange';
+    language?: Language;
 };
 
 export default function CrystalCreateModalShell({
@@ -18,7 +20,9 @@ export default function CrystalCreateModalShell({
     createLabel,
     isCreating,
     accent = 'slate',
+    language = 'ja',
 }: CrystalCreateModalShellProps) {
+    const isEnglish = language === 'en';
     const createClass = accent === 'orange'
         ? 'bg-orange-600 hover:bg-orange-700'
         : 'bg-slate-700 hover:bg-slate-800';
@@ -37,7 +41,7 @@ export default function CrystalCreateModalShell({
             >
                 <button
                     type="button"
-                    aria-label="閉じる"
+                    aria-label={isEnglish ? 'Close' : '閉じる'}
                     className="absolute right-2 top-2 z-10 min-h-7 min-w-7 text-sm text-gray-500 hover:bg-gray-100 rounded"
                     onClick={onClose}
                 >
@@ -52,7 +56,7 @@ export default function CrystalCreateModalShell({
                         onClick={onClose}
                         className="min-h-9 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
                     >
-                        キャンセル
+                        {isEnglish ? 'Cancel' : 'キャンセル'}
                     </button>
                     <button
                         type="button"

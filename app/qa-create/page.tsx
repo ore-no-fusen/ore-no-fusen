@@ -7,8 +7,11 @@ import QaCreateModal from '../components/QaCreateModal';
 import { readNote } from '../api/notes';
 import { splitFrontMatter } from '../utils/splitFrontMatter';
 import { decodeNotePathFromUrl } from '../utils/pathUtils';
+import { useSettings } from '@/lib/settings-store';
 
 function QaCreateInner() {
+    const { settings } = useSettings();
+    const isEnglish = settings.language === 'en';
     const params = useSearchParams();
     const rawPath = params.get('path') ?? '';
     const path = decodeNotePathFromUrl(rawPath);
@@ -18,7 +21,7 @@ function QaCreateInner() {
     useEffect(() => {
         let cancelled = false;
         if (!path) {
-            setError('元の付箋が指定されていません');
+            setError(isEnglish ? 'No source note was specified' : '元の付箋が指定されていません');
             return;
         }
         readNote(path)
@@ -39,7 +42,7 @@ function QaCreateInner() {
         return () => {
             cancelled = true;
         };
-    }, [path]);
+    }, [isEnglish, path]);
 
     const closeWindow = () => {
         getCurrentWindow().close().catch(() => {});
@@ -49,7 +52,7 @@ function QaCreateInner() {
         return <div className="p-4 text-sm text-red-400">{error}</div>;
     }
     if (!source) {
-        return <div className="p-4 text-sm text-zinc-400">読み込み中...</div>;
+        return <div className="p-4 text-sm text-zinc-400">{isEnglish ? 'Loading...' : '読み込み中...'}</div>;
     }
 
     return (
@@ -64,7 +67,7 @@ function QaCreateInner() {
 
 export default function QaCreatePage() {
     return (
-        <Suspense fallback={<div className="p-4 text-sm text-zinc-400">読み込み中...</div>}>
+        <Suspense fallback={<div className="p-4 text-sm text-zinc-400">Loading...</div>}>
             <QaCreateInner />
         </Suspense>
     );

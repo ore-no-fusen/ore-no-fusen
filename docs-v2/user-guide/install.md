@@ -4,6 +4,8 @@ pageClass: user-guide-page
 
 # はじめに・インストール
 
+[English](/en/user-guide/install)
+
 俺の付箋は、Markdownで書けるWindows向けデスクトップ付箋アプリです。
 
 ## インストール手順
@@ -17,7 +19,7 @@ pageClass: user-guide-page
 | 5 | 初回確認で、必要なら「作成する」を選んでデスクトップショートカットを作る |
 
 ::: warning
-インストールしただけでは、アプリの初回処理は始まりません。Store画面の「開く」まで押してください。
+インストール後は、Store画面の「開く」またはWindowsのスタートメニューから一度起動してください。インストールだけでは初回確認は表示されません。
 :::
 
 初回起動時には次の確認が表示されます。
@@ -37,6 +39,8 @@ winget install --id 9N4MW0V2MVVG --source msstore
 ::: info
 更新はMicrosoft Storeから自動的に配信されます。GitHub ReleaseのMSI・NSISは5.0.0の既存利用者向け移行版が最後です。
 :::
+
+GitHub Releaseから一般利用者向けMSIXを直接配布しません。Storeが署名・配信するMSIXを利用してください。
 
 ## 旧MSI・NSIS版から移行する
 
@@ -58,6 +62,10 @@ winget install --id 9N4MW0V2MVVG --source msstore
 | デスクトップショートカット | 毎日使う、または外部ランチャーへ登録するなら作成 |
 | 効果音 | 完了音が欲しいならオン |
 | データ保存場所 | こだわりがなければ初期値 |
+
+::: info
+Store版の自動起動をWindows側で無効にした場合、アプリだけでは再有効化できません。設定画面の案内からWindowsの「スタートアップ アプリ」を開き、俺の付箋をオンにしてください。
+:::
 
 付箋データは、PCローカルのMarkdownファイルとして保存されます。初期値は次の場所です。設定で別のフォルダを選んだ場合は、そのフォルダを確認してください。
 

@@ -1,5 +1,6 @@
 import {
     DEFAULT_CRYSTAL_FORMATS,
+    loadCrystalFormats,
     type CrystalFormats,
     type CrystalSectionConfig,
     type CrystalType,
@@ -33,6 +34,11 @@ const ENGLISH_DEFAULT_LABELS: Record<CrystalType, readonly string[]> = {
     term: ['Term', 'In One Line', 'Original / Translation', 'Meaning', 'Related Terms', 'Source', 'Notes', 'Improvement History'],
 };
 
+const LEGACY_DEFAULT_LABELS: Readonly<Record<string, string>> = {
+    'きっかけ ★ヒロ': 'きっかけ',
+    'きっかけ　★ヒロ': 'きっかけ',
+};
+
 function cloneCrystalTypeFormat(format: CrystalTypeFormat): CrystalTypeFormat {
     return {
         sections: format.sections.map((section) => ({ ...section })),
@@ -61,10 +67,37 @@ export function getLocalizedDefaultCrystalFormats(language: Language): CrystalFo
 }
 
 export function localizeDefaultCrystalFormatsIfUntouched(formats: CrystalFormats, language: Language): CrystalFormats {
-    if (language !== 'en' || JSON.stringify(formats) !== JSON.stringify(DEFAULT_CRYSTAL_FORMATS)) {
-        return cloneCrystalFormats(formats);
+    const localized = cloneCrystalFormats(formats);
+
+    for (const type of Object.keys(ENGLISH_DEFAULT_LABELS) as CrystalType[]) {
+        const defaults = DEFAULT_CRYSTAL_FORMATS[type].sections;
+        localized[type].sections = localized[type].sections.map((section) => {
+            const normalizedLabel = LEGACY_DEFAULT_LABELS[section.label] ?? section.label;
+            const defaultIndex = section.slot === 'free'
+                ? defaults.findIndex((candidate, index) => candidate.slot === 'free' && (
+                    candidate.label === normalizedLabel || ENGLISH_DEFAULT_LABELS[type][index] === normalizedLabel
+                ))
+                : defaults.findIndex((candidate) => candidate.slot === section.slot);
+            const defaultSection = defaults[defaultIndex];
+            const englishDefaultLabel = ENGLISH_DEFAULT_LABELS[type][defaultIndex];
+            if (!defaultSection || section.slot !== defaultSection.slot || (
+                normalizedLabel !== defaultSection.label && normalizedLabel !== englishDefaultLabel
+            )) {
+                return section;
+            }
+            return {
+                ...section,
+                label: language === 'en'
+                    ? englishDefaultLabel ?? normalizedLabel
+                    : defaultSection.label,
+            };
+        });
     }
-    return getLocalizedDefaultCrystalFormats(language);
+    return localized;
+}
+
+export async function loadLocalizedCrystalFormats(language: Language): Promise<CrystalFormats> {
+    return localizeDefaultCrystalFormatsIfUntouched(await loadCrystalFormats(), language);
 }
 
 export function addFreeSection(format: CrystalTypeFormat, label = '新しい節'): CrystalTypeFormat {

@@ -4,6 +4,8 @@ pageClass: user-guide-page
 
 # iPhone連携
 
+[English](/en/user-guide/iphone)
+
 iPhoneで書いたメモ、画像、動画をPCの付箋として送れます。
 
 ## 仕組み
@@ -20,10 +22,10 @@ iPhoneで書いたメモ、画像、動画をPCの付箋として送れます。
 
 ## 初回セットアップ
 
-1. PC側の設定を開く
-2. iPhone連携タブでGoogle連携を開始
-3. ブラウザで許可
-4. 表示されたURLをiPhoneで開く
+1. PC側の設定で **iPhone連携** を開き、PCをGoogle Driveへ接続します。
+2. 表示されたQRコードをiPhoneで読み取り、Safariで開いて「ホーム画面に追加」します。
+3. iPhone版を開き、PCと同じGoogleアカウントで接続します。
+4. PC側の3項目すべてにチェックが付き、「準備完了」と表示されることを確認します。
 
 ## 送る
 

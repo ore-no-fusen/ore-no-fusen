@@ -24,6 +24,8 @@ html.dark .help-pill { background:#0f172a; border-color:#334155; }
   <p>すぐ書けて、そこに残る。インストール、基本操作、画像・表・アラーム、iPhone連携、困った時の復旧までをユーザー向けにまとめました。</p>
 </div>
 
+[English Guide](/en/user-guide/)
+
 <div class="help-strip">
   <div class="help-pill">Windows向け</div>
   <div class="help-pill">Markdown付箋</div>
@@ -48,5 +50,5 @@ html.dark .help-pill { background:#0f172a; border-color:#334155; }
 3. [困ったときに](./troubleshooting.html)
 
 ::: tip
-旧GitHub Wikiは入口として残し、詳しいユーザー向けヘルプはこのページに集約します。
+詳しいユーザー向けヘルプはこのガイドに集約しています。
 :::

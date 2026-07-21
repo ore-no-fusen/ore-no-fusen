@@ -721,6 +721,7 @@ const StickyNote = memo(function StickyNote() {
             const u = await thisWin.listen<{ path?: string, folderPath?: string, isNew?: boolean, content?: string, frontmatter?: string, backgroundColor?: string, hydrateToken?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string, perfEnabled?: boolean, perfStartedAt?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
                 isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）
+                try {
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
 
                 let promotedBody: string | undefined;
@@ -819,8 +820,7 @@ const StickyNote = memo(function StickyNote() {
 
                 // Rust が SetForegroundWindow をアトミックに完了済みのため、長い待機は不要。
                 // rAF 1回でレイアウト確定を待つだけで十分（ITaskbarList 待機の 300ms は不要）。
-                setTimeout(async () => {
-                    isPromotingRef.current = false; // 付箋表示中フラグ OFF
+                await new Promise((resolve) => setTimeout(resolve, 50));
                     setIsEditing(opensInEditMode);
                     // React 再レンダリング + CodeMirror レイアウト確定を rAF 1回で待つ
                     await new Promise(r => requestAnimationFrame(r));
@@ -842,7 +842,9 @@ const StickyNote = memo(function StickyNote() {
                     if (perfPayload) {
                         invoke('fusen_perf_note_ready', perfPayload).catch(() => { });
                     }
-                }, 50);
+                } finally {
+                    isPromotingRef.current = false; // 成功・失敗にかかわらず表示中フラグを解除
+                }
             });
             // [FIX] React Strict Mode でダブルsetupが起きた場合、cleanup後にlistenが解決したら即解除
             if (!mounted) { u(); return; }

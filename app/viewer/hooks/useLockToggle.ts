@@ -103,8 +103,12 @@ export function useLockToggle({ onError }: UseLockToggleOptions): UseLockToggleR
         notifLog(`lock開始 id=${note.id.slice(0,8)} permission=${Notification.permission}`);
         if (Notification.permission === 'default') {
           setIsLockPermissionPending(true);
-          const result = await Notification.requestPermission();
-          setIsLockPermissionPending(false);
+          let result: NotificationPermission;
+          try {
+            result = await Notification.requestPermission();
+          } finally {
+            setIsLockPermissionPending(false);
+          }
           if (result !== 'granted') {
             setLockedNoteIds((prev) => prev.filter((id) => id !== note.id));
             onError('通知権限が必要です。設定から有効にしてください');

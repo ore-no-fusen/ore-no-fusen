@@ -1105,8 +1105,8 @@ v2.17 | 2026-07-19 | USDM (Universal Specification Describing Manner)
   </thead>
   <tbody>
     <tr>
-            <td rowspan="4" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_NF_05</td>
-      <td rowspan="4" style="vertical-align:top; background-color:#f8fafc;">
+            <td rowspan="6" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_NF_05</td>
+      <td rowspan="6" style="vertical-align:top; background-color:#f8fafc;">
         <strong>【要求】</strong><br>
         環境に縛られず、様々な言語話者が直感的にツールを使用できること。<br><br>
         <strong>【理由】</strong><br>
@@ -1124,8 +1124,16 @@ v2.17 | 2026-07-19 | USDM (Universal Specification Describing Manner)
       <td style="border-bottom: 1px dotted #cbd5e1;">コンテキストメニュー・ツールバーヒント・各種ボタンはすべて翻訳定義を通じた動的出力とする。</td>
     </tr>
     <tr>
-      <td style="text-align:center;">SPEC-NF-05-04</td>
-      <td>英語UIから開くWebページには言語を引き継ぎ、サポートページを英語で表示する。利用者が編集した名称・支援者名・コメントなどのユーザーデータは自動翻訳しない。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-04</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">英語UIから開くWebページには言語を引き継ぎ、サポートページを英語で表示する。利用者が編集した名称・支援者名・コメントなどのユーザーデータは自動翻訳しない。</td>
+    </tr>
+    <tr>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-05</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">設定画面は全タブ、展開内部、確認・エラー・診断結果まで選択言語で表示する。ひな形の既定節名は日本語・英語間で双方向変換し、独自の節名は保持する。</td>
+    </tr>
+    <tr>
+      <td style="text-align:center;">SPEC-NF-05-06</td>
+      <td>ユーザーガイドは日本語・英語を提供し、Microsoft Store MSIXを標準導入経路、<code>winget --source msstore</code>を補助経路として案内する。旧MSI・NSISは5.0.0の移行用途に限定し、画面・保存先・操作説明を現行実装と一致させる。</td>
     </tr>
   </tbody>
 </table>
@@ -1379,5 +1387,6 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 | 7 | v2.15 | 26-05-30 | 9.1 PC → iPhone 送信で、VAPID 鍵はユーザー本人の Google Drive に置かれる連携端末群の共有通知鍵であり、盗まれると第三者が正規通知のように見える Push 通知を送れる可能性があること、Drive の `push_keys.json` 1 個を正とし、各PCのローカル鍵で共有鍵を上書きしてはならない制約を追加。 |
 | 8 | v2.16 | 26-05-31 | SPEC-IP-01-02 の VAPID 鍵説明を **3 者（ユーザー / 俺の付箋アプリ開発者 / 悪意ある第三者）** の語彙に統一。「開発者」「第三者」表記の揺れを解消し、設計書 003「3.0 鍵の前提」と 005「0 登場人物と関係」への参照を追加。 |
 | 9 | v2.17 | 26-07-19 | §8.2へMicrosoft Storeの［開く］、MSIX初回起動時の確認、「俺の付箋（Store版）」ショートカット、設定画面からの再作成、更新後の継続利用要件を追加。 |
+| 10 | **v2.18** | 26-07-19 | SPEC-NF-05-06を追加。日英ユーザーガイド、Store MSIX標準導入、winget補助導入、5.0.0旧版移行、現行実装との整合を要求化。 |
 
 </div>

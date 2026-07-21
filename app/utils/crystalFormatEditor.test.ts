@@ -81,6 +81,38 @@ describe('crystalFormatEditor helpers', () => {
         const customized = getLocalizedDefaultCrystalFormats('ja');
         customized.qa.sections[0].label = 'My Question';
 
-        expect(localizeDefaultCrystalFormatsIfUntouched(customized, 'en')).toEqual(customized);
+        const localized = localizeDefaultCrystalFormatsIfUntouched(customized, 'en');
+        expect(localized.qa.sections[0].label).toBe('My Question');
+        expect(localized.qa.sections[1].label).toBe('Answer');
+    });
+
+    it('normalizes the legacy Hiro source label in Japanese and English', () => {
+        const formats = getLocalizedDefaultCrystalFormats('ja');
+        formats.recipe.sections[2].label = 'きっかけ　★ヒロ';
+
+        expect(localizeDefaultCrystalFormatsIfUntouched(formats, 'ja').recipe.sections[2].label).toBe('きっかけ');
+        expect(localizeDefaultCrystalFormatsIfUntouched(formats, 'en').recipe.sections[2].label).toBe('Source');
+    });
+
+    it('localizes fixed sections after custom sections change their positions', () => {
+        const formats = getLocalizedDefaultCrystalFormats('ja');
+        formats.term.sections.splice(5, 0, { label: 'そもそものきっかけ', slot: 'free', tracked: true });
+
+        const localized = localizeDefaultCrystalFormatsIfUntouched(formats, 'en');
+        expect(localized.term.sections.find((section) => section.slot === 'source')?.label).toBe('Source');
+        expect(localized.term.sections.find((section) => section.slot === 'supplement')?.label).toBe('Notes');
+        expect(localized.term.sections.find((section) => section.label === 'そもそものきっかけ')?.label).toBe('そもそものきっかけ');
+    });
+
+    it('restores English default labels to Japanese without changing custom labels', () => {
+        const formats = getLocalizedDefaultCrystalFormats('en');
+        formats.recipe.sections.splice(2, 0, { label: 'My custom section', slot: 'free', tracked: true });
+
+        const localized = localizeDefaultCrystalFormatsIfUntouched(formats, 'ja');
+        expect(localized.recipe.sections.find((section) => section.slot === 'situation')?.label).toBe('こんなとき');
+        expect(localized.recipe.sections.find((section) => section.slot === 'steps')?.label).toBe('どうする');
+        expect(localized.recipe.sections.find((section) => section.slot === 'source')?.label).toBe('きっかけ');
+        expect(localized.recipe.sections.find((section) => section.slot === 'supplement')?.label).toBe('補足');
+        expect(localized.recipe.sections.find((section) => section.label === 'My custom section')?.label).toBe('My custom section');
     });
 });
