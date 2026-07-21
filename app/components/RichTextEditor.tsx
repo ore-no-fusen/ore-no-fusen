@@ -22,6 +22,86 @@ import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUt
 
 export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
 
+export type PendingImage = { id: string; objectUrl: string };
+
+export const addPendingImage = StateEffect.define<{ image: PendingImage; pos: number }>({
+    map: (value, mapping) => ({ ...value, pos: mapping.mapPos(value.pos) }),
+});
+export const removePendingImage = StateEffect.define<string>();
+
+class PendingImageWidget extends WidgetType {
+    constructor(readonly image: PendingImage) {
+        super();
+    }
+
+    toDOM(): HTMLElement {
+        const container = document.createElement('span');
+        container.className = 'cm-image-widget cm-pending-image-widget';
+        container.dataset.pendingImageId = this.image.id;
+        container.style.display = 'inline-block';
+        container.style.verticalAlign = 'bottom';
+
+        const image = document.createElement('img');
+        image.src = this.image.objectUrl;
+        image.alt = 'image';
+        image.style.display = 'block';
+        image.style.maxWidth = '100%';
+        image.style.height = 'auto';
+        container.appendChild(image);
+        return container;
+    }
+
+    ignoreEvent() { return true; }
+
+    eq(other: PendingImageWidget): boolean {
+        return other.image.id === this.image.id && other.image.objectUrl === this.image.objectUrl;
+    }
+}
+
+export const pendingImageField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(pending, transaction) {
+        pending = pending.map(transaction.changes);
+        for (const effect of transaction.effects) {
+            if (effect.is(addPendingImage)) {
+                pending = pending.update({
+                    add: [Decoration.widget({
+                        widget: new PendingImageWidget(effect.value.image),
+                        side: -1,
+                    }).range(effect.value.pos)],
+                });
+            } else if (effect.is(removePendingImage)) {
+                pending = pending.update({
+                    filter: (_from, _to, decoration) => {
+                        const widget = decoration.spec.widget;
+                        return !(widget instanceof PendingImageWidget && widget.image.id === effect.value);
+                    },
+                });
+            }
+        }
+        return pending;
+    },
+    provide: field => EditorView.decorations.from(field),
+});
+
+export function findPendingImagePosition(view: EditorView, id: string): number | null {
+    let position: number | null = null;
+    view.state.field(pendingImageField).between(0, view.state.doc.length, (from, _to, decoration) => {
+        const widget = decoration.spec.widget;
+        if (widget instanceof PendingImageWidget && widget.image.id === id) {
+            position = from;
+        }
+    });
+    return position;
+}
+
+let pendingImageSequence = 0;
+
+export function createPendingImageId(): string {
+    pendingImageSequence += 1;
+    return `pending-${Date.now()}-${pendingImageSequence}`;
+}
+
 // Helper to resolve relative path (same as in StickyNote)
 const resolvePath = (baseFile: string, relativePath: string) => {
     if (!baseFile) return relativePath;
@@ -1297,6 +1377,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     placeholderDecorationField,
                     linkDecorationField, // [New]
                     linkEventHandler,    // [New]
+                    pendingImageField,
                     imagePreviewPlugin,  // [NEW]
                     EditorView.lineWrapping,
                     highlightSelectionMatches(), // [NEW] 選択テキストのハイライト
@@ -1358,6 +1439,16 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
                                     // カーソル位置の取得
                                     const currentPos = view.state.selection.main.from;
+                                    const pendingImage: PendingImage = {
+                                        id: createPendingImageId(),
+                                        objectUrl: URL.createObjectURL(file),
+                                    };
+
+                                    // 保存完了を待たず、エディタ内部だけに一時画像を表示する。
+                                    // 文書自体は変更しないため blob: URL が付箋へ保存されることはない。
+                                    view.dispatch({
+                                        effects: addPendingImage.of({ image: pendingImage, pos: currentPos }),
+                                    });
 
                                     // Invoke backend command to save image from clipboard.
                                     // Ctrl+N の高速付箋は最初の文字まで実ファイルが無いので、
@@ -1374,23 +1465,39 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                         return invoke<string>('fusen_get_image_from_clipboard', { path: targetFilePath });
                                     })()
                                             .then((savedPath) => {
+                                                const pendingPos = findPendingImagePosition(view, pendingImage.id);
+                                                if (pendingPos === null) {
+                                                    URL.revokeObjectURL(pendingImage.objectUrl);
+                                                    return;
+                                                }
+
                                                 // Insert markdown: ![image](path)
                                                 // Use "image" as alt text, can be changed later
                                                 const markdown = buildClipboardImageMarkdown(savedPath);
+                                                const selectionStayedAtPendingImage =
+                                                    view.state.selection.main.empty &&
+                                                    view.state.selection.main.head === pendingPos;
 
                                                 view.dispatch({
                                                     changes: {
-                                                        from: currentPos,
-                                                        to: currentPos,
+                                                        from: pendingPos,
+                                                        to: pendingPos,
                                                         insert: markdown
                                                     },
-                                                    selection: {
-                                                        anchor: currentPos + markdown.length,
-                                                        head: currentPos + markdown.length
-                                                    }
+                                                    selection: selectionStayedAtPendingImage ? {
+                                                        anchor: pendingPos + markdown.length,
+                                                        head: pendingPos + markdown.length
+                                                    } : undefined,
+                                                    effects: removePendingImage.of(pendingImage.id),
                                                 });
+                                                // 正式画像の asset URL 変換中に一瞬消えないよう少しだけ保持する。
+                                                window.setTimeout(() => URL.revokeObjectURL(pendingImage.objectUrl), 1000);
                                             })
                                             .catch((err) => {
+                                                if (view.dom.isConnected) {
+                                                    view.dispatch({ effects: removePendingImage.of(pendingImage.id) });
+                                                }
+                                                URL.revokeObjectURL(pendingImage.objectUrl);
                                                 console.error('[EDITOR] Failed to paste image:', err);
                                                 // Optional: Show error to user?
                                             });
