@@ -1516,6 +1516,16 @@ function OrchestratorContent() {
     if (!path) {
       const checkAndRestore = async () => {
         const startupStartedAt = performance.now();
+        let startupLanguage: Language = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('en') ? 'en' : 'ja';
+        try {
+          const startupSettings = await invoke<{ language?: Language }>('get_settings');
+          if (startupSettings?.language === 'en' || startupSettings?.language === 'ja') {
+            startupLanguage = startupSettings.language;
+          }
+        } catch {
+          // 設定を読めない場合だけOS言語へフォールバックする。
+        }
+        const startupIsEnglish = startupLanguage === 'en';
         // [HELPER] Log to both Console and Terminal (via Rust)
         const log = (msg: string) => {
           console.log(msg);
@@ -1533,7 +1543,7 @@ function OrchestratorContent() {
           }, 250);
         };
 
-        setLoadingStatus("保存先の設定を確認中...");
+        setLoadingStatus(startupIsEnglish ? 'Checking data-location settings...' : '保存先の設定を確認中...');
         logStartupStep('2/6', '保存先フォルダの設定を確認しています');
 
         try {
@@ -1551,12 +1561,12 @@ function OrchestratorContent() {
           }
 
           if (!basePath) {
-            setLoadingStatus("保存先フォルダを準備中...");
+            setLoadingStatus(startupIsEnglish ? 'Preparing the data folder...' : '保存先フォルダを準備中...');
             try {
               await invoke<string>('setup_first_launch', { useDefault: true, importPath: null });
             } catch (setupErr) {
               log(`[起動処理] デフォルトフォルダ作成に失敗: ${setupErr}`);
-              setLoadingStatus("保存先の準備に失敗しました");
+              setLoadingStatus(startupIsEnglish ? 'Failed to prepare the data location' : '保存先の準備に失敗しました');
               return;
             }
           }

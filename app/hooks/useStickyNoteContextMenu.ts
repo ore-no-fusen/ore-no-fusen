@@ -481,9 +481,10 @@ export function useStickyNoteContextMenu({
                                 if (!existing) {
                                     existing = new WebviewWindow(label, {
                                         url: `/recipe-create?path=${encodeNotePathForUrl(p)}`,
-                                        title: 'レシピにする', width: 760, height: 860,
+                                        title: language === 'en' ? 'Create Recipe' : 'レシピにする', width: 760, height: 860,
                                         minWidth: 640, minHeight: 620, center: true,
                                         resizable: true, visible: false, focus: false, skipTaskbar: true,
+                                        alwaysOnTop: true,
                                     });
                                     await new Promise<void>((resolve, reject) => {
                                         existing!.once('tauri://created', () => resolve());
@@ -517,6 +518,12 @@ export function useStickyNoteContextMenu({
                                 });
                                 await emitTo(label, 'fusen:prepare_recipe_draft', { path: p, token });
                                 await ready;
+                                try {
+                                    await existing.setAlwaysOnTop(true);
+                                } catch (e) {
+                                    // 最前面化に失敗しても、レシピ作成そのものは止めない。
+                                    console.warn('Failed to keep recipe create window on top', e);
+                                }
                                 await existing.show();
                                 await existing.setSkipTaskbar(false);
                                 await existing.setFocus();
@@ -541,7 +548,7 @@ export function useStickyNoteContextMenu({
                             const { encodeNotePathForUrl } = await import('../utils/pathUtils');
                             const w = new WebviewWindow(label, {
                                 url: `/qa-create?path=${encodeNotePathForUrl(p)}`,
-                                title: 'QAにする',
+                                title: language === 'en' ? 'Create Q&A' : 'QAにする',
                                 width: 760,
                                 height: 860,
                                 minWidth: 640,
@@ -571,7 +578,7 @@ export function useStickyNoteContextMenu({
                             const { encodeNotePathForUrl } = await import('../utils/pathUtils');
                             const w = new WebviewWindow(label, {
                                 url: `/term-create?path=${encodeNotePathForUrl(p)}`,
-                                title: '用語にする',
+                                title: language === 'en' ? 'Create Term' : '用語にする',
                                 width: 760,
                                 height: 860,
                                 minWidth: 640,
