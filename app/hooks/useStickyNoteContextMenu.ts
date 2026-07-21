@@ -325,31 +325,33 @@ export function useStickyNoteContextMenu({
             // ============================================================
 
             // メニューオープン時に常に最新のタグ一覧を取得（stale state 回避）
-            const freshTags = await invoke<string[]>('fusen_get_all_tags');
-            const hotkeyBindings = await invoke<HotkeyBindings>('hotkey_get_bindings').catch(() => ({
-                new_note_trigger: 'shortcut',
-                new_note: 'ctrl+n',
-                arrange: 'ctrl+shift+l',
-            }));
+            const [freshTags, hotkeyBindings] = await Promise.all([
+                invoke<string[]>('fusen_get_all_tags'),
+                invoke<HotkeyBindings>('hotkey_get_bindings').catch(() => ({
+                    new_note_trigger: 'shortcut',
+                    new_note: 'ctrl+n',
+                    arrange: 'ctrl+shift+l',
+                })),
+            ]);
 
             // ファイル名アイテム
-            const filenameItem = await MenuItem.new({
+            const filenameItemPromise = MenuItem.new({
                 id: 'ctx_filename',
                 text: `📄 ${selectedFile?.path ? selectedFile.path.split(/[/\\]/).pop() : 'Untitled'}`,
                 enabled: false
             });
 
-            const separator1 = await PredefinedMenuItem.new({ item: 'Separator' });
+            const separator1Promise = PredefinedMenuItem.new({ item: 'Separator' });
 
             // フォルダを開く
-            const openFolderItem = await MenuItem.new({
+            const openFolderItemPromise = MenuItem.new({
                 id: 'ctx_open_folder',
                 text: `📂 ${t('menu.openFolder')}`,
                 action: handleOpenFolder
             });
 
             // 新規メモ作成
-            const newNoteItem = await MenuItem.new({
+            const newNoteItemPromise = MenuItem.new({
                 id: 'ctx_new_note',
                 text: `${STICKY_ACTION_SYMBOLS.newNote} ${t('menu.newNote')}  ${formatNewNoteTriggerLabel(hotkeyBindings.new_note_trigger, hotkeyBindings.new_note, language)}`,
                 action: async () => {
@@ -377,7 +379,7 @@ export function useStickyNoteContextMenu({
             });
 
             // 複製
-            const duplicateItem = await MenuItem.new({
+            const duplicateItemPromise = MenuItem.new({
                 id: 'ctx_duplicate',
                 text: `📋 ${t('menu.duplicate')}`,
                 action: async () => {
@@ -402,35 +404,46 @@ export function useStickyNoteContextMenu({
                 }
             });
 
+            const [filenameItem, separator1, openFolderItem, newNoteItem, duplicateItem] = await Promise.all([
+                filenameItemPromise,
+                separator1Promise,
+                openFolderItemPromise,
+                newNoteItemPromise,
+                duplicateItemPromise,
+            ]);
+
             // 色変更サブメニュー
-            const colorItems = [
-                await MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange(NOTE_COLORS.yellow) }),
-                await MenuItem.new({ id: 'ctx_color_pink', text: `🌸 ${t('menu.colors.pink')}`, action: () => handleColorChange(NOTE_COLORS.pink) }),
-                await MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange(NOTE_COLORS.blue) }),
-                await MenuItem.new({ id: 'ctx_color_white', text: `⬜ ${t('menu.colors.white')}`, action: () => handleColorChange(NOTE_COLORS.white) }),
-                await MenuItem.new({ id: 'ctx_color_black', text: `⬛ ${t('menu.colors.black')}`, action: () => handleColorChange(NOTE_COLORS.gray) })
-            ];
-            const colorSubmenu = await Submenu.new({ id: 'ctx_color_submenu', text: `🎨 ${t('menu.changeColor')}`, items: colorItems });
+            const colorItems = await Promise.all([
+                MenuItem.new({ id: 'ctx_color_yellow', text: `💛 ${t('menu.colors.yellow')}`, action: () => handleColorChange(NOTE_COLORS.yellow) }),
+                MenuItem.new({ id: 'ctx_color_pink', text: `🌸 ${t('menu.colors.pink')}`, action: () => handleColorChange(NOTE_COLORS.pink) }),
+                MenuItem.new({ id: 'ctx_color_blue', text: `🔵 ${t('menu.colors.blue')}`, action: () => handleColorChange(NOTE_COLORS.blue) }),
+                MenuItem.new({ id: 'ctx_color_white', text: `⬜ ${t('menu.colors.white')}`, action: () => handleColorChange(NOTE_COLORS.white) }),
+                MenuItem.new({ id: 'ctx_color_black', text: `⬛ ${t('menu.colors.black')}`, action: () => handleColorChange(NOTE_COLORS.gray) })
+            ]);
 
             // 透明度サブメニュー
-            const opacityItems = [
-                await MenuItem.new({ id: 'ctx_opacity_opaque', text: t('menu.opacity.opaque'), action: () => handleOpacityChange(1.0) }),
-                await MenuItem.new({ id: 'ctx_opacity_light', text: t('menu.opacity.light'), action: () => handleOpacityChange(0.7) }),
-                await MenuItem.new({ id: 'ctx_opacity_heavy', text: t('menu.opacity.heavy'), action: () => handleOpacityChange(0.4) })
-            ];
-            const opacitySubmenu = await Submenu.new({ id: 'ctx_opacity_submenu', text: `◐ ${t('menu.changeOpacity')}`, items: opacityItems });
+            const opacityItems = await Promise.all([
+                MenuItem.new({ id: 'ctx_opacity_opaque', text: t('menu.opacity.opaque'), action: () => handleOpacityChange(1.0) }),
+                MenuItem.new({ id: 'ctx_opacity_light', text: t('menu.opacity.light'), action: () => handleOpacityChange(0.7) }),
+                MenuItem.new({ id: 'ctx_opacity_heavy', text: t('menu.opacity.heavy'), action: () => handleOpacityChange(0.4) })
+            ]);
 
             // 文字サイズサブメニュー
-            const fontSizeItems = [
-                await MenuItem.new({ id: 'ctx_fontsize_reset', text: t('menu.fontSize.reset'), action: () => handleFontSizeChange(null) }),
-                await MenuItem.new({ id: 'ctx_fontsize_small', text: t('menu.fontSize.small'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.small) }),
-                await MenuItem.new({ id: 'ctx_fontsize_medium', text: t('menu.fontSize.medium'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.medium) }),
-                await MenuItem.new({ id: 'ctx_fontsize_large', text: t('menu.fontSize.large'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.large) }),
-                await MenuItem.new({ id: 'ctx_fontsize_xlarge', text: t('menu.fontSize.xlarge'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.extraLarge) })
-            ];
-            const fontSizeSubmenu = await Submenu.new({ id: 'ctx_fontsize_submenu', text: `📏 ${t('menu.changeFontSize')}`, items: fontSizeItems });
+            const fontSizeItems = await Promise.all([
+                MenuItem.new({ id: 'ctx_fontsize_reset', text: t('menu.fontSize.reset'), action: () => handleFontSizeChange(null) }),
+                MenuItem.new({ id: 'ctx_fontsize_small', text: t('menu.fontSize.small'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.small) }),
+                MenuItem.new({ id: 'ctx_fontsize_medium', text: t('menu.fontSize.medium'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.medium) }),
+                MenuItem.new({ id: 'ctx_fontsize_large', text: t('menu.fontSize.large'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.large) }),
+                MenuItem.new({ id: 'ctx_fontsize_xlarge', text: t('menu.fontSize.xlarge'), action: () => handleFontSizeChange(NOTE_FONT_SIZES.extraLarge) })
+            ]);
 
-            const separatorCommon = await PredefinedMenuItem.new({ item: 'Separator' });
+            const [colorSubmenu, opacitySubmenu, fontSizeSubmenu, separatorCommon, sectionSeparator] = await Promise.all([
+                Submenu.new({ id: 'ctx_color_submenu', text: `🎨 ${t('menu.changeColor')}`, items: colorItems }),
+                Submenu.new({ id: 'ctx_opacity_submenu', text: `◐ ${t('menu.changeOpacity')}`, items: opacityItems }),
+                Submenu.new({ id: 'ctx_fontsize_submenu', text: `📏 ${t('menu.changeFontSize')}`, items: fontSizeItems }),
+                PredefinedMenuItem.new({ item: 'Separator' }),
+                PredefinedMenuItem.new({ item: 'Separator' }),
+            ]);
             const canCreateRecipe = selectedFile?.path && noteBackgroundColor.toLowerCase() === NOTE_COLORS.blue;
             // レシピ付箋では意味がおかしくなる項目（アラーム・タグフォルダへ移動）を出さない
             const isRecipeNote = currentTags.some((tag) => normalizeTagForReservation(tag) === 'recipe');
@@ -440,7 +453,7 @@ export function useStickyNoteContextMenu({
                 filenameItem,
                 separator1,
                 openFolderItem,
-                await PredefinedMenuItem.new({ item: 'Separator' }),
+                sectionSeparator,
                 newNoteItem,
                 duplicateItem,
                 colorSubmenu,
@@ -609,15 +622,16 @@ export function useStickyNoteContextMenu({
                 const deletableTags = filterAssignableTags(freshTags);
                 if (deletableTags.length > 0) {
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                    for (const [index, tag] of deletableTags.entries()) {
-                        tagSubItems.push(await MenuItem.new({
+                    const deleteTagItems = await Promise.all(deletableTags.map((tag, index) =>
+                        MenuItem.new({
                             id: contextMenuTagItemId('tag_del', index),
                             text: `❌ ${tag}`,
                             action: () => {
                                 setTagToDelete(tag);
                             }
-                        }));
-                    }
+                        })
+                    ));
+                    tagSubItems.push(...deleteTagItems);
                 }
             } else {
                 // =============== 通常モード ===============
@@ -639,9 +653,9 @@ export function useStickyNoteContextMenu({
 
                 if (assignableTags.length > 0) {
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-                    for (const [index, tag] of assignableTags.entries()) {
+                    const assignTagItems = await Promise.all(assignableTags.map((tag, index) => {
                         const isChecked = currentTags.includes(tag);
-                        tagSubItems.push(await MenuItem.new({
+                        return MenuItem.new({
                             id: contextMenuTagItemId('tag', index),
                             text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
                             action: async () => {
@@ -655,8 +669,9 @@ export function useStickyNoteContextMenu({
                                     emit('fusen:reload_note', { path: selectedFile.path });
                                 });
                             }
-                        }));
-                    }
+                        });
+                    }));
+                    tagSubItems.push(...assignTagItems);
                     tagSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                     tagSubItems.push(await MenuItem.new({
                         id: 'ctx_enter_del_mode',
@@ -721,7 +736,7 @@ export function useStickyNoteContextMenu({
                     if (!selectedFile) return;
                     isDeletingRef.current = true;
                     await saveNoteContent(editBody, rawFrontmatter, false);
-                    await playSaveSound();
+                    void playSaveSound();
                     await invoke('fusen_archive_note', { path: selectedFile.path, targetTag: targetTag ?? null });
                     const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
                     await win.hide();
@@ -740,13 +755,14 @@ export function useStickyNoteContextMenu({
             if (archiveTags.length > 1) {
                 // 複数タグ: サブメニューで移動先を選択
                 const archiveSubItems: any[] = [];
-                for (const [index, tag] of archiveTags.entries()) {
-                    archiveSubItems.push(await MenuItem.new({
+                const archiveTagItems = await Promise.all(archiveTags.map((tag, index) =>
+                    MenuItem.new({
                         id: contextMenuTagItemId('archive_tag', index),
                         text: `🏷️ ${tag}`,
                         action: () => doArchive(tag)
-                    }));
-                }
+                    })
+                ));
+                archiveSubItems.push(...archiveTagItems);
                 archiveSubItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));
                 archiveSubItems.push(await MenuItem.new({
                     id: 'ctx_archive_no_tag',
@@ -769,38 +785,39 @@ export function useStickyNoteContextMenu({
             }
 
             const appOperationLabels = getAppOperationMenuLabels(hotkeyBindings, language);
+            const appOperationItems = await Promise.all([
+                MenuItem.new({
+                    id: 'ctx_app_search',
+                    text: appOperationLabels.search,
+                    action: async () => {
+                        const { emit } = await import('@tauri-apps/api/event');
+                        await emit('fusen:open_search');
+                    },
+                }),
+                MenuItem.new({
+                    id: 'ctx_app_arrange',
+                    text: appOperationLabels.arrange,
+                    action: () => invoke('fusen_arrange_by_tag'),
+                }),
+                MenuItem.new({
+                    id: 'ctx_app_arrange_undo',
+                    text: appOperationLabels.undoArrange,
+                    action: () => invoke('fusen_arrange_undo'),
+                }),
+                PredefinedMenuItem.new({ item: 'Separator' }),
+                MenuItem.new({
+                    id: 'ctx_app_settings',
+                    text: appOperationLabels.settings,
+                    action: async () => {
+                        const { emit } = await import('@tauri-apps/api/event');
+                        await emit('fusen:open_settings', {});
+                    },
+                }),
+            ]);
             const appOperationSubmenu = await Submenu.new({
                 id: 'ctx_app_operations',
                 text: appOperationLabels.submenu,
-                items: [
-                    await MenuItem.new({
-                        id: 'ctx_app_search',
-                        text: appOperationLabels.search,
-                        action: async () => {
-                            const { emit } = await import('@tauri-apps/api/event');
-                            await emit('fusen:open_search');
-                        },
-                    }),
-                    await MenuItem.new({
-                        id: 'ctx_app_arrange',
-                        text: appOperationLabels.arrange,
-                        action: () => invoke('fusen_arrange_by_tag'),
-                    }),
-                    await MenuItem.new({
-                        id: 'ctx_app_arrange_undo',
-                        text: appOperationLabels.undoArrange,
-                        action: () => invoke('fusen_arrange_undo'),
-                    }),
-                    await PredefinedMenuItem.new({ item: 'Separator' }),
-                    await MenuItem.new({
-                        id: 'ctx_app_settings',
-                        text: appOperationLabels.settings,
-                        action: async () => {
-                            const { emit } = await import('@tauri-apps/api/event');
-                            await emit('fusen:open_settings', {});
-                        },
-                    }),
-                ],
+                items: appOperationItems,
             });
 
             menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));

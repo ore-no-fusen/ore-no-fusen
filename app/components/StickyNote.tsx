@@ -1714,7 +1714,7 @@ const StickyNote = memo(function StickyNote() {
         try {
             isDeletingRef.current = true;
             await saveNoteContent(editBody, rawFrontmatter, false);
-            await playSaveSound();
+            void playSaveSound();
             await invoke('fusen_archive_note', { path: selectedFile.path, targetTag });
             const win = getCurrentWindow();
             await win.hide();
@@ -1777,7 +1777,7 @@ const StickyNote = memo(function StickyNote() {
             setContent(savedBody);
             setEditBody(savedBody);
             originalRecipeBodyRef.current = savedBody;
-            await playSaveSound();
+            void playSaveSound();
             const win = getCurrentWindow();
             await hideReturnedCrystalWindow(win);
             isDeletingRef.current = false;

@@ -503,7 +503,7 @@ function OrchestratorContent() {
       if (duplicatePath) {
         const newNote = await invoke<any>('fusen_duplicate_note', { path: duplicatePath });
         console.log('[CREATE] duplicate newNote:', newNote.meta.path);
-        await playCreateSound();
+        void playCreateSound();
         setFiles(prev => [...prev, newNote.meta]);
         await openNoteWindow(newNote.meta.path, undefined, false);
         return;
@@ -619,7 +619,7 @@ function OrchestratorContent() {
           perfStartedAt: perfT0 ?? now,
         });
 
-        await playCreateSound();
+        void playCreateSound();
 
         // 次のプールウィンドウを補充（バックグラウンドで順次）
         invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
@@ -639,7 +639,7 @@ function OrchestratorContent() {
         try {
           const newNote = await invoke<any>('fusen_create_note', { folderPath: targetFolder, context: overrideContext || 'NewNote' });
           console.log('[CREATE] fallback newNote:', newNote.meta.path);
-          await playCreateSound();
+          void playCreateSound();
           setFiles(prev => [...prev, newNote.meta]);
 
           await openNoteWindow(newNote.meta.path, sourceMeta ? await (async () => {
