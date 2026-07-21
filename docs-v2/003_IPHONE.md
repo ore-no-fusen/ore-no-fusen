@@ -206,7 +206,7 @@ flowchart LR
     Login --> Push
     Push --> List
     List <--> Write
-    PWA -->|"トークンあり + 通知設定済み"| List
+    PWA -->|"トークンあり + 通知設定済み"| Write
     PWA -->|"通知タップ / pending_open"| Write
 ```
 <p class="mermaid-caption">図 3-1　起動時の画面遷移ルール</p>
@@ -219,7 +219,7 @@ flowchart LR
 | 2 | URL に `?code=`（OAuthコールバック） | Vercel でトークン取得 → push |
 | 3 | URL に `?note=`（通知タップで起動） | IndexedDB からノート読み込み → write |
 | 4 | token あり・pending_open あり（30分以内） | IndexedDB からノート読み込み → write |
-| 5 | token あり・`viewer_push_done=true` | list（通常起動） |
+| 5 | token あり・`viewer_push_done=true` | write（通常起動。IndexedDB の通知確認を待たず入力可能にする） |
 | 6 | token あり・push 未設定 | push（通知セットアップ） |
 | 7 | token なし | login |
 
@@ -1370,5 +1370,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 18 | 1.17 | 26-06-05 | PC→iPhone送信直前に `push_devices.json` を Drive から再取得する仕様を明記。予見可能なPush不整合はアプリ側で回避し、エラー時はユーザーが取れる復旧手順を表示する方針を追記。 |
 | 19 | 1.18 | 26-06-26 | §1.1 に iPhone PWA の画面一覧表（表 1.1-1）を追加。各画面に画面 ID（`step` = banner / login / push / list / write）と画面名を付け、PC 側設計書（002_PC §1.3）と体裁を統一。 |
 | 20 | 1.19 | 26-07-13 | 図3-4のiPhone→PC受信に受信IDハッシュによる冪等化を追加。PC保存後・Drive処理済み更新前に終了しても、再受信で付箋と添付を重複作成しない仕様を明記。 |
+| 21 | 1.20 | 26-07-22 | 通常起動先を編集画面へ変更。通知メモ確認を待たず入力可能にし、入力開始済みなら通知メモによる上書きを防止する。`/viewer` は2回目以降キャッシュを即時表示してバックグラウンド更新する。 |
 
 </div>

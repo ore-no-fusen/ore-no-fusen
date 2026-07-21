@@ -1,4 +1,5 @@
 import withPWA from 'next-pwa';
+import defaultRuntimeCaching from 'next-pwa/cache.js';
 import { withSentryConfig } from '@sentry/nextjs';
 
 import fs from 'fs';
@@ -52,6 +53,19 @@ const pwaConfig = withPWA({
   // /viewer はオンライン必須（Google Drive依存）のためprecaching不要
   // precachingを全て無効化することでSWが即座にactivatedになる
   exclude: [/.*/],
+  runtimeCaching: [
+    {
+      urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname === '/viewer',
+      handler: 'StaleWhileRevalidate',
+      method: 'GET',
+      options: {
+        cacheName: 'viewer-shell',
+        cacheableResponse: { statuses: [200] },
+        expiration: { maxEntries: 2, maxAgeSeconds: 24 * 60 * 60 },
+      },
+    },
+    ...defaultRuntimeCaching,
+  ],
 })(nextConfig);
 
 // 設定をエクスポート（ここが最後です）

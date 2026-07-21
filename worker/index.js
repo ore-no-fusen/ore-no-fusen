@@ -2,7 +2,7 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '4.4.0-pwa.1';
+const SW_VERSION = '5.0.0-pwa.1';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
