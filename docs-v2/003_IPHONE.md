@@ -36,8 +36,8 @@ banner・login・push・list・write の5画面それぞれの表示条件と役
 | `banner` | インストール案内 | Safari で URL を直接開いた（PWA ではない） |
 | `login` | ログイン | アクセストークンが無い（初回 or 期限切れ） |
 | `push` | 通知設定 | トークンあり ＋ `viewer_push_done` が未設定 |
-| `list` | メモ一覧 | トークンあり ＋ `viewer_push_done=true`（通常起動） |
-| `write` | 編集 | list からメモ選択・新規作成、または通知タップ |
+| `list` | メモ一覧 | 編集画面から一覧を開いた場合 |
+| `write` | 編集 | トークンあり ＋ `viewer_push_done=true`（通常起動）、list からメモ選択・新規作成、または通知タップ |
 
 <!-- インストール案内 -->
 <div class="group-label group-safari">インストール案内画面 — Safariで /viewer を開いたとき（PWAではない）</div>
@@ -206,7 +206,7 @@ flowchart LR
     Login --> Push
     Push --> List
     List <--> Write
-    PWA -->|"トークンあり + 通知設定済み"| List
+    PWA -->|"トークンあり + 通知設定済み"| Write
     PWA -->|"通知タップ / pending_open"| Write
 ```
 <p class="mermaid-caption">図 3-1　起動時の画面遷移ルール</p>
@@ -219,7 +219,7 @@ flowchart LR
 | 2 | URL に `?code=`（OAuthコールバック） | Vercel でトークン取得 → push |
 | 3 | URL に `?note=`（通知タップで起動） | IndexedDB からノート読み込み → write |
 | 4 | token あり・pending_open あり（30分以内） | IndexedDB からノート読み込み → write |
-| 5 | token あり・`viewer_push_done=true` | list（通常起動） |
+| 5 | token あり・`viewer_push_done=true` | write（通常起動。IndexedDB の通知確認を待たず入力可能にする） |
 | 6 | token あり・push 未設定 | push（通知セットアップ） |
 | 7 | token なし | login |
 
@@ -1041,7 +1041,7 @@ sequenceDiagram
     PC->>Drive: ❼ notes_from_iphone.json を確認
     Drive-->>PC: ❽ 新着データ + 画像/動画ファイル名
     PC->>Drive: ❾ fusen_img_*.jpg / fusen_video_* をダウンロード
-    PC->>PC: ❿ Vault に .md / assets / assets/video を保存
+    PC->>PC: ❿ 受信IDハッシュを確認<br>未保存なら Vault に .md / assets / assets/video を保存
     PC->>Drive: ⓫ 処理済みアイテムまたはキューファイルを削除
     PC->>Drive: ⓬ fusen_img_*.jpg / fusen_video_* を削除
     PC->>UserPC: ⓭ 新規付箋ウィンドウを開く
@@ -1062,6 +1062,11 @@ sequenceDiagram
 <strong>送信キュー保護：</strong>iPhone PWA は <code>notes_from_iphone.json</code> の読み込みに失敗した場合、空配列で上書きしない。
 ファイル未作成の場合だけ空キューとして扱い、それ以外の Drive 失敗では送信を中止する。
 これにより、一時的な Drive エラーで他の未処理送信を消さない。
+</Note>
+
+<Note type="warning">
+<strong>PC再受信時の重複防止：</strong>PCは受信IDをハッシュ化して作成した付箋の管理情報へ保存する。
+PC保存後、Driveの処理済み更新前にアプリが終了して同じIDを再受信した場合は、新しい付箋や添付ファイルを作らず、Driveの処理済み更新だけを再試行する。
 </Note>
 
 ### 4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="./000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）
@@ -1157,8 +1162,8 @@ iPhone PWA は「リストモード」と「ライトモード」の 2 画面構
 
 | No | モード | 状態 | 遷移トリガー |
 |:---|:---|:---|:---|
-| 1 | **リストモード** | Drive から同期した付箋を一覧表示している状態 | アプリ起動後の初期画面 |
-| 2 | **ライトモード** | 1 枚の付箋を全画面で編集している状態（800ms 自動保存） | 付箋タップ or ＋ボタン |
+| 1 | **リストモード** | Drive から同期した付箋を一覧表示している状態 | ライトモードから一覧を開く |
+| 2 | **ライトモード** | 1 枚の付箋を全画面で編集している状態（800ms 自動保存） | 通常起動、通知タップ、またはリストの付箋タップ・＋ボタン |
 
 ```mermaid
 graph LR
@@ -1364,5 +1369,8 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 17 | 1.16 | 26-05-31 | 設定画面の接続状態で Drive 未処理キューの中身確認と、ユーザー確認付きのキューJSON削除を行える仕様を追記。 |
 | 18 | 1.17 | 26-06-05 | PC→iPhone送信直前に `push_devices.json` を Drive から再取得する仕様を明記。予見可能なPush不整合はアプリ側で回避し、エラー時はユーザーが取れる復旧手順を表示する方針を追記。 |
 | 19 | 1.18 | 26-06-26 | §1.1 に iPhone PWA の画面一覧表（表 1.1-1）を追加。各画面に画面 ID（`step` = banner / login / push / list / write）と画面名を付け、PC 側設計書（002_PC §1.3）と体裁を統一。 |
+| 20 | 1.19 | 26-07-13 | 図3-4のiPhone→PC受信に受信IDハッシュによる冪等化を追加。PC保存後・Drive処理済み更新前に終了しても、再受信で付箋と添付を重複作成しない仕様を明記。 |
+| 21 | 1.20 | 26-07-22 | 通常起動先を編集画面へ変更。通知メモ確認を待たず入力可能にし、入力開始済みなら通知メモによる上書きを防止する。`/viewer` は2回目以降キャッシュを即時表示してバックグラウンド更新する。 |
+| 22 | **1.21** | 26-07-22 | §1.1と§5.1に残っていた旧仕様「通常起動先は一覧」を訂正し、通常起動先が編集画面であることを全記述で統一。 |
 
 </div>

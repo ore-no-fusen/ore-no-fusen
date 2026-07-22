@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
+v2.17 | 2026-07-19 | USDM (Universal Specification Describing Manner)
 </p>
 
 ---
@@ -968,7 +968,17 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
   </tbody>
 </table>
 
-### 8.2 マルチモニター・環境変動対応
+### 8.2 デスクトップショートカット
+
+- `REQ_NF_02`: Microsoft Storeからインストールした利用者が、初回起動後もアプリを迷わず再起動できること。
+- `SPEC-NF-02-01`: LP・Store説明・移行マニュアルは、インストール後にStore画面の［開く］を押すところまで案内する。
+- `SPEC-NF-02-02`: MSIX版の初回起動時に、デスクトップショートカットを作成するか1回だけ確認する。
+- `SPEC-NF-02-03`: 確認文は「デスクトップにショートカットを作成しますか？」「毎日使う場合は作成をおすすめします。」「後から設定画面でも作成できます。」、選択肢は［作成する］［今回は作成しない］とする。
+- `SPEC-NF-02-04`: MSIX版では「俺の付箋（Store版）」という名称を使い、5.0.0移行期間の旧版ショートカットを上書きしない。
+- `SPEC-NF-02-05`: 設定画面から作成、作り直し、削除ができること。
+- `SPEC-NF-02-06`: Store更新でインストール先の版番号が変わっても同じショートカットから起動できること。
+
+### 8.3 マルチモニター・環境変動対応
 <p class="table-caption">表 8.2-1　マルチモニター・環境変動対応</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
@@ -1002,7 +1012,7 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
   </tbody>
 </table>
 
-### 8.3 セキュリティ・プライバシー
+### 8.4 セキュリティ・プライバシー
 <p class="table-caption">表 8.3-1　セキュリティ・プライバシー</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
@@ -1044,7 +1054,7 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
   </tbody>
 </table>
 
-### 8.4 パフォーマンス・リソース制約
+### 8.5 パフォーマンス・リソース制約
 <p class="table-caption">表 8.4-1　パフォーマンス・リソース制約</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
@@ -1078,7 +1088,7 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
   </tbody>
 </table>
 
-### 8.5 多言語化・i18n 要件
+### 8.6 多言語化・i18n 要件
 <p class="table-caption">表 8.5-1　多言語化・i18n 要件</p>
 <table class="module-table" style="font-size:12px; width:100%; border-collapse: collapse; margin-bottom:24px;">
   <thead>
@@ -1095,8 +1105,8 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
   </thead>
   <tbody>
     <tr>
-            <td rowspan="3" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_NF_05</td>
-      <td rowspan="3" style="vertical-align:top; background-color:#f8fafc;">
+            <td rowspan="6" style="vertical-align:top; text-align:center; font-weight:bold; background-color:#f8fafc;">REQ_NF_05</td>
+      <td rowspan="6" style="vertical-align:top; background-color:#f8fafc;">
         <strong>【要求】</strong><br>
         環境に縛られず、様々な言語話者が直感的にツールを使用できること。<br><br>
         <strong>【理由】</strong><br>
@@ -1107,11 +1117,23 @@ v2.12 | 2026-05-06 | USDM (Universal Specification Describing Manner)
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-02</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;">サポート言語は日本語（<code>ja</code>）および英語（<code>en</code>）を基本とする。設定画面からも強制切替可能。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">サポート言語は日本語（<code>ja</code>）および英語（<code>en</code>）を基本とする。設定画面からも強制切替可能。初回確認、検索、待機表示、確認・エラーなどの共通UIも選択言語へ追従する。</td>
     </tr>
     <tr>
-      <td style=" text-align:center;">SPEC-NF-05-03</td>
-      <td style="">コンテキストメニュー・ツールバーヒント・各種ボタンはすべて翻訳ファイルのキー（<code>lib/i18n.ts</code>）を通じた動的出力とする。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-03</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">コンテキストメニュー・ツールバーヒント・各種ボタンはすべて翻訳定義を通じた動的出力とする。</td>
+    </tr>
+    <tr>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-04</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">英語UIから開くWebページには言語を引き継ぎ、サポートページを英語で表示する。利用者が編集した名称・支援者名・コメントなどのユーザーデータは自動翻訳しない。</td>
+    </tr>
+    <tr>
+      <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-NF-05-05</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;">設定画面は全タブ、展開内部、確認・エラー・診断結果まで選択言語で表示する。ひな形の既定節名は日本語・英語間で双方向変換し、独自の節名は保持する。</td>
+    </tr>
+    <tr>
+      <td style="text-align:center;">SPEC-NF-05-06</td>
+      <td>ユーザーガイドは日本語・英語を提供し、Microsoft Store MSIXを標準導入経路、<code>winget --source msstore</code>を補助経路として案内する。旧MSI・NSISは5.0.0の移行用途に限定し、画面・保存先・操作説明を現行実装と一致させる。</td>
     </tr>
   </tbody>
 </table>
@@ -1364,5 +1386,8 @@ PCとiPhoneを繋ぐ双方向同期・通知・PWA機能を定義します。v2.
 | 6 | v2.14 | 26-05-29 | 9.2 iPhone → PC 送信に複数 PC の送信先選択を追加。`pc_devices.json` と `targetPcId` により、自分宛のアイテムのみ受信する制約と、PC 名簿を書き込むタイミングを明記。 |
 | 7 | v2.15 | 26-05-30 | 9.1 PC → iPhone 送信で、VAPID 鍵はユーザー本人の Google Drive に置かれる連携端末群の共有通知鍵であり、盗まれると第三者が正規通知のように見える Push 通知を送れる可能性があること、Drive の `push_keys.json` 1 個を正とし、各PCのローカル鍵で共有鍵を上書きしてはならない制約を追加。 |
 | 8 | v2.16 | 26-05-31 | SPEC-IP-01-02 の VAPID 鍵説明を **3 者（ユーザー / 俺の付箋アプリ開発者 / 悪意ある第三者）** の語彙に統一。「開発者」「第三者」表記の揺れを解消し、設計書 003「3.0 鍵の前提」と 005「0 登場人物と関係」への参照を追加。 |
+| 9 | v2.17 | 26-07-19 | §8.2へMicrosoft Storeの［開く］、MSIX初回起動時の確認、「俺の付箋（Store版）」ショートカット、設定画面からの再作成、更新後の継続利用要件を追加。 |
+| 10 | **v2.18** | 26-07-19 | SPEC-NF-05-06を追加。日英ユーザーガイド、Store MSIX標準導入、winget補助導入、5.0.0旧版移行、現行実装との整合を要求化。 |
+| 11 | **v2.19** | 26-07-22 | SPEC-NF-05-02へ、初回確認・検索・待機表示・確認・エラーを含む共通UIの選択言語追従を明記。 |
 
 </div>

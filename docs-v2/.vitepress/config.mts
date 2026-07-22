@@ -22,10 +22,25 @@ export default withMermaid(defineConfig({
   themeConfig: {
     nav: [
       { text: 'ユーザーガイド', link: '/user-guide/' },
+      { text: 'English Guide', link: '/en/user-guide/' },
       { text: '設計書ポータル', link: '/' }
     ],
 
     sidebar: {
+      '/en/user-guide/': [
+        {
+          text: 'User Guide',
+          items: [
+            { text: 'Help Home', link: '/en/user-guide/' },
+            { text: 'Install and Get Started', link: '/en/user-guide/install' },
+            { text: 'Basic Use', link: '/en/user-guide/basic' },
+            { text: 'Advanced Use', link: '/en/user-guide/advanced' },
+            { text: 'iPhone Sync', link: '/en/user-guide/iphone' },
+            { text: 'Troubleshooting', link: '/en/user-guide/troubleshooting' },
+            { text: 'Comic Guide', link: '/en/user-guide/comic' }
+          ]
+        }
+      ],
       '/user-guide/': [
         {
           text: 'ユーザーガイド',
