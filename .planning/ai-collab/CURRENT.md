@@ -841,3 +841,4 @@
 - TypeScript、ESLint、Next.js本番ビルド、VitePressユーザーガイドビルドに成功した。
 - 次: developへコミット・push後、LPとユーザーガイドを本番公開する。5.0.0のDo Releaseはその後に実行する。
 - LP公開は成功。ユーザーガイドはdevelopからのPages配備が環境のmain限定ポリシーで拒否されたため、`Do Non-App Release`へ`docs`対象を追加し、docs-v2だけをmainへ安全に反映してから公開する方式へ修正中。
+- ユーザーガイドのmain反映とPages公開は成功。LPはmainへの反映後、`app/landing/page.tsx`の直接依存`app/utils/analytics.ts`が非アプリ公開対象に含まれずVercelビルドに失敗したため、この1ファイルだけをLP公開の許可対象へ追加する。

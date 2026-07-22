@@ -68,6 +68,7 @@ jobs:
                 app/landing \
                 app/sitemap.ts \
                 app/robots.ts \
+                app/utils/analytics.ts \
                 public/screenshots
               ;;
             docs)
@@ -93,7 +94,7 @@ jobs:
           echo "$CHANGED"
 
           if [ "$TARGET" = "landing" ]; then
-            ALLOWED='^(app/landing/|app/sitemap\.ts$|app/robots\.ts$|public/screenshots/)'
+            ALLOWED='^(app/landing/|app/sitemap\.ts$|app/robots\.ts$|app/utils/analytics\.ts$|public/screenshots/)'
           elif [ "$TARGET" = "docs" ]; then
             ALLOWED='^docs-v2/'
           else
@@ -128,7 +129,7 @@ jobs:
           COMMIT_MSG="${MSG:-chore(non-app): publish $TARGET updates from develop}"
 
           if [ "$TARGET" = "landing" ]; then
-            git add app/landing app/sitemap.ts app/robots.ts public/screenshots
+            git add app/landing app/sitemap.ts app/robots.ts app/utils/analytics.ts public/screenshots
           elif [ "$TARGET" = "docs" ]; then
             git add docs-v2
           else
