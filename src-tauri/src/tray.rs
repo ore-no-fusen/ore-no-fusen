@@ -17,26 +17,106 @@ use crate::logic;
 use crate::storage;
 use std::sync::Mutex;
 
+fn format_shortcut_for_menu(shortcut: &str) -> String {
+    let mut modifiers = Vec::new();
+    let mut keys = Vec::new();
+
+    for part in shortcut.split('+') {
+        let trimmed = part.trim();
+        match trimmed.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => modifiers.push((0, "Ctrl".to_string())),
+            "shift" => modifiers.push((1, "Shift".to_string())),
+            "alt" => modifiers.push((2, "Alt".to_string())),
+            "super" | "win" | "meta" => modifiers.push((3, "Win".to_string())),
+            _ => {
+                let lower = trimmed.to_ascii_lowercase();
+                let display = if lower.starts_with("key") && trimmed.len() == 4 {
+                    trimmed[3..].to_ascii_uppercase()
+                } else if lower.starts_with("digit") && trimmed.len() == 6 {
+                    trimmed[5..].to_string()
+                } else if trimmed.len() == 1 {
+                    trimmed.to_ascii_uppercase()
+                } else {
+                    trimmed.to_string()
+                };
+                keys.push(display);
+            }
+        }
+    }
+
+    modifiers.sort_by_key(|(order, _)| *order);
+    modifiers
+        .into_iter()
+        .map(|(_, label)| label)
+        .chain(keys)
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+fn menu_label(base: &str, shortcut: &str, is_en: bool) -> String {
+    if is_en {
+        format!("{}\t{}", base, shortcut)
+    } else {
+        format!("{} ({})", base, shortcut)
+    }
+}
+
+fn new_note_shortcut_for_menu(trigger: &str, shortcut: &str, is_en: bool) -> String {
+    match trigger {
+        "double_ctrl" => {
+            if is_en { "Double Ctrl".to_string() } else { "Ctrl 2回".to_string() }
+        }
+        "double_shift" => {
+            if is_en { "Double Shift".to_string() } else { "Shift 2回".to_string() }
+        }
+        _ => format_shortcut_for_menu(shortcut),
+    }
+}
+
 pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     refresh_tray_menu(app)
 }
 
 
 pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    // [i18n] Get language setting
-    let lang = match crate::settings::get_settings(app.clone()) {
-        Ok(s) => s.language,
-        Err(_) => "ja".to_string(),
-    };
-    let is_en = lang == "en";
+    // [i18n] Get language and shortcut settings
+    let settings = crate::settings::get_settings(app.clone()).unwrap_or_default();
+    let is_en = settings.language == "en";
+    let new_note_shortcut = new_note_shortcut_for_menu(
+        settings.new_note_trigger.as_deref().unwrap_or("shortcut"),
+        settings.shortcut_new_note.as_deref().unwrap_or("ctrl+n"),
+        is_en,
+    );
+    let toggle_shortcut = format_shortcut_for_menu(
+        settings.shortcut_toggle_visibility.as_deref().unwrap_or("ctrl+shift+h"),
+    );
+    let arrange_shortcut = format_shortcut_for_menu(
+        settings.shortcut_arrange.as_deref().unwrap_or("ctrl+shift+l"),
+    );
 
     // Labels
-    let label_hide = if is_en { "Hide All\tCtrl+Shift+H" } else { "全部隠す (Ctrl+Shift+H)" };
-    let label_show = if is_en { "Show All" } else { "全部戻す (Show All)" };
+    let label_hide = menu_label(
+        if is_en { "Hide All" } else { "全部隠す" },
+        &toggle_shortcut,
+        is_en,
+    );
+    let label_show = menu_label(
+        if is_en { "Show All" } else { "全部戻す (Show All)" },
+        &toggle_shortcut,
+        is_en,
+    );
     let label_settings = if is_en { "Settings" } else { "設定 (Settings)" };
-    let label_new_note = if is_en { "New Note" } else { "新規メモ (New Note)" };
-    let label_search = if is_en { "Search" } else { "検索 (Search)" }; // [NEW] 全文検索
-    let label_arrange_by_tag = if is_en { "Arrange by Tag" } else { "タグで整列 (Arrange by Tag)" };
+    let label_new_note = menu_label(
+        if is_en { "New Note" } else { "新規メモ (New Note)" },
+        &new_note_shortcut,
+        is_en,
+    );
+    let label_search = menu_label(if is_en { "Search" } else { "検索 (Search)" }, "Ctrl+F", is_en);
+    let label_arrange_by_tag = menu_label(
+        if is_en { "Arrange by Tag" } else { "タグで整列 (Arrange by Tag)" },
+        &arrange_shortcut,
+        is_en,
+    );
     let label_arrange_undo = if is_en { "Undo Arrange" } else { "整列を元に戻す (Undo Arrange)" };
     let label_filter = if is_en { "Filter by Tags" } else { "タグで絞り込む (Filter by Tags)" };
     let label_quit = if is_en { "Quit" } else { "終了 (Quit)" };
@@ -190,4 +270,30 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_shortcut_for_menu, menu_label, new_note_shortcut_for_menu};
+
+    #[test]
+    fn formats_saved_shortcuts_for_tray_display() {
+        assert_eq!(format_shortcut_for_menu("ctrl+shift+l"), "Ctrl+Shift+L");
+        assert_eq!(format_shortcut_for_menu("super+n"), "Win+N");
+        assert_eq!(format_shortcut_for_menu("Shift+Control+KeyL"), "Ctrl+Shift+L");
+        assert_eq!(format_shortcut_for_menu("Control+Digit1"), "Ctrl+1");
+    }
+
+    #[test]
+    fn appends_shortcut_using_language_specific_menu_style() {
+        assert_eq!(menu_label("新規メモ", "Ctrl+N", false), "新規メモ (Ctrl+N)");
+        assert_eq!(menu_label("New Note", "Ctrl+N", true), "New Note\tCtrl+N");
+    }
+
+    #[test]
+    fn displays_the_configured_new_note_trigger() {
+        assert_eq!(new_note_shortcut_for_menu("shortcut", "alt+n", false), "Alt+N");
+        assert_eq!(new_note_shortcut_for_menu("double_ctrl", "ctrl+n", false), "Ctrl 2回");
+        assert_eq!(new_note_shortcut_for_menu("double_shift", "ctrl+n", true), "Double Shift");
+    }
 }

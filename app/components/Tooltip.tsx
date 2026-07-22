@@ -18,6 +18,8 @@ type TipPos = {
     arrowOffset?: number;
     /** top-left 用: 吹き出しの左端を基準に、矢印（▼）を置く絶対 px 位置 */
     arrowLeftPx?: number;
+    /** top-right-arrow-shifted 用: 吹き出しの右端を基準に、矢印（▼）を置く絶対 px 位置 */
+    arrowRightPx?: number;
 };
 
 /** ツールチップ表示に必要な最低高さ (px) */
@@ -45,7 +47,12 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
             const arrowLeftPx = r.width / 2;
             setTipPos({ top: base, left: r.left, flipDown, arrowLeftPx });
         } else if (placement === 'top-right-arrow-shifted') {
-            setTipPos({ top: base, right: window.innerWidth - r.right, flipDown, arrowOffset: 18 });
+            setTipPos({
+                top: base,
+                right: window.innerWidth - r.right,
+                flipDown,
+                arrowRightPx: r.width / 2,
+            });
         } else if (placement === 'top-right-shifted') {
             const minLeft = 4 + SHIFTED_TIP_WIDTH / 2;
             const maxLeft = window.innerWidth - 4 - SHIFTED_TIP_WIDTH / 2;
@@ -95,6 +102,8 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
         ? `off-${tipPos.arrowOffset}`
         : tipPos?.arrowLeftPx !== undefined
             ? `lpx-${Math.round(tipPos.arrowLeftPx)}`
+            : tipPos?.arrowRightPx !== undefined
+                ? `rpx-${Math.round(tipPos.arrowRightPx)}`
             : undefined;
 
     const tooltip = tipPos && tipStyle ? createPortal(
@@ -108,6 +117,9 @@ export default function Tooltip({ text, hint, children, placement = 'top-right' 
             )}
             {tipPos.arrowLeftPx !== undefined && (
                 <style>{`.fusen-tooltip[data-arrow="lpx-${Math.round(tipPos.arrowLeftPx)}"]::after{left:${Math.round(tipPos.arrowLeftPx)}px;transform:translateX(-50%);}`}</style>
+            )}
+            {tipPos.arrowRightPx !== undefined && (
+                <style>{`.fusen-tooltip[data-arrow="rpx-${Math.round(tipPos.arrowRightPx)}"]::after{left:auto;right:${Math.round(tipPos.arrowRightPx)}px;transform:translateX(50%);}`}</style>
             )}
             <span style={{ display: 'block', fontSize: '11px', color: '#444', fontWeight: 500 }}>{text}</span>
             {hint && (

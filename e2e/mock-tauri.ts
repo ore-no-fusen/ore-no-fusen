@@ -8,8 +8,8 @@ import { Page } from '@playwright/test';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page) {
-    await page.addInitScript(() => {
+export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en' } = {}) {
+    await page.addInitScript((mockOptions) => {
         // --- Windowsアプリ側コマンドの処理定義 ---
         const handleIpc = (cmd: string, args: any) => {
             console.log('[Mock Tauri] IPC:', cmd, args);
@@ -69,7 +69,7 @@ updated: 2026-01-31
                 case 'get_settings':
                     return {
                         base_path: 'C:/test',
-                        language: 'ja',
+                        language: mockOptions.language ?? 'ja',
                         auto_start: false,
                         font_size: 12,
                         sound_enabled: true,
@@ -104,6 +104,31 @@ updated: 2026-01-31
 
                 case 'fusen_open_containing_folder':
                     return null;
+
+                case 'fusen_path_exists':
+                    return true;
+
+                case 'fusen_list_notes':
+                case 'fusen_list_pc_devices':
+                case 'fusen_list_push_devices':
+                    return [];
+
+                case 'fusen_get_drive_queue_counts':
+                    return { to_iphone: 0, from_iphone: 0 };
+
+                case 'fusen_get_google_account':
+                    return null;
+
+                case 'fusen_list_drive_temp_files':
+                    return {
+                        totalCount: 0,
+                        totalBytes: 0,
+                        oldCount: 0,
+                        oldBytes: 0,
+                        skippedReferencedCount: 0,
+                        retentionDays: 30,
+                        files: [],
+                    };
 
                 case 'fusen_debug_log':
                     return null;
@@ -286,5 +311,5 @@ updated: 2026-01-31
         });
 
         (window as any).__TAURI__ = tauriProxy;
-    });
+    }, options);
 }

@@ -30,6 +30,8 @@ import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 // UIコンポーネント
 import type { RichTextEditorRef } from './RichTextEditor';
 import ToolbarButtons from './ToolbarButtons';
+import { formatNewNoteTriggerLabel } from '@/app/utils/newNoteTriggerLabel';
+import { STICKY_ICON_BUTTON_SIZE } from '@/app/utils/stickyControlStyles';
 import FloatingFormatBar from './FloatingFormatBar';
 import MarkdownRenderer from './MarkdownRenderer';
 import ImageAnnotationModal from './ImageAnnotationModal';
@@ -40,15 +42,35 @@ import Tooltip from './Tooltip';
 
 
 // ユーティリティ
-import { pathsEqual, getFileName } from '../utils/pathUtils';
+import { pathsEqual, getFileName, decodeNotePathFromUrl } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
-import { resolvePath } from '../utils/markdownUtils';
+import { buildFoldedPreview, resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
+import { shouldHandleCrystalTrashRequest } from '../utils/crystalTrashRequest';
 import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
+import { matchesShortcut } from '../utils/shortcutKey';
+import { getUserTags } from '../utils/reservedTags';
+import { buildPerfReadyPayload } from '../utils/perfMeasurement';
+import {
+    appendImprovementHistoryLine as appendCrystalImprovementHistoryLine,
+    createImprovementHistoryLine as createCrystalImprovementHistoryLine,
+    getChangedCrystalSections,
+} from '../utils/crystalFormat';
+import {
+    configToSpec,
+    DEFAULT_CRYSTAL_FORMATS,
+    loadCrystalFormats,
+    type CrystalFormats,
+} from '../utils/crystalFormatConfig';
 
 // API
 import { NoteMeta } from '@/app/api/notes';
+import { returnRecipe } from '@/app/api/recipes';
+import { hideReturnedCrystalWindow } from '@/app/utils/crystalWindowLifecycle';
+import { extractHydratedNoteMeta } from '@/app/utils/hydratedNoteMeta';
+import { shouldEditPromotedPoolNote } from '@/app/utils/invisibleNotePool';
 import { invoke } from '@tauri-apps/api/core';
+import { getWindowGeometry } from '@/app/api/window';
 
 // 設定・国際化
 import { useSettings } from "@/lib/settings-store";
@@ -58,14 +80,15 @@ import ErrorBoundary from './ErrorBoundary';
 const loadRichTextEditor = () => import('./RichTextEditor');
 const RichTextEditor = lazy(loadRichTextEditor);
 
-// ホバーフォーカスのレートリミット用変数
-let hoverFocusTimer: NodeJS.Timeout | null = null;
-
 const StickyNote = memo(function StickyNote() {
     const searchParams = useSearchParams();
     // [NEW] プールモード判定と動的パス
     const isPoolParams = searchParams.get('isPool') === 'true';
-    const [dynamicUrlPath, setDynamicUrlPath] = useState<string | null>(searchParams.get('path') || null);
+    const isStartupRestore = searchParams.get('startupRestore') === '1';
+    const [dynamicUrlPath, setDynamicUrlPath] = useState<string | null>(() => {
+        const pathParam = searchParams.get('path');
+        return pathParam ? decodeNotePathFromUrl(pathParam) : null;
+    });
     const [isPool, setIsPool] = useState<boolean>(isPoolParams);
     const isPoolRef = useRef(isPoolParams);
     const [isNewState, setIsNewState] = useState<boolean>(searchParams.get('isNew') === '1');
@@ -89,7 +112,6 @@ const StickyNote = memo(function StickyNote() {
         void loadRichTextEditor();
     }, []);
 
-
     const [isNewNote, setIsNewNote] = useState(isNew);
 
     // フローティングフォーマットバー
@@ -103,6 +125,21 @@ const StickyNote = memo(function StickyNote() {
     // 画像アノテーションモーダル
     const [annotationTarget, setAnnotationTarget] = useState<{ path: string; url: string } | null>(null);
     const [imageVersion, setImageVersion] = useState(0);
+    const [basePath, setBasePath] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        invoke<string | null>('get_base_path')
+            .then((path) => {
+                if (!cancelled) setBasePath(path);
+            })
+            .catch(() => {
+                if (!cancelled) setBasePath(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     // タグモーダル
     const [showTagModal, setShowTagModal] = useState(false);
@@ -129,6 +166,8 @@ const StickyNote = memo(function StickyNote() {
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null);
     const isCapturingRef = useRef(false);
     const isPromotingRef = useRef(false); // 付箋表示中はフォーカスが外れても編集モードを維持する
+    const lastJsDoubleCtrlDownMsRef = useRef<number | null>(null);
+    const lastJsDoubleCtrlFireMsRef = useRef<number>(0);
     // [REMOVED] lastCtrlNRef (JS 1.2s スロットル) は Pool アーキテクチャ移行により不要になった
     // フォールバック側は page.tsx 400ms グローバルスロットル + Rust 500ms セーフティで保護
 
@@ -141,6 +180,9 @@ const StickyNote = memo(function StickyNote() {
     const lazyFolderPathRef = useRef<string>('');
     // 文字入力と画像貼り付けが同時に lazy 作成を要求しても 1 回にまとめる
     const lazyCreatePromiseRef = useRef<Promise<string | null> | null>(null);
+    const originalRecipeBodyRef = useRef<string | null>(null);
+    const originalRecipePathRef = useRef<string | null>(null);
+    const crystalFormatsRef = useRef<CrystalFormats>(DEFAULT_CRYSTAL_FORMATS);
 
     // アラーム用 refs（setInterval内でstale closureを避けるため）
     const rawFrontmatterForAlarmRef = useRef('');
@@ -166,6 +208,7 @@ const StickyNote = memo(function StickyNote() {
         setSavePending,
         setContent,
         setRawFrontmatter,
+        hydrateLoadedContent,
         pathRef: noteFilePathRef
     } = useNoteFile({
         path: urlPath,
@@ -187,9 +230,29 @@ const StickyNote = memo(function StickyNote() {
         onSaveError: () => setShowSaveError(true),
     });
 
+    const startupReadyEmittedRef = useRef(false);
+    const [startupWindowStateReady, setStartupWindowStateReady] = useState(!isStartupRestore);
+    useEffect(() => {
+        if (!isStartupRestore || loading || !startupWindowStateReady || startupReadyEmittedRef.current) return;
+
+        let cancelled = false;
+        const notifyReady = async () => {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            if (cancelled || startupReadyEmittedRef.current) return;
+            startupReadyEmittedRef.current = true;
+            const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            await emit('fusen:startup_note_ready', { label: getCurrentWebviewWindow().label });
+        };
+        void notifyReady();
+        return () => {
+            cancelled = true;
+        };
+    }, [isStartupRestore, loading, startupWindowStateReady]);
+
 
     // スタイル関連（カスタムフックで一元管理）
-    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize, setNoteFontSize } = useNoteStyles(note);
+    const { noteBackgroundColor, setNoteBackgroundColor, noteFontSize, setNoteFontSize } = useNoteStyles(note, searchParams.get('bg'));
 
     // 削除・アーカイブ中の保存防止フラグ
     const isDeletingRef = useRef(false);
@@ -297,7 +360,7 @@ const StickyNote = memo(function StickyNote() {
         setSavePending(true);
     }, [isPool, setRawFrontmatter, setSavePending]); // isDeletingRef は ref（安定）
 
-    const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize, setIsMinimized } = useWindowManager({
+    const { isMinimized, toggleMinimize, saveWindowState, setOriginalSize } = useWindowManager({
         onGeometryChange: handleGeometryChange,
         onAutoExpand: handleAutoExpand,
         getMinimizedHeight // [New]
@@ -313,6 +376,20 @@ const StickyNote = memo(function StickyNote() {
         removeTagFromNote,
         deleteTagFromAllNotes
     } = useTagManager();
+    const isRecipeNote = currentTags.some((tag: string) => tag.trim().toLowerCase() === 'recipe');
+    const isQaNote = !isRecipeNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'qa');
+    const isTermNote = !isRecipeNote && !isQaNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'term');
+    const isCrystalNote = isRecipeNote || isQaNote || isTermNote;
+    const crystalNoteLabel = isRecipeNote ? 'レシピ' : isQaNote ? 'QA' : '用語';
+    const currentUserTags = useMemo(() => getUserTags(currentTags), [currentTags]);
+
+    useEffect(() => {
+        let cancelled = false;
+        loadCrystalFormats().then((formats) => {
+            if (!cancelled) crystalFormatsRef.current = formats;
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     // 初期ロード時に全タグを取得
     useEffect(() => {
@@ -320,6 +397,19 @@ const StickyNote = memo(function StickyNote() {
     }, [loadAllTags]);
 
     // スクリーンキャプチャ
+    useEffect(() => {
+        const path = selectedFile?.path ?? null;
+        if (!path || !isCrystalNote) {
+            originalRecipeBodyRef.current = null;
+            originalRecipePathRef.current = null;
+            return;
+        }
+        if (!loading && originalRecipePathRef.current !== path) {
+            originalRecipeBodyRef.current = content;
+            originalRecipePathRef.current = path;
+        }
+    }, [content, isCrystalNote, loading, selectedFile?.path]);
+
     const { captureScreen } = useScreenCapture({
         currentFilePath: urlPath,
         noteSeq: selectedFile?.seq || 0,
@@ -349,16 +439,19 @@ const StickyNote = memo(function StickyNote() {
     const initialSyncDone = useRef(false);
     useEffect(() => {
         if (!initialSyncDone.current && note?.meta) {
-            if (note.meta.folded) {
-                if (note.meta.width && note.meta.height) {
-                    setOriginalSize(note.meta.width, note.meta.height);
-                }
-                setIsMinimized(true);
-                toggleMinimize(); // Apply minimisation (size change)
-            }
             initialSyncDone.current = true;
+            const applyInitialWindowState = async () => {
+                if (note.meta.folded) {
+                    if (note.meta.width && note.meta.height) {
+                        setOriginalSize(note.meta.width, note.meta.height);
+                    }
+                    await toggleMinimize();
+                }
+                setStartupWindowStateReady(true);
+            };
+            void applyInitialWindowState();
         }
-    }, [note, toggleMinimize, setOriginalSize, setIsMinimized]);
+    }, [note, toggleMinimize, setOriginalSize]);
 
     // ピン留め状態の同期（初期ロード完了時および変更時）
     useEffect(() => {
@@ -625,14 +718,11 @@ const StickyNote = memo(function StickyNote() {
             const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const thisWin = getCurrentWebviewWindow();
 
-            const u = await thisWin.listen<{ path?: string, folderPath?: string, isNew?: boolean, content?: string, frontmatter?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string }>('fusen:promote_from_pool', async (event) => {
+            const u = await thisWin.listen<{ path?: string, folderPath?: string, isNew?: boolean, content?: string, frontmatter?: string, backgroundColor?: string, hydrateToken?: string, targetPhysX?: number, targetPhysY?: number, targetPhysWidth?: number, targetPhysHeight?: number, t0?: number, runId?: string, perfEnabled?: boolean, perfStartedAt?: number }>('fusen:promote_from_pool', async (event) => {
                 const ts = new Date().toLocaleTimeString('ja-JP');
-                const perfT0 = event.payload.t0;
                 isPromotingRef.current = true; // 付箋表示中フラグ ON（フォーカスが外れても編集モードを維持する）
+                try {
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] START label=${thisWin.label} target=(${event.payload.targetPhysX},${event.payload.targetPhysY}) size=${event.payload.targetPhysWidth}x${event.payload.targetPhysHeight}` }).catch(() => { });
-                if (perfT0) {
-                    invoke('fusen_debug_log', { message: `[PERF|T_PROMOTE_START] elapsed=${Date.now() - perfT0}ms (pool window received promote event)` }).catch(() => { });
-                }
 
                 let promotedBody: string | undefined;
                 if (event.payload.isNew) {
@@ -648,6 +738,24 @@ const StickyNote = memo(function StickyNote() {
                         promotedBody = body;
                         setContent(promotedBody);
                     }
+                } else if (event.payload.path && event.payload.content !== undefined) {
+                    setIsNewState(false);
+                    setIsNewNote(false);
+                    const hydratedMeta = extractHydratedNoteMeta(event.payload.content);
+                    promotedBody = hydrateLoadedContent(
+                        event.payload.path,
+                        event.payload.content,
+                        hydratedMeta,
+                    );
+                    setSelectedFile({
+                        path: event.payload.path,
+                        seq: 0,
+                        context: getFileName(event.payload.path),
+                        updated: '',
+                        ...hydratedMeta,
+                    });
+                    setCurrentTags(hydratedMeta.tags ?? []);
+                    originalRecipeBodyRef.current = promotedBody;
                 }
 
                 // [NEW] Pool lazy 用フォルダパスを保存（1 文字目で fusen_create_note_lazy に渡す）
@@ -677,8 +785,12 @@ const StickyNote = memo(function StickyNote() {
                 // handleFirstChar で fusen_create_note_lazy が成功した後に isPool を解除する。
                 // ここで setIsPool(false) すると urlPath=null のまま「No path parameter」になる。
 
-                // 待機中にフォーカスが外れて編集モードが解除されている可能性があるため、明示的に編集モードを開始
-                startEditing();
+                const opensInEditMode = shouldEditPromotedPoolNote(event.payload.isNew);
+                if (opensInEditMode) {
+                    startEditing();
+                } else {
+                    setIsEditing(false);
+                }
                 // [FIX] startEditing() は stale な initialContent（""）で editBody を上書きするため、
                 // 複製・新規ノートのコンテンツを直接 setEditBody で反映する。
                 if (promotedBody !== undefined) {
@@ -688,9 +800,6 @@ const StickyNote = memo(function StickyNote() {
                 // page.tsx が fusen_show_at_position（α=255 + SetWindowPos + SetForegroundWindow）を
                 // 既に呼び済みのため、ここでの再呼び出しは不要（二重呼び出しで SetLayeredWindowAttributes が失敗する）。
                 invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] fusen_show_at_position already done by page.tsx pos=(${event.payload.targetPhysX ?? 'NOMOVE'},${event.payload.targetPhysY ?? 'NOMOVE'})` }).catch(() => { });
-                if (perfT0) {
-                    invoke('fusen_debug_log', { message: `[PERF|T1_VISIBLE] elapsed=${Date.now() - perfT0}ms (window shown at position by page.tsx)` }).catch(() => { });
-                }
 
                 // 実際の位置を確認（await しない: IPC 遅延で setTimeout 開始が遅れるのを防ぐ）
                 thisWin.outerPosition().then(p => {
@@ -700,25 +809,42 @@ const StickyNote = memo(function StickyNote() {
                 // CodeMirror のレイアウトを再計算させる（hidden→visible 時に必要）
                 window.dispatchEvent(new Event('resize'));
 
+                if (event.payload.hydrateToken) {
+                    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                    await emit('fusen:pool_promote_ready', {
+                        label: thisWin.label,
+                        token: event.payload.hydrateToken,
+                    });
+                }
+
                 // Rust が SetForegroundWindow をアトミックに完了済みのため、長い待機は不要。
                 // rAF 1回でレイアウト確定を待つだけで十分（ITaskbarList 待機の 300ms は不要）。
-                setTimeout(async () => {
-                    isPromotingRef.current = false; // 付箋表示中フラグ OFF
-                    // フォーカスが外れて編集モードが解除された場合に備えて、強制的に編集モードをONにする
-                    setIsEditing(true);
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                    setIsEditing(opensInEditMode);
                     // React 再レンダリング + CodeMirror レイアウト確定を rAF 1回で待つ
                     await new Promise(r => requestAnimationFrame(r));
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus attempt: editorRef=${!!editorRef.current}` }).catch(() => { });
-                    if (event.payload.isNew) {
+                    if (!opensInEditMode) {
+                        // クイックランチャーは検索・閲覧の入口なので、結晶本文へ編集フォーカスを移さない。
+                    } else if (event.payload.isNew) {
                         editorRef.current?.focusAndSelectFirstLine();
                     } else {
                         editorRef.current?.focus();
                     }
                     invoke('fusen_debug_log', { message: `[POOL_PROMOTE|${ts}] focus+cursor applied, editorRef=${!!editorRef.current}` }).catch(() => { });
-                    if (perfT0) {
-                        invoke('fusen_debug_log', { message: `[PERF|T2_READY] elapsed=${Date.now() - perfT0}ms (editor focused, ready for input)` }).catch(() => { });
+                    const perfPayload = buildPerfReadyPayload(
+                        event.payload.perfEnabled === true,
+                        event.payload.runId,
+                        event.payload.perfStartedAt,
+                        Date.now(),
+                    );
+                    if (perfPayload) {
+                        invoke('fusen_perf_note_ready', perfPayload).catch(() => { });
                     }
-                }, 50);
+                } finally {
+                    isPromotingRef.current = false; // 成功・失敗にかかわらず表示中フラグを解除
+                }
             });
             // [FIX] React Strict Mode でダブルsetupが起きた場合、cleanup後にlistenが解決したら即解除
             if (!mounted) { u(); return; }
@@ -732,7 +858,23 @@ const StickyNote = memo(function StickyNote() {
             mounted = false;
             safeUnlisten(unlisten);
         };
-    }, [isPool, noteFilePathRef, setContent, setEditBody, setIsEditing, setRawFrontmatter, startEditing]);
+    }, [hydrateLoadedContent, isPool, noteFilePathRef, setContent, setCurrentTags, setEditBody, setIsEditing, setRawFrontmatter, startEditing]);
+
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        const setup = async () => {
+            const currentWindow = getCurrentWindow();
+            if (typeof currentWindow.listen !== 'function') return;
+            unlisten = await currentWindow.listen('fusen:show_in_view_mode', async () => {
+                if (isEditingForListenerRef.current) {
+                    await endEditingForListenerRef.current();
+                }
+                setIsEditing(false);
+            });
+        };
+        setup();
+        return () => safeUnlisten(unlisten);
+    }, [setIsEditing]);
 
     // [NEW] Pool 窓 ready 厳格化: CodeMirror マウント完了 + rAF 1 回経過後に emit
     // setTimeout 禁止（RESEARCH pitfall 6 / Pattern 3）
@@ -1187,7 +1329,7 @@ const StickyNote = memo(function StickyNote() {
                 });
             } catch (err) {
                 console.error('[Tag] Failed to add tag:', err);
-                alert('タグの追加に失敗しました。');
+                alert(err instanceof Error ? err.message : 'タグの追加に失敗しました。');
             }
         }
         setShowTagModal(false);
@@ -1510,6 +1652,7 @@ const StickyNote = memo(function StickyNote() {
         removeTagFromNote,
         isDeletingRef,
         setNoteBackgroundColor,
+        noteBackgroundColor,
         setNoteFontSize,
         globalFontSize: settings.font_size,
         updateFrontmatter,
@@ -1534,14 +1677,47 @@ const StickyNote = memo(function StickyNote() {
         iphoneSendEnabled: settings.iphone_send_enabled,
     });
 
-    const handleArchiveFromHoverButton = useCallback(async () => {
-        if (!selectedFile || currentTags.length > 1) return;
+    const handleDeleteNoteRef = useRef(handleDeleteNote);
+    handleDeleteNoteRef.current = handleDeleteNote;
+    const crystalTrashTargetRef = useRef({ path: selectedFile?.path ?? null, tags: currentTags });
+    crystalTrashTargetRef.current = { path: selectedFile?.path ?? null, tags: currentTags };
 
+    useEffect(() => {
+        let cancelled = false;
+        let unlisten: (() => void) | undefined;
+
+        listen<{ path: string }>('fusen:move_to_crystal_trash', (event) => {
+            const target = crystalTrashTargetRef.current;
+            if (!shouldHandleCrystalTrashRequest(event.payload.path, target.path, target.tags)) {
+                console.warn('Ignored crystal trash request for a different or non-crystal note');
+                return;
+            }
+            handleDeleteNoteRef.current().catch((error) => {
+                console.error('Failed to move crystal to trash:', error);
+            });
+        }).then((dispose) => {
+            if (cancelled) {
+                safeUnlisten(dispose);
+            } else {
+                unlisten = dispose;
+            }
+        }).catch((error) => {
+            console.error('Failed to listen for crystal trash request:', error);
+        });
+
+        return () => {
+            cancelled = true;
+            safeUnlisten(unlisten);
+        };
+    }, []);
+
+    const archiveToTag = useCallback(async (targetTag: string | null) => {
+        if (!selectedFile) return;
         try {
             isDeletingRef.current = true;
             await saveNoteContent(editBody, rawFrontmatter, false);
-            await playSaveSound();
-            await invoke('fusen_archive_note', { path: selectedFile.path, targetTag: currentTags[0] ?? null });
+            void playSaveSound();
+            await invoke('fusen_archive_note', { path: selectedFile.path, targetTag });
             const win = getCurrentWindow();
             await win.hide();
             await win.destroy();
@@ -1550,7 +1726,69 @@ const StickyNote = memo(function StickyNote() {
             console.error('Failed to archive note:', e);
             alert(`${t('menu.archive_failed')}\n${e}`);
         }
-    }, [selectedFile, currentTags, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
+    }, [selectedFile, editBody, rawFrontmatter, saveNoteContent, isDeletingRef, t]);
+
+    const handleArchiveFromHoverButton = useCallback(async (x: number, y: number) => {
+        if (!selectedFile) return;
+
+        if (currentUserTags.length > 1) {
+            try {
+                const [{ Menu, MenuItem }, { LogicalPosition }] = await Promise.all([
+                    import('@tauri-apps/api/menu'),
+                    import('@tauri-apps/api/dpi'),
+                ]);
+                const items = await Promise.all(currentUserTags.map((tag) => MenuItem.new({
+                    text: `🏷️ ${tag}`,
+                    action: () => archiveToTag(tag),
+                })));
+                const menu = await Menu.new({
+                    id: `archive_destination_${Date.now()}`,
+                    items,
+                });
+                await menu.popup(new LogicalPosition(x, y), getCurrentWindow());
+            } catch (e) {
+                console.error('Failed to show archive destination menu:', e);
+            }
+            return;
+        }
+
+        await archiveToTag(currentUserTags[0] ?? null);
+    }, [archiveToTag, selectedFile, currentUserTags]);
+
+    const handleReturnRecipe = useCallback(async () => {
+        if (!selectedFile?.path || !isCrystalNote) return;
+
+        try {
+            const originalBody = originalRecipeBodyRef.current ?? content;
+            const crystalType = isRecipeNote ? 'recipe' : isQaNote ? 'qa' : 'term';
+            const spec = configToSpec(crystalFormatsRef.current[crystalType]);
+            const changed = getChangedCrystalSections(spec, originalBody, content);
+            const changedCount = changed.length;
+            const returnedBody = changedCount > 0
+                ? appendCrystalImprovementHistoryLine(
+                    content,
+                    createCrystalImprovementHistoryLine(spec, new Date(), changed),
+                )
+                : content;
+
+            const geometry = await getWindowGeometry();
+            isDeletingRef.current = true;
+            const savedContent = await returnRecipe(selectedFile.path, returnedBody, changedCount > 0, geometry);
+            const { front: savedFront, body: savedBody } = splitFrontMatter(savedContent);
+            setRawFrontmatter(savedFront);
+            setContent(savedBody);
+            setEditBody(savedBody);
+            originalRecipeBodyRef.current = savedBody;
+            void playSaveSound();
+            const win = getCurrentWindow();
+            await hideReturnedCrystalWindow(win);
+            isDeletingRef.current = false;
+        } catch (e) {
+            isDeletingRef.current = false;
+            console.error(`Failed to return ${isRecipeNote ? 'recipe' : isQaNote ? 'QA' : 'term'}:`, e);
+            alert(`${crystalNoteLabel}を返せませんでした\n${e}`);
+        }
+    }, [content, crystalNoteLabel, isCrystalNote, isQaNote, isRecipeNote, selectedFile?.path, setContent, setEditBody, setRawFrontmatter]);
 
     const handleOpenTagFolder = useCallback(async (tag: string) => {
         try {
@@ -1561,16 +1799,34 @@ const StickyNote = memo(function StickyNote() {
         }
     }, [t]);
 
+    const archiveButtonLabel = currentUserTags.length === 0
+        ? t('menu.archiveNoTag')
+        : currentUserTags.length > 1
+            ? t('menu.archiveSelectTag')
+        : t('menu.archiveToTag').replace('{tag}', currentUserTags[0]);
+
     /**
      * ローカルキーボードショートカット（この付箋ウィンドウがアクティブな時のみ有効）
      *
      * ショートカット一覧:
-     *   Ctrl+N  → 新規付箋作成（ローカル: ここで定義）
+     *   新規付箋ショートカット → 新規付箋作成（ローカル: ここで定義）
      *   Ctrl+F  → 全文検索（ローカル: ここで定義）
      *   Ctrl+Shift+H → 全付箋の表示/非表示トグル（グローバル: src-tauri/src/lib.rs で定義）
      */
     useEffect(() => {
         const handleKeyDown = async (e: KeyboardEvent) => {
+            if ((settings.new_note_trigger ?? 'shortcut') === 'double_ctrl' && e.key === 'Control' && !e.repeat) {
+                const now = performance.now();
+                const lastDown = lastJsDoubleCtrlDownMsRef.current;
+                const elapsed = lastDown === null ? Number.POSITIVE_INFINITY : now - lastDown;
+                if (elapsed >= 40 && elapsed <= 650 && now - lastJsDoubleCtrlFireMsRef.current > 400) {
+                    lastJsDoubleCtrlFireMsRef.current = now;
+                    lastJsDoubleCtrlDownMsRef.current = null;
+                    emit('fusen:request_create_global');
+                    return;
+                }
+                lastJsDoubleCtrlDownMsRef.current = now;
+            }
             // [New] F2: 編集モードに入る
             if (e.key === 'F2') {
                 e.preventDefault();
@@ -1586,8 +1842,8 @@ const StickyNote = memo(function StickyNote() {
                 await handleDeleteNote();
                 return;
             }
-            // [New] Ctrl+N: 新規付箋作成
-            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+            // [New] 設定された新規付箋ショートカット: 新規付箋作成
+            if ((settings.new_note_trigger ?? 'shortcut') === 'shortcut' && matchesShortcut(e, settings.shortcut_new_note ?? 'ctrl+n')) {
                 e.preventDefault();
                 // [NEW] JS 1.2s スロットル撤去: Pool アーキテクチャで webview 新規作成しないためクラッシュ原因が消えた
                 // フォールバック側（openNoteWindow）は page.tsx の 400ms global throttle + Rust 500ms で保護
@@ -1596,9 +1852,7 @@ const StickyNote = memo(function StickyNote() {
                     invoke('fusen_debug_log', { message: '[CREATE_REQ] Ctrl+N skipped: folderPath unresolved' }).catch(() => { });
                     return;
                 }
-                    // [PERF] 起動時間計測: T0 = Ctrl+N 押下時刻
                     const t0 = Date.now();
-                    invoke('fusen_debug_log', { message: `[PERF|T0] Ctrl+N keydown t0=${t0}` }).catch(() => { });
                     const win = getCurrentWindow();
                     let sourcePhysX: number | undefined;
                     let sourcePhysY: number | undefined;
@@ -1629,7 +1883,7 @@ const StickyNote = memo(function StickyNote() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [editBodyRef, handleDeleteNote, resolveCreateFolderPath]);
+    }, [editBodyRef, handleDeleteNote, resolveCreateFolderPath, settings.new_note_trigger, settings.shortcut_new_note]);
 
     // ============================================================
     // レンダリング
@@ -1674,29 +1928,9 @@ const StickyNote = memo(function StickyNote() {
             onPointerDown={handleDragStart}
             onPointerEnter={() => {
                 setIsHover(true);
-                // [FIX] 複数ウィンドウを連続で横切った際のTauriクラッシュを防ぐため、150ms滞在した時のみフォーカスする
-                if (!document.hasFocus()) {
-                    if (hoverFocusTimer) clearTimeout(hoverFocusTimer);
-                    hoverFocusTimer = setTimeout(async () => {
-                        try {
-                            const { getCurrentWindow } = await import('@tauri-apps/api/window');
-                            if (!(await getCurrentWindow().isFocused())) {
-                                console.log('[Focus] 150ms滞在を確認。ウィンドウをアクティブにします');
-                                await getCurrentWindow().setFocus();
-                            }
-                        } catch (e) {
-                            console.error('Failed to focus window on hover', e);
-                        }
-                    }, 150);
-                }
             }}
             onPointerLeave={() => {
                 setIsHover(false);
-                if (hoverFocusTimer) {
-                    console.log('[Focus] 通過しただけなのでフォーカス要求をキャンセルしました');
-                    clearTimeout(hoverFocusTimer);
-                    hoverFocusTimer = null;
-                }
             }}
         >
             <style>{`
@@ -1750,16 +1984,32 @@ const StickyNote = memo(function StickyNote() {
                     onCapture={async () => {
                         if (isCapturingRef.current) return;
                         isCapturingRef.current = true;
-                        await captureScreen();
-                        isCapturingRef.current = false;
-                        await endEditing();
+                        try {
+                            const inserted = await captureScreen();
+                            if (inserted) {
+                                await endEditing();
+                            }
+                        } finally {
+                            isCapturingRef.current = false;
+                        }
                     }}
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}
+                    archiveLabel={isCrystalNote ? `${crystalNoteLabel}を閉じる` : archiveButtonLabel}
+                    onArchive={(e) => {
+                        if (isCrystalNote) {
+                            handleReturnRecipe();
+                        } else {
+                            handleArchiveFromHoverButton(e.clientX, e.clientY);
+                        }
+                    }}
+                    deleteLabel={t('menu.delete')}
+                    onDelete={() => handleDeleteNote()}
                     language={language}
                     onAlarmClick={() => setShowAlarmDialog(true)}
                     alarmAtStr={alarmAtStr}
                     alarmTooltip={alarmTooltip || t('menu.setAlarm')}
+                    newNoteShortcutHint={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, language)}
                     onCreateNewNote={async () => {
                         const folderPath = await resolveCreateFolderPath();
                         if (!folderPath) {
@@ -1851,11 +2101,12 @@ const StickyNote = memo(function StickyNote() {
                             }}
                         >
                             <MarkdownRenderer
-                                content={content}
+                                content={buildFoldedPreview(content)}
                                 backgroundColor="transparent"
                                 fontSize={noteFontSize}
                                 isDraggableArea={false}
                                 singleLinePreview={true} // [New] 省略表示モード
+                                recipeMode={isCrystalNote}
                                 onCheckboxToggle={handleToggleCheckbox}
                                 onImageResize={handleImageResize}
                                 onDoubleClick={(e) => {
@@ -1863,6 +2114,7 @@ const StickyNote = memo(function StickyNote() {
                                     toggleMinimize();
                                 }}
                                 selectedFilePath={selectedFile?.path}
+                                basePath={basePath}
                                 resolvePath={resolvePath}
                             />
                         </div>
@@ -1917,6 +2169,12 @@ const StickyNote = memo(function StickyNote() {
                                     initialCoords={initialCoords}
                                     isNewNote={isNewNote}
                                     fontSize={noteFontSize}
+                                    formatShortcuts={{
+                                        bold: settings.shortcut_bold,
+                                        heading: settings.shortcut_heading,
+                                        bulletList: settings.shortcut_bullet_list,
+                                        checkbox: settings.shortcut_checkbox,
+                                    }}
                                     onBlur={isEditing ? handleEditBlur : undefined}
                                     onSelectionChange={isEditing ? handleSelectionChange : undefined}
                                     onFirstChar={isEditing ? handleFirstChar : undefined}
@@ -1943,6 +2201,7 @@ const StickyNote = memo(function StickyNote() {
                             backgroundColor={noteBackgroundColor}
                             fontSize={noteFontSize}
                             isDraggableArea={isDraggableArea}
+                            recipeMode={isCrystalNote}
                             onCheckboxToggle={handleToggleCheckbox}
                             onImageResize={handleImageResize}
                             onDoubleClick={(e) => {
@@ -1964,6 +2223,7 @@ const StickyNote = memo(function StickyNote() {
                                 }
                             }}
                             selectedFilePath={selectedFile?.path}
+                            basePath={basePath}
                             resolvePath={resolvePath}
                             onAnnotationClick={handleAnnotationClick}
                             imageVersion={imageVersion}
@@ -2056,13 +2316,13 @@ const StickyNote = memo(function StickyNote() {
             {/* タグ表示エリア（右下、ホバー時のみ） */}
             {!isEditing && !isMinimized && (
                 <div
-                    className="absolute bottom-ui-offset-y right-ui-offset-x z-tags pointer-events-none flex justify-end"
+                    className="absolute bottom-ui-offset-y right-[36px] z-tags pointer-events-none flex justify-end"
                     style={{ opacity: isHover ? 1 : 0, transition: 'opacity 0.2s ease' }}
                 >
                     <div className="flex items-center justify-end gap-1 pointer-events-auto">
-                        {currentTags.length > 0 && (
+                        {currentUserTags.length > 0 && (
                             <div className="flex gap-1 flex-wrap max-w-[250px] justify-end">
-                                {currentTags.slice(0, 3).map((tag: string, idx: number) => {
+                                {currentUserTags.slice(0, 3).map((tag: string, idx: number) => {
                                     const openTagFolderLabel = t('menu.openTagFolder').replace('{tag}', tag);
                                     return (
                                         <Tooltip key={idx} text={openTagFolderLabel} placement="top-right-arrow-shifted">
@@ -2085,53 +2345,15 @@ const StickyNote = memo(function StickyNote() {
                                         </Tooltip>
                                     );
                                 })}
-                                {currentTags.length > 3 && (
+                                {currentUserTags.length > 3 && (
                                     <span
                                         className="text-[10px] px-2 py-[3px] bg-gray-200/50 text-gray-500 rounded border border-gray-300/50 whitespace-nowrap font-medium"
                                     >
-                                        +{currentTags.length - 3}
+                                        +{currentUserTags.length - 3}
                                     </span>
                                 )}
                             </div>
                         )}
-                        {currentTags.length <= 1 && (
-                            <Tooltip text={t('menu.archive')} placement="top-right-arrow-shifted">
-                                <button
-                                    type="button"
-                                    aria-label={t('menu.archive')}
-                                    onPointerDown={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                    }}
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleArchiveFromHoverButton();
-                                    }}
-                                    className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
-                                >
-                                    📦
-                                </button>
-                            </Tooltip>
-                        )}
-                        <Tooltip text={t('menu.delete')} hint="Ctrl+D" placement="top-right-arrow-shifted">
-                            <button
-                                type="button"
-                                aria-label={t('menu.delete')}
-                                onPointerDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                }}
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleDeleteNote();
-                                }}
-                                className="h-[24px] min-w-[24px] px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-red-100 hover:text-red-600 hover:border-red-200 transition-colors"
-                            >
-                                🗑
-                            </button>
-                        </Tooltip>
                     </div>
                 </div>
             )}
@@ -2149,6 +2371,7 @@ const StickyNote = memo(function StickyNote() {
                     onCancel={() => setAnnotationTarget(null)}
                 />
             )}
+
 
             {/* 新規タグ追加モーダル */}
             {showTagModal && (
@@ -2249,8 +2472,10 @@ const StickyNote = memo(function StickyNote() {
 // [NEW] ErrorBoundaryでラップしてエクスポート
 // エラー発生時に付箋ウィンドウが白画面にならず、再試行ボタン付きエラー UI を表示する
 export default function StickyNoteWithBoundary() {
+    const { settings } = useSettings();
+    const language: Language = settings.language === 'en' ? 'en' : 'ja';
     return (
-        <ErrorBoundary>
+        <ErrorBoundary language={language}>
             <StickyNote />
         </ErrorBoundary>
     );

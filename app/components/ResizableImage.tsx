@@ -9,7 +9,7 @@
 
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 export interface ResizableImageProps {
     src: string;
@@ -21,12 +21,38 @@ export interface ResizableImageProps {
     contentReadOnly?: boolean;
     onAnnotationClick?: (absolutePath: string) => void;
     markdownFallback?: string;
+    fallbackSrcs?: string[];
 }
 
-export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick, markdownFallback }: ResizableImageProps) {
+const EMPTY_FALLBACK_SRCS: string[] = [];
+const MAX_CONVERTED_SRC_CACHE_ENTRIES = 256;
+const convertedFileSrcCache = new Map<string, string>();
+
+function rememberConvertedFileSrc(src: string, assetUrl: string) {
+    convertedFileSrcCache.delete(src);
+    convertedFileSrcCache.set(src, assetUrl);
+    if (convertedFileSrcCache.size > MAX_CONVERTED_SRC_CACHE_ENTRIES) {
+        const oldestKey = convertedFileSrcCache.keys().next().value;
+        if (oldestKey !== undefined) convertedFileSrcCache.delete(oldestKey);
+    }
+}
+
+export function clearConvertedFileSrcCache() {
+    convertedFileSrcCache.clear();
+}
+
+function initialDisplaySrc(src: string): string {
+    const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(src);
+    return isLocalPath
+        ? convertedFileSrcCache.get(src) ?? 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+        : src;
+}
+
+export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick, markdownFallback, fallbackSrcs = EMPTY_FALLBACK_SRCS }: ResizableImageProps) {
     const [currentWidth, setCurrentWidth] = useState<number | undefined>(undefined);
     const [isResizing, setIsResizing] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
+    const [srcIndex, setSrcIndex] = useState(0);
     const imgRef = useRef<HTMLImageElement>(null);
     const startXRef = useRef<number>(0);
     const startWidthRef = useRef<number>(0);
@@ -42,35 +68,38 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
     }, [scale]);
 
     // Handle Image Source (Async Convert if needed)
-    const [displaySrc, setDisplaySrc] = useState(() => {
-        // [FIX] Avoid setting 'file://' or absolute paths initially to prevent browser blocking
-        const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(src);
-        return isLocalPath ? 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' : src;
-    });
+    const allSrcs = useMemo(() => Array.from(new Set([src, ...fallbackSrcs])), [src, fallbackSrcs]);
+    const activeSrc = allSrcs[srcIndex] ?? src;
+    const [displaySrc, setDisplaySrc] = useState(() => initialDisplaySrc(src));
+
+    useEffect(() => {
+        setSrcIndex(0);
+    }, [src, fallbackSrcs]);
 
     useEffect(() => {
         setLoadFailed(false);
         let active = true;
 
         const loadSrc = async () => {
-            const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(src);
+            const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(activeSrc);
             if (isLocalPath) {
                 try {
                     const { convertFileSrc } = await import('@tauri-apps/api/core');
-                    const assetUrl = convertFileSrc(src);
+                    const assetUrl = convertFileSrc(activeSrc);
                     if (active) {
+                        rememberConvertedFileSrc(activeSrc, assetUrl);
                         setDisplaySrc(prev => prev !== assetUrl ? assetUrl : prev);
                     }
                 } catch (e) {
                     console.error('[IMAGE] Failed to convert src', e);
                 }
             } else {
-                if (active) setDisplaySrc(src);
+                if (active) setDisplaySrc(activeSrc);
             }
         };
         loadSrc();
         return () => { active = false; };
-    }, [src]);
+    }, [activeSrc]);
 
     const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
         const img = e.currentTarget;
@@ -162,7 +191,13 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                 alt={alt}
                 title={alt}
                 onLoad={handleImageLoad}
-                onError={() => setLoadFailed(true)}
+                onError={() => {
+                    if (srcIndex < allSrcs.length - 1) {
+                        setSrcIndex(srcIndex + 1);
+                        return;
+                    }
+                    setLoadFailed(true);
+                }}
                 style={{
                     width: currentWidth ? `${currentWidth}px` : 'auto',
                     maxWidth: '100%',
@@ -217,7 +252,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                     style={{
                         position: 'absolute',
                         top: '4px',
-                        right: '4px',
+                        left: '4px',
                         width: '24px',
                         height: '24px',
                         display: 'flex',

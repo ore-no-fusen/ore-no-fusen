@@ -10,13 +10,22 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach, assert } from 'vitest';
+import { emit as emitEvent } from '@tauri-apps/api/event';
 import StickyNote from './StickyNote';
 
+const { mockArchiveMenuPopup } = vi.hoisted(() => ({
+    mockArchiveMenuPopup: vi.fn(),
+}));
+
 // Mock Next.js hooks
+let mockStartupRestore = false;
+let mockNoteTags: string[] = [];
+let mockNoteFolded = false;
 vi.mock('next/navigation', () => ({
     useSearchParams: () => ({
         get: (key: string) => {
             if (key === 'path') return 'd:/test/note.md';
+            if (key === 'startupRestore') return mockStartupRestore ? '1' : null;
             return null;
         },
     }),
@@ -33,6 +42,11 @@ const mockWindow = {
     listen: vi.fn().mockReturnValue(Promise.resolve(() => { })),
     close: vi.fn(),
     emit: vi.fn(),
+    isFocused: vi.fn().mockResolvedValue(false),
+    setFocus: vi.fn().mockResolvedValue(undefined),
+    innerSize: vi.fn().mockResolvedValue({ width: 400, height: 300 }),
+    scaleFactor: vi.fn().mockResolvedValue(1),
+    setSize: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -53,8 +67,13 @@ vi.mock('@tauri-apps/api/window', () => ({
     getCurrentWindow: () => mockWindow,
 }));
 
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+    WebviewWindow: mockWebviewWindow,
+    getCurrentWebviewWindow: () => ({ label: 'note-startup' }),
+}));
+
 vi.mock('@tauri-apps/api/menu', () => {
-    const Menu = { new: vi.fn().mockResolvedValue({ popup: vi.fn() }) };
+    const Menu = { new: vi.fn().mockResolvedValue({ popup: mockArchiveMenuPopup }) };
     const MenuItem = { new: vi.fn() };
     const PredefinedMenuItem = { new: vi.fn() };
     const Submenu = { new: vi.fn() };
@@ -99,13 +118,19 @@ vi.mock('./RichTextEditor', () => {
 describe('StickyNote Component', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockStartupRestore = false;
+        mockNoteTags = [];
+        mockNoteFolded = false;
+        mockWebviewWindow.getByLabel.mockResolvedValue(null);
+        mockWindow.isFocused.mockResolvedValue(false);
+        mockArchiveMenuPopup.mockReset();
 
         // Default mock responses
         mockInvoke.mockImplementation((cmd, args) => {
             switch (cmd) {
                 case 'fusen_read_note':
                     return Promise.resolve({
-                        meta: { path: 'd:/test/note.md', width: 200, height: 200 },
+                        meta: { path: 'd:/test/note.md', width: 200, height: 200, tags: mockNoteTags, folded: mockNoteFolded },
                         body: '---\ntags: []\n---\nTest Content'
                     });
                 case 'fusen_save_note':
@@ -116,6 +141,78 @@ describe('StickyNote Component', () => {
                     return Promise.resolve(null);
             }
         });
+    });
+
+    it('タグなしではアーカイブへの移動と表示する', async () => {
+        render(<StickyNote />);
+
+        expect(await screen.findByRole('button', { name: 'アーカイブへしまう' })).not.toBeNull();
+    });
+
+    it('タグが1個なら移動先のタグ名を表示する', async () => {
+        mockNoteTags = ['仕事'];
+        render(<StickyNote />);
+
+        expect(await screen.findByRole('button', { name: '「仕事」へしまう' })).not.toBeNull();
+    });
+
+    it('タグが複数でもしまう先を選ぶボタンを表示する', async () => {
+        mockNoteTags = ['APL知識', 'OreNoFusen'];
+        render(<StickyNote />);
+
+        expect(await screen.findByRole('button', { name: 'しまう先を選ぶ' })).not.toBeNull();
+    });
+
+    it('複数タグのしまうボタンは付箋上の指定位置に選択メニューを開く', async () => {
+        mockNoteTags = ['APL知識', 'OreNoFusen'];
+        render(<StickyNote />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'しまう先を選ぶ' }), {
+            clientX: 320,
+            clientY: 240,
+        });
+
+        await waitFor(() => expect(mockArchiveMenuPopup).toHaveBeenCalledOnce());
+        expect(mockArchiveMenuPopup.mock.calls[0][0]).toMatchObject({ x: 320, y: 240 });
+        expect(mockArchiveMenuPopup.mock.calls[0][1]).toBe(mockWindow);
+    });
+
+    it('起動時復元では本文の読込み後に準備完了を通知する', async () => {
+        mockStartupRestore = true;
+
+        render(<StickyNote />);
+
+        await waitFor(() => {
+            expect(vi.mocked(emitEvent)).toHaveBeenCalledWith('fusen:startup_note_ready', {
+                label: 'note-startup',
+            });
+        });
+        expect(mockWindow.setSize).not.toHaveBeenCalled();
+    });
+
+    it('起動時の折りたたみ付箋はサイズ反映後に準備完了を通知する', async () => {
+        mockStartupRestore = true;
+        mockNoteFolded = true;
+
+        render(<StickyNote />);
+
+        await waitFor(() => expect(mockWindow.setSize).toHaveBeenCalled());
+        await waitFor(() => expect(vi.mocked(emitEvent)).toHaveBeenCalledWith(
+            'fusen:startup_note_ready',
+            { label: 'note-startup' },
+        ));
+        expect(mockWindow.setSize.mock.invocationCallOrder[0])
+            .toBeLessThan(vi.mocked(emitEvent).mock.invocationCallOrder[0]);
+    });
+
+    it('ホバーだけでは付箋を前面化しない', async () => {
+        const { container } = render(<StickyNote />);
+        await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
+        const shell = container.querySelector('.noteShell') as HTMLElement;
+
+        fireEvent.pointerEnter(shell);
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 650)); });
+        expect(mockWindow.setFocus).not.toHaveBeenCalled();
     });
 
     // --- Regression Tests ---
@@ -383,6 +480,53 @@ describe('StickyNote Component', () => {
             expect(articleContent).toContain('https://example.com');
             expect(articleContent).toContain('d:\\path\\to\\file.txt');
         });
+    });
+
+    it('停止したアラームは監視周期を過ぎても再発火しない', async () => {
+        vi.useFakeTimers();
+        const play = vi.fn().mockResolvedValue(undefined);
+        const pause = vi.fn();
+        class AudioMock {
+            play = play;
+            pause = pause;
+            currentTime = 0;
+            volume = 1;
+        }
+        vi.stubGlobal('Audio', AudioMock);
+
+        mockInvoke.mockImplementation((cmd, args) => {
+            if (cmd === 'fusen_read_note') {
+                return Promise.resolve({
+                    meta: { path: 'd:/test/note.md', width: 200, height: 200 },
+                    body: '---\ntags: []\nalarm_at: "2000-01-01T00:00:00+09:00"\nalarm_sound: true\n---\nTest Content',
+                });
+            }
+            if (cmd === 'fusen_save_note') return Promise.resolve(args?.path || 'd:/test/note.md');
+            if (cmd === 'fusen_get_all_tags') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+
+        render(<StickyNote />);
+        await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+
+        const stopBar = screen.getByText(/タップして止める/);
+        expect(play).toHaveBeenCalledTimes(1);
+        fireEvent.click(stopBar);
+        await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+        const playCountAfterStop = play.mock.calls.length;
+
+        // アラーム監視（10秒）と音の反復（3秒）の両周期を超えても再発火しない。
+        await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+
+        expect(screen.queryByText(/タップして止める/)).toBeNull();
+        expect(play).toHaveBeenCalledTimes(playCountAfterStop);
+        expect(mockInvoke).toHaveBeenCalledWith(
+            'fusen_save_note',
+            expect.objectContaining({ frontmatterRaw: expect.not.stringContaining('alarm_at:') }),
+        );
+
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
     });
 
 });

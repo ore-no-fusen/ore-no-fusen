@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { DonationPageTracker } from '../components/DonationTracking';
 
 export const metadata = { title: '限定解除版について | 俺の付箋' };
 
@@ -12,6 +13,7 @@ export default function AboutDonationPage() {
                     "'Helvetica Neue', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif",
             }}
         >
+            <DonationPageTracker page="about_donation" />
             <div className="mx-auto max-w-3xl">
                 <div
                     className="relative rounded-sm px-6 py-10 shadow-[4px_8px_28px_rgba(0,0,0,0.12)] sm:px-10 sm:py-12"

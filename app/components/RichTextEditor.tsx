@@ -20,6 +20,88 @@ import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUtils';
 
+export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
+
+export type PendingImage = { id: string; objectUrl: string };
+
+export const addPendingImage = StateEffect.define<{ image: PendingImage; pos: number }>({
+    map: (value, mapping) => ({ ...value, pos: mapping.mapPos(value.pos) }),
+});
+export const removePendingImage = StateEffect.define<string>();
+
+class PendingImageWidget extends WidgetType {
+    constructor(readonly image: PendingImage) {
+        super();
+    }
+
+    toDOM(): HTMLElement {
+        const container = document.createElement('span');
+        container.className = 'cm-image-widget cm-pending-image-widget';
+        container.dataset.pendingImageId = this.image.id;
+        container.style.display = 'inline-block';
+        container.style.verticalAlign = 'bottom';
+
+        const image = document.createElement('img');
+        image.src = this.image.objectUrl;
+        image.alt = 'image';
+        image.style.display = 'block';
+        image.style.maxWidth = '100%';
+        image.style.height = 'auto';
+        container.appendChild(image);
+        return container;
+    }
+
+    ignoreEvent() { return true; }
+
+    eq(other: PendingImageWidget): boolean {
+        return other.image.id === this.image.id && other.image.objectUrl === this.image.objectUrl;
+    }
+}
+
+export const pendingImageField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(pending, transaction) {
+        pending = pending.map(transaction.changes);
+        for (const effect of transaction.effects) {
+            if (effect.is(addPendingImage)) {
+                pending = pending.update({
+                    add: [Decoration.widget({
+                        widget: new PendingImageWidget(effect.value.image),
+                        side: -1,
+                    }).range(effect.value.pos)],
+                });
+            } else if (effect.is(removePendingImage)) {
+                pending = pending.update({
+                    filter: (_from, _to, decoration) => {
+                        const widget = decoration.spec.widget;
+                        return !(widget instanceof PendingImageWidget && widget.image.id === effect.value);
+                    },
+                });
+            }
+        }
+        return pending;
+    },
+    provide: field => EditorView.decorations.from(field),
+});
+
+export function findPendingImagePosition(view: EditorView, id: string): number | null {
+    let position: number | null = null;
+    view.state.field(pendingImageField).between(0, view.state.doc.length, (from, _to, decoration) => {
+        const widget = decoration.spec.widget;
+        if (widget instanceof PendingImageWidget && widget.image.id === id) {
+            position = from;
+        }
+    });
+    return position;
+}
+
+let pendingImageSequence = 0;
+
+export function createPendingImageId(): string {
+    pendingImageSequence += 1;
+    return `pending-${Date.now()}-${pendingImageSequence}`;
+}
+
 // Helper to resolve relative path (same as in StickyNote)
 const resolvePath = (baseFile: string, relativePath: string) => {
     if (!baseFile) return relativePath;
@@ -59,6 +141,9 @@ class ImageWidget extends WidgetType {
         container.className = 'cm-image-widget';
         container.style.display = 'inline-block';
         container.style.verticalAlign = 'bottom';
+        container.addEventListener('click', (event) => {
+            forwardImageClickToEditor(event.target, view.dom);
+        });
 
         const resolvedSrc = resolvePath(this.filePath, this.src);
 
@@ -241,6 +326,9 @@ export interface RichTextEditorProps {
     onFirstChar?: () => void;
     // Pool 窓用: 画像貼り付けなど文字入力以外でも保存先ファイルを確保する
     onEnsureFilePath?: () => Promise<string | null>;
+    formatShortcuts?: {
+        bold?: string; heading?: string; bulletList?: string; checkbox?: string;
+    };
 }
 
 // 外部から呼べるメソッドの型定義
@@ -295,7 +383,7 @@ function buildDecorations(state: EditorState): DecorationSet {
             const titleEnd = line.to;
 
             decorations.push(
-                Decoration.mark({ class: 'cm-md-marker' }).range(markerStart, markerEnd - 1),
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(markerStart, markerEnd - 1),
                 Decoration.mark({ class: 'cm-md-h1' }).range(titleStart, titleEnd)
             );
             // continue; // [Fix] Allow other decorations (bold/link) inside header
@@ -306,14 +394,14 @@ function buildDecorations(state: EditorState): DecorationSet {
         const listMatch = !taskMatch && text.match(/^([\-\*\+]\s+)(.*)$/);
 
         if (taskMatch) {
-            const markerLen = taskMatch[1].length;
+            const markerLen = checkboxMarkerDecorationLength(taskMatch[1]);
             decorations.push(
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from, line.from + markerLen)
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from, line.from + markerLen)
             );
         } else if (listMatch) {
-            const markerLen = listMatch[1].length;
+            const markerLen = markdownMarkerDecorationLength(listMatch[1]);
             decorations.push(
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from, line.from + markerLen)
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from, line.from + markerLen)
             );
         }
 
@@ -322,11 +410,11 @@ function buildDecorations(state: EditorState): DecorationSet {
         let lMatch;
         while ((lMatch = linkRegex.exec(text)) !== null) {
             decorations.push(
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from + lMatch.index, line.from + lMatch.index + 1), // [
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from + lMatch.index, line.from + lMatch.index + 1), // [
                 Decoration.mark({ class: 'cm-md-link-text' }).range(line.from + lMatch.index + 1, line.from + lMatch.index + 1 + lMatch[1].length),
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from + lMatch.index + 1 + lMatch[1].length, line.from + lMatch.index + 1 + lMatch[1].length + 2), // ](
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from + lMatch.index + 1 + lMatch[1].length, line.from + lMatch.index + 1 + lMatch[1].length + 2), // ](
                 Decoration.mark({ class: 'cm-md-link-url' }).range(line.from + lMatch.index + 3 + lMatch[1].length, line.from + lMatch.index + 3 + lMatch[1].length + lMatch[2].length),
-                Decoration.mark({ class: 'cm-md-marker' }).range(line.from + lMatch.index + 3 + lMatch[1].length + lMatch[2].length, line.from + lMatch.index + 4 + lMatch[1].length + lMatch[2].length) // )
+                Decoration.mark({ class: 'cm-md-marker', inclusive: false }).range(line.from + lMatch.index + 3 + lMatch[1].length + lMatch[2].length, line.from + lMatch.index + 4 + lMatch[1].length + lMatch[2].length) // )
             );
         }
 
@@ -344,7 +432,8 @@ function buildDecorations(state: EditorState): DecorationSet {
             // 開始 ** マーカー
             decorations.push(
                 Decoration.mark({
-                    class: 'cm-md-marker cm-md-bold-marker'
+                    class: 'cm-md-marker cm-md-bold-marker',
+                    inclusive: false,
                 }).range(startPos, openMarkerEnd)
             );
 
@@ -360,7 +449,8 @@ function buildDecorations(state: EditorState): DecorationSet {
             // 終了 ** マーカー
             decorations.push(
                 Decoration.mark({
-                    class: 'cm-md-marker cm-md-bold-marker'
+                    class: 'cm-md-marker cm-md-bold-marker',
+                    inclusive: false,
                 }).range(closeMarkerStart, closeMarkerEnd)
             );
         }
@@ -370,6 +460,14 @@ function buildDecorations(state: EditorState): DecorationSet {
     decorations.sort((a, b) => a.from - b.from || a.startSide - b.startSide);
 
     return Decoration.set(decorations, true);
+}
+
+export function checkboxMarkerDecorationLength(marker: string): number {
+    return markdownMarkerDecorationLength(marker);
+}
+
+export function markdownMarkerDecorationLength(marker: string): number {
+    return marker.trimEnd().length;
 }
 
 
@@ -428,6 +526,33 @@ const placeholderDecorationField = StateField.define<DecorationSet>({
 // [New] Link Detection Logic
 // URL and Windows Path Regex (Drive Letter & UNC)
 const LINK_REGEX = createLinkTargetRegex();
+
+export function buildClipboardImageMarkdown(savedPath: string): string {
+    return `![image](${savedPath})\n`;
+}
+
+export function shouldExitEditingForImageClick(target: EventTarget | null): boolean {
+    return target instanceof Element
+        && target.tagName === 'IMG'
+        && target.closest('.cm-image-widget') !== null;
+}
+
+export function forwardImageClickToEditor(target: EventTarget | null, editorDom: HTMLElement): boolean {
+    if (!shouldExitEditingForImageClick(target)) return false;
+    editorDom.dispatchEvent(new CustomEvent(IMAGE_WIDGET_CLICK_EVENT));
+    return true;
+}
+
+export function shortcutToCodeMirrorKey(shortcut: string): string {
+    return shortcut.split('+').map((part, index, parts) => {
+        const key = part.trim().toLowerCase();
+        if (key === 'ctrl' || key === 'control') return 'Ctrl';
+        if (key === 'meta' || key === 'super') return 'Meta';
+        if (key === 'shift') return 'Shift';
+        if (key === 'alt') return 'Alt';
+        return index === parts.length - 1 ? key : part;
+    }).join('-');
+}
 
 const linkDecorationField = ViewPlugin.fromClass(class {
     decorations: DecorationSet;
@@ -602,7 +727,7 @@ const moveFromImageLineEnd = (view: EditorView, direction: 'left' | 'right'): bo
 };
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
-    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath } = props;
+    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath, formatShortcuts } = props;
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
@@ -1075,7 +1200,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             preventDefault: true,
                         },
                         {
-                            key: 'Mod-b',
+                            key: shortcutToCodeMirrorKey(formatShortcuts?.bold ?? 'ctrl+b'),
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
@@ -1098,7 +1223,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         },
                         // Ctrl+H: 見出し1トグル
                         {
-                            key: 'Mod-h',
+                            key: shortcutToCodeMirrorKey(formatShortcuts?.heading ?? 'ctrl+h'),
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
@@ -1124,7 +1249,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         },
                         // Ctrl+L: 箇条書きトグル
                         {
-                            key: 'Mod-l',
+                            key: shortcutToCodeMirrorKey(formatShortcuts?.bulletList ?? 'ctrl+l'),
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
@@ -1151,7 +1276,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         },
                         // Ctrl+Shift+C: チェックボックストグル
                         {
-                            key: 'Mod-Shift-c',
+                            key: shortcutToCodeMirrorKey(formatShortcuts?.checkbox ?? 'ctrl+shift+c'),
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
@@ -1252,6 +1377,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     placeholderDecorationField,
                     linkDecorationField, // [New]
                     linkEventHandler,    // [New]
+                    pendingImageField,
                     imagePreviewPlugin,  // [NEW]
                     EditorView.lineWrapping,
                     highlightSelectionMatches(), // [NEW] 選択テキストのハイライト
@@ -1313,6 +1439,16 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
                                     // カーソル位置の取得
                                     const currentPos = view.state.selection.main.from;
+                                    const pendingImage: PendingImage = {
+                                        id: createPendingImageId(),
+                                        objectUrl: URL.createObjectURL(file),
+                                    };
+
+                                    // 保存完了を待たず、エディタ内部だけに一時画像を表示する。
+                                    // 文書自体は変更しないため blob: URL が付箋へ保存されることはない。
+                                    view.dispatch({
+                                        effects: addPendingImage.of({ image: pendingImage, pos: currentPos }),
+                                    });
 
                                     // Invoke backend command to save image from clipboard.
                                     // Ctrl+N の高速付箋は最初の文字まで実ファイルが無いので、
@@ -1329,23 +1465,39 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                         return invoke<string>('fusen_get_image_from_clipboard', { path: targetFilePath });
                                     })()
                                             .then((savedPath) => {
+                                                const pendingPos = findPendingImagePosition(view, pendingImage.id);
+                                                if (pendingPos === null) {
+                                                    URL.revokeObjectURL(pendingImage.objectUrl);
+                                                    return;
+                                                }
+
                                                 // Insert markdown: ![image](path)
                                                 // Use "image" as alt text, can be changed later
-                                                const markdown = `![image](${savedPath})`;
+                                                const markdown = buildClipboardImageMarkdown(savedPath);
+                                                const selectionStayedAtPendingImage =
+                                                    view.state.selection.main.empty &&
+                                                    view.state.selection.main.head === pendingPos;
 
                                                 view.dispatch({
                                                     changes: {
-                                                        from: currentPos,
-                                                        to: currentPos,
+                                                        from: pendingPos,
+                                                        to: pendingPos,
                                                         insert: markdown
                                                     },
-                                                    selection: {
-                                                        anchor: currentPos + markdown.length,
-                                                        head: currentPos + markdown.length
-                                                    }
+                                                    selection: selectionStayedAtPendingImage ? {
+                                                        anchor: pendingPos + markdown.length,
+                                                        head: pendingPos + markdown.length
+                                                    } : undefined,
+                                                    effects: removePendingImage.of(pendingImage.id),
                                                 });
+                                                // 正式画像の asset URL 変換中に一瞬消えないよう少しだけ保持する。
+                                                window.setTimeout(() => URL.revokeObjectURL(pendingImage.objectUrl), 1000);
                                             })
                                             .catch((err) => {
+                                                if (view.dom.isConnected) {
+                                                    view.dispatch({ effects: removePendingImage.of(pendingImage.id) });
+                                                }
+                                                URL.revokeObjectURL(pendingImage.objectUrl);
                                                 console.error('[EDITOR] Failed to paste image:', err);
                                                 // Optional: Show error to user?
                                             });
@@ -1424,6 +1576,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
         });
 
         viewRef.current = view;
+        const handleImageWidgetClick = () => latestOnBlurRef.current?.();
+        view.dom.addEventListener(IMAGE_WIDGET_CLICK_EVENT, handleImageWidgetClick);
 
         // [NEW] 初期選択処理（作成直後に一度だけ予約）
         if (isNewNote) {
@@ -1463,11 +1617,13 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
         }
 
         return () => {
+            view.dom.removeEventListener(IMAGE_WIDGET_CLICK_EVENT, handleImageWidgetClick);
             view.destroy();
             viewRef.current = null;
         };
+        // 設定画面で編集ショートカットを変更した場合だけキーマップを再作成する。
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // 起動時に一度だけ作成
+    }, [formatShortcuts?.bold, formatShortcuts?.heading, formatShortcuts?.bulletList, formatShortcuts?.checkbox]);
 
     // [New] Ready flag initialization
     useEffect(() => {

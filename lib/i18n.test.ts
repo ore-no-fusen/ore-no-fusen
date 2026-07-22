@@ -16,10 +16,16 @@ describe('i18n Utility', () => {
         expect(t('settings.title')).toBe('俺の付箋');
         expect(t('common.save')).toBe('保存');
         expect(t('settings.data.basePathPlaceholder')).toBe('フォルダを選択してください...');
+        expect(t('settings.data.import')).toBe('Markdownのインポート＆しまったタグのインポート');
+        expect(t('settings.data.importTagDesc')).toContain('元のタグフォルダにも残ります');
         expect(t('settings.help.menuTitle')).toBe('使い方');
         expect(t('settings.help.workflow.title')).toBe('よくある使い方');
         expect(t('settings.help.contextTable.title')).toBe('右クリックメニュー早見表');
+        expect(t('settings.help.contextTable.archive.action')).toBe('タグフォルダへしまう');
+        expect(t('menu.archive')).toBe('タグフォルダへしまう');
         expect(t('menu.openHelp')).toBe('使い方を開く');
+        expect(t('menu.colors.yellow')).toBe('黄 - アイデア保存');
+        expect(t('menu.colors.black')).toBe('黒 - レシピ・手順');
     });
 
     it('returns correct translation for English', () => {
@@ -27,10 +33,13 @@ describe('i18n Utility', () => {
         expect(t('settings.title')).toBe('Settings');
         expect(t('common.save')).toBe('Save & Close');
         expect(t('settings.data.basePathPlaceholder')).toBe('Select a folder...');
+        expect(t('settings.data.import')).toBe('Import Markdown & Put-Away Tags');
         expect(t('settings.help.menuTitle')).toBe('Help');
         expect(t('settings.help.workflow.title')).toBe('Common Workflows');
         expect(t('settings.help.contextTable.title')).toBe('Right-Click Menu Reference');
         expect(t('menu.openHelp')).toBe('Open Help');
+        expect(t('menu.colors.yellow')).toBe('Yellow - ideas');
+        expect(t('menu.colors.black')).toBe('Black - recipes');
     });
 
     it('returns key if translation is missing', () => {

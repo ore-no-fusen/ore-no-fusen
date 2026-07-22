@@ -3,11 +3,17 @@ import { listen } from '@tauri-apps/api/event';
 import { useSettings } from '@/lib/settings-store';
 import { Note } from '@/app/api/notes';
 import { safeUnlisten } from '@/app/utils/safeUnlisten';
+import { NOTE_COLORS, NOTE_FONT_SIZES } from '@/app/utils/noteAppearance';
 
-export function useNoteStyles(note: Note | null) {
+export function useNoteStyles(note: Note | null, initialBackgroundColor?: string | null) {
     const { settings } = useSettings();
-    const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>('#f7e9b0');
-    const [noteFontSize, setNoteFontSize] = useState<number>(16);
+    // 開く側が色を知っている場合はそれを初期値にする（黄色フラッシュ防止）。無ければ従来どおり黄色
+    const [noteBackgroundColor, setNoteBackgroundColor] = useState<string>(
+        initialBackgroundColor && /^#[0-9a-fA-F]{6}$/.test(initialBackgroundColor)
+            ? initialBackgroundColor
+            : NOTE_COLORS.yellow
+    );
+    const [noteFontSize, setNoteFontSize] = useState<number>(NOTE_FONT_SIZES.medium);
 
     // 1. グローバル設定の適用 (フォントサイズ)
     useEffect(() => {

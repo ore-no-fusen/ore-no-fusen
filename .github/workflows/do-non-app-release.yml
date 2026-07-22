@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - landing
+          - docs
       message:
         description: 'Commit message (optional)'
         required: false
@@ -60,20 +61,29 @@ jobs:
         env:
           TARGET: ${{ github.event.inputs.target }}
         run: |
-          if [ "$TARGET" != "landing" ]; then
-            echo "Unsupported target: $TARGET"
-            exit 1
-          fi
-
-          rm -rf app/landing public/screenshots
-
-          git checkout origin/develop -- \
-            app/landing \
-            app/sitemap.ts \
-            app/robots.ts \
-            public/screenshots
+          case "$TARGET" in
+            landing)
+              rm -rf app/landing public/screenshots
+              git checkout origin/develop -- \
+                app/landing \
+                app/sitemap.ts \
+                app/robots.ts \
+                app/utils/analytics.ts \
+                public/screenshots
+              ;;
+            docs)
+              git rm -r --ignore-unmatch docs-v2
+              git checkout origin/develop -- docs-v2
+              ;;
+            *)
+              echo "Unsupported target: $TARGET"
+              exit 1
+              ;;
+          esac
 
       - name: Validate changed paths
+        env:
+          TARGET: ${{ github.event.inputs.target }}
         run: |
           CHANGED="$(git diff --cached --name-only)"
           if [ -z "$CHANGED" ]; then
@@ -83,7 +93,16 @@ jobs:
 
           echo "$CHANGED"
 
-          DISALLOWED="$(echo "$CHANGED" | grep -Ev '^(app/landing/|app/sitemap\.ts$|app/robots\.ts$|public/screenshots/)' || true)"
+          if [ "$TARGET" = "landing" ]; then
+            ALLOWED='^(app/landing/|app/sitemap\.ts$|app/robots\.ts$|app/utils/analytics\.ts$|public/screenshots/)'
+          elif [ "$TARGET" = "docs" ]; then
+            ALLOWED='^docs-v2/'
+          else
+            echo "Unsupported target: $TARGET"
+            exit 1
+          fi
+
+          DISALLOWED="$(echo "$CHANGED" | grep -Ev "$ALLOWED" || true)"
           if [ -n "$DISALLOWED" ]; then
             echo "Disallowed paths detected:"
             echo "$DISALLOWED"
@@ -98,6 +117,8 @@ jobs:
           fi
 
       - name: Commit and push main
+        env:
+          TARGET: ${{ github.event.inputs.target }}
         run: |
           if git diff --cached --quiet; then
             echo "No changes to commit."
@@ -105,8 +126,16 @@ jobs:
           fi
 
           MSG="${{ github.event.inputs.message }}"
-          COMMIT_MSG="${MSG:-chore(non-app): publish landing updates from develop}"
+          COMMIT_MSG="${MSG:-chore(non-app): publish $TARGET updates from develop}"
 
-          git add app/landing app/sitemap.ts app/robots.ts public/screenshots
+          if [ "$TARGET" = "landing" ]; then
+            git add app/landing app/sitemap.ts app/robots.ts app/utils/analytics.ts public/screenshots
+          elif [ "$TARGET" = "docs" ]; then
+            git add docs-v2
+          else
+            echo "Unsupported target: $TARGET"
+            exit 1
+          fi
+
           git commit -m "$COMMIT_MSG"
           git push origin main

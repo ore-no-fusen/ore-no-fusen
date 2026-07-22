@@ -310,6 +310,7 @@ export function WriteStep({
       <div
         ref={editorRef}
         contentEditable="true"
+        autoFocus
         suppressContentEditableWarning
         className="flex-1 mx-4 mt-1 mb-2 px-4 py-4 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none bg-white rounded-2xl shadow-sm"
         data-placeholder="メモを入力..."

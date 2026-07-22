@@ -81,6 +81,10 @@ export default function ViewerPage() {
   const imageBlobsRef = React.useRef<Map<string, Blob>>(new Map());
   const videoBlobsRef = React.useRef<VideoBlobMap>(new Map());
   const writeTagsRef = React.useRef<string[]>([]);
+  const hasStartedWriting = React.useCallback(
+    () => Boolean(editorRef.current?.textContent),
+    []
+  );
 
   useEffect(() => {
     setIsMounted(true);
@@ -120,6 +124,7 @@ export default function ViewerPage() {
     setIsLoading,
     setErrorMessage,
     setPendingHydrate,
+    hasStartedWriting,
   });
 
   // ログイン後: Drive から自分のデバイスが消えていたら静かに再登録

@@ -98,7 +98,7 @@ fn color_bucket(note: &ArrangeNote) -> ColorBucket {
 }
 
 fn classify(note: &ArrangeNote) -> NotePlacement {
-    let Some(tag) = note.tags.first() else {
+    let Some(tag) = note.tags.iter().find(|tag| !crate::logic::is_reserved_tag(tag)) else {
         return NotePlacement::Other;
     };
 
@@ -255,10 +255,49 @@ pub(crate) fn calculate_arrange_rule3_positions(
         .into_iter()
         .map(|placed| ArrangedPosition {
             path: placed.note.path.clone(),
-            x: placed.x,
+            x: clamp_note_x_to_work_area(placed.x, placed.note.width, work_area),
             y: placed.y,
         })
         .collect()
+}
+
+pub(crate) fn arrange_width_for_window(
+    stored_width: f64,
+    folded: bool,
+    current_window_width: Option<f64>,
+) -> f64 {
+    if folded {
+        current_window_width
+            .filter(|width| width.is_finite() && *width > 0.0)
+            .unwrap_or(stored_width)
+    } else {
+        stored_width
+    }
+}
+
+pub(crate) fn arrange_size_for_window(
+    stored_width: Option<f64>,
+    stored_height: Option<f64>,
+    folded: bool,
+    current_window_size: Option<(f64, f64)>,
+) -> Option<(f64, f64)> {
+    let current_width = current_window_size.map(|(width, _)| width);
+    let width = stored_width
+        .or(current_width)
+        .map(|width| arrange_width_for_window(width, folded, current_width))?;
+    let height = stored_height.or(current_window_size.map(|(_, height)| height))?;
+    (width.is_finite() && width > 0.0 && height.is_finite() && height > 0.0)
+        .then_some((width, height))
+}
+
+fn clamp_note_x_to_work_area(x: f64, note_width: f64, work_area: WorkArea) -> f64 {
+    let left = work_area.x;
+    let rightmost_x = if note_width.is_finite() && note_width > 0.0 {
+        (work_area.x + work_area.width - note_width).max(left)
+    } else {
+        work_area.x + work_area.width
+    };
+    x.clamp(left, rightmost_x)
 }
 
 fn layout_rule3(notes: &[ArrangeNote], work_area: WorkArea) -> Rule3Layout<'_> {
@@ -727,6 +766,29 @@ mod tests {
     }
 
     #[test]
+    fn classify_system_tag_only_as_other() {
+        assert_eq!(
+            classify(&note("favorite.md", &["shortcut"], Some(COLOR_YELLOW))),
+            NotePlacement::Other
+        );
+    }
+
+    #[test]
+    fn classify_by_first_user_tag_after_system_tag() {
+        assert_eq!(
+            classify(&note(
+                "favorite-work.md",
+                &["shortcut", "仕事", "調査"],
+                Some(COLOR_YELLOW),
+            )),
+            NotePlacement::Kanban {
+                tag: "仕事".to_string(),
+                color_role: ColorRole::Yellow,
+            }
+        );
+    }
+
+    #[test]
     fn kanban_lanes_sort_by_yellow_red_blue_counts_then_tag() {
         let notes = vec![
             note("b_yellow_1.md", &["B"], Some(COLOR_YELLOW)),
@@ -879,6 +941,41 @@ mod tests {
         assert!(
             position(&positions, "untagged_blue.md").y < position(&positions, "tagged_white.md").y
         );
+    }
+
+    #[test]
+    fn folded_note_uses_its_current_window_width() {
+        assert_eq!(arrange_width_for_window(1200.0, true, Some(286.0)), 286.0);
+        assert_eq!(arrange_width_for_window(1200.0, false, Some(286.0)), 1200.0);
+    }
+
+    #[test]
+    fn imported_note_without_stored_size_uses_current_window_size() {
+        assert_eq!(
+            arrange_size_for_window(None, None, false, Some((640.0, 480.0))),
+            Some((640.0, 480.0))
+        );
+    }
+
+    #[test]
+    fn public_arrange_keeps_each_note_horizontally_reachable() {
+        let mut huge = note("huge.md", &["tag"], Some(COLOR_YELLOW));
+        huge.width = 450.0;
+        let notes = vec![
+            huge,
+            note("red.md", &["tag"], Some(COLOR_RED)),
+            note("blue.md", &["tag"], Some(COLOR_BLUE)),
+            note("bucket.md", &[], Some(COLOR_WHITE)),
+        ];
+        let work_area = WorkArea { x: 0.0, y: 0.0, width: 500.0, height: 800.0 };
+
+        let positions = calculate_arrange_by_tag_positions(&notes, work_area);
+
+        for note in &notes {
+            let x = position(&positions, &note.path).x;
+            assert!(x >= work_area.x);
+            assert!(x + note.width.min(work_area.width) <= work_area.x + work_area.width);
+        }
     }
 
     #[test]

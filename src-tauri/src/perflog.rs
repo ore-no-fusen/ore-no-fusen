@@ -1,26 +1,26 @@
 /*
- * パフォーマンスログ基盤 (perflog)
+ * Opt-in performance logging.
  *
- * 責務:
- * - JSON Lines 形式で構造化ログを %LOCALAPPDATA%\ore-no-fusen\perf.jsonl に記録
- * - Ctrl+N → T2_READY の計測に使用する（T0 / T1_RUST_ENTER / T2_READY）
- * - Mutex で書き込み排他（並列書き込みで改行が混ざらない）
- * - PERF_LOG 環境変数でパスを上書き可能（テスト用）
- * - path を含めない（プライバシー保護 / Sentry リーク対策）
+ * The user-facing path never performs file I/O: events are offered to a
+ * bounded channel and a dedicated worker appends them later. If the channel
+ * is full, measurement is dropped instead of delaying the application.
  */
 
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::PathBuf;
-use std::sync::Mutex;
 use chrono::Local;
 use serde::Serialize;
 use serde_json::Value;
+use std::fs::OpenOptions;
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
+use std::sync::OnceLock;
 
-/// ファイル書き込みを排他する Mutex
-static PERF_LOG_MUTEX: Mutex<()> = Mutex::new(());
+const QUEUE_CAPACITY: usize = 256;
+static PERF_SENDER: OnceLock<Option<SyncSender<PerfEvent>>> = OnceLock::new();
+static PERF_ENABLED: OnceLock<bool> = OnceLock::new();
+static DROPPED_EVENTS: AtomicU64 = AtomicU64::new(0);
 
-/// パフォーマンスイベント（JSON Lines 1 行分）
 #[derive(Serialize)]
 pub struct PerfEvent {
     pub ts: String,
@@ -29,170 +29,191 @@ pub struct PerfEvent {
     pub label: Option<String>,
     pub elapsed_ms: Option<u64>,
     pub meta: Value,
+    pub dropped_before: u64,
 }
 
-/// perf.jsonl のパスを返す
-/// 環境変数 PERF_LOG が設定されていれば優先（テスト・CI 用）
+fn measurement_enabled(value: Option<&str>) -> bool {
+    value.is_some_and(|value| !value.trim().is_empty())
+}
+
+/// Explicit opt-in keeps normal debug and release runs free of measurement work.
+pub fn enabled() -> bool {
+    *PERF_ENABLED.get_or_init(|| measurement_enabled(std::env::var("PERF_LOG").ok().as_deref()))
+}
+
+/// Keeps argument construction (including `json!`) out of normal executions.
+#[macro_export]
+macro_rules! perf_event {
+    ($run_id:expr, $event:expr, $label:expr, $elapsed_ms:expr, $meta:expr $(,)?) => {{
+        if crate::perflog::enabled() {
+            crate::perflog::log_event($run_id, $event, $label, $elapsed_ms, $meta)
+        } else {
+            false
+        }
+    }};
+}
+
 fn perf_log_path() -> Result<PathBuf, String> {
-    if let Ok(override_path) = std::env::var("PERF_LOG") {
-        return Ok(PathBuf::from(override_path));
-    }
-    let app_data = std::env::var("LOCALAPPDATA")
-        .map_err(|_| "LOCALAPPDATA not found".to_string())?;
-    let log_dir = PathBuf::from(app_data).join("ore-no-fusen");
-    std::fs::create_dir_all(&log_dir)
-        .map_err(|e| format!("Failed to create perf log directory: {}", e))?;
-    Ok(log_dir.join("perf.jsonl"))
+    let path = std::env::var("PERF_LOG").map_err(|_| "PERF_LOG not set".to_string())?;
+    Ok(PathBuf::from(path))
 }
 
-/// JSON Lines 1 行を perf.jsonl に append する
-///
-/// - `run_id`: 1 回の Ctrl+N 操作を識別する UUID 等の文字列
-/// - `event`:  "T0" / "T1_RUST_ENTER" / "T2_READY" など
-/// - `label`:  任意の追加ラベル（None 可）
-/// - `elapsed_ms`: T0 からの経過 ms（T0 自身は None）
-/// - `meta`:   追加情報（path は含めない。絶対パスは sanitize_path 経由で除去済みであること）
+fn contains_sensitive_key(value: &Value) -> bool {
+    match value {
+        Value::Object(map) => map.iter().any(|(key, value)| {
+            matches!(
+                key.to_ascii_lowercase().as_str(),
+                "path" | "body" | "query" | "title" | "content"
+            ) || contains_sensitive_key(value)
+        }),
+        Value::Array(values) => values.iter().any(contains_sensitive_key),
+        _ => false,
+    }
+}
+
+fn write_event(writer: &mut impl Write, event: &PerfEvent) -> std::io::Result<()> {
+    serde_json::to_writer(&mut *writer, event)?;
+    writer.write_all(b"\n")
+}
+
+fn start_worker() -> Option<SyncSender<PerfEvent>> {
+    let path = perf_log_path().ok()?;
+    let (sender, receiver) = sync_channel::<PerfEvent>(QUEUE_CAPACITY);
+    std::thread::Builder::new()
+        .name("fusen-perflog".to_string())
+        .spawn(move || {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let Ok(file) = OpenOptions::new().create(true).append(true).open(&path) else {
+                return;
+            };
+            let mut writer = BufWriter::new(file);
+            while let Ok(event) = receiver.recv() {
+                let _ = write_event(&mut writer, &event);
+                while let Ok(event) = receiver.try_recv() {
+                    let _ = write_event(&mut writer, &event);
+                }
+                let _ = writer.flush();
+            }
+        })
+        .ok()?;
+    Some(sender)
+}
+
+/// Non-blocking. Returns false when disabled, unsafe, unavailable, or full.
 pub fn log_event(
     run_id: &str,
     event: &str,
     label: Option<&str>,
     elapsed_ms: Option<u64>,
     meta: Value,
-) {
-    // リリースビルドでは計測ログを書かない（開発時の起動性能計測専用機構のため）。
-    // ただし PERF_LOG 環境変数が明示的に指定されていれば（CI 等）有効にする。
-    #[cfg(not(debug_assertions))]
-    {
-        if std::env::var("PERF_LOG").is_err() {
-            let _ = (run_id, event, label, elapsed_ms, meta);
-            return;
-        }
+) -> bool {
+    if !enabled() || contains_sensitive_key(&meta) {
+        return false;
     }
 
-    let ev = PerfEvent {
+    let Some(sender) = PERF_SENDER.get_or_init(start_worker).as_ref() else {
+        return false;
+    };
+
+    let event = PerfEvent {
         ts: Local::now().to_rfc3339(),
         run_id: run_id.to_string(),
         event: event.to_string(),
-        label: label.map(|s| s.to_string()),
+        label: label.map(str::to_string),
         elapsed_ms,
         meta,
+        dropped_before: DROPPED_EVENTS.swap(0, Ordering::Relaxed),
     };
-
-    let line = match serde_json::to_string(&ev) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("[perflog] serialize error: {}", e);
-            return;
+    match sender.try_send(event) {
+        Ok(()) => true,
+        Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {
+            DROPPED_EVENTS.fetch_add(1, Ordering::Relaxed);
+            false
         }
-    };
-
-    if cfg!(debug_assertions) {
-        println!("[perflog] {}", line);
-    }
-
-    let path = match perf_log_path() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[perflog] path error: {}", e);
-            return;
-        }
-    };
-
-    let _guard = PERF_LOG_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
-
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        let _ = writeln!(file, "{}", line);
-    } else {
-        eprintln!("[perflog] failed to open: {:?}", path);
     }
 }
 
-// ============================================================
-// テスト
-// ============================================================
+fn valid_note_ready(run_id: &str, elapsed_ms: u64) -> bool {
+    !run_id.is_empty() && run_id.len() <= 128 && elapsed_ms <= 60_000
+}
+
+pub fn log_note_ready(run_id: &str, elapsed_ms: u64) -> Result<(), String> {
+    if !valid_note_ready(run_id, elapsed_ms) {
+        return Err("invalid performance completion".to_string());
+    }
+    crate::perf_event!(
+        run_id,
+        "NOTE_EDITOR_READY",
+        None,
+        Some(elapsed_ms),
+        serde_json::json!({ "status": "success" }),
+    );
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader};
-    use std::fs::File;
-    use tempfile::tempdir;
 
-    /// テスト用: 指定パスに直接 JSON Lines 1 行を append する内部関数
-    fn log_event_to(
-        path: &std::path::Path,
-        run_id: &str,
-        event: &str,
-        label: Option<&str>,
-        elapsed_ms: Option<u64>,
-        meta: serde_json::Value,
-    ) {
-        let ev = PerfEvent {
-            ts: chrono::Local::now().to_rfc3339(),
-            run_id: run_id.to_string(),
-            event: event.to_string(),
-            label: label.map(|s| s.to_string()),
-            elapsed_ms,
+    fn event(meta: Value) -> PerfEvent {
+        PerfEvent {
+            ts: "2026-07-14T00:00:00+09:00".to_string(),
+            run_id: "run-1".to_string(),
+            event: "ready".to_string(),
+            label: None,
+            elapsed_ms: Some(12),
             meta,
-        };
-        let line = serde_json::to_string(&ev).unwrap();
-        let _guard = PERF_LOG_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-            .unwrap();
-        writeln!(file, "{}", line).unwrap();
+            dropped_before: 0,
+        }
     }
 
-    /// Test 1: log_event_to を 3 回呼んで perf.jsonl に 3 行書かれていることを検証
     #[test]
-    fn test_log_event_writes_three_lines() {
-        let dir = tempdir().unwrap();
-        let perf_path = dir.path().join("perf.jsonl");
-
-        log_event_to(&perf_path, "run-abc", "T0", None, None, serde_json::json!({}));
-        log_event_to(&perf_path, "run-abc", "T1_RUST_ENTER", None, Some(10), serde_json::json!({}));
-        log_event_to(&perf_path, "run-abc", "T2_READY", None, Some(150), serde_json::json!({}));
-
-        let file = File::open(&perf_path).expect("perf.jsonl が作成されていること");
-        let reader = BufReader::new(file);
-        let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
-        assert_eq!(lines.len(), 3, "3 行書かれているべき");
+    fn measurement_requires_explicit_non_empty_path() {
+        assert!(!measurement_enabled(None));
+        assert!(!measurement_enabled(Some("  ")));
+        assert!(measurement_enabled(Some("C:/tmp/perf.jsonl")));
     }
 
-    /// Test 2: 同 run_id の 3 イベントを書いた後、parse して event 配列が 3 要素であることを検証
     #[test]
-    fn test_log_event_parseable_and_groupable() {
-        let dir = tempdir().unwrap();
-        let perf_path = dir.path().join("perf2.jsonl");
+    fn bounded_queue_never_waits_when_full() {
+        let (sender, _receiver) = sync_channel(1);
+        sender.try_send(event(serde_json::json!({}))).unwrap();
+        assert!(matches!(
+            sender.try_send(event(serde_json::json!({}))),
+            Err(TrySendError::Full(_))
+        ));
+    }
 
-        let run_id = "run-xyz";
-        log_event_to(&perf_path, run_id, "T0", None, None, serde_json::json!({}));
-        log_event_to(&perf_path, run_id, "T1_RUST_ENTER", Some("rust"), Some(8), serde_json::json!({}));
-        log_event_to(&perf_path, run_id, "T2_READY", None, Some(200), serde_json::json!({}));
+    #[test]
+    fn sensitive_metadata_is_rejected_recursively() {
+        assert!(contains_sensitive_key(
+            &serde_json::json!({"query": "secret"})
+        ));
+        assert!(contains_sensitive_key(
+            &serde_json::json!({"safe": {"path": "secret"}})
+        ));
+        assert!(!contains_sensitive_key(
+            &serde_json::json!({"result_count": 3})
+        ));
+    }
 
-        let file = File::open(&perf_path).expect("perf.jsonl が作成されていること");
-        let reader = BufReader::new(file);
-        let events: Vec<serde_json::Value> = reader
-            .lines()
-            .filter_map(|l| l.ok())
-            .map(|l| serde_json::from_str(&l).expect("各行が JSON として parse できること"))
-            .collect();
+    #[test]
+    fn event_is_one_parseable_json_line() {
+        let mut output = Vec::new();
+        write_event(&mut output, &event(serde_json::json!({"result_count": 3}))).unwrap();
+        assert_eq!(output.iter().filter(|byte| **byte == b'\n').count(), 1);
+        let parsed: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(parsed["event"], "ready");
+        assert_eq!(parsed["meta"]["result_count"], 3);
+    }
 
-        // run_id でグルーピングしたとき 3 要素
-        let grouped: Vec<&serde_json::Value> = events
-            .iter()
-            .filter(|ev| ev["run_id"].as_str() == Some(run_id))
-            .collect();
-        assert_eq!(grouped.len(), 3, "同 run_id のイベントが 3 個存在するべき");
-
-        // elapsed_ms の存在確認
-        let t2 = grouped.iter().find(|ev| ev["event"].as_str() == Some("T2_READY")).unwrap();
-        assert_eq!(t2["elapsed_ms"].as_u64(), Some(200));
+    #[test]
+    fn note_ready_completion_has_strict_bounds() {
+        assert!(valid_note_ready("run-1", 60_000));
+        assert!(!valid_note_ready("", 10));
+        assert!(!valid_note_ready(&"x".repeat(129), 10));
+        assert!(!valid_note_ready("run-1", 60_001));
     }
 }

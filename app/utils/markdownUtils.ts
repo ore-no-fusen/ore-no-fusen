@@ -43,3 +43,41 @@ export function resolvePath(baseFile: string, relativePath: string): string {
     return absPath;
 }
 
+function resolvePathFromDirectory(baseDir: string, relativePath: string): string {
+    const normalizedBaseDir = baseDir.replace(/[\\/]+$/, '');
+    return `${normalizedBaseDir}/${relativePath}`.replace(/\//g, '\\').replace(/\\\\+/g, '\\');
+}
+
+export function buildImagePathCandidates(baseFile: string, relativePath: string, basePath?: string | null): string[] {
+    if (isAbsoluteOrExternalPath(relativePath)) {
+        return [relativePath];
+    }
+
+    const candidates = [resolvePath(baseFile, relativePath)];
+    if (basePath) {
+        candidates.push(resolvePathFromDirectory(basePath, relativePath));
+    }
+
+    return Array.from(new Set(candidates));
+}
+
+const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\([^)]+\)/g;
+const MARKDOWN_IMAGE_AT_START_PATTERN = /^!\[[^\]]*\]\([^)]+\)/;
+
+/** 折りたたみ時、先頭が画像なら画像の存在と直後の識別用テキストを1行にまとめる。 */
+export function buildFoldedPreview(content: string): string {
+    const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const firstLine = lines[0];
+    if (!firstLine || !MARKDOWN_IMAGE_AT_START_PATTERN.test(firstLine)) {
+        return content;
+    }
+
+    for (const line of lines) {
+        const text = line.replace(MARKDOWN_IMAGE_PATTERN, '').trim();
+        if (text) {
+            return `[画像] ${text}`;
+        }
+    }
+
+    return '[画像]';
+}

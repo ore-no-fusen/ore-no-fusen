@@ -25,6 +25,11 @@ import type { DraftRecord, PendingHydrate, PendingVideoMeta, VideoBlobMap } from
 
 type Step = 'banner' | 'login' | 'push' | 'write' | 'list';
 
+export function resolveImmediateStartupStep(token: string | null, pushDone: boolean): Step {
+  if (!token) return 'login';
+  return pushDone ? 'write' : 'push';
+}
+
 type UseAppInitOptions = {
   setIsStandalone: (v: boolean) => void;
   setSwReady: (v: boolean) => void;
@@ -33,6 +38,7 @@ type UseAppInitOptions = {
   setIsLoading: (v: boolean) => void;
   setErrorMessage: (msg: string | null) => void;
   setPendingHydrate: (v: PendingHydrate | null) => void;
+  hasStartedWriting?: () => boolean;
 };
 
 /**
@@ -49,6 +55,7 @@ export function useAppInit({
   setIsLoading,
   setErrorMessage,
   setPendingHydrate,
+  hasStartedWriting,
 }: UseAppInitOptions): void {
   useEffect(() => {
     const videoMetasFromDraft = (draft: {
@@ -239,10 +246,25 @@ export function useAppInit({
     // SW が通知表示時に記録。5分以内なら自動でノートを開く
     if (token) {
       setAccessToken(token);
+      const resetPush = new URLSearchParams(window.location.search).get('reset_push');
+      if (resetPush === '1') {
+        localStorage.removeItem('viewer_push_done');
+      }
+
+      // 通常起動は IndexedDB の確認を待たず、まず入力可能な編集画面を表示する。
+      // pending_open があれば、後から同じ画面へ対象ノートを hydrate する。
+      setStep(resolveImmediateStartupStep(
+        token,
+        localStorage.getItem('viewer_push_done') === 'true'
+      ));
+
       (async () => {
         const pending = await loadPendingOpen().catch(() => null);
         pageLog(`pending_open確認: ${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
         if (pending && Date.now() - pending.t < 30 * 60 * 1000) {
+          // 起動直後に入力が始まっていたら、その1文字目以降を通知ノートで上書きしない。
+          // pending_open は残し、次回起動時に再確認する。
+          if (hasStartedWriting?.()) return;
           await clearPendingOpen().catch(() => {});
           const draft = await loadDraft(pending.id).catch(() => null);
           pageLog(`pending draft: ${draft ? '取得成功' : '取得失敗'}`);
@@ -263,19 +285,9 @@ export function useAppInit({
           return;
         }
 
-        // 通常フロー（セットアップ）
-        const resetPush = new URLSearchParams(window.location.search).get('reset_push');
-        if (resetPush === '1') {
-          localStorage.removeItem('viewer_push_done');
-        }
-        if (localStorage.getItem('viewer_push_done') === 'true') {
-          setStep('write');
-        } else {
-          setStep('push');
-        }
       })();
     } else {
       setStep('login');
     }
-  }, [setAccessToken, setErrorMessage, setIsLoading, setIsStandalone, setPendingHydrate, setStep, setSwReady]);
+  }, [hasStartedWriting, setAccessToken, setErrorMessage, setIsLoading, setIsStandalone, setPendingHydrate, setStep, setSwReady]);
 }

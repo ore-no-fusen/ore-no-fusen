@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   release:
@@ -72,11 +73,23 @@ jobs:
       - name: Build unsigned MSIX
         run: powershell -ExecutionPolicy Bypass -File packaging\msix\build-msix.ps1
 
-      - name: Upload unsigned MSIX
+      - name: Validate Store MSIX
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ github.ref_name }}
+        run: |
+          $version = $env:EXPECTED_VERSION -replace '^v', ''
+          powershell -ExecutionPolicy Bypass -File packaging\msix\validate-msix.ps1 `
+            -PackagePath packaging\msix\out\ore-no-fusen.msix `
+            -ExpectedVersion "$version.0"
+
+      - name: Upload Store submission MSIX
         uses: actions/upload-artifact@v4
         with:
-          name: msix-unsigned
+          name: store-msix
           path: packaging/msix/out/ore-no-fusen.msix
+          if-no-files-found: error
+          retention-days: 30
 
   winget:
     needs: release

@@ -7,7 +7,7 @@
 
 ## このVercelプロジェクトが担っているもの
 
-- **ランディングページ** (`/landing`) — アプリの紹介・インストーラーダウンロード
+- **ランディングページ** (`/landing`) — アプリの紹介・Microsoft Store導線
 - **iPhone PWA** (`/viewer`) — iPhoneからの付箋送受信
 
 ---

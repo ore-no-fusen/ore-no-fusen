@@ -263,6 +263,43 @@ Plans:
 - [ ] 19-04-replenish-global-shortcut-PLAN.md — Wave 4: Pool 補充オーケストレーション + グローバル Ctrl+N + settings.json カスタマイズ
 - [ ] 19-05-perf-verification-checkpoint-PLAN.md — Wave 5: 5 サンプル計測 + REQUIREMENTS 追記 + 手動検証チェックポイント
 
+### Phase 20: 起動時データ保護と最小レスキューモード
+
+**Goal:** 設定・保存先の読み込み異常を初回起動と誤認せず、データを変更しない安全策と、設定二重破損時にも付箋利用を継続できる最小自動復旧を提供する
+**Requirements**: SAFE-01, SAFE-02
+**Depends on:** Phase 19
+**Success Criteria** (what must be TRUE):
+  1. 設定または保存先が読めない起動では、初期付箋を作らず、自動保存・削除・設定上書きを行わない
+  2. `settings.json` が壊れても正常な `.bak` があれば従来どおり直前世代を使用する
+  3. 本体と `.bak` が両方壊れた場合だけ、両方を日時付きで退避し、安全な既定保存先を持つ正常設定を再作成する
+  4. 自動復旧後は黄色い案内付箋1枚で異常とデータ非削除を伝え、ユーザーは通常どおり付箋を作成できる
+  5. 再起動後は同じ保存先と付箋を復元し、案内付箋を重複作成しない
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 20 to break down)
+
+### Phase 21: MSIX正式版への一本化
+
+**Goal:** Microsoft Store を主配布経路とする MSIX 正式版へ一本化し、winget、更新、既存ユーザー移行、自動起動を安全に継続する
+**Requirements**: DIST-01, DIST-02, DIST-03, DIST-04, DIST-05, DIST-06, DIST-07, DIST-08
+**Depends on:** Phase 20
+**Success Criteria** (what must be TRUE):
+  1. 移行開始版5.0.0で最後のNSIS・MSIとStore MSIXを提供し、移行完了版5.1.0以降の正式配布物はStore MSIXの1種類となる
+  2. アプリの各リリースが Store 提出工程を通り、Store が唯一の自動更新経路になる
+  3. winget から Store 版を導入でき、従来の community package 利用者に移行手順がある
+  4. MSI/NSIS 版から MSIX 版へ移行しても付箋・画像・設定を失わない
+  5. MSIX の StartupTask で設定画面の自動起動 ON/OFF が動作し、Windows 側で無効化された場合の案内が表示される
+  6. 設計書・ユーザーガイド・README・リリース手順・画面表示が MSIX 正式版に統一される
+**Plans:** 5 plans
+
+Plans:
+- [ ] 21-00-MIGRATION-RELEASE-PLAN.md — 5.0.0移行開始から5.1.0一本化完了までのリリース運用
+- [ ] 21-01-PLAN.md — MSIX単一成果物とStore提出パイプライン
+- [ ] 21-02-PLAN.md — 実行時の配布分岐・更新・自動起動・版表示の整理
+- [ ] 21-03-PLAN.md — winget移行、既存ユーザー移行、設計書・マニュアル同期
+- [ ] 21-04-PLAN.md — Store署名版による更新・移行・自動起動の統合検証
+
 ---
 
 ## Progress
@@ -288,3 +325,5 @@ Plans:
 | 17. コンポーネント分割 | v5.0 | Complete | 2026-05-02 |
 | 18. エディタ連携 + 再起動復元 | v5.0 | Complete | 2026-05-02 |
 | 19. 起動性能300ms達成（Pool） | v6.0 | Complete | 2026-05-02 |
+| 20. 起動時データ保護と最小レスキューモード | safety | In Progress（実装・自動テスト済み、実機確認待ち） | — |
+| 21. MSIX正式版への一本化 | distribution | Planned | — |

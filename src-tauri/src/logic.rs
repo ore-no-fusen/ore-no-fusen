@@ -7,7 +7,7 @@
  * - 状態更新ロジックの計算 (`Effect`の生成)
  */
 
-use crate::state::{AppState, NoteMeta};
+use crate::state::{AppState, NoteMeta, RecipeCandidate, RecipeCandidates, RecipeUsageMeta};
 
 // ロジック層: 副作用なし、純粋関数のみ
 
@@ -21,7 +21,11 @@ pub enum Effect {
 pub fn parse_filename(filename: &str) -> (i32, String, String) {
     let parts: Vec<&str> = filename.split('_').collect();
     if parts.len() >= 3 {
-        let seq = parts[0].parse::<i32>().unwrap_or(0);
+        let sequence_part = ["Reci", "Term", "QA"]
+            .iter()
+            .find_map(|prefix| parts[0].strip_prefix(prefix))
+            .unwrap_or(parts[0]);
+        let seq = sequence_part.parse::<i32>().unwrap_or(0);
         let updated = parts[1].to_string();
         let context = parts[2..].join("_").trim_end_matches(".md").to_string();
         (seq, updated, context)
@@ -62,6 +66,10 @@ pub fn generate_filename(seq: i32, date: &str, context: &str) -> String {
     format!("{:04}_{}_{}.md", seq, date, context)
 }
 
+pub fn generate_crystal_filename(prefix: &str, seq: i32, date: &str, context: &str) -> String {
+    format!("{}{:04}_{}_{}.md", prefix, seq, date, context)
+}
+
 pub fn split_frontmatter(src: &str) -> (&str, &str) {
     if !src.starts_with("---") {
         return ("", src);
@@ -76,15 +84,15 @@ pub fn split_frontmatter(src: &str) -> (&str, &str) {
     ("", src)
 }
 
-/// タグフォルダへ整理する際に、アプリ固有のフィールドを除去する。
-/// Obsidian互換フィールド（tags, created, updated）は保持する。
+/// タグフォルダへ整理する際に、ウィンドウ状態などの一時的なフィールドを除去する。
+/// 色は分類に使う情報なので保持する。Obsidian互換フィールド（tags, created, updated）も保持する。
 pub fn strip_sticky_fields(content: &str) -> String {
     let (front, body) = split_frontmatter(content);
     if front.is_empty() {
         return content.to_string();
     }
 
-    const REMOVE_KEYS: &[&str] = &["type", "seq", "window", "backgroundColor", "folded", "alwaysOnTop", "opacity", "fontSize"];
+    const REMOVE_KEYS: &[&str] = &["type", "seq", "window", "folded", "alwaysOnTop", "opacity", "fontSize"];
 
     let cleaned_lines: Vec<&str> = front
         .lines()
@@ -149,6 +157,148 @@ pub fn generate_frontmatter(seq: i32, _context: &str, created: &str, updated: &s
         "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: Untitled{}{}{}{}{}\nwindow: {{ x: 100, y: 100, width: 400, height: 300 }}\n---\n",
         seq, created, updated, color_line, tags_line, folded_line, opacity_line, font_size_line
     )
+}
+
+pub const RESERVED_TAGS: [&str; 5] = ["recipe", "link", "term", "qa", "shortcut"];
+
+pub fn normalize_reserved_tag(tag: &str) -> String {
+    tag.trim().to_lowercase()
+}
+
+pub fn is_reserved_tag(tag: &str) -> bool {
+    RESERVED_TAGS.contains(&normalize_reserved_tag(tag).as_str())
+}
+
+pub fn non_reserved_tags(tags: &[String]) -> Vec<String> {
+    tags.iter()
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty() && !is_reserved_tag(tag))
+        .collect()
+}
+
+pub fn recipe_tags_from_request(tags: &[String]) -> Vec<String> {
+    tags_from_request_with_reserved(tags, "recipe")
+}
+
+pub fn qa_tags_from_request(tags: &[String]) -> Vec<String> {
+    tags_from_request_with_reserved(tags, "qa")
+}
+
+pub fn term_tags_from_request(tags: &[String]) -> Vec<String> {
+    tags_from_request_with_reserved(tags, "term")
+}
+
+fn tags_from_request_with_reserved(tags: &[String], reserved_tag: &str) -> Vec<String> {
+    let mut result = non_reserved_tags(tags);
+    if !result.iter().any(|tag| normalize_reserved_tag(tag) == reserved_tag) {
+        result.push(reserved_tag.to_string());
+    }
+    result
+}
+
+pub fn tags_share_non_reserved_tag(a: &[String], b: &[String]) -> bool {
+    let left: std::collections::HashSet<String> = non_reserved_tags(a)
+        .into_iter()
+        .map(|tag| tag.to_lowercase())
+        .collect();
+    non_reserved_tags(b)
+        .into_iter()
+        .any(|tag| left.contains(&tag.to_lowercase()))
+}
+
+pub fn generate_recipe_frontmatter(seq: i32, title: &str, created: &str, updated: &str, tags: &[String]) -> String {
+    format!(
+        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: {}\nbackgroundColor: \"#cfd8dc\"\ntags: [{}]\nlaunches: 0\nrecipeImprovements: 0\nrecipeLastUsed:\nwindow: {{ x: 120, y: 80, width: 460, height: 560 }}\n---\n",
+        seq, created, updated, title, tags.join(", ")
+    )
+}
+
+fn extract_i32_field(content: &str, key: &str) -> i32 {
+    let re = regex::Regex::new(&format!(r"(?m)^{}:[ \t]*(-?\d+)[ \t]*$", regex::escape(key))).unwrap();
+    re.captures(content)
+        .and_then(|c| c[1].parse::<i32>().ok())
+        .unwrap_or(0)
+}
+
+fn extract_optional_string_field(content: &str, key: &str) -> Option<String> {
+    let re = regex::Regex::new(&format!(r"(?m)^{}:[ \t]*(.*)$", regex::escape(key))).unwrap();
+    re.captures(content)
+        .map(|c| c[1].trim().trim_matches('"').trim_matches('\'').to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn extract_recipe_usage_meta(content: &str) -> RecipeUsageMeta {
+    RecipeUsageMeta {
+        launches: extract_i32_field(content, "launches"),
+        recipe_improvements: extract_i32_field(content, "recipeImprovements"),
+        recipe_last_used: extract_optional_string_field(content, "recipeLastUsed"),
+    }
+}
+
+pub fn build_return_recipe_content(
+    current_content: &str,
+    returned_body: &str,
+    improved: bool,
+    used_at: &str,
+    updated_at: &str,
+) -> String {
+    if !improved {
+        return update_frontmatter_value(current_content, "recipeLastUsed", used_at.to_string());
+    }
+
+    let (front, _) = split_frontmatter(current_content);
+    let base_content = if front.is_empty() {
+        returned_body.to_string()
+    } else {
+        format!("{}\n\n{}", front.trim_end(), returned_body.trim_start())
+    };
+
+    let mut next_content = update_frontmatter_value(&base_content, "recipeLastUsed", used_at.to_string());
+    let usage = extract_recipe_usage_meta(&next_content);
+    next_content = update_frontmatter_value(
+        &next_content,
+        "recipeImprovements",
+        (usage.recipe_improvements + 1).to_string(),
+    );
+    next_content = update_frontmatter_value(&next_content, "updated", updated_at.to_string());
+    next_content
+}
+
+pub struct RecipeCandidateInput {
+    pub path: String,
+    pub title: String,
+    pub body: String,
+    pub background_color: Option<String>,
+    pub tags: Vec<String>,
+}
+
+fn body_preview(body: &str, limit: usize) -> String {
+    body.chars().take(limit).collect()
+}
+
+pub fn filter_recipe_candidates(source_tags: &[String], candidates: Vec<RecipeCandidateInput>) -> RecipeCandidates {
+    let mut result = RecipeCandidates::default();
+
+    for candidate in candidates {
+        if !tags_share_non_reserved_tag(source_tags, &candidate.tags) {
+            continue;
+        }
+
+        let item = RecipeCandidate {
+            path: candidate.path,
+            title: candidate.title,
+            preview: body_preview(candidate.body.trim(), 200),
+            tags: candidate.tags,
+        };
+
+        match candidate.background_color.as_deref() {
+            Some("#f7e9b0") => result.yellows.push(item),
+            Some("#ffcdd2") => result.pinks.push(item),
+            _ => {}
+        }
+    }
+
+    result
 }
 
 pub fn extract_opacity(content: &str) -> Option<f64> {
@@ -264,6 +414,9 @@ pub fn handle_save_note(
 
     // Extract content fields from NEW frontmatter_raw
     let (_, _, _, _, new_color, new_aot, new_tags, new_folded) = extract_meta_from_content(frontmatter_raw);
+    let is_crystal_note = new_tags.iter().any(|tag| {
+        matches!(tag.trim().to_lowercase().as_str(), "recipe" | "qa" | "term")
+    });
     let new_opacity = extract_opacity(frontmatter_raw);
     let new_font_size = extract_font_size(frontmatter_raw);
 
@@ -280,7 +433,7 @@ pub fn handle_save_note(
     let final_updated = if content_changed { today } else { old_updated };
 
     // Rule A: If allow_rename is false, skip ALL rename logic
-    if !allow_rename {
+    if !allow_rename || is_crystal_note {
         println!("[DEBUG logic] allowRename=false. Skipping rename check. Path={}", current_path);
         
         let final_frontmatter = update_updated_field(frontmatter_raw, &final_updated);
@@ -631,6 +784,29 @@ mod tests {
     }
 
     #[test]
+    fn crystal_edit_does_not_rename_from_section_heading() {
+        let mut state = AppState::default();
+        let path = std::env::temp_dir()
+            .join("0001_2026-07-15_元の名前.md")
+            .to_string_lossy()
+            .to_string();
+        let frontmatter = "---\nupdated: 2026-07-15\ntags: [qa]\n---";
+
+        let (new_path, effect) = handle_save_note(
+            &mut state,
+            &path,
+            "# 問い\n変更した問い",
+            "# 問い\n元の問い",
+            frontmatter,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(new_path, path);
+        assert!(matches!(effect, Effect::WriteNote { .. }));
+    }
+
+    #[test]
     fn sanitize_real_world_example() {
         // 実際のユースケース: Windowsパスをファイル名に
         let input = "C:\\Users\\test\\Documents";
@@ -670,6 +846,128 @@ mod tests {
     }
 
     #[test]
+    fn reserved_tag_detection_matches_frontend_rules() {
+        assert!(is_reserved_tag(" recipe "));
+        assert!(is_reserved_tag("SHORTCUT"));
+        assert!(!is_reserved_tag("recipes"));
+    }
+
+    #[test]
+    fn generate_recipe_frontmatter_contains_recipe_fields() {
+        let tags = vec!["work".to_string(), "recipe".to_string()];
+        let fm = generate_recipe_frontmatter(7, "手順", "2026-07-05T12:00:00+09:00", "2026-07-05T12:00:00+09:00", &tags);
+
+        assert!(fm.contains("seq: 7"));
+        assert!(fm.contains("title: 手順"));
+        assert!(fm.contains("backgroundColor: \"#cfd8dc\""));
+        assert!(fm.contains("tags: [work, recipe]"));
+        assert!(fm.contains("launches: 0"));
+        assert!(fm.contains("recipeImprovements: 0"));
+        assert!(fm.contains("recipeLastUsed:"));
+    }
+
+    #[test]
+    fn extract_recipe_usage_meta_handles_empty_last_used() {
+        let content = "---\nlaunches: 3\nrecipeImprovements: 2\nrecipeLastUsed:\n---";
+        let meta = extract_recipe_usage_meta(content);
+
+        assert_eq!(meta.launches, 3);
+        assert_eq!(meta.recipe_improvements, 2);
+        assert_eq!(meta.recipe_last_used, None);
+    }
+
+    #[test]
+    fn build_return_recipe_content_updates_usage_without_body_when_not_improved() {
+        let content = "---\nupdated: 2026-07-01\nrecipeImprovements: 4\nrecipeLastUsed:\n---\n\n\nold body";
+        let result = build_return_recipe_content(
+            content,
+            "new body",
+            false,
+            "2026-07-05T10:20:30+09:00",
+            "2026-07-05",
+        );
+
+        assert!(result.contains("updated: 2026-07-01"));
+        assert!(result.contains("recipeImprovements: 4"));
+        assert!(result.contains("recipeLastUsed: 2026-07-05T10:20:30+09:00"));
+        assert!(result.ends_with("---\n\n\nold body"));
+        assert!(!result.contains("new body"));
+    }
+
+    #[test]
+    fn return_recipe_geometry_is_preserved_in_same_content_update() {
+        let current = "---\ntags: [qa]\nlaunches: 1\n---\nold";
+        let with_geometry = update_frontmatter_value(
+            current,
+            "window",
+            "{ x: 120, y: 80, width: 587, height: 701 }".to_string(),
+        );
+        let result = build_return_recipe_content(
+            &with_geometry,
+            "new",
+            true,
+            "2026-07-16T10:00:00+09:00",
+            "2026-07-16",
+        );
+
+        assert!(result.contains("window: { x: 120, y: 80, width: 587, height: 701 }"));
+        assert!(result.ends_with("new"));
+    }
+
+    #[test]
+    fn build_return_recipe_content_updates_body_and_improvement_count() {
+        let content = "---\nupdated: 2026-07-01\nrecipeImprovements: 4\nrecipeLastUsed:\n---\n\nold body";
+        let result = build_return_recipe_content(
+            content,
+            "new body",
+            true,
+            "2026-07-05T10:20:30+09:00",
+            "2026-07-05",
+        );
+
+        assert!(result.contains("updated: 2026-07-05"));
+        assert!(result.contains("recipeImprovements: 5"));
+        assert!(result.contains("recipeLastUsed: 2026-07-05T10:20:30+09:00"));
+        assert!(result.ends_with("new body"));
+        assert!(!result.ends_with("old body"));
+    }
+
+    #[test]
+    fn filter_recipe_candidates_uses_non_reserved_common_tags_and_colors() {
+        let source_tags = vec!["work".to_string(), "recipe".to_string()];
+        let candidates = vec![
+            RecipeCandidateInput {
+                path: "yellow.md".to_string(),
+                title: "yellow".to_string(),
+                body: "yellow body".to_string(),
+                background_color: Some("#f7e9b0".to_string()),
+                tags: vec!["work".to_string()],
+            },
+            RecipeCandidateInput {
+                path: "pink.md".to_string(),
+                title: "pink".to_string(),
+                body: "pink body".to_string(),
+                background_color: Some("#ffcdd2".to_string()),
+                tags: vec!["work".to_string(), "shortcut".to_string()],
+            },
+            RecipeCandidateInput {
+                path: "reserved_only.md".to_string(),
+                title: "reserved".to_string(),
+                body: "reserved body".to_string(),
+                background_color: Some("#f7e9b0".to_string()),
+                tags: vec!["recipe".to_string()],
+            },
+        ];
+
+        let result = filter_recipe_candidates(&source_tags, candidates);
+
+        assert_eq!(result.yellows.len(), 1);
+        assert_eq!(result.yellows[0].path, "yellow.md");
+        assert_eq!(result.pinks.len(), 1);
+        assert_eq!(result.pinks[0].path, "pink.md");
+    }
+
+    #[test]
     fn test_handle_add_tag() {
         let mut state = AppState::default();
         state.notes.push(NoteMeta { path: "/test.md".to_string(), ..Default::default() });
@@ -702,6 +1000,22 @@ mod tests {
         assert_eq!(seq, 1);
         assert_eq!(date, "2026-01-12");
         assert_eq!(context, "メモタイトル");
+    }
+
+    #[test]
+    fn parse_filename_supports_crystal_prefixes() {
+        assert_eq!(
+            parse_filename("QA0042_2026-07-18_質問.md"),
+            (42, "2026-07-18".to_string(), "質問".to_string())
+        );
+        assert_eq!(
+            parse_filename("Reci0007_2026-07-18_手順.md"),
+            (7, "2026-07-18".to_string(), "手順".to_string())
+        );
+        assert_eq!(
+            parse_filename("Term0100_2026-07-18_用語.md"),
+            (100, "2026-07-18".to_string(), "用語".to_string())
+        );
     }
 
     #[test]
@@ -751,6 +1065,14 @@ mod tests {
     fn generate_filename_large_number() {
         let filename = generate_filename(9999, "2026-01-12", "最後のメモ");
         assert_eq!(filename, "9999_2026-01-12_最後のメモ.md");
+    }
+
+    #[test]
+    fn generate_crystal_filename_adds_type_before_sequence() {
+        assert_eq!(
+            generate_crystal_filename("QA", 3, "2026-07-18", "質問"),
+            "QA0003_2026-07-18_質問.md"
+        );
     }
 
     // === parse と generate の往復テスト ===
@@ -1267,18 +1589,18 @@ tags: [OreNoFusen, 開発プロセス]
     }
 
     #[test]
-    fn test_strip_sticky_fields_removes_app_fields() {
+    fn test_strip_sticky_fields_removes_temporary_fields_and_preserves_color() {
         let content = "---\ntype: sticky\nseq: 96\ncreated: 2026-03-15\nupdated: 2026-03-15\nbackgroundColor: #f7e9b0\ntags: [仕事]\nwindow: { x: 100, y: 100, width: 400, height: 300 }\nfolded: false\n---\n\n本文";
         let result = strip_sticky_fields(content);
 
-        // アプリ固有フィールドが除去されていること
+        // 一時的なウィンドウ状態フィールドが除去されていること
         assert!(!result.contains("type:"), "type が残っている");
         assert!(!result.contains("seq:"), "seq が残っている");
-        assert!(!result.contains("backgroundColor:"), "backgroundColor が残っている");
         assert!(!result.contains("window:"), "window が残っている");
         assert!(!result.contains("folded:"), "folded が残っている");
 
-        // Obsidian互換フィールドが保持されていること
+        // 分類・参照に使うフィールドが保持されていること
+        assert!(result.contains("backgroundColor:"), "backgroundColor が消えた");
         assert!(result.contains("created:"), "created が消えた");
         assert!(result.contains("updated:"), "updated が消えた");
         assert!(result.contains("tags:"), "tags が消えた");

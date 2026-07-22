@@ -10,16 +10,20 @@
 use raw_window_handle::HasWindowHandle;
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Listener, Manager, Runtime, State};
 
 mod arrange;
 mod capture; // [NEW] キャプチャ機能
 mod clipboard; // [NEW] クリップボード機能
 mod crash_guard;
 mod distribution;
+mod desktop_shortcut;
+mod double_tap;
 mod gdrive; // Google Drive 連携
+mod hotkey_manager;
 mod import; // インポート機能
 mod logger; // ログシステム
+mod launcher;
 mod logic;
 mod perflog; // パフォーマンス計測ログ（JSON Lines）
 mod settings;
@@ -27,8 +31,61 @@ mod sound; // [NEW] サウンド機能
 mod state;
 mod storage;
 mod tray;
+mod triple_right_click;
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs) // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）
-use state::{AppState, Note, NoteMeta, ProConfig};
+use state::{AppState, CreateRecipeNoteRequest, Note, NoteMeta, ProConfig, RecipeCandidates};
+
+static TRASH_OPERATIONS_IN_FLIGHT: std::sync::LazyLock<
+    Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+
+#[derive(serde::Serialize)]
+struct TrashMoveResult {
+    moved: bool,
+    path: String,
+}
+
+fn try_begin_trash_operation(path: &str) -> bool {
+    TRASH_OPERATIONS_IN_FLIGHT
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(path.to_lowercase())
+}
+
+fn finish_trash_operation(path: &str) {
+    TRASH_OPERATIONS_IN_FLIGHT
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(&path.to_lowercase());
+}
+
+#[cfg(test)]
+mod trash_operation_tests {
+    use super::{finish_trash_operation, try_begin_trash_operation};
+
+    #[test]
+    fn duplicate_trash_operation_is_rejected_until_first_finishes() {
+        let path = "C:/test/duplicate-trash-operation.md";
+        finish_trash_operation(path);
+        assert!(try_begin_trash_operation(path));
+        assert!(!try_begin_trash_operation(path));
+        finish_trash_operation(path);
+        assert!(try_begin_trash_operation(path));
+        finish_trash_operation(path);
+    }
+
+    #[test]
+    fn different_paths_can_be_deleted_without_an_artificial_delay() {
+        let first = "C:/notes/a.md";
+        let second = "C:/notes/b.md";
+        finish_trash_operation(first);
+        finish_trash_operation(second);
+        assert!(try_begin_trash_operation(first));
+        assert!(try_begin_trash_operation(second));
+        finish_trash_operation(first);
+        finish_trash_operation(second);
+    }
+}
 
 // --- Commands ---
 
@@ -161,15 +218,181 @@ fn fusen_pick_folder() -> Option<String> {
 
 #[tauri::command]
 fn fusen_import_from_folder(
+    state: State<'_, Mutex<AppState>>,
     source_path: String,
     target_path: String,
 ) -> Result<import::ImportStats, String> {
-    import::import_markdown_files(&source_path, &target_path)
+    let stats = import::import_markdown_files(&source_path, &target_path)?;
+    let notes = storage::list_notes(&target_path);
+    logic::apply_set_folder(
+        &mut *state.lock().unwrap_or_else(|p| p.into_inner()),
+        target_path,
+        notes,
+    );
+    Ok(stats)
 }
 
 #[tauri::command]
-fn fusen_backup(source_path: String, dest_path: String) -> Result<usize, String> {
-    storage::backup_notes(&source_path, &dest_path)
+fn fusen_backup(app: AppHandle, source_path: String, dest_path: String, include_trash: bool) -> Result<usize, String> {
+    let count = storage::backup_notes_with_options(&source_path, &dest_path, include_trash)?;
+    let mut settings = storage::load_settings()?;
+    settings.backup_history.insert(0, state::BackupRecord {
+        path: dest_path,
+        created_at: chrono::Local::now().to_rfc3339(),
+        file_count: count,
+    });
+    settings.backup_history.truncate(2);
+    storage::save_settings(&settings)?;
+    let _ = app.emit("settings_updated", &settings);
+    Ok(count)
+}
+
+#[tauri::command]
+fn fusen_monthly_backup_due() -> Result<bool, String> {
+    let settings = storage::load_settings()?;
+    if !settings.monthly_backup_enabled {
+        return Ok(false);
+    }
+    let Some(next_prompt) = settings.monthly_backup_next_prompt else {
+        return Ok(true);
+    };
+    let next = chrono::DateTime::parse_from_rfc3339(&next_prompt)
+        .map_err(|_| "月次バックアップの確認日時が不正です".to_string())?;
+    Ok(chrono::Local::now() >= next.with_timezone(&chrono::Local))
+}
+
+#[tauri::command]
+fn fusen_snooze_monthly_backup(app: AppHandle) -> Result<(), String> {
+    let mut settings = storage::load_settings()?;
+    settings.monthly_backup_skip_count = settings.monthly_backup_skip_count.saturating_add(1);
+    if settings.monthly_backup_skip_count >= 2 {
+        settings.monthly_backup_enabled = false;
+        settings.monthly_backup_next_prompt = None;
+    } else {
+        settings.monthly_backup_next_prompt = Some(
+            (chrono::Local::now() + chrono::Duration::days(7)).to_rfc3339(),
+        );
+    }
+    storage::save_settings(&settings)?;
+    let _ = app.emit("settings_updated", &settings);
+    Ok(())
+}
+
+#[tauri::command]
+fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, String> {
+    let mut settings = storage::load_settings()?;
+    let source_path = settings.base_path.clone().ok_or("データ保存場所が未設定です")?;
+    let user_profile = std::env::var("USERPROFILE")
+        .map_err(|_| "USERPROFILE not found".to_string())?;
+    let root = Path::new(&user_profile).join("Documents").join("OreNoFusen_Backup");
+    let current = root.join("Monthly");
+    let pending = root.join("Monthly_pending");
+    let previous = root.join("Monthly_previous");
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    if pending.exists() {
+        std::fs::remove_dir_all(&pending).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir(&pending).map_err(|e| e.to_string())?;
+    let pending_str = pending.to_string_lossy().to_string();
+    let count = match storage::backup_notes_with_options(
+        &source_path,
+        &pending_str,
+        settings.backup_include_trash,
+    ) {
+        Ok(count) => count,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&pending);
+            return Err(error);
+        }
+    };
+    let copied_count = walkdir::WalkDir::new(&pending).into_iter().filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file()).count();
+    if count != copied_count {
+        let _ = std::fs::remove_dir_all(&pending);
+        return Err("月次バックアップの検証に失敗しました".to_string());
+    }
+    if previous.exists() {
+        std::fs::remove_dir_all(&previous).map_err(|e| e.to_string())?;
+    }
+    if current.exists() {
+        std::fs::rename(&current, &previous).map_err(|e| e.to_string())?;
+    }
+    if let Err(e) = std::fs::rename(&pending, &current) {
+        if previous.exists() {
+            let _ = std::fs::rename(&previous, &current);
+        }
+        return Err(e.to_string());
+    }
+    if previous.exists() {
+        let _ = std::fs::remove_dir_all(&previous);
+    }
+    let record = state::BackupRecord {
+        path: current.to_string_lossy().to_string(),
+        created_at: chrono::Local::now().to_rfc3339(),
+        file_count: count,
+    };
+    settings.monthly_backup_record = Some(record.clone());
+    settings.monthly_backup_skip_count = 0;
+    settings.monthly_backup_next_prompt = Some(
+        (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days)).to_rfc3339(),
+    );
+    storage::save_settings(&settings)?;
+    let _ = app.emit("settings_updated", &settings);
+    Ok(record)
+}
+
+#[tauri::command]
+fn fusen_restore_backup(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    backup_path: String,
+) -> Result<String, String> {
+    let source = Path::new(&backup_path);
+    if !source.is_dir() {
+        return Err("バックアップ先が見つかりません".to_string());
+    }
+    let markdown_count = walkdir::WalkDir::new(source)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md"))
+        .count();
+    if markdown_count == 0 {
+        return Err("復旧できるMarkdownファイルがありません".to_string());
+    }
+    let user_profile = std::env::var("USERPROFILE")
+        .map_err(|_| "USERPROFILE not found".to_string())?;
+    let recovery_root = Path::new(&user_profile)
+        .join("Documents")
+        .join("OreNoFusen_Recovery");
+    std::fs::create_dir_all(&recovery_root).map_err(|e| e.to_string())?;
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let recovery = recovery_root.join(format!("OreNoFusen_recovered_{}", timestamp));
+    std::fs::create_dir(&recovery).map_err(|e| e.to_string())?;
+    let recovery_str = recovery.to_string_lossy().to_string();
+    if let Err(e) = storage::backup_notes(&backup_path, &recovery_str) {
+        let _ = std::fs::remove_dir_all(&recovery);
+        return Err(e);
+    }
+    let recovered_markdown_count = walkdir::WalkDir::new(&recovery)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md"))
+        .count();
+    if recovered_markdown_count != markdown_count {
+        let _ = std::fs::remove_dir_all(&recovery);
+        return Err("復旧コピーの検証に失敗しました".to_string());
+    }
+    let mut settings = storage::load_settings()?;
+    settings.base_path = Some(recovery_str.clone());
+    storage::save_settings(&settings)?;
+    {
+        let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.base_path = Some(recovery_str.clone());
+        app_state.folder_path = Some(recovery_str.clone());
+        app_state.notes = storage::list_notes(&recovery_str);
+    }
+    let _ = app.emit("settings_updated", &settings);
+    Ok(recovery_str)
 }
 
 #[tauri::command]
@@ -332,10 +555,32 @@ fn fusen_read_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<No
     // 読み込み失敗を握りつぶさず呼び出し側へ伝える。
     // 以前は失敗時に空 Note を返していたため、frontend が「読込成功・中身は空」と誤認し、
     // 開いていた付箋の作業コピーを空で上書きしてしまう不具合があった（データ空化の根本原因）。
-    let note = storage::read_note(&path)?;
+    let mut note = storage::read_note(&path)?;
+    if let Some(recovered_content) = storage::load_newer_recovery_draft(&path) {
+        logger::log_warn(&format!(
+            "[recovery] newer recovery copy loaded file={}",
+            logger::sanitize_path(&path)
+        ));
+        note.body = recovered_content;
+    }
 
     logic::apply_select_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), path);
     Ok(note)
+}
+
+fn preserve_failed_save(path: &str, content: &str, save_error: String) -> String {
+    let file_name = logger::sanitize_path(path);
+    match storage::save_recovery_draft(path, content) {
+        Ok(()) => logger::log_warn(&format!(
+            "[recovery] normal save failed; recovery copy saved file={}",
+            file_name
+        )),
+        Err(_) => logger::log_error(&format!(
+            "[recovery] normal save and recovery copy both failed file={}",
+            file_name
+        )),
+    }
+    save_error
 }
 
 /// ノート作成の共通ロジック。Mutex を lock したまま get_next_seq → write_note → apply_add_note
@@ -361,6 +606,32 @@ fn do_create_note(
     })
 }
 
+const SETTINGS_RECOVERY_NOTICE_BODY: &str = "設定ファイルを読み込めなかったため、安全な初期設定で起動しました。\n\n付箋ファイルは削除していません。一部の設定は初期値に戻っています。\n\n以前の付箋が表示されない場合は、設定の「データ管理」から取り込めます。\n\nこの付箋は確認後に削除できます。";
+
+fn create_settings_recovery_notice(
+    state: &Mutex<AppState>,
+    folder_path: &str,
+) -> Result<Note, String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    let next_seq = storage::get_next_seq(folder_path);
+    let mut data = logic::build_create_note_data(
+        folder_path,
+        "設定を安全な初期状態へ復旧しました",
+        next_seq,
+        &today,
+    );
+    data.body = SETTINGS_RECOVERY_NOTICE_BODY.to_string();
+    data.content = format!("{}\n\n{}", data.frontmatter, data.body);
+    storage::write_note(&data.path_str, &data.content)?;
+    logic::apply_add_note(&mut app_state, data.meta.clone());
+    Ok(Note {
+        body: data.body,
+        frontmatter: data.frontmatter,
+        meta: data.meta,
+    })
+}
+
 #[tauri::command]
 fn fusen_create_note(
     state: State<'_, Mutex<AppState>>,
@@ -368,6 +639,70 @@ fn fusen_create_note(
     context: String,
 ) -> Result<Note, String> {
     do_create_note(&state, &folder_path, &context)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IphoneNoteCreateResult {
+    note: Note,
+    created: bool,
+}
+
+fn iphone_source_hash(note_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(note_id.as_bytes()))
+}
+
+#[tauri::command]
+fn fusen_has_iphone_note(folder_path: String, note_id: String) -> bool {
+    let source_hash = iphone_source_hash(&note_id);
+    storage::find_note_by_iphone_source_hash(&folder_path, &source_hash).is_some()
+}
+
+/// iPhone受信付箋を、受信ID単位で一度だけ作成する。
+/// AppState の排他中に既存確認と作成を行い、同時実行でも重複させない。
+#[tauri::command]
+fn fusen_create_iphone_note(
+    state: State<'_, Mutex<AppState>>,
+    folder_path: String,
+    context: String,
+    body: String,
+    note_id: String,
+) -> Result<IphoneNoteCreateResult, String> {
+    let source_hash = iphone_source_hash(&note_id);
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+
+    if let Some(path) = storage::find_note_by_iphone_source_hash(&folder_path, &source_hash) {
+        return Ok(IphoneNoteCreateResult {
+            note: storage::read_note(&path)?,
+            created: false,
+        });
+    }
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let next_seq = storage::get_next_seq(&folder_path);
+    let mut data = logic::build_create_note_data(&folder_path, &context, next_seq, &today);
+    let closing_fence = data
+        .frontmatter
+        .rfind("---")
+        .ok_or_else(|| "付箋の管理情報を作成できませんでした".to_string())?;
+    data.frontmatter.insert_str(
+        closing_fence,
+        &format!("iphone_source_hash: {}\n", source_hash),
+    );
+    data.content = format!("{}\n\n{}", data.frontmatter, body);
+    data.body = body;
+    storage::write_note(&data.path_str, &data.content)?;
+    logic::apply_add_note(&mut app_state, data.meta.clone());
+
+    Ok(IphoneNoteCreateResult {
+        note: Note {
+            body: data.body,
+            frontmatter: data.frontmatter,
+            meta: data.meta,
+        },
+        created: true,
+    })
 }
 
 /// 1 文字目入力時にのみ呼ぶ lazy ファイル作成コマンド。
@@ -379,7 +714,7 @@ fn fusen_create_note_lazy(
     folder_path: String,
     context: String,
 ) -> Result<Note, String> {
-    perflog::log_event(
+    crate::perf_event!(
         &format!("lazy-{}", uuid::Uuid::new_v4()),
         "T2_FIRST_CHAR_RUST_ENTER",
         None,
@@ -387,6 +722,216 @@ fn fusen_create_note_lazy(
         serde_json::json!({}),
     );
     do_create_note(&state, &folder_path, &context)
+}
+
+fn read_recipe_candidate_input(path: &Path) -> Option<logic::RecipeCandidateInput> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let (_, body) = logic::split_frontmatter(&content);
+    let (_, _, _, _, background_color, _, tags, _) = logic::extract_meta_from_content(&content);
+    let filename = path.file_name()?.to_string_lossy().to_string();
+    let (_, _, context) = logic::parse_filename(&filename);
+
+    Some(logic::RecipeCandidateInput {
+        path: path.to_string_lossy().to_string(),
+        title: context,
+        body: body.to_string(),
+        background_color,
+        tags,
+    })
+}
+
+fn recipe_source_tags(source: &Note) -> Vec<String> {
+    source.meta.tags.clone()
+}
+
+#[tauri::command]
+fn fusen_get_recipe_candidates(
+    state: State<'_, Mutex<AppState>>,
+    source_path: String,
+) -> Result<RecipeCandidates, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
+    };
+
+    let source = storage::read_note(&source_path)?;
+    let source_tags = recipe_source_tags(&source);
+    let source_pathbuf = Path::new(&source_path);
+    let candidates = storage::list_recipe_material_note_paths(Path::new(&base_path))
+        .into_iter()
+        .filter(|path| path != source_pathbuf)
+        .filter_map(|path| read_recipe_candidate_input(&path))
+        .collect();
+
+    Ok(logic::filter_recipe_candidates(&source_tags, candidates))
+}
+
+#[tauri::command]
+fn fusen_create_recipe_note(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    request: CreateRecipeNoteRequest,
+) -> Result<String, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
+    };
+    let base_path = Path::new(&base_path);
+    let recipes_dir = storage::ensure_recipes_dir(base_path)?;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let now = chrono::Local::now().to_rfc3339();
+    let title = if request.title.trim().is_empty() {
+        "recipe".to_string()
+    } else {
+        request.title.trim().to_string()
+    };
+    let safe_title = logic::sanitize_context(&title);
+    let context = if safe_title.is_empty() { "recipe".to_string() } else { safe_title };
+    let tags = logic::recipe_tags_from_request(&request.tags);
+    let next_seq = storage::get_next_seq(&recipes_dir.to_string_lossy());
+    let filename = logic::generate_crystal_filename("Reci", next_seq, &today, &context);
+    let path = recipes_dir.join(filename);
+    let frontmatter = logic::generate_recipe_frontmatter(next_seq, &title, &now, &now, &tags);
+    let content = format!("{}\n\n{}", frontmatter, request.body);
+
+    storage::write_note(&path.to_string_lossy(), &content)?;
+    launcher::emit_launcher_shelf_changed(&app);
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+fn create_qa_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Result<String, String> {
+    let qa_dir = storage::ensure_qa_dir(base_path)?;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let now = chrono::Local::now().to_rfc3339();
+    let title = if request.title.trim().is_empty() {
+        "qa".to_string()
+    } else {
+        request.title.trim().to_string()
+    };
+    let safe_title = logic::sanitize_context(&title);
+    let context = if safe_title.is_empty() { "qa".to_string() } else { safe_title };
+    let tags = logic::qa_tags_from_request(&request.tags);
+    let next_seq = storage::get_next_seq(&qa_dir.to_string_lossy());
+    let filename = logic::generate_crystal_filename("QA", next_seq, &today, &context);
+    let path = qa_dir.join(filename);
+    let frontmatter = logic::generate_recipe_frontmatter(next_seq, &title, &now, &now, &tags);
+    let content = format!("{}\n\n{}", frontmatter, request.body);
+
+    storage::write_note(&path.to_string_lossy(), &content)?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+fn create_term_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Result<String, String> {
+    let terms_dir = storage::ensure_terms_dir(base_path)?;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let now = chrono::Local::now().to_rfc3339();
+    let title = if request.title.trim().is_empty() {
+        "term".to_string()
+    } else {
+        request.title.trim().to_string()
+    };
+    let safe_title = logic::sanitize_context(&title);
+    let context = if safe_title.is_empty() { "term".to_string() } else { safe_title };
+    let tags = logic::term_tags_from_request(&request.tags);
+    let next_seq = storage::get_next_seq(&terms_dir.to_string_lossy());
+    let filename = logic::generate_crystal_filename("Term", next_seq, &today, &context);
+    let path = terms_dir.join(filename);
+    let frontmatter = logic::generate_recipe_frontmatter(next_seq, &title, &now, &now, &tags);
+    let content = format!("{}\n\n{}", frontmatter, request.body);
+
+    storage::write_note(&path.to_string_lossy(), &content)?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn fusen_create_qa_note(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    request: CreateRecipeNoteRequest,
+) -> Result<String, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
+    };
+    let path = create_qa_note_file(Path::new(&base_path), request)?;
+
+    launcher::emit_launcher_shelf_changed(&app);
+
+    Ok(path)
+}
+
+#[tauri::command]
+fn fusen_create_term_note(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    request: CreateRecipeNoteRequest,
+) -> Result<String, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
+    };
+    let path = create_term_note_file(Path::new(&base_path), request)?;
+
+    launcher::emit_launcher_shelf_changed(&app);
+
+    Ok(path)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReturnRecipeGeometry {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+#[tauri::command]
+fn fusen_return_recipe(
+    path: String,
+    body: String,
+    improved: bool,
+    geometry: ReturnRecipeGeometry,
+) -> Result<String, String> {
+    let note = storage::read_note(&path)?;
+    let now = chrono::Local::now();
+    let used_at = now.to_rfc3339();
+    let updated_at = now.format("%Y-%m-%d").to_string();
+    let geometry_value = format!(
+        "{{ x: {}, y: {}, width: {}, height: {} }}",
+        geometry.x, geometry.y, geometry.width, geometry.height
+    );
+    let content_with_geometry =
+        logic::update_frontmatter_value(&note.body, "window", geometry_value);
+    let content = logic::build_return_recipe_content(
+        &content_with_geometry,
+        &body,
+        improved,
+        &used_at,
+        &updated_at,
+    );
+    storage::write_note(&path, &content)?;
+    launcher::invalidate_quick_open_content(&path);
+    Ok(content)
 }
 
 #[tauri::command]
@@ -488,7 +1033,11 @@ fn fusen_save_note(
 
     // CommandはI/Oを実行するだけ
     match effect {
-        logic::Effect::WriteNote { path, content } => storage::write_note(&path, &content)?,
+        logic::Effect::WriteNote { path, content } => {
+            if let Err(error) = storage::write_note(&path, &content) {
+                return Err(preserve_failed_save(&path, &content, error));
+            }
+        }
         logic::Effect::RenameNote { old_path, new_path } => {
             if std::path::Path::new(&old_path).exists() {
                 storage::rename_note(&old_path, &new_path)?;
@@ -498,7 +1047,9 @@ fn fusen_save_note(
             for e in effects {
                 match e {
                     logic::Effect::WriteNote { path, content } => {
-                        storage::write_note(&path, &content)?
+                        if let Err(error) = storage::write_note(&path, &content) {
+                            return Err(preserve_failed_save(&path, &content, error));
+                        }
                     }
                     logic::Effect::RenameNote { old_path, new_path } => {
                         if std::path::Path::new(&old_path).exists() {
@@ -511,16 +1062,43 @@ fn fusen_save_note(
         }
     }
 
+    storage::clear_recovery_draft(&path);
+    if new_path != path {
+        storage::clear_recovery_draft(&new_path);
+    }
+
     Ok(new_path)
 }
 
 #[tauri::command]
-fn fusen_move_to_trash(state: State<'_, Mutex<AppState>>, path: String) -> Result<String, String> {
+fn fusen_move_to_trash(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+) -> Result<TrashMoveResult, String> {
+    if !try_begin_trash_operation(&path) {
+        logger::log_warn("[trash] duplicate in-flight request ignored");
+        return Ok(TrashMoveResult { moved: false, path });
+    }
+
+    let result = move_note_to_trash_once(&app, &state, &path);
+    finish_trash_operation(&path);
+    result
+}
+
+fn move_note_to_trash_once(
+    app: &AppHandle,
+    state: &State<'_, Mutex<AppState>>,
+    path: &str,
+) -> Result<TrashMoveResult, String> {
     let current_path = Path::new(&path);
 
-    // ファイルが既に存在しない場合（空のメモなど）は成功扱い（JS側でウィンドウを閉じる）
+    // 多重要求や移動済みファイルは成功扱いにするが、UI側へ再実行させない。
     if !current_path.exists() {
-        return Ok("Already deleted".to_string());
+        return Ok(TrashMoveResult {
+            moved: false,
+            path: path.to_string(),
+        });
     }
 
     let parent = current_path.parent().ok_or("no parent")?;
@@ -539,9 +1117,18 @@ fn fusen_move_to_trash(state: State<'_, Mutex<AppState>>, path: String) -> Resul
     }
 
     logic::apply_remove_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path);
+    if let Err(e) = storage::append_trash_operation(current_path, &new_path, "note_window") {
+        logger::log_warn(&format!("[trash] operation log failed: {}", e));
+    }
+    if let Err(e) = launcher::handle_note_trashed(&app, &path, &new_path_str) {
+        logger::log_warn(&format!("[trash] launcher cleanup skipped: {}", e));
+    }
 
     // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
-    Ok(new_path_str)
+    Ok(TrashMoveResult {
+        moved: true,
+        path: new_path_str,
+    })
 }
 
 fn non_colliding_path(path: &Path) -> std::path::PathBuf {
@@ -569,6 +1156,53 @@ fn non_colliding_path(path: &Path) -> std::path::PathBuf {
         parent.join(format!("{}-{}", stem, uuid::Uuid::new_v4()))
     } else {
         parent.join(format!("{}-{}.{}", stem, uuid::Uuid::new_v4(), ext))
+    }
+}
+
+fn resolve_archive_user_tag(
+    target_tag: Option<String>,
+    tags: &[String],
+) -> Result<Option<String>, String> {
+    match target_tag {
+        Some(tag) if logic::is_reserved_tag(&tag) => {
+            Err("system tags cannot be used as archive destinations".to_string())
+        }
+        Some(tag) => Ok(Some(tag)),
+        None => Ok(logic::non_reserved_tags(tags).into_iter().next()),
+    }
+}
+
+#[cfg(test)]
+mod archive_user_tag_tests {
+    use super::resolve_archive_user_tag;
+
+    fn tags(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn falls_back_to_first_user_tag() {
+        assert_eq!(
+            resolve_archive_user_tag(None, &tags(&["shortcut", "仕事", "調査"])).unwrap(),
+            Some("仕事".to_string())
+        );
+    }
+
+    #[test]
+    fn system_tag_only_falls_back_to_archive() {
+        assert_eq!(
+            resolve_archive_user_tag(None, &tags(&["shortcut"])).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_explicit_system_tag_destination() {
+        assert!(resolve_archive_user_tag(
+            Some(" SHORTCUT ".to_string()),
+            &tags(&["仕事", "shortcut"]),
+        )
+        .is_err());
     }
 }
 
@@ -600,14 +1234,13 @@ fn fusen_archive_note(
     let cleaned_content = logic::strip_sticky_fields(&content.body);
 
     // target_tag が指定されていればそのタグフォルダへ、なければ従来通り
-    let resolved_tag = target_tag.or_else(|| tags.into_iter().next());
+    let resolved_tag = resolve_archive_user_tag(target_tag, &tags)?;
 
     if let Some(tag) = resolved_tag {
         let tag_dir = storage::ensure_tag_dir(vault_root_path, &tag)?;
-        let new_path =
-            non_colliding_path(&tag_dir.join(current_path.file_name().ok_or("no name")?));
+        let new_path = tag_dir.join(current_path.file_name().ok_or("no name")?);
 
-        storage::copy_associated_assets(current_path, &tag_dir)?;
+        storage::overwrite_associated_assets(current_path, &tag_dir)?;
         storage::write_note(&new_path.to_string_lossy(), &cleaned_content)?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         if let Err(e) = storage::delete_associated_assets(current_path) {
@@ -619,10 +1252,9 @@ fn fusen_archive_note(
     } else {
         // タグなし → Archive フォルダへ
         let archive_dir = storage::ensure_archive_dir(vault_root_path)?;
-        let new_path =
-            non_colliding_path(&archive_dir.join(current_path.file_name().ok_or("no name")?));
+        let new_path = archive_dir.join(current_path.file_name().ok_or("no name")?);
 
-        storage::copy_associated_assets(current_path, &archive_dir)?;
+        storage::overwrite_associated_assets(current_path, &archive_dir)?;
         storage::write_note(&new_path.to_string_lossy(), &cleaned_content)?;
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         if let Err(e) = storage::delete_associated_assets(current_path) {
@@ -652,6 +1284,20 @@ pub struct SearchHit {
     pub path: String,
     pub line: usize,
     pub preview: String,
+    pub kind: Option<String>,
+}
+
+fn crystal_kind_for_path(path: &Path) -> Option<String> {
+    let parent = path.parent()?.file_name()?.to_string_lossy();
+    if parent.eq_ignore_ascii_case(storage::QA_DIR_NAME) {
+        Some("QA".to_string())
+    } else if parent.eq_ignore_ascii_case(storage::RECIPES_DIR_NAME) {
+        Some("Reci".to_string())
+    } else if parent.eq_ignore_ascii_case(storage::TERMS_DIR_NAME) {
+        Some("Term".to_string())
+    } else {
+        None
+    }
 }
 
 #[tauri::command]
@@ -749,6 +1395,7 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
                             path: entry.path().to_string_lossy().to_string(),
                             line: body_line_counter,
                             preview,
+                            kind: crystal_kind_for_path(entry.path()),
                         });
                     }
                 }
@@ -955,6 +1602,7 @@ fn fusen_add_tag(
 
     // Update tray menu
     drop(app_state);
+    launcher::emit_launcher_shelf_changed_for_tag(&app, &tag);
     let _ = crate::tray::refresh_tray_menu(&app);
 
     Ok(())
@@ -982,6 +1630,7 @@ fn fusen_remove_tag(
 
     // Update tray menu
     drop(app_state); // Release lock before calling refresh_tray_menu
+    launcher::emit_launcher_shelf_changed_for_tag(&app, &tag);
     let _ = crate::tray::refresh_tray_menu(&app);
 
     Ok(())
@@ -1333,6 +1982,11 @@ fn fusen_path_exists(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
 }
 
+#[tauri::command]
+fn fusen_check_storage_health(path: String) -> Result<(), String> {
+    storage::check_storage_health(&path)
+}
+
 fn log_startup_distribution_diagnostics() {
     logger::log_info(&format!(
         "distribution_kind: {}",
@@ -1451,6 +2105,11 @@ fn setup_first_launch(
     //  言語・同期設定などユーザー設定を丸ごと消す事故を防ぐ。）
     let mut settings = storage::load_settings()?;
     settings.base_path = Some(base_path.clone());
+    if settings.monthly_backup_next_prompt.is_none() && settings.monthly_backup_record.is_none() {
+        settings.monthly_backup_next_prompt = Some(
+            (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days)).to_rfc3339(),
+        );
+    }
 
     storage::save_settings(&settings).map_err(|e| {
         logger::log_error(&format!("Failed to save settings: {}", e));
@@ -1542,6 +2201,66 @@ fn update_note_window_position(path: &str, x: f64, y: f64) -> Result<(), String>
     storage::write_note(path, &updated_content)
 }
 
+fn is_crystal_tags(tags: &[String]) -> bool {
+    tags.iter().any(|tag| {
+        matches!(
+            logic::normalize_reserved_tag(tag).as_str(),
+            "recipe" | "qa" | "term"
+        )
+    })
+}
+
+fn arrange_tags_for_window(tags: Vec<String>, is_crystal: bool) -> Vec<String> {
+    if is_crystal { Vec::new() } else { tags }
+}
+
+#[cfg(test)]
+mod crystal_arrange_tests {
+    use super::{arrange_tags_for_window, is_crystal_tags};
+
+    fn tags(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn recognizes_the_three_crystal_types() {
+        assert!(is_crystal_tags(&tags(&["仕事", "recipe"])));
+        assert!(is_crystal_tags(&tags(&["QA"])));
+        assert!(is_crystal_tags(&tags(&["term"])));
+        assert!(!is_crystal_tags(&tags(&["shortcut", "仕事"])));
+    }
+
+    #[test]
+    fn crystal_is_always_arranged_as_unclassified() {
+        assert!(arrange_tags_for_window(tags(&["recipe", "仕事"]), true).is_empty());
+    }
+
+    #[test]
+    fn normal_note_keeps_its_tags_for_arrangement() {
+        assert_eq!(
+            arrange_tags_for_window(tags(&["shortcut", "仕事"]), false),
+            tags(&["shortcut", "仕事"])
+        );
+    }
+}
+
+#[tauri::command]
+fn fusen_register_crystal_arrange_window(
+    state: State<'_, Mutex<AppState>>,
+    label: String,
+    path: String,
+) -> Result<(), String> {
+    let note = storage::read_note(&path)?;
+    let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&note.body);
+    if !is_crystal_tags(&tags) {
+        return Err("only crystal windows can be registered for crystal arrangement".to_string());
+    }
+
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    app_state.arrange_crystal_windows.insert(label, path);
+    Ok(())
+}
+
 #[tauri::command]
 async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
     run_fusen_arrange_by_tag(app).await
@@ -1564,9 +2283,16 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             .map(|note| note.path.clone())
             .collect()
     };
+    let crystal_window_paths = {
+        let state = app.state::<Mutex<AppState>>();
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.arrange_crystal_windows.clone()
+    };
 
     let mut notes: Vec<arrange::ArrangeNote> = Vec::new();
     let mut undo_snapshot: Vec<(String, f64, f64)> = Vec::new();
+    let mut window_labels_by_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for (label, window) in app.webview_windows() {
         if label == "main" {
             continue;
@@ -1574,22 +2300,33 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
 
         logger::log_info(&format!("[ARRANGE] note window: {}", label));
 
-        let logical_position = match (window.outer_position(), window.scale_factor()) {
-            (Ok(position), Ok(scale_factor)) if scale_factor != 0.0 => Some((
+        let window_scale_factor = window.scale_factor().ok().filter(|factor| *factor != 0.0);
+        let logical_position = match (window.outer_position(), window_scale_factor) {
+            (Ok(position), Some(scale_factor)) => Some((
                 position.x as f64 / scale_factor,
                 position.y as f64 / scale_factor,
             )),
             _ => None,
         };
+        let current_window_size = match (window.outer_size(), window_scale_factor) {
+            (Ok(size), Some(scale_factor)) => Some((
+                size.width as f64 / scale_factor,
+                size.height as f64 / scale_factor,
+            )),
+            _ => None,
+        };
 
-        let Some(path) = note_paths
+        let normal_path = note_paths
             .iter()
             .find(|path| get_window_label(path) == label)
-            .cloned()
-        else {
+            .cloned();
+        let crystal_path = crystal_window_paths.get(&label).cloned();
+        let is_crystal = normal_path.is_none() && crystal_path.is_some();
+        let Some(path) = normal_path.or(crystal_path) else {
             logger::log_info(&format!("[ARRANGE] path not found for label: {}", label));
             continue;
         };
+        window_labels_by_path.insert(path.clone(), label.clone());
 
         let content = match storage::read_note(&path) {
             Ok(note) => note.body,
@@ -1600,8 +2337,12 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
         };
         let (_, _, width, height, background_color, _, tags, folded) =
             logic::extract_meta_from_content(&content);
+        let tags = arrange_tags_for_window(tags, is_crystal);
 
-        let (Some(width), Some(height)) = (width, height) else {
+        let folded = folded.unwrap_or(false);
+        let Some((width, height)) =
+            arrange::arrange_size_for_window(width, height, folded, current_window_size)
+        else {
             logger::log_info(&format!("[ARRANGE] size missing path={}", path));
             continue;
         };
@@ -1624,7 +2365,7 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             background_color,
             width,
             height,
-            folded: folded.unwrap_or(false),
+            folded,
         });
     }
     logger::log_info(&format!("[ARRANGE] arrange note count: {}", notes.len()));
@@ -1690,7 +2431,10 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
     let mut move_failed_count = 0;
     let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
     for position in &positions {
-        let label = get_window_label(&position.path);
+        let label = window_labels_by_path
+            .get(&position.path)
+            .cloned()
+            .unwrap_or_else(|| get_window_label(&position.path));
         let Some(window) = app.get_webview_window(&label) else {
             logger::log_info(&format!(
                 "[ARRANGE] move skipped path={} label={} reason=window_not_found",
@@ -1787,7 +2531,15 @@ pub(crate) async fn run_fusen_arrange_undo<R: Runtime>(
     let mut move_failed_count = 0;
     let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
     for (path, x, y) in &undo_snapshot {
-        let label = get_window_label(path);
+        let label = {
+            let state = app.state::<Mutex<AppState>>();
+            let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+            app_state
+                .arrange_crystal_windows
+                .iter()
+                .find_map(|(label, crystal_path)| (crystal_path == path).then(|| label.clone()))
+                .unwrap_or_else(|| get_window_label(path))
+        };
         let Some(window) = app.get_webview_window(&label) else {
             logger::log_info(&format!(
                 "[ARRANGE] undo move skipped path={} label={} reason=window_not_found",
@@ -2082,16 +2834,12 @@ async fn fusen_show_at_position(
     phys_height: u32,
     run_id: Option<String>, // perflog 計測用 run_id（None なら perflog 記録しない）
     app: tauri::AppHandle,
-) -> Result<(), String> {
-    let perf_t_enter = std::time::Instant::now();
-    logger::log_info(&format!(
-        "[PERF|RUST_ENTER] fusen_show_at_position label={}",
-        label
-    ));
+) -> Result<bool, String> {
+    let perf_started = perflog::enabled().then(std::time::Instant::now);
 
     // T1_RUST_ENTER: 関数突入時刻を記録（run_id が Some の場合のみ）
     if let Some(rid) = &run_id {
-        perflog::log_event(
+        crate::perf_event!(
             rid,
             "T1_RUST_ENTER",
             Some(&label),
@@ -2110,12 +2858,6 @@ async fn fusen_show_at_position(
         };
 
         if let Some(win) = app.get_webview_window(&label) {
-            let perf_t_after_get_window = perf_t_enter.elapsed().as_millis();
-            logger::log_info(&format!(
-                "[PERF|RUST_AFTER_GET_WINDOW] elapsed_from_enter={}ms",
-                perf_t_after_get_window
-            ));
-
             unsafe {
                 if let Ok(handle) = win.window_handle() {
                     if let RawWindowHandle::Win32(h) = handle.as_raw() {
@@ -2125,7 +2867,6 @@ async fn fusen_show_at_position(
                         } else {
                             SWP_SHOWWINDOW | SWP_NOMOVE
                         };
-                        let perf_t_before_setpos = perf_t_enter.elapsed().as_millis();
                         SetWindowPos(
                             hwnd,
                             HWND_TOP,
@@ -2136,13 +2877,6 @@ async fn fusen_show_at_position(
                             flags,
                         )
                         .map_err(|e| format!("SetWindowPos failed: {}", e))?;
-                        let perf_t_after_setpos = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!(
-                            "[PERF|RUST_SETPOS] before={}ms after={}ms delta={}ms",
-                            perf_t_before_setpos,
-                            perf_t_after_setpos,
-                            perf_t_after_setpos - perf_t_before_setpos
-                        ));
 
                         // [Phase 19] Pool 昇格: α=0 → α=255 に変更（不透明化）
                         // pitfall 6: SetForegroundWindow より先に α=255 を設定する
@@ -2150,11 +2884,6 @@ async fn fusen_show_at_position(
                         SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA).map_err(
                             |e| format!("SetLayeredWindowAttributes(255) failed: {}", e),
                         )?;
-                        let perf_t_after_alpha = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!(
-                            "[PERF|RUST_ALPHA_255] after={}ms",
-                            perf_t_after_alpha
-                        ));
 
                         // SetForegroundWindow でOSのフォアグラウンドに設定する。
                         // SetWindowPos だけでは document.hasFocus()=false のままで
@@ -2162,21 +2891,16 @@ async fn fusen_show_at_position(
                         // このコマンドはユーザー操作（+ボタン等）直後に呼ばれるため
                         // Windows のフォアグラウンド制限に引っかからない。
                         let _ = SetForegroundWindow(hwnd);
-                        let perf_t_after_fg = perf_t_enter.elapsed().as_millis();
-                        logger::log_info(&format!(
-                            "[PERF|RUST_SETFOREGROUND] after={}ms delta={}ms",
-                            perf_t_after_fg,
-                            perf_t_after_fg - perf_t_after_alpha
-                        ));
 
                         // T2_READY: SetForegroundWindow 後（エディタ focus 到達の直前）
                         if let Some(rid) = &run_id {
-                            let elapsed = perf_t_enter.elapsed().as_millis() as u64;
-                            perflog::log_event(
+                            let elapsed = perf_started
+                                .map(|started| started.elapsed().as_millis() as u64);
+                            crate::perf_event!(
                                 rid,
                                 "T2_READY",
                                 Some(&label),
-                                Some(elapsed),
+                                elapsed,
                                 serde_json::json!({}),
                             );
                         }
@@ -2187,27 +2911,30 @@ async fn fusen_show_at_position(
             // Tauri の内部 visibility 状態を更新しない。
             // win.show() で Tauri 状態を同期しないと、後続の Tauri API 呼び出し時に
             // tao が "hidden" 判定してウィンドウを非表示にするバグが発生する。
-            let perf_t_before_show = perf_t_enter.elapsed().as_millis();
             let _ = win.show();
-            let perf_t_after_show = perf_t_enter.elapsed().as_millis();
-            logger::log_info(&format!(
-                "[PERF|RUST_WINSHOW] before={}ms after={}ms delta={}ms",
-                perf_t_before_show,
-                perf_t_after_show,
-                perf_t_after_show - perf_t_before_show
-            ));
         } else {
-            logger::log_warn(&format!("[PERF|RUST] window not found label={}", label));
+            logger::log_warn(&format!("window not found label={}", label));
         }
     }
 
     #[cfg(not(target_os = "windows"))]
-    let _ = (label, phys_x, phys_y, phys_width, phys_height, run_id, app);
+    let _ = (
+        label,
+        phys_x,
+        phys_y,
+        phys_width,
+        phys_height,
+        run_id,
+        app,
+        perf_started,
+    );
 
-    let perf_t_exit = perf_t_enter.elapsed().as_millis();
-    logger::log_info(&format!("[PERF|RUST_EXIT] total={}ms", perf_t_exit));
+    Ok(perflog::enabled())
+}
 
-    Ok(())
+#[tauri::command]
+fn fusen_perf_note_ready(run_id: String, elapsed_ms: u64) -> Result<(), String> {
+    perflog::log_note_ready(&run_id, elapsed_ms)
 }
 
 #[tauri::command]
@@ -4026,15 +4753,28 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_distribution_info,
+            desktop_shortcut::fusen_get_desktop_shortcut_state,
+            desktop_shortcut::fusen_create_desktop_shortcut,
+            desktop_shortcut::fusen_remove_desktop_shortcut,
+            desktop_shortcut::fusen_should_prompt_desktop_shortcut,
+            desktop_shortcut::fusen_mark_desktop_shortcut_prompted,
             fusen_get_startup_state,
             fusen_set_startup_enabled,
             fusen_set_always_on_top,
             fusen_set_opacity,
             fusen_select_folder,
             fusen_list_notes,
+            fusen_register_crystal_arrange_window,
             fusen_read_note,
             fusen_create_note,
+            fusen_has_iphone_note,
+            fusen_create_iphone_note,
             fusen_create_note_lazy,
+            fusen_get_recipe_candidates,
+            fusen_create_recipe_note,
+            fusen_create_qa_note,
+            fusen_create_term_note,
+            fusen_return_recipe,
             fusen_duplicate_note,
             fusen_save_note,
             fusen_move_to_trash,
@@ -4058,6 +4798,7 @@ pub fn run() {
             show_context_menu,
             get_base_path,
             fusen_path_exists,
+            fusen_check_storage_health,
             setup_first_launch,
             settings::get_settings,  // ← 「settings箱の中の」と指定！
             settings::save_settings,  // ← 「settings箱の中の」と指定！
@@ -4071,12 +4812,32 @@ pub fn run() {
             fusen_arrange_undo,
             fusen_make_tool_window, // [NEW] Alt+Tab/タスクビューから除外
             fusen_set_as_alt_tab_window, // [NEW] 直前に使用した付箋のみAlt+Tabに表示
+            hotkey_manager::hotkey_get_bindings,
+            hotkey_manager::hotkey_get_register_failures,
+            hotkey_manager::hotkey_check,
+            hotkey_manager::hotkey_apply,
+            launcher::fusen_quick_open_notes,
+            launcher::fusen_open_quick_note,
+            launcher::fusen_rename_quick_note,
+            launcher::fusen_reorder_quick_note,
+            launcher::fusen_remove_from_shelf,
+            launcher::fusen_get_launcher_state,
+            launcher::fusen_set_launcher_last_tab,
+            launcher::fusen_set_launcher_tag_filter,
+            launcher::fusen_get_crystal_formats,
+            launcher::fusen_save_crystal_formats,
+            launcher::fusen_toggle_quick_launcher,
             fusen_create_pool_window, // [NEW] プールウィンドウ生成
             fusen_replenish_pool,     // [NEW] Pool 補充オーケストレーション（T2_READY+5s トリガ）
             fusen_show_at_position, // [NEW] プールウィンドウをShow+リサイズ+移動を原子的に実行
+            fusen_perf_note_ready,
             fusen_pick_folder,
             fusen_import_from_folder,
             fusen_backup,
+            fusen_monthly_backup_due,
+            fusen_snooze_monthly_backup,
+            fusen_run_monthly_backup,
+            fusen_restore_backup,
             fusen_oauth_connect,
             fusen_check_pro_setup,
             fusen_list_push_devices,
@@ -4104,6 +4865,8 @@ pub fn run() {
                 if label == "main" {
                     // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
                     api.prevent_close();
+                } else if label == "quick_launcher" || label == "recipe-create" || label == "qa-create" || label == "term-create" {
+                    // Transient utility windows; closing them must not exit the app.
                 } else {
                     // 付箋ウィンドウをタスクバーから「ウィンドウを閉じる」→ アプリ終了
                     // ※JSからの削除・アーカイブ時は destroy() を使うためここには来ない
@@ -4152,8 +4915,39 @@ pub fn run() {
                     }
                 },
                 Err(e) => {
-                    logger::log_warn(&format!("設定ファイルが見つからないか無効です: {}", e));
-                    logger::log_info("初回起動またはクリーンインストールを検出しました");
+                    logger::log_warn(&format!("設定ファイルを読み込めません: {}", e));
+                    match storage::recover_corrupt_settings_to_safe_default() {
+                        Ok(settings) => {
+                            if let Some(base_path) = settings.base_path.clone() {
+                                let state: State<Mutex<AppState>> = app.state();
+                                {
+                                    let mut app_state =
+                                        state.lock().unwrap_or_else(|p| p.into_inner());
+                                    app_state.base_path = Some(base_path.clone());
+                                    app_state.folder_path = Some(base_path.clone());
+                                }
+                                match create_settings_recovery_notice(&state, &base_path) {
+                                    Ok(note) => logger::log_warn(&format!(
+                                        "設定を安全な初期状態へ復旧し、案内付箋を作成しました: {}",
+                                        logger::sanitize_path(&note.meta.path)
+                                    )),
+                                    Err(notice_error) => logger::log_error(&format!(
+                                        "設定の自動復旧後に案内付箋を作成できませんでした: {}",
+                                        notice_error
+                                    )),
+                                }
+                            } else {
+                                logger::log_error("設定の自動復旧後も保存先がありません");
+                            }
+                        }
+                        Err(recovery_error) => {
+                            logger::log_error(&format!(
+                                "設定の自動復旧を実行できませんでした: {}",
+                                recovery_error
+                            ));
+                            logger::log_info("設定ファイルが存在しない場合は初回セットアップへ進みます");
+                        }
+                    }
                 }
             }
             
@@ -4227,89 +5021,14 @@ pub fn run() {
 
             tray::create_tray(app.handle())?;
 
-            // [NEW] グローバルショートカット: Ctrl+Shift+H（全隠し/表示） + Ctrl+N（新規付箋）
-            use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState, Code, Modifiers, Shortcut};
-
-            // 付箋の表示/非表示状態を追跡するための静的変数
-            use std::sync::atomic::{AtomicBool, Ordering};
-            static NOTES_HIDDEN: AtomicBool = AtomicBool::new(false);
-
-            // settings.json の shortcut_new_note を読み込み（無ければ "ctrl+n" をデフォルト使用）
-            let shortcut_new_note_str = storage::load_settings()
-                .ok()
-                .and_then(|s| s.shortcut_new_note)
-                .unwrap_or_else(|| "ctrl+n".to_string());
-            logger::log_info(&format!("[Shortcut] Ctrl+N ショートカット設定: {}", shortcut_new_note_str));
-
-            // shortcut_new_note を Shortcut に変換（parse 失敗時は ctrl+n にフォールバック）
-            let ctrl_n_shortcut = Shortcut::try_from(shortcut_new_note_str.as_str())
-                .unwrap_or_else(|_| {
-                    logger::log_warn("[Shortcut] shortcut_new_note の parse に失敗。ctrl+n にフォールバック。");
-                    Shortcut::new(Some(Modifiers::CONTROL), Code::KeyN)
+            hotkey_manager::register_global_shortcuts(app);
+            // クイックランチャー窓を隠したまま作り置き（Ctrl+P の初回表示を速くする）
+            launcher::preload_quick_launcher(app.handle());
+            {
+                let app_handle = app.handle().clone();
+                app.listen("fusen:toggle_quick_launcher", move |_| {
+                    launcher::handle_toggle_event(app_handle.clone());
                 });
-            let ctrl_n_shortcut_clone = ctrl_n_shortcut.clone();
-
-            // [仮] 2-b のトレイUI実装までの実機確認用トリガー。トレイUI完成後に削除予定
-            let arrange_shortcut = Shortcut::try_from("ctrl+shift+l")
-                .unwrap_or_else(|_| Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyL));
-            let arrange_shortcut_clone = arrange_shortcut.clone();
-
-            // [Fix] Safely attempt to register shortcuts（Ctrl+Shift+H と Ctrl+N を同一プラグインに登録）
-            match ShortcutBuilder::new().with_shortcuts(["ctrl+shift+h", "ctrl+shift+l"]) {
-                Ok(builder) => {
-                    let plugin = builder
-                        .with_handler(move |app, shortcut, event| {
-                            if event.state == ShortcutState::Pressed {
-                                if shortcut == &ctrl_n_shortcut_clone {
-                                    // --- グローバル Ctrl+N: 常に fusen:request_create_global を emit ---
-                                    // フォーカスチェックは削除。付箋にフォーカスがある状態でも新規作成を許可する。
-                                    // 二重作成はメインウィンドウの 400ms グローバルスロットルで防ぐ。
-                                    logger::log_info("[Shortcut] Ctrl+N: グローバル発火 → fusen:request_create_global emit");
-                                    perflog::log_event("ctrl-n-global", "GLOBAL_CTRL_N_PRESSED", None, None, serde_json::json!({}));
-                                    let _ = app.emit("fusen:request_create_global", ());
-                                } else if shortcut == &arrange_shortcut_clone {
-                                    logger::log_info("[Shortcut] Ctrl+Shift+L: fusen_arrange_by_tag trigger");
-                                    let app_handle = app.clone();
-                                    tauri::async_runtime::spawn(async move {
-                                        if let Err(e) = fusen_arrange_by_tag(app_handle).await {
-                                            logger::log_warn(&format!("[Shortcut] Ctrl+Shift+L arrange failed: {}", e));
-                                        }
-                                    });
-                                } else {
-                                    // --- Ctrl+Shift+H: 全付箋隠す/表示 ---
-                                    if !can_do_visibility_op() { return; }
-                                    let is_hidden = NOTES_HIDDEN.load(Ordering::SeqCst);
-                                    NOTES_HIDDEN.store(!is_hidden, Ordering::SeqCst);
-                                    let visible = is_hidden; // was hidden → now show (true)
-                                    let _ = app.emit("fusen:set_all_notes_visible", visible);
-
-                                    logger::log_info(&format!(
-                                        "[Shortcut] Ctrl+Shift+H pressed. Notes now {}.",
-                                        if is_hidden { "SHOWN" } else { "HIDDEN" }
-                                    ));
-                                }
-                            }
-                        })
-                        .build();
-
-                    match app.handle().plugin(plugin) {
-                        Ok(_) => {
-                            // プラグイン登録後に ctrl+n を追加登録
-                            use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                            if let Err(e) = app.handle().global_shortcut().register(ctrl_n_shortcut) {
-                                logger::log_warn(&format!("[Shortcut] Ctrl+N 追加登録失敗: {}", e));
-                            } else {
-                                logger::log_info("[Shortcut] Ctrl+N グローバルショートカット登録成功");
-                            }
-                        },
-                        Err(e) => {
-                            logger::log_warn(&format!("Failed to initialize global shortcut plugin: {}", e));
-                        }
-                    }
-                },
-                Err(e) => {
-                    logger::log_warn(&format!("Failed to register global shortcuts (might be conflicting): {}", e));
-                }
             }
 
             // iPhone受信: バックグラウンドポーリングループ（30秒間隔）
@@ -4443,6 +5162,138 @@ mod search_tests {
         let hits = search_notes_logic(dir.path().to_str().unwrap(), "Hello");
         assert_eq!(hits.len(), 2);
     }
+
+    #[test]
+    fn search_marks_existing_and_new_crystal_names_by_parent_folder() {
+        let dir = tempdir().unwrap();
+        let qa_dir = dir.path().join("QA");
+        fs::create_dir(&qa_dir).unwrap();
+        fs::write(qa_dir.join("0001_2026-07-18_旧形式.md"), "検索対象").unwrap();
+        fs::write(qa_dir.join("QA0002_2026-07-18_新形式.md"), "検索対象").unwrap();
+
+        let hits = search_notes_logic(dir.path().to_str().unwrap(), "検索対象");
+
+        assert_eq!(hits.len(), 2);
+        assert!(hits.iter().all(|hit| hit.kind.as_deref() == Some("QA")));
+    }
+}
+
+#[cfg(test)]
+mod recipe_candidate_tests {
+    use super::*;
+
+    #[test]
+    fn source_tags_for_recipe_candidates_come_from_meta_not_body() {
+        let source = Note {
+            body: "本文だけでfrontmatterは含まれない".to_string(),
+            frontmatter: String::new(),
+            meta: NoteMeta {
+                tags: vec!["work".to_string()],
+                ..Default::default()
+            },
+        };
+        let candidates = vec![logic::RecipeCandidateInput {
+            path: "yellow.md".to_string(),
+            title: "yellow".to_string(),
+            body: "candidate".to_string(),
+            background_color: Some("#f7e9b0".to_string()),
+            tags: vec!["work".to_string()],
+        }];
+
+        let result = logic::filter_recipe_candidates(&recipe_source_tags(&source), candidates);
+
+        assert_eq!(result.yellows.len(), 1);
+        assert_eq!(result.yellows[0].path, "yellow.md");
+    }
+}
+
+#[cfg(test)]
+mod qa_note_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn create_qa_note_file_writes_qa_note_with_recipe_meta_fields() {
+        let dir = tempdir().unwrap();
+        let path = create_qa_note_file(
+            dir.path(),
+            CreateRecipeNoteRequest {
+                title: "質問".to_string(),
+                body: "# 問い\n\n質問".to_string(),
+                tags: vec!["work".to_string(), "recipe".to_string(), "qa".to_string()],
+            },
+        ).unwrap();
+
+        let path = std::path::PathBuf::from(path);
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert!(path.starts_with(dir.path().join("QA")));
+        assert!(path.file_name().unwrap().to_string_lossy().starts_with("QA0001_"));
+        assert!(content.contains("seq: 1"));
+        assert!(content.contains("title: 質問"));
+        assert!(content.contains("backgroundColor: \"#cfd8dc\""));
+        assert!(content.contains("tags: [work, qa]"));
+        assert!(content.contains("launches: 0"));
+        assert!(content.contains("recipeImprovements: 0"));
+        assert!(content.contains("recipeLastUsed:"));
+        assert!(content.ends_with("# 問い\n\n質問"));
+    }
+}
+
+#[cfg(test)]
+mod term_note_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn create_term_note_file_writes_term_note_with_recipe_meta_fields() {
+        let dir = tempdir().unwrap();
+        let path = create_term_note_file(
+            dir.path(),
+            CreateRecipeNoteRequest {
+                title: "用語".to_string(),
+                body: "# 意味\n\n説明".to_string(),
+                tags: vec!["work".to_string(), "recipe".to_string(), "qa".to_string(), "term".to_string()],
+            },
+        ).unwrap();
+
+        let path = std::path::PathBuf::from(path);
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert!(path.starts_with(dir.path().join("Terms")));
+        assert!(path.file_name().unwrap().to_string_lossy().starts_with("Term0001_"));
+        assert!(content.contains("seq: 1"));
+        assert!(content.contains("title: 用語"));
+        assert!(content.contains("backgroundColor: \"#cfd8dc\""));
+        assert!(content.contains("tags: [work, term]"));
+        assert!(content.contains("launches: 0"));
+        assert!(content.contains("recipeImprovements: 0"));
+        assert!(content.contains("recipeLastUsed:"));
+        assert!(content.ends_with("# 意味\n\n説明"));
+    }
+
+    #[test]
+    fn create_term_note_file_uses_term_default_for_empty_title() {
+        let dir = tempdir().unwrap();
+        let path = create_term_note_file(
+            dir.path(),
+            CreateRecipeNoteRequest {
+                title: "   ".to_string(),
+                body: "# 意味\n\n説明".to_string(),
+                tags: vec![],
+            },
+        ).unwrap();
+
+        let path = std::path::PathBuf::from(path);
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert!(path.starts_with(dir.path().join("Terms")));
+        assert!(path.file_name().unwrap().to_string_lossy().contains("_term.md"));
+        assert!(content.contains("title: term"));
+        assert!(content.contains("tags: [term]"));
+    }
 }
 
 /// Pool 窓 Win32 テスト
@@ -4479,6 +5330,24 @@ mod pool_tests {
             n1.meta.path, n2.meta.path,
             "連番が衝突してはいけない（Mutex 排他の効果）"
         );
+    }
+
+    #[test]
+    fn settings_recovery_notice_is_a_yellow_note_with_recovery_guidance() {
+        let tmp = tempdir().unwrap();
+        let state = Mutex::new(AppState::default());
+
+        let note =
+            create_settings_recovery_notice(&state, tmp.path().to_str().unwrap()).unwrap();
+
+        let saved = std::fs::read_to_string(&note.meta.path).unwrap();
+        assert!(
+            saved.contains("backgroundColor: '#f7e9b0'")
+                || saved.contains("backgroundColor: #f7e9b0")
+        );
+        assert!(saved.contains("設定ファイルを読み込めなかったため"));
+        assert!(saved.contains("付箋ファイルは削除していません"));
+        assert!(saved.contains("データ管理"));
     }
 
     /// Task 1: Pool 窓の WS_EX_LAYERED + α=0 + 画面外配置を確認

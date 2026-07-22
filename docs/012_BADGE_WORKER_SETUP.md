@@ -8,7 +8,7 @@
 
 ## このWorkerが担っているもの
 
-README 上部のバッジ（`release` / `downloads total` / `downloads latest`）のSVG画像を返す。
+README 上部の`release`バッジ用SVG画像を返す。GitHub配布時代の`downloads total` / `downloads latest`はStore移行に伴いREADMEから削除した。
 
 以前は shields.io 経由で取得していたが、shields.io 側の GitHub token pool 障害時に
 READMEへエラー文言が表示される問題があったため、バッジ専用の Cloudflare Worker に切り替えた。

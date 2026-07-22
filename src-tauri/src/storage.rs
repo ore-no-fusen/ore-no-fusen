@@ -8,10 +8,18 @@
  */
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use walkdir::WalkDir;
+use sha2::{Digest, Sha256};
 use crate::state::{Note, NoteMeta};
 use crate::logic;
+
+pub const RECIPES_DIR_NAME: &str = "Recipes";
+pub const QA_DIR_NAME: &str = "QA";
+pub const TERMS_DIR_NAME: &str = "Terms";
+static SETTINGS_IO_LOCK: Mutex<()> = Mutex::new(());
 
 // UC-01: 設定ファイル管理
 pub use crate::state::Settings;
@@ -23,13 +31,52 @@ pub fn get_settings_path() -> Result<PathBuf, String> {
     Ok(config_dir.join("settings.json"))
 }
 
+pub fn append_trash_operation(source: &Path, destination: &Path, origin: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    let settings_path = get_settings_path()?;
+    let config_dir = settings_path.parent().ok_or("config directory not found")?;
+    fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+    let log_path = config_dir.join("trash_operations.jsonl");
+    let record = serde_json::json!({
+        "timestamp": chrono::Local::now().to_rfc3339(),
+        "source": source.to_string_lossy(),
+        "destination": destination.to_string_lossy(),
+        "origin": origin,
+    });
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+        .map_err(|e| e.to_string())?;
+    writeln!(file, "{}", record).map_err(|e| e.to_string())
+}
+
 pub fn load_settings() -> Result<Settings, String> {
+    let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let path = get_settings_path()?;
     if !path.exists() {
         return Ok(Settings::default());
     }
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+
+    match read_settings_file(&path) {
+        Ok(settings) => Ok(settings),
+        Err(primary_error) => {
+            let backup_path = settings_backup_path(&path);
+            if !backup_path.exists() {
+                return Err(format!(
+                    "settings.json is invalid and no backup exists: {}",
+                    primary_error
+                ));
+            }
+            read_settings_file(&backup_path).map_err(|backup_error| {
+                format!(
+                    "settings.json and its backup are invalid: primary={}; backup={}",
+                    primary_error, backup_error
+                )
+            })
+        }
+    }
 }
 
 pub fn save_settings(settings: &Settings) -> Result<(), String> {
@@ -37,13 +84,238 @@ pub fn save_settings(settings: &Settings) -> Result<(), String> {
         validate_storage_path(base_path)?;
     }
 
+    let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let path = get_settings_path()?;
+    let temp_path = path.with_extension("json.tmp");
+    let rollback_path = path.with_extension("json.rollback");
+    let backup_path = settings_backup_path(&path);
     let content = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    fs::write(path, content).map_err(|e| e.to_string())
+
+    let _ = fs::remove_file(&temp_path);
+    let _ = fs::remove_file(&rollback_path);
+
+    let mut temp_file = fs::File::create(&temp_path).map_err(|e| e.to_string())?;
+    temp_file
+        .write_all(content.as_bytes())
+        .and_then(|_| temp_file.sync_all())
+        .map_err(|e| {
+            let _ = fs::remove_file(&temp_path);
+            e.to_string()
+        })?;
+    drop(temp_file);
+
+    // 書き込んだ一時ファイルを実際の Settings として再読込できる場合だけ交換する。
+    read_settings_file(&temp_path).map_err(|e| {
+        let _ = fs::remove_file(&temp_path);
+        format!("temporary settings validation failed: {}", e)
+    })?;
+
+    if path.exists() {
+        // 壊れた現行ファイルで、最後の正常バックアップを上書きしない。
+        if read_settings_file(&path).is_ok() {
+            fs::copy(&path, &backup_path).map_err(|e| {
+                let _ = fs::remove_file(&temp_path);
+                format!("failed to preserve settings backup: {}", e)
+            })?;
+        }
+
+        fs::rename(&path, &rollback_path).map_err(|e| {
+            let _ = fs::remove_file(&temp_path);
+            format!("failed to stage current settings: {}", e)
+        })?;
+    }
+
+    if let Err(e) = fs::rename(&temp_path, &path) {
+        if rollback_path.exists() {
+            let _ = fs::rename(&rollback_path, &path);
+        }
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!("failed to install new settings: {}", e));
+    }
+
+    let _ = fs::remove_file(&rollback_path);
+    Ok(())
+}
+
+fn settings_backup_path(settings_path: &Path) -> PathBuf {
+    settings_path.with_extension("json.bak")
+}
+
+fn read_settings_file(path: &Path) -> Result<Settings, String> {
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+fn corrupt_settings_archive_path(
+    settings_path: &Path,
+    timestamp: &str,
+    backup: bool,
+) -> PathBuf {
+    let file_name = if backup {
+        format!("settings.backup-corrupt-{}.json", timestamp)
+    } else {
+        format!("settings.corrupt-{}.json", timestamp)
+    };
+    settings_path.parent().unwrap_or(Path::new(".")).join(file_name)
+}
+
+/// 両方とも存在し、両方とも読めない設定だけを、安全な既定設定へ置き換える。
+/// テストで任意の設定パスを使えるよう、I/O本体はパス引数で分離する。
+fn recover_corrupt_settings_at(
+    settings_path: &Path,
+    base_path: &Path,
+    timestamp: &str,
+) -> Result<Settings, String> {
+    let backup_path = settings_backup_path(settings_path);
+    if !settings_path.exists()
+        || !backup_path.exists()
+        || read_settings_file(settings_path).is_ok()
+        || read_settings_file(&backup_path).is_ok()
+    {
+        return Err("settings primary and backup are not both invalid".to_string());
+    }
+
+    fs::create_dir_all(base_path)
+        .map_err(|e| format!("failed to create recovery vault: {}", e))?;
+    check_storage_health(&base_path.to_string_lossy())?;
+
+    let primary_archive = corrupt_settings_archive_path(settings_path, timestamp, false);
+    let backup_archive = corrupt_settings_archive_path(settings_path, timestamp, true);
+    fs::copy(settings_path, &primary_archive)
+        .map_err(|e| format!("failed to archive corrupt settings: {}", e))?;
+    if let Err(e) = fs::copy(&backup_path, &backup_archive) {
+        let _ = fs::remove_file(&primary_archive);
+        return Err(format!("failed to archive corrupt settings backup: {}", e));
+    }
+
+    let mut settings = Settings::default();
+    settings.base_path = Some(base_path.to_string_lossy().to_string());
+    let content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    let temp_path = settings_path.with_extension("json.recovery.tmp");
+    let write_result = (|| -> Result<(), String> {
+        let mut file = fs::File::create(&temp_path).map_err(|e| e.to_string())?;
+        file.write_all(content.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|e| e.to_string())?;
+        drop(file);
+        read_settings_file(&temp_path)
+            .map_err(|e| format!("recovered settings validation failed: {}", e))?;
+        fs::remove_file(settings_path).map_err(|e| e.to_string())?;
+        fs::remove_file(&backup_path).map_err(|e| e.to_string())?;
+        fs::rename(&temp_path, settings_path).map_err(|e| e.to_string())?;
+        fs::copy(settings_path, &backup_path).map_err(|e| e.to_string())?;
+        read_settings_file(settings_path)?;
+        read_settings_file(&backup_path)?;
+        Ok(())
+    })();
+    if let Err(e) = write_result {
+        let _ = fs::remove_file(&temp_path);
+        let _ = fs::remove_file(settings_path);
+        let _ = fs::remove_file(&backup_path);
+        let _ = fs::copy(&primary_archive, settings_path);
+        let _ = fs::copy(&backup_archive, &backup_path);
+        return Err(format!("failed to install recovered settings: {}", e));
+    }
+
+    Ok(settings)
+}
+
+pub fn recover_corrupt_settings_to_safe_default() -> Result<Settings, String> {
+    let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let settings_path = get_settings_path()?;
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let documents = std::env::var("USERPROFILE")
+        .map(|home| PathBuf::from(home).join("Documents").join("OreNoFusen"));
+    let app_managed = settings_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("Notes");
+
+    let base_path = documents
+        .ok()
+        .filter(|path| {
+            fs::create_dir_all(path).is_ok()
+                && check_storage_health(&path.to_string_lossy()).is_ok()
+        })
+        .unwrap_or(app_managed);
+
+    recover_corrupt_settings_at(&settings_path, &base_path, &timestamp)
+}
+
+fn recovery_draft_path(note_path: &str) -> Result<PathBuf, String> {
+    let settings_path = get_settings_path()?;
+    let config_dir = settings_path.parent().ok_or("config directory not found")?;
+    let recovery_dir = config_dir.join("recovery-drafts");
+    let digest = Sha256::digest(note_path.to_lowercase().as_bytes());
+    Ok(recovery_dir.join(format!("{:x}.md", digest)))
+}
+
+/// 通常保存が失敗した場合だけ、最新内容をアプリ管理領域へ退避する。
+pub fn save_recovery_draft(note_path: &str, content: &str) -> Result<(), String> {
+    let draft_path = recovery_draft_path(note_path)?;
+    let recovery_dir = draft_path.parent().ok_or("recovery directory not found")?;
+    fs::create_dir_all(recovery_dir).map_err(|e| e.to_string())?;
+    write_note(&draft_path.to_string_lossy(), content)
+}
+
+pub fn clear_recovery_draft(note_path: &str) {
+    let Ok(draft_path) = recovery_draft_path(note_path) else {
+        return;
+    };
+    if draft_path.exists() {
+        let _ = fs::remove_file(draft_path);
+    }
+}
+
+/// 通常ファイルより新しい復旧コピーだけを返す。
+pub fn load_newer_recovery_draft(note_path: &str) -> Option<String> {
+    let draft_path = recovery_draft_path(note_path).ok()?;
+    let note_modified = fs::metadata(note_path).ok()?.modified().ok()?;
+    let draft_modified = fs::metadata(&draft_path).ok()?.modified().ok()?;
+    if draft_modified <= note_modified {
+        return None;
+    }
+    fs::read_to_string(draft_path).ok()
 }
 
 pub fn ensure_directory(path: &str) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|e| e.to_string())
+}
+
+/// 保存先が現在読み書き可能かを、既存データを変更せずに確認する。
+pub fn check_storage_health(path: &str) -> Result<(), String> {
+    let target = Path::new(path);
+    if !target.exists() {
+        return Err("保存先フォルダが見つかりません".to_string());
+    }
+    if !target.is_dir() {
+        return Err("保存先に指定された場所はフォルダではありません".to_string());
+    }
+
+    fs::read_dir(target)
+        .map_err(|e| format!("保存先フォルダを読み取れません: {}", e))?;
+
+    let probe_name = format!(
+        ".fusen_storage_probe_{}_{}.tmp",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    );
+    let probe_path = target.join(probe_name);
+    let probe_result = (|| -> Result<(), String> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe_path)
+            .map_err(|e| format!("保存先フォルダへ書き込めません: {}", e))?;
+        file.write_all(b"OreNoFusen storage health check")
+            .and_then(|_| file.sync_all())
+            .map_err(|e| format!("保存先への書き込みを完了できません: {}", e))
+    })();
+
+    let remove_result = fs::remove_file(&probe_path);
+    probe_result?;
+    remove_result.map_err(|e| format!("保存先の確認用ファイルを削除できません: {}", e))?;
+    Ok(())
 }
 
 pub fn validate_storage_path(path: &str) -> Result<(), String> {
@@ -347,6 +619,26 @@ pub fn read_note(path: &str) -> Result<Note, String> {
     })
 }
 
+/// iPhone 受信IDのハッシュを持つ付箋を検索する。
+/// 再受信時の重複作成防止にだけ使用し、本文は比較しない。
+pub fn find_note_by_iphone_source_hash(folder_path: &str, source_hash: &str) -> Option<String> {
+    let marker = format!("iphone_source_hash: {}", source_hash);
+    WalkDir::new(folder_path)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry.file_type().is_file()
+                && entry.path().extension().and_then(|ext| ext.to_str()) == Some("md")
+        })
+        .find_map(|entry| {
+            let content = fs::read_to_string(entry.path()).ok()?;
+            content
+                .lines()
+                .any(|line| line.trim() == marker)
+                .then(|| entry.path().to_string_lossy().to_string())
+        })
+}
+
 pub fn write_note(path: &str, content: &str) -> Result<(), String> {
     // Atomic Write attempt: Write to temp file then rename
     let path_obj = Path::new(path);
@@ -416,11 +708,63 @@ pub fn get_next_seq(folder_path: &str) -> i32 {
 }
 
 pub fn ensure_trash_dir(parent_path: &Path) -> Result<PathBuf, String> {
-    let trash_dir = parent_path.join("Trash");
-    if !trash_dir.exists() {
-        fs::create_dir(&trash_dir).map_err(|e| e.to_string())?;
+    ensure_named_dir(parent_path, "Trash")
+}
+
+pub fn ensure_named_dir(parent_path: &Path, name: &str) -> Result<PathBuf, String> {
+    let named_dir = parent_path.join(name);
+    if !named_dir.exists() {
+        fs::create_dir(&named_dir).map_err(|e| e.to_string())?;
     }
-    Ok(trash_dir)
+    Ok(named_dir)
+}
+
+pub fn ensure_recipes_dir(parent_path: &Path) -> Result<PathBuf, String> {
+    ensure_named_dir(parent_path, RECIPES_DIR_NAME)
+}
+
+pub fn ensure_qa_dir(parent_path: &Path) -> Result<PathBuf, String> {
+    ensure_named_dir(parent_path, QA_DIR_NAME)
+}
+
+pub fn ensure_terms_dir(parent_path: &Path) -> Result<PathBuf, String> {
+    ensure_named_dir(parent_path, TERMS_DIR_NAME)
+}
+
+pub fn list_recipe_material_note_paths(parent_path: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(parent_path) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+                paths.push(path);
+            }
+        }
+    }
+
+    let tags_dir = parent_path.join("tags");
+    if tags_dir.exists() {
+        for entry in WalkDir::new(&tags_dir).into_iter().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if entry.file_type().is_file()
+                && path.extension().map_or(false, |ext| ext == "md")
+                && !has_excluded_recipe_material_component(path)
+            {
+                paths.push(path.to_path_buf());
+            }
+        }
+    }
+
+    paths.sort();
+    paths
+}
+
+fn has_excluded_recipe_material_component(path: &Path) -> bool {
+    path.components().any(|component| {
+        let name = component.as_os_str().to_string_lossy();
+        name == "Trash" || name == "Archive" || name == RECIPES_DIR_NAME || name == QA_DIR_NAME || name == TERMS_DIR_NAME
+    })
 }
 
 pub fn ensure_tag_dir(parent_path: &Path, tag: &str) -> Result<PathBuf, String> {
@@ -457,6 +801,18 @@ fn get_assets_regex() -> &'static regex::Regex {
 }
 
 pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Result<(), String> {
+    copy_associated_assets_with_policy(note_path, target_note_dir, false)
+}
+
+pub fn overwrite_associated_assets(note_path: &Path, target_note_dir: &Path) -> Result<(), String> {
+    copy_associated_assets_with_policy(note_path, target_note_dir, true)
+}
+
+fn copy_associated_assets_with_policy(
+    note_path: &Path,
+    target_note_dir: &Path,
+    overwrite: bool,
+) -> Result<(), String> {
     let content = fs::read_to_string(note_path).map_err(|e| e.to_string())?;
     let re = get_assets_regex();
 
@@ -474,8 +830,7 @@ pub fn copy_associated_assets(note_path: &Path, target_note_dir: &Path) -> Resul
             let asset_filename = src_asset_path.file_name().ok_or("No asset filename")?;
             let dest_asset_path = target_assets_dir.join(asset_filename);
             
-            // すでに存在する場合はスキップまたは上書き
-            if !dest_asset_path.exists() {
+            if overwrite || !dest_asset_path.exists() {
                 fs::copy(&src_asset_path, &dest_asset_path).map_err(|e| e.to_string())?;
             }
         }
@@ -569,11 +924,29 @@ fn normalize_explorer_arg(path: &str) -> String {
     }
 }
 
+/// Markdown の `[label](path)` から抽出された Windows パスには、構文を閉じる
+/// `)` が末尾に混入することがある。元のパスが存在する場合はそのまま優先し、
+/// 存在しない場合だけ `)` を1つ除いた実在パスへ補正する。
+fn resolve_open_file_path(path: &str) -> String {
+    if std::path::Path::new(path).exists() {
+        return path.to_string();
+    }
+
+    if let Some(without_markdown_closing) = path.strip_suffix(')') {
+        if std::path::Path::new(without_markdown_closing).exists() {
+            return without_markdown_closing.to_string();
+        }
+    }
+
+    path.to_string()
+}
+
 pub fn open_file(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        let arg_path = normalize_explorer_arg(path);
+        let resolved_path = resolve_open_file_path(path);
+        let arg_path = normalize_explorer_arg(&resolved_path);
 
         // Open file or folder with default application (explorer handles both)
         Command::new("explorer")
@@ -592,6 +965,10 @@ pub fn open_file(path: &str) -> Result<(), String> {
 /// tags/, assets/ を含むすべてのファイルを対象とする。
 /// 戻り値: コピーしたファイル数
 pub fn backup_notes(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
+    backup_notes_with_options(source_dir, dest_dir, true)
+}
+
+pub fn backup_notes_with_options(source_dir: &str, dest_dir: &str, include_trash: bool) -> Result<usize, String> {
     let src = std::path::Path::new(source_dir);
     let dst = std::path::Path::new(dest_dir);
 
@@ -603,17 +980,23 @@ pub fn backup_notes(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
     }
 
     let mut count = 0;
-    backup_dir_recursive(src, dst, &mut count)?;
+    backup_dir_recursive(src, dst, &mut count, include_trash)?;
     Ok(count)
 }
 
-fn backup_dir_recursive(src: &std::path::Path, dst: &std::path::Path, count: &mut usize) -> Result<(), String> {
+fn backup_dir_recursive(src: &std::path::Path, dst: &std::path::Path, count: &mut usize, include_trash: bool) -> Result<(), String> {
     for entry in fs::read_dir(src).map_err(|e| e.to_string())?.filter_map(|e| e.ok()) {
         let path = entry.path();
         let dest = dst.join(entry.file_name());
         if path.is_dir() {
+            let is_trash = entry.file_name().to_string_lossy().eq_ignore_ascii_case("Trash");
+            if is_trash && !include_trash && dest.exists() {
+                fs::remove_dir_all(&dest).map_err(|e| e.to_string())?;
+            }
             fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
-            backup_dir_recursive(&path, &dest, count)?;
+            if include_trash || !is_trash {
+                backup_dir_recursive(&path, &dest, count, include_trash)?;
+            }
         } else {
             fs::copy(&path, &dest).map_err(|e| e.to_string())?;
             *count += 1;
@@ -629,6 +1012,66 @@ mod tests {
     use tempfile::tempdir;
 
     static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn overwrite_associated_assets_keeps_the_later_image() {
+        let source = tempdir().unwrap();
+        let destination = tempdir().unwrap();
+        fs::create_dir_all(source.path().join("assets")).unwrap();
+        fs::create_dir_all(destination.path().join("assets")).unwrap();
+        fs::write(
+            source.path().join("note.md"),
+            "![image](assets/shared.png)",
+        ).unwrap();
+        fs::write(source.path().join("assets/shared.png"), "later").unwrap();
+        fs::write(destination.path().join("assets/shared.png"), "earlier").unwrap();
+
+        overwrite_associated_assets(&source.path().join("note.md"), destination.path()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.path().join("assets/shared.png")).unwrap(),
+            "later"
+        );
+    }
+
+    #[test]
+    fn backup_excludes_trash_contents_by_default_option_and_keeps_empty_folder() {
+        let source = tempdir().unwrap();
+        let destination = tempdir().unwrap();
+        fs::write(source.path().join("note.md"), "note").unwrap();
+        fs::create_dir_all(source.path().join("Trash")).unwrap();
+        fs::write(source.path().join("Trash").join("deleted.md"), "deleted").unwrap();
+        fs::create_dir_all(destination.path().join("Trash")).unwrap();
+        fs::write(destination.path().join("Trash").join("old.md"), "old").unwrap();
+
+        let count = backup_notes_with_options(
+            source.path().to_string_lossy().as_ref(),
+            destination.path().to_string_lossy().as_ref(),
+            false,
+        ).unwrap();
+
+        assert_eq!(count, 1);
+        assert!(destination.path().join("note.md").exists());
+        assert!(destination.path().join("Trash").is_dir());
+        assert_eq!(fs::read_dir(destination.path().join("Trash")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn backup_includes_trash_contents_when_requested() {
+        let source = tempdir().unwrap();
+        let destination = tempdir().unwrap();
+        fs::create_dir_all(source.path().join("Trash")).unwrap();
+        fs::write(source.path().join("Trash").join("deleted.md"), "deleted").unwrap();
+
+        let count = backup_notes_with_options(
+            source.path().to_string_lossy().as_ref(),
+            destination.path().to_string_lossy().as_ref(),
+            true,
+        ).unwrap();
+
+        assert_eq!(count, 1);
+        assert!(destination.path().join("Trash").join("deleted.md").exists());
+    }
 
     // === write_note と read_note のテスト ===
     // ファイルI/O操作の基本
@@ -721,6 +1164,47 @@ mod tests {
     }
 
     #[test]
+    fn storage_health_accepts_readable_writable_directory_and_cleans_probe() {
+        let dir = tempdir().unwrap();
+        check_storage_health(&dir.path().to_string_lossy()).unwrap();
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn storage_health_rejects_missing_directory() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        let error = check_storage_health(&missing.to_string_lossy()).unwrap_err();
+        assert!(error.contains("見つかりません"));
+    }
+
+    #[test]
+    fn storage_health_rejects_file_path() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("not-a-directory");
+        fs::write(&file, "data").unwrap();
+        let error = check_storage_health(&file.to_string_lossy()).unwrap_err();
+        assert!(error.contains("フォルダではありません"));
+    }
+
+    #[test]
+    fn finds_received_iphone_note_by_exact_source_hash() {
+        let dir = tempdir().unwrap();
+        let note_path = dir.path().join("received.md");
+        fs::write(
+            &note_path,
+            "---\niphone_source_hash: abc123\n---\nreceived body",
+        )
+        .unwrap();
+
+        assert_eq!(
+            find_note_by_iphone_source_hash(&dir.path().to_string_lossy(), "abc123"),
+            Some(note_path.to_string_lossy().to_string())
+        );
+        assert!(find_note_by_iphone_source_hash(&dir.path().to_string_lossy(), "abc").is_none());
+    }
+
+    #[test]
     fn test_save_settings_keeps_original_base_path_string() {
         let _guard = SETTINGS_ENV_LOCK.lock().unwrap();
         let appdata_dir = tempdir().unwrap();
@@ -743,6 +1227,266 @@ mod tests {
         let saved = std::fs::read_to_string(get_settings_path().unwrap()).unwrap();
         let saved_settings: Settings = serde_json::from_str(&saved).unwrap();
         assert_eq!(saved_settings.base_path, Some(raw_base_path_str));
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn save_settings_keeps_one_valid_previous_generation() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let mut first = Settings::default();
+        first.language = "ja".to_string();
+        save_settings(&first).unwrap();
+
+        let mut second = first.clone();
+        second.language = "en".to_string();
+        save_settings(&second).unwrap();
+
+        let settings_path = get_settings_path().unwrap();
+        let current = read_settings_file(&settings_path).unwrap();
+        let previous = read_settings_file(&settings_backup_path(&settings_path)).unwrap();
+        assert_eq!(current.language, "en");
+        assert_eq!(previous.language, "ja");
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn load_settings_recovers_from_valid_backup_when_primary_is_corrupt() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let mut first = Settings::default();
+        first.language = "ja".to_string();
+        save_settings(&first).unwrap();
+        let mut second = first.clone();
+        second.language = "en".to_string();
+        save_settings(&second).unwrap();
+
+        fs::write(get_settings_path().unwrap(), "{broken").unwrap();
+        let recovered = load_settings().unwrap();
+        assert_eq!(recovered.language, "ja");
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn load_settings_fails_when_primary_and_backup_are_both_corrupt() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let settings_path = get_settings_path().unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(settings_backup_path(&settings_path), "{broken-backup").unwrap();
+
+        let error = match load_settings() {
+            Ok(_) => panic!("corrupt primary and backup must not load"),
+            Err(error) => error,
+        };
+        assert!(error.contains("settings.json and its backup are invalid"));
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn recover_corrupt_settings_archives_both_invalid_generations() {
+        let root = tempdir().unwrap();
+        let settings_path = root.path().join("settings.json");
+        let backup_path = settings_backup_path(&settings_path);
+        let vault = root.path().join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(&backup_path, "{broken-backup").unwrap();
+
+        recover_corrupt_settings_at(&settings_path, &vault, "20260714-123456").unwrap();
+
+        assert!(root.path().join("settings.corrupt-20260714-123456.json").exists());
+        assert!(root.path().join("settings.backup-corrupt-20260714-123456.json").exists());
+    }
+
+    #[test]
+    fn recover_corrupt_settings_writes_valid_primary_and_backup() {
+        let root = tempdir().unwrap();
+        let settings_path = root.path().join("settings.json");
+        let backup_path = settings_backup_path(&settings_path);
+        let vault = root.path().join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(&backup_path, "{broken-backup").unwrap();
+
+        let recovered =
+            recover_corrupt_settings_at(&settings_path, &vault, "20260714-123456").unwrap();
+
+        assert_eq!(
+            recovered.base_path.as_deref(),
+            Some(vault.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            read_settings_file(&settings_path).unwrap().base_path,
+            recovered.base_path
+        );
+        assert_eq!(
+            read_settings_file(&backup_path).unwrap().base_path,
+            recovered.base_path
+        );
+    }
+
+    #[test]
+    fn recover_corrupt_settings_is_not_used_when_backup_is_valid() {
+        let root = tempdir().unwrap();
+        let settings_path = root.path().join("settings.json");
+        let backup_path = settings_backup_path(&settings_path);
+        let vault = root.path().join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(
+            &backup_path,
+            serde_json::to_string(&Settings::default()).unwrap(),
+        )
+        .unwrap();
+
+        let error = match recover_corrupt_settings_at(
+            &settings_path,
+            &vault,
+            "20260714-123456",
+        ) {
+            Ok(_) => panic!("valid backup must keep the normal backup recovery path"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("both invalid"));
+        assert!(backup_path.exists());
+        assert!(!root.path().join("settings.corrupt-20260714-123456.json").exists());
+    }
+
+    #[test]
+    fn recovered_settings_load_normally_on_next_start() {
+        let root = tempdir().unwrap();
+        let settings_path = root.path().join("settings.json");
+        let backup_path = settings_backup_path(&settings_path);
+        let vault = root.path().join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(&settings_path, "{broken-primary").unwrap();
+        fs::write(&backup_path, "{broken-backup").unwrap();
+
+        recover_corrupt_settings_at(&settings_path, &vault, "20260714-123456").unwrap();
+
+        assert!(read_settings_file(&settings_path).is_ok());
+        assert!(read_settings_file(&backup_path).is_ok());
+    }
+
+    #[test]
+    fn recovery_draft_is_used_only_when_newer_than_note() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let note_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+        let note_path = note_dir.path().join("note.md");
+        let note_path_str = note_path.to_string_lossy().to_string();
+
+        write_note(&note_path_str, "saved").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        save_recovery_draft(&note_path_str, "recovered").unwrap();
+        assert_eq!(load_newer_recovery_draft(&note_path_str).as_deref(), Some("recovered"));
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        write_note(&note_path_str, "newer saved").unwrap();
+        assert!(load_newer_recovery_draft(&note_path_str).is_none());
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn successful_save_can_clear_recovery_draft() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+        let note_path = "D:/notes/example.md";
+
+        save_recovery_draft(note_path, "recovered").unwrap();
+        let draft_path = recovery_draft_path(note_path).unwrap();
+        assert!(draft_path.exists());
+        clear_recovery_draft(note_path);
+        assert!(!draft_path.exists());
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn recovery_lookup_does_not_create_directory_during_normal_save() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        let draft_path = recovery_draft_path("D:/notes/normal.md").unwrap();
+        assert!(!draft_path.parent().unwrap().exists());
+        clear_recovery_draft("D:/notes/normal.md");
+        assert!(!draft_path.parent().unwrap().exists());
+
+        if let Some(value) = old_appdata {
+            std::env::set_var("APPDATA", value);
+        } else {
+            std::env::remove_var("APPDATA");
+        }
+    }
+
+    #[test]
+    fn trash_operation_log_records_source_destination_and_origin() {
+        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let appdata_dir = tempdir().unwrap();
+        let old_appdata = std::env::var("APPDATA").ok();
+        std::env::set_var("APPDATA", appdata_dir.path());
+
+        append_trash_operation(
+            Path::new("C:/notes/source.md"),
+            Path::new("C:/notes/Trash/source.md"),
+            "quick_launcher",
+        )
+        .unwrap();
+
+        let log = fs::read_to_string(
+            get_settings_path().unwrap().parent().unwrap().join("trash_operations.jsonl"),
+        )
+        .unwrap();
+        let record: serde_json::Value = serde_json::from_str(log.trim()).unwrap();
+        assert_eq!(record["origin"], "quick_launcher");
+        assert!(record["source"].as_str().unwrap().contains("source.md"));
+        assert!(record["destination"].as_str().unwrap().contains("Trash"));
 
         if let Some(value) = old_appdata {
             std::env::set_var("APPDATA", value);
@@ -895,6 +1639,85 @@ mod tests {
         
         assert!(archive_dir.exists());
         assert!(archive_dir.ends_with("Archive"));
+    }
+
+    #[test]
+    fn test_ensure_named_dir_creates_and_reuses_dir() {
+        let dir = tempdir().unwrap();
+        let named_dir = ensure_named_dir(dir.path(), "Custom").unwrap();
+        let reused_dir = ensure_named_dir(dir.path(), "Custom").unwrap();
+
+        assert!(named_dir.exists());
+        assert_eq!(reused_dir, named_dir);
+    }
+
+    #[test]
+    fn test_ensure_recipes_dir() {
+        let dir = tempdir().unwrap();
+        let recipes_dir = ensure_recipes_dir(dir.path()).unwrap();
+
+        assert!(recipes_dir.exists());
+        assert!(recipes_dir.ends_with("Recipes"));
+    }
+
+    #[test]
+    fn test_ensure_qa_dir() {
+        let dir = tempdir().unwrap();
+        let qa_dir = ensure_qa_dir(dir.path()).unwrap();
+
+        assert!(qa_dir.exists());
+        assert!(qa_dir.ends_with("QA"));
+    }
+
+    #[test]
+    fn test_ensure_terms_dir() {
+        let dir = tempdir().unwrap();
+        let terms_dir = ensure_terms_dir(dir.path()).unwrap();
+
+        assert!(terms_dir.exists());
+        assert!(terms_dir.ends_with("Terms"));
+    }
+
+    #[test]
+    fn test_list_recipe_material_note_paths_scans_root_and_tags_only() {
+        let dir = tempdir().unwrap();
+        let root_note = dir.path().join("0001_2026-07-05_root.md");
+        let tag_dir = dir.path().join("tags").join("work");
+        let trash_dir = dir.path().join("Trash");
+        let archive_dir = dir.path().join("Archive");
+        let recipes_dir = dir.path().join("Recipes");
+        let qa_dir = dir.path().join("QA");
+        let terms_dir = dir.path().join("Terms");
+        let nested_archive_dir = dir.path().join("tags").join("Archive");
+        let nested_qa_dir = dir.path().join("tags").join("QA");
+        let nested_terms_dir = dir.path().join("tags").join("Terms");
+
+        fs::create_dir_all(&tag_dir).unwrap();
+        fs::create_dir_all(&trash_dir).unwrap();
+        fs::create_dir_all(&archive_dir).unwrap();
+        fs::create_dir_all(&recipes_dir).unwrap();
+        fs::create_dir_all(&qa_dir).unwrap();
+        fs::create_dir_all(&terms_dir).unwrap();
+        fs::create_dir_all(&nested_archive_dir).unwrap();
+        fs::create_dir_all(&nested_qa_dir).unwrap();
+        fs::create_dir_all(&nested_terms_dir).unwrap();
+
+        fs::write(&root_note, "root").unwrap();
+        fs::write(tag_dir.join("0002_2026-07-05_tag.md"), "tag").unwrap();
+        fs::write(trash_dir.join("0003_2026-07-05_trash.md"), "trash").unwrap();
+        fs::write(archive_dir.join("0004_2026-07-05_archive.md"), "archive").unwrap();
+        fs::write(recipes_dir.join("0005_2026-07-05_recipe.md"), "recipe").unwrap();
+        fs::write(nested_archive_dir.join("0006_2026-07-05_nested_archive.md"), "nested").unwrap();
+        fs::write(qa_dir.join("0007_2026-07-05_qa.md"), "qa").unwrap();
+        fs::write(nested_qa_dir.join("0008_2026-07-05_nested_qa.md"), "nested qa").unwrap();
+        fs::write(terms_dir.join("0009_2026-07-05_term.md"), "term").unwrap();
+        fs::write(nested_terms_dir.join("0010_2026-07-05_nested_term.md"), "nested term").unwrap();
+
+        let paths = list_recipe_material_note_paths(dir.path());
+
+        assert_eq!(paths.len(), 2);
+        assert!(paths.contains(&root_note));
+        assert!(paths.iter().any(|p| p.ends_with("0002_2026-07-05_tag.md")));
     }
 
 
@@ -1055,6 +1878,31 @@ tags: ["important"]
         assert_eq!(
             normalize_explorer_arg("C:\\Users\\uck\\AppData\\Local\\ore-no-fusen\\some folder\\"),
             "C:\\Users\\uck\\AppData\\Local\\ore-no-fusen\\some folder"
+        );
+    }
+
+    #[test]
+    fn resolve_open_file_path_removes_markdown_closing_parenthesis_when_needed() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("linked-note.md");
+        std::fs::write(&file_path, "test").unwrap();
+
+        let markdown_extracted = format!("{})", file_path.to_string_lossy());
+        assert_eq!(
+            resolve_open_file_path(&markdown_extracted),
+            file_path.to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn resolve_open_file_path_preserves_real_parenthesis_in_filename() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("linked-note).md)");
+        std::fs::write(&file_path, "test").unwrap();
+
+        assert_eq!(
+            resolve_open_file_path(&file_path.to_string_lossy()),
+            file_path.to_string_lossy()
         );
     }
 }

@@ -59,4 +59,14 @@ describe('EndrollMatsuri', () => {
 
         expect(screen.getByRole('heading', { name: '奉納帳' })).toBeTruthy();
     });
+
+    it('shows English UI when English is requested', () => {
+        render(<EndrollMatsuri supporters={[]} language="en" />);
+
+        expect(screen.getByLabelText('Roll of supporters')).toBeTruthy();
+        expect(screen.getByRole('heading', { name: 'Supporter Roll' })).toBeTruthy();
+        expect(screen.getByText('The supporter roll is still blank.')).toBeTruthy();
+        expect(screen.getByText('Be the first light.')).toBeTruthy();
+        expect(screen.queryByText('奉納帳は、まだ まっさらです')).toBeNull();
+    });
 });

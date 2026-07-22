@@ -61,7 +61,7 @@ export default function SaveErrorToast({ isVisible, onDismiss }: SaveErrorToastP
                 <span>
                     自動保存に失敗しました。<br />
                     <span style={{ fontWeight: 400, opacity: 0.85 }}>
-                        ファイルが読み取り専用でないか確認してください。
+                        保存先の接続、空き容量、書き込み権限を確認してください。編集中の内容は画面を閉じずに残してください。
                     </span>
                 </span>
             </div>

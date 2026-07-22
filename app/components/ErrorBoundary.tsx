@@ -9,11 +9,13 @@
 'use client';
 
 import React from 'react';
+import type { Language } from '@/lib/i18n';
 
 type Props = {
     children: React.ReactNode;
     /** エラー発生時に代わりに表示するUI（省略時はデフォルトUIを使用）*/
     fallback?: React.ReactNode;
+    language?: Language;
 };
 
 type State = {
@@ -72,7 +74,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
                     margin: 0,
                     lineHeight: 1.5,
                 }}>
-                    表示中にエラーが発生しました
+                    {this.props.language === 'en' ? 'An error occurred while displaying this screen.' : '表示中にエラーが発生しました'}
                 </p>
                 <button
                     onClick={this.handleReset}
@@ -87,7 +89,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
                         cursor: 'pointer',
                     }}
                 >
-                    再試行
+                    {this.props.language === 'en' ? 'Try Again' : '再試行'}
                 </button>
             </div>
         );

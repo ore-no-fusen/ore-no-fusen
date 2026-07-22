@@ -11,15 +11,17 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
+import type { Language } from '@/lib/i18n';
 
 type PoolWaitToastProps = {
     x: number;
     y: number;
     visible: boolean;
+    language?: Language;
     onClose: () => void;
 };
 
-export default function PoolWaitToast({ x, y, visible, onClose }: PoolWaitToastProps) {
+export default function PoolWaitToast({ x, y, visible, language = 'ja', onClose }: PoolWaitToastProps) {
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
@@ -63,7 +65,7 @@ export default function PoolWaitToast({ x, y, visible, onClose }: PoolWaitToastP
                 userSelect: 'none',
             }}
         >
-            少々お待ちください…
+            {language === 'en' ? 'Please wait…' : '少々お待ちください…'}
         </div>
     );
 }

@@ -53,6 +53,7 @@ export function useMainWindowResizePolicy({
     isSearchOpen,
 }: UseMainWindowResizePolicyOptions): void {
     useEffect(() => {
+        let cancelled = false;
         const resize = async () => {
             try {
                 const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -62,21 +63,28 @@ export function useMainWindowResizePolicy({
                 // メインウィンドウ以外（付箋・プールウィンドウなど）はリサイズしない
                 if (win.label !== 'main') return;
 
+                const settingsVisible = !isCheckingSetup && (setupRequired || isSettingsOpen);
+                if (cancelled) return;
+
                 // 検索オーバーレイ表示中はリサイズしない（setSize(600,450)を上書きしないよう）
                 if (isSearchOpen) return;
 
                 // アップデートダイアログ表示中はリサイズしない（useUpdateCheckが制御済み）
                 if (showUpdateDialog) return;
 
-                if (!isCheckingSetup && (setupRequired || isSettingsOpen)) {
+                if (settingsVisible) {
                     // セットアップ中 or 設定画面表示中 → モニタに合わせて大きく
                     const { width, height } = await calcSettingsWindowSize();
+                    if (cancelled) return;
+                    await win.show();
+                    await win.unminimize();
+                    if (cancelled) return;
                     await win.setSize(new LogicalSize(width, height));
                     await win.center();
-                    await win.show();
                     await win.setFocus();
                 } else if (!isCheckingSetup && !isSettingsOpen) {
                     // 通常のダッシュボード → 小さく表示
+                    if (cancelled) return;
                     await win.setSize(new LogicalSize(240, 300));
                     await win.center();
                 }
@@ -85,5 +93,8 @@ export function useMainWindowResizePolicy({
             }
         };
         resize();
+        return () => {
+            cancelled = true;
+        };
     }, [setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen]);
 }

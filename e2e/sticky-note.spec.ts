@@ -398,10 +398,64 @@ test.describe('そこに残る', () => {
         await expect(page.getByText('データ管理').first()).toBeVisible({ timeout: 5000 });
         await page.getByText('データ管理').first().click();
 
-        // 保存先フォルダのパスが表示されていることを確認
-        await expect(page.locator('input#path')).toBeVisible({ timeout: 3000 });
-        const pathValue = await page.locator('input#path').inputValue();
-        expect(pathValue).toBe('C:/test');
+        // 現在の保存先と、変更操作の入口が表示されていることを確認
+        await expect(page.getByText('C:/test', { exact: true })).toBeVisible({ timeout: 3000 });
+        await expect(page.getByRole('button', { name: '保存場所を変更' })).toBeVisible();
+    });
+
+    test('3.6 開発者とのやりとりを適応サイズで開き、設定文字を切らない', async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await mockTauriAPI(page);
+        await page.goto('/');
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(2000);
+
+        await page.evaluate(() => {
+            (window as any).__MOCK_EMIT__('fusen:open_settings', { tab: 'conversation' });
+        });
+
+        await expect(page.getByRole('heading', { name: '開発者とのやりとり' })).toBeVisible({ timeout: 5000 });
+
+        const sections = [
+            '一般', 'データ管理', 'iPhone連携', 'ホットキー', 'ひな形',
+            '使い方', 'このアプリについて', 'ご意見・ご要望', '開発者とのやりとり',
+        ];
+        const clippedBySection: Array<{ section: string; text: string }> = [];
+        for (const section of sections) {
+            await page.locator('aside button').filter({ hasText: section }).click();
+            const clipped = await page.evaluate(() => {
+                const candidates = Array.from(document.querySelectorAll('main h1, main h2, main h3, main p, main button, main label, main span'));
+                return candidates.flatMap((element) => {
+                    const html = element as HTMLElement;
+                    const rect = html.getBoundingClientRect();
+                    const visible = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+                    if (!visible || !html.textContent?.trim()) return [];
+                    return html.scrollWidth > html.clientWidth + 1 ? [html.textContent.trim()] : [];
+                });
+            });
+            clippedBySection.push(...clipped.map((text) => ({ section, text })));
+        }
+
+        const layout = await page.evaluate(() => {
+            const sidebar = document.querySelector('aside');
+            const candidates = Array.from(document.querySelectorAll('aside button, aside span'));
+            const clipped = candidates.flatMap((element) => {
+                const html = element as HTMLElement;
+                const rect = html.getBoundingClientRect();
+                const visible = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+                if (!visible || !html.textContent?.trim()) return [];
+                return html.scrollWidth > html.clientWidth + 1 ? [html.textContent.trim()] : [];
+            });
+            return {
+                clipped,
+                sidebarOverflowY: sidebar ? getComputedStyle(sidebar).overflowY : null,
+                mainWidth: document.querySelector('main')?.getBoundingClientRect().width ?? 0,
+            };
+        });
+
+        expect([...layout.clipped.map((text) => ({ section: 'サイドバー', text })), ...clippedBySection]).toEqual([]);
+        expect(layout.sidebarOverflowY).toBe('auto');
+        expect(layout.mainWidth).toBeGreaterThanOrEqual(1000);
     });
 });
 

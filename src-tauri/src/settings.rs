@@ -28,13 +28,16 @@ pub fn save_settings<R: Runtime>(
     state: State<'_, Mutex<AppState>>,
     mut settings: AppSettings
 ) -> Result<(), String> {
+    // 存在する設定が壊れている場合は、既定値で上書きせず保存を中断する。
+    let existing_settings = storage::load_settings()?;
     // pc_id は UI から書き換えさせない内部フィールド。
     // フロントから空（=フロントが知らない or 古いフロント）で来ても既存値を保持する。
     if settings.pc_id.as_ref().map_or(true, |s| s.trim().is_empty()) {
-        if let Ok(existing) = storage::load_settings() {
-            settings.pc_id = existing.pc_id;
-        }
+        settings.pc_id = existing_settings.pc_id.clone();
     }
+    // 内部の初回確認状態は、古いフロントや保存途中の画面から false が届いても戻さない。
+    settings.desktop_shortcut_prompted =
+        settings.desktop_shortcut_prompted || existing_settings.desktop_shortcut_prompted;
 
     if let Some(base_path) = &settings.base_path {
         storage::validate_storage_path(base_path)?;
@@ -42,6 +45,12 @@ pub fn save_settings<R: Runtime>(
 
     // 1. ファイルに保存
     storage::save_settings(&settings)?;
+    if let Err(e) = crate::hotkey_manager::sync_quick_launcher_triple_right_click(
+        &app,
+        settings.quick_launcher_triple_right_click.unwrap_or(false),
+    ) {
+        crate::logger::log_warn(&format!("[Shortcut] triple right click hook sync failed: {}", e));
+    }
 
     // 2. メモリ上の AppState を同期
     {

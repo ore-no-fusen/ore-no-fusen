@@ -15,8 +15,8 @@ import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { listen } from '@tauri-apps/api/event';
-import { pathsEqual, normalizePath, getFileName } from './utils/pathUtils';
+import { emitTo, listen } from '@tauri-apps/api/event';
+import { pathsEqual, normalizePath, getFileName, encodeNotePathForUrl } from './utils/pathUtils';
 import { playLocalSound, playCreateSound, SoundType } from './utils/soundManager';
 import { type NoteMeta } from './api/notes';
 import StickyNote from './components/StickyNote';
@@ -24,13 +24,22 @@ import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
+import BackupResultDialog from './components/BackupResultDialog';
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
+import { useSettings } from '@/lib/settings-store';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
+import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
+import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
+import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
+import { runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
+import { FreshRequestQueue } from './utils/freshRequestQueue';
+import { NOTE_COLORS } from './utils/noteAppearance';
 
 // Global AppState type definition
 type AppState = {
@@ -40,6 +49,28 @@ type AppState = {
   selected_path: string | null;
 };
 
+type HotkeyRegisterFailure = {
+  action: string;
+  shortcut: string;
+};
+
+type CreateNoteRequest = {
+  overrideFolder?: string;
+  overrideContext?: string;
+  sourceMeta?: { physX: number; physY: number; scale: number; physWidth?: number; physHeight?: number };
+  duplicatePath?: string;
+  perfT0?: number;
+};
+
+type HotkeyRegisterFailuresResponse = {
+  failures: HotkeyRegisterFailure[];
+};
+
+type BackupRecord = { path: string; created_at: string; file_count: number };
+type MonthlyBackupResult =
+  | { status: 'success'; record: BackupRecord; nextPromptAt?: string }
+  | { status: 'error'; message: string };
+
 // [NEW] 最初からウィンドウを表示するためのフック
 
 
@@ -48,7 +79,8 @@ let globalLastCreateTime = 0;
 
 
 
-function TagSelector() {
+function TagSelector({ language = 'ja' }: { language?: Language }) {
+  const isEnglish = language === 'en';
   const [allTags, setAllTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -103,14 +135,14 @@ function TagSelector() {
             <div className="w-16 h-16 bg-purple-600 rounded-3xl flex items-center justify-center shadow-xl shadow-purple-500/30 mx-auto mb-4">
               <span className="text-3xl">🌍</span>
             </div>
-            <h3 className="text-2xl font-black text-gray-900 tracking-tight">タグを選択</h3>
-            <p className="text-sm text-gray-500 mt-2">選択したタグを持つ付箋のみを表示</p>
+            <h3 className="text-2xl font-black text-gray-900 tracking-tight">{isEnglish ? 'Select Tags' : 'タグを選択'}</h3>
+            <p className="text-sm text-gray-500 mt-2">{isEnglish ? 'Show only notes with the selected tags.' : '選択したタグを持つ付箋のみを表示'}</p>
           </div>
           <div className="flex-1 overflow-y-auto mb-6" style={{ WebkitAppRegion: 'no-drag' } as any}>
             {isLoading ? (
-              <div className="text-center text-gray-400">読み込み中...</div>
+              <div className="text-center text-gray-400">{isEnglish ? 'Loading...' : '読み込み中...'}</div>
             ) : allTags.length === 0 ? (
-              <div className="text-center text-gray-400">タグがありません</div>
+              <div className="text-center text-gray-400">{isEnglish ? 'No tags found.' : 'タグがありません'}</div>
             ) : (
               <div className="space-y-2">
                 {allTags.map(tag => (
@@ -123,8 +155,8 @@ function TagSelector() {
             )}
           </div>
           <div className="flex gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
-            <button onClick={handleClose} className="flex-1 py-5 text-sm font-black text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest">Cancel</button>
-            <button onClick={handleApply} className="flex-[2] py-5 text-sm font-black text-white bg-purple-600 hover:bg-purple-700 rounded-2xl shadow-xl shadow-purple-500/40 transition-all active:scale-95">Apply ({selectedTags.length} selected)</button>
+            <button onClick={handleClose} className="flex-1 py-5 text-sm font-black text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-widest">{isEnglish ? 'Cancel' : 'キャンセル'}</button>
+            <button onClick={handleApply} className="flex-[2] py-5 text-sm font-black text-white bg-purple-600 hover:bg-purple-700 rounded-2xl shadow-xl shadow-purple-500/40 transition-all active:scale-95">{isEnglish ? `Apply (${selectedTags.length} selected)` : `適用（${selectedTags.length}件選択）`}</button>
           </div>
         </div>
       </div>
@@ -143,6 +175,7 @@ function OrchestratorContent() {
   const tagSelector = searchParams.get('tagSelector');
   const isPool = searchParams.get('isPool') === 'true'; // [NEW] プール判定
   const isMainWindow = !path && !tagSelector && !isPool; // [FIX] プールウィンドウをメインウィンドウ扱いしない
+  const [language, setLanguage] = useState<Language>('ja');
 
   useEffect(() => {
     const logWindowIdentity = async () => {
@@ -176,6 +209,29 @@ function OrchestratorContent() {
   const [recoveredMissingFolder, setRecoveredMissingFolder] = useState<string | null>(null);
   const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
   const readyPoolWindowsRef = useRef<Set<string>>(new Set()); // リスナー登録完了済みのプールウィンドウ
+  const crystalPoolWindowsRef = useRef<Map<string, string>>(new Map()); // 結晶パス → 昇格済みPool窓
+  useEffect(() => {
+    if (!isMainWindow) return;
+    const prepare = async () => {
+      if (await WebviewWindow.getByLabel('recipe-create')) return;
+      new WebviewWindow('recipe-create', {
+        url: '/recipe-create',
+        title: 'レシピにする',
+        width: 760,
+        height: 860,
+        minWidth: 640,
+        minHeight: 620,
+        center: true,
+        resizable: true,
+        visible: false,
+        focus: false,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+      });
+    };
+    const timer = setTimeout(() => { prepare().catch(() => {}); }, 0);
+    return () => clearTimeout(timer);
+  }, [isMainWindow]);
   // [NEW] Pool 枯渇時トースト
   const [poolWaitToast, setPoolWaitToast] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [files, setFiles] = useState<NoteMeta[]>([]);
@@ -185,6 +241,12 @@ function OrchestratorContent() {
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
+  const [hotkeyRegisterFailureMessage, setHotkeyRegisterFailureMessage] = useState<string | null>(null);
+  const [showMonthlyBackupPrompt, setShowMonthlyBackupPrompt] = useState(false);
+  const [showDesktopShortcutPrompt, setShowDesktopShortcutPrompt] = useState(false);
+  const desktopShortcutPromptCheckedRef = useRef(false);
+  const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
+  const monthlyBackupCheckedRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
   // [NEW] アップデートチェック（useUpdateCheckに委譲）
@@ -192,6 +254,7 @@ function OrchestratorContent() {
     = useUpdateCheck({ isMainWindow });
 
   const isSearchOpenRef = useRef(false);
+  const hotkeyRegisterFailuresCheckedRef = useRef(false);
   useEffect(() => { isSearchOpenRef.current = isSearchOpen; }, [isSearchOpen]);
 
 
@@ -278,7 +341,7 @@ function OrchestratorContent() {
 
   const isWindowInProgress = useCallback((label: string): boolean => {
     const queue = (window as any).__WINDOW_QUEUE__;
-    return queue.inProgress.has(label);
+    return isDuplicateWindowCreationRequest(label, queue.inProgress);
   }, []);
   const markWindowInProgress = useCallback((label: string): void => {
     const queue = (window as any).__WINDOW_QUEUE__;
@@ -290,16 +353,17 @@ function OrchestratorContent() {
   }, []);
 
   // ウィンドウ生成
-  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number }, isNew?: boolean, fromIphone?: boolean) => {
+  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
+    const startupRestore = meta?.startup_restore === true;
 
     try {
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
       const existing = await WebviewWindow.getByLabel(label);
       if (existing) {
-        await existing.show();
+        if (!startupRestore) await existing.show();
         await existing.unminimize();
-        await existing.setFocus();
+        if (!startupRestore) await existing.setFocus();
         return;
       }
     } catch (e) { console.warn(`[付箋表示] 既存ウィンドウ確認に失敗しました: ${label}`, e); }
@@ -307,21 +371,43 @@ function OrchestratorContent() {
     await enqueueWindowCreation(async () => {
       try {
         if (isWindowInProgress(label)) return;
+        markWindowInProgress(label);
+
         const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         const existing = await WebviewWindow.getByLabel(label);
-        if (existing) { await existing.unminimize(); await existing.show(); await existing.setFocus(); return; }
+        if (existing) {
+          unmarkWindowInProgress(label);
+          await existing.unminimize();
+          if (!startupRestore) {
+            await existing.show();
+            await existing.setFocus();
+          }
+          return;
+        }
 
         const { getAllWebviewWindows } = await import('@tauri-apps/api/webviewWindow');
         const allWindows = await getAllWebviewWindows();
         for (const win of allWindows) {
-          try { if (win.label === label) { await win.show(); await win.unminimize(); await win.setFocus(); return; } } catch (e) { }
+          try {
+            if (win.label === label) {
+              unmarkWindowInProgress(label);
+              await win.unminimize();
+              if (!startupRestore) {
+                await win.show();
+                await win.setFocus();
+              }
+              return;
+            }
+          } catch (e) { }
         }
 
-        markWindowInProgress(label);
         try {
-          const safePath = path.replace(/\\/g, '/');
-          const pathParam = encodeURIComponent(safePath);
-          const url = isNew ? `/?path=${pathParam}&isNew=1` : `/?path=${pathParam}`;
+          const pathParam = encodeNotePathForUrl(path);
+          // 色が分かっている場合は初期描画から正しい色にする（黄色フラッシュ防止）
+          const bgHex = /^#[0-9a-fA-F]{6}$/.test(meta?.background_color || '') ? meta!.background_color! : null;
+          const bgParam = bgHex ? `&bg=${encodeURIComponent(bgHex)}` : '';
+          const startupParam = startupRestore ? '&startupRestore=1' : '';
+          const url = isNew ? `/?path=${pathParam}&isNew=1${bgParam}${startupParam}` : `/?path=${pathParam}${bgParam}${startupParam}`;
           const width = meta?.width || 400;
           const height = meta?.height || 300;
           const x = meta?.x;
@@ -333,42 +419,56 @@ function OrchestratorContent() {
             transparent: false,
             decorations: false,
             alwaysOnTop: meta?.always_on_top || false,
-            visible: true, // 即時表示
-            backgroundColor: [247, 233, 176, 255], // デフォルト付箋色 #f7e9b0 - 最初から黄色
+            visible: !startupRestore,
+            backgroundColor: bgHex
+              ? [parseInt(bgHex.slice(1, 3), 16), parseInt(bgHex.slice(3, 5), 16), parseInt(bgHex.slice(5, 7), 16), 255] as [number, number, number, number]
+              : [247, 233, 176, 255], // 色不明時は従来どおり黄色 #f7e9b0
             width,
             height,
             x,
             y,
             skipTaskbar: true,
-            focus: true,
+            focus: !startupRestore,
           });
 
-          win.once('tauri://created', async () => {
-            try {
+          await new Promise<void>((resolve) => {
+            const settleCreation = () => resolve();
+
+            void win.once('tauri://created', async () => {
+              try {
               // opacity: 0（完全透明＝見えない）や不正値は 1.0 にフォールバックする。
               // 旧データで 0 が入っていても付箋が消えないようにする二重防御。
               const safeOpacity = (typeof meta?.opacity === 'number' && meta.opacity > 0 && meta.opacity <= 1) ? meta.opacity : 1.0;
               await invoke('fusen_set_opacity', { windowLabel: label, opacity: safeOpacity });
-            } catch (e) {
+              } catch (e) {
               console.warn('[付箋表示] 透明度の適用に失敗しました:', e);
-            }
-            if (fromIphone) {
+              }
+              if (fromIphone) {
               // iPhone受信ウィンドウ: Alt+Tab窓として登録（フォーカスはすでに渡し済み）
               try {
                 await invoke('fusen_set_as_alt_tab_window', { label });
               } catch (e) {
                 console.warn('[付箋表示] Alt+Tab登録に失敗しました:', e);
               }
-            } else {
-              try { await win.setFocus(); } catch (e) { /* 表示自体は成功しているので無視 */ }
+              } else {
+              if (!startupRestore) {
+                try { await win.setFocus(); } catch (e) { /* 表示自体は成功しているので無視 */ }
+              }
               try {
                 await invoke('fusen_make_tool_window');
               } catch (e) {
                 console.warn('[付箋表示] ツールウィンドウ化に失敗しました:', e);
               }
-            }
+              }
+              settleCreation();
+            });
+
+            void win.once('tauri://error', (event) => {
+              console.error('[莉倡ｮ玖｡ｨ遉ｺ] 繧ｦ繧｣繝ｳ繝峨え菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆:', event);
+              settleCreation();
+            });
           });
-          if (!fromIphone) {
+          if (!fromIphone && !startupRestore) {
             try { await win.setFocus(); } catch (e) { /* 作成直後は失敗することがある */ }
           }
 
@@ -386,26 +486,19 @@ function OrchestratorContent() {
 
   // [Fix] Synchronous lock for creation
   const isCreatingRef = useRef(false);
+  const createRequestQueueRef = useRef(new FreshRequestQueue<CreateNoteRequest>(4, 1500));
 
-  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
-    // 400ms グローバルスロットル（フォールバック側のクラッシュ防止）
+  const createNoteImmediately = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
 
-    if (now - globalLastCreateTime < 400) {
-      console.warn('[CREATE] Blocked by global throttle');
-      return;
-    }
-
     const targetFolder = overrideFolder || folderPath || folderPathRef.current;
-    if (!targetFolder || isCreatingRef.current) {
-      console.warn('[CREATE] No folder or already creating. targetFolder:', targetFolder, 'creating:', isCreatingRef.current);
+    if (!targetFolder) {
+      console.warn('[CREATE] No folder. targetFolder:', targetFolder);
       return;
     }
 
     globalLastCreateTime = now;
-    isCreatingRef.current = true;
-    setIsCreating(true);
 
     try {
       // ============================================================
@@ -414,7 +507,7 @@ function OrchestratorContent() {
       if (duplicatePath) {
         const newNote = await invoke<any>('fusen_duplicate_note', { path: duplicatePath });
         console.log('[CREATE] duplicate newNote:', newNote.meta.path);
-        await playCreateSound();
+        void playCreateSound();
         setFiles(prev => [...prev, newNote.meta]);
         await openNoteWindow(newNote.meta.path, undefined, false);
         return;
@@ -449,7 +542,6 @@ function OrchestratorContent() {
         localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
         const ts = new Date().toLocaleTimeString('ja-JP');
         console.log(`[TRACE:CREATE | ${ts}] Pool promote (lazy): ${poolWindow.label} folder=${targetFolder}`);
-        invoke('fusen_debug_log', { message: `[PERF|T_PROMOTE_START] t0=${perfT0} → pool promote start` }).catch(() => {});
 
         // 表示位置を計算
         let targetPhysX: number | undefined;
@@ -502,8 +594,9 @@ function OrchestratorContent() {
         // [NEW] fusen_show_at_position: α=255 + SetWindowPos + SetForegroundWindow を 1 invoke で完結
         // Atomic Coordination Constraint 厳守: 複数 await invoke を直列に並べない
         const runId = `create-${now}`;
+        let perfEnabled = false;
         try {
-          await invoke('fusen_show_at_position', {
+          perfEnabled = await invoke<boolean>('fusen_show_at_position', {
             label: poolWindow.label,
             physX: targetPhysX ?? null,
             physY: targetPhysY ?? null,
@@ -526,9 +619,11 @@ function OrchestratorContent() {
           targetPhysHeight,
           t0: perfT0,
           runId,
+          perfEnabled,
+          perfStartedAt: perfT0 ?? now,
         });
 
-        await playCreateSound();
+        void playCreateSound();
 
         // 次のプールウィンドウを補充（バックグラウンドで順次）
         invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
@@ -548,7 +643,7 @@ function OrchestratorContent() {
         try {
           const newNote = await invoke<any>('fusen_create_note', { folderPath: targetFolder, context: overrideContext || 'NewNote' });
           console.log('[CREATE] fallback newNote:', newNote.meta.path);
-          await playCreateSound();
+          void playCreateSound();
           setFiles(prev => [...prev, newNote.meta]);
 
           await openNoteWindow(newNote.meta.path, sourceMeta ? await (async () => {
@@ -592,11 +687,46 @@ function OrchestratorContent() {
       }
     } catch (e) {
       console.error('handleCreateNote failed', e);
+    }
+  }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
+
+  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
+    const accepted = createRequestQueueRef.current.push({
+      overrideFolder,
+      overrideContext,
+      sourceMeta,
+      duplicatePath,
+      perfT0,
+    }, Date.now());
+    if (!accepted) {
+      console.warn('[CREATE] Request queue full; dropping new request');
+      return;
+    }
+    if (isCreatingRef.current) return;
+
+    isCreatingRef.current = true;
+    setIsCreating(true);
+    try {
+      let request = createRequestQueueRef.current.take(Date.now());
+      while (request) {
+        const throttleWait = Math.max(0, 400 - (Date.now() - globalLastCreateTime));
+        if (throttleWait > 0) {
+          await new Promise((resolve) => setTimeout(resolve, throttleWait));
+        }
+        await createNoteImmediately(
+          request.overrideFolder,
+          request.overrideContext,
+          request.sourceMeta,
+          request.duplicatePath,
+          request.perfT0,
+        );
+        request = createRequestQueueRef.current.take(Date.now());
+      }
     } finally {
       isCreatingRef.current = false;
       setIsCreating(false);
     }
-  }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
+  }, [createNoteImmediately]);
 
   const handleFileSelect = useCallback(async (file: NoteMeta) => {
     await openNoteWindow(file.path, { x: file.x, y: file.y, width: file.width, height: file.height, opacity: file.opacity });
@@ -612,12 +742,115 @@ function OrchestratorContent() {
     if (!isMainWindow) return; // [FIX] プールウィンドウからの過剰反応を防ぐ Guard
 
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ path: string; isNew?: boolean }>('fusen:open_note', (event) => {
-      openNoteWindow(event.payload.path, undefined, event.payload.isNew);
+    const promise = listen<{ path: string; isNew?: boolean; backgroundColor?: string; content?: string; isCrystal?: boolean; x?: number; y?: number; width?: number; height?: number }>('fusen:open_note', async (event) => {
+      const bg = event.payload.backgroundColor;
+      const notePath = event.payload.path;
+      if (event.payload.isCrystal && event.payload.content !== undefined) {
+        const key = normalizePath(notePath);
+        const mappedLabel = crystalPoolWindowsRef.current.get(key);
+        if (mappedLabel) {
+          const mappedWindow = await WebviewWindow.getByLabel(mappedLabel);
+          if (mappedWindow) {
+            await emitTo(mappedLabel, 'fusen:show_in_view_mode');
+            await mappedWindow.show();
+            await mappedWindow.unminimize();
+            await mappedWindow.setFocus();
+            return;
+          }
+          crystalPoolWindowsRef.current.delete(key);
+        }
+
+        const allWindows = await (await import('@tauri-apps/api/webviewWindow')).getAllWebviewWindows();
+        const poolWindow = selectReadyInvisibleNote(
+          allWindows,
+          readyPoolWindowsRef.current,
+          usedPoolWindowsRef.current,
+          (label) => Boolean(localStorage.getItem(`promoted_${label}`)),
+        );
+        if (poolWindow) {
+          usedPoolWindowsRef.current.add(poolWindow.label);
+          localStorage.setItem(`promoted_${poolWindow.label}`, 'true');
+          crystalPoolWindowsRef.current.set(key, poolWindow.label);
+          const token = `crystal-${Date.now()}-${Math.random()}`;
+          let resolveHydrated: (() => void) | undefined;
+          const hydrated = new Promise<void>((resolve) => { resolveHydrated = resolve; });
+          let settled = false;
+          const disposeHydrated = await listen<{ label: string; token: string }>('fusen:pool_promote_ready', (ready) => {
+            if (ready.payload.label !== poolWindow.label || ready.payload.token !== token || settled) return;
+            settled = true;
+            disposeHydrated();
+            resolveHydrated?.();
+          });
+          setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            disposeHydrated();
+            resolveHydrated?.();
+          }, 500);
+          await emitTo(poolWindow.label, 'fusen:promote_from_pool', {
+            path: notePath,
+            isNew: false,
+            content: event.payload.content,
+            backgroundColor: bg,
+            hydrateToken: token,
+          });
+          await hydrated;
+          const scaleFactor = await poolWindow.scaleFactor().catch(() => 1);
+          const physicalSize = physicalCrystalWindowSize(
+            event.payload.width,
+            event.payload.height,
+            scaleFactor,
+          );
+          const physicalPosition = physicalCrystalWindowPosition(
+            event.payload.x,
+            event.payload.y,
+            scaleFactor,
+          );
+          if (!physicalPosition) await poolWindow.center();
+          await invoke('fusen_show_at_position', {
+            label: poolWindow.label,
+            physX: physicalPosition?.x ?? null,
+            physY: physicalPosition?.y ?? null,
+            physWidth: physicalSize.width,
+            physHeight: physicalSize.height,
+            runId: null,
+          });
+          await invoke('fusen_register_crystal_arrange_window', {
+            label: poolWindow.label,
+            path: notePath,
+          }).catch((error) => console.warn('[結晶整列] ウィンドウ登録に失敗しました:', error));
+          invoke('fusen_create_pool_window').catch(() => {});
+          return;
+        }
+      }
+      await openNoteWindow(notePath, bg ? { background_color: bg } : undefined, event.payload.isNew);
+      if (event.payload.isCrystal) {
+        await invoke('fusen_register_crystal_arrange_window', {
+          label: getWindowLabel(notePath),
+          path: notePath,
+        }).catch((error) => console.warn('[結晶整列] ウィンドウ登録に失敗しました:', error));
+      }
     });
 
     promise.then((u) => { unlisten = u; });
 
+    return () => {
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
+    };
+  }, [getWindowLabel, isMainWindow, openNoteWindow]);
+
+  // インポートした付箋をすべて生成してから、正式登録済みの全付箋をタグで整列する。
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen<{ paths: string[] }>('fusen:open_imported_notes', async (event) => {
+      for (const path of event.payload.paths) {
+        await openNoteWindow(path, undefined, false);
+      }
+      await invoke('fusen_arrange_by_tag');
+    });
+    promise.then((u) => { unlisten = u; });
     return () => {
       if (unlisten) safeUnlisten(unlisten);
       else safeUnlistenWhenResolved(promise);
@@ -692,6 +925,35 @@ function OrchestratorContent() {
     return () => { safeUnlisten(unlisten); };
   }, [isMainWindow, handleCreateNote]);
 
+  useEffect(() => {
+    if (!isMainWindow || hotkeyRegisterFailuresCheckedRef.current) return;
+    hotkeyRegisterFailuresCheckedRef.current = true;
+
+    const checkHotkeyRegisterFailures = async () => {
+      try {
+        const currentSettings = await invoke<{ language?: Language }>('get_settings');
+        const currentLanguage: Language = currentSettings?.language === 'en' ? 'en' : 'ja';
+        setLanguage(currentLanguage);
+        const result = await invoke<HotkeyRegisterFailuresResponse>('hotkey_get_register_failures');
+        if (!result.failures || result.failures.length === 0) return;
+
+        const shortcutNames = result.failures.map(f => f.shortcut).join(' / ');
+        setHotkeyRegisterFailureMessage(currentLanguage === 'en'
+          ? `The global hotkey could not be registered.\n${shortcutNames} is already in use.\nOpen Settings?`
+          : `グローバルホットキーを登録できませんでした。\n${shortcutNames} は既に使用されています。\n設定画面を開きますか？`);
+
+        const win = getCurrentWindow();
+        await win.show();
+        await win.unminimize();
+        await win.setFocus();
+      } catch (e) {
+        console.warn('[Hotkey] Failed to check register failures:', e);
+      }
+    };
+
+    checkHotkeyRegisterFailures();
+  }, [isMainWindow]);
+
   // [FIX] メインウィンドウの「閉じる」を「隠す」に変更 (検索ウィンドウ再表示不具合修正)
   useEffect(() => {
     if (!isMainWindow) return;
@@ -745,6 +1007,9 @@ function OrchestratorContent() {
         const unlistenSettings = await listen<any>('settings_updated', async (event) => {
           console.log('[ORCHESTRATOR] Settings updated:', event.payload);
           const newSettings = event.payload;
+          if (newSettings?.language === 'en' || newSettings?.language === 'ja') {
+            setLanguage(newSettings.language);
+          }
           if (newSettings && newSettings.base_path) {
             setFolderPath(newSettings.base_path);
             await syncState();
@@ -807,16 +1072,10 @@ function OrchestratorContent() {
 
     let unlisten: (() => void) | undefined;
     const promise = listen('fusen:open_settings', async (event: any) => {
+      const tab = event?.payload?.tab ?? 'general';
       try {
         console.log('[MAIN_WINDOW_DEBUG] Settings open requested');
-        // [FIX] Force clear loading state to ensure settings panel renders even if init is slow/reloaded
-        // (Same fix as fusen:open_search handler)
-        setIsCheckingSetup(false);
-        setSetupRequired(false);
-        const tab = event?.payload?.tab ?? 'general';
-        setSettingsDefaultTab(tab);
-        setIsSettingsOpen(true);
-        // ウィンドウを前面に
+        // 小さい初期画面へ設定本文が先に描画されないよう、表示前にウィンドウを拡大する。
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
@@ -824,16 +1083,30 @@ function OrchestratorContent() {
         if (win.label === 'main') {
           const { width, height } = await calcSettingsWindowSize();
           console.log(`[MAIN_WINDOW_DEBUG] Opening settings - resizing to ${width}x${height}`);
-          await win.setSize(new LogicalSize(width, height));
-          await win.center();
+          // 非表示中にサイズを変えてから show すると、Windows が以前の小さい
+          // WINDOWPLACEMENT を復元するため、先に表示・復元してから拡大する。
           await win.show();
           await win.unminimize();
-          await win.setFocus();
-          console.log('[MAIN_WINDOW_DEBUG] Settings window shown');
+          await win.setSize(new LogicalSize(width, height));
+          await win.center();
         }
       } catch (e) {
-        // ウィンドウ操作に失敗しても致命的ではないため無視
+        // 拡大に失敗しても設定を開く。リサイズポリシーが再試行する。
         console.warn('[open_settings] Window operation failed:', e);
+      }
+
+      setSettingsDefaultTab(tab);
+      setSetupRequired(false);
+      setIsCheckingSetup(false);
+      setIsSettingsOpen(true);
+
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        await win.setFocus();
+        console.log('[MAIN_WINDOW_DEBUG] Settings window shown');
+      } catch (e) {
+        console.warn('[open_settings] Window show failed:', e);
       }
     });
 
@@ -958,9 +1231,6 @@ function OrchestratorContent() {
     const promise = listen<{ folderPath: string; context: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number; sourcePhysWidth?: number; sourcePhysHeight?: number; t0?: number }>('fusen:request_create', async (event) => {
       const { folderPath, context, sourcePhysX, sourcePhysY, sourceScale, sourcePhysWidth, sourcePhysHeight, t0 } = event.payload;
       invoke('fusen_debug_log', { message: `[CREATE_REQ] page.tsx received: sourcePhysX=${sourcePhysX} sourcePhysY=${sourcePhysY} scale=${sourceScale} sourcePhysWidth=${sourcePhysWidth} sourcePhysHeight=${sourcePhysHeight}` }).catch(() => { });
-      if (t0) {
-        invoke('fusen_debug_log', { message: `[PERF|T_PAGE_RECV] elapsed=${Date.now() - t0}ms (page.tsx received request_create)` }).catch(() => { });
-      }
       if (!folderPath) {
         console.warn('[RequestCreate] No folder path in request');
         return;
@@ -1074,21 +1344,35 @@ function OrchestratorContent() {
       async (event) => {
         const { id, title, body, context, tags } = event.payload;
         try {
-          const newNote = await invoke<{ body: string; frontmatter: string; meta: { path: string } }>(
-            'fusen_create_note',
-            { folderPath, context }
-          );
+          // 前回はPC保存まで成功し、Driveのack前に終了した可能性がある。
+          // 同じ受信IDの付箋があれば、画像の再取得や付箋の再作成をせずackだけ再試行する。
+          const alreadySaved = await invoke<boolean>('fusen_has_iphone_note', {
+            folderPath,
+            noteId: id,
+          });
+          if (alreadySaved) {
+            await invoke('fusen_ack_iphone_note', { noteId: id });
+            return;
+          }
           // 画像参照をローカルパスに解決（画像なしの場合は body がそのまま返る）
           const resolvedBody = await invoke<string>('fusen_download_iphone_images', {
             folderPath,
             body: body || '',
           });
-          await invoke('fusen_save_note', {
-            path: newNote.meta.path,
+          const received = await invoke<{
+            note: { body: string; frontmatter: string; meta: { path: string } };
+            created: boolean;
+          }>('fusen_create_iphone_note', {
+            folderPath,
+            context,
             body: resolvedBody,
-            frontmatterRaw: newNote.frontmatter || '',
-            allowRename: false,
+            noteId: id,
           });
+          const newNote = received.note;
+          if (!received.created) {
+            await invoke('fusen_ack_iphone_note', { noteId: id });
+            return;
+          }
           // タグ適用（tags が配列で存在する場合）
           // 一時的な書込失敗はそのタグだけリトライで自動復旧する。最終的に失敗した場合は
           // 黙殺せずログに残す（本文は保存済み。Driveキューは後段でackし重複作成を避ける）。
@@ -1168,16 +1452,13 @@ function OrchestratorContent() {
 
         let needsSetup = !folderPath || folderPath.trim() === '';
 
-        // base_path に文字列はあっても、フォルダ自体が消えていたら再セットアップさせる
+        // 設定済みの保存先が使えない場合は、設定を書き換えず再接続・変更を促す。
         if (!needsSetup && folderPath) {
           try {
-            const exists = await invoke<boolean>('fusen_path_exists', { path: folderPath });
-            if (!exists) {
-              console.warn('[checkSetup] base_path folder is missing:', folderPath);
-              needsSetup = true;
-            }
+            await invoke<void>('fusen_check_storage_health', { path: folderPath });
           } catch (e) {
-            console.error('[checkSetup] fusen_path_exists failed, assuming setup required:', e);
+            console.error('[checkSetup] storage health check failed:', e);
+            setRecoveredMissingFolder(folderPath);
             needsSetup = true;
           }
         }
@@ -1245,6 +1526,17 @@ function OrchestratorContent() {
     if (!path) {
       const checkAndRestore = async () => {
         const startupStartedAt = performance.now();
+        let startupLanguage: Language = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('en') ? 'en' : 'ja';
+        try {
+          const startupSettings = await invoke<{ language?: Language }>('get_settings');
+          if (startupSettings?.language === 'en' || startupSettings?.language === 'ja') {
+            startupLanguage = startupSettings.language;
+          }
+        } catch {
+          // 設定を読めない場合だけOS言語へフォールバックする。
+        }
+        setLanguage(startupLanguage);
+        const startupIsEnglish = startupLanguage === 'en';
         // [HELPER] Log to both Console and Terminal (via Rust)
         const log = (msg: string) => {
           console.log(msg);
@@ -1262,47 +1554,43 @@ function OrchestratorContent() {
           }, 250);
         };
 
-        setLoadingStatus("保存先の設定を確認中...");
+        setLoadingStatus(startupIsEnglish ? 'Checking data-location settings...' : '保存先の設定を確認中...');
         logStartupStep('2/6', '保存先フォルダの設定を確認しています');
 
         try {
           const basePath = await invoke<string | null>('get_base_path');
 
-          // base_path にパスはあっても、フォルダ自体が消えていたら
-          // 「はじめて起動」と同じルートに合流させる（デフォルトフォルダ再作成＋設定画面表示＋ウェルカム）
+          // 設定済みの保存先が利用不能でも、自動で別フォルダへ切り替えない。
           let baseFolderMissing = false;
           if (basePath) {
             try {
-              const exists = await invoke<boolean>('fusen_path_exists', { path: basePath });
-              if (!exists) {
-                log(`[起動処理] 保存先フォルダが見つかりません: ${basePath} → 再セットアップします`);
-                baseFolderMissing = true;
-              }
+              await invoke<void>('fusen_check_storage_health', { path: basePath });
             } catch (e) {
-              log(`[起動処理] 保存先フォルダの確認に失敗、再セットアップします: ${e}`);
+              log(`[起動処理] 保存先フォルダを利用できません。設定は変更せず復元を停止します: ${e}`);
               baseFolderMissing = true;
             }
           }
 
-          if (!basePath || baseFolderMissing) {
-            setLoadingStatus("保存先フォルダを準備中...");
+          if (!basePath) {
+            setLoadingStatus(startupIsEnglish ? 'Preparing the data folder...' : '保存先フォルダを準備中...');
             try {
               await invoke<string>('setup_first_launch', { useDefault: true, importPath: null });
             } catch (setupErr) {
               log(`[起動処理] デフォルトフォルダ作成に失敗: ${setupErr}`);
-              setLoadingStatus("保存先の準備に失敗しました");
+              setLoadingStatus(startupIsEnglish ? 'Failed to prepare the data location' : '保存先の準備に失敗しました');
               return;
             }
-            // フォルダが消えていたケースでは、ユーザーが状況を把握できるよう設定画面を前面に出す
-            if (baseFolderMissing) {
-              setRecoveredMissingFolder(basePath ?? null);
-              setSetupRequired(true);
-              const win = getCurrentWindow();
-              if (win.label === 'main') {
-                await win.show();
-                await win.setFocus();
-              }
+          }
+          if (baseFolderMissing) {
+            setRecoveredMissingFolder(basePath);
+            setSetupRequired(true);
+            setIsCheckingSetup(false);
+            const win = getCurrentWindow();
+            if (win.label === 'main') {
+              await win.show();
+              await win.setFocus();
             }
+            return;
           }
           const savedFolder = await invoke<string | null>('get_base_path') ?? '';
           logStartupStep('2/6', `保存先フォルダを確認しました: ${savedFolder || '未設定'}`);
@@ -1310,18 +1598,18 @@ function OrchestratorContent() {
           // ノート復元を即座に開始
           (async () => {
             try {
-              setLoadingStatus("ノート一覧を取得中...");
+              setLoadingStatus(startupIsEnglish ? 'Loading the note list...' : 'ノート一覧を取得中...');
               logStartupStep('3/6', '保存先フォルダから付箋ファイル一覧を取得しています');
               await invoke('fusen_list_notes', { folderPath: savedFolder });
               logStartupStep('3/6', '付箋ファイル一覧の取得が完了しました');
 
-              setLoadingStatus("状態を同期中...");
+              setLoadingStatus(startupIsEnglish ? 'Synchronizing app state...' : '状態を同期中...');
               logStartupStep('4/6', 'Rust側の状態をフロントへ同期しています');
               const state = await syncState();
               logStartupStep('4/6', `状態同期が完了しました: ${state ? '成功' : '失敗'}`);
 
               if (!state) {
-                setLoadingStatus("同期に失敗しました");
+                setLoadingStatus(startupIsEnglish ? 'Synchronization failed' : '同期に失敗しました');
                 log('[起動処理] エラー: 状態オブジェクトが空です');
                 return;
               }
@@ -1333,54 +1621,100 @@ function OrchestratorContent() {
               logStartupStep('5/6', `復元する付箋を確定しました: ${notes.length}件`);
 
               if (notes.length > 0) {
-                setLoadingStatus(`${notes.length} 件のノートを復元中...`);
-                logStartupStep('6/6', `付箋ウィンドウを順番に開きます: 0/${notes.length}`);
+                setLoadingStatus(startupIsEnglish ? `Restoring ${notes.length} notes...` : `${notes.length} 件のノートを復元中...`);
+                logStartupStep('6/6', `付箋ウィンドウを非表示で準備します: 0/${notes.length}`);
 
-                for (let i = 0; i < notes.length; i++) {
-                  const note = notes[i];
+                const startupLabels = new Set(notes.map((note) => getWindowLabel(note.path)));
+                const readyLabels = new Set<string>();
+                let resolveAllReady: (() => void) | undefined;
+                const unlistenStartupReady = await listen<{ label: string }>('fusen:startup_note_ready', (event) => {
+                  const label = event.payload?.label;
+                  if (!startupLabels.has(label)) return;
+                  readyLabels.add(label);
+                  setLoadingStatus(startupIsEnglish
+                    ? `Preparing notes (${readyLabels.size}/${notes.length})...`
+                    : `付箋を準備中 (${readyLabels.size}/${notes.length})...`);
+                  if (readyLabels.size === startupLabels.size) resolveAllReady?.();
+                });
+
+                await runWithConcurrency(notes, 2, async (note, i) => {
                   const noteStartedAt = performance.now();
                   const noteName = note.path.split(/[\\/]/).pop();
-                  setLoadingStatus(`ノートを開いています (${i + 1}/${notes.length}): ${noteName}...`);
-                  await openNoteWindow(note.path, { x: note.x, y: note.y, width: note.width, height: note.height, opacity: note.opacity });
+                  setLoadingStatus(startupIsEnglish
+                    ? `Preparing note windows (${i + 1}/${notes.length})...`
+                    : `付箋ウィンドウを準備中 (${i + 1}/${notes.length})...`);
+                  await openNoteWindow(note.path, {
+                    x: note.x,
+                    y: note.y,
+                    width: note.width,
+                    height: note.height,
+                    opacity: note.opacity,
+                    startup_restore: true,
+                  });
                   logStartupStep('6/6', `付箋 ${i + 1}/${notes.length} ${noteName} ${Math.round(performance.now() - noteStartedAt)}ms`);
+                });
 
+                if (readyLabels.size < startupLabels.size) {
+                  await waitForStartupReady(
+                    startupLabels,
+                    readyLabels,
+                    (resolve) => {
+                      resolveAllReady = resolve;
+                      return () => { resolveAllReady = undefined; };
+                    },
+                    4_000,
+                  );
                 }
-                logStartupStep('6/6', `付箋ウィンドウをすべて開きました: ${notes.length}/${notes.length}`);
+                unlistenStartupReady();
+                if (readyLabels.size < startupLabels.size) {
+                  logStartupStep('6/6', `描画待ちを4秒で終了しました: ${readyLabels.size}/${notes.length}件準備完了`);
+                } else {
+                  logStartupStep('6/6', `付箋の本文描画が完了しました: ${notes.length}/${notes.length}`);
+                }
 
-                setLoadingStatus("仕上げ処理...");
-                logStartupStep('6/6', 'メインウィンドウを片付けて起動を完了します');
-                setTimeout(async () => {
-                  try {
-                    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-                    const mainWindow = await WebviewWindow.getByLabel('main');
-                    if (mainWindow) {
-                      await mainWindow.minimize();
-                      setIsCheckingSetup(false);
-                      logStartupStep('6/6', '起動完了: 復元処理が終わりました');
-                      startPoolReplenishInBackground();
-                    }
-                  } catch (e) {
-                    log(`[起動処理] 最小化エラー: ${e}`);
-                    setLoadingStatus("最小化失敗: " + String(e));
-                    setTimeout(() => setIsCheckingSetup(false), 2000);
-                  }
-                }, 100);
-              } else {
-                setLoadingStatus("ようこそノートを作成中...");
+                setLoadingStatus(startupIsEnglish ? 'Showing notes...' : '付箋を表示しています...');
+                logStartupStep('6/6', '準備済みの付箋をまとめて表示します');
                 try {
+                  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+                  const noteWindows = await Promise.all(
+                    [...startupLabels].map((label) => WebviewWindow.getByLabel(label)),
+                  );
+                  await Promise.all(noteWindows.filter((win): win is WebviewWindow => win !== null).map((win) => win.show()));
+                  const mainWindow = await WebviewWindow.getByLabel('main');
+                  if (mainWindow) await mainWindow.minimize();
+                  setIsCheckingSetup(false);
+                  logStartupStep('6/6', '起動完了: すべての付箋を表示しました');
+                  startPoolReplenishInBackground();
+                } catch (e) {
+                  log(`[起動処理] 一括表示エラー: ${e}`);
+                  setLoadingStatus((startupIsEnglish ? 'Failed to show notes: ' : '付箋の表示に失敗しました: ') + String(e));
+                }
+              } else {
+                setLoadingStatus(startupIsEnglish ? 'Creating your welcome note...' : 'ようこそノートを作成中...');
+                try {
+                  const welcomeNoteColor = NOTE_COLORS.yellow;
                   const newNote = await invoke<{ meta: { path: string }; frontmatter: string }>(
-                    'fusen_create_note', { folderPath: savedFolder, context: 'はじめての付箋（消してOK）' }
+                    'fusen_create_note', {
+                      folderPath: savedFolder,
+                      context: startupIsEnglish ? 'Your first note (safe to delete)' : 'はじめての付箋（消してOK）',
+                    }
+                  );
+                  const welcomeFrontmatter = (newNote.frontmatter || '').replace(
+                    /^backgroundColor:.*$/m,
+                    `backgroundColor: ${welcomeNoteColor}`,
                   );
                   await invoke('fusen_save_note', {
                     path: newNote.meta.path,
-                    body: '👋 ようこそ。これが最初の付箋です。\n\n- [ ] このチェックを押してみる\n- [ ] 右上の「＋」で新しく1枚作る\n- [ ] このメモを右クリック→色を変えてみる\n- [ ] 左下の「？」で詳しい使い方を見る\n\n消したくなったら、付箋の上にマウスをのせて右下の🗑️',
-                    frontmatterRaw: newNote.frontmatter || '',
+                    body: startupIsEnglish
+                      ? '👋 Welcome. This is your first note.\n\n- [ ] Try this checkbox\n- [ ] Use “+” at the top right to create another note\n- [ ] Right-click this note and change its color\n- [ ] Open “?” at the bottom left for more help\n\nTo delete this note, point to it and use 🗑️.'
+                      : '👋 ようこそ。これが最初の付箋です。\n\n- [ ] このチェックを押してみる\n- [ ] 右上の「＋」で新しく1枚作る\n- [ ] このメモを右クリック→色を変えてみる\n- [ ] 左下の「？」で詳しい使い方を見る\n\n消したくなったら、付箋の上にマウスをのせて右下の🗑️',
+                    frontmatterRaw: welcomeFrontmatter,
                     allowRename: false,
                   });
-                  await openNoteWindow(newNote.meta.path, {});
+                  await openNoteWindow(newNote.meta.path, { background_color: welcomeNoteColor });
                 } catch (e) {
                   log(`[起動処理] ウェルカムノート作成失敗: ${e}`);
-                  await handleCreateNote(savedFolder, 'ようこそ'); // fallback
+                  await handleCreateNote(savedFolder, startupIsEnglish ? 'Welcome' : 'ようこそ'); // fallback
                 }
                 setTimeout(async () => {
                   try {
@@ -1402,20 +1736,21 @@ function OrchestratorContent() {
               }
             } catch (e) {
               log(`[起動処理] 内部エラー: ${e}`);
-              setLoadingStatus("エラー: " + String(e));
+              setLoadingStatus((startupIsEnglish ? 'Error: ' : 'エラー: ') + String(e));
               setTimeout(() => setIsCheckingSetup(false), 3000);
             }
           })();
         } catch (e) {
           log(`[起動処理] 重大なエラー: ${e}`);
-          setLoadingStatus("重大なエラー: " + String(e));
+          setLoadingStatus((startupIsEnglish ? 'Critical error: ' : '重大なエラー: ') + String(e));
           setTimeout(() => setIsCheckingSetup(false), 3000);
         }
       };
 
       checkAndRestore().catch(e => {
         invoke('fusen_debug_log', { message: `[起動処理] セットアップ確認中に例外発生: ${e}` }).catch(() => { });
-        setLoadingStatus("確認失敗: " + String(e));
+        const fallbackEnglish = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('en');
+        setLoadingStatus((fallbackEnglish ? 'Startup check failed: ' : '確認失敗: ') + String(e));
         setTimeout(() => setIsCheckingSetup(false), 3000);
       });
     }
@@ -1437,9 +1772,55 @@ function OrchestratorContent() {
     // I will stick to what was inside checkAndRestore in the broken file as it seemed to combine logic
     // Actually, looking at the broken file line 1066.
 
-  }, [handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
+  }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog;
+  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
+
+  useEffect(() => {
+    if (!isMainWindow || isCheckingSetup || setupRequired || isSettingsOpen || desktopShortcutPromptCheckedRef.current) return;
+    desktopShortcutPromptCheckedRef.current = true;
+    const checkDesktopShortcut = async () => {
+      try {
+        const shouldPrompt = await invoke<boolean>('fusen_should_prompt_desktop_shortcut');
+        if (!shouldPrompt) return;
+        setShowDesktopShortcutPrompt(true);
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        await win.setSize(new LogicalSize(640, 380));
+        await win.center();
+        await win.unminimize();
+        await win.show();
+        await win.setFocus();
+      } catch (e) {
+        console.error('[DesktopShortcut] initial prompt check failed:', e);
+      }
+    };
+    checkDesktopShortcut();
+  }, [isMainWindow, isCheckingSetup, setupRequired, isSettingsOpen]);
+
+  useEffect(() => {
+    if (!isDashboard || monthlyBackupCheckedRef.current) return;
+    monthlyBackupCheckedRef.current = true;
+    const checkMonthlyBackup = async () => {
+      try {
+        const due = await invoke<boolean>('fusen_monthly_backup_due');
+        if (!due) return;
+        setShowMonthlyBackupPrompt(true);
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        await win.setSize(new LogicalSize(720, 460));
+        await win.center();
+        await win.unminimize();
+        await win.show();
+        await win.setFocus();
+      } catch (e) {
+        console.error('[MonthlyBackup] confirmation check failed:', e);
+      }
+    };
+    const timer = setTimeout(checkMonthlyBackup, 1000);
+    return () => clearTimeout(timer);
+  }, [isDashboard]);
 
   // [DEBUG] isDashboard状態の詳細ログ
   useEffect(() => {
@@ -1456,7 +1837,7 @@ function OrchestratorContent() {
       }
     };
     logState();
-  }, [isDashboard, isMainWindow, isSearchOpen, isCheckingSetup, setupRequired, isSettingsOpen]);
+  }, [isDashboard, isMainWindow, isSearchOpen, isCheckingSetup, setupRequired, isSettingsOpen, hotkeyRegisterFailureMessage]);
 
   // [FIX] ダッシュボードモード時にメインウィンドウを確実に隠す
   useEffect(() => {
@@ -1482,9 +1863,9 @@ function OrchestratorContent() {
     hideWindow();
   }, [isDashboard]);
 
-  if (searchParams.get('tagSelector') === '1') return <TagSelector />;
+  if (searchParams.get('tagSelector') === '1') return <TagSelector language={language} />;
   if (searchParams.get('path') || searchParams.get('isPool') === 'true') return (
-    <ErrorBoundary>
+    <ErrorBoundary language={language}>
       <StickyNote />
     </ErrorBoundary>
   );
@@ -1492,16 +1873,117 @@ function OrchestratorContent() {
   // [FIX] アップデートダイアログは最優先で表示（isDashboard より前に判定）
   // isDashboard=true だとメインウィンドウが非表示になるため、先にreturnしないと届かない
   if (isHidingAfterUpdate) return null;
+  if (monthlyBackupResult) {
+    return (
+      <BackupResultDialog
+        language={language}
+        status={monthlyBackupResult.status}
+        path={monthlyBackupResult.status === 'success' ? monthlyBackupResult.record.path : undefined}
+        fileCount={monthlyBackupResult.status === 'success' ? monthlyBackupResult.record.file_count : undefined}
+        completedAt={monthlyBackupResult.status === 'success' ? monthlyBackupResult.record.created_at : undefined}
+        nextPromptAt={monthlyBackupResult.status === 'success' ? monthlyBackupResult.nextPromptAt : undefined}
+        errorMessage={monthlyBackupResult.status === 'error' ? monthlyBackupResult.message : undefined}
+        onClose={async () => {
+          setMonthlyBackupResult(null);
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          await getCurrentWindow().hide();
+        }}
+      />
+    );
+  }
+  if (showMonthlyBackupPrompt) {
+    return (
+      <ConfirmDialog
+        isOpen
+        title={language === 'en' ? 'Monthly Safety Backup' : '月次安全バックアップ'}
+        message={language === 'en' ? 'About 30 days have passed since the last safety backup. Back up now?\n\nDestination: Documents\\OreNoFusen_Backup\\Monthly' : '前回の安全バックアップから約30日が経過しました。今、バックアップを実施しますか？\n\n保存先: Documents\\OreNoFusen_Backup\\Monthly'}
+        confirmText={language === 'en' ? 'Back Up' : 'バックアップする'}
+        cancelText={language === 'en' ? 'Not Now' : '今回はしない'}
+        onConfirm={async () => {
+          try {
+            const record = await invoke<BackupRecord>('fusen_run_monthly_backup');
+            const latestSettings = await invoke<{ monthly_backup_next_prompt?: string }>('get_settings');
+            setMonthlyBackupResult({ status: 'success', record, nextPromptAt: latestSettings.monthly_backup_next_prompt });
+          } catch (e) {
+            console.error('[MonthlyBackup] Failed:', e);
+            setMonthlyBackupResult({ status: 'error', message: language === 'en' ? 'The backup could not be completed. Please check the destination and try again.' : String(e) });
+          } finally {
+            setShowMonthlyBackupPrompt(false);
+          }
+        }}
+        onCancel={async () => {
+          try {
+            await invoke('fusen_snooze_monthly_backup');
+          } finally {
+            setShowMonthlyBackupPrompt(false);
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+            await getCurrentWindow().hide();
+          }
+        }}
+      />
+    );
+  }
   if (showUpdateDialog && pendingUpdate) {
     return (
       <ConfirmDialog
         isOpen={showUpdateDialog}
         title={tUpdate('update.title')}
-        message={tUpdate('update.message').replace('{version}', pendingUpdate.version)}
+        message={(isStoreMigrationBridgeVersion(pendingUpdate.version)
+          ? tUpdate('update.storeMigrationMessage')
+          : tUpdate('update.message'))
+          .replace('{version}', pendingUpdate.version)}
         confirmText={tUpdate('update.confirm')}
         cancelText={tUpdate('update.cancel')}
         onConfirm={handleUpdateConfirm}
         onCancel={handleUpdateCancel}
+      />
+    );
+  }
+
+  if (showDesktopShortcutPrompt) {
+    return (
+      <ConfirmDialog
+        isOpen
+        title={language === 'en' ? 'Desktop Shortcut' : 'デスクトップショートカット'}
+        message={language === 'en' ? 'Create a desktop shortcut?\nWe recommend one if you use the app every day.\nYou can also create it later in Settings.\n\nShortcut name: Ore No Fusen (Store)' : 'デスクトップにショートカットを作成しますか？\n毎日使う場合は作成をおすすめします。\n後から設定画面でも作成できます。\n\n作成される名前: 俺の付箋（Store版）'}
+        confirmText={language === 'en' ? 'Create' : '作成する'}
+        cancelText={language === 'en' ? 'Not Now' : '今回は作成しない'}
+        onConfirm={async () => {
+          try {
+            await invoke<string>('fusen_create_desktop_shortcut');
+            await invoke('fusen_mark_desktop_shortcut_prompted');
+            setShowDesktopShortcutPrompt(false);
+            await getCurrentWindow().hide();
+          } catch (e) {
+            console.error('[DesktopShortcut] Failed:', e);
+            alert(language === 'en' ? 'The shortcut could not be created. Please try again from Settings > General.' : `ショートカットを作成できませんでした。\n\n${String(e)}`);
+          }
+        }}
+        onCancel={async () => {
+          await invoke('fusen_mark_desktop_shortcut_prompted');
+          setShowDesktopShortcutPrompt(false);
+          await getCurrentWindow().hide();
+        }}
+      />
+    );
+  }
+
+  if (hotkeyRegisterFailureMessage) {
+    return (
+      <ConfirmDialog
+        isOpen={!!hotkeyRegisterFailureMessage}
+        title={language === 'en' ? 'Global Hotkey' : 'グローバルホットキー'}
+        message={hotkeyRegisterFailureMessage}
+        confirmText={language === 'en' ? 'Yes' : 'はい'}
+        cancelText={language === 'en' ? 'No' : 'いいえ'}
+        onConfirm={() => {
+          setHotkeyRegisterFailureMessage(null);
+          setIsCheckingSetup(false);
+          setSetupRequired(false);
+          setSettingsDefaultTab('general');
+          setIsSettingsOpen(true);
+        }}
+        onCancel={() => setHotkeyRegisterFailureMessage(null)}
       />
     );
   }
@@ -1516,6 +1998,17 @@ function OrchestratorContent() {
       baseFolderMissing={!!recoveredMissingFolder}
       missingFolderPath={recoveredMissingFolder}
       onClose={async () => {
+      if (setupRequired) {
+        const configuredPath = await invoke<string | null>('get_base_path');
+        if (!configuredPath) return;
+        try {
+          await invoke<void>('fusen_check_storage_health', { path: configuredPath });
+        } catch (e) {
+          console.error('[Settings] storage is still unavailable:', e);
+          setRecoveredMissingFolder(configuredPath);
+          return;
+        }
+      }
       // 設定画面を閉じる時の処理
       setIsSettingsOpen(false);
       // フォルダ消失通知は一度確認したら消す
@@ -1561,6 +2054,7 @@ function OrchestratorContent() {
 
         {/* [NEW] Pool 枯渇時トースト（isPool=false の付箋ウィンドウ上には表示されないため main ウィンドウに置く） */}
         <PoolWaitToast
+          language={language}
           x={poolWaitToast.x}
           y={poolWaitToast.y}
           visible={poolWaitToast.visible}
@@ -1570,7 +2064,7 @@ function OrchestratorContent() {
         {/* Search Overlay */}
         {isSearchOpen && (
           <div className="fixed inset-0 bg-black/20 z-40">
-            <SearchOverlay onClose={async () => {
+            <SearchOverlay language={language} onClose={async () => {
               const dbg = (m: string) => invoke('fusen_debug_log', { message: m }).catch(() => { });
               dbg(`[Search] onClose triggered. Caller: ${searchCaller}`);
               setIsSearchOpen(false); // UIを先に閉じる
@@ -1621,9 +2115,11 @@ function OrchestratorContent() {
 }
 
 export default function Home() {
+  const { settings } = useSettings();
+  const language: Language = settings.language === 'en' ? 'en' : 'ja';
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <ErrorBoundary>
+      <ErrorBoundary language={language}>
         <OrchestratorContent />
       </ErrorBoundary>
     </Suspense>

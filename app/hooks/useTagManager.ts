@@ -9,6 +9,15 @@
 
 import { useState, useCallback } from 'react';
 import { getAllTags, addTag, removeTag, deleteTagGlobally } from '@/app/api/tags';
+import { getUserTags, isReservedTag } from '@/app/utils/reservedTags';
+
+export const RESERVED_TAG_ERROR_MESSAGE = 'このタグは予約されています';
+
+export function assertTagCanBeAdded(tag: string): void {
+    if (isReservedTag(tag)) {
+        throw new Error(RESERVED_TAG_ERROR_MESSAGE);
+    }
+}
 
 export type UseTagManagerReturn = {
     allTags: string[];
@@ -32,8 +41,9 @@ export function useTagManager(): UseTagManagerReturn {
     const loadAllTags = useCallback(async () => {
         try {
             const tags = await getAllTags();
-            setAllTags(tags);
-            console.log('[useTagManager] Loaded tags:', tags.length);
+            const userTags = getUserTags(tags);
+            setAllTags(userTags);
+            console.log('[useTagManager] Loaded user tags:', userTags.length);
         } catch (e) {
             console.error('[useTagManager] Failed to load tags:', e);
         }
@@ -44,6 +54,7 @@ export function useTagManager(): UseTagManagerReturn {
      */
     const addTagToNote = useCallback(async (path: string, tag: string) => {
         try {
+            assertTagCanBeAdded(tag);
             await addTag(path, tag);
             await loadAllTags();
             console.log('[useTagManager] Tag added:', tag);

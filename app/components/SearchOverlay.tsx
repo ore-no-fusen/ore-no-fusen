@@ -13,19 +13,23 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import type { Language } from '@/lib/i18n';
 
 type SearchHit = {
     path: string;
     line: number;
     preview: string;
+    kind?: 'QA' | 'Reci' | 'Term' | null;
 };
 
 type SearchOverlayProps = {
     onClose: () => void;
     getWindowLabel: (path: string) => string;
+    language?: Language;
 };
 
-export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlayProps) {
+export default function SearchOverlay({ onClose, getWindowLabel, language = 'ja' }: SearchOverlayProps) {
+    const isEnglish = language === 'en';
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchHit[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -179,7 +183,7 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="全付箋を検索..."
+                    placeholder={isEnglish ? 'Search all notes...' : '全付箋を検索...'}
                     className="flex-1 bg-gray-100 rounded-lg px-3 py-2 outline-none text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-blue-400"
                     autoFocus
                 />
@@ -188,26 +192,26 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
                     disabled={isSearching || !query.trim()}
                     className="px-3 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 font-medium"
                 >
-                    {isSearching ? '...' : '検索'}
+                    {isSearching ? '...' : (isEnglish ? 'Search' : '検索')}
                 </button>
             </div>
 
             {/* 結果件数とナビゲーション */}
             {results.length > 0 && (
                 <div className="flex items-center justify-between text-sm text-gray-500">
-                    <span>{currentIndex + 1} / {results.length} 件</span>
+                    <span>{currentIndex + 1} / {results.length}{isEnglish ? '' : ' 件'}</span>
                     <div className="flex gap-1">
                         <button
                             onClick={handlePrev}
                             className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
-                            title="前へ (Shift+Enter)"
+                            title={isEnglish ? 'Previous (Shift+Enter)' : '前へ (Shift+Enter)'}
                         >
                             ◀
                         </button>
                         <button
                             onClick={handleNext}
                             className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
-                            title="次へ (Enter / F3)"
+                            title={isEnglish ? 'Next (Enter / F3)' : '次へ (Enter / F3)'}
                         >
                             ▶
                         </button>
@@ -231,7 +235,8 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
                                 }`}
                         >
                             <div className="text-xs text-gray-500 truncate">
-                                {getFileName(hit.path)} : {hit.line}行目
+                                {hit.kind && <span className="mr-1 font-bold text-blue-600">[{hit.kind}]</span>}
+                                {getFileName(hit.path)} : {isEnglish ? `line ${hit.line}` : `${hit.line}行目`}
                             </div>
                             <div className="text-sm text-gray-700 truncate">
                                 {hit.preview}
@@ -244,13 +249,15 @@ export default function SearchOverlay({ onClose, getWindowLabel }: SearchOverlay
             {/* 検索結果なし */}
             {results.length === 0 && query.trim() && !isSearching && (
                 <div className="text-center text-gray-400 py-4">
-                    検索結果がありません
+                    {isEnglish ? 'No results found' : '検索結果がありません'}
                 </div>
             )}
 
             {/* ヘルプ */}
             <div className="text-xs text-gray-400 text-center pt-2 border-t border-gray-100">
-                Enter: 検索/次へ | Shift+Enter: 前へ | Esc: 閉じる
+                {isEnglish
+                    ? 'Enter: Search/Next | Shift+Enter: Previous | Esc: Close'
+                    : 'Enter: 検索/次へ | Shift+Enter: 前へ | Esc: 閉じる'}
             </div>
         </div>
     );

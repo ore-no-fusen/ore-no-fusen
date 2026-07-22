@@ -6,6 +6,10 @@ export async function loadSecureMermaid() {
         startOnLoad: false,
         theme: 'neutral',
         securityLevel: 'strict',
+        htmlLabels: false,
+        flowchart: {
+            htmlLabels: false,
+        },
     });
     return mermaid;
 }

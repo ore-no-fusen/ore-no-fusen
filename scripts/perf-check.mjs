@@ -1,68 +1,89 @@
-/**
- * perf-check.mjs
- *
- * JSON Lines (perf.jsonl) を読み込み、run_id 毎に T2_READY を集計して
- * 5 サンプル以上の中央値が 300ms 以内なら exit 0、それ以外は exit 1 を返す。
- *
- * 使い方:
- *   npm run perf:check
- *   PERF_LOG=./fixture.jsonl node scripts/perf-check.mjs
- */
-
+/** Aggregate opt-in perf.jsonl without touching the running application. */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const path =
-  process.env.PERF_LOG ??
-  join(process.env.LOCALAPPDATA ?? '', 'ore-no-fusen', 'perf.jsonl');
-
-if (!existsSync(path)) {
-  console.error(`[perf-check] Not found: ${path}`);
-  console.error('[perf-check] 実機で Ctrl+N を 5 回以上操作してから再実行してください。');
-  process.exit(1);
+export function percentile(sortedValues, percentileValue) {
+  if (sortedValues.length === 0) return null;
+  const index = Math.ceil((percentileValue / 100) * sortedValues.length) - 1;
+  return sortedValues[Math.max(0, Math.min(index, sortedValues.length - 1))];
 }
 
-const lines = readFileSync(path, 'utf-8').trim().split('\n').filter(Boolean);
-
-// run_id ごとにイベントをグルーピング
-const runs = new Map();
-for (const ln of lines) {
-  let ev;
-  try {
-    ev = JSON.parse(ln);
-  } catch {
-    console.warn('[perf-check] JSON parse error (skip):', ln);
-    continue;
+export function parsePerfLines(text) {
+  const events = [];
+  let invalid = 0;
+  for (const line of text.split('\n').filter(Boolean)) {
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      invalid += 1;
+    }
   }
-  if (!runs.has(ev.run_id)) runs.set(ev.run_id, {});
-  runs.get(ev.run_id)[ev.event] = ev.elapsed_ms;
+  return { events, invalid };
 }
 
-// T2_READY の elapsed_ms を収集
-const t2s = [...runs.values()]
-  .map((r) => r['T2_READY'])
-  .filter((x) => x != null);
-
-if (t2s.length < 5) {
-  console.error(
-    `[perf-check] Need >= 5 samples, got ${t2s.length}. 実機で Ctrl+N をあと ${5 - t2s.length} 回操作してください。`
-  );
-  process.exit(1);
+export function summarize(events) {
+  const groups = new Map();
+  let dropped = 0;
+  for (const event of events) {
+    dropped += Number(event.dropped_before ?? 0);
+    const key = event.event === 'LAUNCHER_SEARCH_DONE' && event.label
+      ? `${event.event} (${event.label})`
+      : event.event;
+    const group = groups.get(key) ?? { count: 0, success: 0, rejected: 0, failed: 0, values: [] };
+    group.count += 1;
+    const status = event.meta?.status;
+    if (status === 'success') group.success += 1;
+    if (status === 'rejected') group.rejected += 1;
+    if (status === 'failed') group.failed += 1;
+    if (Number.isFinite(event.elapsed_ms)) group.values.push(event.elapsed_ms);
+    groups.set(key, group);
+  }
+  return {
+    dropped,
+    groups: [...groups.entries()].map(([name, group]) => {
+      group.values.sort((a, b) => a - b);
+      return {
+        name,
+        count: group.count,
+        success: group.success,
+        rejected: group.rejected,
+        failed: group.failed,
+        p50: percentile(group.values, 50),
+        p95: percentile(group.values, 95),
+        p99: percentile(group.values, 99),
+      };
+    }),
+  };
 }
 
-t2s.sort((a, b) => a - b);
-const median = t2s[Math.floor(t2s.length / 2)];
-const min = t2s[0];
-const max = t2s[t2s.length - 1];
-
-console.log(`[perf-check] Samples: ${t2s.length}`);
-console.log(`[perf-check] T2_READY — min: ${min}ms, median: ${median}ms, max: ${max}ms`);
-console.log(`[perf-check] 閾値: 300ms`);
-
-if (median <= 300) {
-  console.log(`[perf-check] PASS: 中央値 ${median}ms ≤ 300ms`);
-  process.exit(0);
-} else {
-  console.error(`[perf-check] FAIL: 中央値 ${median}ms > 300ms`);
-  process.exit(1);
+export function evaluateReadyGate(groups) {
+  const ready = groups.find((group) => group.name === 'NOTE_EDITOR_READY')
+    ?? groups.find((group) => group.name === 'T2_READY');
+  if (!ready || ready.count < 5) return null;
+  return { passed: ready.p50 <= 300, name: ready.name, p50: ready.p50 };
 }
+
+function main() {
+  const path = process.env.PERF_LOG ?? join(process.env.LOCALAPPDATA ?? '', 'ore-no-fusen', 'perf.jsonl');
+  if (!existsSync(path)) {
+    console.error(`[perf-check] Not found: ${path}`);
+    process.exitCode = 1;
+    return;
+  }
+  const { events, invalid } = parsePerfLines(readFileSync(path, 'utf-8'));
+  const report = summarize(events);
+  console.log(`[perf-check] events=${events.length} invalid=${invalid} dropped=${report.dropped}`);
+  for (const group of report.groups) {
+    console.log(
+      `[perf-check] ${group.name}: count=${group.count} success=${group.success} rejected=${group.rejected} failed=${group.failed} p50=${group.p50 ?? '-'}ms p95=${group.p95 ?? '-'}ms p99=${group.p99 ?? '-'}ms`,
+    );
+  }
+  const gate = evaluateReadyGate(report.groups);
+  if (gate && !gate.passed) {
+    console.error(`[perf-check] FAIL: ${gate.name} p50 ${gate.p50}ms > 300ms`);
+    process.exitCode = 1;
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

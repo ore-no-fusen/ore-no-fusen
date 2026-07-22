@@ -13,6 +13,10 @@ import React from 'react';
 import Tooltip from './Tooltip';
 import PinTackIcon from './PinTackIcon';
 import { getTranslation, type Language } from '@/lib/i18n';
+import { playPinToggleSound } from '../utils/pinToggleSound';
+import { STICKY_ACTION_SYMBOLS } from '@/app/utils/stickyActionSymbols';
+import { STICKY_ICON_BUTTON_SIZE } from '@/app/utils/stickyControlStyles';
+import StickyActionIcon from './StickyActionIcon';
 
 export type ToolbarButtonsProps = {
     isEditing: boolean;
@@ -30,6 +34,11 @@ export type ToolbarButtonsProps = {
     onAlarmClick?: () => void;
     alarmAtStr?: string | null;
     alarmTooltip?: string;
+    newNoteShortcutHint?: string;
+    archiveLabel?: string;
+    onArchive?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    deleteLabel?: string;
+    onDelete?: () => void;
 };
 
 export default function ToolbarButtons({
@@ -48,22 +57,28 @@ export default function ToolbarButtons({
     onAlarmClick,
     alarmAtStr,
     alarmTooltip,
+    newNoteShortcutHint,
+    archiveLabel,
+    onArchive,
+    deleteLabel,
+    onDelete,
 }: ToolbarButtonsProps) {
     const t = getTranslation(language ?? 'ja');
     // 通常モード時：ツールバー（折りたたみ + ピン）
     if (!isEditing) {
         return (
             <div
-                className={`hoverBar flex flex-row justify-end items-center gap-[2px] p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show || isWelcome ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
+                className={`hoverBar flex flex-col items-end p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show || isWelcome ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
                     }`}
             >
+                <div data-testid="sticky-primary-actions" className="flex flex-row items-center gap-[2px]">
                 {/* アラームボタン（アラームがセットされている時のみ表示） */}
                 {onAlarmClick && alarmAtStr && (
                     <Tooltip text={alarmTooltip || ''} placement="top-right">
                         <button
                             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                             onClick={() => onAlarmClick()}
-                            className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[13px]"
+                            className={`${STICKY_ICON_BUTTON_SIZE} text-gray-600 hover:bg-gray-200 px-2 rounded flex items-center justify-center text-[13px]`}
                         >
                             ⏰
                         </button>
@@ -72,16 +87,16 @@ export default function ToolbarButtons({
 
                 {/* 新規作成ボタン (左端) */}
                 {onCreateNewNote && (
-                    <Tooltip text={t('tooltip.newNote')} hint="Ctrl+N" placement="top-right-arrow-shifted">
+                    <Tooltip text={t('tooltip.newNote')} hint={newNoteShortcutHint} placement="top-right-arrow-shifted">
                         <button
                             onPointerDown={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                             }}
                             onClick={() => onCreateNewNote()}
-                            className={`text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[14px] ${isWelcome ? 'animate-bounce text-orange-500 font-bold' : ''}`}
+                            className={`${STICKY_ICON_BUTTON_SIZE} text-gray-600 hover:bg-gray-200 px-2 rounded flex items-center justify-center text-[14px] ${isWelcome ? 'animate-bounce text-orange-500 font-bold' : ''}`}
                         >
-                            ＋
+                            {STICKY_ACTION_SYMBOLS.newNote}
                         </button>
                     </Tooltip>
                 )}
@@ -94,7 +109,7 @@ export default function ToolbarButtons({
                             e.stopPropagation();
                         }}
                         onClick={() => onToggleMinimize()}
-                        className="text-gray-600 hover:bg-gray-200 px-2 min-w-[28px] rounded flex items-center justify-center text-[14px]"
+                        className={`${STICKY_ICON_BUTTON_SIZE} text-gray-600 hover:bg-gray-200 px-2 rounded flex items-center justify-center text-[14px]`}
                     >
                         {isMinimized ? '▽' : '△'}
                     </button>
@@ -109,56 +124,10 @@ export default function ToolbarButtons({
                                 e.stopPropagation();
                             }}
                             onClick={() => {
-                                // Sound Effect
-                                try {
-                                    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-                                    if (AudioContext) {
-                                        const ctx = new AudioContext();
-                                        const osc = ctx.createOscillator();
-                                        const gain = ctx.createGain();
-                                        const now = ctx.currentTime;
-
-                                        osc.connect(gain);
-                                        gain.connect(ctx.destination);
-
-                                        if (!isPinned) {
-                                            // Turning ON (Pinning) - "Gyuh" (Thud/Press)
-                                            // Low frequency, short, dull sound
-                                            osc.type = 'triangle';
-                                            osc.frequency.setValueAtTime(120, now);
-                                            osc.frequency.exponentialRampToValueAtTime(60, now + 0.08);
-
-                                            gain.gain.setValueAtTime(0.6, now);
-                                            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-
-                                            osc.start(now);
-                                            osc.stop(now + 0.15);
-                                        } else {
-                                            // Turning OFF (Unpinning) - "Pop" (Release)
-                                            // Higher pitch, light pop
-                                            osc.type = 'sine';
-                                            osc.frequency.setValueAtTime(400, now);
-                                            osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
-
-                                            gain.gain.setValueAtTime(0.3, now);
-                                            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-
-                                            osc.start(now);
-                                            osc.stop(now + 0.1);
-                                        }
-
-                                        // Cleanup AudioContext
-                                        setTimeout(() => {
-                                            ctx.close();
-                                        }, 200);
-                                    }
-                                } catch (e) {
-                                    console.error('SFX Error:', e);
-                                }
-
+                                playPinToggleSound(Boolean(isPinned));
                                 onTogglePin();
                             }}
-                            className={`px-2 min-w-[28px] rounded flex items-center justify-center transition-all duration-200 text-[16px] ${isPinned
+                            className={`${STICKY_ICON_BUTTON_SIZE} px-2 rounded flex items-center justify-center transition-all duration-200 text-[16px] ${isPinned
                                 ? 'text-red-600 bg-red-50 hover:bg-red-100 scale-100 opacity-100'
                                 : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600 scale-95 opacity-70 hover:opacity-100'
                                 }`}
@@ -174,6 +143,52 @@ export default function ToolbarButtons({
                             )}
                         </button>
                     </Tooltip>
+                )}
+                </div>
+
+                {!isMinimized && (onArchive || onDelete) && (
+                    <div data-testid="sticky-caution-actions" className="mt-3 flex flex-col items-center gap-1">
+                        {onArchive && archiveLabel && (
+                            <Tooltip text={archiveLabel} placement="top-right-shifted">
+                                <button
+                                    type="button"
+                                    aria-label={archiveLabel}
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onArchive(e);
+                                    }}
+                                    className={`${STICKY_ICON_BUTTON_SIZE} px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-200 transition-colors`}
+                                >
+                                    <StickyActionIcon kind="archive" />
+                                </button>
+                            </Tooltip>
+                        )}
+                        {onDelete && (
+                            <Tooltip text={deleteLabel || t('menu.delete')} hint="Ctrl+D" placement="top-right-shifted">
+                                <button
+                                    type="button"
+                                    aria-label={deleteLabel || t('menu.delete')}
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onDelete();
+                                    }}
+                                    className={`${STICKY_ICON_BUTTON_SIZE} px-1 rounded text-[13px] leading-none flex items-center justify-center text-gray-500 bg-gray-200/70 border border-gray-300/80 shadow-sm hover:bg-red-100 hover:text-red-600 hover:border-red-200 transition-colors`}
+                                >
+                                    <StickyActionIcon kind="delete" />
+                                </button>
+                            </Tooltip>
+                        )}
+                    </div>
                 )}
             </div>
         );
