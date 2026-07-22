@@ -831,3 +831,12 @@
 - 要求仕様へ共通UIの言語追従を追加し、PC設計書にも対象画面と内部エラーの扱いを明記した。
 - ソース版4.4.2は移行版Do Release時に5.0.0へ更新するため今回は維持。LPはStore登録後に更新する運用のため今回のコミット対象外。
 - 全Vitestの並列実行時だけMermaid実ブラウザ安全性テストが30秒上限へ達したため、検査内容を変えず当該2件の上限を60秒へ拡大。単独再実行では2件とも合格済み。
+
+## 2026-07-23 Store版5.0.0公開とLP切替
+
+- Microsoft Storeで5.0.0の認定・公開を完了し、Store経由の更新と主要機能を実機確認した。
+- `winget source update` 後、Store Product ID `9N4MW0V2MVVG` が `msstore` ソースから検索できることを確認した。
+- LPの主CTAと最終CTAをMicrosoft Storeへ切り替え、wingetを `winget install --id 9N4MW0V2MVVG --source msstore` に統一した。
+- 旧インストーラー向けSmartScreen説明を廃止し、MSI・NSIS利用者向けのStore移行手順へ置き換えた。
+- TypeScript、ESLint、Next.js本番ビルド、VitePressユーザーガイドビルドに成功した。
+- 次: developへコミット・push後、LPとユーザーガイドを本番公開する。5.0.0のDo Releaseはその後に実行する。
