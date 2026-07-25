@@ -353,13 +353,26 @@ function OrchestratorContent() {
   }, []);
 
   // ウィンドウ生成
+  const resolveOpenWindow = useCallback(async (path: string) => {
+    try {
+      const registeredLabel = await invoke<string | null>('fusen_resolve_open_note_window', { path });
+      if (registeredLabel) {
+        const registeredWindow = await WebviewWindow.getByLabel(registeredLabel);
+        if (registeredWindow) return registeredWindow;
+      }
+    } catch (e) {
+      console.warn('[付箋表示] 登録済みウィンドウの解決に失敗しました:', e);
+    }
+
+    return WebviewWindow.getByLabel(getWindowLabel(path));
+  }, [getWindowLabel]);
+
   const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
     const startupRestore = meta?.startup_restore === true;
 
     try {
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      const existing = await WebviewWindow.getByLabel(label);
+      const existing = await resolveOpenWindow(path);
       if (existing) {
         if (!startupRestore) await existing.show();
         await existing.unminimize();
@@ -373,8 +386,7 @@ function OrchestratorContent() {
         if (isWindowInProgress(label)) return;
         markWindowInProgress(label);
 
-        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-        const existing = await WebviewWindow.getByLabel(label);
+        const existing = await resolveOpenWindow(path);
         if (existing) {
           unmarkWindowInProgress(label);
           await existing.unminimize();
@@ -475,7 +487,7 @@ function OrchestratorContent() {
         } finally { unmarkWindowInProgress(label); }
       } catch (e) { console.error('[付箋表示] ウィンドウ作成に失敗しました:', e); unmarkWindowInProgress(label); }
     });
-  }, [getWindowLabel, enqueueWindowCreation, isWindowInProgress, markWindowInProgress, unmarkWindowInProgress]);
+  }, [getWindowLabel, resolveOpenWindow, enqueueWindowCreation, isWindowInProgress, markWindowInProgress, unmarkWindowInProgress]);
 
   const selectDirectory = useCallback(async () => {
     try {
@@ -2103,7 +2115,7 @@ function OrchestratorContent() {
                 dbg('[Search] onClose finished');
                 setSearchCaller(null);
               }
-            }} getWindowLabel={getWindowLabel} />
+            }} getWindowLabel={getWindowLabel} resolveOpenWindow={resolveOpenWindow} />
           </div>
         )}
       </>

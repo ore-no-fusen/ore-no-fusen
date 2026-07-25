@@ -226,6 +226,12 @@ const StickyNote = memo(function StickyNote() {
 
             const newContext = content.split('\n')[0].trim();
             setSelectedFile((prev) => (prev ? { ...prev, path: newPath, context: newContext } : null));
+            import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) =>
+                invoke('fusen_register_open_note_window', {
+                    path: newPath,
+                    label: getCurrentWebviewWindow().label,
+                }),
+            ).catch((error) => console.warn('[付箋表示] パス変更後のウィンドウ登録に失敗しました:', error));
         },
         onSaveError: () => setShowSaveError(true),
     });
@@ -780,6 +786,10 @@ const StickyNote = memo(function StickyNote() {
                     // path が確定した（非lazy）場合のみプールモード解除
                     isPoolRef.current = false;
                     setIsPool(false);
+                    await invoke('fusen_register_open_note_window', {
+                        path: event.payload.path,
+                        label: thisWin.label,
+                    });
                 }
                 // lazy（path 無し）の場合: ファイル未作成のため isPool=true を維持する。
                 // handleFirstChar で fusen_create_note_lazy が成功した後に isPool を解除する。
@@ -947,6 +957,11 @@ const StickyNote = memo(function StickyNote() {
             invoke('fusen_debug_log', { message: `[POOL_LAZY] fusen_create_note_lazy OK path=${note.meta.path}` }).catch(() => { });
             // ファイルが作成されたので selectedFile と URL を更新
             const createdPath = note.meta.path;
+            const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            await invoke('fusen_register_open_note_window', {
+                path: createdPath,
+                label: getCurrentWebviewWindow().label,
+            });
             noteFilePathRef.current = createdPath;
             setDynamicUrlPath(createdPath);
             setSelectedFile(note.meta);
@@ -973,6 +988,22 @@ const StickyNote = memo(function StickyNote() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
+
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        let cancelled = false;
+        import('@tauri-apps/api/webviewWindow').then(async ({ getCurrentWebviewWindow }) => {
+            const win = getCurrentWebviewWindow();
+            const dispose = await win.listen('tauri://close-requested', () => {
+                invoke('fusen_unregister_open_note_window', { label: win.label }).catch(() => {});
+            });
+            if (cancelled) dispose(); else unlisten = dispose;
+        }).catch(() => {});
+        return () => {
+            cancelled = true;
+            safeUnlisten(unlisten);
+        };
+    }, []);
 
     // リロードイベントリスナー
     useEffect(() => {

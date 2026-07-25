@@ -1411,6 +1411,63 @@ fn fusen_get_state(state: State<'_, Mutex<AppState>>) -> AppState {
 }
 
 #[tauri::command]
+fn fusen_register_open_note_window(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    label: String,
+) -> Result<(), String> {
+    if app.get_webview_window(&label).is_none() {
+        return Err("window not found".to_string());
+    }
+
+    let path = normalize_path_for_label(&path);
+    if path.is_empty() {
+        return Err("path is required".to_string());
+    }
+
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    app_state
+        .open_note_windows
+        .retain(|_, registered_label| registered_label != &label);
+    app_state.open_note_windows.insert(path, label);
+    Ok(())
+}
+
+#[tauri::command]
+fn fusen_resolve_open_note_window(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+) -> Option<String> {
+    let path = normalize_path_for_label(&path);
+    let label = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.open_note_windows.get(&path).cloned()
+    }?;
+
+    if app.get_webview_window(&label).is_some() {
+        return Some(label);
+    }
+
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    app_state.open_note_windows.remove(&path);
+    None
+}
+
+#[tauri::command]
+fn fusen_unregister_open_note_window(
+    state: State<'_, Mutex<AppState>>,
+    label: String,
+) {
+    state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .open_note_windows
+        .retain(|_, registered_label| registered_label != &label);
+}
+
+#[tauri::command]
 fn fusen_open_containing_folder(path: String) -> Result<(), String> {
     storage::open_in_explorer(&path)?;
     Ok(())
@@ -4764,6 +4821,9 @@ pub fn run() {
             fusen_set_opacity,
             fusen_select_folder,
             fusen_list_notes,
+            fusen_register_open_note_window,
+            fusen_resolve_open_note_window,
+            fusen_unregister_open_note_window,
             fusen_register_crystal_arrange_window,
             fusen_read_note,
             fusen_create_note,

@@ -25,10 +25,11 @@ type SearchHit = {
 type SearchOverlayProps = {
     onClose: () => void;
     getWindowLabel: (path: string) => string;
+    resolveOpenWindow?: (path: string) => Promise<WebviewWindow | null>;
     language?: Language;
 };
 
-export default function SearchOverlay({ onClose, getWindowLabel, language = 'ja' }: SearchOverlayProps) {
+export default function SearchOverlay({ onClose, getWindowLabel, resolveOpenWindow, language = 'ja' }: SearchOverlayProps) {
     const isEnglish = language === 'en';
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchHit[]>([]);
@@ -55,7 +56,9 @@ export default function SearchOverlay({ onClose, getWindowLabel, language = 'ja'
         try {
             // [Fix] Robust window finding: getByLabel -> getAllWebviewWindows
             // Try getByLabel first
-            let targetWin = await WebviewWindow.getByLabel(label);
+            let targetWin = resolveOpenWindow
+                ? await resolveOpenWindow(hit.path)
+                : await WebviewWindow.getByLabel(label);
 
             // If not found, try getAllWebviewWindows as fallback (sometimes getByLabel fails contextually)
             if (!targetWin) {
@@ -111,7 +114,7 @@ export default function SearchOverlay({ onClose, getWindowLabel, language = 'ja'
         } catch (e) {
             console.error('Failed to jump to hit:', e);
         }
-    }, [getWindowLabel, query]);
+    }, [getWindowLabel, query, resolveOpenWindow]);
 
     const handleSearch = useCallback(async () => {
         if (!query.trim()) return;

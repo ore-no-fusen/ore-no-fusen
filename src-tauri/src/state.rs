@@ -78,6 +78,10 @@ pub struct AppState {
     /// 通常付箋一覧とは分離し、起動復元の対象にはしない。
     #[serde(default)]
     pub arrange_crystal_windows: std::collections::HashMap<String, String>,
+    /// 開いている付箋の正規化パス→実ウィンドウラベル対応。
+    /// Pool昇格窓を検索・クイックランチャーから再利用するための起動中だけの状態。
+    #[serde(default)]
+    pub open_note_windows: std::collections::HashMap<String, String>,
     /// Alt+Tabに表示する付箋ウィンドウのラベル（最後にフォーカスされたもの）
     pub last_alt_tab_window: Option<String>,
     /// Pro機能の設定（Web Push サブスクリプション情報・マルチデバイス対応）
