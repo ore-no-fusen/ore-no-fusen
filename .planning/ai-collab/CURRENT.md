@@ -856,3 +856,13 @@
 - 設計書更新: `docs-v2/002_PC.md` §4.4（検索シーケンス）・§6.1（Pool方式）・改版2.79。
 - テスト: `SearchOverlay.test.tsx` を追加し、Pool由来の既存窓がある場合に新規 `WebviewWindow` を作らず前面化・ハイライトすることを確認。対象VitestとTypeScript検査は成功。
 - 検証保留: `cargo check` は依存関係取得後も120秒でタイムアウト。VitePressビルドはローカル依存にない `vitepress-plugin-mermaid/Mermaid.vue` を既存設定が参照するため失敗（今回の設計書変更とは無関係）。
+
+## 2026-07-26 Rust依存・Cargo.lock運用
+
+- `docs/010_RELEASE.md` §5へ、通常修正は `Cargo.toml` / `Cargo.lock` を変更せず `cargo check --locked` を使う運用を追加。依存更新は理由・対象・影響範囲を独立して記録・検証する。
+- 現行Do Releaseの `cargo generate-lockfile` は全依存の再解決を招くため、既存ロックを維持して本体版だけを反映し、間接依存の差分を検査して止める方式へ置き換える案を未実装として記載。
+- 全文検索のPool窓重複修正は、実機確認OK後に `c65d616 fix: reuse open sticky notes from search` へコミット済み。
+- `scripts/verify-cargo-lock-release.mjs` と単体テスト5件を追加。本体 `ore-no-fusen` の版だけを許可し、間接依存の版変更・追加・本体依存定義変更・本体欠落を拒否する。Do Release接続は未実装。
+- 26-07-26テスト: 検査スクリプトの単体テスト5件、TypeScript検査、差分検査は成功。実際のCargo一時コピーで本体版だけを仮更新する確認は、Rustコンパイルが120秒でタイムアウトしたため未完了。公開・タグ作成・作業ツリーへの変更は行っていない。
+- 26-07-26実装: 手動GitHub Actions `Release Lockfile Dry Run` を追加。`develop`等の指定refと次期版を使い、runner内だけでCargo本体版を仮更新し、ロック差分検査と `cargo check --locked` を行う。権限は `contents: read` のみで、commit、push、タグ、GitHub Release、winget、MSIX、Microsoft Storeには触れない。GitHub上の実行は、コミット・push後に実施する。
+- 26-07-26検証: 一時コピーの実Cargo.lockで本体版 `5.0.0` → `5.0.1` だけを変更する検査は成功。検査スクリプト単体5件、TypeScript、差分検査、`cargo check --locked --manifest-path src-tauri/Cargo.toml` は全て成功。YAML整形確認はローカルPrettier未導入かつnpm取得権限エラーのため未実施。GitHub Actions上の手動実行は未実施（コミット・push前）。

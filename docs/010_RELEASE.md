@@ -154,11 +154,48 @@ PWA（`app/viewer/`）と Service Worker（`worker/index.js`）は、本体（Ta
 | No | ゲート | 内容 |
 |----|--------|------|
 | 1 | ソース修正 | 実装は最小単位で行う |
-| 2 | テスト | `npx tsc --noEmit --pretty false`、対象テスト、`npm test`、`cargo check`、`npm run build` を実行する |
+| 2 | テスト | `npx tsc --noEmit --pretty false`、対象テスト、`npm test`、`cargo check --locked`、`npm run build` を実行する |
 | 3 | ドキュメント更新 | `docs-v2/` の設計仕様、`docs/` の手順書・マニュアル（開発者向け手順＝`010_RELEASE` 等／付箋アプリ利用者向け＝`100_USER_GUIDE`・`101_FAQ`）、必要なら `README.md` を更新する |
 | 4 | 変更履歴 | 更新した設計書・マニュアルの変更履歴へ日付 `YY-MM-DD` で追記する |
 | 5 | PWA バージョン確認 | PWA / SW を触った場合、画面右下の `SW` バージョンで反映を確認できるようにする |
 | 6 | リリース | develop に push し、Preview / ローカル Tauri で確認してから正式リリースへ進む |
+
+### 5.1 依存関係・ロックファイルの管理
+
+Rust の依存宣言は `src-tauri/Cargo.toml`、実際にビルドする依存の組合せは `src-tauri/Cargo.lock` で管理する。`Cargo.lock` は全ての間接依存を含むため、意図しない更新でも大量の差分と再ビルドを引き起こす。機能修正と依存更新を同じ変更に混ぜない。
+
+| 作業種別 | `Cargo.toml` / `Cargo.lock` | 実施すること | 確認 |
+|---|---|---|---|
+| 通常の機能・不具合修正 | 変更しない | Rustの確認は `cargo check --locked` を使う | 作業前後で `git diff -- src-tauri/Cargo.toml src-tauri/Cargo.lock` が空であること |
+| 依存ライブラリの追加・更新・削除 | 意図して両方変更する | 更新理由・対象ライブラリ・版・影響範囲を独立して記録する | `Cargo.lock` の差分、Rustビルド、対象機能、必要な実機確認を行う |
+| アプリ版のRelease | `Cargo.toml` と `Cargo.lock` の本体パッケージ版だけを整合させる | Do Release が処理する | 本体版・`Cargo.lock` 内の `ore-no-fusen` 版・MSIX版が一致すること |
+
+通常の修正中に `Cargo.lock` が変わった場合は、そのままコミットしない。依存更新を意図したか、依存解決を再実行するコマンドを使ったかを確認してから、通常修正から分離する。`Cargo.lock` を削除して再生成すること、通常修正で `cargo update` または `cargo generate-lockfile` を実行することは禁止する。
+
+#### Release Lockfile Dry Run（公開なしの事前検証）
+
+GitHub Actionsの **Release Lockfile Dry Run** は、通常のリリース前にロックファイルだけを検証する手動ワークフローである。入力するのは、確認対象のコード（通常は `develop`）と、確認したい次の版番号である。
+
+1. 指定したコードをGitHub Actionsの使い捨て環境へ取得する。
+2. その環境内だけで `Cargo.toml` と `Cargo.lock` の本体パッケージ版を指定版へそろえる。
+3. `scripts/verify-cargo-lock-release.mjs` で、本体 `ore-no-fusen` の版以外に差分がないことを確認する。
+4. `cargo check --locked` で、固定された依存グラフのままビルド可能か確認する。
+
+このワークフローは読み取り専用権限で動作する。commit、push、タグ、GitHub Release、winget更新、MSIXのアップロード、Microsoft Storeへの提出・公開は行わない。
+
+#### Do Releaseの見直し案（未実装）
+
+現在のDo Releaseは、版番号更新後に `cargo generate-lockfile` を実行して依存グラフ全体を再解決する。このため、依存更新を意図しないReleaseでも多数の間接依存が更新される可能性がある。
+
+次の変更を提案する。実装前に、GitHub Actionsの検証用環境で「本体版だけが変わり、間接依存の版が変わらない」ことを確認する。
+
+1. `cargo generate-lockfile` を、既存のロック済み依存を維持したまま本体パッケージ版だけを反映する処理へ置き換える。
+2. Release時に `Cargo.lock` の依存パッケージ一覧を更新前後で比較し、本体パッケージ以外の追加・削除・版変更があれば失敗させる。
+3. セキュリティ対応などで依存更新が必要な場合は、この検査を通さずに済ませず、事前に独立した依存更新コミットと検証を完了させる。
+
+差分検査スクリプト `scripts/verify-cargo-lock-release.mjs` とその単体テスト、およびGitHub Actions上の **Release Lockfile Dry Run** は作成済みである。Do Releaseへの接続は次の実装作業で行う。
+
+この見直しが完了するまでは、Do Release後に `Cargo.lock` の差分を確認し、本体パッケージ版以外の変更があればReleaseを続行しない。
 
 ```mermaid
 flowchart TD
@@ -317,3 +354,4 @@ git push origin main --tags
 | 12 | 26-06-19 | 全章（表・図） | すべての表に表番号・表名（表 N-M）、すべての図に図番号・図名（図 N-M）を付与。表名は表の上、図名は図の下に配置。 |
 | 13 | 26-06-19 | 5. 開発からリリースまでの流れ | リリース手順に不適だった「データロスト禁止」注記を削除（実装原則であり、内容は `docs-v2/` の「データロスト防止ゲート」等に既出）。ゲート No.1 を「実装は最小単位で行う」に簡潔化。 |
 | 14 | 26-07-04 | 1. ブランチ運用の判断 | LP などの非アプリ変更も `develop` で確認してから `Do Non-App Release` で `main` へ反映する運用に変更。`Do Release` と非アプリ反映ルートを分離。 |
+| 15 | 26-07-26 | 5. 開発からリリースまでの流れ | Rust依存と `Cargo.lock` の管理を追加。通常修正ではロック更新を禁止し `cargo check --locked` を使用する。依存更新を独立作業に分け、Do Releaseの全依存再解決を見直す提案を明記。 |
