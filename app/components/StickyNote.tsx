@@ -69,6 +69,12 @@ import { returnRecipe } from '@/app/api/recipes';
 import { hideReturnedCrystalWindow } from '@/app/utils/crystalWindowLifecycle';
 import { extractHydratedNoteMeta } from '@/app/utils/hydratedNoteMeta';
 import { shouldEditPromotedPoolNote } from '@/app/utils/invisibleNotePool';
+import {
+    appendDroppedImageMarkdown,
+    insertDroppedImageMarkdown,
+    isSupportedDroppedImageFileName,
+    readFileAsDataUrl,
+} from '@/app/utils/droppedImage';
 import { invoke } from '@tauri-apps/api/core';
 import { getWindowGeometry } from '@/app/api/window';
 
@@ -180,6 +186,7 @@ const StickyNote = memo(function StickyNote() {
     const lazyFolderPathRef = useRef<string>('');
     // 文字入力と画像貼り付けが同時に lazy 作成を要求しても 1 回にまとめる
     const lazyCreatePromiseRef = useRef<Promise<string | null> | null>(null);
+    const ensureFilePathForDropRef = useRef<() => Promise<string | null>>(async () => null);
     const originalRecipeBodyRef = useRef<string | null>(null);
     const originalRecipePathRef = useRef<string | null>(null);
     const crystalFormatsRef = useRef<CrystalFormats>(DEFAULT_CRYSTAL_FORMATS);
@@ -326,6 +333,86 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => { startEditingForListenerRef.current = startEditing; }, [startEditing]);
     const endEditingForListenerRef = useRef(endEditing);
     useEffect(() => { endEditingForListenerRef.current = endEditing; }, [endEditing]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) return;
+
+        const hasFiles = (event: DragEvent) =>
+            Array.from(event.dataTransfer?.types ?? []).includes('Files');
+
+        const handleFileDragOver = (event: DragEvent) => {
+            if (!hasFiles(event)) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        };
+
+        const handleFileDrop = async (event: DragEvent) => {
+            const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
+            if (droppedFiles.length === 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const files = droppedFiles.filter((file) => isSupportedDroppedImageFileName(file.name));
+            if (files.length !== droppedFiles.length) {
+                setToastMessage('対応していないファイル形式が含まれています');
+                return;
+            }
+
+            const notePath = noteFilePathRef.current ?? await ensureFilePathForDropRef.current();
+            if (!notePath) {
+                setToastMessage('画像の保存先を準備できませんでした');
+                return;
+            }
+
+            const savedPaths: string[] = [];
+            try {
+                for (const file of files) {
+                    const data = await readFileAsDataUrl(file);
+                    const savedPath = await invoke<string>('fusen_save_dropped_image_data', {
+                        path: notePath,
+                        fileName: file.name,
+                        data,
+                    });
+                    savedPaths.push(savedPath);
+                }
+                const currentBody = isEditingForListenerRef.current
+                    ? editBodyRef.current
+                    : contentForListenerRef.current;
+                const dropOffset = isEditingForListenerRef.current
+                    ? editorRef.current?.getPositionAtCoords(event.clientX, event.clientY) ?? currentBody.length
+                    : currentBody.length;
+                const nextBody = isEditingForListenerRef.current
+                    ? insertDroppedImageMarkdown(currentBody, savedPaths, dropOffset)
+                    : appendDroppedImageMarkdown(currentBody, savedPaths);
+                await saveNoteContent(nextBody, rawFrontmatterForAlarmRef.current, false);
+                setContent(nextBody);
+                setEditBody(nextBody);
+                setIsNewState(false);
+            } catch (error) {
+                if (savedPaths.length > 0) {
+                    try {
+                        await invoke('fusen_remove_dropped_images', {
+                            path: notePath,
+                            relativePaths: savedPaths,
+                        });
+                    } catch (cleanupError) {
+                        console.error('[DROP] Failed to clean up dropped images:', cleanupError);
+                    }
+                }
+                console.error('[DROP] Failed to import dropped image:', error);
+                const message = error instanceof Error ? error.message : String(error);
+                setToastMessage(message.includes('50MB')
+                    ? '画像ファイルは1件50MBまでです'
+                    : '画像を追加できませんでした');
+            }
+        };
+
+        window.addEventListener('dragover', handleFileDragOver, true);
+        window.addEventListener('drop', handleFileDrop, true);
+        return () => {
+            window.removeEventListener('dragover', handleFileDragOver, true);
+            window.removeEventListener('drop', handleFileDrop, true);
+        };
+    }, [editBodyRef, noteFilePathRef, saveNoteContent, setContent, setEditBody]);
 
     // [New] ミニマイズ状態からリサイズ操作により自動展開された場合の処理
     const handleAutoExpand = useCallback(async () => {
@@ -988,6 +1075,7 @@ const StickyNote = memo(function StickyNote() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
+    ensureFilePathForDropRef.current = handleFirstChar;
 
     useEffect(() => {
         let unlisten: (() => void) | undefined;

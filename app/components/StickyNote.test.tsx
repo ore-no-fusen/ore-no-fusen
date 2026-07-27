@@ -7,7 +7,7 @@
  * - ユーザー操作のシミュレーション検証
  */
 
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach, assert } from 'vitest';
 import { emit as emitEvent } from '@tauri-apps/api/event';
@@ -99,6 +99,7 @@ vi.mock('./RichTextEditor', () => {
         insertList() { }
         insertCheckbox() { }
         insertText() { }
+        getPositionAtCoords() { return 4; }
 
         render() {
             const { value, onChange, onKeyDown } = this.props;
@@ -116,8 +117,16 @@ vi.mock('./RichTextEditor', () => {
 });
 
 describe('StickyNote Component', () => {
+    afterEach(() => {
+        cleanup();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
+        Object.defineProperty(window, '__TAURI_INTERNALS__', {
+            value: {},
+            configurable: true,
+        });
         mockStartupRestore = false;
         mockNoteTags = [];
         mockNoteFolded = false;
@@ -147,6 +156,103 @@ describe('StickyNote Component', () => {
         render(<StickyNote />);
 
         expect(await screen.findByRole('button', { name: 'アーカイブへしまう' })).not.toBeNull();
+    });
+
+    it('Explorerの画像ドロップを保存して表示モードでは本文末尾へ追加する', async () => {
+        mockInvoke.mockImplementation((cmd, args) => {
+            if (cmd === 'fusen_read_note') {
+                return Promise.resolve({
+                    meta: { path: 'd:/test/note.md', width: 200, height: 200, tags: [], folded: false },
+                    body: '---\ntags: []\n---\nTest Content',
+                });
+            }
+            if (cmd === 'fusen_save_dropped_image_data') {
+                return Promise.resolve('assets/dropped_test.png');
+            }
+            if (cmd === 'fusen_save_note') return Promise.resolve(args?.path);
+            if (cmd === 'fusen_get_all_tags') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+        render(<StickyNote />);
+        expect((await screen.findAllByText('Test Content')).length).toBeGreaterThan(0);
+        const file = new File(['png'], 'photo.png', { type: 'image/png' });
+
+        const dropEvent = new Event('drop', { bubbles: true, cancelable: true });
+        Object.defineProperties(dropEvent, {
+            dataTransfer: { value: { files: [file], types: ['Files'] } },
+            clientX: { value: 20 },
+            clientY: { value: 20 },
+        });
+        window.dispatchEvent(dropEvent);
+
+        await waitFor(() => {
+            expect(mockInvoke).toHaveBeenCalledWith(
+                'fusen_save_note',
+                expect.objectContaining({
+                    body: expect.stringContaining('Test Content\n![image](assets/dropped_test.png)\n'),
+                }),
+            );
+        });
+    });
+
+    it('非対応ファイルを含むドロップは全件拒否して理由を表示する', async () => {
+        render(<StickyNote />);
+        expect((await screen.findAllByText('Test Content')).length).toBeGreaterThan(0);
+        const image = new File(['png'], 'photo.png', { type: 'image/png' });
+        const text = new File(['text'], 'memo.txt', { type: 'text/plain' });
+
+        const dropEvent = new Event('drop', { bubbles: true, cancelable: true });
+        Object.defineProperty(dropEvent, 'dataTransfer', {
+            value: { files: [image, text], types: ['Files'] },
+        });
+        window.dispatchEvent(dropEvent);
+
+        expect((await screen.findAllByText('対応していないファイル形式が含まれています')).length).toBeGreaterThan(0);
+        expect(mockInvoke).not.toHaveBeenCalledWith(
+            'fusen_save_dropped_image_data',
+            expect.anything(),
+        );
+    });
+
+    it('複数画像の途中で失敗した場合は保存済み画像を後始末する', async () => {
+        let imageSaveCount = 0;
+        mockInvoke.mockImplementation((cmd, args) => {
+            if (cmd === 'fusen_read_note') {
+                return Promise.resolve({
+                    meta: { path: 'd:/test/note.md', width: 200, height: 200, tags: [], folded: false },
+                    body: '---\ntags: []\n---\nTest Content',
+                });
+            }
+            if (cmd === 'fusen_save_dropped_image_data') {
+                imageSaveCount += 1;
+                return imageSaveCount === 1
+                    ? Promise.resolve('assets/dropped_first.png')
+                    : Promise.reject(new Error('disk full'));
+            }
+            if (cmd === 'fusen_get_all_tags') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+        render(<StickyNote />);
+        expect((await screen.findAllByText('Test Content')).length).toBeGreaterThan(0);
+        const first = new File(['one'], 'one.png', { type: 'image/png' });
+        const second = new File(['two'], 'two.png', { type: 'image/png' });
+        const dropEvent = new Event('drop', { bubbles: true, cancelable: true });
+        Object.defineProperty(dropEvent, 'dataTransfer', {
+            value: { files: [first, second], types: ['Files'] },
+        });
+
+        window.dispatchEvent(dropEvent);
+
+        await waitFor(() => {
+            expect(mockInvoke).toHaveBeenCalledWith('fusen_remove_dropped_images', {
+                path: 'd:\\test\\note.md',
+                relativePaths: ['assets/dropped_first.png'],
+            });
+        });
+        expect(mockInvoke).not.toHaveBeenCalledWith(
+            'fusen_save_note',
+            expect.objectContaining({ body: expect.stringContaining('dropped_first.png') }),
+        );
     });
 
     it('タグが1個なら移動先のタグ名を表示する', async () => {

@@ -37,7 +37,7 @@ import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
 import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
 import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
-import { runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
+import { partitionStartupLabels, runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
 import { FreshRequestQueue } from './utils/freshRequestQueue';
 import { NOTE_COLORS } from './utils/noteAppearance';
 
@@ -441,6 +441,7 @@ function OrchestratorContent() {
             y,
             skipTaskbar: true,
             focus: !startupRestore,
+            dragDropEnabled: false,
           });
 
           await new Promise<void>((resolve) => {
@@ -1677,25 +1678,75 @@ function OrchestratorContent() {
                     4_000,
                   );
                 }
-                unlistenStartupReady();
+
                 if (readyLabels.size < startupLabels.size) {
-                  logStartupStep('6/6', `描画待ちを4秒で終了しました: ${readyLabels.size}/${notes.length}件準備完了`);
+                  const firstMissing = partitionStartupLabels(startupLabels, readyLabels).missing;
+                  logStartupStep('6/6', `描画待ちを4秒で終了しました: ${readyLabels.size}/${notes.length}件準備完了。未準備${firstMissing.length}件を1回再試行します`);
+                  const noteByLabel = new Map(notes.map((note) => [getWindowLabel(note.path), note]));
+                  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+
+                  await runWithConcurrency(firstMissing, 1, async (label) => {
+                    const existing = await WebviewWindow.getByLabel(label);
+                    if (existing) await existing.destroy().catch(() => {});
+                    const note = noteByLabel.get(label);
+                    if (!note) return;
+                    await openNoteWindow(note.path, {
+                      x: note.x,
+                      y: note.y,
+                      width: note.width,
+                      height: note.height,
+                      opacity: note.opacity,
+                      startup_restore: true,
+                    });
+                  });
+
+                  await waitForStartupReady(
+                    startupLabels,
+                    readyLabels,
+                    (resolve) => {
+                      resolveAllReady = resolve;
+                      return () => { resolveAllReady = undefined; };
+                    },
+                    4_000,
+                  );
+                }
+                unlistenStartupReady();
+
+                const startupResult = partitionStartupLabels(startupLabels, readyLabels);
+                if (startupResult.missing.length > 0) {
+                  logStartupStep('6/6', `再試行後も未準備の付箋があります: 準備完了${startupResult.ready.length}/${notes.length}件。未準備窓は表示しません`);
                 } else {
                   logStartupStep('6/6', `付箋の本文描画が完了しました: ${notes.length}/${notes.length}`);
                 }
 
-                setLoadingStatus(startupIsEnglish ? 'Showing notes...' : '付箋を表示しています...');
+                setLoadingStatus(startupResult.ready.length > 0
+                  ? (startupIsEnglish ? 'Showing notes...' : '付箋を表示しています...')
+                  : (startupIsEnglish ? 'Could not restore notes. Please restart the app.' : '付箋を復元できませんでした。アプリを再起動してください。'));
                 logStartupStep('6/6', '準備済みの付箋をまとめて表示します');
                 try {
                   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                   const noteWindows = await Promise.all(
-                    [...startupLabels].map((label) => WebviewWindow.getByLabel(label)),
+                    startupResult.ready.map((label) => WebviewWindow.getByLabel(label)),
                   );
                   await Promise.all(noteWindows.filter((win): win is WebviewWindow => win !== null).map((win) => win.show()));
+                  const missingWindows = await Promise.all(
+                    startupResult.missing.map((label) => WebviewWindow.getByLabel(label)),
+                  );
+                  await Promise.all(
+                    missingWindows
+                      .filter((win): win is WebviewWindow => win !== null)
+                      .map((win) => win.destroy().catch(() => {})),
+                  );
+                  if (startupResult.ready.length === 0) {
+                    logStartupStep('6/6', '準備完了0件のため空の付箋は表示せず、起動中画面に再起動案内を表示します');
+                    return;
+                  }
                   const mainWindow = await WebviewWindow.getByLabel('main');
                   if (mainWindow) await mainWindow.minimize();
                   setIsCheckingSetup(false);
-                  logStartupStep('6/6', '起動完了: すべての付箋を表示しました');
+                  logStartupStep('6/6', startupResult.missing.length === 0
+                    ? '起動完了: すべての付箋を表示しました'
+                    : `起動完了: 準備済み${startupResult.ready.length}件だけを表示しました`);
                   startPoolReplenishInBackground();
                 } catch (e) {
                   log(`[起動処理] 一括表示エラー: ${e}`);

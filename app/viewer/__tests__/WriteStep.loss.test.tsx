@@ -237,4 +237,18 @@ describe('WriteStep loss prevention', () => {
     expect(getByText('家のPC')).toBeTruthy();
     expect(getByText(/更新 5\/31 10:00/)).toBeTruthy();
   });
+
+  it('本文画像をタップすると全画面プレビューを開き、背景タップで閉じる', () => {
+    const { editor, getByRole, queryByRole } = renderWriteStep();
+    const image = document.createElement('img');
+    image.src = 'blob:preview-image';
+    editor.replaceChildren(image);
+
+    fireEvent.click(image);
+
+    const dialog = getByRole('dialog', { name: '画像プレビュー' });
+    expect(dialog.querySelector('img')?.getAttribute('src')).toBe('blob:preview-image');
+    fireEvent.click(dialog);
+    expect(queryByRole('dialog', { name: '画像プレビュー' })).toBeNull();
+  });
 });

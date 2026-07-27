@@ -3033,6 +3033,7 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
     .title("Ore No Fusen")
     .transparent(false)
     .decorations(false)
+    .disable_drag_drop_handler()
     .visible(false) // 後から SW_SHOWNOACTIVATE で立てる
     .focused(false)
     .skip_taskbar(true)
@@ -3834,6 +3835,24 @@ async fn upload_local_images_to_drive(
     result
 }
 
+fn split_iphone_title_body(body: &str) -> (String, String) {
+    let first_line = body.lines().next().unwrap_or("");
+    let image_line = regex::Regex::new(r"^\s*!\[[^\]]*\]\([^)]+\)\s*$")
+        .map(|re| re.is_match(first_line))
+        .unwrap_or(false);
+    if image_line {
+        return (String::new(), body.trim_start_matches('\n').to_string());
+    }
+    if first_line.starts_with('#') {
+        let title = first_line.trim_start_matches('#').trim().to_string();
+        let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
+        return (title, rest.trim_start_matches('\n').to_string());
+    }
+    let title = first_line.trim().to_string();
+    let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
+    (title, rest.trim_start_matches('\n').to_string())
+}
+
 /// body 中のローカル画像パスを [画像] に置換する（Web Push 4KB制限対応）
 fn strip_local_images(body: &str) -> String {
     let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
@@ -3940,18 +3959,8 @@ async fn fusen_send_to_iphone(
     let sent_at = chrono::Utc::now().to_rfc3339();
     let note_id = uuid::Uuid::new_v4().to_string();
 
-    // body先頭行が#見出しならタイトルとして抽出し、body_contentから除去
-    let first_line = body.lines().next().unwrap_or("");
-    let (title, body_content) = if first_line.starts_with('#') {
-        let t = first_line.trim_start_matches('#').trim().to_string();
-        let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
-        (t, rest.trim_start_matches('\n').to_string())
-    } else {
-        // #なし: 1行目をタイトル、残りをbodyとして使用
-        let t = first_line.trim().to_string();
-        let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
-        (t, rest.trim_start_matches('\n').to_string())
-    };
+    // 先頭画像はタイトルにせず本文へ残し、Driveアップロード対象にする。
+    let (title, body_content) = split_iphone_title_body(&body);
 
     // Push通知用: ローカル画像パスを [画像] に置換（Web Push 4KB制限対応）
     let body_push = strip_local_images(&body_content);
@@ -4866,6 +4875,8 @@ pub fn run() {
             sound::fusen_play_sound, // [NEW] サウンド再生
             fusen_search_notes, // [NEW] 全文検索
             clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
+            clipboard::fusen_save_dropped_image_data,
+            clipboard::fusen_remove_dropped_images,
             clipboard::fusen_save_annotated_image,
             fusen_is_sticky_note_focused,
             fusen_arrange_by_tag,
@@ -5201,6 +5212,27 @@ mod image_embed_tests {
         // data: URI はローカルパスではないので変換しない
         let body = "![img](data:image/png;base64,abc123)";
         assert_eq!(strip_local_images(body), body);
+    }
+
+    #[test]
+    fn iphone_send_keeps_leading_image_in_body() {
+        let body = "![image|0.5](assets/pasted.png)\nメモ";
+        let (title, content) = split_iphone_title_body(body);
+
+        assert_eq!(title, "");
+        assert_eq!(content, body);
+    }
+
+    #[test]
+    fn iphone_send_keeps_existing_title_rules() {
+        assert_eq!(
+            split_iphone_title_body("# 見出し\n本文"),
+            ("見出し".to_string(), "本文".to_string())
+        );
+        assert_eq!(
+            split_iphone_title_body("タイトル\n本文"),
+            ("タイトル".to_string(), "本文".to_string())
+        );
     }
 }
 

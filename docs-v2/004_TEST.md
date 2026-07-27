@@ -140,6 +140,7 @@ E2E テストは Playwright で実際の Tauri アプリを起動して操作す
 | 1 | `e2e/sticky-note.spec.ts` | 付箋の作成・編集・保存・削除・アーカイブ | 新規付箋作成 → テキスト入力 → 自動保存確認 → ファイルシステムへの書き込み検証 → 削除・アーカイブ動作確認 |
 | 2 | `e2e/data-safety.spec.ts` | データ安全性（破損・欠損なし）の確認 | アプリ再起動後のデータ復元 → frontmatter の整合性確認 → アトミック書き込みによる破損防止確認 |
 | 3 | `e2e/lock-notification.spec.ts` | ロック画面に表示（通知常駐）機能の動作確認 | Push 受信後の IndexedDB 保存確認 → locked フラグの ON/OFF → pending_open メカニズムの動作確認 |
+| 4 | `e2e/pc-to-iphone-image.spec.ts` | PC送信キューの先頭画像をPWAで受信・表示 | `notes_to_iphone.json` と `fusen_img_*` の取得 → IndexedDB保存 → 一覧サムネイル → 本文の画像表示 |
 
 ---
 
