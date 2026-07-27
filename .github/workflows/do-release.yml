@@ -1,4 +1,10 @@
-name: Prepare Store Release
+Exit code: 0
+Wall time: 0.7 seconds
+Output:
+Exit code: 0
+Wall time: 0.4 seconds
+Output:
+name: Prepare and Build Store Package
 
 on:
   workflow_dispatch:
@@ -7,45 +13,42 @@ on:
         description: 'New Store version (for example 5.1.0)'
         required: true
         type: string
-      message:
-        description: 'Commit message (optional)'
-        required: false
-        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: prepare-and-build-store-release
+  cancel-in-progress: false
+
 jobs:
-  prepare-store-release:
-    runs-on: ubuntu-latest
+  verify-release:
+    name: Verify release before changes
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     env:
       RAW_VERSION: ${{ inputs.version }}
+      GDRIVE_CLIENT_ID: ci-dummy
+      GDRIVE_CLIENT_SECRET: ci-dummy
     steps:
-      - name: Generate GitHub App Token
-        id: generate-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.WINGET_APP_ID }}
-          private-key: ${{ secrets.WINGET_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - name: Checkout
+      - name: Checkout develop
         uses: actions/checkout@v4
         with:
-          token: ${{ steps.generate-token.outputs.token }}
-          fetch-depth: 0
+          ref: develop
+          fetch-depth: 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Set up Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Normalize and validate version
+        id: version
+        shell: bash
         run: |
           RAW="${RAW_VERSION}"
           RAW="$(echo "$RAW" \
@@ -70,15 +73,65 @@ jobs:
             exit 1
           fi
 
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Preparing Store release v$VERSION."
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Verifying develop as v$VERSION before making changes."
+
+      - name: Verify locked dependencies without changes
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cp src-tauri/Cargo.lock "$RUNNER_TEMP/Cargo.lock.before"
+          sed -i "0,/^version = /s/^version = \"[^\"]*\"/version = \"$RELEASE_VERSION\"/" src-tauri/Cargo.toml
+          node -e '
+            const fs = require("fs");
+            const path = "src-tauri/Cargo.lock";
+            const lock = fs.readFileSync(path, "utf8");
+            const pattern = /(\[\[package\]\]\r?\nname = "ore-no-fusen"\r?\nversion = ")[^"]+/;
+            if (!pattern.test(lock)) throw new Error("ore-no-fusen package was not found in Cargo.lock.");
+            fs.writeFileSync(path, lock.replace(pattern, `$1${process.env.RELEASE_VERSION}`));
+          '
+          node scripts/verify-cargo-lock-release.mjs "$RUNNER_TEMP/Cargo.lock.before" src-tauri/Cargo.lock
+          cargo check --locked --manifest-path src-tauri/Cargo.toml
+
+  prepare-store-release:
+    name: Commit verified Store version
+    needs: verify-release
+    runs-on: ubuntu-latest
+    outputs:
+      main_ref: ${{ steps.main-ref.outputs.main_ref }}
+    env:
+      VERSION: ${{ needs.verify-release.outputs.version }}
+    steps:
+      - name: Generate GitHub App Token
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.WINGET_APP_ID }}
+          private-key: ${{ secrets.WINGET_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Merge develop into main
-        run: |
-          git checkout main
-          git merge origin/develop --no-ff -m "Merge develop into main for Store v${VERSION}"
+        run: git merge origin/develop --no-ff -m "Merge develop into main for Store v${VERSION}"
 
-      - name: Update committed release versions without dependency resolution
+      - name: Update versions without dependency resolution
         run: |
           cp src-tauri/Cargo.lock "$RUNNER_TEMP/Cargo.lock.before"
           npm version "$VERSION" --no-git-tag-version --ignore-scripts
@@ -108,10 +161,13 @@ jobs:
 
       - name: Commit and push main
         run: |
-          MESSAGE="${{ inputs.message }}"
           git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock packaging/msix/AppxManifest.xml
-          git commit -m "${MESSAGE:-chore: prepare Store version v${VERSION}}"
+          git commit -m "chore: prepare Store version v${VERSION}"
           git push origin main
+
+      - name: Record committed source
+        id: main-ref
+        run: echo "main_ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Merge main back into develop
         run: |
@@ -119,7 +175,96 @@ jobs:
           git merge main
           git push origin develop
 
-      - name: Confirm Store-only scope
+  build-store-package:
+    name: Build verified Store package
+    needs: [verify-release, prepare-store-release]
+    runs-on: windows-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+      STORE_VERSION: ${{ needs.verify-release.outputs.version }}
+      SOURCE_REF: ${{ needs.prepare-store-release.outputs.main_ref }}
+    steps:
+      - name: Checkout committed Store release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-store-release.outputs.main_ref }}
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-store-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-store-cargo-
+
+      - name: Verify committed version
+        shell: pwsh
         run: |
-          echo "Prepared Store release v$VERSION."
-          echo "No tag, GitHub Release, winget update, MSIX upload, or Microsoft Store submission was performed."
+          $packageVersion = (Get-Content package.json -Raw -Encoding utf8 | ConvertFrom-Json).version
+          $cargoVersion = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          [xml]$manifest = Get-Content packaging/msix/AppxManifest.xml -Raw -Encoding utf8
+          $manifestVersion = $manifest.Package.Identity.Version
+          $cargoLock = Get-Content src-tauri/Cargo.lock -Raw -Encoding utf8
+          $cargoPattern = '(?s)\[\[package\]\]\r?\nname = "ore-no-fusen"\r?\nversion = "([^"]+)"'
+          if ($cargoLock -notmatch $cargoPattern) { throw "ore-no-fusen package was not found in Cargo.lock." }
+          $cargoLockVersion = $Matches[1]
+
+          if ($packageVersion -ne $env:STORE_VERSION -or $cargoVersion -ne $env:STORE_VERSION -or $cargoLockVersion -ne $env:STORE_VERSION) {
+            throw "Committed application versions must all equal $env:STORE_VERSION."
+          }
+          if ($manifestVersion -ne "$env:STORE_VERSION.0") {
+            throw "MSIX manifest version must be $env:STORE_VERSION.0, got $manifestVersion."
+          }
+
+      - run: npm ci
+
+      - name: Build executable only (no NSIS or MSI)
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+        run: npm run tauri build -- --no-bundle --ci
+
+      - name: Prepare resources normally created by the bundler
+        shell: pwsh
+        run: |
+          $resourcesPath = 'src-tauri/target/release/resources'
+          New-Item -ItemType Directory -Path $resourcesPath -Force | Out-Null
+          Copy-Item -LiteralPath 'src-tauri/icons/icon.ico' -Destination "$resourcesPath/icon.ico" -Force
+
+      - name: Build unsigned Store MSIX
+        run: powershell -ExecutionPolicy Bypass -File packaging\msix\build-msix.ps1
+
+      - name: Validate Store MSIX
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File packaging\msix\validate-msix.ps1 `
+            -PackagePath packaging\msix\out\ore-no-fusen.msix `
+            -ExpectedVersion "$env:STORE_VERSION.0"
+
+      - name: Upload private Store submission artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-msix
+          path: packaging/msix/out/ore-no-fusen.msix
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Confirm manual Store submission scope
+        shell: pwsh
+        run: |
+          Write-Host "Store package v$env:STORE_VERSION was created from $env:SOURCE_REF."
+          Write-Host "Download this artifact and submit it manually in Microsoft Partner Center."
+          Write-Host "No tag, GitHub Release, NSIS/MSI bundle, updater metadata, or Microsoft Store submission was created."

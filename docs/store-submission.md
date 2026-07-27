@@ -1,3 +1,9 @@
+Exit code: 0
+Wall time: 0.4 seconds
+Output:
+Exit code: 0
+Wall time: 0.4 seconds
+Output:
 # Microsoft Store 手動提出手順
 
 ## 方針
@@ -8,14 +14,14 @@
 
 ## 提出前提
 
-1. `Release Lockfile Dry Run`を、対象`develop`と次期版で成功させる。
-2. `Prepare Store Release`を実行し、`main`と`develop`の5つの版ファイルが同じ版になっている。
-3. `Build Store Package`を、`source_ref=main`・確定版で実行している。
+1. GitHub Actionsの`Prepare and Build Store Package`に次期版を一度だけ入力して実行する。
+2. 最初のロックファイル検証と`cargo check --locked`が成功している。
+3. `main`と`develop`の5つの版ファイルが同じ版になっている。
 4. runのArtifactsに`store-msix`が1件あり、MSIX検査が成功している。
 
 ## Partner Centerへの手動提出
 
-1. GitHub Actionsの`Build Store Package` runから`store-msix` artifactをダウンロードする。
+1. GitHub Actionsの`Prepare and Build Store Package` runから`store-msix` artifactをダウンロードする。
 2. Partner Centerで製品`9N4MW0V2MVVG`の新しい申請を作成する。
 3. artifact内の`ore-no-fusen.msix`をアップロードする。
 4. Package IdentityとVersionを確認する。
