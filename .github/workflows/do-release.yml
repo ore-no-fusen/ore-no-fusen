@@ -1,10 +1,10 @@
-name: Do Release
+name: Prepare Store Release
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'New version (e.g. 3.5.0 or 3.5 — missing parts auto-fill to .0)'
+        description: 'New Store version (for example 5.1.0)'
         required: true
         type: string
       message:
@@ -12,11 +12,14 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: write
+
 jobs:
-  do-release:
+  prepare-store-release:
     runs-on: ubuntu-latest
     env:
-      RAW_VERSION: ${{ github.event.inputs.version }}
+      RAW_VERSION: ${{ inputs.version }}
     steps:
       - name: Generate GitHub App Token
         id: generate-token
@@ -32,135 +35,91 @@ jobs:
           token: ${{ steps.generate-token.outputs.token }}
           fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Setup Git
+      - name: Set up Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Normalize and validate version
-        id: ver
         run: |
           RAW="${RAW_VERSION}"
-
-          # よくある誤入力を補正する（小さな文字での打ち間違い対策）。
-          # 全角数字 → 半角、全角空白 → 半角空白、全角ピリオド/カンマ各種 → 半角ピリオド。
-          # 全角数字は sed y がマルチバイトで失敗するため s で1文字ずつ変換する。
           RAW="$(echo "$RAW" \
             | sed -e 's/０/0/g' -e 's/１/1/g' -e 's/２/2/g' -e 's/３/3/g' -e 's/４/4/g' \
                   -e 's/５/5/g' -e 's/６/6/g' -e 's/７/7/g' -e 's/８/8/g' -e 's/９/9/g' \
             | sed -e 's/　/ /g' -e 's/[，、．。]/./g' -e 's/,/./g')"
-
-          # 余分な空白と先頭の v / V を除去
           RAW="$(echo "$RAW" | tr -d '[:space:]')"
           RAW="${RAW#v}"
           RAW="${RAW#V}"
-
-          # 連続ピリオドを1つに、前後のピリオドを除去（例 "3..6." → "3.6"）
           RAW="$(echo "$RAW" | sed -e 's/\.\+/./g' -e 's/^\.//' -e 's/\.$//')"
 
-          # 数字とドットだけ許可（前段で v は剥がしてある）
           if ! [[ "$RAW" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
-            echo "❌ Version must be digits and dots only (e.g. 3.5.0, 3.5, 3). Got: '${RAW_VERSION}'"
+            echo "Version must be digits and dots only. Got: '${RAW_VERSION}'"
             exit 1
           fi
 
-          # 不足部分を .0 で補完して MAJOR.MINOR.PATCH に揃える
           IFS='.' read -r MA MI PA <<< "$RAW"
-          MI="${MI:-0}"
-          PA="${PA:-0}"
-          VERSION="${MA}.${MI}.${PA}"
-
-          # 現バージョンより小さい/同じなら止める
-          CURRENT="$(node -e "console.log(require('./package.json').version)")"
-          if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "❌ Current package.json version is not in MAJOR.MINOR.PATCH form: '$CURRENT'"
+          VERSION="${MA}.${MI:-0}.${PA:-0}"
+          CURRENT="$(node -p "require('./package.json').version")"
+          if [[ "$(printf '%s\n%s\n' "$VERSION" "$CURRENT" | sort -V | head -1)" == "$VERSION" ]]; then
+            echo "New version ($VERSION) must be greater than current version ($CURRENT)."
             exit 1
           fi
 
-          IFS='.' read -r CMA CMI CPA <<< "$CURRENT"
-          # sort -V で順序を判定（CURRENT が VERSION 以上なら NG）
-          smaller_or_equal=$(printf '%s\n%s\n' "$VERSION" "$CURRENT" | sort -V | head -1)
-          if [ "$VERSION" = "$CURRENT" ]; then
-            echo "❌ Version unchanged. Current is already $CURRENT."
-            exit 1
-          fi
-          if [ "$smaller_or_equal" = "$VERSION" ]; then
-            echo "❌ New version ($VERSION) must be greater than current ($CURRENT)."
-            exit 1
-          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Preparing Store release v$VERSION."
 
-          echo "Input:      ${RAW_VERSION}"
-          echo "Normalized: ${VERSION}"
-          echo "Current:    ${CURRENT}"
-          echo "✅ Will release v${VERSION}"
-          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Merge develop → main
+      - name: Merge develop into main
         run: |
           git checkout main
-          git merge origin/develop --no-ff -m "Merge develop into main for v${VERSION}"
+          git merge origin/develop --no-ff -m "Merge develop into main for Store v${VERSION}"
 
-      - name: Update versions
+      - name: Update committed release versions without dependency resolution
         run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-            pkg.version = '$VERSION';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
+          cp src-tauri/Cargo.lock "$RUNNER_TEMP/Cargo.lock.before"
+          npm version "$VERSION" --no-git-tag-version --ignore-scripts
           sed -i "0,/^version = /s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-          # MSIX(AppxManifest)のバージョンも揃える。4桁形式でリビジョンは Store 予約のため 0 固定。
-          # 行頭インデント+Version= の Identity 行だけに一致（MinVersion/MaxVersionTested/<?xml version は対象外）。
+          node -e '
+            const fs = require("fs");
+            const path = "src-tauri/Cargo.lock";
+            const lock = fs.readFileSync(path, "utf8");
+            const pattern = /(\[\[package\]\]\r?\nname = "ore-no-fusen"\r?\nversion = ")[^"]+/;
+            if (!pattern.test(lock)) throw new Error("ore-no-fusen package was not found in Cargo.lock.");
+            fs.writeFileSync(path, lock.replace(pattern, `$1${process.env.VERSION}`));
+          '
           sed -i -E "s/^([[:space:]]+)Version=\"[^\"]*\"/\1Version=\"${VERSION}.0\"/" packaging/msix/AppxManifest.xml
-          npm install --package-lock-only --ignore-scripts
-          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+          node scripts/verify-cargo-lock-release.mjs "$RUNNER_TEMP/Cargo.lock.before" src-tauri/Cargo.lock
 
-      - name: Verify versions
+      - name: Verify committed versions
         run: |
-          PKG=$(node -e "console.log(require('./package.json').version)")
-          CARGO=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          LOCK=$(node -e "
-            const fs = require('fs');
-            const lock = fs.readFileSync('src-tauri/Cargo.lock', 'utf8');
-            const match = lock.match(/\[\[package\]\]\s+name = \"ore-no-fusen\"\s+version = \"([^\"]+)\"/);
-            console.log(match ? match[1] : '');
-          ")
-          MSIX=$(grep -E '^[[:space:]]+Version="' packaging/msix/AppxManifest.xml | head -1 | sed -E 's/.*Version="([^"]+)".*/\1/')
-          echo "package.json: $PKG"
-          echo "Cargo.toml: $CARGO"
-          echo "Cargo.lock: $LOCK"
-          echo "AppxManifest(MSIX): $MSIX"
-          if [ "$PKG" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ] || [ "$LOCK" != "$VERSION" ]; then
-            echo "❌ Version mismatch!"
+          PKG="$(node -p "require('./package.json').version")"
+          PKG_LOCK="$(node -p "require('./package-lock.json').version")"
+          CARGO="$(grep '^version = ' src-tauri/Cargo.toml | head -1 | sed 's/version = "//;s/"//')"
+          LOCK="$(node -e "const fs = require('fs'); const lock = fs.readFileSync('src-tauri/Cargo.lock', 'utf8'); const match = lock.match(/\[\[package\]\]\s+name = \"ore-no-fusen\"\s+version = \"([^\"]+)\"/); console.log(match ? match[1] : '');")"
+          MSIX="$(grep -E '^[[:space:]]+Version="' packaging/msix/AppxManifest.xml | head -1 | sed -E 's/.*Version="([^"]+)".*/\1/')"
+          if [[ "$PKG" != "$VERSION" || "$PKG_LOCK" != "$VERSION" || "$CARGO" != "$VERSION" || "$LOCK" != "$VERSION" || "$MSIX" != "${VERSION}.0" ]]; then
+            echo "Version mismatch: package=$PKG package-lock=$PKG_LOCK cargo=$CARGO lock=$LOCK msix=$MSIX"
             exit 1
           fi
-          if [ "$MSIX" != "${VERSION}.0" ]; then
-            echo "❌ AppxManifest version mismatch! Expected ${VERSION}.0, got $MSIX"
-            exit 1
-          fi
-          echo "✅ All versions match: $VERSION (MSIX ${VERSION}.0)"
 
       - name: Commit and push main
         run: |
-          MSG="${{ github.event.inputs.message }}"
-          COMMIT_MSG="${MSG:-chore: バージョンを v${VERSION} に更新}"
-          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock package-lock.json packaging/msix/AppxManifest.xml
-          git commit -m "$COMMIT_MSG"
+          MESSAGE="${{ inputs.message }}"
+          git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock packaging/msix/AppxManifest.xml
+          git commit -m "${MESSAGE:-chore: prepare Store version v${VERSION}}"
           git push origin main
 
-      - name: Create and push tag
-        run: |
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
-
-      - name: Merge main → develop
+      - name: Merge main back into develop
         run: |
           git checkout develop
           git merge main
           git push origin develop
+
+      - name: Confirm Store-only scope
+        run: |
+          echo "Prepared Store release v$VERSION."
+          echo "No tag, GitHub Release, winget update, MSIX upload, or Microsoft Store submission was performed."

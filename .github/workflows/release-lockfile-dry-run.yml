@@ -18,10 +18,12 @@ permissions:
 
 jobs:
   verify-release-lockfile:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     env:
       SOURCE_REF: ${{ inputs.source_ref }}
       RELEASE_VERSION: ${{ inputs.version }}
+      GDRIVE_CLIENT_ID: ci-dummy
+      GDRIVE_CLIENT_SECRET: ci-dummy
     steps:
       - name: Checkout requested code
         uses: actions/checkout@v4
