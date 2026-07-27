@@ -45,10 +45,10 @@ flowchart TD
 
 #### 補足（運用上の注意・v4.0.0 で確定）
 
-- **CI / ビルド設定（`test.yml`・`do-release.yml`・`store-package.yml` 等）は「アプリに影響する側」** として扱う＝ `develop` で変更する（`main` 直接にしない）。
+- **CI / ビルド設定（`test.yml`・`do-release.yml` 等）は「アプリに影響する側」** として扱う＝ `develop` で変更する（`main` 直接にしない）。
 - **普段の作業ブランチは `develop`。`main` に居座らない**（誤って `main` でアプリコードを触る事故を防ぐ）。
 - **`main` と `develop` をズレたまま放置しない。** `main` だけで変更を作らない。Do Release の「`main` → `develop` 戻し」は、リリース処理中に `main` 側で作られるバージョン更新などを `develop` に戻すためのもの。ズレを放置すると Do Release のマージで衝突する（v4.0.0 で `.gitignore` の衝突が実際に発生した）。
-- **LP の本番反映は `Do Non-App Release` を使う。** `Prepare Store Release` はアプリ版の確定用であり、LPだけの更新では使わない。
+- **LP の本番反映は `Do Non-App Release` を使う。** `Prepare and Build Store Package` はアプリ版の確定・MSIX作成用であり、LPだけの更新では使わない。
 - **版確定後は `main` を `develop` へ戻す。** Store版確定で生じた版番号のずれを残さない。
 
 ### 非アプリ変更（LP）の本番反映
@@ -88,7 +88,7 @@ LP だけを本番更新する場合は、アプリリリース用の `Do Releas
 | `src-tauri/Cargo.toml` / `src-tauri/Cargo.lock` | Rust側のアプリ版と固定依存 |
 | `packaging/msix/AppxManifest.xml` | Storeが要求する4桁のMSIX版（`X.Y.Z.0`） |
 
-`Prepare Store Release` がこの5ファイルの版を同時に更新してコミットする。`Cargo.lock` は本体 `ore-no-fusen` の版だけを更新し、間接依存は変更しない。`src-tauri/tauri.conf.json` とランディングページの表示版は、ビルド時にこれらの版へ追従する。
+`Prepare and Build Store Package` がこの5ファイルの版を同時に更新してコミットし、そのコミットからMSIXを作成する。`Cargo.lock` は本体 `ore-no-fusen` の版だけを更新し、間接依存は変更しない。`src-tauri/tauri.conf.json` とランディングページの表示版は、ビルド時にこれらの版へ追従する。
 
 ---
 
@@ -162,26 +162,16 @@ Rust の依存宣言は `src-tauri/Cargo.toml`、実際にビルドする依存�
 
 通常の修正中に `Cargo.lock` が変わった場合は、そのままコミットしない。依存更新を意図したか、依存解決を再実行するコマンドを使ったかを確認してから、通常修正から分離する。`Cargo.lock` を削除して再生成すること、通常修正で `cargo update` または `cargo generate-lockfile` を実行することは禁止する。
 
-#### Release Lockfile Dry Run（公開なしの事前検証）
-
-GitHub Actionsの **Release Lockfile Dry Run** は、通常のリリース前にロックファイルだけを検証する手動ワークフローである。入力するのは、確認対象のコード（通常は `develop`）と、確認したい次の版番号である。
-
-1. 指定したコードをGitHub Actionsの使い捨て環境へ取得する。
-2. その環境内だけで `Cargo.toml` と `Cargo.lock` の本体パッケージ版を指定版へそろえる。
-3. `scripts/verify-cargo-lock-release.mjs` で、本体 `ore-no-fusen` の版以外に差分がないことを確認する。
-4. `cargo check --locked` で、固定された依存グラフのままビルド可能か確認する。
-
-このワークフローは読み取り専用権限で動作する。commit、push、タグ、GitHub Release、winget更新、MSIXのアップロード、Microsoft Storeへの提出・公開は行わない。
-
 #### Store手動提出の実リリース
 
-通常のリリースは、次の3つの独立した操作に分ける。GitHub Release、winget、タグ、Microsoft Partner Centerへの自動提出は行わない。
+通常のリリースは、GitHub Actionsの **Prepare and Build Store Package** を一度だけ実行する。入力は次の版番号だけである。GitHub Release、winget、タグ、Microsoft Partner Centerへの自動提出は行わない。
 
-1. **Release Lockfile Dry Run** を `main` から実行し、対象を `develop`、版を次期版にして、ロック差分と `cargo check --locked` を確認する。
-2. **Prepare Store Release** を実行する。`develop` を `main` へ反映し、5つの版を更新する。`scripts/verify-cargo-lock-release.mjs` が本体版以外のCargo.lock差分を拒否した場合は、commitしない。完了後、`main` を `develop` へ戻す。
-3. **Build Store Package** を `main` と確定済みの同じ版で実行する。未署名MSIX artifactをダウンロードし、Microsoft Partner Centerへ手動アップロードして審査・公開する。
+1. `develop` を使い捨てのWindows環境で検証する。指定版を一時適用し、`scripts/verify-cargo-lock-release.mjs` と `cargo check --locked` を実行する。
+2. 検証が成功した場合だけ、`develop` を `main` へ反映し、5つの版を更新してコミットする。続けて`main`を`develop`へ戻す。
+3. そのコミットのソースから、未署名MSIXを生成・検査し、`store-msix` artifactとして保存する。
+4. artifactをダウンロードし、Microsoft Partner Centerへ手動アップロードして審査・公開する。
 
-`Build Store Package` はリポジトリへ版を仮適用しない。入力版と `main` にコミット済みの `package.json`、`Cargo.toml`、`Cargo.lock`、MSIX版が一致しない場合は失敗する。
+最初の検証が失敗した場合、版番号のコミット、MSIX作成、タグ、公開、Store提出は行わない。MSIX作成が失敗した場合は版番号コミットだけが残るため、原因を直して同じ版のワークフローを再実行する。Store提出は常に人が判断して行う。
 
 ```mermaid
 flowchart TD
@@ -231,27 +221,25 @@ flowchart TD
     C2 -->|なし| B["⑧ ローカルビルドで動作確認<br/>npm run tauri build"]
     B --> C{問題あり?}
     C -->|あり| RF2["→ ①に戻る"]
-    C -->|なし| DRY["⑨ Release Lockfile Dry Run<br/>develop と次期版を入力"]
-    DRY --> REL["⑩ Prepare Store Release<br/>次期版を入力"]
+    C -->|なし| REL["⑨ Prepare and Build Store Package<br/>次期版を一度だけ入力"]
 
     subgraph do_release [GitHub Actions: do-release.yml]
-        R1["➍ develop → main マージ"]
-        R2["➎ 5ファイルの版を更新<br/>Cargo.lockは本体版だけ"]
-        R3["➏ Cargo.lock差分を検査"]
-        R4["➐ git commit & push"]
-        R6["➑ main → develop 戻し"]
-        R1 --> R2 --> R3 --> R4 --> R6
+        R0["➍ developでCargo.lock差分と<br/>cargo check --lockedを検証"]
+        R1["➎ develop → main マージ"]
+        R2["➏ 5ファイルの版を更新<br/>Cargo.lockは本体版だけ"]
+        R3["➐ git commit & push"]
+        R4["➑ main → develop 戻し"]
+        R0 --> R1 --> R2 --> R3 --> R4
     end
     REL --- do_release
 
-    subgraph store [GitHub Actions: store-package.yml]
-        J1["➒ main と確定版を検証"]
+    subgraph store [GitHub Actions: do-release.yml]
+        J1["➒ 確定したmainコミットを取得"]
         J3["➓ WindowsでMSIXを生成・検証"]
         J4["⓫ store-msix artifactを保存"]
         J1 --> J3 --> J4
     end
-    R6 --> STOREBUILD["⑪ Build Store Package<br/>main と確定版を入力"]
-    STOREBUILD --- store
+    R4 --> store
 
     J4 --> STORE["⑫ artifactをダウンロードし<br/>Partner Centerへ手動アップロード"]
     STORE --> MS["⑬ Storeの認定・公開後に<br/>Store自動更新を確認"]
@@ -287,10 +275,10 @@ npm run tauri build
 - **5.0.0は移行開始版**として、公開済みGitHub Releaseの `latest.json`・NSIS・MSIを残す。5.0.0未満の旧版はこの版へ自動更新し、利用者は案内に従ってStore版を手動インストールする。
 - **5.1.0以降はStore版だけ**を正式配布する。MSI・NSIS、`latest.json`、`.sig`、GitHub Release、community winget PRは新規生成しない。
 - Store提出用MSIXは未署名で生成し、`validate-msix.ps1`でIdentity、Publisher、Version、x64、未署名状態を確認する。
-- 未署名MSIXはGitHub Release Assetsへ置かず、`Build Store Package`の`store-msix` artifactとして30日保存する。
-- `Build Store Package`後は、artifactをダウンロードしてMicrosoft Partner Centerへ手動アップロードする。`Microsoft Store Submit` workflowは使用しない。
+- 未署名MSIXはGitHub Release Assetsへ置かず、`Prepare and Build Store Package`の`store-msix` artifactとして30日保存する。
+- ワークフロー完了後は、artifactをダウンロードしてMicrosoft Partner Centerへ手動アップロードする。`Microsoft Store Submit` workflowは使用しない。
 - Microsoft Storeが認定後の配布用MSIXへ正式署名し、自動更新を提供する。
-- `AppxManifest.xml`のVersionはDo Releaseが本体`X.Y.Z`に合わせて`X.Y.Z.0`へ更新する。
+- `AppxManifest.xml`のVersionは`Prepare and Build Store Package`が本体`X.Y.Z`に合わせて`X.Y.Z.0`へ更新する。
 - Store公開後、`winget install --id 9N4MW0V2MVVG --source msstore`とStore自動更新を実機確認する。
 
 ---
@@ -329,3 +317,4 @@ GitHub Release `v5.0.0` の `latest.json`、MSI、NSIS、署名ファイルは�
 | 14 | 26-07-04 | 1. ブランチ運用の判断 | LP などの非アプリ変更も `develop` で確認してから `Do Non-App Release` で `main` へ反映する運用に変更。`Do Release` と非アプリ反映ルートを分離。 |
 | 15 | 26-07-26 | 5. 開発からリリースまでの流れ | Rust依存と `Cargo.lock` の管理を追加。通常修正ではロック更新を禁止し `cargo check --locked` を使用する。依存更新を独立作業に分け、Do Releaseの全依存再解決を見直す提案を明記。 |
 | 16 | 26-07-27 | 2. / 5. / 7. / 8. | Store手動提出へ切替。タグ・GitHub Release・winget・自動Store提出を廃止し、5.0.0の旧版移行用資産だけを保持する。 |
+| 17 | 26-07-28 | 5. / 7. | 事前検証・版確定・MSIX作成を、版番号を一度だけ入力する単一ワークフローへ統合した。 |
