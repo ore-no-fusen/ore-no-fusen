@@ -45,11 +45,11 @@ flowchart TD
 
 #### 補足（運用上の注意・v4.0.0 で確定）
 
-- **CI / ビルド設定（`test.yml`・`release.yml` 等）は「アプリに影響する側」** として扱う＝ `develop` で変更する（`main` 直接にしない）。
+- **CI / ビルド設定（`test.yml`・`do-release.yml`・`store-package.yml` 等）は「アプリに影響する側」** として扱う＝ `develop` で変更する（`main` 直接にしない）。
 - **普段の作業ブランチは `develop`。`main` に居座らない**（誤って `main` でアプリコードを触る事故を防ぐ）。
 - **`main` と `develop` をズレたまま放置しない。** `main` だけで変更を作らない。Do Release の「`main` → `develop` 戻し」は、リリース処理中に `main` 側で作られるバージョン更新などを `develop` に戻すためのもの。ズレを放置すると Do Release のマージで衝突する（v4.0.0 で `.gitignore` の衝突が実際に発生した）。
-- **LP の本番反映は `Do Non-App Release` を使う。** `Do Release` はアプリリリース用であり、バージョン更新、タグ作成、リリースビルド、Tauri ビルドを伴う。LP だけの更新では使わない。
-- **Do Release / winget の二重テスト回避:** `test.yml` の `rust` ジョブは、**bot（`github-actions[bot]` / `orenofusen-winget-releaser[bot]`）による push なら `develop` / `main` どちらでもスキップ**する（`if` で「`push` イベント かつ bot actor」を除外）。理由は、Do Release や winget の bot push にぶら下がってテストが並走し、本命のリリース処理（`release.yml` / winget ジョブ）の邪魔になるのを防ぐため。人間による push と Pull Request では通常どおり実行される。
+- **LP の本番反映は `Do Non-App Release` を使う。** `Prepare Store Release` はアプリ版の確定用であり、LPだけの更新では使わない。
+- **版確定後は `main` を `develop` へ戻す。** Store版確定で生じた版番号のずれを残さない。
 
 ### 非アプリ変更（LP）の本番反映
 
@@ -82,23 +82,13 @@ LP だけを本番更新する場合は、アプリリリース用の `Do Releas
 
 **表 2-1　バージョン更新が必要なファイル**
 
-| ファイル | ビルドシステム | 役割 |
-|---------|--------------|------|
-| `package.json` | npm（Node.js） | JS/React側のパッケージ定義 |
-| `src-tauri/Cargo.toml` | Cargo（Rust） | Rust側のパッケージ定義 |
+| ファイル | 役割 |
+|---------|------|
+| `package.json` / `package-lock.json` | JS/React側のアプリ版と固定依存 |
+| `src-tauri/Cargo.toml` / `src-tauri/Cargo.lock` | Rust側のアプリ版と固定依存 |
+| `packaging/msix/AppxManifest.xml` | Storeが要求する4桁のMSIX版（`X.Y.Z.0`） |
 
-2つのビルドシステム（Node.jsとRust）が共存するTauriアプリの構造上、それぞれに1つずつ必要。これ以上減らすことはできない。
-
-### 自動追従するもの（更新不要）
-
-**表 2-2　バージョンが自動追従するファイル**
-
-| ファイル | 仕組み |
-|---------|-------|
-| `src-tauri/tauri.conf.json` | `version` フィールドなし。Tauriがビルド时に `Cargo.toml` から自動取得 |
-| `package-lock.json` | `npm install --package-lock-only` で `package.json` に追従 |
-| ランディングページ | `next.config.mjs` がビルド時に `package.json` を読み `NEXT_PUBLIC_APP_VERSION` にセット |
-| `packaging/msix/AppxManifest.xml`（MSIX / ストア版） | Do Release（`do-release.yml`）が本体バージョンに合わせ `Identity Version` を `X.Y.Z.0`（4桁・第4桁は Store 予約のため 0 固定）へ自動更新・コミット |
+`Prepare Store Release` がこの5ファイルの版を同時に更新してコミットする。`Cargo.lock` は本体 `ore-no-fusen` の版だけを更新し、間接依存は変更しない。`src-tauri/tauri.conf.json` とランディングページの表示版は、ビルド時にこれらの版へ追従する。
 
 ---
 
@@ -183,19 +173,15 @@ GitHub Actionsの **Release Lockfile Dry Run** は、通常のリリース前に
 
 このワークフローは読み取り専用権限で動作する。commit、push、タグ、GitHub Release、winget更新、MSIXのアップロード、Microsoft Storeへの提出・公開は行わない。
 
-#### Do Releaseの見直し案（未実装）
+#### Store手動提出の実リリース
 
-現在のDo Releaseは、版番号更新後に `cargo generate-lockfile` を実行して依存グラフ全体を再解決する。このため、依存更新を意図しないReleaseでも多数の間接依存が更新される可能性がある。
+通常のリリースは、次の3つの独立した操作に分ける。GitHub Release、winget、タグ、Microsoft Partner Centerへの自動提出は行わない。
 
-次の変更を提案する。実装前に、GitHub Actionsの検証用環境で「本体版だけが変わり、間接依存の版が変わらない」ことを確認する。
+1. **Release Lockfile Dry Run** を `main` から実行し、対象を `develop`、版を次期版にして、ロック差分と `cargo check --locked` を確認する。
+2. **Prepare Store Release** を実行する。`develop` を `main` へ反映し、5つの版を更新する。`scripts/verify-cargo-lock-release.mjs` が本体版以外のCargo.lock差分を拒否した場合は、commitしない。完了後、`main` を `develop` へ戻す。
+3. **Build Store Package** を `main` と確定済みの同じ版で実行する。未署名MSIX artifactをダウンロードし、Microsoft Partner Centerへ手動アップロードして審査・公開する。
 
-1. `cargo generate-lockfile` を、既存のロック済み依存を維持したまま本体パッケージ版だけを反映する処理へ置き換える。
-2. Release時に `Cargo.lock` の依存パッケージ一覧を更新前後で比較し、本体パッケージ以外の追加・削除・版変更があれば失敗させる。
-3. セキュリティ対応などで依存更新が必要な場合は、この検査を通さずに済ませず、事前に独立した依存更新コミットと検証を完了させる。
-
-差分検査スクリプト `scripts/verify-cargo-lock-release.mjs` とその単体テスト、およびGitHub Actions上の **Release Lockfile Dry Run** は作成済みである。Do Releaseへの接続は次の実装作業で行う。
-
-この見直しが完了するまでは、Do Release後に `Cargo.lock` の差分を確認し、本体パッケージ版以外の変更があればReleaseを続行しない。
+`Build Store Package` はリポジトリへ版を仮適用しない。入力版と `main` にコミット済みの `package.json`、`Cargo.toml`、`Cargo.lock`、MSIX版が一致しない場合は失敗する。
 
 ```mermaid
 flowchart TD
@@ -245,31 +231,30 @@ flowchart TD
     C2 -->|なし| B["⑧ ローカルビルドで動作確認<br/>npm run tauri build"]
     B --> C{問題あり?}
     C -->|あり| RF2["→ ①に戻る"]
-    C -->|なし| REL["⑨ GitHub Actions「Do Release」を実行<br/>新バージョンを入力して Run workflow"]
+    C -->|なし| DRY["⑨ Release Lockfile Dry Run<br/>develop と次期版を入力"]
+    DRY --> REL["⑩ Prepare Store Release<br/>次期版を入力"]
 
     subgraph do_release [GitHub Actions: do-release.yml]
         R1["➍ develop → main マージ"]
-        R2["➎ バージョン一括更新<br/>package.json / Cargo.toml<br/>AppxManifest(MSIX)"]
-        R3["➏ package-lock.json / Cargo.lock 更新"]
+        R2["➎ 5ファイルの版を更新<br/>Cargo.lockは本体版だけ"]
+        R3["➏ Cargo.lock差分を検査"]
         R4["➐ git commit & push"]
-        R5["➑ git tag vX.X.X & push"]
-        R6["➒ main → develop 戻し"]
-        R1 --> R2 --> R3 --> R4 --> R5 --> R6
+        R6["➑ main → develop 戻し"]
+        R1 --> R2 --> R3 --> R4 --> R6
     end
     REL --- do_release
 
-    subgraph actions [GitHub Actions: release.yml]
-        J1["➓ npm ci"]
-        J2["⓫ リリースノート自動生成<br/>generate-release-notes.mjs"]
-        J3["⓬ tauri-action<br/>Next.js+Rust ビルド→署名→<br/>GitHubリリース作成"]
-        J4["⓭ 署名なし MSIX 生成<br/>build-msix.ps1 → アーティファクト保存"]
-        J1 --> J2 --> J3 --> J4
+    subgraph store [GitHub Actions: store-package.yml]
+        J1["➒ main と確定版を検証"]
+        J3["➓ WindowsでMSIXを生成・検証"]
+        J4["⓫ store-msix artifactを保存"]
+        J1 --> J3 --> J4
     end
-    R5 --- actions
+    R6 --> STOREBUILD["⑪ Build Store Package<br/>main と確定版を入力"]
+    STOREBUILD --- store
 
-    J3 --> K["✅ GitHubリリースページに<br/>署名付きインストーラーが出現"]
-    K --> WG["⓮ winget へ自動公開<br/>winget-releaser（ONFStudios.OreNoFusen）"]
-    K --> STORE["① 適宜 Store 登録を手動で実施する<br/>（メジャー更新時のみ・署名なし MSIX を<br/>Partner Center へ手動アップロード）"]
+    J4 --> STORE["⑫ artifactをダウンロードし<br/>Partner Centerへ手動アップロード"]
+    STORE --> MS["⑬ Storeの認定・公開後に<br/>Store自動更新を確認"]
 
     subgraph docs_deploy [GitHub Actions: docs.yml]
         D1["⓯ docs-v2/ の変更を検知"]
@@ -283,7 +268,7 @@ flowchart TD
 
 **図 5-1　開発からリリースまでの全体フロー**
 
-> **補足（5.0.0のStore先行公開）:** 最初に`Build Store Package`へ`5.0.0`を入力し、非公開の`store-msix` artifactだけを生成してPartner Centerへ提出する。Store一般公開と`winget msstore`導入確認が終わるまでDo Releaseは実行しない。その後のDo Release 5.0.0で最終NSIS・MSIと既存利用者向け更新通知を公開する。
+> **補足（5.0.0移行版）:** 旧版の自動更新先として、公開済みのGitHub Release `v5.0.0` の `latest.json`・MSI・NSIS・署名ファイルを残す。5.1.0以降はGitHub Releaseを作らず、Store版だけを更新する。
 
 ---
 
@@ -299,11 +284,11 @@ npm run tauri build
 
 ## 7. Microsoft Store MSIXの扱い
 
-- **5.0.0は移行開始版**としてNSIS・MSI・Store MSIXの3形式を最後に提供する。旧版のTauri updaterは5.0.0の移行案内を届けるため維持する。
-- **5.1.0は移行完了版**とし、Store MSIXだけを正式配布する。MSI・NSIS、`latest.json`、`.sig`、community winget PRの新規生成を終了する。
+- **5.0.0は移行開始版**として、公開済みGitHub Releaseの `latest.json`・NSIS・MSIを残す。5.0.0未満の旧版はこの版へ自動更新し、利用者は案内に従ってStore版を手動インストールする。
+- **5.1.0以降はStore版だけ**を正式配布する。MSI・NSIS、`latest.json`、`.sig`、GitHub Release、community winget PRは新規生成しない。
 - Store提出用MSIXは未署名で生成し、`validate-msix.ps1`でIdentity、Publisher、Version、x64、未署名状態を確認する。
-- 未署名MSIXはGitHub Release Assetsへ置かず、`Build Store Package`またはRelease workflowの`store-msix` artifactとして30日保存する。
-- 初回5.0.0は`Build Store Package`のartifactを手動提出する。初回公開後の自動提出は`Microsoft Store Submit` workflowへ版とartifactのrun IDを入力し、最初にdry runを行う。詳細は`docs/store-submission.md`を参照する。
+- 未署名MSIXはGitHub Release Assetsへ置かず、`Build Store Package`の`store-msix` artifactとして30日保存する。
+- `Build Store Package`後は、artifactをダウンロードしてMicrosoft Partner Centerへ手動アップロードする。`Microsoft Store Submit` workflowは使用しない。
 - Microsoft Storeが認定後の配布用MSIXへ正式署名し、自動更新を提供する。
 - `AppxManifest.xml`のVersionはDo Releaseが本体`X.Y.Z`に合わせて`X.Y.Z.0`へ更新する。
 - Store公開後、`winget install --id 9N4MW0V2MVVG --source msstore`とStore自動更新を実機確認する。
@@ -312,25 +297,13 @@ npm run tauri build
 
 ## 8. ⚠️ 注意事項
 
-### タグは Actions が単体でプッシュする（手動でやらない）
+### 5.0.0移行資産を保持する
 
-```bash
-# ❌ NG: 絶対にやってはいけない
-git push origin main --tags
-```
+GitHub Release `v5.0.0` の `latest.json`、MSI、NSIS、署名ファイルは、旧版利用者が5.0.0へ更新するために残す。削除・置換・新しいGitHub Releaseの作成をしない。新しいタグを作ると旧版の更新先が5.0.0から変わるため、5.1.0以降のタグは作成しない。
 
-**なぜダメか（実際に起きた事故）:**
-- `--tags` はローカルに溜まっている**未プッシュのタグを全部まとめて**送る
-- 過去タグが残っていると複数タグが同時にプッシュされる
-- GitHub Actions がタグの数だけ起動し、それぞれ異なるコミットでビルドが走る
-- 結果: 1つのリリースに複数バージョンのインストーラーが混在し、リリースが壊れる
-- → **v1.1.6 でこれが発生。リリースを削除して v1.1.7 を作り直すことになった**
+### Storeの提出と公開は手動で行う
 
-### リリースは手動で作らない
-
-`gh release create` や GitHub Web UI でリリースを手動作成しないこと。
-`tauri-action` がビルド完了後に自動でリリースとインストーラーを作成する。
-手動作成すると競合して CD が失敗する。
+`store-msix` artifactをMicrosoft Partner Centerへ手動アップロードする。GitHub ActionsからのPartner Center提出、GitHub Release作成、winget更新は行わない。
 
 ---
 
@@ -355,3 +328,4 @@ git push origin main --tags
 | 13 | 26-06-19 | 5. 開発からリリースまでの流れ | リリース手順に不適だった「データロスト禁止」注記を削除（実装原則であり、内容は `docs-v2/` の「データロスト防止ゲート」等に既出）。ゲート No.1 を「実装は最小単位で行う」に簡潔化。 |
 | 14 | 26-07-04 | 1. ブランチ運用の判断 | LP などの非アプリ変更も `develop` で確認してから `Do Non-App Release` で `main` へ反映する運用に変更。`Do Release` と非アプリ反映ルートを分離。 |
 | 15 | 26-07-26 | 5. 開発からリリースまでの流れ | Rust依存と `Cargo.lock` の管理を追加。通常修正ではロック更新を禁止し `cargo check --locked` を使用する。依存更新を独立作業に分け、Do Releaseの全依存再解決を見直す提案を明記。 |
+| 16 | 26-07-27 | 2. / 5. / 7. / 8. | Store手動提出へ切替。タグ・GitHub Release・winget・自動Store提出を廃止し、5.0.0の旧版移行用資産だけを保持する。 |

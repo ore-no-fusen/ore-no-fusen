@@ -3,8 +3,13 @@ name: Build Store Package
 on:
   workflow_dispatch:
     inputs:
+      source_ref:
+        description: 'Committed Store release to build (normally main)'
+        required: true
+        default: main
+        type: string
       version:
-        description: 'Store package version (for example 5.0.0)'
+        description: 'Committed Store version (for example 5.1.0)'
         required: true
         type: string
 
@@ -20,12 +25,13 @@ jobs:
     runs-on: windows-latest
     env:
       NEXT_TELEMETRY_DISABLED: 1
+      SOURCE_REF: ${{ inputs.source_ref }}
       STORE_VERSION: ${{ inputs.version }}
     steps:
-      - name: Checkout develop without publishing
+      - name: Checkout committed Store release
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: ${{ inputs.source_ref }}
           fetch-depth: 1
 
       - uses: actions/setup-node@v4
@@ -48,59 +54,32 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-store-cargo-
 
-      - name: Validate requested version
+      - name: Verify committed version
         shell: pwsh
         run: |
           if ($env:STORE_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
-            throw "Version must use MAJOR.MINOR.PATCH form, for example 5.0.0."
+            throw "Version must use MAJOR.MINOR.PATCH form, for example 5.1.0."
           }
 
-          $current = (Get-Content package.json -Raw -Encoding utf8 | ConvertFrom-Json).version
-          if ([version]$env:STORE_VERSION -le [version]$current) {
-            throw "Store package version must be greater than current version $current."
-          }
-
-          Write-Host "Preparing private Store package $env:STORE_VERSION from develop ($env:GITHUB_SHA)."
-
-      - run: npm ci
-
-      - name: Apply Store version only inside this runner
-        shell: pwsh
-        run: |
-          npm version $env:STORE_VERSION --no-git-tag-version --ignore-scripts
-          if ($LASTEXITCODE -ne 0) { throw "npm version failed." }
-
-          $cargoTomlPath = 'src-tauri/Cargo.toml'
-          $cargoToml = Get-Content $cargoTomlPath -Raw -Encoding utf8
-          $cargoToml = $cargoToml -replace '(?m)^version = "[^"]+"', "version = `"$env:STORE_VERSION`""
-          Set-Content $cargoTomlPath $cargoToml -NoNewline -Encoding utf8
-
-          $cargoLockPath = 'src-tauri/Cargo.lock'
-          $cargoLock = Get-Content $cargoLockPath -Raw -Encoding utf8
-          $cargoPattern = '(?s)(\[\[package\]\]\r?\nname = "ore-no-fusen"\r?\nversion = ")[^"]+'
-          if ($cargoLock -notmatch $cargoPattern) { throw "ore-no-fusen package was not found in Cargo.lock." }
-          $cargoLock = $cargoLock -replace $cargoPattern, "`${1}$env:STORE_VERSION"
-          Set-Content $cargoLockPath $cargoLock -NoNewline -Encoding utf8
-
-          $manifestPath = 'packaging/msix/AppxManifest.xml'
-          $manifest = Get-Content $manifestPath -Raw -Encoding utf8
-          $manifest = $manifest -replace '(?m)^(\s+)Version="[^"]+"', "`${1}Version=`"$env:STORE_VERSION.0`""
-          Set-Content $manifestPath $manifest -NoNewline -Encoding utf8
-
-      - name: Verify temporary versions
-        shell: pwsh
-        run: |
           $packageVersion = (Get-Content package.json -Raw -Encoding utf8 | ConvertFrom-Json).version
           $cargoVersion = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
           [xml]$manifest = Get-Content packaging/msix/AppxManifest.xml -Raw -Encoding utf8
           $manifestVersion = $manifest.Package.Identity.Version
+          $cargoLock = Get-Content src-tauri/Cargo.lock -Raw -Encoding utf8
+          $cargoPattern = '(?s)\[\[package\]\]\r?\nname = "ore-no-fusen"\r?\nversion = "([^"]+)"'
+          if ($cargoLock -notmatch $cargoPattern) { throw "ore-no-fusen package was not found in Cargo.lock." }
+          $cargoLockVersion = $Matches[1]
 
-          if ($packageVersion -ne $env:STORE_VERSION -or $cargoVersion -ne $env:STORE_VERSION) {
-            throw "Temporary application versions do not match $env:STORE_VERSION."
+          if ($packageVersion -ne $env:STORE_VERSION -or $cargoVersion -ne $env:STORE_VERSION -or $cargoLockVersion -ne $env:STORE_VERSION) {
+            throw "Committed application versions must all equal $env:STORE_VERSION."
           }
           if ($manifestVersion -ne "$env:STORE_VERSION.0") {
             throw "MSIX manifest version must be $env:STORE_VERSION.0, got $manifestVersion."
           }
+
+          Write-Host "Building committed Store release $env:STORE_VERSION from $env:SOURCE_REF ($env:GITHUB_SHA)."
+
+      - run: npm ci
 
       - name: Build executable only (no NSIS or MSI)
         env:
@@ -133,8 +112,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Confirm no publication occurred
+      - name: Confirm manual Store submission scope
         shell: pwsh
         run: |
-          Write-Host "Private Store package created for $env:STORE_VERSION."
-          Write-Host "No tag, GitHub Release, NSIS/MSI bundle, updater metadata, LP deployment, or repository commit was created."
+          Write-Host "Store package v$env:STORE_VERSION was created from committed source."
+          Write-Host "Download this artifact and submit it manually in Microsoft Partner Center."
+          Write-Host "No tag, GitHub Release, NSIS/MSI bundle, updater metadata, repository commit, or Microsoft Store submission was created."
