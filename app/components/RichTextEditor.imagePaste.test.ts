@@ -66,4 +66,5 @@ describe('RichTextEditor clipboard image paste', () => {
         expect(forwardImageClickToEditor(document.createElement('img'), editorDom)).toBe(false);
         expect(notifications).toBe(1);
     });
+
 });

@@ -866,3 +866,150 @@
 - 26-07-26テスト: 検査スクリプトの単体テスト5件、TypeScript検査、差分検査は成功。実際のCargo一時コピーで本体版だけを仮更新する確認は、Rustコンパイルが120秒でタイムアウトしたため未完了。公開・タグ作成・作業ツリーへの変更は行っていない。
 - 26-07-26実装: 手動GitHub Actions `Release Lockfile Dry Run` を追加。`develop`等の指定refと次期版を使い、runner内だけでCargo本体版を仮更新し、ロック差分検査と `cargo check --locked` を行う。権限は `contents: read` のみで、commit、push、タグ、GitHub Release、winget、MSIX、Microsoft Storeには触れない。GitHub上の実行は、コミット・push後に実施する。
 - 26-07-26検証: 一時コピーの実Cargo.lockで本体版 `5.0.0` → `5.0.1` だけを変更する検査は成功。検査スクリプト単体5件、TypeScript、差分検査、`cargo check --locked --manifest-path src-tauri/Cargo.toml` は全て成功。YAML整形確認はローカルPrettier未導入かつnpm取得権限エラーのため未実施。GitHub Actions上の手動実行は未実施（コミット・push前）。
+- 26-07-26実行準備: `c65d616` と `fca0248` を `develop` へpush済み。GitHub Actionsの手動実行は、workflowファイルが既定ブランチ `main` に存在する場合だけ認識されるため、`develop` 上の `Release Lockfile Dry Run` はまだ起動できない。タグ・Release・MS Store提出・公開は実行していない。`main` へ安全に反映する方法は要判断。
+- 26-07-26GitHub実行: 検査機能4ファイルだけのPR #9を `main` へマージし、`Release Lockfile Dry Run`（run `30190671645`、対象 `develop`、仮版 `5.0.1`）を起動。Cargo.lock差分検査までは成功したが、Ubuntu runner の `cargo check --locked` はLinuxの `glib-2.0` システムライブラリ不足で失敗。ロック差分や仮版更新が原因ではない。Windows向けTauriアプリの検査として、既存Storeビルドと同じ `windows-latest` へ変更する案を確認待ち。公開処理は実行していない。
+- 26-07-27再実行: Windows runner化したPR #10を全チェック成功後に `main` へマージし、run `30220488963` を起動。Cargo.lock差分検査とWindows依存のコンパイルは通過したが、アプリ本体が `env!` で要求する `GDRIVE_CLIENT_ID` / `GDRIVE_CLIENT_SECRET` 未設定で失敗。既存 `test.yml` は本物の秘密情報を使わず `ci-dummy` をjob環境変数として渡している。dry runにも同じダミー値を渡す最小修正を確認待ち。公開処理は実行していない。
+- 26-07-27完了: ダミー値を追加したPR #11を全チェック成功後に `main` へマージ。`Release Lockfile Dry Run` run `30221066707` を対象 `develop`・仮版 `5.0.1` で実行し、Cargo.lock差分検査とWindows上の `cargo check --locked` が成功。commit、push、タグ、GitHub Release、winget、MSIXアップロード、Microsoft Store提出・公開はドライラン内で行われていない。
+- 26-07-27調査: 実リリースの旧 `Do Release` は、`cargo generate-lockfile`、タグ作成、タグ起点の`release.yml`（GitHub Release・winget）を含むため、Store手動提出方針と不一致。`Build Store Package` は現行版より大きい仮版をrunner内で適用しており、リポジトリへ確定した版と同じMSIXを作れない。推奨案は、(1) Do ReleaseをタグなしのStore版確定処理へ置換、(2) Build Store Packageをmain上の確定版と同じ版だけをビルドする形へ変更、(3) 誤起動を防ぐため旧`release.yml`・`store-submit.yml`を削除、(4) `docs/010_RELEASE.md`のフローを更新。実装前の確認待ち。
+- 26-07-27実装: `Prepare Store Release`へ置換し、`cargo generate-lockfile`を廃止。本体版だけのCargo.lock更新・差分検査・5ファイルの版一致確認後にmain/developへ反映し、タグ・GitHub Release・winget・Store提出を行わない。`Build Store Package`はmain等の確定済みrefと同じ版だけをMSIX化する。旧`release.yml`・`store-submit.yml`を削除し、`010_RELEASE.md`と`store-submission.md`をStore手動提出・5.0.0移行資産保持へ更新。検証: 差分検査、Cargo.lock検査Vitest 5件、TypeScript、`npm version`の一時コピー版追従（package / package-lock）が成功。GitHub Actions上のPRチェックは未実施。
+## 2026-07-27 iPhone一覧表示速度・PC送信画像の文字表示調査
+
+- 調査のみ。実装変更は未着手。
+- 一覧の原因: `useNoteList` は IndexedDB と Drive を並列開始しているが、`Promise.all` でDrive取得を待ち、さらに新着画像の取得・IndexedDB保存まで完了してから `setHistoryNotes` とローディング解除を行う。保存済みローカル一覧があっても通信完了まで「読み込み中」になる。
+- 一覧の最小修正案: IndexedDB取得時点でローカル一覧・サムネイルを即表示してローディングを解除し、Drive同期・画像補完・再表示はバックグラウンドで続ける。SSOTをIndexedDBとする仕様は維持する。対象は `docs-v2/003_IPHONE.md` §6.1。
+- 画像の根本原因: Rust `fusen_send_to_iphone` はMarkdown先頭行を無条件にタイトルとして本文から除外する。画像が先頭行の付箋では `![...](assets/...)` がタイトルへ入り、画像アップロード・`fusen_img_*`変換の対象である本文から消える。そのためiPhoneでは画像Markdownが文字として表示される。一方、PCへ戻すと元のPCローカルパスが再び本文に入り、そのPCではファイルが存在するため画像表示へ戻る。
+- 画像の最小修正案: 先頭行が画像Markdownならタイトルを空にして、その行を含む全体を本文として送信する。既存の通常タイトル・`#`見出し規則は変えない。対象は図3-3の❷（画像アップロード）〜⓬（write表示）。回帰テストを追加する。
+- 実装済み: 一覧はIndexedDB取得直後にローカルメモ・サムネイル・ロック状態を表示してローディングを解除し、Drive同期完了後にマージ結果で再表示する。
+- 実装済み: PC→iPhone送信時、先頭行が画像Markdownならタイトルを空にして画像行を本文へ残す。通常タイトルと`#`見出しの分離規則は維持する。
+- 設計書更新: `docs-v2/003_IPHONE.md` 図3-3補足・§6.1・改版1.22。
+- 検証済み: 一覧のDrive未応答回帰テスト1件、画像表示を含むPWA対象テスト21件、Rust対象3件、TypeScript、VitePress設計書ビルド、差分検査。
+- 実機確認待ち: (1) 保存済みメモがある状態で一覧を開き、Drive通信を待たず表示されること、(2) 画像が先頭のPC付箋をiPhoneへ送り、文字列でなく画像として表示されること、(3) そのままPCへ戻して画像が維持されること。
+## 2026-07-27 iPhone画像全画面・PC画像ドロップ調査
+
+- 調査のみ。実装変更は未着手。
+- iPhone画像: `hydrateEditor` は保存済みBlobを `<img>` へ変換するが、`WriteStep` の本文エディタに画像タップ処理やプレビューUIはない。現状はカーソル対象になるだけ。
+- iPhone最小案: 本文エディタのクリックを委譲して`IMG`だけを検出し、現在のBlob URLを黒背景の全画面オーバーレイへ`object-contain`で表示する。背景・閉じるボタン・Escで閉じ、本文・IndexedDB・PC送信データは変更しない。対象は `docs-v2/003_IPHONE.md` §5.2・§6.3。
+- PCドロップ: `RichTextEditor`にはドラッグ中の既存画像Markdownを並べ替える独自MIME処理だけがあり、Explorer等からの外部画像ファイルは保存・挿入されない。クリップボード貼り付け処理はOSクリップボードをRustで読み取るため、ドロップファイルにはそのまま再利用できない。
+- Tauri v2にはWebViewへのファイルドロップを受け取る`onDragDropEvent`があり、現在の`tauri.conf.json`はこれを無効化していない。HTML5ドロップへ切り替えるとWindowsではTauriのネイティブドロップを無効化する必要があるため、既存構成ではネイティブイベント利用が最小。
+- PC最小案: 付箋エディタ範囲へのネイティブドロップだけを受け、PNG/JPEG/GIF/WebP等の画像パスをRustで検証して対象付箋の`assets/`へ一意名でコピーし、既存と同じ画像Markdownをドロップ位置へ挿入する。内部画像の並べ替え、非画像、付箋外ドロップ、クリップボード貼り付けは変更しない。対象は `docs-v2/002_PC.md` §4.2・§5.3.3。
+- 実装時の確認項目: 高DPIでのドロップ座標、Pool新規付箋の保存先確保、複数画像、非画像拒否、同名衝突、巨大ファイル、イベント解除、iPhoneオーバーレイ中に本文が変更されないこと。
+- 実装済み: iPhone本文画像タップで黒背景の全画面プレビューを表示する。縦横比を維持し、背景・閉じるボタン・Escで閉じる。本文・Blob・送信内容は変更しない。
+- 実装済み: Tauri `onDragDropEvent`で編集エディタ内に落とされた外部画像を検出し、PNG/JPEG/GIF/WebP/BMP（最大50MB）をRustで付箋の`assets/`へ一意名コピーしてドロップ位置へMarkdownを挿入する。複数画像、新規Pool付箋の保存先確保、イベント解除に対応する。
+- 設計書更新: `docs-v2/002_PC.md` §4.2・§5.3.3・改版2.80、`docs-v2/003_IPHONE.md` §5.2・§5.3・§6.3・改版1.23。
+- 検証済み: PWAプレビュー・PC画像形式・一覧回帰を含むVitest 14件、Rust画像コピー・非画像拒否2件、TypeScript、VitePress設計書ビルド、差分検査。
+- 実機確認待ち: iPhoneで画像タップ・全画面表示・背景/×で終了、Windows高DPI環境でExplorerから編集本文の先頭/途中/末尾へ単一・複数画像をドロップ、新規Pool付箋へのドロップ、非画像と50MB超画像の拒否。
+## 2026-07-27 PC→iPhone先頭画像のE2E回帰テスト
+
+- `e2e/pc-to-iphone-image.spec.ts` を追加。Google Drive APIをブラウザ内で模擬し、PC送信形式の `notes_to_iphone.json` と `fusen_img_*` をPWAが取得する経路を再現する。
+- 検証範囲は、先頭画像Markdownの保持、画像バイナリ取得、IndexedDB保存、一覧サムネイル表示、本文の`img`表示。Rust側の送信分割回帰テストと組み合わせてPC/PWA境界を守る。
+- `docs-v2/004_TEST.md` 表3-1へE2Eシナリオを追加。
+- 検証待ち: TypeScript、対象Playwright、VitePress設計書ビルド。
+## 2026-07-27 起動時に空の付箋が多数表示される調査
+
+- 保存先のMarkdown 12件を実データで確認し、全件229〜2711バイトで本文は失われていない。空付箋ファイルが大量作成された現象ではない。
+- `app.log` の12:01起動では、12件のウィンドウ生成後も `fusen:startup_note_ready` が `0/12` のまま4秒タイムアウトし、その直後に未準備の12窓を一括 `show()` している。これが空表示の直接原因。
+- 6:31、7:28起動は同じ12件が `12/12` ready 後に表示され正常。12:01起動だけアプリ画面ロード開始まで約34秒かかっており、開発サーバー側の読込停滞または子Webview初期化不成立が疑われる。
+- 現行の起動処理はreadyタイムアウト後も全窓を無条件表示するため、一時的な子Webview読込失敗を「空付箋だらけ」として露出させる。根本的な安全策は、readyになった窓だけ表示し、未準備窓は再試行またはエラー扱いにして表示しないこと。
+- 修正は未着手。ユーザー確認後、起動復元のタイムアウト経路と回帰テストを最小修正する。
+## 2026-07-27 Explorer画像ドロップが表示モードで反応しない修正
+
+- 原因: Explorerへフォーカスを移すと既存仕様どおり編集モードが終了し、非表示になったRichTextEditorの矩形が0件となる。ドロップ処理がこの時点で早期returnしていた。
+- 修正: 非表示のエディタもTauriのファイルドロップを受信し、表示中は座標位置、表示モードへ戻った後は本文末尾へ画像Markdownを挿入する。既存のフォーカス喪失による表示モード移行は変更しない。
+- 回帰テスト: 編集中の座標挿入と、表示モード時の本文末尾挿入位置を固定する。
+- 実機確認にはRustコマンド登録を反映するため開発アプリの再起動が必要。
+- 検証済み: `RichTextEditor.imagePaste` と起動安全策の対象9件、TypeScript、VitePress設計書ビルドに成功。
+- 実機で禁止カーソルとなったため入口を再調査。通常付箋のJS生成オプションとPool付箋のRust生成処理へ、Tauriネイティブファイルドロップ有効化を明示した。検証待ち。
+- TypeScriptと対象Vitest 9件は成功。`cargo check --locked` は起動中の開発アプリがbuild directoryのロックを保持して120秒待機したため未完了。Tauri 2.11.5のローカルソースで `WebviewWindowBuilder::drag_and_drop(bool)` の存在は確認済み。開発アプリを完全終了して再起動後に実機確認する。
+- 再調査で、WindowsではTauri独自ドロップ有効化がWebView標準ドロップを無効にすることを公式issueとローカルAPI定義で確認。`dragDropEnabled: false` / `disable_drag_drop_handler()`へ切り替え、付箋全体のHTML `dragover/drop`でFileを読み、Rustへ画像データを渡す方式へ変更した。
+- 実操作確認済み: 継続起動したNext.js(port 3002)+Tauri開発版でテスト付箋を作成し、Windows Explorerの`128x128.png`をマウスドラッグ。本文へ `![image](assets/dropped_20260728_045531_978754900_81ad0c11.png)` が追加され、`assets`へ4,867バイトのPNGが保存されたことをファイルで確認した。
+- テスト専用付箋4枚と生成画像1枚は、既存データと区別して `Trash/DND_E2E_20260728` へ退避済み。削除していないため回収可能。
+- 最終検証: 対象Vitest 9件、TypeScript、Rust画像データ保存テスト、VitePress設計書ビルドに成功。
+
+## 2026-07-27 手動Microsoft Storeリリース手順の反映完了
+
+- PR #12を`develop`へ、PR #13を`main`へマージした。GitHub Actionsの`Prepare Store Release`と`Build Store Package`が既定ブランチ上で利用可能であることを確認した。
+- 両PRでRustとVercelの自動チェックが成功。ローカルでもCargo.lock検証テスト5件、TypeScript型検査、差分チェックが成功している。
+- 実際のリリース実行はしていない。タグ、GitHub Release、Winget公開、MSIXのPartner Center提出はいずれも未実施であり、次回リリース時にDry Runから順に手動で実行する。
+
+## 2026-07-28 Storeリリース手順の一操作化
+
+- ユーザー決定により、Dry Run・版確定・MSIX作成を分離せず、版番号を一度だけ入力する`Prepare and Build Store Package`へ統合した。
+- 検証失敗時は版番号コミット・MSIX作成を行わない。検証成功後に`main`/`develop`の5つの版を更新し、同じmainコミットから未署名MSIX artifactを作る。Partner Center提出は引き続き手動。
+- 隔離ブランチ`agent/unify-store-release-develop`のコミット`409207e`、ドラフトPR #15（develop向け）でCI確認中。ローカルのCargo.lock検証Vitest 5件、TypeScript、差分検査は成功。
+## 2026-07-28 空の新規付箋への画像ドロップ
+
+- 原因: Pool付箋は1文字目までMarkdownファイルを作らず、画像ドロップ処理が保存先パスなしで拒否していた。
+- 修正: ドロップ時に既存の`handleFirstChar`遅延作成処理を共有し、画像を最初の入力として付箋ファイルを1回だけ作成してから保存する。文字入力と同時でも`lazyCreatePromiseRef`により二重作成しない。
+- 設計書: `docs-v2/002_PC.md` §4.2・改版2.83。
+- 検証待ち: 対象Vitest、TypeScript、Rust、VitePress、空の新規付箋へのExplorer実ドラッグ。
+## 2026-07-28 ドラッグ＆ドロップ制約監査
+
+- 空の新規付箋は保存先未確定のため画像ドロップを拒否していた。これは利用者が求めていない制約であり、事前説明もなかった。
+- 空の新規付箋へ保存先を自動作成する修正を試みたが、実際の Explorer ドロップ試験は未成功。完了扱いにしない。
+- 対応形式を PNG/JPEG/GIF/WebP/BMP に限定している。SVG/AVIF/HEIC/HEIF/TIFF 等は拒否または無視される。この範囲は利用者確認を取っていない。
+- 1ファイル 50MB 上限を設けている。Data URL/Base64 経由のメモリ負荷対策だが、数値は利用者確認を取っていない。
+- 画像はドロップ位置ではなく本文末尾へ追加する。実装簡略化による仕様縮小であり、利用者確認を取っていない。docs-v2 内にも「ドロップ位置」と「本文末尾」の不整合がある。
+- フォルダーと画像以外のファイルは受け付けない。現在は一部が無言で無視される。
+- 複数画像の途中で保存に失敗すると、先に保存した画像ファイルだけが残り、本文に挿入されない可能性がある。ロールバックがなく、安全上の不具合。
+- 実装判断の問題: 最小実装と技術上の都合を優先し、操作要件の変更として説明・確認しなかった。ヘルパー/単体テストの成功を実操作の成功と取り違えた。
+
+## 2026-07-28 画像ドラッグ＆ドロップ テスト設計（合意前）
+
+### 現在存在するテスト
+
+| 層 | 確認内容 | 不足 |
+|:---|:---|:---|
+| Vitest | PNG/JPEGを許可し、txt・偽装拡張子を拒否 | 画面イベント、保存、表示を通していない |
+| Vitest | 画像Markdownを本文末尾へ追加 | ドロップ位置、編集状態、新規付箋を通していない |
+| Rust unit | 既存付箋の`assets/`へPNGデータを1件保存 | 上限、全形式、異常系、複数件、後始末がない |
+| Windows実操作 | 文字入り既存付箋へExplorerからPNGを1件ドロップ | 空付箋を含む他パターンを保証しない |
+
+### 必須テストマトリクス
+
+| ID | 分類 | 操作・条件 | 期待結果 | 自動化 |
+|:---|:---|:---|:---|:---|
+| DND-01 | 基本 | 文字入り付箋・編集モードへ画像1件 | 指定位置へ挿入、asset保存、再表示可能 | component + Windows実操作 |
+| DND-02 | 基本 | 文字入り付箋・表示モードへ画像1件 | 仕様で合意した位置へ挿入 | component + Windows実操作 |
+| DND-03 | 最初の入力 | 完全に空の新規Pool付箋へ画像1件 | 事前文字なしで付箋を作成し、画像を保存・表示 | component + Windows実操作 |
+| DND-04 | 競合 | 空付箋へのドロップと文字入力が近接 | 付箋ファイルを二重作成せず両方保持 | component |
+| DND-05 | 複数 | 画像を複数同時ドロップ | 元の順序で全件挿入、全件表示 | component + Rust |
+| DND-06 | 形式 | 合意した各対応形式 | 正しく保存・再表示 | unit + Rust |
+| DND-07 | 非対応 | 非対応画像、画像以外、フォルダー | 理由を表示し本文・assetを変更しない | component + Rust |
+| DND-08 | サイズ | 上限直下・一致・超過 | 境界どおり処理し、拒否理由を表示 | Rust |
+| DND-09 | 失敗 | 付箋作成失敗、asset作成失敗、本文保存失敗 | 元本文を保持し、孤立assetを残さない | component + Rust |
+| DND-10 | 部分失敗 | 複数画像の途中で失敗 | 全体を戻し、部分挿入・孤立assetなし | component + Rust |
+| DND-11 | 名前 | 同名、日本語、空白、長い名前 | 衝突せず安全な一意名で保存 | Rust |
+| DND-12 | 回帰 | 既存の本文画像移動、貼り付け、文字編集、窓移動 | 従来操作を壊さない | Vitest + E2E |
+| DND-13 | 永続化 | 保存後に付箋・アプリを再起動 | 画像と本文が同じ状態で表示 | E2E + Windows実操作 |
+| DND-14 | 連続操作 | 短時間に連続ドロップ | 欠落・上書き・本文巻き戻りなし | component |
+
+### 合意が必要な仕様・制限
+
+1. 挿入位置: 編集・表示モードともマウスのドロップ位置へ入れるか。表示モードで正確な文字位置を取れない場合の扱い。
+2. 対応形式: PNG/JPEG/GIF/WebP/BMPのみか、AVIF/HEIC/HEIF/TIFF/SVGも対象にするか。表示不能形式は変換が必要。
+3. サイズ上限: 現在の1件50MBを維持・変更・撤廃するか。現方式はBase64化で元サイズ以上のメモリを使う。
+4. 複数画像: 全件成功時だけ反映する原子的処理にするか。
+5. 非対応ファイル: 無言で無視せず、理由を画面表示するか。
+
+合意前は新たな仕様変更・実装修正を行わない。
+
+### 2026-07-28 合意後の実装・検証状況
+
+- ユーザー合意:
+  - 編集モードはドロップした文字位置、表示モードは本文末尾へ挿入する。
+  - PNG/JPEG/GIF/WebP/BMP、1件50MBまで。非対応・超過理由を表示する。
+  - 複数画像は全件成功時だけ本文へ反映し、失敗時は今回作成した画像を削除する。
+  - 空の新規Pool付箋は事前文字なしで画像を最初の入力にできる。
+- 実装:
+  - CodeMirrorの`posAtCoords`で編集時の文字位置を取得。
+  - 本文保存成功後だけReact表示状態を確定。
+  - 途中失敗・本文保存失敗時に`assets/dropped_*`だけを削除するRustコマンドを追加。既存assetは削除拒否。
+  - 非対応ファイルが1件でも含まれる場合は全件拒否して画面通知。
+- 自動検証成功:
+  - 画像ドロップ対象Vitest（表示モード保存、非対応混在拒否、複数途中失敗の後始末、挿入位置、全対応拡張子）。
+  - 関連するStickyNote/Pool/RichTextEditor回帰を含む対象テスト一式。
+  - Rust 6件（保存、後始末、既存asset保護、50MB境界、同名一意化、PNG回帰）。
+  - TypeScript、VitePressビルド、`git diff --check`。
+- 実操作未完了:
+  - 最新Rust開発アプリの起動までは成功したが、ツール実行セッションからWindowsの対話デスクトップ/可視ウィンドウを取得できず、Explorerから空の新規付箋への物理ドラッグを実行できなかった。
+  - 物理ドラッグ、画像表示、アプリ再起動後の再表示が確認できるまで完了扱いにしない。

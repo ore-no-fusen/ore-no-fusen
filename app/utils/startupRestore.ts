@@ -39,3 +39,16 @@ export function waitForStartupReady(
         timer = setTimeout(finish, timeoutMs);
     });
 }
+
+export function partitionStartupLabels(
+    expectedLabels: ReadonlySet<string>,
+    readyLabels: ReadonlySet<string>,
+): { ready: string[]; missing: string[] } {
+    const ready: string[] = [];
+    const missing: string[] = [];
+    for (const label of expectedLabels) {
+        if (readyLabels.has(label)) ready.push(label);
+        else missing.push(label);
+    }
+    return { ready, missing };
+}

@@ -333,6 +333,7 @@ export interface RichTextEditorProps {
 
 // 外部から呼べるメソッドの型定義
 export interface RichTextEditorRef {
+    getPositionAtCoords: (clientX: number, clientY: number) => number | null;
     insertHeading1: () => void;
     insertBold: () => void;
     insertList: () => void;
@@ -1094,6 +1095,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
             view.focus();
         },
         // [NEW] クリック座標がテキスト領域（cm-content）より下（フッタ領域）かどうかを判定する
+        getPositionAtCoords: (clientX: number, clientY: number) => {
+            if (!viewRef.current) return null;
+            return viewRef.current.posAtCoords({ x: clientX, y: clientY }, false);
+        },
         isFooterArea: (clientY: number) => {
             if (!viewRef.current) return true;
             const contentDOM = viewRef.current.contentDOM;

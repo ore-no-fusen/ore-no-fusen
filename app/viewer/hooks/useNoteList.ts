@@ -42,11 +42,43 @@ export function useNoteList({
     let thumbUrls: string[] = [];
     let cancelled = false;
 
+    const publishDrafts = (drafts: DraftRecord[]) => {
+      if (cancelled) return;
+      const notes: IphoneNote[] = drafts
+        .map((d) => ({
+          id: d.id, type: d.type, title: d.title, body: d.body,
+          status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
+          created_at: d.created_at, tags: d.tags,
+          videoFileName: d.videoFileName,
+          originalFileName: d.originalFileName,
+          videos: (d.videos ?? []).map((video) => ({
+            videoFileName: video.fileName,
+            originalFileName: video.originalName,
+          })),
+          memo: d.memo,
+        }))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 20);
+      setHistoryNotes(notes);
+
+      const thumbMap = new Map<string, string>();
+      for (const d of drafts) {
+        if (d.images && d.images.length > 0) {
+          const url = URL.createObjectURL(d.images[0].blob);
+          thumbMap.set(d.id, url);
+          thumbUrls.push(url);
+        }
+      }
+      setThumbnailUrls(thumbMap);
+    };
+
     const draftsPromise = loadAllDrafts().catch(() => [] as DraftRecord[]);
 
-    // ロック通知は IndexedDB のデータで即時処理（Drive fetch を待たない）
+    // IndexedDB の一覧とロック状態を即時表示する。Drive 同期は後追いで更新する。
     draftsPromise.then((localDrafts) => {
       if (cancelled) return;
+      publishDrafts(localDrafts);
+      setIsHistoryLoading(false);
       const lockedIds = localDrafts.filter((d) => d.locked).map((d) => d.id);
       // ロック状態ログ
       try {
@@ -178,35 +210,7 @@ export function useNoteList({
           deleteFileFromDrive(accessToken, 'notes_to_iphone.json').catch(() => {});
         }
 
-        const drafts = Array.from(merged.values());
-
-        const notes: IphoneNote[] = drafts
-          .map((d) => ({
-            id: d.id, type: d.type, title: d.title, body: d.body,
-            status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
-            created_at: d.created_at, tags: d.tags,
-            videoFileName: d.videoFileName,
-            originalFileName: d.originalFileName,
-            videos: (d.videos ?? []).map((video) => ({
-              videoFileName: video.fileName,
-              originalFileName: video.originalName,
-            })),
-            memo: d.memo,
-          }))
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 20);
-        if (cancelled) return;
-        setHistoryNotes(notes);
-
-        const thumbMap = new Map<string, string>();
-        for (const d of drafts) {
-          if (d.images && d.images.length > 0) {
-            const url = URL.createObjectURL(d.images[0].blob);
-            thumbMap.set(d.id, url);
-            thumbUrls.push(url);
-          }
-        }
-        setThumbnailUrls(thumbMap);
+        publishDrafts(Array.from(merged.values()));
       })
       .finally(() => {
         if (!cancelled) setIsHistoryLoading(false);

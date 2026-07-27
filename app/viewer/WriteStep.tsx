@@ -128,6 +128,16 @@ export function WriteStep({
 }: WriteStepProps) {
   const selectedPc = pcDevices.find((pc) => pc.pcId === selectedPcId) ?? null;
   const [isRefreshingPcDevices, setIsRefreshingPcDevices] = React.useState(false);
+  const [previewImageSrc, setPreviewImageSrc] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!previewImageSrc) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewImageSrc(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [previewImageSrc]);
 
   const openNextCrop = React.useCallback(() => {
     setCropQueue((prev) => {
@@ -316,6 +326,12 @@ export function WriteStep({
         data-placeholder="メモを入力..."
         style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
         onInput={handleEditorInput}
+        onClick={(event) => {
+          if (!(event.target instanceof HTMLImageElement)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setPreviewImageSrc(event.target.src);
+        }}
       />
 
       {/* タグバー */}
@@ -749,6 +765,32 @@ export function WriteStep({
             setShowMermaidModal(false);
           }}
         />
+      )}
+
+      {previewImageSrc && (
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/95 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="画像プレビュー"
+          onClick={() => setPreviewImageSrc(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-3xl text-white"
+            aria-label="画像プレビューを閉じる"
+            onClick={() => setPreviewImageSrc(null)}
+          >
+            ×
+          </button>
+          <img
+            src={previewImageSrc}
+            alt=""
+            className="max-h-full max-w-full object-contain"
+            style={{ touchAction: 'pinch-zoom' }}
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );
