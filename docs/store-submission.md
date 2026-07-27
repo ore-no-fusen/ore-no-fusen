@@ -1,90 +1,44 @@
-# Microsoft Store提出手順
+# Microsoft Store 手動提出手順
 
 ## 方針
 
-- 5.0.0はNSIS・MSI・Store MSIXを提供する移行開始版。
+- 5.0.0は旧MSI・NSIS利用者をStore版へ案内する移行版として、GitHub Release資産を保持する。
 - 5.1.0以降はStore MSIXだけを正式配布する。
-- 未署名MSIXをGitHub Release Assetsへ置かない。
-- 初回5.0.0は`Build Store Package` workflowの`store-msix` artifactをPartner Centerへ先行提出する。
-- 5.0.0のDo ReleaseはStore一般公開と導入確認が終わるまで実行しない。
-- 初回提出と自動提出有効化前は必ず手動確認する。
-
-## Repository設定
-
-Repository variable:
-
-```text
-MICROSOFT_STORE_PRODUCT_ID=9N4MW0V2MVVG
-```
-
-自動提出を使う場合のSecrets:
-
-```text
-AZURE_AD_TENANT_ID
-SELLER_ID
-AZURE_AD_APPLICATION_CLIENT_ID
-AZURE_AD_APPLICATION_SECRET
-```
+- GitHub Actionsは未署名MSIX artifactを作るだけで、Partner Centerへの提出・公開は行わない。
 
 ## 提出前提
 
-1. Actionsの`Build Store Package`へ`5.0.0`を入力し、workflowが成功している。
-2. workflowがタグ、GitHub Release、NSIS・MSI、更新通知を作成していないことを確認している。
-3. Build Store Package workflowのrun IDを控えている。
-4. runのArtifactsに`store-msix`が1件ある。
-5. MSIXのIdentity、Publisher、Version、x64、未署名検査が成功している。
+1. `Release Lockfile Dry Run`を、対象`develop`と次期版で成功させる。
+2. `Prepare Store Release`を実行し、`main`と`develop`の5つの版ファイルが同じ版になっている。
+3. `Build Store Package`を、`source_ref=main`・確定版で実行している。
+4. runのArtifactsに`store-msix`が1件あり、MSIX検査が成功している。
 
-## 初回または手動提出
+## Partner Centerへの手動提出
 
-1. GitHub ActionsのBuild Store Package runから`store-msix` artifactを取得する。
+1. GitHub Actionsの`Build Store Package` runから`store-msix` artifactをダウンロードする。
 2. Partner Centerで製品`9N4MW0V2MVVG`の新しい申請を作成する。
 3. artifact内の`ore-no-fusen.msix`をアップロードする。
 4. Package IdentityとVersionを確認する。
 5. 説明、画像、プライバシー、年齢区分、制限付きCapabilityの説明を確認する。
 6. 認定へ提出する。
-7. flightまたは一般公開後、Storeから実際にインストールし、Store画面の［開く］から初回起動する。
-8. 初回確認の［作成する］で「俺の付箋（Store版）」がデスクトップに作られ、そのショートカットから起動できることを確認する。
-9. 設定画面からショートカットの作り直しと削除ができることを確認する。
-10. `winget --source msstore`でも導入できることを確認してから、`Do Release 5.0.0`を実行する。
+7. 認定・公開後、Storeから実際にインストールまたは更新し、Store画面の［開く］から起動する。
+8. Store版ショートカット、起動設定、既存付箋・設定を確認する。
 
-Storeが認定後の配布用MSIXへ署名するため、提出ファイルは未署名でよい。
-
-## GitHub Actionsからの提出
-
-初回の手動提出が認定・公開された後だけ使用する。
-
-1. Actionsから`Microsoft Store Submit`を開く。
-2. `Run workflow`を選ぶ。
-3. `release_tag`へ例として`v5.0.0`を入力する。
-4. `release_run_id`へ`store-msix`を持つBuild Store PackageまたはRelease workflow run IDを入力する。
-5. 最初は`submit_to_store=false`でdry runする。
-6. artifact、Version、Product IDの表示を確認する。
-7. 実提出時だけ`submit_to_store=true`にする。
-8. `safety_ack`へ`FIRST_STORE_SUBMISSION_PASSED`を入力する。
-
-workflowは指定runの`store-msix` artifactを取得し、MSIXを再検査してから`msstore publish`を実行する。
+Storeが配布用MSIXへ署名するため、提出ファイルは未署名でよい。
 
 ## 公開後確認
 
 ```powershell
 winget source update
-winget search "俺の付箋" --source msstore
 winget show --id 9N4MW0V2MVVG --source msstore
-winget install --id 9N4MW0V2MVVG --source msstore
-```
-
-更新版では次も確認する。
-
-```powershell
 winget upgrade --id 9N4MW0V2MVVG --source msstore
 ```
 
-Partner Centerで取得数とインストール数を確認する。GitHub Release assetのdownload数とは合算しない。
+Partner Centerで認定状態、取得数、インストール数を確認する。
 
 ## 禁止事項
 
 - 未署名MSIXを一般ユーザーへ配布しない。
-- Store公開前にLPのGitHub導線を削除しない。
+- 5.0.0のGitHub Release資産を移行完了前に削除・置換しない。
+- 5.1.0以降のGitタグ、GitHub Release、MSI、NSIS、winget community packageを新規作成しない。
 - 旧版を先にアンインストールするよう案内しない。
-- Store認定前に`submit_to_store=true`を常用しない。
-- GitHub ReleaseのMSI・NSISを5.1.0以降も生成しない。
