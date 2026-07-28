@@ -2,7 +2,9 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '5.0.0-pwa.1';
+import { resolvePushTitles } from './notification-title';
+
+const SW_VERSION = '5.0.0-pwa.2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -45,21 +47,24 @@ function swLogAsync(msg) {
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
-  const title = data.title || '俺の付箋';
+  const { noteTitle, notificationTitle } = resolvePushTitles(
+    data.title,
+    self.navigator?.language
+  );
   const bodyPush = (data.body || '').replace(/!\[.*?\]\(.*?\)/g, '').trim();
   const bodyRich = data.body_rich || bodyPush;
   const id = data.id ?? 'unknown';
-  swLog(`push受信 id=${id} title=${title}`);
+  swLog(`push受信 id=${id} title=${notificationTitle}`);
 
   // body_rich はPushペイロードに含まれている（Driveフェッチ不要）
   // 画像ファイル（fusen_img_*）のみDriveからダウンロードして IndexedDB に保存する
   const flow = loadTokenFromMeta().then((token) => {
     swLog(`token=${token ? 'あり' : 'なし'}`);
-    if (!token) return saveToIndexedDB(id, title, bodyRich, []);
+    if (!token) return saveToIndexedDB(id, noteTitle, bodyRich, []);
     const expectedImages = extractImageFileNames(bodyRich);
     return downloadImagesFromDrive(token, bodyRich).then((images) => {
       swLog(`画像=${images.length}/${expectedImages.length}件`);
-      return saveToIndexedDB(id, title, bodyRich, images).then(() => {
+      return saveToIndexedDB(id, noteTitle, bodyRich, images).then(() => {
         swLog('IndexedDB保存完了');
         if (images.length === expectedImages.length) {
           deleteImagesFromDrive(token, images);
@@ -69,11 +74,11 @@ self.addEventListener('push', (event) => {
       });
     }).catch((e) => {
       swLog(`画像ダウンロード失敗: ${e}`);
-      return saveToIndexedDB(id, title, bodyRich, []);
+      return saveToIndexedDB(id, noteTitle, bodyRich, []);
     });
   }).catch((e) => {
     swLog(`token取得失敗: ${e}`);
-    return saveToIndexedDB(id, title, bodyRich, []);
+    return saveToIndexedDB(id, noteTitle, bodyRich, []);
   }).then(() => {
     // iOS で notificationclick が発火しない場合の保険: 次回ページ起動時に自動表示
     return savePendingOpen(id);
@@ -84,10 +89,10 @@ self.addEventListener('push', (event) => {
     });
   }).then(() => {
     swLog('通知表示');
-    return self.registration.showNotification(title, {
+    return self.registration.showNotification(notificationTitle, {
       body: bodyPush,
       tag: 'fusen-' + id,
-      data: { id, title, body: bodyPush },
+      data: { id, title: notificationTitle, body: bodyPush },
       icon: '/icon-192.png',
       badge: '/icon-192.png',
     });

@@ -336,7 +336,7 @@ push受信・notificationclick等を処理するSWのイベントハンドラ5�
 |:---|:---|:---|
 | 1 | `install` | `skipWaiting()` 呼び出し。新バージョンを即時有効化。 |
 | 2 | `activate` | `clients.claim()` でページの制御を取得。SW バージョンをログに記録。 |
-| 3 | `push` | ① Push ペイロード（title / body_rich / id）を取得<br>② `fusen-meta` からアクセストークンを取得<br>③ Drive から画像をダウンロード<br>④ `fusen-drafts` にノートを保存<br>⑤ Drive から画像ファイルを削除<br>⑥ `notes_to_iphone.json` から当該 ID を削除<br>⑦ `pending_open` を `fusen-meta` に記録<br>⑧ 既存の同 ID 通知を閉じてから新規通知を表示 |
+| 3 | `push` | ① Push ペイロード（title / body_rich / id）を取得<br>② `fusen-meta` からアクセストークンを取得<br>③ Drive から画像をダウンロード<br>④ `fusen-drafts` に元のノートタイトルのまま保存<br>⑤ Drive から画像ファイルを削除<br>⑥ `notes_to_iphone.json` から当該 ID を削除<br>⑦ `pending_open` を `fusen-meta` に記録<br>⑧ 既存の同 ID 通知を閉じ、空タイトルの場合だけ通知名を日本語環境では「俺の付箋」、それ以外では「FUSEN」として新規通知を表示 |
 | 4 | `notificationclick` | 通知をタップ → `locked` 確認 → true なら再通知・アプリを前面に出す。<br><strong style="color:#f59e0b">⚠️ iOS では発火しない（既知の制約）。</strong>タップ後の再通知は `page.tsx` の `pending_open` フローが代替。 |
 | 5 | `message` | アプリからの通信を受信。`CLOSE_NOTIFICATION` で通知を閉じる、`GET_VERSION` で SW のバージョンを返す等の処理。 |
 
@@ -731,7 +731,7 @@ Drive 上の JSON は、以下の構成を基本とする。
 |:---|:---|:---|:---:|:---|
 | 1 | `items` | `Object[]` | ○ | 未処理ノートの配列。最大20件を保持 |
 | 2 | `items[].id` | `string` | ○ | ノートID（UUID） |
-| 3 | `items[].title` | `string` | ○ | 通知・表示タイトル |
+| 3 | `items[].title` | `string` | ○ | ノートの表示タイトル。空文字も保持し、通知名のフォールバックを保存データへ混入させない |
 | 4 | `items[].body` | `string` | ○ | Markdown本文。画像は `fusen_img_*` 参照 |
 | 5 | `items[].tags` | `string[]` | ○ | タグ一覧 |
 | 6 | `items[].sent_at` | `string` | ○ | PC送信時刻 |
@@ -1378,5 +1378,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 22 | **1.21** | 26-07-22 | §1.1と§5.1に残っていた旧仕様「通常起動先は一覧」を訂正し、通常起動先が編集画面であることを全記述で統一。 |
 | 23 | 1.22 | 26-07-27 | メモ一覧はIndexedDBの保存済み内容を先に表示し、Drive同期をバックグラウンド化。PC付箋の先頭画像をタイトルと誤認せず、本文画像としてiPhoneへ送る規則を追加。 |
 | 24 | 1.23 | 26-07-27 | 本文画像のタップで、本文や保存データを変更しない全画面プレビューを表示する操作を追加。 |
+| 25 | **1.24** | 26-07-28 | 空タイトルのPC付箋では通知名だけを日本語「俺の付箋」・英語「FUSEN」とし、PWAのノートタイトル・本文には混入させない仕様を追加。 |
 
 </div>
