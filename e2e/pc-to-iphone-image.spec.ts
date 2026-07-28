@@ -52,7 +52,7 @@ test('[IPHONE-IMG-01] PC送信の先頭画像が一覧と本文で画像表示�
           items: [{
             id: NOTE_ID,
             title: '',
-            body: `![先頭画像](${IMAGE_FILE_NAME})\n画像の後の本文`,
+            body: `![先頭画像](${IMAGE_FILE_NAME})`,
             tags: [],
             sent_at: '2026-07-27T00:00:00Z',
           }],
@@ -89,7 +89,7 @@ test('[IPHONE-IMG-01] PC送信の先頭画像が一覧と本文で画像表示�
   await page.goto('/viewer');
   await page.getByRole('button', { name: '一覧', exact: true }).click();
 
-  const receivedCard = page.locator('li').filter({ hasText: '画像の後の本文' });
+  const receivedCard = page.locator('li').filter({ has: page.locator('img') });
   await expect(receivedCard).toBeVisible();
   await expect(receivedCard.locator('img')).toBeVisible();
 
@@ -116,7 +116,7 @@ test('[IPHONE-IMG-01] PC送信の先頭画像が一覧と本文で画像表示�
   }, NOTE_ID);
 
   expect(stored?.title).toBe('');
-  expect(stored?.body).toContain(`![先頭画像](${IMAGE_FILE_NAME})`);
+  expect(stored?.body).toBe(`![先頭画像](${IMAGE_FILE_NAME})`);
   expect(stored?.body).not.toContain('俺の付箋');
   expect(stored?.body).not.toContain('FUSEN');
   expect(stored?.images?.[0]?.fileName).toBe(IMAGE_FILE_NAME);
