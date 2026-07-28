@@ -5,14 +5,17 @@ import { useNoteList } from './useNoteList';
 
 const mocks = vi.hoisted(() => ({
   loadAllDrafts: vi.fn(),
+  loadDeletedDraftIds: vi.fn(),
   saveDraft: vi.fn(),
   downloadWithAutoRefresh: vi.fn(),
   downloadBinaryWithAutoRefresh: vi.fn(),
   deleteFileFromDrive: vi.fn(),
+  removeNotesFromIphoneQueue: vi.fn(),
 }));
 
 vi.mock('../lib/indexeddb', () => ({
   loadAllDrafts: mocks.loadAllDrafts,
+  loadDeletedDraftIds: mocks.loadDeletedDraftIds,
   saveDraft: mocks.saveDraft,
 }));
 
@@ -21,11 +24,15 @@ vi.mock('../lib/drive', () => ({
   uploadWithAutoRefresh: vi.fn(),
   downloadBinaryWithAutoRefresh: mocks.downloadBinaryWithAutoRefresh,
   deleteFileFromDrive: mocks.deleteFileFromDrive,
+  removeNotesFromIphoneQueue: mocks.removeNotesFromIphoneQueue,
 }));
 
 describe('useNoteList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.loadDeletedDraftIds.mockResolvedValue([]);
+    mocks.deleteFileFromDrive.mockResolvedValue(undefined);
+    mocks.removeNotesFromIphoneQueue.mockResolvedValue(undefined);
   });
 
   it('Driveの応答前にIndexedDBの一覧を表示してローディングを解除する', async () => {
@@ -68,6 +75,42 @@ describe('useNoteList', () => {
       resolveDrive({ items: [] });
       await drivePromise;
     });
+    unmount();
+  });
+
+  it('削除済みIDをDriveから再取込せず、未処理キューから除去する', async () => {
+    mocks.loadAllDrafts.mockResolvedValue([]);
+    mocks.loadDeletedDraftIds.mockResolvedValue(['deleted-1']);
+    mocks.downloadWithAutoRefresh.mockResolvedValue({
+      items: [
+        { id: 'deleted-1', title: '削除済み', body: '復活させない' },
+        { id: 'active-1', title: '新着', body: '残す' },
+      ],
+    });
+    mocks.saveDraft.mockResolvedValue(undefined);
+
+    const setHistoryNotes = vi.fn();
+    const { unmount } = renderHook(() => useNoteList({
+      step: 'list',
+      accessToken: 'token',
+      setHistoryNotes,
+      setIsHistoryLoading: vi.fn(),
+      setThumbnailUrls: vi.fn(),
+      initLockedNoteIds: vi.fn(),
+    }));
+
+    await waitFor(() => {
+      expect(mocks.removeNotesFromIphoneQueue).toHaveBeenCalledWith('token', ['deleted-1']);
+      expect(mocks.saveDraft).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'active-1' })
+      );
+    });
+    expect(mocks.saveDraft).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'deleted-1' })
+    );
+    expect(setHistoryNotes).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ id: 'deleted-1' })])
+    );
     unmount();
   });
 });

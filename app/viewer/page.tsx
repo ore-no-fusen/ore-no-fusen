@@ -7,7 +7,7 @@ import type { IphoneNote, PendingHydrate, DraftRecord, PendingVideoMeta, VideoBl
 import { NoteListStep } from './NoteListStep';
 import { PushStep } from './PushStep';
 import { WriteStep } from './WriteStep';
-import { saveDraft, loadAllDrafts, loadDraft, deleteDraft } from './lib/indexeddb';
+import { saveDraft, loadAllDrafts, loadDraft, deleteDraft, markDraftDeleted } from './lib/indexeddb';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useVisibilitySave } from './hooks/useVisibilitySave';
 import { useLockToggle } from './hooks/useLockToggle';
@@ -20,6 +20,7 @@ import {
   downloadWithAutoRefresh,
   refreshAccessToken,
   uploadImageWithAutoRefresh,
+  removeNotesFromIphoneQueue,
 } from './lib/drive';
 import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
 import { silentReRegisterIfNeeded } from './lib/push';
@@ -363,6 +364,7 @@ export default function ViewerPage() {
     new Audio('/sounds/delete.wav').play().catch(() => {});
     setIsLoading(true);
     try {
+      await markDraftDeleted(note.id);
       await deleteDraft(note.id);
 
       if (note.status === 'sent') {
@@ -386,6 +388,9 @@ export default function ViewerPage() {
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .slice(0, 20)
         );
+      }
+      if (note.status === 'received_pc' && accessToken) {
+        removeNotesFromIphoneQueue(accessToken, [note.id]).catch(() => {});
       }
     } catch {
       // エラー無視（削除失敗）

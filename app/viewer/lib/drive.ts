@@ -113,6 +113,27 @@ export async function uploadToDrive(
   }
 }
 
+export async function removeNotesFromIphoneQueue(
+  accessToken: string,
+  noteIds: string[]
+): Promise<void> {
+  if (noteIds.length === 0) return;
+  const raw = await downloadWithAutoRefresh(accessToken, 'notes_to_iphone.json');
+  const data = raw as { items?: unknown[] };
+  const items = Array.isArray(data.items) ? data.items : [];
+  const deletedIds = new Set(noteIds);
+  const remaining = items.filter((item: any) => !deletedIds.has(item?.id));
+  if (remaining.length === items.length) return;
+  if (remaining.length === 0) {
+    await deleteFileFromDrive(accessToken, 'notes_to_iphone.json');
+    return;
+  }
+  await uploadWithAutoRefresh(accessToken, 'notes_to_iphone.json', {
+    ...data,
+    items: remaining,
+  });
+}
+
 /**
  * 責務: Drive から指定ファイルを JSON としてダウンロードする（旧ファイル名への自動フォールバックあり）
  * 入力: accessToken: string, fileName: string

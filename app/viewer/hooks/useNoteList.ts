@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import { loadAllDrafts, saveDraft } from '../lib/indexeddb';
-import { downloadWithAutoRefresh, uploadWithAutoRefresh, downloadBinaryWithAutoRefresh, deleteFileFromDrive } from '../lib/drive';
+import { loadAllDrafts, loadDeletedDraftIds, saveDraft } from '../lib/indexeddb';
+import { downloadWithAutoRefresh, uploadWithAutoRefresh, downloadBinaryWithAutoRefresh, deleteFileFromDrive, removeNotesFromIphoneQueue } from '../lib/drive';
 import type { IphoneNote, DraftRecord } from '../types';
 import { nowJST } from '../utils';
 
@@ -72,7 +72,14 @@ export function useNoteList({
       setThumbnailUrls(thumbMap);
     };
 
-    const draftsPromise = loadAllDrafts().catch(() => [] as DraftRecord[]);
+    const deletedIdsPromise = loadDeletedDraftIds().catch(() => [] as string[]);
+    const draftsPromise = Promise.all([
+      loadAllDrafts().catch(() => [] as DraftRecord[]),
+      deletedIdsPromise,
+    ]).then(([drafts, deletedIds]) => {
+      const deletedIdSet = new Set(deletedIds);
+      return drafts.filter((draft) => !deletedIdSet.has(draft.id));
+    });
 
     // IndexedDB の一覧とロック状態を即時表示する。Drive 同期は後追いで更新する。
     draftsPromise.then((localDrafts) => {
@@ -96,11 +103,21 @@ export function useNoteList({
 
     // Drive から notes_to_iphone.json を取得してマージ（失敗時は IndexedDB のみで続行）
     const drivePromise: Promise<DraftRecord[]> = accessToken
-      ? downloadWithAutoRefresh(accessToken, 'notes_to_iphone.json')
-          .then((raw) => {
+      ? Promise.all([
+          downloadWithAutoRefresh(accessToken, 'notes_to_iphone.json'),
+          deletedIdsPromise,
+        ])
+          .then(([raw, deletedIds]) => {
             const data = raw as { items?: unknown[] };
             const items = Array.isArray(data.items) ? data.items : [];
-            return items.map((item: any) => ({
+            const deletedIdSet = new Set(deletedIds);
+            const queuedDeletedIds = items
+              .map((item: any) => item?.id)
+              .filter((id): id is string => typeof id === 'string' && deletedIdSet.has(id));
+            if (queuedDeletedIds.length > 0 && accessToken) {
+              removeNotesFromIphoneQueue(accessToken, queuedDeletedIds).catch(() => {});
+            }
+            return items.filter((item: any) => !deletedIdSet.has(item?.id)).map((item: any) => ({
               id: item.id as string,
               type: item.type === 'video' ? 'video' : 'note',
               title: item.title ?? '',
