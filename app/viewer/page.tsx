@@ -7,7 +7,7 @@ import type { IphoneNote, PendingHydrate, DraftRecord, PendingVideoMeta, VideoBl
 import { NoteListStep } from './NoteListStep';
 import { PushStep } from './PushStep';
 import { WriteStep } from './WriteStep';
-import { saveDraft, loadAllDrafts, loadDraft, deleteDraft } from './lib/indexeddb';
+import { saveDraft, loadAllDrafts, loadDraft, deleteDraft, markDraftDeleted } from './lib/indexeddb';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useVisibilitySave } from './hooks/useVisibilitySave';
 import { useLockToggle } from './hooks/useLockToggle';
@@ -20,12 +20,17 @@ import {
   downloadWithAutoRefresh,
   refreshAccessToken,
   uploadImageWithAutoRefresh,
+  removeNotesFromIphoneQueue,
 } from './lib/drive';
 import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
 import { silentReRegisterIfNeeded } from './lib/push';
 import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from './editor-helpers';
 import { renderSecureMermaid } from '../utils/mermaid';
 import { loadPwaLanguage, savePwaLanguage } from './language';
+import {
+  consumePendingNotification,
+  loadNotificationDraft,
+} from './lib/notification-navigation';
 
 // ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
@@ -240,8 +245,11 @@ export default function ViewerPage() {
       const pending = await loadPendingOpen().catch(() => null);
       console.log(`[page] visibilitychange: pending=${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
       if (!pending || Date.now() - pending.t >= 30 * 60 * 1000) return;
-      await clearPendingOpen().catch(() => {});
-      const draft = await loadDraft(pending.id).catch(() => null);
+      const draft = await consumePendingNotification(
+        pending.id,
+        loadDraft,
+        () => clearPendingOpen().catch(() => {}),
+      );
       console.log(`[page] visibilitychange draft: ${draft ? `images=${draft.images?.length ?? 0}件 blobs=${draft.images?.filter((i: { fileName: string; blob: Blob }) => i.blob != null).length ?? 0}件` : 'なし'}`);
       // iOS では notificationclick が発火しないため、locked: true のノートは page 側で再通知する
       if (draft?.locked) {
@@ -272,8 +280,8 @@ export default function ViewerPage() {
           videoMetas: videoMetasFromRecord(draft),
           videoBlobMap: videoBlobMapFromDraft(draft),
         });
+        setStep('write');
       }
-      setStep('write');
     };
     document.addEventListener('visibilitychange', handleVisible);
     // 起動直後も確認（clients.openWindow で新規タブが開かれた場合、visibilitychange は発火しない）
@@ -315,7 +323,7 @@ export default function ViewerPage() {
       if (event.data?.type !== 'OPEN_NOTE' || !event.data.id) return;
       const noteId = event.data.id as string;
       pageLog(`[page] OPEN_NOTE受信 id=${noteId}`);
-      const draft = await loadDraft(noteId).catch(() => null);
+      const draft = await loadNotificationDraft(noteId, loadDraft);
       if (draft) {
         const images = draft.images ?? [];
         pageLog(`[page] draft取得成功 images=${images.length}件`);
@@ -329,10 +337,10 @@ export default function ViewerPage() {
           videoMetas: videoMetasFromRecord(draft),
           videoBlobMap: videoBlobMapFromDraft(draft),
         });
+        setStep('write');
       } else {
         pageLog(`[page] draft取得失敗 id=${noteId}`);
       }
-      setStep('write');
     };
     navigator.serviceWorker.addEventListener('message', handler);
     return () => navigator.serviceWorker.removeEventListener('message', handler);
@@ -365,6 +373,7 @@ export default function ViewerPage() {
     new Audio('/sounds/delete.wav').play().catch(() => {});
     setIsLoading(true);
     try {
+      await markDraftDeleted(note.id);
       await deleteDraft(note.id);
 
       if (note.status === 'sent') {
@@ -388,6 +397,9 @@ export default function ViewerPage() {
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .slice(0, 20)
         );
+      }
+      if (note.status === 'received_pc' && accessToken) {
+        removeNotesFromIphoneQueue(accessToken, [note.id]).catch(() => {});
       }
     } catch {
       // エラー無視（削除失敗）

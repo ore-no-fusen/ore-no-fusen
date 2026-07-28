@@ -210,6 +210,35 @@ function openMetaDB(): Promise<IDBDatabase> {
   });
 }
 
+const DELETED_DRAFT_IDS_KEY = 'deleted_draft_ids';
+const MAX_DELETED_DRAFT_IDS = 500;
+
+export async function loadDeletedDraftIds(): Promise<string[]> {
+  const db = await openMetaDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction('meta', 'readonly');
+    const req = tx.objectStore('meta').get(DELETED_DRAFT_IDS_KEY);
+    req.onsuccess = () => {
+      const value = req.result;
+      resolve(Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []);
+    };
+    req.onerror = () => resolve([]);
+  });
+}
+
+export async function markDraftDeleted(id: string): Promise<void> {
+  const db = await openMetaDB();
+  const deletedIds = await loadDeletedDraftIds();
+  const nextIds = [id, ...deletedIds.filter((deletedId) => deletedId !== id)]
+    .slice(0, MAX_DELETED_DRAFT_IDS);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('meta', 'readwrite');
+    tx.objectStore('meta').put(nextIds, DELETED_DRAFT_IDS_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 /**
  * 責務: アクセストークンを fusen-meta IndexedDB に保存する（SW が push 時に参照するため）
  * 入力: token: string

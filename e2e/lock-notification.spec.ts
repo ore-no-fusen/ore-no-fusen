@@ -6,6 +6,7 @@
  * LOCK-05: DB locked フラグの永続化（DraftRecord.locked フィールド）
  * LOCK-BUG-01: showNotification に data.id が含まれること（通知クリック時に正しいメモを開くため）
  * LOCK-BUG-02: 一覧→編集→一覧で通知が再発火しないこと
+ * LOCK-BUG-03: PWA未起動時の通知URLが指定した付箋を開くこと
  */
 
 import { test, expect } from '@playwright/test';
@@ -349,4 +350,38 @@ test('[LOCK-BUG-02] 一覧に戻るたびに locked メモの通知が再発火�
 
   // 2回目の一覧遷移で新たな showNotification が呼ばれていないこと
   expect(callsAfterSecond).toBe(callsAfterFirst);
+});
+
+// ============================================================
+// LOCK-BUG-03: PWA未起動時の通知URLから対象付箋を開く
+// ============================================================
+test('[LOCK-BUG-03] 通知URLは複数付箋の中から指定IDの付箋を開く', async ({ page }) => {
+  await setupWithSwMock(page, [
+    {
+      id: 'older-notification-note',
+      title: '別の通知',
+      body: '開いてはいけない本文',
+      created_at: new Date().toISOString(),
+      images: [],
+      tags: [],
+      locked: true,
+    },
+    {
+      id: 'clicked-notification-note',
+      title: '押した通知',
+      body: 'この付箋を開く',
+      created_at: new Date().toISOString(),
+      images: [],
+      tags: [],
+      locked: true,
+    },
+  ]);
+
+  await page.goto('/viewer?note=clicked-notification-note');
+
+  const editor = page.locator('[contenteditable="true"]');
+  await expect(editor).toContainText('押した通知');
+  await expect(editor).toContainText('この付箋を開く');
+  await expect(editor).not.toContainText('開いてはいけない本文');
+  await expect(page).toHaveURL(/\/viewer$/);
 });
