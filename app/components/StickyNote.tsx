@@ -2483,6 +2483,7 @@ const StickyNote = memo(function StickyNote() {
                 <ImageAnnotationModal
                     absolutePath={annotationTarget.path}
                     displayUrl={annotationTarget.url}
+                    language={language}
                     onSaved={() => {
                         setAnnotationTarget(null);
                         setImageVersion(v => v + 1);
@@ -2552,6 +2553,7 @@ const StickyNote = memo(function StickyNote() {
                 message={t('tag.deleteMessage').replace('{tag}', tagToDelete ?? '')}
                 onConfirm={executeTagDelete}
                 onCancel={() => setTagToDelete(null)}
+                language={language}
             />
 
             {/* アラームダイアログ */}
@@ -2563,12 +2565,14 @@ const StickyNote = memo(function StickyNote() {
                 onClear={handleClearAlarm}
                 onCancel={() => setShowAlarmDialog(false)}
                 t={t}
+                language={language}
             />
 
             {/* 自動保存失敗トースト */}
             <SaveErrorToast
                 isVisible={showSaveError}
                 onDismiss={() => setShowSaveError(false)}
+                language={language}
             />
 
             {/* iPhone送信トースト */}

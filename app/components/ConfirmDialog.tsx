@@ -9,6 +9,7 @@
 'use client';
 
 import React from 'react';
+import type { Language } from '@/lib/i18n';
 
 type ConfirmDialogProps = {
     isOpen: boolean;
@@ -18,10 +19,13 @@ type ConfirmDialogProps = {
     onCancel: () => void;
     confirmText?: string; // [NEW] 確認ボタンの文言（デフォルト：「削除する」）
     cancelText?: string;  // [NEW] キャンセルボタンの文言
+    language?: Language;
 };
 
-export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel, confirmText = '削除する (Delete)', cancelText = 'キャンセル (Cancel)' }: ConfirmDialogProps) {
+export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel, confirmText, cancelText, language = 'ja' }: ConfirmDialogProps) {
     if (!isOpen) return null;
+    const resolvedConfirmText = confirmText ?? (language === 'en' ? 'Delete' : '削除する');
+    const resolvedCancelText = cancelText ?? (language === 'en' ? 'Cancel' : 'キャンセル');
 
     return (
         <div style={{
@@ -74,7 +78,7 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
                             cursor: 'pointer'
                         }}
                     >
-                        {cancelText}
+                        {resolvedCancelText}
                     </button>
                     <button
                         onClick={onConfirm}
@@ -90,7 +94,7 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
                             boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
                         }}
                     >
-                        {confirmText}
+                        {resolvedConfirmText}
                     </button>
                 </div>
             </div>

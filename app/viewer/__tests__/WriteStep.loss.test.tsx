@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WriteStep } from '../WriteStep';
 import { saveDraft } from '../lib/indexeddb';
+import { getTranslation } from '@/lib/i18n';
 
 vi.mock('../lib/indexeddb', () => ({
   saveDraft: vi.fn(),
@@ -50,7 +51,7 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
     isSendingInBackground: false,
     currentDraftId: null,
     accessToken: 'token',
-    t: ((key: string) => key) as React.ComponentProps<typeof WriteStep>['t'],
+    t: getTranslation('ja'),
     setStep: vi.fn(),
     setShowTagBar: vi.fn(),
     setTagInput: vi.fn(),

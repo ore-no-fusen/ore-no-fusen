@@ -53,16 +53,16 @@ export function PushStep({
 
   return (
     <div className="flex flex-col items-center gap-4 w-full max-w-md mx-auto px-4">
-      <p className="text-gray-700">セットアップ ステップ 2 / 2</p>
+      <p className="text-gray-700">{t('pwa.setup.step')}</p>
       {!swReady ? (
-        <p className="text-gray-500 text-sm">SW準備中...</p>
+        <p className="text-gray-500 text-sm">{t('pwa.setup.swPreparing')}</p>
       ) : (
         <button
           className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium disabled:opacity-50"
           disabled={isLoading}
           onClick={startSubscribe}
         >
-          {isLoading ? t('pwa.saving') : (errorMessage ? 'もう一度試す' : '通知を許可する')}
+          {isLoading ? t('pwa.saving') : (errorMessage ? t('pwa.setup.tryAgain') : t('pwa.setup.enableNotifications'))}
         </button>
       )}
 
@@ -76,15 +76,15 @@ export function PushStep({
       {/* エラー表示（自己解決のヒント付き） */}
       {errorMessage && (
         <div className="w-full rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800 space-y-2">
-          <p className="font-semibold">⚠ うまくいきませんでした</p>
+          <p className="font-semibold">{t('pwa.setup.failed')}</p>
           <p className="text-xs whitespace-pre-wrap break-words">{errorMessage}</p>
           <details className="text-xs">
-            <summary className="cursor-pointer text-red-700 font-medium">それでも直らないときは</summary>
+            <summary className="cursor-pointer text-red-700 font-medium">{t('pwa.setup.help')}</summary>
             <ol className="mt-2 ml-4 list-decimal space-y-1 text-red-700">
-              <li>iPhone PWA を一度閉じて開き直す（タスクスイッチャーで上にスワイプ）</li>
-              <li>iPhone の設定 → Safari → 詳細 → Web サイトデータで <code>ore-no-fusen.vercel.app</code> を削除</li>
-              <li>PWA をホーム画面から削除して、Safari で <code>ore-no-fusen.vercel.app/viewer</code> を開いて再追加</li>
-              <li>PC 側で「再接続」を押す（設定 → iPhone 連携）</li>
+              <li>{t('pwa.setup.hint1')}</li>
+              <li>{t('pwa.setup.hint2')}</li>
+              <li>{t('pwa.setup.hint3')}</li>
+              <li>{t('pwa.setup.hint4')}</li>
             </ol>
           </details>
         </div>

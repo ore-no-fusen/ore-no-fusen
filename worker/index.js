@@ -4,7 +4,7 @@
 
 import { resolvePushTitles } from './notification-title';
 
-const SW_VERSION = '5.0.0-pwa.2';
+const SW_VERSION = '5.0.0-pwa.3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

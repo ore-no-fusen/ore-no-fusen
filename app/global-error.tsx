@@ -10,6 +10,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const isEnglish = typeof navigator !== 'undefined' && !navigator.language.startsWith('ja');
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
@@ -18,8 +19,8 @@ export default function GlobalError({
     <html>
       <body>
         <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
-          <h2>エラーが発生しました</h2>
-          <button onClick={reset}>再試行</button>
+          <h2>{isEnglish ? 'An error occurred' : 'エラーが発生しました'}</h2>
+          <button onClick={reset}>{isEnglish ? 'Try again' : '再試行'}</button>
         </div>
       </body>
     </html>

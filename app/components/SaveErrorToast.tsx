@@ -10,13 +10,15 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import type { Language } from '@/lib/i18n';
 
 type SaveErrorToastProps = {
     isVisible: boolean;
     onDismiss: () => void;
+    language: Language;
 };
 
-export default function SaveErrorToast({ isVisible, onDismiss }: SaveErrorToastProps) {
+export default function SaveErrorToast({ isVisible, onDismiss, language }: SaveErrorToastProps) {
     const [isAnimatingIn, setIsAnimatingIn] = useState(false);
 
     useEffect(() => {
@@ -59,9 +61,11 @@ export default function SaveErrorToast({ isVisible, onDismiss }: SaveErrorToastP
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, lineHeight: 1.4 }}>
                 <span style={{ fontSize: '16px', flexShrink: 0 }}>⚠️</span>
                 <span>
-                    自動保存に失敗しました。<br />
+                    {language === 'en' ? 'Automatic save failed.' : '自動保存に失敗しました。'}<br />
                     <span style={{ fontWeight: 400, opacity: 0.85 }}>
-                        保存先の接続、空き容量、書き込み権限を確認してください。編集中の内容は画面を閉じずに残してください。
+                        {language === 'en'
+                            ? 'Check the save location connection, available storage, and write permission. Keep this window open so your edits remain available.'
+                            : '保存先の接続、空き容量、書き込み権限を確認してください。編集中の内容は画面を閉じずに残してください。'}
                     </span>
                 </span>
             </div>
@@ -69,7 +73,7 @@ export default function SaveErrorToast({ isVisible, onDismiss }: SaveErrorToastP
             {/* 閉じるボタン */}
             <button
                 onClick={onDismiss}
-                aria-label="閉じる"
+                aria-label={language === 'en' ? 'Close' : '閉じる'}
                 style={{
                     flexShrink: 0,
                     background: 'rgba(255,255,255,0.2)',

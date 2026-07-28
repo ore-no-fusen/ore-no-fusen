@@ -61,6 +61,7 @@ describe('Video attachment semantics', () => {
         lockedNoteIds={[]}
         isLockPermissionPending={false}
         t={t}
+        language="ja"
         swVersion="test"
         runtimeOrigin="https://example.com"
         runtimeKind="Vercel"
@@ -69,6 +70,7 @@ describe('Video attachment semantics', () => {
         onDelete={vi.fn()}
         onLockToggle={vi.fn()}
         onReRegisterPush={vi.fn()}
+        onLanguageChange={vi.fn()}
       />,
     );
 

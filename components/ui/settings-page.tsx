@@ -1276,7 +1276,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                             className="w-32 justify-start"
                             onClick={() => onUpdate("language", "ja")}
                         >
-                            <Globe className="mr-2 h-4 w-4" /> 日本語
+                            <Globe className="mr-2 h-4 w-4" /> {isEnglish ? 'Japanese' : '日本語'}
                         </Button>
                         <Button
                             variant={settings.language === "en" ? "default" : "ghost"}

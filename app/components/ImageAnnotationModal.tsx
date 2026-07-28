@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi';
 import { AnnotationHistory } from '../utils/annotationHistory';
+import type { Language } from '@/lib/i18n';
 
 type Tool = 'pen' | 'highlight' | 'arrow' | 'rect' | 'callout';
 type AnnotationNode = import('konva/lib/Shape').Shape | import('konva/lib/Group').Group;
@@ -29,33 +30,34 @@ interface Props {
     displayUrl: string;
     onSaved: () => void;
     onCancel: () => void;
+    language: Language;
 }
 
 // 通常ツール用カラー
 const PEN_COLORS = [
-    { value: '#ef4444', label: '赤' },
-    { value: '#3b82f6', label: '青' },
-    { value: '#22c55e', label: '緑' },
-    { value: '#eab308', label: '黄' },
+    { value: '#ef4444', ja: '赤', en: 'Red' },
+    { value: '#3b82f6', ja: '青', en: 'Blue' },
+    { value: '#22c55e', ja: '緑', en: 'Green' },
+    { value: '#eab308', ja: '黄', en: 'Yellow' },
 ];
 
 // 蛍光ペン用: Excelと同等のビビッドカラー
 const HIGHLIGHT_COLORS = [
-    { value: '#FFFF00', label: '黄' },
-    { value: '#00FF00', label: '緑' },
-    { value: '#00FFFF', label: '水色' },
-    { value: '#FF69B4', label: 'ピンク' },
+    { value: '#FFFF00', ja: '黄', en: 'Yellow' },
+    { value: '#00FF00', ja: '緑', en: 'Green' },
+    { value: '#00FFFF', ja: '水色', en: 'Cyan' },
+    { value: '#FF69B4', ja: 'ピンク', en: 'Pink' },
 ];
 
-const TOOLS: { value: Tool; label: string }[] = [
-    { value: 'pen',       label: 'ペン' },
-    { value: 'highlight', label: '蛍光ペン' },
-    { value: 'arrow',     label: '矢印' },
-    { value: 'rect',      label: '四角' },
-    { value: 'callout',   label: '吹き出し' },
+const TOOLS: { value: Tool; ja: string; en: string }[] = [
+    { value: 'pen',       ja: 'ペン', en: 'Pen' },
+    { value: 'highlight', ja: '蛍光ペン', en: 'Highlighter' },
+    { value: 'arrow',     ja: '矢印', en: 'Arrow' },
+    { value: 'rect',      ja: '四角', en: 'Rectangle' },
+    { value: 'callout',   ja: '吹き出し', en: 'Callout' },
 ];
 
-export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved, onCancel }: Props) {
+export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved, onCancel, language }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<import('konva/lib/Stage').Stage | null>(null);
     const drawLayerRef = useRef<import('konva/lib/Layer').Layer | null>(null);
@@ -173,7 +175,10 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
                 if (t === 'callout') {
                     // Callout: prompt for text then place
-                    const text = window.prompt('吹き出しのテキストを入力してください', '注目！');
+                    const text = window.prompt(
+                        language === 'en' ? 'Enter callout text' : '吹き出しのテキストを入力してください',
+                        language === 'en' ? 'Note!' : '注目！',
+                    );
                     if (text === null) return; // cancelled
                     const label = new Konva.Label({ x: pos.x, y: pos.y, draggable: true });
                     label.add(new Konva.Tag({
@@ -186,7 +191,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         cornerRadius: 6,
                     }));
                     label.add(new Konva.Text({
-                        text: text || '注目！',
+                        text: text || (language === 'en' ? 'Note!' : '注目！'),
                         fontSize: 14,
                         fontFamily: '"BIZ UDPGothic", Meiryo, sans-serif',
                         fill: '#ffffff',
@@ -295,7 +300,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             stageRef.current = null;
             drawLayerRef.current = null;
         };
-    }, [displayUrl, syncHistoryCounts]);
+    }, [displayUrl, language, syncHistoryCounts]);
 
     // ─── Undo ────────────────────────────────────────────────────────────
     const handleToolChange = useCallback((t: Tool) => {
@@ -338,11 +343,11 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             onSaved();
         } catch (err) {
             console.error('[ANNOTATION] save error', err);
-            alert(`保存に失敗しました: ${err}`);
+            alert(`${language === 'en' ? 'Could not save: ' : '保存に失敗しました: '}${err}`);
         } finally {
             setIsSaving(false);
         }
-    }, [absolutePath, onSaved]);
+    }, [absolutePath, language, onSaved]);
 
     // ─── ウィンドウ拡大（モーダル表示中のみ）────────────────────────────
     useEffect(() => {
@@ -391,7 +396,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                 <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-gray-50 flex-wrap">
                     {/* Tool buttons */}
                     <div className="flex gap-1">
-                        {TOOLS.map(({ value, label }) => (
+                        {TOOLS.map(({ value, ja, en }) => (
                             <button
                                 key={value}
                                 onClick={() => handleToolChange(value)}
@@ -401,7 +406,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                                         : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
                                 }`}
                             >
-                                {label}
+                                {language === 'en' ? en : ja}
                             </button>
                         ))}
                     </div>
@@ -410,10 +415,10 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
                     {/* Color buttons: 蛍光ペン時はビビッドカラー、それ以外は通常色 */}
                     <div className="flex gap-1 items-center">
-                        {(tool === 'highlight' ? HIGHLIGHT_COLORS : PEN_COLORS).map(({ value, label }) => (
+                        {(tool === 'highlight' ? HIGHLIGHT_COLORS : PEN_COLORS).map(({ value, ja, en }) => (
                             <button
                                 key={value}
-                                title={label}
+                                title={language === 'en' ? en : ja}
                                 onClick={() => setColor(value)}
                                 className="w-7 h-7 rounded-full border-2 transition-transform"
                                 style={{
@@ -430,7 +435,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         <>
                             <div className="w-px h-6 bg-gray-300" />
                             <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-500">太さ</span>
+                                <span className="text-xs text-gray-500">{language === 'en' ? 'Width' : '太さ'}</span>
                                 <input
                                     type="range"
                                     min={tool === 'highlight' ? 10 : 1}
@@ -448,7 +453,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         <>
                             <div className="w-px h-6 bg-gray-300" />
                             <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-500">濃さ</span>
+                                <span className="text-xs text-gray-500">{language === 'en' ? 'Opacity' : '濃さ'}</span>
                                 <input
                                     type="range"
                                     min={10}
@@ -479,14 +484,14 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                             disabled={historyCounts.undo === 0}
                             className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                            元に戻す
+                            {language === 'en' ? 'Undo' : '元に戻す'}
                         </button>
                         <button
                             onClick={handleRedo}
                             disabled={historyCounts.redo === 0}
                             className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                            やり直す
+                            {language === 'en' ? 'Redo' : 'やり直す'}
                         </button>
                     </div>
                     <div className="flex gap-2">
@@ -494,14 +499,14 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                             onClick={onCancel}
                             className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100"
                         >
-                            キャンセル
+                            {language === 'en' ? 'Cancel' : 'キャンセル'}
                         </button>
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
                             className="px-5 py-1.5 rounded bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {isSaving ? '保存中…' : '保存'}
+                            {isSaving ? (language === 'en' ? 'Saving…' : '保存中…') : (language === 'en' ? 'Save' : '保存')}
                         </button>
                     </div>
                 </div>

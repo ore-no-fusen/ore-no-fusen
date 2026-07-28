@@ -18,7 +18,7 @@ export default defineConfig({
     workers: 1,
     reporter: 'list',
     use: {
-        baseURL: 'http://localhost:3002',
+        baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3002',
         trace: 'on-first-retry',
     },
     projects: [
