@@ -1019,3 +1019,10 @@
 - 修正: 削除済みIDをIndexedDBメタ情報に記録し、一覧同期では再取り込みを拒否する。Driveキューからは対象IDだけを除去し、同時配送された他の付箋は保持する。
 - PWA Service Worker版: `5.0.0-pwa.3`。
 - 検証: 削除後に一覧を開き直し、Driveが古い対象を返し続けても復活せず、別の付箋は残るE2Eに合格。全Vitest 427件、TypeScript、Next.js本番ビルド、VitePress設計書ビルドに合格。
+## 2026-07-29 PWA通知タップから対象付箋への遷移修正
+
+- 原因: 通知IDの受け渡し経路ごとに付箋読込処理が分散し、IndexedDB保存直後の取得失敗でもwrite画面へ遷移していた。`pending_open`も対象取得前に削除していた。
+- 修正: 既存PWAは`OPEN_NOTE`、未起動PWAは`/viewer?note={id}`で押した通知IDを直接指定し、共通処理でIndexedDBを短時間再試行する。対象取得成功後だけwrite画面へ遷移し、URLまたは`pending_open`を消す。
+- iOSが通知タップイベントを渡さない場合だけ、従来どおり直近1件の`pending_open`を代替利用する。
+- PWA Service Worker版: `5.0.0-pwa.4`。
+- 検証: 通知遷移対象13件、全Vitest 437件、TypeScript、Next.js本番ビルド、VitePressビルド、通知URLから指定IDだけを開くChromium E2Eに合格。

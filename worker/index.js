@@ -3,8 +3,9 @@
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
 import { resolvePushTitles } from './notification-title';
+import { closeClickedNotification, focusViewerOrOpenTarget } from './notification-click';
 
-const SW_VERSION = '5.0.0-pwa.3';
+const SW_VERSION = '5.0.0-pwa.4';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -305,9 +306,7 @@ function checkIsLocked(id) {
 }
 
 self.addEventListener('notificationclick', (event) => {
-  const { id, title, body } = event.notification.data || {};
-  event.notification.close();
-  const targetUrl = self.location.origin + '/viewer?note=' + (id ?? 'unknown');
+  const { id, title, body } = closeClickedNotification(event.notification);
   event.waitUntil(
     Promise.all([
       swLogAsync(`notificationclick id=${id}`),
@@ -323,19 +322,17 @@ self.addEventListener('notificationclick', (event) => {
           badge: '/icon-192.png',
         });
       }),
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-        return swLogAsync(`clients=${clientList.length}件`).then(() => {
-          for (const client of clientList) {
-            if (client.url.includes('/viewer') && 'focus' in client) {
-              swLogAsync(`postMessage OPEN_NOTE id=${id}`);
-              client.postMessage({ type: 'OPEN_NOTE', id });
-              return client.focus();
-            }
-          }
-          swLogAsync(`openWindow targetUrl=${targetUrl}`);
-          return clients.openWindow(targetUrl);
-        });
-      }),
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) =>
+        swLogAsync(`clients=${clientList.length}件`).then(() =>
+          focusViewerOrOpenTarget({
+            clientList,
+            id,
+            origin: self.location.origin,
+            openWindow: (url) => clients.openWindow(url),
+            log: (message) => { swLogAsync(message); },
+          })
+        )
+      ),
     ])
   );
 });

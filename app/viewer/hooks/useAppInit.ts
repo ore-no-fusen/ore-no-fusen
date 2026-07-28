@@ -2,6 +2,12 @@
 
 import { useEffect } from 'react';
 import { loadDraft, saveAuthToken, loadPendingOpen, clearPendingOpen } from '../lib/indexeddb';
+import {
+  consumePendingNotification,
+  getNotificationNoteId,
+  loadNotificationDraft,
+  removeNotificationNoteParam,
+} from '../lib/notification-navigation';
 
 function pageLog(msg: string) {
   try {
@@ -188,18 +194,18 @@ export function useAppInit({
     // 通知タップ（?note= あり）
     // メモは必ず IndexedDB にある（ローカル下書き or 一覧で受信済み）
     // Drive は見ない。Drive ダウンロードは一覧を開いたときに行う。
-    if (params.get('note')) {
+    const notificationNoteId = getNotificationNoteId(window.location.search);
+    if (notificationNoteId) {
       if (!token) {
         generatePKCE().then(({ verifier, challenge }) => {
           localStorage.setItem('pkce_verifier', verifier);
-          localStorage.setItem('pending_note', params.get('note')!);
+          localStorage.setItem('pending_note', notificationNoteId);
           startOAuth(challenge);
         });
         return;
       }
       setAccessToken(token);
-      const tappedId = params.get('note')!;
-      loadDraft(tappedId).then((draft) => {
+      loadNotificationDraft(notificationNoteId, loadDraft).then((draft) => {
         if (draft) {
           const titleLine = draft.title ? `${draft.title}\n` : '';
           const images = draft.images ?? [];
@@ -212,8 +218,13 @@ export function useAppInit({
             videoMetas: videoMetasFromDraft(draft),
             videoBlobMap: videoBlobMapFromDraft(draft),
           });
+          window.history.replaceState(
+            {},
+            '',
+            removeNotificationNoteParam(window.location.href),
+          );
+          setStep('write');
         }
-        setStep('write');
       });
       return;
     }
@@ -265,8 +276,11 @@ export function useAppInit({
           // 起動直後に入力が始まっていたら、その1文字目以降を通知ノートで上書きしない。
           // pending_open は残し、次回起動時に再確認する。
           if (hasStartedWriting?.()) return;
-          await clearPendingOpen().catch(() => {});
-          const draft = await loadDraft(pending.id).catch(() => null);
+          const draft = await consumePendingNotification(
+            pending.id,
+            loadDraft,
+            () => clearPendingOpen().catch(() => {}),
+          );
           pageLog(`pending draft: ${draft ? '取得成功' : '取得失敗'}`);
           if (draft) {
             const titleLine = draft.title ? `${draft.title}\n` : '';
@@ -280,8 +294,8 @@ export function useAppInit({
               videoMetas: videoMetasFromDraft(draft),
               videoBlobMap: videoBlobMapFromDraft(draft),
             });
+            setStep('write');
           }
-          setStep('write');
           return;
         }
 
