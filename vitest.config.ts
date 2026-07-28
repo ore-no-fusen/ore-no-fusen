@@ -13,7 +13,12 @@ import path from 'path';
 export default defineConfig({
     test: {
         environment: 'jsdom',
-        include: ['app/**/*.test.ts', 'app/**/*.test.tsx', 'lib/**/*.test.ts'],
+        include: [
+            'app/**/*.test.ts',
+            'app/**/*.test.tsx',
+            'lib/**/*.test.ts',
+            'worker/**/*.test.js',
+        ],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html', 'lcov'],
