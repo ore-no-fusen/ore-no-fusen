@@ -7,6 +7,7 @@
  * LOCK-BUG-01: showNotification に data.id が含まれること（通知クリック時に正しいメモを開くため）
  * LOCK-BUG-02: 一覧→編集→一覧で通知が再発火しないこと
  * LOCK-BUG-03: PWA未起動時の通知URLが指定した付箋を開くこと
+ * LOCK-BUG-04: 実機用の通知診断コピーが本文を含まないこと
  */
 
 import { test, expect } from '@playwright/test';
@@ -384,4 +385,66 @@ test('[LOCK-BUG-03] 通知URLは複数付箋の中から指定IDの付箋を開�
   await expect(editor).toContainText('この付箋を開く');
   await expect(editor).not.toContainText('開いてはいけない本文');
   await expect(page).toHaveURL(/\/viewer$/);
+});
+
+// ============================================================
+// LOCK-BUG-04: 通知診断ログの実機コピー
+// ============================================================
+test('[LOCK-BUG-04] 通知診断コピーはNAVログを含み本文ログを除外する', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: () => ({
+        matches: true,
+        media: '(display-mode: standalone)',
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+    localStorage.setItem('viewer_access_token', 'dummy-token');
+    localStorage.setItem('viewer_push_done', 'true');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as unknown as { __copiedDiagnostic?: string }).__copiedDiagnostic = text;
+        },
+      },
+    });
+
+    const request = indexedDB.open('fusen-logs', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('logs', { autoIncrement: true });
+    request.onsuccess = () => {
+      const tx = request.result.transaction('logs', 'readwrite');
+      tx.objectStore('logs').add({
+        t: '2026-07-30T00:00:00+09:00',
+        msg: 'push受信 id=note-1 title=コピーしてはいけない本文',
+      });
+      tx.objectStore('logs').add({
+        t: '2026-07-30T00:00:01+09:00',
+        msg: '[NAV] event=notification_click id=note-1',
+      });
+    };
+  });
+  await page.route('**/sw.js', (route) =>
+    route.fulfill({ body: '', contentType: 'application/javascript' })
+  );
+  await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
+
+  await page.goto('/viewer?debug=1');
+  await page.getByRole('button', {
+    name: /通知診断をコピー|Copy notification diagnostics/,
+  }).click();
+
+  await expect.poll(() => page.evaluate(
+    () => (window as unknown as { __copiedDiagnostic?: string }).__copiedDiagnostic ?? ''
+  )).toContain('[NAV] event=notification_click id=note-1');
+  const copied = await page.evaluate(
+    () => (window as unknown as { __copiedDiagnostic?: string }).__copiedDiagnostic ?? ''
+  );
+  expect(copied).not.toContain('コピーしてはいけない本文');
 });

@@ -46,6 +46,7 @@ export type PendingHydrate = {
   videoMeta?: PendingVideoMeta | null;
   videoMetas?: PendingVideoMeta[];
   videoBlobMap?: VideoBlobMap;
+  notificationSource?: 'url' | 'pending_open' | 'visibility' | 'open_note';
 };
 
 export type PendingVideoMeta = {

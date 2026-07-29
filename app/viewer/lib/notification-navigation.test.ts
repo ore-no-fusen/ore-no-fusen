@@ -35,6 +35,28 @@ describe('notification navigation', () => {
     expect(loader).toHaveBeenCalledTimes(4);
   });
 
+  it('各読込のmissing・error・foundを本文なしで通知する', async () => {
+    const loader = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error('秘密の本文'))
+      .mockResolvedValueOnce(draft);
+    const wait = vi.fn().mockResolvedValue(undefined);
+    const onAttempt = vi.fn();
+
+    await loadNotificationDraft('target-note', loader, wait, onAttempt);
+
+    expect(onAttempt.mock.calls.map(([value]) => ({
+      attempt: value.attempt,
+      result: value.result,
+      errorName: value.errorName,
+    }))).toEqual([
+      { attempt: 1, result: 'missing', errorName: undefined },
+      { attempt: 2, result: 'error', errorName: 'Error' },
+      { attempt: 3, result: 'found', errorName: undefined },
+    ]);
+    expect(JSON.stringify(onAttempt.mock.calls)).not.toContain('秘密の本文');
+  });
+
   it('pending_openは対象付箋を取得できた後だけ削除する', async () => {
     const clearPending = vi.fn().mockResolvedValue(undefined);
     const wait = vi.fn().mockResolvedValue(undefined);
