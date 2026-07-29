@@ -126,6 +126,7 @@ banner・login・push・list・write の5画面それぞれの表示条件と役
       <div class="phone-screen" style="background:#F2F2F7; display:flex; flex-direction:column; padding:6px; gap:4px;">
         <div class="mock-header">
           <span style="font-size:9px; font-weight:700; color:#111827;">メモ</span>
+          <span style="font-size:6px; color:#4b5563; margin-left:auto;">🌐 EN</span>
           <span style="font-size:9px; color:#111827;">＋</span>
         </div>
         <div class="mock-card"><div class="mock-dot mock-dot-blue"></div><span style="font-size:6px;">大事なメモ</span><span style="font-size:8px; margin-left:auto;">🔔</span></div>
@@ -139,12 +140,19 @@ banner・login・push・list・write の5画面それぞれの表示条件と役
   </div>
   <dl class="screen-def">
     <dt>表示条件</dt>
-    <dd>トークンあり + <code>viewer_push_done=true</code>（通常の起動時）</dd>
+    <dd>編集画面から一覧を開いた場合</dd>
     <dt>操作</dt>
-    <dd>＋ → write（新規）<br>メモタップ → write（編集）<br>🔔 → ロック画面に表示 ON/OFF<br>🗑️ → メモ削除</dd>
+    <dd>🌐 EN / 🌐 日本 → 同じlist画面のまま表示言語を切替<br>＋ → write（新規）<br>メモタップ → write（編集）<br>🔔 → ロック画面に表示 ON/OFF<br>🗑️ → メモ削除</dd>
     <dt>バージョン表示</dt>
     <dd><code>app x.x.x / ServiceWorker x.x.x</code>（右下固定）</dd>
   </dl>
+
+  <div style="grid-column:1 / -1;">
+    <h4>画面ID <code>list</code> — 言語切替ボタンの位置</h4>
+    <img src="./public/screens/iphone-list-language.svg" alt="画面ID listのメモ一覧画面。画面上部のメモ見出しの右側に言語切替ボタンがある" style="display:block;width:100%;max-width:700px;margin:0 auto;">
+    <p class="mermaid-caption">図 1.1-1　画面ID <code>list</code>（メモ一覧）と言語切替ボタンの位置</p>
+  </div>
+
   <!-- write -->
   <div class="phone">
     <div class="phone-frame">
@@ -180,6 +188,12 @@ banner・login・push・list・write の5画面それぞれの表示条件と役
     <dd><code>app x.x.x / ServiceWorker x.x.x</code>（右下固定）</dd>
   </dl>
 </div>
+
+#### その他の画面ID — 画面イメージ
+
+<img src="./public/screens/iphone-other-screens.svg" alt="画面ID banner、login、push、writeのiPhone PWA画面イメージ" style="display:block;width:100%;max-width:700px;margin:0 auto;">
+
+<p class="mermaid-caption">図 1.1-2　画面ID <code>banner</code>・<code>login</code>・<code>push</code>・<code>write</code>の画面イメージ</p>
 
 ### 1.2 起動時の遷移ルール
 
@@ -563,6 +577,7 @@ PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3スト�
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">6</td><td><code>pending_note</code></td><td>PKCE 認証後に自動で開くノート ID</td></tr>
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">7</td><td><code>viewer_device_id</code></td><td>Web Push 用のクライアント識別子</td></tr>
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">8</td><td><code>fusen_known_tags</code></td><td>過去に入力したタグの履歴（サジェスト用）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">9</td><td><code>ore-no-fusen-viewer-language</code></td><td>PWAの表示言語。未保存・不正値は日本語、<code>en</code>保存時は英語。PC設定やGoogle Driveとは同期しない</td></tr>
     </tbody>
   </table>
 </div>
@@ -1234,6 +1249,7 @@ graph LR
 | 6 | 🗑️ 削除 | 削除 ID を `fusen-meta` に記録してから IndexedDB から削除し、`notes_to_iphone.json` の同 ID だけを除去する。Drive処理が遅延・失敗してキューが残っても、削除 ID は一覧同期の再取込対象外とし、他の未配達ノートは保持する |
 | 7 | ＋ 新規作成 | 新しい下書き ID を `crypto.randomUUID()` で生成し write 画面へ遷移 |
 | 8 | 🔔 デバイス再登録（フッター） | `silentReRegisterIfNeeded()` を呼び出し、`push_devices.json` に自デバイスが存在しない場合のみ静かに再登録する。既存デバイスがいれば何もしない |
+| 9 | 🌐 表示言語切替 | 既定は日本語。一覧右上の `🌐 EN` で英語へ、英語表示中の `🌐 日本` で日本語へ切り替える。選択は端末のlocalStorageへ保存し、次回起動後も保持する。PC側の言語設定やGoogle Driveとは連動させない |
 
 ### 6.2 ロック画面常駐（🔔）
 
@@ -1383,5 +1399,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 25 | **1.24** | 26-07-28 | 空タイトルのPC付箋では通知名だけを日本語「俺の付箋」・英語「FUSEN」とし、PWAのノートタイトル・本文には混入させない仕様を追加。 |
 | 26 | **1.25** | 26-07-29 | 一覧で削除したPC受信ノートのIDを端末内へ記録し、Drive未処理キューの残留・同期競合があっても再取込しない削除規則を追加。 |
 | 27 | **1.26** | 26-07-29 | 通知タップIDを既存PWAへのメッセージまたは起動URLで直接指定し、IndexedDB保存待ちを再試行する遷移規則を追加。`pending_open`は対象取得成功後だけ削除する。 |
+| 28 | **1.27** | 26-07-30 | PWAの既定表示を日本語とし、一覧画面右上の `🌐 EN` / `🌐 日本` で同じ画面のまま英語・日本語を切り替える仕様を追加。選択は端末内に保存し、PC・Google Driveとは同期しない。全5画面の画面ID付き画面図を追加。 |
 
 </div>

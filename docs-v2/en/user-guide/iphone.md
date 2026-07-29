@@ -21,4 +21,10 @@ iPhone notes, images, and videos can be sent to the PC through your own Google D
 2. Enter the note body and optionally attach an image or video.
 3. Select **Send to PC**.
 
+## Change the display language
+
+The default display language is Japanese. On the list screen, select **🌐 EN** to switch to English. In English, select **🌐 日本** to switch back to Japanese.
+
+The selected language is stored on that iPhone and remains active after reopening the app. It does not follow the language setting of the PC app.
+
 If it does not arrive, see [Troubleshooting](/en/user-guide/troubleshooting).

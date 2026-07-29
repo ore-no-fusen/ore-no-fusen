@@ -1026,3 +1026,11 @@
 - iOSが通知タップイベントを渡さない場合だけ、従来どおり直近1件の`pending_open`を代替利用する。
 - PWA Service Worker版: `5.0.0-pwa.4`。
 - 検証: 通知遷移対象13件、全Vitest 437件、TypeScript、Next.js本番ビルド、VitePressビルド、通知URLから指定IDだけを開くChromium E2Eに合格。
+
+## 2026-07-30 PWA表示言語の文書同期
+
+- PCの基点: `develop` は `origin/develop` と一致した状態から開始。
+- 実装: PWA言語設定のソース変更は既に反映済み。本作業ではソースを変更していない。
+- 文書: `docs-v2/003_IPHONE.md`へ既定日本語、一覧からの日英切替、端末内保存、PC・Drive非連動を追記し、全5画面の画面ID付き画面図、改版1.27を追加。日英ユーザーガイドのiPhone連携ページへ操作手順を追加。
+- テスト: `git diff --check`成功、`docs-v2`の`npm run docs:build`成功。
+- 確認状況: 文書の画面図はユーザー確認済み。PWAの日本語既定、日英切替、設定保持、再起動後の表示はdevelop反映後の実機確認待ち。
