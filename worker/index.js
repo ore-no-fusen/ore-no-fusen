@@ -5,7 +5,7 @@
 import { resolvePushTitles } from './notification-title';
 import { closeClickedNotification, focusViewerOrOpenTarget } from './notification-click';
 
-const SW_VERSION = '5.0.0-pwa.5';
+const SW_VERSION = '5.0.0-pwa.6';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -89,7 +89,7 @@ self.addEventListener('push', (event) => {
       ns.forEach((n) => { if (n.data?.id === id) n.close(); });
     });
   }).then(() => {
-    swLog('通知表示');
+    swLog(`[NAV] event=notification_shown id=${id}`);
     return self.registration.showNotification(notificationTitle, {
       body: bodyPush,
       tag: 'fusen-' + id,
@@ -111,7 +111,9 @@ function savePendingOpen(id) {
       req.onsuccess = () => {
         const tx = req.result.transaction('meta', 'readwrite');
         tx.objectStore('meta').put({ id, t: Date.now() }, 'pending_open');
-        tx.oncomplete = () => { swLogAsync(`pending_open保存 id=${id}`).then(resolve); };
+        tx.oncomplete = () => {
+          swLogAsync(`[NAV] event=pending_saved id=${id}`).then(resolve);
+        };
         tx.onerror = () => resolve();
       };
       req.onerror = () => resolve();
@@ -309,10 +311,10 @@ self.addEventListener('notificationclick', (event) => {
   const { id, title, body } = closeClickedNotification(event.notification);
   event.waitUntil(
     Promise.all([
-      swLogAsync(`notificationclick id=${id}`),
+      swLogAsync(`[NAV] event=notification_click id=${id}`),
       // 🔔ON（locked=true）なら再表示、🔔OFF（locked=false）なら再表示しない
       checkIsLocked(id).then((isLocked) => {
-        swLogAsync(`notificationclick locked=${isLocked}`);
+        swLogAsync(`[NAV] event=notification_lock_checked id=${id} locked=${isLocked}`);
         if (!isLocked) return;
         return self.registration.showNotification(title, {
           body,
@@ -323,7 +325,7 @@ self.addEventListener('notificationclick', (event) => {
         });
       }),
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) =>
-        swLogAsync(`clients=${clientList.length}件`).then(() =>
+        swLogAsync(`[NAV] event=client_count id=${id} count=${clientList.length}`).then(() =>
           focusViewerOrOpenTarget({
             clientList,
             id,

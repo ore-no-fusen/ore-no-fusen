@@ -37,4 +37,22 @@ describe('notification click navigation', () => {
       'note / 日本語',
     ));
   });
+
+  it('画面を開けなかった場合は本文を含めずエラー種別をログに残す', async () => {
+    const log = vi.fn();
+    const error = new TypeError('秘密の本文');
+
+    await expect(focusViewerOrOpenTarget({
+      clientList: [],
+      id: 'note-3',
+      origin: 'https://example.com',
+      openWindow: vi.fn().mockRejectedValue(error),
+      log,
+    })).rejects.toBe(error);
+
+    expect(log).toHaveBeenLastCalledWith(
+      '[NAV] event=route_failed id=note-3 error=TypeError',
+    );
+    expect(JSON.stringify(log.mock.calls)).not.toContain('秘密の本文');
+  });
 });

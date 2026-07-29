@@ -31,6 +31,12 @@ import {
   consumePendingNotification,
   loadNotificationDraft,
 } from './lib/notification-navigation';
+import {
+  appendDiagnosticLog,
+  buildNotificationDiagnosticReport,
+  formatNavigationLog,
+  type DiagnosticLogRecord,
+} from './lib/diagnostic-log';
 
 // ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
@@ -223,6 +229,12 @@ export default function ViewerPage() {
       videoBlobsRef.current = nextVideoBlobMap;
       setVideoBlobs(nextVideoBlobMap);
       setVideoMetas(pendingHydrate.videoMetas ?? (pendingHydrate.videoMeta ? [pendingHydrate.videoMeta] : []));
+      if (pendingHydrate.notificationSource) {
+        appendDiagnosticLog(formatNavigationLog('detail_displayed', {
+          source: pendingHydrate.notificationSource,
+          id: pendingHydrate.draftId ?? 'unknown',
+        }));
+      }
       setPendingHydrate(null);
     };
     const timer = setTimeout(run, 50);
@@ -241,16 +253,30 @@ export default function ViewerPage() {
   useEffect(() => {
     const handleVisible = async () => {
       if (document.visibilityState !== 'visible') return;
+      appendDiagnosticLog(formatNavigationLog('page_visible'));
       const { loadPendingOpen, clearPendingOpen, loadDraft } = await import('./lib/indexeddb');
       const pending = await loadPendingOpen().catch(() => null);
-      console.log(`[page] visibilitychange: pending=${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
+      appendDiagnosticLog(formatNavigationLog('pending_checked', {
+        source: 'visibility',
+        found: Boolean(pending),
+        id: pending?.id,
+        age_seconds: pending ? Math.round((Date.now() - pending.t) / 1000) : undefined,
+      }));
       if (!pending || Date.now() - pending.t >= 30 * 60 * 1000) return;
       const draft = await consumePendingNotification(
         pending.id,
         loadDraft,
         () => clearPendingOpen().catch(() => {}),
+        undefined,
+        (attempt) => appendDiagnosticLog(formatNavigationLog('draft_load', {
+          source: 'visibility',
+          id: pending.id,
+          attempt: attempt.attempt,
+          result: attempt.result,
+          elapsed_ms: attempt.elapsedMs,
+          error: attempt.errorName,
+        })),
       );
-      console.log(`[page] visibilitychange draft: ${draft ? `images=${draft.images?.length ?? 0}件 blobs=${draft.images?.filter((i: { fileName: string; blob: Blob }) => i.blob != null).length ?? 0}件` : 'なし'}`);
       // iOS では notificationclick が発火しないため、locked: true のノートは page 側で再通知する
       if (draft?.locked) {
         try {
@@ -279,8 +305,19 @@ export default function ViewerPage() {
           tags: draft.tags ?? [],
           videoMetas: videoMetasFromRecord(draft),
           videoBlobMap: videoBlobMapFromDraft(draft),
+          notificationSource: 'visibility',
         });
+        appendDiagnosticLog(formatNavigationLog('detail_requested', {
+          source: 'visibility',
+          id: pending.id,
+        }));
         setStep('write');
+      } else {
+        appendDiagnosticLog(formatNavigationLog('detail_not_opened', {
+          source: 'visibility',
+          id: pending.id,
+          reason: 'draft_unavailable',
+        }));
       }
     };
     document.addEventListener('visibilitychange', handleVisible);
@@ -322,11 +359,25 @@ export default function ViewerPage() {
     const handler = async (event: MessageEvent) => {
       if (event.data?.type !== 'OPEN_NOTE' || !event.data.id) return;
       const noteId = event.data.id as string;
-      pageLog(`[page] OPEN_NOTE受信 id=${noteId}`);
-      const draft = await loadNotificationDraft(noteId, loadDraft);
+      pageLog(formatNavigationLog('route_received', {
+        source: 'open_note',
+        id: noteId,
+      }));
+      const draft = await loadNotificationDraft(
+        noteId,
+        loadDraft,
+        undefined,
+        (attempt) => pageLog(formatNavigationLog('draft_load', {
+          source: 'open_note',
+          id: noteId,
+          attempt: attempt.attempt,
+          result: attempt.result,
+          elapsed_ms: attempt.elapsedMs,
+          error: attempt.errorName,
+        })),
+      );
       if (draft) {
         const images = draft.images ?? [];
-        pageLog(`[page] draft取得成功 images=${images.length}件`);
         const titleLine = draft.title ? `${draft.title}\n` : '';
         const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }: { fileName: string; blob: Blob }) => [fileName, blob]));
         setPendingHydrate({
@@ -336,10 +387,19 @@ export default function ViewerPage() {
           tags: draft.tags ?? [],
           videoMetas: videoMetasFromRecord(draft),
           videoBlobMap: videoBlobMapFromDraft(draft),
+          notificationSource: 'open_note',
         });
+        pageLog(formatNavigationLog('detail_requested', {
+          source: 'open_note',
+          id: noteId,
+        }));
         setStep('write');
       } else {
-        pageLog(`[page] draft取得失敗 id=${noteId}`);
+        pageLog(formatNavigationLog('detail_not_opened', {
+          source: 'open_note',
+          id: noteId,
+          reason: 'draft_unavailable',
+        }));
       }
     };
     navigator.serviceWorker.addEventListener('message', handler);
@@ -632,16 +692,17 @@ export default function ViewerPage() {
 function DebugLogView() {
   const language: Language = typeof navigator !== 'undefined' && !navigator.language.startsWith('ja') ? 'en' : 'ja';
   const t = getTranslation(language);
-  const [logs, setLogs] = React.useState<{ t: string; msg: string }[]>([]);
+  const [logs, setLogs] = React.useState<DiagnosticLogRecord[]>([]);
   const [swVersion, setSwVersion] = React.useState<string | null>(null);
   const [siriTokenStatus, setSiriTokenStatus] = React.useState<string | null>(null);
+  const [diagnosticCopyStatus, setDiagnosticCopyStatus] = React.useState<string | null>(null);
   const loadLogs = React.useCallback(() => {
     const req = indexedDB.open('fusen-logs', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
     req.onsuccess = () => {
       const tx = req.result.transaction('logs', 'readonly');
       const all = tx.objectStore('logs').getAll();
-      all.onsuccess = () => setLogs((all.result as { t: string; msg: string }[]).reverse());
+      all.onsuccess = () => setLogs((all.result as DiagnosticLogRecord[]).reverse());
     };
     req.onerror = () => setLogs([]);
   }, []);
@@ -664,6 +725,16 @@ function DebugLogView() {
       setTimeout(() => setSiriTokenStatus(null), 3000);
     }
   }, [t]);
+
+  const copyNotificationDiagnostics = React.useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(buildNotificationDiagnosticReport(logs, swVersion));
+      setDiagnosticCopyStatus(t('pwa.debug.diagnosticsCopied'));
+    } catch {
+      setDiagnosticCopyStatus(t('pwa.debug.diagnosticsCopyFailed'));
+    }
+    setTimeout(() => setDiagnosticCopyStatus(null), 3000);
+  }, [logs, swVersion, t]);
 
   useEffect(() => {
     loadLogs();
@@ -692,6 +763,9 @@ function DebugLogView() {
         </div>
         <div className="flex items-center gap-3">
           <button className="text-blue-400" onClick={loadLogs}>{t('pwa.debug.refresh')}</button>
+          <button className="text-yellow-300" onClick={copyNotificationDiagnostics}>
+            {t('pwa.debug.copyNotificationDiagnostics')}
+          </button>
           <button className="text-red-400" onClick={() => {
             indexedDB.deleteDatabase('fusen-logs');
             setLogs([]);
@@ -701,6 +775,7 @@ function DebugLogView() {
       <div className="flex items-center gap-3 mb-3 pb-2 border-b border-gray-700">
         <button className="text-purple-400" onClick={copySiriToken}>{t('pwa.debug.copySiriToken')}</button>
         {siriTokenStatus && <span className="text-yellow-300">{siriTokenStatus}</span>}
+        {diagnosticCopyStatus && <span className="text-yellow-300">{diagnosticCopyStatus}</span>}
       </div>
       {logs.length === 0 && <p className="text-gray-500">{t('pwa.debug.empty')}</p>}
       {logs.map((l, i) => (
