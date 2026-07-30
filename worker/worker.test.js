@@ -166,6 +166,62 @@ describe('Service Worker — push handler', () => {
       '本文を残す', expect.objectContaining({ tag: 'fusen-image-fallback-note' }),
     );
   });
+
+  it('4KB超過のコンパクトPushはDriveから長文を取得して保存する', async () => {
+    const databases = global.indexedDB.__databases;
+    const meta = databases.get('fusen-meta') ?? new Map();
+    databases.set('fusen-meta', meta);
+    const metaStore = meta.get('meta') ?? new Map();
+    meta.set('meta', metaStore);
+    metaStore.set('access_token', 'token');
+    const longBody = '長文'.repeat(700);
+
+    global.fetch = vi.fn((url, options = {}) => {
+      if (options.method === 'DELETE' || options.method === 'PATCH') {
+        return Promise.resolve({ json: async () => ({}) });
+      }
+      if (url.includes("name='ore-no-fusen'")) {
+        return Promise.resolve({ json: async () => ({ files: [{ id: 'folder-id' }] }) });
+      }
+      if (url.includes("name='notes_to_iphone.json'")) {
+        return Promise.resolve({ json: async () => ({ files: [{ id: 'queue-id' }] }) });
+      }
+      if (url.includes('/queue-id?alt=media')) {
+        return Promise.resolve({
+          json: async () => ({
+            items: [{ id: 'long-note', title: '長文テスト', body: longBody }],
+          }),
+        });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+
+    let flow;
+    eventHandlers.get('push')({
+      data: {
+        json: () => ({
+          id: 'long-note',
+          title: '長文テスト',
+          body: '',
+          fetch_from_drive: true,
+        }),
+      },
+      waitUntil: promise => { flow = promise; },
+    });
+
+    await flow;
+
+    const drafts = databases.get('fusen-drafts').get('drafts');
+    expect(drafts.get('long-note')).toMatchObject({
+      title: '長文テスト',
+      body: longBody,
+      received_pc: true,
+    });
+    expect(mockRegistration.showNotification).toHaveBeenCalledWith(
+      '長文テスト',
+      expect.objectContaining({ body: longBody, tag: 'fusen-long-note' }),
+    );
+  });
 });
 
 describe('Service Worker — notificationclick handler', () => {

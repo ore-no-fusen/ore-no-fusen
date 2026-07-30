@@ -5,7 +5,7 @@
 import { resolvePushTitles } from './notification-title';
 import { closeClickedNotification, focusViewerOrOpenTarget } from './notification-click';
 
-const SW_VERSION = '5.0.0-pwa.6';
+const SW_VERSION = '5.0.0-pwa.7';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -48,47 +48,58 @@ function swLogAsync(msg) {
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
-  const { noteTitle, notificationTitle } = resolvePushTitles(
-    data.title,
-    self.navigator?.language
-  );
-  const bodyPush = (data.body || '').replace(/!\[.*?\]\(.*?\)/g, '').trim();
-  const bodyRich = data.body_rich || bodyPush;
   const id = data.id ?? 'unknown';
-  swLog(`push受信 id=${id} title=${notificationTitle}`);
+  swLog(`push受信 id=${id} drive_fetch=${data.fetch_from_drive === true}`);
 
-  // body_rich はPushペイロードに含まれている（Driveフェッチ不要）
-  // 画像ファイル（fusen_img_*）のみDriveからダウンロードして IndexedDB に保存する
-  const flow = loadTokenFromMeta().then((token) => {
+  const flow = loadTokenFromMeta().then(async (token) => {
     swLog(`token=${token ? 'あり' : 'なし'}`);
-    if (!token) return saveToIndexedDB(id, noteTitle, bodyRich, []);
-    const expectedImages = extractImageFileNames(bodyRich);
-    return downloadImagesFromDrive(token, bodyRich).then((images) => {
-      swLog(`画像=${images.length}/${expectedImages.length}件`);
-      return saveToIndexedDB(id, noteTitle, bodyRich, images).then(() => {
+    let resolvedData = data;
+    let driveFetchSucceeded = data.fetch_from_drive !== true;
+
+    if (data.fetch_from_drive === true && token) {
+      const driveNote = await downloadNoteFromDrive(token, id);
+      if (driveNote) {
+        resolvedData = { ...data, ...driveNote };
+        driveFetchSucceeded = true;
+        swLog(`Drive本文取得完了 id=${id}`);
+      } else {
+        swLog(`Drive本文取得失敗 id=${id}`);
+      }
+    }
+
+    const { noteTitle, notificationTitle } = resolvePushTitles(
+      resolvedData.title,
+      self.navigator?.language
+    );
+    const bodyRich = resolvedData.body_rich || resolvedData.body || '';
+    const bodyPush = bodyRich.replace(/!\[.*?\]\(.*?\)/g, '').trim();
+
+    if (!token) {
+      await saveToIndexedDB(id, noteTitle, bodyRich, []);
+    } else {
+      try {
+        const expectedImages = extractImageFileNames(bodyRich);
+        const images = await downloadImagesFromDrive(token, bodyRich);
+        swLog(`画像=${images.length}/${expectedImages.length}件`);
+        await saveToIndexedDB(id, noteTitle, bodyRich, images);
         swLog('IndexedDB保存完了');
-        if (images.length === expectedImages.length) {
+        if (driveFetchSucceeded && images.length === expectedImages.length) {
           deleteImagesFromDrive(token, images);
-          return removeIdFromNotesToIphone(token, id);
+          await removeIdFromNotesToIphone(token, id);
+        } else {
+          swLog('本文または画像不足のためDriveキューを保持');
         }
-        swLog('画像不足のためDriveキューを保持');
-      });
-    }).catch((e) => {
-      swLog(`画像ダウンロード失敗: ${e}`);
-      return saveToIndexedDB(id, noteTitle, bodyRich, []);
-    });
-  }).catch((e) => {
-    swLog(`token取得失敗: ${e}`);
-    return saveToIndexedDB(id, noteTitle, bodyRich, []);
-  }).then(() => {
+      } catch (e) {
+        swLog(`画像ダウンロード失敗: ${e}`);
+        await saveToIndexedDB(id, noteTitle, bodyRich, []);
+      }
+    }
+
     // iOS で notificationclick が発火しない場合の保険: 次回ページ起動時に自動表示
-    return savePendingOpen(id);
-  }).then(() => {
+    await savePendingOpen(id);
     // 同じノートの既存通知を閉じてから表示（重複防止）
-    return self.registration.getNotifications().then((ns) => {
-      ns.forEach((n) => { if (n.data?.id === id) n.close(); });
-    });
-  }).then(() => {
+    const notifications = await self.registration.getNotifications();
+    notifications.forEach((n) => { if (n.data?.id === id) n.close(); });
     swLog(`[NAV] event=notification_shown id=${id}`);
     return self.registration.showNotification(notificationTitle, {
       body: bodyPush,
@@ -97,6 +108,8 @@ self.addEventListener('push', (event) => {
       icon: '/icon-192.png',
       badge: '/icon-192.png',
     });
+  }).catch((e) => {
+    swLog(`push処理失敗: ${e}`);
   });
 
   event.waitUntil(flow);
@@ -142,6 +155,27 @@ function getAppFolderId(token) {
     `https://www.googleapis.com/drive/v3/files?q=name='ore-no-fusen'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
     { headers: { Authorization: `Bearer ${token}` } }
   ).then((r) => r.json()).then((d) => d.files?.[0]?.id ?? null).catch(() => null);
+}
+
+/** notes_to_iphone.json から指定IDの長文ノートを取得する */
+function downloadNoteFromDrive(token, id) {
+  return getAppFolderId(token).then((folderId) => {
+    const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+    return fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='notes_to_iphone.json'${folderQuery}+and+trashed=false`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).then((r) => r.json()).then((d) => {
+      const fileId = d.files?.[0]?.id;
+      if (!fileId) return null;
+      return fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then((r) => r.json()).then((json) => {
+        const items = Array.isArray(json.items) ? json.items : [];
+        return items.find((item) => item.id === id) ?? null;
+      });
+    });
+  }).catch(() => null);
 }
 
 function extractImageFileNames(body) {

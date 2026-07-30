@@ -3302,6 +3302,15 @@ async fn sync_vapid_keys_from_drive_or_create(
 
 fn classify_webpush_error(error: &str) -> String {
     let lower = error.to_ascii_lowercase();
+    if lower.contains("apns error: 413")
+        || lower.contains("payload too large")
+        || lower.contains("less than 4096 bytes")
+    {
+        return format!(
+            "Push通知の容量上限（4KB）を超えました。本文は日本語で約1,000文字以内、英数字で約3,000文字以内を目安に短くして、もう一度送信してください。タイトル・タグ・画像情報も容量に含まれます。詳細: {}",
+            error
+        );
+    }
     if lower.contains("apns error: 400") || lower.contains("bad request") {
         return format!(
             "APNs 400 Bad Request: Push鍵が一致しません。設定の「iPhone連携」でPC側のDriveを「再接続」するか、iPhone側でPWAを再インストールしてください。詳細: {}",
@@ -3327,12 +3336,6 @@ fn classify_webpush_error(error: &str) -> String {
     {
         return format!(
             "APNs 404/410: iPhoneのPush購読が無効です。iPhoneのホーム画面からアプリを削除し、Safariから再度「ホーム画面に追加」して初期設定をやり直してください。詳細: {}",
-            error
-        );
-    }
-    if lower.contains("apns error: 413") || lower.contains("payload too large") {
-        return format!(
-            "APNs 413 Payload Too Large: Push通知の本文が大きすぎます。本文を短くするか添付はDrive参照にしてください。詳細: {}",
             error
         );
     }
@@ -3383,6 +3386,17 @@ mod webpush_error_message_tests {
         assert!(message.contains("iPhoneのPush購読が無効です"));
         assert!(message.contains("iPhoneのホーム画面からアプリを削除"));
         assert!(message.contains("Safariから再度「ホーム画面に追加」"));
+    }
+
+    #[test]
+    fn android_4096_byte_error_is_classified_as_payload_too_large() {
+        let message = classify_webpush_error(
+            "APNs error: 400 Bad Request: binary passed in the request must be less than 4096 bytes.",
+        );
+
+        assert!(message.contains("容量上限（4KB）"));
+        assert!(message.contains("日本語で約1,000文字以内"));
+        assert!(!message.contains("Push鍵が一致しません"));
     }
 
     #[test]
@@ -4041,14 +4055,21 @@ async fn fusen_send_to_iphone(
         "sent_at": sent_at,
         "received_at": null
     });
-    let note_json_push = serde_json::json!({
-        "id": note_id,
-        "title": title,
+    let mut note_json_push = serde_json::json!({
+        "id": note_id.clone(),
+        "title": title.clone(),
         "body": body_push,
-        "body_rich": body_rich,
         "tags": note_tags,
-        "sent_at": sent_at
+        "sent_at": sent_at.clone()
     });
+    insert_distinct_body_rich(&mut note_json_push, &body_push, &body_rich);
+    let plaintext = build_web_push_plaintext(
+        &note_json_push,
+        &note_id,
+        &title,
+        &sent_at,
+        body.chars().count(),
+    )?;
 
     // 3a. VAPID鍵を Drive から取得する。
     // Drive の push_keys.json が正。PCローカルには保存せず、この送信中だけメモリ上で使う。
@@ -4091,7 +4112,6 @@ async fn fusen_send_to_iphone(
     }
 
     // 6. Web Push 全デバイスに順次送信（1台でも届けばOK）
-    let plaintext = serde_json::to_string(&note_json_push).map_err(|e| e.to_string())?;
     let mut send_errors: Vec<String> = Vec::new();
     let mut send_success_count = 0usize;
     let total_targets = pro_configs.len();
@@ -4141,6 +4161,161 @@ async fn fusen_send_to_iphone(
     }
 
     Ok(())
+}
+
+fn insert_distinct_body_rich(
+    payload: &mut serde_json::Value,
+    body_push: &str,
+    body_rich: &str,
+) {
+    if body_rich != body_push {
+        payload["body_rich"] = serde_json::Value::String(body_rich.to_string());
+    }
+}
+
+// RFC 8291暗号化で付く103 bytes分を、Push Serviceの4096 bytes上限から除いた値。
+const WEB_PUSH_MAX_PLAINTEXT_BYTES: usize = 3992;
+
+fn validate_web_push_payload_size(payload: &str, note_char_count: usize) -> Result<(), String> {
+    let payload_bytes = payload.len();
+    if payload_bytes <= WEB_PUSH_MAX_PLAINTEXT_BYTES {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Push通知の容量上限（4KB）を超えるため送信できません（現在の本文: {}文字、Pushデータ: {} bytes）。本文は日本語で約1,000文字以内、英数字で約3,000文字以内を目安に短くしてください。タイトル・タグ・画像情報も容量に含まれます。",
+        note_char_count, payload_bytes
+    ))
+}
+
+fn build_web_push_plaintext(
+    full_payload: &serde_json::Value,
+    note_id: &str,
+    title: &str,
+    sent_at: &str,
+    note_char_count: usize,
+) -> Result<String, String> {
+    let full_json = serde_json::to_string(full_payload).map_err(|e| e.to_string())?;
+    if full_json.len() <= WEB_PUSH_MAX_PLAINTEXT_BYTES {
+        return Ok(full_json);
+    }
+
+    let compact_payload = serde_json::json!({
+        "id": note_id,
+        "title": title.chars().take(80).collect::<String>(),
+        "body": "",
+        "fetch_from_drive": true,
+        "sent_at": sent_at
+    });
+    let compact_json = serde_json::to_string(&compact_payload).map_err(|e| e.to_string())?;
+    validate_web_push_payload_size(&compact_json, note_char_count)?;
+    Ok(compact_json)
+}
+
+#[cfg(test)]
+mod phone_push_payload_tests {
+    use super::{
+        build_web_push_plaintext, insert_distinct_body_rich, validate_web_push_payload_size,
+        WEB_PUSH_MAX_PLAINTEXT_BYTES,
+    };
+
+    #[test]
+    fn omits_duplicate_rich_body_from_push_payload() {
+        let mut payload = serde_json::json!({ "body": "長い本文" });
+
+        insert_distinct_body_rich(&mut payload, "長い本文", "長い本文");
+
+        assert!(payload.get("body_rich").is_none());
+    }
+
+    #[test]
+    fn keeps_rich_body_when_it_contains_drive_image_references() {
+        let mut payload = serde_json::json!({ "body": "[画像]" });
+
+        insert_distinct_body_rich(
+            &mut payload,
+            "[画像]",
+            "![画像](fusen_img_20260731_120000_1.jpg)",
+        );
+
+        assert_eq!(
+            payload["body_rich"],
+            "![画像](fusen_img_20260731_120000_1.jpg)"
+        );
+    }
+
+    #[test]
+    fn reports_character_count_and_safe_length_guidance_when_payload_is_too_large() {
+        let payload = "あ".repeat(WEB_PUSH_MAX_PLAINTEXT_BYTES + 1);
+
+        let error = validate_web_push_payload_size(&payload, 1400).unwrap_err();
+
+        assert!(error.contains("現在の本文: 1400文字"));
+        assert!(error.contains("日本語で約1,000文字以内"));
+        assert!(error.contains("英数字で約3,000文字以内"));
+    }
+
+    #[test]
+    fn accepts_payload_at_the_encrypted_push_limit() {
+        let payload = "a".repeat(WEB_PUSH_MAX_PLAINTEXT_BYTES);
+
+        assert!(validate_web_push_payload_size(&payload, payload.len()).is_ok());
+    }
+
+    #[test]
+    fn regression_plain_japanese_note_fits_after_duplicate_body_is_removed() {
+        let body = "あ".repeat(1000);
+        let mut fixed_payload = serde_json::json!({
+            "id": "12345678-1234-1234-1234-123456789012",
+            "title": "長文テスト",
+            "body": body,
+            "tags": [],
+            "sent_at": "2026-07-31T12:00:00+00:00"
+        });
+        insert_distinct_body_rich(&mut fixed_payload, &body, &body);
+        let fixed_json = serde_json::to_string(&fixed_payload).unwrap();
+
+        let broken_json = serde_json::to_string(&serde_json::json!({
+            "id": "12345678-1234-1234-1234-123456789012",
+            "title": "長文テスト",
+            "body": body,
+            "body_rich": body,
+            "tags": [],
+            "sent_at": "2026-07-31T12:00:00+00:00"
+        }))
+        .unwrap();
+
+        assert!(validate_web_push_payload_size(&broken_json, 1000).is_err());
+        assert!(validate_web_push_payload_size(&fixed_json, 1000).is_ok());
+        assert!(fixed_payload.get("body_rich").is_none());
+    }
+
+    #[test]
+    fn long_note_uses_compact_drive_fetch_payload_instead_of_failing() {
+        let body = "あ".repeat(1354);
+        let full_payload = serde_json::json!({
+            "id": "long-note",
+            "title": "長文テスト",
+            "body": body,
+            "tags": [],
+            "sent_at": "2026-07-31T12:00:00+00:00"
+        });
+
+        let plaintext = build_web_push_plaintext(
+            &full_payload,
+            "long-note",
+            "長文テスト",
+            "2026-07-31T12:00:00+00:00",
+            1354,
+        )
+        .unwrap();
+        let compact: serde_json::Value = serde_json::from_str(&plaintext).unwrap();
+
+        assert!(plaintext.len() <= WEB_PUSH_MAX_PLAINTEXT_BYTES);
+        assert_eq!(compact["fetch_from_drive"], true);
+        assert_eq!(compact["id"], "long-note");
+        assert_eq!(compact["body"], "");
+    }
 }
 
 // --- iPhone受信 ---

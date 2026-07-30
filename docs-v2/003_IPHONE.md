@@ -350,7 +350,7 @@ push受信・notificationclick等を処理するSWのイベントハンドラ5�
 |:---|:---|:---|
 | 1 | `install` | `skipWaiting()` 呼び出し。新バージョンを即時有効化。 |
 | 2 | `activate` | `clients.claim()` でページの制御を取得。SW バージョンをログに記録。 |
-| 3 | `push` | ① Push ペイロード（title / body_rich / id）を取得<br>② `fusen-meta` からアクセストークンを取得<br>③ Drive から画像をダウンロード<br>④ `fusen-drafts` に元のノートタイトルのまま保存<br>⑤ Drive から画像ファイルを削除<br>⑥ `notes_to_iphone.json` から当該 ID を削除<br>⑦ `pending_open` を `fusen-meta` に記録<br>⑧ 既存の同 ID 通知を閉じ、空タイトルの場合だけ通知名を日本語環境では「俺の付箋」、それ以外では「FUSEN」として新規通知を表示 |
+| 3 | `push` | ① Push ペイロード（title / body_rich / id）を取得。長文用の `fetch_from_drive` がある場合は ID を使って `notes_to_iphone.json` から本文を取得<br>② `fusen-meta` からアクセストークンを取得<br>③ Drive から画像をダウンロード<br>④ `fusen-drafts` に元のノートタイトルのまま保存<br>⑤ Drive から画像ファイルを削除<br>⑥ `notes_to_iphone.json` から当該 ID を削除<br>⑦ `pending_open` を `fusen-meta` に記録<br>⑧ 既存の同 ID 通知を閉じ、空タイトルの場合だけ通知名を日本語環境では「俺の付箋」、それ以外では「FUSEN」として新規通知を表示 |
 | 4 | `notificationclick` | 通知をタップ → `locked` 確認 → true なら再通知・アプリを前面に出す。<br><strong style="color:#f59e0b">⚠️ iOS では発火しない（既知の制約）。</strong>タップ後の再通知は `page.tsx` の `pending_open` フローが代替。 |
 | 5 | `message` | アプリからの通信を受信。`CLOSE_NOTIFICATION` で通知を閉じる、`GET_VERSION` で SW のバージョンを返す等の処理。 |
 
@@ -1015,8 +1015,8 @@ Push 失敗時は APNs / Push Service のステータスを見て、400（鍵・
 </Note>
 
 <Note type="info">
-<strong>body_rich：</strong>Markdown 本文（画像タグ含む）は Push ペイロードに直接含まれる。
-Drive へのフェッチは画像バイナリのダウンロードのみ。JSON の再取得は不要。
+<strong>body_rich：</strong>Markdown 本文（画像タグ含む）は、4KB以内なら Push ペイロードに直接含める。ただし <code>body</code> と同一の場合は重複を避けて省略する。暗号化後の上限を考慮したサイズ検査で4KBを超える場合、PCは本文を含めず <code>id</code> / <code>title</code> / <code>fetch_from_drive: true</code> だけのコンパクトPushへ自動切替し、Service Workerが <code>notes_to_iphone.json</code> から当該IDの本文を取得する。
+通常サイズではDriveへの追加フェッチは画像バイナリのみ。長文用コンパクトPushの場合だけ、本文取得のため `notes_to_iphone.json` を再取得する。
 PC付箋の先頭行が画像Markdownの場合はタイトルへ分離せず本文に残し、画像をDriveへアップロードして <code>fusen_img_*</code> 参照へ変換する。
 </Note>
 
@@ -1407,5 +1407,7 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 28 | **1.27** | 26-07-30 | PWAの既定表示を日本語とし、一覧画面右上の `🌐 EN` / `🌐 日本` で同じ画面のまま英語・日本語を切り替える仕様を追加。選択は端末内に保存し、PC・Google Driveとは同期しない。全5画面の画面ID付き画面図を追加。 |
 | 29 | **1.28** | 26-07-30 | 通知タップから詳細表示までの構造化診断ログと実機コピー手順を追加。本文・画像・認証情報を診断コピーから除外する規則を明記。 |
 | 30 | **1.29** | 26-07-31 | Google OAuthのトークン交換・更新APIへ、16KBの本文上限、認証値の項目別上限、Google通信の10秒タイムアウトを追加。Siri送信APIにも本文・項目上限とGoogle通信タイムアウトを追加。 |
+| 31 | **1.30** | 26-07-31 | PC→スマホのPushペイロードで同一の `body` / `body_rich` を重複送信しない規則と、4KB超過時に現在の文字数・短縮目安を表示する送信前検査を追加。Android Pushの4096 bytes超過応答も本文過大として分類。 |
+| 32 | **1.31** | 26-07-31 | 4KBを超えるPC→スマホ本文はコンパクトPushへ自動切替し、Service WorkerがIDを使って `notes_to_iphone.json` から本文を取得する長文経路を追加。 |
 
 </div>
