@@ -175,8 +175,8 @@ Save frequently used links on sticky notes. Group them using tags.
 ## 🛠️ Technology Stack
 
 ### Frontend
-- **Next.js 14** (App Router)
-- **React 18**
+- **Next.js 15.5** (App Router / Maintenance LTS)
+- **React 19.1**
 - **TypeScript**
 - **Tailwind CSS**
 - **CodeMirror 6** (Markdown Editor)

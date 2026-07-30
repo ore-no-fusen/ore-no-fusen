@@ -110,7 +110,7 @@ type UseStickyNoteContextMenuProps = {
     globalFontSize: number;
     updateFrontmatter: (key: string, value: any) => void;
     removeFrontmatter: (key: string) => void;
-    shellRef: React.RefObject<HTMLDivElement>;
+    shellRef: React.RefObject<HTMLDivElement | null>;
     setShowTagModal: (show: boolean) => void;
     setTagInputValue: (val: string) => void;
     isEditing: boolean;

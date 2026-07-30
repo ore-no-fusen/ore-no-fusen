@@ -94,7 +94,7 @@ PCアプリ・iPhone PWA・共有インフラの3層に分けて使用技術を�
     <table class="module-table">
       <tr><th style="width:32px">No</th><th>領域</th><th>技術・役割</th></tr>
       <tr><td>1</td><td>フレームワーク</td><td>Tauri v2（WebView + Rust）</td></tr>
-      <tr><td>2</td><td>UI</td><td>Next.js 14 / React 18 / TypeScript / Tailwind</td></tr>
+      <tr><td>2</td><td>UI</td><td>Next.js 15.5（Maintenance LTS）/ React 19.1 / TypeScript / Tailwind</td></tr>
       <tr><td>3</td><td>エディタ</td><td>CodeMirror 6（Markdown ハイライト・検索）</td></tr>
       <tr><td>4</td><td>バックエンド</td><td>Rust（AppState・ファイル I/O・Win32 API）</td></tr>
       <tr><td>5</td><td>データ保存</td><td>ファイルシステム（JSON / Markdown）</td></tr>
@@ -106,7 +106,7 @@ PCアプリ・iPhone PWA・共有インフラの3層に分けて使用技術を�
     <div style="font-size:13px;font-weight:800;margin-bottom:8px;">📱 iPhone PWA</div>
     <table class="module-table">
       <tr><th style="width:32px">No</th><th>領域</th><th>技術・役割</th></tr>
-      <tr><td>1</td><td>ページ</td><td>Next.js 14 App Router（app/viewer/page.tsx）</td></tr>
+      <tr><td>1</td><td>ページ</td><td>Next.js 15.5 App Router（app/viewer/page.tsx）</td></tr>
       <tr><td>2</td><td>配信</td><td>Vercel（API Routes も同居）</td></tr>
       <tr><td>3</td><td>バックグラウンド</td><td>Service Worker（worker/index.js）</td></tr>
       <tr><td>4</td><td>ローカル DB</td><td>IndexedDB（fusen-drafts）</td></tr>
@@ -223,5 +223,6 @@ iPhone は Vercel の <code>/api/auth/token</code>・<code>/api/auth/refresh</co
 | 3 | 1.2 | 26-05-06 | 1 登場人物、2 技術スタック、4 なぜ Vercel が必要かを修正。技術スタック表に No を追加し、OAuth / Vercel の説明を開発者・保守担当向けとして明記。client_secret を誰が何のために守るのか分かる表現へ修正。 |
 | 4 | 1.3 | 26-05-25 | iPhone → PC フローに VideoDrop を追加。画像・動画を添付メディアとして扱い、PC 側で動画を `assets/video/` に保存する全体像を追記。 |
 | 5 | 1.4 | 26-05-31 | 4「なぜ Vercel が必要か」の表現を 3 者語彙に統一。「アプリ作者」を「俺の付箋アプリ開発者」、「第三者」を「悪意ある第三者」に修正し、005「0 登場人物と関係」への参照を追加。 |
+| 6 | 1.5 | 26-07-31 | サポート対象の保守LTSへ合わせ、UI基盤をNext.js 15.5 / React 19.1へ更新。 |
 
 </div>
