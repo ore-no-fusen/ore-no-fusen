@@ -12,6 +12,7 @@ export interface FeedbackConversationStore {
   listLatestMessages(conversationId: string, limit: number): Promise<FeedbackConversationMessage[]>;
   listUnreadDeveloperMessages(conversationId: string, secretToken: string): Promise<FeedbackConversationMessage[]>;
   markMessagesRead(conversationId: string, secretToken: string, messageIds: string[]): Promise<boolean>;
+  deleteConversation(conversationId: string, secretToken: string): Promise<boolean>;
 }
 
 class MemoryFeedbackConversationStore implements FeedbackConversationStore {
@@ -82,6 +83,21 @@ class MemoryFeedbackConversationStore implements FeedbackConversationStore {
         this.messages.set(messageId, { ...message, readByUser: true });
       }
     }
+    return true;
+  }
+
+  async deleteConversation(conversationId: string, secretToken: string): Promise<boolean> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation || !safeEqualHash(conversation.secretTokenHash, hashSecretToken(secretToken))) return false;
+
+    if (conversation.discordMessageId) this.discordMessageToConversation.delete(conversation.discordMessageId);
+    if (conversation.discordThreadId) this.discordThreadToConversation.delete(conversation.discordThreadId);
+    for (const [messageId, message] of this.messages.entries()) {
+      if (message.conversationId !== conversationId) continue;
+      if (message.discordMessageId) this.discordMessageToConversation.delete(message.discordMessageId);
+      this.messages.delete(messageId);
+    }
+    this.conversations.delete(conversationId);
     return true;
   }
 
@@ -365,6 +381,29 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
         }),
       });
     }
+    return true;
+  }
+
+  async deleteConversation(conversationId: string, secretToken: string): Promise<boolean> {
+    const conversation = await this.getConversation(conversationId);
+    if (!conversation || !safeEqualHash(conversation.secretTokenHash, hashSecretToken(secretToken))) return false;
+
+    const messages = await this.listConversationMessages(conversationId);
+    const mappingIds = new Set([
+      conversation.discordMessageId,
+      conversation.discordThreadId,
+      ...messages.map((message) => message.discordMessageId),
+    ].filter((id): id is string => Boolean(id)));
+
+    for (const message of messages) {
+      await this.request(`/feedback_conversations/${conversationId}/messages/${message.messageId}`, {
+        method: 'DELETE',
+      });
+    }
+    for (const mappingId of mappingIds) {
+      await this.request(`/feedback_discord_mappings/${mappingId}`, { method: 'DELETE' });
+    }
+    await this.request(`/feedback_conversations/${conversationId}`, { method: 'DELETE' });
     return true;
   }
 

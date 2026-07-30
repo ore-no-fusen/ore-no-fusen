@@ -3,6 +3,35 @@ import { hashSecretToken } from './security';
 import { createMemoryFeedbackConversationStore } from './store';
 
 describe('feedback conversation store', () => {
+  it('deletes only a conversation authenticated by its secret', async () => {
+    const store = createMemoryFeedbackConversationStore();
+    await store.createConversation({
+      conversationId: 'conversation-delete',
+      secretTokenHash: hashSecretToken('secret'),
+      discordMessageId: 'discord-root',
+      deliveryEnabled: true,
+      shadowOnly: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await store.appendMessage({
+      messageId: 'message-delete',
+      conversationId: 'conversation-delete',
+      authorType: 'developer',
+      body: 'reply',
+      createdAt: new Date().toISOString(),
+      discordMessageId: 'discord-reply',
+      readByUser: false,
+      shadowOnly: false,
+    });
+
+    expect(await store.deleteConversation('conversation-delete', 'wrong')).toBe(false);
+    expect(await store.deleteConversation('conversation-delete', 'secret')).toBe(true);
+    expect(await store.getConversation('conversation-delete')).toBeNull();
+    expect(await store.getConversationIdByDiscordMessage('discord-root')).toBeNull();
+    expect(await store.getConversationIdByDiscordMessage('discord-reply')).toBeNull();
+    expect(await store.listMessages('conversation-delete', 'secret')).toEqual([]);
+  });
   it('maps a Discord notification message to exactly one conversation', async () => {
     const store = createMemoryFeedbackConversationStore();
     await store.createConversation({

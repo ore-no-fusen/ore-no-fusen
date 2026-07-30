@@ -317,8 +317,9 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 1 | `POST /api/feedback/conversation/messages` | ユーザー投稿を保存し、Discordへ通知する |
 | 2 | `POST /api/feedback/conversation/poll` | 設定画面が会話ログ・未読返信を取得する |
 | 3 | `POST /api/feedback/conversation/ack` | ユーザーが見た返信を既読にする |
-| 4 | `POST /api/feedback/discord/ingest` | 開発者の管理操作でDiscord返信を取り込む |
-| 5 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
+| 4 | `POST /api/feedback/conversation/delete` | secret tokenを照合し、会話・メッセージ・Discord対応表を完全に削除する |
+| 5 | `POST /api/feedback/discord/ingest` | 開発者の管理操作でDiscord返信を取り込む |
+| 6 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
 
 公開POST APIはJSON本文と各文字列の長さを検証する。`/api/feedback` と `conversation/messages` は本文32KB以内、`conversation/poll` は4KB以内、`conversation/ack` は16KB以内とする。Discord Webhookへの送信は10秒で中止し、応答待ちによるVercel実行枠の占有を防ぐ。
 
@@ -396,7 +397,7 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 |:---|:---|
 | 実装する | 設定画面内の掲示板、匿名会話ID、secret token、Firestore保存、Discord通知、Discord返信取り込み、新着確認 |
 | 実装しない | 返信付箋、ユーザー数分のDiscordチャンネル、自動プッシュ通知、Google Drive内の会話ファイル同期 |
-| 将来検討 | 通知バッジ、ユーザーによる会話削除、添付画像、既読表示、サポート対応ステータス |
+| 将来検討 | 通知バッジ、添付画像、既読表示、サポート対応ステータス |
 
 ---
 

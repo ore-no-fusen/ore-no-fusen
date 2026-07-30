@@ -14,7 +14,7 @@ export type FeedbackConversationIdentity = {
   secretToken: string;
 };
 
-type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
+type StorageLike = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>;
 
 export type FeedbackConversationMessage = {
   messageId: string;
@@ -81,6 +81,16 @@ export function saveFeedbackConversationIdentity(identity: FeedbackConversationI
   if (!target) return;
   target.setItem(CONVERSATION_ID_KEY, identity.conversationId);
   target.setItem(SECRET_TOKEN_KEY, identity.secretToken);
+}
+
+export function clearFeedbackConversationIdentity(storage?: StorageLike): void {
+  const target = getStorage(storage);
+  if (!target?.removeItem) return;
+  target.removeItem(CONVERSATION_ID_KEY);
+  target.removeItem(SECRET_TOKEN_KEY);
+  target.removeItem(LAST_POLL_KEY);
+  target.removeItem(HAS_UNREAD_DEVELOPER_REPLY_KEY);
+  target.removeItem(LAST_UNREAD_CHECK_DATE_KEY);
 }
 
 export function getFeedbackConversationUnreadState(storage?: StorageLike): boolean {
@@ -166,6 +176,20 @@ export async function ackFeedbackConversationMessages(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...identity, messageIds }),
+  });
+  if (!response.ok) return false;
+  const data = await response.json().catch(() => null) as { success?: boolean } | null;
+  return data?.success === true;
+}
+
+export async function deleteFeedbackConversation(
+  identity: FeedbackConversationIdentity,
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(identity),
   });
   if (!response.ok) return false;
   const data = await response.json().catch(() => null) as { success?: boolean } | null;

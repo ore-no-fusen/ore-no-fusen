@@ -46,6 +46,8 @@ import {
 } from "@/app/utils/crystalFormatEditor"
 import {
     ackFeedbackConversationMessages,
+    clearFeedbackConversationIdentity,
+    deleteFeedbackConversation,
     getDeveloperFeedbackApiBaseUrl,
     getFeedbackApiBaseUrl,
     getFeedbackConversationIdentity,
@@ -2477,6 +2479,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const [draft, setDraft] = useState('')
     const [loading, setLoading] = useState(false)
     const [sending, setSending] = useState(false)
+    const [deleting, setDeleting] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
     const loadMessages = useCallback(async () => {
@@ -2547,6 +2550,25 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         }
     }
 
+    const deleteConversation = async () => {
+        const confirmed = window.confirm(isEnglish
+            ? 'Permanently delete this conversation and all messages? This cannot be undone.'
+            : 'この会話とすべてのメッセージを完全に削除しますか？この操作は元に戻せません。')
+        if (!confirmed) return
+
+        setDeleting(true)
+        setError(null)
+        try {
+            const deleted = await deleteFeedbackConversation(conversationIdentity)
+            if (!deleted) throw new Error('Conversation deletion failed')
+            clearFeedbackConversationIdentity()
+            window.location.reload()
+        } catch (e) {
+            setError(String(e))
+            setDeleting(false)
+        }
+    }
+
     return (
         <div className="max-w-4xl space-y-6">
             <div>
@@ -2605,12 +2627,18 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                     />
-                    <div className="flex justify-between items-center">
-                        <Button variant="outline" onClick={loadMessages} disabled={loading || sending}>
+                    <div className="flex flex-wrap justify-between gap-2 items-center">
+                        <div className="flex gap-2">
+                        <Button variant="outline" onClick={loadMessages} disabled={loading || sending || deleting}>
                             <RefreshCw className="mr-2 h-4 w-4" />
                             {isEnglish ? 'Refresh' : '更新'}
                         </Button>
-                        <Button onClick={sendMessage} disabled={sending || !draft.trim()}>
+                        <Button variant="destructive" onClick={deleteConversation} disabled={loading || sending || deleting}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {deleting ? (isEnglish ? 'Deleting...' : '削除中...') : (isEnglish ? 'Delete Conversation' : '会話を削除')}
+                        </Button>
+                        </div>
+                        <Button onClick={sendMessage} disabled={sending || deleting || !draft.trim()}>
                             <Send className="mr-2 h-4 w-4" />
                             {sending ? (isEnglish ? 'Sending...' : '送信中...') : (isEnglish ? 'Send' : '送信')}
                         </Button>
