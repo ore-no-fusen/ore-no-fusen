@@ -211,6 +211,19 @@ flowchart LR
 
 ---
 
+### 5.2 Tauri WebViewのセキュリティ境界
+
+本番WebViewにはContent Security Policyを設定する。スクリプト・通信・画像・動画の読込元をアプリが実際に使用するプロトコルと外部サービスへ限定し、`object-src 'none'` と `frame-ancestors 'none'` を適用する。`unsafe-eval` は開発時のNext.jsデバッグにだけ許可し、本番CSPには含めない。
+
+<p class="table-caption">表 5.2-1　Tauri WebViewの許可範囲</p>
+
+| No | 対象 | 許可方針 |
+|:---|:---|:---|
+| 1 | スクリプト | アプリ自身とGoogle Tag Managerに限定。本番では `unsafe-eval` を禁止 |
+| 2 | 通信 | Tauri IPC、俺の付箋Vercel、Google OAuth / Drive、Sentry、Google Analyticsに限定 |
+| 3 | 画像・動画 | アプリ自身、Tauri asset protocol、`data:`、`blob:`を許可 |
+| 4 | asset protocol scope | 付箋保存先をユーザーが任意の場所へ変更できる仕様のため `**` を維持する。表示URLの生成とファイル操作はRustコマンド側で管理する |
+
 ## 6 ユースケース（Scenarios）
 
 対象: ユーザー / 開発者 / 保守担当。4つのビューを実証する代表的なユースケースのシナリオです。
@@ -255,6 +268,7 @@ flowchart LR
 | 6 | 1.5 | 26-06-01 | 返信付箋方式を廃止し、設定画面内の 1 対 1 掲示板 API として物理ビュー・補助シナリオを更新。 |
 | 7 | 1.6 | 26-06-01 | 掲示板 API の永続保存先を Firebase / Firestore と明記し、Vercel と Firestore の責務を分離。 |
 | 8 | 1.7 | 26-06-01 | 007 章の表現に合わせ、ユーザーとの距離感を守る制約として参照文言を更新。 |
+| 9 | 1.8 | 26-07-31 | 5.2 にTauri WebViewのCSP、外部接続先、asset protocolの許可方針を追加。 |
 
 </div>
 
