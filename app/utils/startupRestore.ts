@@ -1,3 +1,6 @@
+export const STARTUP_INITIAL_READY_TIMEOUT_MS = 4_000;
+export const STARTUP_RETRY_READY_TIMEOUT_MS = 12_000;
+
 export async function runWithConcurrency<T>(
     items: readonly T[],
     concurrency: number,

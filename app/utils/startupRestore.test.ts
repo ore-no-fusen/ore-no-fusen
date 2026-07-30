@@ -1,7 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { partitionStartupLabels, runWithConcurrency, waitForStartupReady } from './startupRestore';
+import {
+    partitionStartupLabels,
+    runWithConcurrency,
+    STARTUP_INITIAL_READY_TIMEOUT_MS,
+    STARTUP_RETRY_READY_TIMEOUT_MS,
+    waitForStartupReady,
+} from './startupRestore';
 
 describe('startup restore', () => {
+    it('初回は4秒、再試行後は12秒まで準備完了を待つ', () => {
+        expect(STARTUP_INITIAL_READY_TIMEOUT_MS).toBe(4_000);
+        expect(STARTUP_RETRY_READY_TIMEOUT_MS).toBe(12_000);
+    });
+
     it('付箋準備の同時実行数を2枚までに制限する', async () => {
         let active = 0;
         let maxActive = 0;

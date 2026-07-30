@@ -37,7 +37,13 @@ import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
 import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
 import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
-import { partitionStartupLabels, runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
+import {
+  partitionStartupLabels,
+  runWithConcurrency,
+  STARTUP_INITIAL_READY_TIMEOUT_MS,
+  STARTUP_RETRY_READY_TIMEOUT_MS,
+  waitForStartupReady,
+} from './utils/startupRestore';
 import { FreshRequestQueue } from './utils/freshRequestQueue';
 import { NOTE_COLORS } from './utils/noteAppearance';
 import { receiveIphoneNote } from './utils/receiveIphoneNote';
@@ -1645,7 +1651,7 @@ function OrchestratorContent() {
                       resolveAllReady = resolve;
                       return () => { resolveAllReady = undefined; };
                     },
-                    4_000,
+                    STARTUP_INITIAL_READY_TIMEOUT_MS,
                   );
                 }
 
@@ -1677,7 +1683,7 @@ function OrchestratorContent() {
                       resolveAllReady = resolve;
                       return () => { resolveAllReady = undefined; };
                     },
-                    4_000,
+                    STARTUP_RETRY_READY_TIMEOUT_MS,
                   );
                 }
                 unlistenStartupReady();

@@ -20,6 +20,10 @@ const nextConfig = {
     NEXT_PUBLIC_APP_VERSION: packageJson.version,
   },
   reactStrictMode: false,
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+  typescript: {
+    tsconfigPath: process.env.NEXT_TSCONFIG_PATH || 'tsconfig.json',
+  },
   // Tauriビルド時のみ 'export' を有効化 (VercelではAPI Routeを使うため無効化)
   output: process.env.IS_TAURI_BUILD === 'true' ? 'export' : undefined,
   images: {
