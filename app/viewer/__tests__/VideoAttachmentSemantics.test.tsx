@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NoteListStep } from '../NoteListStep';
 import { useBackgroundSend } from '../hooks/useBackgroundSend';
 import { saveDraft } from '../lib/indexeddb';
-import { uploadWithAutoRefresh, uploadVideoWithAutoRefresh } from '../lib/drive';
+import { downloadFromDrive, uploadWithAutoRefresh, uploadVideoWithAutoRefresh } from '../lib/drive';
 
 vi.mock('../lib/indexeddb', () => ({
   saveDraft: vi.fn(),
@@ -187,5 +187,41 @@ describe('Video attachment semantics', () => {
       { videoFileName: 'fusen_video_second.mov', originalFileName: 'second.mov' },
     ]);
     expect(uploadVideoWithAutoRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('R06: iPhone→PC送信は既存の未処理キューを残して末尾に追加する', async () => {
+    vi.mocked(downloadFromDrive).mockResolvedValueOnce({
+      items: [{ id: 'already-queued', title: '先行メモ', body: '消さない', tags: [] }],
+    });
+    const { result } = renderHook(() => useBackgroundSend({
+      accessToken: 'token', onTokenRefreshed: vi.fn(), onSessionExpired: vi.fn(),
+    }));
+
+    await act(async () => {
+      expect(await result.current.sendToPC({
+        rawText: '新規タイトル\n新規本文', tags: ['仕事'], blobs: new Map(), draftId: 'draft-queue',
+      })).toBe(true);
+    });
+
+    const payload = vi.mocked(uploadWithAutoRefresh).mock.calls[0][2] as { items: Array<{ id: string; title: string }> };
+    expect(payload.items).toHaveLength(2);
+    expect(payload.items[0]).toMatchObject({ id: 'already-queued', title: '先行メモ' });
+    expect(payload.items[1]).toMatchObject({ title: '新規タイトル' });
+  });
+
+  it('R07: iPhone→PC送信で既存キューを読めなければ、上書きも送信済み保存もしない', async () => {
+    vi.mocked(downloadFromDrive).mockRejectedValueOnce(new Error('temporary Drive failure'));
+    const { result } = renderHook(() => useBackgroundSend({
+      accessToken: 'token', onTokenRefreshed: vi.fn(), onSessionExpired: vi.fn(),
+    }));
+
+    await act(async () => {
+      expect(await result.current.sendToPC({
+        rawText: '失わせない本文', tags: [], blobs: new Map(), draftId: 'draft-no-overwrite',
+      })).toBe(false);
+    });
+
+    expect(uploadWithAutoRefresh).not.toHaveBeenCalled();
+    expect(saveDraft).not.toHaveBeenCalled();
   });
 });

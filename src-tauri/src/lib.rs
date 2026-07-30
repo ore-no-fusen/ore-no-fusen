@@ -3914,6 +3914,67 @@ fn embed_local_images(body: &str, note_dir: &std::path::Path) -> String {
     .into_owned()
 }
 
+/// PC→iPhone 未処理キューへ1件を追加する。
+/// 読込失敗時は既存キューを守るため、ファイル不在以外では更新を返さない。
+fn append_note_to_iphone_queue(
+    existing: Result<serde_json::Value, String>,
+    note: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let mut items = match existing {
+        Ok(value) => {
+            if let Some(items) = value["items"].as_array() {
+                items.clone()
+            } else if value.get("id").is_some() && value.get("received_at").is_none() {
+                vec![value]
+            } else {
+                Vec::new()
+            }
+        }
+        Err(error) if error.contains("File not found") => Vec::new(),
+        Err(error) => {
+            return Err(format!(
+                "iPhone送信用キューの読み込みに失敗しました。既存の未送信データを守るため送信を中止しました: {}",
+                error
+            ));
+        }
+    };
+    items.push(note);
+    if items.len() > 20 {
+        items = items.split_off(items.len() - 20);
+    }
+    Ok(serde_json::json!({ "items": items }))
+}
+
+#[cfg(test)]
+mod iphone_send_queue_tests {
+    use super::*;
+
+    #[test]
+    fn r12_queue_read_failure_returns_an_error_without_an_update_payload() {
+        let result = append_note_to_iphone_queue(
+            Err("temporary Drive failure".to_string()),
+            serde_json::json!({ "id": "new-note" }),
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("既存の未送信データを守るため送信を中止"));
+    }
+
+    #[test]
+    fn r13_append_keeps_existing_items_and_limits_the_queue_to_the_latest_twenty() {
+        let existing = serde_json::json!({
+            "items": (0..20).map(|index| serde_json::json!({ "id": format!("old-{index}") })).collect::<Vec<_>>(),
+        });
+        let data = append_note_to_iphone_queue(Ok(existing), serde_json::json!({ "id": "new-note" }))
+            .expect("queue update should be prepared");
+        let items = data["items"].as_array().expect("items array");
+
+        assert_eq!(items.len(), 20);
+        assert_eq!(items.first().and_then(|item| item["id"].as_str()), Some("old-1"));
+        assert_eq!(items.last().and_then(|item| item["id"].as_str()), Some("new-note"));
+    }
+}
+
 #[tauri::command]
 async fn fusen_send_to_iphone(
     state: tauri::State<'_, Mutex<AppState>>,
@@ -3996,37 +4057,16 @@ async fn fusen_send_to_iphone(
 
     // 4. Google Drive に notes_to_iphone.json をアップロード（read-modify-write 配列追加）
     // Drive 書き込み成功前に Push すると、iPhone が起きても読む本文がない状態になる。
-    let mut items: Vec<serde_json::Value> = match gdrive::download_json_with_migration(
-        &client,
-        &access_token,
-        "notes_to_iphone.json",
-        "fusen_note.json",
-    )
-    .await
-    {
-        Ok(v) => {
-            if let Some(items) = v["items"].as_array() {
-                items.clone()
-            } else if v.get("id").is_some() && v.get("received_at").is_none() {
-                vec![v]
-            } else {
-                Vec::new()
-            }
-        }
-        Err(e) if e.contains("File not found") => Vec::new(),
-        Err(e) => {
-            return Err(format!(
-                "iPhone送信用キューの読み込みに失敗しました。既存の未送信データを守るため送信を中止しました: {}",
-                e
-            ));
-        }
-    };
-    items.push(note_json_drive);
-    if items.len() > 20 {
-        let start = items.len() - 20;
-        items = items[start..].to_vec();
-    }
-    let data = serde_json::json!({ "items": items });
+    let data = append_note_to_iphone_queue(
+        gdrive::download_json_with_migration(
+            &client,
+            &access_token,
+            "notes_to_iphone.json",
+            "fusen_note.json",
+        )
+        .await,
+        note_json_drive,
+    )?;
     gdrive::upload_json(&client, &access_token, "notes_to_iphone.json", &data)
         .await
         .map_err(|e| {
@@ -4326,6 +4366,29 @@ fn iphone_item_targets_this_pc(item: &serde_json::Value, pc_id: &str) -> bool {
     {
         Some(target_id) if !target_id.is_empty() => target_id == pc_id,
         _ => true,
+    }
+}
+
+#[cfg(test)]
+mod iphone_receive_routing_tests {
+    use super::*;
+
+    #[test]
+    fn r14_only_the_target_pc_accepts_a_targeted_iphone_note() {
+        let targeted = serde_json::json!({ "id": "for-pc-b", "targetPcId": "pc-b" });
+        let unaddressed = serde_json::json!({ "id": "for-any-pc" });
+
+        assert!(!iphone_item_targets_this_pc(&targeted, "pc-a"));
+        assert!(iphone_item_targets_this_pc(&targeted, "pc-b"));
+        assert!(iphone_item_targets_this_pc(&unaddressed, "pc-a"));
+    }
+
+    #[test]
+    fn r15_same_iphone_id_has_a_stable_source_hash_and_different_ids_do_not_share_it() {
+        let first = iphone_source_hash("iphone-note-1");
+
+        assert_eq!(first, iphone_source_hash("iphone-note-1"));
+        assert_ne!(first, iphone_source_hash("iphone-note-2"));
     }
 }
 

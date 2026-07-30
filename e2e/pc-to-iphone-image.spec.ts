@@ -120,4 +120,14 @@ test('[IPHONE-IMG-01] PC送信の先頭画像が一覧と本文で画像表示�
   expect(stored?.body).not.toContain('俺の付箋');
   expect(stored?.body).not.toContain('FUSEN');
   expect(stored?.images?.[0]?.fileName).toBe(IMAGE_FILE_NAME);
+
+  // 受信後は Drive が読めなくても IndexedDB の保存済み画像を再表示できる。
+  await page.unroute('https://www.googleapis.com/drive/v3/files**');
+  await page.route('https://www.googleapis.com/**', (route) => route.abort());
+  await page.goto('/viewer');
+  await page.getByRole('button', { name: '一覧', exact: true }).click();
+  const cachedCard = page.locator('li').filter({ has: page.locator('img') });
+  await expect(cachedCard).toBeVisible();
+  await cachedCard.click();
+  await expect(page.locator('[contenteditable="true"] img')).toHaveAttribute('src', /^blob:/);
 });

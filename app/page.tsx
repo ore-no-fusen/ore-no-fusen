@@ -40,6 +40,7 @@ import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './util
 import { partitionStartupLabels, runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
 import { FreshRequestQueue } from './utils/freshRequestQueue';
 import { NOTE_COLORS } from './utils/noteAppearance';
+import { receiveIphoneNote } from './utils/receiveIphoneNote';
 
 // Global AppState type definition
 type AppState = {
@@ -1357,66 +1358,35 @@ function OrchestratorContent() {
       async (event) => {
         const { id, title, body, context, tags } = event.payload;
         try {
-          // 前回はPC保存まで成功し、Driveのack前に終了した可能性がある。
-          // 同じ受信IDの付箋があれば、画像の再取得や付箋の再作成をせずackだけ再試行する。
-          const alreadySaved = await invoke<boolean>('fusen_has_iphone_note', {
-            folderPath,
-            noteId: id,
-          });
-          if (alreadySaved) {
-            await invoke('fusen_ack_iphone_note', { noteId: id });
-            return;
-          }
-          // 画像参照をローカルパスに解決（画像なしの場合は body がそのまま返る）
-          const resolvedBody = await invoke<string>('fusen_download_iphone_images', {
-            folderPath,
-            body: body || '',
-          });
-          const received = await invoke<{
-            note: { body: string; frontmatter: string; meta: { path: string } };
-            created: boolean;
-          }>('fusen_create_iphone_note', {
-            folderPath,
-            context,
-            body: resolvedBody,
-            noteId: id,
-          });
-          const newNote = received.note;
-          if (!received.created) {
-            await invoke('fusen_ack_iphone_note', { noteId: id });
-            return;
-          }
-          // タグ適用（tags が配列で存在する場合）
-          // 一時的な書込失敗はそのタグだけリトライで自動復旧する。最終的に失敗した場合は
-          // 黙殺せずログに残す（本文は保存済み。Driveキューは後段でackし重複作成を避ける）。
-          if (tags && tags.length > 0) {
-            for (const tag of tags) {
-              let tagAdded = false;
-              for (let attempt = 1; attempt <= 3 && !tagAdded; attempt++) {
-                try {
-                  await invoke('fusen_add_tag', { path: newNote.meta.path, tag });
-                  tagAdded = true;
-                } catch (tagError) {
-                  if (attempt < 3) {
-                    await new Promise((r) => setTimeout(r, 50 * attempt));
-                  } else {
-                    console.error(`[iphone] タグ付与に失敗（${attempt}回試行）: ${tag}`, tagError);
-                  }
-                }
-              }
-            }
-          }
-          playCreateSound();
-          const sw = window.screen.width;
-          await openNoteWindow(
-            newNote.meta.path,
-            { x: sw - 430, y: 50, width: 400, height: 350 },
-            false,
-            true  // fromIphone: Alt+Tab窓として登録する
+          await receiveIphoneNote(
+            { id, title, body, context, tags },
+            {
+              hasSavedNote: (noteId) => invoke<boolean>('fusen_has_iphone_note', { folderPath, noteId }),
+              downloadImages: (remoteBody) => invoke<string>('fusen_download_iphone_images', { folderPath, body: remoteBody }),
+              createNote: ({ context: receivedContext, body: resolvedBody, noteId }) => invoke<{
+                note: { meta: { path: string } };
+                created: boolean;
+              }>('fusen_create_iphone_note', {
+                folderPath,
+                context: receivedContext,
+                body: resolvedBody,
+                noteId,
+              }),
+              addTag: (path, tag) => invoke('fusen_add_tag', { path, tag }),
+              waitBeforeTagRetry: (attempt) => new Promise((resolve) => setTimeout(resolve, 50 * attempt)),
+              openCreatedNote: async (path) => {
+                playCreateSound();
+                const sw = window.screen.width;
+                await openNoteWindow(path, { x: sw - 430, y: 50, width: 400, height: 350 }, false, true);
+              },
+              acknowledge: async (noteId) => {
+                await invoke('fusen_ack_iphone_note', { noteId }).catch((ackError) => {
+                  console.error('[iphone] Drive受信キューのack失敗:', ackError);
+                });
+              },
+              onTagFailure: (tag, tagError) => console.error(`[iphone] タグ付与に失敗: ${tag}`, tagError),
+            },
           );
-          await invoke('fusen_ack_iphone_note', { noteId: id }).catch((ackError) => {
-            console.error('[iphone] Drive受信キューのack失敗:', ackError);
-          });
         } catch (e) {
           console.error('[iphone] 付箋作成失敗:', e);
         }
