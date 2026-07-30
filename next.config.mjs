@@ -4,6 +4,7 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 import fs from 'fs';
 const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf-8'));
+const isPreviewDeployment = process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV === 'development';
 
 /**
  * Next.js 設定ファイル
@@ -39,6 +40,9 @@ const nextConfig = {
           return {
             beforeFiles: [
               { source: '/', destination: '/landing' },
+              ...(isPreviewDeployment
+                ? [{ source: '/manifest.webmanifest', destination: '/manifest.preview.webmanifest' }]
+                : []),
             ],
             afterFiles: [],
             fallback: [],
