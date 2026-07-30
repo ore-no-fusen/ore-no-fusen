@@ -320,6 +320,8 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 4 | `POST /api/feedback/discord/ingest` | 開発者の管理操作でDiscord返信を取り込む |
 | 5 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
 
+公開POST APIはJSON本文と各文字列の長さを検証する。`/api/feedback` と `conversation/messages` は本文32KB以内、`conversation/poll` は4KB以内、`conversation/ack` は16KB以内とする。Discord Webhookへの送信は10秒で中止し、応答待ちによるVercel実行枠の占有を防ぐ。
+
 2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。右クリックメニュー表示時には呼びません。  
 PC アプリは JST 4:00 頃に1日1回だけ `conversation/poll` を呼び、未読の開発者返信があればローカルの `has_unread_developer_reply` を true にします。  
 ユーザーが「開発者とのやりとり」を開いた場合は、その時点で最新の `conversation/poll` を呼び、表示できた開発者返信だけ `conversation/ack` で既読化します。
@@ -431,5 +433,6 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 9 | 2.6 | 26-06-02 | 登場人物の用語を定義し、曖昧な「サーバー」表現を Vercel API、Firebase / Firestore、Discordサーバーに分解 |
 | 10 | 2.7 | 26-06-04 | Vercel Cron は JST 3:00、PCアプリは JST 4:00 頃に1日1回確認する運用を追加。右クリックメニューは通信せずローカル未読状態だけで新着表示し、掲示板表示時に既読化する仕様を追加 |
 | 11 | 2.8 | 26-06-05 | 管理者ツールの手動 ingest 用に、開発者PCの localStorage へ `FEEDBACK_CONVERSATION_INGEST_SECRET` を保存できる仕様を追加。`CRON_SECRET` は保存対象外と明記。 |
+| 12 | 2.9 | 26-07-31 | 公開フィードバックAPIのJSON本文・文字列上限と、Discord Webhook通信の10秒タイムアウトを追加。 |
 
 </div>

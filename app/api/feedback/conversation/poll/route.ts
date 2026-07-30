@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createFeedbackConversationStore } from '../../lib/store';
+import {
+  boundedString,
+  FeedbackRequestError,
+  readFeedbackJson,
+} from '../../lib/security';
 
 function corsHeaders() {
   return {
@@ -19,9 +24,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ messages: [] }, { headers: corsHeaders() });
     }
 
-    const body = await req.json();
-    const conversationId = typeof body.conversationId === 'string' ? body.conversationId : '';
-    const secretToken = typeof body.secretToken === 'string' ? body.secretToken : '';
+    const body = await readFeedbackJson(req, 4 * 1024);
+    const conversationId = boundedString(body.conversationId, 'conversationId', 100);
+    const secretToken = boundedString(body.secretToken, 'secretToken', 200);
     if (!conversationId || !secretToken) {
       return NextResponse.json({ messages: [] }, { headers: corsHeaders() });
     }
@@ -40,6 +45,12 @@ export async function POST(req: Request) {
         })),
     }, { headers: corsHeaders() });
   } catch (error) {
+    if (error instanceof FeedbackRequestError) {
+      return NextResponse.json({ messages: [], error: error.message }, {
+        status: error.status,
+        headers: corsHeaders(),
+      });
+    }
     console.error('Feedback conversation poll error:', error);
     return NextResponse.json({ messages: [] }, { headers: corsHeaders() });
   }

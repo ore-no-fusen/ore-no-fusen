@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  boundedString,
   evaluateDeveloperReplyEligibility,
   extractConversationIdFromDiscordEmbeds,
   hashSecretToken,
   parseAllowedDiscordUserIds,
+  readFeedbackJson,
   safeEqualHash,
 } from './security';
 import type { DiscordCandidateMessage } from './types';
@@ -125,5 +127,21 @@ describe('Discord embed conversation id extraction', () => {
     expect(extractConversationIdFromDiscordEmbeds([
       { fields: [{ name: '内容', value: 'hello' }] },
     ])).toBeNull();
+  });
+});
+
+describe('feedback request limits', () => {
+  it('rejects JSON bodies larger than 32KB', async () => {
+    const request = new Request('https://example.test', {
+      method: 'POST',
+      body: JSON.stringify({ content: 'x'.repeat(33 * 1024) }),
+    });
+
+    await expect(readFeedbackJson(request)).rejects.toMatchObject({ status: 413 });
+  });
+
+  it('rejects missing required and oversized strings', () => {
+    expect(() => boundedString('', 'content', 1000, true)).toThrow('invalid content');
+    expect(() => boundedString('x'.repeat(1001), 'content', 1000, true)).toThrow('invalid content');
   });
 });

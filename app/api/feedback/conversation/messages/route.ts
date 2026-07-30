@@ -1,6 +1,13 @@
 import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
-import { createSecretToken, hashSecretToken } from '../../lib/security';
+import {
+  boundedString,
+  createSecretToken,
+  discordFetchSignal,
+  FeedbackRequestError,
+  hashSecretToken,
+  readFeedbackJson,
+} from '../../lib/security';
 import { createFeedbackConversationStore } from '../../lib/store';
 
 function corsHeaders() {
@@ -29,22 +36,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Conversation disabled' }, { status: 503, headers: corsHeaders() });
     }
 
-    const body = await req.json();
-    const content = typeof body.content === 'string' ? body.content.trim() : '';
-    if (!content) {
-      return NextResponse.json({ error: 'Missing content' }, { status: 400, headers: corsHeaders() });
-    }
-
-    const conversationId = typeof body.conversationId === 'string' && body.conversationId.trim()
-      ? body.conversationId.trim()
+    const body = await readFeedbackJson(req);
+    const content = boundedString(body.content, 'content', 1000, true);
+    const providedConversationId = boundedString(body.conversationId, 'conversationId', 100);
+    const providedSecretToken = boundedString(body.secretToken, 'secretToken', 200);
+    const conversationId = providedConversationId
+      ? providedConversationId
       : randomUUID();
-    const secretToken = typeof body.secretToken === 'string' && body.secretToken.trim()
-      ? body.secretToken.trim()
+    const secretToken = providedSecretToken
+      ? providedSecretToken
       : createSecretToken();
-    const type = typeof body.type === 'string' ? body.type : 'message';
-    const contact = typeof body.contact === 'string' ? body.contact : '';
-    const systemInfo = typeof body.systemInfo === 'string' ? body.systemInfo : 'Unknown';
-    const version = typeof body.version === 'string' ? body.version : 'Unknown';
+    const type = boundedString(body.type, 'type', 32) || 'message';
+    const contact = boundedString(body.contact, 'contact', 250);
+    const systemInfo = boundedString(body.systemInfo, 'systemInfo', 500) || 'Unknown';
+    const version = boundedString(body.version, 'version', 100) || 'Unknown';
     const now = new Date().toISOString();
     const store = createFeedbackConversationStore();
     const recentMessages = await store.listLatestMessages(conversationId, 5);
@@ -76,6 +81,7 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ embeds: [embed] }),
+      signal: discordFetchSignal(),
     });
     if (!discordResponse.ok) {
       throw new Error(`Discord API error: ${discordResponse.status}`);
@@ -109,6 +115,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, conversationId, secretToken }, { headers: corsHeaders() });
   } catch (error) {
+    if (error instanceof FeedbackRequestError) {
+      return NextResponse.json({ error: error.message }, { status: error.status, headers: corsHeaders() });
+    }
     console.error('Feedback conversation message error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500, headers: corsHeaders() });
   }

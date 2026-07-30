@@ -8,6 +8,65 @@ export type DiscordEmbedLike = {
   }>;
 };
 
+export class FeedbackRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+export async function readFeedbackJson(
+  request: Request,
+  maxBytes = 32 * 1024,
+): Promise<Record<string, unknown>> {
+  const declaredLength = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new FeedbackRequestError('request body too large', 413);
+  }
+
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > maxBytes) {
+    throw new FeedbackRequestError('request body too large', 413);
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new FeedbackRequestError('invalid JSON body', 400);
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new FeedbackRequestError('invalid JSON body', 400);
+  }
+  return value as Record<string, unknown>;
+}
+
+export function boundedString(
+  value: unknown,
+  field: string,
+  maxLength: number,
+  required = false,
+): string {
+  if (value === undefined || value === null || value === '') {
+    if (required) throw new FeedbackRequestError(`invalid ${field}`, 400);
+    return '';
+  }
+  if (typeof value !== 'string' || value.length > maxLength) {
+    throw new FeedbackRequestError(`invalid ${field}`, 400);
+  }
+  const trimmed = value.trim();
+  if (required && !trimmed) {
+    throw new FeedbackRequestError(`invalid ${field}`, 400);
+  }
+  return trimmed;
+}
+
+export function discordFetchSignal(): AbortSignal {
+  return AbortSignal.timeout(10_000);
+}
+
 export function createSecretToken(): string {
   return randomBytes(32).toString('base64url');
 }

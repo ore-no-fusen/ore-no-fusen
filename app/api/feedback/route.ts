@@ -9,7 +9,14 @@
 
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import { createSecretToken, hashSecretToken } from './lib/security';
+import {
+    boundedString,
+    createSecretToken,
+    discordFetchSignal,
+    FeedbackRequestError,
+    hashSecretToken,
+    readFeedbackJson,
+} from './lib/security';
 import { createFeedbackConversationStore } from './lib/store';
 
 // Static export (Tauri build) requires at least one GET handler per route.
@@ -24,13 +31,19 @@ export async function GET() {
 
 export async function POST(req: Request) {
     try {
-        const body = await req.json();
-        const { type, content, contact, systemInfo, version } = body;
-        const conversationId = typeof body.conversationId === 'string' && body.conversationId.trim()
-            ? body.conversationId.trim()
+        const body = await readFeedbackJson(req);
+        const type = boundedString(body.type, 'type', 32) || 'other';
+        const content = boundedString(body.content, 'content', 1000, true);
+        const contact = boundedString(body.contact, 'contact', 250);
+        const systemInfo = boundedString(body.systemInfo, 'systemInfo', 500);
+        const version = boundedString(body.version, 'version', 100);
+        const providedConversationId = boundedString(body.conversationId, 'conversationId', 100);
+        const providedSecretToken = boundedString(body.secretToken, 'secretToken', 200);
+        const conversationId = providedConversationId
+            ? providedConversationId
             : randomUUID();
-        const secretToken = typeof body.secretToken === 'string' && body.secretToken.trim()
-            ? body.secretToken.trim()
+        const secretToken = providedSecretToken
+            ? providedSecretToken
             : createSecretToken();
         const store = createFeedbackConversationStore();
         const now = new Date().toISOString();
@@ -99,6 +112,7 @@ export async function POST(req: Request) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(discordBody),
+            signal: discordFetchSignal(),
         });
 
         if (!response.ok) {
@@ -139,6 +153,12 @@ export async function POST(req: Request) {
         );
 
     } catch (error) {
+        if (error instanceof FeedbackRequestError) {
+            return NextResponse.json(
+                { error: error.message },
+                { status: error.status, headers: { 'Access-Control-Allow-Origin': '*' } }
+            );
+        }
         console.error('Feedback error:', error);
         return NextResponse.json(
             { error: 'Internal Server Error' },

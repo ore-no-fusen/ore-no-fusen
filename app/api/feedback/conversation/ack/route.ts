@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createFeedbackConversationStore } from '../../lib/store';
 import type { FeedbackConversationMessage } from '../../lib/types';
+import {
+  boundedString,
+  discordFetchSignal,
+  FeedbackRequestError,
+  readFeedbackJson,
+} from '../../lib/security';
 
 function corsHeaders() {
   return {
@@ -56,6 +62,7 @@ async function notifyDiscordReadReceipt(conversationId: string, messages: Feedba
       content: buildReadReceiptContent(conversationId, messages),
       allowed_mentions: { parse: [] },
     }),
+    signal: discordFetchSignal(),
   });
 
   if (!response.ok) {
@@ -65,11 +72,13 @@ async function notifyDiscordReadReceipt(conversationId: string, messages: Feedba
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const conversationId = typeof body.conversationId === 'string' ? body.conversationId : '';
-    const secretToken = typeof body.secretToken === 'string' ? body.secretToken : '';
+    const body = await readFeedbackJson(req, 16 * 1024);
+    const conversationId = boundedString(body.conversationId, 'conversationId', 100);
+    const secretToken = boundedString(body.secretToken, 'secretToken', 200);
     const messageIds = Array.isArray(body.messageIds)
-      ? body.messageIds.filter((id: unknown): id is string => typeof id === 'string')
+      ? body.messageIds
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length <= 100)
+          .slice(0, 100)
       : [];
     if (!conversationId || !secretToken || messageIds.length === 0) {
       return NextResponse.json({ success: false }, { headers: corsHeaders() });
@@ -93,6 +102,12 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ success }, { headers: corsHeaders() });
   } catch (error) {
+    if (error instanceof FeedbackRequestError) {
+      return NextResponse.json({ success: false, error: error.message }, {
+        status: error.status,
+        headers: corsHeaders(),
+      });
+    }
     console.error('Feedback conversation ack error:', error);
     return NextResponse.json({ success: false }, { headers: corsHeaders() });
   }
