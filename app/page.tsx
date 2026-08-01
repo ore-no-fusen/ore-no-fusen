@@ -220,10 +220,15 @@ function OrchestratorContent() {
   useEffect(() => {
     if (!isMainWindow) return;
     const prepare = async () => {
-      if (await WebviewWindow.getByLabel('recipe-create')) return;
+      const title = language === 'en' ? 'Create Recipe' : 'レシピにする';
+      const existing = await WebviewWindow.getByLabel('recipe-create');
+      if (existing) {
+        await existing.setTitle(title);
+        return;
+      }
       new WebviewWindow('recipe-create', {
         url: '/recipe-create',
-        title: 'レシピにする',
+        title,
         width: 760,
         height: 860,
         minWidth: 640,
@@ -238,7 +243,7 @@ function OrchestratorContent() {
     };
     const timer = setTimeout(() => { prepare().catch(() => {}); }, 0);
     return () => clearTimeout(timer);
-  }, [isMainWindow]);
+  }, [isMainWindow, language]);
   // [NEW] Pool 枯渇時トースト
   const [poolWaitToast, setPoolWaitToast] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [files, setFiles] = useState<NoteMeta[]>([]);
@@ -1074,8 +1079,13 @@ function OrchestratorContent() {
     const promise = listen('fusen:open_tag_selector', async () => {
       try {
         const existing = await WebviewWindow.getByLabel('tag-selector');
-        if (existing) { await existing.unminimize(); await existing.setFocus(); return; }
-        await new WebviewWindow('tag-selector', { url: '/?tagSelector=1', title: '世界を選ぶ', width: 350, height: 500, alwaysOnTop: true, decorations: true, resizable: false });
+        if (existing) {
+          await existing.setTitle(language === 'en' ? 'Select Tags' : 'タグを選択');
+          await existing.unminimize();
+          await existing.setFocus();
+          return;
+        }
+        await new WebviewWindow('tag-selector', { url: '/?tagSelector=1', title: language === 'en' ? 'Select Tags' : 'タグを選択', width: 350, height: 500, alwaysOnTop: true, decorations: true, resizable: false });
       } catch (e) { console.error('[open_tag_selector] Error:', e); }
     });
 
@@ -1084,7 +1094,7 @@ function OrchestratorContent() {
       if (unlisten) safeUnlisten(unlisten);
       else safeUnlistenWhenResolved(promise);
     };
-  }, [isMainWindow]);
+  }, [isMainWindow, language]);
 
   // 設定画面イベント (Tray etc)
   useEffect(() => {
@@ -1212,7 +1222,7 @@ function OrchestratorContent() {
         const basePath = folderPathRef.current || await invoke<string | null>('get_base_path');
         console.log('[Tray] Resolved basePath:', basePath);
         if (basePath) {
-          await handleCreateNote(basePath, '新規メモ');
+          await handleCreateNote(basePath, language === 'en' ? 'New Note' : '新規メモ');
         } else {
           console.warn('[Tray] No folder path available. Opening Setup.');
           // フォルダー未設定時は設定画面 (Setup) を開く
@@ -1240,7 +1250,7 @@ function OrchestratorContent() {
       if (unlisten) safeUnlisten(unlisten);
       else safeUnlistenWhenResolved(promise);
     };
-  }, [isMainWindow, handleCreateNote]);
+  }, [isMainWindow, handleCreateNote, language]);
 
   // [NEW] 付箋コンテキストメニューからの新規作成リクエスト - handleCreateNoteに統一
   useEffect(() => {
@@ -1726,7 +1736,9 @@ function OrchestratorContent() {
                   startPoolReplenishInBackground();
                 } catch (e) {
                   log(`[起動処理] 一括表示エラー: ${e}`);
-                  setLoadingStatus((startupIsEnglish ? 'Failed to show notes: ' : '付箋の表示に失敗しました: ') + String(e));
+                  setLoadingStatus(startupIsEnglish
+                    ? 'Failed to show notes. Please restart the app.'
+                    : '付箋の表示に失敗しました: ' + String(e));
                 }
               } else {
                 setLoadingStatus(startupIsEnglish ? 'Creating your welcome note...' : 'ようこそノートを作成中...');
@@ -1775,13 +1787,17 @@ function OrchestratorContent() {
               }
             } catch (e) {
               log(`[起動処理] 内部エラー: ${e}`);
-              setLoadingStatus((startupIsEnglish ? 'Error: ' : 'エラー: ') + String(e));
+              setLoadingStatus(startupIsEnglish
+                ? 'An error occurred during startup. Please restart the app.'
+                : 'エラー: ' + String(e));
               setTimeout(() => setIsCheckingSetup(false), 3000);
             }
           })();
         } catch (e) {
           log(`[起動処理] 重大なエラー: ${e}`);
-          setLoadingStatus((startupIsEnglish ? 'Critical error: ' : '重大なエラー: ') + String(e));
+          setLoadingStatus(startupIsEnglish
+            ? 'A critical startup error occurred. Please restart the app.'
+            : '重大なエラー: ' + String(e));
           setTimeout(() => setIsCheckingSetup(false), 3000);
         }
       };
@@ -1789,7 +1805,9 @@ function OrchestratorContent() {
       checkAndRestore().catch(e => {
         invoke('fusen_debug_log', { message: `[起動処理] セットアップ確認中に例外発生: ${e}` }).catch(() => { });
         const fallbackEnglish = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('en');
-        setLoadingStatus((fallbackEnglish ? 'Startup check failed: ' : '確認失敗: ') + String(e));
+        setLoadingStatus(fallbackEnglish
+          ? 'Startup check failed. Please restart the app.'
+          : '確認失敗: ' + String(e));
         setTimeout(() => setIsCheckingSetup(false), 3000);
       });
     }
@@ -2027,7 +2045,7 @@ function OrchestratorContent() {
     );
   }
 
-  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} />;
+  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} language={language} />;
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
   if (setupRequired || isSettingsOpen) {
@@ -2157,7 +2175,7 @@ export default function Home() {
   const { settings } = useSettings();
   const language: Language = settings.language === 'en' ? 'en' : 'ja';
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<LoadingScreen language={language} />}>
       <ErrorBoundary language={language}>
         <OrchestratorContent />
       </ErrorBoundary>

@@ -196,9 +196,11 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             isDeletingRef.current = false;
             console.error('Failed to delete note:', e);
-            alert(`削除に失敗しました\n${e}`);
+            alert(language === 'en'
+                ? 'Could not delete the note. Please check the save location and try again.'
+                : `削除に失敗しました\n${e}`);
         }
-    }, [selectedFile, isPool, isDeletingRef, editBody, rawFrontmatter, saveNoteContent]);
+    }, [selectedFile, isPool, isDeletingRef, editBody, language, rawFrontmatter, saveNoteContent]);
 
     // フォルダを開く
     const handleOpenFolder = useCallback(async () => {
@@ -206,14 +208,18 @@ export function useStickyNoteContextMenu({
         try {
             const basePath = selectedFile ? null : await resolveCreateFolderPath();
             const request = getOpenFolderRequest(selectedFile?.path, basePath);
-            if (!request) throw new Error('保存先フォルダが設定されていません');
+            if (!request) throw new Error(language === 'en'
+                ? 'The data save location is not configured.'
+                : '保存先フォルダが設定されていません');
             targetPath = request.path;
             await invoke(request.command, { path: request.path });
         } catch (e) {
             console.error('Failed to open folder:', e);
-            alert(`フォルダを開けませんでした。\n${targetPath || String(e)}`);
+            alert(language === 'en'
+                ? 'Could not open the folder. Please check the data save location.'
+                : `フォルダを開けませんでした。\n${targetPath || String(e)}`);
         }
-    }, [selectedFile, resolveCreateFolderPath]);
+    }, [language, selectedFile, resolveCreateFolderPath]);
 
     // 背景色変更
     const handleColorChange = useCallback((newColor: string) => {
@@ -247,9 +253,11 @@ export function useStickyNoteContextMenu({
             updateFrontmatter('opacity', opacity);
         } catch (e) {
             console.error('Failed to change opacity:', e);
-            alert(`透明度の変更に失敗しました\n${e}`);
+            alert(language === 'en'
+                ? 'Could not change the opacity. Please try again.'
+                : `透明度の変更に失敗しました\n${e}`);
         }
-    }, [updateFrontmatter]);
+    }, [language, updateFrontmatter]);
 
     const handleToggleShortcutShelf = useCallback(async () => {
         if (!selectedFile) return;
@@ -259,15 +267,15 @@ export function useStickyNoteContextMenu({
 
         if (state.isRegistered) {
             await removeRawTag(selectedFile.path, 'shortcut');
-            onToast?.('📌 お気に入りを解除しました');
+            onToast?.(language === 'en' ? '📌 Removed from Favorites' : '📌 お気に入りを解除しました');
         } else {
             await addRawTag(selectedFile.path, 'shortcut');
-            onToast?.('📌 お気に入りに登録しました');
+            onToast?.(language === 'en' ? '📌 Added to Favorites' : '📌 お気に入りに登録しました');
         }
 
         const { emit } = await import('@tauri-apps/api/event');
         await emit('fusen:reload_note', { path: selectedFile.path });
-    }, [currentTags, onToast, selectedFile]);
+    }, [currentTags, language, onToast, selectedFile]);
 
     /**
      * コンテキストメニュー表示
@@ -739,9 +747,12 @@ export function useStickyNoteContextMenu({
                     }
                     try {
                         await invoke('fusen_send_to_iphone', { path: selectedFile.path });
-                        onToast?.('📱 iPhoneに送りました');
+                        onToast?.(language === 'en' ? '📱 Sent to iPhone' : '📱 iPhoneに送りました');
                     } catch (e: unknown) {
-                        alert(`iPhoneへの送信に失敗しました: ${String(e)}`);
+                        console.error('[iPhone] Send failed detail:', e);
+                        alert(language === 'en'
+                            ? 'Could not send the note to iPhone. Check iPhone Sync in Settings and try again.'
+                            : `iPhoneへの送信に失敗しました: ${String(e)}`);
                     }
                 }
             }));

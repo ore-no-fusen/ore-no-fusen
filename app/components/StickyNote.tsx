@@ -353,13 +353,17 @@ const StickyNote = memo(function StickyNote() {
             event.stopPropagation();
             const files = droppedFiles.filter((file) => isSupportedDroppedImageFileName(file.name));
             if (files.length !== droppedFiles.length) {
-                setToastMessage('対応していないファイル形式が含まれています');
+                setToastMessage(language === 'en'
+                    ? 'The dropped files include an unsupported format.'
+                    : '対応していないファイル形式が含まれています');
                 return;
             }
 
             const notePath = noteFilePathRef.current ?? await ensureFilePathForDropRef.current();
             if (!notePath) {
-                setToastMessage('画像の保存先を準備できませんでした');
+                setToastMessage(language === 'en'
+                    ? 'Could not prepare the image save location.'
+                    : '画像の保存先を準備できませんでした');
                 return;
             }
 
@@ -401,8 +405,8 @@ const StickyNote = memo(function StickyNote() {
                 console.error('[DROP] Failed to import dropped image:', error);
                 const message = error instanceof Error ? error.message : String(error);
                 setToastMessage(message.includes('50MB')
-                    ? '画像ファイルは1件50MBまでです'
-                    : '画像を追加できませんでした');
+                    ? (language === 'en' ? 'Each image file must be 50 MB or smaller.' : '画像ファイルは1件50MBまでです')
+                    : (language === 'en' ? 'Could not add the image.' : '画像を追加できませんでした'));
             }
         };
 
@@ -412,7 +416,7 @@ const StickyNote = memo(function StickyNote() {
             window.removeEventListener('dragover', handleFileDragOver, true);
             window.removeEventListener('drop', handleFileDrop, true);
         };
-    }, [editBodyRef, noteFilePathRef, saveNoteContent, setContent, setEditBody]);
+    }, [editBodyRef, language, noteFilePathRef, saveNoteContent, setContent, setEditBody]);
 
     // [New] ミニマイズ状態からリサイズ操作により自動展開された場合の処理
     const handleAutoExpand = useCallback(async () => {
@@ -473,7 +477,11 @@ const StickyNote = memo(function StickyNote() {
     const isQaNote = !isRecipeNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'qa');
     const isTermNote = !isRecipeNote && !isQaNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'term');
     const isCrystalNote = isRecipeNote || isQaNote || isTermNote;
-    const crystalNoteLabel = isRecipeNote ? 'レシピ' : isQaNote ? 'QA' : '用語';
+    const crystalNoteLabel = isRecipeNote
+        ? (language === 'en' ? 'Recipe' : 'レシピ')
+        : isQaNote
+            ? 'Q&A'
+            : (language === 'en' ? 'Term' : '用語');
     const currentUserTags = useMemo(() => getUserTags(currentTags), [currentTags]);
 
     useEffect(() => {
@@ -1448,7 +1456,10 @@ const StickyNote = memo(function StickyNote() {
                 });
             } catch (err) {
                 console.error('[Tag] Failed to add tag:', err);
-                alert(err instanceof Error ? err.message : 'タグの追加に失敗しました。');
+                console.error('[Tag] Failed to add tag detail:', err);
+                alert(language === 'en'
+                    ? 'Could not add the tag. Please try again.'
+                    : (err instanceof Error ? err.message : 'タグの追加に失敗しました。'));
             }
         }
         setShowTagModal(false);
@@ -1476,7 +1487,9 @@ const StickyNote = memo(function StickyNote() {
             }
         } catch (err) {
             console.error('[Tag] Failed to delete tag globally:', err);
-            alert(`タグの全件削除に失敗しました。\n${err}`);
+            alert(language === 'en'
+                ? 'Could not delete the tag. Please try again.'
+                : `タグの全件削除に失敗しました。\n${err}`);
         }
         setTagToDelete(null); // モーダルを閉じてリセット
     };
@@ -1905,9 +1918,11 @@ const StickyNote = memo(function StickyNote() {
         } catch (e) {
             isDeletingRef.current = false;
             console.error(`Failed to return ${isRecipeNote ? 'recipe' : isQaNote ? 'QA' : 'term'}:`, e);
-            alert(`${crystalNoteLabel}を返せませんでした\n${e}`);
+            alert(language === 'en'
+                ? `Could not close the ${crystalNoteLabel.toLowerCase()}. Please try again.`
+                : `${crystalNoteLabel}を返せませんでした\n${e}`);
         }
-    }, [content, crystalNoteLabel, isCrystalNote, isQaNote, isRecipeNote, selectedFile?.path, setContent, setEditBody, setRawFrontmatter]);
+    }, [content, crystalNoteLabel, isCrystalNote, isQaNote, isRecipeNote, language, selectedFile?.path, setContent, setEditBody, setRawFrontmatter]);
 
     const handleOpenTagFolder = useCallback(async (tag: string) => {
         try {
@@ -2114,7 +2129,9 @@ const StickyNote = memo(function StickyNote() {
                     }}
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}
-                    archiveLabel={isCrystalNote ? `${crystalNoteLabel}を閉じる` : archiveButtonLabel}
+                    archiveLabel={isCrystalNote
+                        ? (language === 'en' ? `Close ${crystalNoteLabel}` : `${crystalNoteLabel}を閉じる`)
+                        : archiveButtonLabel}
                     onArchive={(e) => {
                         if (isCrystalNote) {
                             handleReturnRecipe();
@@ -2268,6 +2285,7 @@ const StickyNote = memo(function StickyNote() {
                                         setSavePending(true);
                                     }}
                                     filePath={selectedFile?.path || ''}
+                                    language={language}
                                     onKeyDown={(e) => {
                                         if (!isEditing) return;
                                         if (e.key === 'Escape') handleEditBlur();
@@ -2319,6 +2337,7 @@ const StickyNote = memo(function StickyNote() {
                             content={content}
                             backgroundColor={noteBackgroundColor}
                             fontSize={noteFontSize}
+                            language={language}
                             isDraggableArea={isDraggableArea}
                             recipeMode={isCrystalNote}
                             onCheckboxToggle={handleToggleCheckbox}

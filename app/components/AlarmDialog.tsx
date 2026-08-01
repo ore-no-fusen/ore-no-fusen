@@ -216,6 +216,7 @@ export default function AlarmDialog({
                             </span>
                             <input
                                 type="datetime-local"
+                                lang={language === 'en' ? 'en-US' : 'ja-JP'}
                                 aria-label={formatAlarmDateTime(datetimeValue, language)}
                                 value={datetimeValue}
                                 onChange={(e) => setDatetimeValue(e.target.value)}

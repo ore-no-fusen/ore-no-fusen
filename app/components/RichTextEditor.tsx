@@ -19,6 +19,7 @@ import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, 
 import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUtils';
+import type { Language } from '@/lib/i18n';
 
 export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
 
@@ -311,6 +312,7 @@ export interface RichTextEditorProps {
     value: string;
     onChange: (value: string) => void;
     filePath: string; // [NEW] Needed for relative path resolution
+    language?: Language;
 
     onKeyDown?: (e: React.KeyboardEvent) => void;
     backgroundColor: string;
@@ -591,7 +593,7 @@ const linkDecorationField = ViewPlugin.fromClass(class {
     decorations: v => v.decorations
 });
 
-const linkEventHandler = EditorView.domEventHandlers({
+const createLinkEventHandler = (getLanguage: () => Language) => EditorView.domEventHandlers({
     mousedown(event, view) {
         // Only trigger on Ctrl + Click (or Meta + Click)
         if (!event.ctrlKey && !event.metaKey) return;
@@ -627,14 +629,18 @@ const linkEventHandler = EditorView.domEventHandlers({
                     if (/^https?:\/\//i.test(link)) {
                         open(link).catch(e => {
                             console.error('Failed to open link:', e);
-                            alert(`リンクを開けませんでした。\n${link}`);
+                            alert(getLanguage() === 'en'
+                                ? `Could not open the link.\n${link}`
+                                : `リンクを開けませんでした。\n${link}`);
                         });
                     } else {
                         import('@tauri-apps/api/core').then(({ invoke }) => {
                             invoke('fusen_open_file', { path: link })
                                 .catch(e => {
                                     console.error('Failed to open file:', e);
-                                    alert(`ファイルを開けませんでした。\n${link}`);
+                                    alert(getLanguage() === 'en'
+                                        ? `Could not open the file.\n${link}`
+                                        : `ファイルを開けませんでした。\n${link}`);
                                 });
                         });
                     }
@@ -738,6 +744,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
     const latestFilePathRef = useRef(filePath);
     const latestOnEnsureFilePathRef = useRef(onEnsureFilePath);
     const latestOnChangeRef = useRef(onChange);
+    const latestLanguageRef = useRef<Language>(props.language ?? 'ja');
+    latestLanguageRef.current = props.language ?? 'ja';
     const latestOnKeyDownRef = useRef(onKeyDown);
     const latestOnBlurRef = useRef(onBlur);
     const latestOnSelectionChangeRef = useRef(onSelectionChange);
@@ -1381,7 +1389,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     placeholderFlagField,
                     placeholderDecorationField,
                     linkDecorationField, // [New]
-                    linkEventHandler,    // [New]
+                    createLinkEventHandler(() => latestLanguageRef.current), // [New]
                     pendingImageField,
                     imagePreviewPlugin,  // [NEW]
                     EditorView.lineWrapping,

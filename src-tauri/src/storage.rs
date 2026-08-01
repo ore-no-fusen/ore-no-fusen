@@ -964,6 +964,7 @@ pub fn open_file(path: &str) -> Result<(), String> {
 /// ベースパス全体を dest_dir へ再帰コピーする（バックアップ用）
 /// tags/, assets/ を含むすべてのファイルを対象とする。
 /// 戻り値: コピーしたファイル数
+#[allow(dead_code)]
 pub fn backup_notes(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
     backup_notes_with_options(source_dir, dest_dir, true)
 }

@@ -17,13 +17,14 @@ import { createLinkTargetRegex, isAbsoluteOrExternalPath, isLinkTarget } from '.
 import { renderSecureMermaid } from '../utils/mermaid';
 import { buildImagePathCandidates } from '../utils/markdownUtils';
 import { NOTE_COLORS } from '@/app/utils/noteAppearance';
+import type { Language } from '@/lib/i18n';
 
 /**
  * Mermaid図ブロックコンポーネント
  * mermaid.jsを動的インポートして初回のみロードする
  */
 let mermaidIdCounter = 0;
-function MermaidBlock({ code }: { code: string }) {
+function MermaidBlock({ code, language }: { code: string; language: Language }) {
     const [svg, setSvg] = useState<string>('');
     const [error, setError] = useState<string>('');
     const idRef = useRef(`mermaid-${++mermaidIdCounter}`);
@@ -35,10 +36,13 @@ function MermaidBlock({ code }: { code: string }) {
         renderSecureMermaid(idRef.current, code).then((rendered) => {
             if (!cancelled) setSvg(rendered);
         }).catch((err: unknown) => {
-            if (!cancelled) setError(String(err));
+            console.error('[Mermaid] Render failed:', err);
+            if (!cancelled) setError(language === 'en'
+                ? 'Could not display this diagram.'
+                : String(err));
         });
         return () => { cancelled = true; };
-    }, [code]);
+    }, [code, language]);
 
     if (error) {
         return (
@@ -175,9 +179,22 @@ export type MarkdownRendererProps = {
     resolvePath: (baseFile: string, relativePath: string) => string;
     onAnnotationClick?: (absolutePath: string) => void;
     imageVersion?: number;
+    language?: Language;
 };
 
-export function getEmptyNotePlaceholder(backgroundColor: string): string {
+export function getEmptyNotePlaceholder(backgroundColor: string, language: Language = 'ja'): string {
+    if (language === 'en') {
+        switch (backgroundColor.trim().toLowerCase()) {
+            case NOTE_COLORS.yellow:
+                return 'Note an idea, concern, or situation';
+            case NOTE_COLORS.pink:
+                return 'Note a task, issue, or experiment';
+            case NOTE_COLORS.blue:
+                return 'Note a result, decision, or next step';
+            default:
+                return '(Empty note)';
+        }
+    }
     switch (backgroundColor.trim().toLowerCase()) {
         case NOTE_COLORS.yellow:
             return 'アイデア、違和感、こんなときをメモ';
@@ -206,6 +223,7 @@ export default function MarkdownRenderer({
     resolvePath,
     onAnnotationClick,
     imageVersion = 0,
+    language = 'ja',
 }: MarkdownRendererProps) {
     // 行オフセット計算（カーソル位置精度向上）
     const lineOffsets = useMemo(() => {
@@ -433,7 +451,7 @@ export default function MarkdownRenderer({
                         if (group.type === 'code') {
                             const codeText = group.lines.join('\n');
                             if (group.lang === 'mermaid') {
-                                return <MermaidBlock key={gi} code={codeText} />;
+                                return <MermaidBlock key={gi} code={codeText} language={language} />;
                             }
                             // 通常コードブロック → 等幅フォントで表示
                             return (
@@ -588,7 +606,7 @@ export default function MarkdownRenderer({
                 </div>
             ) : (
                 <div className="text-[#999] p-2">
-                    {getEmptyNotePlaceholder(backgroundColor)}
+                    {getEmptyNotePlaceholder(backgroundColor, language)}
                 </div>
             )}
         </article>

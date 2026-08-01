@@ -369,7 +369,8 @@ fn fusen_restore_backup(
     let recovery = recovery_root.join(format!("OreNoFusen_recovered_{}", timestamp));
     std::fs::create_dir(&recovery).map_err(|e| e.to_string())?;
     let recovery_str = recovery.to_string_lossy().to_string();
-    if let Err(e) = storage::backup_notes(&backup_path, &recovery_str) {
+    // 復旧対象に削除済みのTrashは含めない。本文・現行データだけを復旧する。
+    if let Err(e) = storage::backup_notes_with_options(&backup_path, &recovery_str, false) {
         let _ = std::fs::remove_dir_all(&recovery);
         return Err(e);
     }
@@ -4757,6 +4758,9 @@ async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
 }
 
 async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
+    let is_english = crate::settings::get_settings(app.clone())
+        .map(|settings| settings.language == "en")
+        .unwrap_or(false);
     // 1. access_token 取得（失敗 = Drive未接続）
     let token = match gdrive::get_access_token(client).await {
         Ok(t) => {
@@ -4948,18 +4952,32 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                                 "[iphone video] download failed {}: {}",
                                 video_ref.video_file_name, e
                             ));
-                            video_lines.push(format!(
-                                "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
-                                display_name, video_ref.video_file_name
-                            ));
+                            video_lines.push(if is_english {
+                                format!(
+                                    "🎬 Could not save video:\nOriginal file: {}\nDrive file: {}",
+                                    display_name, video_ref.video_file_name
+                                )
+                            } else {
+                                format!(
+                                    "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
+                                    display_name, video_ref.video_file_name
+                                )
+                            });
                         }
                     }
                 } else {
                     logger::log_info("[iphone video] folder path is not set");
-                    video_lines.push(format!(
-                        "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
-                        display_name, video_ref.video_file_name
-                    ));
+                    video_lines.push(if is_english {
+                        format!(
+                            "🎬 Could not save video:\nOriginal file: {}\nDrive file: {}",
+                            display_name, video_ref.video_file_name
+                        )
+                    } else {
+                        format!(
+                            "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
+                            display_name, video_ref.video_file_name
+                        )
+                    });
                 }
             }
             if !video_lines.is_empty() {
@@ -4980,7 +4998,11 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             let _ = app
                 .notification()
                 .builder()
-                .title("iPhoneから付箋")
+                .title(if is_english {
+                    "Note from iPhone"
+                } else {
+                    "iPhoneから付箋"
+                })
                 .body(&context)
                 .show();
         }

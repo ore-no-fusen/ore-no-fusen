@@ -181,14 +181,15 @@ export default function QuickLauncher() {
             setSelectedIndex((current) => Math.min(current, Math.max(nextItems.length - 1, 0)));
         } catch (e) {
             if (!isLatestLauncherRequest(requestId, requestGenerationRef.current)) return;
+            console.error('[QuickLauncher] Failed to load items:', e);
             setItems([]);
-            setError(e instanceof Error ? e.message : String(e));
+            setError(isEnglish ? 'Could not load items. Please try again.' : (e instanceof Error ? e.message : String(e)));
         } finally {
             if (isLatestLauncherRequest(requestId, requestGenerationRef.current)) {
                 setIsLoading(false);
             }
         }
-    }, []);
+    }, [isEnglish]);
 
     useEffect(() => {
         let cancelled = false;
@@ -381,9 +382,12 @@ export default function QuickLauncher() {
 
         if (e.key === 'Enter' && selectedItem) {
             e.preventDefault();
-            openItem(selectedItem).catch((error) => setError(String(error)));
+            openItem(selectedItem).catch((error) => {
+                console.error('[QuickLauncher] Failed to open item:', error);
+                setError(isEnglish ? 'Could not open the item. Please try again.' : String(error));
+            });
         }
-    }, [activeTab, contextMenu, openItem, selectedItem, switchTab, visibleItems.length]);
+    }, [activeTab, contextMenu, isEnglish, openItem, selectedItem, switchTab, visibleItems.length]);
 
     const handleReorder = useCallback(async (direction: 'up' | 'down', item?: QuickOpenItem) => {
         const targetItem = item ?? contextMenu?.item;
@@ -395,9 +399,10 @@ export default function QuickLauncher() {
             await reloadItems(activeTab, debouncedQuery);
             setSelectedIndex((current) => nextSelectionIndex(current, Math.max(items.length, 1), direction));
         } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
+            console.error('[QuickLauncher] Failed to reorder item:', e);
+            setError(isEnglish ? 'Could not reorder the item. Please try again.' : (e instanceof Error ? e.message : String(e)));
         }
-    }, [activeTab, contextMenu, debouncedQuery, items.length, reloadItems]);
+    }, [activeTab, contextMenu, debouncedQuery, isEnglish, items.length, reloadItems]);
 
     const handleRemove = useCallback(async (item?: QuickOpenItem) => {
         const targetItem = item ?? contextMenu?.item;
@@ -414,7 +419,8 @@ export default function QuickLauncher() {
             await removeFromShelf(targetPath);
             await reloadItems(activeTab, debouncedQuery);
         } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
+            console.error('[QuickLauncher] Failed to remove item:', e);
+            setError(isEnglish ? 'Could not remove the item. Please try again.' : (e instanceof Error ? e.message : String(e)));
         }
     }, [activeTab, contextMenu, debouncedQuery, isEnglish, reloadItems]);
 
@@ -434,9 +440,10 @@ export default function QuickLauncher() {
             await renameQuickNote(path, value);
             await reloadItems(activeTab, debouncedQuery);
         } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
+            console.error('[QuickLauncher] Failed to rename item:', e);
+            setError(isEnglish ? 'Could not rename the item. Please try again.' : (e instanceof Error ? e.message : String(e)));
         }
-    }, [renameTarget, activeTab, debouncedQuery, reloadItems]);
+    }, [renameTarget, activeTab, debouncedQuery, isEnglish, reloadItems]);
 
     return (
         <div
@@ -543,7 +550,10 @@ export default function QuickLauncher() {
                                     key={item.path}
                                     role="button"
                                     tabIndex={-1}
-                                    onClick={() => openItem(item).catch((error) => setError(String(error)))}
+                                    onClick={() => openItem(item).catch((error) => {
+                                        console.error('[QuickLauncher] Failed to open item:', error);
+                                        setError(isEnglish ? 'Could not open the item. Please try again.' : String(error));
+                                    })}
                                     onContextMenu={(e) => {
                                         e.preventDefault();
                                         setSelectedIndex(index);

@@ -426,7 +426,9 @@ It stays here!`
 
                             } catch (e) {
                                 console.error("設定の保存に失敗:", e)
-                                alert((settings.language === 'en' ? "Failed to save settings: " : "設定の保存に失敗しました: ") + String(e))
+                                alert(settings.language === 'en'
+                                    ? "Failed to save settings. Please try again."
+                                    : "設定の保存に失敗しました: " + String(e))
                             }
                         }}
                     >
@@ -1240,7 +1242,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             setDesktopShortcutExists(true)
             setDesktopShortcutMessage(isEnglish ? `Created: ${path}` : `作成しました: ${path}`)
         } catch (e) {
-            setDesktopShortcutMessage(isEnglish ? `Could not create the shortcut: ${String(e)}` : `作成できませんでした: ${String(e)}`)
+            setDesktopShortcutMessage(isEnglish ? 'Could not create the shortcut. Please try again.' : `作成できませんでした: ${String(e)}`)
         } finally {
             setDesktopShortcutBusy(false)
         }
@@ -1255,7 +1257,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             setDesktopShortcutExists(false)
             setDesktopShortcutMessage(isEnglish ? "Removed from the desktop." : "デスクトップから削除しました。")
         } catch (e) {
-            setDesktopShortcutMessage(isEnglish ? `Could not remove the shortcut: ${String(e)}` : `削除できませんでした: ${String(e)}`)
+            setDesktopShortcutMessage(isEnglish ? 'Could not remove the shortcut. Please try again.' : `削除できませんでした: ${String(e)}`)
         } finally {
             setDesktopShortcutBusy(false)
         }
@@ -1442,7 +1444,7 @@ function DataSection({
             }
         } catch (e) {
             console.error("フォルダ選択に失敗:", e)
-            alert((isEnglish ? "Folder selection failed: " : "フォルダ選択に失敗しました: ") + String(e))
+            alert(isEnglish ? "Folder selection failed. Please try again." : "フォルダ選択に失敗しました: " + String(e))
         }
     }
 
@@ -1608,7 +1610,7 @@ function DataSection({
                                     await refreshImportedNotes(stats, emit);
                                 } catch (e) {
                                     console.error("インポート失敗:", e);
-                                    alert((isEnglish ? "Import failed: " : "インポートに失敗しました: ") + String(e));
+                                    alert(isEnglish ? "Import failed. Check the source and data save location." : "インポートに失敗しました: " + String(e));
                                 } finally {
                                     setIsImporting(false);
                                     setImportSourcePath("");
@@ -1761,7 +1763,7 @@ function DataSection({
                                     alert(t('settings.data.backupDone') + count + (isEnglish ? '' : '件'));
                                 } catch (e) {
                                     console.error("バックアップ失敗:", e);
-                                    alert((isEnglish ? "Backup failed: " : "バックアップに失敗しました: ") + String(e));
+                                    alert(isEnglish ? "Backup failed. Check the destination and available space." : "バックアップに失敗しました: " + String(e));
                                 } finally {
                                     setIsBackingUp(false);
                                     setBackupDestPath("");
@@ -2788,7 +2790,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             }
         } catch (e) {
             console.error('[AdvancedSection] delete drive queue failed:', e)
-            window.alert(isEnglish ? `Deletion failed: ${String(e)}` : `削除に失敗しました: ${String(e)}`)
+            window.alert(isEnglish ? 'Deletion failed. Please try again.' : `削除に失敗しました: ${String(e)}`)
         } finally {
             setQueueDeleting(null)
         }
@@ -2897,7 +2899,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setDiagText(lines.join('\n'))
         } catch (e) {
             console.error('[AdvancedSection] build diagnostics failed:', e)
-            setDiagText(isEnglish ? `Failed to retrieve diagnostics: ${e}` : `診断情報の取得に失敗しました: ${e}`)
+            setDiagText(isEnglish ? 'Failed to retrieve diagnostics. Please try again.' : `診断情報の取得に失敗しました: ${e}`)
         } finally {
             setDiagLoading(false)
         }
@@ -2930,7 +2932,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setDriveTempSummary(summary)
             setSelectedDriveTempFileIds((ids) => ids.filter((id) => summary.files?.some((file) => file.id === id && file.canDelete)))
         } catch (e) {
-            setDriveTempMessage((isEnglish ? 'Failed to check temporary files: ' : '一時ファイルの確認に失敗しました: ') + String(e))
+            setDriveTempMessage(isEnglish ? 'Failed to check temporary files. Please check the Drive connection.' : '一時ファイルの確認に失敗しました: ' + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -2960,7 +2962,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setSelectedDriveTempFileIds([])
             setDriveTempMessage(isEnglish ? `Deleted selected temporary files: ${summary.deletedCount}${summary.failedCount ? ` / Failed: ${summary.failedCount}` : ''}` : `選択した一時ファイルを削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
         } catch (e) {
-            setDriveTempMessage((isEnglish ? 'Failed to delete selected temporary files: ' : '選択した一時ファイルの削除に失敗しました: ') + String(e))
+            setDriveTempMessage(isEnglish ? 'Failed to delete the selected temporary files. Please try again.' : '選択した一時ファイルの削除に失敗しました: ' + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -2978,7 +2980,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setSelectedDriveTempFileIds([])
             setDriveTempMessage(isEnglish ? `Deleted: ${summary.deletedCount}${summary.failedCount ? ` / Failed: ${summary.failedCount}` : ''}` : `削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
         } catch (e) {
-            setDriveTempMessage((isEnglish ? 'Failed to delete temporary files: ' : '一時ファイルの削除に失敗しました: ') + String(e))
+            setDriveTempMessage(isEnglish ? 'Failed to delete temporary files. Please try again.' : '一時ファイルの削除に失敗しました: ' + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -3076,7 +3078,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             }
         } catch (e) {
             console.error('[AdvancedSection] open folder failed:', e)
-            alert(isEnglish ? `Could not open the folder: ${e}` : `フォルダを開けませんでした: ${e}`)
+            alert(isEnglish ? 'Could not open the folder. Please check the data save location.' : `フォルダを開けませんでした: ${e}`)
         }
     }
 
@@ -4120,7 +4122,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
             await loadDevices()
             setStatus('connected')
         } catch (e: unknown) {
-            setErrorMsg((isEnglish ? 'Connection failed: ' : '接続に失敗しました: ') + String(e))
+            setErrorMsg(isEnglish ? 'Connection failed. Check your network and reconnect.' : '接続に失敗しました: ' + String(e))
             setStatus('disconnected')
         } finally {
             setIsConnecting(false)
@@ -4411,7 +4413,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                                 await invoke('fusen_delete_push_device', { deviceId: d.device_id })
                                                 setDevices(prev => prev ? prev.filter(x => x.device_id !== d.device_id) : prev)
                                             } catch (e) {
-                                                alert((isEnglish ? 'Removal failed: ' : '削除に失敗しました: ') + String(e))
+                                                alert(isEnglish ? 'Removal failed. Please try again.' : '削除に失敗しました: ' + String(e))
                                             } finally {
                                                 setDeletingId(null)
                                             }

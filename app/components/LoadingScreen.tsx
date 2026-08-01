@@ -9,8 +9,9 @@
 
 import React, { useEffect } from 'react';
 import Image from 'next/image';
+import type { Language } from '@/lib/i18n';
 
-export default function LoadingScreen({ message = "Loading..." }: { message?: string }) {
+export default function LoadingScreen({ message = "Loading...", language = 'ja' }: { message?: string; language?: Language }) {
     useEffect(() => {
         let cancelled = false;
         let showTimer: ReturnType<typeof setTimeout> | undefined;
@@ -59,7 +60,7 @@ export default function LoadingScreen({ message = "Loading..." }: { message?: st
                     <div className="relative h-16 w-16 animate-[bounce_2s_infinite] drop-shadow-2xl">
                         <Image
                             src="/icon-192.png"
-                            alt="俺の付箋"
+                            alt={language === 'en' ? 'Ore No Fusen' : '俺の付箋'}
                             width={64}
                             height={64}
                             priority
