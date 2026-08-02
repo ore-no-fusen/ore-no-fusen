@@ -1,7 +1,7 @@
 // app/viewer/types.ts
 // page.tsx から抽出した型定義。'use client' は不要（型のみ）。
 
-import type { TranslationKey } from '@/lib/i18n';
+import type { Language, TranslationKey } from '@/lib/i18n';
 
 export type IphoneNote = {
   id: string;
@@ -46,6 +46,7 @@ export type PendingHydrate = {
   videoMeta?: PendingVideoMeta | null;
   videoMetas?: PendingVideoMeta[];
   videoBlobMap?: VideoBlobMap;
+  notificationSource?: 'url' | 'pending_open' | 'visibility' | 'open_note';
 };
 
 export type PendingVideoMeta = {
@@ -73,13 +74,15 @@ export type DraftRecord = {
 };
 
 export type CropModalProps = {
-  file: File;
-  onCancel: () => void;
+    file: File;
+    t: (key: TranslationKey) => string;
+    onCancel: () => void;
   onCrop: (blob: Blob) => void;
 };
 
 export type MermaidModalProps = {
-  onCancel: () => void;
+    t: (key: TranslationKey) => string;
+    onCancel: () => void;
   /** code: 入力コード, svg: プレビュー済みSVG（null = プレビューなし） */
   onInsert: (code: string, svg: string | null) => void;
 };
@@ -92,6 +95,7 @@ export type NoteListStepProps = {
   isLockPermissionPending: boolean;
   /** i18n 翻訳関数 */
   t: (key: TranslationKey) => string;
+  language: Language;
   swVersion: string | null;
   runtimeOrigin: string;
   runtimeKind: string;
@@ -100,4 +104,5 @@ export type NoteListStepProps = {
   onDelete: (note: IphoneNote) => void;
   onLockToggle: (e: React.MouseEvent, note: IphoneNote) => void;
   onReRegisterPush: () => void;
+  onLanguageChange: (language: Language) => void;
 };

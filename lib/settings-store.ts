@@ -18,6 +18,7 @@ export type AppSettings = {
     language: "ja" | "en"
     auto_start: boolean
     desktop_shortcut_prompted: boolean
+    analytics_consent?: "granted" | "denied"
     font_size: number
     sound_enabled: boolean
     iphone_send_enabled: boolean
@@ -115,6 +116,7 @@ export function useSettings() {
                         language: parsed.language ?? DEFAULT_SETTINGS.language,
                         auto_start: parsed.auto_start ?? parsed.autoStart ?? DEFAULT_SETTINGS.auto_start,
                         desktop_shortcut_prompted: parsed.desktop_shortcut_prompted ?? false,
+                        analytics_consent: parsed.analytics_consent,
                         font_size: parsed.font_size ?? parsed.fontSize ?? DEFAULT_SETTINGS.font_size,
                         sound_enabled: parsed.sound_enabled ?? parsed.soundEnabled ?? DEFAULT_SETTINGS.sound_enabled,
                         iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
@@ -149,6 +151,7 @@ export function useSettings() {
                     language: loaded.language,
                     auto_start: loaded.auto_start,
                     desktop_shortcut_prompted: loaded.desktop_shortcut_prompted ?? false,
+                    analytics_consent: loaded.analytics_consent,
                     font_size: loaded.font_size,
                     sound_enabled: loaded.sound_enabled,
                     iphone_send_enabled: loaded.iphone_send_enabled,

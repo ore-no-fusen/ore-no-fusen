@@ -13,7 +13,7 @@ import type { CropModalProps } from './types';
  * 出力: JSX.Element
  * 副作用: Canvas で toBlob() を呼び出す
  */
-export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
+export function CropModal({ file, t, onCancel, onCrop }: CropModalProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [imgEl, setImgEl] = React.useState<HTMLImageElement | null>(null);
@@ -161,9 +161,9 @@ export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center justify-between px-4 py-3 bg-gray-900">
-        <button className="text-gray-300 text-sm" onClick={onCancel}>キャンセル</button>
-        <span className="text-white font-semibold text-sm">トリミング</span>
-        <button className="text-blue-400 text-sm font-medium" onClick={handleCrop}>貼り付け</button>
+        <button className="text-gray-300 text-sm" onClick={onCancel}>{t('pwa.crop.cancel')}</button>
+        <span className="text-white font-semibold text-sm">{t('pwa.crop.title')}</span>
+        <button className="text-blue-400 text-sm font-medium" onClick={handleCrop}>{t('pwa.crop.apply')}</button>
       </div>
       <div ref={containerRef} className="flex-1 flex items-center justify-center p-4">
         <canvas
@@ -179,7 +179,7 @@ export function CropModal({ file, onCancel, onCrop }: CropModalProps) {
         />
       </div>
       <p className="text-center text-gray-400 text-xs pb-4">
-        ドラッグで範囲を調整 / 隅のハンドルでリサイズ
+        {t('pwa.crop.instruction')}
       </p>
     </div>
   );

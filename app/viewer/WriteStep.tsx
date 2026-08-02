@@ -69,8 +69,8 @@ type WriteStepProps = {
   sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoBlobs?: VideoBlobMap; draftId: string | null; targetPcId?: string }) => Promise<boolean>;
 };
 
-function formatPcUpdatedAt(value?: string) {
-  if (!value) return '更新時刻なし';
+function formatPcUpdatedAt(value: string | undefined, t: (key: TranslationKey) => string) {
+  if (!value) return t('pwa.write.noUpdateTime');
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -128,6 +128,16 @@ export function WriteStep({
 }: WriteStepProps) {
   const selectedPc = pcDevices.find((pc) => pc.pcId === selectedPcId) ?? null;
   const [isRefreshingPcDevices, setIsRefreshingPcDevices] = React.useState(false);
+  const [previewImageSrc, setPreviewImageSrc] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!previewImageSrc) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewImageSrc(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [previewImageSrc]);
 
   const openNextCrop = React.useCallback(() => {
     setCropQueue((prev) => {
@@ -162,7 +172,7 @@ export function WriteStep({
             }
             setStep('list');
           }}
-          aria-label="一覧"
+          aria-label={t('pwa.listTitle')}
         >
           📋 {t('pwa.listTitle')}
         </button>
@@ -172,8 +182,8 @@ export function WriteStep({
           <button
             className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
             onClick={() => fileInputRef.current?.click()}
-            aria-label="画像を追加"
-            title="画像"
+            aria-label={t('pwa.write.addImage')}
+            title={t('pwa.write.addImage')}
           >
             📷
           </button>
@@ -181,8 +191,8 @@ export function WriteStep({
           <button
             className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
             onClick={() => videoInputRef.current?.click()}
-            aria-label="動画をPCに送る"
-            title="動画"
+            aria-label={t('pwa.write.addVideo')}
+            title={t('pwa.write.addVideo')}
           >
             🎬
           </button>
@@ -190,7 +200,7 @@ export function WriteStep({
           <button
             className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
             onClick={() => setShowMermaidModal(true)}
-            aria-label="Mermaidを追加"
+            aria-label={t('pwa.write.addMermaid')}
             title="Mermaid"
           >
             🔷
@@ -282,8 +292,8 @@ export function WriteStep({
               currentSel?.removeAllRanges();
               currentSel?.addRange(range);
             }}
-            aria-label="チェックボックスを追加"
-            title="チェックボックス"
+            aria-label={t('pwa.write.addChecklist')}
+            title={t('pwa.write.addChecklist')}
           >
             ☑
           </button>
@@ -298,8 +308,8 @@ export function WriteStep({
               }
               setShowTagBar((prev) => !prev);
             }}
-            aria-label="タグ"
-            title="タグ"
+            aria-label={t('pwa.write.tag')}
+            title={t('pwa.write.tag')}
           >
             🏷️
           </button>
@@ -313,9 +323,15 @@ export function WriteStep({
         autoFocus
         suppressContentEditableWarning
         className="flex-1 mx-4 mt-1 mb-2 px-4 py-4 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none bg-white rounded-2xl shadow-sm"
-        data-placeholder="メモを入力..."
+        data-placeholder={t('pwa.write.placeholder')}
         style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
         onInput={handleEditorInput}
+        onClick={(event) => {
+          if (!(event.target instanceof HTMLImageElement)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setPreviewImageSrc(event.target.src);
+        }}
       />
 
       {/* タグバー */}
@@ -330,7 +346,7 @@ export function WriteStep({
               <button
                 className="text-blue-500 hover:text-blue-700 leading-none"
                 onClick={() => setWriteTags((prev) => prev.filter((_, j) => j !== i))}
-                aria-label={`タグ ${tag} を削除`}
+                aria-label={t('pwa.write.removeTag').replace('{tag}', tag)}
               >
                 ×
               </button>
@@ -350,7 +366,7 @@ export function WriteStep({
                 setTagInput('');
               }
             }}
-            placeholder="タグを入力（Enter で追加）"
+            placeholder={t('pwa.write.tagPlaceholder')}
             className="text-sm outline-none border-b border-gray-300 focus:border-blue-400 min-w-[120px] flex-1"
           />
           {/* サジェスト候補 */}
@@ -381,7 +397,7 @@ export function WriteStep({
                     <button
                       type="button"
                       className="text-gray-400 hover:text-red-500 leading-none"
-                      aria-label={`候補 ${tag} を削除`}
+                      aria-label={t('pwa.write.removeSuggestion').replace('{tag}', tag)}
                       onClick={() => {
                         const updated = knownTags.filter((k) => k !== tag);
                         localStorage.setItem('fusen_known_tags', JSON.stringify(updated));
@@ -430,7 +446,7 @@ export function WriteStep({
             return lower.endsWith('.mp4') || lower.endsWith('.mov');
           });
           if (validFiles.length !== files.length) {
-            setErrorMessage('mp4 または mov を選択してください。');
+            setErrorMessage(t('pwa.write.invalidVideo'));
           }
           if (validFiles.length === 0) {
             return;
@@ -476,7 +492,7 @@ export function WriteStep({
 
       {/* 成功メッセージ */}
       {backgroundSendSuccess && (
-        <p className="text-center text-green-600 text-sm py-1">送信しました！</p>
+        <p className="text-center text-green-600 text-sm py-1">{t('pwa.write.sent')}</p>
       )}
       {errorMessage && (
         <p className="text-center text-red-600 text-sm py-1">{errorMessage}</p>
@@ -492,7 +508,7 @@ export function WriteStep({
               <button
                 type="button"
                 className="text-gray-400 hover:text-red-500 px-2"
-                aria-label={`${meta.name} を外す`}
+                aria-label={t('pwa.write.removeVideo').replace('{name}', meta.name)}
                 onClick={() => {
                   const nextMap = new Map(videoBlobsRef.current);
                   nextMap.delete(meta.fileName);
@@ -513,26 +529,26 @@ export function WriteStep({
         {accessToken && (
           <div className="rounded-2xl bg-white px-3 py-2 text-sm text-gray-700 shadow-sm">
             <div className="flex items-center gap-2">
-              <span className="shrink-0 text-gray-500">送信先</span>
+              <span className="shrink-0 text-gray-500">{t('pwa.write.destination')}</span>
               {pcDevices.length > 0 ? (
                 <select
                   className="min-w-0 flex-1 bg-transparent outline-none"
                   value={selectedPcId}
                   onChange={(e) => setSelectedPcId?.(e.target.value)}
-                  aria-label="送信先PC"
+                  aria-label={t('pwa.write.destination')}
                 >
                   {pcDevices.map((pc) => (
                     <option key={pc.pcId} value={pc.pcId}>{pc.pcName}</option>
                   ))}
                 </select>
               ) : (
-                <span className="min-w-0 flex-1 truncate text-gray-400">PC未登録（1台なら送信可）</span>
+                <span className="min-w-0 flex-1 truncate text-gray-400">{t('pwa.write.noPc')}</span>
               )}
               <button
                 type="button"
                 className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 active:bg-gray-200 disabled:opacity-40"
                 disabled={!refreshPcDevices || isRefreshingPcDevices}
-                aria-label="PC一覧を更新"
+                aria-label={t('pwa.write.refreshPcList')}
                 onClick={async () => {
                   if (!refreshPcDevices) return;
                   setIsRefreshingPcDevices(true);
@@ -540,18 +556,18 @@ export function WriteStep({
                   try {
                     await refreshPcDevices();
                   } catch (err: unknown) {
-                    setErrorMessage('PC一覧の更新に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+                    setErrorMessage(t('pwa.write.refreshFailed') + (err instanceof Error ? err.message : String(err)));
                   } finally {
                     setIsRefreshingPcDevices(false);
                   }
                 }}
               >
-                {isRefreshingPcDevices ? '更新中' : '更新'}
+                {isRefreshingPcDevices ? t('pwa.write.refreshing') : t('pwa.write.refresh')}
               </button>
             </div>
             {selectedPc && (
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">
-                <span>更新 {formatPcUpdatedAt(selectedPc.updatedAt)}</span>
+                <span>{t('pwa.write.updated')} {formatPcUpdatedAt(selectedPc.updatedAt, t)}</span>
                 {selectedPc.googleAccountEmail && <span className="truncate">{selectedPc.googleAccountEmail}</span>}
               </div>
             )}
@@ -591,13 +607,13 @@ export function WriteStep({
               setCurrentDraftId(null);
               setPendingHydrate({ markdown: '', blobMap: new Map(), draftId: null, tags: [] });
             } catch (err: unknown) {
-              setErrorMessage('保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+              setErrorMessage(t('pwa.write.saveFailed') + (err instanceof Error ? err.message : String(err)));
             } finally {
               setIsLoading(false);
             }
           }}
         >
-          新規付箋
+          {t('pwa.write.newNote')}
         </button>
         {/* PCに送るボタン */}
         <button
@@ -625,12 +641,12 @@ export function WriteStep({
               setCurrentDraftId(draftId);
               localStorage.setItem('pending_note', draftId);
             } catch (err: unknown) {
-              setErrorMessage('送信前の退避保存に失敗しました: ' + (err instanceof Error ? err.message : String(err)));
+              setErrorMessage(t('pwa.write.backupFailed') + (err instanceof Error ? err.message : String(err)));
               return;
             }
 
             if (!accessToken) {
-              setErrorMessage('Driveに接続してください。付箋は下書きに退避しました。');
+              setErrorMessage(t('pwa.write.connectDrive'));
               return;
             }
 
@@ -639,7 +655,7 @@ export function WriteStep({
               targetPcId = await refreshPcDevices();
             }
             if (pcDevices.length > 0 && !targetPcId) {
-              setErrorMessage('送信先PCを選んでください。付箋は下書きに退避しました。');
+              setErrorMessage(t('pwa.write.selectPc'));
               return;
             }
 
@@ -668,7 +684,7 @@ export function WriteStep({
             }
           }}
         >
-          {isSendingInBackground ? t('pwa.sending') : 'PCに送る'}
+          {isSendingInBackground ? t('pwa.sending') : t('pwa.write.sendToPc')}
         </button>
       </div>
 
@@ -676,6 +692,7 @@ export function WriteStep({
       {showCropModal && cropFile && (
         <CropModal
           file={cropFile}
+          t={t}
           onCancel={() => {
             openNextCrop();
           }}
@@ -733,6 +750,7 @@ export function WriteStep({
       {/* Mermaid モーダル */}
       {showMermaidModal && (
         <MermaidModal
+          t={t}
           onCancel={() => setShowMermaidModal(false)}
           onInsert={(code, svg) => {
             if (svg && editorRef.current) {
@@ -749,6 +767,32 @@ export function WriteStep({
             setShowMermaidModal(false);
           }}
         />
+      )}
+
+      {previewImageSrc && (
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/95 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('pwa.write.previewImage')}
+          onClick={() => setPreviewImageSrc(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-3xl text-white"
+            aria-label={t('pwa.write.closePreview')}
+            onClick={() => setPreviewImageSrc(null)}
+          >
+            ×
+          </button>
+          <img
+            src={previewImageSrc}
+            alt=""
+            className="max-h-full max-w-full object-contain"
+            style={{ touchAction: 'pinch-zoom' }}
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

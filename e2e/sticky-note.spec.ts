@@ -179,8 +179,9 @@ test.describe('すぐ書ける', () => {
 
     test('1.6 キーワードで目的の付箋をすぐ見つけられる', async ({ page }) => {
         await page.goto('/');
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(2000);
+        await page.waitForFunction(() =>
+            (window as any).__MOCK_HAS_LISTENER__?.('fusen:open_search') === true
+        );
 
         await page.evaluate(() => {
             (window as any).__MOCK_EMIT__('fusen:open_search', { sourceLabel: 'test' });

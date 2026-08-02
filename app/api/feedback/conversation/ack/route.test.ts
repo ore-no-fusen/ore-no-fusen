@@ -86,6 +86,7 @@ describe('feedback conversation ack route', () => {
       expect(fetchMock).toHaveBeenCalledWith('https://discord.example/webhook', expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: expect.any(AbortSignal),
       }));
     });
     const firstCall = fetchMock.mock.calls[0];

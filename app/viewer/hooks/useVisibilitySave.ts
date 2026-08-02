@@ -9,7 +9,7 @@ import type { VideoBlobMap } from '../types';
 // ---------------------------------------------------------------------------
 
 type VisibilitySaveRefs = {
-  editorRef: React.RefObject<HTMLDivElement>;
+  editorRef: React.RefObject<HTMLDivElement | null>;
   currentDraftIdRef: React.MutableRefObject<string | null>;
   imageBlobsRef: React.RefObject<Map<string, Blob>>;
   videoBlobsRef?: React.RefObject<VideoBlobMap>;

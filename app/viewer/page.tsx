@@ -7,7 +7,7 @@ import type { IphoneNote, PendingHydrate, DraftRecord, PendingVideoMeta, VideoBl
 import { NoteListStep } from './NoteListStep';
 import { PushStep } from './PushStep';
 import { WriteStep } from './WriteStep';
-import { saveDraft, loadAllDrafts, loadDraft, deleteDraft } from './lib/indexeddb';
+import { saveDraft, loadAllDrafts, loadDraft, deleteDraft, markDraftDeleted } from './lib/indexeddb';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useVisibilitySave } from './hooks/useVisibilitySave';
 import { useLockToggle } from './hooks/useLockToggle';
@@ -20,11 +20,23 @@ import {
   downloadWithAutoRefresh,
   refreshAccessToken,
   uploadImageWithAutoRefresh,
+  removeNotesFromIphoneQueue,
 } from './lib/drive';
 import { generatePKCE, startOAuth, urlBase64ToUint8Array } from './lib/auth';
 import { silentReRegisterIfNeeded } from './lib/push';
 import { serializeEditor, hydrateEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from './editor-helpers';
 import { renderSecureMermaid } from '../utils/mermaid';
+import { loadPwaLanguage, savePwaLanguage } from './language';
+import {
+  consumePendingNotification,
+  loadNotificationDraft,
+} from './lib/notification-navigation';
+import {
+  appendDiagnosticLog,
+  buildNotificationDiagnosticReport,
+  formatNavigationLog,
+  type DiagnosticLogRecord,
+} from './lib/diagnostic-log';
 
 // ---------------------------------------------------------------------------
 // ViewerPage コンポーネント
@@ -39,12 +51,13 @@ import { renderSecureMermaid } from '../utils/mermaid';
 export default function ViewerPage() {
   const [lang, setLang] = useState<Language>('ja');
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const browserLang = navigator.language.startsWith('ja') ? 'ja' : 'en';
-      setLang(browserLang);
-    }
+    setLang(loadPwaLanguage(localStorage));
   }, []);
   const t = getTranslation(lang);
+  const handleLanguageChange = React.useCallback((language: Language) => {
+    savePwaLanguage(localStorage, language);
+    setLang(language);
+  }, []);
 
   const [isStandalone, setIsStandalone] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -93,13 +106,13 @@ export default function ViewerPage() {
   }, []);
 
   const runtimeKind = React.useMemo(() => {
-    if (!runtimeOrigin) return '確認中';
+    if (!runtimeOrigin) return t('pwa.runtime.checking');
     if (runtimeOrigin.includes('localhost') || runtimeOrigin.includes('127.0.0.1') || /^http:\/\/192\.168\./.test(runtimeOrigin)) {
-      return 'PC開発環境';
+      return t('pwa.runtime.pcDevelopment');
     }
     if (runtimeOrigin.includes('vercel.app')) return 'Vercel';
-    return '不明';
-  }, [runtimeOrigin]);
+    return t('pwa.runtime.unknown');
+  }, [runtimeOrigin, t]);
 
   // SWバージョン取得
   useEffect(() => {
@@ -216,6 +229,12 @@ export default function ViewerPage() {
       videoBlobsRef.current = nextVideoBlobMap;
       setVideoBlobs(nextVideoBlobMap);
       setVideoMetas(pendingHydrate.videoMetas ?? (pendingHydrate.videoMeta ? [pendingHydrate.videoMeta] : []));
+      if (pendingHydrate.notificationSource) {
+        appendDiagnosticLog(formatNavigationLog('detail_displayed', {
+          source: pendingHydrate.notificationSource,
+          id: pendingHydrate.draftId ?? 'unknown',
+        }));
+      }
       setPendingHydrate(null);
     };
     const timer = setTimeout(run, 50);
@@ -234,13 +253,30 @@ export default function ViewerPage() {
   useEffect(() => {
     const handleVisible = async () => {
       if (document.visibilityState !== 'visible') return;
+      appendDiagnosticLog(formatNavigationLog('page_visible'));
       const { loadPendingOpen, clearPendingOpen, loadDraft } = await import('./lib/indexeddb');
       const pending = await loadPendingOpen().catch(() => null);
-      console.log(`[page] visibilitychange: pending=${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
+      appendDiagnosticLog(formatNavigationLog('pending_checked', {
+        source: 'visibility',
+        found: Boolean(pending),
+        id: pending?.id,
+        age_seconds: pending ? Math.round((Date.now() - pending.t) / 1000) : undefined,
+      }));
       if (!pending || Date.now() - pending.t >= 30 * 60 * 1000) return;
-      await clearPendingOpen().catch(() => {});
-      const draft = await loadDraft(pending.id).catch(() => null);
-      console.log(`[page] visibilitychange draft: ${draft ? `images=${draft.images?.length ?? 0}件 blobs=${draft.images?.filter((i: { fileName: string; blob: Blob }) => i.blob != null).length ?? 0}件` : 'なし'}`);
+      const draft = await consumePendingNotification(
+        pending.id,
+        loadDraft,
+        () => clearPendingOpen().catch(() => {}),
+        undefined,
+        (attempt) => appendDiagnosticLog(formatNavigationLog('draft_load', {
+          source: 'visibility',
+          id: pending.id,
+          attempt: attempt.attempt,
+          result: attempt.result,
+          elapsed_ms: attempt.elapsedMs,
+          error: attempt.errorName,
+        })),
+      );
       // iOS では notificationclick が発火しないため、locked: true のノートは page 側で再通知する
       if (draft?.locked) {
         try {
@@ -269,9 +305,20 @@ export default function ViewerPage() {
           tags: draft.tags ?? [],
           videoMetas: videoMetasFromRecord(draft),
           videoBlobMap: videoBlobMapFromDraft(draft),
+          notificationSource: 'visibility',
         });
+        appendDiagnosticLog(formatNavigationLog('detail_requested', {
+          source: 'visibility',
+          id: pending.id,
+        }));
+        setStep('write');
+      } else {
+        appendDiagnosticLog(formatNavigationLog('detail_not_opened', {
+          source: 'visibility',
+          id: pending.id,
+          reason: 'draft_unavailable',
+        }));
       }
-      setStep('write');
     };
     document.addEventListener('visibilitychange', handleVisible);
     // 起動直後も確認（clients.openWindow で新規タブが開かれた場合、visibilitychange は発火しない）
@@ -312,11 +359,25 @@ export default function ViewerPage() {
     const handler = async (event: MessageEvent) => {
       if (event.data?.type !== 'OPEN_NOTE' || !event.data.id) return;
       const noteId = event.data.id as string;
-      pageLog(`[page] OPEN_NOTE受信 id=${noteId}`);
-      const draft = await loadDraft(noteId).catch(() => null);
+      pageLog(formatNavigationLog('route_received', {
+        source: 'open_note',
+        id: noteId,
+      }));
+      const draft = await loadNotificationDraft(
+        noteId,
+        loadDraft,
+        undefined,
+        (attempt) => pageLog(formatNavigationLog('draft_load', {
+          source: 'open_note',
+          id: noteId,
+          attempt: attempt.attempt,
+          result: attempt.result,
+          elapsed_ms: attempt.elapsedMs,
+          error: attempt.errorName,
+        })),
+      );
       if (draft) {
         const images = draft.images ?? [];
-        pageLog(`[page] draft取得成功 images=${images.length}件`);
         const titleLine = draft.title ? `${draft.title}\n` : '';
         const blobMap = new Map<string, Blob>(images.map(({ fileName, blob }: { fileName: string; blob: Blob }) => [fileName, blob]));
         setPendingHydrate({
@@ -326,11 +387,20 @@ export default function ViewerPage() {
           tags: draft.tags ?? [],
           videoMetas: videoMetasFromRecord(draft),
           videoBlobMap: videoBlobMapFromDraft(draft),
+          notificationSource: 'open_note',
         });
+        pageLog(formatNavigationLog('detail_requested', {
+          source: 'open_note',
+          id: noteId,
+        }));
+        setStep('write');
       } else {
-        pageLog(`[page] draft取得失敗 id=${noteId}`);
+        pageLog(formatNavigationLog('detail_not_opened', {
+          source: 'open_note',
+          id: noteId,
+          reason: 'draft_unavailable',
+        }));
       }
-      setStep('write');
     };
     navigator.serviceWorker.addEventListener('message', handler);
     return () => navigator.serviceWorker.removeEventListener('message', handler);
@@ -363,7 +433,9 @@ export default function ViewerPage() {
     new Audio('/sounds/delete.wav').play().catch(() => {});
     setIsLoading(true);
     try {
+      await markDraftDeleted(note.id);
       await deleteDraft(note.id);
+      setLockedNoteIds((prev) => prev.filter((id) => id !== note.id));
 
       if (note.status === 'sent') {
         setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
@@ -387,6 +459,9 @@ export default function ViewerPage() {
             .slice(0, 20)
         );
       }
+      if (note.status === 'received_pc' && accessToken) {
+        removeNotesFromIphoneQueue(accessToken, [note.id]).catch(() => {});
+      }
     } catch {
       // エラー無視（削除失敗）
     } finally {
@@ -398,7 +473,7 @@ export default function ViewerPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">読み込み中...</p>
+        <p className="text-gray-500">{t('pwa.loading')}</p>
       </div>
     );
   }
@@ -407,23 +482,23 @@ export default function ViewerPage() {
   if (isMounted && !isStandalone) {
     return (
       <div className="min-h-screen bg-[#F2F2F7] px-4 py-8 overflow-y-auto max-w-sm mx-auto relative">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">ホーム画面に追加してください</h1>
-        <p className="text-gray-500 text-sm mb-6">以下の手順でiPhoneのホーム画面に追加すると、アプリとして使えます。</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('pwa.install.title')}</h1>
+        <p className="text-gray-500 text-sm mb-6">{t('pwa.install.description')}</p>
 
         <div className="flex flex-col gap-6">
           <div className="bg-white rounded-2xl shadow-sm p-4">
-            <p className="font-semibold text-gray-800 mb-3">STEP 1 — 画面下の「・・・」→「共有」をタップ</p>
-            <img src="/banner-step1.png" alt="共有をタップ" className="w-full rounded-xl" />
+            <p className="font-semibold text-gray-800 mb-3">{t('pwa.install.step1')}</p>
+            <img src="/banner-step1.png" alt={t('pwa.install.step1Alt')} className="w-full rounded-xl" />
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm p-4">
-            <p className="font-semibold text-gray-800 mb-3">STEP 2 — 「ホーム画面に追加」を選択</p>
-            <img src="/banner-step2.png" alt="ホーム画面に追加を選択" className="w-full rounded-xl" />
+            <p className="font-semibold text-gray-800 mb-3">{t('pwa.install.step2')}</p>
+            <img src="/banner-step2.png" alt={t('pwa.install.step2Alt')} className="w-full rounded-xl" />
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm p-4">
-            <p className="font-semibold text-gray-800 mb-3">STEP 3 — 右上の「追加」をタップ</p>
-            <img src="/banner-step3.png" alt="追加をタップ" className="w-full rounded-xl" />
+            <p className="font-semibold text-gray-800 mb-3">{t('pwa.install.step3')}</p>
+            <img src="/banner-step3.png" alt={t('pwa.install.step3Alt')} className="w-full rounded-xl" />
           </div>
         </div>
         <div className="text-center text-gray-300 text-[10px] mt-4">
@@ -444,7 +519,7 @@ export default function ViewerPage() {
       )}
       {backgroundSendSuccess && (
         <div className="fixed top-4 right-4 bg-green-500 text-white text-sm px-3 py-2 rounded shadow z-50">
-          送信しました ✓
+          {t('pwa.sent')}
         </div>
       )}
       {backgroundSendError && (
@@ -458,11 +533,11 @@ export default function ViewerPage() {
             <p className="text-gray-700">{t('pwa.loginTitle')}</p>
             <p className="text-gray-500 text-sm text-center">{t('pwa.loginDesc')}</p>
             <div className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-500 leading-relaxed">
-              <div>接続先: <span className="font-mono break-all">{runtimeOrigin || '確認中'}</span></div>
-              <div>環境: <span className="font-semibold">{runtimeKind}</span> / SW: <span className="font-mono">{swVersion ?? '---'}</span></div>
+              <div>{t('pwa.runtime.destination')}: <span className="font-mono break-all">{runtimeOrigin || t('pwa.runtime.checking')}</span></div>
+              <div>{t('pwa.runtime.environment')}: <span className="font-semibold">{runtimeKind}</span> / SW: <span className="font-mono">{swVersion ?? '---'}</span></div>
             </div>
             {!swReady && (
-              <p className="text-gray-500 text-sm">SW準備中...</p>
+              <p className="text-gray-500 text-sm">{t('pwa.setup.swPreparing')}</p>
             )}
             <button
               className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium disabled:opacity-40"
@@ -479,10 +554,10 @@ export default function ViewerPage() {
               <p className="text-red-600 text-sm">{errorMessage}</p>
             )}
             <div className="w-full mt-2 bg-yellow-50 border border-yellow-200 rounded-2xl p-4">
-              <p className="text-sm font-semibold text-gray-700 mb-3">ログイン中に以下の画面が出たら「続行」を押してください</p>
+              <p className="text-sm font-semibold text-gray-700 mb-3">{t('pwa.login.continueHint')}</p>
               <div className="flex flex-col gap-3">
-                <img src="/login-step1.png" alt="確認されていません画面" className="w-full rounded-xl" />
-                <img src="/login-step2.png" alt="アクセス確認画面" className="w-full rounded-xl" />
+                <img src="/login-step1.png" alt={t('pwa.login.continueHintAlt')} className="w-full rounded-xl" />
+                <img src="/login-step2.png" alt={t('pwa.login.continueHint2Alt')} className="w-full rounded-xl" />
               </div>
             </div>
           </div>
@@ -557,6 +632,7 @@ export default function ViewerPage() {
             lockedNoteIds={lockedNoteIds}
             isLockPermissionPending={isLockPermissionPending}
             t={t}
+            language={lang}
             onNew={() => {
               videoBlobsRef.current = new Map();
               setVideoBlobs(new Map());
@@ -595,12 +671,13 @@ export default function ViewerPage() {
               localStorage.removeItem('viewer_push_done');
               setStep('push');
             }}
+            onLanguageChange={handleLanguageChange}
           />
         )}
 
         {step === 'banner' && isStandalone && (
           <div className="text-center">
-            <p className="text-gray-500">読み込み中...</p>
+            <p className="text-gray-500">{t('pwa.loading')}</p>
           </div>
         )}
 
@@ -614,16 +691,19 @@ export default function ViewerPage() {
 }
 
 function DebugLogView() {
-  const [logs, setLogs] = React.useState<{ t: string; msg: string }[]>([]);
+  const language: Language = typeof navigator !== 'undefined' && !navigator.language.startsWith('ja') ? 'en' : 'ja';
+  const t = getTranslation(language);
+  const [logs, setLogs] = React.useState<DiagnosticLogRecord[]>([]);
   const [swVersion, setSwVersion] = React.useState<string | null>(null);
   const [siriTokenStatus, setSiriTokenStatus] = React.useState<string | null>(null);
+  const [diagnosticCopyStatus, setDiagnosticCopyStatus] = React.useState<string | null>(null);
   const loadLogs = React.useCallback(() => {
     const req = indexedDB.open('fusen-logs', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('logs', { autoIncrement: true });
     req.onsuccess = () => {
       const tx = req.result.transaction('logs', 'readonly');
       const all = tx.objectStore('logs').getAll();
-      all.onsuccess = () => setLogs((all.result as { t: string; msg: string }[]).reverse());
+      all.onsuccess = () => setLogs((all.result as DiagnosticLogRecord[]).reverse());
     };
     req.onerror = () => setLogs([]);
   }, []);
@@ -633,19 +713,29 @@ function DebugLogView() {
   const copySiriToken = React.useCallback(async () => {
     const token = localStorage.getItem('viewer_refresh_token');
     if (!token) {
-      setSiriTokenStatus('トークンが見つかりません');
+      setSiriTokenStatus(t('pwa.debug.tokenNotFound'));
       setTimeout(() => setSiriTokenStatus(null), 3000);
       return;
     }
     try {
       await navigator.clipboard.writeText(token);
-      setSiriTokenStatus('コピーしました');
+      setSiriTokenStatus(t('pwa.debug.tokenCopied'));
       setTimeout(() => setSiriTokenStatus(null), 3000);
     } catch {
-      setSiriTokenStatus('コピー失敗');
+      setSiriTokenStatus(t('pwa.debug.tokenCopyFailed'));
       setTimeout(() => setSiriTokenStatus(null), 3000);
     }
-  }, []);
+  }, [t]);
+
+  const copyNotificationDiagnostics = React.useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(buildNotificationDiagnosticReport(logs, swVersion));
+      setDiagnosticCopyStatus(t('pwa.debug.diagnosticsCopied'));
+    } catch {
+      setDiagnosticCopyStatus(t('pwa.debug.diagnosticsCopyFailed'));
+    }
+    setTimeout(() => setDiagnosticCopyStatus(null), 3000);
+  }, [logs, swVersion, t]);
 
   useEffect(() => {
     loadLogs();
@@ -668,23 +758,27 @@ function DebugLogView() {
     <div className="fixed inset-0 bg-black bg-opacity-80 text-green-400 text-xs font-mono p-4 overflow-y-auto z-50">
       <div className="flex justify-between mb-2">
         <div className="flex items-center gap-3">
-          <button className="text-blue-400" onClick={() => window.history.back()}>← 戻る</button>
+          <button className="text-blue-400" onClick={() => window.history.back()}>← {t('pwa.debug.back')}</button>
           <span className="text-white font-bold">SW Debug Log</span>
           <span className="text-yellow-400">SW: {swVersion ?? '---'}</span>
         </div>
         <div className="flex items-center gap-3">
-          <button className="text-blue-400" onClick={loadLogs}>更新</button>
+          <button className="text-blue-400" onClick={loadLogs}>{t('pwa.debug.refresh')}</button>
+          <button className="text-yellow-300" onClick={copyNotificationDiagnostics}>
+            {t('pwa.debug.copyNotificationDiagnostics')}
+          </button>
           <button className="text-red-400" onClick={() => {
             indexedDB.deleteDatabase('fusen-logs');
             setLogs([]);
-          }}>クリア</button>
+          }}>{t('pwa.debug.clear')}</button>
         </div>
       </div>
       <div className="flex items-center gap-3 mb-3 pb-2 border-b border-gray-700">
-        <button className="text-purple-400" onClick={copySiriToken}>Siri 用トークンをコピー</button>
+        <button className="text-purple-400" onClick={copySiriToken}>{t('pwa.debug.copySiriToken')}</button>
         {siriTokenStatus && <span className="text-yellow-300">{siriTokenStatus}</span>}
+        {diagnosticCopyStatus && <span className="text-yellow-300">{diagnosticCopyStatus}</span>}
       </div>
-      {logs.length === 0 && <p className="text-gray-500">ログなし</p>}
+      {logs.length === 0 && <p className="text-gray-500">{t('pwa.debug.empty')}</p>}
       {logs.map((l, i) => (
         <div key={i}><span className="text-gray-500">{l.t.slice(11, 19)}</span> {l.msg}</div>
       ))}

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WriteStep } from '../WriteStep';
 import { saveDraft } from '../lib/indexeddb';
+import { getTranslation } from '@/lib/i18n';
 
 vi.mock('../lib/indexeddb', () => ({
   saveDraft: vi.fn(),
@@ -50,7 +51,7 @@ function renderWriteStep(overrides: Partial<React.ComponentProps<typeof WriteSte
     isSendingInBackground: false,
     currentDraftId: null,
     accessToken: 'token',
-    t: ((key: string) => key) as React.ComponentProps<typeof WriteStep>['t'],
+    t: getTranslation('ja'),
     setStep: vi.fn(),
     setShowTagBar: vi.fn(),
     setTagInput: vi.fn(),
@@ -229,12 +230,29 @@ describe('WriteStep loss prevention', () => {
   });
 
   it('送信先PCは通常利用ではPC名だけを表示する', () => {
+    const updatedAt = '2026-05-31T10:00:00+09:00';
+    const updatedDate = new Date(updatedAt);
+    const expectedUpdatedAt = `${updatedDate.getMonth() + 1}/${updatedDate.getDate()} ${updatedDate.getHours().toString().padStart(2, '0')}:${updatedDate.getMinutes().toString().padStart(2, '0')}`;
     const { getByText } = renderWriteStep({
-      pcDevices: [{ pcId: 'pc-1', pcName: '家のPC', updatedAt: '2026-05-31T10:00:00+09:00' }],
+      pcDevices: [{ pcId: 'pc-1', pcName: '家のPC', updatedAt }],
       selectedPcId: 'pc-1',
     });
 
     expect(getByText('家のPC')).toBeTruthy();
-    expect(getByText(/更新 5\/31 10:00/)).toBeTruthy();
+    expect(getByText(`更新 ${expectedUpdatedAt}`)).toBeTruthy();
+  });
+
+  it('本文画像をタップすると全画面プレビューを開き、背景タップで閉じる', () => {
+    const { editor, getByRole, queryByRole } = renderWriteStep();
+    const image = document.createElement('img');
+    image.src = 'blob:preview-image';
+    editor.replaceChildren(image);
+
+    fireEvent.click(image);
+
+    const dialog = getByRole('dialog', { name: '画像プレビュー' });
+    expect(dialog.querySelector('img')?.getAttribute('src')).toBe('blob:preview-image');
+    fireEvent.click(dialog);
+    expect(queryByRole('dialog', { name: '画像プレビュー' })).toBeNull();
   });
 });

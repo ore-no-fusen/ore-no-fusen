@@ -117,6 +117,18 @@ describe('getEmptyNotePlaceholder', () => {
         expect(getEmptyNotePlaceholder('#ffffff')).toBe('（空のメモ）');
     });
 
+    it('returns English placeholders without Japanese characters in English mode', () => {
+        const placeholders = [
+            getEmptyNotePlaceholder('#f7e9b0', 'en'),
+            getEmptyNotePlaceholder('#ffcdd2', 'en'),
+            getEmptyNotePlaceholder('#80d8ff', 'en'),
+            getEmptyNotePlaceholder('#ffffff', 'en'),
+        ];
+
+        expect(placeholders.join(' ')).not.toMatch(/[ぁ-んァ-ヶ一-龯]/);
+        expect(placeholders[3]).toBe('(Empty note)');
+    });
+
     it('renders the selected placeholder with the existing muted style', () => {
         const { container } = renderMarkdown('', { backgroundColor: '#80d8ff' });
 

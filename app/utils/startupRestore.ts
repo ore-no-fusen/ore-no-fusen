@@ -1,3 +1,6 @@
+export const STARTUP_INITIAL_READY_TIMEOUT_MS = 4_000;
+export const STARTUP_RETRY_READY_TIMEOUT_MS = 12_000;
+
 export async function runWithConcurrency<T>(
     items: readonly T[],
     concurrency: number,
@@ -38,4 +41,17 @@ export function waitForStartupReady(
         unsubscribe = subscribe(finish);
         timer = setTimeout(finish, timeoutMs);
     });
+}
+
+export function partitionStartupLabels(
+    expectedLabels: ReadonlySet<string>,
+    readyLabels: ReadonlySet<string>,
+): { ready: string[]; missing: string[] } {
+    const ready: string[] = [];
+    const missing: string[] = [];
+    for (const label of expectedLabels) {
+        if (readyLabels.has(label)) ready.push(label);
+        else missing.push(label);
+    }
+    return { ready, missing };
 }

@@ -17,8 +17,9 @@ export default defineConfig({
     retries: process.env.CI ? 2 : 0,
     workers: 1,
     reporter: 'list',
+    outputDir: process.env.E2E_OUTPUT_DIR ?? 'test-results',
     use: {
-        baseURL: 'http://localhost:3002',
+        baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3002',
         trace: 'on-first-retry',
     },
     projects: [

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ackFeedbackConversationMessages,
+  clearFeedbackConversationIdentity,
+  deleteFeedbackConversation,
   getDeveloperFeedbackApiBaseUrl,
   getFeedbackApiBaseUrl,
   getFeedbackConversationIdentity,
@@ -22,6 +24,9 @@ function createMemoryStorage() {
     getItem: vi.fn((key: string) => map.get(key) ?? null),
     setItem: vi.fn((key: string, value: string) => {
       map.set(key, value);
+    }),
+    removeItem: vi.fn((key: string) => {
+      map.delete(key);
     }),
   };
 }
@@ -60,6 +65,15 @@ describe('feedback conversation identity', () => {
 
     const identity = getOrCreateFeedbackConversationIdentity(storage);
     expect(getFeedbackConversationIdentity(storage)).toEqual(identity);
+  });
+
+  it('clears the local identity after server deletion', () => {
+    const storage = createMemoryStorage();
+    getOrCreateFeedbackConversationIdentity(storage);
+
+    clearFeedbackConversationIdentity(storage);
+
+    expect(getFeedbackConversationIdentity(storage)).toBeNull();
   });
 
   it('stores the unread developer reply flag locally', () => {
@@ -137,6 +151,18 @@ describe('feedback conversation identity', () => {
         secretToken: 'secret',
         messageIds: ['message-1'],
       }),
+    });
+  });
+
+  it('deletes a conversation through the authenticated feedback API', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ success: true }))) as unknown as typeof fetch;
+    const identity = { conversationId: 'conversation-1', secretToken: 'secret' };
+
+    await expect(deleteFeedbackConversation(identity, fetchImpl)).resolves.toBe(true);
+    expect(fetchImpl).toHaveBeenCalledWith(`${window.location.origin}/api/feedback/conversation/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(identity),
     });
   });
 

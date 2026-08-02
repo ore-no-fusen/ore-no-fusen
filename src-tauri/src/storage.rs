@@ -964,6 +964,7 @@ pub fn open_file(path: &str) -> Result<(), String> {
 /// ベースパス全体を dest_dir へ再帰コピーする（バックアップ用）
 /// tags/, assets/ を含むすべてのファイルを対象とする。
 /// 戻り値: コピーしたファイル数
+#[allow(dead_code)]
 pub fn backup_notes(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
     backup_notes_with_options(source_dir, dest_dir, true)
 }
@@ -977,6 +978,12 @@ pub fn backup_notes_with_options(source_dir: &str, dest_dir: &str, include_trash
     }
     if !dst.exists() {
         return Err(format!("バックアップ先が見つかりません: {}", dest_dir));
+    }
+
+    let canonical_src = src.canonicalize().map_err(|e| e.to_string())?;
+    let canonical_dst = dst.canonicalize().map_err(|e| e.to_string())?;
+    if canonical_src.starts_with(&canonical_dst) || canonical_dst.starts_with(&canonical_src) {
+        return Err("バックアップ元と先には、同じ場所や親子フォルダを指定できません".to_string());
     }
 
     let mut count = 0;
@@ -1071,6 +1078,25 @@ mod tests {
 
         assert_eq!(count, 1);
         assert!(destination.path().join("Trash").join("deleted.md").exists());
+    }
+
+    #[test]
+    fn backup_rejects_same_or_nested_destination() {
+        let root = tempdir().unwrap();
+        let source = root.path().join("source");
+        let nested_destination = source.join("backup");
+        fs::create_dir_all(&nested_destination).unwrap();
+        fs::write(source.join("note.md"), "note").unwrap();
+
+        for destination in [&source, &nested_destination, root.path()] {
+            let error = backup_notes_with_options(
+                source.to_string_lossy().as_ref(),
+                destination.to_string_lossy().as_ref(),
+                false,
+            )
+            .unwrap_err();
+            assert!(error.contains("同じ場所や親子フォルダ"));
+        }
     }
 
     // === write_note と read_note のテスト ===

@@ -369,7 +369,8 @@ fn fusen_restore_backup(
     let recovery = recovery_root.join(format!("OreNoFusen_recovered_{}", timestamp));
     std::fs::create_dir(&recovery).map_err(|e| e.to_string())?;
     let recovery_str = recovery.to_string_lossy().to_string();
-    if let Err(e) = storage::backup_notes(&backup_path, &recovery_str) {
+    // 復旧対象に削除済みのTrashは含めない。本文・現行データだけを復旧する。
+    if let Err(e) = storage::backup_notes_with_options(&backup_path, &recovery_str, false) {
         let _ = std::fs::remove_dir_all(&recovery);
         return Err(e);
     }
@@ -1408,6 +1409,63 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
 #[tauri::command]
 fn fusen_get_state(state: State<'_, Mutex<AppState>>) -> AppState {
     state.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
+
+#[tauri::command]
+fn fusen_register_open_note_window(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    label: String,
+) -> Result<(), String> {
+    if app.get_webview_window(&label).is_none() {
+        return Err("window not found".to_string());
+    }
+
+    let path = normalize_path_for_label(&path);
+    if path.is_empty() {
+        return Err("path is required".to_string());
+    }
+
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    app_state
+        .open_note_windows
+        .retain(|_, registered_label| registered_label != &label);
+    app_state.open_note_windows.insert(path, label);
+    Ok(())
+}
+
+#[tauri::command]
+fn fusen_resolve_open_note_window(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+) -> Option<String> {
+    let path = normalize_path_for_label(&path);
+    let label = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.open_note_windows.get(&path).cloned()
+    }?;
+
+    if app.get_webview_window(&label).is_some() {
+        return Some(label);
+    }
+
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    app_state.open_note_windows.remove(&path);
+    None
+}
+
+#[tauri::command]
+fn fusen_unregister_open_note_window(
+    state: State<'_, Mutex<AppState>>,
+    label: String,
+) {
+    state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .open_note_windows
+        .retain(|_, registered_label| registered_label != &label);
 }
 
 #[tauri::command]
@@ -2976,6 +3034,7 @@ fn create_pool_window_internal(app: &tauri::AppHandle) -> Result<(), String> {
     .title("Ore No Fusen")
     .transparent(false)
     .decorations(false)
+    .disable_drag_drop_handler()
     .visible(false) // 後から SW_SHOWNOACTIVATE で立てる
     .focused(false)
     .skip_taskbar(true)
@@ -3244,6 +3303,15 @@ async fn sync_vapid_keys_from_drive_or_create(
 
 fn classify_webpush_error(error: &str) -> String {
     let lower = error.to_ascii_lowercase();
+    if lower.contains("apns error: 413")
+        || lower.contains("payload too large")
+        || lower.contains("less than 4096 bytes")
+    {
+        return format!(
+            "Push通知の容量上限（4KB）を超えました。本文は日本語で約1,000文字以内、英数字で約3,000文字以内を目安に短くして、もう一度送信してください。タイトル・タグ・画像情報も容量に含まれます。詳細: {}",
+            error
+        );
+    }
     if lower.contains("apns error: 400") || lower.contains("bad request") {
         return format!(
             "APNs 400 Bad Request: Push鍵が一致しません。設定の「iPhone連携」でPC側のDriveを「再接続」するか、iPhone側でPWAを再インストールしてください。詳細: {}",
@@ -3269,12 +3337,6 @@ fn classify_webpush_error(error: &str) -> String {
     {
         return format!(
             "APNs 404/410: iPhoneのPush購読が無効です。iPhoneのホーム画面からアプリを削除し、Safariから再度「ホーム画面に追加」して初期設定をやり直してください。詳細: {}",
-            error
-        );
-    }
-    if lower.contains("apns error: 413") || lower.contains("payload too large") {
-        return format!(
-            "APNs 413 Payload Too Large: Push通知の本文が大きすぎます。本文を短くするか添付はDrive参照にしてください。詳細: {}",
             error
         );
     }
@@ -3325,6 +3387,17 @@ mod webpush_error_message_tests {
         assert!(message.contains("iPhoneのPush購読が無効です"));
         assert!(message.contains("iPhoneのホーム画面からアプリを削除"));
         assert!(message.contains("Safariから再度「ホーム画面に追加」"));
+    }
+
+    #[test]
+    fn android_4096_byte_error_is_classified_as_payload_too_large() {
+        let message = classify_webpush_error(
+            "APNs error: 400 Bad Request: binary passed in the request must be less than 4096 bytes.",
+        );
+
+        assert!(message.contains("容量上限（4KB）"));
+        assert!(message.contains("日本語で約1,000文字以内"));
+        assert!(!message.contains("Push鍵が一致しません"));
     }
 
     #[test]
@@ -3777,6 +3850,24 @@ async fn upload_local_images_to_drive(
     result
 }
 
+fn split_iphone_title_body(body: &str) -> (String, String) {
+    let first_line = body.lines().next().unwrap_or("");
+    let image_line = regex::Regex::new(r"^\s*!\[[^\]]*\]\([^)]+\)\s*$")
+        .map(|re| re.is_match(first_line))
+        .unwrap_or(false);
+    if image_line {
+        return (String::new(), body.trim_start_matches('\n').to_string());
+    }
+    if first_line.starts_with('#') {
+        let title = first_line.trim_start_matches('#').trim().to_string();
+        let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
+        return (title, rest.trim_start_matches('\n').to_string());
+    }
+    let title = first_line.trim().to_string();
+    let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
+    (title, rest.trim_start_matches('\n').to_string())
+}
+
 /// body 中のローカル画像パスを [画像] に置換する（Web Push 4KB制限対応）
 fn strip_local_images(body: &str) -> String {
     let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
@@ -3838,6 +3929,67 @@ fn embed_local_images(body: &str, note_dir: &std::path::Path) -> String {
     .into_owned()
 }
 
+/// PC→iPhone 未処理キューへ1件を追加する。
+/// 読込失敗時は既存キューを守るため、ファイル不在以外では更新を返さない。
+fn append_note_to_iphone_queue(
+    existing: Result<serde_json::Value, String>,
+    note: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let mut items = match existing {
+        Ok(value) => {
+            if let Some(items) = value["items"].as_array() {
+                items.clone()
+            } else if value.get("id").is_some() && value.get("received_at").is_none() {
+                vec![value]
+            } else {
+                Vec::new()
+            }
+        }
+        Err(error) if error.contains("File not found") => Vec::new(),
+        Err(error) => {
+            return Err(format!(
+                "iPhone送信用キューの読み込みに失敗しました。既存の未送信データを守るため送信を中止しました: {}",
+                error
+            ));
+        }
+    };
+    items.push(note);
+    if items.len() > 20 {
+        items = items.split_off(items.len() - 20);
+    }
+    Ok(serde_json::json!({ "items": items }))
+}
+
+#[cfg(test)]
+mod iphone_send_queue_tests {
+    use super::*;
+
+    #[test]
+    fn r12_queue_read_failure_returns_an_error_without_an_update_payload() {
+        let result = append_note_to_iphone_queue(
+            Err("temporary Drive failure".to_string()),
+            serde_json::json!({ "id": "new-note" }),
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("既存の未送信データを守るため送信を中止"));
+    }
+
+    #[test]
+    fn r13_append_keeps_existing_items_and_limits_the_queue_to_the_latest_twenty() {
+        let existing = serde_json::json!({
+            "items": (0..20).map(|index| serde_json::json!({ "id": format!("old-{index}") })).collect::<Vec<_>>(),
+        });
+        let data = append_note_to_iphone_queue(Ok(existing), serde_json::json!({ "id": "new-note" }))
+            .expect("queue update should be prepared");
+        let items = data["items"].as_array().expect("items array");
+
+        assert_eq!(items.len(), 20);
+        assert_eq!(items.first().and_then(|item| item["id"].as_str()), Some("old-1"));
+        assert_eq!(items.last().and_then(|item| item["id"].as_str()), Some("new-note"));
+    }
+}
+
 #[tauri::command]
 async fn fusen_send_to_iphone(
     state: tauri::State<'_, Mutex<AppState>>,
@@ -3883,18 +4035,8 @@ async fn fusen_send_to_iphone(
     let sent_at = chrono::Utc::now().to_rfc3339();
     let note_id = uuid::Uuid::new_v4().to_string();
 
-    // body先頭行が#見出しならタイトルとして抽出し、body_contentから除去
-    let first_line = body.lines().next().unwrap_or("");
-    let (title, body_content) = if first_line.starts_with('#') {
-        let t = first_line.trim_start_matches('#').trim().to_string();
-        let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
-        (t, rest.trim_start_matches('\n').to_string())
-    } else {
-        // #なし: 1行目をタイトル、残りをbodyとして使用
-        let t = first_line.trim().to_string();
-        let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
-        (t, rest.trim_start_matches('\n').to_string())
-    };
+    // 先頭画像はタイトルにせず本文へ残し、Driveアップロード対象にする。
+    let (title, body_content) = split_iphone_title_body(&body);
 
     // Push通知用: ローカル画像パスを [画像] に置換（Web Push 4KB制限対応）
     let body_push = strip_local_images(&body_content);
@@ -3914,14 +4056,21 @@ async fn fusen_send_to_iphone(
         "sent_at": sent_at,
         "received_at": null
     });
-    let note_json_push = serde_json::json!({
-        "id": note_id,
-        "title": title,
+    let mut note_json_push = serde_json::json!({
+        "id": note_id.clone(),
+        "title": title.clone(),
         "body": body_push,
-        "body_rich": body_rich,
         "tags": note_tags,
-        "sent_at": sent_at
+        "sent_at": sent_at.clone()
     });
+    insert_distinct_body_rich(&mut note_json_push, &body_push, &body_rich);
+    let plaintext = build_web_push_plaintext(
+        &note_json_push,
+        &note_id,
+        &title,
+        &sent_at,
+        body.chars().count(),
+    )?;
 
     // 3a. VAPID鍵を Drive から取得する。
     // Drive の push_keys.json が正。PCローカルには保存せず、この送信中だけメモリ上で使う。
@@ -3930,37 +4079,16 @@ async fn fusen_send_to_iphone(
 
     // 4. Google Drive に notes_to_iphone.json をアップロード（read-modify-write 配列追加）
     // Drive 書き込み成功前に Push すると、iPhone が起きても読む本文がない状態になる。
-    let mut items: Vec<serde_json::Value> = match gdrive::download_json_with_migration(
-        &client,
-        &access_token,
-        "notes_to_iphone.json",
-        "fusen_note.json",
-    )
-    .await
-    {
-        Ok(v) => {
-            if let Some(items) = v["items"].as_array() {
-                items.clone()
-            } else if v.get("id").is_some() && v.get("received_at").is_none() {
-                vec![v]
-            } else {
-                Vec::new()
-            }
-        }
-        Err(e) if e.contains("File not found") => Vec::new(),
-        Err(e) => {
-            return Err(format!(
-                "iPhone送信用キューの読み込みに失敗しました。既存の未送信データを守るため送信を中止しました: {}",
-                e
-            ));
-        }
-    };
-    items.push(note_json_drive);
-    if items.len() > 20 {
-        let start = items.len() - 20;
-        items = items[start..].to_vec();
-    }
-    let data = serde_json::json!({ "items": items });
+    let data = append_note_to_iphone_queue(
+        gdrive::download_json_with_migration(
+            &client,
+            &access_token,
+            "notes_to_iphone.json",
+            "fusen_note.json",
+        )
+        .await,
+        note_json_drive,
+    )?;
     gdrive::upload_json(&client, &access_token, "notes_to_iphone.json", &data)
         .await
         .map_err(|e| {
@@ -3985,7 +4113,6 @@ async fn fusen_send_to_iphone(
     }
 
     // 6. Web Push 全デバイスに順次送信（1台でも届けばOK）
-    let plaintext = serde_json::to_string(&note_json_push).map_err(|e| e.to_string())?;
     let mut send_errors: Vec<String> = Vec::new();
     let mut send_success_count = 0usize;
     let total_targets = pro_configs.len();
@@ -4035,6 +4162,161 @@ async fn fusen_send_to_iphone(
     }
 
     Ok(())
+}
+
+fn insert_distinct_body_rich(
+    payload: &mut serde_json::Value,
+    body_push: &str,
+    body_rich: &str,
+) {
+    if body_rich != body_push {
+        payload["body_rich"] = serde_json::Value::String(body_rich.to_string());
+    }
+}
+
+// RFC 8291暗号化で付く103 bytes分を、Push Serviceの4096 bytes上限から除いた値。
+const WEB_PUSH_MAX_PLAINTEXT_BYTES: usize = 3992;
+
+fn validate_web_push_payload_size(payload: &str, note_char_count: usize) -> Result<(), String> {
+    let payload_bytes = payload.len();
+    if payload_bytes <= WEB_PUSH_MAX_PLAINTEXT_BYTES {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Push通知の容量上限（4KB）を超えるため送信できません（現在の本文: {}文字、Pushデータ: {} bytes）。本文は日本語で約1,000文字以内、英数字で約3,000文字以内を目安に短くしてください。タイトル・タグ・画像情報も容量に含まれます。",
+        note_char_count, payload_bytes
+    ))
+}
+
+fn build_web_push_plaintext(
+    full_payload: &serde_json::Value,
+    note_id: &str,
+    title: &str,
+    sent_at: &str,
+    note_char_count: usize,
+) -> Result<String, String> {
+    let full_json = serde_json::to_string(full_payload).map_err(|e| e.to_string())?;
+    if full_json.len() <= WEB_PUSH_MAX_PLAINTEXT_BYTES {
+        return Ok(full_json);
+    }
+
+    let compact_payload = serde_json::json!({
+        "id": note_id,
+        "title": title.chars().take(80).collect::<String>(),
+        "body": "",
+        "fetch_from_drive": true,
+        "sent_at": sent_at
+    });
+    let compact_json = serde_json::to_string(&compact_payload).map_err(|e| e.to_string())?;
+    validate_web_push_payload_size(&compact_json, note_char_count)?;
+    Ok(compact_json)
+}
+
+#[cfg(test)]
+mod phone_push_payload_tests {
+    use super::{
+        build_web_push_plaintext, insert_distinct_body_rich, validate_web_push_payload_size,
+        WEB_PUSH_MAX_PLAINTEXT_BYTES,
+    };
+
+    #[test]
+    fn omits_duplicate_rich_body_from_push_payload() {
+        let mut payload = serde_json::json!({ "body": "長い本文" });
+
+        insert_distinct_body_rich(&mut payload, "長い本文", "長い本文");
+
+        assert!(payload.get("body_rich").is_none());
+    }
+
+    #[test]
+    fn keeps_rich_body_when_it_contains_drive_image_references() {
+        let mut payload = serde_json::json!({ "body": "[画像]" });
+
+        insert_distinct_body_rich(
+            &mut payload,
+            "[画像]",
+            "![画像](fusen_img_20260731_120000_1.jpg)",
+        );
+
+        assert_eq!(
+            payload["body_rich"],
+            "![画像](fusen_img_20260731_120000_1.jpg)"
+        );
+    }
+
+    #[test]
+    fn reports_character_count_and_safe_length_guidance_when_payload_is_too_large() {
+        let payload = "あ".repeat(WEB_PUSH_MAX_PLAINTEXT_BYTES + 1);
+
+        let error = validate_web_push_payload_size(&payload, 1400).unwrap_err();
+
+        assert!(error.contains("現在の本文: 1400文字"));
+        assert!(error.contains("日本語で約1,000文字以内"));
+        assert!(error.contains("英数字で約3,000文字以内"));
+    }
+
+    #[test]
+    fn accepts_payload_at_the_encrypted_push_limit() {
+        let payload = "a".repeat(WEB_PUSH_MAX_PLAINTEXT_BYTES);
+
+        assert!(validate_web_push_payload_size(&payload, payload.len()).is_ok());
+    }
+
+    #[test]
+    fn regression_plain_japanese_note_fits_after_duplicate_body_is_removed() {
+        let body = "あ".repeat(1000);
+        let mut fixed_payload = serde_json::json!({
+            "id": "12345678-1234-1234-1234-123456789012",
+            "title": "長文テスト",
+            "body": body,
+            "tags": [],
+            "sent_at": "2026-07-31T12:00:00+00:00"
+        });
+        insert_distinct_body_rich(&mut fixed_payload, &body, &body);
+        let fixed_json = serde_json::to_string(&fixed_payload).unwrap();
+
+        let broken_json = serde_json::to_string(&serde_json::json!({
+            "id": "12345678-1234-1234-1234-123456789012",
+            "title": "長文テスト",
+            "body": body,
+            "body_rich": body,
+            "tags": [],
+            "sent_at": "2026-07-31T12:00:00+00:00"
+        }))
+        .unwrap();
+
+        assert!(validate_web_push_payload_size(&broken_json, 1000).is_err());
+        assert!(validate_web_push_payload_size(&fixed_json, 1000).is_ok());
+        assert!(fixed_payload.get("body_rich").is_none());
+    }
+
+    #[test]
+    fn long_note_uses_compact_drive_fetch_payload_instead_of_failing() {
+        let body = "あ".repeat(1354);
+        let full_payload = serde_json::json!({
+            "id": "long-note",
+            "title": "長文テスト",
+            "body": body,
+            "tags": [],
+            "sent_at": "2026-07-31T12:00:00+00:00"
+        });
+
+        let plaintext = build_web_push_plaintext(
+            &full_payload,
+            "long-note",
+            "長文テスト",
+            "2026-07-31T12:00:00+00:00",
+            1354,
+        )
+        .unwrap();
+        let compact: serde_json::Value = serde_json::from_str(&plaintext).unwrap();
+
+        assert!(plaintext.len() <= WEB_PUSH_MAX_PLAINTEXT_BYTES);
+        assert_eq!(compact["fetch_from_drive"], true);
+        assert_eq!(compact["id"], "long-note");
+        assert_eq!(compact["body"], "");
+    }
 }
 
 // --- iPhone受信 ---
@@ -4263,6 +4545,29 @@ fn iphone_item_targets_this_pc(item: &serde_json::Value, pc_id: &str) -> bool {
     }
 }
 
+#[cfg(test)]
+mod iphone_receive_routing_tests {
+    use super::*;
+
+    #[test]
+    fn r14_only_the_target_pc_accepts_a_targeted_iphone_note() {
+        let targeted = serde_json::json!({ "id": "for-pc-b", "targetPcId": "pc-b" });
+        let unaddressed = serde_json::json!({ "id": "for-any-pc" });
+
+        assert!(!iphone_item_targets_this_pc(&targeted, "pc-a"));
+        assert!(iphone_item_targets_this_pc(&targeted, "pc-b"));
+        assert!(iphone_item_targets_this_pc(&unaddressed, "pc-a"));
+    }
+
+    #[test]
+    fn r15_same_iphone_id_has_a_stable_source_hash_and_different_ids_do_not_share_it() {
+        let first = iphone_source_hash("iphone-note-1");
+
+        assert_eq!(first, iphone_source_hash("iphone-note-1"));
+        assert_ne!(first, iphone_source_hash("iphone-note-2"));
+    }
+}
+
 fn sanitize_video_file_name(name: &str) -> String {
     let file_name = std::path::Path::new(name)
         .file_name()
@@ -4453,6 +4758,9 @@ async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
 }
 
 async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
+    let is_english = crate::settings::get_settings(app.clone())
+        .map(|settings| settings.language == "en")
+        .unwrap_or(false);
     // 1. access_token 取得（失敗 = Drive未接続）
     let token = match gdrive::get_access_token(client).await {
         Ok(t) => {
@@ -4644,18 +4952,32 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                                 "[iphone video] download failed {}: {}",
                                 video_ref.video_file_name, e
                             ));
-                            video_lines.push(format!(
-                                "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
-                                display_name, video_ref.video_file_name
-                            ));
+                            video_lines.push(if is_english {
+                                format!(
+                                    "🎬 Could not save video:\nOriginal file: {}\nDrive file: {}",
+                                    display_name, video_ref.video_file_name
+                                )
+                            } else {
+                                format!(
+                                    "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
+                                    display_name, video_ref.video_file_name
+                                )
+                            });
                         }
                     }
                 } else {
                     logger::log_info("[iphone video] folder path is not set");
-                    video_lines.push(format!(
-                        "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
-                        display_name, video_ref.video_file_name
-                    ));
+                    video_lines.push(if is_english {
+                        format!(
+                            "🎬 Could not save video:\nOriginal file: {}\nDrive file: {}",
+                            display_name, video_ref.video_file_name
+                        )
+                    } else {
+                        format!(
+                            "🎬 動画保存失敗:\n元ファイル名: {}\nDrive名: {}",
+                            display_name, video_ref.video_file_name
+                        )
+                    });
                 }
             }
             if !video_lines.is_empty() {
@@ -4676,7 +4998,11 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
             let _ = app
                 .notification()
                 .builder()
-                .title("iPhoneから付箋")
+                .title(if is_english {
+                    "Note from iPhone"
+                } else {
+                    "iPhoneから付箋"
+                })
                 .body(&context)
                 .show();
         }
@@ -4764,6 +5090,9 @@ pub fn run() {
             fusen_set_opacity,
             fusen_select_folder,
             fusen_list_notes,
+            fusen_register_open_note_window,
+            fusen_resolve_open_note_window,
+            fusen_unregister_open_note_window,
             fusen_register_crystal_arrange_window,
             fusen_read_note,
             fusen_create_note,
@@ -4806,6 +5135,8 @@ pub fn run() {
             sound::fusen_play_sound, // [NEW] サウンド再生
             fusen_search_notes, // [NEW] 全文検索
             clipboard::fusen_get_image_from_clipboard, // [NEW] クリップボード画像取得
+            clipboard::fusen_save_dropped_image_data,
+            clipboard::fusen_remove_dropped_images,
             clipboard::fusen_save_annotated_image,
             fusen_is_sticky_note_focused,
             fusen_arrange_by_tag,
@@ -5141,6 +5472,27 @@ mod image_embed_tests {
         // data: URI はローカルパスではないので変換しない
         let body = "![img](data:image/png;base64,abc123)";
         assert_eq!(strip_local_images(body), body);
+    }
+
+    #[test]
+    fn iphone_send_keeps_leading_image_in_body() {
+        let body = "![image|0.5](assets/pasted.png)\nメモ";
+        let (title, content) = split_iphone_title_body(body);
+
+        assert_eq!(title, "");
+        assert_eq!(content, body);
+    }
+
+    #[test]
+    fn iphone_send_keeps_existing_title_rules() {
+        assert_eq!(
+            split_iphone_title_body("# 見出し\n本文"),
+            ("見出し".to_string(), "本文".to_string())
+        );
+        assert_eq!(
+            split_iphone_title_body("タイトル\n本文"),
+            ("タイトル".to_string(), "本文".to_string())
+        );
     }
 }
 

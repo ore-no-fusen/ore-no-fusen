@@ -6,6 +6,24 @@ import ToolbarButtons from './ToolbarButtons';
 afterEach(() => cleanup());
 
 describe('ToolbarButtons cautious actions', () => {
+    it('keeps a CSS hover fallback when JavaScript hover state is delayed', () => {
+        const { container } = render(
+            <ToolbarButtons
+                isEditing={false}
+                isMinimized={false}
+                isPinned={false}
+                show={false}
+                onToggleMinimize={vi.fn()}
+                onTogglePin={vi.fn()}
+                onArchive={vi.fn()}
+                onDelete={vi.fn()}
+            />
+        );
+
+        expect(container.firstElementChild?.className).toContain('group-hover:opacity-100');
+        expect(container.firstElementChild?.className).toContain('group-hover:pointer-events-auto');
+    });
+
     it('places archive and delete in a spaced vertical group below the pin controls', () => {
         const onArchive = vi.fn();
         const onDelete = vi.fn();

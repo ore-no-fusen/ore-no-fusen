@@ -37,6 +37,7 @@ export function NoteListStep({
   lockedNoteIds,
   isLockPermissionPending,
   t,
+  language,
   swVersion,
   runtimeOrigin,
   runtimeKind,
@@ -45,15 +46,24 @@ export function NoteListStep({
   onDelete,
   onLockToggle,
   onReRegisterPush,
+  onLanguageChange,
 }: NoteListStepProps) {
   return (
     <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
       <div className="flex items-center px-5 pt-6 pb-2 bg-[#F2F2F7]">
-        <span className="text-3xl font-bold text-gray-900 flex-1">メモ</span>
+        <span className="text-3xl font-bold text-gray-900 flex-1">{t('pwa.listTitle')}</span>
+        <button
+          className="h-9 rounded-full px-3 text-sm font-semibold text-gray-600 active:bg-gray-200 transition-colors"
+          aria-label={t('pwa.language.switch')}
+          title={t('pwa.language.switch')}
+          onClick={() => onLanguageChange(language === 'ja' ? 'en' : 'ja')}
+        >
+          🌐 {language === 'ja' ? 'EN' : '日本'}
+        </button>
         {SHOW_DEBUG && (
           <button
             className="w-14 h-9 flex items-center justify-center rounded-full mr-1 active:bg-gray-200 transition-colors"
-            aria-label="デバッグログ"
+            aria-label={t('pwa.debugLog')}
             onClick={() => { window.location.href = '/viewer?debug=1'; }}
           >
             <DebugBugIcon />
@@ -61,7 +71,7 @@ export function NoteListStep({
         )}
         <button
           className="w-11 h-11 flex items-center justify-center bg-blue-500 text-white rounded-full text-2xl font-light shadow-md active:scale-95 transition-transform"
-          aria-label="新規作成"
+          aria-label={t('pwa.createNew')}
           onClick={onNew}
         >
           +
@@ -70,7 +80,7 @@ export function NoteListStep({
 
       <div className="flex-1 overflow-y-auto min-h-0">
         {isLoading ? (
-          <p className="text-center text-gray-400 py-8 text-sm">読み込み中...</p>
+          <p className="text-center text-gray-400 py-8 text-sm">{t('pwa.loading')}</p>
         ) : notes.length === 0 ? (
           <p className="text-center text-gray-400 py-8 text-sm">{t('pwa.emptyList')}</p>
         ) : (
@@ -85,7 +95,7 @@ export function NoteListStep({
                 .trim()
                 .slice(0, 120);
               const videoLabel = videos.length > 0
-                ? `${videos[0].originalFileName || videos[0].videoFileName}${videos.length > 1 ? ` 他${videos.length - 1}件` : ''}`
+                ? `${videos[0].originalFileName || videos[0].videoFileName}${videos.length > 1 ? ` ${t('pwa.write.otherVideos').replace('{count}', String(videos.length - 1))}` : ''}`
                 : note.originalFileName || note.videoFileName || '';
 
               return (
@@ -106,7 +116,7 @@ export function NoteListStep({
                       {isVideo ? (
                         <div className="min-w-0">
                           <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
-                            {textPreview || '空のメモ'}
+                            {textPreview || t('pwa.untitled')}
                           </p>
                           {videoLabel && (
                             <p className="text-xs text-gray-500 mt-1 truncate">
@@ -122,7 +132,7 @@ export function NoteListStep({
                             .replace(/\n\n+/g, '\n')
                             .trim()
                             .slice(0, 120)
-                        ) || '空のメモ'}
+                        ) || t('pwa.untitled')}
                       </p>
                       )}
                     </div>
@@ -141,7 +151,7 @@ export function NoteListStep({
                         {note.status === 'sent'
                           ? t('pwa.statusSent')
                           : note.status === 'received_pc'
-                          ? 'PC受信'
+                          ? t('pwa.receivedFromPc')
                           : t('pwa.statusDraft')}
                       </span>
                       <span className="text-xs text-gray-400">
@@ -157,7 +167,7 @@ export function NoteListStep({
                             ? 'text-red-600 bg-red-50 active:bg-red-100'
                             : 'text-gray-400 active:bg-gray-100'
                         }`}
-                        aria-label={isLocked ? 'ピン解除' : 'ロック画面にピン留め'}
+                        aria-label={isLocked ? t('pwa.unpinFromLockScreen') : t('pwa.pinToLockScreen')}
                         disabled={isLockPermissionPending}
                         onClick={(e) => onLockToggle(e, note)}
                       >
@@ -166,7 +176,7 @@ export function NoteListStep({
                       {(note.status === 'draft' || note.status === 'received_pc' || note.status === 'sent') && (
                         <button
                           className="p-2 text-gray-400 hover:text-red-500"
-                          aria-label="削除"
+                          aria-label={t('pwa.deleteNote')}
                           onClick={(e) => {
                             e.stopPropagation();
                             onDelete(note);
@@ -189,10 +199,10 @@ export function NoteListStep({
           className="text-xs text-gray-400 hover:text-blue-500 active:text-blue-600 py-1 transition-colors"
           onClick={onReRegisterPush}
         >
-          通知デバイスを再登録する
+          {t('pwa.reregisterNotifications')}
         </button>
         <span className="text-xs text-gray-300 font-mono text-right">
-          {runtimeKind} / {runtimeOrigin || 'origin確認中'} / SW {swVersion ?? '---'}
+          {runtimeKind} / {runtimeOrigin || t('pwa.checkingOrigin')} / SW {swVersion ?? '---'}
         </span>
       </div>
     </div>

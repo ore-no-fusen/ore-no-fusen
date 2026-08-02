@@ -9,12 +9,12 @@
  */
 
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";   // ← 追加
 import "./shadcn.css";
 import "./globals.css";
 import RegisterPWA from "./RegisterPWA";
 import { NOTE_COLORS } from './utils/noteAppearance';
 import { Analytics } from "@vercel/analytics/next";
+import AnalyticsLoader from "./components/AnalyticsLoader";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
@@ -69,7 +69,7 @@ export const metadata: Metadata = {
   creator: "Ore-no-Fusen",
   publisher: "Ore-no-Fusen",
   category: "productivity",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.webmanifest?v=20260802",
   openGraph: {
     type: "website",
     url: SITE_URL,
@@ -117,9 +117,9 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
-        <link rel="icon" href="/favicon.ico?v=20260617-s" />
-        <link rel="shortcut icon" href="/favicon.ico?v=20260617-s" />
-        <link rel="apple-touch-icon" href="/icon-192.png?v=20260617-s" />
+        <link rel="icon" href="/favicon.ico?v=20260802" />
+        <link rel="shortcut icon" href="/favicon.ico?v=20260802" />
+        <link rel="apple-touch-icon" href="/icon-192.png?v=20260802" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
@@ -149,21 +149,7 @@ export default function RootLayout({
         <RegisterPWA />
         {children}
 
-        {/* GA4 */}
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-MGPKF0MQH4"
-          strategy="afterInteractive"
-        />
-        <Script id="ga4" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-MGPKF0MQH4', {
-              send_page_view: !new URLSearchParams(location.search).has('path')
-            });
-          `}
-        </Script>
+        <AnalyticsLoader isTauriBuild={IS_TAURI_BUILD} />
         {!IS_TAURI_BUILD && <Analytics />} 
       </body>
     </html>

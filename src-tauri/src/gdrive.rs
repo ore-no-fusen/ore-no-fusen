@@ -31,6 +31,97 @@ pub struct SavedToken {
     pub expires_at: Option<i64>,
 }
 
+#[cfg(target_os = "windows")]
+fn protect_token_bytes(plaintext: &[u8]) -> Result<Vec<u8>, String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    use windows::Win32::Security::Cryptography::{
+        CryptProtectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
+    };
+
+    let input = CRYPT_INTEGER_BLOB {
+        cbData: plaintext.len().try_into().map_err(|_| "Token is too large")?,
+        pbData: plaintext.as_ptr() as *mut u8,
+    };
+    let mut output = CRYPT_INTEGER_BLOB::default();
+
+    unsafe {
+        CryptProtectData(
+            &input,
+            PCWSTR::null(),
+            None,
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+        .map_err(|e| format!("Failed to protect Google token: {e}"))?;
+
+        let protected = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
+        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        Ok(protected)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn unprotect_token_bytes(protected: &[u8]) -> Result<Vec<u8>, String> {
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    use windows::Win32::Security::Cryptography::{
+        CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
+    };
+
+    let input = CRYPT_INTEGER_BLOB {
+        cbData: protected.len().try_into().map_err(|_| "Token is too large")?,
+        pbData: protected.as_ptr() as *mut u8,
+    };
+    let mut output = CRYPT_INTEGER_BLOB::default();
+
+    unsafe {
+        CryptUnprotectData(
+            &input,
+            None,
+            None,
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+        .map_err(|e| format!("Failed to unprotect Google token: {e}"))?;
+
+        let plaintext = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
+        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        Ok(plaintext)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn protect_token_bytes(plaintext: &[u8]) -> Result<Vec<u8>, String> {
+    Ok(plaintext.to_vec())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unprotect_token_bytes(protected: &[u8]) -> Result<Vec<u8>, String> {
+    Ok(protected.to_vec())
+}
+
+fn save_token(path: &std::path::Path, token: &SavedToken) -> Result<(), String> {
+    let json = serde_json::to_vec(token).map_err(|e| e.to_string())?;
+    let protected = protect_token_bytes(&json)?;
+    std::fs::write(path, protected).map_err(|e| e.to_string())
+}
+
+fn load_token(path: &std::path::Path) -> Result<SavedToken, String> {
+    let stored = std::fs::read(path).map_err(|e| e.to_string())?;
+
+    if let Ok(token) = serde_json::from_slice::<SavedToken>(&stored) {
+        save_token(path, &token)?;
+        return Ok(token);
+    }
+
+    let plaintext = unprotect_token_bytes(&stored)?;
+    serde_json::from_slice(&plaintext).map_err(|e| e.to_string())
+}
+
 #[derive(Deserialize)]
 struct DriveFileList {
     files: Vec<DriveFile>,
@@ -238,6 +329,26 @@ pub fn local_pc_id() -> Result<String, String> {
     Ok(load_or_create_pc_device()?.pc_id)
 }
 
+fn parse_oauth_callback(callback_url: &str, expected_state: &str) -> Result<String, String> {
+    let parsed_url = url::Url::parse(callback_url).map_err(|e| e.to_string())?;
+    let mut code = None;
+    let mut state = None;
+
+    for (key, value) in parsed_url.query_pairs() {
+        match key.as_ref() {
+            "code" => code = Some(value.into_owned()),
+            "state" => state = Some(value.into_owned()),
+            _ => {}
+        }
+    }
+
+    if state.as_deref() != Some(expected_state) {
+        return Err("OAuth state mismatch".to_string());
+    }
+
+    code.ok_or_else(|| "No code in callback URL".to_string())
+}
+
 /// Google OAuth2 PKCE フロー。ブラウザを開き、認証後に SavedToken を保存して返す。
 pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, String> {
     use oauth2::{
@@ -272,7 +383,7 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
     // oauth2 v5: authorize_url チェーンにも明示的に redirect_uri を渡す必要あり
-    let (auth_url, _csrf_token) = oauth_client
+    let (auth_url, csrf_token) = oauth_client
         .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("https://www.googleapis.com/auth/drive.file".to_string()))
         .set_pkce_challenge(pkce_challenge)
@@ -296,12 +407,8 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
     let callback_url = rx.recv_timeout(std::time::Duration::from_secs(300))
         .map_err(|_| "OAuth callback not received (timeout or browser closed)".to_string())?;
 
-    // code を抽出
-    let parsed_url = url::Url::parse(&callback_url).map_err(|e| e.to_string())?;
-    let code = parsed_url.query_pairs()
-        .find(|(k, _)| k == "code")
-        .map(|(_, v)| v.into_owned())
-        .ok_or("No code in callback URL")?;
+    // state を検証してから code を抽出
+    let code = parse_oauth_callback(&callback_url, csrf_token.secret())?;
 
     // oauth2 v5: request_async に reqwest::Client を渡す
     let http_client = reqwest::ClientBuilder::new()
@@ -334,8 +441,7 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
     };
 
     let path = get_token_path();
-    let json = serde_json::to_string(&saved).map_err(|e| e.to_string())?;
-    std::fs::write(&path, &json).map_err(|e| e.to_string())?;
+    save_token(&path, &saved)?;
 
     Ok(saved)
 }
@@ -347,8 +453,7 @@ pub async fn get_access_token(client: &Client) -> Result<String, String> {
         return Err("Googleアカウントが接続されていません。設定画面から再接続してください。".to_string());
     }
 
-    let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let mut saved: SavedToken = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    let mut saved = load_token(&path)?;
 
     let now = chrono::Utc::now().timestamp();
     let needs_refresh = saved.access_token.is_none()
@@ -382,8 +487,7 @@ pub async fn get_access_token(client: &Client) -> Result<String, String> {
         saved.access_token = Some(body.access_token.clone());
         saved.expires_at = expires_at;
 
-        let json = serde_json::to_string(&saved).map_err(|e| e.to_string())?;
-        std::fs::write(&path, &json).map_err(|e| e.to_string())?;
+        save_token(&path, &saved)?;
 
         return Ok(body.access_token);
     }
@@ -987,5 +1091,81 @@ mod tests {
         let keys = config.keys.unwrap();
         assert_eq!(keys.p256dh, "BNcR");
         assert_eq!(keys.auth, "tBy8");
+    }
+
+    #[test]
+    fn oauth_callback_accepts_matching_state() {
+        let code = parse_oauth_callback(
+            "http://127.0.0.1:3000/?code=authorization-code&state=expected-state",
+            "expected-state",
+        )
+        .unwrap();
+
+        assert_eq!(code, "authorization-code");
+    }
+
+    #[test]
+    fn oauth_callback_rejects_missing_state() {
+        let error = parse_oauth_callback(
+            "http://127.0.0.1:3000/?code=authorization-code",
+            "expected-state",
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "OAuth state mismatch");
+    }
+
+    #[test]
+    fn oauth_callback_rejects_mismatched_state() {
+        let error = parse_oauth_callback(
+            "http://127.0.0.1:3000/?code=authorization-code&state=unexpected-state",
+            "expected-state",
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "OAuth state mismatch");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn token_file_is_encrypted_and_can_be_loaded() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("token");
+        let token = SavedToken {
+            refresh_token: "refresh-secret".to_string(),
+            access_token: Some("access-secret".to_string()),
+            expires_at: Some(123),
+        };
+
+        save_token(&path, &token).unwrap();
+        let stored = std::fs::read(&path).unwrap();
+        assert!(!stored.windows(b"refresh-secret".len()).any(|part| part == b"refresh-secret"));
+
+        let loaded = load_token(&path).unwrap();
+        assert_eq!(loaded.refresh_token, token.refresh_token);
+        assert_eq!(loaded.access_token, token.access_token);
+        assert_eq!(loaded.expires_at, token.expires_at);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn plaintext_token_is_migrated_to_encrypted_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("token");
+        let token = SavedToken {
+            refresh_token: "legacy-refresh-secret".to_string(),
+            access_token: None,
+            expires_at: None,
+        };
+        std::fs::write(&path, serde_json::to_vec(&token).unwrap()).unwrap();
+
+        let loaded = load_token(&path).unwrap();
+        assert_eq!(loaded.refresh_token, token.refresh_token);
+
+        let migrated = std::fs::read(&path).unwrap();
+        assert!(serde_json::from_slice::<SavedToken>(&migrated).is_err());
+        assert!(!migrated
+            .windows(b"legacy-refresh-secret".len())
+            .any(|part| part == b"legacy-refresh-secret"));
     }
 }

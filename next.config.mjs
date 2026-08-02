@@ -4,6 +4,7 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 import fs from 'fs';
 const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf-8'));
+const isPreviewDeployment = process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV === 'development';
 
 /**
  * Next.js 設定ファイル
@@ -20,6 +21,10 @@ const nextConfig = {
     NEXT_PUBLIC_APP_VERSION: packageJson.version,
   },
   reactStrictMode: false,
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+  typescript: {
+    tsconfigPath: process.env.NEXT_TSCONFIG_PATH || 'tsconfig.json',
+  },
   // Tauriビルド時のみ 'export' を有効化 (VercelではAPI Routeを使うため無効化)
   output: process.env.IS_TAURI_BUILD === 'true' ? 'export' : undefined,
   images: {
@@ -35,6 +40,9 @@ const nextConfig = {
           return {
             beforeFiles: [
               { source: '/', destination: '/landing' },
+              ...(isPreviewDeployment
+                ? [{ source: '/manifest.webmanifest', destination: '/manifest.preview.webmanifest' }]
+                : []),
             ],
             afterFiles: [],
             fallback: [],

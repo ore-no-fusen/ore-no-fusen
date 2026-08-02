@@ -23,6 +23,7 @@ import { getSettingsPageText } from "@/app/utils/settingsPageText"
 import { trackDonationEvent } from "@/app/utils/analytics"
 import { monthlyBackupToggleChanges } from "@/app/utils/monthlyBackupSettings"
 import { refreshImportedNotes, type ImportStats } from "@/app/utils/importRefresh"
+import { getDistributionEdition } from "@/app/utils/storeMigration"
 import { saveCrystalFormats } from "@/app/api/crystalFormats"
 import {
     DEFAULT_CRYSTAL_FORMATS,
@@ -46,6 +47,8 @@ import {
 } from "@/app/utils/crystalFormatEditor"
 import {
     ackFeedbackConversationMessages,
+    clearFeedbackConversationIdentity,
+    deleteFeedbackConversation,
     getDeveloperFeedbackApiBaseUrl,
     getFeedbackApiBaseUrl,
     getFeedbackConversationIdentity,
@@ -424,7 +427,9 @@ It stays here!`
 
                             } catch (e) {
                                 console.error("設定の保存に失敗:", e)
-                                alert((settings.language === 'en' ? "Failed to save settings: " : "設定の保存に失敗しました: ") + String(e))
+                                alert(settings.language === 'en'
+                                    ? "Failed to save settings. Please try again."
+                                    : "設定の保存に失敗しました: " + String(e))
                             }
                         }}
                     >
@@ -1238,7 +1243,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             setDesktopShortcutExists(true)
             setDesktopShortcutMessage(isEnglish ? `Created: ${path}` : `作成しました: ${path}`)
         } catch (e) {
-            setDesktopShortcutMessage(isEnglish ? `Could not create the shortcut: ${String(e)}` : `作成できませんでした: ${String(e)}`)
+            setDesktopShortcutMessage(isEnglish ? 'Could not create the shortcut. Please try again.' : `作成できませんでした: ${String(e)}`)
         } finally {
             setDesktopShortcutBusy(false)
         }
@@ -1253,7 +1258,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
             setDesktopShortcutExists(false)
             setDesktopShortcutMessage(isEnglish ? "Removed from the desktop." : "デスクトップから削除しました。")
         } catch (e) {
-            setDesktopShortcutMessage(isEnglish ? `Could not remove the shortcut: ${String(e)}` : `削除できませんでした: ${String(e)}`)
+            setDesktopShortcutMessage(isEnglish ? 'Could not remove the shortcut. Please try again.' : `削除できませんでした: ${String(e)}`)
         } finally {
             setDesktopShortcutBusy(false)
         }
@@ -1276,7 +1281,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                             className="w-32 justify-start"
                             onClick={() => onUpdate("language", "ja")}
                         >
-                            <Globe className="mr-2 h-4 w-4" /> 日本語
+                            <Globe className="mr-2 h-4 w-4" /> {isEnglish ? 'Japanese' : '日本語'}
                         </Button>
                         <Button
                             variant={settings.language === "en" ? "default" : "ghost"}
@@ -1348,7 +1353,32 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </div>
                 </SettingsItemCard>
 
-                <SettingsItemCard number={3} title={isEnglish ? 'Desktop Shortcut' : 'デスクトップショートカット'} description={isEnglish ? 'Manage the shortcut used to launch the app from the desktop or an external launcher.' : 'デスクトップや外部ランチャーから起動するためのショートカットを管理します。'} current={desktopShortcutExists ? (isEnglish ? 'Created' : '作成済み') : (isEnglish ? 'Not created' : '未作成')}>
+                <SettingsItemCard
+                    number={3}
+                    title={isEnglish ? 'Anonymous usage analytics' : '匿名の利用状況'}
+                    description={isEnglish ? 'Help improve startup, saving, and usability.' : '起動・保存・操作性の改善に協力します。'}
+                    current={settings.analytics_consent === 'granted' ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}
+                >
+                    <div className="flex items-center justify-between gap-6">
+                        <div className="space-y-1">
+                            <Label className="text-base">{isEnglish ? 'Send anonymous usage events' : '匿名の利用状況を送信する'}</Label>
+                            <p className="text-sm text-muted-foreground">
+                                {isEnglish
+                                    ? 'Note content, images, file names, storage locations, and personal information are never sent.'
+                                    : '付箋の内容、画像、ファイル名、保存場所、個人情報は送信しません。'}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                {isEnglish ? 'Destination: Google Analytics 4. Turning this off stops future events.' : '送信先: Google Analytics 4。オフにすると今後の送信を停止します。'}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.analytics_consent === 'granted'}
+                            onCheckedChange={(checked) => onUpdate('analytics_consent', checked ? 'granted' : 'denied')}
+                        />
+                    </div>
+                </SettingsItemCard>
+
+                <SettingsItemCard number={4} title={isEnglish ? 'Desktop Shortcut' : 'デスクトップショートカット'} description={isEnglish ? 'Manage the shortcut used to launch the app from the desktop or an external launcher.' : 'デスクトップや外部ランチャーから起動するためのショートカットを管理します。'} current={desktopShortcutExists ? (isEnglish ? 'Created' : '作成済み') : (isEnglish ? 'Not created' : '未作成')}>
                     <div className="space-y-3">
                         <div>
                             <Label className="text-base">{startupDistribution === 'msix' ? (isEnglish ? 'Ore No Fusen (Store)' : '俺の付箋（Store版）') : (isEnglish ? 'Ore No Fusen' : '俺の付箋')}</Label>
@@ -1369,7 +1399,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </SettingsItemCard>
 
                 {/* 効果音スイッチ */}
-                <SettingsItemCard number={4} title={t('settings.general.sound')} description={t('settings.general.soundDesc')} current={settings.sound_enabled ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}>
+                <SettingsItemCard number={5} title={t('settings.general.sound')} description={t('settings.general.soundDesc')} current={settings.sound_enabled ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}>
                 <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.general.sound')}</Label>
@@ -1381,7 +1411,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                     />
                 </div>
                 </SettingsItemCard>
-                <SettingsItemCard number={5} title={isEnglish ? 'Font Size' : '文字サイズ'} description={isEnglish ? 'Adjust the text size used in sticky notes.' : '付箋本文の文字の大きさを調整します。'} current={`${settings.font_size}px`}>
+                <SettingsItemCard number={6} title={isEnglish ? 'Font Size' : '文字サイズ'} description={isEnglish ? 'Adjust the text size used in sticky notes.' : '付箋本文の文字の大きさを調整します。'} current={`${settings.font_size}px`}>
             <section className="space-y-4">
                 <div>
                     <h3 className="text-lg font-semibold text-slate-900">{t('settings.appearance.title')}</h3>
@@ -1440,7 +1470,7 @@ function DataSection({
             }
         } catch (e) {
             console.error("フォルダ選択に失敗:", e)
-            alert((isEnglish ? "Folder selection failed: " : "フォルダ選択に失敗しました: ") + String(e))
+            alert(isEnglish ? "Folder selection failed. Please try again." : "フォルダ選択に失敗しました: " + String(e))
         }
     }
 
@@ -1606,7 +1636,7 @@ function DataSection({
                                     await refreshImportedNotes(stats, emit);
                                 } catch (e) {
                                     console.error("インポート失敗:", e);
-                                    alert((isEnglish ? "Import failed: " : "インポートに失敗しました: ") + String(e));
+                                    alert(isEnglish ? "Import failed. Check the source and data save location." : "インポートに失敗しました: " + String(e));
                                 } finally {
                                     setIsImporting(false);
                                     setImportSourcePath("");
@@ -1759,7 +1789,7 @@ function DataSection({
                                     alert(t('settings.data.backupDone') + count + (isEnglish ? '' : '件'));
                                 } catch (e) {
                                     console.error("バックアップ失敗:", e);
-                                    alert((isEnglish ? "Backup failed: " : "バックアップに失敗しました: ") + String(e));
+                                    alert(isEnglish ? "Backup failed. Check the destination and available space." : "バックアップに失敗しました: " + String(e));
                                 } finally {
                                     setIsBackingUp(false);
                                     setBackupDestPath("");
@@ -1807,7 +1837,9 @@ function AboutSection({ t }: { t: (key: any) => string }) {
             })
     }, [])
 
-    const isMsix = distribution === 'msix'
+    const edition = getDistributionEdition(distribution, version)
+    const isMsix = edition === 'store'
+    const isMigrationEdition = edition === 'migration'
 
     return (
         <div className="space-y-6">
@@ -1836,7 +1868,11 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                         <p className="text-sm text-muted-foreground">OreNoFusen</p>
                         <p className="text-xs text-muted-foreground pt-1">{t('settings.about.version')} {version}</p>
                         <p className="text-xs font-medium text-muted-foreground">
-                            {isMsix ? t('settings.about.editionStore') : t('settings.about.editionMigration')}
+                            {isMsix
+                                ? t('settings.about.editionStore')
+                                : isMigrationEdition
+                                    ? t('settings.about.editionMigration')
+                                    : t('settings.about.editionDevelopment')}
                         </p>
                     </div>
                 </div>
@@ -1847,11 +1883,15 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                     </p>
 
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                        {isMsix ? t('settings.about.storeNote') : t('settings.about.migrationNote')}
+                        {isMsix
+                            ? t('settings.about.storeNote')
+                            : isMigrationEdition
+                                ? t('settings.about.migrationNote')
+                                : t('settings.about.developmentNote')}
                     </p>
 
                     <div className="space-y-2 pt-2">
-                        {!isMsix && (
+                        {isMigrationEdition && (
                             <Button
                                 variant="outline"
                                 className="w-full justify-start h-12 text-base font-normal"
@@ -2477,6 +2517,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const [draft, setDraft] = useState('')
     const [loading, setLoading] = useState(false)
     const [sending, setSending] = useState(false)
+    const [deleting, setDeleting] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
     const loadMessages = useCallback(async () => {
@@ -2547,6 +2588,25 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         }
     }
 
+    const deleteConversation = async () => {
+        const confirmed = window.confirm(isEnglish
+            ? 'Permanently delete this conversation and all messages? This cannot be undone.'
+            : 'この会話とすべてのメッセージを完全に削除しますか？この操作は元に戻せません。')
+        if (!confirmed) return
+
+        setDeleting(true)
+        setError(null)
+        try {
+            const deleted = await deleteFeedbackConversation(conversationIdentity)
+            if (!deleted) throw new Error('Conversation deletion failed')
+            clearFeedbackConversationIdentity()
+            window.location.reload()
+        } catch (e) {
+            setError(String(e))
+            setDeleting(false)
+        }
+    }
+
     return (
         <div className="max-w-4xl space-y-6">
             <div>
@@ -2605,12 +2665,18 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                     />
-                    <div className="flex justify-between items-center">
-                        <Button variant="outline" onClick={loadMessages} disabled={loading || sending}>
+                    <div className="flex flex-wrap justify-between gap-2 items-center">
+                        <div className="flex gap-2">
+                        <Button variant="outline" onClick={loadMessages} disabled={loading || sending || deleting}>
                             <RefreshCw className="mr-2 h-4 w-4" />
                             {isEnglish ? 'Refresh' : '更新'}
                         </Button>
-                        <Button onClick={sendMessage} disabled={sending || !draft.trim()}>
+                        <Button variant="destructive" onClick={deleteConversation} disabled={loading || sending || deleting}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {deleting ? (isEnglish ? 'Deleting...' : '削除中...') : (isEnglish ? 'Delete Conversation' : '会話を削除')}
+                        </Button>
+                        </div>
+                        <Button onClick={sendMessage} disabled={sending || deleting || !draft.trim()}>
                             <Send className="mr-2 h-4 w-4" />
                             {sending ? (isEnglish ? 'Sending...' : '送信中...') : (isEnglish ? 'Send' : '送信')}
                         </Button>
@@ -2760,7 +2826,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             }
         } catch (e) {
             console.error('[AdvancedSection] delete drive queue failed:', e)
-            window.alert(isEnglish ? `Deletion failed: ${String(e)}` : `削除に失敗しました: ${String(e)}`)
+            window.alert(isEnglish ? 'Deletion failed. Please try again.' : `削除に失敗しました: ${String(e)}`)
         } finally {
             setQueueDeleting(null)
         }
@@ -2869,7 +2935,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setDiagText(lines.join('\n'))
         } catch (e) {
             console.error('[AdvancedSection] build diagnostics failed:', e)
-            setDiagText(isEnglish ? `Failed to retrieve diagnostics: ${e}` : `診断情報の取得に失敗しました: ${e}`)
+            setDiagText(isEnglish ? 'Failed to retrieve diagnostics. Please try again.' : `診断情報の取得に失敗しました: ${e}`)
         } finally {
             setDiagLoading(false)
         }
@@ -2902,7 +2968,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setDriveTempSummary(summary)
             setSelectedDriveTempFileIds((ids) => ids.filter((id) => summary.files?.some((file) => file.id === id && file.canDelete)))
         } catch (e) {
-            setDriveTempMessage((isEnglish ? 'Failed to check temporary files: ' : '一時ファイルの確認に失敗しました: ') + String(e))
+            setDriveTempMessage(isEnglish ? 'Failed to check temporary files. Please check the Drive connection.' : '一時ファイルの確認に失敗しました: ' + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -2932,7 +2998,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setSelectedDriveTempFileIds([])
             setDriveTempMessage(isEnglish ? `Deleted selected temporary files: ${summary.deletedCount}${summary.failedCount ? ` / Failed: ${summary.failedCount}` : ''}` : `選択した一時ファイルを削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
         } catch (e) {
-            setDriveTempMessage((isEnglish ? 'Failed to delete selected temporary files: ' : '選択した一時ファイルの削除に失敗しました: ') + String(e))
+            setDriveTempMessage(isEnglish ? 'Failed to delete the selected temporary files. Please try again.' : '選択した一時ファイルの削除に失敗しました: ' + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -2950,7 +3016,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             setSelectedDriveTempFileIds([])
             setDriveTempMessage(isEnglish ? `Deleted: ${summary.deletedCount}${summary.failedCount ? ` / Failed: ${summary.failedCount}` : ''}` : `削除しました: ${summary.deletedCount} 個${summary.failedCount ? ` / 失敗 ${summary.failedCount} 個` : ''}`)
         } catch (e) {
-            setDriveTempMessage((isEnglish ? 'Failed to delete temporary files: ' : '一時ファイルの削除に失敗しました: ') + String(e))
+            setDriveTempMessage(isEnglish ? 'Failed to delete temporary files. Please try again.' : '一時ファイルの削除に失敗しました: ' + String(e))
         } finally {
             setDriveTempLoading(false)
         }
@@ -3048,7 +3114,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             }
         } catch (e) {
             console.error('[AdvancedSection] open folder failed:', e)
-            alert(isEnglish ? `Could not open the folder: ${e}` : `フォルダを開けませんでした: ${e}`)
+            alert(isEnglish ? 'Could not open the folder. Please check the data save location.' : `フォルダを開けませんでした: ${e}`)
         }
     }
 
@@ -4092,7 +4158,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
             await loadDevices()
             setStatus('connected')
         } catch (e: unknown) {
-            setErrorMsg((isEnglish ? 'Connection failed: ' : '接続に失敗しました: ') + String(e))
+            setErrorMsg(isEnglish ? 'Connection failed. Check your network and reconnect.' : '接続に失敗しました: ' + String(e))
             setStatus('disconnected')
         } finally {
             setIsConnecting(false)
@@ -4383,7 +4449,7 @@ function IphoneSection({ settings, onUpdate, t, iphoneDriveDisconnected }: Secti
                                                 await invoke('fusen_delete_push_device', { deviceId: d.device_id })
                                                 setDevices(prev => prev ? prev.filter(x => x.device_id !== d.device_id) : prev)
                                             } catch (e) {
-                                                alert((isEnglish ? 'Removal failed: ' : '削除に失敗しました: ') + String(e))
+                                                alert(isEnglish ? 'Removal failed. Please try again.' : '削除に失敗しました: ' + String(e))
                                             } finally {
                                                 setDeletingId(null)
                                             }

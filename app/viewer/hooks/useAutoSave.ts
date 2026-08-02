@@ -9,7 +9,7 @@ import type { VideoBlobMap } from '../types';
 // ---------------------------------------------------------------------------
 
 type AutoSaveRefs = {
-  editorRef: React.RefObject<HTMLDivElement>;
+  editorRef: React.RefObject<HTMLDivElement | null>;
   currentDraftIdRef: React.RefObject<string | null>;
   imageBlobsRef: React.RefObject<Map<string, Blob>>;
   videoBlobsRef?: React.RefObject<VideoBlobMap>;

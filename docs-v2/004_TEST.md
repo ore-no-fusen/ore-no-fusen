@@ -51,7 +51,7 @@ develop 環境で実運用パターンが通ったものを、本番リリース
 
 | No | 確認場所 | 対象 | 実施者 | リリース判定での扱い |
 |:---|:---|:---|:---|:---|
-| 1 | PC 開発環境 | Rust / TypeScript の型検査、ユニットテスト、E2E、PC 画面操作、Drive 読み書きの疑似・実行確認 | 開発者 / Codex | 原則として毎回必須。ここで失敗したものは develop に進めない |
+| 1 | PC 開発環境 / リリースCI | Rust / TypeScript の型検査、ユニットテスト、E2E、Tauri用フロントビルド、PC 画面操作、Drive 読み書きの疑似・実行確認 | 開発者 / Codex / GitHub Actions | 原則として毎回必須。手動リリースでは型検査・全ユニットテスト・Tauri用フロントビルド・Rustテストをmain変更前に再実行する |
 | 2 | develop 環境 | Vercel 上の API、iPhone PWA、APNs Push、Service Worker、iPhone 実機通知 | 開発者 + 実機を持つ人間 | PC では代替できない範囲だけ確認する。通過後に本番リリース候補とする |
 | 3 | production 環境 | 本番デプロイ後の軽い疎通、Cron 実行、重大な設定漏れ確認 | 開発者 | develop で通ったものを本番へ反映した後の最小確認に留める |
 
@@ -140,6 +140,7 @@ E2E テストは Playwright で実際の Tauri アプリを起動して操作す
 | 1 | `e2e/sticky-note.spec.ts` | 付箋の作成・編集・保存・削除・アーカイブ | 新規付箋作成 → テキスト入力 → 自動保存確認 → ファイルシステムへの書き込み検証 → 削除・アーカイブ動作確認 |
 | 2 | `e2e/data-safety.spec.ts` | データ安全性（破損・欠損なし）の確認 | アプリ再起動後のデータ復元 → frontmatter の整合性確認 → アトミック書き込みによる破損防止確認 |
 | 3 | `e2e/lock-notification.spec.ts` | ロック画面に表示（通知常駐）機能の動作確認 | Push 受信後の IndexedDB 保存確認 → locked フラグの ON/OFF → pending_open メカニズムの動作確認 |
+| 4 | `e2e/pc-to-iphone-image.spec.ts` | PC送信キューの先頭画像をPWAで受信・表示 | `notes_to_iphone.json` と `fusen_img_*` の取得 → IndexedDB保存 → 一覧サムネイル → 本文の画像表示 |
 
 ---
 
@@ -203,6 +204,18 @@ npx playwright test --ui
 CI での実行は未整備（ローカル手動実行のみ）。
 </Note>
 
+### 5.4 手動リリースの自動ゲート
+
+`.github/workflows/do-release.yml` の `verify-release` は、`main` の変更前に次を順番に実行する。
+
+1. `npm ci`
+2. `npx tsc --noEmit --pretty false`
+3. `npm test`
+4. `npm run build:tauri`
+5. `cargo test --locked --lib`
+
+いずれかが失敗した場合はバージョン更新・`main`へのマージ・Storeパッケージ作成へ進まない。E2Eと外部サービスの実機確認は引き続き表1.1-1の分担で行う。
+
 ---
 
 ## 6 カバレッジ外の領域
@@ -238,5 +251,6 @@ CI での実行は未整備（ローカル手動実行のみ）。
 | 2 | 1.1 | 26-04-24 | テストピラミッドを TestPyramid コンポーネント（3色ブロック）に変更。 |
 | 3 | 1.2 | 26-05-25 | VideoDrop と PWA 本文保護のテストを追加。データロスト防止ゲートを新設し、ソース修正後の必須確認順を明記。 |
 | 4 | 1.3 | 26-06-05 | リリース回帰テスト方針を追加。PC 開発環境・develop 環境・production 環境の分担と、人間が毎回実施する実機チェック、iPhone接続診断の確認観点を明記。 |
+| 5 | 1.4 | 26-07-31 | 手動リリースでmainを変更する前に、型検査・全ユニットテスト・Tauri用フロントビルド・Rustテストを必須とする自動ゲートを追加。 |
 
 </div>

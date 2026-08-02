@@ -2,6 +2,13 @@
 
 import { useEffect } from 'react';
 import { loadDraft, saveAuthToken, loadPendingOpen, clearPendingOpen } from '../lib/indexeddb';
+import {
+  consumePendingNotification,
+  getNotificationNoteId,
+  loadNotificationDraft,
+  removeNotificationNoteParam,
+} from '../lib/notification-navigation';
+import { formatNavigationLog } from '../lib/diagnostic-log';
 
 function pageLog(msg: string) {
   try {
@@ -188,18 +195,39 @@ export function useAppInit({
     // 通知タップ（?note= あり）
     // メモは必ず IndexedDB にある（ローカル下書き or 一覧で受信済み）
     // Drive は見ない。Drive ダウンロードは一覧を開いたときに行う。
-    if (params.get('note')) {
+    const notificationNoteId = getNotificationNoteId(window.location.search);
+    if (notificationNoteId) {
+      pageLog(formatNavigationLog('route_received', {
+        source: 'url',
+        id: notificationNoteId,
+        token: Boolean(token),
+      }));
       if (!token) {
+        pageLog(formatNavigationLog('route_deferred_for_login', {
+          source: 'url',
+          id: notificationNoteId,
+        }));
         generatePKCE().then(({ verifier, challenge }) => {
           localStorage.setItem('pkce_verifier', verifier);
-          localStorage.setItem('pending_note', params.get('note')!);
+          localStorage.setItem('pending_note', notificationNoteId);
           startOAuth(challenge);
         });
         return;
       }
       setAccessToken(token);
-      const tappedId = params.get('note')!;
-      loadDraft(tappedId).then((draft) => {
+      loadNotificationDraft(
+        notificationNoteId,
+        loadDraft,
+        undefined,
+        (attempt) => pageLog(formatNavigationLog('draft_load', {
+          source: 'url',
+          id: notificationNoteId,
+          attempt: attempt.attempt,
+          result: attempt.result,
+          elapsed_ms: attempt.elapsedMs,
+          error: attempt.errorName,
+        })),
+      ).then((draft) => {
         if (draft) {
           const titleLine = draft.title ? `${draft.title}\n` : '';
           const images = draft.images ?? [];
@@ -211,9 +239,25 @@ export function useAppInit({
             tags: draft.tags ?? [],
             videoMetas: videoMetasFromDraft(draft),
             videoBlobMap: videoBlobMapFromDraft(draft),
+            notificationSource: 'url',
           });
+          window.history.replaceState(
+            {},
+            '',
+            removeNotificationNoteParam(window.location.href),
+          );
+          pageLog(formatNavigationLog('detail_requested', {
+            source: 'url',
+            id: notificationNoteId,
+          }));
+          setStep('write');
+        } else {
+          pageLog(formatNavigationLog('detail_not_opened', {
+            source: 'url',
+            id: notificationNoteId,
+            reason: 'draft_unavailable',
+          }));
         }
-        setStep('write');
       });
       return;
     }
@@ -260,14 +304,37 @@ export function useAppInit({
 
       (async () => {
         const pending = await loadPendingOpen().catch(() => null);
-        pageLog(`pending_open確認: ${pending ? `id=${pending.id} 経過${Math.round((Date.now() - pending.t) / 1000)}秒` : 'なし'}`);
+        pageLog(formatNavigationLog('pending_checked', {
+          source: 'pending_open',
+          found: Boolean(pending),
+          id: pending?.id,
+          age_seconds: pending ? Math.round((Date.now() - pending.t) / 1000) : undefined,
+        }));
         if (pending && Date.now() - pending.t < 30 * 60 * 1000) {
           // 起動直後に入力が始まっていたら、その1文字目以降を通知ノートで上書きしない。
           // pending_open は残し、次回起動時に再確認する。
-          if (hasStartedWriting?.()) return;
-          await clearPendingOpen().catch(() => {});
-          const draft = await loadDraft(pending.id).catch(() => null);
-          pageLog(`pending draft: ${draft ? '取得成功' : '取得失敗'}`);
+          if (hasStartedWriting?.()) {
+            pageLog(formatNavigationLog('detail_not_opened', {
+              source: 'pending_open',
+              id: pending.id,
+              reason: 'writing_started',
+            }));
+            return;
+          }
+          const draft = await consumePendingNotification(
+            pending.id,
+            loadDraft,
+            () => clearPendingOpen().catch(() => {}),
+            undefined,
+            (attempt) => pageLog(formatNavigationLog('draft_load', {
+              source: 'pending_open',
+              id: pending.id,
+              attempt: attempt.attempt,
+              result: attempt.result,
+              elapsed_ms: attempt.elapsedMs,
+              error: attempt.errorName,
+            })),
+          );
           if (draft) {
             const titleLine = draft.title ? `${draft.title}\n` : '';
             const images = draft.images ?? [];
@@ -279,9 +346,20 @@ export function useAppInit({
               tags: draft.tags ?? [],
               videoMetas: videoMetasFromDraft(draft),
               videoBlobMap: videoBlobMapFromDraft(draft),
+              notificationSource: 'pending_open',
             });
+            pageLog(formatNavigationLog('detail_requested', {
+              source: 'pending_open',
+              id: pending.id,
+            }));
+            setStep('write');
+          } else {
+            pageLog(formatNavigationLog('detail_not_opened', {
+              source: 'pending_open',
+              id: pending.id,
+              reason: 'draft_unavailable',
+            }));
           }
-          setStep('write');
           return;
         }
 

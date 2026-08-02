@@ -24,6 +24,7 @@ import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
+import AnalyticsConsentDialog from './components/AnalyticsConsentDialog';
 import BackupResultDialog from './components/BackupResultDialog';
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
@@ -31,15 +32,23 @@ import { useSettings } from '@/lib/settings-store';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
+import { trackEvent } from './utils/analytics';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
 import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
 import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
-import { runWithConcurrency, waitForStartupReady } from './utils/startupRestore';
+import {
+  partitionStartupLabels,
+  runWithConcurrency,
+  STARTUP_INITIAL_READY_TIMEOUT_MS,
+  STARTUP_RETRY_READY_TIMEOUT_MS,
+  waitForStartupReady,
+} from './utils/startupRestore';
 import { FreshRequestQueue } from './utils/freshRequestQueue';
 import { NOTE_COLORS } from './utils/noteAppearance';
+import { receiveIphoneNote } from './utils/receiveIphoneNote';
 
 // Global AppState type definition
 type AppState = {
@@ -165,6 +174,7 @@ function TagSelector({ language = 'ja' }: { language?: Language }) {
 }
 
 function OrchestratorContent() {
+  const { settings, saveSettings, loading: settingsLoading } = useSettings();
   // [DEBUG] Lifecycle
   useEffect(() => {
     return () => console.log('[Orchestrator] Unmounted');
@@ -213,10 +223,15 @@ function OrchestratorContent() {
   useEffect(() => {
     if (!isMainWindow) return;
     const prepare = async () => {
-      if (await WebviewWindow.getByLabel('recipe-create')) return;
+      const title = language === 'en' ? 'Create Recipe' : 'レシピにする';
+      const existing = await WebviewWindow.getByLabel('recipe-create');
+      if (existing) {
+        await existing.setTitle(title);
+        return;
+      }
       new WebviewWindow('recipe-create', {
         url: '/recipe-create',
-        title: 'レシピにする',
+        title,
         width: 760,
         height: 860,
         minWidth: 640,
@@ -231,7 +246,7 @@ function OrchestratorContent() {
     };
     const timer = setTimeout(() => { prepare().catch(() => {}); }, 0);
     return () => clearTimeout(timer);
-  }, [isMainWindow]);
+  }, [isMainWindow, language]);
   // [NEW] Pool 枯渇時トースト
   const [poolWaitToast, setPoolWaitToast] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [files, setFiles] = useState<NoteMeta[]>([]);
@@ -353,13 +368,26 @@ function OrchestratorContent() {
   }, []);
 
   // ウィンドウ生成
+  const resolveOpenWindow = useCallback(async (path: string) => {
+    try {
+      const registeredLabel = await invoke<string | null>('fusen_resolve_open_note_window', { path });
+      if (registeredLabel) {
+        const registeredWindow = await WebviewWindow.getByLabel(registeredLabel);
+        if (registeredWindow) return registeredWindow;
+      }
+    } catch (e) {
+      console.warn('[付箋表示] 登録済みウィンドウの解決に失敗しました:', e);
+    }
+
+    return WebviewWindow.getByLabel(getWindowLabel(path));
+  }, [getWindowLabel]);
+
   const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
     const startupRestore = meta?.startup_restore === true;
 
     try {
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      const existing = await WebviewWindow.getByLabel(label);
+      const existing = await resolveOpenWindow(path);
       if (existing) {
         if (!startupRestore) await existing.show();
         await existing.unminimize();
@@ -373,8 +401,7 @@ function OrchestratorContent() {
         if (isWindowInProgress(label)) return;
         markWindowInProgress(label);
 
-        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-        const existing = await WebviewWindow.getByLabel(label);
+        const existing = await resolveOpenWindow(path);
         if (existing) {
           unmarkWindowInProgress(label);
           await existing.unminimize();
@@ -429,6 +456,7 @@ function OrchestratorContent() {
             y,
             skipTaskbar: true,
             focus: !startupRestore,
+            dragDropEnabled: false,
           });
 
           await new Promise<void>((resolve) => {
@@ -475,7 +503,7 @@ function OrchestratorContent() {
         } finally { unmarkWindowInProgress(label); }
       } catch (e) { console.error('[付箋表示] ウィンドウ作成に失敗しました:', e); unmarkWindowInProgress(label); }
     });
-  }, [getWindowLabel, enqueueWindowCreation, isWindowInProgress, markWindowInProgress, unmarkWindowInProgress]);
+  }, [getWindowLabel, resolveOpenWindow, enqueueWindowCreation, isWindowInProgress, markWindowInProgress, unmarkWindowInProgress]);
 
   const selectDirectory = useCallback(async () => {
     try {
@@ -622,6 +650,7 @@ function OrchestratorContent() {
           perfEnabled,
           perfStartedAt: perfT0 ?? now,
         });
+        trackEvent('note_created', { event_category: 'activation', creation_path: 'pool' });
 
         void playCreateSound();
 
@@ -680,13 +709,16 @@ function OrchestratorContent() {
             return { x, y: clampedY, width: 400, height: 300 };
           })() : undefined, true);
 
+          trackEvent('note_created', { event_category: 'activation', creation_path: 'fallback' });
           invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
         } catch (e) {
           console.error('create_note fallback failed', e);
+          trackEvent('note_create_failed', { event_category: 'reliability', error_category: 'create_failed' });
         }
       }
     } catch (e) {
       console.error('handleCreateNote failed', e);
+      trackEvent('note_create_failed', { event_category: 'reliability', error_category: 'create_failed' });
     }
   }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
 
@@ -1054,8 +1086,13 @@ function OrchestratorContent() {
     const promise = listen('fusen:open_tag_selector', async () => {
       try {
         const existing = await WebviewWindow.getByLabel('tag-selector');
-        if (existing) { await existing.unminimize(); await existing.setFocus(); return; }
-        await new WebviewWindow('tag-selector', { url: '/?tagSelector=1', title: '世界を選ぶ', width: 350, height: 500, alwaysOnTop: true, decorations: true, resizable: false });
+        if (existing) {
+          await existing.setTitle(language === 'en' ? 'Select Tags' : 'タグを選択');
+          await existing.unminimize();
+          await existing.setFocus();
+          return;
+        }
+        await new WebviewWindow('tag-selector', { url: '/?tagSelector=1', title: language === 'en' ? 'Select Tags' : 'タグを選択', width: 350, height: 500, alwaysOnTop: true, decorations: true, resizable: false });
       } catch (e) { console.error('[open_tag_selector] Error:', e); }
     });
 
@@ -1064,7 +1101,7 @@ function OrchestratorContent() {
       if (unlisten) safeUnlisten(unlisten);
       else safeUnlistenWhenResolved(promise);
     };
-  }, [isMainWindow]);
+  }, [isMainWindow, language]);
 
   // 設定画面イベント (Tray etc)
   useEffect(() => {
@@ -1192,7 +1229,7 @@ function OrchestratorContent() {
         const basePath = folderPathRef.current || await invoke<string | null>('get_base_path');
         console.log('[Tray] Resolved basePath:', basePath);
         if (basePath) {
-          await handleCreateNote(basePath, '新規メモ');
+          await handleCreateNote(basePath, language === 'en' ? 'New Note' : '新規メモ');
         } else {
           console.warn('[Tray] No folder path available. Opening Setup.');
           // フォルダー未設定時は設定画面 (Setup) を開く
@@ -1220,7 +1257,7 @@ function OrchestratorContent() {
       if (unlisten) safeUnlisten(unlisten);
       else safeUnlistenWhenResolved(promise);
     };
-  }, [isMainWindow, handleCreateNote]);
+  }, [isMainWindow, handleCreateNote, language]);
 
   // [NEW] 付箋コンテキストメニューからの新規作成リクエスト - handleCreateNoteに統一
   useEffect(() => {
@@ -1344,66 +1381,35 @@ function OrchestratorContent() {
       async (event) => {
         const { id, title, body, context, tags } = event.payload;
         try {
-          // 前回はPC保存まで成功し、Driveのack前に終了した可能性がある。
-          // 同じ受信IDの付箋があれば、画像の再取得や付箋の再作成をせずackだけ再試行する。
-          const alreadySaved = await invoke<boolean>('fusen_has_iphone_note', {
-            folderPath,
-            noteId: id,
-          });
-          if (alreadySaved) {
-            await invoke('fusen_ack_iphone_note', { noteId: id });
-            return;
-          }
-          // 画像参照をローカルパスに解決（画像なしの場合は body がそのまま返る）
-          const resolvedBody = await invoke<string>('fusen_download_iphone_images', {
-            folderPath,
-            body: body || '',
-          });
-          const received = await invoke<{
-            note: { body: string; frontmatter: string; meta: { path: string } };
-            created: boolean;
-          }>('fusen_create_iphone_note', {
-            folderPath,
-            context,
-            body: resolvedBody,
-            noteId: id,
-          });
-          const newNote = received.note;
-          if (!received.created) {
-            await invoke('fusen_ack_iphone_note', { noteId: id });
-            return;
-          }
-          // タグ適用（tags が配列で存在する場合）
-          // 一時的な書込失敗はそのタグだけリトライで自動復旧する。最終的に失敗した場合は
-          // 黙殺せずログに残す（本文は保存済み。Driveキューは後段でackし重複作成を避ける）。
-          if (tags && tags.length > 0) {
-            for (const tag of tags) {
-              let tagAdded = false;
-              for (let attempt = 1; attempt <= 3 && !tagAdded; attempt++) {
-                try {
-                  await invoke('fusen_add_tag', { path: newNote.meta.path, tag });
-                  tagAdded = true;
-                } catch (tagError) {
-                  if (attempt < 3) {
-                    await new Promise((r) => setTimeout(r, 50 * attempt));
-                  } else {
-                    console.error(`[iphone] タグ付与に失敗（${attempt}回試行）: ${tag}`, tagError);
-                  }
-                }
-              }
-            }
-          }
-          playCreateSound();
-          const sw = window.screen.width;
-          await openNoteWindow(
-            newNote.meta.path,
-            { x: sw - 430, y: 50, width: 400, height: 350 },
-            false,
-            true  // fromIphone: Alt+Tab窓として登録する
+          await receiveIphoneNote(
+            { id, title, body, context, tags },
+            {
+              hasSavedNote: (noteId) => invoke<boolean>('fusen_has_iphone_note', { folderPath, noteId }),
+              downloadImages: (remoteBody) => invoke<string>('fusen_download_iphone_images', { folderPath, body: remoteBody }),
+              createNote: ({ context: receivedContext, body: resolvedBody, noteId }) => invoke<{
+                note: { meta: { path: string } };
+                created: boolean;
+              }>('fusen_create_iphone_note', {
+                folderPath,
+                context: receivedContext,
+                body: resolvedBody,
+                noteId,
+              }),
+              addTag: (path, tag) => invoke('fusen_add_tag', { path, tag }),
+              waitBeforeTagRetry: (attempt) => new Promise((resolve) => setTimeout(resolve, 50 * attempt)),
+              openCreatedNote: async (path) => {
+                playCreateSound();
+                const sw = window.screen.width;
+                await openNoteWindow(path, { x: sw - 430, y: 50, width: 400, height: 350 }, false, true);
+              },
+              acknowledge: async (noteId) => {
+                await invoke('fusen_ack_iphone_note', { noteId }).catch((ackError) => {
+                  console.error('[iphone] Drive受信キューのack失敗:', ackError);
+                });
+              },
+              onTagFailure: (tag, tagError) => console.error(`[iphone] タグ付与に失敗: ${tag}`, tagError),
+            },
           );
-          await invoke('fusen_ack_iphone_note', { noteId: id }).catch((ackError) => {
-            console.error('[iphone] Drive受信キューのack失敗:', ackError);
-          });
         } catch (e) {
           console.error('[iphone] 付箋作成失敗:', e);
         }
@@ -1662,32 +1668,84 @@ function OrchestratorContent() {
                       resolveAllReady = resolve;
                       return () => { resolveAllReady = undefined; };
                     },
-                    4_000,
+                    STARTUP_INITIAL_READY_TIMEOUT_MS,
+                  );
+                }
+
+                if (readyLabels.size < startupLabels.size) {
+                  const firstMissing = partitionStartupLabels(startupLabels, readyLabels).missing;
+                  logStartupStep('6/6', `描画待ちを4秒で終了しました: ${readyLabels.size}/${notes.length}件準備完了。未準備${firstMissing.length}件を1回再試行します`);
+                  const noteByLabel = new Map(notes.map((note) => [getWindowLabel(note.path), note]));
+                  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+
+                  await runWithConcurrency(firstMissing, 1, async (label) => {
+                    const existing = await WebviewWindow.getByLabel(label);
+                    if (existing) await existing.destroy().catch(() => {});
+                    const note = noteByLabel.get(label);
+                    if (!note) return;
+                    await openNoteWindow(note.path, {
+                      x: note.x,
+                      y: note.y,
+                      width: note.width,
+                      height: note.height,
+                      opacity: note.opacity,
+                      startup_restore: true,
+                    });
+                  });
+
+                  await waitForStartupReady(
+                    startupLabels,
+                    readyLabels,
+                    (resolve) => {
+                      resolveAllReady = resolve;
+                      return () => { resolveAllReady = undefined; };
+                    },
+                    STARTUP_RETRY_READY_TIMEOUT_MS,
                   );
                 }
                 unlistenStartupReady();
-                if (readyLabels.size < startupLabels.size) {
-                  logStartupStep('6/6', `描画待ちを4秒で終了しました: ${readyLabels.size}/${notes.length}件準備完了`);
+
+                const startupResult = partitionStartupLabels(startupLabels, readyLabels);
+                if (startupResult.missing.length > 0) {
+                  logStartupStep('6/6', `再試行後も未準備の付箋があります: 準備完了${startupResult.ready.length}/${notes.length}件。未準備窓は表示しません`);
                 } else {
                   logStartupStep('6/6', `付箋の本文描画が完了しました: ${notes.length}/${notes.length}`);
                 }
 
-                setLoadingStatus(startupIsEnglish ? 'Showing notes...' : '付箋を表示しています...');
+                setLoadingStatus(startupResult.ready.length > 0
+                  ? (startupIsEnglish ? 'Showing notes...' : '付箋を表示しています...')
+                  : (startupIsEnglish ? 'Could not restore notes. Please restart the app.' : '付箋を復元できませんでした。アプリを再起動してください。'));
                 logStartupStep('6/6', '準備済みの付箋をまとめて表示します');
                 try {
                   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
                   const noteWindows = await Promise.all(
-                    [...startupLabels].map((label) => WebviewWindow.getByLabel(label)),
+                    startupResult.ready.map((label) => WebviewWindow.getByLabel(label)),
                   );
                   await Promise.all(noteWindows.filter((win): win is WebviewWindow => win !== null).map((win) => win.show()));
+                  const missingWindows = await Promise.all(
+                    startupResult.missing.map((label) => WebviewWindow.getByLabel(label)),
+                  );
+                  await Promise.all(
+                    missingWindows
+                      .filter((win): win is WebviewWindow => win !== null)
+                      .map((win) => win.destroy().catch(() => {})),
+                  );
+                  if (startupResult.ready.length === 0) {
+                    logStartupStep('6/6', '準備完了0件のため空の付箋は表示せず、起動中画面に再起動案内を表示します');
+                    return;
+                  }
                   const mainWindow = await WebviewWindow.getByLabel('main');
                   if (mainWindow) await mainWindow.minimize();
                   setIsCheckingSetup(false);
-                  logStartupStep('6/6', '起動完了: すべての付箋を表示しました');
+                  logStartupStep('6/6', startupResult.missing.length === 0
+                    ? '起動完了: すべての付箋を表示しました'
+                    : `起動完了: 準備済み${startupResult.ready.length}件だけを表示しました`);
                   startPoolReplenishInBackground();
                 } catch (e) {
                   log(`[起動処理] 一括表示エラー: ${e}`);
-                  setLoadingStatus((startupIsEnglish ? 'Failed to show notes: ' : '付箋の表示に失敗しました: ') + String(e));
+                  setLoadingStatus(startupIsEnglish
+                    ? 'Failed to show notes. Please restart the app.'
+                    : '付箋の表示に失敗しました: ' + String(e));
                 }
               } else {
                 setLoadingStatus(startupIsEnglish ? 'Creating your welcome note...' : 'ようこそノートを作成中...');
@@ -1736,13 +1794,17 @@ function OrchestratorContent() {
               }
             } catch (e) {
               log(`[起動処理] 内部エラー: ${e}`);
-              setLoadingStatus((startupIsEnglish ? 'Error: ' : 'エラー: ') + String(e));
+              setLoadingStatus(startupIsEnglish
+                ? 'An error occurred during startup. Please restart the app.'
+                : 'エラー: ' + String(e));
               setTimeout(() => setIsCheckingSetup(false), 3000);
             }
           })();
         } catch (e) {
           log(`[起動処理] 重大なエラー: ${e}`);
-          setLoadingStatus((startupIsEnglish ? 'Critical error: ' : '重大なエラー: ') + String(e));
+          setLoadingStatus(startupIsEnglish
+            ? 'A critical startup error occurred. Please restart the app.'
+            : '重大なエラー: ' + String(e));
           setTimeout(() => setIsCheckingSetup(false), 3000);
         }
       };
@@ -1750,7 +1812,9 @@ function OrchestratorContent() {
       checkAndRestore().catch(e => {
         invoke('fusen_debug_log', { message: `[起動処理] セットアップ確認中に例外発生: ${e}` }).catch(() => { });
         const fallbackEnglish = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('en');
-        setLoadingStatus((fallbackEnglish ? 'Startup check failed: ' : '確認失敗: ') + String(e));
+        setLoadingStatus(fallbackEnglish
+          ? 'Startup check failed. Please restart the app.'
+          : '確認失敗: ' + String(e));
         setTimeout(() => setIsCheckingSetup(false), 3000);
       });
     }
@@ -1774,10 +1838,24 @@ function OrchestratorContent() {
 
   }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
+  const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
 
   useEffect(() => {
-    if (!isMainWindow || isCheckingSetup || setupRequired || isSettingsOpen || desktopShortcutPromptCheckedRef.current) return;
+    if (!isMainWindow || isCheckingSetup || setupRequired || settingsLoading || settings.analytics_consent) return;
+    const showConsent = async () => {
+      const { LogicalSize } = await import('@tauri-apps/api/dpi');
+      const win = getCurrentWindow();
+      await win.setSize(new LogicalSize(640, 520));
+      await win.center();
+      await win.unminimize();
+      await win.show();
+      await win.setFocus();
+    };
+    void showConsent().catch((e) => console.error('[AnalyticsConsent] prompt display failed:', e));
+  }, [isMainWindow, isCheckingSetup, setupRequired, settingsLoading, settings.analytics_consent]);
+
+  useEffect(() => {
+    if (!isMainWindow || isCheckingSetup || setupRequired || isSettingsOpen || !settings.analytics_consent || desktopShortcutPromptCheckedRef.current) return;
     desktopShortcutPromptCheckedRef.current = true;
     const checkDesktopShortcut = async () => {
       try {
@@ -1796,7 +1874,7 @@ function OrchestratorContent() {
       }
     };
     checkDesktopShortcut();
-  }, [isMainWindow, isCheckingSetup, setupRequired, isSettingsOpen]);
+  }, [isMainWindow, isCheckingSetup, setupRequired, isSettingsOpen, settings.analytics_consent]);
 
   useEffect(() => {
     if (!isDashboard || monthlyBackupCheckedRef.current) return;
@@ -1940,6 +2018,19 @@ function OrchestratorContent() {
     );
   }
 
+  if (isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && !settings.analytics_consent) {
+    const saveAnalyticsConsent = async (consent: 'granted' | 'denied') => {
+      await saveSettings({ ...settings, analytics_consent: consent });
+    };
+    return (
+      <AnalyticsConsentDialog
+        language={language}
+        onAccept={() => { void saveAnalyticsConsent('granted'); }}
+        onDecline={() => { void saveAnalyticsConsent('denied'); }}
+      />
+    );
+  }
+
   if (showDesktopShortcutPrompt) {
     return (
       <ConfirmDialog
@@ -1988,7 +2079,7 @@ function OrchestratorContent() {
     );
   }
 
-  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} />;
+  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} language={language} />;
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
   if (setupRequired || isSettingsOpen) {
@@ -2103,7 +2194,7 @@ function OrchestratorContent() {
                 dbg('[Search] onClose finished');
                 setSearchCaller(null);
               }
-            }} getWindowLabel={getWindowLabel} />
+            }} getWindowLabel={getWindowLabel} resolveOpenWindow={resolveOpenWindow} />
           </div>
         )}
       </>
@@ -2118,7 +2209,7 @@ export default function Home() {
   const { settings } = useSettings();
   const language: Language = settings.language === 'en' ? 'en' : 'ja';
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<LoadingScreen language={language} />}>
       <ErrorBoundary language={language}>
         <OrchestratorContent />
       </ErrorBoundary>

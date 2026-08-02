@@ -68,7 +68,7 @@ export default function ToolbarButtons({
     if (!isEditing) {
         return (
             <div
-                className={`hoverBar flex flex-col items-end p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show || isWelcome ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'
+                className={`hoverBar flex flex-col items-end p-1 bg-transparent rounded-lg z-[200] transition-opacity duration-100 ease-in ${show || isWelcome ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none group-hover:opacity-100 group-hover:visible group-hover:pointer-events-auto'
                     }`}
             >
                 <div data-testid="sticky-primary-actions" className="flex flex-row items-center gap-[2px]">

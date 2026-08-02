@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  oauthFetchSignal,
+  readLimitedJson,
+  RequestValidationError,
+  requireString,
+} from '../auth/requestSecurity';
 
 // ---------------------------------------------------------------------------
 // /api/siri-send
@@ -50,6 +56,7 @@ async function exchangeRefreshTokenForAccessToken(refreshToken: string): Promise
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: params.toString(),
+    signal: oauthFetchSignal(),
   });
   if (!res.ok) {
     const errText = await res.text();
@@ -63,7 +70,7 @@ async function exchangeRefreshTokenForAccessToken(refreshToken: string): Promise
 async function getOrCreateAppFolderId(accessToken: string): Promise<string> {
   const searchRes = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=name='${APP_FOLDER_NAME}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal: oauthFetchSignal() }
   );
   const searchData = await searchRes.json();
   if (searchData.files?.[0]?.id) return searchData.files[0].id as string;
@@ -71,6 +78,7 @@ async function getOrCreateAppFolderId(accessToken: string): Promise<string> {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: APP_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }),
+    signal: oauthFetchSignal(),
   });
   const createData = await createRes.json();
   if (!createData.id) throw new Error('failed to create app folder');
@@ -81,14 +89,14 @@ async function downloadNotesJson(accessToken: string, folderId: string): Promise
   const folderQuery = `+and+'${folderId}'+in+parents`;
   const searchRes = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=name='${NOTES_FILE_NAME}'${folderQuery}+and+trashed=false`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal: oauthFetchSignal() }
   );
   const searchData = await searchRes.json();
   const fileId = searchData.files?.[0]?.id;
   if (!fileId) return null;
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal: oauthFetchSignal() }
   );
   if (!res.ok) return null;
   return res.json();
@@ -98,7 +106,7 @@ async function uploadNotesJson(accessToken: string, folderId: string, data: obje
   const folderQuery = `+and+'${folderId}'+in+parents`;
   const searchRes = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=name='${NOTES_FILE_NAME}'${folderQuery}+and+trashed=false`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal: oauthFetchSignal() }
   );
   const searchData = await searchRes.json();
   const fileId = searchData.files?.[0]?.id;
@@ -111,7 +119,12 @@ async function uploadNotesJson(accessToken: string, folderId: string, data: obje
     form.append('file', fileBlob);
     const patchRes = await fetch(
       `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
-      { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form,
+        signal: oauthFetchSignal(),
+      }
     );
     if (!patchRes.ok) throw new Error(`Drive PATCH failed: ${patchRes.status}`);
   } else {
@@ -121,27 +134,31 @@ async function uploadNotesJson(accessToken: string, folderId: string, data: obje
     form.append('file', fileBlob);
     const postRes = await fetch(
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-      { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form,
+        signal: oauthFetchSignal(),
+      }
     );
     if (!postRes.ok) throw new Error(`Drive POST failed: ${postRes.status}`);
   }
 }
 
 export async function POST(req: NextRequest) {
-  let body: { text?: string; refresh_token?: string };
+  let text: string;
+  let refreshToken: string;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ ok: false, error: 'invalid JSON body' }, { status: 400 });
-  }
-  const text = body.text;
-  const refreshToken = body.refresh_token;
-
-  if (!text || !text.trim()) {
-    return NextResponse.json({ ok: false, error: 'text is required' }, { status: 400 });
-  }
-  if (!refreshToken) {
-    return NextResponse.json({ ok: false, error: 'refresh_token is required' }, { status: 400 });
+    const body = await readLimitedJson(req);
+    text = requireString(body, 'text', 4000).trim();
+    refreshToken = requireString(body, 'refresh_token', 4096);
+    if (!text) throw new RequestValidationError('invalid text', 400);
+  } catch (error) {
+    const validation = error instanceof RequestValidationError ? error : null;
+    return NextResponse.json(
+      { ok: false, error: validation?.message ?? 'invalid request' },
+      { status: validation?.status ?? 400 },
+    );
   }
 
   try {

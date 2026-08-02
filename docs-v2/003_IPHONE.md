@@ -126,6 +126,7 @@ banner・login・push・list・write の5画面それぞれの表示条件と役
       <div class="phone-screen" style="background:#F2F2F7; display:flex; flex-direction:column; padding:6px; gap:4px;">
         <div class="mock-header">
           <span style="font-size:9px; font-weight:700; color:#111827;">メモ</span>
+          <span style="font-size:6px; color:#4b5563; margin-left:auto;">🌐 EN</span>
           <span style="font-size:9px; color:#111827;">＋</span>
         </div>
         <div class="mock-card"><div class="mock-dot mock-dot-blue"></div><span style="font-size:6px;">大事なメモ</span><span style="font-size:8px; margin-left:auto;">🔔</span></div>
@@ -139,12 +140,19 @@ banner・login・push・list・write の5画面それぞれの表示条件と役
   </div>
   <dl class="screen-def">
     <dt>表示条件</dt>
-    <dd>トークンあり + <code>viewer_push_done=true</code>（通常の起動時）</dd>
+    <dd>編集画面から一覧を開いた場合</dd>
     <dt>操作</dt>
-    <dd>＋ → write（新規）<br>メモタップ → write（編集）<br>🔔 → ロック画面に表示 ON/OFF<br>🗑️ → メモ削除</dd>
+    <dd>🌐 EN / 🌐 日本 → 同じlist画面のまま表示言語を切替<br>＋ → write（新規）<br>メモタップ → write（編集）<br>🔔 → ロック画面に表示 ON/OFF<br>🗑️ → メモ削除</dd>
     <dt>バージョン表示</dt>
     <dd><code>app x.x.x / ServiceWorker x.x.x</code>（右下固定）</dd>
   </dl>
+
+  <div style="grid-column:1 / -1;">
+    <h4>画面ID <code>list</code> — 言語切替ボタンの位置</h4>
+    <img src="./public/screens/iphone-list-language.svg" alt="画面ID listのメモ一覧画面。画面上部のメモ見出しの右側に言語切替ボタンがある" style="display:block;width:100%;max-width:700px;margin:0 auto;">
+    <p class="mermaid-caption">図 1.1-1　画面ID <code>list</code>（メモ一覧）と言語切替ボタンの位置</p>
+  </div>
+
   <!-- write -->
   <div class="phone">
     <div class="phone-frame">
@@ -180,6 +188,12 @@ banner・login・push・list・write の5画面それぞれの表示条件と役
     <dd><code>app x.x.x / ServiceWorker x.x.x</code>（右下固定）</dd>
   </dl>
 </div>
+
+#### その他の画面ID — 画面イメージ
+
+<img src="./public/screens/iphone-other-screens.svg" alt="画面ID banner、login、push、writeのiPhone PWA画面イメージ" style="display:block;width:100%;max-width:700px;margin:0 auto;">
+
+<p class="mermaid-caption">図 1.1-2　画面ID <code>banner</code>・<code>login</code>・<code>push</code>・<code>write</code>の画面イメージ</p>
 
 ### 1.2 起動時の遷移ルール
 
@@ -336,7 +350,7 @@ push受信・notificationclick等を処理するSWのイベントハンドラ5�
 |:---|:---|:---|
 | 1 | `install` | `skipWaiting()` 呼び出し。新バージョンを即時有効化。 |
 | 2 | `activate` | `clients.claim()` でページの制御を取得。SW バージョンをログに記録。 |
-| 3 | `push` | ① Push ペイロード（title / body_rich / id）を取得<br>② `fusen-meta` からアクセストークンを取得<br>③ Drive から画像をダウンロード<br>④ `fusen-drafts` にノートを保存<br>⑤ Drive から画像ファイルを削除<br>⑥ `notes_to_iphone.json` から当該 ID を削除<br>⑦ `pending_open` を `fusen-meta` に記録<br>⑧ 既存の同 ID 通知を閉じてから新規通知を表示 |
+| 3 | `push` | ① Push ペイロード（title / body_rich / id）を取得。長文用の `fetch_from_drive` がある場合は ID を使って `notes_to_iphone.json` から本文を取得<br>② `fusen-meta` からアクセストークンを取得<br>③ Drive から画像をダウンロード<br>④ `fusen-drafts` に元のノートタイトルのまま保存<br>⑤ Drive から画像ファイルを削除<br>⑥ `notes_to_iphone.json` から当該 ID を削除<br>⑦ `pending_open` を `fusen-meta` に記録<br>⑧ 既存の同 ID 通知を閉じ、空タイトルの場合だけ通知名を日本語環境では「俺の付箋」、それ以外では「FUSEN」として新規通知を表示 |
 | 4 | `notificationclick` | 通知をタップ → `locked` 確認 → true なら再通知・アプリを前面に出す。<br><strong style="color:#f59e0b">⚠️ iOS では発火しない（既知の制約）。</strong>タップ後の再通知は `page.tsx` の `pending_open` フローが代替。 |
 | 5 | `message` | アプリからの通信を受信。`CLOSE_NOTIFICATION` で通知を閉じる、`GET_VERSION` で SW のバージョンを返す等の処理。 |
 
@@ -360,8 +374,9 @@ iPhone は Vercel 経由でトークン交換・更新を依頼し、Vercel は�
 
 | No | ファイル | 役割 |
 |:---|:---|:---|
-| 1 | `app/api/auth/token/route.ts` | OAuth 認証コード → アクセストークン＋リフレッシュトークン交換。初回ログイン時のみ呼ばれる。 |
-| 2 | `app/api/auth/refresh/route.ts` | リフレッシュトークン → 新しいアクセストークン取得。Drive API 呼び出し時にトークン期限切れを検出したら自動呼び出し。 |
+| 1 | `app/api/auth/token/route.ts` | OAuth 認証コード → アクセストークン＋リフレッシュトークン交換。初回ログイン時のみ呼ばれる。JSON本文は16KB以内、認証値は項目別の上限以内に制限し、Google通信は10秒で中止する。 |
+| 2 | `app/api/auth/refresh/route.ts` | リフレッシュトークン → 新しいアクセストークン取得。Drive API 呼び出し時にトークン期限切れを検出したら自動呼び出し。JSON本文は16KB以内、認証値は項目別の上限以内に制限し、Google通信は10秒で中止する。 |
+| 3 | `app/api/siri-send/route.ts` | 開発・動作確認用のSiriショートカットから付箋をDriveへ送る。一般ユーザー向け機能ではない。JSON本文は16KB以内、付箋文字列は4000文字以内、認証値は4096文字以内とし、Google通信は10秒で中止する。 |
 
 #### 環境変数（Vercel）
 
@@ -563,6 +578,7 @@ PWA端末内に保存されるfusen-drafts・fusen-meta・fusen-logsの3スト�
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">6</td><td><code>pending_note</code></td><td>PKCE 認証後に自動で開くノート ID</td></tr>
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">7</td><td><code>viewer_device_id</code></td><td>Web Push 用のクライアント識別子</td></tr>
       <tr><td style="text-align:center;color:#94a3b8;font-weight:700">8</td><td><code>fusen_known_tags</code></td><td>過去に入力したタグの履歴（サジェスト用）</td></tr>
+      <tr><td style="text-align:center;color:#94a3b8;font-weight:700">9</td><td><code>ore-no-fusen-viewer-language</code></td><td>PWAの表示言語。未保存・不正値は日本語、<code>en</code>保存時は英語。PC設定やGoogle Driveとは同期しない</td></tr>
     </tbody>
   </table>
 </div>
@@ -731,7 +747,7 @@ Drive 上の JSON は、以下の構成を基本とする。
 |:---|:---|:---|:---:|:---|
 | 1 | `items` | `Object[]` | ○ | 未処理ノートの配列。最大20件を保持 |
 | 2 | `items[].id` | `string` | ○ | ノートID（UUID） |
-| 3 | `items[].title` | `string` | ○ | 通知・表示タイトル |
+| 3 | `items[].title` | `string` | ○ | ノートの表示タイトル。空文字も保持し、通知名のフォールバックを保存データへ混入させない |
 | 4 | `items[].body` | `string` | ○ | Markdown本文。画像は `fusen_img_*` 参照 |
 | 5 | `items[].tags` | `string[]` | ○ | タグ一覧 |
 | 6 | `items[].sent_at` | `string` | ○ | PC送信時刻 |
@@ -999,8 +1015,9 @@ Push 失敗時は APNs / Push Service のステータスを見て、400（鍵・
 </Note>
 
 <Note type="info">
-<strong>body_rich：</strong>Markdown 本文（画像タグ含む）は Push ペイロードに直接含まれる。
-Drive へのフェッチは画像バイナリのダウンロードのみ。JSON の再取得は不要。
+<strong>body_rich：</strong>Markdown 本文（画像タグ含む）は、4KB以内なら Push ペイロードに直接含める。ただし <code>body</code> と同一の場合は重複を避けて省略する。暗号化後の上限を考慮したサイズ検査で4KBを超える場合、PCは本文を含めず <code>id</code> / <code>title</code> / <code>fetch_from_drive: true</code> だけのコンパクトPushへ自動切替し、Service Workerが <code>notes_to_iphone.json</code> から当該IDの本文を取得する。
+通常サイズではDriveへの追加フェッチは画像バイナリのみ。長文用コンパクトPushの場合だけ、本文取得のため `notes_to_iphone.json` を再取得する。
+PC付箋の先頭行が画像Markdownの場合はタイトルへ分離せず本文に残し、画像をDriveへアップロードして <code>fusen_img_*</code> 参照へ変換する。
 </Note>
 
 <Note type="warning">
@@ -1130,9 +1147,11 @@ sequenceDiagram
 <Note type="info">
 <strong>pending_open の役割：</strong>SW は push 受信時に通知を表示する直前に
 <code>fusen-meta</code> へ <code>{id, t}</code> を保存する。
-これが「直近の通知 ID の痕跡」となり、アプリ復帰時に
-<code>page.tsx</code> が「通知からの起動である」と判断できる唯一の根拠になる。
-30 分で失効。読んだら即削除。
+通知タップイベントからIDを取得できる場合は、既存PWAへ <code>OPEN_NOTE</code> を送り、
+未起動の場合は <code>/viewer?note={id}</code> で対象を直接指定する。
+<code>pending_open</code> はiOSが通知タップイベントを渡さない場合に使う「直近の通知 ID の痕跡」である。
+30分で失効し、対象ノートをIndexedDBから正常に取得できた後だけ削除する。
+保存直後で取得できない場合は短時間再試行し、失敗時は次回復帰に備えて保持する。
 </Note>
 
 <Note type="success">
@@ -1196,6 +1215,7 @@ graph LR
 | 1 | 文字入力 | エディタ | 800ms debounce で自動保存 |
 | 2 | 画像貼り付け | エディタ | IndexedDB に保存・プレビュー表示 |
 | 3 | ← タップ | 戻るボタン | リストモードへ遷移（保存確定） |
+| 4 | 本文画像をタップ | 画像 | 黒背景の全画面プレビューを表示。背景または閉じるボタンで戻る |
 
 ### 5.3 インタラクション・マトリックス
 
@@ -1208,6 +1228,7 @@ graph LR
 | 3 | 🗑️ | 削除確認ダイアログ | - |
 | 4 | 文字入力 | - | 自動保存 |
 | 5 | ← 戻る | - | リストモードへ |
+| 6 | 画像タップ | - | 全画面プレビュー |
 
 ---
 
@@ -1221,14 +1242,15 @@ graph LR
 
 | No | 機能 | 設計意図・工夫 |
 |:---|:---|:---|
-| 1 | Drive → IndexedDB 同期 | 一覧を開くたびに `notes_to_iphone.json` を Drive から取得し、ローカルにない新着ノートを IndexedDB に取り込む。取り込み後は Drive ファイルを削除（Drive = 未処理キュー）。Drive 失敗時は IndexedDB だけで一覧表示を続ける（フォールセーフ） |
+| 1 | Drive → IndexedDB 同期 | 一覧を開いたらIndexedDBの保存済み一覧を先に表示し、Drive通信を待たせない。その後 `notes_to_iphone.json` をバックグラウンドで取得し、ローカルにない新着ノートをIndexedDBへ取り込んで一覧を更新する。取り込み後はDriveファイルを削除（Drive = 未処理キュー）。Drive失敗時は先に表示したIndexedDBの一覧を維持する |
 | 2 | 画像サムネイル | 添付画像がある場合、IndexedDB の Blob から `URL.createObjectURL()` で URL を生成してサムネイルを表示。アンマウント時に `URL.revokeObjectURL()` で解放する |
 | 3 | ステータスバッジ | draft（下書き）/ sent（PC送信済み）/ PC受信 の3状態を `sent_at` フィールドの有無と `received_pc` フラグで判定して色分け表示する |
 | 4 | 相対時間表示 | `created_at` から「3分前」「1時間前」「昨日」の形式に変換（`formatRelativeTime()`）。 数字と絶対時刻を並べるより一目で新鮮度がわかる |
 | 5 | 🔔/🔕 ロック画面常駐 | 後述（6.2）|
-| 6 | 🗑️ 削除 | IndexedDB から削除後、Drive 上の同 ID ファイルも削除する |
+| 6 | 🗑️ 削除 | 削除 ID を `fusen-meta` に記録してから IndexedDB から削除し、`notes_to_iphone.json` の同 ID だけを除去する。Drive処理が遅延・失敗してキューが残っても、削除 ID は一覧同期の再取込対象外とし、他の未配達ノートは保持する |
 | 7 | ＋ 新規作成 | 新しい下書き ID を `crypto.randomUUID()` で生成し write 画面へ遷移 |
 | 8 | 🔔 デバイス再登録（フッター） | `silentReRegisterIfNeeded()` を呼び出し、`push_devices.json` に自デバイスが存在しない場合のみ静かに再登録する。既存デバイスがいれば何もしない |
+| 9 | 🌐 表示言語切替 | 既定は日本語。一覧右上の `🌐 EN` で英語へ、英語表示中の `🌐 日本` で日本語へ切り替える。選択は端末のlocalStorageへ保存し、次回起動後も保持する。PC側の言語設定やGoogle Driveとは連動させない |
 
 ### 6.2 ロック画面常駐（🔔）
 
@@ -1264,6 +1286,7 @@ graph LR
 | 9 | 「iPhoneに置いておく」 | Drive を一切使わず IndexedDB のみに保存。ネットワーク不要。削除するまで端末に残り続ける |
 | 10 | 「PCへ送る」 | 後述（6.4）|
 | 11 | 🎬 VideoDrop | `mp4` / `mov` を選択して現在の付箋に添付し、「PCへ送る」を押したときに Drive 経由で PC へ送る。画像と同じく付箋の添付部品であり、選択時に本文を上書きしない。PC側で `assets/video/` に保存された絶対パスを付箋本文の末尾へ追記する |
+| 12 | 画像全画面プレビュー | 本文内の画像をタップすると、保存済みBlob URLを黒背景のオーバーレイへ縦横比を維持して最大表示する。プレビューは表示だけで、本文・画像Blob・送信内容を変更しない |
 
 ### 6.4 「PCへ送る」
 
@@ -1334,6 +1357,10 @@ Service Worker (<code>worker/index.js</code>) 内での Push 受信処理では�
 UIを持たない Service Worker 内で発生した処理結果やエラー（トークン取得失敗、画像保存失敗など）は、IndexedDB の <code>fusen-logs</code> ストアに対して <code>fire-and-forget</code> で記録される（実施済み）。
 後から Chrome DevTools 等で内部状態や Push 受信時のエラー原因を追跡できるようになっている。
 
+通知タップから詳細表示までの診断ログは <code>[NAV]</code> で始まり、通知タップイベント、遷移経路（既存PWAへの <code>OPEN_NOTE</code> / ID付きURL / <code>pending_open</code>）、対象ID、IndexedDB読込の試行回数・結果・経過時間、詳細表示完了を記録する。例外は種類だけを記録し、付箋本文・画像・通知本文・アクセストークンは記録しない。
+
+実機では一覧上部の虫アイコンからデバッグログを開き、「通知診断をコピー」を押す。コピー対象は <code>[NAV]</code> とService Worker版だけに限定し、本文を含み得る従来ログは除外する。
+
 #### 7.2.3 iOS特有の制約とリカバリサイクル
 iOS の PWA 環境では、バックグラウンドでの通知タップ時（<code>notificationclick</code> イベント）が正常に発火しない・あるいは Web API へのアクセスが制限されるケースがある。
 この制限に対するリカバリとして、通知受信時に次回開くべきノート ID を IndexedDB に保存（<code>pending_open</code>）し、次にユーザーがアプリを開いた際（<code>page.tsx</code> マウント時）に自動的にそのノートを表示するサイクルを構築している（実施済み）。
@@ -1372,5 +1399,15 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 20 | 1.19 | 26-07-13 | 図3-4のiPhone→PC受信に受信IDハッシュによる冪等化を追加。PC保存後・Drive処理済み更新前に終了しても、再受信で付箋と添付を重複作成しない仕様を明記。 |
 | 21 | 1.20 | 26-07-22 | 通常起動先を編集画面へ変更。通知メモ確認を待たず入力可能にし、入力開始済みなら通知メモによる上書きを防止する。`/viewer` は2回目以降キャッシュを即時表示してバックグラウンド更新する。 |
 | 22 | **1.21** | 26-07-22 | §1.1と§5.1に残っていた旧仕様「通常起動先は一覧」を訂正し、通常起動先が編集画面であることを全記述で統一。 |
+| 23 | 1.22 | 26-07-27 | メモ一覧はIndexedDBの保存済み内容を先に表示し、Drive同期をバックグラウンド化。PC付箋の先頭画像をタイトルと誤認せず、本文画像としてiPhoneへ送る規則を追加。 |
+| 24 | 1.23 | 26-07-27 | 本文画像のタップで、本文や保存データを変更しない全画面プレビューを表示する操作を追加。 |
+| 25 | **1.24** | 26-07-28 | 空タイトルのPC付箋では通知名だけを日本語「俺の付箋」・英語「FUSEN」とし、PWAのノートタイトル・本文には混入させない仕様を追加。 |
+| 26 | **1.25** | 26-07-29 | 一覧で削除したPC受信ノートのIDを端末内へ記録し、Drive未処理キューの残留・同期競合があっても再取込しない削除規則を追加。 |
+| 27 | **1.26** | 26-07-29 | 通知タップIDを既存PWAへのメッセージまたは起動URLで直接指定し、IndexedDB保存待ちを再試行する遷移規則を追加。`pending_open`は対象取得成功後だけ削除する。 |
+| 28 | **1.27** | 26-07-30 | PWAの既定表示を日本語とし、一覧画面右上の `🌐 EN` / `🌐 日本` で同じ画面のまま英語・日本語を切り替える仕様を追加。選択は端末内に保存し、PC・Google Driveとは同期しない。全5画面の画面ID付き画面図を追加。 |
+| 29 | **1.28** | 26-07-30 | 通知タップから詳細表示までの構造化診断ログと実機コピー手順を追加。本文・画像・認証情報を診断コピーから除外する規則を明記。 |
+| 30 | **1.29** | 26-07-31 | Google OAuthのトークン交換・更新APIへ、16KBの本文上限、認証値の項目別上限、Google通信の10秒タイムアウトを追加。Siri送信APIにも本文・項目上限とGoogle通信タイムアウトを追加。 |
+| 31 | **1.30** | 26-07-31 | PC→スマホのPushペイロードで同一の `body` / `body_rich` を重複送信しない規則と、4KB超過時に現在の文字数・短縮目安を表示する送信前検査を追加。Android Pushの4096 bytes超過応答も本文過大として分類。 |
+| 32 | **1.31** | 26-07-31 | 4KBを超えるPC→スマホ本文はコンパクトPushへ自動切替し、Service WorkerがIDを使って `notes_to_iphone.json` から本文を取得する長文経路を追加。 |
 
 </div>

@@ -14,7 +14,7 @@ import { renderSecureMermaid } from '../utils/mermaid';
  * 出力: JSX.Element
  * 副作用: mermaid ライブラリを呼び出してプレビュー SVG を生成する
  */
-export function MermaidModal({ onCancel, onInsert }: MermaidModalProps) {
+export function MermaidModal({ t, onCancel, onInsert }: MermaidModalProps) {
   const [mermaidCode, setMermaidCode] = React.useState('');
   const [previewSvg, setPreviewSvg] = React.useState<string | null>(null);
   const [previewError, setPreviewError] = React.useState<string | null>(null);
@@ -29,7 +29,7 @@ export function MermaidModal({ onCancel, onInsert }: MermaidModalProps) {
       const svg = await renderSecureMermaid(id, mermaidCode);
       setPreviewSvg(svg);
     } catch (err: unknown) {
-      setPreviewError('構文エラー: ' + (err instanceof Error ? err.message : String(err)));
+      setPreviewError(t('pwa.mermaid.syntaxError') + (err instanceof Error ? err.message : String(err)));
       setPreviewSvg(null);
     } finally {
       setIsRendering(false);
@@ -61,7 +61,7 @@ export function MermaidModal({ onCancel, onInsert }: MermaidModalProps) {
           disabled={isRendering || !mermaidCode.trim()}
           onClick={handlePreview}
         >
-          {isRendering ? '描画中...' : 'プレビュー'}
+          {isRendering ? t('pwa.mermaid.rendering') : t('pwa.mermaid.preview')}
         </button>
       </div>
 
@@ -95,7 +95,7 @@ export function MermaidModal({ onCancel, onInsert }: MermaidModalProps) {
           disabled={!mermaidCode.trim()}
           onClick={handleInsert}
         >
-          挿入
+          {t('pwa.mermaid.insert')}
         </button>
       </div>
     </div>

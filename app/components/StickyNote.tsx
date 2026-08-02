@@ -26,6 +26,7 @@ import { useTagManager } from '@/app/hooks/useTagManager';
 import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 import { useNoteStyles } from '@/app/hooks/useNoteStyles';
+import { trackEvent } from '@/app/utils/analytics';
 
 // UIコンポーネント
 import type { RichTextEditorRef } from './RichTextEditor';
@@ -69,6 +70,12 @@ import { returnRecipe } from '@/app/api/recipes';
 import { hideReturnedCrystalWindow } from '@/app/utils/crystalWindowLifecycle';
 import { extractHydratedNoteMeta } from '@/app/utils/hydratedNoteMeta';
 import { shouldEditPromotedPoolNote } from '@/app/utils/invisibleNotePool';
+import {
+    appendDroppedImageMarkdown,
+    insertDroppedImageMarkdown,
+    isSupportedDroppedImageFileName,
+    readFileAsDataUrl,
+} from '@/app/utils/droppedImage';
 import { invoke } from '@tauri-apps/api/core';
 import { getWindowGeometry } from '@/app/api/window';
 
@@ -180,6 +187,7 @@ const StickyNote = memo(function StickyNote() {
     const lazyFolderPathRef = useRef<string>('');
     // 文字入力と画像貼り付けが同時に lazy 作成を要求しても 1 回にまとめる
     const lazyCreatePromiseRef = useRef<Promise<string | null> | null>(null);
+    const ensureFilePathForDropRef = useRef<() => Promise<string | null>>(async () => null);
     const originalRecipeBodyRef = useRef<string | null>(null);
     const originalRecipePathRef = useRef<string | null>(null);
     const crystalFormatsRef = useRef<CrystalFormats>(DEFAULT_CRYSTAL_FORMATS);
@@ -226,6 +234,12 @@ const StickyNote = memo(function StickyNote() {
 
             const newContext = content.split('\n')[0].trim();
             setSelectedFile((prev) => (prev ? { ...prev, path: newPath, context: newContext } : null));
+            import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) =>
+                invoke('fusen_register_open_note_window', {
+                    path: newPath,
+                    label: getCurrentWebviewWindow().label,
+                }),
+            ).catch((error) => console.warn('[付箋表示] パス変更後のウィンドウ登録に失敗しました:', error));
         },
         onSaveError: () => setShowSaveError(true),
     });
@@ -275,6 +289,7 @@ const StickyNote = memo(function StickyNote() {
 
         await saveNoteContent(body, front, allowRename);
         if (isNew) {
+            trackEvent('first_note_saved', { event_category: 'activation' });
             setIsNewState(false);
         }
     }, [saveNoteContent, isNew, isPool, noteFilePathRef]);
@@ -320,6 +335,90 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => { startEditingForListenerRef.current = startEditing; }, [startEditing]);
     const endEditingForListenerRef = useRef(endEditing);
     useEffect(() => { endEditingForListenerRef.current = endEditing; }, [endEditing]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) return;
+
+        const hasFiles = (event: DragEvent) =>
+            Array.from(event.dataTransfer?.types ?? []).includes('Files');
+
+        const handleFileDragOver = (event: DragEvent) => {
+            if (!hasFiles(event)) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        };
+
+        const handleFileDrop = async (event: DragEvent) => {
+            const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
+            if (droppedFiles.length === 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const files = droppedFiles.filter((file) => isSupportedDroppedImageFileName(file.name));
+            if (files.length !== droppedFiles.length) {
+                setToastMessage(language === 'en'
+                    ? 'The dropped files include an unsupported format.'
+                    : '対応していないファイル形式が含まれています');
+                return;
+            }
+
+            const notePath = noteFilePathRef.current ?? await ensureFilePathForDropRef.current();
+            if (!notePath) {
+                setToastMessage(language === 'en'
+                    ? 'Could not prepare the image save location.'
+                    : '画像の保存先を準備できませんでした');
+                return;
+            }
+
+            const savedPaths: string[] = [];
+            try {
+                for (const file of files) {
+                    const data = await readFileAsDataUrl(file);
+                    const savedPath = await invoke<string>('fusen_save_dropped_image_data', {
+                        path: notePath,
+                        fileName: file.name,
+                        data,
+                    });
+                    savedPaths.push(savedPath);
+                }
+                const currentBody = isEditingForListenerRef.current
+                    ? editBodyRef.current
+                    : contentForListenerRef.current;
+                const dropOffset = isEditingForListenerRef.current
+                    ? editorRef.current?.getPositionAtCoords(event.clientX, event.clientY) ?? currentBody.length
+                    : currentBody.length;
+                const nextBody = isEditingForListenerRef.current
+                    ? insertDroppedImageMarkdown(currentBody, savedPaths, dropOffset)
+                    : appendDroppedImageMarkdown(currentBody, savedPaths);
+                await saveNoteContent(nextBody, rawFrontmatterForAlarmRef.current, false);
+                setContent(nextBody);
+                setEditBody(nextBody);
+                setIsNewState(false);
+            } catch (error) {
+                if (savedPaths.length > 0) {
+                    try {
+                        await invoke('fusen_remove_dropped_images', {
+                            path: notePath,
+                            relativePaths: savedPaths,
+                        });
+                    } catch (cleanupError) {
+                        console.error('[DROP] Failed to clean up dropped images:', cleanupError);
+                    }
+                }
+                console.error('[DROP] Failed to import dropped image:', error);
+                const message = error instanceof Error ? error.message : String(error);
+                setToastMessage(message.includes('50MB')
+                    ? (language === 'en' ? 'Each image file must be 50 MB or smaller.' : '画像ファイルは1件50MBまでです')
+                    : (language === 'en' ? 'Could not add the image.' : '画像を追加できませんでした'));
+            }
+        };
+
+        window.addEventListener('dragover', handleFileDragOver, true);
+        window.addEventListener('drop', handleFileDrop, true);
+        return () => {
+            window.removeEventListener('dragover', handleFileDragOver, true);
+            window.removeEventListener('drop', handleFileDrop, true);
+        };
+    }, [editBodyRef, language, noteFilePathRef, saveNoteContent, setContent, setEditBody]);
 
     // [New] ミニマイズ状態からリサイズ操作により自動展開された場合の処理
     const handleAutoExpand = useCallback(async () => {
@@ -380,7 +479,11 @@ const StickyNote = memo(function StickyNote() {
     const isQaNote = !isRecipeNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'qa');
     const isTermNote = !isRecipeNote && !isQaNote && currentTags.some((tag: string) => tag.trim().toLowerCase() === 'term');
     const isCrystalNote = isRecipeNote || isQaNote || isTermNote;
-    const crystalNoteLabel = isRecipeNote ? 'レシピ' : isQaNote ? 'QA' : '用語';
+    const crystalNoteLabel = isRecipeNote
+        ? (language === 'en' ? 'Recipe' : 'レシピ')
+        : isQaNote
+            ? 'Q&A'
+            : (language === 'en' ? 'Term' : '用語');
     const currentUserTags = useMemo(() => getUserTags(currentTags), [currentTags]);
 
     useEffect(() => {
@@ -780,6 +883,10 @@ const StickyNote = memo(function StickyNote() {
                     // path が確定した（非lazy）場合のみプールモード解除
                     isPoolRef.current = false;
                     setIsPool(false);
+                    await invoke('fusen_register_open_note_window', {
+                        path: event.payload.path,
+                        label: thisWin.label,
+                    });
                 }
                 // lazy（path 無し）の場合: ファイル未作成のため isPool=true を維持する。
                 // handleFirstChar で fusen_create_note_lazy が成功した後に isPool を解除する。
@@ -947,6 +1054,11 @@ const StickyNote = memo(function StickyNote() {
             invoke('fusen_debug_log', { message: `[POOL_LAZY] fusen_create_note_lazy OK path=${note.meta.path}` }).catch(() => { });
             // ファイルが作成されたので selectedFile と URL を更新
             const createdPath = note.meta.path;
+            const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            await invoke('fusen_register_open_note_window', {
+                path: createdPath,
+                label: getCurrentWebviewWindow().label,
+            });
             noteFilePathRef.current = createdPath;
             setDynamicUrlPath(createdPath);
             setSelectedFile(note.meta);
@@ -973,6 +1085,23 @@ const StickyNote = memo(function StickyNote() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
+    ensureFilePathForDropRef.current = handleFirstChar;
+
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        let cancelled = false;
+        import('@tauri-apps/api/webviewWindow').then(async ({ getCurrentWebviewWindow }) => {
+            const win = getCurrentWebviewWindow();
+            const dispose = await win.listen('tauri://close-requested', () => {
+                invoke('fusen_unregister_open_note_window', { label: win.label }).catch(() => {});
+            });
+            if (cancelled) dispose(); else unlisten = dispose;
+        }).catch(() => {});
+        return () => {
+            cancelled = true;
+            safeUnlisten(unlisten);
+        };
+    }, []);
 
     // リロードイベントリスナー
     useEffect(() => {
@@ -1329,7 +1458,10 @@ const StickyNote = memo(function StickyNote() {
                 });
             } catch (err) {
                 console.error('[Tag] Failed to add tag:', err);
-                alert(err instanceof Error ? err.message : 'タグの追加に失敗しました。');
+                console.error('[Tag] Failed to add tag detail:', err);
+                alert(language === 'en'
+                    ? 'Could not add the tag. Please try again.'
+                    : (err instanceof Error ? err.message : 'タグの追加に失敗しました。'));
             }
         }
         setShowTagModal(false);
@@ -1357,7 +1489,9 @@ const StickyNote = memo(function StickyNote() {
             }
         } catch (err) {
             console.error('[Tag] Failed to delete tag globally:', err);
-            alert(`タグの全件削除に失敗しました。\n${err}`);
+            alert(language === 'en'
+                ? 'Could not delete the tag. Please try again.'
+                : `タグの全件削除に失敗しました。\n${err}`);
         }
         setTagToDelete(null); // モーダルを閉じてリセット
     };
@@ -1786,9 +1920,11 @@ const StickyNote = memo(function StickyNote() {
         } catch (e) {
             isDeletingRef.current = false;
             console.error(`Failed to return ${isRecipeNote ? 'recipe' : isQaNote ? 'QA' : 'term'}:`, e);
-            alert(`${crystalNoteLabel}を返せませんでした\n${e}`);
+            alert(language === 'en'
+                ? `Could not close the ${crystalNoteLabel.toLowerCase()}. Please try again.`
+                : `${crystalNoteLabel}を返せませんでした\n${e}`);
         }
-    }, [content, crystalNoteLabel, isCrystalNote, isQaNote, isRecipeNote, selectedFile?.path, setContent, setEditBody, setRawFrontmatter]);
+    }, [content, crystalNoteLabel, isCrystalNote, isQaNote, isRecipeNote, language, selectedFile?.path, setContent, setEditBody, setRawFrontmatter]);
 
     const handleOpenTagFolder = useCallback(async (tag: string) => {
         try {
@@ -1915,7 +2051,7 @@ const StickyNote = memo(function StickyNote() {
     return (
         <div
             ref={shellRef}
-            className="noteShell h-screen overflow-hidden flex flex-col"
+            className="noteShell group h-screen overflow-hidden flex flex-col"
             style={{
                 backgroundColor: noteBackgroundColor,
                 cursor: shellCursor,
@@ -1995,7 +2131,9 @@ const StickyNote = memo(function StickyNote() {
                     }}
                     onToggleMinimize={handleToggleMinimizeWithSave}
                     onTogglePin={handleTogglePin}
-                    archiveLabel={isCrystalNote ? `${crystalNoteLabel}を閉じる` : archiveButtonLabel}
+                    archiveLabel={isCrystalNote
+                        ? (language === 'en' ? `Close ${crystalNoteLabel}` : `${crystalNoteLabel}を閉じる`)
+                        : archiveButtonLabel}
                     onArchive={(e) => {
                         if (isCrystalNote) {
                             handleReturnRecipe();
@@ -2149,6 +2287,7 @@ const StickyNote = memo(function StickyNote() {
                                         setSavePending(true);
                                     }}
                                     filePath={selectedFile?.path || ''}
+                                    language={language}
                                     onKeyDown={(e) => {
                                         if (!isEditing) return;
                                         if (e.key === 'Escape') handleEditBlur();
@@ -2200,6 +2339,7 @@ const StickyNote = memo(function StickyNote() {
                             content={content}
                             backgroundColor={noteBackgroundColor}
                             fontSize={noteFontSize}
+                            language={language}
                             isDraggableArea={isDraggableArea}
                             recipeMode={isCrystalNote}
                             onCheckboxToggle={handleToggleCheckbox}
@@ -2364,6 +2504,7 @@ const StickyNote = memo(function StickyNote() {
                 <ImageAnnotationModal
                     absolutePath={annotationTarget.path}
                     displayUrl={annotationTarget.url}
+                    language={language}
                     onSaved={() => {
                         setAnnotationTarget(null);
                         setImageVersion(v => v + 1);
@@ -2433,6 +2574,7 @@ const StickyNote = memo(function StickyNote() {
                 message={t('tag.deleteMessage').replace('{tag}', tagToDelete ?? '')}
                 onConfirm={executeTagDelete}
                 onCancel={() => setTagToDelete(null)}
+                language={language}
             />
 
             {/* アラームダイアログ */}
@@ -2444,12 +2586,14 @@ const StickyNote = memo(function StickyNote() {
                 onClear={handleClearAlarm}
                 onCancel={() => setShowAlarmDialog(false)}
                 t={t}
+                language={language}
             />
 
             {/* 自動保存失敗トースト */}
             <SaveErrorToast
                 isVisible={showSaveError}
                 onDismiss={() => setShowSaveError(false)}
+                language={language}
             />
 
             {/* iPhone送信トースト */}

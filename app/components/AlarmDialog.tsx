@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TranslationKey } from '@/lib/i18n';
+import { Language, TranslationKey } from '@/lib/i18n';
 import { formatAlarmDateTime } from '@/app/utils/alarmDateTime';
 
 type AlarmDialogProps = {
@@ -12,6 +12,7 @@ type AlarmDialogProps = {
     onClear: () => void;
     onCancel: () => void;
     t: (key: TranslationKey) => string;
+    language: Language;
 };
 
 const RELATIVE_BUTTONS = [
@@ -34,6 +35,7 @@ export default function AlarmDialog({
     onClear,
     onCancel,
     t,
+    language,
 }: AlarmDialogProps) {
     const [activeTab, setActiveTab] = useState<'relative' | 'absolute'>('relative');
     const [soundEnabled, setSoundEnabled] = useState(existingAlarmSound !== false);
@@ -71,7 +73,7 @@ export default function AlarmDialog({
     const formatExisting = (iso: string) => {
         try {
             const d = new Date(iso);
-            return d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return d.toLocaleString(language === 'en' ? 'en-US' : 'ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
         } catch {
             return iso;
         }
@@ -174,7 +176,7 @@ export default function AlarmDialog({
                                 style={relBtnStyle}
                                 onClick={() => handleRelativeClick(btn.ms)}
                             >
-                                {btn.label}
+                                {language === 'en' ? btn.en : btn.label}
                             </button>
                         ))}
                     </div>
@@ -197,7 +199,7 @@ export default function AlarmDialog({
                                     backgroundColor: '#fff',
                                 }}
                             >
-                                {formatAlarmDateTime(datetimeValue)}
+                                {formatAlarmDateTime(datetimeValue, language)}
                             </div>
                             <span
                                 aria-hidden="true"
@@ -214,7 +216,8 @@ export default function AlarmDialog({
                             </span>
                             <input
                                 type="datetime-local"
-                                aria-label={formatAlarmDateTime(datetimeValue)}
+                                lang={language === 'en' ? 'en-US' : 'ja-JP'}
+                                aria-label={formatAlarmDateTime(datetimeValue, language)}
                                 value={datetimeValue}
                                 onChange={(e) => setDatetimeValue(e.target.value)}
                                 style={{

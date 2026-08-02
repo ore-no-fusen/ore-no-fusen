@@ -2,7 +2,10 @@
 // next-pwa custom worker — push / notificationclick を sw.js に注入
 // customWorkerSrc: 'worker' により next-pwa が sw.js に merge する
 
-const SW_VERSION = '5.0.0-pwa.1';
+import { resolvePushTitles } from './notification-title';
+import { closeClickedNotification, focusViewerOrOpenTarget } from './notification-click';
+
+const SW_VERSION = '5.0.0-pwa.7';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -45,52 +48,68 @@ function swLogAsync(msg) {
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
-  const title = data.title || '俺の付箋';
-  const bodyPush = (data.body || '').replace(/!\[.*?\]\(.*?\)/g, '').trim();
-  const bodyRich = data.body_rich || bodyPush;
   const id = data.id ?? 'unknown';
-  swLog(`push受信 id=${id} title=${title}`);
+  swLog(`push受信 id=${id} drive_fetch=${data.fetch_from_drive === true}`);
 
-  // body_rich はPushペイロードに含まれている（Driveフェッチ不要）
-  // 画像ファイル（fusen_img_*）のみDriveからダウンロードして IndexedDB に保存する
-  const flow = loadTokenFromMeta().then((token) => {
+  const flow = loadTokenFromMeta().then(async (token) => {
     swLog(`token=${token ? 'あり' : 'なし'}`);
-    if (!token) return saveToIndexedDB(id, title, bodyRich, []);
-    const expectedImages = extractImageFileNames(bodyRich);
-    return downloadImagesFromDrive(token, bodyRich).then((images) => {
-      swLog(`画像=${images.length}/${expectedImages.length}件`);
-      return saveToIndexedDB(id, title, bodyRich, images).then(() => {
+    let resolvedData = data;
+    let driveFetchSucceeded = data.fetch_from_drive !== true;
+
+    if (data.fetch_from_drive === true && token) {
+      const driveNote = await downloadNoteFromDrive(token, id);
+      if (driveNote) {
+        resolvedData = { ...data, ...driveNote };
+        driveFetchSucceeded = true;
+        swLog(`Drive本文取得完了 id=${id}`);
+      } else {
+        swLog(`Drive本文取得失敗 id=${id}`);
+      }
+    }
+
+    const { noteTitle, notificationTitle } = resolvePushTitles(
+      resolvedData.title,
+      self.navigator?.language
+    );
+    const bodyRich = resolvedData.body_rich || resolvedData.body || '';
+    const bodyPush = bodyRich.replace(/!\[.*?\]\(.*?\)/g, '').trim();
+
+    if (!token) {
+      await saveToIndexedDB(id, noteTitle, bodyRich, []);
+    } else {
+      try {
+        const expectedImages = extractImageFileNames(bodyRich);
+        const images = await downloadImagesFromDrive(token, bodyRich);
+        swLog(`画像=${images.length}/${expectedImages.length}件`);
+        await saveToIndexedDB(id, noteTitle, bodyRich, images);
         swLog('IndexedDB保存完了');
-        if (images.length === expectedImages.length) {
+        if (driveFetchSucceeded && images.length === expectedImages.length) {
           deleteImagesFromDrive(token, images);
-          return removeIdFromNotesToIphone(token, id);
+          await removeIdFromNotesToIphone(token, id);
+        } else {
+          swLog('本文または画像不足のためDriveキューを保持');
         }
-        swLog('画像不足のためDriveキューを保持');
-      });
-    }).catch((e) => {
-      swLog(`画像ダウンロード失敗: ${e}`);
-      return saveToIndexedDB(id, title, bodyRich, []);
-    });
-  }).catch((e) => {
-    swLog(`token取得失敗: ${e}`);
-    return saveToIndexedDB(id, title, bodyRich, []);
-  }).then(() => {
+      } catch (e) {
+        swLog(`画像ダウンロード失敗: ${e}`);
+        await saveToIndexedDB(id, noteTitle, bodyRich, []);
+      }
+    }
+
     // iOS で notificationclick が発火しない場合の保険: 次回ページ起動時に自動表示
-    return savePendingOpen(id);
-  }).then(() => {
+    await savePendingOpen(id);
     // 同じノートの既存通知を閉じてから表示（重複防止）
-    return self.registration.getNotifications().then((ns) => {
-      ns.forEach((n) => { if (n.data?.id === id) n.close(); });
-    });
-  }).then(() => {
-    swLog('通知表示');
-    return self.registration.showNotification(title, {
+    const notifications = await self.registration.getNotifications();
+    notifications.forEach((n) => { if (n.data?.id === id) n.close(); });
+    swLog(`[NAV] event=notification_shown id=${id}`);
+    return self.registration.showNotification(notificationTitle, {
       body: bodyPush,
       tag: 'fusen-' + id,
-      data: { id, title, body: bodyPush },
+      data: { id, title: notificationTitle, body: bodyPush },
       icon: '/icon-192.png',
       badge: '/icon-192.png',
     });
+  }).catch((e) => {
+    swLog(`push処理失敗: ${e}`);
   });
 
   event.waitUntil(flow);
@@ -105,7 +124,9 @@ function savePendingOpen(id) {
       req.onsuccess = () => {
         const tx = req.result.transaction('meta', 'readwrite');
         tx.objectStore('meta').put({ id, t: Date.now() }, 'pending_open');
-        tx.oncomplete = () => { swLogAsync(`pending_open保存 id=${id}`).then(resolve); };
+        tx.oncomplete = () => {
+          swLogAsync(`[NAV] event=pending_saved id=${id}`).then(resolve);
+        };
         tx.onerror = () => resolve();
       };
       req.onerror = () => resolve();
@@ -134,6 +155,27 @@ function getAppFolderId(token) {
     `https://www.googleapis.com/drive/v3/files?q=name='ore-no-fusen'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false`,
     { headers: { Authorization: `Bearer ${token}` } }
   ).then((r) => r.json()).then((d) => d.files?.[0]?.id ?? null).catch(() => null);
+}
+
+/** notes_to_iphone.json から指定IDの長文ノートを取得する */
+function downloadNoteFromDrive(token, id) {
+  return getAppFolderId(token).then((folderId) => {
+    const folderQuery = folderId ? `+and+'${folderId}'+in+parents` : '';
+    return fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='notes_to_iphone.json'${folderQuery}+and+trashed=false`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).then((r) => r.json()).then((d) => {
+      const fileId = d.files?.[0]?.id;
+      if (!fileId) return null;
+      return fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then((r) => r.json()).then((json) => {
+        const items = Array.isArray(json.items) ? json.items : [];
+        return items.find((item) => item.id === id) ?? null;
+      });
+    });
+  }).catch(() => null);
 }
 
 function extractImageFileNames(body) {
@@ -300,15 +342,13 @@ function checkIsLocked(id) {
 }
 
 self.addEventListener('notificationclick', (event) => {
-  const { id, title, body } = event.notification.data || {};
-  event.notification.close();
-  const targetUrl = self.location.origin + '/viewer?note=' + (id ?? 'unknown');
+  const { id, title, body } = closeClickedNotification(event.notification);
   event.waitUntil(
     Promise.all([
-      swLogAsync(`notificationclick id=${id}`),
+      swLogAsync(`[NAV] event=notification_click id=${id}`),
       // 🔔ON（locked=true）なら再表示、🔔OFF（locked=false）なら再表示しない
       checkIsLocked(id).then((isLocked) => {
-        swLogAsync(`notificationclick locked=${isLocked}`);
+        swLogAsync(`[NAV] event=notification_lock_checked id=${id} locked=${isLocked}`);
         if (!isLocked) return;
         return self.registration.showNotification(title, {
           body,
@@ -318,19 +358,17 @@ self.addEventListener('notificationclick', (event) => {
           badge: '/icon-192.png',
         });
       }),
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-        return swLogAsync(`clients=${clientList.length}件`).then(() => {
-          for (const client of clientList) {
-            if (client.url.includes('/viewer') && 'focus' in client) {
-              swLogAsync(`postMessage OPEN_NOTE id=${id}`);
-              client.postMessage({ type: 'OPEN_NOTE', id });
-              return client.focus();
-            }
-          }
-          swLogAsync(`openWindow targetUrl=${targetUrl}`);
-          return clients.openWindow(targetUrl);
-        });
-      }),
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) =>
+        swLogAsync(`[NAV] event=client_count id=${id} count=${clientList.length}`).then(() =>
+          focusViewerOrOpenTarget({
+            clientList,
+            id,
+            origin: self.location.origin,
+            openWindow: (url) => clients.openWindow(url),
+            log: (message) => { swLogAsync(message); },
+          })
+        )
+      ),
     ])
   );
 });

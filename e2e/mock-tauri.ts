@@ -74,6 +74,7 @@ updated: 2026-01-31
                         font_size: 12,
                         sound_enabled: true,
                         iphone_send_enabled: false,
+                        analytics_consent: 'denied',
                     };
 
                 // 設定保存
@@ -252,6 +253,8 @@ updated: 2026-01-31
             const handlers = listeners.get(event) || [];
             handlers.forEach(h => h({ payload }));
         };
+        (window as any).__MOCK_HAS_LISTENER__ = (event: string) =>
+            (listeners.get(event)?.length ?? 0) > 0;
 
         // Window Mock
         const currentWindowMock = {
