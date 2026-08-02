@@ -16,10 +16,13 @@ describe('release verification gate', () => {
     expect(verifyJob).toBeGreaterThan(-1);
     expect(prepareJob).toBeGreaterThan(verifyJob);
     expect(verifySection).toContain('run: npm ci');
+    expect(verifySection).toContain('run: npx playwright install chromium');
     expect(verifySection).toContain('run: npx tsc --noEmit --pretty false');
     expect(verifySection).toContain('run: npm test');
     expect(verifySection).toContain('run: npm run build:tauri');
     expect(verifySection).toContain('run: cargo test --locked --lib');
+    expect(verifySection.indexOf('run: npx playwright install chromium'))
+      .toBeLessThan(verifySection.indexOf('run: npm test'));
   });
 
   it('uses the Tauri build wrapper that always restores server-only API routes', () => {

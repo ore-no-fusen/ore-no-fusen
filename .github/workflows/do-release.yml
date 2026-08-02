@@ -45,6 +45,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Install Chromium for browser security tests
+        run: npx playwright install chromium
+
       - name: Verify TypeScript
         run: npx tsc --noEmit --pretty false
 
