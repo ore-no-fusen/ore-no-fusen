@@ -22,6 +22,7 @@ export interface ResizableImageProps {
     onAnnotationClick?: (absolutePath: string) => void;
     markdownFallback?: string;
     fallbackSrcs?: string[];
+    cacheKey?: number;
 }
 
 const EMPTY_FALLBACK_SRCS: string[] = [];
@@ -48,7 +49,7 @@ function initialDisplaySrc(src: string): string {
         : src;
 }
 
-export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick, markdownFallback, fallbackSrcs = EMPTY_FALLBACK_SRCS }: ResizableImageProps) {
+export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick, markdownFallback, fallbackSrcs = EMPTY_FALLBACK_SRCS, cacheKey = 0 }: ResizableImageProps) {
     const [currentWidth, setCurrentWidth] = useState<number | undefined>(undefined);
     const [isResizing, setIsResizing] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
@@ -85,7 +86,11 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
             if (isLocalPath) {
                 try {
                     const { convertFileSrc } = await import('@tauri-apps/api/core');
-                    const assetUrl = convertFileSrc(activeSrc);
+                    const convertedUrl = convertFileSrc(activeSrc);
+                    const separator = convertedUrl.includes('?') ? '&' : '?';
+                    const assetUrl = cacheKey > 0
+                        ? `${convertedUrl}${separator}v=${cacheKey}`
+                        : convertedUrl;
                     if (active) {
                         rememberConvertedFileSrc(activeSrc, assetUrl);
                         setDisplaySrc(prev => prev !== assetUrl ? assetUrl : prev);
@@ -99,7 +104,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
         };
         loadSrc();
         return () => { active = false; };
-    }, [activeSrc]);
+    }, [activeSrc, cacheKey]);
 
     const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
         const img = e.currentTarget;

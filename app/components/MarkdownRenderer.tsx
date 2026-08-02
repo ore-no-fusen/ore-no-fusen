@@ -354,6 +354,7 @@ export default function MarkdownRenderer({
                         baseOffset={baseOffset + index}
                         markdownFallback={fullMatch}
                         fallbackSrcs={fallbackSrcs}
+                        cacheKey={imageVersion}
                         onResizeEnd={(s) => onImageResize(s, baseOffset + index, fullMatch)}
                         contentReadOnly={false}
                         onAnnotationClick={onAnnotationClick}

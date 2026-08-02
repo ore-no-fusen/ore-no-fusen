@@ -537,7 +537,17 @@ function OrchestratorContent() {
         console.log('[CREATE] duplicate newNote:', newNote.meta.path);
         void playCreateSound();
         setFiles(prev => [...prev, newNote.meta]);
-        await openNoteWindow(newNote.meta.path, undefined, false);
+        const duplicatePosition = sourceMeta ? (() => {
+          const scale = sourceMeta.scale || 1;
+          const sourceX = sourceMeta.physX / scale;
+          const sourceY = sourceMeta.physY / scale;
+          const sourceHeight = (sourceMeta.physHeight ?? Math.round(300 * scale)) / scale;
+          const leftX = sourceX - 410;
+          return leftX >= 0
+            ? { x: leftX, y: sourceY, width: 400, height: 300 }
+            : { x: sourceX, y: sourceY + sourceHeight + 10, width: 400, height: 300 };
+        })() : undefined;
+        await openNoteWindow(newNote.meta.path, duplicatePosition, false);
         return;
       }
 

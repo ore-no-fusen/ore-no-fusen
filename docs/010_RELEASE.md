@@ -1,6 +1,6 @@
 # リリース手順
 
-通常のアプリ開発とMicrosoft Store公開は、次の3ステップだけで運用する。
+通常のアプリ開発とMicrosoft Store公開は、次の4ステップだけで運用する。**通常公開の前に、パッケージフライトでStore署名済みMSIXを最終確認する。**
 
 GitHub Release、Gitタグ、Winget公開、GitHub ActionsからのMicrosoft Store自動提出は行わない。旧利用者の移行のため、GitHub Release `v5.0.0` の資産だけは保持する。
 
@@ -8,14 +8,17 @@ GitHub Release、Gitタグ、Winget公開、GitHub ActionsからのMicrosoft Sto
 flowchart LR
     A["STEP 1<br/>APL確認<br/><br/>PCで修正<br/>テスト・実機確認<br/>developへpush"]
     B["STEP 2<br/>版数を付ける<br/><br/>版数を1回入力<br/>自動検証<br/>MSIX artifact作成"]
-    C["STEP 3<br/>手動Storeリリース<br/><br/>artifactを取得<br/>Partner Centerへ提出<br/>Store公開後に実機確認"]
+    C["STEP 3<br/>パッケージフライト<br/><br/>限定テスターへ配信<br/>Store署名済みMSIXを最終確認"]
+    D["STEP 4<br/>手動Storeリリース<br/><br/>同じMSIXを通常申請<br/>Store公開後に確認"]
 
     A -->|リリースすると決めたら| B
     B -->|artifact作成成功| C
+    C -->|最終確認合格| D
 
     style A fill:#e8f4ff,stroke:#1976d2,color:#111
     style B fill:#fff8e1,stroke:#f57c00,color:#111
-    style C fill:#e8f5e9,stroke:#388e3c,color:#111
+    style C fill:#f3e5f5,stroke:#7b1fa2,color:#111
+    style D fill:#e8f5e9,stroke:#388e3c,color:#111
 ```
 
 ## STEP 1：アプリ確認
@@ -42,7 +45,7 @@ flowchart LR
 
 ### アプリ本体に影響しない変更
 
-LP、README、`docs/`だけの変更も、まず`develop`で確認する。確認後は **Do Non-App Release** で`main`へ反映する。StoreリリースのSTEP 2・3は不要である。
+LP、README、`docs/`だけの変更も、まず`develop`で確認する。確認後は **Do Non-App Release** で`main`へ反映する。StoreリリースのSTEP 2〜4は不要である。
 
 ## STEP 2：版数を付けてStore提出用ファイルを作る
 
@@ -69,12 +72,23 @@ STEP 1の確認が終わり、正式リリースすると決めた時だけ、Gi
 | `src-tauri/Cargo.toml` / `src-tauri/Cargo.lock` | `X.Y.Z` |
 | `packaging/msix/AppxManifest.xml` | `X.Y.Z.0` |
 
-## STEP 3：Microsoft Storeで手動リリース
+## STEP 3：パッケージフライトで最終確認
 
 1. STEP 2のrunから`store-msix` artifactをダウンロードする。
-2. Microsoft Partner Centerで新しい申請を作り、`ore-no-fusen.msix`をアップロードする。
-3. 内容を確認して認定へ提出する。
-4. Store公開後、Storeからインストールまたは更新し、起動・既存データ・Store自動更新を実機確認する。
+2. Partner Centerで事前登録したテスターグループを対象に、パッケージフライトを作成する。
+3. `ore-no-fusen.msix`をフライトへアップロードし、認定へ提出する。
+4. フライトが利用可能になったら、登録済みMicrosoftアカウントでMicrosoft Storeへサインインする。
+5. Storeからフライト版をインストールまたは更新し、実際のStore署名済みMSIXを確認する。
+6. 起動、既存付箋・設定、画像描き込み保存、画像付き付箋の複製、更新を実機確認する。
+
+1項目でも失敗した場合は通常公開しない。STEP 1へ戻って修正し、新しい版番号でSTEP 2からやり直す。
+
+## STEP 4：Microsoft Storeで手動リリース
+
+1. STEP 3で合格したものと同じ版・同じ`ore-no-fusen.msix`を通常の製品申請へアップロードする。
+2. 説明、画像、プライバシー、年齢区分、公開設定を確認して認定へ提出する。
+3. 認定後、公開を開始する。
+4. Store公開後、Storeからインストールまたは更新し、バージョンと起動を確認する。
 
 Partner Centerでの画面操作と確認項目は、[store-submission.md](./store-submission.md)を参照する。
 
@@ -105,3 +119,4 @@ GitHub Release `v5.0.0` の`latest.json`、MSI、NSIS、署名ファイルは、
 | 16 | 26-07-27 | Store手動提出へ切替。タグ・GitHub Release・Winget・自動Store提出を廃止し、5.0.0の移行用資産だけを保持した。 |
 | 17 | 26-07-28 | 事前検証・版確定・MSIX作成を、版番号を一度だけ入力する単一ワークフローへ統合した。 |
 | 18 | 26-07-28 | 開発・Store公開の運用をSTEP 1〜3へ整理し、旧手順と未実装案を削除した。 |
+| 19 | 26-08-03 | 通常公開前の必須ゲートとしてパッケージフライトを追加。Store署名済みMSIXで画像保存・画像付き複製・既存データ・更新を最終確認してから公開する4ステップ運用へ変更した。 |

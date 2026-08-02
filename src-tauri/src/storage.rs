@@ -1042,6 +1042,26 @@ mod tests {
     }
 
     #[test]
+    fn copy_associated_assets_copies_images_for_a_duplicated_note() {
+        let source = tempdir().unwrap();
+        let destination = tempdir().unwrap();
+        fs::create_dir_all(source.path().join("assets")).unwrap();
+        fs::write(
+            source.path().join("note.md"),
+            "![screen](assets/screen.png)",
+        )
+        .unwrap();
+        fs::write(source.path().join("assets/screen.png"), "image").unwrap();
+
+        copy_associated_assets(&source.path().join("note.md"), destination.path()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.path().join("assets/screen.png")).unwrap(),
+            "image"
+        );
+    }
+
+    #[test]
     fn backup_excludes_trash_contents_by_default_option_and_keeps_empty_folder() {
         let source = tempdir().unwrap();
         let destination = tempdir().unwrap();
