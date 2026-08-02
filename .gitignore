@@ -96,3 +96,6 @@ wiki-temp/
 
 # Local Rust verification build output
 /target-arrange-verify/
+
+# Terminal Paste Image folder
+/.cp-images

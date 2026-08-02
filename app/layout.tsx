@@ -69,7 +69,7 @@ export const metadata: Metadata = {
   creator: "Ore-no-Fusen",
   publisher: "Ore-no-Fusen",
   category: "productivity",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.webmanifest?v=20260802",
   openGraph: {
     type: "website",
     url: SITE_URL,
@@ -117,9 +117,9 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
-        <link rel="icon" href="/favicon.ico?v=20260617-s" />
-        <link rel="shortcut icon" href="/favicon.ico?v=20260617-s" />
-        <link rel="apple-touch-icon" href="/icon-192.png?v=20260617-s" />
+        <link rel="icon" href="/favicon.ico?v=20260802" />
+        <link rel="shortcut icon" href="/favicon.ico?v=20260802" />
+        <link rel="apple-touch-icon" href="/icon-192.png?v=20260802" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
