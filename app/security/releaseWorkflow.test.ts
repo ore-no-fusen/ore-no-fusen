@@ -10,19 +10,24 @@ const workflow = fs.readFileSync(
 describe('release verification gate', () => {
   it('runs all required checks before main is changed', () => {
     const verifyJob = workflow.indexOf('verify-release:');
+    const verifyRustJob = workflow.indexOf('verify-rust:');
     const prepareJob = workflow.indexOf('prepare-store-release:');
-    const verifySection = workflow.slice(verifyJob, prepareJob);
+    const verifySection = workflow.slice(verifyJob, verifyRustJob);
+    const verifyRustSection = workflow.slice(verifyRustJob, prepareJob);
 
     expect(verifyJob).toBeGreaterThan(-1);
-    expect(prepareJob).toBeGreaterThan(verifyJob);
+    expect(verifyRustJob).toBeGreaterThan(verifyJob);
+    expect(prepareJob).toBeGreaterThan(verifyRustJob);
     expect(verifySection).toContain('run: npm ci');
-    expect(verifySection).toContain('run: npx playwright install chromium');
     expect(verifySection).toContain('run: npx tsc --noEmit --pretty false');
     expect(verifySection).toContain('run: npm test');
     expect(verifySection).toContain('run: npm run build:tauri');
-    expect(verifySection).toContain('run: cargo test --locked --lib');
-    expect(verifySection.indexOf('run: npx playwright install chromium'))
-      .toBeLessThan(verifySection.indexOf('run: npm test'));
+    expect(verifySection).not.toContain('playwright install chromium');
+    expect(verifyRustSection).toContain('run: cargo test --locked --release --lib');
+    expect(verifyRustSection).toContain('${{ github.run_id }}');
+    expect(verifyRustSection).toContain('src-tauri/target/release/');
+    expect(verifyRustSection).not.toContain('cargo check');
+    expect(workflow).toContain('needs: [verify-release, verify-rust]');
   });
 
   it('uses the Tauri build wrapper that always restores server-only API routes', () => {

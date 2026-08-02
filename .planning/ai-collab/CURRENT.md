@@ -1318,3 +1318,12 @@
 - PC実機確認: `npm run tauri dev` で、画像へ線を描いて保存後すぐ反映されること、画像付き付箋を複製して画像と本文を含む別付箋が隣に開くことを確認済み。
 - develop確認: コミット`db8d570`をpush済み。GitHub Actions run `30765500566`とVercel Previewが成功。
 - 今後の正式手順: 通常公開前にPartner CenterのパッケージフライトでStore署名済みMSIXを限定配信し、必須実機確認に合格してから同じ版・同じMSIXを通常申請する。
+## 2026-08-03 Store MSIX Action高速化
+
+- 5.1.1 run `30765956825` は全体22分21秒。Rustのdebug test約6分27秒と、その後のdev `cargo check`約2分29秒で同じ依存関係を重複コンパイルしていた。
+- Node系検証とRust releaseテストを別Windows runnerへ分離し、並列実行する。
+- Rustテストをrelease profileへ統一し、同一run専用cache keyで`target/release`を後続のMSIXビルドへ引き渡す。重複する`cargo check`は削除した。
+- 実際にはブラウザテストを実行していなかったChromiumインストールを削除した。TypeScript、Vitest、Next/Tauri frontend build、Rust unit test、MSIX build/validationは維持する。
+- 通常の目標はAction開始からMSIX artifact作成まで10分以内。次回runで各step時間とcache hitを実測し、未達なら追加改善する。
+- 5.1.1は公開中不具合の緊急修正としてパッケージフライトを省略した例外。今後は緊急時もフライトを省略しない。
+- 検証: workflow YAML parse成功、VitePress build成功、`git diff --check`成功。3 Codex並行レビューで構文、キャッシュ安全性、手順整合性を確認した。
