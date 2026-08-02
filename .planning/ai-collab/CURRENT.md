@@ -1316,3 +1316,5 @@
 - 対応設計: `docs-v2/002_PC.md` §6.2、表6.3-1、改版2.90。
 - 検証: ResizableImage Vitest 6件、TypeScript型検査、Rust関連画像コピーテスト1件に成功。`git diff --check` 成功。
 - PC実機確認: `npm run tauri dev` で、画像へ線を描いて保存後すぐ反映されること、画像付き付箋を複製して画像と本文を含む別付箋が隣に開くことを確認済み。
+- develop確認: コミット`db8d570`をpush済み。GitHub Actions run `30765500566`とVercel Previewが成功。
+- 今後の正式手順: 通常公開前にPartner CenterのパッケージフライトでStore署名済みMSIXを限定配信し、必須実機確認に合格してから同じ版・同じMSIXを通常申請する。
