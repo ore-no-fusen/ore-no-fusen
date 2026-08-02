@@ -21,4 +21,18 @@ describe('release verification gate', () => {
     expect(verifySection).toContain('run: npm run build:tauri');
     expect(verifySection).toContain('run: cargo test --locked --lib');
   });
+
+  it('uses the Tauri build wrapper that always restores server-only API routes', () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'));
+    const buildScript = fs.readFileSync(
+      path.resolve(process.cwd(), 'scripts/build-tauri.mjs'),
+      'utf8',
+    );
+
+    expect(packageJson.scripts['build:tauri']).toBe('node scripts/build-tauri.mjs');
+    expect(buildScript).toContain("entry.name === 'route.ts'");
+    expect(buildScript).toContain('renameSync(routeFile, parkedFile)');
+    expect(buildScript).toContain('finally');
+    expect(buildScript).toContain('renameSync(parkedFile, routeFile)');
+  });
 });
