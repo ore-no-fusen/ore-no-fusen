@@ -80,6 +80,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
     useEffect(() => {
         setLoadFailed(false);
         let active = true;
+        let objectUrl: string | null = null;
 
         const loadSrc = async () => {
             const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(activeSrc);
@@ -87,12 +88,17 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                 try {
                     const { convertFileSrc } = await import('@tauri-apps/api/core');
                     const convertedUrl = convertFileSrc(activeSrc);
-                    const separator = convertedUrl.includes('?') ? '&' : '?';
-                    const assetUrl = cacheKey > 0
-                        ? `${convertedUrl}${separator}v=${cacheKey}`
-                        : convertedUrl;
+                    // MSIX の asset protocol はクエリ付きローカル URL を読めない。
+                    // 更新後だけ no-store で読み直し、blob URL にして画像キャッシュを回避する。
+                    let assetUrl = convertedUrl;
+                    if (cacheKey > 0) {
+                        const response = await fetch(convertedUrl, { cache: 'no-store' });
+                        if (!response.ok) throw new Error(`Image reload failed: ${response.status}`);
+                        objectUrl = URL.createObjectURL(await response.blob());
+                        assetUrl = objectUrl;
+                    }
                     if (active) {
-                        rememberConvertedFileSrc(activeSrc, assetUrl);
+                        if (cacheKey === 0) rememberConvertedFileSrc(activeSrc, assetUrl);
                         setDisplaySrc(prev => prev !== assetUrl ? assetUrl : prev);
                     }
                 } catch (e) {
@@ -103,7 +109,10 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
             }
         };
         loadSrc();
-        return () => { active = false; };
+        return () => {
+            active = false;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
     }, [activeSrc, cacheKey]);
 
     const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
