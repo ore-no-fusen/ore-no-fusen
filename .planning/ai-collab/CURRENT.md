@@ -1327,3 +1327,4 @@
 - 通常の目標はAction開始からMSIX artifact作成まで10分以内。次回runで各step時間とcache hitを実測し、未達なら追加改善する。
 - 5.1.1は公開中不具合の緊急修正としてパッケージフライトを省略した例外。今後は緊急時もフライトを省略しない。
 - 検証: workflow YAML parse成功、VitePress build成功、`git diff --check`成功。3 Codex並行レビューで構文、キャッシュ安全性、手順整合性を確認した。
+- 追加改善: 通常push CIもfrontend buildとRust testを別runnerへ分けて並列化し、Rust debug targetをキャッシュする。ローカルpre-commitもTypeScriptとVitestを並列実行し、両方の終了コードを必須判定する。

@@ -5,11 +5,13 @@ on:
     branches: [develop, main]
   pull_request:
 
+env:
+  GDRIVE_CLIENT_ID: ci-dummy
+  GDRIVE_CLIENT_SECRET: ci-dummy
+
 jobs:
-  rust:
+  frontend:
     runs-on: windows-latest
-    # Do Release の bot push は Release workflow が本命。
-    # main / develop の Test は並走してリリース処理の邪魔になるため走らせない。
     if: >-
       ${{
         !(
@@ -20,20 +22,40 @@ jobs:
           )
         )
       }}
-    # gdrive.rs は env!() で GDRIVE_* をコンパイル時に埋め込む。
-    # ローカルは ../.env.local（build.rs 経由）で供給されるが CI には無いため、
-    # ユニットテスト用のダミー値を渡してコンパイルを通す（Drive へ実アクセスしない）。
-    env:
-      GDRIVE_CLIENT_ID: ci-dummy
-      GDRIVE_CLIENT_SECRET: ci-dummy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
       - run: npm ci
       - run: npm run build:tauri
+
+  rust:
+    runs-on: windows-latest
+    if: >-
+      ${{
+        !(
+          github.event_name == 'push' &&
+          (
+            github.actor == 'github-actions[bot]' ||
+            github.actor == 'orenofusen-winget-releaser[bot]'
+          )
+        )
+      }}
+    steps:
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/debug/
+          key: ${{ runner.os }}-test-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-test-cargo-
       - name: cargo test
         working-directory: src-tauri
-        run: cargo test --lib
+        run: cargo test --locked --lib
