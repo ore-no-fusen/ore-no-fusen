@@ -2,6 +2,15 @@
 
 type AnalyticsParams = Record<string, string | number | boolean | undefined>;
 
+const DESKTOP_ALLOWED_PARAMS = new Set([
+  'event_category',
+  'app_version',
+  'distribution',
+  'creation_path',
+  'error_category',
+  'donation_source',
+]);
+
 declare global {
   interface Window {
     gtag?: (command: 'event', eventName: string, params?: AnalyticsParams) => void;
@@ -10,7 +19,12 @@ declare global {
 
 export function trackEvent(eventName: string, params: AnalyticsParams = {}) {
   if (typeof window === 'undefined' || typeof window.gtag !== 'function') return;
-  window.gtag('event', eventName, params);
+  const isTauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
+  if (isTauri && (window as Window & { __FUSEN_ANALYTICS_GRANTED__?: boolean }).__FUSEN_ANALYTICS_GRANTED__ !== true) return;
+  const safeParams = isTauri
+    ? Object.fromEntries(Object.entries(params).filter(([key]) => DESKTOP_ALLOWED_PARAMS.has(key)))
+    : params;
+  window.gtag('event', eventName, safeParams);
 }
 
 export function trackDonationEvent(eventName: string, params: AnalyticsParams = {}) {

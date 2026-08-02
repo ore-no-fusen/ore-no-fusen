@@ -9,12 +9,12 @@
  */
 
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";   // ← 追加
 import "./shadcn.css";
 import "./globals.css";
 import RegisterPWA from "./RegisterPWA";
 import { NOTE_COLORS } from './utils/noteAppearance';
 import { Analytics } from "@vercel/analytics/next";
+import AnalyticsLoader from "./components/AnalyticsLoader";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
@@ -149,21 +149,7 @@ export default function RootLayout({
         <RegisterPWA />
         {children}
 
-        {/* GA4 */}
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-MGPKF0MQH4"
-          strategy="afterInteractive"
-        />
-        <Script id="ga4" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-MGPKF0MQH4', {
-              send_page_view: !new URLSearchParams(location.search).has('path')
-            });
-          `}
-        </Script>
+        <AnalyticsLoader isTauriBuild={IS_TAURI_BUILD} />
         {!IS_TAURI_BUILD && <Analytics />} 
       </body>
     </html>

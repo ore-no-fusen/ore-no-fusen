@@ -1352,7 +1352,32 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </div>
                 </SettingsItemCard>
 
-                <SettingsItemCard number={3} title={isEnglish ? 'Desktop Shortcut' : 'デスクトップショートカット'} description={isEnglish ? 'Manage the shortcut used to launch the app from the desktop or an external launcher.' : 'デスクトップや外部ランチャーから起動するためのショートカットを管理します。'} current={desktopShortcutExists ? (isEnglish ? 'Created' : '作成済み') : (isEnglish ? 'Not created' : '未作成')}>
+                <SettingsItemCard
+                    number={3}
+                    title={isEnglish ? 'Anonymous usage analytics' : '匿名の利用状況'}
+                    description={isEnglish ? 'Help improve startup, saving, and usability.' : '起動・保存・操作性の改善に協力します。'}
+                    current={settings.analytics_consent === 'granted' ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}
+                >
+                    <div className="flex items-center justify-between gap-6">
+                        <div className="space-y-1">
+                            <Label className="text-base">{isEnglish ? 'Send anonymous usage events' : '匿名の利用状況を送信する'}</Label>
+                            <p className="text-sm text-muted-foreground">
+                                {isEnglish
+                                    ? 'Note content, images, file names, storage locations, and personal information are never sent.'
+                                    : '付箋の内容、画像、ファイル名、保存場所、個人情報は送信しません。'}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                {isEnglish ? 'Destination: Google Analytics 4. Turning this off stops future events.' : '送信先: Google Analytics 4。オフにすると今後の送信を停止します。'}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.analytics_consent === 'granted'}
+                            onCheckedChange={(checked) => onUpdate('analytics_consent', checked ? 'granted' : 'denied')}
+                        />
+                    </div>
+                </SettingsItemCard>
+
+                <SettingsItemCard number={4} title={isEnglish ? 'Desktop Shortcut' : 'デスクトップショートカット'} description={isEnglish ? 'Manage the shortcut used to launch the app from the desktop or an external launcher.' : 'デスクトップや外部ランチャーから起動するためのショートカットを管理します。'} current={desktopShortcutExists ? (isEnglish ? 'Created' : '作成済み') : (isEnglish ? 'Not created' : '未作成')}>
                     <div className="space-y-3">
                         <div>
                             <Label className="text-base">{startupDistribution === 'msix' ? (isEnglish ? 'Ore No Fusen (Store)' : '俺の付箋（Store版）') : (isEnglish ? 'Ore No Fusen' : '俺の付箋')}</Label>
@@ -1373,7 +1398,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </SettingsItemCard>
 
                 {/* 効果音スイッチ */}
-                <SettingsItemCard number={4} title={t('settings.general.sound')} description={t('settings.general.soundDesc')} current={settings.sound_enabled ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}>
+                <SettingsItemCard number={5} title={t('settings.general.sound')} description={t('settings.general.soundDesc')} current={settings.sound_enabled ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}>
                 <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.general.sound')}</Label>
@@ -1385,7 +1410,7 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                     />
                 </div>
                 </SettingsItemCard>
-                <SettingsItemCard number={5} title={isEnglish ? 'Font Size' : '文字サイズ'} description={isEnglish ? 'Adjust the text size used in sticky notes.' : '付箋本文の文字の大きさを調整します。'} current={`${settings.font_size}px`}>
+                <SettingsItemCard number={6} title={isEnglish ? 'Font Size' : '文字サイズ'} description={isEnglish ? 'Adjust the text size used in sticky notes.' : '付箋本文の文字の大きさを調整します。'} current={`${settings.font_size}px`}>
             <section className="space-y-4">
                 <div>
                     <h3 className="text-lg font-semibold text-slate-900">{t('settings.appearance.title')}</h3>

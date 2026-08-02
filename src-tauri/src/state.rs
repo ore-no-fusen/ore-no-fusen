@@ -122,6 +122,9 @@ pub struct Settings {
     /// MSIX版でデスクトップショートカットの初回確認を表示済みか。
     #[serde(default)]
     pub desktop_shortcut_prompted: bool,
+    /// 匿名利用状況の送信同意。未選択は None、同意は granted、拒否は denied。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analytics_consent: Option<String>,
     #[serde(alias = "fontSize")]
     #[serde(default = "default_font_size")]
     pub font_size: f64,
@@ -196,6 +199,7 @@ impl Default for Settings {
             language: default_language(),
             auto_start: default_auto_start(),
             desktop_shortcut_prompted: false,
+            analytics_consent: None,
             font_size: default_font_size(),
             sound_enabled: default_sound_enabled(),
             iphone_send_enabled: false,

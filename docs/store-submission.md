@@ -36,6 +36,22 @@ winget upgrade --id 9N4MW0V2MVVG --source msstore
 
 Partner Centerで認定状態、取得数、インストール数を確認する。
 
+## 利用状況の確認
+
+全体の入手数、インストール数、利用状況、正常性は Microsoft Partner Center の製品分析で確認する。これは Store 側の集計であり、PC アプリの GA4 同意有無とは分離する。
+
+同意した利用者の操作改善データは Google Analytics 4 で確認する。
+
+| 確認対象 | 画面・イベント |
+|---|---|
+| アプリを利用した全体規模 | Partner Center の取得・利用状況 |
+| 同意後の起動 | GA4 `app_started` |
+| 付箋作成 | GA4 `note_created` |
+| 新規付箋の初回保存 | GA4 `first_note_saved` |
+| 付箋作成失敗 | GA4 `note_create_failed` |
+
+GA4では `event_category`、`app_version`、`distribution`、`creation_path`、`error_category` だけを分析対象とし、本文、タイトル、タグ、ファイル名、保存先、検索語をカスタムディメンションへ登録しない。ユーザー単位データの保持期間は2か月に設定する。
+
 ## 禁止事項
 
 - 未署名MSIXを一般ユーザーへ配布しない。

@@ -24,6 +24,7 @@ import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
+import AnalyticsConsentDialog from './components/AnalyticsConsentDialog';
 import BackupResultDialog from './components/BackupResultDialog';
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
@@ -31,6 +32,7 @@ import { useSettings } from '@/lib/settings-store';
 import ErrorBoundary from './components/ErrorBoundary'; // [NEW] エラー境界
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
+import { trackEvent } from './utils/analytics';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
@@ -172,6 +174,7 @@ function TagSelector({ language = 'ja' }: { language?: Language }) {
 }
 
 function OrchestratorContent() {
+  const { settings, saveSettings, loading: settingsLoading } = useSettings();
   // [DEBUG] Lifecycle
   useEffect(() => {
     return () => console.log('[Orchestrator] Unmounted');
@@ -647,6 +650,7 @@ function OrchestratorContent() {
           perfEnabled,
           perfStartedAt: perfT0 ?? now,
         });
+        trackEvent('note_created', { event_category: 'activation', creation_path: 'pool' });
 
         void playCreateSound();
 
@@ -705,13 +709,16 @@ function OrchestratorContent() {
             return { x, y: clampedY, width: 400, height: 300 };
           })() : undefined, true);
 
+          trackEvent('note_created', { event_category: 'activation', creation_path: 'fallback' });
           invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
         } catch (e) {
           console.error('create_note fallback failed', e);
+          trackEvent('note_create_failed', { event_category: 'reliability', error_category: 'create_failed' });
         }
       }
     } catch (e) {
       console.error('handleCreateNote failed', e);
+      trackEvent('note_create_failed', { event_category: 'reliability', error_category: 'create_failed' });
     }
   }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
 
@@ -1831,10 +1838,24 @@ function OrchestratorContent() {
 
   }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
+  const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
 
   useEffect(() => {
-    if (!isMainWindow || isCheckingSetup || setupRequired || isSettingsOpen || desktopShortcutPromptCheckedRef.current) return;
+    if (!isMainWindow || isCheckingSetup || setupRequired || settingsLoading || settings.analytics_consent) return;
+    const showConsent = async () => {
+      const { LogicalSize } = await import('@tauri-apps/api/dpi');
+      const win = getCurrentWindow();
+      await win.setSize(new LogicalSize(640, 520));
+      await win.center();
+      await win.unminimize();
+      await win.show();
+      await win.setFocus();
+    };
+    void showConsent().catch((e) => console.error('[AnalyticsConsent] prompt display failed:', e));
+  }, [isMainWindow, isCheckingSetup, setupRequired, settingsLoading, settings.analytics_consent]);
+
+  useEffect(() => {
+    if (!isMainWindow || isCheckingSetup || setupRequired || isSettingsOpen || !settings.analytics_consent || desktopShortcutPromptCheckedRef.current) return;
     desktopShortcutPromptCheckedRef.current = true;
     const checkDesktopShortcut = async () => {
       try {
@@ -1853,7 +1874,7 @@ function OrchestratorContent() {
       }
     };
     checkDesktopShortcut();
-  }, [isMainWindow, isCheckingSetup, setupRequired, isSettingsOpen]);
+  }, [isMainWindow, isCheckingSetup, setupRequired, isSettingsOpen, settings.analytics_consent]);
 
   useEffect(() => {
     if (!isDashboard || monthlyBackupCheckedRef.current) return;
@@ -1993,6 +2014,19 @@ function OrchestratorContent() {
         cancelText={tUpdate('update.cancel')}
         onConfirm={handleUpdateConfirm}
         onCancel={handleUpdateCancel}
+      />
+    );
+  }
+
+  if (isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && !settings.analytics_consent) {
+    const saveAnalyticsConsent = async (consent: 'granted' | 'denied') => {
+      await saveSettings({ ...settings, analytics_consent: consent });
+    };
+    return (
+      <AnalyticsConsentDialog
+        language={language}
+        onAccept={() => { void saveAnalyticsConsent('granted'); }}
+        onDecline={() => { void saveAnalyticsConsent('denied'); }}
       />
     );
   }

@@ -26,6 +26,7 @@ import { useTagManager } from '@/app/hooks/useTagManager';
 import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 import { useNoteStyles } from '@/app/hooks/useNoteStyles';
+import { trackEvent } from '@/app/utils/analytics';
 
 // UIコンポーネント
 import type { RichTextEditorRef } from './RichTextEditor';
@@ -288,6 +289,7 @@ const StickyNote = memo(function StickyNote() {
 
         await saveNoteContent(body, front, allowRename);
         if (isNew) {
+            trackEvent('first_note_saved', { event_category: 'activation' });
             setIsNewState(false);
         }
     }, [saveNoteContent, isNew, isPool, noteFilePathRef]);
