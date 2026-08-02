@@ -1329,3 +1329,11 @@
 - 検証: workflow YAML parse成功、VitePress build成功、`git diff --check`成功。3 Codex並行レビューで構文、キャッシュ安全性、手順整合性を確認した。
 - 追加改善: 通常push CIもfrontend buildとRust testを別runnerへ分けて並列化し、Rust debug targetをキャッシュする。ローカルpre-commitもTypeScriptとVitestを並列実行し、両方の終了コードを必須判定する。
 - 実測用にStore Actionへ`dry_run`を追加する。仮版数をrunner内だけへ適用し、検証・MSIX生成・検査・artifact uploadを実行するが、main/developの版数・タグ・Release・Store申請は変更しない。
+- MSIX dry run `30769072055` を仮版5.1.2で開始。URL: https://github.com/ore-no-fusen/ore-no-fusen/actions/runs/30769072055 。完了後に全体時間、各job/step時間、cache hit、artifact検査結果を確認する。main/develop/Storeは変更しない実行。
+
+## 2026-08-03 Store MSIX 画像再読込の緊急修正
+
+- 原因: 画像描き込み保存後のキャッシュ回避でTauriのローカルasset URLへ`?v=`を付けていた。開発版では表示できるがStore MSIXでは読込に失敗し、表示モードがMarkdown文字列へフォールバックした。
+- 最小修正: クエリ付与を廃止し、更新後だけ元のasset URLを`cache: no-store`で取得してblob URLとして表示する。Markdown・画像ファイル・パス解決は変更しない。
+- 検証: ResizableImage専用Vitest 6件、TypeScript型検査、PC版で画像貼付→描き込み→保存→表示モードの実機確認に合格。
+- コミット: `930baff fix: reload annotated images in Store MSIX`。次版5.1.2は正式ActionでMSIXを生成後、パッケージフライトでStore署名済みMSIXを必ず確認する。
