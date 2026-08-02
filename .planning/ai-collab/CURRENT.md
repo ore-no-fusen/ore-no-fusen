@@ -1328,3 +1328,4 @@
 - 5.1.1は公開中不具合の緊急修正としてパッケージフライトを省略した例外。今後は緊急時もフライトを省略しない。
 - 検証: workflow YAML parse成功、VitePress build成功、`git diff --check`成功。3 Codex並行レビューで構文、キャッシュ安全性、手順整合性を確認した。
 - 追加改善: 通常push CIもfrontend buildとRust testを別runnerへ分けて並列化し、Rust debug targetをキャッシュする。ローカルpre-commitもTypeScriptとVitestを並列実行し、両方の終了コードを必須判定する。
+- 実測用にStore Actionへ`dry_run`を追加する。仮版数をrunner内だけへ適用し、検証・MSIX生成・検査・artifact uploadを実行するが、main/developの版数・タグ・Release・Store申請は変更しない。

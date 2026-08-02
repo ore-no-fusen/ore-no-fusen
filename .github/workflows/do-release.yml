@@ -7,6 +7,11 @@ on:
         description: 'New Store version (for example 5.1.0)'
         required: true
         type: string
+      dry_run:
+        description: 'Build and validate MSIX without changing main or develop'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -130,6 +135,7 @@ jobs:
   prepare-store-release:
     name: Commit verified Store version
     needs: [verify-release, verify-rust]
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     outputs:
       main_ref: ${{ steps.main-ref.outputs.main_ref }}
@@ -210,17 +216,24 @@ jobs:
 
   build-store-package:
     name: Build verified Store package
-    needs: [verify-release, prepare-store-release]
+    needs: [verify-release, verify-rust, prepare-store-release]
+    if: >-
+      ${{
+        always() &&
+        needs.verify-release.result == 'success' &&
+        needs.verify-rust.result == 'success' &&
+        (inputs.dry_run || needs.prepare-store-release.result == 'success')
+      }}
     runs-on: windows-latest
     env:
       NEXT_TELEMETRY_DISABLED: 1
       STORE_VERSION: ${{ needs.verify-release.outputs.version }}
-      SOURCE_REF: ${{ needs.prepare-store-release.outputs.main_ref }}
+      SOURCE_REF: ${{ inputs.dry_run && 'develop (dry run)' || needs.prepare-store-release.outputs.main_ref }}
     steps:
-      - name: Checkout committed Store release
+      - name: Checkout Store source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-store-release.outputs.main_ref }}
+          ref: ${{ inputs.dry_run && 'develop' || needs.prepare-store-release.outputs.main_ref }}
           fetch-depth: 1
 
       - uses: actions/setup-node@v4
@@ -241,6 +254,29 @@ jobs:
           key: ${{ runner.os }}-store-release-cargo-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-store-release-cargo-
+
+      - name: Apply version only inside the dry-run workspace
+        if: ${{ inputs.dry_run }}
+        shell: pwsh
+        run: |
+          npm version $env:STORE_VERSION --no-git-tag-version --ignore-scripts
+
+          $cargoTomlPath = 'src-tauri/Cargo.toml'
+          $cargoToml = Get-Content $cargoTomlPath -Raw -Encoding utf8
+          $cargoToml = [regex]::Replace($cargoToml, '(?m)^version = "[^"]+"', "version = `"$env:STORE_VERSION`"", 1)
+          Set-Content $cargoTomlPath $cargoToml -Encoding utf8 -NoNewline
+
+          $cargoLockPath = 'src-tauri/Cargo.lock'
+          $cargoLock = Get-Content $cargoLockPath -Raw -Encoding utf8
+          $cargoPattern = '(?s)(\[\[package\]\]\r?\nname = "ore-no-fusen"\r?\nversion = ")[^"]+'
+          if ($cargoLock -notmatch $cargoPattern) { throw 'ore-no-fusen package was not found in Cargo.lock.' }
+          $cargoLock = [regex]::Replace($cargoLock, $cargoPattern, { param($match) $match.Groups[1].Value + $env:STORE_VERSION }, 1)
+          Set-Content $cargoLockPath $cargoLock -Encoding utf8 -NoNewline
+
+          $manifestPath = 'packaging/msix/AppxManifest.xml'
+          $manifest = Get-Content $manifestPath -Raw -Encoding utf8
+          $manifest = [regex]::Replace($manifest, '(?m)^(\s+)Version="[^"]+"', { param($match) $match.Groups[1].Value + 'Version="' + $env:STORE_VERSION + '.0"' }, 1)
+          Set-Content $manifestPath $manifest -Encoding utf8 -NoNewline
 
       - name: Verify committed version
         shell: pwsh
@@ -289,7 +325,7 @@ jobs:
       - name: Upload private Store submission artifact
         uses: actions/upload-artifact@v4
         with:
-          name: store-msix
+          name: ${{ inputs.dry_run && 'store-msix-dry-run' || 'store-msix' }}
           path: packaging/msix/out/ore-no-fusen.msix
           if-no-files-found: error
           retention-days: 30
@@ -300,3 +336,8 @@ jobs:
           Write-Host "Store package v$env:STORE_VERSION was created from $env:SOURCE_REF."
           Write-Host "Download this artifact and submit it manually in Microsoft Partner Center."
           Write-Host "No tag, GitHub Release, NSIS/MSI bundle, updater metadata, or Microsoft Store submission was created."
+
+      - name: Confirm dry-run isolation
+        if: ${{ inputs.dry_run }}
+        shell: pwsh
+        run: Write-Host "Dry run completed. No branch, tag, release, or Store submission was changed."

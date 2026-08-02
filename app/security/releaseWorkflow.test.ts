@@ -43,4 +43,13 @@ describe('release verification gate', () => {
     expect(buildScript).toContain('finally');
     expect(buildScript).toContain('renameSync(parkedFile, routeFile)');
   });
+
+  it('supports an isolated MSIX dry run without committing a release version', () => {
+    expect(workflow).toContain('dry_run:');
+    expect(workflow).toContain('if: ${{ !inputs.dry_run }}');
+    expect(workflow).toContain("ref: ${{ inputs.dry_run && 'develop' || needs.prepare-store-release.outputs.main_ref }}");
+    expect(workflow).toContain('Apply version only inside the dry-run workspace');
+    expect(workflow).toContain("name: ${{ inputs.dry_run && 'store-msix-dry-run' || 'store-msix' }}");
+    expect(workflow).toContain('Dry run completed. No branch, tag, release, or Store submission was changed.');
+  });
 });
