@@ -270,11 +270,10 @@ test('[DATA-04] locked メモ削除: 削除後に🔔が青色のまま残らな
   expect(targetDeleteBtn).not.toBeNull();
 
   await targetDeleteBtn!.click();
-  await page.waitForTimeout(800);
 
   // 削除後にロック解除ボタンが消えていること（ロック状態が残っていないこと）
-  const remainingLockBtns = await page.locator('button[aria-label="ピン解除"]').count();
-  expect(remainingLockBtns).toBe(0);
+  await expect(page.locator('button[aria-label="ピン解除"]')).toHaveCount(0);
+  await expect(page.locator('ul')).not.toContainText('ロック中メモ');
 
   // 残るメモは消えていないこと
   const listContent = await page.locator('ul').textContent().catch(() => '');

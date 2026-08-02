@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { dirname, join } from 'node:path';
@@ -64,7 +64,7 @@ const server = spawn(process.execPath, [nextBin, 'dev', '-H', host, '-p', String
     NEXT_TSCONFIG_PATH: nextTsconfig,
   },
   stdio: 'inherit',
-  detached: isWindows,
+  detached: false,
 });
 
 let cleanedUp = false;
@@ -73,11 +73,10 @@ const cleanup = () => {
   if (cleanedUp) return;
   cleanedUp = true;
 
-  if (server.pid && isWindows) {
-    spawnSync('taskkill', ['/PID', String(server.pid), '/T', '/F'], { stdio: 'ignore' });
-  } else if (server.pid) {
+  if (server.pid) {
     try {
-      process.kill(-server.pid, 'SIGTERM');
+      if (isWindows) server.kill('SIGTERM');
+      else process.kill(-server.pid, 'SIGTERM');
     } catch {
       server.kill('SIGTERM');
     }
@@ -111,12 +110,14 @@ const canReachServer = () =>
 
 const canLoadApp = async () => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
-    const response = await fetch(`${baseUrl}/?path=C:/test/note.md`, {
-      signal: controller.signal,
-    });
-    return response.status < 500;
+    const urls = [`${baseUrl}/?path=C:/test/note.md`, `${baseUrl}/viewer`];
+    for (const url of urls) {
+      const response = await fetch(url, { signal: controller.signal });
+      if (response.status >= 500) return false;
+    }
+    return true;
   } catch {
     return false;
   } finally {

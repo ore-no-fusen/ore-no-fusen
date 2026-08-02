@@ -435,6 +435,7 @@ export default function ViewerPage() {
     try {
       await markDraftDeleted(note.id);
       await deleteDraft(note.id);
+      setLockedNoteIds((prev) => prev.filter((id) => id !== note.id));
 
       if (note.status === 'sent') {
         setHistoryNotes((prev) => prev.filter((n) => n.id !== note.id));
