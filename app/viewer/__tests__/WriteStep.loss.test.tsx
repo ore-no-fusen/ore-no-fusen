@@ -230,13 +230,16 @@ describe('WriteStep loss prevention', () => {
   });
 
   it('送信先PCは通常利用ではPC名だけを表示する', () => {
+    const updatedAt = '2026-05-31T10:00:00+09:00';
+    const updatedDate = new Date(updatedAt);
+    const expectedUpdatedAt = `${updatedDate.getMonth() + 1}/${updatedDate.getDate()} ${updatedDate.getHours().toString().padStart(2, '0')}:${updatedDate.getMinutes().toString().padStart(2, '0')}`;
     const { getByText } = renderWriteStep({
-      pcDevices: [{ pcId: 'pc-1', pcName: '家のPC', updatedAt: '2026-05-31T10:00:00+09:00' }],
+      pcDevices: [{ pcId: 'pc-1', pcName: '家のPC', updatedAt }],
       selectedPcId: 'pc-1',
     });
 
     expect(getByText('家のPC')).toBeTruthy();
-    expect(getByText(/更新 5\/31 10:00/)).toBeTruthy();
+    expect(getByText(`更新 ${expectedUpdatedAt}`)).toBeTruthy();
   });
 
   it('本文画像をタップすると全画面プレビューを開き、背景タップで閉じる', () => {
