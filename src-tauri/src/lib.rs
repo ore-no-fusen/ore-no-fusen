@@ -978,6 +978,10 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
         .to_string();
     let content = format!("{}\n\n{}", new_frontmatter, orig_body.trim());
 
+    storage::copy_associated_assets(
+        std::path::Path::new(&path),
+        std::path::Path::new(&folder_path),
+    )?;
     storage::write_note(&new_path_str, &content)?;
 
     let meta = NoteMeta {

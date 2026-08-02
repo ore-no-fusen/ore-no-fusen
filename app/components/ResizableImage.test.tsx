@@ -58,6 +58,38 @@ describe('ResizableImage', () => {
             .toBe('asset://C:/Users/uck/Pictures/screen.png');
     });
 
+    it('cache-busts a local image after an annotation save', async () => {
+        const { rerender } = render(
+            <ResizableImage
+                src="C:/Users/uck/Pictures/screen.png"
+                alt="screen"
+                baseOffset={0}
+                cacheKey={0}
+                onResizeEnd={vi.fn()}
+            />
+        );
+
+        await waitFor(() => {
+            expect(screen.getByRole('img', { name: 'screen' }).getAttribute('src'))
+                .toBe('asset://C:/Users/uck/Pictures/screen.png');
+        });
+
+        rerender(
+            <ResizableImage
+                src="C:/Users/uck/Pictures/screen.png"
+                alt="screen"
+                baseOffset={0}
+                cacheKey={1}
+                onResizeEnd={vi.fn()}
+            />
+        );
+
+        await waitFor(() => {
+            expect(screen.getByRole('img', { name: 'screen' }).getAttribute('src'))
+                .toBe('asset://C:/Users/uck/Pictures/screen.png?v=1');
+        });
+    });
+
     it('shows the markdown source when image loading fails', () => {
         render(
             <ResizableImage
