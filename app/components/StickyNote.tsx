@@ -2049,7 +2049,7 @@ const StickyNote = memo(function StickyNote() {
     return (
         <div
             ref={shellRef}
-            className="noteShell h-screen overflow-hidden flex flex-col"
+            className="noteShell group h-screen overflow-hidden flex flex-col"
             style={{
                 backgroundColor: noteBackgroundColor,
                 cursor: shellCursor,
