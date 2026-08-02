@@ -1318,3 +1318,22 @@
 - PC実機確認: `npm run tauri dev` で、画像へ線を描いて保存後すぐ反映されること、画像付き付箋を複製して画像と本文を含む別付箋が隣に開くことを確認済み。
 - develop確認: コミット`db8d570`をpush済み。GitHub Actions run `30765500566`とVercel Previewが成功。
 - 今後の正式手順: 通常公開前にPartner CenterのパッケージフライトでStore署名済みMSIXを限定配信し、必須実機確認に合格してから同じ版・同じMSIXを通常申請する。
+## 2026-08-03 Store MSIX Action高速化
+
+- 5.1.1 run `30765956825` は全体22分21秒。Rustのdebug test約6分27秒と、その後のdev `cargo check`約2分29秒で同じ依存関係を重複コンパイルしていた。
+- Node系検証とRust releaseテストを別Windows runnerへ分離し、並列実行する。
+- Rustテストをrelease profileへ統一し、同一run専用cache keyで`target/release`を後続のMSIXビルドへ引き渡す。重複する`cargo check`は削除した。
+- 実際にはブラウザテストを実行していなかったChromiumインストールを削除した。TypeScript、Vitest、Next/Tauri frontend build、Rust unit test、MSIX build/validationは維持する。
+- 通常の目標はAction開始からMSIX artifact作成まで10分以内。次回runで各step時間とcache hitを実測し、未達なら追加改善する。
+- 5.1.1は公開中不具合の緊急修正としてパッケージフライトを省略した例外。今後は緊急時もフライトを省略しない。
+- 検証: workflow YAML parse成功、VitePress build成功、`git diff --check`成功。3 Codex並行レビューで構文、キャッシュ安全性、手順整合性を確認した。
+- 追加改善: 通常push CIもfrontend buildとRust testを別runnerへ分けて並列化し、Rust debug targetをキャッシュする。ローカルpre-commitもTypeScriptとVitestを並列実行し、両方の終了コードを必須判定する。
+- 実測用にStore Actionへ`dry_run`を追加する。仮版数をrunner内だけへ適用し、検証・MSIX生成・検査・artifact uploadを実行するが、main/developの版数・タグ・Release・Store申請は変更しない。
+- MSIX dry run `30769072055` を仮版5.1.2で開始。URL: https://github.com/ore-no-fusen/ore-no-fusen/actions/runs/30769072055 。完了後に全体時間、各job/step時間、cache hit、artifact検査結果を確認する。main/develop/Storeは変更しない実行。
+
+## 2026-08-03 Store MSIX 画像再読込の緊急修正
+
+- 原因: 画像描き込み保存後のキャッシュ回避でTauriのローカルasset URLへ`?v=`を付けていた。開発版では表示できるがStore MSIXでは読込に失敗し、表示モードがMarkdown文字列へフォールバックした。
+- 最小修正: クエリ付与を廃止し、更新後だけ元のasset URLを`cache: no-store`で取得してblob URLとして表示する。Markdown・画像ファイル・パス解決は変更しない。
+- 検証: ResizableImage専用Vitest 6件、TypeScript型検査、PC版で画像貼付→描き込み→保存→表示モードの実機確認に合格。
+- コミット: `930baff fix: reload annotated images in Store MSIX`。次版5.1.2は正式ActionでMSIXを生成後、パッケージフライトでStore署名済みMSIXを必ず確認する。

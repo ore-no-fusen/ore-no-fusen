@@ -14,6 +14,8 @@
 3. `main`と`develop`の5つの版ファイルが同じ版になっている。
 4. runのArtifactsに`store-msix`が1件あり、MSIX検査が成功している。
 
+キャッシュが有効な通常実行では、Action開始からMSIX artifact作成まで10分以内を目標とする。Node系検証とRust releaseテストを並列実行し、同じrunのRust成果物をMSIXビルドへ再利用する。超過時は各step時間とRustキャッシュのヒット状況を記録し、次のリリース前に原因を解消する。
+
 ## パッケージフライトでの最終確認
 
 1. GitHub Actionsの`Prepare and Build Store Package` runから`store-msix` artifactをダウンロードする。
@@ -33,6 +35,8 @@
 | Store更新 | 旧Store版から対象版へ更新できる |
 
 すべて合格するまで通常公開へ進まない。不合格の場合は修正を`develop`からやり直し、新しい版番号でMSIXを作り直す。
+
+緊急修正であっても、このフライト確認は省略しない。5.1.1では公開中の不具合修正を急ぐため例外的に通常申請へ直接提出したが、今後の通常手順にはしない。
 
 ## 通常の製品申請
 

@@ -9,10 +9,20 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
     clearConvertedFileSrcCache();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(new Blob(['updated-image'], { type: 'image/png' })),
+    }));
+    vi.stubGlobal('URL', {
+        ...URL,
+        createObjectURL: vi.fn(() => 'blob:updated-image'),
+        revokeObjectURL: vi.fn(),
+    });
 });
 
 describe('ResizableImage', () => {
@@ -58,7 +68,7 @@ describe('ResizableImage', () => {
             .toBe('asset://C:/Users/uck/Pictures/screen.png');
     });
 
-    it('cache-busts a local image after an annotation save', async () => {
+    it('reloads an annotated local image without adding a query to the MSIX asset URL', async () => {
         const { rerender } = render(
             <ResizableImage
                 src="C:/Users/uck/Pictures/screen.png"
@@ -86,8 +96,12 @@ describe('ResizableImage', () => {
 
         await waitFor(() => {
             expect(screen.getByRole('img', { name: 'screen' }).getAttribute('src'))
-                .toBe('asset://C:/Users/uck/Pictures/screen.png?v=1');
+                .toBe('blob:updated-image');
         });
+        expect(fetch).toHaveBeenCalledWith(
+            'asset://C:/Users/uck/Pictures/screen.png',
+            { cache: 'no-store' },
+        );
     });
 
     it('shows the markdown source when image loading fails', () => {
