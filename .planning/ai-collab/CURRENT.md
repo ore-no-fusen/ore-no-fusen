@@ -1307,3 +1307,12 @@
 - 影響範囲: Web/PWAのアイコン参照だけ。Tauriアイコン、Service Workerの通知アイコン、アプリ機能には影響しない。
 - 検証済み: manifestのUTF-8 JSON解析、ルート用とmanifest用画像のハッシュ一致、`app/RegisterPWA.test.tsx` 4件、`npx tsc --noEmit --pretty false`。
 - 実機確認: デプロイ後、iPhoneで既存PWAを削除してホーム画面へ再追加し、新しいアイコンが表示されることを確認する。
+
+## 2026-08-02 Storeリリース 5.1.0 準備
+
+- 他のCodex作業完了とクリーンな作業ツリーを確認後、リリース担当として最終検証を実施した。
+- 全Vitest 102ファイル・492件、Playwright E2E 37件に成功。E2Eは実機性能環境を要求する既定5件のみskip。
+- Rustは259件成功・既定2件ignore、`cargo check --locked`、Tauri静的ビルド、Tauri release実行ファイルビルドに成功した。
+- Next.js静的exportからVercel専用の `app/api/**/route.ts` だけを一時退避し、成否にかかわらず復元するTauriビルドラッパーを追加した。共有APIモジュールとVercelのRoute Handler動作は変更しない。
+- 版数5ファイルを5.1.0（MSIXは5.1.0.0）へ統一し、未署名x64 MSIXを作成。`validate-msix.ps1` によるIdentity・Publisher・版数・構成・未署名状態の検査に成功した。
+- 残る手動確認: PC実機で同意前GA4通信なし・同意後Realtime反映・オフ後停止、iPhone PreviewでPWA再追加後の新アイコン、Partner Center提出後のStoreインストール／更新・既存データ確認。
