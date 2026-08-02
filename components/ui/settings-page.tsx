@@ -23,6 +23,7 @@ import { getSettingsPageText } from "@/app/utils/settingsPageText"
 import { trackDonationEvent } from "@/app/utils/analytics"
 import { monthlyBackupToggleChanges } from "@/app/utils/monthlyBackupSettings"
 import { refreshImportedNotes, type ImportStats } from "@/app/utils/importRefresh"
+import { getDistributionEdition } from "@/app/utils/storeMigration"
 import { saveCrystalFormats } from "@/app/api/crystalFormats"
 import {
     DEFAULT_CRYSTAL_FORMATS,
@@ -1836,7 +1837,9 @@ function AboutSection({ t }: { t: (key: any) => string }) {
             })
     }, [])
 
-    const isMsix = distribution === 'msix'
+    const edition = getDistributionEdition(distribution, version)
+    const isMsix = edition === 'store'
+    const isMigrationEdition = edition === 'migration'
 
     return (
         <div className="space-y-6">
@@ -1865,7 +1868,11 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                         <p className="text-sm text-muted-foreground">OreNoFusen</p>
                         <p className="text-xs text-muted-foreground pt-1">{t('settings.about.version')} {version}</p>
                         <p className="text-xs font-medium text-muted-foreground">
-                            {isMsix ? t('settings.about.editionStore') : t('settings.about.editionMigration')}
+                            {isMsix
+                                ? t('settings.about.editionStore')
+                                : isMigrationEdition
+                                    ? t('settings.about.editionMigration')
+                                    : t('settings.about.editionDevelopment')}
                         </p>
                     </div>
                 </div>
@@ -1876,11 +1883,15 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                     </p>
 
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                        {isMsix ? t('settings.about.storeNote') : t('settings.about.migrationNote')}
+                        {isMsix
+                            ? t('settings.about.storeNote')
+                            : isMigrationEdition
+                                ? t('settings.about.migrationNote')
+                                : t('settings.about.developmentNote')}
                     </p>
 
                     <div className="space-y-2 pt-2">
-                        {!isMsix && (
+                        {isMigrationEdition && (
                             <Button
                                 variant="outline"
                                 className="w-full justify-start h-12 text-base font-normal"

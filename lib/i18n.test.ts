@@ -26,6 +26,7 @@ describe('i18n Utility', () => {
         expect(t('menu.openHelp')).toBe('使い方を開く');
         expect(t('menu.colors.yellow')).toBe('黄 - アイデア保存');
         expect(t('menu.colors.black')).toBe('黒 - レシピ・手順');
+        expect(t('settings.about.editionDevelopment')).toBe('開発版');
     });
 
     it('returns correct translation for English', () => {
@@ -40,6 +41,7 @@ describe('i18n Utility', () => {
         expect(t('menu.openHelp')).toBe('Open Help');
         expect(t('menu.colors.yellow')).toBe('Yellow - ideas');
         expect(t('menu.colors.black')).toBe('Black - recipes');
+        expect(t('settings.about.editionDevelopment')).toBe('Development edition');
     });
 
     it('returns key if translation is missing', () => {
