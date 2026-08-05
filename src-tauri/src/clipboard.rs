@@ -9,9 +9,9 @@
 use arboard::Clipboard;
 use chrono::Local;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
-use image::{ExtendedColorType, ImageEncoder};
-use std::fs::{self, File};
-use std::io::BufWriter;
+use image::{ExtendedColorType, ImageEncoder, ImageFormat};
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 const MAX_DROPPED_IMAGE_BYTES: u64 = 50 * 1024 * 1024;
@@ -154,20 +154,123 @@ pub fn fusen_remove_dropped_images(
     remove_dropped_images(&path, &relative_paths)
 }
 
-#[tauri::command]
-pub fn fusen_save_annotated_image(path: String, data: String) -> Result<(), String> {
+fn validate_annotated_png(bytes: &[u8]) -> Result<(), String> {
+    if bytes.is_empty() {
+        return Err("画像データが空です。元画像は変更しません。".to_string());
+    }
+
+    let format = image::guess_format(bytes)
+        .map_err(|e| format!("画像形式を判定できません: {e}"))?;
+    if format != ImageFormat::Png {
+        return Err("描き込み画像がPNG形式ではありません。元画像は変更しません。".to_string());
+    }
+
+    image::load_from_memory_with_format(bytes, ImageFormat::Png)
+        .map_err(|e| format!("PNG画像として読み込めません: {e}"))?;
+    Ok(())
+}
+
+fn replace_file_safely(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "画像の保存先が不正です。".to_string())?;
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "画像ファイル名が不正です。".to_string())?;
+    let unique = uuid::Uuid::new_v4();
+    let temp_path = parent.join(format!(".{file_name}.{unique}.tmp"));
+    let backup_path = parent.join(format!(".{file_name}.{unique}.bak"));
+
+    let write_result = (|| -> Result<(), String> {
+        let mut temp_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+            .map_err(|e| format!("一時画像ファイルを作成できません: {e}"))?;
+        temp_file
+            .write_all(bytes)
+            .map_err(|e| format!("一時画像ファイルへ書き込めません: {e}"))?;
+        temp_file
+            .sync_all()
+            .map_err(|e| format!("一時画像ファイルを確定できません: {e}"))?;
+        drop(temp_file);
+
+        let written = fs::read(&temp_path)
+            .map_err(|e| format!("一時画像ファイルを再確認できません: {e}"))?;
+        validate_annotated_png(&written)?;
+
+        if path.exists() {
+            fs::rename(path, &backup_path)
+                .map_err(|e| format!("元画像の退避に失敗しました: {e}"))?;
+        }
+
+        if let Err(error) = fs::rename(&temp_path, path) {
+            if backup_path.exists() {
+                let _ = fs::rename(&backup_path, path);
+            }
+            return Err(format!("新しい画像への置換に失敗しました: {error}"));
+        }
+
+        if backup_path.exists() {
+            fs::remove_file(&backup_path)
+                .map_err(|e| format!("画像は保存されましたがバックアップ削除に失敗しました: {e}"))?;
+        }
+        Ok(())
+    })();
+
+    if temp_path.exists() {
+        let _ = fs::remove_file(&temp_path);
+    }
+    if write_result.is_err() && backup_path.exists() && !path.exists() {
+        let _ = fs::rename(&backup_path, path);
+    }
+    write_result
+}
+
+pub fn save_annotated_image(path: &str, data: &str) -> Result<(), String> {
     use base64::{engine::general_purpose, Engine as _};
-    let b64 = data.strip_prefix("data:image/png;base64,").unwrap_or(&data);
+
+    let b64 = data
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(|| "PNGのData URLではありません。元画像は変更しません。".to_string())?;
+    if b64.trim().is_empty() {
+        return Err("画像データが空です。元画像は変更しません。".to_string());
+    }
+
     let bytes = general_purpose::STANDARD
         .decode(b64)
         .map_err(|e| format!("base64デコード失敗: {e}"))?;
-    fs::write(&path, &bytes).map_err(|e| format!("ファイル書き込み失敗: {e}"))?;
-    Ok(())
+    validate_annotated_png(&bytes)?;
+    replace_file_safely(Path::new(path), &bytes)
+}
+
+#[tauri::command]
+pub fn fusen_save_annotated_image(path: String, data: String) -> Result<(), String> {
+    save_annotated_image(&path, &data)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn valid_png_data_url() -> String {
+        use base64::{engine::general_purpose, Engine as _};
+
+        let path = std::env::temp_dir().join(format!(
+            "ore-no-fusen-annotation-source-{}-{}.png",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let pixels = [255, 0, 0, 255, 0, 255, 0, 255];
+        save_rgba_png_fast(&path, &pixels, 2, 1).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let _ = fs::remove_file(path);
+        format!(
+            "data:image/png;base64,{}",
+            general_purpose::STANDARD.encode(bytes)
+        )
+    }
 
     #[test]
     fn fast_png_keeps_rgba_pixels() {
@@ -269,5 +372,52 @@ mod tests {
         assert_ne!(first, second);
         assert!(dir.path().join(first).exists());
         assert!(dir.path().join(second).exists());
+    }
+
+    #[test]
+    fn annotated_image_rejects_empty_data_and_keeps_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("image.png");
+        fs::write(&target, b"original").unwrap();
+
+        let result = save_annotated_image(
+            target.to_str().unwrap(),
+            "data:image/png;base64,",
+        );
+
+        assert!(result.is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn annotated_image_rejects_non_png_and_keeps_original() {
+        use base64::{engine::general_purpose, Engine as _};
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("image.png");
+        fs::write(&target, b"original").unwrap();
+        let data = format!(
+            "data:image/png;base64,{}",
+            general_purpose::STANDARD.encode(b"not-a-png")
+        );
+
+        let result = save_annotated_image(target.to_str().unwrap(), &data);
+
+        assert!(result.is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn annotated_image_safely_replaces_original_with_valid_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("image.png");
+        fs::write(&target, b"original").unwrap();
+
+        save_annotated_image(target.to_str().unwrap(), &valid_png_data_url()).unwrap();
+
+        let saved = fs::read(&target).unwrap();
+        assert!(!saved.is_empty());
+        assert_eq!(image::guess_format(&saved).unwrap(), ImageFormat::Png);
+        assert!(image::load_from_memory_with_format(&saved, ImageFormat::Png).is_ok());
     }
 }
