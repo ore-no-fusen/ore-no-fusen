@@ -1,0 +1,50 @@
+name: MSIX Script Check
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "packaging/msix/*.ps1"
+      - "packaging/msix/AppxManifest.xml"
+      - ".github/workflows/msix-script-check.yml"
+  pull_request:
+    paths:
+      - "packaging/msix/*.ps1"
+      - "packaging/msix/AppxManifest.xml"
+      - ".github/workflows/msix-script-check.yml"
+
+jobs:
+  parse:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem packaging/msix -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Error "PowerShell parse errors in $($_.Name):`n$($errors | Out-String)"
+            } else {
+              Write-Host "PowerShell parse OK: $($_.Name)"
+            }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Parse MSIX manifest XML
+        shell: pwsh
+        run: |
+          [xml](Get-Content packaging/msix/AppxManifest.xml -Raw -Encoding UTF8) | Out-Null
+          Write-Host "AppxManifest.xml parse OK"
