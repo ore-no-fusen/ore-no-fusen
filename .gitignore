@@ -90,6 +90,7 @@ wiki-temp/
 /packaging/msix/out/
 /packaging/msix/staging/
 /packaging/msix/certs/
+/packaging/msix/dev/
 /packaging/msix/*.pfx
 /packaging/msix/*.cer
 /packaging/msix/*.msix
