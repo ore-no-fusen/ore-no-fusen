@@ -148,11 +148,11 @@ foreach ($IconName in $RequiredIcons) {
 }
 
 $Manifest = Get-Content -LiteralPath $SourceManifestPath -Raw -Encoding UTF8
-$Manifest = $Manifest.Replace('Name="ONFStudios.FUSEN"', "Name=\"$DevPackageName\"")
-$Manifest = $Manifest.Replace('Publisher="CN=4820A467-BFE8-46A3-A142-42A0E840F3A5"', "Publisher=\"$DevPublisher\"")
-$Manifest = $Manifest.Replace('Id="OreNoFusen"', "Id=\"$DevApplicationId\"")
-$Manifest = $Manifest.Replace('<DisplayName>俺の付箋</DisplayName>', "<DisplayName>$DevDisplayName</DisplayName>")
-$Manifest = $Manifest.Replace('DisplayName="俺の付箋"', "DisplayName=\"$DevDisplayName\"")
+$Manifest = $Manifest.Replace('Name="ONFStudios.FUSEN"', ('Name="' + $DevPackageName + '"'))
+$Manifest = $Manifest.Replace('Publisher="CN=4820A467-BFE8-46A3-A142-42A0E840F3A5"', ('Publisher="' + $DevPublisher + '"'))
+$Manifest = $Manifest.Replace('Id="OreNoFusen"', ('Id="' + $DevApplicationId + '"'))
+$Manifest = $Manifest.Replace('<DisplayName>俺の付箋</DisplayName>', ('<DisplayName>' + $DevDisplayName + '</DisplayName>'))
+$Manifest = $Manifest.Replace('DisplayName="俺の付箋"', ('DisplayName="' + $DevDisplayName + '"'))
 $Manifest = [regex]::Replace($Manifest, '(?s)\s*<Extensions>.*?</Extensions>', '')
 [System.IO.File]::WriteAllText($DevManifestPath, $Manifest, [System.Text.UTF8Encoding]::new($false))
 
