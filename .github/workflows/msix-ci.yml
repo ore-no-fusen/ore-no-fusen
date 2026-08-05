@@ -1,0 +1,92 @@
+name: MSIX CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - "app/**"
+      - "lib/**"
+      - "src-tauri/**"
+      - "packaging/msix/**"
+      - "scripts/ci-msix-smoke.ps1"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/msix-ci.yml"
+  pull_request:
+    branches: [develop]
+
+concurrency:
+  group: msix-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-install-smoke:
+    name: Build, install and launch MSIX
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Frontend unit tests
+        run: npm test
+
+      - name: Next.js production build
+        run: npm run build
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      - name: Build Tauri executable without installers
+        run: npx tauri build --no-bundle
+
+      - name: Create and sign local test MSIX
+        shell: pwsh
+        run: .\packaging\msix\test-msix.ps1 -SkipBuild -NoInstall
+
+      - name: Verify MSIX signature
+        shell: pwsh
+        run: |
+          $sdk = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "x64\signtool.exe" } |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+          if (-not $sdk) { throw "signtool.exe not found" }
+          & $sdk verify /pa /v .\packaging\msix\dev\out\ore-no-fusen-dev.msix
+          if ($LASTEXITCODE -ne 0) { throw "MSIX signature verification failed" }
+
+      - name: Install and launch packaged application
+        shell: pwsh
+        run: .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix
+
+      - name: Upload MSIX and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-ci-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            packaging/msix/dev/out/ore-no-fusen-dev.msix
+            ${{ runner.temp }}/appx-deployment-events.txt
+            src-tauri/target/release/*.pdb
