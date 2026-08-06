@@ -1,24 +1,28 @@
 'use client';
 
-import { Suspense, useCallback } from 'react';
+import { Suspense, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import ImageAnnotationModal from '@/app/components/ImageAnnotationModal';
 
 function AnnotationE2EPageContent() {
     const searchParams = useSearchParams();
     const absolutePath = searchParams.get('path') ?? '';
-    const displayUrl = searchParams.get('url') ?? '';
     const language = searchParams.get('lang') === 'en' ? 'en' : 'ja';
+    const displayUrl = useMemo(
+        () => (absolutePath ? convertFileSrc(absolutePath) : ''),
+        [absolutePath],
+    );
 
     const markResult = useCallback((result: 'saved' | 'cancelled') => {
         document.documentElement.dataset.annotationE2eResult = result;
     }, []);
 
-    if (!absolutePath || !displayUrl) {
+    if (!absolutePath) {
         return (
             <main data-testid="annotation-e2e-error" className="p-6">
                 <h1 className="text-lg font-bold">Annotation E2E setup error</h1>
-                <p>Query parameters `path` and `url` are required.</p>
+                <p>Query parameter `path` is required.</p>
             </main>
         );
     }
