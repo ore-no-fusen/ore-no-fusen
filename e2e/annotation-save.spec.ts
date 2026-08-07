@@ -30,7 +30,7 @@ test.describe('Image annotation save', () => {
         await expect(stage).toBeVisible();
 
         // 明示的にペンを選択し、Konva Stage 上へ実際のマウスイベントで線を描く。
-        await page.getByRole('button', { name: 'ペン' }).click();
+        await page.getByRole('button', { name: 'ペン', exact: true }).click();
 
         const box = await stage.boundingBox();
         expect(box).not.toBeNull();
