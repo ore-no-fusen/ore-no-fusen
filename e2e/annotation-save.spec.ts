@@ -21,7 +21,10 @@ test.describe('Image annotation save', () => {
         const image = testImageDataUrl();
         await page.goto(`/e2e/annotation?path=${encodeURIComponent(image)}`);
 
-        await expect(page.getByTestId('annotation-e2e-page')).toBeVisible();
+        // The harness <main> only contains a fixed-position modal, so the parent itself
+        // can legitimately have a zero-sized box. Assert that the harness mounted here;
+        // actual visibility is verified by the Konva stage immediately below.
+        await expect(page.getByTestId('annotation-e2e-page')).toBeAttached();
 
         const stage = page.locator('.konvajs-content');
         await expect(stage).toBeVisible();
