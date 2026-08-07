@@ -17,11 +17,24 @@ test.describe('Image annotation save', () => {
         await mockTauriAPI(page, { language: 'ja' });
     });
 
-    test('draws on the Konva canvas and completes PNG save', async ({ page }) => {
+    test('draws on the Konva canvas and sends a non-empty PNG to Tauri save', async ({ page }) => {
         const image = testImageDataUrl();
         await page.goto(`/e2e/annotation?path=${encodeURIComponent(image)}`);
 
         await expect(page.getByTestId('annotation-e2e-page')).toBeVisible();
+
+        // 保存時に Rust 側へ渡される引数を記録する。
+        await page.evaluate(() => {
+            const internals = (window as any).__TAURI_INTERNALS__;
+            const originalInvoke = internals.invoke.bind(internals);
+            (window as any).__ANNOTATION_SAVE_ARGS__ = null;
+            internals.invoke = async (cmd: string, args: any) => {
+                if (cmd === 'fusen_save_annotated_image') {
+                    (window as any).__ANNOTATION_SAVE_ARGS__ = args;
+                }
+                return originalInvoke(cmd, args);
+            };
+        });
 
         const stage = page.locator('.konvajs-content');
         await expect(stage).toBeVisible();
@@ -43,14 +56,17 @@ test.describe('Image annotation save', () => {
         await page.mouse.move(endX, endY, { steps: 12 });
         await page.mouse.up();
 
-        // Undo が有効になることで、描画オブジェクトが履歴へ登録されたことも確認する。
         await expect(page.getByRole('button', { name: '元に戻す' })).toBeEnabled();
 
         await page.getByRole('button', { name: '保存' }).click();
 
-        // ImageAnnotationModal は、PNG Data URL生成とTauri保存コマンドが成功した時だけ onSaved を呼ぶ。
         await expect.poll(async () =>
             page.locator('html').getAttribute('data-annotation-e2e-result'),
         ).toBe('saved');
+
+        const savedArgs = await page.evaluate(() => (window as any).__ANNOTATION_SAVE_ARGS__);
+        expect(savedArgs).toBeTruthy();
+        expect(savedArgs.data).toMatch(/^data:image\/png;base64,/);
+        expect(savedArgs.data.length).toBeGreaterThan('data:image/png;base64,'.length + 100);
     });
 });
