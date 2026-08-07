@@ -18,6 +18,10 @@ on:
   pull_request:
     branches: [develop]
 
+env:
+  GDRIVE_CLIENT_ID: ci-dummy
+  GDRIVE_CLIENT_SECRET: ci-dummy
+
 concurrency:
   group: msix-ci-${{ github.ref }}
   cancel-in-progress: true
