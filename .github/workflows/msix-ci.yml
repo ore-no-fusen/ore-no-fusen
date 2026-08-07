@@ -30,6 +30,11 @@ jobs:
     name: Build, install and launch MSIX
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      # gdrive.rs uses compile-time env!(). CI smoke tests do not exercise
+      # Google OAuth, so non-secret placeholders keep Rust/Tauri builds reproducible.
+      GDRIVE_CLIENT_ID: msix-ci-placeholder
+      GDRIVE_CLIENT_SECRET: msix-ci-placeholder
 
     steps:
       - name: Checkout
