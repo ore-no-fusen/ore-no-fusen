@@ -106,6 +106,19 @@ function Get-OrCreateDevCertificate {
     Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
   }
 
+  # GitHub-hosted runners are disposable. signtool verify /pa requires a
+  # self-signed signing certificate to terminate at a trusted root, so trust
+  # this test-only certificate in CurrentUser\Root only while running in CI.
+  if ($env:GITHUB_ACTIONS -eq "true") {
+    $TrustedRoot = Get-ChildItem Cert:\CurrentUser\Root |
+      Where-Object Thumbprint -eq $Certificate.Thumbprint |
+      Select-Object -First 1
+    if ($null -eq $TrustedRoot) {
+      Write-Host "Trusting development certificate as a CI-only root..."
+      Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
+    }
+  }
+
   return $Certificate
 }
 
