@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi';
 import { AnnotationHistory } from '../utils/annotationHistory';
+import { loadAnnotationImageSource } from '../utils/annotationImageLoader';
 import type { Language } from '@/lib/i18n';
 
 type Tool = 'pen' | 'highlight' | 'arrow' | 'rect' | 'callout';
@@ -97,7 +98,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     // ─── Init Konva Stage ────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
-        let blobUrl: string | null = null;
+        let revokeImageSource: (() => void) | null = null;
         let stage: import('konva/lib/Stage').Stage;
         let layer: import('konva/lib/Layer').Layer;
         let imgLayer: import('konva/lib/Layer').Layer;
@@ -107,22 +108,28 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             const Konva = (await import('konva')).default;
             if (cancelled || !containerRef.current) return;
 
-            // Load image to get natural size.
-            // asset:// URL をそのまま img.src に使うと canvas が tainted になり
-            // toDataURL() が黒い画像を返すため、blob URL に変換してから使う。
+            // Canvas export must fail closed. Never fall back to the original
+            // Tauri asset URL because it can taint the canvas under MSIX.
             const img = new window.Image();
             try {
-                const resp = await fetch(displayUrl);
-                const blob = await resp.blob();
-                blobUrl = URL.createObjectURL(blob);
-                img.src = blobUrl;
-            } catch {
-                img.src = displayUrl; // fallback
+                const imageSource = await loadAnnotationImageSource(displayUrl);
+                if (cancelled) {
+                    imageSource.revoke();
+                    return;
+                }
+                revokeImageSource = imageSource.revoke;
+                img.src = imageSource.blobUrl;
+                await new Promise<void>((resolve, reject) => {
+                    img.onload = () => resolve();
+                    img.onerror = () => reject(new Error('画像を表示用に読み込めませんでした'));
+                });
+            } catch (error) {
+                console.error('[ANNOTATION] image load error', error);
+                if (!cancelled) {
+                    alert(`${language === 'en' ? 'Could not load image: ' : '画像を読み込めませんでした: '}${error}`);
+                }
+                return;
             }
-            await new Promise<void>((res) => {
-                img.onload = () => res();
-                img.onerror = () => res();
-            });
             if (cancelled) return;
 
             const nw = img.naturalWidth || img.width || 800;
@@ -294,7 +301,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         init();
         return () => {
             cancelled = true;
-            if (blobUrl) URL.revokeObjectURL(blobUrl);
+            revokeImageSource?.();
             history.reset();
             stageRef.current?.destroy();
             stageRef.current = null;
