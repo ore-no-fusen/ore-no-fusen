@@ -163,6 +163,7 @@ jobs:
           if-no-files-found: warn
           path: |
             packaging/msix/dev/out/ore-no-fusen-dev.msix
+            test-results/annotation-evidence/**
             ${{ runner.temp }}/appx-deployment-events.txt
             src-tauri/target/release/*.pdb
 
