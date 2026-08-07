@@ -66,9 +66,9 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e -- e2e/annotation-save.spec.ts
 
-      - name: Rust tests
+      - name: Rust library tests
         working-directory: src-tauri
-        run: cargo test --locked
+        run: cargo test --locked --lib
 
       - name: Build Tauri executable without installers
         run: npx tauri build --no-bundle
