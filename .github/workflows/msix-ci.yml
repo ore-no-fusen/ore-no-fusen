@@ -6,10 +6,12 @@ on:
     branches: [develop]
     paths:
       - "app/**"
+      - "e2e/**"
       - "lib/**"
       - "src-tauri/**"
       - "packaging/msix/**"
       - "scripts/ci-msix-smoke.ps1"
+      - "scripts/run-e2e.mjs"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/msix-ci.yml"
@@ -52,6 +54,12 @@ jobs:
 
       - name: Next.js production build
         run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Annotation draw and save test
+        run: npm run test:e2e -- e2e/annotation-save.spec.ts
 
       - name: Rust tests
         working-directory: src-tauri
