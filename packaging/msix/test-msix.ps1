@@ -122,7 +122,6 @@ if (-not $SkipBuild) {
 }
 
 Assert-FileExists $ExePath "Release executable not found: $ExePath"
-Assert-DirectoryExists $ResourcesPath "Release resources folder not found: $ResourcesPath"
 Assert-FileExists $SourceManifestPath "MSIX manifest not found: $SourceManifestPath"
 
 $RequiredIcons = @(
@@ -142,7 +141,11 @@ if (Test-Path -LiteralPath $StagingPath) {
 New-Item -ItemType Directory -Path $StagingPath, $AssetsPath, $OutDir, $CertDir -Force | Out-Null
 
 Copy-Item -LiteralPath $ExePath -Destination $StagingPath
-Copy-Item -LiteralPath $ResourcesPath -Destination $StagingPath -Recurse
+if (Test-Path -LiteralPath $ResourcesPath -PathType Container) {
+  Copy-Item -LiteralPath $ResourcesPath -Destination $StagingPath -Recurse
+} else {
+  Write-Host "No release resources folder found; continuing because Tauri resources may be embedded in the executable."
+}
 foreach ($IconName in $RequiredIcons) {
   Copy-Item -LiteralPath (Join-Path $IconRoot $IconName) -Destination $AssetsPath
 }
