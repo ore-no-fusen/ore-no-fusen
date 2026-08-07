@@ -18,6 +18,9 @@ on:
   pull_request:
     branches: [develop]
 
+permissions:
+  contents: write
+
 concurrency:
   group: msix-ci-${{ github.ref }}
   cancel-in-progress: true
@@ -47,32 +50,41 @@ jobs:
           workspaces: src-tauri
 
       - name: Install JavaScript dependencies
+        id: npm_ci
         run: npm ci
 
       - name: Install Playwright Chromium
+        id: playwright_install
         run: npx playwright install chromium
 
       - name: Frontend unit tests
+        id: frontend_tests
         run: npm test
 
       - name: Next.js production build
+        id: next_build
         run: npm run build
 
       - name: Annotation draw and save test
+        id: annotation_e2e
         run: npm run test:e2e -- e2e/annotation-save.spec.ts
 
       - name: Rust library tests
+        id: rust_tests
         working-directory: src-tauri
         run: cargo test --locked --lib
 
       - name: Build Tauri executable without installers
+        id: tauri_build
         run: npx tauri build --no-bundle
 
       - name: Create and sign local test MSIX
+        id: msix_create
         shell: pwsh
         run: .\packaging\msix\test-msix.ps1 -SkipBuild -NoInstall
 
       - name: Verify MSIX signature
+        id: msix_verify
         shell: pwsh
         run: |
           $sdk = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
@@ -85,10 +97,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "MSIX signature verification failed" }
 
       - name: Install and launch packaged application
+        id: msix_smoke
         shell: pwsh
         run: .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix
 
       - name: Upload MSIX and diagnostics
+        id: upload_artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -98,3 +112,82 @@ jobs:
             packaging/msix/dev/out/ore-no-fusen-dev.msix
             ${{ runner.temp }}/appx-deployment-events.txt
             src-tauri/target/release/*.pdb
+
+      - name: Publish machine-readable MSIX CI status
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          OUTCOME_NPM_CI: ${{ steps.npm_ci.outcome }}
+          OUTCOME_PLAYWRIGHT_INSTALL: ${{ steps.playwright_install.outcome }}
+          OUTCOME_FRONTEND_TESTS: ${{ steps.frontend_tests.outcome }}
+          OUTCOME_NEXT_BUILD: ${{ steps.next_build.outcome }}
+          OUTCOME_ANNOTATION_E2E: ${{ steps.annotation_e2e.outcome }}
+          OUTCOME_RUST_TESTS: ${{ steps.rust_tests.outcome }}
+          OUTCOME_TAURI_BUILD: ${{ steps.tauri_build.outcome }}
+          OUTCOME_MSIX_CREATE: ${{ steps.msix_create.outcome }}
+          OUTCOME_MSIX_VERIFY: ${{ steps.msix_verify.outcome }}
+          OUTCOME_MSIX_SMOKE: ${{ steps.msix_smoke.outcome }}
+          OUTCOME_UPLOAD: ${{ steps.upload_artifact.outcome }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = 'ci-status';
+            const path = 'msix-ci-status.json';
+            const msixPath = 'packaging/msix/dev/out/ore-no-fusen-dev.msix';
+            const msixExists = fs.existsSync(msixPath);
+            const msixBytes = msixExists ? fs.statSync(msixPath).size : 0;
+            const steps = {
+              npm_ci: process.env.OUTCOME_NPM_CI || 'skipped',
+              playwright_install: process.env.OUTCOME_PLAYWRIGHT_INSTALL || 'skipped',
+              frontend_tests: process.env.OUTCOME_FRONTEND_TESTS || 'skipped',
+              next_build: process.env.OUTCOME_NEXT_BUILD || 'skipped',
+              annotation_e2e: process.env.OUTCOME_ANNOTATION_E2E || 'skipped',
+              rust_tests: process.env.OUTCOME_RUST_TESTS || 'skipped',
+              tauri_build: process.env.OUTCOME_TAURI_BUILD || 'skipped',
+              msix_create: process.env.OUTCOME_MSIX_CREATE || 'skipped',
+              msix_verify: process.env.OUTCOME_MSIX_VERIFY || 'skipped',
+              msix_smoke: process.env.OUTCOME_MSIX_SMOKE || 'skipped',
+              upload_artifact: process.env.OUTCOME_UPLOAD || 'skipped'
+            };
+            const ordered = Object.entries(steps);
+            const failed = ordered.find(([, outcome]) => outcome === 'failure');
+            const cancelled = ordered.find(([, outcome]) => outcome === 'cancelled');
+            const status = {
+              updated_at: new Date().toISOString(),
+              workflow: context.workflow,
+              run_id: context.runId,
+              run_number: context.runNumber,
+              run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+              run_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${context.runId}`,
+              branch: context.ref.replace('refs/heads/', ''),
+              commit_sha: context.sha,
+              overall: failed ? 'failure' : (cancelled ? 'cancelled' : 'success'),
+              failed_step: failed ? failed[0] : (cancelled ? cancelled[0] : null),
+              steps,
+              msix: {
+                created: msixExists,
+                bytes: msixBytes,
+                relative_path: msixPath,
+                artifact_name: `msix-ci-${context.sha}`
+              }
+            };
+            const content = Buffer.from(JSON.stringify(status, null, 2) + '\n').toString('base64');
+            let sha;
+            try {
+              const current = await github.rest.repos.getContent({ owner, repo, path, ref: branch });
+              sha = current.data.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            await github.rest.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path,
+              branch,
+              message: `ci-status: MSIX CI #${context.runNumber}`,
+              content,
+              sha
+            });
