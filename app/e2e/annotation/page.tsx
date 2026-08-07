@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useMemo } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import ImageAnnotationModal from '@/app/components/ImageAnnotationModal';
@@ -9,10 +9,17 @@ function AnnotationE2EPageContent() {
     const searchParams = useSearchParams();
     const absolutePath = searchParams.get('path') ?? '';
     const language = searchParams.get('lang') === 'en' ? 'en' : 'ja';
-    const displayUrl = useMemo(
-        () => (absolutePath ? convertFileSrc(absolutePath) : ''),
-        [absolutePath],
-    );
+    const [displayUrl, setDisplayUrl] = useState('');
+
+    useEffect(() => {
+        if (!absolutePath) {
+            setDisplayUrl('');
+            return;
+        }
+
+        // convertFileSrc は browser/Tauri runtime 前提のため、SSRでは呼ばない。
+        setDisplayUrl(convertFileSrc(absolutePath));
+    }, [absolutePath]);
 
     const markResult = useCallback((result: 'saved' | 'cancelled') => {
         document.documentElement.dataset.annotationE2eResult = result;
@@ -25,6 +32,10 @@ function AnnotationE2EPageContent() {
                 <p>Query parameter `path` is required.</p>
             </main>
         );
+    }
+
+    if (!displayUrl) {
+        return <main data-testid="annotation-e2e-loading">Loading…</main>;
     }
 
     return (
