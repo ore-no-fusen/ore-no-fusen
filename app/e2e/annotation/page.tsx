@@ -9,10 +9,12 @@ function AnnotationE2EPageContent() {
     const searchParams = useSearchParams();
     const absolutePath = searchParams.get('path') ?? '';
     const language = searchParams.get('lang') === 'en' ? 'en' : 'ja';
-    const displayUrl = useMemo(
-        () => (absolutePath ? convertFileSrc(absolutePath) : ''),
-        [absolutePath],
-    );
+    const displayUrl = useMemo(() => {
+        if (!absolutePath) return '';
+        if (/^(data:|blob:|https?:)/i.test(absolutePath)) return absolutePath;
+        if (typeof window === 'undefined') return '';
+        return convertFileSrc(absolutePath);
+    }, [absolutePath]);
 
     const markResult = useCallback((result: 'saved' | 'cancelled') => {
         document.documentElement.dataset.annotationE2eResult = result;
