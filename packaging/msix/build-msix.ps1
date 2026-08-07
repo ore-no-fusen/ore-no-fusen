@@ -84,7 +84,6 @@ function Invoke-NativeCommand {
 }
 
 Assert-FileExists $ExePath "Release executable not found: $ExePath`nRun npm run tauri build first."
-Assert-DirectoryExists $ResourcesPath "Release resources folder not found: $ResourcesPath`nRun npm run tauri build first."
 Assert-FileExists $ManifestPath "MSIX manifest not found: $ManifestPath"
 
 $RequiredIcons = @(
@@ -106,7 +105,11 @@ if (Test-Path -LiteralPath $StagingPath) {
 New-Item -ItemType Directory -Path $StagingPath, $AssetsPath, $OutDir -Force | Out-Null
 
 Copy-Item -LiteralPath $ExePath -Destination $StagingPath
-Copy-Item -LiteralPath $ResourcesPath -Destination $StagingPath -Recurse
+if (Test-Path -LiteralPath $ResourcesPath -PathType Container) {
+  Copy-Item -LiteralPath $ResourcesPath -Destination $StagingPath -Recurse
+} else {
+  Write-Host "No release resources folder found; continuing because Tauri resources may be embedded in the executable."
+}
 Copy-Item -LiteralPath $ManifestPath -Destination $StagingPath
 
 foreach ($IconName in $RequiredIcons) {
