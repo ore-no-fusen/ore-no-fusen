@@ -114,8 +114,18 @@ function Get-OrCreateDevCertificate {
       Where-Object Thumbprint -eq $Certificate.Thumbprint |
       Select-Object -First 1
     if ($null -eq $TrustedRoot) {
-      Write-Host "Trusting development certificate as a CI-only root..."
-      Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
+      Write-Host "Trusting development certificate as a non-interactive CI-only root..."
+      # Import-Certificate opens a root-trust confirmation UI on hosted runners and
+      # hangs until the job timeout. certutil -f updates CurrentUser without a prompt.
+      Invoke-NativeCommand "$env:SystemRoot\System32\certutil.exe" @(
+        "-user", "-f", "-addstore", "Root", $CerPath
+      )
+      $TrustedRoot = Get-ChildItem Cert:\CurrentUser\Root |
+        Where-Object Thumbprint -eq $Certificate.Thumbprint |
+        Select-Object -First 1
+      if ($null -eq $TrustedRoot) {
+        throw "Development certificate was not added to CurrentUser Root."
+      }
     }
   }
 

@@ -5211,6 +5211,50 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // CI activates the installed MSIX through its AUMID with this encoded
+            // route. Normal launches never supply the switch.
+            let dev_msix_e2e_route = std::env::current_exe().ok().and_then(|exe| {
+                if exe
+                    .to_string_lossy()
+                    .contains("ONFStudios.FUSEN.Dev_")
+                {
+                    std::fs::read_to_string(
+                        std::env::temp_dir().join("ore-no-fusen-msix-e2e-route.txt"),
+                    )
+                    .ok()
+                } else {
+                    None
+                }
+            });
+            if let Some(encoded_route) = dev_msix_e2e_route.or_else(|| {
+                    std::env::args().find_map(|arg| {
+                        arg.strip_prefix("--msix-annotation-e2e=")
+                            .map(str::to_owned)
+                    })
+                })
+            {
+                use base64::{engine::general_purpose, Engine as _};
+                let route_bytes = general_purpose::URL_SAFE_NO_PAD
+                    .decode(encoded_route)
+                    .map_err(|error| format!("invalid MSIX annotation E2E route: {error}"))?;
+                let route = String::from_utf8(route_bytes)
+                    .map_err(|error| format!("invalid MSIX annotation E2E route encoding: {error}"))?;
+                if !route.starts_with("/e2e/annotation?") {
+                    return Err("invalid MSIX annotation E2E route path".into());
+                }
+                let _ = std::fs::remove_file(
+                    std::env::temp_dir().join("ore-no-fusen-msix-e2e-route.txt"),
+                );
+                if let Some(window) = app.get_webview_window("main") {
+                    let test_url = tauri::Url::parse(&format!("tauri://localhost{route}"))
+                        .map_err(|error| format!("invalid MSIX annotation E2E URL: {error}"))?;
+                    window.navigate(test_url)?;
+                    window.set_size(tauri::LogicalSize::new(900.0, 700.0))?;
+                    window.center()?;
+                    window.show()?;
+                    window.set_focus()?;
+                }
+            }
             // アプリケーション起動ログ
             logger::log_app_start();
             

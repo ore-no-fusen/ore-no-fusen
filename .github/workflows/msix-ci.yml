@@ -30,7 +30,7 @@ jobs:
   build-install-smoke:
     name: Build, install and launch MSIX
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       # gdrive.rs uses compile-time env!(). CI smoke tests do not exercise
       # Google OAuth, so non-secret placeholders keep Rust/Tauri builds reproducible.
@@ -150,7 +150,7 @@ jobs:
           & $sdk verify /pa /v .\packaging\msix\dev\out\ore-no-fusen-dev.msix
           if ($LASTEXITCODE -ne 0) { throw "MSIX signature verification failed" }
 
-      - name: Install and launch packaged application
+      - name: Install, launch and test annotation in packaged application
         id: msix_smoke
         shell: pwsh
         run: .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix
@@ -165,7 +165,7 @@ jobs:
           path: |
             packaging/msix/dev/out/ore-no-fusen-dev.msix
             test-results/annotation-evidence/**
-            ${{ runner.temp }}/appx-deployment-events.txt
+            test-results/msix-annotation-evidence/**
             src-tauri/target/release/*.pdb
 
       - name: Publish machine-readable MSIX CI status
