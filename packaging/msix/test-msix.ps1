@@ -128,12 +128,20 @@ function Get-OrCreateDevCertificate {
       Where-Object Thumbprint -eq $Certificate.Thumbprint |
       Select-Object -First 1
     if ($null -eq $TrustedRoot) {
-      Write-Host "Trusting development certificate as a non-interactive CI-only root..."
-      # Import-Certificate opens a root-trust confirmation UI on hosted runners and
-      # hangs until the job timeout. certutil -f updates CurrentUser without a prompt.
-      Invoke-NativeCommand "$env:SystemRoot\System32\certutil.exe" @(
-        "-user", "-f", "-addstore", "Root", $CerPath
+      Write-Host "Trusting development certificate through the non-interactive .NET CurrentUser store..."
+      # Import-Certificate and certutil can both wait for a root-trust confirmation
+      # UI on a hosted runner. X509Store writes to CurrentUser directly without UI.
+      $RootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+        [System.Security.Cryptography.X509Certificates.StoreName]::Root,
+        [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
       )
+      try {
+        $RootStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+        $RootStore.Add($Certificate)
+      }
+      finally {
+        $RootStore.Close()
+      }
       $TrustedRoot = Get-ChildItem Cert:\CurrentUser\Root |
         Where-Object Thumbprint -eq $Certificate.Thumbprint |
         Select-Object -First 1
