@@ -64,10 +64,24 @@ function Get-LatestWindowsSdkToolRoot {
 }
 
 function Invoke-NativeCommand {
-  param([string] $FilePath, [string[]] $Arguments)
-  & $FilePath @Arguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "$FilePath failed with exit code $LASTEXITCODE."
+  param(
+    [string] $FilePath,
+    [string[]] $Arguments,
+    [int] $TimeoutSeconds = 60
+  )
+
+  Write-Host "Running native command: $([IO.Path]::GetFileName($FilePath)) $($Arguments -join ' ')"
+  $Process = Start-Process `
+    -FilePath $FilePath `
+    -ArgumentList $Arguments `
+    -PassThru `
+    -NoNewWindow
+  if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
+    $Process.Kill()
+    throw "$FilePath timed out after $TimeoutSeconds seconds."
+  }
+  if ($Process.ExitCode -ne 0) {
+    throw "$FilePath failed with exit code $($Process.ExitCode)."
   }
 }
 
