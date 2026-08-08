@@ -191,8 +191,8 @@ export default function LandingPage() {
                     <h1 className="text-[2.4rem] sm:text-5xl lg:text-[3.8rem] font-extrabold leading-[1.15] tracking-tight mb-8 text-[#2C1F0E]">
                         {isEn ? (
                             <>
-                                Don&apos;t let your <span className="text-[#5C7A3E]">spark</span><br />
-                                slip away.
+                                Still emailing that note<br />
+                                to yourself?
                             </>
                         ) : (
                             <>
