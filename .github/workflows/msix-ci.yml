@@ -6,6 +6,7 @@ on:
     branches: [develop]
     paths:
       - "app/**"
+      - "!app/landing/**"
       - "e2e/**"
       - "lib/**"
       - "src-tauri/**"
@@ -23,7 +24,7 @@ permissions:
 
 concurrency:
   group: msix-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-install-smoke:
