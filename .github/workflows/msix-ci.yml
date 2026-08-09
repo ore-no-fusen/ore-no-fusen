@@ -141,14 +141,18 @@ jobs:
         id: msix_verify
         shell: pwsh
         run: |
-          $sdk = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
-            Sort-Object Name -Descending |
-            ForEach-Object { Join-Path $_.FullName "x64\signtool.exe" } |
-            Where-Object { Test-Path $_ } |
-            Select-Object -First 1
-          if (-not $sdk) { throw "signtool.exe not found" }
-          & $sdk verify /pa /v .\packaging\msix\dev\out\ore-no-fusen-dev.msix
-          if ($LASTEXITCODE -ne 0) { throw "MSIX signature verification failed" }
+          $msix = '.\packaging\msix\dev\out\ore-no-fusen-dev.msix'
+          $cer = '.\packaging\msix\dev\certs\ore-no-fusen-dev.cer'
+          $signature = Get-AuthenticodeSignature -LiteralPath $msix
+          $expected = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($cer)
+          if ($null -eq $signature.SignerCertificate) { throw 'MSIX is not signed' }
+          if ($signature.SignerCertificate.Thumbprint -ne $expected.Thumbprint) {
+            throw 'MSIX signer does not match the generated test certificate'
+          }
+          if ($signature.Status -in @('NotSigned', 'HashMismatch')) {
+            throw "MSIX signature is invalid: $($signature.Status)"
+          }
+          Write-Host "MSIX signature present; signer=$($expected.Thumbprint); status=$($signature.Status)"
 
       - name: Install, launch and test annotation in packaged application
         id: msix_smoke

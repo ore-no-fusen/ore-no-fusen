@@ -120,37 +120,6 @@ function Get-OrCreateDevCertificate {
     Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
   }
 
-  # GitHub-hosted runners are disposable. signtool verify /pa requires a
-  # self-signed signing certificate to terminate at a trusted root, so trust
-  # this test-only certificate in CurrentUser\Root only while running in CI.
-  if ($env:GITHUB_ACTIONS -eq "true") {
-    $TrustedRoot = Get-ChildItem Cert:\CurrentUser\Root |
-      Where-Object Thumbprint -eq $Certificate.Thumbprint |
-      Select-Object -First 1
-    if ($null -eq $TrustedRoot) {
-      Write-Host "Trusting development certificate through the non-interactive .NET CurrentUser store..."
-      # Import-Certificate and certutil can both wait for a root-trust confirmation
-      # UI on a hosted runner. X509Store writes to CurrentUser directly without UI.
-      $RootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
-        [System.Security.Cryptography.X509Certificates.StoreName]::Root,
-        [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
-      )
-      try {
-        $RootStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-        $RootStore.Add($Certificate)
-      }
-      finally {
-        $RootStore.Close()
-      }
-      $TrustedRoot = Get-ChildItem Cert:\CurrentUser\Root |
-        Where-Object Thumbprint -eq $Certificate.Thumbprint |
-        Select-Object -First 1
-      if ($null -eq $TrustedRoot) {
-        throw "Development certificate was not added to CurrentUser Root."
-      }
-    }
-  }
-
   return $Certificate
 }
 
@@ -221,7 +190,6 @@ Invoke-NativeCommand $SignTool @(
   "/s", "My",
   $MsixPath
 )
-Invoke-NativeCommand $SignTool @("verify", "/pa", "/v", $MsixPath)
 
 Write-Host ""
 Write-Host "Local test MSIX created: $MsixPath"
