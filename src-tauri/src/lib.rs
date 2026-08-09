@@ -5142,6 +5142,7 @@ pub fn run() {
             clipboard::fusen_save_dropped_image_data,
             clipboard::fusen_remove_dropped_images,
             clipboard::fusen_save_annotated_image,
+            clipboard::fusen_read_local_image_data_url,
             fusen_is_sticky_note_focused,
             fusen_arrange_by_tag,
             fusen_arrange_undo,

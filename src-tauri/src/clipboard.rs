@@ -279,14 +279,40 @@ pub fn save_annotated_image(path: &str, data: &str) -> Result<(), String> {
     replace_file_safely(target_path, &composed)
 }
 
+pub fn read_local_image_data_url(path: &str) -> Result<String, String> {
+    use base64::{engine::general_purpose, Engine as _};
+
+    let bytes = fs::read(path).map_err(|e| format!("更新画像を読み込めません: {e}"))?;
+    let format = image::guess_format(&bytes)
+        .map_err(|e| format!("更新画像の形式を判定できません: {e}"))?;
+    let mime = match format {
+        ImageFormat::Png => "image/png",
+        ImageFormat::Jpeg => "image/jpeg",
+        ImageFormat::Gif => "image/gif",
+        ImageFormat::WebP => "image/webp",
+        ImageFormat::Bmp => "image/bmp",
+        _ => return Err("表示に対応していない画像形式です。".to_string()),
+    };
+    Ok(format!(
+        "data:{mime};base64,{}",
+        general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
 #[tauri::command]
 pub fn fusen_save_annotated_image(path: String, data: String) -> Result<(), String> {
     save_annotated_image(&path, &data)
 }
 
+#[tauri::command]
+pub fn fusen_read_local_image_data_url(path: String) -> Result<String, String> {
+    read_local_image_data_url(&path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine as _;
 
     fn valid_png_data_url() -> String {
         use base64::{engine::general_purpose, Engine as _};
@@ -458,5 +484,22 @@ mod tests {
             .to_rgba8();
         assert_eq!(decoded.dimensions(), (2, 1));
         assert_eq!(decoded.as_raw(), &[255, 0, 0, 255, 0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn annotated_image_reload_reads_the_updated_file_without_asset_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("image.png");
+        let pixels = [12, 34, 56, 255];
+        save_rgba_png_fast(&target, &pixels, 1, 1).unwrap();
+
+        let data_url = read_local_image_data_url(target.to_str().unwrap()).unwrap();
+
+        assert!(data_url.starts_with("data:image/png;base64,"));
+        let encoded = data_url.split_once(',').unwrap().1;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        assert_eq!(decoded, fs::read(target).unwrap());
     }
 }
