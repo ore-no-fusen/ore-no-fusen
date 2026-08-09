@@ -16,7 +16,9 @@ $ReopenedPngPath = Join-Path $EvidenceDir "04-saved-output-reopened.png"
 $EvidenceJsonPath = Join-Path $EvidenceDir "annotation-save-evidence.json"
 $LogPath = Join-Path $EvidenceDir "msix-annotation-test.log"
 $DeploymentLogPath = Join-Path $EvidenceDir "appx-deployment-events.txt"
+$FailurePath = Join-Path $EvidenceDir "msix-smoke-failure.json"
 $RouteTokenPath = Join-Path ([IO.Path]::GetTempPath()) "ore-no-fusen-msix-e2e-route.txt"
+$CurrentStage = "initializing"
 
 New-Item -ItemType Directory -Path $EvidenceDir -Force | Out-Null
 Start-Transcript -Path $LogPath -Force | Out-Null
@@ -92,14 +94,17 @@ public static class ActivationHelper {
 }
 
 try {
+  $CurrentStage = "validate-msix"
   if (-not (Test-Path -LiteralPath $MsixPath -PathType Leaf)) {
     throw "MSIX not found: $MsixPath"
   }
 
+  $CurrentStage = "remove-previous-package"
   Write-Host "Removing previous test package..."
   Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue |
     ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName }
 
+  $CurrentStage = "install-package"
   Write-Host "Installing MSIX: $MsixPath"
   Add-AppxPackage -Path $MsixPath
 
@@ -111,6 +116,7 @@ try {
   Write-Host "Installed: $($Installed.PackageFullName)"
   Write-Host "InstallLocation: $($Installed.InstallLocation)"
 
+  $CurrentStage = "create-source-png"
   New-TestPng -Path $SavedPngPath
   $OriginalHash = (Get-FileHash -LiteralPath $SavedPngPath -Algorithm SHA256).Hash
 
@@ -121,6 +127,7 @@ try {
   Set-Content -LiteralPath $RouteTokenPath -Value $EncodedRoute -Encoding ascii -NoNewline
   Write-Host "Activating installed package: $Aumid"
 
+  $CurrentStage = "activate-package"
   Get-ApplicationActivator
   [uint32] $ProcessId = 0
   $HResult = [ActivationHelper]::Activate($Aumid, $Arguments, [ref] $ProcessId)
@@ -129,6 +136,7 @@ try {
   $Process = Get-Process -Id $ProcessId -ErrorAction Stop
   Write-Host "Packaged process started: PID=$ProcessId"
 
+  $CurrentStage = "wait-for-annotation-evidence"
   $Deadline = (Get-Date).AddSeconds(90)
   while ((Get-Date) -lt $Deadline -and -not (Test-Path -LiteralPath $ReopenedPngPath -PathType Leaf)) {
     $Process.Refresh()
@@ -139,6 +147,7 @@ try {
     throw "Installed MSIX annotation test did not finish within 90 seconds."
   }
 
+  $CurrentStage = "validate-annotation-evidence"
   $RequiredFiles = @(
     "01-original-before-annotation.png",
     "02-annotated-before-save.png",
@@ -193,6 +202,18 @@ try {
 
   Write-Host "Installed MSIX annotation save/reopen test passed."
   Write-Host "Saved PNG: $($SavedItem.Length) bytes, signature=$($Evidence.pngSignature), dimensions=$Dimensions"
+}
+catch {
+  $ErrorCode = [regex]::Match($_.Exception.Message, '0x[0-9A-Fa-f]{8}').Value
+  if ([string]::IsNullOrEmpty($ErrorCode)) { $ErrorCode = "not-reported" }
+  $Failure = [ordered]@{
+    result = "failed"
+    stage = $CurrentStage
+    errorCode = $ErrorCode
+    exception = $_.Exception.GetType().FullName
+  }
+  $Failure | ConvertTo-Json | Set-Content -LiteralPath $FailurePath -Encoding utf8
+  throw
 }
 finally {
   Remove-Item -LiteralPath $RouteTokenPath -Force -ErrorAction SilentlyContinue

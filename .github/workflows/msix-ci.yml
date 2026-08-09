@@ -198,6 +198,15 @@ jobs:
             const msixPath = 'packaging/msix/dev/out/ore-no-fusen-dev.msix';
             const msixExists = fs.existsSync(msixPath);
             const msixBytes = msixExists ? fs.statSync(msixPath).size : 0;
+            const smokeFailurePath = 'test-results/msix-annotation-evidence/msix-smoke-failure.json';
+            let smokeFailure = null;
+            if (fs.existsSync(smokeFailurePath)) {
+              try {
+                smokeFailure = JSON.parse(fs.readFileSync(smokeFailurePath, 'utf8').replace(/^\uFEFF/, ''));
+              } catch (error) {
+                smokeFailure = { stage: 'read-diagnostics', errorCode: 'not-reported' };
+              }
+            }
             const steps = {
               npm_ci: process.env.OUTCOME_NPM_CI || 'skipped',
               playwright_install: process.env.OUTCOME_PLAYWRIGHT_INSTALL || 'skipped',
@@ -231,7 +240,8 @@ jobs:
                 created: msixExists,
                 bytes: msixBytes,
                 relative_path: msixPath,
-                artifact_name: `msix-ci-${context.sha}`
+                artifact_name: `msix-ci-${context.sha}`,
+                smoke_failure: smokeFailure
               }
             };
             const content = Buffer.from(JSON.stringify(status, null, 2) + '\n').toString('base64');
