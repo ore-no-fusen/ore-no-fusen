@@ -3856,11 +3856,21 @@ async fn upload_local_images_to_drive(
 
 fn split_iphone_title_body(body: &str) -> (String, String) {
     let first_line = body.lines().next().unwrap_or("");
-    let image_line = regex::Regex::new(r"^\s*!\[[^\]]*\]\([^)]+\)\s*$")
-        .map(|re| re.is_match(first_line))
-        .unwrap_or(false);
-    if image_line {
-        return (String::new(), body.trim_start_matches('\n').to_string());
+    if let Ok(image_re) = regex::Regex::new(r"!\[[^\]]*\]\([^)]+\)") {
+        if let Some(image_match) = image_re.find(first_line) {
+            let title = first_line[..image_match.start()]
+                .trim_start_matches('#')
+                .trim()
+                .to_string();
+            let image_line = &first_line[image_match.start()..];
+            let remaining_lines = body.lines().skip(1).collect::<Vec<_>>().join("\n");
+            let content = if remaining_lines.is_empty() {
+                image_line.to_string()
+            } else {
+                format!("{image_line}\n{remaining_lines}")
+            };
+            return (title, content);
+        }
     }
     if first_line.starts_with('#') {
         let title = first_line.trim_start_matches('#').trim().to_string();
@@ -3870,6 +3880,32 @@ fn split_iphone_title_body(body: &str) -> (String, String) {
     let title = first_line.trim().to_string();
     let rest = body.lines().skip(1).collect::<Vec<_>>().join("\n");
     (title, rest.trim_start_matches('\n').to_string())
+}
+
+fn put_iphone_images_on_separate_lines(body: &str) -> String {
+    let Ok(image_re) = regex::Regex::new(r"!\[[^\]]*\]\([^)]+\)") else {
+        return body.to_string();
+    };
+    let mut result = String::with_capacity(body.len());
+    let mut previous_end = 0;
+
+    for image_match in image_re.find_iter(body) {
+        result.push_str(&body[previous_end..image_match.start()]);
+        if !result.is_empty() && !result.ends_with('\n') {
+            result.push('\n');
+        }
+        result.push_str(image_match.as_str());
+        if body[image_match.end()..]
+            .chars()
+            .next()
+            .is_some_and(|next| next != '\n')
+        {
+            result.push('\n');
+        }
+        previous_end = image_match.end();
+    }
+    result.push_str(&body[previous_end..]);
+    result
 }
 
 /// body 中のローカル画像パスを [画像] に置換する（Web Push 4KB制限対応）
@@ -4041,6 +4077,7 @@ async fn fusen_send_to_iphone(
 
     // 先頭画像はタイトルにせず本文へ残し、Driveアップロード対象にする。
     let (title, body_content) = split_iphone_title_body(&body);
+    let body_content = put_iphone_images_on_separate_lines(&body_content);
 
     // Push通知用: ローカル画像パスを [画像] に置換（Web Push 4KB制限対応）
     let body_push = strip_local_images(&body_content);
@@ -4325,28 +4362,77 @@ mod phone_push_payload_tests {
 
 // --- iPhone受信 ---
 
-/// iPhoneからの body 内の画像参照（fusen_img_*.* パターン）を
+fn collect_iphone_image_refs(body: &str) -> Vec<(String, String)> {
+    let re = regex::Regex::new(r"!\[[^\]]*\]\(([^)]+)\)").expect("valid image regex");
+    re.captures_iter(body)
+        .filter_map(|capture| {
+            let reference = capture.get(1)?.as_str();
+            let filename = reference.strip_prefix("assets/").unwrap_or(reference);
+            if filename.is_empty()
+                || filename == "."
+                || filename == ".."
+                || filename.contains('/')
+                || filename.contains('\\')
+            {
+                return None;
+            }
+            let extension = std::path::Path::new(filename)
+                .extension()
+                .and_then(|value| value.to_str())?
+                .to_ascii_lowercase();
+            if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") {
+                return None;
+            }
+            Some((reference.to_string(), filename.to_string()))
+        })
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+#[cfg(test)]
+mod iphone_image_receive_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_iphone_images_and_pc_images_returned_from_iphone() {
+        let refs = collect_iphone_image_refs(
+            "![iphone](fusen_img_20260810_1.jpg)\n![pc](assets/pasted_20260806_1.png)",
+        );
+
+        assert!(refs.contains(&(
+            "fusen_img_20260810_1.jpg".to_string(),
+            "fusen_img_20260810_1.jpg".to_string(),
+        )));
+        assert!(refs.contains(&(
+            "assets/pasted_20260806_1.png".to_string(),
+            "pasted_20260806_1.png".to_string(),
+        )));
+    }
+
+    #[test]
+    fn rejects_paths_and_non_image_files() {
+        let refs = collect_iphone_image_refs(
+            "![bad](assets/../secret.png)\n![bad](assets/folder/image.png)\n![bad](assets/note.txt)",
+        );
+
+        assert!(refs.is_empty());
+    }
+}
+
+/// iPhoneからの body 内の安全な画像参照を
 /// Drive からダウンロードしてローカル保存し、絶対パスに書き換えた body を返す
 #[tauri::command]
 async fn fusen_download_iphone_images(folder_path: String, body: String) -> Result<String, String> {
     use std::path::Path;
 
-    // 画像ファイル名を抽出: ![](fusen_img_XXX.ext) → ["fusen_img_XXX.ext", ...]
-    let re = regex::Regex::new(r"!\[[^\]]*\]\((fusen_img_[^)]+)\)").map_err(|e| e.to_string())?;
-
-    let filenames: Vec<String> = re
-        .captures_iter(&body)
-        .filter_map(|cap| cap.get(1))
-        .map(|m| m.as_str().to_string())
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
+    let image_refs = collect_iphone_image_refs(&body);
 
     // assets ディレクトリを作成（PC貼り付け画像と統一）
     let assets_dir = Path::new(&folder_path).join("assets");
     std::fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
 
-    if filenames.is_empty() {
+    if image_refs.is_empty() {
         return Ok(body);
     }
 
@@ -4359,13 +4445,15 @@ async fn fusen_download_iphone_images(folder_path: String, body: String) -> Resu
         .map_err(|e| format!("Drive未接続: {}", e))?;
 
     // 各画像をダウンロードしてローカル保存
-    for filename in &filenames {
+    for (reference, filename) in &image_refs {
         let local_path = assets_dir.join(filename);
 
         // 既存ファイルはスキップ（冪等）
         if local_path.exists() {
-            rewritten =
-                rewritten.replace(&format!("({filename})"), &format!("(assets/{filename})"));
+            rewritten = rewritten.replace(
+                &format!("({reference})"),
+                &format!("(assets/{filename})"),
+            );
             continue;
         }
 
@@ -4373,8 +4461,10 @@ async fn fusen_download_iphone_images(folder_path: String, body: String) -> Resu
             Ok(bytes) => {
                 std::fs::write(&local_path, &bytes)
                     .map_err(|e| format!("画像保存失敗 {}: {}", filename, e))?;
-                rewritten =
-                    rewritten.replace(&format!("({filename})"), &format!("(assets/{filename})"));
+                rewritten = rewritten.replace(
+                    &format!("({reference})"),
+                    &format!("(assets/{filename})"),
+                );
             }
             Err(e) => {
                 logger::log_info(&format!("[assets] download failed {}: {}", filename, e));
@@ -5486,6 +5576,29 @@ mod image_embed_tests {
 
         assert_eq!(title, "");
         assert_eq!(content, body);
+    }
+
+    #[test]
+    fn iphone_send_moves_first_line_inline_image_from_title_to_body() {
+        let body = "8/2 MSIXの一本化![image](assets/pasted.png)\n続き";
+
+        assert_eq!(
+            split_iphone_title_body(body),
+            (
+                "8/2 MSIXの一本化".to_string(),
+                "![image](assets/pasted.png)\n続き".to_string(),
+            )
+        );
+    }
+
+    #[test]
+    fn iphone_send_places_body_image_markdown_on_its_own_line() {
+        assert_eq!(
+            put_iphone_images_on_separate_lines(
+                "8/2 MSIXの一本化![image](assets/pasted.png)"
+            ),
+            "8/2 MSIXの一本化\n![image](assets/pasted.png)"
+        );
     }
 
     #[test]
