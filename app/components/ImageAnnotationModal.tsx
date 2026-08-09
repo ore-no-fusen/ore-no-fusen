@@ -33,6 +33,25 @@ interface Props {
     language: Language;
 }
 
+type PngExportStage = Pick<import('konva/lib/Stage').Stage, 'draw' | 'toDataURL'>;
+
+export function exportStageAsPng(stage: PngExportStage, pixelRatio: number): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        stage.draw();
+        stage.toDataURL({
+            mimeType: 'image/png',
+            pixelRatio,
+            callback: (dataUrl: string) => {
+                if (!dataUrl.startsWith('data:image/png;base64,') || dataUrl.length <= 'data:image/png;base64,'.length) {
+                    reject(new Error('PNG Data URLを生成できませんでした。元画像は変更しません。'));
+                    return;
+                }
+                resolve(dataUrl);
+            },
+        });
+    });
+}
+
 const PEN_COLORS = [
     { value: '#ef4444', ja: '赤', en: 'Red' },
     { value: '#3b82f6', ja: '青', en: 'Blue' },
@@ -304,23 +323,6 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         syncHistoryCounts();
     }, [syncHistoryCounts]);
 
-    const exportStageAsPng = useCallback((stage: import('konva/lib/Stage').Stage, pixelRatio: number) => {
-        return new Promise<string>((resolve, reject) => {
-            stage.draw();
-            stage.toDataURL({
-                mimeType: 'image/png',
-                pixelRatio,
-                callback: (dataUrl: string) => {
-                    if (!dataUrl.startsWith('data:image/png;base64,') || dataUrl.length <= 'data:image/png;base64,'.length) {
-                        reject(new Error('PNG Data URLを生成できませんでした。元画像は変更しません。'));
-                        return;
-                    }
-                    resolve(dataUrl);
-                },
-            });
-        });
-    }, []);
-
     const handleSave = useCallback(async () => {
         const stage = stageRef.current;
         if (!stage) return;
@@ -338,7 +340,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         } finally {
             setIsSaving(false);
         }
-    }, [absolutePath, exportStageAsPng, language, onSaved]);
+    }, [absolutePath, language, onSaved]);
 
     useEffect(() => {
         const win = getCurrentWindow();
