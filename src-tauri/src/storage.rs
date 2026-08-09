@@ -808,6 +808,46 @@ pub fn overwrite_associated_assets(note_path: &Path, target_note_dir: &Path) -> 
     copy_associated_assets_with_policy(note_path, target_note_dir, true)
 }
 
+pub fn duplicate_associated_assets(
+    note_path: &Path,
+    body: &str,
+    target_note_dir: &Path,
+) -> Result<String, String> {
+    use std::collections::HashMap;
+
+    let note_dir = note_path.parent().ok_or("No parent")?;
+    let target_assets_dir = target_note_dir.join("assets");
+    let mut replacements = HashMap::new();
+
+    for cap in get_assets_regex().captures_iter(body) {
+        let asset_rel_path = cap[1].to_string();
+        if replacements.contains_key(&asset_rel_path) {
+            continue;
+        }
+        let source = note_dir.join(&asset_rel_path);
+        if !source.exists() {
+            continue;
+        }
+
+        fs::create_dir_all(&target_assets_dir).map_err(|e| e.to_string())?;
+        let stem = source.file_stem().and_then(|value| value.to_str()).ok_or("No asset stem")?;
+        let extension = source.extension().and_then(|value| value.to_str());
+        let unique = uuid::Uuid::new_v4().simple();
+        let filename = match extension {
+            Some(extension) => format!("{stem}_copy_{unique}.{extension}"),
+            None => format!("{stem}_copy_{unique}"),
+        };
+        fs::copy(&source, target_assets_dir.join(&filename)).map_err(|e| e.to_string())?;
+        replacements.insert(asset_rel_path, format!("assets/{filename}"));
+    }
+
+    let mut rewritten = body.to_string();
+    for (source, destination) in replacements {
+        rewritten = rewritten.replace(&format!("({source})"), &format!("({destination})"));
+    }
+    Ok(rewritten)
+}
+
 fn copy_associated_assets_with_policy(
     note_path: &Path,
     target_note_dir: &Path,
@@ -1059,6 +1099,26 @@ mod tests {
             fs::read_to_string(destination.path().join("assets/screen.png")).unwrap(),
             "image"
         );
+    }
+
+    #[test]
+    fn duplicate_associated_assets_creates_an_independent_image_reference() {
+        let folder = tempdir().unwrap();
+        fs::create_dir_all(folder.path().join("assets")).unwrap();
+        fs::write(folder.path().join("assets/screen.png"), "original").unwrap();
+        let note_path = folder.path().join("note.md");
+        fs::write(&note_path, "![image](assets/screen.png)").unwrap();
+        let body = "![image](assets/screen.png)\n![again](assets/screen.png)";
+
+        let rewritten = duplicate_associated_assets(&note_path, body, folder.path()).unwrap();
+
+        assert!(!rewritten.contains("(assets/screen.png)"));
+        let copied_relative = &get_assets_regex().captures(&rewritten).unwrap()[1];
+        assert!(copied_relative.starts_with("assets/screen_copy_"));
+        assert_eq!(get_assets_regex().captures_iter(&rewritten).count(), 2);
+        assert_eq!(fs::read_to_string(folder.path().join(copied_relative)).unwrap(), "original");
+        fs::write(folder.path().join(copied_relative), "duplicate-edited").unwrap();
+        assert_eq!(fs::read_to_string(folder.path().join("assets/screen.png")).unwrap(), "original");
     }
 
     #[test]
