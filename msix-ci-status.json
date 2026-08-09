@@ -1,30 +1,20 @@
 {
-  "updated_at": "2026-08-09T13:26:36.513Z",
+  "updated_at": "2026-08-09T16:39:03.570Z",
   "workflow": "MSIX CI",
-  "run_id": 31313281800,
-  "run_number": 34,
+  "run_id": 31324329443,
+  "run_number": 36,
   "run_attempt": "1",
-  "run_url": "https://github.com/ore-no-fusen/ore-no-fusen/actions/runs/31313281800",
+  "run_url": "https://github.com/ore-no-fusen/ore-no-fusen/actions/runs/31324329443",
   "branch": "develop",
-  "commit_sha": "97e4332c330e3d7b344e7bf60db836b8d2c30adc",
-  "overall": "cancelled",
-  "failed_step": "msix_create",
-  "current_step": "finished",
-  "steps": {
-    "npm_ci": "success",
-    "frontend_tests": "success",
-    "next_build": "success",
-    "rust_tests": "success",
-    "tauri_build": "success",
-    "msix_create": "cancelled",
-    "msix_verify": "skipped",
-    "msix_smoke": "skipped",
-    "upload_artifact": "success"
-  },
+  "commit_sha": "04558f8a5927706dc016c1b4b5d5f3af95011243",
+  "overall": "in_progress",
+  "failed_step": null,
+  "current_step": "started",
+  "steps": {},
   "msix": {
-    "created": true,
-    "bytes": 53265417,
+    "created": false,
+    "bytes": 0,
     "relative_path": "packaging/msix/dev/out/ore-no-fusen-dev.msix",
-    "artifact_name": "msix-ci-97e4332c330e3d7b344e7bf60db836b8d2c30adc"
+    "artifact_name": "msix-ci-04558f8a5927706dc016c1b4b5d5f3af95011243"
   }
 }
