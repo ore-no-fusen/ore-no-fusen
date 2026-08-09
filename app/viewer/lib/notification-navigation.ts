@@ -61,3 +61,21 @@ export function removeNotificationNoteParam(currentUrl: string): string {
   url.searchParams.delete('note');
   return `${url.pathname}${url.search}${url.hash}`;
 }
+
+type ResumeEventTarget = Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
+
+export function registerPendingNotificationResume(
+  handler: EventListener,
+  documentTarget: ResumeEventTarget = document,
+  windowTarget: ResumeEventTarget = window,
+): () => void {
+  documentTarget.addEventListener('visibilitychange', handler);
+  windowTarget.addEventListener('focus', handler);
+  windowTarget.addEventListener('pageshow', handler);
+
+  return () => {
+    documentTarget.removeEventListener('visibilitychange', handler);
+    windowTarget.removeEventListener('focus', handler);
+    windowTarget.removeEventListener('pageshow', handler);
+  };
+}

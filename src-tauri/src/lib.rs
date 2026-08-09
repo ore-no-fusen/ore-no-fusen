@@ -3856,11 +3856,21 @@ async fn upload_local_images_to_drive(
 
 fn split_iphone_title_body(body: &str) -> (String, String) {
     let first_line = body.lines().next().unwrap_or("");
-    let image_line = regex::Regex::new(r"^\s*!\[[^\]]*\]\([^)]+\)\s*$")
-        .map(|re| re.is_match(first_line))
-        .unwrap_or(false);
-    if image_line {
-        return (String::new(), body.trim_start_matches('\n').to_string());
+    if let Ok(image_re) = regex::Regex::new(r"!\[[^\]]*\]\([^)]+\)") {
+        if let Some(image_match) = image_re.find(first_line) {
+            let title = first_line[..image_match.start()]
+                .trim_start_matches('#')
+                .trim()
+                .to_string();
+            let image_line = &first_line[image_match.start()..];
+            let remaining_lines = body.lines().skip(1).collect::<Vec<_>>().join("\n");
+            let content = if remaining_lines.is_empty() {
+                image_line.to_string()
+            } else {
+                format!("{image_line}\n{remaining_lines}")
+            };
+            return (title, content);
+        }
     }
     if first_line.starts_with('#') {
         let title = first_line.trim_start_matches('#').trim().to_string();
@@ -5539,6 +5549,19 @@ mod image_embed_tests {
 
         assert_eq!(title, "");
         assert_eq!(content, body);
+    }
+
+    #[test]
+    fn iphone_send_moves_first_line_inline_image_from_title_to_body() {
+        let body = "8/2 MSIXの一本化![image](assets/pasted.png)\n続き";
+
+        assert_eq!(
+            split_iphone_title_body(body),
+            (
+                "8/2 MSIXの一本化".to_string(),
+                "![image](assets/pasted.png)\n続き".to_string(),
+            )
+        );
     }
 
     #[test]
