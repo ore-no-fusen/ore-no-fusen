@@ -1,0 +1,243 @@
+name: MSIX CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - "app/**"
+      - "!app/landing/**"
+      - "e2e/**"
+      - "lib/**"
+      - "src-tauri/**"
+      - "packaging/msix/**"
+      - "scripts/ci-msix-smoke.ps1"
+      - "scripts/run-e2e.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/msix-ci.yml"
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: msix-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-install-smoke:
+    name: Build, install and launch MSIX
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      # gdrive.rs uses compile-time env!(). CI smoke tests do not exercise
+      # Google OAuth, so non-secret placeholders keep Rust/Tauri builds reproducible.
+      GDRIVE_CLIENT_ID: msix-ci-placeholder
+      GDRIVE_CLIENT_SECRET: msix-ci-placeholder
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish MSIX CI start status
+        if: github.event_name != 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = 'ci-status';
+            const path = 'msix-ci-status.json';
+            const status = {
+              updated_at: new Date().toISOString(),
+              workflow: context.workflow,
+              run_id: context.runId,
+              run_number: context.runNumber,
+              run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+              run_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${context.runId}`,
+              branch: context.ref.replace('refs/heads/', ''),
+              commit_sha: context.sha,
+              overall: 'in_progress',
+              failed_step: null,
+              current_step: 'started',
+              steps: {},
+              msix: {
+                created: false,
+                bytes: 0,
+                relative_path: 'packaging/msix/dev/out/ore-no-fusen-dev.msix',
+                artifact_name: `msix-ci-${context.sha}`
+              }
+            };
+            const content = Buffer.from(JSON.stringify(status, null, 2) + '\n').toString('base64');
+            let sha;
+            try {
+              const current = await github.rest.repos.getContent({ owner, repo, path, ref: branch });
+              sha = current.data.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            await github.rest.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path,
+              branch,
+              message: `ci-status: MSIX CI #${context.runNumber} started`,
+              content,
+              sha
+            });
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JavaScript dependencies
+        id: npm_ci
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Frontend unit tests
+        id: frontend_tests
+        run: npm test
+
+      - name: Next.js production build
+        id: next_build
+        run: npm run build
+
+      - name: Rust library tests
+        id: rust_tests
+        working-directory: src-tauri
+        run: cargo test --locked --lib
+
+      - name: Build Tauri executable without installers
+        id: tauri_build
+        run: npx tauri build --no-bundle
+
+      - name: Create and sign local test MSIX
+        id: msix_create
+        shell: pwsh
+        run: .\packaging\msix\test-msix.ps1 -SkipBuild -NoInstall
+
+      - name: Verify MSIX signature
+        id: msix_verify
+        shell: pwsh
+        run: |
+          $msix = '.\packaging\msix\dev\out\ore-no-fusen-dev.msix'
+          $cer = '.\packaging\msix\dev\certs\ore-no-fusen-dev.cer'
+          $signature = Get-AuthenticodeSignature -LiteralPath $msix
+          $expected = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($cer)
+          if ($null -eq $signature.SignerCertificate) { throw 'MSIX is not signed' }
+          if ($signature.SignerCertificate.Thumbprint -ne $expected.Thumbprint) {
+            throw 'MSIX signer does not match the generated test certificate'
+          }
+          if ($signature.Status -ne 'Valid') {
+            throw "MSIX signature is not trusted and valid: $($signature.Status)"
+          }
+          Write-Host "MSIX signature present; signer=$($expected.Thumbprint); status=$($signature.Status)"
+
+      - name: Install and launch packaged application
+        id: msix_smoke
+        shell: pwsh
+        run: .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix -CertificatePath .\packaging\msix\dev\certs\ore-no-fusen-dev.cer
+
+      - name: Upload MSIX and diagnostics
+        id: upload_artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-ci-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            packaging/msix/dev/out/ore-no-fusen-dev.msix
+            ${{ runner.temp }}/appx-deployment-events.txt
+            src-tauri/target/release/*.pdb
+
+      - name: Publish machine-readable MSIX CI status
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          OUTCOME_NPM_CI: ${{ steps.npm_ci.outcome }}
+          OUTCOME_FRONTEND_TESTS: ${{ steps.frontend_tests.outcome }}
+          OUTCOME_NEXT_BUILD: ${{ steps.next_build.outcome }}
+          OUTCOME_RUST_TESTS: ${{ steps.rust_tests.outcome }}
+          OUTCOME_TAURI_BUILD: ${{ steps.tauri_build.outcome }}
+          OUTCOME_MSIX_CREATE: ${{ steps.msix_create.outcome }}
+          OUTCOME_MSIX_VERIFY: ${{ steps.msix_verify.outcome }}
+          OUTCOME_MSIX_SMOKE: ${{ steps.msix_smoke.outcome }}
+          OUTCOME_UPLOAD: ${{ steps.upload_artifact.outcome }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = 'ci-status';
+            const path = 'msix-ci-status.json';
+            const msixPath = 'packaging/msix/dev/out/ore-no-fusen-dev.msix';
+            const msixExists = fs.existsSync(msixPath);
+            const msixBytes = msixExists ? fs.statSync(msixPath).size : 0;
+            const steps = {
+              npm_ci: process.env.OUTCOME_NPM_CI || 'skipped',
+              frontend_tests: process.env.OUTCOME_FRONTEND_TESTS || 'skipped',
+              next_build: process.env.OUTCOME_NEXT_BUILD || 'skipped',
+              rust_tests: process.env.OUTCOME_RUST_TESTS || 'skipped',
+              tauri_build: process.env.OUTCOME_TAURI_BUILD || 'skipped',
+              msix_create: process.env.OUTCOME_MSIX_CREATE || 'skipped',
+              msix_verify: process.env.OUTCOME_MSIX_VERIFY || 'skipped',
+              msix_smoke: process.env.OUTCOME_MSIX_SMOKE || 'skipped',
+              upload_artifact: process.env.OUTCOME_UPLOAD || 'skipped'
+            };
+            const ordered = Object.entries(steps);
+            const failed = ordered.find(([, outcome]) => outcome === 'failure');
+            const cancelled = ordered.find(([, outcome]) => outcome === 'cancelled');
+            const status = {
+              updated_at: new Date().toISOString(),
+              workflow: context.workflow,
+              run_id: context.runId,
+              run_number: context.runNumber,
+              run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+              run_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${context.runId}`,
+              branch: context.ref.replace('refs/heads/', ''),
+              commit_sha: context.sha,
+              overall: failed ? 'failure' : (cancelled ? 'cancelled' : 'success'),
+              failed_step: failed ? failed[0] : (cancelled ? cancelled[0] : null),
+              current_step: 'finished',
+              steps,
+              msix: {
+                created: msixExists,
+                bytes: msixBytes,
+                relative_path: msixPath,
+                artifact_name: `msix-ci-${context.sha}`
+              }
+            };
+            const content = Buffer.from(JSON.stringify(status, null, 2) + '\n').toString('base64');
+            let sha;
+            try {
+              const current = await github.rest.repos.getContent({ owner, repo, path, ref: branch });
+              sha = current.data.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            await github.rest.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path,
+              branch,
+              message: `ci-status: MSIX CI #${context.runNumber}`,
+              content,
+              sha
+            });

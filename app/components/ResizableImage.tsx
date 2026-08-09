@@ -42,6 +42,15 @@ export function clearConvertedFileSrcCache() {
     convertedFileSrcCache.clear();
 }
 
+function dataUrlToObjectUrl(dataUrl: string): string {
+    const [header, encoded] = dataUrl.split(',', 2);
+    const mime = header.match(/^data:([^;]+);base64$/)?.[1];
+    if (!mime || !encoded) throw new Error('Invalid image data URL');
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+
 function initialDisplaySrc(src: string): string {
     const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(src);
     return isLocalPath
@@ -88,13 +97,13 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                 try {
                     const { convertFileSrc } = await import('@tauri-apps/api/core');
                     const convertedUrl = convertFileSrc(activeSrc);
-                    // MSIX の asset protocol はクエリ付きローカル URL を読めない。
-                    // 更新後だけ no-store で読み直し、blob URL にして画像キャッシュを回避する。
+                    // MSIX の asset protocol は更新直後に古い画像を返すことがある。
+                    // 更新後だけ Rust から実ファイルを直接読み、asset protocol のキャッシュを通さない。
                     let assetUrl = convertedUrl;
                     if (cacheKey > 0) {
-                        const response = await fetch(convertedUrl, { cache: 'no-store' });
-                        if (!response.ok) throw new Error(`Image reload failed: ${response.status}`);
-                        objectUrl = URL.createObjectURL(await response.blob());
+                        const { invoke } = await import('@tauri-apps/api/core');
+                        const dataUrl = await invoke<string>('fusen_read_local_image_data_url', { path: activeSrc });
+                        objectUrl = dataUrlToObjectUrl(dataUrl);
                         assetUrl = objectUrl;
                     }
                     if (active) {

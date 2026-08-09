@@ -64,10 +64,20 @@ function Get-LatestWindowsSdkToolRoot {
 }
 
 function Invoke-NativeCommand {
-  param([string] $FilePath, [string[]] $Arguments)
-  & $FilePath @Arguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "$FilePath failed with exit code $LASTEXITCODE."
+  param(
+    [string] $FilePath,
+    [string[]] $Arguments
+  )
+
+  Write-Host "Running native command: $([IO.Path]::GetFileName($FilePath)) $($Arguments -join ' ')"
+  $Process = Start-Process `
+    -FilePath $FilePath `
+    -ArgumentList $Arguments `
+    -PassThru `
+    -Wait `
+    -NoNewWindow
+  if ($Process.ExitCode -ne 0) {
+    throw "$FilePath failed with exit code $($Process.ExitCode)."
   }
 }
 
@@ -106,15 +116,47 @@ function Get-OrCreateDevCertificate {
     Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
   }
 
+  $TrustedRoot = Get-ChildItem Cert:\CurrentUser\Root |
+    Where-Object Thumbprint -eq $Certificate.Thumbprint |
+    Select-Object -First 1
+  if ($null -eq $TrustedRoot) {
+    Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
+  }
+
   return $Certificate
 }
 
+function Import-BuildEnvironment {
+  $EnvFile = Join-Path $RepoRoot ".env.local"
+  foreach ($Name in @("GDRIVE_CLIENT_ID", "GDRIVE_CLIENT_SECRET")) {
+    if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($Name))) {
+      continue
+    }
+    if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
+      throw "$Name is not set and .env.local was not found."
+    }
+    $Prefix = "$Name="
+    $Line = Get-Content -LiteralPath $EnvFile -Encoding UTF8 |
+      Where-Object { $_.StartsWith($Prefix) } |
+      Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($Line)) {
+      throw "$Name is not set in .env.local."
+    }
+    $Value = $Line.Substring($Prefix.Length).Trim().Trim('"').Trim("'")
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+      throw "$Name is empty in .env.local."
+    }
+    [Environment]::SetEnvironmentVariable($Name, $Value)
+  }
+}
+
 if (-not $SkipBuild) {
+  Import-BuildEnvironment
   Write-Host "Building Tauri release..."
   Push-Location $RepoRoot
   try {
-    npm run tauri build
-    if ($LASTEXITCODE -ne 0) { throw "npm run tauri build failed." }
+    npx tauri build --no-bundle
+    if ($LASTEXITCODE -ne 0) { throw "npx tauri build --no-bundle failed." }
   }
   finally {
     Pop-Location

@@ -2,7 +2,7 @@
  * ランディングページ (LandingPage) - 「思考を現実へ」ブランド再設計版
  *
  * 構成（依頼書順 + ラスコー保持）:
- *  0. Hero            「消えそうなひらめきを、逃がさない。」+ 0.3秒の証拠 + CTA + 製品スクショ
+ *  0. Hero            「そのメモ、まだメールで送ってるの？」+ 0.3秒の証拠 + CTA + 製品スクショ
  *  1. 共感             あとでやろうで消える
  *  2. ラスコー         思想の根拠（残す）
  *  3. 解決フロー       思考 → 固定 → 視界 → 決心 → 行動 → 現実
@@ -170,7 +170,7 @@ export default function LandingPage() {
 
             {/* ==============================
                 0. Hero
-                「消えそうなひらめきを、逃がさない。」
+                「そのメモ、まだメールで送ってるの？」
             ============================== */}
             <section className="relative overflow-hidden py-24 sm:py-32 px-6 min-h-[88vh] flex items-center">
                 <div
@@ -191,13 +191,13 @@ export default function LandingPage() {
                     <h1 className="text-[2.4rem] sm:text-5xl lg:text-[3.8rem] font-extrabold leading-[1.15] tracking-tight mb-8 text-[#2C1F0E]">
                         {isEn ? (
                             <>
-                                Don&apos;t let your <span className="text-[#5C7A3E]">spark</span><br />
-                                slip away.
+                                Still emailing that note<br />
+                                to yourself?
                             </>
                         ) : (
                             <>
-                                消えそうな<span className="text-[#5C7A3E]">ひらめき</span>を、<br />
-                                逃がさない。
+                                そのメモ、まだメールで送ってる<br />
+                                の？
                             </>
                         )}
                     </h1>

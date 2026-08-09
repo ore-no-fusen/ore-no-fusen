@@ -5,7 +5,7 @@
 - 5.0.0は旧MSI・NSIS利用者をStore版へ案内する移行版として、GitHub Release資産を保持する。
 - 5.1.0以降はStore MSIXだけを正式配布する。
 - GitHub Actionsは未署名MSIX artifactを作るだけで、Partner Centerへの提出・公開は行わない。
-- 通常公開の前にパッケージフライトを使用し、Store署名済みMSIXを限定配信して最終確認する。
+- 通常公開の前に、このPCで開発署名MSIXを作成し、MSIX固有動作を実機確認する。
 
 ## 提出前提
 
@@ -16,31 +16,24 @@
 
 キャッシュが有効な通常実行では、Action開始からMSIX artifact作成まで10分以内を目標とする。Node系検証とRust releaseテストを並列実行し、同じrunのRust成果物をMSIXビルドへ再利用する。超過時は各step時間とRustキャッシュのヒット状況を記録し、次のリリース前に原因を解消する。
 
-## パッケージフライトでの最終確認
+## このPCでの提出前MSIX確認
 
-1. GitHub Actionsの`Prepare and Build Store Package` runから`store-msix` artifactをダウンロードする。
-2. Partner Centerで、リリース担当者のMicrosoftアカウントを含むテスターグループを用意する。
-3. 製品`9N4MW0V2MVVG`のパッケージフライトを作成し、そのグループだけを対象にする。
-4. artifact内の`ore-no-fusen.msix`をアップロードし、Package IdentityとVersionを確認する。
-5. フライトを認定へ提出し、Microsoft Storeで利用可能になるまで待つ。
-6. テスターのMicrosoftアカウントでStoreへサインインし、フライト版をインストールまたは更新する。
-7. Store画面の［開く］から起動し、次の必須項目を確認する。
+1. アプリを終了する。
+2. `develop`または作業ブランチで`.\packaging\msix\test-msix.ps1`を実行する。
+3. 作成・インストールされた開発署名MSIXを起動し、次の必須項目を確認する。
 
 | 必須確認 | 合格条件 |
 |---|---|
-| バージョン・配布形態 | 「このアプリについて」に対象版と「Microsoft Store 版」が表示される |
 | 既存データ | 既存付箋と設定が更新前から引き継がれる |
 | 画像描き込み保存 | 線などを保存した直後に、変更後の画像が表示される |
 | 画像付き付箋の複製 | 本文と画像を含む複製が隣に開く |
-| Store更新 | 旧Store版から対象版へ更新できる |
+| iPhone連携 | PCとiPhoneの送受信、画像表示、通知遷移が動作する |
 
-すべて合格するまで通常公開へ進まない。不合格の場合は修正を`develop`からやり直し、新しい版番号でMSIXを作り直す。
-
-緊急修正であっても、このフライト確認は省略しない。5.1.1では公開中の不具合修正を急ぐため例外的に通常申請へ直接提出したが、今後の通常手順にはしない。
+すべて合格するまで通常公開へ進まない。不合格の場合は修正をやり直し、開発署名MSIXを再作成する。
 
 ## 通常の製品申請
 
-1. フライトで合格したものと同じ版・同じ`ore-no-fusen.msix`を、製品の新しい申請へアップロードする。
+1. GitHub Actionsの`Prepare and Build Store Package`で作成した`ore-no-fusen.msix`を、製品の新しい申請へアップロードする。
 2. Package IdentityとVersionを確認する。
 3. 説明、画像、プライバシー、年齢区分、制限付きCapabilityの説明を確認する。
 4. 認定へ提出する。

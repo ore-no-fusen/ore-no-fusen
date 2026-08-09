@@ -30,6 +30,7 @@ import { loadPwaLanguage, savePwaLanguage } from './language';
 import {
   consumePendingNotification,
   loadNotificationDraft,
+  registerPendingNotificationResume,
 } from './lib/notification-navigation';
 import {
   appendDiagnosticLog,
@@ -320,10 +321,10 @@ export default function ViewerPage() {
         }));
       }
     };
-    document.addEventListener('visibilitychange', handleVisible);
+    const unregisterResume = registerPendingNotificationResume(handleVisible);
     // 起動直後も確認（clients.openWindow で新規タブが開かれた場合、visibilitychange は発火しない）
     handleVisible();
-    return () => document.removeEventListener('visibilitychange', handleVisible);
+    return unregisterResume;
   }, [videoBlobMapFromDraft, videoMetasFromRecord]);
 
 
