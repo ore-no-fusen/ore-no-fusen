@@ -976,12 +976,12 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
         .join(&new_filename)
         .to_string_lossy()
         .to_string();
-    let content = format!("{}\n\n{}", new_frontmatter, orig_body.trim());
-
-    storage::copy_associated_assets(
+    let duplicated_body = storage::duplicate_associated_assets(
         std::path::Path::new(&path),
+        orig_body.trim(),
         std::path::Path::new(&folder_path),
     )?;
+    let content = format!("{}\n\n{}", new_frontmatter, duplicated_body);
     storage::write_note(&new_path_str, &content)?;
 
     let meta = NoteMeta {
@@ -998,7 +998,7 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
     );
 
     Ok(Note {
-        body: orig_body.to_string(),
+        body: duplicated_body,
         frontmatter: new_frontmatter,
         meta,
     })
@@ -5142,6 +5142,7 @@ pub fn run() {
             clipboard::fusen_save_dropped_image_data,
             clipboard::fusen_remove_dropped_images,
             clipboard::fusen_save_annotated_image,
+            clipboard::fusen_read_local_image_data_url,
             fusen_is_sticky_note_focused,
             fusen_arrange_by_tag,
             fusen_arrange_undo,

@@ -11,7 +11,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi';
+import { LogicalSize, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { AnnotationHistory } from '../utils/annotationHistory';
 import type { Language } from '@/lib/i18n';
 
@@ -25,6 +25,8 @@ export const DEFAULT_ANNOTATION_SETTINGS = {
     highlightOpacity: 0.5,
 } as const;
 
+export const ANNOTATION_WINDOW_SIZE = { width: 760, height: 620 } as const;
+
 interface Props {
     absolutePath: string;
     displayUrl: string;
@@ -33,12 +35,21 @@ interface Props {
     language: Language;
 }
 
-type PngExportStage = Pick<import('konva/lib/Stage').Stage, 'draw' | 'toDataURL'>;
+type PngExportLayer = Pick<import('konva/lib/Layer').Layer, 'draw' | 'toDataURL'>;
 
-export function exportStageAsPng(stage: PngExportStage, pixelRatio: number): Promise<string> {
+export function exportDrawingLayerAsPng(
+    layer: PngExportLayer,
+    width: number,
+    height: number,
+    pixelRatio: number,
+): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-        stage.draw();
-        stage.toDataURL({
+        layer.draw();
+        layer.toDataURL({
+            x: 0,
+            y: 0,
+            width,
+            height,
             mimeType: 'image/png',
             pixelRatio,
             callback: (dataUrl: string) => {
@@ -50,6 +61,15 @@ export function exportStageAsPng(stage: PngExportStage, pixelRatio: number): Pro
             },
         });
     });
+}
+
+export function imageDataUrlToBlob(dataUrl: string): Blob {
+    const [header, encoded] = dataUrl.split(',', 2);
+    const mime = header.match(/^data:([^;]+);base64$/)?.[1];
+    if (!mime || !encoded) throw new Error('Invalid image data URL');
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return new Blob([bytes], { type: mime });
 }
 
 const PEN_COLORS = [
@@ -121,9 +141,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
             const img = new window.Image();
             try {
-                const resp = await fetch(displayUrl);
-                const blob = await resp.blob();
-                blobUrl = URL.createObjectURL(blob);
+                const dataUrl = await invoke<string>('fusen_read_local_image_data_url', { path: absolutePath });
+                blobUrl = URL.createObjectURL(imageDataUrlToBlob(dataUrl));
                 img.src = blobUrl;
             } catch {
                 img.src = displayUrl;
@@ -138,8 +157,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             const nh = img.naturalHeight || img.height || 600;
             naturalSizeRef.current = { w: nw, h: nh };
 
-            const maxW = 680 * 0.88;
-            const maxH = (540 - 120) * 0.88;
+            const maxW = ANNOTATION_WINDOW_SIZE.width * 0.88;
+            const maxH = (ANNOTATION_WINDOW_SIZE.height - 140) * 0.88;
             const scaleW = maxW / nw;
             const scaleH = maxH / nh;
             const sc = Math.min(scaleW, scaleH);
@@ -295,7 +314,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             stageRef.current = null;
             drawLayerRef.current = null;
         };
-    }, [displayUrl, language, syncHistoryCounts]);
+    }, [absolutePath, displayUrl, language, syncHistoryCounts]);
 
     const handleToolChange = useCallback((t: Tool) => {
         setTool(t);
@@ -324,14 +343,14 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     }, [syncHistoryCounts]);
 
     const handleSave = useCallback(async () => {
-        const stage = stageRef.current;
-        if (!stage) return;
+        const layer = drawLayerRef.current;
+        if (!layer) return;
         setIsSaving(true);
         try {
             const { w: nw } = naturalSizeRef.current;
-            const { w: sw } = stageSizeRef.current;
+            const { w: sw, h: sh } = stageSizeRef.current;
             const pixelRatio = sw > 0 && nw > 0 ? nw / sw : 1;
-            const dataUrl = await exportStageAsPng(stage, pixelRatio);
+            const dataUrl = await exportDrawingLayerAsPng(layer, sw, sh, pixelRatio);
             await invoke('fusen_save_annotated_image', { path: absolutePath, data: dataUrl });
             onSaved();
         } catch (err) {
@@ -344,14 +363,23 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
     useEffect(() => {
         const win = getCurrentWindow();
+        let disposed = false;
         let originalSize: { width: number; height: number } | null = null;
-        win.outerSize().then((size) => {
+        let originalPosition: { x: number; y: number } | null = null;
+        Promise.all([win.outerSize(), win.outerPosition()]).then(async ([size, position]) => {
+            if (disposed) return;
             originalSize = { width: size.width, height: size.height };
-            win.setSize(new LogicalSize(680, 540)).catch(() => {});
+            originalPosition = { x: position.x, y: position.y };
+            await win.setSize(new LogicalSize(ANNOTATION_WINDOW_SIZE.width, ANNOTATION_WINDOW_SIZE.height));
+            await win.center();
         }).catch(() => {});
         return () => {
+            disposed = true;
             if (originalSize) {
                 win.setSize(new PhysicalSize(originalSize.width, originalSize.height)).catch(() => {});
+            }
+            if (originalPosition) {
+                win.setPosition(new PhysicalPosition(originalPosition.x, originalPosition.y)).catch(() => {});
             }
         };
     }, []);
