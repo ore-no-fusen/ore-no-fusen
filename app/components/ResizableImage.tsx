@@ -42,6 +42,15 @@ export function clearConvertedFileSrcCache() {
     convertedFileSrcCache.clear();
 }
 
+function dataUrlToObjectUrl(dataUrl: string): string {
+    const [header, encoded] = dataUrl.split(',', 2);
+    const mime = header.match(/^data:([^;]+);base64$/)?.[1];
+    if (!mime || !encoded) throw new Error('Invalid image data URL');
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+
 function initialDisplaySrc(src: string): string {
     const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(src);
     return isLocalPath
@@ -93,7 +102,9 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                     let assetUrl = convertedUrl;
                     if (cacheKey > 0) {
                         const { invoke } = await import('@tauri-apps/api/core');
-                        assetUrl = await invoke<string>('fusen_read_local_image_data_url', { path: activeSrc });
+                        const dataUrl = await invoke<string>('fusen_read_local_image_data_url', { path: activeSrc });
+                        objectUrl = dataUrlToObjectUrl(dataUrl);
+                        assetUrl = objectUrl;
                     }
                     if (active) {
                         if (cacheKey === 0) rememberConvertedFileSrc(activeSrc, assetUrl);

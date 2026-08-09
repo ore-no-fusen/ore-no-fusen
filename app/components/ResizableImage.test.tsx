@@ -18,7 +18,7 @@ afterEach(() => {
 beforeEach(() => {
     clearConvertedFileSrcCache();
     mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue('data:image/png;base64,updated-image');
+    mockInvoke.mockResolvedValue('data:image/png;base64,dXBkYXRlZC1pbWFnZQ==');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         blob: vi.fn().mockResolvedValue(new Blob(['updated-image'], { type: 'image/png' })),
@@ -101,7 +101,7 @@ describe('ResizableImage', () => {
 
         await waitFor(() => {
             expect(screen.getByRole('img', { name: 'screen' }).getAttribute('src'))
-                .toBe('data:image/png;base64,updated-image');
+                .toBe('blob:updated-image');
         });
         expect(mockInvoke).toHaveBeenCalledWith(
             'fusen_read_local_image_data_url',
