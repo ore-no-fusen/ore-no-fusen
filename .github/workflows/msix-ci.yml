@@ -144,8 +144,8 @@ jobs:
           if ($signature.SignerCertificate.Thumbprint -ne $expected.Thumbprint) {
             throw 'MSIX signer does not match the generated test certificate'
           }
-          if ($signature.Status -in @('NotSigned', 'HashMismatch')) {
-            throw "MSIX signature is invalid: $($signature.Status)"
+          if ($signature.Status -ne 'Valid') {
+            throw "MSIX signature is not trusted and valid: $($signature.Status)"
           }
           Write-Host "MSIX signature present; signer=$($expected.Thumbprint); status=$($signature.Status)"
 

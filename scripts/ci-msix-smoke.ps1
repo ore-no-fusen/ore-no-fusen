@@ -20,6 +20,7 @@ if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
 
 Write-Host "Trusting the generated MSIX test certificate..."
 Import-Certificate -FilePath $CertificatePath -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
+Import-Certificate -FilePath $CertificatePath -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
 
 Write-Host "Removing previous test package..."
 Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue |

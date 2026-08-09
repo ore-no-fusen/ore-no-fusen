@@ -120,6 +120,13 @@ function Get-OrCreateDevCertificate {
     Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
   }
 
+  $TrustedRoot = Get-ChildItem Cert:\CurrentUser\Root |
+    Where-Object Thumbprint -eq $Certificate.Thumbprint |
+    Select-Object -First 1
+  if ($null -eq $TrustedRoot) {
+    Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
+  }
+
   return $Certificate
 }
 
