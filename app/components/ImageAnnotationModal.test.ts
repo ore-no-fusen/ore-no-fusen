@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANNOTATION_WINDOW_SIZE, DEFAULT_ANNOTATION_SETTINGS, exportDrawingLayerAsPng } from './ImageAnnotationModal';
+import { ANNOTATION_WINDOW_SIZE, DEFAULT_ANNOTATION_SETTINGS, exportDrawingLayerAsPng, imageDataUrlToBlob } from './ImageAnnotationModal';
 
 describe('ImageAnnotationModal defaults', () => {
     it('starts with the requested green highlighter settings', () => {
@@ -50,5 +50,14 @@ describe('exportDrawingLayerAsPng', () => {
         };
 
         await expect(exportDrawingLayerAsPng(stage as never, 600, 400, 1)).rejects.toThrow('PNG Data URLを生成できませんでした');
+    });
+});
+
+describe('imageDataUrlToBlob', () => {
+    it('converts the latest image bytes read by Rust into an MSIX-safe blob', () => {
+        const blob = imageDataUrlToBlob('data:image/png;base64,dXBkYXRlZA==');
+
+        expect(blob.type).toBe('image/png');
+        expect(blob.size).toBe(7);
     });
 });

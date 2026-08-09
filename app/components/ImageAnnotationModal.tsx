@@ -63,6 +63,15 @@ export function exportDrawingLayerAsPng(
     });
 }
 
+export function imageDataUrlToBlob(dataUrl: string): Blob {
+    const [header, encoded] = dataUrl.split(',', 2);
+    const mime = header.match(/^data:([^;]+);base64$/)?.[1];
+    if (!mime || !encoded) throw new Error('Invalid image data URL');
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return new Blob([bytes], { type: mime });
+}
+
 const PEN_COLORS = [
     { value: '#ef4444', ja: '赤', en: 'Red' },
     { value: '#3b82f6', ja: '青', en: 'Blue' },
@@ -132,9 +141,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
             const img = new window.Image();
             try {
-                const resp = await fetch(displayUrl);
-                const blob = await resp.blob();
-                blobUrl = URL.createObjectURL(blob);
+                const dataUrl = await invoke<string>('fusen_read_local_image_data_url', { path: absolutePath });
+                blobUrl = URL.createObjectURL(imageDataUrlToBlob(dataUrl));
                 img.src = blobUrl;
             } catch {
                 img.src = displayUrl;
@@ -306,7 +314,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             stageRef.current = null;
             drawLayerRef.current = null;
         };
-    }, [displayUrl, language, syncHistoryCounts]);
+    }, [absolutePath, displayUrl, language, syncHistoryCounts]);
 
     const handleToolChange = useCallback((t: Tool) => {
         setTool(t);
