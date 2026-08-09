@@ -66,8 +66,7 @@ function Get-LatestWindowsSdkToolRoot {
 function Invoke-NativeCommand {
   param(
     [string] $FilePath,
-    [string[]] $Arguments,
-    [int] $TimeoutSeconds = 60
+    [string[]] $Arguments
   )
 
   Write-Host "Running native command: $([IO.Path]::GetFileName($FilePath)) $($Arguments -join ' ')"
@@ -75,11 +74,8 @@ function Invoke-NativeCommand {
     -FilePath $FilePath `
     -ArgumentList $Arguments `
     -PassThru `
+    -Wait `
     -NoNewWindow
-  if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
-    $Process.Kill()
-    throw "$FilePath timed out after $TimeoutSeconds seconds."
-  }
   if ($Process.ExitCode -ne 0) {
     throw "$FilePath failed with exit code $($Process.ExitCode)."
   }
@@ -130,12 +126,37 @@ function Get-OrCreateDevCertificate {
   return $Certificate
 }
 
+function Import-BuildEnvironment {
+  $EnvFile = Join-Path $RepoRoot ".env.local"
+  foreach ($Name in @("GDRIVE_CLIENT_ID", "GDRIVE_CLIENT_SECRET")) {
+    if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($Name))) {
+      continue
+    }
+    if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
+      throw "$Name is not set and .env.local was not found."
+    }
+    $Prefix = "$Name="
+    $Line = Get-Content -LiteralPath $EnvFile -Encoding UTF8 |
+      Where-Object { $_.StartsWith($Prefix) } |
+      Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($Line)) {
+      throw "$Name is not set in .env.local."
+    }
+    $Value = $Line.Substring($Prefix.Length).Trim().Trim('"').Trim("'")
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+      throw "$Name is empty in .env.local."
+    }
+    [Environment]::SetEnvironmentVariable($Name, $Value)
+  }
+}
+
 if (-not $SkipBuild) {
+  Import-BuildEnvironment
   Write-Host "Building Tauri release..."
   Push-Location $RepoRoot
   try {
-    npm run tauri build
-    if ($LASTEXITCODE -ne 0) { throw "npm run tauri build failed." }
+    npx tauri build --no-bundle
+    if ($LASTEXITCODE -ne 0) { throw "npx tauri build --no-bundle failed." }
   }
   finally {
     Pop-Location
