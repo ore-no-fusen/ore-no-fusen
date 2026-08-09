@@ -3882,6 +3882,32 @@ fn split_iphone_title_body(body: &str) -> (String, String) {
     (title, rest.trim_start_matches('\n').to_string())
 }
 
+fn put_iphone_images_on_separate_lines(body: &str) -> String {
+    let Ok(image_re) = regex::Regex::new(r"!\[[^\]]*\]\([^)]+\)") else {
+        return body.to_string();
+    };
+    let mut result = String::with_capacity(body.len());
+    let mut previous_end = 0;
+
+    for image_match in image_re.find_iter(body) {
+        result.push_str(&body[previous_end..image_match.start()]);
+        if !result.is_empty() && !result.ends_with('\n') {
+            result.push('\n');
+        }
+        result.push_str(image_match.as_str());
+        if body[image_match.end()..]
+            .chars()
+            .next()
+            .is_some_and(|next| next != '\n')
+        {
+            result.push('\n');
+        }
+        previous_end = image_match.end();
+    }
+    result.push_str(&body[previous_end..]);
+    result
+}
+
 /// body 中のローカル画像パスを [画像] に置換する（Web Push 4KB制限対応）
 fn strip_local_images(body: &str) -> String {
     let re = regex::Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
@@ -4051,6 +4077,7 @@ async fn fusen_send_to_iphone(
 
     // 先頭画像はタイトルにせず本文へ残し、Driveアップロード対象にする。
     let (title, body_content) = split_iphone_title_body(&body);
+    let body_content = put_iphone_images_on_separate_lines(&body_content);
 
     // Push通知用: ローカル画像パスを [画像] に置換（Web Push 4KB制限対応）
     let body_push = strip_local_images(&body_content);
@@ -5561,6 +5588,16 @@ mod image_embed_tests {
                 "8/2 MSIXの一本化".to_string(),
                 "![image](assets/pasted.png)\n続き".to_string(),
             )
+        );
+    }
+
+    #[test]
+    fn iphone_send_places_body_image_markdown_on_its_own_line() {
+        assert_eq!(
+            put_iphone_images_on_separate_lines(
+                "8/2 MSIXの一本化![image](assets/pasted.png)"
+            ),
+            "8/2 MSIXの一本化\n![image](assets/pasted.png)"
         );
     }
 
