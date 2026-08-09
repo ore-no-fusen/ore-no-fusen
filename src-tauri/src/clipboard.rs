@@ -242,7 +242,41 @@ pub fn save_annotated_image(path: &str, data: &str) -> Result<(), String> {
         .decode(b64)
         .map_err(|e| format!("base64デコード失敗: {e}"))?;
     validate_annotated_png(&bytes)?;
-    replace_file_safely(Path::new(path), &bytes)
+
+    let target_path = Path::new(path);
+    let original_bytes = fs::read(target_path)
+        .map_err(|e| format!("元画像を読み込めません: {e}"))?;
+    let mut original = image::load_from_memory(&original_bytes)
+        .map_err(|e| format!("元画像をデコードできません: {e}"))?
+        .to_rgba8();
+    let mut overlay = image::load_from_memory_with_format(&bytes, ImageFormat::Png)
+        .map_err(|e| format!("描画画像をデコードできません: {e}"))?
+        .to_rgba8();
+
+    if overlay.dimensions() != original.dimensions() {
+        overlay = image::imageops::resize(
+            &overlay,
+            original.width(),
+            original.height(),
+            image::imageops::FilterType::Lanczos3,
+        );
+    }
+    image::imageops::overlay(&mut original, &overlay, 0, 0);
+
+    let mut composed = Vec::new();
+    PngEncoder::new_with_quality(
+        &mut composed,
+        CompressionType::Fast,
+        FilterType::Adaptive,
+    )
+    .write_image(
+        original.as_raw(),
+        original.width(),
+        original.height(),
+        ExtendedColorType::Rgba8,
+    )
+    .map_err(|e| format!("合成画像をPNGへ変換できません: {e}"))?;
+    replace_file_safely(target_path, &composed)
 }
 
 #[tauri::command]
@@ -411,13 +445,18 @@ mod tests {
     fn annotated_image_safely_replaces_original_with_valid_png() {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("image.png");
-        fs::write(&target, b"original").unwrap();
+        let original_pixels = [0, 0, 255, 255, 0, 0, 255, 255];
+        save_rgba_png_fast(&target, &original_pixels, 2, 1).unwrap();
 
         save_annotated_image(target.to_str().unwrap(), &valid_png_data_url()).unwrap();
 
         let saved = fs::read(&target).unwrap();
         assert!(!saved.is_empty());
         assert_eq!(image::guess_format(&saved).unwrap(), ImageFormat::Png);
-        assert!(image::load_from_memory_with_format(&saved, ImageFormat::Png).is_ok());
+        let decoded = image::load_from_memory_with_format(&saved, ImageFormat::Png)
+            .unwrap()
+            .to_rgba8();
+        assert_eq!(decoded.dimensions(), (2, 1));
+        assert_eq!(decoded.as_raw(), &[255, 0, 0, 255, 0, 255, 0, 255]);
     }
 }
