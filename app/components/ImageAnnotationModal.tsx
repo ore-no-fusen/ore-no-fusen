@@ -11,7 +11,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { LogicalSize, PhysicalSize } from '@tauri-apps/api/dpi';
+import { LogicalSize, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { AnnotationHistory } from '../utils/annotationHistory';
 import type { Language } from '@/lib/i18n';
 
@@ -25,6 +25,8 @@ export const DEFAULT_ANNOTATION_SETTINGS = {
     highlightOpacity: 0.5,
 } as const;
 
+export const ANNOTATION_WINDOW_SIZE = { width: 760, height: 620 } as const;
+
 interface Props {
     absolutePath: string;
     displayUrl: string;
@@ -33,7 +35,43 @@ interface Props {
     language: Language;
 }
 
-// 通常ツール用カラー
+type PngExportLayer = Pick<import('konva/lib/Layer').Layer, 'draw' | 'toDataURL'>;
+
+export function exportDrawingLayerAsPng(
+    layer: PngExportLayer,
+    width: number,
+    height: number,
+    pixelRatio: number,
+): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        layer.draw();
+        layer.toDataURL({
+            x: 0,
+            y: 0,
+            width,
+            height,
+            mimeType: 'image/png',
+            pixelRatio,
+            callback: (dataUrl: string) => {
+                if (!dataUrl.startsWith('data:image/png;base64,') || dataUrl.length <= 'data:image/png;base64,'.length) {
+                    reject(new Error('PNG Data URLを生成できませんでした。元画像は変更しません。'));
+                    return;
+                }
+                resolve(dataUrl);
+            },
+        });
+    });
+}
+
+export function imageDataUrlToBlob(dataUrl: string): Blob {
+    const [header, encoded] = dataUrl.split(',', 2);
+    const mime = header.match(/^data:([^;]+);base64$/)?.[1];
+    if (!mime || !encoded) throw new Error('Invalid image data URL');
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return new Blob([bytes], { type: mime });
+}
+
 const PEN_COLORS = [
     { value: '#ef4444', ja: '赤', en: 'Red' },
     { value: '#3b82f6', ja: '青', en: 'Blue' },
@@ -41,7 +79,6 @@ const PEN_COLORS = [
     { value: '#eab308', ja: '黄', en: 'Yellow' },
 ];
 
-// 蛍光ペン用: Excelと同等のビビッドカラー
 const HIGHLIGHT_COLORS = [
     { value: '#FFFF00', ja: '黄', en: 'Yellow' },
     { value: '#00FF00', ja: '緑', en: 'Green' },
@@ -50,11 +87,11 @@ const HIGHLIGHT_COLORS = [
 ];
 
 const TOOLS: { value: Tool; ja: string; en: string }[] = [
-    { value: 'pen',       ja: 'ペン', en: 'Pen' },
+    { value: 'pen', ja: 'ペン', en: 'Pen' },
     { value: 'highlight', ja: '蛍光ペン', en: 'Highlighter' },
-    { value: 'arrow',     ja: '矢印', en: 'Arrow' },
-    { value: 'rect',      ja: '四角', en: 'Rectangle' },
-    { value: 'callout',   ja: '吹き出し', en: 'Callout' },
+    { value: 'arrow', ja: '矢印', en: 'Arrow' },
+    { value: 'rect', ja: '四角', en: 'Rectangle' },
+    { value: 'callout', ja: '吹き出し', en: 'Callout' },
 ];
 
 export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved, onCancel, language }: Props) {
@@ -62,7 +99,6 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     const stageRef = useRef<import('konva/lib/Stage').Stage | null>(null);
     const drawLayerRef = useRef<import('konva/lib/Layer').Layer | null>(null);
     const historyRef = useRef(new AnnotationHistory<AnnotationNode>());
-    // Refs for current drawing state (avoid stale closures)
     const toolRef = useRef<Tool>(DEFAULT_ANNOTATION_SETTINGS.tool);
     const colorRef = useRef<string>(DEFAULT_ANNOTATION_SETTINGS.color);
     const strokeWidthRef = useRef<number>(DEFAULT_ANNOTATION_SETTINGS.strokeWidth);
@@ -71,7 +107,6 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     const pointsRef = useRef<number[]>([]);
     const originRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-    // UI state (for toolbar rendering)
     const [tool, setTool] = useState<Tool>(DEFAULT_ANNOTATION_SETTINGS.tool);
     const [color, setColor] = useState<string>(DEFAULT_ANNOTATION_SETTINGS.color);
     const [strokeWidth, setStrokeWidth] = useState<number>(DEFAULT_ANNOTATION_SETTINGS.strokeWidth);
@@ -80,11 +115,9 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     const [isSaving, setIsSaving] = useState(false);
     const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 });
 
-    // natural dimensions of the image (for pixelRatio on export)
     const naturalSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
     const stageSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
 
-    // Keep refs in sync with state
     useEffect(() => { toolRef.current = tool; }, [tool]);
     useEffect(() => { colorRef.current = color; }, [color]);
     useEffect(() => { strokeWidthRef.current = strokeWidth; }, [strokeWidth]);
@@ -94,7 +127,6 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         setHistoryCounts(historyRef.current.counts);
     }, []);
 
-    // ─── Init Konva Stage ────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
         let blobUrl: string | null = null;
@@ -107,17 +139,13 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             const Konva = (await import('konva')).default;
             if (cancelled || !containerRef.current) return;
 
-            // Load image to get natural size.
-            // asset:// URL をそのまま img.src に使うと canvas が tainted になり
-            // toDataURL() が黒い画像を返すため、blob URL に変換してから使う。
             const img = new window.Image();
             try {
-                const resp = await fetch(displayUrl);
-                const blob = await resp.blob();
-                blobUrl = URL.createObjectURL(blob);
+                const dataUrl = await invoke<string>('fusen_read_local_image_data_url', { path: absolutePath });
+                blobUrl = URL.createObjectURL(imageDataUrlToBlob(dataUrl));
                 img.src = blobUrl;
             } catch {
-                img.src = displayUrl; // fallback
+                img.src = displayUrl;
             }
             await new Promise<void>((res) => {
                 img.onload = () => res();
@@ -129,44 +157,33 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             const nh = img.naturalHeight || img.height || 600;
             naturalSizeRef.current = { w: nw, h: nh };
 
-            // Scale to fit 拡大後ウィンドウ(680x540)基準で計算
-            const maxW = 680 * 0.88;
-            const maxH = (540 - 120) * 0.88; // toolbar ~80px + footer ~40px
+            const maxW = ANNOTATION_WINDOW_SIZE.width * 0.88;
+            const maxH = (ANNOTATION_WINDOW_SIZE.height - 140) * 0.88;
             const scaleW = maxW / nw;
             const scaleH = maxH / nh;
-            const sc = Math.min(scaleW, scaleH); // upscale も許可
+            const sc = Math.min(scaleW, scaleH);
             const stageW = Math.round(nw * sc);
             const stageH = Math.round(nh * sc);
             stageSizeRef.current = { w: stageW, h: stageH };
 
-            // Create stage
             stage = new Konva.Stage({
                 container: containerRef.current!,
                 width: stageW,
                 height: stageH,
             });
 
-            // Background image layer
             imgLayer = new Konva.Layer();
-            const kImg = new Konva.Image({
-                image: img,
-                x: 0,
-                y: 0,
-                width: stageW,
-                height: stageH,
-            });
+            const kImg = new Konva.Image({ image: img, x: 0, y: 0, width: stageW, height: stageH });
             imgLayer.add(kImg);
             stage.add(imgLayer);
 
-            // Drawing layer
             layer = new Konva.Layer();
             stage.add(layer);
 
             stageRef.current = stage;
             drawLayerRef.current = layer;
 
-            // ─── Mouse events ────────────────────────────────────────────
-            stage.on('mousedown touchstart', (e) => {
+            stage.on('mousedown touchstart', () => {
                 const pos = stage.getPointerPosition();
                 if (!pos) return;
 
@@ -174,12 +191,11 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                 const c = colorRef.current;
 
                 if (t === 'callout') {
-                    // Callout: prompt for text then place
                     const text = window.prompt(
                         language === 'en' ? 'Enter callout text' : '吹き出しのテキストを入力してください',
                         language === 'en' ? 'Note!' : '注目！',
                     );
-                    if (text === null) return; // cancelled
+                    if (text === null) return;
                     const label = new Konva.Label({ x: pos.x, y: pos.y, draggable: true });
                     label.add(new Konva.Tag({
                         fill: c,
@@ -209,11 +225,10 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
 
                 if (t === 'pen' || t === 'highlight') {
                     pointsRef.current = [pos.x, pos.y];
-                    const sw = strokeWidthRef.current;
                     const line = new Konva.Line({
                         points: [pos.x, pos.y],
                         stroke: c,
-                        strokeWidth: sw,
+                        strokeWidth: strokeWidthRef.current,
                         opacity: t === 'highlight' ? highlightOpacityRef.current : 1,
                         lineCap: 'round',
                         lineJoin: 'round',
@@ -253,7 +268,6 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                 if (!isDrawingRef.current) return;
                 const pos = stage.getPointerPosition();
                 if (!pos) return;
-
                 const t = toolRef.current;
                 const shape = currentShapeRef.current;
                 if (!shape) return;
@@ -291,7 +305,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             });
         };
 
-        init();
+        void init();
         return () => {
             cancelled = true;
             if (blobUrl) URL.revokeObjectURL(blobUrl);
@@ -300,9 +314,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             stageRef.current = null;
             drawLayerRef.current = null;
         };
-    }, [displayUrl, language, syncHistoryCounts]);
+    }, [absolutePath, displayUrl, language, syncHistoryCounts]);
 
-    // ─── Undo ────────────────────────────────────────────────────────────
     const handleToolChange = useCallback((t: Tool) => {
         setTool(t);
         if (t === 'highlight') {
@@ -329,16 +342,15 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         syncHistoryCounts();
     }, [syncHistoryCounts]);
 
-    // ─── Save ────────────────────────────────────────────────────────────
     const handleSave = useCallback(async () => {
-        const stage = stageRef.current;
-        if (!stage) return;
+        const layer = drawLayerRef.current;
+        if (!layer) return;
         setIsSaving(true);
         try {
-            const { w: nw, h: nh } = naturalSizeRef.current;
+            const { w: nw } = naturalSizeRef.current;
             const { w: sw, h: sh } = stageSizeRef.current;
-            const pixelRatio = sw > 0 ? nw / sw : 1;
-            const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio });
+            const pixelRatio = sw > 0 && nw > 0 ? nw / sw : 1;
+            const dataUrl = await exportDrawingLayerAsPng(layer, sw, sh, pixelRatio);
             await invoke('fusen_save_annotated_image', { path: absolutePath, data: dataUrl });
             onSaved();
         } catch (err) {
@@ -349,22 +361,29 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
         }
     }, [absolutePath, language, onSaved]);
 
-    // ─── ウィンドウ拡大（モーダル表示中のみ）────────────────────────────
     useEffect(() => {
         const win = getCurrentWindow();
+        let disposed = false;
         let originalSize: { width: number; height: number } | null = null;
-        win.outerSize().then((size) => {
+        let originalPosition: { x: number; y: number } | null = null;
+        Promise.all([win.outerSize(), win.outerPosition()]).then(async ([size, position]) => {
+            if (disposed) return;
             originalSize = { width: size.width, height: size.height };
-            win.setSize(new LogicalSize(680, 540)).catch(() => {});
+            originalPosition = { x: position.x, y: position.y };
+            await win.setSize(new LogicalSize(ANNOTATION_WINDOW_SIZE.width, ANNOTATION_WINDOW_SIZE.height));
+            await win.center();
         }).catch(() => {});
         return () => {
+            disposed = true;
             if (originalSize) {
                 win.setSize(new PhysicalSize(originalSize.width, originalSize.height)).catch(() => {});
+            }
+            if (originalPosition) {
+                win.setPosition(new PhysicalPosition(originalPosition.x, originalPosition.y)).catch(() => {});
             }
         };
     }, []);
 
-    // ─── Keyboard shortcut (Escape = cancel) ─────────────────────────────
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onCancel();
@@ -383,129 +402,60 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     }, [onCancel, handleUndo, handleRedo]);
 
     return (
-        <div
-            className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-            onPointerDown={(e) => e.stopPropagation()}
-        >
-            <div
-                className="bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden"
-                style={{ maxWidth: '92vw', maxHeight: '92vh' }}
-                onPointerDown={(e) => e.stopPropagation()}
-            >
-                {/* ── Toolbar ── */}
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm" onPointerDown={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden" style={{ maxWidth: '92vw', maxHeight: '92vh' }} onPointerDown={(e) => e.stopPropagation()}>
                 <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-gray-50 flex-wrap">
-                    {/* Tool buttons */}
                     <div className="flex gap-1">
                         {TOOLS.map(({ value, ja, en }) => (
-                            <button
-                                key={value}
-                                onClick={() => handleToolChange(value)}
-                                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                                    tool === value
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                                }`}
-                            >
+                            <button key={value} onClick={() => handleToolChange(value)} className={`px-3 py-1 rounded text-sm font-medium transition-colors ${tool === value ? 'bg-blue-500 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
                                 {language === 'en' ? en : ja}
                             </button>
                         ))}
                     </div>
-
                     <div className="w-px h-6 bg-gray-300" />
-
-                    {/* Color buttons: 蛍光ペン時はビビッドカラー、それ以外は通常色 */}
                     <div className="flex gap-1 items-center">
                         {(tool === 'highlight' ? HIGHLIGHT_COLORS : PEN_COLORS).map(({ value, ja, en }) => (
-                            <button
-                                key={value}
-                                title={language === 'en' ? en : ja}
-                                onClick={() => setColor(value)}
-                                className="w-7 h-7 rounded-full border-2 transition-transform"
-                                style={{
-                                    backgroundColor: value,
-                                    borderColor: color === value ? '#1d4ed8' : 'rgba(0,0,0,0.2)',
-                                    transform: color === value ? 'scale(1.2)' : 'scale(1)',
-                                }}
-                            />
+                            <button key={value} title={language === 'en' ? en : ja} onClick={() => setColor(value)} className="w-7 h-7 rounded-full border-2 transition-transform" style={{ backgroundColor: value, borderColor: color === value ? '#1d4ed8' : 'rgba(0,0,0,0.2)', transform: color === value ? 'scale(1.2)' : 'scale(1)' }} />
                         ))}
                     </div>
-
-                    {/* 太さスライダー: ペン・蛍光ペンのみ表示 */}
                     {(tool === 'pen' || tool === 'highlight') && (
                         <>
                             <div className="w-px h-6 bg-gray-300" />
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-gray-500">{language === 'en' ? 'Width' : '太さ'}</span>
-                                <input
-                                    type="range"
-                                    min={tool === 'highlight' ? 10 : 1}
-                                    max={tool === 'highlight' ? 50 : 20}
-                                    value={strokeWidth}
-                                    onChange={(e) => setStrokeWidth(Number(e.target.value))}
-                                    className="w-24 accent-blue-500"
-                                />
+                                <input type="range" min={tool === 'highlight' ? 10 : 1} max={tool === 'highlight' ? 50 : 20} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="w-24 accent-blue-500" />
                                 <span className="text-xs text-gray-500 w-5 text-right">{strokeWidth}</span>
                             </div>
                         </>
                     )}
-                    {/* 透明度スライダー: 蛍光ペンのみ表示 */}
                     {tool === 'highlight' && (
                         <>
                             <div className="w-px h-6 bg-gray-300" />
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-gray-500">{language === 'en' ? 'Opacity' : '濃さ'}</span>
-                                <input
-                                    type="range"
-                                    min={10}
-                                    max={90}
-                                    value={Math.round(highlightOpacity * 100)}
-                                    onChange={(e) => setHighlightOpacity(Number(e.target.value) / 100)}
-                                    className="w-24 accent-blue-500"
-                                />
+                                <input type="range" min={10} max={90} value={Math.round(highlightOpacity * 100)} onChange={(e) => setHighlightOpacity(Number(e.target.value) / 100)} className="w-24 accent-blue-500" />
                                 <span className="text-xs text-gray-500 w-5 text-right">{Math.round(highlightOpacity * 100)}</span>
                             </div>
                         </>
                     )}
                 </div>
-
-                {/* ── Canvas ── */}
                 <div className="overflow-auto flex-1 flex items-center justify-center bg-gray-100 p-4">
-                    <div
-                        ref={containerRef}
-                        style={{ cursor: tool === 'callout' ? 'crosshair' : 'crosshair', lineHeight: 0 }}
-                    />
+                    <div ref={containerRef} style={{ cursor: 'crosshair', lineHeight: 0 }} />
                 </div>
-
-                {/* ── Footer buttons ── */}
                 <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
                     <div className="flex gap-2">
-                        <button
-                            onClick={handleUndo}
-                            disabled={historyCounts.undo === 0}
-                            className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
+                        <button onClick={handleUndo} disabled={historyCounts.undo === 0} className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
                             {language === 'en' ? 'Undo' : '元に戻す'}
                         </button>
-                        <button
-                            onClick={handleRedo}
-                            disabled={historyCounts.redo === 0}
-                            className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
+                        <button onClick={handleRedo} disabled={historyCounts.redo === 0} className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
                             {language === 'en' ? 'Redo' : 'やり直す'}
                         </button>
                     </div>
                     <div className="flex gap-2">
-                        <button
-                            onClick={onCancel}
-                            className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100"
-                        >
+                        <button onClick={onCancel} className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100">
                             {language === 'en' ? 'Cancel' : 'キャンセル'}
                         </button>
-                        <button
-                            onClick={handleSave}
-                            disabled={isSaving}
-                            className="px-5 py-1.5 rounded bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
+                        <button onClick={handleSave} disabled={isSaving} className="px-5 py-1.5 rounded bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
                             {isSaving ? (language === 'en' ? 'Saving…' : '保存中…') : (language === 'en' ? 'Save' : '保存')}
                         </button>
                     </div>

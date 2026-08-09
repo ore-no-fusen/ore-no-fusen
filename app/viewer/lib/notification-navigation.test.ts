@@ -4,6 +4,7 @@ import {
   getNotificationNoteId,
   loadNotificationDraft,
   removeNotificationNoteParam,
+  registerPendingNotificationResume,
 } from './notification-navigation';
 import type { DraftRecord } from '../types';
 
@@ -81,5 +82,21 @@ describe('notification navigation', () => {
   it('成功後にnoteだけをURLから除き、他のクエリとhashを保持する', () => {
     expect(removeNotificationNoteParam('https://example.com/viewer?note=target-note&debug=1#top'))
       .toBe('/viewer?debug=1#top');
+  });
+
+  it('checks the pending note on every iPhone resume event', () => {
+    const documentTarget = new EventTarget();
+    const windowTarget = new EventTarget();
+    const handler = vi.fn();
+    const unregister = registerPendingNotificationResume(handler, documentTarget, windowTarget);
+
+    documentTarget.dispatchEvent(new Event('visibilitychange'));
+    windowTarget.dispatchEvent(new Event('focus'));
+    windowTarget.dispatchEvent(new Event('pageshow'));
+    expect(handler).toHaveBeenCalledTimes(3);
+
+    unregister();
+    windowTarget.dispatchEvent(new Event('focus'));
+    expect(handler).toHaveBeenCalledTimes(3);
   });
 });

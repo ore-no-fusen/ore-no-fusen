@@ -3,8 +3,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ResizableImage, { clearConvertedFileSrcCache } from './ResizableImage';
 
+const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn() }));
+
 vi.mock('@tauri-apps/api/core', () => ({
     convertFileSrc: (src: string) => `asset://${src}`,
+    invoke: mockInvoke,
 }));
 
 afterEach(() => {
@@ -14,6 +17,8 @@ afterEach(() => {
 
 beforeEach(() => {
     clearConvertedFileSrcCache();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue('data:image/png;base64,dXBkYXRlZC1pbWFnZQ==');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         blob: vi.fn().mockResolvedValue(new Blob(['updated-image'], { type: 'image/png' })),
@@ -68,7 +73,7 @@ describe('ResizableImage', () => {
             .toBe('asset://C:/Users/uck/Pictures/screen.png');
     });
 
-    it('reloads an annotated local image without adding a query to the MSIX asset URL', async () => {
+    it('reloads an annotated local image directly from Rust without using the MSIX asset cache', async () => {
         const { rerender } = render(
             <ResizableImage
                 src="C:/Users/uck/Pictures/screen.png"
@@ -98,10 +103,11 @@ describe('ResizableImage', () => {
             expect(screen.getByRole('img', { name: 'screen' }).getAttribute('src'))
                 .toBe('blob:updated-image');
         });
-        expect(fetch).toHaveBeenCalledWith(
-            'asset://C:/Users/uck/Pictures/screen.png',
-            { cache: 'no-store' },
+        expect(mockInvoke).toHaveBeenCalledWith(
+            'fusen_read_local_image_data_url',
+            { path: 'C:/Users/uck/Pictures/screen.png' },
         );
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     it('shows the markdown source when image loading fails', () => {
