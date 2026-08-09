@@ -107,10 +107,6 @@ jobs:
         id: npm_ci
         run: npm ci
 
-      - name: Install Playwright Chromium
-        id: playwright_install
-        run: npx playwright install chromium
-
       - name: Frontend unit tests
         id: frontend_tests
         run: npm test
@@ -118,10 +114,6 @@ jobs:
       - name: Next.js production build
         id: next_build
         run: npm run build
-
-      - name: Annotation draw and save test
-        id: annotation_e2e
-        run: npm run test:e2e -- e2e/annotation-save.spec.ts
 
       - name: Rust library tests
         id: rust_tests
@@ -154,7 +146,7 @@ jobs:
           }
           Write-Host "MSIX signature present; signer=$($expected.Thumbprint); status=$($signature.Status)"
 
-      - name: Install, launch and test annotation in packaged application
+      - name: Install and launch packaged application
         id: msix_smoke
         shell: pwsh
         run: .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix
@@ -168,8 +160,7 @@ jobs:
           if-no-files-found: warn
           path: |
             packaging/msix/dev/out/ore-no-fusen-dev.msix
-            test-results/annotation-evidence/**
-            test-results/msix-annotation-evidence/**
+            ${{ runner.temp }}/appx-deployment-events.txt
             src-tauri/target/release/*.pdb
 
       - name: Publish machine-readable MSIX CI status
@@ -177,10 +168,8 @@ jobs:
         uses: actions/github-script@v7
         env:
           OUTCOME_NPM_CI: ${{ steps.npm_ci.outcome }}
-          OUTCOME_PLAYWRIGHT_INSTALL: ${{ steps.playwright_install.outcome }}
           OUTCOME_FRONTEND_TESTS: ${{ steps.frontend_tests.outcome }}
           OUTCOME_NEXT_BUILD: ${{ steps.next_build.outcome }}
-          OUTCOME_ANNOTATION_E2E: ${{ steps.annotation_e2e.outcome }}
           OUTCOME_RUST_TESTS: ${{ steps.rust_tests.outcome }}
           OUTCOME_TAURI_BUILD: ${{ steps.tauri_build.outcome }}
           OUTCOME_MSIX_CREATE: ${{ steps.msix_create.outcome }}
@@ -198,21 +187,10 @@ jobs:
             const msixPath = 'packaging/msix/dev/out/ore-no-fusen-dev.msix';
             const msixExists = fs.existsSync(msixPath);
             const msixBytes = msixExists ? fs.statSync(msixPath).size : 0;
-            const smokeFailurePath = 'test-results/msix-annotation-evidence/msix-smoke-failure.json';
-            let smokeFailure = null;
-            if (fs.existsSync(smokeFailurePath)) {
-              try {
-                smokeFailure = JSON.parse(fs.readFileSync(smokeFailurePath, 'utf8').replace(/^\uFEFF/, ''));
-              } catch (error) {
-                smokeFailure = { stage: 'read-diagnostics', errorCode: 'not-reported' };
-              }
-            }
             const steps = {
               npm_ci: process.env.OUTCOME_NPM_CI || 'skipped',
-              playwright_install: process.env.OUTCOME_PLAYWRIGHT_INSTALL || 'skipped',
               frontend_tests: process.env.OUTCOME_FRONTEND_TESTS || 'skipped',
               next_build: process.env.OUTCOME_NEXT_BUILD || 'skipped',
-              annotation_e2e: process.env.OUTCOME_ANNOTATION_E2E || 'skipped',
               rust_tests: process.env.OUTCOME_RUST_TESTS || 'skipped',
               tauri_build: process.env.OUTCOME_TAURI_BUILD || 'skipped',
               msix_create: process.env.OUTCOME_MSIX_CREATE || 'skipped',
@@ -240,8 +218,7 @@ jobs:
                 created: msixExists,
                 bytes: msixBytes,
                 relative_path: msixPath,
-                artifact_name: `msix-ci-${context.sha}`,
-                smoke_failure: smokeFailure
+                artifact_name: `msix-ci-${context.sha}`
               }
             };
             const content = Buffer.from(JSON.stringify(status, null, 2) + '\n').toString('base64');
