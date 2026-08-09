@@ -1,6 +1,8 @@
 param(
   [Parameter(Mandatory = $true)]
   [string] $MsixPath,
+  [Parameter(Mandatory = $true)]
+  [string] $CertificatePath,
   [string] $PackageName = "ONFStudios.FUSEN.Dev",
   [string] $ApplicationId = "OreNoFusenDev",
   [string] $ProcessName = "ore-no-fusen"
@@ -12,6 +14,12 @@ $ErrorActionPreference = "Stop"
 if (-not (Test-Path -LiteralPath $MsixPath -PathType Leaf)) {
   throw "MSIX not found: $MsixPath"
 }
+if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
+  throw "MSIX certificate not found: $CertificatePath"
+}
+
+Write-Host "Trusting the generated MSIX test certificate..."
+Import-Certificate -FilePath $CertificatePath -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
 
 Write-Host "Removing previous test package..."
 Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue |

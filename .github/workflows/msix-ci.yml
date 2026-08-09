@@ -152,7 +152,7 @@ jobs:
       - name: Install and launch packaged application
         id: msix_smoke
         shell: pwsh
-        run: .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix
+        run: .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix -CertificatePath .\packaging\msix\dev\certs\ore-no-fusen-dev.cer
 
       - name: Upload MSIX and diagnostics
         id: upload_artifact
