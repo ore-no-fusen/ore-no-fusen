@@ -107,6 +107,9 @@ jobs:
         id: npm_ci
         run: npm ci
 
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
       - name: Frontend unit tests
         id: frontend_tests
         run: npm test
