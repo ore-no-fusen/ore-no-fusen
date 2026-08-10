@@ -4,17 +4,16 @@
 
 - 5.0.0は旧MSI・NSIS利用者をStore版へ案内する移行版として、GitHub Release資産を保持する。
 - 5.1.0以降はStore MSIXだけを正式配布する。
-- GitHub Actionsは未署名MSIX artifactを作るだけで、Partner Centerへの提出・公開は行わない。
+- このPCで実機確認した本番実行ファイルを再利用し、Store提出用の未署名MSIXを作る。GitHubで同じ実行ファイルを再ビルドしない。
 - 通常公開の前に、このPCで開発署名MSIXを作成し、MSIX固有動作を実機確認する。
 
 ## 提出前提
 
-1. GitHub Actionsの`Prepare and Build Store Package`に次期版を一度だけ入力して実行する。
-2. 最初のロックファイル検証と`cargo check --locked`が成功している。
-3. `main`と`develop`の5つの版ファイルが同じ版になっている。
-4. runのArtifactsに`store-msix`が1件あり、MSIX検査が成功している。
-
-キャッシュが有効な通常実行では、Action開始からMSIX artifact作成まで10分以内を目標とする。Node系検証とRust releaseテストを並列実行し、同じrunのRust成果物をMSIXビルドへ再利用する。超過時は各step時間とRustキャッシュのヒット状況を記録し、次のリリース前に原因を解消する。
+1. `docs/010_RELEASE.md`のSTEP 0とSTEP 1がすべて成功している。
+2. このPCの開発署名MSIXで、対象不具合と影響範囲を実機確認している。
+3. 実機確認に合格した同じ本番実行ファイルから、Store提出用の未署名MSIXを作成している。
+4. `main`と`develop`の5つの版ファイルが同じ版になっている。
+5. Store提出用MSIXの名前、発行者、バージョン、x64、未署名を確認している。
 
 ## このPCでの提出前MSIX確認
 
