@@ -77,7 +77,7 @@ export default function HeroPromoVideo() {
                     aria-label="俺の付箋の操作デモ動画"
                 >
                     <source
-                        src="https://ore-no-fusen.vercel.app/ore-no-fusen-cm.mp4"
+                        src="/ore-no-fusen-cm.mp4"
                         type="video/mp4"
                     />
                 </video>
