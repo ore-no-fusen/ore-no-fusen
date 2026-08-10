@@ -33,7 +33,15 @@
 
 ## 通常の製品申請
 
-1. GitHub Actionsの`Prepare and Build Store Package`で作成した`ore-no-fusen.msix`を、製品の新しい申請へアップロードする。
+提出用MSIXは、版ごとに次の固定場所へ保存する。一時フォルダやリポジトリ内には置かない。
+
+```text
+D:\Users\uck\Documents\俺の付箋-Store提出\<バージョン>\ore-no-fusen.msix
+```
+
+例：`5.1.3`は`D:\Users\uck\Documents\俺の付箋-Store提出\5.1.3\ore-no-fusen.msix`へ保存する。
+
+1. 固定保存先の`ore-no-fusen.msix`を、製品の新しい申請へアップロードする。
 2. Package IdentityとVersionを確認する。
 3. 説明、画像、プライバシー、年齢区分、制限付きCapabilityの説明を確認する。
 4. 認定へ提出する。
