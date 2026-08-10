@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import PromoVideoInjector from "./PromoVideoInjector";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
@@ -56,10 +55,5 @@ export const metadata: Metadata = {
 };
 
 export default function LandingLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <PromoVideoInjector />
-      {children}
-    </>
-  );
+  return children;
 }
