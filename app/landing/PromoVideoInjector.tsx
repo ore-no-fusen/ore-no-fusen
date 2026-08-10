@@ -10,7 +10,9 @@ export default function PromoVideoInjector() {
         const hero = document.querySelector('section');
         if (!hero) return;
 
-        const screenshot = hero.querySelector<HTMLImageElement>('img[src="/screenshots/ScreenShot_OreNoFusen-lcp.jpg"]');
+        // Next/Image は実DOMの src が /_next/image?... に変換されるため、
+        // src文字列では探さず Hero 内の最初の img を基準にする。
+        const screenshot = hero.querySelector('img');
         const screenshotBlock = screenshot?.parentElement?.parentElement;
         if (!screenshotBlock || !screenshotBlock.parentElement) return;
 
@@ -19,17 +21,18 @@ export default function PromoVideoInjector() {
         wrapper.className = 'relative mt-12 max-w-3xl mx-auto';
 
         const tape = document.createElement('div');
-        tape.className = 'absolute -top-3 left-1/2 -translate-x-1/2 z-10 w-16 h-5 rounded-sm opacity-70 rotate-1';
+        tape.className = 'absolute -top-3 left-1/2 -translate-x-1/2 z-10 w-16 h-5 rounded-sm opacity-70 -rotate-1';
         tape.style.backgroundColor = '#F0E0A0';
         tape.style.border = '1px solid #D8C880';
         tape.setAttribute('aria-hidden', 'true');
 
         const frame = document.createElement('div');
         frame.className = 'relative rounded-sm overflow-hidden';
-        frame.style.boxShadow = '4px 8px 28px rgba(0,0,0,0.18)';
+        frame.style.boxShadow = '4px 6px 24px rgba(0,0,0,0.18)';
         frame.style.border = '1px solid #C8B898';
-        frame.style.background = '#111';
+        frame.style.background = '#000';
 
+        // 下部の「オレノフ動画」と同じ、標準の video + controls 方式。
         const video = document.createElement('video');
         video.controls = true;
         video.playsInline = true;
@@ -46,6 +49,7 @@ export default function PromoVideoInjector() {
         wrapper.appendChild(tape);
         wrapper.appendChild(frame);
 
+        // 製品スクリーンショットの直前に表示する。
         screenshotBlock.parentElement.insertBefore(wrapper, screenshotBlock);
 
         return () => {
