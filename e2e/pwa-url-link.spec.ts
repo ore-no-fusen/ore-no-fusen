@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { setupViewerWithNotes } from './fixtures/setup-viewer';
 
-test('[PWA-URL-01] 編集画面のURLをクリックすると同じ画面でURLへ移動する', async ({ page, baseURL }) => {
+test('[PWA-URL-01] 編集画面のURLをタッチすると同じ画面でURLへ移動する', async ({ page, baseURL }) => {
   const url = new URL('/viewer?link-test=1', baseURL).href;
   await setupViewerWithNotes(page, [{
     id: 'url-link-note',
@@ -22,7 +22,7 @@ test('[PWA-URL-01] 編集画面のURLをクリックすると同じ画面でURL�
 
   await Promise.all([
     page.waitForURL(url),
-    link.click(),
+    link.dispatchEvent('touchend'),
   ]);
   await expect(page).toHaveURL(url);
   await expect.poll(() => page.evaluate(async () => {
@@ -41,5 +41,6 @@ test('[PWA-URL-01] 編集画面のURLをクリックすると同じ画面でURL�
   })).toEqual(expect.arrayContaining([
     expect.stringContaining('[NAV] event=url_tapped'),
     expect.stringContaining('[NAV] event=url_assign_started'),
+    expect.stringContaining('source=touchend'),
   ]));
 });
