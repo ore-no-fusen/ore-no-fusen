@@ -5,7 +5,7 @@
 import { resolvePushTitles } from './notification-title';
 import { closeClickedNotification, focusViewerOrOpenTarget } from './notification-click';
 
-const SW_VERSION = '5.0.0-pwa.7';
+const SW_VERSION = '5.1.4-pwa.1';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
