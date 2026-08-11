@@ -1,6 +1,7 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 ### 2026-08-11 PWA URLリンク遷移修正
 
+- `5.1.4-pwa.4`をiPhone実機で確認したが、URLタップ後も遷移しない。Chromiumでは再現しないため、`5.1.4-pwa.5`で`url_tapped`・`url_assign_started`・`url_assign_failed`と対象URL・例外名を既存診断ログへ追加してiOS側の停止位置を調査する。
 - `5.1.4-pwa.3`のクリック処理が`window.open(..., '_blank')`を指定していたため、iPhone PWAで新規画面だけが開きリンク先へ遷移しなかった。
 - `5.1.4-pwa.4`で現在画面の`window.location.assign()`へ変更し、E2Eも命令の呼出確認から実際のURL遷移確認へ訂正した。
 - このPCのChromiumで実際に`/viewer?link-test=1`へ同一画面遷移するE2E 1件、全Vitest、TypeScript、VitePress設計書ビルドに成功。

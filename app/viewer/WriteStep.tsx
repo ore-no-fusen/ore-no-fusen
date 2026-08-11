@@ -12,6 +12,7 @@ import {
   nowJST,
 } from './utils';
 import { saveDraft } from './lib/indexeddb';
+import { appendDiagnosticLog, formatNavigationLog, safeErrorName } from './lib/diagnostic-log';
 import { serializeEditor, extractTitleBody, mergeKnownTags, loadKnownTags } from './editor-helpers';
 import type { TranslationKey } from '@/lib/i18n';
 import type { PcDevice, PendingHydrate, PendingVideoMeta, VideoBlobMap } from './types';
@@ -332,7 +333,20 @@ export function WriteStep({
             if (link instanceof HTMLAnchorElement) {
               event.preventDefault();
               event.stopPropagation();
-              window.location.assign(link.href);
+              appendDiagnosticLog(formatNavigationLog('url_tapped', {
+                href: link.href,
+              }));
+              try {
+                appendDiagnosticLog(formatNavigationLog('url_assign_started', {
+                  href: link.href,
+                }));
+                window.location.assign(link.href);
+              } catch (error) {
+                appendDiagnosticLog(formatNavigationLog('url_assign_failed', {
+                  href: link.href,
+                  error: safeErrorName(error),
+                }));
+              }
               return;
             }
           }
