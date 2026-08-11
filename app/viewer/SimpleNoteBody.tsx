@@ -28,28 +28,6 @@ function MermaidBlock({ code, index }: { code: string; index: number }) {
   return <div ref={containerRef} className="my-4 overflow-auto" />;
 }
 
-function LinkedText({ text }: { text: string }) {
-  const urlRe = /(https?:\/\/[^\s<>"'）)\]}、。]+)/g;
-
-  return (
-    <span style={{ whiteSpace: 'pre-wrap' }}>
-      {text.split(urlRe).map((part, index) => (
-        /^https?:\/\//.test(part) ? (
-          <a
-            key={index}
-            href={part}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 underline break-all"
-          >
-            {part}
-          </a>
-        ) : part
-      ))}
-    </span>
-  );
-}
-
 /**
  * 責務: ノート一覧の各行に表示するノート本文プレビューを描画する（Mermaid ブロックを視覚化）
  * 入力: { body: string }
@@ -100,7 +78,11 @@ export function SimpleNoteBody({ body }: { body: string }) {
   let lastIndex = 0;
   for (const seg of segments) {
     if (seg.start > lastIndex) {
-      parts.push(<LinkedText key={key++} text={body.slice(lastIndex, seg.start)} />);
+      parts.push(
+        <span key={key++} style={{ whiteSpace: 'pre-wrap' }}>
+          {body.slice(lastIndex, seg.start)}
+        </span>
+      );
     }
     if (seg.type === 'mermaid') {
       parts.push(<MermaidBlock key={key++} code={seg.code} index={mermaidIndex++} />);
@@ -119,7 +101,11 @@ export function SimpleNoteBody({ body }: { body: string }) {
   }
 
   if (lastIndex < body.length) {
-    parts.push(<LinkedText key={key++} text={body.slice(lastIndex)} />);
+    parts.push(
+      <span key={key++} style={{ whiteSpace: 'pre-wrap' }}>
+        {body.slice(lastIndex)}
+      </span>
+    );
   }
 
   return <div className="mt-4">{parts}</div>;

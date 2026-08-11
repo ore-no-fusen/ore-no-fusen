@@ -327,6 +327,15 @@ export function WriteStep({
         style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
         onInput={handleEditorInput}
         onClick={(event) => {
+          if (event.target instanceof Element) {
+            const link = event.target.closest('a[data-pwa-link]');
+            if (link instanceof HTMLAnchorElement) {
+              event.preventDefault();
+              event.stopPropagation();
+              window.open(link.href, '_blank', 'noopener,noreferrer');
+              return;
+            }
+          }
           if (!(event.target instanceof HTMLImageElement)) return;
           event.preventDefault();
           event.stopPropagation();

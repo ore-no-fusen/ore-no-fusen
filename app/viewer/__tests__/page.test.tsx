@@ -84,6 +84,32 @@ describe('REQ-CB-SERIALIZE: serializeEditor チェックボックス逆変換', 
   });
 });
 
+describe('REQ-URL-LINK: 編集画面URLリンク', () => {
+  it('通常行のhttp・https URLだけを安全なリンクへ変換する', () => {
+    const el = document.createElement('div');
+    hydrateEditorForTest(
+      el,
+      '検証版URL https://example.com/viewer。\njavascript:alert(1)',
+      new Map(),
+    );
+    const links = el.querySelectorAll('a[data-pwa-link]');
+
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute('href')).toBe('https://example.com/viewer');
+    expect(links[0].getAttribute('target')).toBe('_blank');
+    expect(links[0].getAttribute('rel')).toBe('noopener noreferrer');
+    expect(el.textContent).toContain('javascript:alert(1)');
+  });
+
+  it('リンク化後に保存しても元の本文と改行を変えない', () => {
+    const el = document.createElement('div');
+    const original = '検証版URL\nhttps://example.com/viewer\n後の文章';
+    hydrateEditorForTest(el, original, new Map());
+
+    expect(serializeEditorForTest(el)).toBe(original);
+  });
+});
+
 
 describe('REQ-TAG-PERSIST: タグ永続化', () => {
   beforeEach(() => localStorage.clear());
