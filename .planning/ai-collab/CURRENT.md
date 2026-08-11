@@ -1,4 +1,10 @@
 ## 現在の開発状況（26-08-10・最初に読む）
+### 2026-08-12 PWA URLリンク遷移・最終試行方針
+
+- ユーザー判断: 案1として`touchend`から`window.open(URL, '_self')`を試す。失敗時は案2として編集領域外の通常リンクを表示する。それも失敗した場合は修正を終了する。
+- 案1のService Worker版番号は`5.1.4-pwa.8`。iPhone実機成功までは修正完了と扱わない。
+- 案1実装後、URL・Service Worker対象Vitest 30件、TypeScript、タッチから同一画面へ実URL遷移するChromium E2E 1件、`git diff --check`に成功。初回E2Eは開発サーバー初期読込の`ERR_ABORTED`で失敗し、HTTP 200確認後の再試行で成功。develop Previewへ反映後、iPhone実機で確認する。
+
 ### 2026-08-11 PWA URLリンク遷移修正（contenteditable対応）
 
 - 修正版のService Worker版番号を`5.1.4-pwa.7`へ更新。

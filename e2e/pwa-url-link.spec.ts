@@ -23,7 +23,7 @@ test('[PWA-URL-01] 編集画面のURLをタッチすると同じ画面でURLへ�
 
   await Promise.all([
     page.waitForURL(url),
-    link.click(),
+    link.dispatchEvent('touchend'),
   ]);
   await expect(page).toHaveURL(url);
 });

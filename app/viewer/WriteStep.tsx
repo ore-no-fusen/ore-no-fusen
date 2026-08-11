@@ -130,6 +130,16 @@ export function WriteStep({
   const [isRefreshingPcDevices, setIsRefreshingPcDevices] = React.useState(false);
   const [previewImageSrc, setPreviewImageSrc] = React.useState<string | null>(null);
 
+  const openEditorLinkOnTouch = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof Element)) return;
+    const link = event.target.closest('a[data-pwa-link]');
+    if (!(link instanceof HTMLAnchorElement)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    window.open(link.href, '_self');
+  }, []);
+
   React.useEffect(() => {
     if (!previewImageSrc) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -326,6 +336,7 @@ export function WriteStep({
         data-placeholder={t('pwa.write.placeholder')}
         style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
         onInput={handleEditorInput}
+        onTouchEnd={openEditorLinkOnTouch}
         onClick={(event) => {
           if (!(event.target instanceof HTMLImageElement)) return;
           event.preventDefault();
