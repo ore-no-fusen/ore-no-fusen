@@ -1,6 +1,7 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 ### 2026-08-11 PWA URLリンク遷移修正
 
+- `5.1.4-pwa.6`のiPhone実機ログでは`url_tapped source=touchend`と`url_assign_started`まで記録され、例外なしで遷移しなかった。iOSが同一画面の`location.assign`を黙って拒否している状態。ユーザー判断によりPWAリンク修正は保留し、既知制限として5.1.4のMSIX作成を優先する。
 - `5.1.4-pwa.5`のiPhone実機ログに`url_tapped`が一度もなく、`contenteditable`内のリンクタップがReactの`click`へ到達していないと特定。`5.1.4-pwa.6`で同じ処理を`touchend`でも受け、ログにイベント種別を残す。実機失敗時はPWA修正を一旦止め、MSIX作成を優先する。
 - `5.1.4-pwa.4`をiPhone実機で確認したが、URLタップ後も遷移しない。Chromiumでは再現しないため、`5.1.4-pwa.5`で`url_tapped`・`url_assign_started`・`url_assign_failed`と対象URL・例外名を既存診断ログへ追加してiOS側の停止位置を調査する。
 - `5.1.4-pwa.3`のクリック処理が`window.open(..., '_blank')`を指定していたため、iPhone PWAで新規画面だけが開きリンク先へ遷移しなかった。
@@ -29,6 +30,14 @@
 - 設定「このアプリについて」: GitHubボタンをMicrosoft Storeリンクへ差し替え（関連リンクは未変更）。型チェック済み。
 - 開発起動時のHydration警告: 起動直後の`<html>` style属性の一時差分を対象に、`suppressHydrationWarning`で抑制。型チェック済み。
 - リリース候補バージョンはSTEP 1-1まで変更しない。
+- 26-08-11 STEP 1-1: リリース候補は既に5ファイルで一致している `5.1.4` を使用する。
+- 26-08-11 STEP 1-2〜1-4: 本番exe（72,810,496 bytes）、開発署名MSIX（53,503,503 bytes）を作成。署名検証エラー0、`ONFStudios.FUSEN.Dev_5.1.4.0_x64`をインストールして起動成功。合計290.6秒（記録値: 1-2 273秒、1-3 9秒、1-4 8秒）。開発MSIX SHA-256は`7248DD8B03D2D9A6848AAD010338918DA8355E804FB6474A6137AA57D46EC05F`。
+- STEP 1-5確認待ち: 通常起動、既存付箋・保存、設定の「Windowsのスタートアップ設定を開く」、旧スタートアップ登録の除去、MSIX StartupTaskの有効化を確認する。
+- STEP 1-5初回失敗: 開発MSIX作成時に`test-msix.ps1`がManifestの`Extensions`全体を削除し、StartupTaskが存在しなかった。そのため設定画面はオフ表示のまま切替・Windows設定ボタンを出せなかった。Store用Manifestは削除されず影響なし。削除1行を除去し、既存exeを再利用してSTEP 1-3へ戻る。
+- STEP 1-3〜1-4再試行: StartupTask拡張を保持した開発MSIX（53,503,581 bytes）を既存exeから再作成し、署名検証エラー0、再インストール・起動成功。合計14秒（1-3 7秒、1-4 7秒）。STEP 1-5で設定表示とWindowsスタートアップ設定起動を再確認する。
+- STEP 1-5再確認でStore版とDev版のStartupTaskが両方「俺の付箋」と表示され識別不能。Windows PowerShell 5でスクリプト内の日本語リテラルが正しく解釈されず、表示名置換だけ一致していなかった。Dev表示名をASCIIの`Ore No Fusen Dev`へ変更し、表示名属性を文字内容に依存しない正規表現で置換して再梱包する。
+- STEP 1-3〜1-4再試行3: ManifestのProperties・VisualElements・StartupTaskがすべて`Ore No Fusen Dev`であることを機械確認。既存exeから再梱包し、署名検証エラー0、再インストール・起動成功。合計13.6秒（記録値: 1-3 7秒、1-4 7秒）。
+- STEP 1-5成功: 設定ボタンからWindowsのスタートアップ設定が開き、`Ore No Fusen Dev`を識別可能。テスト環境に残ったdebug版`ore-no-fusen.exe`とStore 5.1.3を無効、Devだけ有効にして再起動し、localhostエラーなし・Dev自動起動成功を確認。
 - 禁止: 目的未確認のビルド、MSIX作成、テスト、別フォルダ作成を行わない。
 
 ## 2026-08-11 自動起動のMSIX移行修正（STEP 0）

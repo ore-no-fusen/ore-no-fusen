@@ -56,4 +56,16 @@ describe('release verification gate', () => {
     expect(workflow).toContain("name: ${{ inputs.dry_run && 'store-msix-dry-run' || 'store-msix' }}");
     expect(workflow).toContain('Dry run completed. No branch, tag, release, or Store submission was changed.');
   });
+
+  it('keeps the StartupTask extension in the development MSIX', () => {
+    const script = fs.readFileSync(
+      path.resolve(process.cwd(), 'packaging/msix/test-msix.ps1'),
+      'utf8',
+    );
+
+    expect(script).not.toContain("<Extensions>.*?</Extensions>");
+    expect(script).toContain('$Manifest.Replace(\'Id="OreNoFusen"\'');
+    expect(script).toContain('$DevDisplayName = "Ore No Fusen Dev"');
+    expect(script).toContain("'DisplayName=\"[^\"]*\"'");
+  });
 });

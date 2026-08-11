@@ -25,7 +25,7 @@ $CerPath = Join-Path $CertDir "ore-no-fusen-dev.cer"
 $DevPackageName = "ONFStudios.FUSEN.Dev"
 $DevPublisher = "CN=OreNoFusenDev"
 $DevApplicationId = "OreNoFusenDev"
-$DevDisplayName = "俺の付箋 Dev"
+$DevDisplayName = "Ore No Fusen Dev"
 
 function Assert-FileExists {
   param([string] $Path, [string] $Message)
@@ -196,9 +196,8 @@ $Manifest = Get-Content -LiteralPath $SourceManifestPath -Raw -Encoding UTF8
 $Manifest = $Manifest.Replace('Name="ONFStudios.FUSEN"', ('Name="' + $DevPackageName + '"'))
 $Manifest = $Manifest.Replace('Publisher="CN=4820A467-BFE8-46A3-A142-42A0E840F3A5"', ('Publisher="' + $DevPublisher + '"'))
 $Manifest = $Manifest.Replace('Id="OreNoFusen"', ('Id="' + $DevApplicationId + '"'))
-$Manifest = $Manifest.Replace('<DisplayName>俺の付箋</DisplayName>', ('<DisplayName>' + $DevDisplayName + '</DisplayName>'))
-$Manifest = $Manifest.Replace('DisplayName="俺の付箋"', ('DisplayName="' + $DevDisplayName + '"'))
-$Manifest = [regex]::Replace($Manifest, '(?s)\s*<Extensions>.*?</Extensions>', '')
+$Manifest = [regex]::Replace($Manifest, '<DisplayName>[^<]*</DisplayName>', ('<DisplayName>' + $DevDisplayName + '</DisplayName>'))
+$Manifest = [regex]::Replace($Manifest, 'DisplayName="[^"]*"', ('DisplayName="' + $DevDisplayName + '"'))
 [System.IO.File]::WriteAllText($DevManifestPath, $Manifest, [System.Text.UTF8Encoding]::new($false))
 
 $ToolRoot = Get-LatestWindowsSdkToolRoot
