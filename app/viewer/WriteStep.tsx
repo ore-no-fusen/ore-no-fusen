@@ -332,7 +332,7 @@ export function WriteStep({
             if (link instanceof HTMLAnchorElement) {
               event.preventDefault();
               event.stopPropagation();
-              window.open(link.href, '_blank', 'noopener,noreferrer');
+              window.location.assign(link.href);
               return;
             }
           }

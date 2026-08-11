@@ -256,22 +256,4 @@ describe('WriteStep loss prevention', () => {
     expect(queryByRole('dialog', { name: '画像プレビュー' })).toBeNull();
   });
 
-  it('編集画面のURLをタップすると新しい画面でリンクを開く', () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
-    const { editor } = renderWriteStep();
-    const link = document.createElement('a');
-    link.href = 'https://example.com/viewer';
-    link.setAttribute('data-pwa-link', '');
-    link.textContent = link.href;
-    editor.replaceChildren(link);
-
-    fireEvent.click(link);
-
-    expect(open).toHaveBeenCalledWith(
-      'https://example.com/viewer',
-      '_blank',
-      'noopener,noreferrer',
-    );
-    open.mockRestore();
-  });
 });

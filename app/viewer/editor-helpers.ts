@@ -64,8 +64,7 @@ function appendLinkedText(parent: HTMLElement, text: string): void {
     const link = document.createElement('a');
     link.href = match[0];
     link.textContent = match[0];
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
+    link.target = '_self';
     link.setAttribute('data-pwa-link', '');
     link.style.cssText = 'color:#2563eb;text-decoration:underline;overflow-wrap:anywhere;';
     parent.appendChild(link);
