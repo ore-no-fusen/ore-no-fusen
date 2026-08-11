@@ -4,6 +4,8 @@
 - ユーザー判断: 案1として`touchend`から`window.open(URL, '_self')`を試す。失敗時は案2として編集領域外の通常リンクを表示する。それも失敗した場合は修正を終了する。
 - 案1のService Worker版番号は`5.1.4-pwa.8`。iPhone実機成功までは修正完了と扱わない。
 - 案1実装後、URL・Service Worker対象Vitest 30件、TypeScript、タッチから同一画面へ実URL遷移するChromium E2E 1件、`git diff --check`に成功。初回E2Eは開発サーバー初期読込の`ERR_ABORTED`で失敗し、HTTP 200確認後の再試行で成功。develop Previewへ反映後、iPhone実機で確認する。
+- iPhone実機で案1（`5.1.4-pwa.8`）も遷移せず失敗。予定どおり案2へ移行し、編集領域外の確認画面に通常リンクを表示する。案2は`5.1.4-pwa.9`。これも実機失敗ならユーザー判断により修正を終了する。
+- 案2実装後、URL・Service Worker対象Vitest 30件、TypeScript、VitePress設計書ビルド、確認画面の通常リンクから同一画面へ実URL遷移するChromium E2E 1件、`git diff --check`に成功。E2E環境準備で接続拒否・IndexedDBタイムアウトが各1回発生したが、案2の操作へ到達した再試行は成功。iPhone実機成功までは修正完了と扱わない。
 
 ### 2026-08-11 PWA URLリンク遷移修正（contenteditable対応）
 

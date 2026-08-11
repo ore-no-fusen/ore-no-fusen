@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { setupViewerWithNotes } from './fixtures/setup-viewer';
 
-test('[PWA-URL-01] 編集画面のURLをタッチすると同じ画面でURLへ移動する', async ({ page, baseURL }) => {
+test('[PWA-URL-01] 編集画面のURLをタッチし、確認画面から同じ画面でURLへ移動する', async ({ page, baseURL }) => {
   const url = new URL('/viewer?link-test=1', baseURL).href;
   await setupViewerWithNotes(page, [{
     id: 'url-link-note',
@@ -21,9 +21,12 @@ test('[PWA-URL-01] 編集画面のURLをタッチすると同じ画面でURLへ�
   await expect(link).toHaveAttribute('target', '_self');
   await expect(link).toHaveAttribute('contenteditable', 'false');
 
-  await Promise.all([
-    page.waitForURL(url),
-    link.dispatchEvent('touchend'),
-  ]);
+  await link.dispatchEvent('touchend');
+
+  const externalLink = page.locator(`a[data-pwa-external-link][href="${url}"]`);
+  await expect(externalLink).toBeVisible();
+  await expect(externalLink).toHaveAttribute('target', '_self');
+
+  await Promise.all([page.waitForURL(url), externalLink.click()]);
   await expect(page).toHaveURL(url);
 });

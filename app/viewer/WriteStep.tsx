@@ -129,6 +129,7 @@ export function WriteStep({
   const selectedPc = pcDevices.find((pc) => pc.pcId === selectedPcId) ?? null;
   const [isRefreshingPcDevices, setIsRefreshingPcDevices] = React.useState(false);
   const [previewImageSrc, setPreviewImageSrc] = React.useState<string | null>(null);
+  const [pendingLinkHref, setPendingLinkHref] = React.useState<string | null>(null);
 
   const openEditorLinkOnTouch = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     if (!(event.target instanceof Element)) return;
@@ -137,7 +138,7 @@ export function WriteStep({
 
     event.preventDefault();
     event.stopPropagation();
-    window.open(link.href, '_self');
+    setPendingLinkHref(link.href);
   }, []);
 
   React.useEffect(() => {
@@ -803,6 +804,40 @@ export function WriteStep({
             style={{ touchAction: 'pinch-zoom' }}
             onClick={(event) => event.stopPropagation()}
           />
+        </div>
+      )}
+
+      {pendingLinkHref && (
+        <div
+          className="fixed inset-0 z-[2000] flex items-end justify-center bg-black/50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('pwa.write.openLinkTitle')}
+          onClick={() => setPendingLinkHref(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="mb-3 break-all text-sm text-gray-600">{pendingLinkHref}</p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-gray-100 px-4 py-3 font-semibold text-gray-700"
+                onClick={() => setPendingLinkHref(null)}
+              >
+                {t('pwa.write.cancelLink')}
+              </button>
+              <a
+                href={pendingLinkHref}
+                target="_self"
+                data-pwa-external-link=""
+                className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-center font-semibold text-white"
+              >
+                {t('pwa.write.openLink')}
+              </a>
+            </div>
+          </div>
         </div>
       )}
     </div>
