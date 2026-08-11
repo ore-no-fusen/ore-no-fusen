@@ -278,23 +278,6 @@ export default function ViewerPage() {
           error: attempt.errorName,
         })),
       );
-      // iOS では notificationclick が発火しないため、locked: true のノートは page 側で再通知する
-      if (draft?.locked) {
-        try {
-          const reg = await navigator.serviceWorker.ready;
-          const rawTitle = draft.title || '';
-          const rawBody = (draft.body || '').replace(/!\[.*?\]\(.*?\)/g, '').trim();
-          const notifTitle = rawTitle ? rawTitle.replace(/^#\s*/, '') : rawBody.slice(0, 20) || '（無題）';
-          const notifBody = rawTitle ? rawBody.slice(0, 40) : rawBody.slice(20, 60);
-          await reg.showNotification(notifTitle, {
-            body: notifBody,
-            tag: `fusen-${draft.id}`,
-            data: { id: draft.id, title: notifTitle, body: notifBody },
-            icon: '/icon-192.png',
-            badge: '/icon-192.png',
-          });
-        } catch { /* 無視 */ }
-      }
       if (draft) {
         const titleLine = draft.title ? `${draft.title}\n` : '';
         const images = draft.images ?? [];

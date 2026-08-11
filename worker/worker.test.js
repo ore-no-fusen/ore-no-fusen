@@ -235,6 +235,32 @@ describe('Service Worker — notificationclick handler', () => {
     expect(notification.close).toHaveBeenCalledOnce();
   });
 
+  it('ベルONの通知をタップしたときだけ、Service Workerが1件再表示する', async () => {
+    const databases = global.indexedDB.__databases;
+    const draftsDb = databases.get('fusen-drafts') ?? new Map();
+    databases.set('fusen-drafts', draftsDb);
+    const drafts = draftsDb.get('drafts') ?? new Map();
+    draftsDb.set('drafts', drafts);
+    drafts.set('locked-note', { locked: true });
+
+    let flow;
+    eventHandlers.get('notificationclick')({
+      notification: {
+        data: { id: 'locked-note', title: '固定する通知', body: '本文' },
+        close: vi.fn(),
+      },
+      waitUntil: promise => { flow = promise; },
+    });
+
+    await flow;
+
+    expect(mockRegistration.showNotification).toHaveBeenCalledTimes(1);
+    expect(mockRegistration.showNotification).toHaveBeenCalledWith(
+      '固定する通知',
+      expect.objectContaining({ tag: 'fusen-locked-note' }),
+    );
+  });
+
   it('既存 /viewer クライアントへ通知IDを送り focus() する', async () => {
     const viewer = {
       url: 'https://example.com/viewer',

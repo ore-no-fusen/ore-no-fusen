@@ -351,7 +351,7 @@ push受信・notificationclick等を処理するSWのイベントハンドラ5�
 | 1 | `install` | `skipWaiting()` 呼び出し。新バージョンを即時有効化。 |
 | 2 | `activate` | `clients.claim()` でページの制御を取得。SW バージョンをログに記録。 |
 | 3 | `push` | ① Push ペイロード（title / body_rich / id）を取得。長文用の `fetch_from_drive` がある場合は ID を使って `notes_to_iphone.json` から本文を取得<br>② `fusen-meta` からアクセストークンを取得<br>③ Drive から画像をダウンロード<br>④ `fusen-drafts` に元のノートタイトルのまま保存<br>⑤ Drive から画像ファイルを削除<br>⑥ `notes_to_iphone.json` から当該 ID を削除<br>⑦ `pending_open` を `fusen-meta` に記録<br>⑧ 既存の同 ID 通知を閉じ、空タイトルの場合だけ通知名を日本語環境では「俺の付箋」、それ以外では「FUSEN」として新規通知を表示 |
-| 4 | `notificationclick` | 通知をタップ → `locked` 確認 → true なら再通知・アプリを前面に出す。<br><strong style="color:#f59e0b">⚠️ iOS では発火しない（既知の制約）。</strong>タップ後の再通知は `page.tsx` の `pending_open` フローが代替。 |
+| 4 | `notificationclick` | 通知をタップ → `locked` 確認 → true なら通知を1件再表示・アプリを前面に出す。<br><strong style="color:#f59e0b">⚠️ iOS では発火しない（既知の制約）。</strong>`pending_open` は次回起動時の対象ノート表示だけを補完し、通知を再表示しない。 |
 | 5 | `message` | アプリからの通信を受信。`CLOSE_NOTIFICATION` で通知を閉じる、`GET_VERSION` で SW のバージョンを返す等の処理。 |
 
 <Note type="warning">
@@ -1409,5 +1409,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 30 | **1.29** | 26-07-31 | Google OAuthのトークン交換・更新APIへ、16KBの本文上限、認証値の項目別上限、Google通信の10秒タイムアウトを追加。Siri送信APIにも本文・項目上限とGoogle通信タイムアウトを追加。 |
 | 31 | **1.30** | 26-07-31 | PC→スマホのPushペイロードで同一の `body` / `body_rich` を重複送信しない規則と、4KB超過時に現在の文字数・短縮目安を表示する送信前検査を追加。Android Pushの4096 bytes超過応答も本文過大として分類。 |
 | 32 | **1.31** | 26-07-31 | 4KBを超えるPC→スマホ本文はコンパクトPushへ自動切替し、Service WorkerがIDを使って `notes_to_iphone.json` から本文を取得する長文経路を追加。 |
+| 33 | **1.32** | 26-08-11 | `pending_open` によるPWA起動時のノート表示では通知を再表示しないよう変更。ベルONの再通知は `notificationclick` 時のService Workerだけが行い、PWAを開いたときの重複通知を防止。 |
 
 </div>
