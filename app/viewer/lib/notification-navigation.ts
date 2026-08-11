@@ -64,6 +64,19 @@ export function removeNotificationNoteParam(currentUrl: string): string {
 
 type ResumeEventTarget = Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
 
+export function createSingleFlightEventHandler(
+  handler: () => Promise<void>,
+): EventListener {
+  let inFlight = false;
+  return () => {
+    if (inFlight) return;
+    inFlight = true;
+    void handler().finally(() => {
+      inFlight = false;
+    });
+  };
+}
+
 export function registerPendingNotificationResume(
   handler: EventListener,
   documentTarget: ResumeEventTarget = document,

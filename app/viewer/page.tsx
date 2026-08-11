@@ -29,6 +29,7 @@ import { renderSecureMermaid } from '../utils/mermaid';
 import { loadPwaLanguage, savePwaLanguage } from './language';
 import {
   consumePendingNotification,
+  createSingleFlightEventHandler,
   loadNotificationDraft,
   registerPendingNotificationResume,
 } from './lib/notification-navigation';
@@ -304,9 +305,10 @@ export default function ViewerPage() {
         }));
       }
     };
-    const unregisterResume = registerPendingNotificationResume(handleVisible);
+    const handleResume = createSingleFlightEventHandler(handleVisible);
+    const unregisterResume = registerPendingNotificationResume(handleResume);
     // 起動直後も確認（clients.openWindow で新規タブが開かれた場合、visibilitychange は発火しない）
-    handleVisible();
+    handleResume(new Event('pageshow'));
     return unregisterResume;
   }, [videoBlobMapFromDraft, videoMetasFromRecord]);
 
