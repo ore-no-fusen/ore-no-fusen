@@ -5,8 +5,16 @@
 - 提出ファイル: `D:\Users\uck\Documents\俺の付箋-Store提出\5.1.3\ore-no-fusen.msix`
 - ファイル容量: 53,259,032バイト。
 - 次の開発: `develop`から開始し、`docs/010_RELEASE.md`のSTEP 0-1（原因調査・最小修正）から進める。
+- 設定「このアプリについて」: GitHubボタンをMicrosoft Storeリンクへ差し替え（関連リンクは未変更）。型チェック済み。
+- 開発起動時のHydration警告: 起動直後の`<html>` style属性の一時差分を対象に、`suppressHydrationWarning`で抑制。型チェック済み。
 - リリース候補バージョンはSTEP 1-1まで変更しない。
 - 禁止: 目的未確認のビルド、MSIX作成、テスト、別フォルダ作成を行わない。
+
+## 2026-08-11 自動起動のMSIX移行修正（STEP 0）
+
+- 原因: 旧デスクトップ版のNSISアンインストーラーが `HKCU\\...\\Run` の自動起動登録を解除せず、MSIX版と重複し得る。さらにMSIX版の「Windows のスタートアップ設定を開く」は汎用shell呼び出しが失敗しても画面に通知しない。
+- 修正: MSIX版の起動時に旧 `ore-no-fusen` のレジストリ自動起動を削除し、旧版アンインストール時にも同じ登録とWindowsの有効・無効状態を削除する。設定ボタンはWindowsネイティブ `Launcher` でスタートアップ設定を開き、失敗時は `Ctrl + Shift + Esc` の案内を表示する。
+- 検証: `cargo check --locked`、`npx tsc --noEmit --pretty false` 成功。MSIX実機でのWindows設定起動・旧登録削除・StartupTask有効化は次工程で確認する。
 
 ## 2026-07-22 主要操作の不要な待機を削減
 
@@ -1347,3 +1355,7 @@
 - 最小修正: クエリ付与を廃止し、更新後だけ元のasset URLを`cache: no-store`で取得してblob URLとして表示する。Markdown・画像ファイル・パス解決は変更しない。
 - 検証: ResizableImage専用Vitest 6件、TypeScript型検査、PC版で画像貼付→描き込み→保存→表示モードの実機確認に合格。
 - コミット: `930baff fix: reload annotated images in Store MSIX`。次版5.1.2は正式ActionでMSIXを生成後、パッケージフライトでStore署名済みMSIXを必ず確認する。
+## 2026-08-11 PWA通知重複の修正
+- 実機ログとロック画面で確認: Push受信・SW通知表示はいずれも1回。PWAを開いた時に `visibilitychange` / `focus` / `pageshow` が同一の `pending_open` を並行処理し、ベルONの再通知を複数回実行していた。
+- 最小修正: `app/viewer/page.tsx` のPWA起動時再通知を削除。`worker/index.js` の `notificationclick` によるベルON再通知は維持する。
+- 検証: 通知関連Vitest 18件、`npx tsc --noEmit --pretty false`、`docs-v2` の `npm run docs:build` は成功。全体 `npm test` は今回と無関係な既存7件（リリース手順1件・不足API route 6件）が失敗。実機は develop Previewで通知1件・ベルONのタップ後1件再表示を確認する。
