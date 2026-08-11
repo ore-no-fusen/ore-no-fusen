@@ -40,6 +40,7 @@
 - STEP 1-5成功: 旧debug版とStore版を無効化し、`Ore No Fusen Dev`だけを有効にした再起動でlocalhostエラーなし・Dev版の自動起動成功を確認。
 - STEP 2-1〜2-2成功: STEP 1で合格した同一exeを再ビルドせず、Store用未署名MSIXを6.2秒で作成。Name=`ONFStudios.FUSEN`、Publisher、Version=`5.1.4.0`、x64、未署名を1.3秒で検証し、梱包前exeのSHA-256一致も確認。
 - Store提出物: `D:\Users\uck\Documents\俺の付箋-Store提出\5.1.4\ore-no-fusen.msix`（53,500,808 bytes、SHA-256 `D013845540AF08285FD716CBA493F0AC161C5385592A43F711F04AE6C9B0C7EA`）。
+- STEP 2-3成功: 検証済みソースをdevelop（`9212097`）へpushし、最新mainの変更を保持したまま競合なしで統合してmain（`dc75276`）へpush。実測25秒。
 - STEP 1-5成功: 設定ボタンからWindowsのスタートアップ設定が開き、`Ore No Fusen Dev`を識別可能。テスト環境に残ったdebug版`ore-no-fusen.exe`とStore 5.1.3を無効、Devだけ有効にして再起動し、localhostエラーなし・Dev自動起動成功を確認。
 - 禁止: 目的未確認のビルド、MSIX作成、テスト、別フォルダ作成を行わない。
 
