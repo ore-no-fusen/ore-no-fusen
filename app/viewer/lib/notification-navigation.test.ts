@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   consumePendingNotification,
+  createSingleFlightEventHandler,
   getNotificationNoteId,
   loadNotificationDraft,
   removeNotificationNoteParam,
@@ -98,5 +99,28 @@ describe('notification navigation', () => {
     unregister();
     windowTarget.dispatchEvent(new Event('focus'));
     expect(handler).toHaveBeenCalledTimes(3);
+  });
+
+  it('coalesces simultaneous iPhone resume events into one pending-note check', async () => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const checkPending = vi.fn().mockReturnValue(pending);
+    const handler = createSingleFlightEventHandler(checkPending);
+    const documentTarget = new EventTarget();
+    const windowTarget = new EventTarget();
+    const unregister = registerPendingNotificationResume(handler, documentTarget, windowTarget);
+
+    documentTarget.dispatchEvent(new Event('visibilitychange'));
+    windowTarget.dispatchEvent(new Event('focus'));
+    windowTarget.dispatchEvent(new Event('pageshow'));
+    expect(checkPending).toHaveBeenCalledTimes(1);
+
+    finish();
+    await pending;
+    await Promise.resolve();
+    windowTarget.dispatchEvent(new Event('focus'));
+    expect(checkPending).toHaveBeenCalledTimes(2);
+
+    unregister();
   });
 });

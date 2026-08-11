@@ -18,7 +18,7 @@
   <Identity
     Name="ONFStudios.FUSEN"
     Publisher="CN=4820A467-BFE8-46A3-A142-42A0E840F3A5"
-    Version="5.1.3.0"
+    Version="5.1.4.0"
     ProcessorArchitecture="x64" />
 
   <Properties>

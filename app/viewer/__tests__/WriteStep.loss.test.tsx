@@ -255,4 +255,5 @@ describe('WriteStep loss prevention', () => {
     fireEvent.click(dialog);
     expect(queryByRole('dialog', { name: '画像プレビュー' })).toBeNull();
   });
+
 });

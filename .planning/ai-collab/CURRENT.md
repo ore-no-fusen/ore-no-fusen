@@ -1,3 +1,54 @@
+## 現在の開発状況（26-08-10・最初に読む）
+### 2026-08-11 PWA URLリンク遷移修正
+
+- `5.1.4-pwa.6`のiPhone実機ログでは`url_tapped source=touchend`と`url_assign_started`まで記録され、例外なしで遷移しなかった。iOSが同一画面の`location.assign`を黙って拒否している状態。ユーザー判断によりPWAリンク修正は保留し、既知制限として5.1.4のMSIX作成を優先する。
+- `5.1.4-pwa.5`のiPhone実機ログに`url_tapped`が一度もなく、`contenteditable`内のリンクタップがReactの`click`へ到達していないと特定。`5.1.4-pwa.6`で同じ処理を`touchend`でも受け、ログにイベント種別を残す。実機失敗時はPWA修正を一旦止め、MSIX作成を優先する。
+- `5.1.4-pwa.4`をiPhone実機で確認したが、URLタップ後も遷移しない。Chromiumでは再現しないため、`5.1.4-pwa.5`で`url_tapped`・`url_assign_started`・`url_assign_failed`と対象URL・例外名を既存診断ログへ追加してiOS側の停止位置を調査する。
+- `5.1.4-pwa.3`のクリック処理が`window.open(..., '_blank')`を指定していたため、iPhone PWAで新規画面だけが開きリンク先へ遷移しなかった。
+- `5.1.4-pwa.4`で現在画面の`window.location.assign()`へ変更し、E2Eも命令の呼出確認から実際のURL遷移確認へ訂正した。
+- このPCのChromiumで実際に`/viewer?link-test=1`へ同一画面遷移するE2E 1件、全Vitest、TypeScript、VitePress設計書ビルドに成功。
+
+
+### 2026-08-11 PWA復帰処理の三重実行修正
+
+- 実機ログで `visibilitychange` / `focus` / `pageshow` が同時発火し、同じ `pending_open` を3回処理することを確認。
+- `createSingleFlightEventHandler` を追加し、処理中に届いた復帰イベントを重複実行しないよう修正。
+- 対象テスト16件と `npx tsc --noEmit --pretty false` に成功。develop Previewで通知が1件になることを再確認する。
+- develop `c6a1f3b`、Vercel Preview、iPhone実機で `5.1.4-pwa.1` を確認。PCから1回送信した通知が1件だけ表示され、STEP 0-3成功。
+
+### 2026-08-11 PWA本文URLリンク化
+
+- `5.1.4-pwa.2`では未使用の`SimpleNoteBody`を修正してしまい、実画面に反映されなかった。
+- `5.1.4-pwa.3`で誤修正を削除し、実際の編集画面`hydrateEditor`で `http://` / `https://` URLだけを安全な外部リンクとして表示するよう訂正。
+- リンク化後の保存本文・改行が変わらないテストと、編集画面からURLを開くテストを追加。このPCのChromium E2Eで実表示とクリックを確認（1件成功・6.9秒）。
+
+- 基準手順: `docs/010_RELEASE.md`を作業前に必ず読む。
+- 5.1.3: Microsoft Storeリリース完了。
+- 提出ファイル: `D:\Users\uck\Documents\俺の付箋-Store提出\5.1.3\ore-no-fusen.msix`
+- ファイル容量: 53,259,032バイト。
+- 次の開発: `develop`から開始し、`docs/010_RELEASE.md`のSTEP 0-1（原因調査・最小修正）から進める。
+- 設定「このアプリについて」: GitHubボタンをMicrosoft Storeリンクへ差し替え（関連リンクは未変更）。型チェック済み。
+- 開発起動時のHydration警告: 起動直後の`<html>` style属性の一時差分を対象に、`suppressHydrationWarning`で抑制。型チェック済み。
+- リリース候補バージョンはSTEP 1-1まで変更しない。
+- 26-08-11 STEP 1-1: リリース候補は既に5ファイルで一致している `5.1.4` を使用する。
+- 26-08-11 STEP 1-2〜1-4: 本番exe（72,810,496 bytes）、開発署名MSIX（53,503,503 bytes）を作成。署名検証エラー0、`ONFStudios.FUSEN.Dev_5.1.4.0_x64`をインストールして起動成功。合計290.6秒（記録値: 1-2 273秒、1-3 9秒、1-4 8秒）。開発MSIX SHA-256は`7248DD8B03D2D9A6848AAD010338918DA8355E804FB6474A6137AA57D46EC05F`。
+- STEP 1-5確認待ち: 通常起動、既存付箋・保存、設定の「Windowsのスタートアップ設定を開く」、旧スタートアップ登録の除去、MSIX StartupTaskの有効化を確認する。
+- STEP 1-5初回失敗: 開発MSIX作成時に`test-msix.ps1`がManifestの`Extensions`全体を削除し、StartupTaskが存在しなかった。そのため設定画面はオフ表示のまま切替・Windows設定ボタンを出せなかった。Store用Manifestは削除されず影響なし。削除1行を除去し、既存exeを再利用してSTEP 1-3へ戻る。
+- STEP 1-3〜1-4再試行: StartupTask拡張を保持した開発MSIX（53,503,581 bytes）を既存exeから再作成し、署名検証エラー0、再インストール・起動成功。合計14秒（1-3 7秒、1-4 7秒）。STEP 1-5で設定表示とWindowsスタートアップ設定起動を再確認する。
+- STEP 1-5再確認でStore版とDev版のStartupTaskが両方「俺の付箋」と表示され識別不能。Windows PowerShell 5でスクリプト内の日本語リテラルが正しく解釈されず、表示名置換だけ一致していなかった。Dev表示名をASCIIの`Ore No Fusen Dev`へ変更し、表示名属性を文字内容に依存しない正規表現で置換して再梱包する。
+- STEP 1-3〜1-4再試行3: ManifestのProperties・VisualElements・StartupTaskがすべて`Ore No Fusen Dev`であることを機械確認。既存exeから再梱包し、署名検証エラー0、再インストール・起動成功。合計13.6秒（記録値: 1-3 7秒、1-4 7秒）。
+- STEP 1-5成功: 旧debug版とStore版を無効化し、`Ore No Fusen Dev`だけを有効にした再起動でlocalhostエラーなし・Dev版の自動起動成功を確認。
+- STEP 2-1〜2-2成功: STEP 1で合格した同一exeを再ビルドせず、Store用未署名MSIXを6.2秒で作成。Name=`ONFStudios.FUSEN`、Publisher、Version=`5.1.4.0`、x64、未署名を1.3秒で検証し、梱包前exeのSHA-256一致も確認。
+- Store提出物: `D:\Users\uck\Documents\俺の付箋-Store提出\5.1.4\ore-no-fusen.msix`（53,500,808 bytes、SHA-256 `D013845540AF08285FD716CBA493F0AC161C5385592A43F711F04AE6C9B0C7EA`）。
+- STEP 1-5成功: 設定ボタンからWindowsのスタートアップ設定が開き、`Ore No Fusen Dev`を識別可能。テスト環境に残ったdebug版`ore-no-fusen.exe`とStore 5.1.3を無効、Devだけ有効にして再起動し、localhostエラーなし・Dev自動起動成功を確認。
+- 禁止: 目的未確認のビルド、MSIX作成、テスト、別フォルダ作成を行わない。
+
+## 2026-08-11 自動起動のMSIX移行修正（STEP 0）
+
+- 原因: 旧デスクトップ版のNSISアンインストーラーが `HKCU\\...\\Run` の自動起動登録を解除せず、MSIX版と重複し得る。さらにMSIX版の「Windows のスタートアップ設定を開く」は汎用shell呼び出しが失敗しても画面に通知しない。
+- 修正: MSIX版の起動時に旧 `ore-no-fusen` のレジストリ自動起動を削除し、旧版アンインストール時にも同じ登録とWindowsの有効・無効状態を削除する。設定ボタンはWindowsネイティブ `Launcher` でスタートアップ設定を開き、失敗時は `Ctrl + Shift + Esc` の案内を表示する。
+- 検証: `cargo check --locked`、`npx tsc --noEmit --pretty false` 成功。MSIX実機でのWindows設定起動・旧登録削除・StartupTask有効化は次工程で確認する。
+
 ## 2026-07-22 主要操作の不要な待機を削減
 
 - 閲覧用右クリックメニューのタグ・ホットキー取得を並列化し、基本項目、色、透明度、文字サイズ、タグ一覧、アーカイブ先、アプリ操作の独立したネイティブ項目をまとめて生成する。
@@ -1337,3 +1388,7 @@
 - 最小修正: クエリ付与を廃止し、更新後だけ元のasset URLを`cache: no-store`で取得してblob URLとして表示する。Markdown・画像ファイル・パス解決は変更しない。
 - 検証: ResizableImage専用Vitest 6件、TypeScript型検査、PC版で画像貼付→描き込み→保存→表示モードの実機確認に合格。
 - コミット: `930baff fix: reload annotated images in Store MSIX`。次版5.1.2は正式ActionでMSIXを生成後、パッケージフライトでStore署名済みMSIXを必ず確認する。
+## 2026-08-11 PWA通知重複の修正
+- 実機ログとロック画面で確認: Push受信・SW通知表示はいずれも1回。PWAを開いた時に `visibilitychange` / `focus` / `pageshow` が同一の `pending_open` を並行処理し、ベルONの再通知を複数回実行していた。
+- 最小修正: `app/viewer/page.tsx` のPWA起動時再通知を削除。`worker/index.js` の `notificationclick` によるベルON再通知は維持する。
+- 検証: 通知関連Vitest 18件、`npx tsc --noEmit --pretty false`、`docs-v2` の `npm run docs:build` は成功。全体 `npm test` は今回と無関係な既存7件（リリース手順1件・不足API route 6件）が失敗。実機は develop Previewで通知1件・ベルONのタップ後1件再表示を確認する。

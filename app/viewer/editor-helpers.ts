@@ -25,6 +25,12 @@ export function serializeEditor(el: HTMLDivElement): string {
       const fn = node.getAttribute('data-filename');
       return fn ? `![](${fn})` : '';
     }
+    // URLリンクは表示用。保存時は元のURL文字列へ戻す。
+    if (node.tagName === 'A') return node.textContent ?? '';
+    // 通常行のインライン要素間には改行を追加しない。
+    if (node.tagName === 'SPAN') {
+      return Array.from(node.childNodes).map((c) => walk(c, false)).join('');
+    }
     // br → 改行
     if (node.tagName === 'BR') return '\n';
     // div（ルート以外）→ ブロック要素として先頭に改行
@@ -44,6 +50,30 @@ export function serializeEditor(el: HTMLDivElement): string {
     return result;
   }
   return walk(el, true).replace(/\n+$/, '');
+}
+
+function appendLinkedText(parent: HTMLElement, text: string): void {
+  const urlRe = /https?:\/\/[^\s<>"'）)\]}、。]+/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = urlRe.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+    const link = document.createElement('a');
+    link.href = match[0];
+    link.textContent = match[0];
+    link.target = '_self';
+    link.setAttribute('data-pwa-link', '');
+    link.style.cssText = 'color:#2563eb;text-decoration:underline;overflow-wrap:anywhere;';
+    parent.appendChild(link);
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parent.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
 }
 
 /**
@@ -131,7 +161,7 @@ export function hydrateEditor(
     }
     // 通常テキスト行
     const span = document.createElement('span');
-    span.textContent = line;
+    appendLinkedText(span, line);
     el.appendChild(span);
     el.appendChild(document.createElement('br'));
     i++;

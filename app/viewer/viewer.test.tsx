@@ -327,4 +327,3 @@ describe('P11-03: notes_to_iphone.json 配列スキーマ互換', () => {
     expect(result).toHaveLength(0);
   });
 });
-
