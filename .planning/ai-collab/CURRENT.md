@@ -37,6 +37,9 @@
 - STEP 1-3〜1-4再試行: StartupTask拡張を保持した開発MSIX（53,503,581 bytes）を既存exeから再作成し、署名検証エラー0、再インストール・起動成功。合計14秒（1-3 7秒、1-4 7秒）。STEP 1-5で設定表示とWindowsスタートアップ設定起動を再確認する。
 - STEP 1-5再確認でStore版とDev版のStartupTaskが両方「俺の付箋」と表示され識別不能。Windows PowerShell 5でスクリプト内の日本語リテラルが正しく解釈されず、表示名置換だけ一致していなかった。Dev表示名をASCIIの`Ore No Fusen Dev`へ変更し、表示名属性を文字内容に依存しない正規表現で置換して再梱包する。
 - STEP 1-3〜1-4再試行3: ManifestのProperties・VisualElements・StartupTaskがすべて`Ore No Fusen Dev`であることを機械確認。既存exeから再梱包し、署名検証エラー0、再インストール・起動成功。合計13.6秒（記録値: 1-3 7秒、1-4 7秒）。
+- STEP 1-5成功: 旧debug版とStore版を無効化し、`Ore No Fusen Dev`だけを有効にした再起動でlocalhostエラーなし・Dev版の自動起動成功を確認。
+- STEP 2-1〜2-2成功: STEP 1で合格した同一exeを再ビルドせず、Store用未署名MSIXを6.2秒で作成。Name=`ONFStudios.FUSEN`、Publisher、Version=`5.1.4.0`、x64、未署名を1.3秒で検証し、梱包前exeのSHA-256一致も確認。
+- Store提出物: `D:\Users\uck\Documents\俺の付箋-Store提出\5.1.4\ore-no-fusen.msix`（53,500,808 bytes、SHA-256 `D013845540AF08285FD716CBA493F0AC161C5385592A43F711F04AE6C9B0C7EA`）。
 - STEP 1-5成功: 設定ボタンからWindowsのスタートアップ設定が開き、`Ore No Fusen Dev`を識別可能。テスト環境に残ったdebug版`ore-no-fusen.exe`とStore 5.1.3を無効、Devだけ有効にして再起動し、localhostエラーなし・Dev自動起動成功を確認。
 - 禁止: 目的未確認のビルド、MSIX作成、テスト、別フォルダ作成を行わない。
 
