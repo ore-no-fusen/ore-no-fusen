@@ -1226,10 +1226,12 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
 
     const openStartupSettings = async () => {
         try {
-            const { open } = await import("@tauri-apps/plugin-shell")
-            await open("ms-settings:startupapps")
+            await invoke("fusen_open_startup_settings")
         } catch (e) {
             console.error("[AutoStart] Failed to open Windows startup settings:", e)
+            setStartupMessage(isEnglish
+                ? 'Could not open Windows Startup Apps. Press Ctrl + Shift + Esc, then select Startup apps.'
+                : 'Windows のスタートアップ設定を開けませんでした。Ctrl + Shift + Esc を押して「スタートアップ アプリ」を開いてください。')
         }
     }
 

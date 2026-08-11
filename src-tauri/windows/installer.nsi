@@ -85,6 +85,9 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
+  ; 旧版が登録したログイン時起動を解除する
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ore-no-fusen"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "ore-no-fusen"
   ; ★ アンインストール時にファイルを削除
   Delete "$INSTDIR\ore-no-fusen.exe"
 
@@ -104,4 +107,3 @@ Section "Uninstall"
   ; フォルダを完全削除（残ったファイルも含む）
   RMDir /r "$INSTDIR"
 SectionEnd
-

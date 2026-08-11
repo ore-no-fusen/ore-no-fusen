@@ -8,26 +8,30 @@ const workflow = fs.readFileSync(
 );
 
 describe('release verification gate', () => {
-  it('runs all required checks before main is changed', () => {
+  it('validates the version before main is changed and builds from the committed source', () => {
     const verifyJob = workflow.indexOf('verify-release:');
-    const verifyRustJob = workflow.indexOf('verify-rust:');
     const prepareJob = workflow.indexOf('prepare-store-release:');
-    const verifySection = workflow.slice(verifyJob, verifyRustJob);
-    const verifyRustSection = workflow.slice(verifyRustJob, prepareJob);
+    const buildJob = workflow.indexOf('build-store-package:');
+    const verifySection = workflow.slice(verifyJob, prepareJob);
+    const prepareSection = workflow.slice(prepareJob, buildJob);
+    const buildSection = workflow.slice(buildJob);
 
     expect(verifyJob).toBeGreaterThan(-1);
-    expect(verifyRustJob).toBeGreaterThan(verifyJob);
-    expect(prepareJob).toBeGreaterThan(verifyRustJob);
-    expect(verifySection).toContain('run: npm ci');
-    expect(verifySection).toContain('run: npx tsc --noEmit --pretty false');
-    expect(verifySection).toContain('run: npm test');
-    expect(verifySection).toContain('run: npm run build:tauri');
-    expect(verifySection).not.toContain('playwright install chromium');
-    expect(verifyRustSection).toContain('run: cargo test --locked --release --lib');
-    expect(verifyRustSection).toContain('${{ github.run_id }}');
-    expect(verifyRustSection).toContain('src-tauri/target/release/');
-    expect(verifyRustSection).not.toContain('cargo check');
-    expect(workflow).toContain('needs: [verify-release, verify-rust]');
+    expect(prepareJob).toBeGreaterThan(verifyJob);
+    expect(buildJob).toBeGreaterThan(prepareJob);
+    expect(verifySection).toContain('Normalize and validate version');
+    expect(verifySection).toContain('Verify locked dependencies without changes');
+    expect(verifySection).not.toContain('run: npm test');
+    expect(verifySection).not.toContain('cargo test');
+    expect(prepareSection).toContain('needs: [verify-release]');
+    expect(prepareSection).toContain('Merge develop into main');
+    expect(prepareSection).toContain('Commit and push main');
+    expect(buildSection).toContain('needs: [verify-release, prepare-store-release]');
+    expect(buildSection).toContain('run: npm ci');
+    expect(buildSection).toContain('run: npm run tauri build -- --no-bundle --ci');
+    expect(buildSection).toContain('packaging\\msix\\build-msix.ps1');
+    expect(buildSection).toContain('packaging\\msix\\validate-msix.ps1');
+    expect(workflow).not.toContain('verify-rust:');
   });
 
   it('uses the Tauri build wrapper that always restores server-only API routes', () => {

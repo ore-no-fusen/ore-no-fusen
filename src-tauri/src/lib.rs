@@ -102,6 +102,34 @@ fn fusen_get_distribution_info() -> String {
     distribution::get_distribution_kind().to_string()
 }
 
+#[tauri::command]
+fn fusen_open_startup_settings() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::core::HSTRING;
+        use windows::Foundation::Uri;
+        use windows::System::Launcher;
+
+        let uri = Uri::CreateUri(&HSTRING::from("ms-settings:startupapps"))
+            .map_err(|e| e.to_string())?;
+        let launched = Launcher::LaunchUriAsync(&uri)
+            .map_err(|e| e.to_string())?
+            .get()
+            .map_err(|e| e.to_string())?;
+
+        if launched {
+            Ok(())
+        } else {
+            Err("Windows のスタートアップ設定を開けませんでした".to_string())
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Windows 以外では利用できません".to_string())
+    }
+}
+
 const STARTUP_TASK_ID: &str = "OreNoFusenStartup";
 
 #[cfg(target_os = "windows")]
@@ -5173,6 +5201,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_distribution_info,
+            fusen_open_startup_settings,
             desktop_shortcut::fusen_get_desktop_shortcut_state,
             desktop_shortcut::fusen_create_desktop_shortcut,
             desktop_shortcut::fusen_remove_desktop_shortcut,
@@ -5421,19 +5450,22 @@ pub fn run() {
                 "#);
             }
 
-            // Autostart plugin (デスクトップのみ)
+            // Autostart plugin. MSIX移行時にも旧デスクトップ版の登録を解除するため初期化する。
             #[cfg(desktop)]
             {
-                if distribution::is_msix_packaged() {
-                    logger::log_info("MSIX: registry autostart skipped (StartupTask 使用)");
-                } else {
-                    app.handle().plugin(tauri_plugin_autostart::init(
-                        tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                        None, // 引数なし
-                    ))?;
+                app.handle().plugin(tauri_plugin_autostart::init(
+                    tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                    None,
+                ))?;
 
+                use tauri_plugin_autostart::ManagerExt;
+                if distribution::is_msix_packaged() {
+                    // 旧デスクトップ版が残した HKCU\\...\\Run の登録を除去する。
+                    // 登録が存在しない場合のエラーは、移行済みであることを意味するため無視する。
+                    let _ = app.handle().autolaunch().disable();
+                    logger::log_info("MSIX: legacy registry autostart cleanup completed (StartupTask 使用)");
+                } else {
                     // 設定に従って自動起動をOSに登録/解除
-                    use tauri_plugin_autostart::ManagerExt;
                     let auto_start = storage::load_settings()
                         .unwrap_or_default()
                         .auto_start;
