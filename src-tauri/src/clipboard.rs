@@ -332,24 +332,6 @@ mod tests {
         )
     }
 
-    fn valid_png_data_url() -> String {
-        use base64::{engine::general_purpose, Engine as _};
-
-        let path = std::env::temp_dir().join(format!(
-            "ore-no-fusen-annotation-source-{}-{}.png",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        let pixels = [255, 0, 0, 255, 0, 255, 0, 255];
-        save_rgba_png_fast(&path, &pixels, 2, 1).unwrap();
-        let bytes = fs::read(&path).unwrap();
-        let _ = fs::remove_file(path);
-        format!(
-            "data:image/png;base64,{}",
-            general_purpose::STANDARD.encode(bytes)
-        )
-    }
-
     #[test]
     fn fast_png_keeps_rgba_pixels() {
         let path =
