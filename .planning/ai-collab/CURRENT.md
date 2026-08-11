@@ -5,6 +5,12 @@
 - 実機ログで `visibilitychange` / `focus` / `pageshow` が同時発火し、同じ `pending_open` を3回処理することを確認。
 - `createSingleFlightEventHandler` を追加し、処理中に届いた復帰イベントを重複実行しないよう修正。
 - 対象テスト16件と `npx tsc --noEmit --pretty false` に成功。develop Previewで通知が1件になることを再確認する。
+- develop `c6a1f3b`、Vercel Preview、iPhone実機で `5.1.4-pwa.1` を確認。PCから1回送信した通知が1件だけ表示され、STEP 0-3成功。
+
+### 2026-08-11 PWA本文URLリンク化
+
+- `SimpleNoteBody`で本文内の `http://` / `https://` URLだけを安全な外部リンクとして表示。
+- PWA版数を `5.1.4-pwa.2` へ更新。対象34テストとTypeScript検査に成功。
 
 - 基準手順: `docs/010_RELEASE.md`を作業前に必ず読む。
 - 5.1.3: Microsoft Storeリリース完了。

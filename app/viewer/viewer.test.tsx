@@ -76,6 +76,27 @@ describe('SimpleNoteBody', () => {
     expect(container.textContent).toContain('こんにちは');
   });
 
+  it('http・https URLをタップ可能な安全なリンクとしてレンダリングする', () => {
+    const body = '検証版URL\nhttps://example.com/viewer\nhttp://example.org/path。';
+    const { container } = render(<SimpleNoteBody body={body} />);
+    const links = container.querySelectorAll('a');
+
+    expect(links).toHaveLength(2);
+    expect(links[0].getAttribute('href')).toBe('https://example.com/viewer');
+    expect(links[1].getAttribute('href')).toBe('http://example.org/path');
+    expect(links[0].getAttribute('target')).toBe('_blank');
+    expect(links[0].getAttribute('rel')).toBe('noopener noreferrer');
+    expect(container.textContent).toContain('http://example.org/path。');
+  });
+
+  it('javascript URLとローカルパスはリンクにしない', () => {
+    const body = 'javascript:alert(1)\nC:\\Users\\test\\note.md';
+    const { container } = render(<SimpleNoteBody body={body} />);
+
+    expect(container.querySelectorAll('a')).toHaveLength(0);
+    expect(container.textContent).toContain('javascript:alert(1)');
+  });
+
   it('data: URI 画像を <img> タグでレンダリングする', () => {
     const body = '前のテキスト\n![テスト画像](data:image/png;base64,abc123)\n後のテキスト';
     const { container } = render(<SimpleNoteBody body={body} />);
@@ -327,4 +348,3 @@ describe('P11-03: notes_to_iphone.json 配列スキーマ互換', () => {
     expect(result).toHaveLength(0);
   });
 });
-
