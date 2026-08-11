@@ -19,28 +19,11 @@ test('[PWA-URL-01] 編集画面のURLをタッチすると同じ画面でURLへ�
   const link = page.locator(`a[data-pwa-link][href="${url}"]`);
   await expect(link).toBeVisible();
   await expect(link).toHaveAttribute('target', '_self');
+  await expect(link).toHaveAttribute('contenteditable', 'false');
 
   await Promise.all([
     page.waitForURL(url),
-    link.dispatchEvent('touchend'),
+    link.click(),
   ]);
   await expect(page).toHaveURL(url);
-  await expect.poll(() => page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('fusen-logs', 1);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    const records = await new Promise<Array<{ msg?: string }>>((resolve, reject) => {
-      const request = db.transaction('logs').objectStore('logs').getAll();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    db.close();
-    return records.map(({ msg }) => msg ?? '').filter((msg) => msg.includes('url_'));
-  })).toEqual(expect.arrayContaining([
-    expect.stringContaining('[NAV] event=url_tapped'),
-    expect.stringContaining('[NAV] event=url_assign_started'),
-    expect.stringContaining('source=touchend'),
-  ]));
 });

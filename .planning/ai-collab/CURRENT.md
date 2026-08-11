@@ -1,4 +1,12 @@
 ## 現在の開発状況（26-08-10・最初に読む）
+### 2026-08-11 PWA URLリンク遷移修正（contenteditable対応）
+
+- 修正版のService Worker版番号を`5.1.4-pwa.7`へ更新。
+- 根本原因: ライトモード本文のURLは`contenteditable`内にあり、通常リンクとして遷移しない一方、回避処理の`window.location.assign()`もiPhone PWAでは例外なく無視されていた。
+- 最小修正: 生成するURLリンクだけに`contenteditable="false"`を付け、`touchend` / `click`で遷移を横取りする処理を削除。`target="_self"`の標準リンク遷移を使用する。
+- 影響範囲: ライトモード本文内の`http://` / `https://`リンクのみ。保存本文・改行・画像タップ・通知遷移は変更なし。
+- 検証: URLリンク化・保存ラウンドトリップを含むVitest 22件、`npx tsc --noEmit --pretty false`、実URL遷移E2E 1件、`git diff --check`に成功。iPhone実機確認待ち。
+
 ### 2026-08-11 PWA URLリンク遷移修正
 
 - `5.1.4-pwa.6`のiPhone実機ログでは`url_tapped source=touchend`と`url_assign_started`まで記録され、例外なしで遷移しなかった。iOSが同一画面の`location.assign`を黙って拒否している状態。ユーザー判断によりPWAリンク修正は保留し、既知制限として5.1.4のMSIX作成を優先する。

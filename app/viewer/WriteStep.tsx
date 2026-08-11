@@ -12,7 +12,6 @@ import {
   nowJST,
 } from './utils';
 import { saveDraft } from './lib/indexeddb';
-import { appendDiagnosticLog, formatNavigationLog, safeErrorName } from './lib/diagnostic-log';
 import { serializeEditor, extractTitleBody, mergeKnownTags, loadKnownTags } from './editor-helpers';
 import type { TranslationKey } from '@/lib/i18n';
 import type { PcDevice, PendingHydrate, PendingVideoMeta, VideoBlobMap } from './types';
@@ -130,33 +129,6 @@ export function WriteStep({
   const selectedPc = pcDevices.find((pc) => pc.pcId === selectedPcId) ?? null;
   const [isRefreshingPcDevices, setIsRefreshingPcDevices] = React.useState(false);
   const [previewImageSrc, setPreviewImageSrc] = React.useState<string | null>(null);
-
-  const openEditorLink = React.useCallback((event: React.SyntheticEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) return false;
-    const link = event.target.closest('a[data-pwa-link]');
-    if (!(link instanceof HTMLAnchorElement)) return false;
-
-    event.preventDefault();
-    event.stopPropagation();
-    appendDiagnosticLog(formatNavigationLog('url_tapped', {
-      href: link.href,
-      source: event.type,
-    }));
-    try {
-      appendDiagnosticLog(formatNavigationLog('url_assign_started', {
-        href: link.href,
-        source: event.type,
-      }));
-      window.location.assign(link.href);
-    } catch (error) {
-      appendDiagnosticLog(formatNavigationLog('url_assign_failed', {
-        href: link.href,
-        source: event.type,
-        error: safeErrorName(error),
-      }));
-    }
-    return true;
-  }, []);
 
   React.useEffect(() => {
     if (!previewImageSrc) return;
@@ -354,11 +326,7 @@ export function WriteStep({
         data-placeholder={t('pwa.write.placeholder')}
         style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
         onInput={handleEditorInput}
-        onTouchEnd={(event) => {
-          openEditorLink(event);
-        }}
         onClick={(event) => {
-          if (openEditorLink(event)) return;
           if (!(event.target instanceof HTMLImageElement)) return;
           event.preventDefault();
           event.stopPropagation();
