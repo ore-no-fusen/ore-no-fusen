@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-11T02:52:16.883Z",
+  "updated_at": "2026-08-11T02:55:00.064Z",
   "workflow": "MSIX CI",
   "run_id": 31453651676,
   "run_number": 42,
@@ -7,10 +7,20 @@
   "run_url": "https://github.com/ore-no-fusen/ore-no-fusen/actions/runs/31453651676",
   "branch": "develop",
   "commit_sha": "c0de04d8fd0c01fa39ae916bcb024fb080492dc0",
-  "overall": "in_progress",
-  "failed_step": null,
-  "current_step": "started",
-  "steps": {},
+  "overall": "failure",
+  "failed_step": "frontend_tests",
+  "current_step": "finished",
+  "steps": {
+    "npm_ci": "success",
+    "frontend_tests": "failure",
+    "next_build": "skipped",
+    "rust_tests": "skipped",
+    "tauri_build": "skipped",
+    "msix_create": "skipped",
+    "msix_verify": "skipped",
+    "msix_smoke": "skipped",
+    "upload_artifact": "success"
+  },
   "msix": {
     "created": false,
     "bytes": 0,
