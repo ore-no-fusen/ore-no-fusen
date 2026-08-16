@@ -1409,3 +1409,13 @@
 - 実機ログとロック画面で確認: Push受信・SW通知表示はいずれも1回。PWAを開いた時に `visibilitychange` / `focus` / `pageshow` が同一の `pending_open` を並行処理し、ベルONの再通知を複数回実行していた。
 - 最小修正: `app/viewer/page.tsx` のPWA起動時再通知を削除。`worker/index.js` の `notificationclick` によるベルON再通知は維持する。
 - 検証: 通知関連Vitest 18件、`npx tsc --noEmit --pretty false`、`docs-v2` の `npm run docs:build` は成功。全体 `npm test` は今回と無関係な既存7件（リリース手順1件・不足API route 6件）が失敗。実機は develop Previewで通知1件・ベルONのタップ後1件再表示を確認する。
+## 2026-08-16 5.1.5 旧デスクトップ自動起動の再登録防止
+
+- 原因: MSIXからのHKCU Run削除はレジストリ仮想化により実レジストリへ反映されない。さらに共有設定`auto_start=true`を旧debug版が読み、自動起動を再登録していた。
+- 最小修正: MSIX起動時に共有設定の旧`auto_start`をfalseへ一度だけ移行する。MSIX自身のStartupTask状態は変更しない。
+- 検証: Rust対象テスト2件、`cargo check --locked`、`git diff --check`成功。Dev MSIX `ONFStudios.FUSEN.Dev_5.1.5.0_x64`を作成・署名検証0エラー・導入・起動。共有設定`auto_start=False`を実機確認。
+- STEP 1-5確認待ち: 起動中のDev 5.1.5で通常表示と既存付箋を確認し、Windowsスタートアップ設定で旧`ore-no-fusen.exe`を無効化する。合格後、同一exeからStore用MSIXを作成する。
+- STEP 1-5合格: 付箋・既存データ正常。Windowsスタートアップは`Ore No Fusen Dev`のみ有効、旧`ore-no-fusen.exe`2件は無効。
+- STEP 2成功: 同一exeからStore用未署名MSIXを作成。Name=`ONFStudios.FUSEN`、Publisher、Version=`5.1.5.0`、x64、未署名の5項目に合格。exe SHA-256一致。
+- Store提出物: `D:\Users\uck\Documents\俺の付箋-Store提出\5.1.5\ore-no-fusen.msix`（55,361,648 bytes、SHA-256 `06DFD4FBAF19A1DB0B13B19D13EA26A45755F68FF2B75E5417BD4BC8304FE1AA`）。
+- 検証: VitePress build成功。次は今回の変更だけをコミットしてdevelop/mainへ反映し、Partner Centerへ手動提出する。既存ユーザー変更`src-tauri/capabilities/default.json`は対象外。
