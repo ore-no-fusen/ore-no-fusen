@@ -1419,3 +1419,4 @@
 - STEP 2成功: 同一exeからStore用未署名MSIXを作成。Name=`ONFStudios.FUSEN`、Publisher、Version=`5.1.5.0`、x64、未署名の5項目に合格。exe SHA-256一致。
 - Store提出物: `D:\Users\uck\Documents\俺の付箋-Store提出\5.1.5\ore-no-fusen.msix`（55,361,648 bytes、SHA-256 `06DFD4FBAF19A1DB0B13B19D13EA26A45755F68FF2B75E5417BD4BC8304FE1AA`）。
 - 検証: VitePress build成功。次は今回の変更だけをコミットしてdevelop/mainへ反映し、Partner Centerへ手動提出する。既存ユーザー変更`src-tauri/capabilities/default.json`は対象外。
+- GitHub反映: develop `b3549fd`、main統合 `fa6257b`。pre-commit全検証38件成功・5件skip（275秒）、develop push 5.3秒、main push 4.8秒。実測は`docs/010_RELEASE.md`へ反映。
