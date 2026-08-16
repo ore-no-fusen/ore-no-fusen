@@ -1,6 +1,6 @@
 {
   "name": "ore-no-fusen",
-  "version": "5.1.4",
+  "version": "5.1.5",
   "description": "FUSEN - local-first sticky notes for developers working with AI coding tools",
   "private": true,
   "scripts": {
@@ -44,7 +44,7 @@
     "clsx": "^2.1.1",
     "konva": "^10.2.3",
     "lucide-react": "^0.562.0",
-    "mermaid": "11.16.0",
+    "mermaid": "11.16.1",
     "next": "15.5.21",
     "next-pwa": "^5.6.0",
     "qrcode": "^1.5.4",

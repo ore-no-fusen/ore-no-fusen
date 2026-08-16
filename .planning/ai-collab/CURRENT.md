@@ -1,4 +1,20 @@
 ## 現在の開発状況（26-08-10・最初に読む）
+### 2026-08-12 PWA URLリンク遷移・最終試行方針
+
+- ユーザー判断: 案1として`touchend`から`window.open(URL, '_self')`を試す。失敗時は案2として編集領域外の通常リンクを表示する。それも失敗した場合は修正を終了する。
+- 案1のService Worker版番号は`5.1.4-pwa.8`。iPhone実機成功までは修正完了と扱わない。
+- 案1実装後、URL・Service Worker対象Vitest 30件、TypeScript、タッチから同一画面へ実URL遷移するChromium E2E 1件、`git diff --check`に成功。初回E2Eは開発サーバー初期読込の`ERR_ABORTED`で失敗し、HTTP 200確認後の再試行で成功。develop Previewへ反映後、iPhone実機で確認する。
+- iPhone実機で案1（`5.1.4-pwa.8`）も遷移せず失敗。予定どおり案2へ移行し、編集領域外の確認画面に通常リンクを表示する。案2は`5.1.4-pwa.9`。これも実機失敗ならユーザー判断により修正を終了する。
+- 案2実装後、URL・Service Worker対象Vitest 30件、TypeScript、VitePress設計書ビルド、確認画面の通常リンクから同一画面へ実URL遷移するChromium E2E 1件、`git diff --check`に成功。E2E環境準備で接続拒否・IndexedDBタイムアウトが各1回発生したが、案2の操作へ到達した再試行は成功。iPhone実機成功までは修正完了と扱わない。
+
+### 2026-08-11 PWA URLリンク遷移修正（contenteditable対応）
+
+- 修正版のService Worker版番号を`5.1.4-pwa.7`へ更新。
+- 根本原因: ライトモード本文のURLは`contenteditable`内にあり、通常リンクとして遷移しない一方、回避処理の`window.location.assign()`もiPhone PWAでは例外なく無視されていた。
+- 最小修正: 生成するURLリンクだけに`contenteditable="false"`を付け、`touchend` / `click`で遷移を横取りする処理を削除。`target="_self"`の標準リンク遷移を使用する。
+- 影響範囲: ライトモード本文内の`http://` / `https://`リンクのみ。保存本文・改行・画像タップ・通知遷移は変更なし。
+- 検証: URLリンク化・保存ラウンドトリップを含むVitest 22件、`npx tsc --noEmit --pretty false`、実URL遷移E2E 1件、`git diff --check`に成功。iPhone実機確認待ち。
+
 ### 2026-08-11 PWA URLリンク遷移修正
 
 - `5.1.4-pwa.6`のiPhone実機ログでは`url_tapped source=touchend`と`url_assign_started`まで記録され、例外なしで遷移しなかった。iOSが同一画面の`location.assign`を黙って拒否している状態。ユーザー判断によりPWAリンク修正は保留し、既知制限として5.1.4のMSIX作成を優先する。
@@ -1393,3 +1409,13 @@
 - 実機ログとロック画面で確認: Push受信・SW通知表示はいずれも1回。PWAを開いた時に `visibilitychange` / `focus` / `pageshow` が同一の `pending_open` を並行処理し、ベルONの再通知を複数回実行していた。
 - 最小修正: `app/viewer/page.tsx` のPWA起動時再通知を削除。`worker/index.js` の `notificationclick` によるベルON再通知は維持する。
 - 検証: 通知関連Vitest 18件、`npx tsc --noEmit --pretty false`、`docs-v2` の `npm run docs:build` は成功。全体 `npm test` は今回と無関係な既存7件（リリース手順1件・不足API route 6件）が失敗。実機は develop Previewで通知1件・ベルONのタップ後1件再表示を確認する。
+## 2026-08-16 5.1.5 旧デスクトップ自動起動の再登録防止
+
+- 原因: MSIXからのHKCU Run削除はレジストリ仮想化により実レジストリへ反映されない。さらに共有設定`auto_start=true`を旧debug版が読み、自動起動を再登録していた。
+- 最小修正: MSIX起動時に共有設定の旧`auto_start`をfalseへ一度だけ移行する。MSIX自身のStartupTask状態は変更しない。
+- 検証: Rust対象テスト2件、`cargo check --locked`、`git diff --check`成功。Dev MSIX `ONFStudios.FUSEN.Dev_5.1.5.0_x64`を作成・署名検証0エラー・導入・起動。共有設定`auto_start=False`を実機確認。
+- STEP 1-5確認待ち: 起動中のDev 5.1.5で通常表示と既存付箋を確認し、Windowsスタートアップ設定で旧`ore-no-fusen.exe`を無効化する。合格後、同一exeからStore用MSIXを作成する。
+- STEP 1-5合格: 付箋・既存データ正常。Windowsスタートアップは`Ore No Fusen Dev`のみ有効、旧`ore-no-fusen.exe`2件は無効。
+- STEP 2成功: 同一exeからStore用未署名MSIXを作成。Name=`ONFStudios.FUSEN`、Publisher、Version=`5.1.5.0`、x64、未署名の5項目に合格。exe SHA-256一致。
+- Store提出物: `D:\Users\uck\Documents\俺の付箋-Store提出\5.1.5\ore-no-fusen.msix`（55,361,648 bytes、SHA-256 `06DFD4FBAF19A1DB0B13B19D13EA26A45755F68FF2B75E5417BD4BC8304FE1AA`）。
+- 検証: VitePress build成功。次は今回の変更だけをコミットしてdevelop/mainへ反映し、Partner Centerへ手動提出する。既存ユーザー変更`src-tauri/capabilities/default.json`は対象外。

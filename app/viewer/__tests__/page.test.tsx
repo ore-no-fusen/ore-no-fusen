@@ -97,6 +97,7 @@ describe('REQ-URL-LINK: 編集画面URLリンク', () => {
     expect(links).toHaveLength(1);
     expect(links[0].getAttribute('href')).toBe('https://example.com/viewer');
     expect(links[0].getAttribute('target')).toBe('_self');
+    expect(links[0].getAttribute('contenteditable')).toBe('false');
     expect(links[0].hasAttribute('rel')).toBe(false);
     expect(el.textContent).toContain('javascript:alert(1)');
   });

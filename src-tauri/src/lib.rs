@@ -5460,10 +5460,27 @@ pub fn run() {
 
                 use tauri_plugin_autostart::ManagerExt;
                 if distribution::is_msix_packaged() {
-                    // 旧デスクトップ版が残した HKCU\\...\\Run の登録を除去する。
-                    // 登録が存在しない場合のエラーは、移行済みであることを意味するため無視する。
-                    let _ = app.handle().autolaunch().disable();
-                    logger::log_info("MSIX: legacy registry autostart cleanup completed (StartupTask 使用)");
+                    match storage::load_settings() {
+                        Ok(mut settings) => {
+                            if distribution::migrate_legacy_autostart_setting(&mut settings.auto_start) {
+                                match storage::save_settings(&settings) {
+                                    Ok(()) => logger::log_info(
+                                        "MSIX: legacy desktop autostart setting disabled (StartupTask 使用)",
+                                    ),
+                                    Err(error) => logger::log_warn(&format!(
+                                        "MSIX: legacy desktop autostart setting migration failed: {error}"
+                                    )),
+                                }
+                            } else {
+                                logger::log_info(
+                                    "MSIX: legacy desktop autostart setting was already disabled (StartupTask 使用)",
+                                );
+                            }
+                        }
+                        Err(error) => logger::log_warn(&format!(
+                            "MSIX: legacy desktop autostart setting could not be loaded: {error}"
+                        )),
+                    }
                 } else {
                     // 設定に従って自動起動をOSに登録/解除
                     let auto_start = storage::load_settings()

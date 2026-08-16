@@ -65,6 +65,7 @@ function appendLinkedText(parent: HTMLElement, text: string): void {
     link.href = match[0];
     link.textContent = match[0];
     link.target = '_self';
+    link.setAttribute('contenteditable', 'false');
     link.setAttribute('data-pwa-link', '');
     link.style.cssText = 'color:#2563eb;text-decoration:underline;overflow-wrap:anywhere;';
     parent.appendChild(link);

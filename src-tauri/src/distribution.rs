@@ -33,8 +33,26 @@ pub fn get_distribution_kind() -> &'static str {
     }
 }
 
+/// MSIX版はStartupTaskを使うため、旧デスクトップ版が共有設定を読んでも
+/// レジストリ自動起動を再登録しない状態へ移行する。
+pub fn migrate_legacy_autostart_setting(auto_start: &mut bool) -> bool {
+    if !*auto_start {
+        return false;
+    }
+    *auto_start = false;
+    true
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_autostart_setting_is_disabled_once() {
+        let mut auto_start = true;
+        assert!(super::migrate_legacy_autostart_setting(&mut auto_start));
+        assert!(!auto_start);
+        assert!(!super::migrate_legacy_autostart_setting(&mut auto_start));
+    }
+
     #[cfg(windows)]
     #[test]
     fn desktop_test_process_is_not_msix_packaged() {
