@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.7 / 2026-06-01
+設計書 v1.9 / 2026-08-26
 </p>
 
 ---
@@ -220,7 +220,7 @@ flowchart LR
 | No | 対象 | 許可方針 |
 |:---|:---|:---|
 | 1 | スクリプト | アプリ自身とGoogle Tag Managerに限定。本番では `unsafe-eval` を禁止 |
-| 2 | 通信 | Tauri IPC、俺の付箋Vercel、Google OAuth / Drive、Sentry、Google Analyticsに限定 |
+| 2 | 通信 | Tauri IPC、俺の付箋Vercel、Google OAuth / Drive、Sentry、Google Analyticsに限定。Google Analyticsは公式CSP仕様の `*.google-analytics.com`、`*.analytics.google.com`、`www.googletagmanager.com` を許可する |
 | 3 | 画像・動画 | アプリ自身、Tauri asset protocol、`data:`、`blob:`を許可 |
 | 4 | asset protocol scope | 付箋保存先をユーザーが任意の場所へ変更できる仕様のため `**` を維持する。表示URLの生成とファイル操作はRustコマンド側で管理する |
 
@@ -273,6 +273,7 @@ flowchart LR
 | 7 | 1.6 | 26-06-01 | 掲示板 API の永続保存先を Firebase / Firestore と明記し、Vercel と Firestore の責務を分離。 |
 | 8 | 1.7 | 26-06-01 | 007 章の表現に合わせ、ユーザーとの距離感を守る制約として参照文言を更新。 |
 | 9 | 1.8 | 26-07-31 | 5.2 にTauri WebViewのCSP、外部接続先、asset protocolの許可方針を追加。 |
+| 10 | 1.9 | 26-08-26 | 5.2 のGoogle Analytics通信許可を公式CSP仕様の全送信先へ修正。 |
 
 </div>
 

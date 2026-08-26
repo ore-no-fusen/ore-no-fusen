@@ -14,7 +14,21 @@ const DESKTOP_ALLOWED_PARAMS = new Set([
 declare global {
   interface Window {
     gtag?: (command: 'event', eventName: string, params?: AnalyticsParams) => void;
+    __FUSEN_ANALYTICS_DISABLE_TIMER__?: number;
+    'ga-disable-G-MGPKF0MQH4'?: boolean;
   }
+}
+
+const GA_DISABLE_KEY = 'ga-disable-G-MGPKF0MQH4' as const;
+
+function scheduleDesktopAnalyticsDisable() {
+  if (window.__FUSEN_ANALYTICS_DISABLE_TIMER__ !== undefined) {
+    window.clearTimeout(window.__FUSEN_ANALYTICS_DISABLE_TIMER__);
+  }
+  window.__FUSEN_ANALYTICS_DISABLE_TIMER__ = window.setTimeout(() => {
+    window[GA_DISABLE_KEY] = true;
+    window.__FUSEN_ANALYTICS_DISABLE_TIMER__ = undefined;
+  }, 3_000);
 }
 
 export function trackEvent(eventName: string, params: AnalyticsParams = {}) {
@@ -24,7 +38,9 @@ export function trackEvent(eventName: string, params: AnalyticsParams = {}) {
   const safeParams = isTauri
     ? Object.fromEntries(Object.entries(params).filter(([key]) => DESKTOP_ALLOWED_PARAMS.has(key)))
     : params;
+  if (isTauri) window[GA_DISABLE_KEY] = false;
   window.gtag('event', eventName, safeParams);
+  if (isTauri) scheduleDesktopAnalyticsDisable();
 }
 
 export function trackDonationEvent(eventName: string, params: AnalyticsParams = {}) {

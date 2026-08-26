@@ -3,8 +3,11 @@ import { trackEvent } from './analytics';
 
 describe('desktop analytics consent gate', () => {
   afterEach(() => {
+    vi.useRealTimers();
     delete (window as any).__TAURI_INTERNALS__;
     delete (window as any).__FUSEN_ANALYTICS_GRANTED__;
+    delete (window as any).__FUSEN_ANALYTICS_DISABLE_TIMER__;
+    delete (window as any)['ga-disable-G-MGPKF0MQH4'];
     delete (window as any).gtag;
   });
 
@@ -19,6 +22,7 @@ describe('desktop analytics consent gate', () => {
   });
 
   it('sends only after desktop consent is granted', () => {
+    vi.useFakeTimers();
     const gtag = vi.fn();
     (window as any).__TAURI_INTERNALS__ = {};
     (window as any).__FUSEN_ANALYTICS_GRANTED__ = true;
@@ -29,6 +33,10 @@ describe('desktop analytics consent gate', () => {
     expect(gtag).toHaveBeenCalledWith('event', 'note_created', {
       event_category: 'activation',
     });
+    expect((window as any)['ga-disable-G-MGPKF0MQH4']).toBe(false);
+
+    vi.advanceTimersByTime(3_000);
+    expect((window as any)['ga-disable-G-MGPKF0MQH4']).toBe(true);
   });
 
   it('removes content-like parameters from desktop events', () => {

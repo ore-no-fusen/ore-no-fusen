@@ -1,4 +1,13 @@
 ## 現在の開発状況（26-08-10・最初に読む）
+### 2026-08-27 PC版GA4イベント送信修正
+
+- 原因1: Tauri CSPがGA4の全送信先を許可しておらず、公式仕様のワイルドカード送信先が不足していた。
+- 原因2: `gtag` の待ち行列へ通常配列を入れており、Google公式スニペットが要求する `arguments` 形式ではなかったため、スクリプト読込後もイベント送信が始まらなかった。
+- 原因3: 開発起動は `TAURI_DEV=1` だが、同意制AnalyticsLoaderは `IS_TAURI_BUILD=true` だけをTauriと判定していた。
+- 最小修正: 本番・開発CSPへGA4公式送信先を追加し、`gtag` 待ち行列を公式形式へ変更。開発起動もTauri同意経路として扱う。
+- 実通信確認: 同意済みの開発版5.1.5から `app_started` を `G-MGPKF0MQH4` へ送信し、`https://www.google-analytics.com/g/collect` がHTTP 204を返したことをWebView通信で直接確認。修正は5.1.6へ収録する。
+- 検証: CSP・AnalyticsLoader・同意ゲートのVitest 11件、TypeScript、`git diff --check`に成功。Googleの拡張計測による `scroll` も同意後に自動送信されるため、GA4イベント一覧では `distribution=desktop_app` を使ってPCアプリの独自イベントを判別する。
+
 ### 2026-08-12 PWA URLリンク遷移・最終試行方針
 
 - ユーザー判断: 案1として`touchend`から`window.open(URL, '_self')`を試す。失敗時は案2として編集領域外の通常リンクを表示する。それも失敗した場合は修正を終了する。
