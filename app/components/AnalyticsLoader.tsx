@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { trackEvent } from '@/app/utils/analytics';
 
 const GA_ID = 'G-MGPKF0MQH4';
 
@@ -15,7 +16,9 @@ function loadGa4(sendPageView: boolean) {
   const analyticsWindow = window as AnalyticsWindow;
   if (analyticsWindow.gtag) return;
   analyticsWindow.dataLayer = analyticsWindow.dataLayer ?? [];
-  analyticsWindow.gtag = (...args: unknown[]) => analyticsWindow.dataLayer?.push(args);
+  analyticsWindow.gtag = function gtag(..._args: unknown[]) {
+    analyticsWindow.dataLayer?.push(arguments);
+  };
   analyticsWindow.gtag('js', new Date());
   analyticsWindow.gtag('config', GA_ID, { send_page_view: sendPageView });
 
@@ -39,12 +42,12 @@ export default function AnalyticsLoader({ isTauriBuild }: { isTauriBuild: boolea
     const applyConsent = (consent?: string) => {
       const analyticsWindow = window as AnalyticsWindow;
       analyticsWindow.__FUSEN_ANALYTICS_GRANTED__ = consent === 'granted';
-      analyticsWindow['ga-disable-G-MGPKF0MQH4'] = consent !== 'granted';
+      analyticsWindow['ga-disable-G-MGPKF0MQH4'] = true;
       if (consent !== 'granted' || cancelled) return;
       const wasLoaded = Boolean(analyticsWindow.gtag);
       loadGa4(false);
       if (!wasLoaded && !isNoteWindow) {
-        analyticsWindow.gtag?.('event', 'app_started', {
+        trackEvent('app_started', {
           event_category: 'activation',
           app_version: process.env.NEXT_PUBLIC_APP_VERSION ?? 'unknown',
           distribution: 'desktop_app',

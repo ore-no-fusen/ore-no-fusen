@@ -27,4 +27,13 @@ describe('Tauri content security policy', () => {
   it('limits unsafe eval to the development CSP', () => {
     expect(config.app?.security?.devCsp).toContain("'unsafe-eval'");
   });
+
+  it.each(['csp', 'devCsp'] as const)('allows every GA4 connection endpoint in %s', (key) => {
+    const csp = config.app?.security?.[key];
+    expect(csp?.split(';').find((directive) => directive.trim().startsWith('script-src')))
+      .toContain('https://www.googletagmanager.com');
+    expect(csp).toContain('https://*.google-analytics.com');
+    expect(csp).toContain('https://*.analytics.google.com');
+    expect(csp).toContain('https://www.googletagmanager.com');
+  });
 });

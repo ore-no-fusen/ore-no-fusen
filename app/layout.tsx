@@ -15,10 +15,11 @@ import RegisterPWA from "./RegisterPWA";
 import { NOTE_COLORS } from './utils/noteAppearance';
 import { Analytics } from "@vercel/analytics/next";
 import AnalyticsLoader from "./components/AnalyticsLoader";
+import { isTauriRuntime } from "./utils/runtimeEnvironment";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const OG_IMAGE = `${SITE_URL}/screenshots/ScreenShot_OreNoFusen.png`;
-const IS_TAURI_BUILD = process.env.IS_TAURI_BUILD === "true";
+const IS_TAURI_BUILD = isTauriRuntime(process.env.IS_TAURI_BUILD, process.env.TAURI_DEV);
 const SITE_DESCRIPTION =
   "FUSEN is a local-first sticky notes app for developers working with AI coding tools. Capture small bits of context on Windows and hand them off to/from iPhone with Google Drive.";
 

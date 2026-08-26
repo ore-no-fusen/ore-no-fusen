@@ -11,8 +11,15 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: listenMock }));
 
 import AnalyticsLoader from './AnalyticsLoader';
+import { isTauriRuntime } from '../utils/runtimeEnvironment';
 
 describe('AnalyticsLoader', () => {
+  it('treats both packaged builds and tauri dev as the desktop runtime', () => {
+    expect(isTauriRuntime('true', undefined)).toBe(true);
+    expect(isTauriRuntime(undefined, '1')).toBe(true);
+    expect(isTauriRuntime(undefined, undefined)).toBe(false);
+  });
+
   beforeEach(() => {
     invokeMock.mockReset();
     listenMock.mockClear();
@@ -39,8 +46,8 @@ describe('AnalyticsLoader', () => {
 
     await waitFor(() => expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull());
     expect((window as any).__FUSEN_ANALYTICS_GRANTED__).toBe(true);
-    expect((window as any).dataLayer).toEqual(expect.arrayContaining([
-      expect.arrayContaining(['event', 'app_started']),
-    ]));
+    expect((window as any).dataLayer.some(
+      (command: ArrayLike<unknown>) => Array.from(command)[0] === 'event' && Array.from(command)[1] === 'app_started',
+    )).toBe(true);
   });
 });
