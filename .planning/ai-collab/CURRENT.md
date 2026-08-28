@@ -8,6 +8,8 @@
 - 既存変更整理: リリース手順書2件をコミット `e50acc8` へ取り込み、不要な `autostart:default` 変更は取り消した。pre-commitは102ファイル・510件成功。
 - STEP 0-1実装終了: 2026-08-29 06:28:52 +09:00（831秒）。`usage_snapshot`、機能イベント7種、送信キー・値の許可リスト、正確な個数と未知の機能名を拒否する検査を実装。
 - STEP 0-2対象確認: Analytics関連19件、主要導線を含む対象51件、TypeScript、`git diff --check`、VitePress build（28.49秒）に成功。
+- STEP 0-2全体確認: Vitest 102ファイル・522件成功。pre-commit E2Eは38件成功、Windows実機専用5件のみ既定skip。実装コミット `67f4e40`。
+- STEP 0-3実通信確認完了: 2026-08-29 06:46:02 +09:00。WebView2 Networkを直接取得し、GA4 `G-MGPKF0MQH4` への `usage_snapshot` が `note_count_bucket=6-10`、`tagged_note_count_bucket=6-10`、`tag_count_bucket=1-5`、`iphone_enabled=true` を送信してHTTP 204を受信した。検索イベント経路を実行し、`feature_used` / `feature_name=search_open` もHTTP 204を受信した。本文・タイトル・タグ名・正確な個数・検索語・ファイルパスが送信URLに含まれないことを確認した。
 
 ### 2026-08-27 PC版GA4イベント送信修正
 
