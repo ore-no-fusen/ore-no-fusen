@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import { trackEvent } from '@/app/utils/analytics';
+import { bucketAnonymousCount, trackEvent } from '@/app/utils/analytics';
+import { getUserTags } from '@/app/utils/reservedTags';
 
 const GA_ID = 'G-MGPKF0MQH4';
 
@@ -39,6 +40,7 @@ export default function AnalyticsLoader({ isTauriBuild }: { isTauriBuild: boolea
 
     let unlisten: (() => void) | undefined;
     let cancelled = false;
+    let usageSnapshotSent = false;
     const applyConsent = (consent?: string) => {
       const analyticsWindow = window as AnalyticsWindow;
       analyticsWindow.__FUSEN_ANALYTICS_GRANTED__ = consent === 'granted';
@@ -52,6 +54,27 @@ export default function AnalyticsLoader({ isTauriBuild }: { isTauriBuild: boolea
           app_version: process.env.NEXT_PUBLIC_APP_VERSION ?? 'unknown',
           distribution: 'desktop_app',
         });
+      }
+      if (!isNoteWindow && !usageSnapshotSent) {
+        usageSnapshotSent = true;
+        import('@tauri-apps/api/core').then(async ({ invoke }) => {
+          const [state, settings] = await Promise.all([
+            invoke<{ notes?: Array<{ tags?: string[] }> }>('fusen_get_state'),
+            invoke<{ iphone_send_enabled?: boolean }>('get_settings'),
+          ]);
+          if (cancelled) return;
+          const notes = state.notes ?? [];
+          const noteUserTags = notes.map((note) => getUserTags(note.tags ?? []));
+          const taggedNotes = noteUserTags.filter((tags) => tags.length > 0);
+          const uniqueTagCount = new Set(noteUserTags.flat()).size;
+          trackEvent('usage_snapshot', {
+            event_category: 'usage',
+            note_count_bucket: bucketAnonymousCount(notes.length),
+            tagged_note_count_bucket: bucketAnonymousCount(taggedNotes.length),
+            tag_count_bucket: bucketAnonymousCount(uniqueTagCount),
+            iphone_enabled: settings.iphone_send_enabled === true,
+          });
+        }).catch(() => { usageSnapshotSent = false; });
       }
     };
 

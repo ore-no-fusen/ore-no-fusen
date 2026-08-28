@@ -83,8 +83,10 @@ Partner Centerで認定状態、取得数、インストール数を確認する
 | 付箋作成 | GA4 `note_created` |
 | 新規付箋の初回保存 | GA4 `first_note_saved` |
 | 付箋作成失敗 | GA4 `note_create_failed` |
+| 付箋・タグの利用規模 | GA4 `usage_snapshot`（固定範囲） |
+| タグ、アラーム、iPhone送受信、検索、複製、整理 | GA4 `feature_used` |
 
-GA4では `event_category`、`app_version`、`distribution`、`creation_path`、`error_category` だけを分析対象とし、本文、タイトル、タグ、ファイル名、保存先、検索語をカスタムディメンションへ登録しない。ユーザー単位データの保持期間は2か月に設定する。
+GA4では `event_category`、`app_version`、`distribution`、`creation_path`、`error_category`、個数の固定範囲、許可済みの機能名だけを分析対象とし、本文、タイトル、タグ名、正確な個数、ファイル名、保存先、検索語をカスタムディメンションへ登録しない。ユーザー単位データの保持期間は2か月に設定する。
 
 ## 禁止事項
 

@@ -1456,6 +1456,7 @@ const StickyNote = memo(function StickyNote() {
                 await import('@tauri-apps/api/event').then(({ emit }) => {
                     emit('fusen:reload_note', { path: selectedFile.path });
                 });
+                trackEvent('feature_used', { event_category: 'usage', feature_name: 'tag_add' });
             } catch (err) {
                 console.error('[Tag] Failed to add tag:', err);
                 console.error('[Tag] Failed to add tag detail:', err);
@@ -1555,6 +1556,7 @@ const StickyNote = memo(function StickyNote() {
         const newFront2 = updateFrontmatterValue(newFront1, 'alarm_sound', alarmSound.toString());
         setRawFrontmatter(newFront2);
         await saveNoteContent(content, newFront2, false);
+        trackEvent('feature_used', { event_category: 'usage', feature_name: 'alarm_set' });
     }, [rawFrontmatter, content, saveNoteContent, setRawFrontmatter]);
 
     /**
