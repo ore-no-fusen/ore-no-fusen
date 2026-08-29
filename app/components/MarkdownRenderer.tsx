@@ -507,7 +507,7 @@ export default function MarkdownRenderer({
                                     event.stopPropagation();
                                     toggleOutline(i);
                                 }}
-                                className="outline-toggle shrink-0 w-[16px] h-[1.4em] -ml-[16px] p-0 border-0 bg-transparent text-[9px] text-[#655f4d] opacity-[0.08] hover:opacity-80 focus:opacity-80 transition-opacity cursor-pointer"
+                                className="outline-toggle shrink-0 w-[16px] h-[1.4em] -ml-[16px] p-0 border-0 bg-transparent text-[10px] text-[#655f4d] opacity-55 hover:opacity-90 focus:opacity-90 transition-opacity cursor-pointer"
                             >
                                 {collapsedOutlineSet.has(i) ? '▶' : '▼'}
                             </button>

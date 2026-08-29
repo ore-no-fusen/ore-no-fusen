@@ -26,31 +26,17 @@ export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
 const outlineRefreshEffect = StateEffect.define<null>();
 
 class OutlineControlWidget extends WidgetType {
-    constructor(
-        readonly lineIndex: number,
-        readonly collapsed: boolean,
-        readonly hasChildren: boolean,
-        readonly onToggle: (lineIndex: number) => void,
-    ) {
+    constructor(readonly lineIndex: number) {
         super();
     }
 
     toDOM(): HTMLElement {
-        const control = document.createElement(this.hasChildren ? 'button' : 'span');
-        control.className = `cm-outline-control${this.hasChildren ? '' : ' cm-outline-leaf'}`;
+        const control = document.createElement('span');
+        control.className = 'cm-outline-control';
         control.dataset.outlineLine = String(this.lineIndex);
         control.draggable = true;
-        control.textContent = this.hasChildren ? (this.collapsed ? '▶' : '▼') : '';
-        control.title = this.hasChildren ? (this.collapsed ? '開く' : '閉じる') : 'ドラッグして移動';
-        if (this.hasChildren) {
-            control.setAttribute('aria-label', control.title);
-            control.addEventListener('mousedown', event => event.preventDefault());
-            control.addEventListener('click', event => {
-                event.preventDefault();
-                event.stopPropagation();
-                this.onToggle(this.lineIndex);
-            });
-        }
+        control.textContent = '⋮';
+        control.title = 'ドラッグして移動';
         control.addEventListener('dragstart', event => {
             event.stopPropagation();
             const dragEvent = event as DragEvent;
@@ -63,47 +49,39 @@ class OutlineControlWidget extends WidgetType {
     ignoreEvent(): boolean { return false; }
 
     eq(other: OutlineControlWidget): boolean {
-        return this.lineIndex === other.lineIndex
-            && this.collapsed === other.collapsed
-            && this.hasChildren === other.hasChildren;
+        return this.lineIndex === other.lineIndex;
     }
 }
 
-function buildOutlineDecorations(
-    state: EditorState,
-    collapsedLines: readonly number[],
-    onToggle: (lineIndex: number) => void,
-): DecorationSet {
-    const parsed = parseOutline(state.doc.toString(), collapsedLines);
-    const collapsed = new Set(collapsedLines);
+function buildOutlineDecorations(state: EditorState): DecorationSet {
+    const parsed = parseOutline(state.doc.toString());
     const decorations: any[] = [];
     parsed.forEach(line => {
         const docLine = state.doc.line(line.index + 1);
-        if (line.hidden) {
-            decorations.push(Decoration.line({ attributes: { class: 'cm-outline-hidden' } }).range(docLine.from));
-            return;
-        }
         if (!line.eligible) return;
+        decorations.push(Decoration.line({
+            attributes: {
+                class: 'cm-outline-line',
+                style: `--outline-depth: ${line.depth}`,
+            },
+        }).range(docLine.from));
         decorations.push(Decoration.widget({
-            widget: new OutlineControlWidget(line.index, collapsed.has(line.index), line.hasChildren, onToggle),
+            widget: new OutlineControlWidget(line.index),
             side: -1,
         }).range(docLine.from));
     });
     return Decoration.set(decorations, true);
 }
 
-function createOutlineExtension(
-    getCollapsedLines: () => readonly number[],
-    onToggle: (lineIndex: number) => void,
-) {
+function createOutlineExtension() {
     return ViewPlugin.fromClass(class {
         decorations: DecorationSet;
         constructor(view: EditorView) {
-            this.decorations = buildOutlineDecorations(view.state, getCollapsedLines(), onToggle);
+            this.decorations = buildOutlineDecorations(view.state);
         }
         update(update: ViewUpdate) {
             if (update.docChanged || update.transactions.some(transaction => transaction.effects.some(effect => effect.is(outlineRefreshEffect)))) {
-                this.decorations = buildOutlineDecorations(update.state, getCollapsedLines(), onToggle);
+                this.decorations = buildOutlineDecorations(update.state);
             }
         }
     }, { decorations: value => value.decorations });
@@ -850,23 +828,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
     collapsedOutlineLinesRef.current = collapsedOutlineLines;
     latestOnCollapsedOutlineLinesChangeRef.current = onCollapsedOutlineLinesChange;
 
-    const toggleOutlineLine = (lineIndex: number) => {
-        const current = collapsedOutlineLinesRef.current;
-        const next = current.includes(lineIndex)
-            ? current.filter(index => index !== lineIndex)
-            : [...current, lineIndex].sort((a, b) => a - b);
-        collapsedOutlineLinesRef.current = next;
-        latestOnCollapsedOutlineLinesChangeRef.current?.(next);
-        const view = viewRef.current;
-        if (view) {
-            const line = view.state.doc.line(Math.min(lineIndex + 1, view.state.doc.lines));
-            view.dispatch({
-                selection: { anchor: line.to },
-                effects: outlineRefreshEffect.of(null),
-            });
-        }
-    };
-
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
         getContent: () => {
@@ -1517,7 +1478,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     highlightSelectionMatches(), // [NEW] 選択テキストのハイライト
                     search({ top: false }), // [NEW] 検索ハイライト用（パネル非表示）
                     filePathCompartment.current.of(filePathFacet.of(filePath)), // [NEW] Inject filePath (compartment for dynamic updates)
-                    createOutlineExtension(() => collapsedOutlineLinesRef.current, toggleOutlineLine),
+                    createOutlineExtension(),
                     ...(isNewNote ? [
                         // 新規付箋の場合のみinit()でtrueを注入
                         placeholderFlagField.init(() => true),
@@ -1899,8 +1860,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     width: '100%',
                     boxSizing: 'border-box',
                 },
-                '.cm-outline-hidden': {
-                    display: 'none !important',
+                '.cm-outline-line': {
+                    paddingLeft: 'calc(var(--outline-depth, 0) * 12px) !important',
                 },
                 '.cm-outline-control': {
                     display: 'inline-grid',
@@ -1914,13 +1875,13 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     background: 'transparent',
                     color: '#655f4d',
                     fontSize: '9px !important',
-                    opacity: '0.08',
+                    opacity: '0',
                     cursor: 'grab',
                     transition: 'opacity 0.15s ease, background 0.15s ease',
                     verticalAlign: 'top',
                 },
                 '.cm-line:hover .cm-outline-control, .cm-outline-control:focus': {
-                    opacity: '0.8',
+                    opacity: '0.55',
                 },
                 '.cm-outline-control:hover': {
                     background: 'rgba(72, 64, 42, 0.09)',
