@@ -136,3 +136,32 @@ describe('getEmptyNotePlaceholder', () => {
         expect(container.querySelector('.text-\\[\\#999\\]')).toBeTruthy();
     });
 });
+
+describe('MarkdownRenderer outline', () => {
+    it('shows a quiet toggle only for a line that has children', () => {
+        renderMarkdown('機能安全\n  SG\n  FSR\nサイバーセキュリティ');
+
+        expect(screen.getByRole('button', { name: '閉じる' }).textContent).toBe('▼');
+        expect(screen.getAllByRole('button')).toHaveLength(1);
+        expect(screen.queryByText('•')).toBeNull();
+    });
+
+    it('hides all descendants while keeping the collapsed parent visible', () => {
+        renderMarkdown('機能安全\n  SG\n    SG-01\n  FSR\nサイバー', { collapsedOutlineLines: [0] });
+
+        expect(screen.getByText('機能安全')).toBeTruthy();
+        expect(screen.getByRole('button', { name: '開く' }).textContent).toBe('▶');
+        expect(screen.queryByText('SG')).toBeNull();
+        expect(screen.queryByText('SG-01')).toBeNull();
+        expect(screen.queryByText('FSR')).toBeNull();
+        expect(screen.getByText('サイバー')).toBeTruthy();
+    });
+
+    it('reports toggle changes without changing the body', () => {
+        const onChange = vi.fn();
+        renderMarkdown('親\n  子', { onCollapsedOutlineLinesChange: onChange });
+
+        screen.getByRole('button', { name: '閉じる' }).click();
+        expect(onChange).toHaveBeenCalledWith([0]);
+    });
+});

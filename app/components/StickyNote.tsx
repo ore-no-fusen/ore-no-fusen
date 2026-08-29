@@ -45,6 +45,7 @@ import Tooltip from './Tooltip';
 // ユーティリティ
 import { pathsEqual, getFileName, decodeNotePathFromUrl } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
+import { formatCollapsedLines, readCollapsedLines, remapCollapsedLines } from '../utils/outline';
 import { buildFoldedPreview, resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { shouldHandleCrystalTrashRequest } from '../utils/crystalTrashRequest';
@@ -243,6 +244,11 @@ const StickyNote = memo(function StickyNote() {
         },
         onSaveError: () => setShowSaveError(true),
     });
+    const collapsedOutlineLines = useMemo(() => readCollapsedLines(rawFrontmatter), [rawFrontmatter]);
+    const updateCollapsedOutlineLines = useCallback((lines: number[]) => {
+        setRawFrontmatter(previous => updateFrontmatterValue(previous, 'outlineCollapsed', formatCollapsedLines(lines)));
+        setSavePending(true);
+    }, [setRawFrontmatter, setSavePending]);
 
     const startupReadyEmittedRef = useRef(false);
     const [startupWindowStateReady, setStartupWindowStateReady] = useState(!isStartupRestore);
@@ -2285,9 +2291,15 @@ const StickyNote = memo(function StickyNote() {
                                     ref={editorRef}
                                     value={editBody}
                                     onChange={(newValue) => {
+                                        const remapped = remapCollapsedLines(editBody, newValue, collapsedOutlineLines);
+                                        if (remapped.join(',') !== collapsedOutlineLines.join(',')) {
+                                            updateCollapsedOutlineLines(remapped);
+                                        }
                                         setEditBody(newValue);
                                         setSavePending(true);
                                     }}
+                                    collapsedOutlineLines={collapsedOutlineLines}
+                                    onCollapsedOutlineLinesChange={updateCollapsedOutlineLines}
                                     filePath={selectedFile?.path || ''}
                                     language={language}
                                     onKeyDown={(e) => {
@@ -2369,6 +2381,8 @@ const StickyNote = memo(function StickyNote() {
                             resolvePath={resolvePath}
                             onAnnotationClick={handleAnnotationClick}
                             imageVersion={imageVersion}
+                            collapsedOutlineLines={collapsedOutlineLines}
+                            onCollapsedOutlineLinesChange={updateCollapsedOutlineLines}
                         />
                     )}
                     </>

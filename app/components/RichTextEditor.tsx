@@ -20,8 +20,94 @@ import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUtils';
 import type { Language } from '@/lib/i18n';
+import { isOutlineEligibleLine, moveCollapsedLines, moveOutlineSubtree, parseOutline } from '../utils/outline';
 
 export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
+const outlineRefreshEffect = StateEffect.define<null>();
+
+class OutlineControlWidget extends WidgetType {
+    constructor(
+        readonly lineIndex: number,
+        readonly collapsed: boolean,
+        readonly hasChildren: boolean,
+        readonly onToggle: (lineIndex: number) => void,
+    ) {
+        super();
+    }
+
+    toDOM(): HTMLElement {
+        const control = document.createElement(this.hasChildren ? 'button' : 'span');
+        control.className = `cm-outline-control${this.hasChildren ? '' : ' cm-outline-leaf'}`;
+        control.dataset.outlineLine = String(this.lineIndex);
+        control.draggable = true;
+        control.textContent = this.hasChildren ? (this.collapsed ? '▶' : '▼') : '';
+        control.title = this.hasChildren ? (this.collapsed ? '開く' : '閉じる') : 'ドラッグして移動';
+        if (this.hasChildren) {
+            control.setAttribute('aria-label', control.title);
+            control.addEventListener('mousedown', event => event.preventDefault());
+            control.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.onToggle(this.lineIndex);
+            });
+        }
+        control.addEventListener('dragstart', event => {
+            event.stopPropagation();
+            const dragEvent = event as DragEvent;
+            dragEvent.dataTransfer?.setData('application/x-fusen-outline-line', String(this.lineIndex));
+            if (dragEvent.dataTransfer) dragEvent.dataTransfer.effectAllowed = 'move';
+        });
+        return control;
+    }
+
+    ignoreEvent(): boolean { return false; }
+
+    eq(other: OutlineControlWidget): boolean {
+        return this.lineIndex === other.lineIndex
+            && this.collapsed === other.collapsed
+            && this.hasChildren === other.hasChildren;
+    }
+}
+
+function buildOutlineDecorations(
+    state: EditorState,
+    collapsedLines: readonly number[],
+    onToggle: (lineIndex: number) => void,
+): DecorationSet {
+    const parsed = parseOutline(state.doc.toString(), collapsedLines);
+    const collapsed = new Set(collapsedLines);
+    const decorations: any[] = [];
+    parsed.forEach(line => {
+        const docLine = state.doc.line(line.index + 1);
+        if (line.hidden) {
+            decorations.push(Decoration.line({ attributes: { class: 'cm-outline-hidden' } }).range(docLine.from));
+            return;
+        }
+        if (!line.eligible) return;
+        decorations.push(Decoration.widget({
+            widget: new OutlineControlWidget(line.index, collapsed.has(line.index), line.hasChildren, onToggle),
+            side: -1,
+        }).range(docLine.from));
+    });
+    return Decoration.set(decorations, true);
+}
+
+function createOutlineExtension(
+    getCollapsedLines: () => readonly number[],
+    onToggle: (lineIndex: number) => void,
+) {
+    return ViewPlugin.fromClass(class {
+        decorations: DecorationSet;
+        constructor(view: EditorView) {
+            this.decorations = buildOutlineDecorations(view.state, getCollapsedLines(), onToggle);
+        }
+        update(update: ViewUpdate) {
+            if (update.docChanged || update.transactions.some(transaction => transaction.effects.some(effect => effect.is(outlineRefreshEffect)))) {
+                this.decorations = buildOutlineDecorations(update.state, getCollapsedLines(), onToggle);
+            }
+        }
+    }, { decorations: value => value.decorations });
+}
 
 export type PendingImage = { id: string; objectUrl: string };
 
@@ -331,6 +417,8 @@ export interface RichTextEditorProps {
     formatShortcuts?: {
         bold?: string; heading?: string; bulletList?: string; checkbox?: string;
     };
+    collapsedOutlineLines?: number[];
+    onCollapsedOutlineLinesChange?: (lines: number[]) => void;
 }
 
 // 外部から呼べるメソッドの型定義
@@ -734,7 +822,7 @@ const moveFromImageLineEnd = (view: EditorView, direction: 'left' | 'right'): bo
 };
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
-    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath, formatShortcuts } = props;
+    const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath, formatShortcuts, collapsedOutlineLines = [], onCollapsedOutlineLinesChange } = props;
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
@@ -750,6 +838,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
     const latestOnBlurRef = useRef(onBlur);
     const latestOnSelectionChangeRef = useRef(onSelectionChange);
     const latestOnFirstCharRef = useRef(onFirstChar);
+    const collapsedOutlineLinesRef = useRef(collapsedOutlineLines);
+    const latestOnCollapsedOutlineLinesChangeRef = useRef(onCollapsedOutlineLinesChange);
     latestFilePathRef.current = filePath;
     latestOnEnsureFilePathRef.current = onEnsureFilePath;
     latestOnChangeRef.current = onChange;
@@ -757,6 +847,25 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
     latestOnBlurRef.current = onBlur;
     latestOnSelectionChangeRef.current = onSelectionChange;
     latestOnFirstCharRef.current = onFirstChar;
+    collapsedOutlineLinesRef.current = collapsedOutlineLines;
+    latestOnCollapsedOutlineLinesChangeRef.current = onCollapsedOutlineLinesChange;
+
+    const toggleOutlineLine = (lineIndex: number) => {
+        const current = collapsedOutlineLinesRef.current;
+        const next = current.includes(lineIndex)
+            ? current.filter(index => index !== lineIndex)
+            : [...current, lineIndex].sort((a, b) => a - b);
+        collapsedOutlineLinesRef.current = next;
+        latestOnCollapsedOutlineLinesChangeRef.current?.(next);
+        const view = viewRef.current;
+        if (view) {
+            const line = view.state.doc.line(Math.min(lineIndex + 1, view.state.doc.lines));
+            view.dispatch({
+                selection: { anchor: line.to },
+                effects: outlineRefreshEffect.of(null),
+            });
+        }
+    };
 
     // 外部から呼べるメソッドを公開
     useImperativeHandle(ref, () => ({
@@ -1317,25 +1426,30 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             }
                         },
                         {
-                            // Tab: 選択なし→カーソル位置にスペース2個、選択あり→行インデント
+                            // Tab: 現在行または選択行を1階層下げる
                             key: 'Tab',
                             run: (view) => {
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
-                                if (from === to) {
-                                    view.dispatch({ changes: { from, insert: '  ' }, selection: { anchor: from + 2 } });
-                                    return true;
-                                }
                                 const lineStart = state.doc.lineAt(from).number;
                                 const toLine = state.doc.lineAt(to);
-                                const lineEnd = (to > from && toLine.from === to)
+                                let lineEnd = (to > from && toLine.from === to)
                                     ? toLine.number - 1
                                     : toLine.number;
+                                const parsed = parseOutline(state.doc.toString());
+                                const current = parsed[lineStart - 1];
+                                if (!current?.eligible) return true;
+                                if (from === to) {
+                                    const previous = parsed[lineStart - 2];
+                                    if (!previous?.eligible || current.depth + 1 > previous.depth + 1) return true;
+                                    while (lineEnd < parsed.length && parsed[lineEnd].eligible && parsed[lineEnd].depth > current.depth) lineEnd += 1;
+                                }
                                 const changes: { from: number; insert: string }[] = [];
                                 for (let i = lineStart; i <= lineEnd; i++) {
-                                    changes.push({ from: state.doc.line(i).from, insert: '  ' });
+                                    const line = state.doc.line(i);
+                                    if (isOutlineEligibleLine(line.text)) changes.push({ from: line.from, insert: '  ' });
                                 }
-                                view.dispatch({ changes });
+                                if (changes.length > 0) view.dispatch({ changes });
                                 return true;
                             }
                         },
@@ -1347,12 +1461,19 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 const { from, to } = state.selection.main;
                                 const lineStart = state.doc.lineAt(from).number;
                                 const toLine = state.doc.lineAt(to);
-                                const lineEnd = (to > from && toLine.from === to)
+                                let lineEnd = (to > from && toLine.from === to)
                                     ? toLine.number - 1
                                     : toLine.number;
+                                const parsed = parseOutline(state.doc.toString());
+                                const current = parsed[lineStart - 1];
+                                if (!current?.eligible) return true;
+                                if (from === to) {
+                                    while (lineEnd < parsed.length && parsed[lineEnd].eligible && parsed[lineEnd].depth > current.depth) lineEnd += 1;
+                                }
                                 const changes: { from: number; to: number }[] = [];
                                 for (let i = lineStart; i <= lineEnd; i++) {
                                     const line = state.doc.line(i);
+                                    if (!isOutlineEligibleLine(line.text)) continue;
                                     if (line.text.startsWith('  ')) {
                                         changes.push({ from: line.from, to: line.from + 2 });
                                     } else if (line.text.startsWith(' ')) {
@@ -1396,6 +1517,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     highlightSelectionMatches(), // [NEW] 選択テキストのハイライト
                     search({ top: false }), // [NEW] 検索ハイライト用（パネル非表示）
                     filePathCompartment.current.of(filePathFacet.of(filePath)), // [NEW] Inject filePath (compartment for dynamic updates)
+                    createOutlineExtension(() => collapsedOutlineLinesRef.current, toggleOutlineLine),
                     ...(isNewNote ? [
                         // 新規付箋の場合のみinit()でtrueを注入
                         placeholderFlagField.init(() => true),
@@ -1537,6 +1659,25 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         },
                         // [FIX] Dropハンドラの修正：座標ベースの移動ロジックへ変更
                         drop: (e, view) => {
+                            const outlineSource = e.dataTransfer?.getData('application/x-fusen-outline-line');
+                            if (outlineSource) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const sourceLine = Number.parseInt(outlineSource, 10);
+                                const dropPos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+                                if (!Number.isInteger(sourceLine) || dropPos === null) return;
+                                const targetLine = view.state.doc.lineAt(dropPos).number - 1;
+                                const parsed = parseOutline(view.state.doc.toString());
+                                let sourceEnd = sourceLine;
+                                while (sourceEnd + 1 < parsed.length && parsed[sourceEnd + 1].eligible && parsed[sourceEnd + 1].depth > parsed[sourceLine].depth) sourceEnd += 1;
+                                const moved = moveOutlineSubtree(view.state.doc.toString(), sourceLine, targetLine);
+                                if (moved.body === view.state.doc.toString()) return;
+                                const nextCollapsed = moveCollapsedLines(collapsedOutlineLinesRef.current, sourceLine, sourceEnd, targetLine);
+                                collapsedOutlineLinesRef.current = nextCollapsed;
+                                latestOnCollapsedOutlineLinesChangeRef.current?.(nextCollapsed);
+                                view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: moved.body } });
+                                return;
+                            }
                             if (e.dataTransfer?.types.includes('application/x-fusen-image')) {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -1720,6 +1861,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
         });
     }, [filePath]);
 
+    useEffect(() => {
+        if (!viewRef.current) return;
+        viewRef.current.dispatch({ effects: outlineRefreshEffect.of(null) });
+    }, [collapsedOutlineLines]);
+
 
     useEffect(() => {
         if (!viewRef.current) return;
@@ -1752,6 +1898,32 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     padding: '0 !important',
                     width: '100%',
                     boxSizing: 'border-box',
+                },
+                '.cm-outline-hidden': {
+                    display: 'none !important',
+                },
+                '.cm-outline-control': {
+                    display: 'inline-grid',
+                    placeItems: 'center',
+                    width: '16px',
+                    height: '1.4em',
+                    marginLeft: '-16px',
+                    padding: '0',
+                    border: '0',
+                    borderRadius: '3px',
+                    background: 'transparent',
+                    color: '#655f4d',
+                    fontSize: '9px !important',
+                    opacity: '0.08',
+                    cursor: 'grab',
+                    transition: 'opacity 0.15s ease, background 0.15s ease',
+                    verticalAlign: 'top',
+                },
+                '.cm-line:hover .cm-outline-control, .cm-outline-control:focus': {
+                    opacity: '0.8',
+                },
+                '.cm-outline-control:hover': {
+                    background: 'rgba(72, 64, 42, 0.09)',
                 },
                 '.cm-content, .cm-content *': {
                     fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important',

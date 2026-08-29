@@ -18,6 +18,7 @@ import { renderSecureMermaid } from '../utils/mermaid';
 import { buildImagePathCandidates } from '../utils/markdownUtils';
 import { NOTE_COLORS } from '@/app/utils/noteAppearance';
 import type { Language } from '@/lib/i18n';
+import { parseOutline } from '../utils/outline';
 
 /**
  * Mermaid図ブロックコンポーネント
@@ -180,6 +181,8 @@ export type MarkdownRendererProps = {
     onAnnotationClick?: (absolutePath: string) => void;
     imageVersion?: number;
     language?: Language;
+    collapsedOutlineLines?: number[];
+    onCollapsedOutlineLinesChange?: (lines: number[]) => void;
 };
 
 export function getEmptyNotePlaceholder(backgroundColor: string, language: Language = 'ja'): string {
@@ -224,7 +227,20 @@ export default function MarkdownRenderer({
     onAnnotationClick,
     imageVersion = 0,
     language = 'ja',
+    collapsedOutlineLines = [],
+    onCollapsedOutlineLinesChange,
 }: MarkdownRendererProps) {
+    const outlineLines = useMemo(
+        () => parseOutline(content || '', collapsedOutlineLines),
+        [content, collapsedOutlineLines],
+    );
+    const collapsedOutlineSet = useMemo(() => new Set(collapsedOutlineLines), [collapsedOutlineLines]);
+    const toggleOutline = (lineIndex: number) => {
+        const next = collapsedOutlineSet.has(lineIndex)
+            ? collapsedOutlineLines.filter(index => index !== lineIndex)
+            : [...collapsedOutlineLines, lineIndex].sort((a, b) => a - b);
+        onCollapsedOutlineLinesChange?.(next);
+    };
     // 行オフセット計算（カーソル位置精度向上）
     const lineOffsets = useMemo(() => {
         let offset = 0;
@@ -473,11 +489,32 @@ export default function MarkdownRenderer({
 
                         // 通常行処理
                         const { line, index: i } = group;
+                        const outlineLine = outlineLines[i];
+                        if (outlineLine?.hidden) return null;
+                        const displayLine = outlineLine?.eligible ? outlineLine.content : line;
+                        const indentChars = outlineLine?.eligible ? line.length - displayLine.length : 0;
                         const lineClass = `m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
-                        const baseOffset = lineOffsets[i] || 0;
+                        const baseOffset = (lineOffsets[i] || 0) + indentChars;
+                        const outlineStyle = outlineLine?.eligible && outlineLine.depth > 0
+                            ? { paddingLeft: `${outlineLine.depth * 20}px` }
+                            : undefined;
+                        const outlineToggle = outlineLine?.eligible && outlineLine.hasChildren ? (
+                            <button
+                                type="button"
+                                data-interactable="true"
+                                aria-label={collapsedOutlineSet.has(i) ? '開く' : '閉じる'}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleOutline(i);
+                                }}
+                                className="outline-toggle shrink-0 w-[16px] h-[1.4em] -ml-[16px] p-0 border-0 bg-transparent text-[9px] text-[#655f4d] opacity-[0.08] hover:opacity-80 focus:opacity-80 transition-opacity cursor-pointer"
+                            >
+                                {collapsedOutlineSet.has(i) ? '▶' : '▼'}
+                            </button>
+                        ) : null;
 
                         // 空行
-                        if (line.trim() === '') {
+                        if (displayLine.trim() === '') {
                             return (
                                 <div
                                     key={i}
@@ -491,46 +528,49 @@ export default function MarkdownRenderer({
                         }
 
                         // 見出し (# で始まる)
-                        if (line.startsWith('# ')) {
+                        if (displayLine.startsWith('# ')) {
                             return (
                                 <div
                                     key={i}
                                     data-line-index={i}
                                     className={`${lineClass} font-bold text-[1.1em]`}
-                                    style={recipeMode ? { color: '#d9480f' } : undefined}
+                                    style={{ ...outlineStyle, ...(recipeMode ? { color: '#d9480f' } : {}) }}
                                 >
+                                    {outlineToggle}
                                     <span data-src-start={baseOffset + 2} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
-                                        {renderLineContent(line.substring(2), baseOffset + 2)}
+                                        {renderLineContent(displayLine.substring(2), baseOffset + 2)}
                                     </span>
                                 </div>
                             );
                         }
 
                         // レシピ小見出し (## で始まる)
-                        if (recipeMode && line.startsWith('## ')) {
+                        if (recipeMode && displayLine.startsWith('## ')) {
                             return (
                                 <div
                                     key={i}
                                     data-line-index={i}
                                     className={`${lineClass} font-bold text-[1.0em]`}
-                                    style={{ color: '#d9480f' }}
+                                    style={{ ...outlineStyle, color: '#d9480f' }}
                                 >
+                                    {outlineToggle}
                                     <span data-src-start={baseOffset + 3} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
-                                        {renderLineContent(line.substring(3), baseOffset + 3)}
+                                        {renderLineContent(displayLine.substring(3), baseOffset + 3)}
                                     </span>
                                 </div>
                             );
                         }
 
                         // チェックボックス (タスクリスト)
-                        const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
+                        const taskMatch = displayLine.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
                         if (taskMatch) {
                             const isChecked = taskMatch[2].toLowerCase() === 'x';
                             const text = taskMatch[3].substring(2);
-                            const textStart = baseOffset + (line.length - text.length);
+                            const textStart = baseOffset + (displayLine.length - text.length);
 
                             return (
-                                <div key={i} data-line-index={i} className={lineClass}>
+                                <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineToggle}
                                     <span
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -554,13 +594,14 @@ export default function MarkdownRenderer({
                         }
 
                         // レシピ番号付きリスト
-                        const orderedListMatch = recipeMode ? line.match(/^(\d+\.\s+)(.*)$/) : null;
+                        const orderedListMatch = recipeMode ? displayLine.match(/^(\d+\.\s+)(.*)$/) : null;
                         if (orderedListMatch) {
                             const marker = orderedListMatch[1];
                             const text = orderedListMatch[2];
                             const textStart = baseOffset + marker.length;
                             return (
-                                <div key={i} data-line-index={i} className={lineClass}>
+                                <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineToggle}
                                     <span
                                         className="mr-[8px] shrink-0 inline-block text-right"
                                         style={{ color: '#1971c2' }}
@@ -576,12 +617,13 @@ export default function MarkdownRenderer({
                         }
 
                         // 箇条書き (リスト)
-                        const listMatch = line.match(/^[\-\*\+]\s+(.*)$/);
+                        const listMatch = displayLine.match(/^[\-\*\+]\s+(.*)$/);
                         if (listMatch) {
                             const text = listMatch[1];
-                            const textStart = baseOffset + (line.length - text.length);
+                            const textStart = baseOffset + (displayLine.length - text.length);
                             return (
-                                <div key={i} data-line-index={i} className={lineClass}>
+                                <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineToggle}
                                     <span
                                         className="mr-[8px] shrink-0 inline-block w-[1em] text-center"
                                         data-src-start={baseOffset}
@@ -597,9 +639,10 @@ export default function MarkdownRenderer({
 
                         // 通常のテキスト
                         return (
-                            <div key={i} data-line-index={i} className={lineClass}>
+                            <div key={i} data-line-index={i} className={`${lineClass} group`} style={outlineStyle}>
+                                {outlineToggle}
                                 <span data-src-start={baseOffset} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
-                                    {renderLineContent(line, baseOffset)}
+                                    {renderLineContent(displayLine, baseOffset)}
                                 </span>
                             </div>
                         );
