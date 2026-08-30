@@ -9,7 +9,7 @@
 
 'use client';
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import ResizableImage from './ResizableImage';
@@ -18,6 +18,8 @@ import { renderSecureMermaid } from '../utils/mermaid';
 import { buildImagePathCandidates } from '../utils/markdownUtils';
 import { NOTE_COLORS } from '@/app/utils/noteAppearance';
 import type { Language } from '@/lib/i18n';
+import { parseOutline } from '../utils/outline';
+import { NOTE_DRAG_CURSOR, NOTE_POINT_CURSOR } from '../utils/cursorStyles';
 
 /**
  * Mermaid図ブロックコンポーネント
@@ -180,6 +182,8 @@ export type MarkdownRendererProps = {
     onAnnotationClick?: (absolutePath: string) => void;
     imageVersion?: number;
     language?: Language;
+    collapsedOutlineLines?: number[];
+    onCollapsedOutlineLinesChange?: (lines: number[]) => void;
 };
 
 export function getEmptyNotePlaceholder(backgroundColor: string, language: Language = 'ja'): string {
@@ -224,7 +228,92 @@ export default function MarkdownRenderer({
     onAnnotationClick,
     imageVersion = 0,
     language = 'ja',
+    collapsedOutlineLines = [],
+    onCollapsedOutlineLinesChange,
 }: MarkdownRendererProps) {
+    const articleRef = useRef<HTMLElement>(null);
+    const outlineAnchorRef = useRef<{
+        lineIndex: number;
+        top: number;
+        scroller: HTMLElement;
+        attempts: number;
+    } | null>(null);
+    const [outlineBottomSpacer, setOutlineBottomSpacer] = useState(0);
+    const outlineLines = useMemo(
+        () => parseOutline(content || '', collapsedOutlineLines),
+        [content, collapsedOutlineLines],
+    );
+    const collapsedOutlineSet = useMemo(() => new Set(collapsedOutlineLines), [collapsedOutlineLines]);
+    const toggleOutline = (lineIndex: number, button: HTMLButtonElement) => {
+        const row = button.closest<HTMLElement>('[data-line-index]');
+        const scroller = articleRef.current?.closest<HTMLElement>('main');
+        if (row && scroller) {
+            outlineAnchorRef.current = {
+                lineIndex,
+                top: row.getBoundingClientRect().top,
+                scroller,
+                attempts: 0,
+            };
+        }
+        // 前回の文末補助余白は、新しい開閉結果に合わせて再計算する。
+        setOutlineBottomSpacer(0);
+        const next = collapsedOutlineSet.has(lineIndex)
+            ? collapsedOutlineLines.filter(index => index !== lineIndex)
+            : [...collapsedOutlineLines, lineIndex].sort((a, b) => a - b);
+        onCollapsedOutlineLinesChange?.(next);
+    };
+
+    useLayoutEffect(() => {
+        const anchor = outlineAnchorRef.current;
+        if (!anchor || !articleRef.current) return;
+        const row = articleRef.current.querySelector<HTMLElement>(`[data-line-index="${anchor.lineIndex}"]`);
+        if (!row) {
+            outlineAnchorRef.current = null;
+            return;
+        }
+
+        const delta = row.getBoundingClientRect().top - anchor.top;
+        if (Math.abs(delta) <= 0.5) {
+            outlineAnchorRef.current = null;
+            return;
+        }
+
+        anchor.scroller.scrollTop += delta;
+        const frame = window.requestAnimationFrame(() => {
+            const remaining = row.getBoundingClientRect().top - anchor.top;
+            if (Math.abs(remaining) <= 0.5) {
+                outlineAnchorRef.current = null;
+                return;
+            }
+            // 文末ではscrollTopの上限に当たるため、不足分だけ一時的な下余白を足す。
+            if (remaining > 0.5 && anchor.attempts < 2) {
+                anchor.attempts += 1;
+                setOutlineBottomSpacer(current => current + Math.ceil(remaining));
+                return;
+            }
+            outlineAnchorRef.current = null;
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [collapsedOutlineLines, outlineBottomSpacer]);
+
+    useEffect(() => {
+        if (outlineBottomSpacer <= 0) return;
+        const scroller = articleRef.current?.closest<HTMLElement>('main');
+        if (!scroller) return;
+        const clearSpacer = (event: Event) => {
+            if ((event.target as HTMLElement | null)?.closest?.('.outline-toggle')) return;
+            outlineAnchorRef.current = null;
+            setOutlineBottomSpacer(0);
+        };
+        scroller.addEventListener('wheel', clearSpacer, { passive: true });
+        scroller.addEventListener('pointerdown', clearSpacer);
+        scroller.addEventListener('touchmove', clearSpacer, { passive: true });
+        return () => {
+            scroller.removeEventListener('wheel', clearSpacer);
+            scroller.removeEventListener('pointerdown', clearSpacer);
+            scroller.removeEventListener('touchmove', clearSpacer);
+        };
+    }, [outlineBottomSpacer]);
     // 行オフセット計算（カーソル位置精度向上）
     const lineOffsets = useMemo(() => {
         let offset = 0;
@@ -379,10 +468,12 @@ export default function MarkdownRenderer({
 
     return (
         <article
-            className={`notePaper max-w-none whitespace-pre-wrap select-none p-0 flex-1 flex flex-col font-["BIZ_UDPGothic",_"Meiryo",_"Yu_Gothic_UI",_sans-serif] leading-[1.4] tracking-[0.01em] ${isDraggableArea ? 'cursor-grab' : 'cursor-text'}`}
+            ref={articleRef}
+            className={`notePaper max-w-none whitespace-pre-wrap select-none p-0 flex-1 flex flex-col font-["BIZ_UDPGothic",_"Meiryo",_"Yu_Gothic_UI",_sans-serif] leading-[1.4] tracking-[0.01em]`}
             style={{
                 backgroundColor,
                 fontSize: `${fontSize}px`,
+                cursor: isDraggableArea ? NOTE_DRAG_CURSOR : 'text',
             }}
             onPointerDown={onPointerDown}
             onDoubleClick={(e) => {
@@ -395,6 +486,7 @@ export default function MarkdownRenderer({
                     {groupedLines.map((group, gi) => {
                         // テーブルブロック
                         if (group.type === 'table') {
+                            if (outlineLines[group.startIndex]?.hidden) return null;
                             const rows = group.rows;
                             // 区切り行（|---|---|）のインデックスを検出
                             const sepIdx = rows.findIndex(r =>
@@ -450,6 +542,7 @@ export default function MarkdownRenderer({
 
                         // コードブロック（``` で囲まれたブロック）
                         if (group.type === 'code') {
+                            if (outlineLines[group.startIndex]?.hidden) return null;
                             const codeText = group.lines.join('\n');
                             if (group.lang === 'mermaid') {
                                 return <MermaidBlock key={gi} code={codeText} language={language} />;
@@ -473,11 +566,48 @@ export default function MarkdownRenderer({
 
                         // 通常行処理
                         const { line, index: i } = group;
-                        const lineClass = `m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
-                        const baseOffset = lineOffsets[i] || 0;
+                        const outlineLine = outlineLines[i];
+                        if (outlineLine?.hidden) return null;
+                        const displayLine = outlineLine?.eligible ? outlineLine.content : line;
+                        const indentChars = outlineLine?.eligible ? line.length - displayLine.length : 0;
+                        const lineClass = `group/outline m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
+                        const baseOffset = (lineOffsets[i] || 0) + indentChars;
+                        const outlineStyle = outlineLine?.eligible
+                            ? { paddingLeft: '12px' }
+                            : undefined;
+                        const outlineIndent = indentChars > 0 ? (
+                            <span aria-hidden="true" className="outline-indent whitespace-pre shrink-0">
+                                {line.slice(0, indentChars)}
+                            </span>
+                        ) : null;
+                        const outlineToggle = outlineLine?.eligible && outlineLine.hasChildren ? (
+                            <button
+                                type="button"
+                                data-interactable="true"
+                                aria-label={collapsedOutlineSet.has(i) ? '開く' : '閉じる'}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onDoubleClick={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleOutline(i, event.currentTarget);
+                                }}
+                                style={{ cursor: NOTE_POINT_CURSOR }}
+                                className={`outline-toggle inline-grid place-items-center align-top shrink-0 w-[12px] h-[1.4em] -ml-[12px] p-0 border-0 bg-transparent overflow-visible text-[19px] font-medium leading-none text-[#655f4d] hover:opacity-90 focus-visible:opacity-90 transition-opacity ${collapsedOutlineSet.has(i) ? '-translate-y-[3px] opacity-70' : '-translate-y-[10px] opacity-0 group-hover/outline:opacity-55'}`}
+                            >
+                                {collapsedOutlineSet.has(i) ? '›' : '⌄'}
+                            </button>
+                        ) : null;
+                        const outlineFoldMarker = outlineLine?.hasChildren && collapsedOutlineSet.has(i) ? (
+                            <span
+                                aria-hidden="true"
+                                className="outline-fold-marker ml-[6px] text-[0.85em] text-[#655f4d] opacity-45 select-none"
+                            >
+                                …
+                            </span>
+                        ) : null;
 
                         // 空行
-                        if (line.trim() === '') {
+                        if (displayLine.trim() === '') {
                             return (
                                 <div
                                     key={i}
@@ -491,46 +621,54 @@ export default function MarkdownRenderer({
                         }
 
                         // 見出し (# で始まる)
-                        if (line.startsWith('# ')) {
+                        if (displayLine.startsWith('# ')) {
                             return (
                                 <div
                                     key={i}
                                     data-line-index={i}
                                     className={`${lineClass} font-bold text-[1.1em]`}
-                                    style={recipeMode ? { color: '#d9480f' } : undefined}
+                                    style={{ ...outlineStyle, ...(recipeMode ? { color: '#d9480f' } : {}) }}
                                 >
+                                    {outlineIndent}
+                                    {outlineToggle}
                                     <span data-src-start={baseOffset + 2} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
-                                        {renderLineContent(line.substring(2), baseOffset + 2)}
+                                        {renderLineContent(displayLine.substring(2), baseOffset + 2)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
 
                         // レシピ小見出し (## で始まる)
-                        if (recipeMode && line.startsWith('## ')) {
+                        if (recipeMode && displayLine.startsWith('## ')) {
                             return (
                                 <div
                                     key={i}
                                     data-line-index={i}
                                     className={`${lineClass} font-bold text-[1.0em]`}
-                                    style={{ color: '#d9480f' }}
+                                    style={{ ...outlineStyle, color: '#d9480f' }}
                                 >
+                                    {outlineIndent}
+                                    {outlineToggle}
                                     <span data-src-start={baseOffset + 3} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
-                                        {renderLineContent(line.substring(3), baseOffset + 3)}
+                                        {renderLineContent(displayLine.substring(3), baseOffset + 3)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
 
                         // チェックボックス (タスクリスト)
-                        const taskMatch = line.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
+                        const taskMatch = displayLine.match(/^([\-\*\+]\s+\[)([ xX])(\]\s+.*)$/);
                         if (taskMatch) {
                             const isChecked = taskMatch[2].toLowerCase() === 'x';
                             const text = taskMatch[3].substring(2);
-                            const textStart = baseOffset + (line.length - text.length);
+                            const textStart = baseOffset + (displayLine.length - text.length);
 
                             return (
-                                <div key={i} data-line-index={i} className={lineClass}>
+                                <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineIndent}
+                                    {outlineToggle}
                                     <span
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -549,18 +687,21 @@ export default function MarkdownRenderer({
                                     >
                                         {renderLineContent(text, textStart)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
 
                         // レシピ番号付きリスト
-                        const orderedListMatch = recipeMode ? line.match(/^(\d+\.\s+)(.*)$/) : null;
+                        const orderedListMatch = recipeMode ? displayLine.match(/^(\d+\.\s+)(.*)$/) : null;
                         if (orderedListMatch) {
                             const marker = orderedListMatch[1];
                             const text = orderedListMatch[2];
                             const textStart = baseOffset + marker.length;
                             return (
-                                <div key={i} data-line-index={i} className={lineClass}>
+                                <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineIndent}
+                                    {outlineToggle}
                                     <span
                                         className="mr-[8px] shrink-0 inline-block text-right"
                                         style={{ color: '#1971c2' }}
@@ -571,17 +712,20 @@ export default function MarkdownRenderer({
                                     <span data-src-start={textStart}>
                                         {renderLineContent(text, textStart)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
 
                         // 箇条書き (リスト)
-                        const listMatch = line.match(/^[\-\*\+]\s+(.*)$/);
+                        const listMatch = displayLine.match(/^[\-\*\+]\s+(.*)$/);
                         if (listMatch) {
                             const text = listMatch[1];
-                            const textStart = baseOffset + (line.length - text.length);
+                            const textStart = baseOffset + (displayLine.length - text.length);
                             return (
-                                <div key={i} data-line-index={i} className={lineClass}>
+                                <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineIndent}
+                                    {outlineToggle}
                                     <span
                                         className="mr-[8px] shrink-0 inline-block w-[1em] text-center"
                                         data-src-start={baseOffset}
@@ -591,16 +735,20 @@ export default function MarkdownRenderer({
                                     <span data-src-start={textStart}>
                                         {renderLineContent(text, textStart)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
 
                         // 通常のテキスト
                         return (
-                            <div key={i} data-line-index={i} className={lineClass}>
+                            <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                {outlineIndent}
+                                {outlineToggle}
                                 <span data-src-start={baseOffset} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
-                                    {renderLineContent(line, baseOffset)}
+                                    {renderLineContent(displayLine, baseOffset)}
                                 </span>
+                                {outlineFoldMarker}
                             </div>
                         );
                     })}
@@ -609,6 +757,14 @@ export default function MarkdownRenderer({
                 <div className="text-[#999] p-2">
                     {getEmptyNotePlaceholder(backgroundColor, language)}
                 </div>
+            )}
+            {outlineBottomSpacer > 0 && (
+                <div
+                    aria-hidden="true"
+                    data-outline-scroll-spacer="true"
+                    className="shrink-0"
+                    style={{ height: `${outlineBottomSpacer}px` }}
+                />
             )}
         </article>
     );

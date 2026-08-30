@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import MarkdownRenderer, { getEmptyNotePlaceholder } from '../MarkdownRenderer';
 
@@ -134,5 +134,138 @@ describe('getEmptyNotePlaceholder', () => {
 
         expect(screen.getByText('結果、決定事項、次回の作戦をメモ')).toBeTruthy();
         expect(container.querySelector('.text-\\[\\#999\\]')).toBeTruthy();
+    });
+});
+
+describe('MarkdownRenderer outline', () => {
+    it('shows a quiet toggle only for a line that has children', () => {
+        const { container } = renderMarkdown('機能安全\n  SG\n  FSR\nサイバーセキュリティ');
+
+        const toggle = screen.getByRole('button', { name: '閉じる' });
+        expect(toggle.textContent).toBe('⌄');
+        expect(toggle.className).toContain('opacity-0');
+        expect(toggle.className).toContain('group-hover/outline:opacity-55');
+        expect(toggle.className).toContain('focus-visible:opacity-90');
+        expect(toggle.className).toContain('text-[19px]');
+        expect(toggle.className).toContain('w-[12px]');
+        expect(toggle.className).toContain('place-items-center');
+        expect(toggle.className).toContain('-translate-y-[10px]');
+        expect(toggle.className).toContain('overflow-visible');
+        expect((toggle as HTMLElement).style.cursor).toContain('note-point.svg?v=1');
+        expect(toggle.className).not.toMatch(/(?:^|\s)focus:opacity-90(?:\s|$)/);
+        expect(screen.getAllByRole('button')).toHaveLength(1);
+        expect(screen.queryByText('•')).toBeNull();
+        expect(container.querySelector('.outline-indent')?.textContent).toBe('  ');
+        expect((container.querySelector('[data-line-index="0"]') as HTMLElement).style.paddingLeft).toBe('12px');
+    });
+
+    it('hides all descendants while keeping the collapsed parent visible', () => {
+        const { container } = renderMarkdown('機能安全\n  SG\n    SG-01\n  FSR\nサイバー', { collapsedOutlineLines: [0] });
+
+        expect(screen.getByText('機能安全')).toBeTruthy();
+        const toggle = screen.getByRole('button', { name: '開く' });
+        expect(toggle.textContent).toBe('›');
+        expect(toggle.className).toContain('-translate-y-[3px]');
+        expect(toggle.className).toContain('opacity-70');
+        expect(toggle.className).not.toContain('opacity-0');
+        expect(container.querySelector('.outline-fold-marker')?.textContent).toBe('…');
+        expect(screen.queryByText('SG')).toBeNull();
+        expect(screen.queryByText('SG-01')).toBeNull();
+        expect(screen.queryByText('FSR')).toBeNull();
+        expect(screen.getByText('サイバー')).toBeTruthy();
+    });
+
+    it('shows the existing quiet toggle for Markdown heading and list parents', () => {
+        renderMarkdown('# 見出し\n## 子見出し\n- 親リスト\n  - 子リスト');
+
+        expect(screen.getAllByRole('button', { name: '閉じる' })).toHaveLength(3);
+    });
+
+    it('hides tables and fenced code inside a collapsed heading section', () => {
+        const body = '# 見出し\n| A | B |\n|---|---|\n| 1 | 2 |\n```txt\ncode body\n```\n# 次';
+        const { container } = renderMarkdown(body, { collapsedOutlineLines: [0] });
+
+        expect(container.querySelector('table')).toBeNull();
+        expect(container.querySelector('pre')).toBeNull();
+        expect(screen.getByText('見出し')).toBeTruthy();
+        expect(screen.getByText('次')).toBeTruthy();
+    });
+
+    it('does not show an ellipsis while a parent is expanded', () => {
+        const { container } = renderMarkdown('親\n  子');
+
+        expect(container.querySelector('.outline-fold-marker')).toBeNull();
+    });
+
+    it('places a nested toggle after its saved indentation without moving the text', () => {
+        const { container } = renderMarkdown('親\n  子\n    孫');
+        const nestedLine = container.querySelector('[data-line-index="1"]');
+        const indent = nestedLine?.querySelector('.outline-indent');
+        const toggle = nestedLine?.querySelector('.outline-toggle');
+
+        expect(indent?.textContent).toBe('  ');
+        expect(indent?.nextElementSibling).toBe(toggle);
+    });
+
+    it('keeps all three ordered-list indentation spaces before the nested toggle', () => {
+        const { container } = renderMarkdown('1. 親\n   1. 子\n      1. 孫');
+        const nestedLine = container.querySelector('[data-line-index="1"]');
+
+        expect(nestedLine?.querySelector('.outline-indent')?.textContent).toBe('   ');
+        expect(nestedLine?.querySelector('.outline-indent')?.nextElementSibling).toBe(nestedLine?.querySelector('.outline-toggle'));
+    });
+
+    it('reports toggle changes without changing the body', () => {
+        const onChange = vi.fn();
+        renderMarkdown('親\n  子', { onCollapsedOutlineLinesChange: onChange });
+
+        screen.getByRole('button', { name: '閉じる' }).click();
+        expect(onChange).toHaveBeenCalledWith([0]);
+    });
+
+    it('does not enter edit mode when the toggle is double-clicked', () => {
+        const onDoubleClick = vi.fn();
+        renderMarkdown('親\n  子', { onDoubleClick });
+
+        fireEvent.doubleClick(screen.getByRole('button', { name: '閉じる' }));
+        expect(onDoubleClick).not.toHaveBeenCalled();
+    });
+
+    it('keeps the toggled parent at the same viewport position', () => {
+        const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+        const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+        const rect = (top: number) => ({
+            x: 0, y: top, top, left: 0, right: 200, bottom: top + 20,
+            width: 200, height: 20, toJSON: () => ({}),
+        });
+        const getRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            if (this.getAttribute('data-line-index') === '0') {
+                return rect(this.querySelector('[aria-label="開く"]') ? 250 : 100);
+            }
+            return rect(0);
+        });
+
+        function Harness() {
+            const [collapsed, setCollapsed] = React.useState<number[]>([]);
+            return (
+                <main data-testid="outline-scroller" style={{ overflow: 'auto' }}>
+                    <MarkdownRenderer
+                        {...defaultProps}
+                        content={'親\n  子'}
+                        collapsedOutlineLines={collapsed}
+                        onCollapsedOutlineLinesChange={setCollapsed}
+                    />
+                </main>
+            );
+        }
+
+        render(<Harness />);
+        const scroller = screen.getByTestId('outline-scroller');
+        fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+
+        expect(scroller.scrollTop).toBe(150);
+        getRect.mockRestore();
+        requestFrame.mockRestore();
+        cancelFrame.mockRestore();
     });
 });
