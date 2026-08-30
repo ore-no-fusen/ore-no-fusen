@@ -22,6 +22,7 @@
 - 検証済み: Markdown構造拡張後の対象34件、全Vitest 104ファイル・547件、TypeScript、VitePress build、E2E 38件成功・5件skip、`git diff --check` に成功。
 - 5.2.0リリース: 開発版と開発署名MSIXでユーザー実機確認に合格。正式exe作成337秒、Dev MSIX作成・導入16秒。合格exeからStore用未署名MSIXを7秒で作成し、名前・発行者・版番号5.2.0.0・x64・未署名を3秒で検証した。MSIX内exeのSHA-256は元exeと一致。提出物は `D:\Users\uck\Documents\俺の付箋-Store提出\5.2.0\ore-no-fusen.msix`。
 - STEP 2-3完了: 全Vitest 104ファイル・547件、E2E 38件成功・5件skipのpre-commitを通過。GitHub `main` と `develop` は同一コミット `9232742`（5.2.0）へ反映済み。次はSTEP 3のPartner Center申請。
+- STEP 3接続待ち: Partner CenterをCodex内ブラウザーで開いたが、Browser/Chrome制御プラグインが `Trusted RPC dependency` エラーで接続できず、申請作成・アップロードは未実施。Store提出物とGitHub反映は完了済みで、ブラウザー制御復旧後にSTEP 3-2から再開する。
 
 ### 2026-08-29 5.1.7 匿名利用規模・主要機能計測
 
