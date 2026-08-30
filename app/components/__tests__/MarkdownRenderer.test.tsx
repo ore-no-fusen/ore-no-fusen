@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import MarkdownRenderer, { getEmptyNotePlaceholder } from '../MarkdownRenderer';
 
@@ -139,22 +139,56 @@ describe('getEmptyNotePlaceholder', () => {
 
 describe('MarkdownRenderer outline', () => {
     it('shows a quiet toggle only for a line that has children', () => {
-        renderMarkdown('機能安全\n  SG\n  FSR\nサイバーセキュリティ');
+        const { container } = renderMarkdown('機能安全\n  SG\n  FSR\nサイバーセキュリティ');
 
-        expect(screen.getByRole('button', { name: '閉じる' }).textContent).toBe('▼');
+        const toggle = screen.getByRole('button', { name: '閉じる' });
+        expect(toggle.textContent).toBe('⌄');
+        expect(toggle.className).toContain('opacity-0');
+        expect(toggle.className).toContain('group-hover/outline:opacity-55');
+        expect(toggle.className).toContain('focus-visible:opacity-90');
+        expect(toggle.className).toContain('text-[19px]');
+        expect(toggle.className).toContain('w-[12px]');
+        expect(toggle.className).toContain('place-items-center');
+        expect(toggle.className).toContain('-translate-y-[10px]');
+        expect(toggle.className).toContain('overflow-visible');
+        expect((toggle as HTMLElement).style.cursor).toContain('note-point.svg?v=1');
+        expect(toggle.className).not.toMatch(/(?:^|\s)focus:opacity-90(?:\s|$)/);
         expect(screen.getAllByRole('button')).toHaveLength(1);
         expect(screen.queryByText('•')).toBeNull();
+        expect(container.querySelector('.outline-indent')?.textContent).toBe('  ');
+        expect((container.querySelector('[data-line-index="0"]') as HTMLElement).style.paddingLeft).toBe('12px');
     });
 
     it('hides all descendants while keeping the collapsed parent visible', () => {
-        renderMarkdown('機能安全\n  SG\n    SG-01\n  FSR\nサイバー', { collapsedOutlineLines: [0] });
+        const { container } = renderMarkdown('機能安全\n  SG\n    SG-01\n  FSR\nサイバー', { collapsedOutlineLines: [0] });
 
         expect(screen.getByText('機能安全')).toBeTruthy();
-        expect(screen.getByRole('button', { name: '開く' }).textContent).toBe('▶');
+        const toggle = screen.getByRole('button', { name: '開く' });
+        expect(toggle.textContent).toBe('›');
+        expect(toggle.className).toContain('-translate-y-[3px]');
+        expect(toggle.className).toContain('opacity-70');
+        expect(toggle.className).not.toContain('opacity-0');
+        expect(container.querySelector('.outline-fold-marker')?.textContent).toBe('…');
         expect(screen.queryByText('SG')).toBeNull();
         expect(screen.queryByText('SG-01')).toBeNull();
         expect(screen.queryByText('FSR')).toBeNull();
         expect(screen.getByText('サイバー')).toBeTruthy();
+    });
+
+    it('does not show an ellipsis while a parent is expanded', () => {
+        const { container } = renderMarkdown('親\n  子');
+
+        expect(container.querySelector('.outline-fold-marker')).toBeNull();
+    });
+
+    it('places a nested toggle after its saved indentation without moving the text', () => {
+        const { container } = renderMarkdown('親\n  子\n    孫');
+        const nestedLine = container.querySelector('[data-line-index="1"]');
+        const indent = nestedLine?.querySelector('.outline-indent');
+        const toggle = nestedLine?.querySelector('.outline-toggle');
+
+        expect(indent?.textContent).toBe('  ');
+        expect(indent?.nextElementSibling).toBe(toggle);
     });
 
     it('reports toggle changes without changing the body', () => {
@@ -163,5 +197,13 @@ describe('MarkdownRenderer outline', () => {
 
         screen.getByRole('button', { name: '閉じる' }).click();
         expect(onChange).toHaveBeenCalledWith([0]);
+    });
+
+    it('does not enter edit mode when the toggle is double-clicked', () => {
+        const onDoubleClick = vi.fn();
+        renderMarkdown('親\n  子', { onDoubleClick });
+
+        fireEvent.doubleClick(screen.getByRole('button', { name: '閉じる' }));
+        expect(onDoubleClick).not.toHaveBeenCalled();
     });
 });

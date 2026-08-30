@@ -27,6 +27,7 @@ import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 import { trackEvent } from '@/app/utils/analytics';
+import { NOTE_DRAG_CURSOR } from '@/app/utils/cursorStyles';
 
 // UIコンポーネント
 import type { RichTextEditorRef } from './RichTextEditor';
@@ -2194,7 +2195,7 @@ const StickyNote = memo(function StickyNote() {
 
             {/* メインコンテンツ - 付箋のほぼ全域を占める */}
             <main
-                className={`flex-1 flex flex-col overflow-auto relative ${isEditing ? 'p-0' : 'p-[var(--editor-padding)]'}`}
+                className={`flex-1 flex flex-col overflow-auto relative ${isEditing ? 'p-0' : 'py-[var(--editor-padding)] pr-[var(--editor-padding)] pl-0'}`}
                 onClick={(e) => {
                     // 編集モードで、エディタより下にあるこのコンテナ領域（＝黄色いフッタ領域）をクリックした場合は編集モードを終了
                     if (isEditing && e.target === e.currentTarget) {
@@ -2305,16 +2306,6 @@ const StickyNote = memo(function StickyNote() {
                                     onKeyDown={(e) => {
                                         if (!isEditing) return;
                                         if (e.key === 'Escape') handleEditBlur();
-                                        // Tabキーでツールバーへフォーカス移動
-                                        if (e.key === 'Tab' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            // ツールバー内の最初のボタンを探してフォーカス
-                                            const toolbar = document.querySelector('.hoverBar');
-                                            const firstButton = toolbar?.querySelector('button');
-                                            if (firstButton) {
-                                                (firstButton as HTMLElement).focus();
-                                            }
-                                        }
                                     }}
                                     // エディタ自体は透明にして親の色を見せる
                                     backgroundColor="transparent"
@@ -2396,7 +2387,7 @@ const StickyNote = memo(function StickyNote() {
                         className="noteFooter"
                         style={{
                             height: 'var(--footer-height)',
-                            cursor: 'grab',
+                            cursor: NOTE_DRAG_CURSOR,
                             userSelect: 'none',
                             display: 'flex',
                             alignItems: 'center',

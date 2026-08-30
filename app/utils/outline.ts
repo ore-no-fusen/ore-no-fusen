@@ -121,17 +121,6 @@ export function remapCollapsedLines(previousBody: string, nextBody: string, coll
     return mapped.sort((a, b) => a - b);
 }
 
-export function indentOutlineLines(body: string, fromLine: number, toLine: number, direction: 1 | -1): string {
-    const lines = body.split('\n');
-    for (let index = fromLine; index <= toLine && index < lines.length; index += 1) {
-        if (!isOutlineEligibleLine(lines[index])) continue;
-        if (direction === 1) lines[index] = `${' '.repeat(OUTLINE_INDENT)}${lines[index]}`;
-        else if (lines[index].startsWith(' '.repeat(OUTLINE_INDENT))) lines[index] = lines[index].slice(OUTLINE_INDENT);
-        else if (lines[index].startsWith(' ')) lines[index] = lines[index].slice(1);
-    }
-    return lines.join('\n');
-}
-
 export function moveOutlineSubtree(body: string, sourceLine: number, targetLine: number): { body: string; movedRange: [number, number] } {
     const parsed = parseOutline(body);
     const source = parsed[sourceLine];

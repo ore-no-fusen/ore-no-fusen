@@ -20,7 +20,8 @@ import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUtils';
 import type { Language } from '@/lib/i18n';
-import { isOutlineEligibleLine, moveCollapsedLines, moveOutlineSubtree, parseOutline } from '../utils/outline';
+import { moveCollapsedLines, moveOutlineSubtree, parseOutline } from '../utils/outline';
+import { NOTE_DRAG_CURSOR } from '../utils/cursorStyles';
 
 export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
 const outlineRefreshEffect = StateEffect.define<null>();
@@ -59,12 +60,6 @@ function buildOutlineDecorations(state: EditorState): DecorationSet {
     parsed.forEach(line => {
         const docLine = state.doc.line(line.index + 1);
         if (!line.eligible) return;
-        decorations.push(Decoration.line({
-            attributes: {
-                class: 'cm-outline-line',
-                style: `--outline-depth: ${line.depth}`,
-            },
-        }).range(docLine.from));
         decorations.push(Decoration.widget({
             widget: new OutlineControlWidget(line.index),
             side: -1,
@@ -1387,61 +1382,32 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             }
                         },
                         {
-                            // Tab: 現在行または選択行を1階層下げる
+                            // Tab: カーソル位置へ半角スペース2個を入力する。
+                            // 行頭に入ったスペースは表示モードで階層として解釈される。
                             key: 'Tab',
                             run: (view) => {
-                                const { state } = view;
-                                const { from, to } = state.selection.main;
-                                const lineStart = state.doc.lineAt(from).number;
-                                const toLine = state.doc.lineAt(to);
-                                let lineEnd = (to > from && toLine.from === to)
-                                    ? toLine.number - 1
-                                    : toLine.number;
-                                const parsed = parseOutline(state.doc.toString());
-                                const current = parsed[lineStart - 1];
-                                if (!current?.eligible) return true;
-                                if (from === to) {
-                                    const previous = parsed[lineStart - 2];
-                                    if (!previous?.eligible || current.depth + 1 > previous.depth + 1) return true;
-                                    while (lineEnd < parsed.length && parsed[lineEnd].eligible && parsed[lineEnd].depth > current.depth) lineEnd += 1;
-                                }
-                                const changes: { from: number; insert: string }[] = [];
-                                for (let i = lineStart; i <= lineEnd; i++) {
-                                    const line = state.doc.line(i);
-                                    if (isOutlineEligibleLine(line.text)) changes.push({ from: line.from, insert: '  ' });
-                                }
-                                if (changes.length > 0) view.dispatch({ changes });
+                                const { from, to } = view.state.selection.main;
+                                view.dispatch({
+                                    changes: { from, to, insert: '  ' },
+                                    selection: { anchor: from + 2 },
+                                });
                                 return true;
                             }
                         },
                         {
-                            // Shift+Tab: 選択行の字下げを1段戻す
+                            // Shift+Tab: 現在行の行頭スペースを最大2個戻す
                             key: 'Shift-Tab',
                             run: (view) => {
                                 const { state } = view;
-                                const { from, to } = state.selection.main;
-                                const lineStart = state.doc.lineAt(from).number;
-                                const toLine = state.doc.lineAt(to);
-                                let lineEnd = (to > from && toLine.from === to)
-                                    ? toLine.number - 1
-                                    : toLine.number;
-                                const parsed = parseOutline(state.doc.toString());
-                                const current = parsed[lineStart - 1];
-                                if (!current?.eligible) return true;
-                                if (from === to) {
-                                    while (lineEnd < parsed.length && parsed[lineEnd].eligible && parsed[lineEnd].depth > current.depth) lineEnd += 1;
-                                }
-                                const changes: { from: number; to: number }[] = [];
-                                for (let i = lineStart; i <= lineEnd; i++) {
-                                    const line = state.doc.line(i);
-                                    if (!isOutlineEligibleLine(line.text)) continue;
-                                    if (line.text.startsWith('  ')) {
-                                        changes.push({ from: line.from, to: line.from + 2 });
-                                    } else if (line.text.startsWith(' ')) {
-                                        changes.push({ from: line.from, to: line.from + 1 });
-                                    }
-                                }
-                                if (changes.length > 0) view.dispatch({ changes });
+                                const { from } = state.selection.main;
+                                const line = state.doc.lineAt(from);
+                                const leadingSpaces = line.text.match(/^ */)?.[0].length ?? 0;
+                                const removeCount = Math.min(2, leadingSpaces);
+                                if (removeCount === 0) return true;
+                                view.dispatch({
+                                    changes: { from: line.from, to: line.from + removeCount },
+                                    selection: { anchor: Math.max(line.from, from - removeCount) },
+                                });
                                 return true;
                             }
                         },
@@ -1851,7 +1817,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                 '.cm-content': {
                     width: '100%',
                     boxSizing: 'border-box',
-                    padding: '0 !important',
                     caretColor: '#333',
                     cursor: 'text',
                 },
@@ -1859,9 +1824,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     padding: '0 !important',
                     width: '100%',
                     boxSizing: 'border-box',
-                },
-                '.cm-outline-line': {
-                    paddingLeft: 'calc(var(--outline-depth, 0) * 12px) !important',
                 },
                 '.cm-outline-control': {
                     display: 'inline-grid',
@@ -1876,7 +1838,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     color: '#655f4d',
                     fontSize: '9px !important',
                     opacity: '0',
-                    cursor: 'grab',
+                    cursor: NOTE_DRAG_CURSOR,
                     transition: 'opacity 0.15s ease, background 0.15s ease',
                     verticalAlign: 'top',
                 },

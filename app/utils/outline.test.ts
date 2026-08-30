@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
     formatCollapsedLines,
-    indentOutlineLines,
     moveOutlineSubtree,
     moveCollapsedLines,
     parseOutline,
@@ -50,11 +49,6 @@ describe('outline utilities', () => {
         expect(remapCollapsedLines('親\n  子', '新しい親\n  子', [0])).toEqual([0]);
         expect(remapCollapsedLines('親\n  子', '前書き\n親\n  子', [0])).toEqual([1]);
         expect(remapCollapsedLines('親\n  子', '新しい\n親\n  子', [0])).toEqual([1]);
-    });
-
-    it('indents the current line instead of inserting spaces at the cursor', () => {
-        expect(indentOutlineLines('親\n子', 1, 1, 1)).toBe('親\n  子');
-        expect(indentOutlineLines('親\n  子', 1, 1, -1)).toBe('親\n子');
     });
 
     it('moves a parent together with all descendants', () => {

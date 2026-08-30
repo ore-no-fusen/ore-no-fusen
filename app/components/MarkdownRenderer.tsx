@@ -19,6 +19,7 @@ import { buildImagePathCandidates } from '../utils/markdownUtils';
 import { NOTE_COLORS } from '@/app/utils/noteAppearance';
 import type { Language } from '@/lib/i18n';
 import { parseOutline } from '../utils/outline';
+import { NOTE_DRAG_CURSOR, NOTE_POINT_CURSOR } from '../utils/cursorStyles';
 
 /**
  * Mermaid図ブロックコンポーネント
@@ -395,10 +396,11 @@ export default function MarkdownRenderer({
 
     return (
         <article
-            className={`notePaper max-w-none whitespace-pre-wrap select-none p-0 flex-1 flex flex-col font-["BIZ_UDPGothic",_"Meiryo",_"Yu_Gothic_UI",_sans-serif] leading-[1.4] tracking-[0.01em] ${isDraggableArea ? 'cursor-grab' : 'cursor-text'}`}
+            className={`notePaper max-w-none whitespace-pre-wrap select-none p-0 flex-1 flex flex-col font-["BIZ_UDPGothic",_"Meiryo",_"Yu_Gothic_UI",_sans-serif] leading-[1.4] tracking-[0.01em]`}
             style={{
                 backgroundColor,
                 fontSize: `${fontSize}px`,
+                cursor: isDraggableArea ? NOTE_DRAG_CURSOR : 'text',
             }}
             onPointerDown={onPointerDown}
             onDoubleClick={(e) => {
@@ -493,24 +495,40 @@ export default function MarkdownRenderer({
                         if (outlineLine?.hidden) return null;
                         const displayLine = outlineLine?.eligible ? outlineLine.content : line;
                         const indentChars = outlineLine?.eligible ? line.length - displayLine.length : 0;
-                        const lineClass = `m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
+                        const lineClass = `group/outline m-0 p-0 leading-[1.4] min-h-[1.4em] items-start ${singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'flex overflow-visible text-clip'}`;
                         const baseOffset = (lineOffsets[i] || 0) + indentChars;
-                        const outlineStyle = outlineLine?.eligible && outlineLine.depth > 0
-                            ? { paddingLeft: `${outlineLine.depth * 20}px` }
+                        const outlineStyle = outlineLine?.eligible
+                            ? { paddingLeft: '12px' }
                             : undefined;
+                        const outlineIndent = indentChars > 0 ? (
+                            <span aria-hidden="true" className="outline-indent whitespace-pre shrink-0">
+                                {line.slice(0, indentChars)}
+                            </span>
+                        ) : null;
                         const outlineToggle = outlineLine?.eligible && outlineLine.hasChildren ? (
                             <button
                                 type="button"
                                 data-interactable="true"
                                 aria-label={collapsedOutlineSet.has(i) ? '開く' : '閉じる'}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onDoubleClick={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     toggleOutline(i);
                                 }}
-                                className="outline-toggle shrink-0 w-[16px] h-[1.4em] -ml-[16px] p-0 border-0 bg-transparent text-[10px] text-[#655f4d] opacity-55 hover:opacity-90 focus:opacity-90 transition-opacity cursor-pointer"
+                                style={{ cursor: NOTE_POINT_CURSOR }}
+                                className={`outline-toggle inline-grid place-items-center align-top shrink-0 w-[12px] h-[1.4em] -ml-[12px] p-0 border-0 bg-transparent overflow-visible text-[19px] font-medium leading-none text-[#655f4d] hover:opacity-90 focus-visible:opacity-90 transition-opacity ${collapsedOutlineSet.has(i) ? '-translate-y-[3px] opacity-70' : '-translate-y-[10px] opacity-0 group-hover/outline:opacity-55'}`}
                             >
-                                {collapsedOutlineSet.has(i) ? '▶' : '▼'}
+                                {collapsedOutlineSet.has(i) ? '›' : '⌄'}
                             </button>
+                        ) : null;
+                        const outlineFoldMarker = outlineLine?.hasChildren && collapsedOutlineSet.has(i) ? (
+                            <span
+                                aria-hidden="true"
+                                className="outline-fold-marker ml-[6px] text-[0.85em] text-[#655f4d] opacity-45 select-none"
+                            >
+                                …
+                            </span>
                         ) : null;
 
                         // 空行
@@ -536,10 +554,12 @@ export default function MarkdownRenderer({
                                     className={`${lineClass} font-bold text-[1.1em]`}
                                     style={{ ...outlineStyle, ...(recipeMode ? { color: '#d9480f' } : {}) }}
                                 >
+                                    {outlineIndent}
                                     {outlineToggle}
                                     <span data-src-start={baseOffset + 2} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
                                         {renderLineContent(displayLine.substring(2), baseOffset + 2)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
@@ -553,10 +573,12 @@ export default function MarkdownRenderer({
                                     className={`${lineClass} font-bold text-[1.0em]`}
                                     style={{ ...outlineStyle, color: '#d9480f' }}
                                 >
+                                    {outlineIndent}
                                     {outlineToggle}
                                     <span data-src-start={baseOffset + 3} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
                                         {renderLineContent(displayLine.substring(3), baseOffset + 3)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
@@ -570,6 +592,7 @@ export default function MarkdownRenderer({
 
                             return (
                                 <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineIndent}
                                     {outlineToggle}
                                     <span
                                         onClick={(e) => {
@@ -589,6 +612,7 @@ export default function MarkdownRenderer({
                                     >
                                         {renderLineContent(text, textStart)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
@@ -601,6 +625,7 @@ export default function MarkdownRenderer({
                             const textStart = baseOffset + marker.length;
                             return (
                                 <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineIndent}
                                     {outlineToggle}
                                     <span
                                         className="mr-[8px] shrink-0 inline-block text-right"
@@ -612,6 +637,7 @@ export default function MarkdownRenderer({
                                     <span data-src-start={textStart}>
                                         {renderLineContent(text, textStart)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
@@ -623,6 +649,7 @@ export default function MarkdownRenderer({
                             const textStart = baseOffset + (displayLine.length - text.length);
                             return (
                                 <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                    {outlineIndent}
                                     {outlineToggle}
                                     <span
                                         className="mr-[8px] shrink-0 inline-block w-[1em] text-center"
@@ -633,17 +660,20 @@ export default function MarkdownRenderer({
                                     <span data-src-start={textStart}>
                                         {renderLineContent(text, textStart)}
                                     </span>
+                                    {outlineFoldMarker}
                                 </div>
                             );
                         }
 
                         // 通常のテキスト
                         return (
-                            <div key={i} data-line-index={i} className={`${lineClass} group`} style={outlineStyle}>
+                            <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
+                                {outlineIndent}
                                 {outlineToggle}
                                 <span data-src-start={baseOffset} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
                                     {renderLineContent(displayLine, baseOffset)}
                                 </span>
+                                {outlineFoldMarker}
                             </div>
                         );
                     })}
