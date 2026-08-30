@@ -230,4 +230,42 @@ describe('MarkdownRenderer outline', () => {
         fireEvent.doubleClick(screen.getByRole('button', { name: '閉じる' }));
         expect(onDoubleClick).not.toHaveBeenCalled();
     });
+
+    it('keeps the toggled parent at the same viewport position', () => {
+        const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+        const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+        const rect = (top: number) => ({
+            x: 0, y: top, top, left: 0, right: 200, bottom: top + 20,
+            width: 200, height: 20, toJSON: () => ({}),
+        });
+        const getRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            if (this.getAttribute('data-line-index') === '0') {
+                return rect(this.querySelector('[aria-label="開く"]') ? 250 : 100);
+            }
+            return rect(0);
+        });
+
+        function Harness() {
+            const [collapsed, setCollapsed] = React.useState<number[]>([]);
+            return (
+                <main data-testid="outline-scroller" style={{ overflow: 'auto' }}>
+                    <MarkdownRenderer
+                        {...defaultProps}
+                        content={'親\n  子'}
+                        collapsedOutlineLines={collapsed}
+                        onCollapsedOutlineLinesChange={setCollapsed}
+                    />
+                </main>
+            );
+        }
+
+        render(<Harness />);
+        const scroller = screen.getByTestId('outline-scroller');
+        fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+
+        expect(scroller.scrollTop).toBe(150);
+        getRect.mockRestore();
+        requestFrame.mockRestore();
+        cancelFrame.mockRestore();
+    });
 });

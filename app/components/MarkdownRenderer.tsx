@@ -9,7 +9,7 @@
 
 'use client';
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import ResizableImage from './ResizableImage';
@@ -231,17 +231,89 @@ export default function MarkdownRenderer({
     collapsedOutlineLines = [],
     onCollapsedOutlineLinesChange,
 }: MarkdownRendererProps) {
+    const articleRef = useRef<HTMLElement>(null);
+    const outlineAnchorRef = useRef<{
+        lineIndex: number;
+        top: number;
+        scroller: HTMLElement;
+        attempts: number;
+    } | null>(null);
+    const [outlineBottomSpacer, setOutlineBottomSpacer] = useState(0);
     const outlineLines = useMemo(
         () => parseOutline(content || '', collapsedOutlineLines),
         [content, collapsedOutlineLines],
     );
     const collapsedOutlineSet = useMemo(() => new Set(collapsedOutlineLines), [collapsedOutlineLines]);
-    const toggleOutline = (lineIndex: number) => {
+    const toggleOutline = (lineIndex: number, button: HTMLButtonElement) => {
+        const row = button.closest<HTMLElement>('[data-line-index]');
+        const scroller = articleRef.current?.closest<HTMLElement>('main');
+        if (row && scroller) {
+            outlineAnchorRef.current = {
+                lineIndex,
+                top: row.getBoundingClientRect().top,
+                scroller,
+                attempts: 0,
+            };
+        }
+        // 前回の文末補助余白は、新しい開閉結果に合わせて再計算する。
+        setOutlineBottomSpacer(0);
         const next = collapsedOutlineSet.has(lineIndex)
             ? collapsedOutlineLines.filter(index => index !== lineIndex)
             : [...collapsedOutlineLines, lineIndex].sort((a, b) => a - b);
         onCollapsedOutlineLinesChange?.(next);
     };
+
+    useLayoutEffect(() => {
+        const anchor = outlineAnchorRef.current;
+        if (!anchor || !articleRef.current) return;
+        const row = articleRef.current.querySelector<HTMLElement>(`[data-line-index="${anchor.lineIndex}"]`);
+        if (!row) {
+            outlineAnchorRef.current = null;
+            return;
+        }
+
+        const delta = row.getBoundingClientRect().top - anchor.top;
+        if (Math.abs(delta) <= 0.5) {
+            outlineAnchorRef.current = null;
+            return;
+        }
+
+        anchor.scroller.scrollTop += delta;
+        const frame = window.requestAnimationFrame(() => {
+            const remaining = row.getBoundingClientRect().top - anchor.top;
+            if (Math.abs(remaining) <= 0.5) {
+                outlineAnchorRef.current = null;
+                return;
+            }
+            // 文末ではscrollTopの上限に当たるため、不足分だけ一時的な下余白を足す。
+            if (remaining > 0.5 && anchor.attempts < 2) {
+                anchor.attempts += 1;
+                setOutlineBottomSpacer(current => current + Math.ceil(remaining));
+                return;
+            }
+            outlineAnchorRef.current = null;
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [collapsedOutlineLines, outlineBottomSpacer]);
+
+    useEffect(() => {
+        if (outlineBottomSpacer <= 0) return;
+        const scroller = articleRef.current?.closest<HTMLElement>('main');
+        if (!scroller) return;
+        const clearSpacer = (event: Event) => {
+            if ((event.target as HTMLElement | null)?.closest?.('.outline-toggle')) return;
+            outlineAnchorRef.current = null;
+            setOutlineBottomSpacer(0);
+        };
+        scroller.addEventListener('wheel', clearSpacer, { passive: true });
+        scroller.addEventListener('pointerdown', clearSpacer);
+        scroller.addEventListener('touchmove', clearSpacer, { passive: true });
+        return () => {
+            scroller.removeEventListener('wheel', clearSpacer);
+            scroller.removeEventListener('pointerdown', clearSpacer);
+            scroller.removeEventListener('touchmove', clearSpacer);
+        };
+    }, [outlineBottomSpacer]);
     // 行オフセット計算（カーソル位置精度向上）
     const lineOffsets = useMemo(() => {
         let offset = 0;
@@ -396,6 +468,7 @@ export default function MarkdownRenderer({
 
     return (
         <article
+            ref={articleRef}
             className={`notePaper max-w-none whitespace-pre-wrap select-none p-0 flex-1 flex flex-col font-["BIZ_UDPGothic",_"Meiryo",_"Yu_Gothic_UI",_sans-serif] leading-[1.4] tracking-[0.01em]`}
             style={{
                 backgroundColor,
@@ -516,7 +589,7 @@ export default function MarkdownRenderer({
                                 onDoubleClick={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                     event.stopPropagation();
-                                    toggleOutline(i);
+                                    toggleOutline(i, event.currentTarget);
                                 }}
                                 style={{ cursor: NOTE_POINT_CURSOR }}
                                 className={`outline-toggle inline-grid place-items-center align-top shrink-0 w-[12px] h-[1.4em] -ml-[12px] p-0 border-0 bg-transparent overflow-visible text-[19px] font-medium leading-none text-[#655f4d] hover:opacity-90 focus-visible:opacity-90 transition-opacity ${collapsedOutlineSet.has(i) ? '-translate-y-[3px] opacity-70' : '-translate-y-[10px] opacity-0 group-hover/outline:opacity-55'}`}
@@ -684,6 +757,14 @@ export default function MarkdownRenderer({
                 <div className="text-[#999] p-2">
                     {getEmptyNotePlaceholder(backgroundColor, language)}
                 </div>
+            )}
+            {outlineBottomSpacer > 0 && (
+                <div
+                    aria-hidden="true"
+                    data-outline-scroll-spacer="true"
+                    className="shrink-0"
+                    style={{ height: `${outlineBottomSpacer}px` }}
+                />
             )}
         </article>
     );
