@@ -175,6 +175,22 @@ describe('MarkdownRenderer outline', () => {
         expect(screen.getByText('サイバー')).toBeTruthy();
     });
 
+    it('shows the existing quiet toggle for Markdown heading and list parents', () => {
+        renderMarkdown('# 見出し\n## 子見出し\n- 親リスト\n  - 子リスト');
+
+        expect(screen.getAllByRole('button', { name: '閉じる' })).toHaveLength(3);
+    });
+
+    it('hides tables and fenced code inside a collapsed heading section', () => {
+        const body = '# 見出し\n| A | B |\n|---|---|\n| 1 | 2 |\n```txt\ncode body\n```\n# 次';
+        const { container } = renderMarkdown(body, { collapsedOutlineLines: [0] });
+
+        expect(container.querySelector('table')).toBeNull();
+        expect(container.querySelector('pre')).toBeNull();
+        expect(screen.getByText('見出し')).toBeTruthy();
+        expect(screen.getByText('次')).toBeTruthy();
+    });
+
     it('does not show an ellipsis while a parent is expanded', () => {
         const { container } = renderMarkdown('親\n  子');
 
@@ -189,6 +205,14 @@ describe('MarkdownRenderer outline', () => {
 
         expect(indent?.textContent).toBe('  ');
         expect(indent?.nextElementSibling).toBe(toggle);
+    });
+
+    it('keeps all three ordered-list indentation spaces before the nested toggle', () => {
+        const { container } = renderMarkdown('1. 親\n   1. 子\n      1. 孫');
+        const nestedLine = container.querySelector('[data-line-index="1"]');
+
+        expect(nestedLine?.querySelector('.outline-indent')?.textContent).toBe('   ');
+        expect(nestedLine?.querySelector('.outline-indent')?.nextElementSibling).toBe(nestedLine?.querySelector('.outline-toggle'));
     });
 
     it('reports toggle changes without changing the body', () => {

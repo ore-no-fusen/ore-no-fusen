@@ -1,11 +1,15 @@
+import { markdownLanguage } from '@codemirror/lang-markdown';
+
 export const OUTLINE_INDENT = 2;
 
 export type OutlineLine = {
     index: number;
     depth: number;
     content: string;
+    kind: 'plain' | 'heading' | 'list';
     eligible: boolean;
     hasChildren: boolean;
+    subtreeEnd: number;
     hidden: boolean;
 };
 
@@ -25,40 +29,103 @@ export function parseOutline(body: string, collapsedLines: readonly number[] = [
     const source = body.split('\n');
     const collapsed = new Set(collapsedLines);
     const result: OutlineLine[] = [];
+    const lineStarts: number[] = [];
+    let offset = 0;
     let inCodeFence = false;
 
     for (let index = 0; index < source.length; index += 1) {
         const line = source[index];
+        lineStarts.push(offset);
+        offset += line.length + 1;
         const fence = line.trim().startsWith('```');
         const eligible = isOutlineEligibleLine(line, inCodeFence || fence);
+        const spaces = eligible ? leadingSpaces(line) : 0;
         result.push({
             index,
-            depth: eligible ? Math.floor(leadingSpaces(line) / OUTLINE_INDENT) : 0,
-            content: line.slice(eligible ? Math.floor(leadingSpaces(line) / OUTLINE_INDENT) * OUTLINE_INDENT : 0),
+            depth: Math.floor(spaces / OUTLINE_INDENT),
+            content: line.slice(spaces),
+            kind: 'plain',
             eligible,
             hasChildren: false,
+            subtreeEnd: index,
             hidden: false,
         });
         if (fence) inCodeFence = !inCodeFence;
     }
 
+    // 既存仕様: 通常行は行頭2スペースを1階層として扱う。
     for (let index = 0; index < result.length; index += 1) {
         const current = result[index];
         if (!current.eligible) continue;
+        let end = index;
         for (let next = index + 1; next < result.length; next += 1) {
-            if (!result[next].eligible) break;
-            if (result[next].depth <= current.depth) break;
-            current.hasChildren = true;
-            break;
+            if (!result[next].eligible || result[next].depth <= current.depth) break;
+            end = next;
         }
+        current.subtreeEnd = end;
+    }
 
-        for (let parent = index - 1; parent >= 0; parent -= 1) {
-            const candidate = result[parent];
-            if (!candidate.eligible) break;
-            if (candidate.depth < current.depth) {
-                if (collapsed.has(candidate.index)) current.hidden = true;
-                if (candidate.depth === 0) break;
+    const lineAtOffset = (position: number): number => {
+        let low = 0;
+        let high = lineStarts.length - 1;
+        while (low <= high) {
+            const middle = Math.floor((low + high) / 2);
+            if (lineStarts[middle] <= position) low = middle + 1;
+            else high = middle - 1;
+        }
+        return Math.max(0, Math.min(source.length - 1, high));
+    };
+
+    // Markdownの構文として成立したリスト項目は、ListItemの実範囲を優先する。
+    const tree = markdownLanguage.parser.parse(body);
+    const cursor = tree.cursor();
+    do {
+        if (cursor.name === 'ListItem') {
+            const start = lineAtOffset(cursor.from);
+            const end = lineAtOffset(Math.max(cursor.from, cursor.to - 1));
+            const line = result[start];
+            line.kind = 'list';
+            line.subtreeEnd = Math.max(line.subtreeEnd, end);
+        }
+    } while (cursor.next());
+
+    // 見出しは構文木上では兄弟なので、次の同レベル以上の見出しまでを節として補う。
+    const headings: { line: number; level: number }[] = [];
+    const headingCursor = tree.cursor();
+    do {
+        const match = /^ATXHeading([1-6])$/.exec(headingCursor.name);
+        if (match) {
+            headings.push({
+                line: lineAtOffset(headingCursor.from),
+                level: Number.parseInt(match[1], 10),
+            });
+        }
+    } while (headingCursor.next());
+
+    headings.forEach((heading, headingIndex) => {
+        let end = result.length - 1;
+        for (let next = headingIndex + 1; next < headings.length; next += 1) {
+            if (headings[next].level <= heading.level) {
+                end = headings[next].line - 1;
+                break;
             }
+        }
+        while (end > heading.line && source[end].trim() === '') end -= 1;
+        const line = result[heading.line];
+        line.kind = 'heading';
+        line.depth = heading.level - 1;
+        line.subtreeEnd = Math.max(heading.line, end);
+    });
+
+    result.forEach(line => {
+        line.hasChildren = line.subtreeEnd > line.index;
+    });
+
+    for (const parentIndex of collapsed) {
+        const parent = result[parentIndex];
+        if (!parent?.hasChildren) continue;
+        for (let child = parentIndex + 1; child <= parent.subtreeEnd; child += 1) {
+            result[child].hidden = true;
         }
     }
 
@@ -125,8 +192,7 @@ export function moveOutlineSubtree(body: string, sourceLine: number, targetLine:
     const parsed = parseOutline(body);
     const source = parsed[sourceLine];
     if (!source?.eligible || sourceLine === targetLine) return { body, movedRange: [sourceLine, sourceLine] };
-    let end = sourceLine + 1;
-    while (end < parsed.length && parsed[end].eligible && parsed[end].depth > source.depth) end += 1;
+    const end = source.subtreeEnd + 1;
     if (targetLine >= sourceLine && targetLine < end) return { body, movedRange: [sourceLine, end - 1] };
 
     const lines = body.split('\n');
@@ -134,7 +200,8 @@ export function moveOutlineSubtree(body: string, sourceLine: number, targetLine:
     let insertion = targetLine;
     if (targetLine > sourceLine) insertion -= moving.length;
     const targetDepth = parseOutline(lines.join('\n'))[Math.max(0, insertion)]?.depth ?? 0;
-    const depthDelta = targetDepth - source.depth;
+    // Markdown見出し・リストは構文記号を自動改変せず、まとまりだけを移動する。
+    const depthDelta = source.kind === 'plain' ? targetDepth - source.depth : 0;
     const adjusted = moving.map(line => {
         if (depthDelta === 0) return line;
         if (depthDelta > 0) return `${' '.repeat(depthDelta * OUTLINE_INDENT)}${line}`;

@@ -21,6 +21,63 @@ describe('outline utilities', () => {
         ]);
     });
 
+    it('keeps the existing two-space hierarchy as the default for ordinary lines', () => {
+        const lines = parseOutline('機能安全\n  SG\n    SG-01\n  FSR');
+
+        expect(lines.map(line => ({ kind: line.kind, depth: line.depth, end: line.subtreeEnd }))).toEqual([
+            { kind: 'plain', depth: 0, end: 3 },
+            { kind: 'plain', depth: 1, end: 2 },
+            { kind: 'plain', depth: 2, end: 2 },
+            { kind: 'plain', depth: 1, end: 3 },
+        ]);
+    });
+
+    it('derives heading sections and stops at the next same or higher heading', () => {
+        const body = '# 機能安全\n説明\n## SG\n### SG-01\n## FSR\n# サイバー';
+        const lines = parseOutline(body, [2]);
+
+        expect(lines[0]).toMatchObject({ kind: 'heading', depth: 0, subtreeEnd: 4, hasChildren: true });
+        expect(lines[2]).toMatchObject({ kind: 'heading', depth: 1, subtreeEnd: 3, hasChildren: true });
+        expect(lines[3]).toMatchObject({ kind: 'heading', depth: 2, subtreeEnd: 3, hasChildren: false, hidden: true });
+        expect(lines[4]).toMatchObject({ kind: 'heading', depth: 1, subtreeEnd: 4, hidden: false });
+        expect(lines[5]).toMatchObject({ kind: 'heading', depth: 0, subtreeEnd: 5, hidden: false });
+    });
+
+    it('does not make an otherwise empty heading foldable because of trailing blank lines', () => {
+        const lines = parseOutline('# 見出し\n');
+
+        expect(lines[0]).toMatchObject({ kind: 'heading', subtreeEnd: 0, hasChildren: false });
+    });
+
+    it('uses Markdown list item ranges for dash, asterisk, and plus markers', () => {
+        const body = '- 機能安全\n  * SG\n    + SG-01\n  - FSR\n- サイバー';
+        const lines = parseOutline(body, [0]);
+
+        expect(lines[0]).toMatchObject({ kind: 'list', subtreeEnd: 3, hasChildren: true, hidden: false });
+        expect(lines[1]).toMatchObject({ kind: 'list', subtreeEnd: 2, hasChildren: true, hidden: true });
+        expect(lines[2]).toMatchObject({ kind: 'list', subtreeEnd: 2, hasChildren: false, hidden: true });
+        expect(lines[3]).toMatchObject({ kind: 'list', subtreeEnd: 3, hasChildren: false, hidden: true });
+        expect(lines[4]).toMatchObject({ kind: 'list', subtreeEnd: 4, hidden: false });
+    });
+
+    it('uses Markdown list item ranges for ordered lists without assuming two-space indentation', () => {
+        const body = '1. 機能安全\n   1. SG\n      1. SG-01\n   2. FSR\n2. サイバー';
+        const lines = parseOutline(body);
+
+        expect(lines[0]).toMatchObject({ kind: 'list', subtreeEnd: 3, hasChildren: true });
+        expect(lines[1]).toMatchObject({ kind: 'list', content: '1. SG', subtreeEnd: 2, hasChildren: true });
+        expect(lines[2]).toMatchObject({ kind: 'list', subtreeEnd: 2, hasChildren: false });
+        expect(lines[3]).toMatchObject({ kind: 'list', subtreeEnd: 3, hasChildren: false });
+        expect(lines[4]).toMatchObject({ kind: 'list', subtreeEnd: 4, hasChildren: false });
+    });
+
+    it('treats checkbox list items as the same Markdown list structure', () => {
+        const lines = parseOutline('- [ ] 親\n  - [x] 子', [0]);
+
+        expect(lines[0]).toMatchObject({ kind: 'list', subtreeEnd: 1, hasChildren: true, hidden: false });
+        expect(lines[1]).toMatchObject({ kind: 'list', subtreeEnd: 1, hasChildren: false, hidden: true });
+    });
+
     it('does not treat tables, images, or fenced code as outline items', () => {
         const lines = parseOutline('親\n  子\n| A | B |\n![x](a.png)\n```\n  code\n```');
         expect(lines.map(line => line.eligible)).toEqual([true, true, false, false, false, false, false]);

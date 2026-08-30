@@ -413,6 +413,7 @@ export default function MarkdownRenderer({
                     {groupedLines.map((group, gi) => {
                         // テーブルブロック
                         if (group.type === 'table') {
+                            if (outlineLines[group.startIndex]?.hidden) return null;
                             const rows = group.rows;
                             // 区切り行（|---|---|）のインデックスを検出
                             const sepIdx = rows.findIndex(r =>
@@ -468,6 +469,7 @@ export default function MarkdownRenderer({
 
                         // コードブロック（``` で囲まれたブロック）
                         if (group.type === 'code') {
+                            if (outlineLines[group.startIndex]?.hidden) return null;
                             const codeText = group.lines.join('\n');
                             if (group.lang === 'mermaid') {
                                 return <MermaidBlock key={gi} code={codeText} language={language} />;

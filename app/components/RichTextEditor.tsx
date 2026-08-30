@@ -1595,8 +1595,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                                 if (!Number.isInteger(sourceLine) || dropPos === null) return;
                                 const targetLine = view.state.doc.lineAt(dropPos).number - 1;
                                 const parsed = parseOutline(view.state.doc.toString());
-                                let sourceEnd = sourceLine;
-                                while (sourceEnd + 1 < parsed.length && parsed[sourceEnd + 1].eligible && parsed[sourceEnd + 1].depth > parsed[sourceLine].depth) sourceEnd += 1;
+                                const sourceEnd = parsed[sourceLine]?.subtreeEnd ?? sourceLine;
                                 const moved = moveOutlineSubtree(view.state.doc.toString(), sourceLine, targetLine);
                                 if (moved.body === view.state.doc.toString()) return;
                                 const nextCollapsed = moveCollapsedLines(collapsedOutlineLinesRef.current, sourceLine, sourceEnd, targetLine);
