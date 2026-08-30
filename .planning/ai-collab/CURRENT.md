@@ -24,6 +24,7 @@
 - STEP 2-3完了: 全Vitest 104ファイル・547件、E2E 38件成功・5件skipのpre-commitを通過。GitHub `main` と `develop` は同一コミット `9232742`（5.2.0）へ反映済み。次はSTEP 3のPartner Center申請。
 - STEP 3接続待ち: Partner CenterをCodex内ブラウザーで開いたが、Browser/Chrome制御プラグインが `Trusted RPC dependency` エラーで接続できず、申請作成・アップロードは未実施。Store提出物とGitHub反映は完了済みで、ブラウザー制御復旧後にSTEP 3-2から再開する。
 - STEP 3-3完了: ユーザーがPartner Centerで5.2.0.0/X64パッケージ、日本語・英語の更新情報を保存し、明示承認後にSubmission 16を送信。2026-08-30に「更新プログラムの認定中」「前処理中」を確認。認定合格後すぐに公開する設定。
+- STEP 3公開完了: 2026-08-31、Partner Centerに「お客様の製品が更新されました」「最新の製品がMicrosoft Storeで入手可能」と表示され、Submission 16の公開完了を確認。残作業はStoreから5.2.0へ更新し、起動・版番号を確認するSTEP 3-4。
 
 ### 2026-08-29 5.1.7 匿名利用規模・主要機能計測
 
