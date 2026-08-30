@@ -20,6 +20,7 @@ import { formatShortcutLabel } from '@/app/utils/shortcutKey';
 import { STICKY_ACTION_SYMBOLS } from '@/app/utils/stickyActionSymbols';
 import { NOTE_COLORS, NOTE_FONT_SIZES } from '@/app/utils/noteAppearance';
 import { formatNewNoteTriggerLabel } from '@/app/utils/newNoteTriggerLabel';
+import { trackEvent } from '@/app/utils/analytics';
 
 type HotkeyBindings = {
     new_note_trigger: string;
@@ -747,6 +748,7 @@ export function useStickyNoteContextMenu({
                     }
                     try {
                         await invoke('fusen_send_to_iphone', { path: selectedFile.path });
+                        trackEvent('feature_used', { event_category: 'usage', feature_name: 'iphone_send' });
                         onToast?.(language === 'en' ? '📱 Sent to iPhone' : '📱 iPhoneに送りました');
                     } catch (e: unknown) {
                         console.error('[iPhone] Send failed detail:', e);
@@ -765,6 +767,7 @@ export function useStickyNoteContextMenu({
                     await saveNoteContent(editBody, rawFrontmatter, false);
                     void playSaveSound();
                     await invoke('fusen_archive_note', { path: selectedFile.path, targetTag: targetTag ?? null });
+                    trackEvent('feature_used', { event_category: 'usage', feature_name: 'note_archive' });
                     const win = (await import('@tauri-apps/api/window')).getCurrentWindow();
                     await win.hide();
                     await win.destroy();

@@ -25,6 +25,22 @@ GitHub Release、Gitタグ、Winget公開、GitHub ActionsからのMicrosoft Sto
 | GitHub main | Storeへ提出する版のソースとバージョンを保管する |
 | Partner Center | 完成したStore用MSIXをアップロードしてMicrosoft Storeへ申請する |
 
+### Codexの役割分担
+
+| Codex | 担当範囲 | 主な作業 |
+|---|---|---|
+| VS Code版Codex | STEP 0〜2 | ソース修正、対象テスト、実機確認用ビルド、開発署名MSIX確認、Store用MSIX作成、`main`・`develop`反映 |
+| Windows版Codex | STEP 3 | サインイン済みブラウザでPartner Centerを操作し、MSIXアップロード、日本語・英語のリリースノート更新、申請内容確認、認定提出、公開状態確認 |
+
+通常はVS Code版CodexがSTEP 0〜2を完了し、固定保存先のStore用MSIXと実施結果をWindows版Codexへ引き継ぐ。Partner Centerの画面操作が必要なSTEP 3はWindows版Codexで行う。Windows版CodexだけでSTEP 0から一貫して作業できる場合は、同じ手順書と同じSTEP番号に従って全工程を実施してよい。
+
+VS Code版CodexからWindows版Codexへの引き継ぎでは、少なくとも次を伝える。
+
+- 対象バージョン
+- Store用MSIXの絶対パス
+- STEP 0〜2の完了状況
+- 日本語・英語のリリースノートに記載する実際の変更内容
+
 ### 概要図
 
 ```mermaid
@@ -32,7 +48,7 @@ flowchart LR
     A["STEP 0<br/>修正・対象テスト<br/>PC確認・iPhone PWA確認"]
     B["STEP 1<br/>このPCで<br/>開発署名MSIXを実機確認"]
     C["STEP 2<br/>同じ実行ファイルから<br/>Store用MSIXを作成"]
-    D["STEP 3<br/>Partner Centerへ<br/>手動提出"]
+    D["STEP 3<br/>CodexがPartner Centerへ<br/>提出"]
 
     A -->|成功| B
     B -->|成功| C
@@ -56,7 +72,7 @@ flowchart TD
     F["STEP 1-3〜1-4・このPC<br/>開発署名MSIX作成・インストール<br/>予想 16〜36秒"]
     G["STEP 1-5・このPC<br/>MSIX実機確認<br/>予想 60〜180秒"]
     H["STEP 2・このPC→GitHub<br/>同一実行ファイルからStore用MSIX<br/>ソース・版数をmain/developへpush"]
-    I["STEP 3・Partner Center<br/>Store用MSIXを手動提出"]
+    I["STEP 3・Codex＋Partner Center<br/>Store用MSIXを提出"]
 
     A --> B
     B -->|失敗| A
@@ -138,7 +154,7 @@ STEP 1-5で失敗した場合は、原因により戻り先を分ける。
 | 日付 | バージョン | 結果 | リリース工程 | 前回比 | 内訳（秒） | 備考 |
 |---|---|---|---:|---:|---|---|
 | 26-08-11 | 5.1.4 | 申請完了 | 320秒（5分20秒）＋実機操作 | 約30分→5分20秒（約82%短縮） | 版設定1、exe作成273、Dev MSIX 7、導入7、Store MSIX 6、検証1、GitHub反映25 | 合格済みexeを再利用。前回値は約30分の概算 |
-| 26-08-16 | 5.1.5 | Store提出物作成・GitHub反映完了 | 546秒（9分6秒）＋実機操作 | 5.1.4比226秒増加 | exe・Dev MSIX・導入253、Store MSIX 6、検証2、pre-commit 275、develop push 5.3、main push 4.8 | 旧自動起動の再登録防止。合格済みexeをStore用MSIXへ再利用。全テストhookが増加要因 |
+| 26-08-16 | 5.1.5 | 認定申請完了 | 546秒（9分6秒）＋実機操作 | 5.1.4比226秒増加 | exe・Dev MSIX・導入253、Store MSIX 6、検証2、pre-commit 275、develop push 5.3、main push 4.8 | 旧自動起動の再登録防止。合格済みexeをStore用MSIXへ再利用。Submission 14をCodexが申請し、認定中を確認。全テストhookが増加要因 |
 
 各試行の詳細は「補足」の「詳細試行ログ」に残す。記録が3件以上たまった工程は、直近3件の中央値を次回の予想時間にする。
 
@@ -181,12 +197,14 @@ STEP 2の自動化は、次の条件をすべて満たすこと。
 | `src-tauri/Cargo.toml` / `src-tauri/Cargo.lock` | `X.Y.Z` |
 | `packaging/msix/AppxManifest.xml` | `X.Y.Z.0` |
 
-## STEP 3：Microsoft Storeで手動リリース
+## STEP 3：CodexがMicrosoft Storeへ申請
 
 1. **STEP 3-1（このPC）**：STEP 2で作成した`ore-no-fusen.msix`を、`D:\Users\uck\Documents\俺の付箋-Store提出\<バージョン>\ore-no-fusen.msix`へ準備する。一時フォルダやリポジトリ内には置かない。
-2. **STEP 3-2（Partner Center）**：`ore-no-fusen.msix`を通常の製品申請へアップロードする。
-3. **STEP 3-3（Partner Center）**：説明、画像、プライバシー、年齢区分、公開設定を確認して認定へ提出する。
+2. **STEP 3-2（Codex＋Partner Center）**：ユーザーがCodexへStore申請を依頼する。Codexはこの手順書と`store-submission.md`を全文確認し、サインイン済みのブラウザで「俺の付箋」の新しい更新申請を作成して、固定保存先の`ore-no-fusen.msix`をアップロードする。アップロード後にファイル名、Version、Architecture、検証成功を画面で確認して保存する。
+3. **STEP 3-3（Codex＋Partner Center）**：Codexは日本語・英語の「このバージョンの最新情報」を今回の版番号と実際の変更内容に更新する。あわせて既存の説明、画像、プライバシー、年齢区分、Capabilityの説明、公開設定が「変更なし」または意図した内容であることを確認する。外部公開申請を開始する直前にユーザーの明示承認を受けてから「送信して認定を受ける」を実行し、申請番号と「認定中」を確認して報告する。
 4. **STEP 3-4（Microsoft Store＋このPC）**：認定・公開後、Storeからインストールまたは更新し、バージョンと起動を確認する。
+
+CodexがPartner Centerを操作できない場合だけ、ユーザーが同じ手順を手動で行う。サインイン、MFA、CAPTCHAなど本人操作が必要な画面ではCodexは操作を止め、該当画面を開いたままユーザーへ引き継ぎ、完了後に再開する。
 
 Partner Centerでの画面操作と確認項目は、[store-submission.md](./store-submission.md)を参照する。
 
@@ -238,3 +256,5 @@ GitHub Release `v5.0.0` の`latest.json`、MSI、NSIS、署名ファイルは、
 | 21 | 26-08-10 | パッケージフライトを必須手順から外し、開発署名MSIXをこのPCで作成・実機確認してからStoreへ通常申請する3ステップ運用へ変更した。 |
 | 22 | 26-08-10 | STEP 0〜3の失敗時フローと工程別時間記録を追加し、実機確認済み実行ファイルをStore用MSIXへ再利用して重複ビルドしない手順へ変更した。 |
 | 23 | 26-08-11 | リリース時間をバージョンごとに1行で比較する集計表を追加し、試行ごとの記録を詳細試行ログへ移動した。 |
+| 24 | 26-08-16 | STEP 3をCodexによるPartner Center申請へ変更し、アップロード確認、日本語・英語のリリースノート更新、ユーザー承認、認定中の確認、本人操作が必要な場合の引き継ぎを明記した。 |
+| 25 | 26-08-16 | VS Code版CodexをSTEP 0〜2、Windows版CodexをSTEP 3の担当とし、Store申請時の引き継ぎ項目を明記した。 |

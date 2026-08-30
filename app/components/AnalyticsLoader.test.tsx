@@ -41,7 +41,11 @@ describe('AnalyticsLoader', () => {
   });
 
   it('loads GA4 and queues app_started after consent', async () => {
-    invokeMock.mockResolvedValue({ analytics_consent: 'granted' });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'get_settings') return Promise.resolve({ analytics_consent: 'granted', iphone_send_enabled: true });
+      if (command === 'fusen_get_state') return Promise.resolve({ notes: [{ tags: ['work'] }, { tags: ['recipe'] }, { tags: [] }] });
+      return Promise.resolve({});
+    });
     render(<AnalyticsLoader isTauriBuild />);
 
     await waitFor(() => expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull());
@@ -49,5 +53,17 @@ describe('AnalyticsLoader', () => {
     expect((window as any).dataLayer.some(
       (command: ArrayLike<unknown>) => Array.from(command)[0] === 'event' && Array.from(command)[1] === 'app_started',
     )).toBe(true);
+    await waitFor(() => expect((window as any).dataLayer.some(
+      (command: ArrayLike<unknown>) => Array.from(command)[0] === 'event' && Array.from(command)[1] === 'usage_snapshot',
+    )).toBe(true));
+    const snapshot = (window as any).dataLayer.find(
+      (command: ArrayLike<unknown>) => Array.from(command)[0] === 'event' && Array.from(command)[1] === 'usage_snapshot',
+    );
+    expect(Array.from(snapshot)[2]).toMatchObject({
+      note_count_bucket: '1-5',
+      tagged_note_count_bucket: '1-5',
+      tag_count_bucket: '1-5',
+      iphone_enabled: true,
+    });
   });
 });

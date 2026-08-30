@@ -27,6 +27,7 @@ import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 import { trackEvent } from '@/app/utils/analytics';
+import { NOTE_DRAG_CURSOR } from '@/app/utils/cursorStyles';
 
 // UIコンポーネント
 import type { RichTextEditorRef } from './RichTextEditor';
@@ -45,6 +46,7 @@ import Tooltip from './Tooltip';
 // ユーティリティ
 import { pathsEqual, getFileName, decodeNotePathFromUrl } from '../utils/pathUtils';
 import { splitFrontMatter, updateFrontmatterValue, removeFrontmatterKey, updateFrontmatterGeometry } from '../utils/splitFrontMatter';
+import { formatCollapsedLines, readCollapsedLines, remapCollapsedLines } from '../utils/outline';
 import { buildFoldedPreview, resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { shouldHandleCrystalTrashRequest } from '../utils/crystalTrashRequest';
@@ -243,6 +245,11 @@ const StickyNote = memo(function StickyNote() {
         },
         onSaveError: () => setShowSaveError(true),
     });
+    const collapsedOutlineLines = useMemo(() => readCollapsedLines(rawFrontmatter), [rawFrontmatter]);
+    const updateCollapsedOutlineLines = useCallback((lines: number[]) => {
+        setRawFrontmatter(previous => updateFrontmatterValue(previous, 'outlineCollapsed', formatCollapsedLines(lines)));
+        setSavePending(true);
+    }, [setRawFrontmatter, setSavePending]);
 
     const startupReadyEmittedRef = useRef(false);
     const [startupWindowStateReady, setStartupWindowStateReady] = useState(!isStartupRestore);
@@ -1456,6 +1463,7 @@ const StickyNote = memo(function StickyNote() {
                 await import('@tauri-apps/api/event').then(({ emit }) => {
                     emit('fusen:reload_note', { path: selectedFile.path });
                 });
+                trackEvent('feature_used', { event_category: 'usage', feature_name: 'tag_add' });
             } catch (err) {
                 console.error('[Tag] Failed to add tag:', err);
                 console.error('[Tag] Failed to add tag detail:', err);
@@ -1555,6 +1563,7 @@ const StickyNote = memo(function StickyNote() {
         const newFront2 = updateFrontmatterValue(newFront1, 'alarm_sound', alarmSound.toString());
         setRawFrontmatter(newFront2);
         await saveNoteContent(content, newFront2, false);
+        trackEvent('feature_used', { event_category: 'usage', feature_name: 'alarm_set' });
     }, [rawFrontmatter, content, saveNoteContent, setRawFrontmatter]);
 
     /**
@@ -2186,7 +2195,7 @@ const StickyNote = memo(function StickyNote() {
 
             {/* メインコンテンツ - 付箋のほぼ全域を占める */}
             <main
-                className={`flex-1 flex flex-col overflow-auto relative ${isEditing ? 'p-0' : 'p-[var(--editor-padding)]'}`}
+                className={`flex-1 flex flex-col overflow-auto relative ${isEditing ? 'p-0' : 'py-[var(--editor-padding)] pr-[var(--editor-padding)] pl-0'}`}
                 onClick={(e) => {
                     // 編集モードで、エディタより下にあるこのコンテナ領域（＝黄色いフッタ領域）をクリックした場合は編集モードを終了
                     if (isEditing && e.target === e.currentTarget) {
@@ -2283,24 +2292,20 @@ const StickyNote = memo(function StickyNote() {
                                     ref={editorRef}
                                     value={editBody}
                                     onChange={(newValue) => {
+                                        const remapped = remapCollapsedLines(editBody, newValue, collapsedOutlineLines);
+                                        if (remapped.join(',') !== collapsedOutlineLines.join(',')) {
+                                            updateCollapsedOutlineLines(remapped);
+                                        }
                                         setEditBody(newValue);
                                         setSavePending(true);
                                     }}
+                                    collapsedOutlineLines={collapsedOutlineLines}
+                                    onCollapsedOutlineLinesChange={updateCollapsedOutlineLines}
                                     filePath={selectedFile?.path || ''}
                                     language={language}
                                     onKeyDown={(e) => {
                                         if (!isEditing) return;
                                         if (e.key === 'Escape') handleEditBlur();
-                                        // Tabキーでツールバーへフォーカス移動
-                                        if (e.key === 'Tab' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            // ツールバー内の最初のボタンを探してフォーカス
-                                            const toolbar = document.querySelector('.hoverBar');
-                                            const firstButton = toolbar?.querySelector('button');
-                                            if (firstButton) {
-                                                (firstButton as HTMLElement).focus();
-                                            }
-                                        }
                                     }}
                                     // エディタ自体は透明にして親の色を見せる
                                     backgroundColor="transparent"
@@ -2367,6 +2372,8 @@ const StickyNote = memo(function StickyNote() {
                             resolvePath={resolvePath}
                             onAnnotationClick={handleAnnotationClick}
                             imageVersion={imageVersion}
+                            collapsedOutlineLines={collapsedOutlineLines}
+                            onCollapsedOutlineLinesChange={updateCollapsedOutlineLines}
                         />
                     )}
                     </>
@@ -2380,7 +2387,7 @@ const StickyNote = memo(function StickyNote() {
                         className="noteFooter"
                         style={{
                             height: 'var(--footer-height)',
-                            cursor: 'grab',
+                            cursor: NOTE_DRAG_CURSOR,
                             userSelect: 'none',
                             display: 'flex',
                             alignItems: 'center',

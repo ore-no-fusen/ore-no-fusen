@@ -548,6 +548,7 @@ function OrchestratorContent() {
             : { x: sourceX, y: sourceY + sourceHeight + 10, width: 400, height: 300 };
         })() : undefined;
         await openNoteWindow(newNote.meta.path, duplicatePosition, false);
+        trackEvent('feature_used', { event_category: 'usage', feature_name: 'note_duplicate' });
         return;
       }
 
@@ -1195,6 +1196,7 @@ function OrchestratorContent() {
 
           // [FIX] Priority 1: Mount overlay IMMEDIATELY
           setIsSearchOpen(true);
+          trackEvent('feature_used', { event_category: 'usage', feature_name: 'search_open' });
 
           // サイズ・位置をshow前に設定して確実に反映
           await win.setSize(new LogicalSize(600, 450));
@@ -1420,6 +1422,7 @@ function OrchestratorContent() {
               onTagFailure: (tag, tagError) => console.error(`[iphone] タグ付与に失敗: ${tag}`, tagError),
             },
           );
+          trackEvent('feature_used', { event_category: 'usage', feature_name: 'iphone_receive' });
         } catch (e) {
           console.error('[iphone] 付箋作成失敗:', e);
         }

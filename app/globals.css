@@ -195,7 +195,7 @@ body {
 .rich-text-editor-container .cm-content {
   cursor: text !important;
   background-color: rgba(255, 255, 255, 0.7) !important;
-  padding: var(--editor-padding) !important;
+  padding: var(--editor-padding) var(--editor-padding) var(--editor-padding) 12px !important;
   border-radius: 4px;
   min-height: 1.5em !important;
 }
@@ -250,4 +250,3 @@ body {
   border-bottom: 5px solid rgba(255, 255, 255, 0.97);
   border-top-color: transparent;
 }
-
