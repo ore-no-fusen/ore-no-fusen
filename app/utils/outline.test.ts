@@ -32,6 +32,44 @@ describe('outline utilities', () => {
         ]);
     });
 
+    it('treats consecutive Japanese middle-dot bullets as children of the preceding title', () => {
+        const lines = parseOutline('認知改善\n・ 画像を4枚にする\n・ 短い説明を書く\n次の題名', [0]);
+
+        expect(lines.map(line => ({ depth: line.depth, child: line.hasChildren, hidden: line.hidden }))).toEqual([
+            { depth: 0, child: true, hidden: false },
+            { depth: 1, child: false, hidden: true },
+            { depth: 1, child: false, hidden: true },
+            { depth: 0, child: false, hidden: false },
+        ]);
+    });
+
+    it('keeps nested two-space indentation inside Japanese middle-dot bullets', () => {
+        const lines = parseOutline('題名\n・ 親項目\n  ・ 子項目');
+
+        expect(lines[0]).toMatchObject({ depth: 0, subtreeEnd: 2, hasChildren: true });
+        expect(lines[1]).toMatchObject({ depth: 1, subtreeEnd: 2, hasChildren: true });
+        expect(lines[2]).toMatchObject({ depth: 2, subtreeEnd: 2, hasChildren: false });
+    });
+
+    it('makes a normal title the parent of following Markdown bullets', () => {
+        const lines = parseOutline('認知改善\n- 日本語ページの画像\n- その画像が古い\n次の節', [0]);
+
+        expect(lines[0]).toMatchObject({ kind: 'plain', depth: 0, subtreeEnd: 2, hasChildren: true, hidden: false });
+        expect(lines[1]).toMatchObject({ kind: 'list', depth: 1, hidden: true });
+        expect(lines[2]).toMatchObject({ kind: 'list', depth: 1, hidden: true });
+        expect(lines[3]).toMatchObject({ depth: 0, hidden: false });
+    });
+
+    it('does not attach the next title and its bullets to the previous Markdown bullet', () => {
+        const lines = parseOutline('保存\n- 英語も更新\n変更予定：\n- 画像を作成\n- 説明を更新');
+
+        expect(lines[0]).toMatchObject({ subtreeEnd: 1, hasChildren: true });
+        expect(lines[1]).toMatchObject({ subtreeEnd: 1, hasChildren: false });
+        expect(lines[2]).toMatchObject({ subtreeEnd: 4, hasChildren: true });
+        expect(lines[3]).toMatchObject({ depth: 1 });
+        expect(lines[4]).toMatchObject({ depth: 1 });
+    });
+
     it('derives heading sections and stops at the next same or higher heading', () => {
         const body = '# 機能安全\n説明\n## SG\n### SG-01\n## FSR\n# サイバー';
         const lines = parseOutline(body, [2]);

@@ -620,38 +620,25 @@ export default function MarkdownRenderer({
                             );
                         }
 
-                        // 見出し (# で始まる)
-                        if (displayLine.startsWith('# ')) {
+                        // Markdown ATX見出し (# 〜 ######)
+                        const headingMatch = displayLine.match(/^(#{1,6})\s+(.*)$/);
+                        if (headingMatch) {
+                            const headingLevel = headingMatch[1].length;
+                            const headingText = headingMatch[2];
+                            const markerLength = headingMatch[1].length + 1;
+                            const headingSize = ['text-[1.1em]', 'text-[1.05em]', 'text-[1em]', 'text-[0.95em]', 'text-[0.9em]', 'text-[0.85em]'][headingLevel - 1];
+                            const recipeHeadingStyle = recipeMode && headingLevel <= 2 ? { color: '#d9480f' } : {};
                             return (
                                 <div
                                     key={i}
                                     data-line-index={i}
-                                    className={`${lineClass} font-bold text-[1.1em]`}
-                                    style={{ ...outlineStyle, ...(recipeMode ? { color: '#d9480f' } : {}) }}
+                                    className={`${lineClass} font-bold ${headingSize}`}
+                                    style={{ ...outlineStyle, ...recipeHeadingStyle }}
                                 >
                                     {outlineIndent}
                                     {outlineToggle}
-                                    <span data-src-start={baseOffset + 2} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
-                                        {renderLineContent(displayLine.substring(2), baseOffset + 2)}
-                                    </span>
-                                    {outlineFoldMarker}
-                                </div>
-                            );
-                        }
-
-                        // レシピ小見出し (## で始まる)
-                        if (recipeMode && displayLine.startsWith('## ')) {
-                            return (
-                                <div
-                                    key={i}
-                                    data-line-index={i}
-                                    className={`${lineClass} font-bold text-[1.0em]`}
-                                    style={{ ...outlineStyle, color: '#d9480f' }}
-                                >
-                                    {outlineIndent}
-                                    {outlineToggle}
-                                    <span data-src-start={baseOffset + 3} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
-                                        {renderLineContent(displayLine.substring(3), baseOffset + 3)}
+                                    <span data-src-start={baseOffset + markerLength} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
+                                        {renderLineContent(headingText, baseOffset + markerLength)}
                                     </span>
                                     {outlineFoldMarker}
                                 </div>

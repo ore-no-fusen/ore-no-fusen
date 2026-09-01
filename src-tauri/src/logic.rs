@@ -645,6 +645,31 @@ pub fn update_frontmatter_value(content: &str, key: &str, value: String) -> Stri
     }
 }
 
+/// 複製では利用者が設定したfrontmatterをすべて保持し、
+/// 新しい付箋の識別情報・日付・重ならない配置だけを更新する。
+pub fn duplicate_frontmatter(
+    frontmatter: &str,
+    seq: i32,
+    today: &str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> String {
+    let mut duplicated = frontmatter.to_string();
+    duplicated = update_frontmatter_value(&duplicated, "seq", seq.to_string());
+    duplicated = update_frontmatter_value(&duplicated, "created", today.to_string());
+    duplicated = update_frontmatter_value(&duplicated, "updated", today.to_string());
+    update_frontmatter_value(
+        &duplicated,
+        "window",
+        format!(
+            "{{ x: {:.1}, y: {:.1}, width: {:.1}, height: {:.1} }}",
+            x, y, width, height
+        ),
+    )
+}
+
 
 
 pub fn handle_add_tag(
@@ -1342,6 +1367,42 @@ backgroundColor: #f7e9b0
         let result = update_frontmatter_value(content, "backgroundColor", "#f7e9b0".to_string());
         
         assert!(result.contains("backgroundColor: #f7e9b0"));
+    }
+
+    #[test]
+    fn duplicate_frontmatter_preserves_all_user_settings_and_updates_identity_geometry() {
+        let original = "---\ntype: sticky\nseq: 4\ncreated: 2026-08-01\nupdated: 2026-08-20\nbackgroundColor: #80d8ff\ntags: [旅行, 予定]\nwindow: { x: 10, y: 20, width: 400, height: 300 }\nfolded: true\nalwaysOnTop: true\nopacity: 0.75\nfontSize: 20\noutlineCollapsed: [1, 5]\nalarm_at: \"2026-09-05T09:00:00+09:00\"\nalarm_sound: true\ncustomField: keep-me\n---\n";
+
+        let duplicated = duplicate_frontmatter(
+            original,
+            9,
+            "2026-09-01",
+            500.0,
+            120.0,
+            780.0,
+            640.0,
+        );
+
+        for preserved in [
+            "backgroundColor: #80d8ff",
+            "tags: [旅行, 予定]",
+            "folded: true",
+            "alwaysOnTop: true",
+            "opacity: 0.75",
+            "fontSize: 20",
+            "outlineCollapsed: [1, 5]",
+            "alarm_at: \"2026-09-05T09:00:00+09:00\"",
+            "alarm_sound: true",
+            "customField: keep-me",
+        ] {
+            assert!(duplicated.contains(preserved), "missing preserved field: {preserved}");
+        }
+        assert!(duplicated.contains("seq: 9"));
+        assert!(duplicated.contains("created: 2026-09-01"));
+        assert!(duplicated.contains("updated: 2026-09-01"));
+        assert!(duplicated.contains("window: { x: 500.0, y: 120.0, width: 780.0, height: 640.0 }"));
+        assert!(!duplicated.contains("seq: 4"));
+        assert!(!duplicated.contains("window: { x: 10, y: 20, width: 400, height: 300 }"));
     }
 
     // === build_create_note_data のテスト ===

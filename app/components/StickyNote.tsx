@@ -28,6 +28,7 @@ import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 import { trackEvent } from '@/app/utils/analytics';
 import { NOTE_DRAG_CURSOR } from '@/app/utils/cursorStyles';
+import { normalizeAlarmAlwaysOnTop } from '@/app/utils/alarmAlwaysOnTop';
 
 // UIコンポーネント
 import type { RichTextEditorRef } from './RichTextEditor';
@@ -247,7 +248,13 @@ const StickyNote = memo(function StickyNote() {
     });
     const collapsedOutlineLines = useMemo(() => readCollapsedLines(rawFrontmatter), [rawFrontmatter]);
     const updateCollapsedOutlineLines = useCallback((lines: number[]) => {
-        setRawFrontmatter(previous => updateFrontmatterValue(previous, 'outlineCollapsed', formatCollapsedLines(lines)));
+        const nextFrontmatter = updateFrontmatterValue(
+            rawFrontmatterForAlarmRef.current,
+            'outlineCollapsed',
+            formatCollapsedLines(lines),
+        );
+        rawFrontmatterForAlarmRef.current = nextFrontmatter;
+        setRawFrontmatter(nextFrontmatter);
         setSavePending(true);
     }, [setRawFrontmatter, setSavePending]);
 
@@ -334,7 +341,7 @@ const StickyNote = memo(function StickyNote() {
     useEffect(() => { contentForListenerRef.current = content; }, [content]);
     useEffect(() => { rawFrontmatterForAlarmRef.current = rawFrontmatter; }, [rawFrontmatter]);
     const isPinnedRef = useRef(isPinned);
-    useEffect(() => { isPinnedRef.current = isPinned; }, [isPinned]);
+    useEffect(() => { isPinnedRef.current = normalizeAlarmAlwaysOnTop(isPinned); }, [isPinned]);
     const isEditingForListenerRef = useRef(isEditing);
     useEffect(() => { isEditingForListenerRef.current = isEditing; }, [isEditing]);
     const shouldRenderEditor = isEditing || process.env.NODE_ENV !== 'test';
@@ -1303,7 +1310,7 @@ const StickyNote = memo(function StickyNote() {
             // 発火
             const soundMatch = front.match(/alarm_sound:\s*(\S+)/);
             alarmSoundEnabledRef.current = soundMatch ? soundMatch[1] === 'true' : true;
-            prevAlwaysOnTopRef.current = isPinnedRef.current;
+            prevAlwaysOnTopRef.current = normalizeAlarmAlwaysOnTop(isPinnedRef.current);
 
             // frontmatter から alarm_at / alarm_sound を削除（静的importを使用）
             const newFront1 = removeFrontmatterKey(front, 'alarm_at');
@@ -1559,23 +1566,25 @@ const StickyNote = memo(function StickyNote() {
      */
     const handleConfirmAlarm = useCallback(async (alarmAt: string, alarmSound: boolean) => {
         setShowAlarmDialog(false);
-        const newFront1 = updateFrontmatterValue(rawFrontmatter, 'alarm_at', `"${alarmAt}"`);
+        const newFront1 = updateFrontmatterValue(rawFrontmatterForAlarmRef.current, 'alarm_at', `"${alarmAt}"`);
         const newFront2 = updateFrontmatterValue(newFront1, 'alarm_sound', alarmSound.toString());
+        rawFrontmatterForAlarmRef.current = newFront2;
         setRawFrontmatter(newFront2);
         await saveNoteContent(content, newFront2, false);
         trackEvent('feature_used', { event_category: 'usage', feature_name: 'alarm_set' });
-    }, [rawFrontmatter, content, saveNoteContent, setRawFrontmatter]);
+    }, [content, saveNoteContent, setRawFrontmatter]);
 
     /**
      * アラーム解除（AlarmDialog onClear）
      */
     const handleClearAlarm = useCallback(async () => {
         setShowAlarmDialog(false);
-        const newFront1 = removeFrontmatterKey(rawFrontmatter, 'alarm_at');
+        const newFront1 = removeFrontmatterKey(rawFrontmatterForAlarmRef.current, 'alarm_at');
         const newFront2 = removeFrontmatterKey(newFront1, 'alarm_sound');
+        rawFrontmatterForAlarmRef.current = newFront2;
         setRawFrontmatter(newFront2);
         await saveNoteContent(content, newFront2, false);
-    }, [rawFrontmatter, content, saveNoteContent, setRawFrontmatter]);
+    }, [content, saveNoteContent, setRawFrontmatter]);
 
     /**
      * アラーム停止（点滅バークリック）
@@ -1587,7 +1596,7 @@ const StickyNote = memo(function StickyNote() {
             alarmAudioRef.current = null;
         }
         setIsAlarmRinging(false);
-        await invoke('fusen_set_always_on_top', { enabled: prevAlwaysOnTopRef.current });
+        await invoke('fusen_set_always_on_top', { enabled: normalizeAlarmAlwaysOnTop(prevAlwaysOnTopRef.current) });
     }, []);
 
     /**
@@ -1789,6 +1798,10 @@ const StickyNote = memo(function StickyNote() {
         currentTags,
         editBody,
         rawFrontmatter,
+        getCurrentDuplicateSnapshot: () => ({
+            body: editBodyRef.current,
+            frontmatter: rawFrontmatterForAlarmRef.current,
+        }),
         saveNoteContent,
         loadAllTags,
         addTagToNote,

@@ -46,16 +46,17 @@ describe('MarkdownRenderer recipeMode', () => {
         '**太字**',
     ].join('\n');
 
-    it('keeps recipeMode=false rendering behavior for ## and numbered lines', () => {
+    it('renders Markdown headings in normal mode while keeping numbered lines unchanged', () => {
         const { container } = renderMarkdown(representativeContent);
 
         const heading = screen.getByText('見出し').closest('div');
         expect(heading?.className).toContain('font-bold');
         expect(heading?.getAttribute('style') ?? '').not.toContain('#d9480f');
 
-        const subHeadingLine = screen.getByText('## 小見出し').closest('div');
-        expect(subHeadingLine?.className).not.toContain('font-bold');
-        expect(screen.getByText('## 小見出し').getAttribute('data-src-start')).toBe('31');
+        const subHeadingLine = screen.getByText('小見出し').closest('div');
+        expect(subHeadingLine?.className).toContain('font-bold');
+        expect(subHeadingLine?.className).toContain('text-[1.05em]');
+        expect(screen.getByText('小見出し').getAttribute('data-src-start')).toBe('34');
 
         const numberedLine = screen.getByText('1. 番号行').closest('div');
         expect(numberedLine?.className).not.toContain('font-bold');
@@ -65,6 +66,25 @@ describe('MarkdownRenderer recipeMode', () => {
         expect(screen.getByText('☐')).toBeTruthy();
         expect(screen.getByText('https://example.com').getAttribute('style')).toContain('color: blue');
         expect(container.querySelector('strong')?.textContent).toBe('太字');
+    });
+
+    it('renders all six ATX heading levels without showing Markdown markers', () => {
+        renderMarkdown([
+            '# H1',
+            '## H2',
+            '### H3',
+            '#### H4',
+            '##### H5',
+            '###### H6',
+        ].join('\n'));
+
+        const expectedSizes = ['1.1em', '1.05em', '1em', '0.95em', '0.9em', '0.85em'];
+        expectedSizes.forEach((size, index) => {
+            const heading = screen.getByText(`H${index + 1}`);
+            expect(heading.closest('div')?.className).toContain('font-bold');
+            expect(heading.closest('div')?.className).toContain(`text-[${size}]`);
+        });
+        expect(screen.queryByText(/^#+ H[1-6]$/)).toBeNull();
     });
 
     it('colors recipe headings and only the ordered-list marker in recipeMode=true', () => {
@@ -173,6 +193,20 @@ describe('MarkdownRenderer outline', () => {
         expect(screen.queryByText('SG-01')).toBeNull();
         expect(screen.queryByText('FSR')).toBeNull();
         expect(screen.getByText('サイバー')).toBeTruthy();
+    });
+
+    it('restores only the saved collapsed line in the travel note after duplication', () => {
+        const body = '# **京都**旅行の計画\n## 行きたい場所\n  清水寺\n    朝の空いている時間に行く\n    写真を撮る\n  伏見稲荷\n    千本鳥居を見る\n    歩きやすい靴を用意\n## 持ち物\n  カメラ\n    予備バッテリー\n    充電ケーブル\n  雨具\n  モバイルバッテリー\n## 予約\n  新幹線\n    8時東京発\n  ホテル\n    チェックイン15時';
+        renderMarkdown(body, { collapsedOutlineLines: [2] });
+
+        expect(screen.getByText('行きたい場所')).toBeTruthy();
+        expect(screen.getByText('清水寺')).toBeTruthy();
+        expect(screen.queryByText('朝の空いている時間に行く')).toBeNull();
+        expect(screen.queryByText('写真を撮る')).toBeNull();
+        expect(screen.getByText('伏見稲荷')).toBeTruthy();
+        expect(screen.getByText('持ち物')).toBeTruthy();
+        expect(screen.getByText('予約')).toBeTruthy();
+        expect(screen.getAllByRole('button', { name: '開く' })).toHaveLength(1);
     });
 
     it('shows the existing quiet toggle for Markdown heading and list parents', () => {

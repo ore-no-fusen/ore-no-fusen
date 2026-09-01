@@ -17,6 +17,11 @@ function leadingSpaces(line: string): number {
     return line.match(/^ */)?.[0].length ?? 0;
 }
 
+function isVisibleBulletLine(line: string): boolean {
+    const trimmed = line.trimStart();
+    return trimmed.startsWith('・') || /^(?:[-*+]\s+|\d+\.\s+)/.test(trimmed);
+}
+
 export function isOutlineEligibleLine(line: string, inCodeFence = false): boolean {
     const trimmed = line.trim();
     if (inCodeFence || !trimmed) return false;
@@ -53,6 +58,20 @@ export function parseOutline(body: string, collapsedLines: readonly number[] = [
         if (fence) inCodeFence = !inCodeFence;
     }
 
+    // 「題名 + 箇条書き」は、題名を親、連続する箇条書きを子として扱う。
+    // 直接入力した「・」と、表示時に「・」となるMarkdownリストの両方が対象。
+    // 本文の記号や保存形式は変えず、表示時の階層だけを導出する。
+    for (let index = 0; index < result.length - 1; index += 1) {
+        const parent = result[index];
+        if (!parent.eligible || isVisibleBulletLine(source[index])) continue;
+        let next = index + 1;
+        if (!result[next].eligible || !isVisibleBulletLine(source[next])) continue;
+        while (next < result.length && result[next].eligible && isVisibleBulletLine(source[next])) {
+            result[next].depth = parent.depth + 1 + Math.floor(leadingSpaces(source[next]) / OUTLINE_INDENT);
+            next += 1;
+        }
+    }
+
     // 既存仕様: 通常行は行頭2スペースを1階層として扱う。
     for (let index = 0; index < result.length; index += 1) {
         const current = result[index];
@@ -82,7 +101,17 @@ export function parseOutline(body: string, collapsedLines: readonly number[] = [
     do {
         if (cursor.name === 'ListItem') {
             const start = lineAtOffset(cursor.from);
-            const end = lineAtOffset(Math.max(cursor.from, cursor.to - 1));
+            let end = lineAtOffset(Math.max(cursor.from, cursor.to - 1));
+            for (let next = start + 1; next <= end; next += 1) {
+                const isNextTitle = result[next].eligible
+                    && !isVisibleBulletLine(source[next])
+                    && next + 1 < result.length
+                    && isVisibleBulletLine(source[next + 1]);
+                if (isNextTitle) {
+                    end = next - 1;
+                    break;
+                }
+            }
             const line = result[start];
             line.kind = 'list';
             line.subtreeEnd = Math.max(line.subtreeEnd, end);

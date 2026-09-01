@@ -531,7 +531,7 @@ v2.17 | 2026-07-19 | USDM (Universal Specification Describing Manner)
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-ED-01-02</td>
-      <td style="border-bottom: 1px dotted #cbd5e1;"><code># 見出し</code> はフォントサイズを大きく表示する。</td>
+      <td style="border-bottom: 1px dotted #cbd5e1;"><code># 見出し</code>〜<code>###### 見出し</code>は、表示モードで記号を隠し、階層に応じたフォントサイズと太字で表示する。</td>
     </tr>
     <tr>
       <td style="border-bottom: 1px dotted #cbd5e1; text-align:center;">SPEC-ED-01-03</td>
