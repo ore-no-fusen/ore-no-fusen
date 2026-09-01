@@ -21,6 +21,8 @@ const nextConfig = {
     NEXT_PUBLIC_APP_VERSION: packageJson.version,
   },
   reactStrictMode: false,
+  // Tauriの各付箋へ重複表示されるNext.js開発メニューは使用しない。
+  devIndicators: false,
   distDir: process.env.NEXT_DIST_DIR || '.next',
   typescript: {
     tsconfigPath: process.env.NEXT_TSCONFIG_PATH || 'tsconfig.json',

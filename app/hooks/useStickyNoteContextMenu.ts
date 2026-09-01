@@ -22,6 +22,35 @@ import { NOTE_COLORS, NOTE_FONT_SIZES } from '@/app/utils/noteAppearance';
 import { formatNewNoteTriggerLabel } from '@/app/utils/newNoteTriggerLabel';
 import { trackEvent } from '@/app/utils/analytics';
 
+export async function saveBeforeDuplicate(
+    getSnapshot: () => { body: string; frontmatter: string },
+    save: (body: string, frontmatter: string) => Promise<void>,
+    duplicate: (snapshot: { body: string; frontmatter: string }) => Promise<void>,
+): Promise<void> {
+    const snapshot = getSnapshot();
+    await save(snapshot.body, snapshot.frontmatter);
+    await duplicate(snapshot);
+}
+
+export function buildDuplicateRequestPayload(
+    path: string,
+    snapshot: { body: string; frontmatter: string },
+    geometry: {
+        sourcePhysX?: number;
+        sourcePhysY?: number;
+        sourcePhysWidth?: number;
+        sourcePhysHeight?: number;
+        sourceScale?: number;
+    },
+) {
+    return {
+        path,
+        snapshotBody: snapshot.body,
+        snapshotFrontmatter: snapshot.frontmatter,
+        ...geometry,
+    };
+}
+
 type HotkeyBindings = {
     new_note_trigger: string;
     new_note: string;
@@ -100,6 +129,7 @@ type UseStickyNoteContextMenuProps = {
     currentTags: string[];
     editBody: string;
     rawFrontmatter: string;
+    getCurrentDuplicateSnapshot: () => { body: string; frontmatter: string };
     saveNoteContent: (body: string, front: string, allowRename: boolean) => Promise<void>;
     loadAllTags: () => Promise<void>;
     addTagToNote: (path: string, tag: string) => Promise<void>;
@@ -147,6 +177,7 @@ export function useStickyNoteContextMenu({
     currentTags,
     editBody,
     rawFrontmatter,
+    getCurrentDuplicateSnapshot,
     saveNoteContent,
     loadAllTags,
     addTagToNote,
@@ -403,19 +434,36 @@ export function useStickyNoteContextMenu({
                 action: async () => {
                     try {
                         if (!selectedFile) return;
-                        const { emit } = await import('@tauri-apps/api/event');
-                        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-                        const win = getCurrentWindow();
-                        let sourcePhysX: number | undefined;
-                        let sourcePhysY: number | undefined;
-                        let sourceScale: number | undefined;
-                        try {
-                            const physPos = await win.outerPosition();
-                            sourcePhysX = physPos.x;
-                            sourcePhysY = physPos.y;
-                            sourceScale = await win.scaleFactor();
-                        } catch (_) { }
-                        await emit('fusen:request_duplicate', { path: selectedFile.path, sourcePhysX, sourcePhysY, sourceScale });
+                        await saveBeforeDuplicate(
+                            getCurrentDuplicateSnapshot,
+                            (body, frontmatter) => saveNoteContent(body, frontmatter, false),
+                            async (snapshot) => {
+                                const { emit } = await import('@tauri-apps/api/event');
+                                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                                const win = getCurrentWindow();
+                                let sourcePhysX: number | undefined;
+                                let sourcePhysY: number | undefined;
+                                let sourcePhysWidth: number | undefined;
+                                let sourcePhysHeight: number | undefined;
+                                let sourceScale: number | undefined;
+                                try {
+                                    const physPos = await win.outerPosition();
+                                    const physSize = await win.outerSize();
+                                    sourcePhysX = physPos.x;
+                                    sourcePhysY = physPos.y;
+                                    sourcePhysWidth = physSize.width;
+                                    sourcePhysHeight = physSize.height;
+                                    sourceScale = await win.scaleFactor();
+                                } catch (_) { }
+                                await emit('fusen:request_duplicate', buildDuplicateRequestPayload(selectedFile.path, snapshot, {
+                                    sourcePhysX,
+                                    sourcePhysY,
+                                    sourcePhysWidth,
+                                    sourcePhysHeight,
+                                    sourceScale,
+                                }));
+                            },
+                        );
                     } catch (e) {
                         console.error('Duplicate note request error', e);
                     }
@@ -887,7 +935,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled, handleFontSizeChange, noteBackgroundColor, handleToggleShortcutShelf]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, getCurrentDuplicateSnapshot, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled, handleFontSizeChange, noteBackgroundColor, handleToggleShortcutShelf]);
 
 
     // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）

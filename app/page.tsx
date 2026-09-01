@@ -69,6 +69,7 @@ type CreateNoteRequest = {
   sourceMeta?: { physX: number; physY: number; scale: number; physWidth?: number; physHeight?: number };
   duplicatePath?: string;
   perfT0?: number;
+  duplicateSnapshot?: { body: string; frontmatter: string };
 };
 
 type HotkeyRegisterFailuresResponse = {
@@ -516,7 +517,7 @@ function OrchestratorContent() {
   const isCreatingRef = useRef(false);
   const createRequestQueueRef = useRef(new FreshRequestQueue<CreateNoteRequest>(4, 1500));
 
-  const createNoteImmediately = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
+  const createNoteImmediately = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number, duplicateSnapshot?: { body: string; frontmatter: string }) => {
     const now = Date.now();
     console.log('[handleCreateNote] Triggered. overrideFolder:', overrideFolder, 'Current State:', { isCreating: isCreatingRef.current, isMainWindow, globalLastCreateTime });
 
@@ -533,21 +534,28 @@ function OrchestratorContent() {
       // 複製ルート: duplicatePath がある場合は pool を使わず従来通り
       // ============================================================
       if (duplicatePath) {
-        const newNote = await invoke<any>('fusen_duplicate_note', { path: duplicatePath });
-        console.log('[CREATE] duplicate newNote:', newNote.meta.path);
-        void playCreateSound();
-        setFiles(prev => [...prev, newNote.meta]);
         const duplicatePosition = sourceMeta ? (() => {
           const scale = sourceMeta.scale || 1;
           const sourceX = sourceMeta.physX / scale;
           const sourceY = sourceMeta.physY / scale;
+          const sourceWidth = (sourceMeta.physWidth ?? Math.round(400 * scale)) / scale;
           const sourceHeight = (sourceMeta.physHeight ?? Math.round(300 * scale)) / scale;
-          const leftX = sourceX - 410;
+          const leftX = sourceX - sourceWidth - 10;
           return leftX >= 0
-            ? { x: leftX, y: sourceY, width: 400, height: 300 }
-            : { x: sourceX, y: sourceY + sourceHeight + 10, width: 400, height: 300 };
+            ? { x: leftX, y: sourceY, width: sourceWidth, height: sourceHeight }
+            : { x: sourceX, y: sourceY + sourceHeight + 10, width: sourceWidth, height: sourceHeight };
         })() : undefined;
-        await openNoteWindow(newNote.meta.path, duplicatePosition, false);
+        const newNote = await invoke<any>('fusen_duplicate_note', {
+          path: duplicatePath,
+          x: duplicatePosition?.x,
+          y: duplicatePosition?.y,
+          snapshotBody: duplicateSnapshot?.body,
+          snapshotFrontmatter: duplicateSnapshot?.frontmatter,
+        });
+        console.log('[CREATE] duplicate newNote:', newNote.meta.path);
+        void playCreateSound();
+        setFiles(prev => [...prev, newNote.meta]);
+        await openNoteWindow(newNote.meta.path, newNote.meta, false);
         trackEvent('feature_used', { event_category: 'usage', feature_name: 'note_duplicate' });
         return;
       }
@@ -733,13 +741,14 @@ function OrchestratorContent() {
     }
   }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
 
-  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number) => {
+  const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number, duplicateSnapshot?: { body: string; frontmatter: string }) => {
     const accepted = createRequestQueueRef.current.push({
       overrideFolder,
       overrideContext,
       sourceMeta,
       duplicatePath,
       perfT0,
+      duplicateSnapshot,
     }, Date.now());
     if (!accepted) {
       console.warn('[CREATE] Request queue full; dropping new request');
@@ -762,6 +771,7 @@ function OrchestratorContent() {
           request.sourceMeta,
           request.duplicatePath,
           request.perfT0,
+          request.duplicateSnapshot,
         );
         request = createRequestQueueRef.current.take(Date.now());
       }
@@ -1302,12 +1312,21 @@ function OrchestratorContent() {
   useEffect(() => {
     if (!isMainWindow) return;
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ path: string; sourcePhysX?: number; sourcePhysY?: number; sourceScale?: number }>('fusen:request_duplicate', async (event) => {
-      const { path, sourcePhysX, sourcePhysY, sourceScale } = event.payload;
+    const promise = listen<{ path: string; snapshotBody: string; snapshotFrontmatter: string; sourcePhysX?: number; sourcePhysY?: number; sourcePhysWidth?: number; sourcePhysHeight?: number; sourceScale?: number }>('fusen:request_duplicate', async (event) => {
+      const { path, snapshotBody, snapshotFrontmatter, sourcePhysX, sourcePhysY, sourcePhysWidth, sourcePhysHeight, sourceScale } = event.payload;
       const sourceMeta = (sourcePhysX !== undefined && sourcePhysY !== undefined)
-        ? { physX: sourcePhysX, physY: sourcePhysY, scale: sourceScale ?? 1.0 }
+        ? {
+            physX: sourcePhysX,
+            physY: sourcePhysY,
+            physWidth: sourcePhysWidth,
+            physHeight: sourcePhysHeight,
+            scale: sourceScale ?? 1.0,
+          }
         : undefined;
-      await handleCreateNote(undefined, undefined, sourceMeta, path);
+      await handleCreateNote(undefined, undefined, sourceMeta, path, undefined, {
+        body: snapshotBody,
+        frontmatter: snapshotFrontmatter,
+      });
     });
     promise.then(u => { unlisten = u; });
     return () => {

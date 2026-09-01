@@ -22,6 +22,7 @@ import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUt
 import type { Language } from '@/lib/i18n';
 import { moveCollapsedLines, moveOutlineSubtree, parseOutline } from '../utils/outline';
 import { NOTE_DRAG_CURSOR } from '../utils/cursorStyles';
+import { indentSelectedLines, outdentSelectedLines } from '../utils/editorIndent';
 
 export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
 const outlineRefreshEffect = StateEffect.define<null>();
@@ -1382,11 +1383,14 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             }
                         },
                         {
-                            // Tab: カーソル位置へ半角スペース2個を入力する。
-                            // 行頭に入ったスペースは表示モードで階層として解釈される。
+                            // Tab: 選択なしならカーソル位置へ、複数行選択なら各行頭へ半角スペース2個を入力する。
                             key: 'Tab',
                             run: (view) => {
                                 const { from, to } = view.state.selection.main;
+                                if (from !== to) {
+                                    view.dispatch({ changes: indentSelectedLines(view.state) });
+                                    return true;
+                                }
                                 view.dispatch({
                                     changes: { from, to, insert: '  ' },
                                     selection: { anchor: from + 2 },
@@ -1395,19 +1399,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                             }
                         },
                         {
-                            // Shift+Tab: 現在行の行頭スペースを最大2個戻す
+                            // Shift+Tab: 選択した各行（選択なしなら現在行）の行頭スペースを最大2個戻す
                             key: 'Shift-Tab',
                             run: (view) => {
-                                const { state } = view;
-                                const { from } = state.selection.main;
-                                const line = state.doc.lineAt(from);
-                                const leadingSpaces = line.text.match(/^ */)?.[0].length ?? 0;
-                                const removeCount = Math.min(2, leadingSpaces);
-                                if (removeCount === 0) return true;
-                                view.dispatch({
-                                    changes: { from: line.from, to: line.from + removeCount },
-                                    selection: { anchor: Math.max(line.from, from - removeCount) },
-                                });
+                                const changes = outdentSelectedLines(view.state);
+                                if (changes.length > 0) view.dispatch({ changes });
                                 return true;
                             }
                         },

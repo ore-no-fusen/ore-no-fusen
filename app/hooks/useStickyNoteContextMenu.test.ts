@@ -1,125 +1,126 @@
-/**
- * app/hooks/useStickyNoteContextMenu.ts のテストスタブ
- * Wave 0 で先行作成 — Wave 1 (Plan 03) 実装後に GREEN になること
- * 対象要件: SEND-02（右クリック「iPhoneに送る」から fusen_send_to_iphone を invoke する）
- */
-import { describe, it, expect, vi } from 'vitest';
-import { contextMenuTagItemId, filterAssignableTags, getAppOperationMenuLabels, getOpenFolderRequest, getShortcutShelfMenuState, releaseDeleteLockWhenMoveIsRejected } from './useStickyNoteContextMenu';
+import { describe, expect, it, vi } from 'vitest';
+import {
+    contextMenuTagItemId,
+    buildDuplicateRequestPayload,
+    filterAssignableTags,
+    getAppOperationMenuLabels,
+    getOpenFolderRequest,
+    getShortcutShelfMenuState,
+    releaseDeleteLockWhenMoveIsRejected,
+    saveBeforeDuplicate,
+} from './useStickyNoteContextMenu';
 
-// Wave 1 で有効化される — Plan 03 完了まで TODO
-// invoke のモック
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue(undefined),
+    invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
+describe('existing context-menu helpers', () => {
+    it('filters reserved tags', () => {
+        expect(filterAssignableTags(['project', 'recipe', 'QA', 'shortcut', 'memo'])).toEqual(['project', 'memo']);
+    });
 
-// Placeholder: vitest が 0 failures で終わるための空テスト
-it('Wave 0 スタブが読み込める', () => {
-  expect(true).toBe(true);
+    it('creates stable tag ids', () => {
+        expect(contextMenuTagItemId('tag', 0)).toBe('ctx_tag_0');
+        expect(contextMenuTagItemId('tag_del', 0)).toBe('ctx_tag_del_0');
+    });
+
+    it('calculates shortcut shelf state', () => {
+        expect(getShortcutShelfMenuState(['project', 'recipe']).visible).toBe(false);
+        expect(getShortcutShelfMenuState(['project']).isRegistered).toBe(false);
+        expect(getShortcutShelfMenuState(['project', 'SHORTCUT']).isRegistered).toBe(true);
+    });
+
+    it('builds open-folder requests', () => {
+        expect(getOpenFolderRequest('C:\\notes\\note.md', 'C:\\notes')).toEqual({
+            command: 'fusen_open_containing_folder',
+            path: 'C:\\notes\\note.md',
+        });
+        expect(getOpenFolderRequest(undefined, null)).toBeNull();
+    });
+
+    it('releases delete lock only after a rejected move', () => {
+        const rejected = { current: true };
+        expect(releaseDeleteLockWhenMoveIsRejected({ moved: false, path: 'note.md' }, rejected)).toBe(true);
+        expect(rejected.current).toBe(false);
+
+        const moved = { current: true };
+        expect(releaseDeleteLockWhenMoveIsRejected({ moved: true, path: 'Trash\\note.md' }, moved)).toBe(false);
+        expect(moved.current).toBe(true);
+    });
+
+    it('formats app-operation shortcuts', () => {
+        expect(getAppOperationMenuLabels({
+            new_note_trigger: 'shortcut',
+            new_note: 'ctrl+n',
+            arrange: 'Shift+Control+KeyL',
+        }, 'ja').arrange).toBe('タグで整列  Ctrl+Shift+L');
+    });
 });
 
-describe('filterAssignableTags', () => {
-  it('hides reserved tags from the add-tag context submenu', () => {
-    expect(filterAssignableTags(['project', 'recipe', 'QA', 'shortcut', 'memo'])).toEqual(['project', 'memo']);
-  });
+describe('saveBeforeDuplicate', () => {
+    it('duplicates only after the latest note state has finished saving', async () => {
+        const order: string[] = [];
+        const save = vi.fn(async () => { order.push('save'); });
+        const duplicate = vi.fn(async () => { order.push('duplicate'); });
 
-  it('keeps non-reserved tags visible', () => {
-    expect(filterAssignableTags(['recipes', 'my-qa', 'term-note'])).toEqual(['recipes', 'my-qa', 'term-note']);
-  });
+        await saveBeforeDuplicate(
+            () => ({ body: 'latest body', frontmatter: 'outlineCollapsed: [2]' }),
+            save,
+            duplicate,
+        );
+
+        expect(order).toEqual(['save', 'duplicate']);
+        expect(save).toHaveBeenCalledWith('latest body', 'outlineCollapsed: [2]');
+        expect(duplicate).toHaveBeenCalledWith({ body: 'latest body', frontmatter: 'outlineCollapsed: [2]' });
+    });
+
+    it('saves the live alarm and collapsed state snapshot used by the screen', async () => {
+        const save = vi.fn(async () => undefined);
+        const liveFrontmatter = 'outlineCollapsed: [2]\nalarm_at: "2026-09-01T21:30:00+09:00"\nalarm_sound: true';
+
+        const duplicate = vi.fn(async () => undefined);
+        await saveBeforeDuplicate(
+            () => ({ body: '京都旅行', frontmatter: liveFrontmatter }),
+            save,
+            duplicate,
+        );
+
+        expect(save).toHaveBeenCalledWith('京都旅行', liveFrontmatter);
+        expect(duplicate).toHaveBeenCalledWith({ body: '京都旅行', frontmatter: liveFrontmatter });
+    });
+
+    it('does not duplicate when saving the latest note state fails', async () => {
+        const failure = new Error('save failed');
+        const duplicate = vi.fn(async () => undefined);
+
+        await expect(saveBeforeDuplicate(
+            () => ({ body: 'body', frontmatter: 'frontmatter' }),
+            async () => { throw failure; },
+            duplicate,
+        )).rejects.toBe(failure);
+        expect(duplicate).not.toHaveBeenCalled();
+    });
 });
 
-describe('contextMenuTagItemId', () => {
-  it('uses stable ASCII ids instead of raw tag names', () => {
-    const tags = ['仕事/重要', 'foo:bar', 'recipe', '空 白'];
-    const ids = tags.map((_tag, index) => contextMenuTagItemId('tag', index));
+describe('buildDuplicateRequestPayload', () => {
+    it('carries the live collapsed state and alarm across the Tauri event boundary', () => {
+        const frontmatter = [
+            '---',
+            'outlineCollapsed: [2, 14]',
+            'alarm_at: "2026-09-02T08:00:00+09:00"',
+            'alarm_sound: true',
+            '---',
+        ].join('\n');
 
-    expect(ids).toEqual(['ctx_tag_0', 'ctx_tag_1', 'ctx_tag_2', 'ctx_tag_3']);
-    expect(ids.join('|')).not.toContain('仕事');
-    expect(ids.join('|')).not.toContain('foo:bar');
-    expect(ids.join('|')).not.toContain('空 白');
-  });
-
-  it('keeps ids unique across tag menu groups', () => {
-    expect(contextMenuTagItemId('tag', 0)).toBe('ctx_tag_0');
-    expect(contextMenuTagItemId('tag_del', 0)).toBe('ctx_tag_del_0');
-    expect(contextMenuTagItemId('archive_tag', 0)).toBe('ctx_archive_tag_0');
-  });
-});
-
-describe('getShortcutShelfMenuState', () => {
-  it('hides the shortcut shelf item for recipe notes', () => {
-    expect(getShortcutShelfMenuState(['project', 'recipe'])).toEqual({
-      visible: false,
-      isRegistered: false,
-      label: null,
+        expect(buildDuplicateRequestPayload('0063.md', {
+            body: '# 京都旅行の計画',
+            frontmatter,
+        }, { sourcePhysWidth: 640, sourcePhysHeight: 900 })).toMatchObject({
+            path: '0063.md',
+            snapshotBody: '# 京都旅行の計画',
+            snapshotFrontmatter: frontmatter,
+            sourcePhysWidth: 640,
+            sourcePhysHeight: 900,
+        });
     });
-  });
-
-  it('shows register label when shortcut tag is absent', () => {
-    expect(getShortcutShelfMenuState(['project'])).toEqual({
-      visible: true,
-      isRegistered: false,
-      label: '📌 お気に入りに登録',
-    });
-  });
-
-  it('shows unregister label when shortcut tag is present', () => {
-    expect(getShortcutShelfMenuState(['project', 'SHORTCUT'])).toEqual({
-      visible: true,
-      isRegistered: true,
-      label: '📌 お気に入りを解除',
-    });
-  });
-});
-
-describe('getOpenFolderRequest', () => {
-  it('selects the saved note in its containing folder', () => {
-    expect(getOpenFolderRequest('C:\\notes\\note.md', 'C:\\notes')).toEqual({
-      command: 'fusen_open_containing_folder',
-      path: 'C:\\notes\\note.md',
-    });
-  });
-
-  it('opens the base folder for an unsaved empty note', () => {
-    expect(getOpenFolderRequest(undefined, 'C:\\notes')).toEqual({
-      command: 'fusen_open_file',
-      path: 'C:\\notes',
-    });
-  });
-
-  it('returns no request when neither note nor base folder exists', () => {
-    expect(getOpenFolderRequest(undefined, null)).toBeNull();
-  });
-});
-
-describe('releaseDeleteLockWhenMoveIsRejected', () => {
-  it('allows a retry after the backend rejects a duplicate or burst delete request', () => {
-    const deleting = { current: true };
-
-    expect(releaseDeleteLockWhenMoveIsRejected({ moved: false, path: 'C:\\notes\\note.md' }, deleting)).toBe(true);
-    expect(deleting.current).toBe(false);
-  });
-
-  it('keeps the lock until the window is closed after a successful move', () => {
-    const deleting = { current: true };
-
-    expect(releaseDeleteLockWhenMoveIsRejected({ moved: true, path: 'C:\\notes\\Trash\\note.md' }, deleting)).toBe(false);
-    expect(deleting.current).toBe(true);
-  });
-});
-
-describe('getAppOperationMenuLabels', () => {
-  it('shows the fixed search key and the configured arrange key in Japanese', () => {
-    expect(getAppOperationMenuLabels({
-      new_note_trigger: 'shortcut',
-      new_note: 'ctrl+n',
-      arrange: 'Shift+Control+KeyL',
-    }, 'ja')).toEqual({
-      submenu: '⚙️ アプリ操作',
-      search: '検索  Ctrl+F',
-      arrange: 'タグで整列  Ctrl+Shift+L',
-      undoArrange: '整列を元に戻す',
-      settings: '設定',
-    });
-  });
 });

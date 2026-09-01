@@ -1,6 +1,6 @@
 {
   "name": "ore-no-fusen",
-  "version": "5.2.0",
+  "version": "5.2.1",
   "description": "FUSEN - local-first sticky notes for developers working with AI coding tools",
   "private": true,
   "scripts": {

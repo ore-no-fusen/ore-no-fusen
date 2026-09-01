@@ -964,15 +964,27 @@ fn fusen_return_recipe(
 }
 
 #[tauri::command]
-fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Result<Note, String> {
+fn fusen_duplicate_note(
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    x: Option<f64>,
+    y: Option<f64>,
+    snapshot_body: Option<String>,
+    snapshot_frontmatter: Option<String>,
+) -> Result<Note, String> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-    // 元ノートを読む
-    let original = storage::read_note(&path).map_err(|e| e.to_string())?;
-    let (orig_front, orig_body) = logic::split_frontmatter(&original.body);
-    let (_, _, _, _, color, _, tags, _) = logic::extract_meta_from_content(orig_front);
-    let opacity = logic::extract_opacity(orig_front);
-    let bg_color = color.as_deref().unwrap_or("#f7e9b0").to_string();
+    // 画面上の最新状態を優先する。未指定の旧呼び出しだけディスクを読む。
+    let (orig_front, orig_body) = match (snapshot_frontmatter, snapshot_body) {
+        (Some(frontmatter), Some(body)) => (frontmatter, body),
+        _ => {
+            let original = storage::read_note(&path).map_err(|e| e.to_string())?;
+            let (frontmatter, body) = logic::split_frontmatter(&original.body);
+            (frontmatter.to_string(), body.to_string())
+        }
+    };
+    let (orig_x, orig_y, orig_width, orig_height, _, _, _, _) =
+        logic::extract_meta_from_content(&orig_front);
 
     // stateからfolder_pathとcontextを取得（lockをすぐ解放）
     let (folder_path, context, next_seq) = {
@@ -988,16 +1000,18 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
         (fp, ctx, seq)
     };
 
-    let new_frontmatter = logic::generate_frontmatter(
+    let duplicate_x = x.or(orig_x).unwrap_or(100.0);
+    let duplicate_y = y.or(orig_y).unwrap_or(100.0);
+    let duplicate_width = orig_width.unwrap_or(400.0);
+    let duplicate_height = orig_height.unwrap_or(300.0);
+    let new_frontmatter = logic::duplicate_frontmatter(
+        &orig_front,
         next_seq,
-        &context,
         &today,
-        &today,
-        Some(&bg_color),
-        &tags,
-        None,
-        opacity,
-        None,
+        duplicate_x,
+        duplicate_y,
+        duplicate_width,
+        duplicate_height,
     );
     let new_filename = logic::generate_filename(next_seq, &today, &context);
     let new_path_str = std::path::Path::new(&folder_path)
@@ -1012,12 +1026,23 @@ fn fusen_duplicate_note(state: State<'_, Mutex<AppState>>, path: String) -> Resu
     let content = format!("{}\n\n{}", new_frontmatter, duplicated_body);
     storage::write_note(&new_path_str, &content)?;
 
+    let (meta_x, meta_y, meta_width, meta_height, background_color, always_on_top, tags, folded) =
+        logic::extract_meta_from_content(&new_frontmatter);
     let meta = NoteMeta {
         path: new_path_str,
         seq: next_seq,
         context,
         updated: today,
-        ..Default::default()
+        x: meta_x,
+        y: meta_y,
+        width: meta_width,
+        height: meta_height,
+        background_color,
+        always_on_top,
+        folded,
+        opacity: logic::extract_opacity(&new_frontmatter),
+        font_size: logic::extract_font_size(&new_frontmatter),
+        tags,
     };
 
     logic::apply_add_note(
