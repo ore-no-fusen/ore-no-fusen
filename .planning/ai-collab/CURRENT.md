@@ -1501,3 +1501,8 @@
 - 再発防止修正: 複製クリック時に取得した本文・frontmatterのスナップショットをTauriイベントとRust commandへ直接渡し、その値から複製する。ディスク保存の反映タイミングに依存しない。
 - 自動検証: TypeScript成功、Rust `cargo check`成功、Vitest 106ファイル・554件成功。イベントpayloadが `outlineCollapsed: [2, 14]`、`alarm_at`、`alarm_sound`を保持する回帰テストを追加。
 - 現在地: 修正版をクリーン再起動済み。実機で「予約を折りたたむ・未来のアラームを設定・複製」を行い、複製先の表示と生成ファイルを照合するまでSTEP 0不合格のまま。
+- PC実機確認: 折りたたみ状態とアラームを含む複製に合格。
+- コミット: `d44feaa feat: add reliable collapsible outlines`。pre-commit・コミット331秒、TypeScript・Vitest 554件・E2E 38件成功（5件skip）。
+- STEP 1: 本番exe、開発署名MSIX、署名検証、導入・起動に387.3秒。Dev package `ONFStudios.FUSEN.Dev_5.2.1.0_x64`、署名検証は警告0・エラー0。
+- STEP 2: Store用MSIX作成・5項目検証・固定保存に8.3秒。`5.2.1.0`、x64、未署名。exe SHA-256 `0A32883405B1F803ABE69A87FC47612AAB34F032B34DC4E8F4C77EB959DC5B6D`。
+- Store提出物: `D:\Users\uck\Documents\俺の付箋-Store提出\5.2.1\ore-no-fusen.msix`（55,465,862 bytes、SHA-256 `4419F72DD1CE7B87A71414618554790FF4E79846D3B2DE1BDB996382A75AAD22`）。
