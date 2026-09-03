@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { buildFoldedPreview } from './markdownUtils';
 
 describe('buildFoldedPreview', () => {
-    it('keeps ordinary text content unchanged', () => {
-        expect(buildFoldedPreview('見出し\n本文')).toBe('見出し\n本文');
+    it('shows only the first non-empty line for ordinary text', () => {
+        expect(buildFoldedPreview('heading\nbody')).toBe('heading');
+    });
+
+    it('skips leading empty lines for ordinary text', () => {
+        expect(buildFoldedPreview('\n\nfirst line\nsecond line')).toBe('first line');
     });
 
     it('shows the image marker with the nearest following text', () => {
