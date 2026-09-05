@@ -1,4 +1,4 @@
-import { hashSecretToken, safeEqualHash } from './security';
+import { FeedbackRequestError, hashSecretToken, safeEqualHash } from './security';
 import type { FeedbackConversation, FeedbackConversationMessage } from './types';
 
 export interface FeedbackConversationStore {
@@ -22,7 +22,15 @@ class MemoryFeedbackConversationStore implements FeedbackConversationStore {
   private messages = new Map<string, FeedbackConversationMessage>();
 
   async createConversation(conversation: FeedbackConversation): Promise<void> {
-    this.conversations.set(conversation.conversationId, conversation);
+    const existing = this.conversations.get(conversation.conversationId);
+    if (existing && !safeEqualHash(existing.secretTokenHash, conversation.secretTokenHash)) {
+      throw new FeedbackRequestError('Invalid conversation credentials', 403);
+    }
+    this.conversations.set(conversation.conversationId, {
+      ...conversation,
+      createdAt: existing?.createdAt ?? conversation.createdAt,
+      secretTokenHash: existing?.secretTokenHash ?? conversation.secretTokenHash,
+    });
     if (conversation.discordMessageId) {
       this.discordMessageToConversation.set(conversation.discordMessageId, conversation.conversationId);
     }
@@ -198,7 +206,7 @@ function base64Url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url');
 }
 
-async function getFirestoreAccessToken(clientEmail: string, privateKey: string): Promise<string> {
+export async function getFirestoreAccessToken(clientEmail: string, privateKey: string): Promise<string> {
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (cachedAccessToken && cachedAccessToken.expiresAt > nowSeconds + 60) {
     return cachedAccessToken.token;
@@ -271,7 +279,16 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
   }
 
   async createConversation(conversation: FeedbackConversation): Promise<void> {
-    await this.request(`/feedback_conversations/${conversation.conversationId}`, {
+    const existing = await this.getConversation(conversation.conversationId);
+    if (existing && !safeEqualHash(existing.secretTokenHash, conversation.secretTokenHash)) {
+      throw new FeedbackRequestError('Invalid conversation credentials', 403);
+    }
+    const mutable = ['discord_channel_id', 'discord_message_id', 'discord_thread_id',
+      'delivery_enabled', 'shadow_only', 'updated_at'];
+    const query = existing
+      ? `currentDocument.exists=true&${mutable.map((key) => `updateMask.fieldPaths=${key}`).join('&')}`
+      : 'currentDocument.exists=false';
+    await this.request(`/feedback_conversations/${conversation.conversationId}?${query}`, {
       method: 'PATCH',
       body: JSON.stringify({
         fields: toFirestoreFields({

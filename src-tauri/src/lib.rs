@@ -27,6 +27,7 @@ mod launcher;
 mod logic;
 mod perflog; // パフォーマンス計測ログ（JSON Lines）
 mod settings;
+mod member_identity;
 mod sound; // [NEW] サウンド機能
 mod state;
 mod storage;
@@ -5224,6 +5225,15 @@ pub fn run() {
         .plugin(tauri_plugin_oauth::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
+            member_identity::member_get,
+            member_identity::member_set_consent,
+            member_identity::member_record_batch,
+            member_identity::member_flush,
+            member_identity::member_closed_summaries,
+            member_identity::member_mark_summary_sent,
+            member_identity::member_needs_sync,
+            member_identity::member_sync,
+            member_identity::member_link_conversation,
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_distribution_info,
             fusen_open_startup_settings,

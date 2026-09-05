@@ -66,6 +66,8 @@ pub struct CreateRecipeNoteRequest {
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct AppState {
+    #[serde(skip)]
+    pub member: Option<crate::member_identity::MemberLocal>,
     pub base_path: Option<String>,
     pub folder_path: Option<String>,
     pub notes: Vec<NoteMeta>,

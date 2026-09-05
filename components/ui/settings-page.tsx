@@ -10,6 +10,7 @@
 "use client"
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
+import MemberSettings from "@/app/components/MemberSettings"
 import { invoke } from "@tauri-apps/api/core"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText, Heart } from "lucide-react"
 
@@ -47,6 +48,7 @@ import {
 } from "@/app/utils/crystalFormatEditor"
 import {
     ackFeedbackConversationMessages,
+    linkFeedbackMember,
     clearFeedbackConversationIdentity,
     deleteFeedbackConversation,
     getDeveloperFeedbackApiBaseUrl,
@@ -175,7 +177,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
             case "feedback":
                 return <FeedbackSection t={t} />
             case "conversation":
-                return <DeveloperConversationSection language={settings.language} />
+                return <><MemberSettings language={settings.language} /><DeveloperConversationSection language={settings.language} /></>
             case "advanced":
                 return <AdvancedSection settings={settings} t={t} />
             default:
@@ -2355,6 +2357,7 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
             const isDev = process.env.NODE_ENV === 'development';
             const apiUrl = `${getFeedbackApiBaseUrl()}/conversation/messages`;
             const conversationIdentity = getOrCreateFeedbackConversationIdentity();
+            await linkFeedbackMember(conversationIdentity);
 
             console.log(`Sending feedback to: ${apiUrl}`);
 
@@ -2559,6 +2562,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         setSending(true)
         setError(null)
         try {
+            await linkFeedbackMember(conversationIdentity);
             const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

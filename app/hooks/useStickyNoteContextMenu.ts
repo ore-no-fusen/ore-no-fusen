@@ -24,11 +24,12 @@ import { trackEvent } from '@/app/utils/analytics';
 
 export async function saveBeforeDuplicate(
     getSnapshot: () => { body: string; frontmatter: string },
-    save: (body: string, frontmatter: string) => Promise<void>,
+    save: (body: string, frontmatter: string) => Promise<void | boolean>,
     duplicate: (snapshot: { body: string; frontmatter: string }) => Promise<void>,
 ): Promise<void> {
     const snapshot = getSnapshot();
-    await save(snapshot.body, snapshot.frontmatter);
+    const saved = await save(snapshot.body, snapshot.frontmatter);
+    if (saved === false) return;
     await duplicate(snapshot);
 }
 
@@ -130,7 +131,7 @@ type UseStickyNoteContextMenuProps = {
     editBody: string;
     rawFrontmatter: string;
     getCurrentDuplicateSnapshot: () => { body: string; frontmatter: string };
-    saveNoteContent: (body: string, front: string, allowRename: boolean) => Promise<void>;
+    saveNoteContent: (body: string, front: string, allowRename: boolean) => Promise<boolean>;
     loadAllTags: () => Promise<void>;
     addTagToNote: (path: string, tag: string) => Promise<void>;
     removeTagFromNote: (path: string, tag: string) => Promise<void>;

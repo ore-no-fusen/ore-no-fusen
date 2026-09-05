@@ -256,6 +256,7 @@ const StickyNote = memo(function StickyNote() {
         rawFrontmatterForAlarmRef.current = nextFrontmatter;
         setRawFrontmatter(nextFrontmatter);
         setSavePending(true);
+        trackEvent('feature_used', { event_category: 'usage', feature_name: 'outline_toggle' });
     }, [setRawFrontmatter, setSavePending]);
 
     const startupReadyEmittedRef = useRef(false);
@@ -301,12 +302,14 @@ const StickyNote = memo(function StickyNote() {
             return;
         }
 
-        await saveNoteContent(body, front, allowRename);
+        const saved = await saveNoteContent(body, front, allowRename);
+        if (!saved) return;
+        if (body !== content) trackEvent('feature_used', { event_category: 'usage', feature_name: 'note_edited' });
         if (isNew) {
             trackEvent('first_note_saved', { event_category: 'activation' });
             setIsNewState(false);
         }
-    }, [saveNoteContent, isNew, isPool, noteFilePathRef]);
+    }, [saveNoteContent, isNew, isPool, noteFilePathRef, content]);
 
     // 編集モード管理
     const {
@@ -403,7 +406,9 @@ const StickyNote = memo(function StickyNote() {
                 const nextBody = isEditingForListenerRef.current
                     ? insertDroppedImageMarkdown(currentBody, savedPaths, dropOffset)
                     : appendDroppedImageMarkdown(currentBody, savedPaths);
-                await saveNoteContent(nextBody, rawFrontmatterForAlarmRef.current, false);
+                const saved = await saveNoteContent(nextBody, rawFrontmatterForAlarmRef.current, false);
+                if (!saved) throw new Error('Image note save skipped');
+                trackEvent('feature_used', { event_category: 'usage', feature_name: 'image_attach' });
                 setContent(nextBody);
                 setEditBody(nextBody);
                 setIsNewState(false);
@@ -1570,8 +1575,8 @@ const StickyNote = memo(function StickyNote() {
         const newFront2 = updateFrontmatterValue(newFront1, 'alarm_sound', alarmSound.toString());
         rawFrontmatterForAlarmRef.current = newFront2;
         setRawFrontmatter(newFront2);
-        await saveNoteContent(content, newFront2, false);
-        trackEvent('feature_used', { event_category: 'usage', feature_name: 'alarm_set' });
+        const saved = await saveNoteContent(content, newFront2, false);
+        if (saved) trackEvent('feature_used', { event_category: 'usage', feature_name: 'alarm_set' });
     }, [content, saveNoteContent, setRawFrontmatter]);
 
     /**

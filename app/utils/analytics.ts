@@ -1,22 +1,9 @@
 'use client';
 
+import { countMemberFeature } from './memberUsageQueue';
+
 type AnalyticsParams = Record<string, string | number | boolean | undefined>;
 
-const DESKTOP_ALLOWED_PARAMS = new Set([
-  'event_category',
-  'app_version',
-  'distribution',
-  'creation_path',
-  'error_category',
-  'donation_source',
-  'note_count_bucket',
-  'tagged_note_count_bucket',
-  'tag_count_bucket',
-  'iphone_enabled',
-  'feature_name',
-]);
-
-const ANONYMOUS_COUNT_BUCKETS = new Set(['0', '1-5', '6-10', '11-20', '21-50', '51+']);
 const ALLOWED_FEATURE_NAMES = new Set([
   'tag_add',
   'alarm_set',
@@ -25,17 +12,17 @@ const ALLOWED_FEATURE_NAMES = new Set([
   'search_open',
   'note_duplicate',
   'note_archive',
+  'note_edited',
+  'outline_toggle',
+  'image_attach',
 ]);
 
 declare global {
   interface Window {
     gtag?: (command: 'event', eventName: string, params?: AnalyticsParams) => void;
-    __FUSEN_ANALYTICS_DISABLE_TIMER__?: number;
     'ga-disable-G-MGPKF0MQH4'?: boolean;
   }
 }
-
-const GA_DISABLE_KEY = 'ga-disable-G-MGPKF0MQH4' as const;
 
 export function bucketAnonymousCount(count: number): string {
   if (count <= 0) return '0';
@@ -46,31 +33,21 @@ export function bucketAnonymousCount(count: number): string {
   return '51+';
 }
 
-function scheduleDesktopAnalyticsDisable() {
-  if (window.__FUSEN_ANALYTICS_DISABLE_TIMER__ !== undefined) {
-    window.clearTimeout(window.__FUSEN_ANALYTICS_DISABLE_TIMER__);
-  }
-  window.__FUSEN_ANALYTICS_DISABLE_TIMER__ = window.setTimeout(() => {
-    window[GA_DISABLE_KEY] = true;
-    window.__FUSEN_ANALYTICS_DISABLE_TIMER__ = undefined;
-  }, 3_000);
-}
-
 export function trackEvent(eventName: string, params: AnalyticsParams = {}) {
-  if (typeof window === 'undefined' || typeof window.gtag !== 'function') return;
+  if (typeof window === 'undefined') return;
   const isTauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
   if (isTauri && (window as Window & { __FUSEN_ANALYTICS_GRANTED__?: boolean }).__FUSEN_ANALYTICS_GRANTED__ !== true) return;
-  const safeParams = isTauri
-    ? Object.fromEntries(Object.entries(params).filter(([key, value]) => {
-        if (!DESKTOP_ALLOWED_PARAMS.has(key)) return false;
-        if (key.endsWith('_count_bucket')) return typeof value === 'string' && ANONYMOUS_COUNT_BUCKETS.has(value);
-        if (key === 'feature_name') return typeof value === 'string' && ALLOWED_FEATURE_NAMES.has(value);
-        return true;
-      }))
-    : params;
-  if (isTauri) window[GA_DISABLE_KEY] = false;
-  window.gtag('event', eventName, safeParams);
-  if (isTauri) scheduleDesktopAnalyticsDisable();
+  if (isTauri && (eventName === 'feature_used' || eventName === 'note_created')) {
+    const feature = eventName === 'note_created' ? 'note_created' : params.feature_name;
+    if (typeof feature === 'string' && (feature === 'note_created' || ALLOWED_FEATURE_NAMES.has(feature))) {
+      countMemberFeature(feature);
+    }
+    return;
+  }
+  // Desktop analytics is weekly-only. Other legacy events are intentionally ignored.
+  if (isTauri) return;
+  if (typeof window.gtag !== 'function') return;
+  window.gtag('event', eventName, params);
 }
 
 export function trackDonationEvent(eventName: string, params: AnalyticsParams = {}) {
