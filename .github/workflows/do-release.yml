@@ -277,7 +277,7 @@ jobs:
             -ExpectedVersion "$env:STORE_VERSION.0"
 
       - name: Upload private Store submission artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.dry_run && 'store-msix-dry-run' || 'store-msix' }}
           path: packaging/msix/out/ore-no-fusen.msix
