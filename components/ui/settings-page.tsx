@@ -176,7 +176,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                     newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language)}
                 />
             case "feedback":
-                return <FeedbackSection t={t} />
+                return <FeedbackSection t={t} language={settings.language} />
             case "conversation":
                 return <><MemberSettings language={settings.language} /><DeveloperConversationSection language={settings.language} /></>
             case "advanced":
@@ -2316,7 +2316,7 @@ function HelpTable({
     )
 }
 
-function FeedbackSection({ t }: { t: (key: any) => string }) {
+function FeedbackSection({ t, language }: { t: (key: any) => string; language: Language }) {
     const [type, setType] = useState<'bug' | 'feature' | 'other'>('bug')
     const [content, setContent] = useState('')
     const [contact, setContact] = useState('')
@@ -2424,7 +2424,7 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
             <Separator />
 
             <div className="space-y-6 max-w-2xl">
-                <SupportMemberNumber language={React.useContext(SettingsLanguageContext)} />
+                <SupportMemberNumber language={language} />
                 {/* 種類選択 */}
                 <div className="space-y-3">
                     <Label>{t('settings.feedback.typeLabel')}</Label>
