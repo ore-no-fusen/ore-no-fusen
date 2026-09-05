@@ -11,11 +11,12 @@
 
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { open } from '@tauri-apps/plugin-shell';
-import { EditorState, EditorSelection, Extension, StateField, Compartment, RangeSetBuilder, Transaction, Facet, StateEffect, Line } from '@codemirror/state';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { EditorState, Extension, StateField, Compartment, RangeSetBuilder, Transaction, Facet, StateEffect, Line } from '@codemirror/state';
+import { defaultKeymap, history, historyKeymap, selectLineDown, selectLineUp } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { highlightSelectionMatches, search, setSearchQuery, SearchQuery } from '@codemirror/search';
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, keymap, WidgetType } from '@codemirror/view'; // Remove scrollPastEnd
+import type { KeyBinding } from '@codemirror/view';
 import { createRoot } from 'react-dom/client';
 import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUtils';
@@ -25,6 +26,36 @@ import { NOTE_DRAG_CURSOR } from '../utils/cursorStyles';
 import { indentSelectedLines, outdentSelectedLines } from '../utils/editorIndent';
 
 export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
+export const getLogicalLineSelectionFallback = (state: EditorState, head: number, forward: boolean): number | null => {
+    const line = state.doc.lineAt(head);
+    const targetLineNumber = line.number + (forward ? 1 : -1);
+    if (targetLineNumber < 1 || targetLineNumber > state.doc.lines) return null;
+
+    const targetLine = state.doc.line(targetLineNumber);
+    const column = head - line.from;
+    return Math.min(targetLine.from + column, targetLine.to);
+};
+
+const extendSelectionVertically = (view: EditorView, forward: boolean): boolean => {
+    const before = view.state.selection.main;
+    const handled = (forward ? selectLineDown : selectLineUp)(view);
+    if (view.state.selection.main.head !== before.head) return true;
+
+    const fallbackHead = getLogicalLineSelectionFallback(view.state, before.head, forward);
+    if (fallbackHead === null || fallbackHead === before.head) return handled;
+
+    view.dispatch({
+        selection: { anchor: before.anchor, head: fallbackHead },
+        scrollIntoView: true,
+        userEvent: 'select',
+    });
+    return true;
+};
+
+export const verticalSelectionKeymap: readonly KeyBinding[] = [
+    { key: 'ArrowDown', shift: view => extendSelectionVertically(view, true) },
+    { key: 'ArrowUp', shift: view => extendSelectionVertically(view, false) },
+];
 const outlineRefreshEffect = StateEffect.define<null>();
 
 class OutlineControlWidget extends WidgetType {
@@ -747,28 +778,6 @@ const formatLineWithPrefix = (text: string, prefix: 'heading' | 'list' | 'checkb
     return `- ${body}`;
 };
 
-const selectVisualLine = (view: EditorView, forward: boolean): boolean => {
-    const range = view.state.selection.main;
-    const coords = view.coordsAtPos(range.head, forward ? 1 : -1);
-    if (!coords) return false;
-
-    const contentRect = view.contentDOM.getBoundingClientRect();
-    const x = Math.max(coords.left + 2, contentRect.left + 2);
-    const y = forward ? coords.bottom + 2 : coords.top - 2;
-    let head = view.posAtCoords({ x, y });
-
-    if (head === null || head === range.head) {
-        head = view.moveVertically(range, forward).head;
-    }
-    if (head === range.head) return false;
-
-    view.dispatch({
-        selection: EditorSelection.create([EditorSelection.range(range.anchor, head)]),
-        scrollIntoView: true,
-    });
-    return true;
-};
-
 const IMAGE_MARKDOWN_LINE_REGEX = /^\s*!\[[^\]]*\]\([^)]+\)\s*$/;
 
 const moveFromImageLineEnd = (view: EditorView, direction: 'left' | 'right'): boolean => {
@@ -1257,17 +1266,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     // 基本的な編集機能
                     history(),
                     keymap.of([
+                        ...verticalSelectionKeymap,
                         // Ctrl+B: 太字トグル
-                        {
-                            key: 'ArrowDown',
-                            shift: (view) => selectVisualLine(view, true),
-                            preventDefault: true,
-                        },
-                        {
-                            key: 'ArrowUp',
-                            shift: (view) => selectVisualLine(view, false),
-                            preventDefault: true,
-                        },
                         {
                             key: 'ArrowRight',
                             run: (view) => moveFromImageLineEnd(view, 'right'),
