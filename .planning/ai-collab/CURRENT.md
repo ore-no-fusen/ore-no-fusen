@@ -1655,3 +1655,4 @@
 - 全E2Eは37件成功・5件skip・設定英語画面1件失敗。原因は会員設定のTauriイベント購読解除がテストモック例外をそのまま伝播したこと。既存 `safeUnlisten` をMemberSettingsとAnalyticsLoaderへ適用し、対象E2E 1件と対象ユニット7件、TypeScriptに成功。全E2Eの他37件は同じ最終差分で成功済み。
 - develop Preview APIの実登録で開発一般番号10000と32文字分析IDを確認。その後PC開発版ではメイン付箋にもURL `path` があるためAnalyticsLoaderが全処理を除外し、保護ファイルを作らない不具合を実機で発見。URL判定をTauriウィンドウラベル `main` 判定へ変更し、子窓で動かないテストを追加。
 - 修正後のPC開発版を起動し、約60秒後に一般番号10001、32文字分析IDが `%LOCALAPPDATA%/OreNoFusen/membership/development/identity.bin` へDPAPI保護保存されたことを、秘密を表示せず同じWindowsユーザー権限で確認。分析同意は未選択のままで、番号発行と同意が分離されている。
+- develop CIの通常Testは成功。Rust Windows Testは会員コードではなく、既存workflowにコンパイル必須の `GDRIVE_CLIENT_ID/SECRET` がなかったため失敗。実認証には使わない `ci-dummy` をRust CI jobへ追加し、通常Test workflowと同じコンパイル条件へ揃えた。
