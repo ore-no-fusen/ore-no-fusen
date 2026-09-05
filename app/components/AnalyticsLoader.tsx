@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { safeUnlisten } from '../utils/safeUnlisten';
 
 const GA_ID = 'G-MGPKF0MQH4';
@@ -42,7 +43,7 @@ async function runDesktopBackground(cancelled:()=>boolean) {
 export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
   useEffect(()=>{
     if(!isTauriBuild){loadGa4(true);return;}
-    if(new URLSearchParams(window.location.search).has('path'))return;
+    if(getCurrentWindow().label!=='main')return;
     let cancelled=false;
     let unlisten:(()=>void)|undefined;
     // This local asynchronous read does not delay rendering or note input.

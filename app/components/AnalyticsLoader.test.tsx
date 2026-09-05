@@ -2,14 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import React from 'react';
 
-const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+const { invokeMock, windowLabel } = vi.hoisted(() => ({ invokeMock: vi.fn(), windowLabel: { value: 'main' } }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async()=>vi.fn()) }));
+vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: windowLabel.value }) }));
 import AnalyticsLoader from './AnalyticsLoader';
 
 describe('AnalyticsLoader low-impact scheduling', () => {
   beforeEach(() => {
-    vi.useFakeTimers(); invokeMock.mockReset();
+    vi.useFakeTimers(); invokeMock.mockReset(); windowLabel.value='main';
     delete (window as any).gtag; delete (window as any).dataLayer; delete (window as any).__FUSEN_ANALYTICS_GRANTED__;
     document.querySelectorAll('[data-fusen-analytics="ga4"]').forEach(node=>node.remove());
     invokeMock.mockImplementation((command:string)=>{
@@ -36,6 +37,13 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(invokeMock).toHaveBeenCalledWith('member_closed_summaries');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull();
+  });
+
+  it('runs only in the main Tauri window', async()=>{
+    windowLabel.value='note-2';
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it('queues a closed-week feature summary and removes it only after queueing',async()=>{

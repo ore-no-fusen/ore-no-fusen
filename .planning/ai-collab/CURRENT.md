@@ -1653,3 +1653,5 @@
 - 残りは管理者トークンの安全な生成・保存、作業ブランチのコミット/レビュー、develop Preview配備、開発会員番号とFirestore実接続、開発版の入力体感・設定表示・同意確認。週跨ぎGA4は実時間を待たずに送信単体テストで確認済み、実データ受信は次週以降に確認する。
 - 差分レビューで、Windowsの `std::fs::rename` は既存 `identity.bin` を置換できず、初回作成後の同意・番号・集計保存が失敗する不具合を発見。`MoveFileExW` の置換・書込み完了指定へ変更し、既存ファイル上書きテストを追加。Rust会員テスト4件に成功した。
 - 全E2Eは37件成功・5件skip・設定英語画面1件失敗。原因は会員設定のTauriイベント購読解除がテストモック例外をそのまま伝播したこと。既存 `safeUnlisten` をMemberSettingsとAnalyticsLoaderへ適用し、対象E2E 1件と対象ユニット7件、TypeScriptに成功。全E2Eの他37件は同じ最終差分で成功済み。
+- develop Preview APIの実登録で開発一般番号10000と32文字分析IDを確認。その後PC開発版ではメイン付箋にもURL `path` があるためAnalyticsLoaderが全処理を除外し、保護ファイルを作らない不具合を実機で発見。URL判定をTauriウィンドウラベル `main` 判定へ変更し、子窓で動かないテストを追加。
+- 修正後のPC開発版を起動し、約60秒後に一般番号10001、32文字分析IDが `%LOCALAPPDATA%/OreNoFusen/membership/development/identity.bin` へDPAPI保護保存されたことを、秘密を表示せず同じWindowsユーザー権限で確認。分析同意は未選択のままで、番号発行と同意が分離されている。
