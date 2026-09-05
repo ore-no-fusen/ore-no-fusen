@@ -2,9 +2,8 @@ CHANGED=$(git diff --cached --name-only)
 
 # Documentation-only commits cannot affect the application runtime.
 # Skip the expensive application checks when every staged file is documentation.
-if [ -n "$CHANGED" ] && ! echo "$CHANGED" | grep -qEv '^(\.planning/|docs/|docs-v2/|[^/]+\.md$)'; then
-  : # At least one non-documentation file is staged; run the checks below.
-elif [ -n "$CHANGED" ]; then
+CHECK_MODE=$(node scripts/precommit-classify.mjs)
+if [ "$CHECK_MODE" = "skip" ]; then
   echo "[pre-commit] Skipped: documentation-only changes"
   exit 0
 fi
