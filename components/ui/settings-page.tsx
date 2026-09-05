@@ -11,6 +11,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
 import MemberSettings from "@/app/components/MemberSettings"
+import SupportMemberNumber from "@/app/components/SupportMemberNumber"
 import { invoke } from "@tauri-apps/api/core"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText, Heart } from "lucide-react"
 
@@ -2423,6 +2424,7 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
             <Separator />
 
             <div className="space-y-6 max-w-2xl">
+                <SupportMemberNumber language={React.useContext(SettingsLanguageContext)} />
                 {/* 種類選択 */}
                 <div className="space-y-3">
                     <Label>{t('settings.feedback.typeLabel')}</Label>
@@ -2628,6 +2630,8 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{feedbackApiBaseUrl}</div>
                 </div>
             </div>
+
+            <SupportMemberNumber language={language} />
 
             <div className="border rounded-lg overflow-hidden bg-white">
                 <div className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
