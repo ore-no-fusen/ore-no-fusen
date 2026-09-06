@@ -1704,3 +1704,11 @@
 - 追加検証成功: リアルタイム更新を含む画面・検索テスト7件、位置保持Rustテスト2件、TypeScript、専用Playwright 1件、VitePress build、`git diff --check`。
 - 復元位置の再実機確認で、`window` は保存されている一方、取り出し後の `syncState()` 結果を捨てて `openNoteWindow(path, undefined)` としていたことを特定。復元パスを大小文字・区切り差を正規化して最新 `NoteMeta` と照合し、x/y/width/height等を渡すよう修正した。
 - パス照合の回帰テストを追加し、対象Vitest 8件、TypeScript、専用Playwright 1件、`git diff --check` に成功。画面のNext.js Issueは別件のiPhone受信で、存在しない保存先への一時ファイル書込み `os error 3`。
+
+## 2026-09-06 Store 5.2.2 リリース引き継ぎ
+
+- 5.2.1は公開済みとのユーザー確認を受け、今回を5.2.2へ変更。5ファイル一括更新スクリプトと拒否テストを追加した。
+- 開発署名MSIX `ONFStudios.FUSEN.Dev_5.2.2.0_x64`を作成・署名検証・インストールし、ユーザー実機確認に合格。exe作成から導入まで481秒。
+- 合格済みexeを再ビルドせずStore用MSIXへ梱包。Name=`ONFStudios.FUSEN`、Publisher一致、Version=`5.2.2.0`、Architecture=`x64`、未署名を確認。Store MSIX作成・検証は7.9秒。
+- Store提出物: `D:\Users\uck\Documents\俺の付箋-Store提出\5.2.2\ore-no-fusen.msix`（55,803,087 bytes、SHA-256 `02FB1CF53D2E35F577D71317311E7E2D8740ED33EE4DD73F629D1F47C3803787`）。内部exeは合格済みrelease exe SHA-256 `80E65D499BDA6C2F701C088DA3BA425F467173E1CEE455030B349BD9D38B546C`と一致。
+- `main`・`develop`はStore 5.2.2統合コミット`04b1c8d`へ反映済み。次はSTEP 3としてPartner CenterへMSIXをアップロードし、日本語・英語のリリースノートを更新して、送信直前にユーザー承認を得る。
