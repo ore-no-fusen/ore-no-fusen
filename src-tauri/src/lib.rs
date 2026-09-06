@@ -1267,6 +1267,7 @@ mod archive_user_tag_tests {
 
 #[tauri::command]
 fn fusen_archive_note(
+    app: AppHandle,
     state: State<'_, Mutex<AppState>>,
     path: String,
     target_tag: Option<String>,
@@ -1290,7 +1291,10 @@ fn fusen_archive_note(
 
     // 3. Move/Link files and handle assets
     // タグフォルダ・アーカイブへ移動前にアプリ固有フィールドを除去（Obsidian互換化）
-    let cleaned_content = logic::strip_sticky_fields(&content.body);
+    let cleaned_content = storage::add_archived_at(
+        &logic::strip_sticky_fields(&content.body),
+        &chrono::Utc::now().to_rfc3339(),
+    );
 
     // target_tag が指定されていればそのタグフォルダへ、なければ従来通り
     let resolved_tag = resolve_archive_user_tag(target_tag, &tags)?;
@@ -1326,6 +1330,7 @@ fn fusen_archive_note(
 
     // 4. Update state
     logic::apply_remove_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path);
+    let _ = app.emit("fusen:archive_changed", ());
 
     // 5. Cleanup original assets? (Optional but requested as "移動")
     // Note: copy_associated_assets used fs::copy.
@@ -1335,6 +1340,80 @@ fn fusen_archive_note(
 
     // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
     Ok("Archived successfully".to_string())
+}
+
+#[tauri::command]
+fn fusen_list_archived_notes(
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<storage::ArchivedNoteSummary>, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
+    };
+    Ok(storage::list_archived_notes(Path::new(&base_path)))
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct RestoreArchivedNoteResult {
+    source_path: String,
+    restored_path: Option<String>,
+    status: String,
+    error: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct RestoreArchivedNotesResult {
+    restored: Vec<RestoreArchivedNoteResult>,
+    conflicts: Vec<RestoreArchivedNoteResult>,
+    failed: Vec<RestoreArchivedNoteResult>,
+}
+
+#[tauri::command]
+fn fusen_restore_archived_notes(
+    state: State<'_, Mutex<AppState>>,
+    paths: Vec<String>,
+) -> Result<RestoreArchivedNotesResult, String> {
+    let base_path = {
+        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+        app_state.base_path.clone().or(app_state.folder_path.clone()).ok_or("base_path is not set")?
+    };
+    let mut result = RestoreArchivedNotesResult { restored: Vec::new(), conflicts: Vec::new(), failed: Vec::new() };
+    let mut seen = std::collections::HashSet::new();
+
+    for source_path in paths {
+        if !seen.insert(source_path.clone()) { continue; }
+        match storage::restore_archived_note(Path::new(&base_path), Path::new(&source_path)) {
+            Ok(path) => result.restored.push(RestoreArchivedNoteResult {
+                source_path,
+                restored_path: Some(path.to_string_lossy().to_string()),
+                status: "restored".to_string(),
+                error: None,
+            }),
+            Err(error) if error.starts_with("conflict:") => result.conflicts.push(RestoreArchivedNoteResult {
+                source_path,
+                restored_path: None,
+                status: "conflict".to_string(),
+                error: Some(error),
+            }),
+            Err(error) => result.failed.push(RestoreArchivedNoteResult {
+                source_path,
+                restored_path: None,
+                status: "failed".to_string(),
+                error: Some(error),
+            }),
+        }
+    }
+
+    if !result.restored.is_empty() {
+        state.lock().unwrap_or_else(|p| p.into_inner()).notes = storage::list_notes(&base_path);
+    }
+    Ok(result)
 }
 
 // [NEW] 全文検索
@@ -5273,6 +5352,8 @@ pub fn run() {
             fusen_get_active_tags,
             fusen_set_active_tags,
             fusen_archive_note,
+            fusen_list_archived_notes,
+            fusen_restore_archived_notes,
             fusen_open_containing_folder,
             fusen_open_file,
             fusen_open_tag_folder,

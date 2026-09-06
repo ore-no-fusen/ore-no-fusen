@@ -100,6 +100,28 @@ updated: 2026-01-31
                     console.log('[Mock Tauri] Archived:', args.path);
                     return args.path;
 
+                case 'fusen_list_archived_notes':
+                    return Array.from({ length: 6 }, (_, index) => ({
+                        path: `C:/test/${index < 3 ? 'Archive' : 'tags/仕事'}/note-${index}.md`,
+                        preview: `本文 ${index}\n続き ${index}\n三行目 ${index}`,
+                        backgroundColor: index === 5 ? '#ffeeaa' : null,
+                        previewImagePath: index === 5 ? 'C:/test/tags/仕事/assets/photo.png' : null,
+                        locationKind: index < 3 ? 'archive' : 'tag',
+                        locationName: index < 3 ? 'Archive' : '仕事',
+                        archivedAt: `2026-09-0${index + 1}T00:00:00Z`,
+                    }));
+
+                case 'fusen_restore_archived_notes':
+                    return {
+                        restored: (args.paths ?? []).map((sourcePath: string) => ({
+                            sourcePath,
+                            status: 'restored',
+                            restoredPath: `C:/test/${sourcePath.split('/').pop()}`,
+                        })),
+                        conflicts: [],
+                        failed: [],
+                    };
+
                 case 'get_base_path':
                     return 'C:/test';
 

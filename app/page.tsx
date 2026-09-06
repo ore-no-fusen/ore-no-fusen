@@ -23,6 +23,7 @@ import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
 import SettingsPage from '@/components/ui/settings-page';
 import SearchOverlay from './components/SearchOverlay'; // [NEW] 全文検索
+import ArchivedNotesRestoreDialog from './components/ArchivedNotesRestoreDialog';
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
 import AnalyticsConsentDialog from './components/AnalyticsConsentDialog';
 import BackupResultDialog from './components/BackupResultDialog';
@@ -49,6 +50,7 @@ import {
 import { FreshRequestQueue } from './utils/freshRequestQueue';
 import { NOTE_COLORS } from './utils/noteAppearance';
 import { receiveIphoneNote } from './utils/receiveIphoneNote';
+import { restoredNoteWindowMeta } from './utils/archiveRestore';
 
 // Global AppState type definition
 type AppState = {
@@ -264,6 +266,7 @@ function OrchestratorContent() {
   const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
   const monthlyBackupCheckedRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
+  const [isArchiveRestoreOpen, setIsArchiveRestoreOpen] = useState(false);
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
   // [NEW] アップデートチェック（useUpdateCheckに委譲）
   const { pendingUpdate, showUpdateDialog, isHidingAfterUpdate, handleUpdateConfirm, handleUpdateCancel, tUpdate }
@@ -918,6 +921,34 @@ function OrchestratorContent() {
       readyPoolWindowsRef.current.add(event.payload.label);
     }).then((u) => { unlisten = u; });
     return () => { safeUnlisten(unlisten); };
+  }, [isMainWindow]);
+
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen('fusen:open_archive_restore', async () => {
+      setIsCheckingSetup(false);
+      setSetupRequired(false);
+      setIsSettingsOpen(false);
+      setIsSearchOpen(false);
+      setIsArchiveRestoreOpen(true);
+      try {
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        await win.setSize(new LogicalSize(680, 720));
+        await win.center();
+        await win.unminimize();
+        await win.show();
+        await win.setFocus();
+      } catch (error) {
+        console.warn('[archive_restore] Window operation failed:', error);
+      }
+    });
+    promise.then(value => { unlisten = value; });
+    return () => {
+      if (unlisten) safeUnlisten(unlisten);
+      else safeUnlistenWhenResolved(promise);
+    };
   }, [isMainWindow]);
 
   // [NEW] Pool スロット解放: close-without-input 時に StickyNote.tsx が emit → usedPoolWindowsRef からラベルを削除
@@ -1870,7 +1901,7 @@ function OrchestratorContent() {
 
   }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
+  const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isArchiveRestoreOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
 
   useEffect(() => {
     if (!isMainWindow || isCheckingSetup || setupRequired || settingsLoading || settings.analytics_consent) return;
@@ -2167,7 +2198,7 @@ function OrchestratorContent() {
   }
 
   // [NEW] Stable Return Structure
-  if (isDashboard || isSearchOpen) {
+  if (isDashboard || isSearchOpen || isArchiveRestoreOpen) {
     return (
       <>
         {/* Dashboard Placeholder (Always mounted when in dashboard/search mode) */}
@@ -2183,6 +2214,22 @@ function OrchestratorContent() {
           visible={poolWaitToast.visible}
           onClose={() => setPoolWaitToast(prev => ({ ...prev, visible: false }))}
         />
+
+        {isArchiveRestoreOpen && <ArchivedNotesRestoreDialog
+          language={language}
+          onRestored={async paths => {
+            const state = await syncState();
+            for (const path of paths) {
+              const meta = restoredNoteWindowMeta(state?.notes ?? [], path);
+              await openNoteWindow(path, meta, false);
+            }
+          }}
+          onClose={async () => {
+            setIsArchiveRestoreOpen(false);
+            const win = getCurrentWindow();
+            if (win.label === 'main') await win.hide();
+          }}
+        />}
 
         {/* Search Overlay */}
         {isSearchOpen && (
