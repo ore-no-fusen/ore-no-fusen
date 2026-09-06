@@ -4137,7 +4137,7 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
- "windows 0.52.0",
+ "windows 0.61.3",
 ]
 
 [[package]]
