@@ -92,7 +92,7 @@ pub fn strip_sticky_fields(content: &str) -> String {
         return content.to_string();
     }
 
-    const REMOVE_KEYS: &[&str] = &["type", "seq", "window", "folded", "alwaysOnTop", "opacity", "fontSize"];
+    const REMOVE_KEYS: &[&str] = &["type", "seq", "folded", "alwaysOnTop", "opacity", "fontSize"];
 
     let cleaned_lines: Vec<&str> = front
         .lines()
@@ -1657,7 +1657,7 @@ tags: [OreNoFusen, 開発プロセス]
         // 一時的なウィンドウ状態フィールドが除去されていること
         assert!(!result.contains("type:"), "type が残っている");
         assert!(!result.contains("seq:"), "seq が残っている");
-        assert!(!result.contains("window:"), "window が残っている");
+        assert!(result.contains("window: { x: 100, y: 100, width: 400, height: 300 }"), "取り出し時に元の位置と大きさを復元できるよう window を保持する");
         assert!(!result.contains("folded:"), "folded が残っている");
 
         // 分類・参照に使うフィールドが保持されていること

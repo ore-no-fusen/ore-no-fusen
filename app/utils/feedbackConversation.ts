@@ -14,6 +14,16 @@ export type FeedbackConversationIdentity = {
   secretToken: string;
 };
 
+export async function linkFeedbackMember(identity: FeedbackConversationIdentity): Promise<void> {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('member_link_conversation', { conversationId:identity.conversationId, conversationSecret:identity.secretToken });
+  } catch {
+    // Membership downtime must not disable the existing support channel.
+  }
+}
+
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>;
 
 export type FeedbackConversationMessage = {

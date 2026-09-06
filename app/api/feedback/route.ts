@@ -18,6 +18,7 @@ import {
     readFeedbackJson,
 } from './lib/security';
 import { createFeedbackConversationStore } from './lib/store';
+import { conversationMemberNumber } from '../members/lib/conversation-number';
 
 // Static export (Tauri build) requires at least one GET handler per route.
 // This endpoint is only functional on Vercel (server-side). In Tauri builds,
@@ -47,7 +48,15 @@ export async function POST(req: Request) {
             : createSecretToken();
         const store = createFeedbackConversationStore();
         const now = new Date().toISOString();
+        // Authenticate/reserve ownership before reading history or notifying Discord.
+        await store.createConversation({
+          ...(await store.getConversation(conversationId)),
+          conversationId, secretTokenHash: hashSecretToken(secretToken),
+          deliveryEnabled: true, shadowOnly: process.env.FEEDBACK_CONVERSATION_SHADOW_MODE === 'true',
+          createdAt: now, updatedAt: now,
+        });
         const recentMessages = await store.listLatestMessages(conversationId, 5);
+        const memberNumber = await conversationMemberNumber(conversationId).catch(() => null);
         const recentContext = recentMessages.length === 0
             ? '過去のやりとりはまだありません。'
             : recentMessages
@@ -69,6 +78,7 @@ export async function POST(req: Request) {
             title: `📨 新着フィードバック: ${type}`,
             color: type === 'bug' ? 0xff0000 : type === 'feature' ? 0x00ff00 : 0x0099ff,
             fields: [
+                ...(memberNumber ? [{ name:'会員番号', value:memberNumber }] : []),
                 {
                     name: '内容',
                     value: content || '(なし)',

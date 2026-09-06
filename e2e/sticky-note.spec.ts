@@ -135,6 +135,32 @@ test.describe('すぐ書ける', () => {
         await expect(editor).toContainText('テスト入力2');
     });
 
+    test('1.3a 行途中からShift+↓を続けても詰まらず文末まで選択できる', async ({ page }) => {
+        await page.setViewportSize({ width: 640, height: 480 });
+        const editor = page.locator('.cm-content');
+        const lines = Array.from({ length: 30 }, (_, index) =>
+            index % 3 === 0
+                ? `${index} short`
+                : `${index} この行は付箋の幅で折り返されるように十分長い本文です。行途中の列位置から選択しても停止しないことを確認します。`
+        );
+        const text = lines.join('\n');
+
+        await editor.fill(text);
+        await editor.click();
+        await page.keyboard.press('Control+Home');
+        for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
+
+        await page.keyboard.down('Shift');
+        try {
+            for (let i = 0; i < 120; i++) await page.keyboard.press('ArrowDown');
+        } finally {
+            await page.keyboard.up('Shift');
+        }
+
+        const selectedText = (await page.evaluate(() => window.getSelection()?.toString() ?? '')).replaceAll('⋮', '');
+        expect(selectedText).toBe(text.slice(5));
+    });
+
     test('1.4 複数行書いた内容が見やすく表示される', async ({ page }) => {
         const editor = page.locator('.cm-content');
         await editor.click();

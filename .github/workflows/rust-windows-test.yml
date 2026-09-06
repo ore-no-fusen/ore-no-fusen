@@ -19,6 +19,9 @@ jobs:
   test:
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      GDRIVE_CLIENT_ID: ci-dummy
+      GDRIVE_CLIENT_SECRET: ci-dummy
 
     steps:
       - name: Checkout

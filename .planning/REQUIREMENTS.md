@@ -64,6 +64,14 @@
 - [ ] **DIST-07**: 設計書、ユーザーガイド、README、ランディングページ、リリース手順、アプリ内の版表示を MSIX 正式版へ統一する
 - [ ] **DIST-08**: Store署名版で新規導入、上書き更新、旧版移行、winget、自動起動、保存、アンインストール時データ保持を実機検証する
 
+### しまった付箋の選択復元 (RESTORE) — Phase 22
+
+- [ ] **RESTORE-01**: タスクトレイの右クリックメニューから「しまった付箋を取り出す」画面を開ける
+- [ ] **RESTORE-02**: 最近しまった5件を初期表示し、Archive・タグを件数付きで選んで新しい順に一覧表示する。背景色・本文冒頭3行・画像サムネイル・しまった日付を備えたカードを検索して複数選択できる
+- [ ] **RESTORE-03**: 選択した付箋をまとめてデータ保存先直下へ移動し、関連画像を失わず、元フォルダから削除する
+- [ ] **RESTORE-04**: 保存先直下に同名付箋が存在する項目は上書きせず失敗として表示し、衝突しない項目の復元は継続する
+- [ ] **RESTORE-05**: 復元に成功した付箋を再起動せずデスクトップへ即時表示する
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -107,6 +115,11 @@
 | DIST-06 | Phase 21 | Planned |
 | DIST-07 | Phase 21 | Planned |
 | DIST-08 | Phase 21 | Planned |
+| RESTORE-01 | Phase 22 | Planned |
+| RESTORE-02 | Phase 22 | Planned |
+| RESTORE-03 | Phase 22 | Planned |
+| RESTORE-04 | Phase 22 | Planned |
+| RESTORE-05 | Phase 22 | Planned |
 
 **Coverage:**
 - requirements: 30 total

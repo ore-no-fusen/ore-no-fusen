@@ -112,6 +112,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         is_en,
     );
     let label_search = menu_label(if is_en { "Search" } else { "検索 (Search)" }, "Ctrl+F", is_en);
+    let label_archive_restore = if is_en { "📤 Restore Archived Notes" } else { "📤 しまった付箋を取り出す" };
     let label_arrange_by_tag = menu_label(
         if is_en { "Arrange by Tag" } else { "タグで整列 (Arrange by Tag)" },
         &arrange_shortcut,
@@ -126,6 +127,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?; 
     let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
     let search_i = MenuItem::with_id(app, "open_search", label_search, true, None::<&str>)?; // [NEW] 全文検索
+    let archive_restore_i = MenuItem::with_id(app, "open_archive_restore", label_archive_restore, true, None::<&str>)?;
     let arrange_by_tag_i = MenuItem::with_id(app, "arrange_by_tag", label_arrange_by_tag, true, None::<&str>)?;
     let arrange_undo_i = MenuItem::with_id(app, "arrange_undo", label_arrange_undo, true, None::<&str>)?;
     
@@ -156,6 +158,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[
         &new_note_i, // [NEW] 最上部に配置
         &search_i, // [NEW] 全文検索
+        &archive_restore_i,
         &arrange_by_tag_i,
         &arrange_undo_i,
         &tauri::menu::PredefinedMenuItem::separator(app)?, 
@@ -240,6 +243,14 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                         eprintln!("[Tray] Opening search...");
                         if let Some(win) = app.get_webview_window("main") {
                             let _ = win.emit("fusen:open_search", ());
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
+                    },
+                    "open_archive_restore" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.emit("fusen:open_archive_restore", ());
                             let _ = win.show();
                             let _ = win.unminimize();
                             let _ = win.set_focus();

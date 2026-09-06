@@ -21,6 +21,234 @@ pub const QA_DIR_NAME: &str = "QA";
 pub const TERMS_DIR_NAME: &str = "Terms";
 static SETTINGS_IO_LOCK: Mutex<()> = Mutex::new(());
 
+#[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchivedNoteSummary {
+    pub path: String,
+    pub preview: String,
+    pub background_color: Option<String>,
+    pub preview_image_path: Option<String>,
+    pub location_kind: String,
+    pub location_name: String,
+    pub archived_at: String,
+}
+
+fn frontmatter_value(content: &str, key: &str) -> Option<String> {
+    let mut lines = content.lines();
+    if lines.next()?.trim() != "---" {
+        return None;
+    }
+    let prefix = format!("{key}:");
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed == "---" {
+            break;
+        }
+        if let Some(value) = trimmed.strip_prefix(&prefix) {
+            return Some(value.trim().trim_matches('"').to_string());
+        }
+    }
+    None
+}
+
+fn replace_frontmatter_value(content: &str, key: &str, value: Option<&str>) -> String {
+    let normalized = content.replace("\r\n", "\n");
+    let mut lines: Vec<String> = normalized.lines().map(str::to_string).collect();
+    let prefix = format!("{key}:");
+
+    if lines.first().is_some_and(|line| line.trim() == "---") {
+        if let Some(end) = lines.iter().skip(1).position(|line| line.trim() == "---").map(|i| i + 1) {
+            lines.retain(|line| !line.trim().starts_with(&prefix));
+            if let Some(value) = value {
+                let insert_at = lines.iter().skip(1).position(|line| line.trim() == "---").map(|i| i + 1).unwrap_or(end);
+                lines.insert(insert_at, format!("{key}: {value}"));
+            }
+            return lines.join("\n");
+        }
+    }
+
+    match value {
+        Some(value) => format!("---\n{key}: {value}\n---\n\n{normalized}"),
+        None => normalized,
+    }
+}
+
+pub fn add_archived_at(content: &str, archived_at: &str) -> String {
+    replace_frontmatter_value(content, "archivedAt", Some(archived_at))
+}
+
+pub fn remove_archived_at(content: &str) -> String {
+    replace_frontmatter_value(content, "archivedAt", None)
+}
+
+fn archived_note_summary(
+    path: &Path,
+    location_kind: &str,
+    location_name: &str,
+) -> Result<ArchivedNoteSummary, String> {
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let (_, body) = logic::split_frontmatter(&content);
+    let preview = body
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(3)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let preview = if preview.is_empty() {
+        path.file_stem().unwrap_or_default().to_string_lossy().to_string()
+    } else {
+        preview
+    };
+    let (_, _, _, _, background_color, _, _, _) = logic::extract_meta_from_content(&content);
+    let preview_image_path = get_assets_regex()
+        .captures(&content)
+        .map(|capture| path.parent().unwrap_or(Path::new(".")).join(&capture[1]))
+        .filter(|asset| asset.is_file())
+        .map(|asset| asset.to_string_lossy().to_string());
+    let archived_at = frontmatter_value(&content, "archivedAt").filter(|value| !value.is_empty()).unwrap_or_else(|| {
+        fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .map(chrono::DateTime::<chrono::Utc>::from)
+            .map(|value| value.to_rfc3339())
+            .unwrap_or_default()
+    });
+
+    Ok(ArchivedNoteSummary {
+        path: path.to_string_lossy().to_string(),
+        preview,
+        background_color,
+        preview_image_path,
+        location_kind: location_kind.to_string(),
+        location_name: location_name.to_string(),
+        archived_at,
+    })
+}
+
+pub fn list_archived_notes(base_path: &Path) -> Vec<ArchivedNoteSummary> {
+    let mut notes = Vec::new();
+    let archive_dir = base_path.join("Archive");
+    if let Ok(entries) = fs::read_dir(&archive_dir) {
+        notes.extend(entries.filter_map(Result::ok).filter_map(|entry| {
+            let path = entry.path();
+            (path.is_file() && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
+                .then(|| archived_note_summary(&path, "archive", "Archive"))?
+                .ok()
+        }));
+    }
+
+    let tags_dir = base_path.join("tags");
+    if let Ok(tag_entries) = fs::read_dir(&tags_dir) {
+        for tag_entry in tag_entries.filter_map(Result::ok).filter(|entry| entry.path().is_dir()) {
+            let location_name = tag_entry.file_name().to_string_lossy().to_string();
+            if let Ok(entries) = fs::read_dir(tag_entry.path()) {
+                notes.extend(entries.filter_map(Result::ok).filter_map(|entry| {
+                    let path = entry.path();
+                    (path.is_file() && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
+                        .then(|| archived_note_summary(&path, "tag", &location_name))?
+                        .ok()
+                }));
+            }
+        }
+    }
+
+    notes.sort_by(|left, right| right.archived_at.cmp(&left.archived_at).then_with(|| left.path.cmp(&right.path)));
+    notes
+}
+
+fn is_allowed_archive_source(base_path: &Path, source: &Path) -> Result<(), String> {
+    let base = dunce::canonicalize(base_path).map_err(|e| e.to_string())?;
+    let source_parent = source.parent().ok_or("invalid archive source")?;
+    let parent = dunce::canonicalize(source_parent).map_err(|e| e.to_string())?;
+    if parent == base.join("Archive") {
+        return Ok(());
+    }
+    let tags = base.join("tags");
+    if parent.parent() == Some(tags.as_path()) {
+        return Ok(());
+    }
+    Err("source is not an archived note".to_string())
+}
+
+pub fn restore_archived_note(base_path: &Path, source_path: &Path) -> Result<PathBuf, String> {
+    let source = dunce::canonicalize(source_path).map_err(|e| e.to_string())?;
+    if !source.is_file() || !source.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")) {
+        return Err("source is not a Markdown file".to_string());
+    }
+    is_allowed_archive_source(base_path, &source)?;
+
+    let destination = base_path.join(source.file_name().ok_or("invalid archive filename")?);
+    if destination.exists() {
+        return Err("conflict: a note with the same name already exists".to_string());
+    }
+
+    let original = fs::read_to_string(&source).map_err(|e| e.to_string())?;
+    let source_dir = source.parent().ok_or("invalid archive source")?;
+    let source_assets = source_dir.join("assets");
+    let destination_assets = base_path.join("assets");
+    let mut rewritten = remove_archived_at(&original);
+    let mut copied = Vec::new();
+    let mut replacements = Vec::new();
+
+    for capture in get_assets_regex().captures_iter(&original) {
+        let relative = capture[1].to_string();
+        if replacements.iter().any(|(old, _): &(String, String)| old == &relative) {
+            continue;
+        }
+        let asset = source_dir.join(&relative);
+        let canonical_asset = match dunce::canonicalize(&asset) {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
+        let canonical_assets_dir = match dunce::canonicalize(&source_assets) {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
+        if !canonical_asset.starts_with(&canonical_assets_dir) || !canonical_asset.is_file() {
+            continue;
+        }
+        fs::create_dir_all(&destination_assets).map_err(|e| e.to_string())?;
+        let stem = canonical_asset.file_stem().and_then(|value| value.to_str()).unwrap_or("image");
+        let extension = canonical_asset.extension().and_then(|value| value.to_str());
+        let unique = uuid::Uuid::new_v4().simple();
+        let filename = extension
+            .map(|extension| format!("{stem}_restore_{unique}.{extension}"))
+            .unwrap_or_else(|| format!("{stem}_restore_{unique}"));
+        let copied_path = destination_assets.join(&filename);
+        if let Err(error) = fs::copy(&canonical_asset, &copied_path) {
+            for path in &copied { let _ = fs::remove_file(path); }
+            return Err(error.to_string());
+        }
+        copied.push(copied_path);
+        replacements.push((relative, format!("assets/{filename}")));
+    }
+
+    for (old, new) in &replacements {
+        rewritten = rewritten.replace(&format!("({old})"), &format!("({new})"));
+    }
+    if let Err(error) = write_note(&destination.to_string_lossy(), &rewritten) {
+        for path in &copied { let _ = fs::remove_file(path); }
+        return Err(error);
+    }
+    if let Err(error) = fs::remove_file(&source) {
+        let _ = fs::remove_file(&destination);
+        for path in &copied { let _ = fs::remove_file(path); }
+        return Err(error.to_string());
+    }
+
+    for (old, _) in &replacements {
+        let still_referenced = fs::read_dir(source_dir).ok().into_iter().flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
+            .any(|path| fs::read_to_string(path).is_ok_and(|content| content.contains(&format!("({old})"))));
+        if !still_referenced {
+            let _ = fs::remove_file(source_dir.join(old));
+        }
+    }
+    Ok(destination)
+}
+
 // UC-01: 設定ファイル管理
 pub use crate::state::Settings;
 
@@ -1059,6 +1287,129 @@ mod tests {
     use tempfile::tempdir;
 
     static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn archived_at_is_added_replaced_and_removed() {
+        let original = "---\ntags: [仕事]\n---\n\n本文";
+        let added = add_archived_at(original, "2026-09-06T01:02:03+00:00");
+        assert!(added.contains("archivedAt: 2026-09-06T01:02:03+00:00"));
+        assert!(added.contains("tags: [仕事]"));
+        assert!(added.ends_with("本文"));
+
+        let replaced = add_archived_at(&added, "2026-09-07T01:02:03+00:00");
+        assert_eq!(replaced.matches("archivedAt:").count(), 1);
+        assert!(replaced.contains("archivedAt: 2026-09-07T01:02:03+00:00"));
+
+        let removed = remove_archived_at(&replaced);
+        assert!(!removed.contains("archivedAt:"));
+        assert!(removed.contains("tags: [仕事]"));
+    }
+
+    #[test]
+    fn list_archived_notes_returns_recent_first_with_card_information() {
+        let vault = tempdir().unwrap();
+        let archive = vault.path().join("Archive");
+        let work = vault.path().join("tags").join("仕事");
+        let nested = work.join("nested");
+        fs::create_dir_all(archive.join("assets")).unwrap();
+        fs::create_dir_all(&nested).unwrap();
+
+        fs::write(
+            archive.join("older.md"),
+            "---\narchivedAt: 2026-09-01T00:00:00+00:00\nbackgroundColor: #ffeeaa\n---\n\n一行目\n二行目\n三行目\n四行目\n![画像](assets/photo.png)",
+        ).unwrap();
+        fs::write(archive.join("assets").join("photo.png"), "image").unwrap();
+        fs::write(
+            work.join("newer.md"),
+            "---\narchivedAt: 2026-09-05T00:00:00+00:00\n---\n\n新しい付箋",
+        ).unwrap();
+        fs::write(nested.join("excluded.md"), "対象外").unwrap();
+
+        let notes = list_archived_notes(vault.path());
+        assert_eq!(notes.len(), 2);
+        assert_eq!(notes[0].location_kind, "tag");
+        assert_eq!(notes[0].location_name, "仕事");
+        assert_eq!(notes[0].preview, "新しい付箋");
+        assert_eq!(notes[1].location_kind, "archive");
+        assert_eq!(notes[1].preview, "一行目\n二行目\n三行目");
+        assert_eq!(notes[1].background_color.as_deref(), Some("#ffeeaa"));
+        assert!(notes[1].preview_image_path.as_deref().is_some_and(|path| path.ends_with("photo.png")));
+    }
+
+    #[test]
+    fn list_archived_notes_uses_file_time_for_legacy_note() {
+        let vault = tempdir().unwrap();
+        let archive = vault.path().join("Archive");
+        fs::create_dir_all(&archive).unwrap();
+        fs::write(archive.join("legacy.md"), "以前の付箋").unwrap();
+
+        let notes = list_archived_notes(vault.path());
+        assert_eq!(notes.len(), 1);
+        assert!(!notes[0].archived_at.is_empty());
+    }
+
+    #[test]
+    fn restore_archived_note_moves_markdown_and_image_without_overwrite() {
+        let vault = tempdir().unwrap();
+        let archive = vault.path().join("Archive");
+        fs::create_dir_all(archive.join("assets")).unwrap();
+        let source = archive.join("note.md");
+        fs::write(&source, "---\narchivedAt: 2026-09-06T00:00:00+00:00\n---\n\n本文\n![写真](assets/photo.png)").unwrap();
+        fs::write(archive.join("assets/photo.png"), "image-body").unwrap();
+
+        let restored = restore_archived_note(vault.path(), &source).unwrap();
+        let restored_content = fs::read_to_string(&restored).unwrap();
+        assert!(!source.exists());
+        assert!(!restored_content.contains("archivedAt:"));
+        assert!(restored_content.contains("assets/photo_restore_"));
+        let restored_asset_name = get_assets_regex().captures(&restored_content).unwrap()[1].to_string();
+        assert_eq!(fs::read_to_string(vault.path().join(restored_asset_name)).unwrap(), "image-body");
+        assert!(!archive.join("assets/photo.png").exists());
+    }
+
+    #[test]
+    fn restore_archived_note_rejects_conflict_and_keeps_both_files_unchanged() {
+        let vault = tempdir().unwrap();
+        let archive = vault.path().join("Archive");
+        fs::create_dir_all(&archive).unwrap();
+        let source = archive.join("same.md");
+        let destination = vault.path().join("same.md");
+        fs::write(&source, "archived").unwrap();
+        fs::write(&destination, "current").unwrap();
+
+        let error = restore_archived_note(vault.path(), &source).unwrap_err();
+        assert!(error.starts_with("conflict:"));
+        assert_eq!(fs::read_to_string(source).unwrap(), "archived");
+        assert_eq!(fs::read_to_string(destination).unwrap(), "current");
+    }
+
+    #[test]
+    fn restore_archived_note_rejects_paths_outside_allowed_folders() {
+        let vault = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let source = outside.path().join("note.md");
+        fs::write(&source, "outside").unwrap();
+
+        let error = restore_archived_note(vault.path(), &source).unwrap_err();
+        assert_eq!(error, "source is not an archived note");
+        assert!(source.exists());
+    }
+
+    #[test]
+    fn restore_archived_note_keeps_shared_source_image() {
+        let vault = tempdir().unwrap();
+        let archive = vault.path().join("Archive");
+        fs::create_dir_all(archive.join("assets")).unwrap();
+        let first = archive.join("first.md");
+        let second = archive.join("second.md");
+        fs::write(&first, "![共有](assets/shared.png)").unwrap();
+        fs::write(&second, "![共有](assets/shared.png)").unwrap();
+        fs::write(archive.join("assets/shared.png"), "shared").unwrap();
+
+        restore_archived_note(vault.path(), &first).unwrap();
+        assert!(archive.join("assets/shared.png").exists());
+        assert!(second.exists());
+    }
 
     #[test]
     fn overwrite_associated_assets_keeps_the_later_image() {

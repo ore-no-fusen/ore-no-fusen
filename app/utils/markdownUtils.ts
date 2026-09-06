@@ -69,7 +69,7 @@ export function buildFoldedPreview(content: string): string {
     const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const firstLine = lines[0];
     if (!firstLine || !MARKDOWN_IMAGE_AT_START_PATTERN.test(firstLine)) {
-        return content;
+        return firstLine ?? '';
     }
 
     for (const line of lines) {

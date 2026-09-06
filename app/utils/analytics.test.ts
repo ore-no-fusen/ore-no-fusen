@@ -30,7 +30,7 @@ describe('desktop analytics consent gate', () => {
     expect(gtag).not.toHaveBeenCalled();
   });
 
-  it('sends only after desktop consent is granted', () => {
+  it('queues feature counts without sending GA4 during the operation', () => {
     vi.useFakeTimers();
     const gtag = vi.fn();
     (window as any).__TAURI_INTERNALS__ = {};
@@ -39,13 +39,7 @@ describe('desktop analytics consent gate', () => {
 
     trackEvent('note_created', { event_category: 'activation' });
 
-    expect(gtag).toHaveBeenCalledWith('event', 'note_created', {
-      event_category: 'activation',
-    });
-    expect((window as any)['ga-disable-G-MGPKF0MQH4']).toBe(false);
-
-    vi.advanceTimersByTime(3_000);
-    expect((window as any)['ga-disable-G-MGPKF0MQH4']).toBe(true);
+    expect(gtag).not.toHaveBeenCalled();
   });
 
   it('removes content-like parameters from desktop events', () => {
@@ -60,12 +54,10 @@ describe('desktop analytics consent gate', () => {
       file_path: 'C:\\private\\note.md',
     });
 
-    expect(gtag).toHaveBeenCalledWith('event', 'note_created', {
-      event_category: 'activation',
-    });
+    expect(gtag).not.toHaveBeenCalled();
   });
 
-  it('allows only anonymous usage dimensions for desktop snapshots', () => {
+  it('does not send legacy desktop snapshots in real time', () => {
     const gtag = vi.fn();
     (window as any).__TAURI_INTERNALS__ = {};
     (window as any).__FUSEN_ANALYTICS_GRANTED__ = true;
@@ -80,13 +72,7 @@ describe('desktop analytics consent gate', () => {
       tag_name: 'private',
     });
 
-    expect(gtag).toHaveBeenCalledWith('event', 'usage_snapshot', {
-      event_category: 'usage',
-      note_count_bucket: '6-10',
-      tagged_note_count_bucket: '1-5',
-      tag_count_bucket: '1-5',
-      iphone_enabled: true,
-    });
+    expect(gtag).not.toHaveBeenCalled();
   });
 
   it('rejects exact counts, unknown buckets, and unapproved feature names', () => {
@@ -102,9 +88,7 @@ describe('desktop analytics consent gate', () => {
       feature_name: 'private_dynamic_value',
     });
 
-    expect(gtag).toHaveBeenCalledWith('event', 'feature_used', {
-      event_category: 'usage',
-    });
+    expect(gtag).not.toHaveBeenCalled();
   });
 
   it('keeps website analytics behavior unchanged', () => {

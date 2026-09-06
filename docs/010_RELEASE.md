@@ -119,6 +119,12 @@ MSIX固有の修正は、アプリを終了してからこのPCで次を実行�
 .\packaging\msix\test-msix.ps1
 ```
 
+STEP 1-1の版番号設定は、このPCで次を実行する。5ファイルを一括更新し、現在以下の版番号や不正な形式を拒否する。
+
+```powershell
+node scripts/set-release-version.mjs <X.Y.Z>
+```
+
 Store版とはパッケージIDと署名が異なるが、同じTauri実行コードとMSIX環境で、起動、保存、画像、同期をStore提出前に確認できる。Google Drive連携を確認する場合は、本番と同じ`GDRIVE_CLIENT_ID`と`GDRIVE_CLIENT_SECRET`をビルド時に使用する。
 
 STEP 1-5で失敗した場合は、原因により戻り先を分ける。
@@ -262,3 +268,4 @@ GitHub Release `v5.0.0` の`latest.json`、MSI、NSIS、署名ファイルは、
 | 23 | 26-08-11 | リリース時間をバージョンごとに1行で比較する集計表を追加し、試行ごとの記録を詳細試行ログへ移動した。 |
 | 24 | 26-08-16 | STEP 3をCodexによるPartner Center申請へ変更し、アップロード確認、日本語・英語のリリースノート更新、ユーザー承認、認定中の確認、本人操作が必要な場合の引き継ぎを明記した。 |
 | 25 | 26-08-16 | VS Code版CodexをSTEP 0〜2、Windows版CodexをSTEP 3の担当とし、Store申請時の引き継ぎ項目を明記した。 |
+| 26 | 26-09-06 | STEP 1-1でこのPCから5つの版番号ファイルだけを安全に一括更新する固定コマンドを追加した。 |

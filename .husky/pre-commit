@@ -1,3 +1,13 @@
+CHANGED=$(git diff --cached --name-only)
+
+# Documentation-only commits cannot affect the application runtime.
+# Skip the expensive application checks when every staged file is documentation.
+CHECK_MODE=$(node scripts/precommit-classify.mjs)
+if [ "$CHECK_MODE" = "skip" ]; then
+  echo "[pre-commit] Skipped: documentation-only changes"
+  exit 0
+fi
+
 echo "[pre-commit] 1-2/3 TypeScript check and unit tests (parallel)..."
 set +e
 npx tsc --noEmit &
@@ -14,8 +24,6 @@ if [ "$TSC_STATUS" -ne 0 ] || [ "$TEST_STATUS" -ne 0 ]; then
   echo "[pre-commit] Failed: TypeScript=$TSC_STATUS UnitTests=$TEST_STATUS"
   exit 1
 fi
-
-CHANGED=$(git diff --cached --name-only)
 
 # Run E2E only when app-facing or Tauri files changed.
 # PWA/viewer-only changes can skip E2E to keep commits quick.

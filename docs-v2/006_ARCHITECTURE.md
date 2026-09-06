@@ -171,8 +171,8 @@ sequenceDiagram
 ### 5.1 ランタイム環境とネットワーク・トポロジー
 
 俺の付箋は、付箋本文を保存する中央データベースを持たない。付箋本文はユーザーの PC、iPhone 連携中の一時ファイルはユーザー自身の Google Drive に置く。
-設定画面内の 1 対 1 掲示板だけは例外として、Vercel API が Firebase / Firestore に会話データを保存する。Firestore に保存するのは、ユーザーが掲示板へ自分で送信した本文、開発者返信、匿名会話 ID、既読状態に限定する。
-Vercel は iPhone PWA の配信、開発者が守る `client_secret` を iPhone に入れず Google OAuth のトークン交換・更新を行う処理、設定画面内の 1 対 1 掲示板 API にだけ使う。
+設定画面内の 1 対 1 掲示板は、Vercel API が Firebase / Firestore にユーザーが自分で送信した本文、開発者返信、会話 ID、既読状態を保存する。会員台帳と、PC内で低負荷に集計してGA4へ週次送信する機能利用分析は[009 会員番号と機能利用分析](./009_MEMBERSHIP)に定義する。利用履歴をVercel・Firestoreへ送らず、既存付箋本文も送らない。
+Vercel は iPhone PWA の配信、Google OAuth のトークン交換・更新、掲示板 API、会員認証・採番・同意済み利用集計および開発者向け認証付き集計取得に使う。
 
 ```mermaid
 flowchart LR

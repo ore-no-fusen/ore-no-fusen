@@ -32,7 +32,7 @@ export type UseNoteFileReturn = {
     savePending: boolean;
 
     loadNote: () => Promise<string>;
-    saveNoteContent: (body: string, frontmatter: string, allowRename: boolean) => Promise<void>;
+    saveNoteContent: (body: string, frontmatter: string, allowRename: boolean) => Promise<boolean>;
     updateFrontmatter: (key: string, value: any) => void;
     removeFrontmatter: (key: string) => void;
     setSavePending: (pending: boolean) => void;
@@ -182,7 +182,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
                     frontmatterLen: frontmatter.length,
                 },
             });
-            return;
+            return false;
         }
 
         if (!hasLoadedRef.current && body.trim() === '') {
@@ -202,7 +202,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
                     hasPath: !!pathRef.current,
                 },
             });
-            return;
+            return false;
         }
 
         // [Safe Guard] Prevent saving empty content if the note hasn't been loaded yet.
@@ -224,7 +224,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
                     hasPath: !!pathRef.current,
                 },
             });
-            return;
+            return false;
         }
 
         try {
@@ -245,6 +245,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
             console.log('[DBG:saveNoteContent] END saved ok body=', JSON.stringify(body.slice(0, 50)));
             loadedPathRef.current = newPath;
             loadFailedPathRef.current = null;
+            return true;
         } catch (e) {
             console.error('[useNoteFile] Failed to save note:', e);
             throw e;

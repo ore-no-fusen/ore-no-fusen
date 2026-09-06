@@ -10,6 +10,8 @@
 "use client"
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
+import MemberSettings from "@/app/components/MemberSettings"
+import SupportMemberNumber from "@/app/components/SupportMemberNumber"
 import { invoke } from "@tauri-apps/api/core"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText, Heart } from "lucide-react"
 
@@ -47,6 +49,7 @@ import {
 } from "@/app/utils/crystalFormatEditor"
 import {
     ackFeedbackConversationMessages,
+    linkFeedbackMember,
     clearFeedbackConversationIdentity,
     deleteFeedbackConversation,
     getDeveloperFeedbackApiBaseUrl,
@@ -173,9 +176,9 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                     newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language)}
                 />
             case "feedback":
-                return <FeedbackSection t={t} />
+                return <FeedbackSection t={t} language={settings.language} />
             case "conversation":
-                return <DeveloperConversationSection language={settings.language} />
+                return <><MemberSettings language={settings.language} /><DeveloperConversationSection language={settings.language} /></>
             case "advanced":
                 return <AdvancedSection settings={settings} t={t} />
             default:
@@ -2313,7 +2316,7 @@ function HelpTable({
     )
 }
 
-function FeedbackSection({ t }: { t: (key: any) => string }) {
+function FeedbackSection({ t, language }: { t: (key: any) => string; language: Language }) {
     const [type, setType] = useState<'bug' | 'feature' | 'other'>('bug')
     const [content, setContent] = useState('')
     const [contact, setContact] = useState('')
@@ -2355,6 +2358,7 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
             const isDev = process.env.NODE_ENV === 'development';
             const apiUrl = `${getFeedbackApiBaseUrl()}/conversation/messages`;
             const conversationIdentity = getOrCreateFeedbackConversationIdentity();
+            await linkFeedbackMember(conversationIdentity);
 
             console.log(`Sending feedback to: ${apiUrl}`);
 
@@ -2420,6 +2424,7 @@ function FeedbackSection({ t }: { t: (key: any) => string }) {
             <Separator />
 
             <div className="space-y-6 max-w-2xl">
+                <SupportMemberNumber language={language} />
                 {/* 種類選択 */}
                 <div className="space-y-3">
                     <Label>{t('settings.feedback.typeLabel')}</Label>
@@ -2559,6 +2564,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         setSending(true)
         setError(null)
         try {
+            await linkFeedbackMember(conversationIdentity);
             const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2624,6 +2630,8 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{feedbackApiBaseUrl}</div>
                 </div>
             </div>
+
+            <SupportMemberNumber language={language} />
 
             <div className="border rounded-lg overflow-hidden bg-white">
                 <div className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
