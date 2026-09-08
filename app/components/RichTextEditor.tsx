@@ -22,7 +22,6 @@ import ResizableImage from './ResizableImage';
 import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUtils';
 import type { Language } from '@/lib/i18n';
 import { moveCollapsedLines, moveOutlineSubtree, parseOutline } from '../utils/outline';
-import { NOTE_DRAG_CURSOR } from '../utils/cursorStyles';
 import { indentSelectedLines, outdentSelectedLines } from '../utils/editorIndent';
 
 export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
@@ -57,62 +56,6 @@ export const verticalSelectionKeymap: readonly KeyBinding[] = [
     { key: 'ArrowUp', shift: view => extendSelectionVertically(view, false) },
 ];
 const outlineRefreshEffect = StateEffect.define<null>();
-
-class OutlineControlWidget extends WidgetType {
-    constructor(readonly lineIndex: number) {
-        super();
-    }
-
-    toDOM(): HTMLElement {
-        const control = document.createElement('span');
-        control.className = 'cm-outline-control';
-        control.dataset.outlineLine = String(this.lineIndex);
-        control.draggable = true;
-        control.textContent = '⋮';
-        control.title = 'ドラッグして移動';
-        control.addEventListener('dragstart', event => {
-            event.stopPropagation();
-            const dragEvent = event as DragEvent;
-            dragEvent.dataTransfer?.setData('application/x-fusen-outline-line', String(this.lineIndex));
-            if (dragEvent.dataTransfer) dragEvent.dataTransfer.effectAllowed = 'move';
-        });
-        return control;
-    }
-
-    ignoreEvent(): boolean { return false; }
-
-    eq(other: OutlineControlWidget): boolean {
-        return this.lineIndex === other.lineIndex;
-    }
-}
-
-function buildOutlineDecorations(state: EditorState): DecorationSet {
-    const parsed = parseOutline(state.doc.toString());
-    const decorations: any[] = [];
-    parsed.forEach(line => {
-        const docLine = state.doc.line(line.index + 1);
-        if (!line.eligible) return;
-        decorations.push(Decoration.widget({
-            widget: new OutlineControlWidget(line.index),
-            side: -1,
-        }).range(docLine.from));
-    });
-    return Decoration.set(decorations, true);
-}
-
-function createOutlineExtension() {
-    return ViewPlugin.fromClass(class {
-        decorations: DecorationSet;
-        constructor(view: EditorView) {
-            this.decorations = buildOutlineDecorations(view.state);
-        }
-        update(update: ViewUpdate) {
-            if (update.docChanged || update.transactions.some(transaction => transaction.effects.some(effect => effect.is(outlineRefreshEffect)))) {
-                this.decorations = buildOutlineDecorations(update.state);
-            }
-        }
-    }, { decorations: value => value.decorations });
-}
 
 export type PendingImage = { id: string; objectUrl: string };
 
@@ -1440,7 +1383,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     highlightSelectionMatches(), // [NEW] 選択テキストのハイライト
                     search({ top: false }), // [NEW] 検索ハイライト用（パネル非表示）
                     filePathCompartment.current.of(filePathFacet.of(filePath)), // [NEW] Inject filePath (compartment for dynamic updates)
-                    createOutlineExtension(),
                     ...(isNewNote ? [
                         // 新規付箋の場合のみinit()でtrueを注入
                         placeholderFlagField.init(() => true),
@@ -1819,29 +1761,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     padding: '0 !important',
                     width: '100%',
                     boxSizing: 'border-box',
-                },
-                '.cm-outline-control': {
-                    display: 'inline-grid',
-                    placeItems: 'center',
-                    width: '16px',
-                    height: '1.4em',
-                    marginLeft: '-16px',
-                    padding: '0',
-                    border: '0',
-                    borderRadius: '3px',
-                    background: 'transparent',
-                    color: '#655f4d',
-                    fontSize: '9px !important',
-                    opacity: '0',
-                    cursor: NOTE_DRAG_CURSOR,
-                    transition: 'opacity 0.15s ease, background 0.15s ease',
-                    verticalAlign: 'top',
-                },
-                '.cm-line:hover .cm-outline-control, .cm-outline-control:focus': {
-                    opacity: '0.55',
-                },
-                '.cm-outline-control:hover': {
-                    background: 'rgba(72, 64, 42, 0.09)',
                 },
                 '.cm-content, .cm-content *': {
                     fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important',
