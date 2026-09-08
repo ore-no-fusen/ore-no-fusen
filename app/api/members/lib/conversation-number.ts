@@ -8,5 +8,5 @@ export async function conversationMemberNumber(conversationId: string): Promise<
   const link = await db.get<{memberId:string}>(`conversations/${conversationId}`);
   if (!link) return null;
   const member = await db.get<Member>(`members/${link.value.memberId}`);
-  return member ? `会員番号 ${member.value.generalNumber}` : null;
+  return member ? String(member.value.generalNumber) : null;
 }
