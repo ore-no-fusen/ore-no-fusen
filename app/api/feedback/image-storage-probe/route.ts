@@ -27,11 +27,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     await createPrivateImageFile(fileId, PROBE_BYTES);
     created = true;
     const restored = await readPrivateImageFile(fileId);
-    if (restored.length !== PROBE_BYTES.length || restored.some((byte, index) => byte !== PROBE_BYTES[index])) {
+    const matches = restored.length === PROBE_BYTES.length &&
+      !restored.some((byte, index) => byte !== PROBE_BYTES[index]);
+    await deletePrivateImageFile(fileId);
+    created = false;
+    if (!matches) {
       return NextResponse.json({ ok: false, reason: 'content_mismatch' }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
     }
     return NextResponse.json({ ok: true, bytes: restored.length }, { headers: { 'Cache-Control': 'no-store' } });
   } finally {
-    if (created) await deletePrivateImageFile(fileId).catch(() => undefined);
+    if (created) await deletePrivateImageFile(fileId);
   }
 }

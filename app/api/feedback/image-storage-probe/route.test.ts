@@ -46,4 +46,12 @@ describe('image storage connection probe', () => {
     expect((await POST(request('correct'))).status).toBe(502);
     expect(deletePrivateImageFile).toHaveBeenCalledTimes(1);
   });
+
+  it('does not report success when deleting the probe file fails', async () => {
+    vi.stubEnv('IMAGE_STORAGE_PROBE_ENABLED', 'true'); vi.stubEnv('IMAGE_STORAGE_PROBE_TOKEN', 'correct');
+    vi.mocked(readPrivateImageFile).mockResolvedValue(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));
+    vi.mocked(deletePrivateImageFile).mockRejectedValue(new Error('delete failed'));
+    await expect(POST(request('correct'))).rejects.toThrow('delete failed');
+    expect(deletePrivateImageFile).toHaveBeenCalledTimes(2);
+  });
 });
