@@ -30,6 +30,14 @@ describe('image storage connection probe', () => {
     expect(deletePrivateImageFile).not.toHaveBeenCalled();
   });
 
+  it('logs only a fixed rejection reason and never the supplied token', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.stubEnv('IMAGE_STORAGE_PROBE_ENABLED', 'true'); vi.stubEnv('IMAGE_STORAGE_PROBE_TOKEN', 'correct');
+    await POST(request('not-the-secret'));
+    expect(info).toHaveBeenCalledWith('image-storage-probe rejected', { reason: 'token_mismatch' });
+    expect(info.mock.calls.flat().join(' ')).not.toContain('not-the-secret');
+  });
+
   it('creates, verifies, and deletes fixed test bytes with the correct token', async () => {
     vi.stubEnv('IMAGE_STORAGE_PROBE_ENABLED', 'true'); vi.stubEnv('IMAGE_STORAGE_PROBE_TOKEN', 'correct');
     vi.mocked(readPrivateImageFile).mockResolvedValue(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));

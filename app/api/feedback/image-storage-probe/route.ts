@@ -9,6 +9,12 @@ function unavailable(): NextResponse {
   return NextResponse.json({ error: 'Not Found' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });
 }
 
+function rejectProbe(reason: 'disabled' | 'missing_expected_token' | 'missing_supplied_token' | 'token_mismatch'): NextResponse {
+  // This temporary route never logs request headers, tokens, IDs, or image data.
+  console.info('image-storage-probe rejected', { reason });
+  return unavailable();
+}
+
 export async function GET(): Promise<NextResponse> {
   return unavailable();
 }
@@ -16,10 +22,10 @@ export async function GET(): Promise<NextResponse> {
 export async function POST(request: Request): Promise<NextResponse> {
   const expectedToken = process.env.IMAGE_STORAGE_PROBE_TOKEN;
   const suppliedToken = request.headers.get('x-image-storage-probe-token') ?? '';
-  if (
-    process.env.IMAGE_STORAGE_PROBE_ENABLED !== 'true' || !expectedToken || !suppliedToken ||
-    !safeEqualHash(hashSecretToken(suppliedToken), hashSecretToken(expectedToken))
-  ) return unavailable();
+  if (process.env.IMAGE_STORAGE_PROBE_ENABLED !== 'true') return rejectProbe('disabled');
+  if (!expectedToken) return rejectProbe('missing_expected_token');
+  if (!suppliedToken) return rejectProbe('missing_supplied_token');
+  if (!safeEqualHash(hashSecretToken(suppliedToken), hashSecretToken(expectedToken))) return rejectProbe('token_mismatch');
 
   const fileId = randomUUID();
   let created = false;
