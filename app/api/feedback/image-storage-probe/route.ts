@@ -9,9 +9,12 @@ function unavailable(): NextResponse {
   return NextResponse.json({ error: 'Not Found' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });
 }
 
-function rejectProbe(reason: 'disabled' | 'missing_expected_token' | 'missing_supplied_token' | 'token_mismatch'): NextResponse {
+function rejectProbe(
+  reason: 'disabled' | 'missing_expected_token' | 'missing_supplied_token' | 'token_mismatch',
+  lengths?: { expected: number; supplied: number },
+): NextResponse {
   // This temporary route never logs request headers, tokens, IDs, or image data.
-  console.info('image-storage-probe rejected', { reason });
+  console.info('image-storage-probe rejected', { reason, ...(lengths ? { tokenLengths: lengths } : {}) });
   return unavailable();
 }
 
@@ -25,7 +28,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (process.env.IMAGE_STORAGE_PROBE_ENABLED !== 'true') return rejectProbe('disabled');
   if (!expectedToken) return rejectProbe('missing_expected_token');
   if (!suppliedToken) return rejectProbe('missing_supplied_token');
-  if (!safeEqualHash(hashSecretToken(suppliedToken), hashSecretToken(expectedToken))) return rejectProbe('token_mismatch');
+  if (!safeEqualHash(hashSecretToken(suppliedToken), hashSecretToken(expectedToken))) {
+    return rejectProbe('token_mismatch', { expected: expectedToken.length, supplied: suppliedToken.length });
+  }
 
   const fileId = randomUUID();
   let created = false;

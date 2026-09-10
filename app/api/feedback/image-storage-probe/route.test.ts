@@ -34,7 +34,9 @@ describe('image storage connection probe', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     vi.stubEnv('IMAGE_STORAGE_PROBE_ENABLED', 'true'); vi.stubEnv('IMAGE_STORAGE_PROBE_TOKEN', 'correct');
     await POST(request('not-the-secret'));
-    expect(info).toHaveBeenCalledWith('image-storage-probe rejected', { reason: 'token_mismatch' });
+    expect(info).toHaveBeenCalledWith('image-storage-probe rejected', {
+      reason: 'token_mismatch', tokenLengths: { expected: 7, supplied: 14 },
+    });
     expect(info.mock.calls.flat().join(' ')).not.toContain('not-the-secret');
   });
 
