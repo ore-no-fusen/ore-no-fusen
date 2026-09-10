@@ -1,8 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GET, POST } from './route';
-import { createPrivateImageFile, deletePrivateImageFile, readPrivateImageFile } from '../lib/appwrite-storage';
+import {
+  createPrivateImageFile,
+  deletePrivateImageFile,
+  FeedbackImageStorageError,
+  readPrivateImageFile,
+} from '../lib/appwrite-storage';
 
 vi.mock('../lib/appwrite-storage', () => ({
+  FeedbackImageStorageError: class FeedbackImageStorageError extends Error {
+    constructor(message: string, readonly status: number, readonly upstreamType?: string) {
+      super(message);
+    }
+  },
   createPrivateImageFile: vi.fn(), readPrivateImageFile: vi.fn(), deletePrivateImageFile: vi.fn(),
 }));
 
@@ -63,5 +73,16 @@ describe('image storage connection probe', () => {
     vi.mocked(deletePrivateImageFile).mockRejectedValue(new Error('delete failed'));
     await expect(POST(request('correct'))).rejects.toThrow('delete failed');
     expect(deletePrivateImageFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs only the safe Appwrite error type and failure stage', async () => {
+    vi.stubEnv('IMAGE_STORAGE_PROBE_ENABLED', 'true'); vi.stubEnv('IMAGE_STORAGE_PROBE_TOKEN', 'correct');
+    const error = new FeedbackImageStorageError('Image storage request failed', 401, 'general_unauthorized_scope');
+    vi.mocked(createPrivateImageFile).mockRejectedValue(error);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await expect(POST(request('correct'))).rejects.toBe(error);
+    expect(consoleError).toHaveBeenCalledWith('image-storage-probe storage failure', {
+      stage: 'create', status: 401, upstreamType: 'general_unauthorized_scope',
+    });
   });
 });

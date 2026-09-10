@@ -1,7 +1,11 @@
 const APPWRITE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
 
 export class FeedbackImageStorageError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly upstreamType?: string,
+  ) {
     super(message);
   }
 }
@@ -45,9 +49,25 @@ async function appwriteRequest(path: string, init?: RequestInit): Promise<Respon
     },
   });
   if (!response.ok) {
-    throw new FeedbackImageStorageError('Image storage request failed', response.status >= 500 ? 503 : response.status);
+    const upstreamType = await readUpstreamErrorType(response);
+    throw new FeedbackImageStorageError(
+      'Image storage request failed',
+      response.status >= 500 ? 503 : response.status,
+      upstreamType,
+    );
   }
   return response;
+}
+
+async function readUpstreamErrorType(response: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body !== 'object' || body === null || !('type' in body)) return undefined;
+    const type = body.type;
+    return typeof type === 'string' && /^[a-z_]{1,80}$/.test(type) ? type : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function filePath(fileId: string): string {

@@ -63,4 +63,15 @@ describe('private Appwrite image storage', () => {
       status: 503,
     });
   });
+
+  it('retains only Appwrite error type for server diagnostics', async () => {
+    setEnv();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      type: 'general_unauthorized_scope', message: 'private upstream detail',
+    }), { status: 401, headers: { 'content-type': 'application/json' } })));
+    await expect(readPrivateImageFile('image-a')).rejects.toMatchObject({
+      status: 401,
+      upstreamType: 'general_unauthorized_scope',
+    });
+  });
 });

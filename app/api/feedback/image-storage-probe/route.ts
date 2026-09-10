@@ -1,6 +1,11 @@
 import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
-import { createPrivateImageFile, deletePrivateImageFile, readPrivateImageFile } from '../lib/appwrite-storage';
+import {
+  createPrivateImageFile,
+  deletePrivateImageFile,
+  FeedbackImageStorageError,
+  readPrivateImageFile,
+} from '../lib/appwrite-storage';
 import { hashSecretToken, safeEqualHash } from '../lib/security';
 
 const PROBE_BYTES = Uint8Array.from([0x89, 0x50, 0x4e, 0x47]);
@@ -34,18 +39,30 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const fileId = randomUUID();
   let created = false;
+  let stage: 'create' | 'read' | 'delete' = 'create';
   try {
     await createPrivateImageFile(fileId, PROBE_BYTES);
     created = true;
+    stage = 'read';
     const restored = await readPrivateImageFile(fileId);
     const matches = restored.length === PROBE_BYTES.length &&
       !restored.some((byte, index) => byte !== PROBE_BYTES[index]);
+    stage = 'delete';
     await deletePrivateImageFile(fileId);
     created = false;
     if (!matches) {
       return NextResponse.json({ ok: false, reason: 'content_mismatch' }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
     }
     return NextResponse.json({ ok: true, bytes: restored.length }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) {
+    if (error instanceof FeedbackImageStorageError) {
+      console.error('image-storage-probe storage failure', {
+        stage,
+        status: error.status,
+        upstreamType: error.upstreamType ?? 'unknown',
+      });
+    }
+    throw error;
   } finally {
     if (created) await deletePrivateImageFile(fileId);
   }
