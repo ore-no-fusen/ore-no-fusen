@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,15 +40,14 @@ if (configuredPort !== undefined && (!Number.isInteger(configuredPort) || config
 const port = configuredPort ?? await getAvailablePort();
 const baseUrl = `http://${host}:${port}`;
 const runId = `${process.pid}-${port}`;
-const nextDistDir = `.next/e2e-${runId}`;
+const nextDistDir = `.next-e2e-${runId}`;
 const nextTsconfig = `.tsconfig-e2e-${runId}.json`;
 
-mkdirSync(join(rootDir, '.next'), { recursive: true });
 writeFileSync(
   join(rootDir, nextTsconfig),
   `${JSON.stringify({
     extends: './tsconfig.json',
-    include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', `.next/e2e-${runId}/types/**/*.ts`],
+    include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', `${nextDistDir}/types/**/*.ts`],
     exclude: ['node_modules'],
   }, null, 2)}\n`,
 );

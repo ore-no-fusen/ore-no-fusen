@@ -43,7 +43,14 @@ async function runDesktopBackground(cancelled:()=>boolean) {
 export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
   useEffect(()=>{
     if(!isTauriBuild){loadGa4(true);return;}
-    if(getCurrentWindow().label!=='main')return;
+    let windowLabel: string;
+    try {
+      windowLabel=getCurrentWindow().label;
+    } catch {
+      // TAURI_DEV is also used by browser-based E2E. Do not require a Tauri window there.
+      return;
+    }
+    if(windowLabel!=='main')return;
     let cancelled=false;
     let unlisten:(()=>void)|undefined;
     // This local asynchronous read does not delay rendering or note input.
