@@ -51,7 +51,7 @@ import { formatCollapsedLines, readCollapsedLines, remapCollapsedLines } from '.
 import { buildFoldedPreview, resolvePath } from '../utils/markdownUtils';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { shouldHandleCrystalTrashRequest } from '../utils/crystalTrashRequest';
-import { playCheckboxSound, playSaveSound } from '../utils/soundManager';
+import { getAlarmSoundFile, playArchiveSound, playCheckboxSound, playSaveSound } from '../utils/soundManager';
 import { matchesShortcut } from '../utils/shortcutKey';
 import { getUserTags } from '../utils/reservedTags';
 import { buildPerfReadyPayload } from '../utils/perfMeasurement';
@@ -1347,13 +1347,15 @@ const StickyNote = memo(function StickyNote() {
             return 1.0;                  // 大
         };
 
-        const fire = () => {
+        const fire = async () => {
             // 前の音を即時停止してから再生
             if (alarmAudioRef.current) {
                 alarmAudioRef.current.pause();
                 alarmAudioRef.current.currentTime = 0;
             }
-            const audio = new Audio('/sounds/alarm.wav');
+            const soundFile = await getAlarmSoundFile();
+            if (!soundFile) return;
+            const audio = new Audio(soundFile);
             audio.volume = getVolume();
             alarmAudioRef.current = audio;
             audio.play().catch(() => {});
@@ -1877,7 +1879,7 @@ const StickyNote = memo(function StickyNote() {
         try {
             isDeletingRef.current = true;
             await saveNoteContent(editBody, rawFrontmatter, false);
-            void playSaveSound();
+            void playArchiveSound();
             await invoke('fusen_archive_note', { path: selectedFile.path, targetTag });
             const win = getCurrentWindow();
             await win.hide();

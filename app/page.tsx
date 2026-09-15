@@ -17,7 +17,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { pathsEqual, normalizePath, getFileName, encodeNotePathForUrl } from './utils/pathUtils';
-import { playLocalSound, playCreateSound, SoundType } from './utils/soundManager';
+import { playLocalSound, playCreateSound, playDuplicateSound, SoundType } from './utils/soundManager';
 import { type NoteMeta } from './api/notes';
 import StickyNote from './components/StickyNote';
 import LoadingScreen from './components/LoadingScreen';
@@ -556,7 +556,7 @@ function OrchestratorContent() {
           snapshotFrontmatter: duplicateSnapshot?.frontmatter,
         });
         console.log('[CREATE] duplicate newNote:', newNote.meta.path);
-        void playCreateSound();
+        void playDuplicateSound();
         setFiles(prev => [...prev, newNote.meta]);
         await openNoteWindow(newNote.meta.path, newNote.meta, false);
         trackEvent('feature_used', { event_category: 'usage', feature_name: 'note_duplicate' });

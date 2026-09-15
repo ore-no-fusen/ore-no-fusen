@@ -133,6 +133,17 @@ pub struct Settings {
     #[serde(alias = "soundEnabled")]
     #[serde(default = "default_sound_enabled")]
     pub sound_enabled: bool,
+    #[serde(default = "default_sound_preset")] pub sound_create: String,
+    #[serde(default = "default_sound_preset")] pub sound_duplicate: String,
+    #[serde(default = "default_sound_preset", alias = "sound_save")] pub sound_archive: String,
+    #[serde(default = "default_sound_preset")] pub sound_delete: String,
+    #[serde(default = "default_sound_preset")] pub sound_checkbox: String,
+    #[serde(default = "default_sound_preset")] pub sound_pin: String,
+    #[serde(default = "default_sound_preset")] pub sound_unpin: String,
+    #[serde(default = "default_sound_preset")] pub sound_alarm: String,
+    /// 設定画面だけの表示テーマ。旧設定はライトとして互換読み込みする。
+    #[serde(default = "default_settings_theme")]
+    pub settings_theme: String,
     #[serde(alias = "iphoneSendEnabled")]
     #[serde(default)]
     pub iphone_send_enabled: bool,
@@ -190,6 +201,8 @@ fn default_language() -> String {
 }
 fn default_font_size() -> f64 { 16.0 }
 fn default_sound_enabled() -> bool { true }
+fn default_sound_preset() -> String { "standard".to_string() }
+fn default_settings_theme() -> String { "system".to_string() }
 fn default_auto_start() -> bool { true }
 fn default_monthly_backup_enabled() -> bool { true }
 fn default_monthly_backup_interval_days() -> i64 { 30 }
@@ -204,6 +217,8 @@ impl Default for Settings {
             analytics_consent: None,
             font_size: default_font_size(),
             sound_enabled: default_sound_enabled(),
+            sound_create: default_sound_preset(), sound_duplicate: default_sound_preset(), sound_archive: default_sound_preset(), sound_delete: default_sound_preset(), sound_checkbox: default_sound_preset(), sound_pin: default_sound_preset(), sound_unpin: default_sound_preset(), sound_alarm: default_sound_preset(),
+            settings_theme: default_settings_theme(),
             iphone_send_enabled: false,
             shortcut_new_note: None,
             new_note_trigger: None,

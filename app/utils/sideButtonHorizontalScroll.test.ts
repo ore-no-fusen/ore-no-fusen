@@ -61,10 +61,18 @@ describe('side-button horizontal scroll', () => {
         expect(resolveHorizontalWheelDelta(gesture, { deltaX: 0, deltaY: 0, timeStamp: 1200 })).toBe(100);
     });
 
+    it('continues the first gesture across the delayed zero delta emitted by WebView', () => {
+        const gesture = { lastDeltaX: 0, lastEventTime: 0 };
+
+        expect(resolveHorizontalWheelDelta(gesture, { deltaX: 100, deltaY: 0, timeStamp: 1000 })).toBe(100);
+        expect(resolveHorizontalWheelDelta(gesture, { deltaX: 0, deltaY: 0, timeStamp: 1300 })).toBe(100);
+        expect(resolveHorizontalWheelDelta(gesture, { deltaX: 0, deltaY: 0, timeStamp: 2051 })).toBe(0);
+    });
+
     it('stops completion after a pause or a vertical wheel input', () => {
         const gesture = { lastDeltaX: 0, lastEventTime: 0 };
         resolveHorizontalWheelDelta(gesture, { deltaX: 100, deltaY: 0, timeStamp: 1000 });
-        expect(resolveHorizontalWheelDelta(gesture, { deltaX: 0, deltaY: 0, timeStamp: 1300 })).toBe(0);
+        expect(resolveHorizontalWheelDelta(gesture, { deltaX: 0, deltaY: 0, timeStamp: 1751 })).toBe(0);
 
         resolveHorizontalWheelDelta(gesture, { deltaX: 100, deltaY: 0, timeStamp: 2000 });
         expect(resolveHorizontalWheelDelta(gesture, { deltaX: 0, deltaY: 120, timeStamp: 2100 })).toBe(0);

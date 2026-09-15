@@ -36,7 +36,7 @@ export type HorizontalWheelGesture = {
 export function resolveHorizontalWheelDelta(
     gesture: HorizontalWheelGesture,
     input: { deltaX: number; deltaY: number; timeStamp: number },
-    continuationMs = 250,
+    continuationMs = 750,
 ): number {
     if (input.deltaX !== 0) {
         gesture.lastDeltaX = input.deltaX;

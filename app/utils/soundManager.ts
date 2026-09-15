@@ -8,17 +8,20 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { isSoundEnabled } from './settingsManager';
+import { getSoundPreset, isSoundEnabled } from './settingsManager';
+import type { SoundPreset, SoundScene } from './soundPreferences';
 
 // 利用可能なサウンド
-export type SoundType = 'create' | 'save' | 'delete';
+export type SoundType = SoundScene;
 
 // サウンドファイルのマッピング
 const SOUND_FILES: Record<SoundType, string> = {
     'create': '/sounds/create.wav',
-    'save': '/sounds/save.wav',
-    'delete': '/sounds/delete.wav',
+    'duplicate': '/sounds/create.wav', 'archive': '/sounds/save.wav',
+    'delete': '/sounds/delete.wav', 'checkbox': '/sounds/save.wav',
+    'pin': '/sounds/variations/click_switch.wav', 'unpin': '/sounds/variations/click_switch.wav', 'alarm': '/sounds/alarm.wav',
 };
+const PRESET_FILES = { soft: '/sounds/variations/click_soft.wav', modern: '/sounds/variations/click_modern.wav', wood: '/sounds/variations/click_wood.wav', typewriter: '/sounds/variations/click_typewriter.wav', alternate: '/sounds/variations/alarm_bk.wav' } as const;
 
 const CHECK_COMPLETED_COUNT_KEY = 'ore-no-fusen.checkbox.completed_count';
 const CHECK_MILESTONE_INTERVAL = 100;
@@ -96,13 +99,13 @@ async function playCheckboxMilestoneSound(): Promise<void> {
     }
 }
 
-async function playCheckboxCompletionSound(): Promise<void> {
-    const enabled = await isSoundEnabled();
+export async function playDefaultCheckboxSound(preview = false): Promise<void> {
+    const enabled = preview || await isSoundEnabled();
     if (!enabled || typeof window === 'undefined') return;
 
     const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) {
-        await playLocalSound('save', 0.35);
+        await playLocalSound('archive', 0.35);
         return;
     }
 
@@ -152,7 +155,7 @@ async function playCheckboxCompletionSound(): Promise<void> {
         }, Math.ceil((duration + 0.05) * 1000));
     } catch (e) {
         console.error('[SoundManager] Failed to play checkbox completion sound:', e);
-        await playLocalSound('save', 0.35);
+        await playLocalSound('archive', 0.35);
     }
 }
 
@@ -170,7 +173,9 @@ export async function playLocalSound(type: SoundType, volume: number = 1.0): Pro
             return;
         }
 
-        const soundFile = SOUND_FILES[type];
+        const preset = await getSoundPreset(type);
+        if (preset === 'silent') return;
+        const soundFile = preset === 'standard' ? SOUND_FILES[type] : PRESET_FILES[preset];
         if (!soundFile) {
             console.warn('[SoundManager] Unknown sound type:', type);
             return;
@@ -200,7 +205,9 @@ async function playSound(type: SoundType, volume: number = 1.0): Promise<void> {
 
         // Rustコマンドを呼び出す
         // Rust側で非同期に再生されるため、awaitしてもブロックはしません
-        await invoke('fusen_play_sound', { name: type, volume: volume });
+        const preset = await getSoundPreset(type);
+        if (preset === 'silent') return;
+        await invoke('fusen_play_sound', { name: `${type}:${preset}`, volume: volume });
     } catch (e) {
         console.error('[SoundManager] Failed to invoke fusen_play_sound:', e);
         // フォールバック：Rustコマンドが失敗した場合（Web環境など）はローカルで鳴らす
@@ -215,11 +222,28 @@ export async function playCreateSound(): Promise<void> {
     return playSound('create', 0.5);
 }
 
+export async function playDuplicateSound(): Promise<void> {
+    return playSound('duplicate', 0.5);
+}
+
 /**
  * 保存/アーカイブ時の効果音
  */
 export async function playSaveSound(): Promise<void> {
-    return playSound('save', 0.4);
+    // This is used only by the special "return" flow, which is intentionally
+    // not one of the user-configurable daily-operation scenes.
+    if (!await isSoundEnabled()) return;
+    try {
+        await invoke('fusen_play_sound', { name: 'save', volume: 0.4 });
+    } catch {
+        const audio = new Audio('/sounds/save.wav');
+        audio.volume = 0.4;
+        await audio.play();
+    }
+}
+
+export async function playArchiveSound(): Promise<void> {
+    return playSound('archive', 0.4);
 }
 
 /**
@@ -233,10 +257,29 @@ export async function playDeleteSound(): Promise<void> {
  * チェックボックス完了時の効果音
  */
 export async function playCheckboxSound(): Promise<void> {
-    const completedCount = incrementCheckboxCompletedCount();
-    if (completedCount % CHECK_MILESTONE_INTERVAL === 0) {
-        return playCheckboxMilestoneSound();
-    }
+    const preset = await getSoundPreset('checkbox');
+    if (preset === 'standard') return playDefaultCheckboxSound();
+    return playSound('checkbox', 0.35);
+}
 
-    return playCheckboxCompletionSound();
+export async function playSoundPreview(type: SoundType, preset: SoundPreset): Promise<void> {
+    if (preset === 'silent') return;
+    if (preset === 'standard' && (type === 'pin' || type === 'unpin')) {
+        const { playDefaultPinToggleSound } = await import('./pinToggleSound');
+        playDefaultPinToggleSound(type === 'unpin');
+        return;
+    }
+    if (preset === 'standard' && type === 'checkbox') {
+        await playDefaultCheckboxSound(true);
+        return;
+    }
+    const audio = new Audio(preset === 'standard' ? SOUND_FILES[type] : PRESET_FILES[preset]);
+    audio.volume = 0.45;
+    await audio.play();
+}
+
+export async function getAlarmSoundFile(): Promise<string | null> {
+    const preset = await getSoundPreset('alarm');
+    if (preset === 'silent') return null;
+    return preset === 'standard' ? SOUND_FILES.alarm : PRESET_FILES[preset];
 }
