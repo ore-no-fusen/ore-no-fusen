@@ -483,7 +483,7 @@ export default function MarkdownRenderer({
         >
             {content ? (
                 <div className={`flex-1 ${singleLinePreview ? 'whitespace-nowrap overflow-hidden' : 'whitespace-pre-wrap overflow-visible'}`}>
-                    {groupedLines.map((group, gi) => {
+                    {groupedLines.map((group) => {
                         // テーブルブロック
                         if (group.type === 'table') {
                             if (outlineLines[group.startIndex]?.hidden) return null;
@@ -500,7 +500,7 @@ export default function MarkdownRenderer({
                                 row.trim().slice(1, -1).split('|').map(c => c.trim());
 
                             return (
-                                <div key={gi} style={{ overflowX: 'auto', margin: '4px 0' }}>
+                                <div key={`table-${group.startIndex}`} style={{ overflowX: 'auto', margin: '4px 0' }}>
                                     <table style={{
                                         borderCollapse: 'collapse',
                                         fontSize: 'inherit',
@@ -545,11 +545,11 @@ export default function MarkdownRenderer({
                             if (outlineLines[group.startIndex]?.hidden) return null;
                             const codeText = group.lines.join('\n');
                             if (group.lang === 'mermaid') {
-                                return <MermaidBlock key={gi} code={codeText} language={language} />;
+                                return <MermaidBlock key={`code-${group.startIndex}`} code={codeText} language={language} />;
                             }
                             // 通常コードブロック → 等幅フォントで表示
                             return (
-                                <pre key={gi} style={{
+                                <pre key={`code-${group.startIndex}`} style={{
                                     fontFamily: 'monospace',
                                     background: 'rgba(0,0,0,0.06)',
                                     padding: '6px 8px',
