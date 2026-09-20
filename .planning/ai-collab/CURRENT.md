@@ -7,8 +7,8 @@
 - 完成条件を「設定画面の掲示板から、必須本文と最大3枚のPNG/JPEG/WebP画像を送り、開発者がDiscordで本文と画像を確認できること」だけに限定した。
 - PCは画像を長辺2048px以内へ圧縮し、会話専用の短期Appwrite JWTでStorageへ直接アップロードする。Vercel APIはfile ID・形式・容量・所有者権限を確認し、15分の表示URLをDiscord embedへ付ける。
 - Discordからユーザーへの画像返信、30日cleanup、Appwrite Function、高度な追加セキュリティ、設計書改訂は今回の変更から除外した。試作ファイルと生成アーカイブも削除済み。
-- Appwrite bucketは認証済みユーザーのCreateだけを許可し、ファイル単位セキュリティを有効のまま保存。認証API keyは `sessions.read` / `sessions.write` / `users.write` の3スコープだけで作成した。
-- Vercel `ore-no-fusen` のPreview・`codex/image-attachments-probe` 限定で `APPWRITE_AUTH_API_KEY` をSecret登録した。`codex/image-attachments-probe` のみを変更し、`develop` は未変更。残作業は新しいPreviewでの実送信確認。
+- Appwrite bucketは全ユーザーのCreateだけを許可し、ファイル単位セキュリティは無効のまま維持。認証API keyは `sessions.read` / `sessions.write` / `users.write`、既存Storage API keyは `files.read` / `files.write` / `tokens.write` の各3スコープに限定した。
+- Vercel `ore-no-fusen` のPreview・`codex/image-attachments-probe` 限定で `APPWRITE_AUTH_API_KEY` と `IMAGE_STORAGE_ENABLED=true` を設定した。Preview実送信は認証200・画像アップロード201・Discord送信200で成功し、本文と画像の到達を確認。`develop` は未変更。
 
 ### 2026-09-20 やりとり画像添付・Appwrite検証環境の確認
 
