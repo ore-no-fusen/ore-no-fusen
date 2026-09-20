@@ -16,6 +16,15 @@ export type FeedbackConversationIdentity = {
   secretToken: string;
 };
 
+export async function getFeedbackAppVersion(): Promise<string> {
+  try {
+    const { getVersion } = await import('@tauri-apps/api/app');
+    return await getVersion();
+  } catch {
+    return 'Unknown';
+  }
+}
+
 export async function linkFeedbackMember(identity: FeedbackConversationIdentity): Promise<void> {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) return;
   try {
@@ -268,6 +277,8 @@ export async function deleteFeedbackConversation(
 
 export function getFeedbackApiBaseUrl(): string {
   if (process.env.NODE_ENV === 'development') {
+    const previewApiBaseUrl = process.env.NEXT_PUBLIC_FEEDBACK_API_BASE_URL?.trim().replace(/\/$/, '');
+    if (previewApiBaseUrl && /^https?:\/\//.test(previewApiBaseUrl)) return previewApiBaseUrl;
     return DEVELOP_FEEDBACK_API_BASE_URL;
   }
 

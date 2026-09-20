@@ -54,6 +54,7 @@ import {
     deleteFeedbackUploadedAttachment,
     deleteFeedbackConversation,
     getDeveloperFeedbackApiBaseUrl,
+    getFeedbackAppVersion,
     getFeedbackApiBaseUrl,
     getFeedbackConversationIdentity,
     getOrCreateFeedbackConversationIdentity,
@@ -2606,6 +2607,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         const uploadedAttachmentIds: string[] = []
         try {
             await linkFeedbackMember(conversationIdentity);
+            const appVersion = await getFeedbackAppVersion()
             for (const file of selectedImages) {
                 uploadedAttachmentIds.push(await uploadFeedbackAttachment(conversationIdentity, file))
             }
@@ -2619,7 +2621,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     fileIds: uploadedAttachmentIds,
                     contact: '',
                     systemInfo: 'User opened settings board',
-                    version: 'Unknown',
+                    version: appVersion,
                 }),
             })
             if (!response.ok) throw new Error(`Server error: ${response.status}`)

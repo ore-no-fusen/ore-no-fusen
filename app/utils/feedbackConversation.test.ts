@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const imageMocks = vi.hoisted(() => ({ compressFeedbackImage: vi.fn() }));
+const appMocks = vi.hoisted(() => ({ getVersion: vi.fn() }));
 vi.mock('./feedbackImage', () => ({ compressFeedbackImage: imageMocks.compressFeedbackImage }));
+vi.mock('@tauri-apps/api/app', () => ({ getVersion: appMocks.getVersion }));
 import {
   ackFeedbackConversationMessages,
   clearFeedbackConversationIdentity,
   deleteFeedbackConversation,
   deleteFeedbackUploadedAttachment,
   getDeveloperFeedbackApiBaseUrl,
+  getFeedbackAppVersion,
   getFeedbackApiBaseUrl,
   getFeedbackConversationIdentity,
   getFeedbackConversationUnreadState,
@@ -41,6 +44,12 @@ describe('feedback conversation identity', () => {
     vi.clearAllMocks();
     clearFeedbackConversationIdentity();
     delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  });
+
+  it('uses the desktop app version in feedback messages', async () => {
+    appMocks.getVersion.mockResolvedValue('5.2.2');
+
+    await expect(getFeedbackAppVersion()).resolves.toBe('5.2.2');
   });
 
   it('creates and persists an anonymous conversation identity', () => {
@@ -224,6 +233,13 @@ describe('feedback conversation identity', () => {
     expect(getFeedbackApiBaseUrl()).toBe(
       'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback',
     );
+  });
+
+  it('uses an explicitly configured feedback API for branch preview testing', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('NEXT_PUBLIC_FEEDBACK_API_BASE_URL', 'https://branch-preview.example/api/feedback/');
+
+    expect(getFeedbackApiBaseUrl()).toBe('https://branch-preview.example/api/feedback');
   });
 
   it('uses the public production API from the Tauri desktop runtime', () => {
