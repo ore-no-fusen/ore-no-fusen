@@ -29,7 +29,7 @@ fn main() {
 
   // 自動同期: public/sounds のファイルを OUT_DIR にコピーして埋め込み可能にする
   // ソースディレクトリ(src/)へのコピーは無限ループの原因になるため廃止
-  let sounds = ["create.wav", "save.wav", "delete.wav", "alarm.wav"];
+  let sounds = ["create.wav", "save.wav", "delete.wav", "alarm.wav", "variations/alarm_bk.wav", "variations/click_switch.wav", "variations/click_soft.wav", "variations/click_modern.wav", "variations/click_wood.wav", "variations/click_typewriter.wav"];
   let public_sounds_dir = Path::new("../public/sounds"); // src-tauri から見た相対パス
   
   // OUT_DIRを取得 (Cargoが設定するビルド出力ディレクトリ)
@@ -41,7 +41,7 @@ fn main() {
 
   for sound in sounds.iter() {
     let src_path = public_sounds_dir.join(sound);
-    let dest_path = dest_dir.join(sound);
+    let dest_path = dest_dir.join(sound.replace("variations/", ""));
 
     if src_path.exists() {
       // 上書きコピー

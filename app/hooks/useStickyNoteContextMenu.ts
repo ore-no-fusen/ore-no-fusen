@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NoteMeta } from '@/app/api/notes';
-import { playDeleteSound, playSaveSound } from '../utils/soundManager';
+import { playArchiveSound, playDeleteSound } from '../utils/soundManager';
 import { TranslationKey, Language } from '@/lib/i18n';
 import { getFeedbackConversationUnreadState } from '@/app/utils/feedbackConversation';
 import { getUserTags, isReservedTag, normalizeTagForReservation } from '@/app/utils/reservedTags';
@@ -814,7 +814,7 @@ export function useStickyNoteContextMenu({
                     if (!selectedFile) return;
                     isDeletingRef.current = true;
                     await saveNoteContent(editBody, rawFrontmatter, false);
-                    void playSaveSound();
+                    void playArchiveSound();
                     await invoke('fusen_archive_note', { path: selectedFile.path, targetTag: targetTag ?? null });
                     trackEvent('feature_used', { event_category: 'usage', feature_name: 'note_archive' });
                     const win = (await import('@tauri-apps/api/window')).getCurrentWindow();

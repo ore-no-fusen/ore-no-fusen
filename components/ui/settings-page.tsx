@@ -24,6 +24,9 @@ import { formatNewNoteTriggerLabel } from "@/app/utils/newNoteTriggerLabel"
 import { getSettingsPageText } from "@/app/utils/settingsPageText"
 import { trackDonationEvent } from "@/app/utils/analytics"
 import { monthlyBackupToggleChanges } from "@/app/utils/monthlyBackupSettings"
+import { playSoundPreview } from "@/app/utils/soundManager"
+import { type SoundScene } from "@/app/utils/soundPreferences"
+import { normalizeSettingsTheme, resolveSettingsTheme } from "@/app/utils/settingsTheme"
 import { refreshImportedNotes, type ImportStats } from "@/app/utils/importRefresh"
 import { getDistributionEdition } from "@/app/utils/storeMigration"
 import { saveCrystalFormats } from "@/app/api/crystalFormats"
@@ -49,12 +52,12 @@ import {
 } from "@/app/utils/crystalFormatEditor"
 import {
     ackFeedbackConversationMessages,
+    getFeedbackAppVersion,
     linkFeedbackMember,
     clearFeedbackConversationIdentity,
     deleteFeedbackUploadedAttachment,
     deleteFeedbackConversation,
     getDeveloperFeedbackApiBaseUrl,
-    getFeedbackAppVersion,
     getFeedbackApiBaseUrl,
     getFeedbackConversationIdentity,
     getOrCreateFeedbackConversationIdentity,
@@ -116,6 +119,18 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
     // settings: 現在の設定データ
     // saveSettings: 保存するための関数
     const { settings, saveSettings, loading } = useSettings()
+    const [systemPrefersDark, setSystemPrefersDark] = useState(false)
+    const selectedTheme = normalizeSettingsTheme(settings.settings_theme)
+    const effectiveTheme = resolveSettingsTheme(selectedTheme, systemPrefersDark)
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !window.matchMedia) return
+        const media = window.matchMedia('(prefers-color-scheme: dark)')
+        const update = () => setSystemPrefersDark(media.matches)
+        update()
+        media.addEventListener('change', update)
+        return () => media.removeEventListener('change', update)
+    }, [])
 
     // ★翻訳関数を設定の言語から作成
     const t = useMemo(() => getTranslation((settings.language as Language) || 'ja'), [settings.language])
@@ -192,7 +207,18 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
 
     return (
         <SettingsLanguageContext.Provider value={settings.language}>
-        <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-foreground">
+        <div className={`settings-theme-root ${effectiveTheme === 'dark' ? 'dark' : ''} flex h-screen w-full overflow-hidden bg-slate-50 text-foreground`} data-settings-theme={effectiveTheme}>
+            <style>{`
+                .settings-theme-root[data-settings-theme="dark"] { background: #101722 !important; color: #e8edf5; }
+                .settings-theme-root[data-settings-theme="dark"] [class*="bg-white"] { background-color: #192230 !important; }
+                .settings-theme-root[data-settings-theme="dark"] [class*="bg-slate-50"], .settings-theme-root[data-settings-theme="dark"] [class*="bg-gray-50"] { background-color: #101722 !important; }
+                .settings-theme-root[data-settings-theme="dark"] [class*="border-slate-"], .settings-theme-root[data-settings-theme="dark"] [class*="border-gray-"] { border-color: #344154 !important; }
+                .settings-theme-root[data-settings-theme="dark"] [class*="text-slate-9"], .settings-theme-root[data-settings-theme="dark"] [class*="text-gray-9"] { color: #edf1f6 !important; }
+                .settings-theme-root[data-settings-theme="dark"] [class*="text-slate-"], .settings-theme-root[data-settings-theme="dark"] [class*="text-gray-"] { color: #c4ceda; }
+                .settings-theme-root[data-settings-theme="dark"] [class*="hover:bg-slate-"]:hover, .settings-theme-root[data-settings-theme="dark"] [class*="hover:bg-gray-"]:hover { background-color: #273244 !important; }
+                .settings-theme-root[data-settings-theme="dark"] input, .settings-theme-root[data-settings-theme="dark"] textarea, .settings-theme-root[data-settings-theme="dark"] select { background-color: #202b3b; color: #edf1f6; border-color: #435066; }
+                .settings-theme-root[data-settings-theme="dark"] [data-settings-sidebar-active] { background-color: #303b4d !important; }
+            `}</style>
             {/* サイドバー */}
             <aside className="w-60 shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-4 py-5">
                 <div className="mb-5 flex items-center gap-2 px-2 py-3">
@@ -466,6 +492,7 @@ function SidebarItem({
         <Button
             variant={isActive ? "secondary" : "ghost"}
             className={`h-10 w-full justify-start rounded-lg px-3 ${isActive ? "bg-slate-100 font-semibold text-slate-950" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}
+            data-settings-sidebar-active={isActive || undefined}
             onClick={onClick}
         >
             {icon}
@@ -1185,6 +1212,7 @@ function hotkeyCheckMessage(result: HotkeyCheckResult, labels: Record<HotkeyActi
 
 function GeneralSection({ settings, onUpdate, t }: SectionProps) {
     const isEnglish = settings.language === 'en'
+    const selectedTheme = normalizeSettingsTheme(settings.settings_theme)
     const [startupDistribution, setStartupDistribution] = useState<"unknown" | "desktop" | "msix">("unknown")
     const [startupState, setStartupState] = useState("desktop")
     const [startupMessage, setStartupMessage] = useState("")
@@ -1420,7 +1448,37 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                     />
                 </div>
                 </SettingsItemCard>
-                <SettingsItemCard number={6} title={isEnglish ? 'Font Size' : '文字サイズ'} description={isEnglish ? 'Adjust the text size used in sticky notes.' : '付箋本文の文字の大きさを調整します。'} current={`${settings.font_size}px`}>
+                <SettingsItemCard number={6} title={isEnglish ? 'Sounds by action' : '場面ごとの効果音'} description={isEnglish ? 'Choose an included sound or silence for each action.' : '操作ごとに内蔵音または無音を選び、すぐ試聴できます。'}>
+                    <div className="space-y-3">
+                        {([['create', isEnglish ? 'New note' : '新規作成'], ['duplicate', isEnglish ? 'Duplicate' : '複製'], ['archive', isEnglish ? 'Archive' : 'アーカイブ'], ['delete', isEnglish ? 'Delete' : '削除'], ['checkbox', isEnglish ? 'Checkbox complete' : 'チェック完了'], ['pin', isEnglish ? 'Pin' : 'ピン止め'], ['unpin', isEnglish ? 'Unpin' : 'ピン解除'], ['alarm', isEnglish ? 'Alarm' : 'アラーム']] as const).map(([scene, label]) => {
+                            const key = `sound_${scene}` as const;
+                            const presets = scene === 'alarm' ? ['standard', 'silent', 'alternate'] as const : scene === 'create' || scene === 'duplicate' ? ['standard', 'silent', 'wood', 'typewriter'] as const : scene === 'delete' ? ['standard', 'silent', 'modern', 'wood', 'typewriter'] as const : ['standard', 'silent', 'soft', 'modern', 'wood'] as const;
+                            const sharedDefaultHint = (preset: string) => preset === 'soft'
+                                ? (isEnglish ? ' (Delete default sound)' : '（削除のデフォルト音）')
+                                : preset === 'modern'
+                                    ? (isEnglish ? ' (New note / Duplicate default sound)' : '（新規作成・複製のデフォルト音）')
+                                    : '';
+                            return <div key={scene} className="flex flex-wrap items-center justify-between gap-2"><Label>{label}</Label><div className="flex gap-2"><select className="h-9 rounded-md border px-2 text-sm" value={settings[key]} onChange={(event) => onUpdate(key, event.target.value)}>{presets.map((preset) => <option key={preset} value={preset}>{preset === 'standard' ? (isEnglish ? 'Default' : 'デフォルト') : preset === 'silent' ? (isEnglish ? 'None' : 'なし') : preset === 'alternate' ? (isEnglish ? 'Recommended 1' : 'おすすめ1') : `${isEnglish ? 'Recommended' : 'おすすめ'} ${(presets as readonly string[]).indexOf(preset) - 1}${sharedDefaultHint(preset)}`}</option>)}</select><Button type="button" variant="outline" size="sm" disabled={settings[key] === 'silent'} onClick={() => void playSoundPreview(scene as SoundScene, settings[key])}>{isEnglish ? 'Preview' : '試聴'}</Button></div></div>
+                        })}
+                    </div>
+                </SettingsItemCard>
+                <SettingsItemCard number={7} title={isEnglish ? 'Appearance theme' : '表示テーマ'} description={isEnglish ? 'Choose the brightness of the Settings screen only.' : '設定画面だけの明るさを選びます。付箋の色は変わりません。'} current={selectedTheme === 'light' ? (isEnglish ? 'Light' : 'ライト') : selectedTheme === 'dark' ? (isEnglish ? 'Dark' : 'ダーク') : (isEnglish ? 'System' : 'システムに合わせる')}>
+                    <div className="grid gap-3">
+                        <Label>{isEnglish ? 'Appearance theme' : '表示テーマ'}</Label>
+                        <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label={isEnglish ? 'Appearance theme' : '表示テーマ'}>
+                            {([
+                                ['light', Sun, isEnglish ? 'Light' : 'ライト'],
+                                ['dark', Moon, isEnglish ? 'Dark' : 'ダーク'],
+                                ['system', Monitor, isEnglish ? 'System' : 'システムに合わせる'],
+                            ] as const).map(([value, Icon, label]) => (
+                                <Button key={value} type="button" variant={selectedTheme === value ? 'default' : 'outline'} className="justify-start" role="radio" aria-checked={selectedTheme === value} onClick={() => onUpdate('settings_theme', value)}>
+                                    <Icon className="mr-2 h-4 w-4" />{label}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                </SettingsItemCard>
+                <SettingsItemCard number={8} title={isEnglish ? 'Font Size' : '文字サイズ'} description={isEnglish ? 'Adjust the text size used in sticky notes.' : '付箋本文の文字の大きさを調整します。'} current={`${settings.font_size}px`}>
             <section className="space-y-4">
                 <div>
                     <h3 className="text-lg font-semibold text-slate-900">{t('settings.appearance.title')}</h3>

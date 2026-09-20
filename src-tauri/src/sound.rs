@@ -17,6 +17,11 @@ const CREATE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/create.wav
 const SAVE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/save.wav"));
 const DELETE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/delete.wav"));
 const ALARM_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alarm.wav"));
+const SOFT_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/click_soft.wav"));
+const MODERN_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/click_modern.wav"));
+const WOOD_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/click_wood.wav"));
+const TYPEWRITER_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/click_typewriter.wav"));
+const ALARM_ALT_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alarm_bk.wav"));
 
 /// 1 回の再生リクエスト
 struct PlayRequest {
@@ -79,6 +84,12 @@ pub fn fusen_play_sound(name: String, volume: Option<f32>) {
         "save" => SAVE_SOUND,
         "delete" => DELETE_SOUND,
         "alarm" => ALARM_SOUND,
+        "create:standard" | "duplicate:standard" => CREATE_SOUND, "archive:standard" | "checkbox:standard" => SAVE_SOUND, "delete:standard" => DELETE_SOUND,
+        "create:soft" | "duplicate:soft" | "archive:soft" | "delete:soft" | "checkbox:soft" => SOFT_SOUND,
+        "create:modern" | "duplicate:modern" | "archive:modern" | "delete:modern" | "checkbox:modern" => MODERN_SOUND,
+        "create:wood" | "duplicate:wood" | "archive:wood" | "delete:wood" | "checkbox:wood" => WOOD_SOUND,
+        "create:typewriter" | "duplicate:typewriter" | "archive:typewriter" | "delete:typewriter" | "checkbox:typewriter" => TYPEWRITER_SOUND,
+        "alarm:standard" => ALARM_SOUND, "alarm:alternate" => ALARM_ALT_SOUND,
         _ => return,
     };
 

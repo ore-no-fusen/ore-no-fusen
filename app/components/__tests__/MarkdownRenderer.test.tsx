@@ -58,6 +58,39 @@ describe('MarkdownRenderer list keys', () => {
     });
 });
 
+describe('MarkdownRenderer horizontal table scrolling', () => {
+    it('continues scrolling when the first gesture changes from a horizontal delta to zero deltas', () => {
+        const { container } = renderMarkdown('| A | B |\n|---|---|\n| one | two |');
+        const article = container.querySelector('article');
+        const tableScroller = container.querySelector<HTMLElement>('[data-horizontal-scroll-target]');
+        expect(article).toBeTruthy();
+        expect(tableScroller).toBeTruthy();
+        Object.defineProperties(tableScroller!, {
+            clientWidth: { value: 100 },
+            scrollWidth: { value: 500 },
+        });
+
+        fireEvent.wheel(article!, { deltaX: 100, deltaY: 0 });
+        fireEvent.wheel(article!, { deltaX: 0, deltaY: 0 });
+
+        expect(tableScroller!.scrollLeft).toBe(200);
+    });
+
+    it('leaves ordinary vertical wheel input unchanged', () => {
+        const { container } = renderMarkdown('| A | B |\n|---|---|\n| one | two |');
+        const article = container.querySelector('article');
+        const tableScroller = container.querySelector<HTMLElement>('[data-horizontal-scroll-target]');
+        Object.defineProperties(tableScroller!, {
+            clientWidth: { value: 100 },
+            scrollWidth: { value: 500 },
+        });
+
+        fireEvent.wheel(article!, { deltaX: 0, deltaY: 120 });
+
+        expect(tableScroller!.scrollLeft).toBe(0);
+    });
+});
+
 describe('MarkdownRenderer recipeMode', () => {
     const representativeContent = [
         '# 見出し',

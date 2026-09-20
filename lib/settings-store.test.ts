@@ -48,6 +48,7 @@ describe('useSettings Hook (Browser Mode)', () => {
 
         expect(result.current.settings.language).toBe('ja');
         expect(result.current.settings.font_size).toBe(16);
+        expect(result.current.settings.settings_theme).toBe('system');
         expect(result.current.settings.iphone_send_enabled).toBe(false);
         expect(result.current.settings.shortcut_quick_launcher).toBe('ctrl+p');
         expect(result.current.settings.shortcut_bold).toBe('ctrl+b');
@@ -75,6 +76,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         expect(result.current.settings.font_size).toBe(20);
         expect(result.current.settings.auto_start).toBe(true);
         expect(result.current.settings.iphone_send_enabled).toBe(true);
+        expect(result.current.settings.settings_theme).toBe('system');
     });
 
     it('loads shortcut_new_note from localStorage when specified', async () => {

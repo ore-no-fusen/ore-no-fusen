@@ -10,6 +10,8 @@
 import { useState, useEffect } from "react"
 // Tauri v2 用のインポート（v1の場合は @tauri-apps/api/tauri）
 import { invoke } from "@tauri-apps/api/core"
+import { normalizeSettingsTheme, type SettingsTheme } from "@/app/utils/settingsTheme"
+import { normalizeSoundPreset, type SoundPreset } from "@/app/utils/soundPreferences"
 
 // --- 1. 定義書（データの型） ---
 export type AppSettings = {
@@ -21,6 +23,15 @@ export type AppSettings = {
     analytics_consent?: "granted" | "denied"
     font_size: number
     sound_enabled: boolean
+    sound_create: SoundPreset
+    sound_duplicate: SoundPreset
+    sound_archive: SoundPreset
+    sound_delete: SoundPreset
+    sound_checkbox: SoundPreset
+    sound_pin: SoundPreset
+    sound_unpin: SoundPreset
+    sound_alarm: SoundPreset
+    settings_theme: SettingsTheme
     iphone_send_enabled: boolean
     shortcut_new_note?: string
     new_note_trigger?: "shortcut" | "double_ctrl" | "double_shift"
@@ -54,6 +65,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     desktop_shortcut_prompted: false,
     font_size: 16,
     sound_enabled: true,
+    sound_create: "standard", sound_duplicate: "standard", sound_archive: "standard", sound_delete: "standard", sound_checkbox: "standard", sound_pin: "standard", sound_unpin: "standard", sound_alarm: "standard",
+    settings_theme: "system",
     iphone_send_enabled: false,
     shortcut_new_note: "ctrl+n",
     new_note_trigger: "shortcut",
@@ -119,6 +132,8 @@ export function useSettings() {
                         analytics_consent: parsed.analytics_consent,
                         font_size: parsed.font_size ?? parsed.fontSize ?? DEFAULT_SETTINGS.font_size,
                         sound_enabled: parsed.sound_enabled ?? parsed.soundEnabled ?? DEFAULT_SETTINGS.sound_enabled,
+                        sound_create: normalizeSoundPreset(parsed.sound_create), sound_duplicate: normalizeSoundPreset(parsed.sound_duplicate), sound_archive: normalizeSoundPreset(parsed.sound_archive ?? parsed.sound_save), sound_delete: normalizeSoundPreset(parsed.sound_delete), sound_checkbox: normalizeSoundPreset(parsed.sound_checkbox), sound_pin: normalizeSoundPreset(parsed.sound_pin), sound_unpin: normalizeSoundPreset(parsed.sound_unpin), sound_alarm: normalizeSoundPreset(parsed.sound_alarm),
+                        settings_theme: normalizeSettingsTheme(parsed.settings_theme ?? parsed.settingsTheme),
                         iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
                         shortcut_new_note: parsed.shortcut_new_note ?? DEFAULT_SETTINGS.shortcut_new_note,
                         new_note_trigger: parsed.new_note_trigger ?? DEFAULT_SETTINGS.new_note_trigger,
@@ -154,6 +169,8 @@ export function useSettings() {
                     analytics_consent: loaded.analytics_consent,
                     font_size: loaded.font_size,
                     sound_enabled: loaded.sound_enabled,
+                    sound_create: normalizeSoundPreset(loaded.sound_create), sound_duplicate: normalizeSoundPreset(loaded.sound_duplicate), sound_archive: normalizeSoundPreset(loaded.sound_archive ?? loaded.sound_save), sound_delete: normalizeSoundPreset(loaded.sound_delete), sound_checkbox: normalizeSoundPreset(loaded.sound_checkbox), sound_pin: normalizeSoundPreset(loaded.sound_pin), sound_unpin: normalizeSoundPreset(loaded.sound_unpin), sound_alarm: normalizeSoundPreset(loaded.sound_alarm),
+                    settings_theme: normalizeSettingsTheme(loaded.settings_theme),
                     iphone_send_enabled: loaded.iphone_send_enabled,
                     shortcut_new_note: loaded.shortcut_new_note,
                     new_note_trigger: loaded.new_note_trigger,

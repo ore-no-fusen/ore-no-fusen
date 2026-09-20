@@ -20,6 +20,7 @@ import { NOTE_COLORS } from '@/app/utils/noteAppearance';
 import type { Language } from '@/lib/i18n';
 import { parseOutline } from '../utils/outline';
 import { NOTE_DRAG_CURSOR, NOTE_POINT_CURSOR } from '../utils/cursorStyles';
+import { resolveHorizontalWheelDelta, scrollNearestHorizontalTarget } from '../utils/sideButtonHorizontalScroll';
 
 /**
  * Mermaid図ブロックコンポーネント
@@ -232,6 +233,7 @@ export default function MarkdownRenderer({
     onCollapsedOutlineLinesChange,
 }: MarkdownRendererProps) {
     const articleRef = useRef<HTMLElement>(null);
+    const horizontalWheelGestureRef = useRef({ lastDeltaX: 0, lastEventTime: 0 });
     const outlineAnchorRef = useRef<{
         lineIndex: number;
         top: number;
@@ -476,6 +478,14 @@ export default function MarkdownRenderer({
                 cursor: isDraggableArea ? NOTE_DRAG_CURSOR : 'text',
             }}
             onPointerDown={onPointerDown}
+            onWheel={(event) => {
+                const root = event.currentTarget;
+                const deltaX = resolveHorizontalWheelDelta(horizontalWheelGestureRef.current, event);
+                const handled = scrollNearestHorizontalTarget(root, event.clientX, event.clientY, deltaX);
+                if (handled) {
+                    event.preventDefault();
+                }
+            }}
             onDoubleClick={(e) => {
                 e.stopPropagation();
                 onDoubleClick(e);
@@ -500,7 +510,7 @@ export default function MarkdownRenderer({
                                 row.trim().slice(1, -1).split('|').map(c => c.trim());
 
                             return (
-                                <div key={`table-${group.startIndex}`} style={{ overflowX: 'auto', margin: '4px 0' }}>
+                                <div key={`table-${group.startIndex}`} data-horizontal-scroll-target style={{ overflowX: 'auto', margin: '4px 0' }}>
                                     <table style={{
                                         borderCollapse: 'collapse',
                                         fontSize: 'inherit',

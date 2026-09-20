@@ -1,6 +1,9 @@
 'use client';
 
-export function playPinToggleSound(isPinned: boolean): void {
+import { getSoundPreset, isSoundEnabled } from './settingsManager';
+import { playSoundPreview } from './soundManager';
+
+export function playDefaultPinToggleSound(isPinned: boolean): void {
     try {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioContext) {
@@ -38,6 +41,22 @@ export function playPinToggleSound(isPinned: boolean): void {
                 ctx.close();
             }, 200);
         }
+    } catch (e) {
+        console.error('SFX Error:', e);
+    }
+}
+
+export async function playPinToggleSound(isPinned: boolean): Promise<void> {
+    try {
+        if (!await isSoundEnabled()) return;
+        const scene = isPinned ? 'unpin' : 'pin';
+        const preset = await getSoundPreset(scene);
+        if (preset === 'silent') return;
+        if (preset !== 'standard') {
+            await playSoundPreview(scene, preset);
+            return;
+        }
+        playDefaultPinToggleSound(isPinned);
     } catch (e) {
         console.error('SFX Error:', e);
     }

@@ -4610,17 +4610,20 @@ async fn fusen_download_iphone_images(folder_path: String, body: String) -> Resu
 }
 
 fn build_context(title: &str, body: &str) -> String {
-    if !title.is_empty() {
-        return title.to_string();
+    let raw_context = if !title.is_empty() {
+        title
+    } else if is_image_only_body(body) {
+        "画像"
+    } else {
+        body.lines().next().unwrap_or("").trim()
+    };
+
+    let without_heading_marker = raw_context.trim_start_matches('#').trim_start();
+    let safe_context = logic::sanitize_context(without_heading_marker);
+    if !safe_context.is_empty() {
+        return safe_context.chars().take(10).collect();
     }
-    if is_image_only_body(body) {
-        return "画像".to_string();
-    }
-    let first_line = body.lines().next().unwrap_or("").trim();
-    if !first_line.is_empty() {
-        return first_line.chars().take(10).collect();
-    }
-    chrono::Local::now().format("%H:%M").to_string()
+    "iPhoneメモ".to_string()
 }
 
 fn is_image_only_body(body: &str) -> bool {
@@ -4683,6 +4686,13 @@ mod iphone_context_tests {
             build_context("タイトル", "![](fusen_img_20260630_235053_1.jpg)"),
             "タイトル"
         );
+    }
+
+    #[test]
+    fn iphone_markdown_first_line_is_safe_for_the_pc_filename() {
+        assert_eq!(build_context("", "**赤字のメモ**\n本文"), "赤字のメモ");
+        assert_eq!(build_context("", "# 見出し\n本文"), "見出し");
+        assert_eq!(build_context("#", "本文"), "iPhoneメモ");
     }
 }
 
@@ -5449,7 +5459,6 @@ pub fn run() {
         .setup(|app| {
             // アプリケーション起動ログ
             logger::log_app_start();
-            
             // [DEBUG] Startup Environment Diagnosis
             if let Ok(cwd) = std::env::current_dir() {
                 logger::log_info(&format!("現在の作業ディレクトリ: {:?}", cwd));

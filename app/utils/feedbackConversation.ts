@@ -11,19 +11,19 @@ const DAILY_UNREAD_CHECK_HOUR_JST = 4;
 const PRODUCTION_FEEDBACK_API_BASE_URL = 'https://ore-no-fusen.vercel.app/api/feedback';
 const DEVELOP_FEEDBACK_API_BASE_URL = 'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback';
 
-export type FeedbackConversationIdentity = {
-  conversationId: string;
-  secretToken: string;
-};
-
 export async function getFeedbackAppVersion(): Promise<string> {
   try {
     const { getVersion } = await import('@tauri-apps/api/app');
-    return await getVersion();
+    return (await getVersion()).trim() || 'Unknown';
   } catch {
     return 'Unknown';
   }
 }
+
+export type FeedbackConversationIdentity = {
+  conversationId: string;
+  secretToken: string;
+};
 
 export async function linkFeedbackMember(identity: FeedbackConversationIdentity): Promise<void> {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) return;

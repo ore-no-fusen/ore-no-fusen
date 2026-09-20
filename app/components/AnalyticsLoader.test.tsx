@@ -2,15 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import React from 'react';
 
-const { invokeMock, windowLabel } = vi.hoisted(() => ({ invokeMock: vi.fn(), windowLabel: { value: 'main' } }));
+const { invokeMock, getCurrentWindowMock, windowLabel } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  getCurrentWindowMock: vi.fn(),
+  windowLabel: { value: 'main' },
+}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async()=>vi.fn()) }));
-vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: windowLabel.value }) }));
+vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: getCurrentWindowMock }));
 import AnalyticsLoader from './AnalyticsLoader';
 
 describe('AnalyticsLoader low-impact scheduling', () => {
   beforeEach(() => {
-    vi.useFakeTimers(); invokeMock.mockReset(); windowLabel.value='main';
+    vi.useFakeTimers(); invokeMock.mockReset(); getCurrentWindowMock.mockReset(); windowLabel.value='main';
+    getCurrentWindowMock.mockImplementation(() => ({ label: windowLabel.value }));
     delete (window as any).gtag; delete (window as any).dataLayer; delete (window as any).__FUSEN_ANALYTICS_GRANTED__;
     document.querySelectorAll('[data-fusen-analytics="ga4"]').forEach(node=>node.remove());
     invokeMock.mockImplementation((command:string)=>{
@@ -41,6 +46,13 @@ describe('AnalyticsLoader low-impact scheduling', () => {
 
   it('runs only in the main Tauri window', async()=>{
     windowLabel.value='note-2';
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when TAURI_DEV is set in a browser without a Tauri window', async()=>{
+    getCurrentWindowMock.mockImplementation(() => { throw new Error('Tauri window is unavailable'); });
     render(<AnalyticsLoader isTauriBuild/>);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(invokeMock).not.toHaveBeenCalled();
