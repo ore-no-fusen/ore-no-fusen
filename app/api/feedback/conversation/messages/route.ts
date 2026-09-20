@@ -10,6 +10,14 @@ import {
 } from '../../lib/security';
 import { createFeedbackConversationStore } from '../../lib/store';
 import { conversationMemberNumber } from '../../../members/lib/conversation-number';
+import {
+  createPrivateImageViewUrl,
+  FeedbackImageStorageError,
+  getPrivateImageFileMetadata,
+} from '../../lib/appwrite-storage';
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 function corsHeaders() {
   return {
@@ -27,6 +35,16 @@ function formatRecentContext(messages: Array<{ authorType: 'user' | 'developer';
     .slice(0, 1000);
 }
 
+function fileIds(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 3
+    || new Set(value).size !== value.length
+    || !value.every((id) => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/.test(id))) {
+    throw new FeedbackRequestError('Invalid fileIds', 400);
+  }
+  return value;
+}
+
 export async function GET() {
   return NextResponse.json({ error: 'Method Not Allowed' }, { status: 405, headers: corsHeaders() });
 }
@@ -39,6 +57,7 @@ export async function POST(req: Request) {
 
     const body = await readFeedbackJson(req);
     const content = boundedString(body.content, 'content', 1000, true);
+    const providedFileIds = fileIds(body.fileIds);
     const providedConversationId = boundedString(body.conversationId, 'conversationId', 100);
     const providedSecretToken = boundedString(body.secretToken, 'secretToken', 200);
     const conversationId = providedConversationId
@@ -60,12 +79,28 @@ export async function POST(req: Request) {
       deliveryEnabled: true, shadowOnly: process.env.FEEDBACK_CONVERSATION_SHADOW_MODE === 'true',
       createdAt: now, updatedAt: now,
     });
+    const conversation = await store.getConversation(conversationId);
+    const verifiedFileIds: string[] = [];
+    for (const fileId of providedFileIds) {
+      if (!conversation?.appwriteUserId) throw new FeedbackRequestError('Image not found', 404);
+      const metadata = await getPrivateImageFileMetadata(fileId);
+      const expectedRead = `read("user:${conversation.appwriteUserId}")`;
+      const expectedDelete = `delete("user:${conversation.appwriteUserId}")`;
+      if (!ALLOWED_IMAGE_TYPES.has(metadata.mimeType)
+        || metadata.byteSize < 1
+        || metadata.byteSize > MAX_IMAGE_BYTES
+        || !metadata.permissions.includes(expectedRead)
+        || !metadata.permissions.includes(expectedDelete)) {
+        throw new FeedbackRequestError('Invalid image file', 400);
+      }
+      verifiedFileIds.push(metadata.fileId);
+    }
     const recentMessages = await store.listLatestMessages(conversationId, 5);
     const memberNumber = await conversationMemberNumber(conversationId).catch(() => null);
 
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
     if (!webhookUrl) {
-      return NextResponse.json({ error: 'Missing Discord webhook' }, { status: 500, headers: corsHeaders() });
+      throw new Error('Missing Discord webhook');
     }
 
     const embed = {
@@ -84,13 +119,18 @@ export async function POST(req: Request) {
       },
       timestamp: now,
     };
+    const discordImageUrls = await Promise.all(
+      verifiedFileIds.map((fileId) => createPrivateImageViewUrl(fileId)),
+    );
 
     const discordUrl = new URL(webhookUrl);
     discordUrl.searchParams.set('wait', 'true');
     const discordResponse = await fetch(discordUrl.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [embed] }),
+      body: JSON.stringify({
+        embeds: [embed, ...discordImageUrls.map((url) => ({ image: { url } }))],
+      }),
       signal: discordFetchSignal(),
     });
     if (!discordResponse.ok) {
@@ -103,6 +143,7 @@ export async function POST(req: Request) {
     } | null;
 
     await store.createConversation({
+      ...conversation,
       conversationId,
       secretTokenHash: hashSecretToken(secretToken),
       discordChannelId: discordMessage?.channel_id,
@@ -127,6 +168,10 @@ export async function POST(req: Request) {
   } catch (error) {
     if (error instanceof FeedbackRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status, headers: corsHeaders() });
+    }
+    if (error instanceof FeedbackImageStorageError) {
+      const status = error.status >= 500 ? 503 : 404;
+      return NextResponse.json({ error: status === 503 ? 'Image storage unavailable' : 'Image not found' }, { status, headers: corsHeaders() });
     }
     console.error('Feedback conversation message error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500, headers: corsHeaders() });

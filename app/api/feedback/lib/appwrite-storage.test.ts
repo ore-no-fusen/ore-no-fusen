@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   FeedbackImageStorageError,
+  createPrivateImageViewUrl,
   createPrivateImageFile,
   deletePrivateImageFile,
+  getPrivateImageFileMetadata,
   readPrivateImageFile,
 } from './appwrite-storage';
 
@@ -73,5 +75,24 @@ describe('private Appwrite image storage', () => {
       status: 401,
       upstreamType: 'general_unauthorized_scope',
     });
+  });
+
+  it('reads upload metadata and creates a short-lived Discord view URL', async () => {
+    setEnv();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        $id: 'image-a', mimeType: 'image/webp', sizeOriginal: 123,
+        $permissions: ['read("user:fb_user")', 'delete("user:fb_user")'],
+      })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ secret: 'short-token' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getPrivateImageFileMetadata('image-a')).resolves.toMatchObject({
+      fileId: 'image-a', mimeType: 'image/webp', byteSize: 123,
+    });
+    await expect(createPrivateImageViewUrl('image-a')).resolves.toBe(
+      'https://sgp.cloud.appwrite.io/v1/storage/buckets/feedback-images-dev/files/image-a/view?project=ore-no-fusen-image-dev&token=short-token',
+    );
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/tokens/buckets/feedback-images-dev/files/image-a');
   });
 });

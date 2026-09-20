@@ -99,3 +99,38 @@ export async function deletePrivateImageFile(fileId: string): Promise<void> {
   assertFileId(fileId);
   await appwriteRequest(filePath(fileId), { method: 'DELETE' });
 }
+
+export type PrivateImageFileMetadata = {
+  fileId: string;
+  mimeType: string;
+  byteSize: number;
+  permissions: string[];
+};
+
+export async function getPrivateImageFileMetadata(fileId: string): Promise<PrivateImageFileMetadata> {
+  assertFileId(fileId);
+  const response = await appwriteRequest(filePath(fileId), { method: 'GET' });
+  const value = await response.json().catch(() => null) as {
+    $id?: string; mimeType?: string; sizeOriginal?: number; $permissions?: unknown;
+  } | null;
+  if (!value?.$id || value.$id !== fileId || typeof value.mimeType !== 'string'
+    || !Number.isSafeInteger(value.sizeOriginal) || !Array.isArray(value.$permissions)
+    || !value.$permissions.every((permission) => typeof permission === 'string')) {
+    throw new FeedbackImageStorageError('Invalid image metadata', 503);
+  }
+  return { fileId, mimeType: value.mimeType, byteSize: value.sizeOriginal as number, permissions: value.$permissions as string[] };
+}
+
+export async function createPrivateImageViewUrl(fileId: string): Promise<string> {
+  assertFileId(fileId);
+  const { endpoint, projectId, bucketId } = readConfig();
+  const expire = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const response = await appwriteRequest(`/tokens/buckets/${encodeURIComponent(bucketId)}/files/${encodeURIComponent(fileId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expire }),
+  });
+  const token = await response.json().catch(() => null) as { secret?: string } | null;
+  if (!token?.secret) throw new FeedbackImageStorageError('Invalid image token', 503);
+  return `${endpoint}/storage/buckets/${encodeURIComponent(bucketId)}/files/${encodeURIComponent(fileId)}/view?project=${encodeURIComponent(projectId)}&token=${encodeURIComponent(token.secret)}`;
+}

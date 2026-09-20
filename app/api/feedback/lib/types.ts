@@ -1,6 +1,7 @@
 export type FeedbackConversation = {
   conversationId: string;
   secretTokenHash: string;
+  appwriteUserId?: string;
   discordChannelId?: string;
   discordMessageId?: string;
   discordThreadId?: string;

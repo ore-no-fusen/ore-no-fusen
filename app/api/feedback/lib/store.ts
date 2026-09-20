@@ -169,6 +169,7 @@ function conversationFromDocument(document: FirestoreDocument): FeedbackConversa
     conversationId,
     secretTokenHash,
     discordChannelId: readString(fields, 'discord_channel_id'),
+    appwriteUserId: readString(fields, 'appwrite_user_id'),
     discordMessageId: readString(fields, 'discord_message_id'),
     discordThreadId: readString(fields, 'discord_thread_id'),
     deliveryEnabled: readBoolean(fields, 'delivery_enabled', true),
@@ -288,7 +289,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
     if (existing && !safeEqualHash(existing.secretTokenHash, conversation.secretTokenHash)) {
       throw new FeedbackRequestError('Invalid conversation credentials', 403);
     }
-    const mutable = ['discord_channel_id', 'discord_message_id', 'discord_thread_id',
+    const mutable = ['appwrite_user_id', 'discord_channel_id', 'discord_message_id', 'discord_thread_id',
       'delivery_enabled', 'shadow_only', 'updated_at'];
     const query = existing
       ? `currentDocument.exists=true&${mutable.map((key) => `updateMask.fieldPaths=${key}`).join('&')}`
@@ -299,6 +300,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
         fields: toFirestoreFields({
           conversation_id: conversation.conversationId,
           secret_token_hash: conversation.secretTokenHash,
+          appwrite_user_id: conversation.appwriteUserId,
           discord_channel_id: conversation.discordChannelId,
           discord_message_id: conversation.discordMessageId,
           discord_thread_id: conversation.discordThreadId,
