@@ -35,6 +35,29 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
+describe('MarkdownRenderer list keys', () => {
+    it('keeps code-block keys distinct from source line keys', () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        renderMarkdown([
+            'line 0',
+            '```',
+            'first block',
+            '```',
+            'line 4',
+            'line 5',
+            '```',
+            'second block',
+            '```',
+        ].join('\n'));
+
+        const duplicateKeyWarnings = consoleError.mock.calls.filter((args) =>
+            args.some((value) => String(value).includes('Encountered two children with the same key')),
+        );
+        expect(duplicateKeyWarnings).toEqual([]);
+    });
+});
+
 describe('MarkdownRenderer horizontal table scrolling', () => {
     it('continues scrolling when the first gesture changes from a horizontal delta to zero deltas', () => {
         const { container } = renderMarkdown('| A | B |\n|---|---|\n| one | two |');

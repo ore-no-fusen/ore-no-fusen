@@ -1,5 +1,64 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
+<!-- NEW_ENTRIES_BELOW -->
+
+### 2026-09-21 5.3.0へやりとり画像添付を統合
+
+- このPC、`origin/develop`、`origin/main`が同じ5.3.0コミット`553567a`で、通常作業場所に未コミット変更がないことを確認した。
+- 画像機能ブランチへ5.3.0を取り込み、Markdown表示、横スクロール、設定画面のバージョン取得、PC設計書の競合を両機能を残す形で解消した。PC設計書はv3.01とした。
+- 試作途中の引き継ぎファイルと無効化済み接続診断APIは統合対象から除外した。対象17ファイル・113テスト、TypeScript、VitePressビルド、差分検査に成功。次はPR更新、`develop`マージ、CI・Preview・PC実機確認を行う。
+
+### 2026-09-21 やりとり画像添付の設計書を最終実装へ同期
+
+- `docs-v2/007_COMMUNICATION.md`へ、必須本文と最大3枚の画像をPCからAppwrite Storageへ直接送り、Vercel APIでメタデータ検証後にDiscordへ表示するMermaidシーケンス図を追加した。
+- 送信側会話ログは本文だけ、Discord画像返信・30日自動削除は対象外、送信失敗時は今回の画像削除を試みるという最小版の境界を明記した。
+- `docs-v2/002_PC.md`の掲示板UI・送信情報と、`docs-v2/100_PRIVACY.md`の画像保存・非自動送信・保持条件を現行実装へ同期した。
+
+### 2026-09-21 通常開発のブランチ統合ルールを固定
+
+- 今後すべての機能追加・不具合修正・文書変更は、最新の`develop`から作る`codex/<作業名>`ブランチで行う。
+- 対象テスト・型検査・必要な実機確認後、GitHubへpushして`develop`宛てPull Requestを作り、起動したCIがすべて成功した場合だけマージする。
+- マージ後も`develop`のCIと、Web API・PWA・公開ページを変更した場合のdevelop Previewを確認する。問題があれば最新developから新しい修正ブランチを作る。
+- `main`は正式リリース専用とし、機能ブランチから直接マージしない。正式な正本を`docs/010_RELEASE.md`へ追加した。
+
+### 2026-09-21 Markdown本文表示のReactキー重複警告を修正
+
+- 長い付箋の表示時に、通常行の元行番号とコードブロック／表のグループ順が同じ数値キーになると、Next.js開発版で重複キー警告が表示されていた。
+- コードブロックと表のキーを種別＋元の開始行番号へ変更し、通常行の数値キーと衝突しないよう最小修正した。本文・保存・画像送信は変更していない。
+- 再現テストを追加し、MarkdownRenderer 20件、TypeScript、差分検査、起動中Tauriの再コンパイルに成功。
+
+### 2026-09-21 やりとり画像添付・実機送信確認とバージョン表示修正
+
+- Tauri開発版から本文と画像を送信し、Discordで本文と画像が同時に表示されることをユーザー実機確認済み。完成条件を達成した。
+- Discord通知のバージョンが固定値 `Unknown` だったため、送信直前にTauriの実アプリバージョンを取得して送る最小修正を行った。画像の送信・表示仕様は変更していない。
+- 開発版を任意のPreview APIへ接続できる開発時限定の環境変数を追加。production/developの既定接続先は変更していない。
+- 対象Vitest 18件、TypeScript、差分検査、起動中Tauriの再コンパイルに成功。作業ブランチは `codex/image-attachments-probe`、`develop` は未変更。
+
+### 2026-09-20 やりとり画像添付・最小版へ範囲確定
+
+- 完成条件を「設定画面の掲示板から、必須本文と最大3枚のPNG/JPEG/WebP画像を送り、開発者がDiscordで本文と画像を確認できること」だけに限定した。
+- PCは画像を長辺2048px以内へ圧縮し、会話専用の短期Appwrite JWTでStorageへ直接アップロードする。Vercel APIはfile ID・形式・容量・所有者権限を確認し、15分の表示URLをDiscord embedへ付ける。
+- Discordからユーザーへの画像返信、30日cleanup、Appwrite Function、高度な追加セキュリティ、設計書改訂は今回の変更から除外した。試作ファイルと生成アーカイブも削除済み。
+- Appwrite bucketは全ユーザーのCreateだけを許可し、ファイル単位セキュリティは無効のまま維持。認証API keyは `sessions.read` / `sessions.write` / `users.write`、既存Storage API keyは `files.read` / `files.write` / `tokens.write` の各3スコープに限定した。
+- Vercel `ore-no-fusen` のPreview・`codex/image-attachments-probe` 限定で `APPWRITE_AUTH_API_KEY` と `IMAGE_STORAGE_ENABLED=true` を設定した。Preview実送信は認証200・画像アップロード201・Discord送信200で成功し、本文と画像の到達を確認。`develop` は未変更。
+
+### 2026-09-20 やりとり画像添付・Appwrite検証環境の確認
+
+- 無料の検証Project `Ore No Fusen Image Dev` を休止状態から復旧した。既存bucket `Feedback Images Dev` (`feedback-images-dev`) は最大5MiB、許可拡張子 `jpg` / `jpeg` / `png` / `webp` へ更新した。
+- Appwrite Functionsは未作成。既存API keyは2本あり各2 scopesだが、秘密値は表示・コピーしていない。Function作成と必要な環境変数・API key scopeの実設定が残る。
+- bucket権限は現在未設定、ファイル単位権限は無効だった。`feedback-image` ラベルへ作成権限だけを与え、ファイル単位権限を有効化する安全設定を画面上で下書き済み。クラウド権限変更の保存はユーザー確認待ち。
+- 最新検証成功: 画像関連20ファイル98テスト、TypeScript、Appwrite Function構文、VitePress build、`git diff --check`。検証用に退避した `.next-stale-before-direct-images` は生成キャッシュのため削除済み（再生成可能）。
+
+### 2026-09-20 やりとり画像添付・Vercel非中継方式の実装再開
+
+- 専用worktree `C:/tmp/ore-no-fusen-image-probe`、ブランチ `codex/image-attachments-probe` だけで継続。`develop` は変更していない。
+- PC画像は会話認証後の15分Appwrite JWTでStorageへ直接送信し、Vercelは本文とfile IDだけを受ける。Appwrite Functionが実体検査、長辺2048px縮小、WebP品質88への正規化を行う。
+- Discord返信画像はVercelで取得せず、許可済みDiscord URLとメタ情報だけをFunctionへ渡し、Functionが直接取得・検査・保存する方式へ変更した。
+- 送信途中で失敗したPC直接アップロードは、会話専用JWTで削除する。Functionは5MiBを超える応答をストリーム読取中に中止する。短期JWT発行は既存Appwriteセッションを再利用し、セッション増殖を防ぐ。
+- 設計書007を直送シーケンス、短期JWT、Function、API一覧、環境変数、検証手順へ更新した。
+- 検証成功: 画像関連98テスト、全Vitest 129ファイル634件、TypeScript、Function構文、Next lint、VitePress build、差分検査（末尾空白修正後に再確認予定）。
+- 未完了: Appwrite Cloud検証環境の非公開bucket、Function、API key scope、環境変数を実設定し、A/B会話分離・PC→Discord・Discord→PC・30日削除を実接続で確認する。設定前は`IMAGE_STORAGE_ENABLED=false`を維持する。
+
 ### 2026-09-06 pre-commit文書限定判定の反転修正
 
 - `8ee136d` で追加された文書限定判定が、`grep` の否定によりコード変更をスキップし文書変更で検査する逆動作になっていた。

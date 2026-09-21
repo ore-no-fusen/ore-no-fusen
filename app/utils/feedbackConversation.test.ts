@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+const imageMocks = vi.hoisted(() => ({ compressFeedbackImage: vi.fn() }));
+const appMocks = vi.hoisted(() => ({ getVersion: vi.fn() }));
+vi.mock('./feedbackImage', () => ({ compressFeedbackImage: imageMocks.compressFeedbackImage }));
+vi.mock('@tauri-apps/api/app', () => ({ getVersion: appMocks.getVersion }));
 import {
   ackFeedbackConversationMessages,
   clearFeedbackConversationIdentity,
   deleteFeedbackConversation,
+  deleteFeedbackUploadedAttachment,
   getDeveloperFeedbackApiBaseUrl,
+  getFeedbackAppVersion,
   getFeedbackApiBaseUrl,
   getFeedbackConversationIdentity,
   getFeedbackConversationUnreadState,
@@ -16,6 +22,7 @@ import {
   setFeedbackConversationUnreadState,
   shouldRunDailyFeedbackUnreadCheck,
   shouldPollFeedbackConversation,
+  uploadFeedbackAttachment,
 } from './feedbackConversation';
 
 function createMemoryStorage() {
@@ -34,7 +41,15 @@ function createMemoryStorage() {
 describe('feedback conversation identity', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.clearAllMocks();
+    clearFeedbackConversationIdentity();
     delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  });
+
+  it('uses the desktop app version in feedback messages', async () => {
+    appMocks.getVersion.mockResolvedValue('5.2.2');
+
+    await expect(getFeedbackAppVersion()).resolves.toBe('5.2.2');
   });
 
   it('creates and persists an anonymous conversation identity', () => {
@@ -166,6 +181,48 @@ describe('feedback conversation identity', () => {
     });
   });
 
+  it('uploads image bytes directly to Appwrite with a short-lived conversation JWT', async () => {
+    const identity = { conversationId: 'conversation-1', secretToken: 'secret' };
+    const original = new File(['original'], 'image.png', { type: 'image/png' });
+    const prepared = new File(['prepared'], 'image.webp', { type: 'image/webp' });
+    imageMocks.compressFeedbackImage.mockResolvedValue(prepared);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        endpoint: 'https://example.appwrite.io/v1', projectId: 'project', bucketId: 'bucket',
+        userId: 'fb_user', jwt: 'short-jwt', expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      })))
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const body = init.body as FormData;
+        return new Response(JSON.stringify({ $id: body.get('fileId') }), { status: 201 });
+      });
+    const fetchImpl = fetchMock as unknown as typeof fetch;
+
+    await expect(uploadFeedbackAttachment(identity, original, fetchImpl)).resolves.toMatch(/^[0-9a-f-]{36}$/);
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, `${window.location.origin}/api/feedback/conversation/session`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(identity),
+    });
+    const [storageUrl, storageInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(String(storageUrl)).toContain('/storage/buckets/bucket/files');
+    expect(storageInit.headers).toEqual({ 'X-Appwrite-Project': 'project', 'X-Appwrite-JWT': 'short-jwt' });
+    expect(storageInit.body).toBeInstanceOf(FormData);
+  });
+
+  it('deletes an unfinished direct upload with the short-lived conversation JWT', async () => {
+    const identity = { conversationId: 'conversation-1', secretToken: 'secret' };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        endpoint: 'https://example.appwrite.io/v1', projectId: 'project', bucketId: 'bucket',
+        userId: 'fb_user', jwt: 'short-jwt', expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      })))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const fetchImpl = fetchMock as unknown as typeof fetch;
+
+    await expect(deleteFeedbackUploadedAttachment(identity, 'upload-a', fetchImpl)).resolves.toBe(true);
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://example.appwrite.io/v1/storage/buckets/bucket/files/upload-a', {
+      method: 'DELETE', headers: { 'X-Appwrite-Project': 'project', 'X-Appwrite-JWT': 'short-jwt' },
+    });
+  });
+
   it('uses the current web origin for hosted browser pages', () => {
     expect(getFeedbackApiBaseUrl()).toBe(`${window.location.origin}/api/feedback`);
   });
@@ -176,6 +233,13 @@ describe('feedback conversation identity', () => {
     expect(getFeedbackApiBaseUrl()).toBe(
       'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback',
     );
+  });
+
+  it('uses an explicitly configured feedback API for branch preview testing', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('NEXT_PUBLIC_FEEDBACK_API_BASE_URL', 'https://branch-preview.example/api/feedback/');
+
+    expect(getFeedbackApiBaseUrl()).toBe('https://branch-preview.example/api/feedback');
   });
 
   it('uses the public production API from the Tauri desktop runtime', () => {

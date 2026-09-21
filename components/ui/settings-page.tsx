@@ -55,6 +55,7 @@ import {
     getFeedbackAppVersion,
     linkFeedbackMember,
     clearFeedbackConversationIdentity,
+    deleteFeedbackUploadedAttachment,
     deleteFeedbackConversation,
     getDeveloperFeedbackApiBaseUrl,
     getFeedbackApiBaseUrl,
@@ -65,7 +66,9 @@ import {
     pollFeedbackConversationMessages,
     saveFeedbackConversationIdentity,
     setFeedbackConversationUnreadState,
+    uploadFeedbackAttachment,
 } from "@/app/utils/feedbackConversation"
+import { assertFeedbackImages } from "@/app/utils/feedbackImage"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -2564,6 +2567,24 @@ type BoardMessage = {
     readByUser: boolean;
 };
 
+function SelectedConversationImage({ file, onRemove }: { file: File; onRemove: () => void }) {
+    const [url, setUrl] = useState<string | null>(null)
+    useEffect(() => {
+        const objectUrl = URL.createObjectURL(file)
+        setUrl(objectUrl)
+        return () => URL.revokeObjectURL(objectUrl)
+    }, [file])
+    return (
+        <div className="flex items-center gap-3 rounded border px-3 py-2 text-xs">
+            {url && <img src={url} alt="" className="h-14 w-14 shrink-0 rounded border object-cover" />}
+            <span className="min-w-0 flex-1 truncate">{file.name} ({Math.ceil(file.size / 1024)} KB)</span>
+            <Button type="button" variant="ghost" size="sm" onClick={onRemove} aria-label="Remove image">
+                <X className="h-4 w-4" />
+            </Button>
+        </div>
+    )
+}
+
 function getFeedbackApiTargetLabel(apiBaseUrl: string): string {
     if (apiBaseUrl.includes('localhost') || apiBaseUrl.includes('127.0.0.1')) return 'local'
     if (apiBaseUrl.includes('git-develop')) return 'develop'
@@ -2579,6 +2600,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const feedbackApiTargetLabel = getFeedbackApiTargetLabel(feedbackApiBaseUrl)
     const [messages, setMessages] = useState<BoardMessage[]>([])
     const [draft, setDraft] = useState('')
+    const [selectedImages, setSelectedImages] = useState<File[]>([])
     const [loading, setLoading] = useState(false)
     const [sending, setSending] = useState(false)
     const [deleting, setDeleting] = useState(false)
@@ -2616,14 +2638,37 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         loadMessages()
     }, [loadMessages])
 
+    const addImages = useCallback((incoming: File[]) => {
+        const images = incoming.filter((file) => file.type.startsWith('image/'))
+        if (images.length === 0) return
+        setSelectedImages((current) => {
+            const next = [...current, ...images]
+            try {
+                assertFeedbackImages(next)
+                setError(null)
+                return next
+            } catch {
+                setError(isEnglish
+                    ? 'Attach up to 3 PNG, JPEG, or WebP images, each no larger than 5 MB.'
+                    : 'PNG・JPEG・WebP画像を3枚まで、1枚5MB以下で添付してください。')
+                return current
+            }
+        })
+    }, [isEnglish])
+
     const sendMessage = async () => {
         const content = draft.trim()
         if (!content) return
 
         setSending(true)
         setError(null)
+        const uploadedAttachmentIds: string[] = []
         try {
             await linkFeedbackMember(conversationIdentity);
+            const appVersion = await getFeedbackAppVersion()
+            for (const file of selectedImages) {
+                uploadedAttachmentIds.push(await uploadFeedbackAttachment(conversationIdentity, file))
+            }
             const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2631,9 +2676,10 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     ...conversationIdentity,
                     type: 'message',
                     content,
+                    fileIds: uploadedAttachmentIds,
                     contact: '',
                     systemInfo: 'User opened settings board',
-                    version: await getFeedbackAppVersion(),
+                    version: appVersion,
                 }),
             })
             if (!response.ok) throw new Error(`Server error: ${response.status}`)
@@ -2645,8 +2691,12 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                 })
             }
             setDraft('')
+            setSelectedImages([])
             await loadMessages()
         } catch (e) {
+            await Promise.all(uploadedAttachmentIds.map((fileId) =>
+                deleteFeedbackUploadedAttachment(conversationIdentity, fileId).catch(() => false)
+            ))
             setError(String(e))
         } finally {
             setSending(false)
@@ -2720,7 +2770,21 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     )}
                 </div>
 
-                <div className="border-t p-4 space-y-3">
+                <div
+                    className="border-t p-4 space-y-3"
+                    onPaste={(event) => {
+                        const images = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith('image/'))
+                        if (images.length > 0) {
+                            event.preventDefault()
+                            addImages(images)
+                        }
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                        event.preventDefault()
+                        addImages(Array.from(event.dataTransfer.files))
+                    }}
+                >
                     {error && (
                         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                             {isEnglish ? 'Communication failed. Please wait and try again.' : '通信に失敗しました。時間をおいて再試行してください。'}
@@ -2731,7 +2795,36 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                         placeholder={isEnglish ? 'Write a message to the developer' : '開発者に伝えたいことを書いてください'}
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                                event.preventDefault()
+                                void sendMessage()
+                            }
+                        }}
                     />
+                    <div className="space-y-2">
+                        <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            multiple
+                            disabled={sending || selectedImages.length >= 3}
+                            onChange={(event) => {
+                                addImages(Array.from(event.target.files ?? []))
+                                event.target.value = ''
+                            }}
+                            aria-label={isEnglish ? 'Attach images' : '画像を添付'}
+                        />
+                        {selectedImages.map((file, index) => (
+                            <SelectedConversationImage
+                                key={`${file.name}-${file.lastModified}-${index}`}
+                                file={file}
+                                onRemove={() => setSelectedImages((files) => files.filter((_, itemIndex) => itemIndex !== index))}
+                            />
+                        ))}
+                        <p className="text-xs text-slate-500">
+                            {isEnglish ? 'Paste a screenshot with Ctrl+V or drop it here. Images are compressed before upload.' : '画面キャプチャーはCtrl+Vで貼り付けできます。画像は送信前に自動圧縮します。'}
+                        </p>
+                    </div>
                     <div className="flex flex-wrap justify-between gap-2 items-center">
                         <div className="flex gap-2">
                         <Button variant="outline" onClick={loadMessages} disabled={loading || sending || deleting}>
@@ -2743,7 +2836,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             {deleting ? (isEnglish ? 'Deleting...' : '削除中...') : (isEnglish ? 'Delete Conversation' : '会話を削除')}
                         </Button>
                         </div>
-                        <Button onClick={sendMessage} disabled={sending || deleting || !draft.trim()}>
+                        <Button onClick={() => void sendMessage()} disabled={sending || deleting || !draft.trim()}>
                             <Send className="mr-2 h-4 w-4" />
                             {sending ? (isEnglish ? 'Sending...' : '送信中...') : (isEnglish ? 'Send' : '送信')}
                         </Button>

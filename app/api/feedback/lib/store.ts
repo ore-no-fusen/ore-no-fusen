@@ -4,6 +4,7 @@ import type { FeedbackConversation, FeedbackConversationMessage } from './types'
 export interface FeedbackConversationStore {
   createConversation(conversation: FeedbackConversation): Promise<void>;
   getConversation(conversationId: string): Promise<FeedbackConversation | null>;
+  verifyConversationAccess(conversationId: string, secretToken: string): Promise<boolean>;
   getConversationIdByDiscordMessage(discordMessageId: string): Promise<string | null>;
   getConversationIdByDiscordThread(discordThreadId: string): Promise<string | null>;
   appendMessage(message: FeedbackConversationMessage): Promise<boolean>;
@@ -43,6 +44,11 @@ class MemoryFeedbackConversationStore implements FeedbackConversationStore {
     return this.conversations.get(conversationId) ?? null;
   }
 
+  async verifyConversationAccess(conversationId: string, secretToken: string): Promise<boolean> {
+    const conversation = this.conversations.get(conversationId);
+    return Boolean(conversation && safeEqualHash(conversation.secretTokenHash, hashSecretToken(secretToken)));
+  }
+
   async getConversationIdByDiscordMessage(discordMessageId: string): Promise<string | null> {
     return this.discordMessageToConversation.get(discordMessageId) ?? null;
   }
@@ -63,8 +69,7 @@ class MemoryFeedbackConversationStore implements FeedbackConversationStore {
   }
 
   async listMessages(conversationId: string, secretToken: string): Promise<FeedbackConversationMessage[]> {
-    const conversation = this.conversations.get(conversationId);
-    if (!conversation || !safeEqualHash(conversation.secretTokenHash, hashSecretToken(secretToken))) return [];
+    if (!await this.verifyConversationAccess(conversationId, secretToken)) return [];
     return this.listConversationMessages(conversationId);
   }
 
@@ -164,6 +169,7 @@ function conversationFromDocument(document: FirestoreDocument): FeedbackConversa
     conversationId,
     secretTokenHash,
     discordChannelId: readString(fields, 'discord_channel_id'),
+    appwriteUserId: readString(fields, 'appwrite_user_id'),
     discordMessageId: readString(fields, 'discord_message_id'),
     discordThreadId: readString(fields, 'discord_thread_id'),
     deliveryEnabled: readBoolean(fields, 'delivery_enabled', true),
@@ -283,7 +289,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
     if (existing && !safeEqualHash(existing.secretTokenHash, conversation.secretTokenHash)) {
       throw new FeedbackRequestError('Invalid conversation credentials', 403);
     }
-    const mutable = ['discord_channel_id', 'discord_message_id', 'discord_thread_id',
+    const mutable = ['appwrite_user_id', 'discord_channel_id', 'discord_message_id', 'discord_thread_id',
       'delivery_enabled', 'shadow_only', 'updated_at'];
     const query = existing
       ? `currentDocument.exists=true&${mutable.map((key) => `updateMask.fieldPaths=${key}`).join('&')}`
@@ -294,6 +300,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
         fields: toFirestoreFields({
           conversation_id: conversation.conversationId,
           secret_token_hash: conversation.secretTokenHash,
+          appwrite_user_id: conversation.appwriteUserId,
           discord_channel_id: conversation.discordChannelId,
           discord_message_id: conversation.discordMessageId,
           discord_thread_id: conversation.discordThreadId,
@@ -316,6 +323,11 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
   async getConversation(conversationId: string): Promise<FeedbackConversation | null> {
     const document = await this.request<FirestoreDocument | null>(`/feedback_conversations/${conversationId}`);
     return document ? conversationFromDocument(document) : null;
+  }
+
+  async verifyConversationAccess(conversationId: string, secretToken: string): Promise<boolean> {
+    const conversation = await this.getConversation(conversationId);
+    return Boolean(conversation && safeEqualHash(conversation.secretTokenHash, hashSecretToken(secretToken)));
   }
 
   async getConversationIdByDiscordMessage(discordMessageId: string): Promise<string | null> {
@@ -356,8 +368,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
   }
 
   async listMessages(conversationId: string, secretToken: string): Promise<FeedbackConversationMessage[]> {
-    const conversation = await this.getConversation(conversationId);
-    if (!conversation || !safeEqualHash(conversation.secretTokenHash, hashSecretToken(secretToken))) return [];
+    if (!await this.verifyConversationAccess(conversationId, secretToken)) return [];
     return await this.listConversationMessages(conversationId);
   }
 

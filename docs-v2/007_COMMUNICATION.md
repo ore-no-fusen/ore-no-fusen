@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-コミュニケーション設計 v2.6 / 2026-06-02
+コミュニケーション設計 v3.0 / 2026-09-21
 </p>
 
 ---
@@ -23,7 +23,7 @@ outline: deep
 本章では、返信を付箋として出すのではなく、設定画面内に「開発者とのやりとり」掲示板を作ります。ユーザーは必要なときだけ設定画面を開いて会話を確認します。
 
 <Note type="info">
-この仕組みは、ユーザーの既存付箋、添付画像、添付動画、Google Drive 内の同期ファイル、Google Drive トークンを Vercel API へ送るものではありません。ユーザーが自分で入力した掲示板メッセージと、開発者からの返信だけを扱います。
+この仕組みは、ユーザーの既存付箋、既存付箋の添付画像・動画、Google Drive 内の同期ファイル、Google Drive トークンを自動送信するものではありません。ユーザーが掲示板へ入力した本文と、掲示板で明示的に選択した画像だけを送信対象にします。
 </Note>
 
 ### 1.1 登場人物と用語
@@ -40,6 +40,7 @@ outline: deep
 | 4 | Discordサーバー | 開発者が通知を見て返信する場所 | Discord通知メッセージ、開発者返信 |
 | 5 | Discord Webhook | Vercel APIからDiscordサーバーへ通知を投稿する入口 | Webhook URL |
 | 6 | Discord Bot | Discordサーバー上の返信をVercel APIへ取り込むために読む主体 | Bot Token |
+| 7 | Appwrite Storage | ユーザーが掲示板で明示的に添付した画像本体を保存する | 画像ファイル、所有者を示す読取・削除権限 |
 
 ---
 
@@ -65,8 +66,8 @@ outline: deep
 | No | 画面・状態 | 表示 | 操作 |
 |:---|:---|:---|:---|
 | 1 | 設定画面 | 「開発者とのやりとり」メニュー | ユーザーが開く |
-| 2 | 初回表示 | まだやりとりがない旨、入力欄、送信ボタン | メッセージを書く |
-| 3 | 送信後 | 自分の投稿が会話ログに追加される | 必要なら続けて投稿する |
+| 2 | 初回表示 | まだやりとりがない旨、本文入力欄、画像選択、送信ボタン | 必須の本文を書き、必要ならPNG・JPEG・WebP画像を最大3枚選ぶ |
+| 3 | 送信後 | 自分の投稿本文が会話ログに追加される。送信済み画像は会話ログへ再表示しない | Discordで開発者が本文と画像を確認する。必要なら続けて投稿する |
 | 4 | 返信あり | 「アプリ開発者」名義の返信が会話ログに表示される | 読む、必要なら返信する |
 | 5 | 未読返信あり | 右クリックメニューの「開発者とのやりとり」に `● 新着あり` を付ける | 開いて確認する |
 | 6 | 返信なし | 何も割り込んで表示しない | 通常利用を続ける |
@@ -93,11 +94,14 @@ flowchart LR
     PC["PCアプリ<br>conversation_id + secret_token"]
     API["Vercel API<br>会話データ管理"]
     Firestore["Firebase / Firestore<br>会話ストア"]
+    Storage["Appwrite Storage<br>明示添付画像"]
     Discord["Discord<br>開発者用通知・返信"]
     Dev["開発者"]
 
     User --> PC
     PC --> API
+    PC --> Storage
+    API --> Storage
     API --> Firestore
     API --> Discord
     Dev --> Discord
@@ -116,6 +120,7 @@ flowchart LR
 | PCアプリ | 匿名会話IDの保持、掲示板UI表示、投稿、1日1回程度の新着確認 |
 | Vercel API | secret token 照合、Firestore保存、Discord通知、Discord返信取り込み |
 | Firebase / Firestore | 会話本文、開発者返信、既読状態、Discord通知との対応を永続保存 |
+| Appwrite Storage | 掲示板で明示的に選択した画像本体とファイル権限を保存する。会話本文の正本にはしない |
 | Discord | 開発者が確認・返信するための裏側 UI |
 | 開発者 | Discord上で対象投稿に返信する |
 
@@ -192,6 +197,17 @@ feedback_conversations/{conversation_id}/messages/{message_id}
   shadow_only
 ```
 
+<p class="table-caption">表 5-5　掲示板へ添付した画像の保存情報</p>
+
+| No | 情報 | 保存場所 | 用途 |
+|:---|:---|:---|:---|
+| 1 | 画像本体 | Appwrite Storage | Discordで開発者が画像を直接確認する |
+| 2 | `file_id` | PCアプリからVercel APIへ送信 | 本文送信時に添付画像を指定する |
+| 3 | MIME形式・容量・権限 | Appwrite Storageのファイルメタデータ | Vercel APIが形式、5MiB以下、会話所有者の読取・削除権限を確認する |
+| 4 | 15分間の表示トークン | Appwrite Storage | Discordが非公開画像を短時間だけ表示する |
+
+画像バイトはVercel APIやFirestoreへ保存しません。送信途中で失敗した場合、PCアプリは今回アップロードした画像の削除を試みます。送信成功後の30日自動削除は今回の最小版には含めず、別対応とします。
+
 ---
 
 ## 6 シーケンス
@@ -218,6 +234,47 @@ sequenceDiagram
 ```
 
 <p class="mermaid-caption">図 6-1　掲示板メッセージ送受信シーケンス</p>
+
+本文と画像をPCアプリからDiscordへ送る最小版は、次の経路に限定します。Discordからユーザーへ画像を返信する経路は含めません。
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant PC as PCアプリ
+    participant API as Vercel API
+    participant Storage as Appwrite Storage
+    participant Discord as Discord
+
+    User->>PC: 必須本文と画像0〜3枚を選択
+    PC->>PC: PNG・JPEG・WebP、各5MiB以下を確認
+    PC->>PC: 長辺2048px以内へ縮小し、必要ならWebP圧縮
+    PC->>API: POST conversation/session<br/>conversation_id + secret_token
+    API->>API: 会話を認証しAppwriteユーザーを確定
+    API-->>PC: 15分JWT、Storage接続情報、user_id
+
+    loop 選択した画像ごと
+        PC->>Storage: JWTで画像本体を直接アップロード<br/>user_idのread・delete権限を記録
+        Storage-->>PC: file_id
+    end
+
+    PC->>API: POST conversation/messages<br/>本文 + file_id一覧 + アプリ版数
+    API->>Storage: MIME形式・容量・権限を検証
+    Storage-->>API: ファイルメタデータ
+    API->>Storage: 15分の画像表示トークンを発行
+    Storage-->>API: 短期表示URL
+    alt 本文とDiscord送信に成功
+        API->>Discord: 本文embed + 画像embed
+        Discord-->>API: DiscordメッセージID
+        API->>API: 会話履歴へ本文だけを保存
+        API-->>PC: 送信成功
+        PC->>PC: 本文・選択画像をクリアして履歴更新
+    else 画像アップロード後に送信失敗
+        API-->>PC: 送信失敗
+        PC->>Storage: 今回アップロードした画像を削除
+    end
+```
+
+<p class="mermaid-caption">図 6-2　PCからDiscordへ本文と最大3枚の画像を送る最小版シーケンス</p>
 
 ---
 
@@ -320,14 +377,16 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 4 | `POST /api/feedback/conversation/delete` | secret tokenを照合し、会話・メッセージ・Discord対応表を完全に削除する |
 | 5 | `POST /api/feedback/discord/ingest` | 開発者の管理操作でDiscord返信を取り込む |
 | 6 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
+| 7 | `POST /api/feedback/conversation/session` | 会話を認証し、PCがAppwrite Storageへ直接画像を送るための15分JWTを発行する |
 
 公開POST APIはJSON本文と各文字列の長さを検証する。`/api/feedback` と `conversation/messages` は本文32KB以内、`conversation/poll` は4KB以内、`conversation/ack` は16KB以内とする。Discord Webhookへの送信は10秒で中止し、応答待ちによるVercel実行枠の占有を防ぐ。
 
 2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。右クリックメニュー表示時には呼びません。  
 PC アプリは JST 4:00 頃に1日1回だけ `conversation/poll` を呼び、未読の開発者返信があればローカルの `has_unread_developer_reply` を true にします。  
 ユーザーが「開発者とのやりとり」を開いた場合は、その時点で最新の `conversation/poll` を呼び、表示できた開発者返信だけ `conversation/ack` で既読化します。
-4 の `discord/ingest` は、開発者の管理操作が「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。  
-5 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で JST 3:00 に1日1回実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
+5 の `discord/ingest` は、開発者の管理操作が「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。
+6 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で JST 3:00 に1日1回実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
+7 の `conversation/session` は画像添付時だけ呼び、Vercel APIが画像バイトを中継しない直接アップロードに使います。
 
 管理者ツールの手動 `discord/ingest` では、開発者PCの `localStorage` に `FEEDBACK_CONVERSATION_INGEST_SECRET` を保存できます。これは開発者PCでの入力補助だけに使い、Vercel や Firestore へ secret の生値を保存しません。`CRON_SECRET` は通常PCアプリで入力しないため、保存対象にしません。
 
@@ -395,9 +454,9 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 
 | 区分 | 内容 |
 |:---|:---|
-| 実装する | 設定画面内の掲示板、匿名会話ID、secret token、Firestore保存、Discord通知、Discord返信取り込み、新着確認 |
-| 実装しない | 返信付箋、ユーザー数分のDiscordチャンネル、自動プッシュ通知、Google Drive内の会話ファイル同期 |
-| 将来検討 | 通知バッジ、添付画像、既読表示、サポート対応ステータス |
+| 実装する | 設定画面内の掲示板、匿名会話ID、secret token、Firestore保存、本文＋最大3枚の画像をDiscordへ送信、Discord返信取り込み、新着確認 |
+| 実装しない | 返信付箋、ユーザー数分のDiscordチャンネル、自動プッシュ通知、Google Drive内の会話ファイル同期、Discordからユーザーへの画像返信、送信済み画像の会話ログ再表示、30日自動削除 |
+| 将来検討 | 通知バッジ、開発者からの画像返信、画像の自動削除、既読表示、サポート対応ステータス |
 
 ---
 
@@ -435,5 +494,6 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 10 | 2.7 | 26-06-04 | Vercel Cron は JST 3:00、PCアプリは JST 4:00 頃に1日1回確認する運用を追加。右クリックメニューは通信せずローカル未読状態だけで新着表示し、掲示板表示時に既読化する仕様を追加 |
 | 11 | 2.8 | 26-06-05 | 管理者ツールの手動 ingest 用に、開発者PCの localStorage へ `FEEDBACK_CONVERSATION_INGEST_SECRET` を保存できる仕様を追加。`CRON_SECRET` は保存対象外と明記。 |
 | 12 | 2.9 | 26-07-31 | 公開フィードバックAPIのJSON本文・文字列上限と、Discord Webhook通信の10秒タイムアウトを追加。 |
+| 13 | 3.0 | 26-09-21 | 掲示板の必須本文と最大3枚の画像を、15分JWTでPCからAppwrite Storageへ直接アップロードし、Vercel APIのメタデータ検証後にDiscordへ本文と画像を送る最小版シーケンスを追加。画像返信、会話ログへの画像再表示、30日自動削除は対象外とした。 |
 
 </div>

@@ -1,3 +1,5 @@
+import { compressFeedbackImage } from './feedbackImage';
+
 const CONVERSATION_ID_KEY = 'ore-no-fusen.feedback.conversation_id';
 const SECRET_TOKEN_KEY = 'ore-no-fusen.feedback.secret_token';
 const LAST_POLL_KEY = 'ore-no-fusen.feedback.last_poll_at';
@@ -42,6 +44,63 @@ export type FeedbackConversationMessage = {
   createdAt: string;
   readByUser: boolean;
 };
+
+type FeedbackImageSession = {
+  endpoint: string; projectId: string; bucketId: string; userId: string; jwt: string; expiresAt: string;
+};
+let cachedImageSession: { conversationId: string; value: FeedbackImageSession } | null = null;
+
+async function feedbackImageSession(identity: FeedbackConversationIdentity, fetchImpl: typeof fetch): Promise<FeedbackImageSession> {
+  if (cachedImageSession?.conversationId === identity.conversationId
+    && Date.parse(cachedImageSession.value.expiresAt) > Date.now() + 60_000) return cachedImageSession.value;
+  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/session`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(identity),
+  });
+  if (!response.ok) throw new Error(`Server error: ${response.status}`);
+  const value = await response.json() as FeedbackImageSession;
+  if (!value.endpoint?.startsWith('https://') || !value.projectId || !value.bucketId || !value.userId || !value.jwt || !value.expiresAt) {
+    throw new Error('Invalid image session');
+  }
+  cachedImageSession = { conversationId: identity.conversationId, value };
+  return value;
+}
+
+export async function uploadFeedbackAttachment(
+  identity: FeedbackConversationIdentity,
+  file: File,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const prepared = await compressFeedbackImage(file);
+  const session = await feedbackImageSession(identity, fetchImpl);
+  const fileId = crypto.randomUUID();
+  const form = new FormData();
+  form.set('fileId', fileId);
+  form.set('file', prepared, prepared.name);
+  form.append('permissions[]', `read(\"user:${session.userId}\")`);
+  form.append('permissions[]', `delete(\"user:${session.userId}\")`);
+  const response = await fetchImpl(`${session.endpoint}/storage/buckets/${encodeURIComponent(session.bucketId)}/files`, {
+    method: 'POST',
+    headers: { 'X-Appwrite-Project': session.projectId, 'X-Appwrite-JWT': session.jwt },
+    body: form,
+  });
+  if (!response.ok) throw new Error(`Image storage error: ${response.status}`);
+  const result = await response.json().catch(() => null) as { $id?: string } | null;
+  if (result?.$id !== fileId) throw new Error('Invalid upload response');
+  return fileId;
+}
+
+export async function deleteFeedbackUploadedAttachment(
+  identity: FeedbackConversationIdentity,
+  fileId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  const session = await feedbackImageSession(identity, fetchImpl);
+  const response = await fetchImpl(`${session.endpoint}/storage/buckets/${encodeURIComponent(session.bucketId)}/files/${encodeURIComponent(fileId)}`, {
+    method: 'DELETE',
+    headers: { 'X-Appwrite-Project': session.projectId, 'X-Appwrite-JWT': session.jwt },
+  });
+  return response.ok || response.status === 404;
+}
 
 function getStorage(storage?: StorageLike): StorageLike | null {
   if (storage) return storage;
@@ -110,6 +169,7 @@ export function clearFeedbackConversationIdentity(storage?: StorageLike): void {
   target.removeItem(LAST_POLL_KEY);
   target.removeItem(HAS_UNREAD_DEVELOPER_REPLY_KEY);
   target.removeItem(LAST_UNREAD_CHECK_DATE_KEY);
+  cachedImageSession = null;
 }
 
 export function getFeedbackConversationUnreadState(storage?: StorageLike): boolean {
@@ -217,6 +277,8 @@ export async function deleteFeedbackConversation(
 
 export function getFeedbackApiBaseUrl(): string {
   if (process.env.NODE_ENV === 'development') {
+    const previewApiBaseUrl = process.env.NEXT_PUBLIC_FEEDBACK_API_BASE_URL?.trim().replace(/\/$/, '');
+    if (previewApiBaseUrl && /^https?:\/\//.test(previewApiBaseUrl)) return previewApiBaseUrl;
     return DEVELOP_FEEDBACK_API_BASE_URL;
   }
 
