@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-21T02:18:55.776Z",
+  "updated_at": "2026-09-21T02:22:55.076Z",
   "workflow": "MSIX CI",
   "run_id": 35553755106,
   "run_number": 94,
@@ -7,10 +7,20 @@
   "run_url": "https://github.com/ore-no-fusen/ore-no-fusen/actions/runs/35553755106",
   "branch": "codex/fix-msix-ci-powershell",
   "commit_sha": "14718f79584a992b4a915688f1cd2e8a95bedb30",
-  "overall": "in_progress",
-  "failed_step": null,
-  "current_step": "started",
-  "steps": {},
+  "overall": "cancelled",
+  "failed_step": "next_build",
+  "current_step": "finished",
+  "steps": {
+    "npm_ci": "success",
+    "frontend_tests": "success",
+    "next_build": "cancelled",
+    "rust_tests": "skipped",
+    "tauri_build": "skipped",
+    "msix_create": "skipped",
+    "msix_verify": "skipped",
+    "msix_smoke": "skipped",
+    "upload_artifact": "success"
+  },
   "msix": {
     "created": false,
     "bytes": 0,
