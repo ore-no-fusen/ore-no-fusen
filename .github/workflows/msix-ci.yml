@@ -29,7 +29,7 @@ concurrency:
 jobs:
   build-install-smoke:
     name: Build, install and launch MSIX
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 60
     env:
       # gdrive.rs uses compile-time env!(). CI smoke tests do not exercise
