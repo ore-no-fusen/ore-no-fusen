@@ -37,6 +37,35 @@ impl ImportStats {
     }
 }
 
+fn strip_import_window_field(content: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.first().map(|line| line.trim()) != Some("---")
+        || lines.iter().filter(|line| line.trim() == "---").count() < 2
+    {
+        return content.to_string();
+    }
+
+    let mut fence_count = 0;
+    let mut cleaned = Vec::with_capacity(lines.len());
+    for line in lines {
+        if line.trim() == "---" && fence_count < 2 {
+            fence_count += 1;
+            cleaned.push(line);
+            continue;
+        }
+        if fence_count == 1 && line.trim_start().starts_with("window:") {
+            continue;
+        }
+        cleaned.push(line);
+    }
+
+    let mut result = cleaned.join("\n");
+    if content.ends_with('\n') {
+        result.push('\n');
+    }
+    result
+}
+
 /// インポート処理のメイン関数
 /// - source_dir 直下の .md ファイルをコピー
 /// - source_dir/assets/ をまるごとコピー
@@ -67,7 +96,9 @@ pub fn import_markdown_files(source_dir: &str, target_dir: &str) -> Result<Impor
                 }
                 Ok(_) => match fs::read_to_string(&dest) {
                     Ok(content) => {
-                        let cleaned = crate::logic::strip_sticky_fields(&content);
+                        let cleaned = strip_import_window_field(
+                            &crate::logic::strip_sticky_fields(&content),
+                        );
                         if let Err(e) = fs::write(&dest, cleaned) {
                             let _ = fs::remove_file(&dest);
                             stats.errors.push(format!("Failed to normalize {:?}: {}", path, e));
@@ -144,6 +175,27 @@ mod tests {
         for removed in ["window:", "folded:", "alwaysOnTop:", "opacity:", "fontSize:"] {
             assert!(!imported.contains(removed), "{} が残っている", removed);
         }
+    }
+
+    #[test]
+    fn import_keeps_window_text_in_the_note_body() {
+        let source = tempdir().unwrap();
+        let target = tempdir().unwrap();
+        fs::write(
+            source.path().join("body-window.md"),
+            "---\nwindow: { x: 1, y: 2, width: 300, height: 200 }\n---\n\n本文\nwindow: 本文中の文字列",
+        )
+        .unwrap();
+
+        let stats = import_markdown_files(
+            source.path().to_str().unwrap(),
+            target.path().to_str().unwrap(),
+        )
+        .unwrap();
+        let imported = fs::read_to_string(&stats.imported_paths[0]).unwrap();
+
+        assert!(!imported.contains("window: { x:"));
+        assert!(imported.contains("window: 本文中の文字列"));
     }
 }
 
