@@ -129,7 +129,7 @@ jobs:
 
       - name: Create and sign local test MSIX
         id: msix_create
-        shell: pwsh
+        shell: powershell
         run: .\packaging\msix\test-msix.ps1 -SkipBuild -NoInstall
 
       - name: Verify MSIX signature
