@@ -2,6 +2,13 @@
 
 <!-- NEW_ENTRIES_BELOW -->
 
+### 2026-09-22 5.4.0 Dev版の画像送信を実機修正
+
+- 画像送信失敗の原因は、Tauri CSPでAppwrite endpointが未許可だったことと、Appwrite ProjectにTauri origin `tauri.localhost` が未登録だったこと。
+- `src-tauri/tauri.conf.json`のproduction/dev両CSPへ`https://sgp.cloud.appwrite.io`だけを追加し、Appwrite Web appへ`tauri.localhost`を登録した。本文・画像機能・MSIX基盤は変更していない。
+- 開発署名5.4.0 MSIXをインストールし、実アプリWebViewからAppwrite upload 201、本文＋画像送信200を確認。Discordで本文、バージョン5.4.0、付箋ロゴ画像を目視確認した。
+- 修正コミット`e59b0a1`をローカル`develop`と`main`へfast-forward反映済み。単体テスト633件、E2E 40件成功（5件skip）、JSON・差分検査に成功。次はユーザーの最終実機確認。
+
 ### 2026-09-21 通常開発をこのPC中心のローカル運用へ修正
 
 - 通常開発は、このPCの`develop`からローカル作業ブランチを作り、実装・対象テスト・必要な実機確認までこのPCで完了する。
