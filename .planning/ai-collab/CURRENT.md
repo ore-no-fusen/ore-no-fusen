@@ -10,6 +10,7 @@
 - `AGENTS.md`と正本`docs/010_RELEASE.md`からPR必須ルールを削除し、このローカル中心手順へ置き換えた。
 - `docs/010_RELEASE.md`へ、ローカル作業から`develop`だけを1回pushするMermaid図と、1人・1PC中心の運用で待ち時間を減らしつつGit履歴・復旧性・統合後CIを維持する理由を追加した。
 - 文書だけの軽微な修正はローカル作業ブランチとアプリテストを省略し、ローカル`develop`での修正、差分検査、必要な文書表示確認だけで完了できる例外を追加した。Mermaid図にも文書専用の短縮経路を追加した。
+- 正式リリースについて、このPCのローカル`develop`・ローカル`main`・MSIX作成、GitHubの`origin/develop`・`origin/main`、Partner Center・Microsoft Storeを別枠で示すMermaid図を追加した。MSIXはローカル`main`から作り、GitHubでは再ビルドしないことを明記した。
 
 ### 2026-09-21 5.3.0へやりとり画像添付を統合
 

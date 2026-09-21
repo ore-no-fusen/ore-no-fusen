@@ -101,12 +101,67 @@ flowchart LR
 
 | 表記 | 実施場所・役割 |
 |---|---|
-| このPC | ソース修正、対象テスト、Tauri本番実行ファイル作成、開発署名MSIXの作成・インストール・確認を行う。Store提出物は`Documents\俺の付箋-Store提出\<バージョン>\`へ保存する |
+| このPC | ローカル`develop`で通常開発し、正式リリース時は確認済みの同じコミットをローカル`main`へ反映する。ローカル`main`からTauri本番実行ファイルとMSIXを作成・確認し、Store提出物を`Documents\俺の付箋-Store提出\<バージョン>\`へ保存する |
 | GitHub develop | 確認対象ソースを保管し、Vercel Previewへのデプロイ元になる。アプリを実行する場所ではない |
 | Vercel Preview | GitHub developの内容を公開するiPhone PWAの確認環境 |
 | iPhone | Vercel PreviewからインストールしたPWA、通知、PCとの送受信を実機確認する |
-| GitHub main | Storeへ提出する版のソースとバージョンを保管する |
+| GitHub main | `origin/main`。このPCでMSIX確認に合格したローカル`main`と同じコミットを保管する。GitHub上ではMSIXを再ビルドしない |
 | Partner Center | 完成したStore用MSIXをアップロードしてMicrosoft Storeへ申請する |
+
+### ローカルとGitHubの位置関係
+
+```mermaid
+flowchart LR
+    subgraph PC["このPC<br/>D:\\Users\\uck\\Documents\\curry-project\\ore-no-fusen"]
+        LD["ローカル develop<br/>STEP 0の開発・確認"]
+        VC["候補バージョンを設定<br/>確認済みコミット"]
+        LM["ローカル main<br/>正式リリース候補"]
+        EXE["本番exeを1回作成"]
+        DEV["開発署名MSIX<br/>インストール・実機確認"]
+        STORE["Store用MSIX<br/>同じexeを再利用"]
+        FILE["固定保存先<br/>Documents\\俺の付箋-Store提出\\&lt;版&gt;"]
+        OK["STEP 2合格<br/>ソースとMSIXを確定"]
+
+        LD --> VC
+        VC -->|同じコミットを反映| LM
+        LM --> EXE --> DEV
+        DEV -->|合格| STORE --> FILE --> OK
+        DEV -->|コード不具合| LD
+    end
+
+    subgraph GH["GitHub<br/>ore-no-fusen/ore-no-fusen"]
+        OD["origin/develop<br/>開発済みソース・Preview起点"]
+        OM["origin/main<br/>正式版ソースの保管"]
+        NO["MSIXは作らない<br/>再ビルドしない"]
+    end
+
+    subgraph MS["Microsoft"]
+        PARTNER["Partner Center<br/>Store用MSIXをアップロード"]
+        PUBLIC["Microsoft Store<br/>審査・公開"]
+    end
+
+    LD -->|通常開発完了時にpush| OD
+    OK -->|ローカルmainの<br/>同じコミットをpush| OM
+    OK -->|正式版コミットを反映| OD
+    OM -. 保管だけ .-> NO
+    OK --> PARTNER --> PUBLIC
+
+    style LD fill:#e8f4ff,stroke:#1976d2,color:#111
+    style VC fill:#e8f4ff,stroke:#1976d2,color:#111
+    style LM fill:#fff8e1,stroke:#f57c00,color:#111
+    style EXE fill:#fff8e1,stroke:#f57c00,color:#111
+    style DEV fill:#fff8e1,stroke:#f57c00,color:#111
+    style STORE fill:#e8f5e9,stroke:#388e3c,color:#111
+    style FILE fill:#e8f5e9,stroke:#388e3c,color:#111
+    style OK fill:#e8f5e9,stroke:#388e3c,color:#111
+    style OD fill:#f3e5f5,stroke:#7b1fa2,color:#111
+    style OM fill:#f3e5f5,stroke:#7b1fa2,color:#111
+    style NO fill:#ffebee,stroke:#c62828,color:#111
+    style PARTNER fill:#f3e5f5,stroke:#7b1fa2,color:#111
+    style PUBLIC fill:#f3e5f5,stroke:#7b1fa2,color:#111
+```
+
+*MSIXを作る場所はこのPCのローカル`main`。GitHubの`origin/main`は、合格した同じコミットを保管する場所であり、MSIXの作成場所ではない。*
 
 ### Codexの役割分担
 
@@ -188,7 +243,9 @@ flowchart TD
 
 修正途中ではMSIXを作らない。通常開発はこのPCの作業ブランチをローカル`develop`へ統合し、`develop`だけをpushした後、変更対象に必要なCIとPreview確認が成功した時点で完了する。リモート機能ブランチとPull Requestは明示依頼時だけ使用し、STEP 0ではMSIX CIを調査・修正しない。正式リリースを行う場合だけSTEP 1へ進む。
 
-## STEP 1：このPCでMSIXを作成・実機確認
+## STEP 1：このPCのローカルmainでMSIXを作成・実機確認
+
+STEP 0で確認済みのローカル`develop`へ候補バージョンを設定し、その同じコミットをこのPCのローカル`main`へ反映して`main`をチェックアウトする。GitHubの`origin/main`はまだ更新しない。以降の本番実行ファイルとMSIXは、このローカル`main`から作る。
 
 1. **STEP 1-1**：リリース候補バージョンを先に設定する。予想は1〜5秒。
 2. **STEP 1-2**：このPCで本番実行ファイルを1回作成する。現時点の予想は300〜900秒であり、実測値を必ず記録する。
