@@ -1,30 +1,20 @@
 {
-  "updated_at": "2026-09-21T02:15:32.083Z",
+  "updated_at": "2026-09-21T02:18:55.776Z",
   "workflow": "MSIX CI",
-  "run_id": 35552227614,
-  "run_number": 93,
+  "run_id": 35553755106,
+  "run_number": 94,
   "run_attempt": "1",
-  "run_url": "https://github.com/ore-no-fusen/ore-no-fusen/actions/runs/35552227614",
-  "branch": "codex/fix-msix-ci-windows-2022",
-  "commit_sha": "b4c184f99309fe79e691f79362ef8d679d64af66",
-  "overall": "cancelled",
-  "failed_step": "msix_create",
-  "current_step": "finished",
-  "steps": {
-    "npm_ci": "success",
-    "frontend_tests": "success",
-    "next_build": "success",
-    "rust_tests": "success",
-    "tauri_build": "success",
-    "msix_create": "cancelled",
-    "msix_verify": "skipped",
-    "msix_smoke": "skipped",
-    "upload_artifact": "success"
-  },
+  "run_url": "https://github.com/ore-no-fusen/ore-no-fusen/actions/runs/35553755106",
+  "branch": "codex/fix-msix-ci-powershell",
+  "commit_sha": "14718f79584a992b4a915688f1cd2e8a95bedb30",
+  "overall": "in_progress",
+  "failed_step": null,
+  "current_step": "started",
+  "steps": {},
   "msix": {
-    "created": true,
-    "bytes": 55599574,
+    "created": false,
+    "bytes": 0,
     "relative_path": "packaging/msix/dev/out/ore-no-fusen-dev.msix",
-    "artifact_name": "msix-ci-b4c184f99309fe79e691f79362ef8d679d64af66"
+    "artifact_name": "msix-ci-14718f79584a992b4a915688f1cd2e8a95bedb30"
   }
 }
