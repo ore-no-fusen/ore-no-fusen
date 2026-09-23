@@ -5323,6 +5323,7 @@ pub fn run() {
             member_identity::member_needs_sync,
             member_identity::member_sync,
             member_identity::member_link_conversation,
+            member_identity::member_heartbeat,
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_distribution_info,
             fusen_open_startup_settings,

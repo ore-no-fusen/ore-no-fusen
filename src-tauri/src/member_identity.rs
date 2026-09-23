@@ -22,6 +22,8 @@ pub struct MemberLocal {
     #[serde(default)] analytics_subject: Option<String>,
     consent: Option<bool>,
     #[serde(default)] weeks: BTreeMap<String, WeeklyUsage>,
+    #[serde(default)] read_announcement_ids: BTreeSet<String>,
+    #[serde(default)] last_heartbeat_date: Option<String>,
     #[serde(skip)] syncing: bool,
 }
 
@@ -154,6 +156,81 @@ pub async fn member_sync(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>)->
         (value.clone(),value.view())
     };
     persist(&snapshot)?;let _=app.emit("member_updated",view.clone());Ok(view)
+}
+
+// --- ハートビート（開発者ホットライン + 会員生存確認） ---
+
+fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str) -> bool {
+    match segment {
+        "all" => true,
+        "veteran" => member.general_number.map_or(false, |n| n < 10050),
+        "newcomer" => member.general_number.map_or(false, |n| n >= 10100),
+        "feature_active" => member.weeks.get(current_week)
+            .map_or(false, |w| !w.features.is_empty()),
+        "feature_inactive" => member.consent == Some(true)
+            && member.weeks.get(current_week)
+                .map_or(true, |w| w.features.is_empty()),
+        _ => false,
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnouncementPayload {
+    id: String, title: String, body: String, segment: String, created_at: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HeartbeatResponse {
+    #[allow(dead_code)] last_seen_at: String,
+    announcements: Vec<AnnouncementPayload>,
+}
+
+#[tauri::command]
+pub async fn member_heartbeat(
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<AnnouncementPayload>, String> {
+    let base = endpoint()?;
+    let (snapshot, today) = {
+        let mut g = state.lock().map_err(|_| "State unavailable")?;
+        let value = ensure(&mut g)?;
+        let today = Utc::now().format("%Y-%m-%d").to_string();
+
+        // 1日1回チェック
+        if value.last_heartbeat_date.as_deref() == Some(&today) {
+            return Ok(Vec::new());
+        }
+        (value.clone(), today)
+    };
+
+    // API呼び出し
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build().map_err(|_| "Cannot create client")?;
+    let response: HeartbeatResponse = serde_json::from_value(
+        post(&client, &base, "heartbeat", &snapshot, serde_json::json!({})).await?
+    ).map_err(|_| "Invalid heartbeat response")?;
+
+    // フィルタ: セグメント対象 & 未読
+    let week = week_key(Utc::now());
+    let unread: Vec<AnnouncementPayload> = response.announcements.into_iter()
+        .filter(|a| !snapshot.read_announcement_ids.contains(&a.id)
+                    && matches_segment(&a.segment, &snapshot, &week))
+        .collect();
+
+    // 状態更新: last_heartbeat_date + 既読IDs
+    {
+        let mut g = state.lock().map_err(|_| "State unavailable")?;
+        let value = ensure(&mut g)?;
+        value.last_heartbeat_date = Some(today);
+        for a in &unread {
+            value.read_announcement_ids.insert(a.id.clone());
+        }
+        persist(value)?;
+    }
+
+    Ok(unread)
 }
 
 #[cfg(not(windows))] fn protect(_: &[u8])->Result<Vec<u8>,String>{Err("Protected member storage requires Windows".into())}

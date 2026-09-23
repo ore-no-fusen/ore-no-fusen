@@ -34,3 +34,56 @@ describe('member registration',()=>{
     await expect(service.lookupByGeneralNumber(10001)).rejects.toMatchObject({status:404});
   });
 });
+
+describe('member heartbeat', () => {
+  it('updates lastSeenAt and returns active announcements', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));
+
+    // まず会員登録
+    await service.register(auth);
+
+    // お便りを追加
+    db.rows.set('announcements/test1', {
+      value: {
+        title: 'テスト', body: 'こんにちは', segment: 'all',
+        active: true, createdAt: '2026-09-23T00:00:00Z',
+        expiresAt: '2026-12-31T23:59:59Z',
+      },
+      version: '1',
+    });
+
+    const result = await service.heartbeat(auth);
+    expect(result.lastSeenAt).toBe('2026-09-23');
+    expect(result.announcements).toHaveLength(1);
+    expect(result.announcements[0]).toMatchObject({
+      id: 'test1', title: 'テスト', segment: 'all',
+    });
+  });
+
+  it('excludes expired and inactive announcements', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));
+    await service.register(auth);
+
+    db.rows.set('announcements/expired', {
+      value: {
+        title: '期限切れ', body: '', segment: 'all',
+        active: true, createdAt: '2026-01-01T00:00:00Z',
+        expiresAt: '2026-01-31T23:59:59Z', // 過去
+      },
+      version: '1',
+    });
+    db.rows.set('announcements/inactive', {
+      value: {
+        title: '無効', body: '', segment: 'all',
+        active: false, createdAt: '2026-09-01T00:00:00Z',
+        expiresAt: '2026-12-31T23:59:59Z',
+      },
+      version: '1',
+    });
+
+    const result = await service.heartbeat(auth);
+    expect(result.announcements).toHaveLength(0);
+  });
+});

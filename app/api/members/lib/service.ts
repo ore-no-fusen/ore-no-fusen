@@ -3,7 +3,7 @@ import type { MemberDatabase, Row } from './database';
 import { createFeedbackConversationStore } from '../../feedback/lib/store';
 import { randomBytes } from 'node:crypto';
 
-export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string };
+export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string };
 export type Credentials = { memberId: string; secretToken: string };
 const deny = () => new FeedbackRequestError('Invalid member credentials', 403);
 export function credentials(body: Record<string, unknown>): Credentials {
@@ -54,6 +54,36 @@ export class MemberService {
       registeredAt: member.value.registeredAt,
       paidNumber: member.value.paidNumber,
     };
+  }
+  async heartbeat(auth: Credentials) {
+    // 1. 認証（既存パターン）
+    const member = await this.authenticate(auth);
+
+    // 2. lastSeenAt を更新
+    const today = this.now().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const updated = { ...member.value, lastSeenAt: today };
+    await this.db.commit([
+      { path: `members/${auth.memberId}`, value: updated, version: member.version },
+    ]);
+
+    // 3. announcements を取得
+    const rows = await this.db.list<{
+      title: string; body: string; segment: string;
+      active: boolean; createdAt: string; expiresAt: string;
+    }>('announcements');
+
+    const now = this.now().toISOString();
+    const announcements = rows
+      .filter(r => r.value.active && r.value.expiresAt > now)
+      .map(r => ({
+        id: r.path.split('/').pop()!,
+        title: r.value.title,
+        body: r.value.body,
+        segment: r.value.segment,
+        createdAt: r.value.createdAt,
+      }));
+
+    return { lastSeenAt: today, announcements };
   }
   async linkConversation(auth: Credentials, conversationId: unknown, conversationSecret: unknown) {
     if (typeof conversationId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(conversationId) || typeof conversationSecret !== 'string' || !/^[a-zA-Z0-9_-]{32,200}$/.test(conversationSecret)) throw new FeedbackRequestError('Invalid conversation credentials',400);
