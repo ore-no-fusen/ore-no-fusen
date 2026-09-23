@@ -2,6 +2,12 @@
 
 <!-- NEW_ENTRIES_BELOW -->
 
+### 2026-09-24 開発者ホットライン・ダッシュボード実装
+
+- `codex/developer-hotline` で第3段階を実装。会員の `lastSeenAt` はUTC日付なので、今日・過去7日・日付未確認の人数と過去7日比率を表示する。厳密な直近24時間は現行データでは算出できない。
+- `scripts/member-stats.mjs --open` は127.0.0.1の一時サーバーで投稿フォームを表示し、全会員向け・30日有効のお便りを既存API互換のFirestore形式で保存する。静的HTML出力は集計表示のみ。
+- 検証: 通常実行の `npm test` 635件成功、`node --test scripts/member-stats.test.mjs` 3件成功、Node構文検査・pre-commit型検査成功。pre-commitで並列実行した全件テストは、今回触れていない `ResizableImage.test.tsx` の2件が2回失敗（単独実行では6件成功）。実Google接続は実行環境のネットワーク権限 `EACCES` で未確認。実データでの集計表示と投稿は未実施。
+
 ### 2026-09-22 5.4.0 Dev版の画像送信を実機修正
 
 - 画像送信失敗の原因は、Tauri CSPでAppwrite endpointが未許可だったことと、Appwrite ProjectにTauri origin `tauri.localhost` が未登録だったこと。
