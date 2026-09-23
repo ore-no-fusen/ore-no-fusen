@@ -2,6 +2,12 @@
 
 <!-- NEW_ENTRIES_BELOW -->
 
+### 2026-09-24 開発者ホットライン・統合前確認
+
+- `codex/developer-hotline` に混在していた宣伝素材・LP変更4コミットを含めず、お便り機能3コミットだけを最新`develop`から作った`codex/developer-hotline-integration`へ適用した。
+- 統合用ブランチで`npm test -- --silent` 635件、ダッシュボード専用テスト3件、`npx tsc --noEmit`、`cargo check --locked`に成功。既存のpre-commit並列実行時だけ起きた画像表示テスト失敗は、この実行では再現しなかった。
+- Firestore・GA4の実読み取りに成功し、会員136人の静的HTMLを生成。生存メーターは今日0人・過去7日0人・日付未確認136人で、現時点では本番heartbeat未反映と整合。投稿は実行していない。
+
 ### 2026-09-24 開発者ホットライン・ダッシュボード実装
 
 - `codex/developer-hotline` で第3段階を実装。会員の `lastSeenAt` はUTC日付なので、今日・過去7日・日付未確認の人数と過去7日比率を表示する。厳密な直近24時間は現行データでは算出できない。
