@@ -27,16 +27,18 @@ async function runDesktopBackground(cancelled:()=>boolean) {
   const w=window as AnalyticsWindow; w.__FUSEN_ANALYTICS_GRANTED__=granted; w['ga-disable-G-MGPKF0MQH4']=true;
   if(await invoke<boolean>('member_needs_sync')) await invoke('member_sync').catch(()=>undefined);
   const member=await invoke<MemberView>('member_get');
-  if(!granted||member.consent!==true||!member.analyticsSubject||cancelled())return;
-  loadGa4(false); w['ga-disable-G-MGPKF0MQH4']=false;
-  w.gtag?.('config',GA_ID,{send_page_view:false,user_id:member.analyticsSubject});
-  const summaries=await invoke<WeeklyUsage[]>('member_closed_summaries');
-  for(const summary of summaries){
-    for(const [featureName,value] of Object.entries(summary.features)){
-      w.gtag?.('event','weekly_feature_usage',{event_category:'usage',summary_week:summary.week,feature_name:featureName,usage_count:value.count,active_days:value.activeDays.length,last_used_day:value.lastUsedDay,app_version:summary.appVersion,distribution:'desktop_app'});
+  if(cancelled())return;
+  if(granted&&member.consent===true&&member.analyticsSubject){
+    loadGa4(false); w['ga-disable-G-MGPKF0MQH4']=false;
+    w.gtag?.('config',GA_ID,{send_page_view:false,user_id:member.analyticsSubject});
+    const summaries=await invoke<WeeklyUsage[]>('member_closed_summaries');
+    for(const summary of summaries){
+      for(const [featureName,value] of Object.entries(summary.features)){
+        w.gtag?.('event','weekly_feature_usage',{event_category:'usage',summary_week:summary.week,feature_name:featureName,usage_count:value.count,active_days:value.activeDays.length,last_used_day:value.lastUsedDay,app_version:summary.appVersion,distribution:'desktop_app'});
+      }
+      w.gtag?.('event','weekly_usage_complete',{event_category:'usage',summary_week:summary.week,measurement_schema:summary.schema,app_version:summary.appVersion,distribution:'desktop_app'});
+      await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
     }
-    w.gtag?.('event','weekly_usage_complete',{event_category:'usage',summary_week:summary.week,measurement_schema:summary.schema,app_version:summary.appVersion,distribution:'desktop_app'});
-    await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
   }
   // 開発者ホットライン: heartbeat で未読お便りを取得し、ウィンドウで表示
   try {

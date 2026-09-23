@@ -1,7 +1,23 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import React, { Suspense } from 'react';
+
+function renderInline(text: string) {
+  return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g).map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
+    if (link) {
+      try {
+        const url = new URL(link[2]);
+        if (url.protocol === 'https:' || url.protocol === 'http:') {
+          return <a key={index} href={url.href} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'underline' }}>{link[1]}</a>;
+        }
+      } catch { /* Unsupported link is shown as text. */ }
+    }
+    return part;
+  });
+}
 
 /** お便り（開発者ホットライン）表示ページ。
  *  Tauriウィンドウで開かれ、クエリパラメータからお便り内容を受け取る。
@@ -12,15 +28,6 @@ function AnnouncementContent() {
   const title = params.get('title') ?? 'お便り';
   const body = params.get('body') ?? '';
   const createdAt = params.get('createdAt') ?? '';
-
-  // 簡易Markdown→HTML変換（太字、リンク、改行のみ対応）
-  const renderBody = (text: string) => {
-    return text
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline">$1</a>')
-      .split('\n')
-      .join('<br/>');
-  };
 
   const formattedDate = createdAt
     ? new Date(createdAt).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -57,10 +64,11 @@ function AnnouncementContent() {
       )}
 
       {/* 本文 */}
-      <div
-        style={{ fontSize: 14, marginBottom: 28 }}
-        dangerouslySetInnerHTML={{ __html: renderBody(body) }}
-      />
+      <div style={{ fontSize: 14, marginBottom: 28 }}>
+        {body.split('\n').map((line, index) => (
+          <span key={index}>{index > 0 && <br />}{renderInline(line)}</span>
+        ))}
+      </div>
 
       {/* 区切り線 */}
       <hr style={{ border: 'none', borderTop: '1px solid #e5e5e5', margin: '20px 0' }} />
