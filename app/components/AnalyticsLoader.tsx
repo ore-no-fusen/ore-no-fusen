@@ -38,6 +38,27 @@ async function runDesktopBackground(cancelled:()=>boolean) {
     w.gtag?.('event','weekly_usage_complete',{event_category:'usage',summary_week:summary.week,measurement_schema:summary.schema,app_version:summary.appVersion,distribution:'desktop_app'});
     await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
   }
+  // 開発者ホットライン: heartbeat で未読お便りを取得し、ウィンドウで表示
+  try {
+    type Announcement = { id: string; title: string; body: string; segment: string; createdAt: string };
+    const unread = await invoke<Announcement[]>('member_heartbeat');
+    if (unread.length > 0) {
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      for (const a of unread) {
+        const label = `announcement-${a.id}`;
+        const existing = await WebviewWindow.getByLabel(label);
+        if (existing) { await existing.setFocus(); continue; }
+        const params = new URLSearchParams({ title: a.title, body: a.body, createdAt: a.createdAt });
+        new WebviewWindow(label, {
+          url: `/announcement?${params.toString()}`,
+          title: `✉️ ${a.title}`,
+          width: 480, height: 400,
+          resizable: true, decorations: true,
+          alwaysOnTop: true,
+        });
+      }
+    }
+  } catch { /* heartbeat失敗は無視 */ }
 }
 
 export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
