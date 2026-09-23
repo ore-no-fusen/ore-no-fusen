@@ -170,7 +170,9 @@ fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str) -> b
         "feature_inactive" => member.consent == Some(true)
             && member.weeks.get(current_week)
                 .map_or(true, |w| w.features.is_empty()),
-        _ => false,
+        _ => segment.strip_prefix("member:")
+            .and_then(|number| number.parse::<u64>().ok())
+            .map_or(false, |number| member.general_number == Some(number)),
     }
 }
 
@@ -239,6 +241,19 @@ pub async fn member_heartbeat(
 fn protect(bytes:&[u8])->Result<Vec<u8>,String>{use windows::{core::PCWSTR,Win32::{Foundation::{LocalFree,HLOCAL},Security::Cryptography::{CryptProtectData,CRYPT_INTEGER_BLOB,CRYPTPROTECT_UI_FORBIDDEN}}};let input=CRYPT_INTEGER_BLOB{cbData:bytes.len().try_into().map_err(|_|"Identity too large")?,pbData:bytes.as_ptr()as*mut u8};let mut output=CRYPT_INTEGER_BLOB::default();unsafe{CryptProtectData(&input,PCWSTR::null(),None,None,None,CRYPTPROTECT_UI_FORBIDDEN,&mut output).map_err(|_|"Cannot protect member identity")?;let value=std::slice::from_raw_parts(output.pbData,output.cbData as usize).to_vec();let _=LocalFree(HLOCAL(output.pbData.cast()));Ok(value)}}
 #[cfg(windows)]
 fn unprotect(bytes:&[u8])->Result<Vec<u8>,String>{use windows::Win32::{Foundation::{LocalFree,HLOCAL},Security::Cryptography::{CryptUnprotectData,CRYPT_INTEGER_BLOB,CRYPTPROTECT_UI_FORBIDDEN}};let input=CRYPT_INTEGER_BLOB{cbData:bytes.len().try_into().map_err(|_|"Identity too large")?,pbData:bytes.as_ptr()as*mut u8};let mut output=CRYPT_INTEGER_BLOB::default();unsafe{CryptUnprotectData(&input,None,None,None,None,CRYPTPROTECT_UI_FORBIDDEN,&mut output).map_err(|_|"Cannot unlock member identity; do not reissue")?;let value=std::slice::from_raw_parts(output.pbData,output.cbData as usize).to_vec();let _=LocalFree(HLOCAL(output.pbData.cast()));Ok(value)}}
+
+#[cfg(test)]
+mod segment_tests {
+    use super::*;
+
+    #[test]
+    fn member_number_segment_matches_only_its_recipient() {
+        let member = MemberLocal { general_number: Some(10123), ..Default::default() };
+        assert!(matches_segment("member:10123", &member, "2026-W39"));
+        assert!(!matches_segment("member:10124", &member, "2026-W39"));
+        assert!(!matches_segment("member:invalid", &member, "2026-W39"));
+    }
+}
 
 #[cfg(all(test,windows))]
 mod tests{use super::*;use chrono::TimeZone;#[test]fn iso_week_key_uses_monday_based_week_year(){assert_eq!(week_key(Utc.with_ymd_and_hms(2027,1,1,0,0,0).unwrap()),"2026-W53");}#[test]fn protected_identity_roundtrip(){let identity=MemberLocal{member_id:uuid::Uuid::new_v4().to_string(),secret:"private-member-secret".into(),general_number:Some(10000),analytics_subject:Some("0123456789abcdef0123456789abcdef".into()),..Default::default()};let bytes=serde_json::to_vec(&identity).unwrap();let protected=protect(&bytes).unwrap();assert!(!protected.windows(identity.secret.len()).any(|w|w==identity.secret.as_bytes()));let restored:MemberLocal=serde_json::from_slice(&unprotect(&protected).unwrap()).unwrap();assert_eq!(restored.analytics_subject,identity.analytics_subject);}#[test]fn protected_file_can_replace_an_existing_identity(){let dir=std::env::temp_dir().join(format!("fusen-member-{}",uuid::Uuid::new_v4()));std::fs::create_dir_all(&dir).unwrap();let target=dir.join("identity.bin");let replacement=dir.join("identity.tmp");std::fs::write(&target,b"old").unwrap();std::fs::write(&replacement,b"new").unwrap();replace_file(&replacement,&target).unwrap();assert_eq!(std::fs::read(&target).unwrap(),b"new");std::fs::remove_dir_all(dir).unwrap();}#[test]fn app_state_never_serializes_member(){let mut state=AppState::default();state.member=Some(MemberLocal{secret:"private-member-secret".into(),..Default::default()});let json=serde_json::to_value(state).unwrap();assert!(json.get("member").is_none());}}

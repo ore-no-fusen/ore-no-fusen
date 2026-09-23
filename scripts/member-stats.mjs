@@ -34,15 +34,26 @@ function survivalStats(members, today = new Date()) {
   return { today: seen.filter(d => d === currentDay).length, week: seen.filter(d => d >= firstDay).length, unknown: members.length - seen.length };
 }
 
-async function publishAnnouncement(token, title, body) {
+async function publishAnnouncement(token, title, body, audience = 'all', memberNumber = null, memberNumbers = new Set()) {
   if (typeof title !== 'string' || !title.trim() || title.length > 120 || typeof body !== 'string' || !body.trim() || body.length > 10000) {
     throw new Error('タイトル（120文字以内）と本文（10000文字以内）を入力してください');
+  }
+  const segments = new Set(['all', 'veteran', 'newcomer', 'feature_active', 'feature_inactive']);
+  let segment = audience;
+  if (audience === 'member') {
+    const number = Number(memberNumber);
+    if (!Number.isSafeInteger(number) || number < 10000 || String(number) !== String(memberNumber) || !memberNumbers.has(number)) {
+      throw new Error('登録済みの会員番号を指定してください');
+    }
+    segment = `member:${number}`;
+  } else if (!segments.has(audience)) {
+    throw new Error('宛先を選択してください');
   }
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + 30 * 86400000);
   const id = crypto.randomUUID();
   const name = `${firestoreRoot()}/announcements/${id}`;
-  const value = { title: title.trim(), body: body.trim(), segment: 'all', active: true, createdAt: createdAt.toISOString(), expiresAt: expiresAt.toISOString() };
+  const value = { title: title.trim(), body: body.trim(), segment, active: true, createdAt: createdAt.toISOString(), expiresAt: expiresAt.toISOString() };
   const response = await fetch(`https://firestore.googleapis.com/v1/projects/${serviceAccount.project_id}/databases/(default)/documents:commit`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -52,7 +63,7 @@ async function publishAnnouncement(token, title, body) {
   return id;
 }
 
-async function serveDashboard(html, dbToken, openBrowser = true) {
+async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers = new Set()) {
   const csrfToken = crypto.randomBytes(32).toString('hex');
   let currentToken = dbToken;
   let tokenAt = Date.now();
@@ -74,12 +85,12 @@ async function serveDashboard(html, dbToken, openBrowser = true) {
         input += chunk;
         if (input.length > 25000) throw new Error('入力が長すぎます');
       }
-      const { title, body } = JSON.parse(input);
+      const { title, body, audience, memberNumber } = JSON.parse(input);
       if (Date.now() - tokenAt > 50 * 60 * 1000) {
         currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
         tokenAt = Date.now();
       }
-      const id = await publishAnnouncement(currentToken, title, body);
+      const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, memberNumbers);
       response.writeHead(201, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ id }));
     } catch (error) {
@@ -276,8 +287,19 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
     ${canPublish ? `<div class="glass p-6 rounded-2xl shadow-xl space-y-4">
       <h2 class="text-lg font-bold">開発者からのお便り</h2>
-      <p class="text-sm text-slate-400">全会員向け・公開後30日間有効。次回の起動時チェックで配信されます。</p>
+      <p class="text-sm text-slate-400">公開後30日間有効。対象会員の次回起動時チェックで配信されます。</p>
       <form id="announcementForm" class="space-y-3">
+        <label class="block text-sm text-slate-300" for="audience">宛先</label>
+        <select id="audience" name="audience" required class="w-full rounded-lg bg-slate-900 border border-slate-600 p-3">
+          <option value="all">全会員</option>
+          <option value="veteran">古参会員（番号10000〜10049）</option>
+          <option value="newcomer">新規会員（番号10100以降）</option>
+          <option value="feature_active">今週の機能利用あり</option>
+          <option value="feature_inactive">今週の機能利用なし（利用分析に同意済み）</option>
+          <option value="member">会員番号を指定</option>
+        </select>
+        <p class="text-xs text-slate-400">機能利用別の宛先はPC内で判定します。機密の本文には使用しないでください。</p>
+        <input id="memberNumber" name="memberNumber" type="number" min="10000" step="1" placeholder="会員番号" hidden class="w-full rounded-lg bg-slate-900 border border-slate-600 p-3">
         <input name="title" required maxlength="120" placeholder="タイトル" class="w-full rounded-lg bg-slate-900 border border-slate-600 p-3">
         <textarea name="body" required maxlength="10000" rows="8" placeholder="Markdown本文" class="w-full rounded-lg bg-slate-900 border border-slate-600 p-3"></textarea>
         <button type="submit" class="rounded-lg bg-indigo-600 px-5 py-2 font-semibold">投稿する</button>
@@ -349,6 +371,14 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
   <script>
     const announcementForm = document.getElementById('announcementForm');
+    const audienceSelect = document.getElementById('audience');
+    const memberNumberInput = document.getElementById('memberNumber');
+    if (audienceSelect) audienceSelect.addEventListener('change', () => {
+      const isMember = audienceSelect.value === 'member';
+      memberNumberInput.hidden = !isMember;
+      memberNumberInput.required = isMember;
+      if (!isMember) memberNumberInput.value = '';
+    });
     if (announcementForm) announcementForm.addEventListener('submit', async event => {
       event.preventDefault();
       const button = announcementForm.querySelector('button');
@@ -357,7 +387,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       status.textContent = '投稿中…';
       try {
         const fields = new FormData(announcementForm);
-        const response = await fetch('/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ title: fields.get('title'), body: fields.get('body') }) });
+        const response = await fetch('/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ title: fields.get('title'), body: fields.get('body'), audience: fields.get('audience'), memberNumber: fields.get('memberNumber') }) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || '投稿に失敗しました');
         status.textContent = '投稿しました。ID: ' + result.id;
@@ -628,7 +658,7 @@ async function main() {
   const isOpenMode = process.argv.includes('--open');
   if (isOpenMode) {
     console.log(`Updated: ${htmlPath}`);
-    await serveDashboard(generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true), dbToken);
+    await serveDashboard(generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true), dbToken, true, new Set(members.map(m => m.generalNumber)));
   } else {
     console.log(`総会員数: ${totalMembers}人 (最新番号: #${latestNumber})`);
     console.log(`本日新規: +${todayNew}人 / 昨日新規: +${yesterdayNew}人`);
@@ -638,7 +668,7 @@ async function main() {
   }
 }
 
-export { survivalStats, publishAnnouncement, serveDashboard };
+export { survivalStats, publishAnnouncement, serveDashboard, generateHtml };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch(err => {

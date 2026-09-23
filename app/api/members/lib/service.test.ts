@@ -86,4 +86,26 @@ describe('member heartbeat', () => {
     const result = await service.heartbeat(auth);
     expect(result.announcements).toHaveLength(0);
   });
+
+  it('returns a member-number message only to its authenticated recipient', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));
+    const otherAuth = { memberId: '123e4567-e89b-42d3-a456-426614174001', secretToken: 'b'.repeat(43) };
+    const first = await service.register(auth);
+    await service.register(otherAuth);
+    db.rows.set('announcements/personal', { value: {
+      title: '個別', body: '個別の本文', segment: `member:${first.generalNumber}`,
+      active: true, createdAt: '2026-09-23T00:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
+    }, version: '1' });
+    db.rows.set('announcements/newcomers', { value: {
+      title: '新規向け', body: '対象外', segment: 'newcomer',
+      active: true, createdAt: '2026-09-23T00:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
+    }, version: '1' });
+    db.rows.set('announcements/unknown', { value: {
+      title: '不明な宛先', body: '対象外', segment: 'not-a-segment',
+      active: true, createdAt: '2026-09-23T00:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
+    }, version: '1' });
+    expect((await service.heartbeat(auth)).announcements.map(a => a.title)).toEqual(['個別']);
+    expect((await service.heartbeat(otherAuth)).announcements).toEqual([]);
+  });
 });

@@ -4,6 +4,13 @@ import { createFeedbackConversationStore } from '../../feedback/lib/store';
 import { randomBytes } from 'node:crypto';
 
 export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string };
+
+function matchesServerAudience(segment: string, number: number): boolean {
+  if (segment === 'all' || segment === 'feature_active' || segment === 'feature_inactive') return true;
+  if (segment === 'veteran') return number < 10050;
+  if (segment === 'newcomer') return number >= 10100;
+  return segment === `member:${number}`;
+}
 export type Credentials = { memberId: string; secretToken: string };
 const deny = () => new FeedbackRequestError('Invalid member credentials', 403);
 export function credentials(body: Record<string, unknown>): Credentials {
@@ -74,7 +81,8 @@ export class MemberService {
 
     const now = this.now().toISOString();
     const announcements = rows
-      .filter(r => r.value.active && r.value.expiresAt > now)
+      .filter(r => r.value.active && r.value.expiresAt > now
+        && matchesServerAudience(r.value.segment, member.value.generalNumber))
       .map(r => ({
         id: r.path.split('/').pop()!,
         title: r.value.title,
