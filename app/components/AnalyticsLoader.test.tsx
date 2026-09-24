@@ -2,24 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import React from 'react';
 
-const { invokeMock, getCurrentWindowMock, windowLabel, createWindowMock } = vi.hoisted(() => ({
+const { invokeMock, getCurrentWindowMock, windowLabel, emitMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   getCurrentWindowMock: vi.fn(),
-  createWindowMock: vi.fn(),
+  emitMock: vi.fn(),
   windowLabel: { value: 'main' },
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async()=>vi.fn()) }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async()=>vi.fn()), emit: emitMock }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: getCurrentWindowMock }));
-vi.mock('@tauri-apps/api/webviewWindow', () => ({ WebviewWindow: class {
-  static getByLabel = vi.fn(async () => null);
-  constructor(label: string, options: unknown) { createWindowMock(label, options); }
-} }));
 import AnalyticsLoader from './AnalyticsLoader';
 
 describe('AnalyticsLoader low-impact scheduling', () => {
   beforeEach(() => {
-    vi.useFakeTimers(); invokeMock.mockReset(); getCurrentWindowMock.mockReset(); createWindowMock.mockReset(); windowLabel.value='main';
+    vi.useFakeTimers(); invokeMock.mockReset(); getCurrentWindowMock.mockReset(); emitMock.mockReset(); windowLabel.value='main';
+    emitMock.mockResolvedValue(undefined);
     getCurrentWindowMock.mockImplementation(() => ({ label: windowLabel.value }));
     delete (window as any).gtag; delete (window as any).dataLayer; delete (window as any).__FUSEN_ANALYTICS_GRANTED__;
     document.querySelectorAll('[data-fusen-analytics="ga4"]').forEach(node=>node.remove());
@@ -82,7 +79,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(invokeMock).toHaveBeenCalledWith('member_mark_summary_sent',{week:'2026-W35'});
   });
 
-  it('records heartbeat and opens unread mail even when analytics consent is denied', async () => {
+  it('records heartbeat and opens the conversation for new mail even when analytics consent is denied', async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === 'get_settings') return Promise.resolve({ analytics_consent: 'denied' });
       if (command === 'member_needs_sync') return Promise.resolve(false);
@@ -96,6 +93,6 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(invokeMock).toHaveBeenCalledWith('member_heartbeat');
     expect(invokeMock).not.toHaveBeenCalledWith('member_closed_summaries');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).toBeNull();
-    await vi.waitFor(() => expect(createWindowMock).toHaveBeenCalledWith('announcement-mail-1', expect.objectContaining({ url: expect.stringContaining('/announcement?') })));
+    await vi.waitFor(() => expect(emitMock).toHaveBeenCalledWith('fusen:open_settings', { tab: 'conversation' }));
   });
 });

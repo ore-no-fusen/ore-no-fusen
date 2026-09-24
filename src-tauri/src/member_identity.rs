@@ -23,6 +23,7 @@ pub struct MemberLocal {
     consent: Option<bool>,
     #[serde(default)] weeks: BTreeMap<String, WeeklyUsage>,
     #[serde(default)] read_announcement_ids: BTreeSet<String>,
+    #[serde(default)] announcements: Vec<AnnouncementPayload>,
     #[serde(default)] last_heartbeat_date: Option<String>,
     #[serde(skip)] syncing: bool,
 }
@@ -160,6 +161,10 @@ pub async fn member_sync(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>)->
 
 // --- ハートビート（開発者ホットライン + 会員生存確認） ---
 
+fn should_request_heartbeat(environment: &str, last_date: Option<&str>, today: &str) -> bool {
+    environment == "development" || last_date != Some(today)
+}
+
 fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str) -> bool {
     match segment {
         "all" => true,
@@ -176,6 +181,13 @@ fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str) -> b
     }
 }
 
+fn new_announcements(member: &MemberLocal, announcements: Vec<AnnouncementPayload>, current_week: &str) -> Vec<AnnouncementPayload> {
+    announcements.into_iter()
+        .filter(|a| matches_segment(&a.segment, member, current_week)
+                    && !member.announcements.iter().any(|saved| saved.id == a.id))
+        .collect()
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnouncementPayload {
@@ -190,6 +202,12 @@ struct HeartbeatResponse {
 }
 
 #[tauri::command]
+pub fn member_announcements(state: State<'_, Mutex<AppState>>) -> Result<Vec<AnnouncementPayload>, String> {
+    let mut guard = state.lock().map_err(|_| "State unavailable")?;
+    Ok(ensure(&mut guard)?.announcements.clone())
+}
+
+#[tauri::command]
 pub async fn member_heartbeat(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<AnnouncementPayload>, String> {
@@ -199,8 +217,8 @@ pub async fn member_heartbeat(
         let value = ensure(&mut g)?;
         let today = Utc::now().format("%Y-%m-%d").to_string();
 
-        // 1日1回チェック
-        if value.last_heartbeat_date.as_deref() == Some(&today) {
+        // 開発環境は起動のたびに確認し、本番環境は1日1回に抑える。
+        if !should_request_heartbeat(environment(), value.last_heartbeat_date.as_deref(), &today) {
             return Ok(Vec::new());
         }
         (value.clone(), today)
@@ -214,25 +232,27 @@ pub async fn member_heartbeat(
         post(&client, &base, "heartbeat", &snapshot, serde_json::json!({})).await?
     ).map_err(|_| "Invalid heartbeat response")?;
 
-    // フィルタ: セグメント対象 & 未読
+    // 対象のお便りをローカルの会話画面へ保存する。
     let week = week_key(Utc::now());
-    let unread: Vec<AnnouncementPayload> = response.announcements.into_iter()
-        .filter(|a| !snapshot.read_announcement_ids.contains(&a.id)
-                    && matches_segment(&a.segment, &snapshot, &week))
-        .collect();
+    let received = new_announcements(&snapshot, response.announcements, &week);
 
-    // 状態更新: last_heartbeat_date + 既読IDs
+    // 状態更新: last_heartbeat_date + 受信履歴
     {
         let mut g = state.lock().map_err(|_| "State unavailable")?;
         let value = ensure(&mut g)?;
         value.last_heartbeat_date = Some(today);
-        for a in &unread {
+        for a in &received {
             value.read_announcement_ids.insert(a.id.clone());
+        }
+        value.announcements.extend(received.iter().cloned());
+        if value.announcements.len() > 100 {
+            let excess = value.announcements.len() - 100;
+            value.announcements.drain(..excess);
         }
         persist(value)?;
     }
 
-    Ok(unread)
+    Ok(received)
 }
 
 #[cfg(not(windows))] fn protect(_: &[u8])->Result<Vec<u8>,String>{Err("Protected member storage requires Windows".into())}
@@ -245,6 +265,28 @@ fn unprotect(bytes:&[u8])->Result<Vec<u8>,String>{use windows::Win32::{Foundatio
 #[cfg(test)]
 mod segment_tests {
     use super::*;
+
+    #[test]
+    fn development_rechecks_after_a_heartbeat_on_the_same_day() {
+        assert!(should_request_heartbeat("development", Some("2026-09-24"), "2026-09-24"));
+        assert!(!should_request_heartbeat("production", Some("2026-09-24"), "2026-09-24"));
+        assert!(should_request_heartbeat("production", Some("2026-09-23"), "2026-09-24"));
+        assert!(should_request_heartbeat("production", None, "2026-09-24"));
+    }
+
+    #[test]
+    fn received_announcements_stay_visible_and_do_not_duplicate() {
+        let letter = AnnouncementPayload { id: "letter-1".into(), title: "題".into(), body: "本文".into(), segment: "veteran".into(), created_at: "2026-09-25T00:00:00Z".into() };
+        let mut member = MemberLocal { general_number: Some(10001), ..Default::default() };
+        member.read_announcement_ids.insert(letter.id.clone());
+        let first = new_announcements(&member, vec![letter.clone()], "2026-W39");
+        assert_eq!(first.len(), 1); // 旧版で既読扱いになったお便りも会話履歴へ移す。
+        member.announcements = first;
+        assert!(new_announcements(&member, vec![letter.clone()], "2026-W39").is_empty());
+        member.general_number = Some(10101);
+        member.announcements.clear();
+        assert!(new_announcements(&member, vec![letter], "2026-W39").is_empty());
+    }
 
     #[test]
     fn member_number_segment_matches_only_its_recipient() {

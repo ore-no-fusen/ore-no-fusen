@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { safeUnlisten } from '../utils/safeUnlisten';
 
@@ -40,25 +40,13 @@ async function runDesktopBackground(cancelled:()=>boolean) {
       await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
     }
   }
-  // 開発者ホットライン: heartbeat で未読お便りを取得し、ウィンドウで表示
+  // 開発者ホットライン: 新着があれば会話画面を開く。
   try {
     type Announcement = { id: string; title: string; body: string; segment: string; createdAt: string };
     const unread = await invoke<Announcement[]>('member_heartbeat');
     if (unread.length > 0) {
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      for (const a of unread) {
-        const label = `announcement-${a.id}`;
-        const existing = await WebviewWindow.getByLabel(label);
-        if (existing) { await existing.setFocus(); continue; }
-        const params = new URLSearchParams({ title: a.title, body: a.body, createdAt: a.createdAt });
-        new WebviewWindow(label, {
-          url: `/announcement?${params.toString()}`,
-          title: `✉️ ${a.title}`,
-          width: 480, height: 400,
-          resizable: true, decorations: true,
-          alwaysOnTop: true,
-        });
-      }
+      await emit('fusen:announcements_updated');
+      await emit('fusen:open_settings', { tab: 'conversation' });
     }
   } catch { /* heartbeat失敗は無視 */ }
 }

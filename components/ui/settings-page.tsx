@@ -12,7 +12,9 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react"
 import MemberSettings from "@/app/components/MemberSettings"
 import SupportMemberNumber from "@/app/components/SupportMemberNumber"
+import AnnouncementCard, { announcementReplyDraft, type ReceivedAnnouncement } from "@/app/components/AnnouncementCard"
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText, Heart } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
@@ -2599,6 +2601,8 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const feedbackApiBaseUrl = getFeedbackApiBaseUrl()
     const feedbackApiTargetLabel = getFeedbackApiTargetLabel(feedbackApiBaseUrl)
     const [messages, setMessages] = useState<BoardMessage[]>([])
+    const [announcements, setAnnouncements] = useState<ReceivedAnnouncement[]>([])
+    const [replyTarget, setReplyTarget] = useState<ReceivedAnnouncement | null>(null)
     const [draft, setDraft] = useState('')
     const [selectedImages, setSelectedImages] = useState<File[]>([])
     const [loading, setLoading] = useState(false)
@@ -2609,6 +2613,9 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const loadMessages = useCallback(async () => {
         setLoading(true)
         setError(null)
+        try {
+            setAnnouncements(await invoke<ReceivedAnnouncement[]>('member_announcements'))
+        } catch { /* ブラウザ版には会員のお便りがない。 */ }
         try {
             const nextMessages = await pollFeedbackConversationMessages(conversationIdentity)
             setMessages(nextMessages)
@@ -2638,6 +2645,15 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         loadMessages()
     }, [loadMessages])
 
+    useEffect(() => {
+        let dispose: (() => void) | undefined
+        let cancelled = false
+        void listen('fusen:announcements_updated', () => { void loadMessages() })
+            .then((unlisten) => { if (cancelled) unlisten(); else dispose = unlisten })
+            .catch(() => { })
+        return () => { cancelled = true; dispose?.() }
+    }, [loadMessages])
+
     const addImages = useCallback((incoming: File[]) => {
         const images = incoming.filter((file) => file.type.startsWith('image/'))
         if (images.length === 0) return
@@ -2657,8 +2673,9 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     }, [isEnglish])
 
     const sendMessage = async () => {
-        const content = draft.trim()
-        if (!content) return
+        const reply = draft.trim()
+        if (!reply) return
+        const content = replyTarget ? `${announcementReplyDraft(replyTarget)}${reply}` : reply
 
         setSending(true)
         setError(null)
@@ -2691,6 +2708,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                 })
             }
             setDraft('')
+            setReplyTarget(null)
             setSelectedImages([])
             await loadMessages()
         } catch (e) {
@@ -2744,9 +2762,12 @@ function DeveloperConversationSection({ language }: { language: Language }) {
 
             <div className="border rounded-lg overflow-hidden bg-white">
                 <div className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
+                    {announcements.map((announcement) => (
+                        <AnnouncementCard key={announcement.id} announcement={announcement} onReply={() => setReplyTarget(announcement)} />
+                    ))}
                     {loading && messages.length === 0 ? (
                         <div className="text-sm text-gray-500">{isEnglish ? 'Loading...' : '読み込み中...'}</div>
-                    ) : messages.length === 0 ? (
+                    ) : messages.length === 0 && announcements.length === 0 ? (
                         <div className="rounded-md border border-dashed bg-white p-6 text-sm text-gray-500">
                             {isEnglish ? 'No messages yet. You can send one using the field below.' : 'まだやりとりはありません。下の入力欄からメッセージを送れます。'}
                         </div>
@@ -2788,6 +2809,12 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     {error && (
                         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                             {isEnglish ? 'Communication failed. Please wait and try again.' : '通信に失敗しました。時間をおいて再試行してください。'}
+                        </div>
+                    )}
+                    {replyTarget && (
+                        <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                            <span>お便り「{replyTarget.title}」への返信</span>
+                            <button type="button" onClick={() => setReplyTarget(null)} className="underline">解除</button>
                         </div>
                     )}
                     <textarea
