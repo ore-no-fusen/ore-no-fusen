@@ -10,7 +10,26 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 const propertyId = '524376317';
-const firestoreRoot = () => `projects/${serviceAccount.project_id}/databases/(default)/documents/member_environments/production`;
+function firestoreRoot(environment = 'production') {
+  if (environment !== 'production' && environment !== 'development') throw new Error('環境は production または development を指定してください');
+  return `projects/${serviceAccount.project_id}/databases/(default)/documents/member_environments/${environment}`;
+}
+
+function parseOptions(args) {
+  let environment = 'production';
+  let open = false;
+  let environmentSpecified = false;
+  for (let index = 0; index < args.length; index++) {
+    if (args[index] === '--open' && !open) open = true;
+    else if (args[index] === '--environment' && args[index + 1] && !environmentSpecified) {
+      environment = args[++index];
+      environmentSpecified = true;
+    }
+    else throw new Error(`不明または重複したオプション: ${args[index]}`);
+  }
+  firestoreRoot(environment);
+  return { environment, open };
+}
 
 // Load service account
 const keyPath = path.resolve(rootDir, 'my', 'serviceAccountKey.json');
@@ -34,7 +53,8 @@ function survivalStats(members, today = new Date()) {
   return { today: seen.filter(d => d === currentDay).length, week: seen.filter(d => d >= firstDay).length, unknown: members.length - seen.length };
 }
 
-async function publishAnnouncement(token, title, body, audience = 'all', memberNumber = null, memberNumbers = new Set()) {
+async function publishAnnouncement(token, title, body, audience = 'all', memberNumber = null, memberNumbers = new Set(), environment = 'production') {
+  const root = firestoreRoot(environment);
   if (typeof title !== 'string' || !title.trim() || title.length > 120 || typeof body !== 'string' || !body.trim() || body.length > 10000) {
     throw new Error('タイトル（120文字以内）と本文（10000文字以内）を入力してください');
   }
@@ -52,7 +72,7 @@ async function publishAnnouncement(token, title, body, audience = 'all', memberN
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + 30 * 86400000);
   const id = crypto.randomUUID();
-  const name = `${firestoreRoot()}/announcements/${id}`;
+  const name = `${root}/announcements/${id}`;
   const value = { title: title.trim(), body: body.trim(), segment, active: true, createdAt: createdAt.toISOString(), expiresAt: expiresAt.toISOString() };
   const response = await fetch(`https://firestore.googleapis.com/v1/projects/${serviceAccount.project_id}/databases/(default)/documents:commit`, {
     method: 'POST',
@@ -63,7 +83,8 @@ async function publishAnnouncement(token, title, body, audience = 'all', memberN
   return id;
 }
 
-async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers = new Set()) {
+async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers = new Set(), environment = 'production') {
+  firestoreRoot(environment);
   const csrfToken = crypto.randomBytes(32).toString('hex');
   let currentToken = dbToken;
   let tokenAt = Date.now();
@@ -90,7 +111,7 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
         currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
         tokenAt = Date.now();
       }
-      const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, memberNumbers);
+      const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, memberNumbers, environment);
       response.writeHead(201, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ id }));
     } catch (error) {
@@ -135,14 +156,13 @@ async function getAccessToken(scope) {
   return data.access_token;
 }
 
-async function fetchFirestoreMembers(token) {
-  const root = `projects/${serviceAccount.project_id}/databases/(default)/documents`;
-  const prefix = `member_environments/production/members`;
+async function fetchFirestoreMembers(token, environment = 'production') {
+  const prefix = `${firestoreRoot(environment)}/members`;
 
   const results = [];
   let pageToken = '';
   do {
-    const url = `https://firestore.googleapis.com/v1/${root}/${prefix}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const url = `https://firestore.googleapis.com/v1/${prefix}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
     const data = await res.json();
@@ -198,7 +218,10 @@ async function fetchGa4Data(token) {
   return { dauData, eventData, featData };
 }
 
-function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, canPublish) {
+function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, canPublish, environment = 'production') {
+  firestoreRoot(environment);
+  const environmentLabel = environment === 'development' ? '開発環境' : '本番環境';
+  const analyticsLabel = environment === 'development' ? 'GA4 集計なし' : `GA4 プロパティ: ${propertyId}`;
   const datesJson = JSON.stringify(combinedStats.map(s => s.date.slice(5)));
   const memberCountsJson = JSON.stringify(combinedStats.map(s => s.memberCount));
   const memberCumulativeJson = JSON.stringify(combinedStats.map(s => s.memberCumulative));
@@ -246,7 +269,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <h1 class="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 via-sky-300 to-emerald-400 bg-clip-text text-transparent">
           俺の付箋 会員数＆利用状況ダッシュボード
         </h1>
-        <p class="text-sm text-slate-400 mt-1">集計日時: ${nowJst} (JST) | GA4 プロパティ: ${propertyId}</p>
+        <p class="text-sm text-amber-300 mt-1">対象: ${environmentLabel}の会員・お便り</p>
+        <p class="text-sm text-slate-400 mt-1">集計日時: ${nowJst} (JST) | ${analyticsLabel}</p>
       </div>
       <button onclick="location.reload()" class="self-start sm:self-auto px-4 py-2 text-sm font-medium bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 rounded-xl transition-all shadow-lg flex items-center gap-2">
         <span>🔄</span> 最新状態に更新
@@ -526,14 +550,15 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 }
 
 async function main() {
+  const { environment, open } = parseOptions(process.argv.slice(2));
   const [dbToken, gaToken] = await Promise.all([
     getAccessToken('https://www.googleapis.com/auth/datastore'),
-    getAccessToken('https://www.googleapis.com/auth/analytics.readonly')
+    environment === 'production' ? getAccessToken('https://www.googleapis.com/auth/analytics.readonly') : null
   ]);
 
   const [members, gaData] = await Promise.all([
-    fetchFirestoreMembers(dbToken),
-    fetchGa4Data(gaToken).catch(err => {
+    fetchFirestoreMembers(dbToken, environment),
+    (environment === 'production' ? fetchGa4Data(gaToken) : Promise.resolve({ dauData: null, eventData: null, featData: null })).catch(err => {
       console.warn('GA4 fetch error:', err.message);
       return { dauData: null, eventData: null, featData: null };
     })
@@ -652,13 +677,13 @@ async function main() {
   // Write HTML
   const outDir = path.resolve(rootDir, 'my');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-  const htmlPath = path.resolve(outDir, 'member_stats.html');
-  fs.writeFileSync(htmlPath, generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, false), 'utf8');
+  const htmlPath = path.resolve(outDir, environment === 'development' ? 'member_stats.development.html' : 'member_stats.html');
+  fs.writeFileSync(htmlPath, generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, false, environment), 'utf8');
 
-  const isOpenMode = process.argv.includes('--open');
-  if (isOpenMode) {
+  console.log(`対象環境: ${environment}`);
+  if (open) {
     console.log(`Updated: ${htmlPath}`);
-    await serveDashboard(generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true), dbToken, true, new Set(members.map(m => m.generalNumber)));
+    await serveDashboard(generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true, environment), dbToken, true, new Set(members.map(m => m.generalNumber)), environment);
   } else {
     console.log(`総会員数: ${totalMembers}人 (最新番号: #${latestNumber})`);
     console.log(`本日新規: +${todayNew}人 / 昨日新規: +${yesterdayNew}人`);
@@ -668,7 +693,7 @@ async function main() {
   }
 }
 
-export { survivalStats, publishAnnouncement, serveDashboard, generateHtml };
+export { survivalStats, publishAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, parseOptions };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch(err => {

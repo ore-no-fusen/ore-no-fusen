@@ -1,6 +1,11 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-09-24 開発環境でのお便り試験を可能にする
+
+- `codex/hotline-development-test` で `scripts/member-stats.mjs --environment development --open` を追加。会員読み取り・投稿先をともに `member_environments/development` に切り替え、画面に対象環境を表示する。静的HTMLは `my/member_stats.development.html` に分け、開発環境では本番GA4を表示しない。省略時は従来どおり本番環境。
+- 開発Firestoreの実読み取りで会員2人を確認。投稿は実行せず、ブラウザE2Eで個別宛て投稿が開発環境のパスになることを確認。専用7件、全体Vitest 638件、TypeScript型検査、構文・差分検査に成功。
+- 実機確認: 開発版アプリの会員番号を確認し、開発ダッシュボードで「会員番号を指定」を選択して短いテストお便りを投稿。開発版アプリを次のheartbeat時に起動し、お便り表示を確認する。
 
 ### 2026-09-24 開発者ホットライン・宛先指定を追加
 
