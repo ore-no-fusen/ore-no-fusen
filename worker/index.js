@@ -5,7 +5,7 @@
 import { resolvePushTitles } from './notification-title';
 import { closeClickedNotification, focusViewerOrOpenTarget } from './notification-click';
 
-const SW_VERSION = '5.1.4-pwa.9';
+const SW_VERSION = '5.4.0-pwa.1';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -75,13 +75,13 @@ self.addEventListener('push', (event) => {
     const bodyPush = bodyRich.replace(/!\[.*?\]\(.*?\)/g, '').trim();
 
     if (!token) {
-      await saveToIndexedDB(id, noteTitle, bodyRich, []);
+      await saveToIndexedDB(id, noteTitle, bodyRich, [], resolvedData);
     } else {
       try {
         const expectedImages = extractImageFileNames(bodyRich);
         const images = await downloadImagesFromDrive(token, bodyRich);
         swLog(`画像=${images.length}/${expectedImages.length}件`);
-        await saveToIndexedDB(id, noteTitle, bodyRich, images);
+        await saveToIndexedDB(id, noteTitle, bodyRich, images, resolvedData);
         swLog('IndexedDB保存完了');
         if (driveFetchSucceeded && images.length === expectedImages.length) {
           deleteImagesFromDrive(token, images);
@@ -91,7 +91,7 @@ self.addEventListener('push', (event) => {
         }
       } catch (e) {
         swLog(`画像ダウンロード失敗: ${e}`);
-        await saveToIndexedDB(id, noteTitle, bodyRich, []);
+        await saveToIndexedDB(id, noteTitle, bodyRich, [], resolvedData);
       }
     }
 
@@ -220,7 +220,7 @@ function mergeImagesForBody(body, existingImages, newImages) {
 }
 
 /** fusen-drafts IndexedDB に保存する（Blob → ArrayBuffer 変換でiOS互換） */
-function saveToIndexedDB(id, title, body, images) {
+function saveToIndexedDB(id, title, body, images, origin) {
   const imagePromises = (images || []).map(({ fileName, blob }) =>
     (blob && blob.arrayBuffer ? blob.arrayBuffer() : Promise.resolve(null))
       .then((ab) => ab ? { fileName, data: ab, type: blob.type || 'image/jpeg' } : null)
@@ -245,6 +245,10 @@ function saveToIndexedDB(id, title, body, images) {
               created_at: existing?.created_at || nowJST(),
               images: mergeImagesForBody(body, existing?.images, validImages),
               received_pc: true,
+              originNoteId: origin?.originNoteId || existing?.originNoteId,
+              originBodyHash: origin?.originBodyHash || existing?.originBodyHash,
+              originPcId: origin?.originPcId || existing?.originPcId,
+              originAppearance: origin?.originAppearance || existing?.originAppearance,
               locked: true,
             },
             id

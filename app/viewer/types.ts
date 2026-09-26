@@ -58,6 +58,16 @@ export type PendingVideoMeta = {
 
 export type DraftRecord = {
   id: string;
+  originNoteId?: string;
+  originBodyHash?: string;
+  originPcId?: string;
+  originAppearance?: {
+    backgroundColor?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  };
   type?: 'note' | 'video';
   title: string;
   body: string;

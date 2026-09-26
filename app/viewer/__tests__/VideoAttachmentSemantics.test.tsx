@@ -3,10 +3,11 @@ import { cleanup, render, renderHook, act, screen, waitFor } from '@testing-libr
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NoteListStep } from '../NoteListStep';
 import { useBackgroundSend } from '../hooks/useBackgroundSend';
-import { saveDraft } from '../lib/indexeddb';
+import { loadDraft, saveDraft } from '../lib/indexeddb';
 import { downloadFromDrive, uploadWithAutoRefresh, uploadVideoWithAutoRefresh } from '../lib/drive';
 
 vi.mock('../lib/indexeddb', () => ({
+  loadDraft: vi.fn(async () => null),
   saveDraft: vi.fn(),
 }));
 
@@ -223,5 +224,52 @@ describe('Video attachment semantics', () => {
 
     expect(uploadWithAutoRefresh).not.toHaveBeenCalled();
     expect(saveDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('PC付箋の返送ID', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.setItem('viewer_expires_at', String(Date.now() + 60 * 60 * 1000));
+  });
+
+  it('PCから届いた付箋を送り返すと元付箋IDと送信時本文ハッシュを保持する', async () => {
+    vi.mocked(loadDraft).mockResolvedValueOnce({
+      id: 'draft-pc', title: '元', body: '本文', created_at: '', images: [],
+      originNoteId: 'origin-id', originPcId: 'pc-a', originBodyHash: 'body-hash',
+      originAppearance: { backgroundColor: '#ffeeaa', x: 100, y: 200, width: 400, height: 300 },
+    });
+    const { result } = renderHook(() => useBackgroundSend({
+      accessToken: 'token', onTokenRefreshed: vi.fn(), onSessionExpired: vi.fn(),
+    }));
+    await act(async () => {
+      expect(await result.current.sendToPC({
+        rawText: '元\niPhoneで追記', tags: [], blobs: new Map(), draftId: 'draft-pc',
+      })).toBe(true);
+    });
+    const payload = vi.mocked(uploadWithAutoRefresh).mock.calls[0][2] as {
+      items: Array<Record<string, unknown>>;
+    };
+    expect(payload.items[0]).toMatchObject({
+      title: '元', body: 'iPhoneで追記', originNoteId: 'origin-id',
+      originPcId: 'pc-a', originBodyHash: 'body-hash',
+      originAppearance: { backgroundColor: '#ffeeaa', x: 100, y: 200, width: 400, height: 300 },
+    });
+  });
+
+  it('iPhoneで新規作成したメモには元付箋IDを付けない', async () => {
+    const { result } = renderHook(() => useBackgroundSend({
+      accessToken: 'token', onTokenRefreshed: vi.fn(), onSessionExpired: vi.fn(),
+    }));
+    await act(async () => {
+      expect(await result.current.sendToPC({
+        rawText: '新規メモ', tags: [], blobs: new Map(), draftId: null,
+      })).toBe(true);
+    });
+    const payload = vi.mocked(uploadWithAutoRefresh).mock.calls[0][2] as {
+      items: Array<Record<string, unknown>>;
+    };
+    expect(payload.items[0]).not.toHaveProperty('originNoteId');
+    expect(payload.items[0]).not.toHaveProperty('originAppearance');
   });
 });

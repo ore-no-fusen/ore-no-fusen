@@ -112,6 +112,10 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
       const existing = getReq.result;
       const storedDraft = {
         ...draft,
+        originNoteId: draft.originNoteId ?? existing?.originNoteId,
+        originBodyHash: draft.originBodyHash ?? existing?.originBodyHash,
+        originPcId: draft.originPcId ?? existing?.originPcId,
+        originAppearance: draft.originAppearance ?? existing?.originAppearance,
         type: draft.type ?? existing?.type,
         videoFileName: hasVideoFileName ? draft.videoFileName : existing?.videoFileName,
         originalFileName: hasOriginalFileName ? draft.originalFileName : existing?.originalFileName,

@@ -8,7 +8,7 @@ import {
   uploadVideoWithAutoRefresh,
   refreshAccessToken,
 } from '../lib/drive';
-import { saveDraft } from '../lib/indexeddb';
+import { loadDraft, saveDraft } from '../lib/indexeddb';
 import { buildVideoFileName, createId, nowJST } from '../utils';
 import { extractTitleBody, mergeKnownTags } from '../editor-helpers';
 import type { VideoBlobMap } from '../types';
@@ -103,6 +103,15 @@ export function useBackgroundSend({
       const mergedBlobs = new Map(blobs);
       const { title, body: extractedBody } = extractTitleBody(rawText);
       const noteId = createId();
+      const originalDraft = draftId ? await loadDraft(draftId) : null;
+      const originFields = originalDraft?.originNoteId && originalDraft.originPcId
+        ? {
+            originNoteId: originalDraft.originNoteId,
+            originBodyHash: originalDraft.originBodyHash,
+            originPcId: originalDraft.originPcId,
+            originAppearance: originalDraft.originAppearance,
+          }
+        : {};
       const sentAt = nowJST();
       const videosToSend: VideoBlobMap = new Map(videoBlobs ?? []);
       const legacyVideosToSend: VideoBlobMap = new Map();
@@ -164,6 +173,7 @@ export function useBackgroundSend({
       const newItem = videoItems.length > 0
         ? {
             id: noteId,
+            ...originFields,
             ...targetFields,
             type: 'video',
             title: fallbackTitle,
@@ -175,7 +185,7 @@ export function useBackgroundSend({
             originalFileName: firstVideo?.originalFileName,
             memo: videoMemo ?? '',
           }
-        : { id: noteId, ...targetFields, title, body: fullBody, sent_at: sentAt, tags };
+        : { id: noteId, ...originFields, ...targetFields, title, body: fullBody, sent_at: sentAt, tags };
       const updatedItems = [...currentItems, newItem];
       await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: updatedItems });
 

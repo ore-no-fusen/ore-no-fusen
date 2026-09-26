@@ -138,6 +138,11 @@ export function useNoteList({
               originalFileName: typeof item.originalFileName === 'string' ? item.originalFileName : undefined,
               memo: typeof item.memo === 'string' ? item.memo : undefined,
               received_pc: true as const,
+              originNoteId: typeof item.originNoteId === 'string' ? item.originNoteId : undefined,
+              originBodyHash: typeof item.originBodyHash === 'string' ? item.originBodyHash : undefined,
+              originPcId: typeof item.originPcId === 'string' ? item.originPcId : undefined,
+              originAppearance: item.originAppearance && typeof item.originAppearance === 'object'
+                ? item.originAppearance : undefined,
             } satisfies DraftRecord));
           })
           .catch(() => [] as DraftRecord[])
@@ -187,8 +192,14 @@ export function useNoteList({
             const withImages = await downloadImagesForItem(item);
             merged.set(withImages.id, withImages);
             toSave.push(withImages);
-          } else if (item.received_pc && (existing.body !== item.body || hasMissingImages(existing))) {
-            const withImages = await downloadImagesForItem({ ...existing, body: item.body });
+          } else if (item.received_pc && (existing.body !== item.body || hasMissingImages(existing)
+            || (item.originNoteId && existing.originNoteId !== item.originNoteId)
+            || (item.originAppearance && !existing.originAppearance))) {
+            const withImages = await downloadImagesForItem({ ...existing, body: item.body,
+              originNoteId: item.originNoteId ?? existing.originNoteId,
+              originBodyHash: item.originBodyHash ?? existing.originBodyHash,
+              originPcId: item.originPcId ?? existing.originPcId,
+              originAppearance: item.originAppearance ?? existing.originAppearance });
             // Drive から画像ダウンロード失敗時（SW削除済み）は既存のblobを保持
             const finalImages = withImages.images.length > 0 ? withImages.images : existing.images;
             const final = { ...withImages, images: finalImages };

@@ -1,6 +1,14 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-09-26 PC付箋をiPhoneで編集して戻す
+
+- `codex/iphone-roundtrip` をローカル`develop`から隔離作業場所に作成。元の作業場所の別件未コミット変更には触れない。
+- PC→iPhone送信へ送信元PC・元付箋の不透明ID・送信時本文ハッシュ・色と位置の予備情報を追加し、Service Worker/IndexedDB/編集保存/iPhone→PC送信で引き継ぐ。
+- PC受信時はID一致で元付箋を特定し、PCとiPhoneの本文を並べて「元付箋に反映」「新規付箋」「あとで」を選ぶ。反映時は確認画面からのPC本文変更を再検査し、元の本文とfrontmatterを`.iphone-backups/`へ保存してから本文だけ更新。直後なら画面から元の本文へ戻せる。色・位置はPCの現状を保持。新規付箋では元の色・大きさを使い、見つからない場合は送信時の予備情報を使う。重なりを避けて位置を少しずらす。
+- 保留はDrive受信キューを保持し、次回起動時に再提示する。旧データとiPhone新規メモは従来経路。実機ではPC送信後に両端で編集した場合、画像付き返送、元付箋削除後の返送、保留後の再起動を確認する。
+- 全Vitest 643件、Rust全体289件成功・2件ignored（予備情報テスト追加前）。最終変更後の対象Vitest 12件、RustのiPhone関連24件、E2E 41件成功・5件skip、TypeScript型検査、Rust型検査、ESLint、Next.js本番ビルド、worker構文検査、`git diff --check`に成功。VitePressは依存未導入でビルド未確認。PC・iPhone実機とdevelop Previewでの往復確認は未実施のため`develop`へは未統合。
+
 ### 2026-09-24 開発環境でのお便り試験を可能にする
 
 - `codex/hotline-development-test` で `scripts/member-stats.mjs --environment development --open` を追加。会員読み取り・投稿先をともに `member_environments/development` に切り替え、画面に対象環境を表示する。静的HTMLは `my/member_stats.development.html` に分け、開発環境では本番GA4を表示しない。省略時は従来どおり本番環境。
