@@ -9,7 +9,7 @@
 
 "use client"
 
-import React, { useState, useMemo, useEffect, useCallback } from "react"
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import MemberSettings from "@/app/components/MemberSettings"
 import SupportMemberNumber from "@/app/components/SupportMemberNumber"
 import AnnouncementCard, { announcementReplyDraft, type ReceivedAnnouncement } from "@/app/components/AnnouncementCard"
@@ -71,6 +71,7 @@ import {
     uploadFeedbackAttachment,
 } from "@/app/utils/feedbackConversation"
 import { assertFeedbackImages } from "@/app/utils/feedbackImage"
+import { buildConversationTimeline, parseAnnouncementReply } from "@/app/utils/developerConversationTimeline"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -2610,6 +2611,17 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const [sending, setSending] = useState(false)
     const [deleting, setDeleting] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const timeline = useMemo(() => buildConversationTimeline(announcements, messages), [announcements, messages])
+    const historyRef = useRef<HTMLDivElement>(null)
+    const scrollToLatestRef = useRef(true)
+
+    useEffect(() => {
+        if (loading || timeline.length === 0 || !scrollToLatestRef.current) return
+        scrollToLatestRef.current = false
+        requestAnimationFrame(() => {
+            if (historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight
+        })
+    }, [loading, timeline])
 
     const loadMessages = useCallback(async () => {
         setLoading(true)
@@ -2712,6 +2724,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             setReplyDraft('')
             setReplyTarget(null)
             setSelectedImages([])
+            scrollToLatestRef.current = true
             await loadMessages()
         } catch (e) {
             await Promise.all(uploadedAttachmentIds.map((fileId) =>
@@ -2765,26 +2778,12 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             {announcements.length > 0 && (
                 <div role="status" className="rounded-xl border-2 border-blue-300 bg-blue-50 px-5 py-4 text-blue-950">
                     <div className="text-lg font-bold">✉️ 開発者からのお便りが{announcements.length}件届いています</div>
-                    <p className="mt-1 text-sm">下のお便りを読んで、その場で返信できます。</p>
+                    <p className="mt-1 text-sm">お便りと返信を時刻順に表示しています。</p>
                 </div>
             )}
 
             <div className="border rounded-lg overflow-hidden bg-white">
-                <div className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
-                    {[...announcements].reverse().map((announcement) => (
-                        <AnnouncementCard
-                            key={announcement.id}
-                            announcement={announcement}
-                            onReply={() => { setReplyTarget(announcement); setReplyDraft('') }}
-                            replying={replyTarget?.id === announcement.id}
-                            replyText={replyDraft}
-                            onReplyTextChange={setReplyDraft}
-                            onSend={() => void sendMessage(announcement)}
-                            onCancel={() => { setReplyTarget(null); setReplyDraft('') }}
-                            sending={sending}
-                            error={Boolean(error)}
-                        />
-                    ))}
+                <div ref={historyRef} data-conversation-history className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
                     {loading && messages.length === 0 ? (
                         <div className="text-sm text-gray-500">{isEnglish ? 'Loading...' : '読み込み中...'}</div>
                     ) : messages.length === 0 && announcements.length === 0 ? (
@@ -2792,9 +2791,26 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             {isEnglish ? 'No messages yet. You can send one using the field below.' : 'まだやりとりはありません。下の入力欄からメッセージを送れます。'}
                         </div>
                     ) : (
-                        messages.map((message) => (
+                        timeline.map((item) => item.kind === 'announcement' ? (
+                        <AnnouncementCard
+                            key={item.key}
+                            announcement={item.announcement}
+                            onReply={() => { setReplyTarget(item.announcement); setReplyDraft('') }}
+                            replying={replyTarget?.id === item.announcement.id}
+                            replyText={replyDraft}
+                            onReplyTextChange={setReplyDraft}
+                            onSend={() => void sendMessage(item.announcement)}
+                            onCancel={() => { setReplyTarget(null); setReplyDraft('') }}
+                            sending={sending}
+                            error={Boolean(error)}
+                        />
+                        ) : (() => {
+                            const message = item.message
+                            const reply = message.authorType === 'user' ? parseAnnouncementReply(message.body) : null
+                            return (
                             <div
-                                key={message.messageId}
+                                key={item.key}
+                                data-conversation-message={message.messageId}
                                 className={`flex ${message.authorType === 'user' ? 'justify-end' : 'justify-start'}`}
                             >
                                 <div className={`max-w-[78%] rounded-lg border px-4 py-3 text-sm leading-6 ${message.authorType === 'user'
@@ -2804,10 +2820,15 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                                     <div className={`text-xs font-bold mb-1 ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
                                         {message.authorType === 'user' ? (isEnglish ? 'You' : 'ユーザー') : (isEnglish ? 'Developer' : 'アプリ開発者')}
                                     </div>
-                                    <div className="whitespace-pre-wrap break-words">{message.body}</div>
+                                    {reply && <div className="mb-2 border-l-2 border-blue-300 pl-2 text-xs text-blue-100">↳ お便り「{reply.title}」への返信</div>}
+                                    <div className="whitespace-pre-wrap break-words">{reply ? reply.reply : message.body}</div>
+                                    <time className={`mt-1 block text-right text-xs ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
+                                        {new Date(message.createdAt).toLocaleString(isEnglish ? 'en-US' : 'ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </time>
                                 </div>
                             </div>
-                        ))
+                            )
+                        })())
                     )}
                 </div>
 

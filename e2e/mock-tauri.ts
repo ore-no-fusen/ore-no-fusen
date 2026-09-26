@@ -8,7 +8,7 @@ import { Page } from '@playwright/test';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en' } = {}) {
+export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en'; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
     await page.addInitScript((mockOptions) => {
         (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
@@ -160,7 +160,7 @@ updated: 2026-01-31
                     return null;
 
                 case 'member_announcements':
-                    return [];
+                    return mockOptions.announcements ?? [];
                 case 'fusen_get_distribution_info':
                     return 'desktop';
                 case 'fusen_check_store_update':

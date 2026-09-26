@@ -42,7 +42,7 @@ export default function AnnouncementCard({ announcement, onReply, replying = fal
     <article className="rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900">
       <div className="mb-1 text-xs font-bold text-blue-700">開発者からのお便り</div>
       <h3 className="font-bold text-slate-900">{announcement.title}</h3>
-      {!Number.isNaN(date.getTime()) && <time className="text-xs text-slate-500">{date.toLocaleDateString('ja-JP')}</time>}
+      {!Number.isNaN(date.getTime()) && <time className="text-xs text-slate-500">{date.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>}
       <div className="mt-2 whitespace-pre-wrap break-words text-slate-900">
         {announcement.body.split('\n').map((line, index) => <React.Fragment key={index}>{index > 0 && <br />}{renderInline(line)}</React.Fragment>)}
       </div>
