@@ -8,11 +8,27 @@ import { Page } from '@playwright/test';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en' } = {}) {
+export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en'; iphoneReturn?: boolean } = {}) {
     await page.addInitScript((mockOptions) => {
+        const iphoneCalls: Array<{ cmd: string; args: any }> = [];
+        (window as any).__MOCK_IPHONE_CALLS__ = iphoneCalls;
         // --- Windowsアプリ側コマンドの処理定義 ---
         const handleIpc = (cmd: string, args: any) => {
             console.log('[Mock Tauri] IPC:', cmd, args);
+            if (mockOptions.iphoneReturn) {
+                iphoneCalls.push({ cmd, args });
+                if (cmd === 'fusen_has_iphone_note') return false;
+                if (cmd === 'fusen_find_iphone_origin') return {
+                    path: 'C:/test/note.md', body: 'PCで更新した本文', bodyHash: 'pc-current-hash',
+                    changedSinceSend: true, backgroundColor: '#f7e9b0',
+                    x: 100, y: 120, width: 400, height: 300,
+                };
+                if (cmd === 'fusen_download_iphone_images') return args.body;
+                if (cmd === 'fusen_apply_iphone_return') return {
+                    backupPath: 'C:/test/.iphone-backups/backup.md', bodyHash: 'returned-hash',
+                };
+                if (cmd === 'fusen_ack_iphone_note') return null;
+            }
 
             // コマンド別レスポンス定義
             switch (cmd) {
@@ -268,6 +284,7 @@ updated: 2026-01-31
 
         // --- Event Bus Mechanism ---
         const listeners = new Map<string, Function[]>();
+        (window as any).__MOCK_LISTENER_COUNT__ = (event: string) => listeners.get(event)?.length ?? 0;
 
         // Testからイベントを発火するためのヘルパー
         (window as any).__MOCK_EMIT__ = (event: string, payload: any) => {
