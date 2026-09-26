@@ -84,6 +84,8 @@ windows = { version = "0.52", features = [
     "System",
     "Win32_Security_Cryptography",
     "Foundation",
+    "Foundation_Collections",
+    "Services_Store",
 ] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]

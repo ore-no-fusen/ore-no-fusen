@@ -141,7 +141,7 @@ MSIX版のショートカット名は「俺の付箋（Store版）」とし、5.
 
 ## 7 更新
 
-Store MSIXの更新はMicrosoft Storeが管理します。Store版ではTauri updaterの確認・ダウンロード・インストールを行いません。
+Store MSIXの更新はMicrosoft Storeが管理します。Store版では起動時にStoreが返す更新の有無だけを確認し、更新があればStoreを開く案内を表示します。アプリ自身によるダウンロード・インストールは行いません。
 
 Tauri updaterは5.0.0を既存NSIS利用者へ届けるためだけに維持し、5.1.0で新規成果物の生成を終了します。
 

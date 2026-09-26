@@ -2603,6 +2603,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const [messages, setMessages] = useState<BoardMessage[]>([])
     const [announcements, setAnnouncements] = useState<ReceivedAnnouncement[]>([])
     const [replyTarget, setReplyTarget] = useState<ReceivedAnnouncement | null>(null)
+    const [replyDraft, setReplyDraft] = useState('')
     const [draft, setDraft] = useState('')
     const [selectedImages, setSelectedImages] = useState<File[]>([])
     const [loading, setLoading] = useState(false)
@@ -2672,10 +2673,10 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         })
     }, [isEnglish])
 
-    const sendMessage = async () => {
-        const reply = draft.trim()
+    const sendMessage = async (target: ReceivedAnnouncement | null = null) => {
+        const reply = (target ? replyDraft : draft).trim()
         if (!reply) return
-        const content = replyTarget ? `${announcementReplyDraft(replyTarget)}${reply}` : reply
+        const content = target ? `${announcementReplyDraft(target)}${reply}` : reply
 
         setSending(true)
         setError(null)
@@ -2683,7 +2684,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         try {
             await linkFeedbackMember(conversationIdentity);
             const appVersion = await getFeedbackAppVersion()
-            for (const file of selectedImages) {
+            for (const file of target ? [] : selectedImages) {
                 uploadedAttachmentIds.push(await uploadFeedbackAttachment(conversationIdentity, file))
             }
             const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
@@ -2708,6 +2709,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                 })
             }
             setDraft('')
+            setReplyDraft('')
             setReplyTarget(null)
             setSelectedImages([])
             await loadMessages()
@@ -2760,10 +2762,28 @@ function DeveloperConversationSection({ language }: { language: Language }) {
 
             <SupportMemberNumber language={language} />
 
+            {announcements.length > 0 && (
+                <div role="status" className="rounded-xl border-2 border-blue-300 bg-blue-50 px-5 py-4 text-blue-950">
+                    <div className="text-lg font-bold">✉️ 開発者からのお便りが{announcements.length}件届いています</div>
+                    <p className="mt-1 text-sm">下のお便りを読んで、その場で返信できます。</p>
+                </div>
+            )}
+
             <div className="border rounded-lg overflow-hidden bg-white">
                 <div className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
-                    {announcements.map((announcement) => (
-                        <AnnouncementCard key={announcement.id} announcement={announcement} onReply={() => setReplyTarget(announcement)} />
+                    {[...announcements].reverse().map((announcement) => (
+                        <AnnouncementCard
+                            key={announcement.id}
+                            announcement={announcement}
+                            onReply={() => { setReplyTarget(announcement); setReplyDraft('') }}
+                            replying={replyTarget?.id === announcement.id}
+                            replyText={replyDraft}
+                            onReplyTextChange={setReplyDraft}
+                            onSend={() => void sendMessage(announcement)}
+                            onCancel={() => { setReplyTarget(null); setReplyDraft('') }}
+                            sending={sending}
+                            error={Boolean(error)}
+                        />
                     ))}
                     {loading && messages.length === 0 ? (
                         <div className="text-sm text-gray-500">{isEnglish ? 'Loading...' : '読み込み中...'}</div>
@@ -2811,12 +2831,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             {isEnglish ? 'Communication failed. Please wait and try again.' : '通信に失敗しました。時間をおいて再試行してください。'}
                         </div>
                     )}
-                    {replyTarget && (
-                        <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-                            <span>お便り「{replyTarget.title}」への返信</span>
-                            <button type="button" onClick={() => setReplyTarget(null)} className="underline">解除</button>
-                        </div>
-                    )}
+                    {!replyTarget && <>
                     <textarea
                         className="flex min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         placeholder={isEnglish ? 'Write a message to the developer' : '開発者に伝えたいことを書いてください'}
@@ -2852,6 +2867,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             {isEnglish ? 'Paste a screenshot with Ctrl+V or drop it here. Images are compressed before upload.' : '画面キャプチャーはCtrl+Vで貼り付けできます。画像は送信前に自動圧縮します。'}
                         </p>
                     </div>
+                    </>}
                     <div className="flex flex-wrap justify-between gap-2 items-center">
                         <div className="flex gap-2">
                         <Button variant="outline" onClick={loadMessages} disabled={loading || sending || deleting}>
@@ -2863,10 +2879,10 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             {deleting ? (isEnglish ? 'Deleting...' : '削除中...') : (isEnglish ? 'Delete Conversation' : '会話を削除')}
                         </Button>
                         </div>
-                        <Button onClick={() => void sendMessage()} disabled={sending || deleting || !draft.trim()}>
+                        {!replyTarget && <Button onClick={() => void sendMessage()} disabled={sending || deleting || !draft.trim()}>
                             <Send className="mr-2 h-4 w-4" />
                             {sending ? (isEnglish ? 'Sending...' : '送信中...') : (isEnglish ? 'Send' : '送信')}
-                        </Button>
+                        </Button>}
                     </div>
                 </div>
             </div>

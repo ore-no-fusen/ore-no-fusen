@@ -2,20 +2,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import React from 'react';
 
-const { invokeMock, getCurrentWindowMock, windowLabel, emitMock } = vi.hoisted(() => ({
+const { invokeMock, getCurrentWindowMock, windowLabel, emitMock, createWindowMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   getCurrentWindowMock: vi.fn(),
   emitMock: vi.fn(),
+  createWindowMock: vi.fn(),
   windowLabel: { value: 'main' },
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async()=>vi.fn()), emit: emitMock }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: getCurrentWindowMock }));
+vi.mock('@tauri-apps/api/webviewWindow', () => ({ WebviewWindow: class {
+  static getByLabel = vi.fn(async () => null);
+  constructor(label: string, options: unknown) { createWindowMock(label, options); }
+} }));
 import AnalyticsLoader from './AnalyticsLoader';
 
 describe('AnalyticsLoader low-impact scheduling', () => {
   beforeEach(() => {
-    vi.useFakeTimers(); invokeMock.mockReset(); getCurrentWindowMock.mockReset(); emitMock.mockReset(); windowLabel.value='main';
+    vi.useFakeTimers(); invokeMock.mockReset(); getCurrentWindowMock.mockReset(); emitMock.mockReset(); createWindowMock.mockReset(); windowLabel.value='main';
     emitMock.mockResolvedValue(undefined);
     getCurrentWindowMock.mockImplementation(() => ({ label: windowLabel.value }));
     delete (window as any).gtag; delete (window as any).dataLayer; delete (window as any).__FUSEN_ANALYTICS_GRANTED__;
@@ -94,5 +99,6 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(invokeMock).not.toHaveBeenCalledWith('member_closed_summaries');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).toBeNull();
     await vi.waitFor(() => expect(emitMock).toHaveBeenCalledWith('fusen:open_settings', { tab: 'conversation' }));
+    await vi.waitFor(() => expect(createWindowMock).toHaveBeenCalledWith('announcement-notice-mail-1', expect.objectContaining({ url: expect.stringContaining('/announcement-notice?') })));
   });
 });

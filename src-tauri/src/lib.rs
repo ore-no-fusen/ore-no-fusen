@@ -104,6 +104,37 @@ fn fusen_get_distribution_info() -> String {
 }
 
 #[tauri::command]
+fn fusen_check_store_update(window: tauri::Window) -> Result<bool, String> {
+    if !distribution::is_msix_packaged() {
+        return Ok(false);
+    }
+    #[cfg(windows)]
+    {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        use windows::core::ComInterface;
+        use windows::Services::Store::StoreContext;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Shell::IInitializeWithWindow;
+
+        let handle = window.window_handle().map_err(|e| e.to_string())?;
+        let RawWindowHandle::Win32(win32_handle) = handle.as_raw() else {
+            return Err("Windows window handle is unavailable".to_string());
+        };
+        let context = StoreContext::GetDefault().map_err(|e| e.to_string())?;
+        let initializer: IInitializeWithWindow = context.cast().map_err(|e| e.to_string())?;
+        unsafe { initializer.Initialize(HWND(win32_handle.hwnd.get())) }.map_err(|e| e.to_string())?;
+        let updates = context
+            .GetAppAndOptionalStorePackageUpdatesAsync()
+            .map_err(|e| e.to_string())?
+            .get()
+            .map_err(|e| e.to_string())?;
+        return updates.Size().map(|size| size > 0).map_err(|e| e.to_string());
+    }
+    #[cfg(not(windows))]
+    Ok(false)
+}
+
+#[tauri::command]
 fn fusen_open_startup_settings() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -5327,6 +5358,7 @@ pub fn run() {
             member_identity::member_announcements,
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_distribution_info,
+            fusen_check_store_update,
             fusen_open_startup_settings,
             desktop_shortcut::fusen_get_desktop_shortcut_state,
             desktop_shortcut::fusen_create_desktop_shortcut,

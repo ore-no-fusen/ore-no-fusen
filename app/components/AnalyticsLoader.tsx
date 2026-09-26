@@ -47,6 +47,22 @@ async function runDesktopBackground(cancelled:()=>boolean) {
     if (unread.length > 0) {
       await emit('fusen:announcements_updated');
       await emit('fusen:open_settings', { tab: 'conversation' });
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      const newest = unread[unread.length - 1];
+      const label = `announcement-notice-${newest.id}`;
+      const existing = await WebviewWindow.getByLabel(label);
+      if (existing) {
+        await existing.setFocus();
+      } else {
+        const params = new URLSearchParams({ title: newest.title, count: String(unread.length) });
+        new WebviewWindow(label, {
+          url: `/announcement-notice?${params.toString()}`,
+          title: '開発者からのお便り',
+          width: 400, height: 240,
+          resizable: false, decorations: true,
+          alwaysOnTop: true,
+        });
+      }
     }
   } catch { /* heartbeat失敗は無視 */ }
 }

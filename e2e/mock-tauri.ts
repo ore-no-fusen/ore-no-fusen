@@ -10,6 +10,9 @@ import { Page } from '@playwright/test';
  */
 export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en' } = {}) {
     await page.addInitScript((mockOptions) => {
+        (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+            unregisterListener: () => {},
+        };
         // --- Windowsアプリ側コマンドの処理定義 ---
         const handleIpc = (cmd: string, args: any) => {
             console.log('[Mock Tauri] IPC:', cmd, args);
@@ -155,6 +158,13 @@ updated: 2026-01-31
 
                 case 'fusen_debug_log':
                     return null;
+
+                case 'member_announcements':
+                    return [];
+                case 'fusen_get_distribution_info':
+                    return 'desktop';
+                case 'fusen_check_store_update':
+                    return false;
 
                 // Tauri v2 Event Plugin Support
                 case 'plugin:event|listen':
