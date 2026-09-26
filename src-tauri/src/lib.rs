@@ -5300,6 +5300,23 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
 
 // --- Entry Point ---
 
+fn should_exit_after_close(label: &str) -> bool {
+    !matches!(label, "main" | "quick_launcher" | "recipe-create" | "qa-create" | "term-create")
+        && !label.starts_with("announcement-notice-")
+}
+
+#[cfg(test)]
+mod announcement_window_close_tests {
+    use super::should_exit_after_close;
+
+    #[test]
+    fn closing_announcement_notice_does_not_exit_the_app() {
+        assert!(!should_exit_after_close("announcement-notice-mail-1"));
+        assert!(!should_exit_after_close("quick_launcher"));
+        assert!(should_exit_after_close("note-1"));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 注入DLL由来の不正命令例外を最初期に捕捉するため、何より先に登録する。
@@ -5480,7 +5497,7 @@ pub fn run() {
                 if label == "main" {
                     // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
                     api.prevent_close();
-                } else if label == "quick_launcher" || label == "recipe-create" || label == "qa-create" || label == "term-create" {
+                } else if !should_exit_after_close(label) {
                     // Transient utility windows; closing them must not exit the app.
                 } else {
                     // 付箋ウィンドウをタスクバーから「ウィンドウを閉じる」→ アプリ終了

@@ -40,13 +40,12 @@ async function runDesktopBackground(cancelled:()=>boolean) {
       await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
     }
   }
-  // 開発者ホットライン: 新着があれば会話画面を開く。
+  // 開発者ホットライン: 新着があれば通知窓を開く。
   try {
     type Announcement = { id: string; title: string; body: string; segment: string; createdAt: string };
     const unread = await invoke<Announcement[]>('member_heartbeat');
     if (unread.length > 0) {
       await emit('fusen:announcements_updated');
-      await emit('fusen:open_settings', { tab: 'conversation' });
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
       const newest = unread[unread.length - 1];
       const label = `announcement-notice-${newest.id}`;

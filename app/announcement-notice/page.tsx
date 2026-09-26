@@ -13,7 +13,7 @@ function Notice() {
     const { emit } = await import('@tauri-apps/api/event');
     await emit('fusen:open_settings', { tab: 'conversation' });
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
-    await getCurrentWindow().close();
+    await getCurrentWindow().destroy();
   };
 
   return (

@@ -84,7 +84,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(invokeMock).toHaveBeenCalledWith('member_mark_summary_sent',{week:'2026-W35'});
   });
 
-  it('records heartbeat and opens the conversation for new mail even when analytics consent is denied', async () => {
+  it('records heartbeat and shows a notice without opening settings when analytics consent is denied', async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === 'get_settings') return Promise.resolve({ analytics_consent: 'denied' });
       if (command === 'member_needs_sync') return Promise.resolve(false);
@@ -98,7 +98,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(invokeMock).toHaveBeenCalledWith('member_heartbeat');
     expect(invokeMock).not.toHaveBeenCalledWith('member_closed_summaries');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).toBeNull();
-    await vi.waitFor(() => expect(emitMock).toHaveBeenCalledWith('fusen:open_settings', { tab: 'conversation' }));
+    expect(emitMock).not.toHaveBeenCalledWith('fusen:open_settings', { tab: 'conversation' });
     await vi.waitFor(() => expect(createWindowMock).toHaveBeenCalledWith('announcement-notice-mail-1', expect.objectContaining({ url: expect.stringContaining('/announcement-notice?') })));
   });
 });
