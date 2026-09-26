@@ -21,7 +21,8 @@ test('お便りと返信を古い順に表示し、開いたときは最新が�
   expect(order[1]).toContain('途中の返事');
   expect(order[2]).toContain('新しいお便り');
   expect(order[3]).toContain('最新の返事');
-  expect(order[3]).toContain('↳ お便り「新しいお便り」への返信');
+  expect(order[3]).toContain('↳ このお便りへの返信');
   expect(order[3]).not.toContain('ID: new');
+  await expect(history.locator('article').filter({ hasText: '新しいお便り' }).locator('[data-conversation-message="latest"]')).toBeVisible();
   await expect.poll(() => history.evaluate(element => element.scrollHeight - element.scrollTop - element.clientHeight)).toBeLessThan(2);
 });

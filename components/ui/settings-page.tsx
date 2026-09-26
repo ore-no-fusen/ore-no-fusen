@@ -2570,6 +2570,29 @@ type BoardMessage = {
     readByUser: boolean;
 };
 
+function ConversationMessageBubble({ message, isEnglish, inThread = false }: { message: BoardMessage; isEnglish: boolean; inThread?: boolean }) {
+    const reply = message.authorType === 'user' ? parseAnnouncementReply(message.body) : null
+    const date = new Date(message.createdAt)
+    return (
+        <div data-conversation-message={message.messageId} className={`flex ${message.authorType === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[78%] rounded-lg border px-4 py-3 text-sm leading-6 ${message.authorType === 'user'
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-900 border-gray-200'}`}>
+                <div className={`mb-1 text-xs font-bold ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
+                    {message.authorType === 'user' ? (isEnglish ? 'You' : 'ユーザー') : (isEnglish ? 'Developer' : 'アプリ開発者')}
+                </div>
+                {reply && <div className="mb-2 border-l-2 border-blue-300 pl-2 text-xs text-blue-100">
+                    {inThread ? (isEnglish ? '↳ Reply to this letter' : '↳ このお便りへの返信') : `↳ お便り「${reply.title}」への返信`}
+                </div>}
+                <div className="whitespace-pre-wrap break-words">{reply ? reply.reply : message.body}</div>
+                {!Number.isNaN(date.getTime()) && <time className={`mt-1 block text-right text-xs ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
+                    {date.toLocaleString(isEnglish ? 'en-US' : 'ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </time>}
+            </div>
+        </div>
+    )
+}
+
 function SelectedConversationImage({ file, onRemove }: { file: File; onRemove: () => void }) {
     const [url, setUrl] = useState<string | null>(null)
     useEffect(() => {
@@ -2778,7 +2801,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             {announcements.length > 0 && (
                 <div role="status" className="rounded-xl border-2 border-blue-300 bg-blue-50 px-5 py-4 text-blue-950">
                     <div className="text-lg font-bold">✉️ 開発者からのお便りが{announcements.length}件届いています</div>
-                    <p className="mt-1 text-sm">お便りと返信を時刻順に表示しています。</p>
+                    <p className="mt-1 text-sm">お便りごとに返信をまとめ、最近やりとりしたものを下に表示しています。</p>
                 </div>
             )}
 
@@ -2803,32 +2826,10 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             onCancel={() => { setReplyTarget(null); setReplyDraft('') }}
                             sending={sending}
                             error={Boolean(error)}
-                        />
-                        ) : (() => {
-                            const message = item.message
-                            const reply = message.authorType === 'user' ? parseAnnouncementReply(message.body) : null
-                            return (
-                            <div
-                                key={item.key}
-                                data-conversation-message={message.messageId}
-                                className={`flex ${message.authorType === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div className={`max-w-[78%] rounded-lg border px-4 py-3 text-sm leading-6 ${message.authorType === 'user'
-                                    ? 'bg-gray-900 text-white border-gray-900'
-                                    : 'bg-white text-gray-900 border-gray-200'
-                                    }`}>
-                                    <div className={`text-xs font-bold mb-1 ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
-                                        {message.authorType === 'user' ? (isEnglish ? 'You' : 'ユーザー') : (isEnglish ? 'Developer' : 'アプリ開発者')}
-                                    </div>
-                                    {reply && <div className="mb-2 border-l-2 border-blue-300 pl-2 text-xs text-blue-100">↳ お便り「{reply.title}」への返信</div>}
-                                    <div className="whitespace-pre-wrap break-words">{reply ? reply.reply : message.body}</div>
-                                    <time className={`mt-1 block text-right text-xs ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
-                                        {new Date(message.createdAt).toLocaleString(isEnglish ? 'en-US' : 'ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                    </time>
-                                </div>
-                            </div>
-                            )
-                        })())
+                        >
+                            {item.replies.map((message) => <ConversationMessageBubble key={message.messageId} message={message} isEnglish={isEnglish} inThread />)}
+                        </AnnouncementCard>
+                        ) : <ConversationMessageBubble key={item.key} message={item.message} isEnglish={isEnglish} />)
                     )}
                 </div>
 

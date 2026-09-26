@@ -34,9 +34,10 @@ type AnnouncementCardProps = {
   onCancel?: () => void;
   sending?: boolean;
   error?: boolean;
+  children?: React.ReactNode;
 };
 
-export default function AnnouncementCard({ announcement, onReply, replying = false, replyText = '', onReplyTextChange, onSend, onCancel, sending = false, error = false }: AnnouncementCardProps) {
+export default function AnnouncementCard({ announcement, onReply, replying = false, replyText = '', onReplyTextChange, onSend, onCancel, sending = false, error = false, children }: AnnouncementCardProps) {
   const date = new Date(announcement.createdAt);
   return (
     <article className="rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900">
@@ -46,6 +47,7 @@ export default function AnnouncementCard({ announcement, onReply, replying = fal
       <div className="mt-2 whitespace-pre-wrap break-words text-slate-900">
         {announcement.body.split('\n').map((line, index) => <React.Fragment key={index}>{index > 0 && <br />}{renderInline(line)}</React.Fragment>)}
       </div>
+      {React.Children.count(children) > 0 && <div className="mt-4 space-y-3 border-t border-blue-100 pt-4">{children}</div>}
       {replying ? (
         <div className="mt-4 space-y-2 border-t border-blue-100 pt-4">
           <label htmlFor={`announcement-reply-${announcement.id}`} className="block font-semibold text-blue-900">このお便りへの返信</label>
