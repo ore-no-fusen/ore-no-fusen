@@ -76,7 +76,6 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
       // TAURI_DEV is also used by browser-based E2E. Do not require a Tauri window there.
       return;
     }
-    if(windowLabel!=='main')return;
     let cancelled=false;
     let unlisten:(()=>void)|undefined;
     // This local asynchronous read does not delay rendering or note input.
@@ -86,6 +85,7 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
     void listen<{analytics_consent?:string}>('settings_updated',event=>{
       (window as AnalyticsWindow).__FUSEN_ANALYTICS_GRANTED__=event.payload.analytics_consent==='granted';
     }).then(dispose=>{if(cancelled)dispose();else unlisten=dispose;}).catch(()=>undefined);
+    if(windowLabel!=='main')return()=>{cancelled=true;safeUnlisten(unlisten);};
     const start=window.setTimeout(()=>void runDesktopBackground(()=>cancelled).catch(()=>undefined),60_000);
     const flush=window.setInterval(()=>void invoke('member_flush').catch(()=>undefined),300_000);
     return()=>{cancelled=true;safeUnlisten(unlisten);window.clearTimeout(start);window.clearInterval(flush);};

@@ -17,6 +17,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({ WebviewWindow: class {
   constructor(label: string, options: unknown) { createWindowMock(label, options); }
 } }));
 import AnalyticsLoader from './AnalyticsLoader';
+import { trackEvent } from '../utils/analytics';
 
 describe('AnalyticsLoader low-impact scheduling', () => {
   beforeEach(() => {
@@ -33,7 +34,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
       return Promise.resolve(undefined);
     });
   });
-  afterEach(()=>{cleanup();vi.useRealTimers();});
+  afterEach(()=>{cleanup();delete (window as any).__TAURI_INTERNALS__;vi.useRealTimers();});
 
   it('does not load GA4 or call the member network path during the first minute', async()=>{
     render(<AnalyticsLoader isTauriBuild/>);
@@ -51,11 +52,30 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull();
   });
 
-  it('runs only in the main Tauri window', async()=>{
+  it('enables feature counting in a note window without starting member network work', async()=>{
     windowLabel.value='note-2';
+    (window as any).__TAURI_INTERNALS__={};
     render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((window as any).__FUSEN_ANALYTICS_GRANTED__).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith('get_settings');
+    trackEvent('feature_used',{feature_name:'note_edited'});
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(invokeMock).toHaveBeenCalledWith('member_record_batch',{counts:{note_edited:1}});
+    expect(invokeMock).not.toHaveBeenCalledWith('member_needs_sync');
+    expect(invokeMock).not.toHaveBeenCalledWith('member_heartbeat');
+  });
+
+  it('keeps feature counting disabled in a note window when consent is denied', async()=>{
+    windowLabel.value='note-2';
+    (window as any).__TAURI_INTERNALS__={};
+    invokeMock.mockResolvedValue({analytics_consent:'denied'});
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((window as any).__FUSEN_ANALYTICS_GRANTED__).toBe(false);
+    trackEvent('feature_used',{feature_name:'note_edited'});
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(invokeMock).not.toHaveBeenCalledWith('member_record_batch',expect.anything());
   });
 
   it('does nothing when TAURI_DEV is set in a browser without a Tauri window', async()=>{
