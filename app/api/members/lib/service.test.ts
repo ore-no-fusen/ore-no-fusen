@@ -108,4 +108,36 @@ describe('member heartbeat', () => {
     expect((await service.heartbeat(auth)).announcements.map(a => a.title)).toEqual(['個別']);
     expect((await service.heartbeat(otherAuth)).announcements).toEqual([]);
   });
+
+  it('passes valid local feature audiences to the app and rejects unknown feature names', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));
+    await service.register(auth);
+    for (const [id, segment] of [
+      ['weekly', 'feature_week_unused:iphone_send'],
+      ['iphone-week', 'iphone_week_unused'],
+      ['unknown', 'feature_week_unused:not_a_feature'],
+    ]) {
+      db.rows.set(`announcements/${id}`, { value: {
+        title: id, body: 'body', segment, active: true,
+        createdAt: '2026-09-23T00:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
+      }, version: '1' });
+    }
+    expect((await service.heartbeat(auth)).announcements.map(a => a.title)).toEqual(['weekly', 'iphone-week']);
+  });
+});
+
+describe('weekly feature usage snapshot', () => {
+  it('stores only permitted feature names for a member and clears them after opt out', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db);
+    await service.register(auth);
+    await service.recordUsage(auth, '2026-W39', ['iphone_send', 'note_edited', 'iphone_send'], true);
+    const saved = (await db.get<any>(`members/${auth.memberId}`))!.value;
+    expect(saved).toMatchObject({ usageWeek: '2026-W39', usageFeatures: ['iphone_send', 'note_edited'], usageConsent: true });
+    await expect(service.recordUsage(auth, '2026-W39', ['unknown'], true)).rejects.toMatchObject({ status: 400 });
+    await service.recordUsage(auth, '2026-W39', [], false);
+    const cleared = (await db.get<any>(`members/${auth.memberId}`))!.value;
+    expect(cleared).toMatchObject({ usageFeatures: [], usageConsent: false });
+  });
 });

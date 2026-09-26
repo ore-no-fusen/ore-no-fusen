@@ -3,10 +3,14 @@ import type { MemberDatabase, Row } from './database';
 import { createFeedbackConversationStore } from '../../feedback/lib/store';
 import { randomBytes } from 'node:crypto';
 
-export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string };
+export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean };
+
+const featureNames = new Set(['note_created', 'note_edited', 'tag_add', 'alarm_set', 'iphone_send', 'iphone_receive', 'search_open', 'note_duplicate', 'note_archive', 'outline_toggle', 'image_attach']);
 
 function matchesServerAudience(segment: string, number: number): boolean {
   if (segment === 'all' || segment === 'feature_active' || segment === 'feature_inactive') return true;
+  if (segment === 'iphone_week_unused') return true;
+  if (/^feature_week_(used|unused):(note_created|note_edited|tag_add|alarm_set|iphone_send|iphone_receive|search_open|note_duplicate|note_archive|outline_toggle|image_attach)$/.test(segment)) return true;
   if (segment === 'veteran') return number < 10050;
   if (segment === 'newcomer') return number >= 10100;
   return segment === `member:${number}`;
@@ -92,6 +96,19 @@ export class MemberService {
       }));
 
     return { lastSeenAt: today, announcements };
+  }
+  async recordUsage(auth: Credentials, week: unknown, features: unknown, consent: unknown) {
+    if (typeof week !== 'string' || !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(week)
+      || typeof consent !== 'boolean' || !Array.isArray(features) || features.length > featureNames.size
+      || features.some(name => typeof name !== 'string' || !featureNames.has(name))
+      || (!consent && features.length > 0)) throw new FeedbackRequestError('Invalid usage snapshot', 400);
+    const uniqueFeatures = [...new Set(features as string[])].sort();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const member = await this.authenticate(auth);
+      const updated: Member = { ...member.value, usageWeek: week, usageFeatures: consent ? uniqueFeatures : [], usageConsent: consent };
+      if (await this.db.commit([{ path: `members/${auth.memberId}`, value: updated, version: member.version }])) return { saved: true };
+    }
+    throw new FeedbackRequestError('Usage update busy; retry later', 503);
   }
   async linkConversation(auth: Credentials, conversationId: unknown, conversationSecret: unknown) {
     if (typeof conversationId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(conversationId) || typeof conversationSecret !== 'string' || !/^[a-zA-Z0-9_-]{32,200}$/.test(conversationSecret)) throw new FeedbackRequestError('Invalid conversation credentials',400);

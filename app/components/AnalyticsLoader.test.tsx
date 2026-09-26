@@ -40,6 +40,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     render(<AnalyticsLoader isTauriBuild/>);
     await vi.advanceTimersByTimeAsync(0);
     expect(invokeMock).toHaveBeenCalledWith('get_settings');
+    expect(invokeMock).toHaveBeenCalledWith('member_get');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).toBeNull();
     expect(invokeMock).not.toHaveBeenCalledWith('member_needs_sync');
   });
@@ -49,6 +50,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await vi.advanceTimersByTimeAsync(0);
     expect(invokeMock).toHaveBeenCalledWith('member_closed_summaries');
+    expect(invokeMock).toHaveBeenCalledWith('member_sync_usage',{analyticsConsent:true});
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull();
   });
 
@@ -115,7 +117,8 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     render(<AnalyticsLoader isTauriBuild />);
     await vi.advanceTimersByTimeAsync(60_000);
     await vi.advanceTimersByTimeAsync(0);
-    expect(invokeMock).toHaveBeenCalledWith('member_heartbeat');
+    expect(invokeMock).toHaveBeenCalledWith('member_heartbeat',{analyticsConsent:false});
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('member_sync_usage',{analyticsConsent:false}));
     expect(invokeMock).not.toHaveBeenCalledWith('member_closed_summaries');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).toBeNull();
     expect(emitMock).not.toHaveBeenCalledWith('fusen:open_settings', { tab: 'conversation' });

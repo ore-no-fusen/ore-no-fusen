@@ -118,6 +118,28 @@ pub fn member_flush(state:State<'_,Mutex<AppState>>)->Result<(),String>{
     let snapshot={let g=state.lock().map_err(|_|"State unavailable")?;match g.member.as_ref(){Some(v)=>v.clone(),None=>return Ok(())}}; persist(&snapshot)
 }
 
+fn current_usage_snapshot(member:&MemberLocal,analytics_consent:bool,week:&str)->(Vec<String>,bool){
+    let consent=analytics_consent && member.consent==Some(true);
+    let features=if consent {member.weeks.get(week)
+        .map(|usage|usage.features.keys().cloned().collect()).unwrap_or_default()} else {Vec::new()};
+    (features,consent)
+}
+
+#[tauri::command]
+pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>,analytics_consent:bool)->Result<(),String>{
+    let base=endpoint()?;
+    let (snapshot,week,features,consent)={
+        let mut g=state.lock().map_err(|_|"State unavailable")?;
+        let member=ensure(&mut g)?.clone();
+        let week=week_key(Utc::now());
+        let (features,consent)=current_usage_snapshot(&member,analytics_consent,&week);
+        (member,week,features,consent)
+    };
+    let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().map_err(|_|"Cannot create member client")?;
+    post(&client,&base,"usage",&snapshot,serde_json::json!({"week":week,"features":features,"consent":consent})).await?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn member_closed_summaries(state:State<'_,Mutex<AppState>>)->Result<Vec<WeeklyUsage>,String>{
     let current=week_key(Utc::now()); let mut g=state.lock().map_err(|_|"State unavailable")?; let member=ensure(&mut g)?;
@@ -165,25 +187,40 @@ fn should_request_heartbeat(environment: &str, last_date: Option<&str>, today: &
     environment == "development" || last_date != Some(today)
 }
 
-fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str) -> bool {
+fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str, analytics_consent: bool) -> bool {
     match segment {
         "all" => true,
         "veteran" => member.general_number.map_or(false, |n| n < 10050),
         "newcomer" => member.general_number.map_or(false, |n| n >= 10100),
-        "feature_active" => member.weeks.get(current_week)
+        "feature_active" => analytics_consent && member.consent == Some(true) && member.weeks.get(current_week)
             .map_or(false, |w| !w.features.is_empty()),
-        "feature_inactive" => member.consent == Some(true)
+        "feature_inactive" => analytics_consent && member.consent == Some(true)
             && member.weeks.get(current_week)
                 .map_or(true, |w| w.features.is_empty()),
-        _ => segment.strip_prefix("member:")
-            .and_then(|number| number.parse::<u64>().ok())
-            .map_or(false, |number| member.general_number == Some(number)),
+        "iphone_week_unused" => analytics_consent && member.consent == Some(true)
+            && member.weeks.get(current_week).map_or(true, |w|
+                !w.features.contains_key("iphone_send") && !w.features.contains_key("iphone_receive")),
+        _ => {
+            if let Some(feature) = segment.strip_prefix("feature_week_used:") {
+                return analytics_consent && member.consent == Some(true) && FEATURES.contains(&feature)
+                    && member.weeks.get(current_week)
+                        .map_or(false, |w| w.features.contains_key(feature));
+            }
+            if let Some(feature) = segment.strip_prefix("feature_week_unused:") {
+                return analytics_consent && member.consent == Some(true) && FEATURES.contains(&feature)
+                    && member.weeks.get(current_week)
+                        .map_or(true, |w| !w.features.contains_key(feature));
+            }
+            segment.strip_prefix("member:")
+                .and_then(|number| number.parse::<u64>().ok())
+                .map_or(false, |number| member.general_number == Some(number))
+        },
     }
 }
 
-fn new_announcements(member: &MemberLocal, announcements: Vec<AnnouncementPayload>, current_week: &str) -> Vec<AnnouncementPayload> {
+fn new_announcements(member: &MemberLocal, announcements: Vec<AnnouncementPayload>, current_week: &str, analytics_consent: bool) -> Vec<AnnouncementPayload> {
     announcements.into_iter()
-        .filter(|a| matches_segment(&a.segment, member, current_week)
+        .filter(|a| matches_segment(&a.segment, member, current_week, analytics_consent)
                     && !member.announcements.iter().any(|saved| saved.id == a.id))
         .collect()
 }
@@ -210,6 +247,7 @@ pub fn member_announcements(state: State<'_, Mutex<AppState>>) -> Result<Vec<Ann
 #[tauri::command]
 pub async fn member_heartbeat(
     state: State<'_, Mutex<AppState>>,
+    analytics_consent: bool,
 ) -> Result<Vec<AnnouncementPayload>, String> {
     let base = endpoint()?;
     let (snapshot, today) = {
@@ -234,7 +272,7 @@ pub async fn member_heartbeat(
 
     // 対象のお便りをローカルの会話画面へ保存する。
     let week = week_key(Utc::now());
-    let received = new_announcements(&snapshot, response.announcements, &week);
+    let received = new_announcements(&snapshot, response.announcements, &week, analytics_consent);
 
     // 状態更新: last_heartbeat_date + 受信履歴
     {
@@ -279,21 +317,73 @@ mod segment_tests {
         let letter = AnnouncementPayload { id: "letter-1".into(), title: "題".into(), body: "本文".into(), segment: "veteran".into(), created_at: "2026-09-25T00:00:00Z".into() };
         let mut member = MemberLocal { general_number: Some(10001), ..Default::default() };
         member.read_announcement_ids.insert(letter.id.clone());
-        let first = new_announcements(&member, vec![letter.clone()], "2026-W39");
+        let first = new_announcements(&member, vec![letter.clone()], "2026-W39", false);
         assert_eq!(first.len(), 1); // 旧版で既読扱いになったお便りも会話履歴へ移す。
         member.announcements = first;
-        assert!(new_announcements(&member, vec![letter.clone()], "2026-W39").is_empty());
+        assert!(new_announcements(&member, vec![letter.clone()], "2026-W39", false).is_empty());
         member.general_number = Some(10101);
         member.announcements.clear();
-        assert!(new_announcements(&member, vec![letter], "2026-W39").is_empty());
+        assert!(new_announcements(&member, vec![letter], "2026-W39", false).is_empty());
     }
 
     #[test]
     fn member_number_segment_matches_only_its_recipient() {
         let member = MemberLocal { general_number: Some(10123), ..Default::default() };
-        assert!(matches_segment("member:10123", &member, "2026-W39"));
-        assert!(!matches_segment("member:10124", &member, "2026-W39"));
-        assert!(!matches_segment("member:invalid", &member, "2026-W39"));
+        assert!(matches_segment("member:10123", &member, "2026-W39", false));
+        assert!(!matches_segment("member:10124", &member, "2026-W39", false));
+        assert!(!matches_segment("member:invalid", &member, "2026-W39", false));
+    }
+
+    #[test]
+    fn specific_weekly_features_require_consent_and_match_the_selected_feature() {
+        let mut member = MemberLocal { consent: Some(true), ..Default::default() };
+        let mut features = BTreeMap::new();
+        features.insert("note_edited".to_string(), FeatureCount::default());
+        member.weeks.insert("2026-W39".to_string(), WeeklyUsage {
+            week: "2026-W39".into(), schema: 1, app_version: "5.4.0".into(), features,
+        });
+        assert!(matches_segment("feature_week_used:note_edited", &member, "2026-W39", true));
+        assert!(!matches_segment("feature_week_unused:note_edited", &member, "2026-W39", true));
+        assert!(matches_segment("feature_week_unused:iphone_send", &member, "2026-W39", true));
+        assert!(!matches_segment("feature_week_used:iphone_send", &member, "2026-W39", true));
+        assert!(!matches_segment("feature_week_unused:unknown", &member, "2026-W39", true));
+        assert!(!matches_segment("feature_week_unused:iphone_send", &member, "2026-W39", false));
+        member.consent = Some(false);
+        assert!(!matches_segment("feature_week_used:note_edited", &member, "2026-W39", true));
+        assert!(!matches_segment("feature_week_unused:iphone_send", &member, "2026-W39", true));
+    }
+
+    #[test]
+    fn iphone_week_unused_requires_consent_and_no_send_or_receive_this_week() {
+        let mut member = MemberLocal { consent: Some(true), ..Default::default() };
+        assert!(matches_segment("iphone_week_unused", &member, "2026-W39", true));
+        let mut features = BTreeMap::new();
+        features.insert("iphone_send".to_string(), FeatureCount::default());
+        member.weeks.insert("2026-W39".into(), WeeklyUsage {
+            week: "2026-W39".into(), schema: 1, app_version: "5.4.0".into(), features,
+        });
+        assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", true));
+        assert!(matches_segment("iphone_week_unused", &member, "2026-W40", true));
+        member.weeks.get_mut("2026-W39").unwrap().features.clear();
+        member.weeks.get_mut("2026-W39").unwrap().features.insert("iphone_receive".into(), FeatureCount::default());
+        assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", true));
+        member.consent = None;
+        assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", true));
+    }
+
+    #[test]
+    fn usage_snapshot_contains_only_this_week_and_respects_both_consents() {
+        let mut member = MemberLocal { consent: Some(true), ..Default::default() };
+        let mut features = BTreeMap::new();
+        features.insert("iphone_send".into(), FeatureCount::default());
+        member.weeks.insert("2026-W39".into(), WeeklyUsage {
+            week: "2026-W39".into(), schema: 1, app_version: "5.4.0".into(), features,
+        });
+        assert_eq!(current_usage_snapshot(&member,true,"2026-W39"),(vec!["iphone_send".into()],true));
+        assert_eq!(current_usage_snapshot(&member,true,"2026-W40"),(Vec::new(),true));
+        assert_eq!(current_usage_snapshot(&member,false,"2026-W39"),(Vec::new(),false));
+        member.consent=Some(false);
+        assert_eq!(current_usage_snapshot(&member,true,"2026-W39"),(Vec::new(),false));
     }
 }
 

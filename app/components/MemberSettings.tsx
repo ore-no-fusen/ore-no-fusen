@@ -21,6 +21,9 @@ export default function MemberSettings({ language }: { language: string }) {
     setBusy(true); setError(false);
     try {
       setView(await invoke<MemberView>('member_set_consent',{ granted }));
+      void invoke<{analytics_consent?:string}>('get_settings')
+        .then(settings=>invoke('member_sync_usage',{analyticsConsent:settings.analytics_consent==='granted'}))
+        .catch(()=>undefined);
     } catch { setError(true); } finally { setBusy(false); }
   }
   return <section className="mb-6 rounded-xl border border-slate-200 p-5">

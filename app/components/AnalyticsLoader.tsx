@@ -43,7 +43,7 @@ async function runDesktopBackground(cancelled:()=>boolean) {
   // 開発者ホットライン: 新着があれば通知窓を開く。
   try {
     type Announcement = { id: string; title: string; body: string; segment: string; createdAt: string };
-    const unread = await invoke<Announcement[]>('member_heartbeat');
+    const unread = await invoke<Announcement[]>('member_heartbeat',{analyticsConsent:granted});
     if (unread.length > 0) {
       await emit('fusen:announcements_updated');
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
@@ -64,6 +64,7 @@ async function runDesktopBackground(cancelled:()=>boolean) {
       }
     }
   } catch { /* heartbeat失敗は無視 */ }
+  await invoke('member_sync_usage',{analyticsConsent:granted}).catch(()=>undefined);
 }
 
 export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
@@ -86,8 +87,15 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
       (window as AnalyticsWindow).__FUSEN_ANALYTICS_GRANTED__=event.payload.analytics_consent==='granted';
     }).then(dispose=>{if(cancelled)dispose();else unlisten=dispose;}).catch(()=>undefined);
     if(windowLabel!=='main')return()=>{cancelled=true;safeUnlisten(unlisten);};
+    // Initialize the local member before the first queued feature batch arrives.
+    void invoke('member_get').catch(()=>undefined);
     const start=window.setTimeout(()=>void runDesktopBackground(()=>cancelled).catch(()=>undefined),60_000);
-    const flush=window.setInterval(()=>void invoke('member_flush').catch(()=>undefined),300_000);
+    const flush=window.setInterval(()=>{
+      void invoke('member_flush').catch(()=>undefined);
+      void invoke<{analytics_consent?:string}>('get_settings')
+        .then(settings=>invoke('member_sync_usage',{analyticsConsent:settings.analytics_consent==='granted'}))
+        .catch(()=>undefined);
+    },300_000);
     return()=>{cancelled=true;safeUnlisten(unlisten);window.clearTimeout(start);window.clearInterval(flush);};
   },[isTauriBuild]);
   return null;

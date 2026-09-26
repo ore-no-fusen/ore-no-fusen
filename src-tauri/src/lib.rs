@@ -5366,6 +5366,7 @@ pub fn run() {
             member_identity::member_set_consent,
             member_identity::member_record_batch,
             member_identity::member_flush,
+            member_identity::member_sync_usage,
             member_identity::member_closed_summaries,
             member_identity::member_mark_summary_sent,
             member_identity::member_needs_sync,

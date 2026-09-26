@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium } from '@playwright/test';
-import { fetchFirestoreMembers, generateHtml, parseOptions, publishAnnouncement, serveDashboard, survivalStats } from './member-stats.mjs';
+import { featureUsageStats, fetchFirestoreMembers, generateHtml, isoWeek, parseOptions, publishAnnouncement, serveDashboard, survivalStats } from './member-stats.mjs';
 
 test('開発環境を明示したときだけ切り替え、不正な指定は拒否する', () => {
   assert.deepEqual(parseOptions([]), { environment: 'production', open: false });
@@ -74,6 +74,62 @@ test('個別宛ては登録済みの会員番号だけを保存し、不正な�
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test('指定した機能とiPhone送受信未使用を宛先として保存できる', async () => {
+  const originalFetch = globalThis.fetch;
+  const writes = [];
+  globalThis.fetch = async (_url, init) => { writes.push(JSON.parse(init.body)); return { ok: true }; };
+  try {
+    await publishAnnouncement('token', '題', '本文', 'feature_week_unused', null, new Set(), 'development', 'iphone_send');
+    await publishAnnouncement('token', '題', '本文', 'iphone_week_unused', null, new Set(), 'development');
+    assert.equal(JSON.parse(writes[0].writes[0].update.fields.payload.stringValue).segment, 'feature_week_unused:iphone_send');
+    assert.equal(JSON.parse(writes[1].writes[0].update.fields.payload.stringValue).segment, 'iphone_week_unused');
+    await assert.rejects(publishAnnouncement('token', '題', '本文', 'feature_week_unused', null, new Set(), 'development', 'unknown'), /対象の機能/);
+    assert.equal(writes.length, 2);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('機能ごとの利用者数は会員単位で数え、割合の分母は全会員にする', () => {
+  assert.equal(isoWeek(new Date('2027-01-01T00:00:00Z')), '2026-W53');
+  const members = [
+    { usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send', 'note_edited'] },
+    { usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send'] },
+    { usageWeek: '2026-W38', usageConsent: true, usageFeatures: ['iphone_send'] },
+    { usageWeek: '2026-W39', usageConsent: false, usageFeatures: ['iphone_send'] },
+  ];
+  const stats = featureUsageStats(members, '2026-W39');
+  assert.equal(stats.rows.find(row => row.name === 'iphone_send').users, 2);
+  assert.equal(stats.rows.find(row => row.name === 'iphone_send').percent, 50);
+  assert.equal(stats.rows.find(row => row.name === 'note_edited').users, 1);
+  assert.equal(stats.rows.find(row => row.name === 'note_edited').percent, 25);
+  assert.equal(stats.reporting, 2);
+  const html = generateHtml([], 4, 10003, 0, 0, [], [], '2026/09/27', { today: 0, week: 0, unknown: 4 }, false, 'development', stats);
+  assert.match(html, /今週の機能別利用者/);
+  assert.match(html, /id="featureReporting">2<\/span> \/ <span id="featureCoverageTotal">4<\/span>人/);
+});
+
+test('更新時にFirestoreから機能別の人数を読み直す', async () => {
+  const originalFetch = globalThis.fetch;
+  const currentWeek = featureUsageStats([]).week;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ documents: [
+    { fields: { payload: { stringValue: JSON.stringify({ usageWeek: currentWeek, usageConsent: true, usageFeatures: ['iphone_send'] }) } } },
+  ] }) });
+  const { server, url } = await serveDashboard('<input value="__CSRF_TOKEN__">', 'test-token', false, new Set(), 'development');
+  try {
+    const html = await (await originalFetch(url)).text();
+    const token = html.match(/value="([a-f0-9]{64})"/)[1];
+    const response = await originalFetch(`${url}feature-usage`, { headers: { 'X-CSRF-Token': token } });
+    assert.equal(response.status, 200);
+    const stats = await response.json();
+    assert.equal(stats.totalMembers, 1);
+    assert.equal(stats.reporting, 1);
+    assert.equal(stats.rows.find(row => row.name === 'iphone_send').users, 1);
+    assert.equal((await originalFetch(`${url}feature-usage`)).status, 403);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
 test('投稿はローカル画面のCSRFトークンを要求する', async () => {
   const originalFetch = globalThis.fetch;
   let writes = 0;
@@ -130,6 +186,17 @@ test('投稿画面で会員番号を選び、登録済みの1人だけを宛先�
     await page.getByRole('status').getByText(/投稿しました/).waitFor();
     assert.equal(JSON.parse(writes[1].writes[0].update.fields.payload.stringValue).segment, 'veteran');
     assert.match(writes[1].writes[0].update.name, /\/member_environments\/development\/announcements\//);
+    await page.locator('#audience').selectOption('feature_week_unused');
+    assert.equal(await page.locator('#featureName').isVisible(), true);
+    await page.locator('#featureName').selectOption('iphone_send');
+    await page.getByPlaceholder('タイトル').fill('iPhone未使用者へ');
+    await page.getByPlaceholder('Markdown本文').fill('本文');
+    await page.getByRole('button', { name: '投稿する' }).click();
+    await page.getByRole('status').getByText(/投稿しました/).waitFor();
+    assert.equal(JSON.parse(writes[2].writes[0].update.fields.payload.stringValue).segment, 'feature_week_unused:iphone_send');
+    assert.equal(await page.locator('#featureName').isVisible(), false);
+    await page.locator('#audience').selectOption('iphone_week_unused');
+    assert.equal(await page.locator('#featureName').isVisible(), false);
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));
