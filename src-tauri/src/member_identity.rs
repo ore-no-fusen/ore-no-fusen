@@ -130,7 +130,7 @@ pub fn member_open_time_tick(state:State<'_,Mutex<AppState>>,analytics_consent:b
     let now=Instant::now();
     if let Some(previous)=member.open_time_tick {
         if member.consent==Some(true) && analytics_consent {
-            member.open_seconds=member.open_seconds.saturating_add(now.duration_since(previous).as_secs().min(300));
+            member.open_seconds=member.open_seconds.saturating_add(now.duration_since(previous).as_secs());
             persist(member)?;
         }
     }
@@ -173,7 +173,7 @@ pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>,analytics_consent
 
 fn should_sync_usage(member:&MemberLocal,consent:bool)->bool {
     if !consent && !member.last_usage_sync_consent { return false; }
-    member.last_usage_sync_consent!=consent || (consent && member.open_seconds.saturating_sub(member.last_usage_sync_open_seconds)>=8*60*60)
+    member.last_usage_sync_consent!=consent || (consent && member.open_seconds.saturating_sub(member.last_usage_sync_open_seconds)>=24*60*60)
 }
 
 #[tauri::command]
@@ -423,13 +423,13 @@ mod segment_tests {
     }
 
     #[test]
-    fn usage_api_sync_follows_eight_hours_of_open_time_except_for_consent_changes() {
+    fn usage_api_sync_follows_twenty_four_hours_of_open_time_except_for_consent_changes() {
         let mut member=MemberLocal::default();
         assert!(!should_sync_usage(&member,false));
         assert!(should_sync_usage(&member,true));
         member.last_usage_sync_consent=true;
         assert!(!should_sync_usage(&member,true));
-        member.open_seconds=8*60*60-1;
+        member.open_seconds=24*60*60-1;
         assert!(!should_sync_usage(&member,true));
         member.open_seconds+=1;
         assert!(should_sync_usage(&member,true));
@@ -443,10 +443,10 @@ mod segment_tests {
 
     #[test]
     fn usage_sync_progress_survives_restart() {
-        let member=MemberLocal { open_seconds: 8*60*60, last_usage_sync_open_seconds: 8*60*60, last_usage_sync_consent: true, ..Default::default() };
+        let member=MemberLocal { open_seconds: 24*60*60, last_usage_sync_open_seconds: 24*60*60, last_usage_sync_consent: true, ..Default::default() };
         let restored:MemberLocal=serde_json::from_slice(&serde_json::to_vec(&member).unwrap()).unwrap();
         assert!(!should_sync_usage(&restored,true));
-        assert_eq!(restored.open_seconds,8*60*60);
+        assert_eq!(restored.open_seconds,24*60*60);
     }
 }
 

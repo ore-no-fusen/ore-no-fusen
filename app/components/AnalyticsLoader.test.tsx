@@ -54,7 +54,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull();
   });
 
-  it('records app-open time before checking whether the eight-hour usage sync is due', async()=>{
+  it('records app-open time before checking whether the daily usage sync is due', async()=>{
     render(<AnalyticsLoader isTauriBuild/>);
     await vi.advanceTimersByTimeAsync(300_000);
     const commands=invokeMock.mock.calls.map(([command])=>command);

@@ -367,7 +367,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
       <p class="text-sm text-amber-300">利用情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。</p>
-      <p class="text-sm text-slate-400">アプリを開いていた時間は約5分単位で記録し、累計8時間ごとに送信します。送信前の時間はまだ反映されません。</p>
+      <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、累計24時間ごとに送信します。送信前の時間はまだ反映されません。</p>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
           <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">利用人数</th><th class="pb-2 text-right">全会員比</th></tr></thead>
