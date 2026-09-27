@@ -1,7 +1,7 @@
 //! Membership identity and best-effort weekly feature counters.
 //! Recording a feature never performs disk or network I/O.
 use std::{collections::{BTreeMap, BTreeSet}, path::PathBuf, sync::Mutex, time::Instant};
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
 use crate::state::AppState;
@@ -25,6 +25,7 @@ pub struct MemberLocal {
     #[serde(default)] read_announcement_ids: BTreeSet<String>,
     #[serde(default)] announcements: Vec<AnnouncementPayload>,
     #[serde(default)] last_heartbeat_date: Option<String>,
+    #[serde(default)] last_heartbeat_at: Option<String>,
     #[serde(default)] open_seconds: u64,
     #[serde(default)] last_usage_sync_consent: bool,
     #[serde(skip)] syncing: bool,
@@ -217,8 +218,14 @@ pub async fn member_sync(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>)->
 
 // --- ハートビート（開発者ホットライン + 会員生存確認） ---
 
-fn should_request_heartbeat(environment: &str, last_date: Option<&str>, today: &str) -> bool {
-    environment == "development" || last_date != Some(today)
+fn should_request_heartbeat(environment: &str, last_at: Option<&str>, last_date: Option<&str>, now: chrono::DateTime<Utc>) -> bool {
+    if environment == "development" { return true; }
+    if let Some(sent_at) = last_at.and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok()) {
+        return now.signed_duration_since(sent_at.with_timezone(&Utc)) >= Duration::hours(24);
+    }
+    // Old installations only have a UTC date. Keep their previous daily limit until their next successful heartbeat.
+    let today=now.format("%Y-%m-%d").to_string();
+    last_date != Some(today.as_str())
 }
 
 fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str, analytics_consent: bool) -> bool {
@@ -287,10 +294,11 @@ pub async fn member_heartbeat(
     let (snapshot, today, week, features, consent, open_seconds) = {
         let mut g = state.lock().map_err(|_| "State unavailable")?;
         let value = ensure(&mut g)?;
-        let today = Utc::now().format("%Y-%m-%d").to_string();
+        let now = Utc::now();
+        let today = now.format("%Y-%m-%d").to_string();
 
         // 開発環境は起動のたびに確認し、本番環境は1日1回に抑える。
-        if !should_request_heartbeat(environment(), value.last_heartbeat_date.as_deref(), &today) {
+        if !should_request_heartbeat(environment(), value.last_heartbeat_at.as_deref(), value.last_heartbeat_date.as_deref(), now) {
             return Ok(Vec::new());
         }
         let week = week_key(Utc::now());
@@ -315,6 +323,7 @@ pub async fn member_heartbeat(
         let mut g = state.lock().map_err(|_| "State unavailable")?;
         let value = ensure(&mut g)?;
         value.last_heartbeat_date = Some(today);
+        value.last_heartbeat_at = Some(Utc::now().to_rfc3339());
         value.last_usage_sync_consent = consent;
         for a in &received {
             value.read_announcement_ids.insert(a.id.clone());
@@ -342,11 +351,16 @@ mod segment_tests {
     use super::*;
 
     #[test]
-    fn development_rechecks_after_a_heartbeat_on_the_same_day() {
-        assert!(should_request_heartbeat("development", Some("2026-09-24"), "2026-09-24"));
-        assert!(!should_request_heartbeat("production", Some("2026-09-24"), "2026-09-24"));
-        assert!(should_request_heartbeat("production", Some("2026-09-23"), "2026-09-24"));
-        assert!(should_request_heartbeat("production", None, "2026-09-24"));
+    fn production_waits_twenty_four_hours_while_development_rechecks() {
+        use chrono::TimeZone;
+        let now=Utc.with_ymd_and_hms(2026,9,24,0,1,0).unwrap();
+        assert!(should_request_heartbeat("development",Some("2026-09-23T23:59:00Z"),Some("2026-09-23"),now));
+        assert!(!should_request_heartbeat("production",Some("2026-09-23T23:59:00Z"),Some("2026-09-23"),now));
+        assert!(!should_request_heartbeat("production",Some("2026-09-23T00:01:01Z"),Some("2026-09-23"),now));
+        assert!(should_request_heartbeat("production",Some("2026-09-23T00:01:00Z"),Some("2026-09-23"),now));
+        assert!(!should_request_heartbeat("production",None,Some("2026-09-24"),now));
+        assert!(should_request_heartbeat("production",None,Some("2026-09-23"),now));
+        assert!(should_request_heartbeat("production",None,None,now));
     }
 
     #[test]
