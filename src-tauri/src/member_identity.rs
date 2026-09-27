@@ -26,7 +26,6 @@ pub struct MemberLocal {
     #[serde(default)] announcements: Vec<AnnouncementPayload>,
     #[serde(default)] last_heartbeat_date: Option<String>,
     #[serde(default)] open_seconds: u64,
-    #[serde(default)] last_usage_sync_open_seconds: u64,
     #[serde(default)] last_usage_sync_consent: bool,
     #[serde(skip)] syncing: bool,
     #[serde(skip)] usage_syncing: bool,
@@ -103,7 +102,7 @@ pub fn member_get(state:State<'_,Mutex<AppState>>)->Result<MemberView,String>{le
 
 #[tauri::command]
 pub fn member_set_consent(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>,granted:bool)->Result<MemberView,String>{
-    let mut g=state.lock().map_err(|_|"State unavailable")?; let value=ensure(&mut g)?; value.consent=Some(granted); if !granted{value.weeks.clear();value.open_seconds=0;value.last_usage_sync_open_seconds=0;} persist(value)?;
+    let mut g=state.lock().map_err(|_|"State unavailable")?; let value=ensure(&mut g)?; value.consent=Some(granted); if !granted{value.weeks.clear();value.open_seconds=0;} persist(value)?;
     let view=value.view(); let _=app.emit("member_updated",view.clone()); Ok(view)
 }
 
@@ -166,14 +165,13 @@ pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>,analytics_consent
     let member=ensure(&mut g)?;
     member.usage_syncing=false;
     result?;
-    member.last_usage_sync_open_seconds=open_seconds;
     member.last_usage_sync_consent=consent;
     persist(member)
 }
 
 fn should_sync_usage(member:&MemberLocal,consent:bool)->bool {
     if !consent && !member.last_usage_sync_consent { return false; }
-    member.last_usage_sync_consent!=consent || (consent && member.open_seconds.saturating_sub(member.last_usage_sync_open_seconds)>=24*60*60)
+    member.last_usage_sync_consent!=consent
 }
 
 #[tauri::command]
@@ -286,7 +284,7 @@ pub async fn member_heartbeat(
     analytics_consent: bool,
 ) -> Result<Vec<AnnouncementPayload>, String> {
     let base = endpoint()?;
-    let (snapshot, today) = {
+    let (snapshot, today, week, features, consent, open_seconds) = {
         let mut g = state.lock().map_err(|_| "State unavailable")?;
         let value = ensure(&mut g)?;
         let today = Utc::now().format("%Y-%m-%d").to_string();
@@ -295,7 +293,9 @@ pub async fn member_heartbeat(
         if !should_request_heartbeat(environment(), value.last_heartbeat_date.as_deref(), &today) {
             return Ok(Vec::new());
         }
-        (value.clone(), today)
+        let week = week_key(Utc::now());
+        let (features, consent) = current_usage_snapshot(value, analytics_consent, &week);
+        (value.clone(), today, week, features, consent, value.open_seconds)
     };
 
     // API呼び出し
@@ -303,7 +303,7 @@ pub async fn member_heartbeat(
         .timeout(std::time::Duration::from_secs(15))
         .build().map_err(|_| "Cannot create client")?;
     let response: HeartbeatResponse = serde_json::from_value(
-        post(&client, &base, "heartbeat", &snapshot, serde_json::json!({})).await?
+        post(&client, &base, "heartbeat", &snapshot, serde_json::json!({"week":week,"features":features,"consent":consent,"openMinutes":open_seconds/60})).await?
     ).map_err(|_| "Invalid heartbeat response")?;
 
     // 対象のお便りをローカルの会話画面へ保存する。
@@ -315,6 +315,7 @@ pub async fn member_heartbeat(
         let mut g = state.lock().map_err(|_| "State unavailable")?;
         let value = ensure(&mut g)?;
         value.last_heartbeat_date = Some(today);
+        value.last_usage_sync_consent = consent;
         for a in &received {
             value.read_announcement_ids.insert(a.id.clone());
         }
@@ -423,17 +424,13 @@ mod segment_tests {
     }
 
     #[test]
-    fn usage_api_sync_follows_twenty_four_hours_of_open_time_except_for_consent_changes() {
+    fn separate_usage_api_syncs_only_consent_changes() {
         let mut member=MemberLocal::default();
         assert!(!should_sync_usage(&member,false));
         assert!(should_sync_usage(&member,true));
         member.last_usage_sync_consent=true;
         assert!(!should_sync_usage(&member,true));
-        member.open_seconds=24*60*60-1;
-        assert!(!should_sync_usage(&member,true));
-        member.open_seconds+=1;
-        assert!(should_sync_usage(&member,true));
-        member.last_usage_sync_open_seconds=member.open_seconds;
+        member.open_seconds=24*60*60;
         assert!(!should_sync_usage(&member,true));
         assert!(should_sync_usage(&member,false));
         member.last_usage_sync_consent=false;
@@ -442,8 +439,8 @@ mod segment_tests {
     }
 
     #[test]
-    fn usage_sync_progress_survives_restart() {
-        let member=MemberLocal { open_seconds: 24*60*60, last_usage_sync_open_seconds: 24*60*60, last_usage_sync_consent: true, ..Default::default() };
+    fn usage_consent_sync_progress_survives_restart() {
+        let member=MemberLocal { open_seconds: 24*60*60, last_usage_sync_consent: true, ..Default::default() };
         let restored:MemberLocal=serde_json::from_slice(&serde_json::to_vec(&member).unwrap()).unwrap();
         assert!(!should_sync_usage(&restored,true));
         assert_eq!(restored.open_seconds,24*60*60);

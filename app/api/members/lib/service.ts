@@ -7,6 +7,15 @@ export type Member = { memberId: string; generalNumber: number; analyticsSubject
 
 const featureNames = new Set(['note_created', 'note_edited', 'tag_add', 'alarm_set', 'iphone_send', 'iphone_receive', 'search_open', 'note_duplicate', 'note_archive', 'outline_toggle', 'image_attach']);
 
+function usageSnapshot(week: unknown, features: unknown, consent: unknown, openMinutes: unknown) {
+  if (typeof week !== 'string' || !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(week)
+    || typeof consent !== 'boolean' || !Array.isArray(features) || features.length > featureNames.size
+    || features.some(name => typeof name !== 'string' || !featureNames.has(name))
+    || (!consent && features.length > 0)
+    || (openMinutes !== undefined && (!Number.isSafeInteger(openMinutes) || (openMinutes as number) < 0))) throw new FeedbackRequestError('Invalid usage snapshot', 400);
+  return { week, features: [...new Set(features as string[])].sort(), consent, openMinutes: openMinutes as number | undefined };
+}
+
 function matchesServerAudience(segment: string, number: number): boolean {
   if (segment === 'all' || segment === 'feature_active' || segment === 'feature_inactive') return true;
   if (segment === 'iphone_week_unused') return true;
@@ -66,16 +75,22 @@ export class MemberService {
       paidNumber: member.value.paidNumber,
     };
   }
-  async heartbeat(auth: Credentials) {
-    // 1. 認証（既存パターン）
-    const member = await this.authenticate(auth);
-
-    // 2. lastSeenAt を更新
+  async heartbeat(auth: Credentials, week?: unknown, features?: unknown, consent?: unknown, openMinutes?: unknown) {
+    const usage = week === undefined && features === undefined && consent === undefined && openMinutes === undefined
+      ? null : usageSnapshot(week, features, consent, openMinutes);
     const today = this.now().toISOString().slice(0, 10); // "YYYY-MM-DD"
-    const updated = { ...member.value, lastSeenAt: today };
-    await this.db.commit([
-      { path: `members/${auth.memberId}`, value: updated, version: member.version },
-    ]);
+    let member: Row<Member> | undefined;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const current = await this.authenticate(auth);
+      const updated = { ...current.value, lastSeenAt: today,
+        ...(usage && { usageWeek: usage.week, usageFeatures: usage.consent ? usage.features : [], usageConsent: usage.consent,
+          usageOpenMinutes: usage.consent ? (usage.openMinutes ?? current.value.usageOpenMinutes) : undefined }) };
+      if (await this.db.commit([{ path: `members/${auth.memberId}`, value: updated, version: current.version }])) {
+        member = current;
+        break;
+      }
+    }
+    if (!member) throw new FeedbackRequestError('Heartbeat update busy; retry later', 503);
 
     // 3. announcements を取得
     const rows = await this.db.list<{
@@ -98,16 +113,11 @@ export class MemberService {
     return { lastSeenAt: today, announcements };
   }
   async recordUsage(auth: Credentials, week: unknown, features: unknown, consent: unknown, openMinutes: unknown) {
-    if (typeof week !== 'string' || !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(week)
-      || typeof consent !== 'boolean' || !Array.isArray(features) || features.length > featureNames.size
-      || features.some(name => typeof name !== 'string' || !featureNames.has(name))
-      || (!consent && features.length > 0)
-      || (openMinutes !== undefined && (!Number.isSafeInteger(openMinutes) || (openMinutes as number) < 0))) throw new FeedbackRequestError('Invalid usage snapshot', 400);
-    const uniqueFeatures = [...new Set(features as string[])].sort();
+    const usage = usageSnapshot(week, features, consent, openMinutes);
     for (let attempt = 0; attempt < 4; attempt++) {
       const member = await this.authenticate(auth);
-      const updated: Member = { ...member.value, usageWeek: week, usageFeatures: consent ? uniqueFeatures : [], usageConsent: consent,
-        usageOpenMinutes: consent ? (openMinutes === undefined ? member.value.usageOpenMinutes : openMinutes as number) : undefined };
+      const updated: Member = { ...member.value, usageWeek: usage.week, usageFeatures: usage.consent ? usage.features : [], usageConsent: usage.consent,
+        usageOpenMinutes: usage.consent ? (usage.openMinutes ?? member.value.usageOpenMinutes) : undefined };
       if (await this.db.commit([{ path: `members/${auth.memberId}`, value: updated, version: member.version }])) return { saved: true };
     }
     throw new FeedbackRequestError('Usage update busy; retry later', 503);

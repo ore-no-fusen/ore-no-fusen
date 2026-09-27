@@ -20,26 +20,7 @@ function loadGa4(sendPageView: boolean) {
   const script=document.createElement('script');script.async=true;script.src=`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;script.dataset.fusenAnalytics='ga4';document.head.appendChild(script);
 }
 
-async function runDesktopBackground(cancelled:()=>boolean) {
-  const settings=await invoke<{analytics_consent?:string}>('get_settings');
-  if(cancelled())return;
-  const granted=settings.analytics_consent==='granted';
-  const w=window as AnalyticsWindow; w.__FUSEN_ANALYTICS_GRANTED__=granted; w['ga-disable-G-MGPKF0MQH4']=true;
-  if(await invoke<boolean>('member_needs_sync')) await invoke('member_sync').catch(()=>undefined);
-  const member=await invoke<MemberView>('member_get');
-  if(cancelled())return;
-  if(granted&&member.consent===true&&member.analyticsSubject){
-    loadGa4(false); w['ga-disable-G-MGPKF0MQH4']=false;
-    w.gtag?.('config',GA_ID,{send_page_view:false,user_id:member.analyticsSubject});
-    const summaries=await invoke<WeeklyUsage[]>('member_closed_summaries');
-    for(const summary of summaries){
-      for(const [featureName,value] of Object.entries(summary.features)){
-        w.gtag?.('event','weekly_feature_usage',{event_category:'usage',summary_week:summary.week,feature_name:featureName,usage_count:value.count,active_days:value.activeDays.length,last_used_day:value.lastUsedDay,app_version:summary.appVersion,distribution:'desktop_app'});
-      }
-      w.gtag?.('event','weekly_usage_complete',{event_category:'usage',summary_week:summary.week,measurement_schema:summary.schema,app_version:summary.appVersion,distribution:'desktop_app'});
-      await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
-    }
-  }
+async function checkAnnouncements(granted:boolean) {
   // 開発者ホットライン: 新着があれば通知窓を開く。
   try {
     type Announcement = { id: string; title: string; body: string; segment: string; createdAt: string };
@@ -64,7 +45,29 @@ async function runDesktopBackground(cancelled:()=>boolean) {
       }
     }
   } catch { /* heartbeat失敗は無視 */ }
-  await invoke('member_sync_usage',{analyticsConsent:granted}).catch(()=>undefined);
+}
+
+async function runDesktopBackground(cancelled:()=>boolean) {
+  const settings=await invoke<{analytics_consent?:string}>('get_settings');
+  if(cancelled())return;
+  const granted=settings.analytics_consent==='granted';
+  const w=window as AnalyticsWindow; w.__FUSEN_ANALYTICS_GRANTED__=granted; w['ga-disable-G-MGPKF0MQH4']=true;
+  if(await invoke<boolean>('member_needs_sync')) await invoke('member_sync').catch(()=>undefined);
+  const member=await invoke<MemberView>('member_get');
+  if(cancelled())return;
+  if(granted&&member.consent===true&&member.analyticsSubject){
+    loadGa4(false); w['ga-disable-G-MGPKF0MQH4']=false;
+    w.gtag?.('config',GA_ID,{send_page_view:false,user_id:member.analyticsSubject});
+    const summaries=await invoke<WeeklyUsage[]>('member_closed_summaries');
+    for(const summary of summaries){
+      for(const [featureName,value] of Object.entries(summary.features)){
+        w.gtag?.('event','weekly_feature_usage',{event_category:'usage',summary_week:summary.week,feature_name:featureName,usage_count:value.count,active_days:value.activeDays.length,last_used_day:value.lastUsedDay,app_version:summary.appVersion,distribution:'desktop_app'});
+      }
+      w.gtag?.('event','weekly_usage_complete',{event_category:'usage',summary_week:summary.week,measurement_schema:summary.schema,app_version:summary.appVersion,distribution:'desktop_app'});
+      await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
+    }
+  }
+  await checkAnnouncements(granted);
 }
 
 export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
@@ -99,7 +102,7 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
           const analyticsConsent=settings.analytics_consent==='granted';
           await invoke('member_open_time_tick',{analyticsConsent});
           await invoke('member_flush');
-          await invoke('member_sync_usage',{analyticsConsent});
+          if(!cancelled) await checkAnnouncements(analyticsConsent);
         })
         .catch(()=>undefined);
     },300_000);

@@ -36,6 +36,17 @@ describe('member registration',()=>{
 });
 
 describe('member heartbeat', () => {
+  it('stores the consented usage snapshot with the heartbeat in one member update', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));
+    await service.register(auth);
+    await service.heartbeat(auth, '2026-W39', ['note_edited', 'note_edited'], true, 1440);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({
+      lastSeenAt: '2026-09-23', usageWeek: '2026-W39', usageFeatures: ['note_edited'], usageConsent: true, usageOpenMinutes: 1440,
+    });
+    await expect(service.heartbeat(auth, '2026-W39', ['invalid'], true, 1440)).rejects.toMatchObject({ status: 400 });
+  });
+
   it('updates lastSeenAt and returns active announcements', async () => {
     const db = new MemoryDb();
     const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));

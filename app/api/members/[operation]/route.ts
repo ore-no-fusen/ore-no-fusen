@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       case 'register': result = await service.register(auth); break;
       case 'status': result = publicMember((await service.authenticate(auth)).value); break;
       case 'link-conversation': result = await service.linkConversation(auth,body.conversationId,body.conversationSecret); break;
-      case 'heartbeat': result = await service.heartbeat(auth); break;
+      case 'heartbeat': result = await service.heartbeat(auth, body.week, body.features, body.consent, body.openMinutes); break;
       case 'usage': result = await service.recordUsage(auth, body.week, body.features, body.consent, body.openMinutes); break;
       default: throw new FeedbackRequestError('Not found', 404);
     }

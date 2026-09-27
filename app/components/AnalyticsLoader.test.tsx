@@ -31,6 +31,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
       if(command==='member_needs_sync')return Promise.resolve(false);
       if(command==='member_get')return Promise.resolve({analyticsSubject:'0123456789abcdef0123456789abcdef',consent:true});
       if(command==='member_closed_summaries')return Promise.resolve([]);
+      if(command==='member_heartbeat')return Promise.resolve([]);
       return Promise.resolve(undefined);
     });
   });
@@ -50,19 +51,35 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await vi.advanceTimersByTimeAsync(0);
     expect(invokeMock).toHaveBeenCalledWith('member_closed_summaries');
-    expect(invokeMock).toHaveBeenCalledWith('member_sync_usage',{analyticsConsent:true});
+    expect(invokeMock).toHaveBeenCalledWith('member_heartbeat',{analyticsConsent:true});
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull();
   });
 
-  it('records app-open time before checking whether the daily usage sync is due', async()=>{
+  it('checks for letters while resident after recording app-open time', async()=>{
     render(<AnalyticsLoader isTauriBuild/>);
     await vi.advanceTimersByTimeAsync(300_000);
     const commands=invokeMock.mock.calls.map(([command])=>command);
     const tickPositions=commands.map((command,index)=>command==='member_open_time_tick'?index:-1).filter(index=>index>=0);
-    const syncPositions=commands.map((command,index)=>command==='member_sync_usage'?index:-1).filter(index=>index>=0);
+    const syncPositions=commands.map((command,index)=>command==='member_heartbeat'?index:-1).filter(index=>index>=0);
     expect(tickPositions).toHaveLength(2);
     expect(syncPositions).toHaveLength(2);
     expect(tickPositions[1]).toBeLessThan(syncPositions[1]);
+  });
+
+  it('shows a new letter found while the app remains running', async()=>{
+    let checks=0;
+    invokeMock.mockImplementation((command:string)=>{
+      if(command==='get_settings')return Promise.resolve({analytics_consent:'granted'});
+      if(command==='member_needs_sync')return Promise.resolve(false);
+      if(command==='member_get')return Promise.resolve({analyticsSubject:null,consent:false});
+      if(command==='member_heartbeat')return Promise.resolve(++checks===1 ? [] : [{id:'mail-later',title:'新着',body:'本文',segment:'all',createdAt:'2026-09-27T00:00:00Z'}]);
+      return Promise.resolve(undefined);
+    });
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(createWindowMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(240_000);
+    await vi.waitFor(()=>expect(createWindowMock).toHaveBeenCalledWith('announcement-notice-mail-later',expect.anything()));
   });
 
   it('enables feature counting in a note window without starting member network work', async()=>{
@@ -129,7 +146,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await vi.advanceTimersByTimeAsync(0);
     expect(invokeMock).toHaveBeenCalledWith('member_heartbeat',{analyticsConsent:false});
-    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('member_sync_usage',{analyticsConsent:false}));
+    expect(invokeMock).not.toHaveBeenCalledWith('member_sync_usage',expect.anything());
     expect(invokeMock).not.toHaveBeenCalledWith('member_closed_summaries');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).toBeNull();
     expect(emitMock).not.toHaveBeenCalledWith('fusen:open_settings', { tab: 'conversation' });
