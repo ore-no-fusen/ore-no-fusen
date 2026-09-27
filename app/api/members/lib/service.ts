@@ -3,7 +3,7 @@ import type { MemberDatabase, Row } from './database';
 import { createFeedbackConversationStore } from '../../feedback/lib/store';
 import { randomBytes } from 'node:crypto';
 
-export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean };
+export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean; usageOpenMinutes?: number };
 
 const featureNames = new Set(['note_created', 'note_edited', 'tag_add', 'alarm_set', 'iphone_send', 'iphone_receive', 'search_open', 'note_duplicate', 'note_archive', 'outline_toggle', 'image_attach']);
 
@@ -97,15 +97,17 @@ export class MemberService {
 
     return { lastSeenAt: today, announcements };
   }
-  async recordUsage(auth: Credentials, week: unknown, features: unknown, consent: unknown) {
+  async recordUsage(auth: Credentials, week: unknown, features: unknown, consent: unknown, openMinutes: unknown) {
     if (typeof week !== 'string' || !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(week)
       || typeof consent !== 'boolean' || !Array.isArray(features) || features.length > featureNames.size
       || features.some(name => typeof name !== 'string' || !featureNames.has(name))
-      || (!consent && features.length > 0)) throw new FeedbackRequestError('Invalid usage snapshot', 400);
+      || (!consent && features.length > 0)
+      || (openMinutes !== undefined && (!Number.isSafeInteger(openMinutes) || (openMinutes as number) < 0))) throw new FeedbackRequestError('Invalid usage snapshot', 400);
     const uniqueFeatures = [...new Set(features as string[])].sort();
     for (let attempt = 0; attempt < 4; attempt++) {
       const member = await this.authenticate(auth);
-      const updated: Member = { ...member.value, usageWeek: week, usageFeatures: consent ? uniqueFeatures : [], usageConsent: consent };
+      const updated: Member = { ...member.value, usageWeek: week, usageFeatures: consent ? uniqueFeatures : [], usageConsent: consent,
+        usageOpenMinutes: consent ? (openMinutes === undefined ? member.value.usageOpenMinutes : openMinutes as number) : undefined };
       if (await this.db.commit([{ path: `members/${auth.memberId}`, value: updated, version: member.version }])) return { saved: true };
     }
     throw new FeedbackRequestError('Usage update busy; retry later', 503);

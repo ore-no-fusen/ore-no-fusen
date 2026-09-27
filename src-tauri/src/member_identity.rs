@@ -1,6 +1,6 @@
 //! Membership identity and best-effort weekly feature counters.
 //! Recording a feature never performs disk or network I/O.
-use std::{collections::{BTreeMap, BTreeSet}, path::PathBuf, sync::Mutex};
+use std::{collections::{BTreeMap, BTreeSet}, path::PathBuf, sync::Mutex, time::Instant};
 use chrono::{Datelike, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
@@ -25,7 +25,12 @@ pub struct MemberLocal {
     #[serde(default)] read_announcement_ids: BTreeSet<String>,
     #[serde(default)] announcements: Vec<AnnouncementPayload>,
     #[serde(default)] last_heartbeat_date: Option<String>,
+    #[serde(default)] open_seconds: u64,
+    #[serde(default)] last_usage_sync_open_seconds: u64,
+    #[serde(default)] last_usage_sync_consent: bool,
     #[serde(skip)] syncing: bool,
+    #[serde(skip)] usage_syncing: bool,
+    #[serde(skip)] open_time_tick: Option<Instant>,
 }
 
 #[derive(Serialize, Clone)]
@@ -98,7 +103,7 @@ pub fn member_get(state:State<'_,Mutex<AppState>>)->Result<MemberView,String>{le
 
 #[tauri::command]
 pub fn member_set_consent(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>,granted:bool)->Result<MemberView,String>{
-    let mut g=state.lock().map_err(|_|"State unavailable")?; let value=ensure(&mut g)?; value.consent=Some(granted); if !granted{value.weeks.clear();} persist(value)?;
+    let mut g=state.lock().map_err(|_|"State unavailable")?; let value=ensure(&mut g)?; value.consent=Some(granted); if !granted{value.weeks.clear();value.open_seconds=0;value.last_usage_sync_open_seconds=0;} persist(value)?;
     let view=value.view(); let _=app.emit("member_updated",view.clone()); Ok(view)
 }
 
@@ -118,6 +123,21 @@ pub fn member_flush(state:State<'_,Mutex<AppState>>)->Result<(),String>{
     let snapshot={let g=state.lock().map_err(|_|"State unavailable")?;match g.member.as_ref(){Some(v)=>v.clone(),None=>return Ok(())}}; persist(&snapshot)
 }
 
+#[tauri::command]
+pub fn member_open_time_tick(state:State<'_,Mutex<AppState>>,analytics_consent:bool)->Result<(),String>{
+    let mut g=state.lock().map_err(|_|"State unavailable")?;
+    let member=ensure(&mut g)?;
+    let now=Instant::now();
+    if let Some(previous)=member.open_time_tick {
+        if member.consent==Some(true) && analytics_consent {
+            member.open_seconds=member.open_seconds.saturating_add(now.duration_since(previous).as_secs().min(300));
+            persist(member)?;
+        }
+    }
+    member.open_time_tick=Some(now);
+    Ok(())
+}
+
 fn current_usage_snapshot(member:&MemberLocal,analytics_consent:bool,week:&str)->(Vec<String>,bool){
     let consent=analytics_consent && member.consent==Some(true);
     let features=if consent {member.weeks.get(week)
@@ -128,16 +148,32 @@ fn current_usage_snapshot(member:&MemberLocal,analytics_consent:bool,week:&str)-
 #[tauri::command]
 pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>,analytics_consent:bool)->Result<(),String>{
     let base=endpoint()?;
-    let (snapshot,week,features,consent)={
+    let (snapshot,week,features,consent,open_seconds)={
         let mut g=state.lock().map_err(|_|"State unavailable")?;
-        let member=ensure(&mut g)?.clone();
+        let member=ensure(&mut g)?;
         let week=week_key(Utc::now());
         let (features,consent)=current_usage_snapshot(&member,analytics_consent,&week);
-        (member,week,features,consent)
+        if member.usage_syncing || !should_sync_usage(member,consent) { return Ok(()); }
+        member.usage_syncing=true;
+        (member.clone(),week,features,consent,member.open_seconds)
     };
-    let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().map_err(|_|"Cannot create member client")?;
-    post(&client,&base,"usage",&snapshot,serde_json::json!({"week":week,"features":features,"consent":consent})).await?;
-    Ok(())
+    let result=async {
+        let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().map_err(|_|"Cannot create member client")?;
+        post(&client,&base,"usage",&snapshot,serde_json::json!({"week":week,"features":features,"consent":consent,"openMinutes":open_seconds/60})).await?;
+        Ok::<(),String>(())
+    }.await;
+    let mut g=state.lock().map_err(|_|"State unavailable")?;
+    let member=ensure(&mut g)?;
+    member.usage_syncing=false;
+    result?;
+    member.last_usage_sync_open_seconds=open_seconds;
+    member.last_usage_sync_consent=consent;
+    persist(member)
+}
+
+fn should_sync_usage(member:&MemberLocal,consent:bool)->bool {
+    if !consent && !member.last_usage_sync_consent { return false; }
+    member.last_usage_sync_consent!=consent || (consent && member.open_seconds.saturating_sub(member.last_usage_sync_open_seconds)>=8*60*60)
 }
 
 #[tauri::command]
@@ -384,6 +420,33 @@ mod segment_tests {
         assert_eq!(current_usage_snapshot(&member,false,"2026-W39"),(Vec::new(),false));
         member.consent=Some(false);
         assert_eq!(current_usage_snapshot(&member,true,"2026-W39"),(Vec::new(),false));
+    }
+
+    #[test]
+    fn usage_api_sync_follows_eight_hours_of_open_time_except_for_consent_changes() {
+        let mut member=MemberLocal::default();
+        assert!(!should_sync_usage(&member,false));
+        assert!(should_sync_usage(&member,true));
+        member.last_usage_sync_consent=true;
+        assert!(!should_sync_usage(&member,true));
+        member.open_seconds=8*60*60-1;
+        assert!(!should_sync_usage(&member,true));
+        member.open_seconds+=1;
+        assert!(should_sync_usage(&member,true));
+        member.last_usage_sync_open_seconds=member.open_seconds;
+        assert!(!should_sync_usage(&member,true));
+        assert!(should_sync_usage(&member,false));
+        member.last_usage_sync_consent=false;
+        assert!(!should_sync_usage(&member,false));
+        assert!(should_sync_usage(&member,true));
+    }
+
+    #[test]
+    fn usage_sync_progress_survives_restart() {
+        let member=MemberLocal { open_seconds: 8*60*60, last_usage_sync_open_seconds: 8*60*60, last_usage_sync_consent: true, ..Default::default() };
+        let restored:MemberLocal=serde_json::from_slice(&serde_json::to_vec(&member).unwrap()).unwrap();
+        assert!(!should_sync_usage(&restored,true));
+        assert_eq!(restored.open_seconds,8*60*60);
     }
 }
 

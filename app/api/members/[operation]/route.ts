@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       case 'status': result = publicMember((await service.authenticate(auth)).value); break;
       case 'link-conversation': result = await service.linkConversation(auth,body.conversationId,body.conversationSecret); break;
       case 'heartbeat': result = await service.heartbeat(auth); break;
-      case 'usage': result = await service.recordUsage(auth, body.week, body.features, body.consent); break;
+      case 'usage': result = await service.recordUsage(auth, body.week, body.features, body.consent, body.openMinutes); break;
       default: throw new FeedbackRequestError('Not found', 404);
     }
     return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });

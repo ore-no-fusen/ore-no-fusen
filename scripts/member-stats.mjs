@@ -28,6 +28,10 @@ function featureUsageStats(members, week = isoWeek()) {
   const reporting = members.filter(member => member.usageWeek === week && member.usageConsent === true);
   return {
     week, reporting: reporting.length,
+    memberOpenTimes: members.filter(member => member.usageConsent === true && Number.isSafeInteger(member.usageOpenMinutes) && member.usageOpenMinutes >= 0)
+      .map(member => ({ number: member.generalNumber, minutes: member.usageOpenMinutes }))
+      .filter(member => Number.isSafeInteger(member.number))
+      .sort((a, b) => a.number - b.number),
     rows: Object.entries(FEATURE_LABELS).map(([name, label]) => {
       const users = reporting.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)).length;
       return { name, label, users, percent: members.length ? Math.round(users / members.length * 100) : 0 };
@@ -296,6 +300,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <td class="py-2 text-right">${feature.percent}%</td>
     </tr>
   `).join('');
+  const memberOpenTimeRows = featureStats.memberOpenTimes.map(member => `<tr class="border-b border-slate-800"><td class="py-2">#${member.number}</td><td class="py-2 text-right">${Math.floor(member.minutes / 60)}時間${member.minutes % 60}分</td></tr>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="ja" class="dark">
@@ -362,12 +367,15 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
       <p class="text-sm text-amber-300">利用情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。</p>
+      <p class="text-sm text-slate-400">アプリを開いていた時間は約5分単位で記録し、累計8時間ごとに送信します。送信前の時間はまだ反映されません。</p>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
           <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">利用人数</th><th class="pb-2 text-right">全会員比</th></tr></thead>
           <tbody id="featureUsageRows">${featureUsageRows}</tbody>
         </table>
       </div>
+      <h3 class="font-semibold pt-3">会員別の起動時間（累計）</h3>
+      <table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">会員番号</th><th class="pb-2 text-right">起動時間</th></tr></thead><tbody id="memberOpenTimeRows">${memberOpenTimeRows}</tbody></table>
     </div>
 
     ${canPublish ? `<div class="glass p-6 rounded-2xl shadow-xl space-y-4">
@@ -489,6 +497,19 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
             row.appendChild(cell);
           }
           rows.appendChild(row);
+        }
+        const timeRows = document.getElementById('memberOpenTimeRows');
+        timeRows.replaceChildren();
+        for (const member of stats.memberOpenTimes) {
+          const row = document.createElement('tr');
+          row.className = 'border-b border-slate-800';
+          for (const value of ['#' + member.number, Math.floor(member.minutes / 60) + '時間' + (member.minutes % 60) + '分']) {
+            const cell = document.createElement('td');
+            cell.className = 'py-2';
+            cell.textContent = value;
+            row.appendChild(cell);
+          }
+          timeRows.appendChild(row);
         }
       }).catch(() => undefined);` : ''}
     const announcementForm = document.getElementById('announcementForm');

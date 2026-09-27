@@ -89,11 +89,18 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
     if(windowLabel!=='main')return()=>{cancelled=true;safeUnlisten(unlisten);};
     // Initialize the local member before the first queued feature batch arrives.
     void invoke('member_get').catch(()=>undefined);
+    void invoke<{analytics_consent?:string}>('get_settings')
+      .then(settings=>invoke('member_open_time_tick',{analyticsConsent:settings.analytics_consent==='granted'}))
+      .catch(()=>undefined);
     const start=window.setTimeout(()=>void runDesktopBackground(()=>cancelled).catch(()=>undefined),60_000);
     const flush=window.setInterval(()=>{
-      void invoke('member_flush').catch(()=>undefined);
       void invoke<{analytics_consent?:string}>('get_settings')
-        .then(settings=>invoke('member_sync_usage',{analyticsConsent:settings.analytics_consent==='granted'}))
+        .then(async settings=>{
+          const analyticsConsent=settings.analytics_consent==='granted';
+          await invoke('member_open_time_tick',{analyticsConsent});
+          await invoke('member_flush');
+          await invoke('member_sync_usage',{analyticsConsent});
+        })
         .catch(()=>undefined);
     },300_000);
     return()=>{cancelled=true;safeUnlisten(unlisten);window.clearTimeout(start);window.clearInterval(flush);};

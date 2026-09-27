@@ -91,7 +91,7 @@ test('指定した機能とiPhone送受信未使用を宛先として保存で�
 test('機能ごとの利用者数は会員単位で数え、割合の分母は全会員にする', () => {
   assert.equal(isoWeek(new Date('2027-01-01T00:00:00Z')), '2026-W53');
   const members = [
-    { usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send', 'note_edited'] },
+    { generalNumber: 10001, usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send', 'note_edited'], usageOpenMinutes: 495 },
     { usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send'] },
     { usageWeek: '2026-W38', usageConsent: true, usageFeatures: ['iphone_send'] },
     { usageWeek: '2026-W39', usageConsent: false, usageFeatures: ['iphone_send'] },
@@ -102,9 +102,11 @@ test('機能ごとの利用者数は会員単位で数え、割合の分母は�
   assert.equal(stats.rows.find(row => row.name === 'note_edited').users, 1);
   assert.equal(stats.rows.find(row => row.name === 'note_edited').percent, 25);
   assert.equal(stats.reporting, 2);
+  assert.deepEqual(stats.memberOpenTimes, [{ number: 10001, minutes: 495 }]);
   const html = generateHtml([], 4, 10003, 0, 0, [], [], '2026/09/27', { today: 0, week: 0, unknown: 4 }, false, 'development', stats);
   assert.match(html, /今週の機能別利用者/);
   assert.match(html, /id="featureReporting">2<\/span> \/ <span id="featureCoverageTotal">4<\/span>人/);
+  assert.match(html, /#10001<\/td><td class="py-2 text-right">8時間15分/);
 });
 
 test('更新時にFirestoreから機能別の人数を読み直す', async () => {

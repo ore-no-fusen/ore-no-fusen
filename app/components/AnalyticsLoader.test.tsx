@@ -54,6 +54,17 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull();
   });
 
+  it('records app-open time before checking whether the eight-hour usage sync is due', async()=>{
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(300_000);
+    const commands=invokeMock.mock.calls.map(([command])=>command);
+    const tickPositions=commands.map((command,index)=>command==='member_open_time_tick'?index:-1).filter(index=>index>=0);
+    const syncPositions=commands.map((command,index)=>command==='member_sync_usage'?index:-1).filter(index=>index>=0);
+    expect(tickPositions).toHaveLength(2);
+    expect(syncPositions).toHaveLength(2);
+    expect(tickPositions[1]).toBeLessThan(syncPositions[1]);
+  });
+
   it('enables feature counting in a note window without starting member network work', async()=>{
     windowLabel.value='note-2';
     (window as any).__TAURI_INTERNALS__={};
