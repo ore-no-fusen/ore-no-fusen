@@ -115,6 +115,46 @@ async function publishAnnouncement(token, title, body, audience = 'all', memberN
   return id;
 }
 
+async function fetchFirestoreAnnouncements(token, environment = 'production') {
+  const prefix = `${firestoreRoot(environment)}/announcements`;
+  const results = [];
+  let pageToken = '';
+  do {
+    const url = `https://firestore.googleapis.com/v1/${prefix}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`お便りの取得に失敗しました (${res.status})`);
+    const data = await res.json();
+    for (const doc of data.documents || []) {
+      const value = JSON.parse(doc.fields.payload.stringValue);
+      results.push({ ...value, id: doc.name.split('/').at(-1) });
+    }
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return results.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+async function stopAnnouncement(token, id, environment = 'production') {
+  if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error('お便りIDが不正です');
+  }
+  const name = `${firestoreRoot(environment)}/announcements/${id}`;
+  const docResponse = await fetch(`https://firestore.googleapis.com/v1/${name}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!docResponse.ok) throw new Error(`お便りを確認できませんでした (${docResponse.status})`);
+  const doc = await docResponse.json();
+  const value = JSON.parse(doc.fields.payload.stringValue);
+  if (value.active === false) return;
+  if (value.active !== true || !doc.updateTime) throw new Error('お便りの状態を確認できませんでした');
+  const response = await fetch(`https://firestore.googleapis.com/v1/projects/${serviceAccount.project_id}/databases/(default)/documents:commit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ writes: [{
+      update: { name, fields: { payload: { stringValue: JSON.stringify({ ...value, active: false }) } } },
+      currentDocument: { updateTime: doc.updateTime },
+    }] }),
+  });
+  if (!response.ok) throw new Error(`配信停止に失敗しました (${response.status})`);
+}
+
 async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers = new Set(), environment = 'production') {
   firestoreRoot(environment);
   const csrfToken = crypto.randomBytes(32).toString('hex');
@@ -142,8 +182,22 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
       }
       return;
     }
+    if (request.method === 'GET' && request.url === '/announcement-history' && request.headers['x-csrf-token'] === csrfToken) {
+      try {
+        if (Date.now() - tokenAt > 50 * 60 * 1000) {
+          currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
+          tokenAt = Date.now();
+        }
+        const announcements = await fetchFirestoreAnnouncements(currentToken, environment);
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify(announcements));
+      } catch {
+        response.writeHead(503); response.end();
+      }
+      return;
+    }
     const origin = `http://127.0.0.1:${server.address().port}`;
-    if (request.method !== 'POST' || request.url !== '/announcements' || request.headers.origin !== origin || request.headers['x-csrf-token'] !== csrfToken || request.headers['content-type'] !== 'application/json') {
+    if (request.method !== 'POST' || !['/announcements', '/announcement-stop'].includes(request.url) || request.headers.origin !== origin || request.headers['x-csrf-token'] !== csrfToken || request.headers['content-type'] !== 'application/json') {
       response.writeHead(403); response.end(); return;
     }
     try {
@@ -152,14 +206,21 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
         input += chunk;
         if (input.length > 25000) throw new Error('入力が長すぎます');
       }
-      const { title, body, audience, memberNumber, featureName } = JSON.parse(input);
+      const data = JSON.parse(input);
       if (Date.now() - tokenAt > 50 * 60 * 1000) {
         currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
         tokenAt = Date.now();
       }
-      const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, memberNumbers, environment, featureName);
-      response.writeHead(201, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ id }));
+      if (request.url === '/announcement-stop') {
+        await stopAnnouncement(currentToken, data.id, environment);
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ stopped: true }));
+      } else {
+        const { title, body, audience, memberNumber, featureName } = data;
+        const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, memberNumbers, environment, featureName);
+        response.writeHead(201, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ id }));
+      }
     } catch (error) {
       response.writeHead(400, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ error: error.message }));
@@ -415,6 +476,14 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <button type="submit" class="rounded-lg bg-indigo-600 px-5 py-2 font-semibold">投稿する</button>
         <span id="publishStatus" role="status" class="ml-3 text-sm"></span>
       </form>
+    </div>
+    <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-bold">送信したお便り</h2>
+        <button id="refreshAnnouncementHistory" type="button" class="rounded-lg border border-slate-600 px-4 py-2 text-sm">一覧を更新</button>
+      </div>
+      <p id="announcementHistoryStatus" role="status" class="text-sm text-slate-400">読み込み中…</p>
+      <div id="announcementHistory" class="space-y-3"></div>
     </div>` : ''}
 
     <!-- Main Charts Grid -->
@@ -526,6 +595,70 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       featureNameInput.required = isSpecificFeature;
       if (!isSpecificFeature) featureNameInput.value = '';
     });
+    const audienceLabels = {
+      all: '全会員', veteran: '古参会員（番号10000〜10049）', newcomer: '新規会員（番号10100以降）',
+      feature_active: '今週の機能利用あり', feature_inactive: '今週の機能利用なし（利用分析に同意済み）',
+      iphone_week_unused: '今週、iPhone送受信なし（利用分析に同意済み）',
+    };
+    const featureLabels = ${JSON.stringify(FEATURE_LABELS)};
+    function audienceText(segment) {
+      if (audienceLabels[segment]) return audienceLabels[segment];
+      if (segment.startsWith('member:')) return '会員番号 ' + segment.slice(7);
+      if (segment.startsWith('feature_week_used:')) return '今週使用: ' + (featureLabels[segment.slice(18)] || segment.slice(18));
+      if (segment.startsWith('feature_week_unused:')) return '今週未使用: ' + (featureLabels[segment.slice(20)] || segment.slice(20));
+      return segment;
+    }
+    async function loadAnnouncementHistory() {
+      const container = document.getElementById('announcementHistory');
+      const status = document.getElementById('announcementHistoryStatus');
+      if (!container) return;
+      status.textContent = '読み込み中…';
+      try {
+        const response = await fetch('/announcement-history', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } });
+        if (!response.ok) throw new Error('一覧を取得できませんでした');
+        const announcements = await response.json();
+        container.replaceChildren();
+        for (const announcement of announcements) {
+          const card = document.createElement('details');
+          card.className = 'rounded-lg border border-slate-700 bg-slate-900/60 p-4';
+          const heading = document.createElement('summary');
+          heading.className = 'cursor-pointer font-semibold';
+          heading.textContent = announcement.title;
+          const meta = document.createElement('p');
+          meta.className = 'mt-2 text-sm text-slate-400';
+          const created = new Date(announcement.createdAt);
+          meta.textContent = (Number.isNaN(created.getTime()) ? announcement.createdAt : created.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })) + ' · 宛先: ' + audienceText(announcement.segment) + (announcement.active === false ? ' · 配信停止中' : announcement.expiresAt <= new Date().toISOString() ? ' · 配信期限切れ' : ' · 配信中');
+          const body = document.createElement('pre');
+          body.className = 'mt-3 whitespace-pre-wrap break-words font-sans text-sm';
+          body.textContent = announcement.body;
+          heading.appendChild(meta);
+          card.append(heading, body);
+          if (announcement.active === true && announcement.expiresAt > new Date().toISOString()) {
+            const stop = document.createElement('button');
+            stop.type = 'button';
+            stop.className = 'mt-3 rounded-lg border border-rose-500 px-3 py-2 text-sm text-rose-300';
+            stop.textContent = '配信を停止';
+            stop.addEventListener('click', async () => {
+              if (!confirm('「' + announcement.title + '」の配信を停止しますか？ すでに受信した会員のお便りは残ります。')) return;
+              stop.disabled = true;
+              try {
+                const response = await fetch('/announcement-stop', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ id: announcement.id }) });
+                if (!response.ok) {
+                  const result = await response.json();
+                  throw new Error(result.error || '配信停止に失敗しました');
+                }
+                await loadAnnouncementHistory();
+              } catch (error) { status.textContent = error.message; stop.disabled = false; }
+            });
+            card.appendChild(stop);
+          }
+          container.appendChild(card);
+        }
+        status.textContent = announcements.length ? announcements.length + '件（新しい順。タイトルを押すと本文を表示）' : '送信したお便りはありません。';
+      } catch (error) { status.textContent = error.message; }
+    }
+    document.getElementById('refreshAnnouncementHistory')?.addEventListener('click', loadAnnouncementHistory);
+    void loadAnnouncementHistory();
     if (announcementForm) announcementForm.addEventListener('submit', async event => {
       event.preventDefault();
       const button = announcementForm.querySelector('button');
@@ -540,6 +673,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         status.textContent = '投稿しました。ID: ' + result.id;
         announcementForm.reset();
         audienceSelect.dispatchEvent(new Event('change'));
+        await loadAnnouncementHistory();
       } catch (error) { status.textContent = error.message; }
       finally { button.disabled = false; }
     });
@@ -818,7 +952,7 @@ async function main() {
   }
 }
 
-export { survivalStats, featureUsageStats, isoWeek, publishAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, parseOptions };
+export { survivalStats, featureUsageStats, isoWeek, publishAnnouncement, stopAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, fetchFirestoreAnnouncements, parseOptions };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch(err => {

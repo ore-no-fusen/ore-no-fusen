@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium } from '@playwright/test';
-import { featureUsageStats, fetchFirestoreMembers, generateHtml, isoWeek, parseOptions, publishAnnouncement, serveDashboard, survivalStats } from './member-stats.mjs';
+import { featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats } from './member-stats.mjs';
 
 test('開発環境を明示したときだけ切り替え、不正な指定は拒否する', () => {
   assert.deepEqual(parseOptions([]), { environment: 'production', open: false });
@@ -23,6 +23,99 @@ test('開発環境では開発会員だけを読み取る', async () => {
     assert.match(requestedUrl, /\/member_environments\/development\/members\?/);
     assert.doesNotMatch(requestedUrl, /\/production\//);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test('送信履歴は開発環境の全ページを読み、期限切れも含めて新しい順に返す', async () => {
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async url => {
+    urls.push(String(url));
+    return { ok: true, json: async () => urls.length === 1 ? {
+      documents: [{ name: 'projects/test/documents/announcements/old', fields: { payload: { stringValue: JSON.stringify({ title: '古いお便り', body: '本文', segment: 'all', createdAt: '2026-08-01T00:00:00Z', expiresAt: '2026-08-31T00:00:00Z' }) } } }],
+      nextPageToken: 'next page',
+    } : {
+      documents: [{ name: 'projects/test/documents/announcements/new', fields: { payload: { stringValue: JSON.stringify({ title: '新しいお便り', body: '本文2', segment: 'member:10001', createdAt: '2026-09-27T00:00:00Z', expiresAt: '2026-10-27T00:00:00Z' }) } } }],
+    } };
+  };
+  try {
+    const letters = await fetchFirestoreAnnouncements('token', 'development');
+    assert.deepEqual(letters.map(letter => letter.id), ['new', 'old']);
+    assert.equal(letters[1].body, '本文');
+    assert.match(urls[0], /member_environments\/development\/announcements/);
+    assert.match(urls[1], /pageToken=next%20page/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('配信停止は対象のお便りだけを更新時刻付きで無効にし、本文と宛先を残す', async () => {
+  const originalFetch = globalThis.fetch;
+  const id = '11111111-1111-4111-8111-111111111111';
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (String(url).endsWith(`/announcements/${id}`)) return { ok: true, json: async () => ({
+      updateTime: '2026-09-27T00:00:00Z',
+      fields: { payload: { stringValue: JSON.stringify({ title: '確認用', body: '本文', segment: 'member:10001', active: true }) } },
+    }) };
+    return { ok: true };
+  };
+  try {
+    await assert.rejects(stopAnnouncement('token', '../members/10001', 'development'), /IDが不正/);
+    assert.equal(calls.length, 0);
+    await stopAnnouncement('token', id, 'development');
+    assert.match(calls[0].url, /member_environments\/development\/announcements\/11111111/);
+    const write = JSON.parse(calls[1].init.body).writes[0];
+    assert.equal(write.currentDocument.updateTime, '2026-09-27T00:00:00Z');
+    assert.deepEqual(JSON.parse(write.update.fields.payload.stringValue), { title: '確認用', body: '本文', segment: 'member:10001', active: false });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('投稿後の一覧更新でタイトル・宛先・本文を表示し、HTMLは実行しない', async () => {
+  const originalFetch = globalThis.fetch;
+  const letters = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('documents:commit')) {
+      const write = JSON.parse(init.body).writes[0];
+      const value = { id: write.update.name.split('/').at(-1), ...JSON.parse(write.update.fields.payload.stringValue) };
+      const existing = letters.findIndex(letter => letter.id === value.id);
+      if (existing === -1) letters.push(value); else letters[existing] = value;
+      return { ok: true };
+    }
+    const id = String(url).split('/announcements/')[1];
+    if (id && !id.includes('?')) return { ok: true, json: async () => ({ updateTime: '2026-09-27T00:00:00Z', fields: { payload: { stringValue: JSON.stringify(letters.find(letter => letter.id === id)) } } }) };
+    return { ok: true, json: async () => ({ documents: letters.map(letter => ({ name: `projects/test/documents/announcements/${letter.id}`, fields: { payload: { stringValue: JSON.stringify(letter) } } })) }) };
+  };
+  const html = generateHtml([], 1, 10001, 0, 0, [], [], '2026/09/27', { today: 0, week: 0, unknown: 1 }, true, 'development');
+  const { server, url } = await serveDashboard(html, 'test-token', false, new Set([10001]), 'development');
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
+    await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
+    await page.goto(url);
+    await page.getByRole('heading', { name: '送信したお便り' }).waitFor();
+    await page.locator('#audience').selectOption('member');
+    await page.locator('#memberNumber').fill('10001');
+    await page.getByPlaceholder('タイトル').fill('確認用');
+    await page.getByPlaceholder('Markdown本文').fill('<img src=x onerror=alert(1)> 本文');
+    await page.getByRole('button', { name: '投稿する' }).click();
+    await page.locator('#announcementHistory summary').filter({ hasText: '確認用' }).waitFor();
+    await page.locator('#announcementHistory summary').click();
+    assert.match(await page.locator('#announcementHistory').innerText(), /会員番号 10001/);
+    assert.match(await page.locator('#announcementHistory').innerText(), /<img src=x onerror=alert\(1\)> 本文/);
+    assert.equal(await page.locator('#announcementHistory img').count(), 0);
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '配信を停止' }).click();
+    await page.locator('#announcementHistory').getByText('配信停止中').waitFor({ state: 'attached' });
+    assert.equal(letters[0].active, false);
+    assert.equal(await page.getByRole('button', { name: '配信を停止' }).count(), 0);
+    await page.reload();
+    await page.locator('#announcementHistory summary').filter({ hasText: '確認用' }).waitFor();
+    await page.locator('#announcementHistory').getByText('配信停止中').waitFor({ state: 'attached' });
+  } finally {
+    await browser.close();
+    await new Promise(resolve => server.close(resolve));
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('生存メーターは日付が不明な会員や未来の日付を活動人数に含めない', () => {
