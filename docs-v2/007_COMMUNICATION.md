@@ -37,7 +37,7 @@ outline: deep
 | 1 | PCアプリ | ユーザーが投稿し、自分の会話ログを表示する | `conversation_id`、生の `secret_token`、最終確認時刻 |
 | 2 | Vercel API | PCアプリ、Firestore、DiscordをつなぐAPI処理 | Firebase Admin SDK認証情報、Discord Bot Token、ingest secret |
 | 3 | Firebase / Firestore | 会話データの正本を保存するDB | `secret_token_hash`、会話本文、開発者返信、Discord通知ID |
-| 4 | Discordサーバー | 開発者が通知を見て返信する場所 | Discord通知メッセージ、開発者返信 |
+| 4 | Discordサーバー | ユーザー投稿の通知を見る場所。従来の返信経路も継続 | Discord通知メッセージ、従来経路の開発者返信 |
 | 5 | Discord Webhook | Vercel APIからDiscordサーバーへ通知を投稿する入口 | Webhook URL |
 | 6 | Discord Bot | Discordサーバー上の返信をVercel APIへ取り込むために読む主体 | Bot Token |
 | 7 | Appwrite Storage | ユーザーが掲示板で明示的に添付した画像本体を保存する | 画像ファイル、所有者を示す読取・削除権限 |
@@ -86,7 +86,7 @@ outline: deep
 
 ## 4 全体構成
 
-ユーザー側は設定画面だけを使います。開発者側は Discord を返信入力 UI として使います。Discord はユーザーに直接見せません。
+ユーザー側は設定画面だけを使います。開発者はローカルの会員ダッシュボードから返信を会話ストアへ直接保存します。Discordはユーザー投稿の通知と従来の返信取り込みにも使えますが、日次取り込みを待たず会話する場合はダッシュボードで返信します。Discord はユーザーに直接見せません。
 
 ```mermaid
 flowchart LR
@@ -95,7 +95,8 @@ flowchart LR
     API["Vercel API<br>会話データ管理"]
     Firestore["Firebase / Firestore<br>会話ストア"]
     Storage["Appwrite Storage<br>明示添付画像"]
-    Discord["Discord<br>開発者用通知・返信"]
+    Discord["Discord<br>開発者用通知"]
+    Dash["ローカル会員ダッシュボード<br>返信入力"]
     Dev["開発者"]
 
     User --> PC
@@ -104,6 +105,8 @@ flowchart LR
     API --> Storage
     API --> Firestore
     API --> Discord
+    Dev --> Dash
+    Dash --> Firestore
     Dev --> Discord
     Discord --> API
     API --> Firestore
@@ -117,12 +120,12 @@ flowchart LR
 
 | 領域 | 責務 |
 |:---|:---|
-| PCアプリ | 匿名会話IDの保持、掲示板UI表示、投稿、1日1回程度の新着確認 |
+| PCアプリ | 匿名会話IDの保持、掲示板UI表示、投稿、画面表示中は約1分ごとの会話更新、投稿後24時間は常駐中に約10分ごとの新着確認、それ以外は日次確認 |
 | Vercel API | secret token 照合、Firestore保存、Discord通知、Discord返信取り込み |
 | Firebase / Firestore | 会話本文、開発者返信、既読状態、Discord通知との対応を永続保存 |
 | Appwrite Storage | 掲示板で明示的に選択した画像本体とファイル権限を保存する。会話本文の正本にはしない |
-| Discord | 開発者が確認・返信するための裏側 UI |
-| 開発者 | Discord上で対象投稿に返信する |
+| Discord | ユーザー投稿を開発者へ知らせる裏側 UI。従来のDiscord返信取り込みも残す |
+| 開発者 | ローカル会員ダッシュボードで対象会話を開き、返信する |
 
 ---
 
@@ -136,9 +139,11 @@ flowchart LR
 |:---|:---|:---|:---|
 | 1 | `conversation_id` | PCローカル設定 | このアプリの掲示板を識別する |
 | 2 | `secret_token` | PCローカル設定 | 他人が会話を読めないようにする |
-| 3 | `last_message_check_at` | PCローカル設定 | 1日1回程度の新着確認に制限する |
+| 3 | `last_message_check_at` | PCローカル設定 | 従来の確認時刻を保持する |
 | 4 | `has_unread_developer_reply` | PCローカル設定 | 右クリックメニューの新着表示に使う |
 | 5 | `last_unread_check_date` | PCローカル設定 | JST 4:00 頃の自動確認を同じ日に重複実行しない |
+| 6 | 投稿後24時間の期限・前回確認時刻 | PCローカル設定 | 会話中だけ常駐確認を約10分間隔にする |
+| 7 | 通知済みの返信ID | PCローカル設定 | 同じ返信の小窓を繰り返し出さない |
 
 <p class="table-caption">表 5-2　Firebase / Firestore に保存する情報</p>
 
@@ -217,20 +222,22 @@ sequenceDiagram
     participant User as ユーザー
     participant PC as PCアプリ
     participant API as Vercel API
+    participant DB as Firestore
     participant Discord as Discord
+    participant Dash as ローカルダッシュボード
     participant Dev as 開発者
 
     User->>PC: 設定画面でメッセージを書く
     PC->>PC: conversation_id と secret_token を準備
     PC->>API: メッセージ送信
-    API->>API: token を照合して会話に保存
+    API->>DB: token を照合して会話に保存
     API->>Discord: 開発者へ通知
-    Dev->>Discord: 対象通知へ返信
-    API->>Discord: Discord Bot/API で返信を取り込み
-    API->>API: 許可開発者・対象会話・重複を検証して保存
-    PC->>API: 1日1回程度、新着メッセージ確認
-    API-->>PC: token が一致する会話の未読返信だけ返す
-    PC->>User: 設定画面の掲示板に表示
+    Dev->>Dash: 対象会話へ返信
+    Dash->>DB: 環境別の会員と会話の紐付けを検証して保存
+    PC->>API: 会話画面は約1分、投稿後24時間は常駐中に約10分で確認
+    API->>DB: 本人の会話を取得
+    API-->>PC: token が一致する会話ログを返す
+    PC->>User: 新着は小窓で知らせ、掲示板に表示
 ```
 
 <p class="mermaid-caption">図 6-1　掲示板メッセージ送受信シーケンス</p>
@@ -281,8 +288,8 @@ sequenceDiagram
 ## 7 Discord連携
 
 Discordは、開発者の作業場所としてだけ使います。ユーザーごとのDiscordチャンネルは作りません。
-開発者は、1つの開発者用チャンネルに届く通知を見て、対象通知の返信スレッドで返事を書きます。
-会話の正本は Firestore に保存し、Discord は「通知を見る場所」と「開発者が返信を書く場所」として扱います。
+開発者は、1つの開発者用チャンネルに届く通知を見て、ローカル会員ダッシュボードで対象会話を開き、返事を書きます。
+会話の正本は Firestore に保存し、Discord はユーザー投稿の通知を見る場所として扱います。開発者はローカル会員ダッシュボードから返信し、従来のDiscord返信取り込みも継続します。
 
 <p class="table-caption">表 7-1　Discordをユーザー数分作らない理由</p>
 
@@ -297,11 +304,11 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 
 | No | 項目 | 内容 |
 |:---|:---|:---|
-| 1 | 確認場所 | Discord の開発者用フィードバックチャンネル |
-| 2 | 会話単位 | ユーザーごとのチャンネルではなく、通知メッセージまたは通知スレッドを会話単位にする |
-| 3 | 返信方法 | 開発者は対象通知への返信として本文を書く |
+| 1 | 確認場所 | Discord の新着通知とローカル会員ダッシュボードの会話一覧 |
+| 2 | 会話単位 | 会員番号と会話IDで対象を確認する |
+| 3 | 返信方法 | 開発者はローカル会員ダッシュボードの対象会話から本文を送る。従来のDiscord返信も取り込める |
 | 4 | 正本 | Firestore の `conversation_id` 単位の会話データ |
-| 5 | Discordの役割 | 開発者が見つけやすく返信しやすい作業UI。ユーザーに直接見せる画面ではない |
+| 5 | Discordの役割 | 新着投稿の通知。ユーザーに直接見せる画面ではない |
 | 6 | 過去ログ | Discord通知に直近5件のやりとりを添える。久しぶりの相手にも最低限の文脈を持って返せる |
 | 7 | 100人規模 | チャンネルは増やさず、通知とスレッドで扱う。未対応・対応済み・重要などの管理が必要になったら Firestore を読む管理画面を追加する |
 
@@ -356,9 +363,9 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 
 | No | 制約 | 理由 |
 |:---|:---|:---|
-| 1 | 付箋として自動表示しない | 開発者の返信がユーザーの作業中の画面へ割り込まない |
-| 2 | 設定画面を開いたときに見る | ユーザーが自分の意思で確認する関係にする |
-| 3 | JST 4:00 頃に1日1回確認する | Vercel Cron が JST 3:00 に Discord 返信を取り込んだ後、朝に新着を拾えるようにする |
+| 1 | 付箋として自動表示しない | 開発者の返信本文が付箋の作業空間に混ざらない |
+| 2 | 小窓で新着を知らせ、本文は会話画面で見る | 普段の常駐利用で気づけて、内容は本人が開いて確認する |
+| 3 | 会話中だけ高頻度に確認する | 会話の応答速度と通常利用時の通信量を両立する |
 | 4 | 返信がない日は何も出さない | 通常利用の流れを邪魔しない |
 | 5 | kill switch を持つ | 問題があれば Vercel API 側で即停止できる |
 | 6 | shadow mode から始める | 実配信前にDiscord返信分類を確認できる |
@@ -382,8 +389,7 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 公開POST APIはJSON本文と各文字列の長さを検証する。`/api/feedback` と `conversation/messages` は本文32KB以内、`conversation/poll` は4KB以内、`conversation/ack` は16KB以内とする。Discord Webhookへの送信は10秒で中止し、応答待ちによるVercel実行枠の占有を防ぐ。
 
 2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。右クリックメニュー表示時には呼びません。  
-PC アプリは JST 4:00 頃に1日1回だけ `conversation/poll` を呼び、未読の開発者返信があればローカルの `has_unread_developer_reply` を true にします。  
-ユーザーが「開発者とのやりとり」を開いた場合は、その時点で最新の `conversation/poll` を呼び、表示できた開発者返信だけ `conversation/ack` で既読化します。
+PC アプリは通常 JST 4:00 頃に1日1回 `conversation/poll` を呼びます。ユーザーの投稿成功後24時間は常駐中に約10分ごとに確認します。「開発者とのやりとり」を開いている間は約1分ごとに取得します。未読返信はローカルの `has_unread_developer_reply` を true にし、新しい返信IDごとに小窓を1回表示します。掲示板に表示できた返信だけ `conversation/ack` で既読化します。
 5 の `discord/ingest` は、開発者の管理操作が「Discord に書かれた開発者返信を会話データへ入れる」ために呼びます。
 6 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で JST 3:00 に1日1回実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
 7 の `conversation/session` は画像添付時だけ呼び、Vercel APIが画像バイトを中継しない直接アップロードに使います。
@@ -397,6 +403,7 @@ sequenceDiagram
     participant API as Vercel API
     participant Firestore as Firebase / Firestore
     participant Discord as Discord
+    participant Dash as ローカルダッシュボード
     participant Dev as 開発者
     participant Job as Cron/管理ジョブ
 
@@ -405,17 +412,15 @@ sequenceDiagram
     API->>Firestore: ユーザー投稿を保存
     API->>Discord: 開発者へ通知
 
-    Dev->>Discord: 通知へ返信を書く
-    Job->>API: 5. discord/cron
-    API->>Discord: Discord返信を読む
-    API->>API: 返信元・開発者ID・重複を検証
-    API->>Firestore: 開発者返信として保存
+    Dev->>Dash: 対象会話へ返信を書く
+    Dash->>Firestore: 会員との紐付けを確認して直接保存
+    Note over Job,Discord: 従来のDiscord返信は日次Cronでも取り込める
 
-    PC->>API: 2. poll<br>JST 4:00頃、または掲示板を開いた時
+    PC->>API: 2. poll<br>通常は日次、投稿後24時間は約10分、掲示板表示中は約1分
     API->>Firestore: 自分の会話だけ取得
     Firestore-->>API: 会話ログ・未読返信
     API-->>PC: 表示してよいメッセージだけ返す
-    PC->>PC: 未読有無をローカルに保存
+    PC->>PC: 未読有無をローカルに保存し新着小窓を出す
     User->>PC: 右クリックメニューを開く
     PC->>User: ローカル状態だけで新着表示
     User->>PC: 掲示板を開く
@@ -454,9 +459,9 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 
 | 区分 | 内容 |
 |:---|:---|
-| 実装する | 設定画面内の掲示板、匿名会話ID、secret token、Firestore保存、本文＋最大3枚の画像をDiscordへ送信、Discord返信取り込み、新着確認 |
+| 実装する | 設定画面内の掲示板、匿名会話ID、secret token、Firestore保存、本文＋最大3枚の画像をDiscordへ送信、Discord返信取り込み、ダッシュボードからの直接返信、会話中の短い間隔の確認、新着小窓 |
 | 実装しない | 返信付箋、ユーザー数分のDiscordチャンネル、自動プッシュ通知、Google Drive内の会話ファイル同期、Discordからユーザーへの画像返信、送信済み画像の会話ログ再表示、30日自動削除 |
-| 将来検討 | 通知バッジ、開発者からの画像返信、画像の自動削除、既読表示、サポート対応ステータス |
+| 将来検討 | 開発者からの画像返信、画像の自動削除、既読表示、サポート対応ステータス |
 
 ---
 
@@ -495,5 +500,6 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 11 | 2.8 | 26-06-05 | 管理者ツールの手動 ingest 用に、開発者PCの localStorage へ `FEEDBACK_CONVERSATION_INGEST_SECRET` を保存できる仕様を追加。`CRON_SECRET` は保存対象外と明記。 |
 | 12 | 2.9 | 26-07-31 | 公開フィードバックAPIのJSON本文・文字列上限と、Discord Webhook通信の10秒タイムアウトを追加。 |
 | 13 | 3.0 | 26-09-21 | 掲示板の必須本文と最大3枚の画像を、15分JWTでPCからAppwrite Storageへ直接アップロードし、Vercel APIのメタデータ検証後にDiscordへ本文と画像を送る最小版シーケンスを追加。画像返信、会話ログへの画像再表示、30日自動削除は対象外とした。 |
+| 14 | 3.1 | 26-09-28 | ローカル会員ダッシュボードからの直接返信、会話表示中の約1分更新、投稿後24時間の常駐中約10分確認、新着返信の通知小窓を追加。 |
 
 </div>

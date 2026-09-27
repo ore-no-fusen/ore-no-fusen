@@ -5303,6 +5303,7 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
 fn should_exit_after_close(label: &str) -> bool {
     !matches!(label, "main" | "quick_launcher" | "recipe-create" | "qa-create" | "term-create")
         && !label.starts_with("announcement-notice-")
+        && !label.starts_with("developer-reply-notice-")
 }
 
 #[cfg(test)]
@@ -5312,6 +5313,7 @@ mod announcement_window_close_tests {
     #[test]
     fn closing_announcement_notice_does_not_exit_the_app() {
         assert!(!should_exit_after_close("announcement-notice-mail-1"));
+        assert!(!should_exit_after_close("developer-reply-notice-reply-1"));
         assert!(!should_exit_after_close("quick_launcher"));
         assert!(should_exit_after_close("note-1"));
     }

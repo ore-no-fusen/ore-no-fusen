@@ -16,11 +16,16 @@ import {
   getOrCreateFeedbackConversationIdentity,
   getUnreadDeveloperReplyIds,
   hasUnreadDeveloperReply,
+  markDeveloperReplyNotified,
   markDailyFeedbackUnreadCheck,
+  markFeedbackConversationActive,
   markFeedbackConversationPollAttempt,
+  markFeedbackUnreadAttempt,
   pollFeedbackConversationMessages,
   setFeedbackConversationUnreadState,
   shouldRunDailyFeedbackUnreadCheck,
+  shouldRunActiveFeedbackUnreadCheck,
+  shouldNotifyDeveloperReply,
   shouldPollFeedbackConversation,
   uploadFeedbackAttachment,
 } from './feedbackConversation';
@@ -110,6 +115,28 @@ describe('feedback conversation identity', () => {
     markDailyFeedbackUnreadCheck(new Date('2026-06-03T19:00:00.000Z'), storage);
     expect(shouldRunDailyFeedbackUnreadCheck(new Date('2026-06-03T23:00:00.000Z'), storage)).toBe(false);
     expect(shouldRunDailyFeedbackUnreadCheck(new Date('2026-06-04T19:00:00.000Z'), storage)).toBe(true);
+  });
+
+  it('checks a recently active conversation every ten minutes for one day', () => {
+    const storage = createMemoryStorage();
+    const start = Date.parse('2026-09-28T00:00:00Z');
+    expect(shouldRunActiveFeedbackUnreadCheck(start, storage)).toBe(false);
+    markFeedbackConversationActive(start, storage);
+    expect(shouldRunActiveFeedbackUnreadCheck(start, storage)).toBe(true);
+    markFeedbackUnreadAttempt(start, storage);
+    expect(shouldRunActiveFeedbackUnreadCheck(start + 9 * 60_000, storage)).toBe(false);
+    expect(shouldRunActiveFeedbackUnreadCheck(start + 10 * 60_000, storage)).toBe(true);
+    expect(shouldRunActiveFeedbackUnreadCheck(start + 24 * 60 * 60_000, storage)).toBe(false);
+  });
+
+  it('notifies a developer reply once and resets notification state when the conversation is deleted', () => {
+    const storage = createMemoryStorage();
+    expect(shouldNotifyDeveloperReply('reply-1', storage)).toBe(true);
+    markDeveloperReplyNotified('reply-1', storage);
+    expect(shouldNotifyDeveloperReply('reply-1', storage)).toBe(false);
+    expect(shouldNotifyDeveloperReply('reply-2', storage)).toBe(true);
+    clearFeedbackConversationIdentity(storage);
+    expect(shouldNotifyDeveloperReply('reply-1', storage)).toBe(true);
   });
 
   it('detects unread developer replies only', () => {

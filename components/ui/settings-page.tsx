@@ -56,6 +56,7 @@ import {
     ackFeedbackConversationMessages,
     getFeedbackAppVersion,
     linkFeedbackMember,
+    markFeedbackConversationActive,
     clearFeedbackConversationIdentity,
     deleteFeedbackUploadedAttachment,
     deleteFeedbackConversation,
@@ -2454,6 +2455,7 @@ function FeedbackSection({ t, language }: { t: (key: any) => string; language: L
                     secretToken: result.secretToken,
                 });
             }
+            markFeedbackConversationActive()
 
             setSent(true)
             setContent('')
@@ -2646,12 +2648,14 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         })
     }, [loading, timeline])
 
-    const loadMessages = useCallback(async () => {
-        setLoading(true)
-        setError(null)
-        try {
-            setAnnouncements(await invoke<ReceivedAnnouncement[]>('member_announcements'))
-        } catch { /* ブラウザ版には会員のお便りがない。 */ }
+    const loadMessages = useCallback(async (quiet = false) => {
+        if (!quiet) {
+            setLoading(true)
+            setError(null)
+            try {
+                setAnnouncements(await invoke<ReceivedAnnouncement[]>('member_announcements'))
+            } catch { /* ブラウザ版には会員のお便りがない。 */ }
+        }
         try {
             const nextMessages = await pollFeedbackConversationMessages(conversationIdentity)
             setMessages(nextMessages)
@@ -2671,14 +2675,19 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                 setFeedbackConversationUnreadState(hasUnreadDeveloperReply(nextMessages))
             }
         } catch (e) {
-            setError(String(e))
+            if (!quiet) setError(String(e))
         } finally {
-            setLoading(false)
+            if (!quiet) setLoading(false)
         }
     }, [conversationIdentity])
 
     useEffect(() => {
         loadMessages()
+    }, [loadMessages])
+
+    useEffect(() => {
+        const timer = window.setInterval(() => { void loadMessages(true) }, 60_000)
+        return () => window.clearInterval(timer)
     }, [loadMessages])
 
     useEffect(() => {
@@ -2743,6 +2752,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     secretToken: result.secretToken,
                 })
             }
+            markFeedbackConversationActive()
             setDraft('')
             setReplyDraft('')
             setReplyTarget(null)
@@ -2892,7 +2902,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     </>}
                     <div className="flex flex-wrap justify-between gap-2 items-center">
                         <div className="flex gap-2">
-                        <Button variant="outline" onClick={loadMessages} disabled={loading || sending || deleting}>
+                        <Button variant="outline" onClick={() => { void loadMessages() }} disabled={loading || sending || deleting}>
                             <RefreshCw className="mr-2 h-4 w-4" />
                             {isEnglish ? 'Refresh' : '更新'}
                         </Button>
