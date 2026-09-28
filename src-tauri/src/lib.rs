@@ -829,6 +829,21 @@ fn build_iphone_undo_content(current: &str, backup: &str, expected_body_hash: &s
     Ok(format!("{}\n\n{}", frontmatter, old_body))
 }
 
+fn reject_stale_iphone_return_save(current: &str, incoming_frontmatter: &str) -> Result<(), String> {
+    let (current_frontmatter, _) = logic::split_frontmatter(current);
+    if let Some(current_receipt) = iphone_return_receipt(current_frontmatter) {
+        if iphone_return_receipt(incoming_frontmatter) != Some(current_receipt) {
+            return Err("iPhoneから反映した後に付箋が更新されました。古い画面の保存を止めました。付箋を開き直してください。".into());
+        }
+    }
+    Ok(())
+}
+
+fn iphone_return_receipt(frontmatter: &str) -> Option<&str> {
+    frontmatter.lines().find_map(|line|
+        line.trim().strip_prefix("iphone_return_hash:").map(str::trim))
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct IphoneReturnApplyResult {
@@ -1319,8 +1334,13 @@ fn fusen_save_note(
     frontmatter_raw: String,
     allow_rename: bool,
 ) -> Result<String, String> {
-    // Read old content for change detection
+    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+    // An open note window can still hold the pre-return content. Never let its
+    // delayed auto-save overwrite the newly applied iPhone body and receipt.
     let old_note = storage::read_note(&path).ok();
+    if let Some(current) = &old_note {
+        reject_stale_iphone_return_save(&current.body, &frontmatter_raw)?;
+    }
     let old_body = old_note
         .as_ref()
         .map(|n| {
@@ -1330,8 +1350,6 @@ fn fusen_save_note(
             body.to_string()
         })
         .unwrap_or_default();
-
-    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
 
     // Logicに全て任せる
     let (new_path, effect) = logic::handle_save_note(
@@ -5102,6 +5120,16 @@ mod iphone_receive_routing_tests {
         assert!(updated.contains("iphone_return_hash: receipt"));
         assert!(updated.ends_with("iPhone本文"));
         assert!(!updated.contains("PC本文"));
+    }
+
+    #[test]
+    fn delayed_pc_save_cannot_replace_an_applied_iphone_return() {
+        let before = "---\nseq: 1\n---\n\nPC本文";
+        let applied = build_iphone_return_content(before, &iphone_body_hash("PC本文"), "iPhone本文", "return-1").unwrap();
+        assert!(reject_stale_iphone_return_save(&applied, "---\nseq: 1\n---").is_err());
+        assert!(reject_stale_iphone_return_save(&applied, "---\nseq: 1\niphone_return_hash: other\n---").is_err());
+        assert!(reject_stale_iphone_return_save(&applied, "---\nseq: 1\niphone_return_hash: return-1\n---").is_ok());
+        assert!(reject_stale_iphone_return_save(before, "---\nseq: 1\n---").is_ok());
     }
 
     #[test]

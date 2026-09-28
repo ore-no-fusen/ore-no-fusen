@@ -1567,7 +1567,7 @@ function OrchestratorContent() {
         await invoke('fusen_ack_iphone_note', { noteId: note.id }).catch((ackError) => {
           console.error('[iphone] Drive受信キューのack失敗:', ackError);
         });
-        const existingWindow = await WebviewWindow.getByLabel(getWindowLabel(origin.path));
+        const existingWindow = await resolveOpenWindow(origin.path);
         if (existingWindow) await existingWindow.show();
         else {
           const latest = await invoke<IphoneOriginMatch | null>('fusen_find_iphone_origin', {
