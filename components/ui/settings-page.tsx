@@ -73,6 +73,7 @@ import {
 } from "@/app/utils/feedbackConversation"
 import { assertFeedbackImages } from "@/app/utils/feedbackImage"
 import { buildConversationTimeline, parseAnnouncementReply } from "@/app/utils/developerConversationTimeline"
+import { DISCORD_AUTO_INGEST_STORAGE_KEY, DISCORD_INGEST_SECRET_STORAGE_KEY } from "@/app/utils/discordReplyIngest"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -94,7 +95,6 @@ type SettingsPageProps = {
     missingFolderPath?: string | null;
 }
 
-const DISCORD_INGEST_SECRET_STORAGE_KEY = 'ore-no-fusen.feedback.discord_ingest_secret';
 const PRODUCTION_SUPPORT_PAGE_URL = 'https://ore-no-fusen.vercel.app/endroll';
 const DEVELOP_SUPPORT_PAGE_URL = 'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/endroll';
 
@@ -2636,6 +2636,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const [sending, setSending] = useState(false)
     const [deleting, setDeleting] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [newDeveloperReply, setNewDeveloperReply] = useState(false)
     const timeline = useMemo(() => buildConversationTimeline(announcements, messages), [announcements, messages])
     const historyRef = useRef<HTMLDivElement>(null)
     const scrollToLatestRef = useRef(true)
@@ -2663,6 +2664,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             const unreadDeveloperMessageIds = getUnreadDeveloperReplyIds(nextMessages)
 
             if (unreadDeveloperMessageIds.length > 0) {
+                setNewDeveloperReply(true)
                 setFeedbackConversationUnreadState(true)
                 requestAnimationFrame(() => {
                     ackFeedbackConversationMessages(conversationIdentity, unreadDeveloperMessageIds)
@@ -2858,6 +2860,15 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                         addImages(Array.from(event.dataTransfer.files))
                     }}
                 >
+                    {newDeveloperReply && (
+                        <div role="status" className="flex items-center justify-between gap-3 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-950">
+                            <span>{isEnglish ? 'A new reply from the developer has arrived.' : '開発者から新しい返信が届きました。'}</span>
+                            <Button type="button" variant="outline" onClick={() => {
+                                if (historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight
+                                setNewDeveloperReply(false)
+                            }}>{isEnglish ? 'View latest' : '最新の返信を見る'}</Button>
+                        </div>
+                    )}
                     {error && (
                         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                             {isEnglish ? 'Communication failed. Please wait and try again.' : '通信に失敗しました。時間をおいて再試行してください。'}
@@ -2974,6 +2985,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
 
     const [discordIngestSecret, setDiscordIngestSecret] = useState(() => getStoredDiscordIngestSecret())
     const [shouldSaveDiscordIngestSecret, setShouldSaveDiscordIngestSecret] = useState(() => getStoredDiscordIngestSecret() !== '')
+    const [autoDiscordIngest, setAutoDiscordIngest] = useState(() => getStoredDiscordIngestSecret() !== '' && typeof window !== 'undefined' && window.localStorage.getItem(DISCORD_AUTO_INGEST_STORAGE_KEY) === 'true')
     const [discordIngestLoading, setDiscordIngestLoading] = useState(false)
     const [discordIngestResult, setDiscordIngestResult] = useState<{
         ingested: number;
@@ -3420,6 +3432,10 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
         if (shouldSaveDiscordIngestSecret) {
             window.localStorage.setItem(DISCORD_INGEST_SECRET_STORAGE_KEY, value)
         }
+        if (!value.trim()) {
+            setAutoDiscordIngest(false)
+            window.localStorage.removeItem(DISCORD_AUTO_INGEST_STORAGE_KEY)
+        }
     }
 
     const updateShouldSaveDiscordIngestSecret = (checked: boolean) => {
@@ -3428,6 +3444,8 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             window.localStorage.setItem(DISCORD_INGEST_SECRET_STORAGE_KEY, discordIngestSecret)
         } else {
             window.localStorage.removeItem(DISCORD_INGEST_SECRET_STORAGE_KEY)
+            window.localStorage.removeItem(DISCORD_AUTO_INGEST_STORAGE_KEY)
+            setAutoDiscordIngest(false)
         }
     }
 
@@ -4091,11 +4109,11 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                 </div>
                 <div className="rounded-lg border border-red-200 bg-red-50/40 px-5 py-4 space-y-4">
                     <div>
-                        <p className="text-sm font-bold text-slate-900">{isEnglish ? 'Manual Import' : '手動ingest'}</p>
+                        <p className="text-sm font-bold text-slate-900">{isEnglish ? 'Deliver Discord replies to users' : 'Discordの返信をユーザーへ届ける'}</p>
                         <p className="text-xs text-slate-600 mt-1">
                             {isEnglish
-                                ? 'Manually import developer replies from Discord into the current feedback API. The secret is not saved unless you enable the option below.'
-                                : 'Discordの開発者返信を、現在のフィードバックAPIへ手動で取り込みます。下の設定を有効にしない限り、secretは保存されません。'}
+                                ? 'Save the ingest secret on this PC and enable automatic import for replies to appear soon after you send them in Discord. The button also imports immediately.'
+                                : 'このPCにingest secretを保存して自動取り込みを有効にすると、Discordで書いた返信がユーザーへ届きます。「取り込み実行」は今すぐ確認したいときに使います。'}
                         </p>
                     </div>
                     <div className="flex items-end gap-3">
@@ -4119,6 +4137,20 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                     className="h-4 w-4 rounded border-slate-300"
                                 />
                                 {isEnglish ? 'Save the ingest secret on this PC' : 'このPCにingest secretを保存する'}
+                            </label>
+                            <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                                <input
+                                    type="checkbox"
+                                    checked={autoDiscordIngest}
+                                    disabled={!shouldSaveDiscordIngestSecret || !discordIngestSecret.trim()}
+                                    onChange={(e) => {
+                                        setAutoDiscordIngest(e.target.checked)
+                                        if (e.target.checked) window.localStorage.setItem(DISCORD_AUTO_INGEST_STORAGE_KEY, 'true')
+                                        else window.localStorage.removeItem(DISCORD_AUTO_INGEST_STORAGE_KEY)
+                                    }}
+                                    className="h-4 w-4 rounded border-slate-300"
+                                />
+                                {isEnglish ? 'Import Discord replies automatically every minute while this PC app is running' : 'このPCのアプリが起動中はDiscord返信を約1分ごとに自動取り込みする'}
                             </label>
                         </div>
                         <Button

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hashSecretToken } from '../../lib/security';
 import { createMemoryFeedbackConversationStore } from '../../lib/store';
 import { resolveDiscordConversationIdForMessage } from './resolve';
+import { POST } from './route';
 
 describe('Discord ingest conversation resolution', () => {
   afterEach(() => {
@@ -92,5 +93,18 @@ describe('Discord ingest conversation resolution', () => {
       conversationId: null,
       referencedMessageId: 'feedback-message-unknown',
     });
+  });
+});
+
+describe('Discord ingest cursor input', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('rejects an invalid cursor before calling Discord', async () => {
+    vi.stubEnv('FEEDBACK_CONVERSATION_INGEST_SECRET', 'test-secret');
+    const response = await POST(new Request('https://example.test/api/feedback/discord/ingest', {
+      method: 'POST', headers: { Authorization: 'Bearer test-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ afterId: 'not-a-snowflake' }),
+    }));
+    expect(response.status).toBe(400);
   });
 });
