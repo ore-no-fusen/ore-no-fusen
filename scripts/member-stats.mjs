@@ -4,7 +4,6 @@ import crypto from 'node:crypto';
 import { exec } from 'node:child_process';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { listRecentConversations, loadConversation, replyConversation } from './member-conversations.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -197,25 +196,8 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
       }
       return;
     }
-    if (request.method === 'GET' && request.headers['x-csrf-token'] === csrfToken && (request.url === '/conversation-inbox' || request.url?.startsWith('/conversation-thread?'))) {
-      try {
-        if (Date.now() - tokenAt > 50 * 60 * 1000) {
-          currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
-          tokenAt = Date.now();
-        }
-        const result = request.url === '/conversation-inbox'
-          ? await listRecentConversations(currentToken, serviceAccount.project_id, environment)
-          : await loadConversation(currentToken, serviceAccount.project_id, environment, new URL(request.url, 'http://localhost').searchParams.get('id'));
-        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        response.end(JSON.stringify(result));
-      } catch (error) {
-        response.writeHead(400, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify({ error: error.message }));
-      }
-      return;
-    }
     const origin = `http://127.0.0.1:${server.address().port}`;
-    if (request.method !== 'POST' || !['/announcements', '/announcement-stop', '/conversation-reply'].includes(request.url) || request.headers.origin !== origin || request.headers['x-csrf-token'] !== csrfToken || request.headers['content-type'] !== 'application/json') {
+    if (request.method !== 'POST' || !['/announcements', '/announcement-stop'].includes(request.url) || request.headers.origin !== origin || request.headers['x-csrf-token'] !== csrfToken || request.headers['content-type'] !== 'application/json') {
       response.writeHead(403); response.end(); return;
     }
     try {
@@ -229,11 +211,7 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
         currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
         tokenAt = Date.now();
       }
-      if (request.url === '/conversation-reply') {
-        const id = await replyConversation(currentToken, serviceAccount.project_id, environment, data.conversationId, data.body);
-        response.writeHead(201, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify({ id }));
-      } else if (request.url === '/announcement-stop') {
+      if (request.url === '/announcement-stop') {
         await stopAnnouncement(currentToken, data.id, environment);
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ stopped: true }));
@@ -507,25 +485,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <p id="announcementHistoryStatus" role="status" class="text-sm text-slate-400">読み込み中…</p>
       <div id="announcementHistory" class="space-y-3"></div>
     </div>
-    <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
-      <h2 class="text-lg font-bold">開発者とのやり取り</h2>
-      <p class="text-sm text-slate-400">ユーザーの投稿はDiscordにも届きます。返信はここから直接保存されます。一覧は最近50件のうち、この環境に紐づく会話です。見つからない場合はDiscord通知の会話IDを入力してください。</p>
-      <div class="flex flex-wrap gap-2">
-        <input id="conversationIdInput" aria-label="会話ID" placeholder="Discord通知にある会話ID" class="min-w-64 flex-1 rounded-lg bg-slate-900 border border-slate-600 p-3">
-        <button id="openConversation" type="button" class="rounded-lg border border-slate-600 px-4 py-2">会話を開く</button>
-        <button id="refreshConversationInbox" type="button" class="rounded-lg border border-slate-600 px-4 py-2">一覧を更新</button>
-      </div>
-      <p id="conversationStatus" role="status" class="text-sm text-slate-400"></p>
-      <div id="conversationInbox" class="flex flex-wrap gap-2"></div>
-      <div id="conversationThread" class="hidden space-y-3 rounded-lg border border-slate-700 p-4">
-        <h3 id="conversationHeading" class="font-semibold"></h3>
-        <div id="conversationMessages" class="max-h-96 overflow-y-auto space-y-3"></div>
-        <form id="conversationReplyForm" class="space-y-2">
-          <textarea name="reply" aria-label="開発者の返信" maxlength="1000" required rows="3" placeholder="ユーザーへの返信" class="w-full rounded-lg bg-slate-900 border border-slate-600 p-3"></textarea>
-          <button type="submit" class="rounded-lg bg-indigo-600 px-5 py-2 font-semibold">返信を送る</button>
-        </form>
-      </div>
-    </div>` : ''}
+    ` : ''}
 
     <!-- Main Charts Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -700,83 +660,6 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     }
     document.getElementById('refreshAnnouncementHistory')?.addEventListener('click', loadAnnouncementHistory);
     void loadAnnouncementHistory();
-    let selectedConversationId = null;
-    let conversationRequest = 0;
-    const conversationStatus = document.getElementById('conversationStatus');
-    async function fetchConversation(path) {
-      const response = await fetch(path, { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || '会話を取得できませんでした');
-      return result;
-    }
-    async function loadConversationInbox() {
-      const inbox = document.getElementById('conversationInbox');
-      if (!inbox) return;
-      try {
-        const recent = await fetchConversation('/conversation-inbox');
-        inbox.replaceChildren();
-        for (const conversation of recent) {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.className = 'rounded-lg border border-slate-600 px-3 py-2 text-sm';
-          button.textContent = (conversation.memberNumber ? '#' + conversation.memberNumber : '会話') + ' · ' + new Date(conversation.updatedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) + ' · ' + conversation.id.slice(0, 8);
-          button.addEventListener('click', () => { void openConversation(conversation.id); });
-          inbox.appendChild(button);
-        }
-        if (!recent.length) conversationStatus.textContent = '最近の会話はありません。会話IDからも開けます。';
-      } catch (error) { conversationStatus.textContent = error.message; }
-    }
-    async function openConversation(id) {
-      const requestId = ++conversationRequest;
-      try {
-        const conversation = await fetchConversation('/conversation-thread?id=' + encodeURIComponent(id));
-        if (requestId !== conversationRequest) return;
-        const messages = document.getElementById('conversationMessages');
-        const keepAtBottom = selectedConversationId !== id || messages.scrollHeight - messages.scrollTop - messages.clientHeight < 40;
-        selectedConversationId = id;
-        document.getElementById('conversationIdInput').value = id;
-        document.getElementById('conversationHeading').textContent = (conversation.memberNumber ? '会員番号 #' + conversation.memberNumber : '会話') + ' · ' + id;
-        messages.replaceChildren();
-        for (const message of conversation.messages) {
-          const bubble = document.createElement('div');
-          bubble.className = 'max-w-3xl rounded-lg p-3 whitespace-pre-wrap break-words ' + (message.authorType === 'developer' ? 'bg-indigo-900/60 ml-auto' : 'bg-slate-800');
-          const header = document.createElement('div');
-          header.className = 'mb-1 text-xs text-slate-300';
-          header.textContent = (message.authorType === 'developer' ? '開発者' : 'ユーザー') + ' · ' + new Date(message.createdAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-          const body = document.createElement('div');
-          body.textContent = message.body;
-          bubble.append(header, body);
-          messages.appendChild(bubble);
-        }
-        document.getElementById('conversationThread').classList.remove('hidden');
-        if (keepAtBottom) messages.scrollTop = messages.scrollHeight;
-        conversationStatus.textContent = '';
-      } catch (error) { if (requestId === conversationRequest) conversationStatus.textContent = error.message; }
-    }
-    document.getElementById('refreshConversationInbox')?.addEventListener('click', loadConversationInbox);
-    document.getElementById('openConversation')?.addEventListener('click', () => { void openConversation(document.getElementById('conversationIdInput').value.trim()); });
-    document.getElementById('conversationReplyForm')?.addEventListener('submit', async event => {
-      event.preventDefault();
-      if (!selectedConversationId) return;
-      const form = event.currentTarget;
-      const button = form.querySelector('button');
-      const reply = form.elements.namedItem('reply');
-      button.disabled = true;
-      conversationStatus.textContent = '返信中…';
-      try {
-        const response = await fetch('/conversation-reply', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ conversationId: selectedConversationId, body: reply.value }) });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || '返信に失敗しました');
-        reply.value = '';
-        await openConversation(selectedConversationId);
-        await loadConversationInbox();
-      } catch (error) { conversationStatus.textContent = error.message; }
-      finally { button.disabled = false; }
-    });
-    void loadConversationInbox();
-    window.setInterval(() => {
-      if (document.visibilityState === 'visible' && selectedConversationId) void openConversation(selectedConversationId);
-    }, 60_000);
     if (announcementForm) announcementForm.addEventListener('submit', async event => {
       event.preventDefault();
       const button = announcementForm.querySelector('button');

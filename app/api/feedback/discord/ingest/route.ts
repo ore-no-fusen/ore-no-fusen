@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isDiscordIngestFailure, runDiscordIngest } from './run';
+import { FeedbackRequestError, readFeedbackJson } from '../../lib/security';
 
 function corsHeaders() {
   return {
@@ -25,12 +26,20 @@ export async function POST(req: Request) {
     if (!isAuthorized(req)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders() });
     }
-    const result = await runDiscordIngest();
+    const body = req.headers.get('content-type') === 'application/json' ? await readFeedbackJson(req, 1024) : {};
+    const afterId = body.afterId;
+    if (afterId !== undefined && (typeof afterId !== 'string' || !/^\d{15,25}$/.test(afterId))) {
+      return NextResponse.json({ error: 'Invalid Discord cursor' }, { status: 400, headers: corsHeaders() });
+    }
+    const result = await runDiscordIngest(afterId as string | undefined);
     if (isDiscordIngestFailure(result)) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: corsHeaders() });
     }
     return NextResponse.json(result, { headers: corsHeaders() });
   } catch (error) {
+    if (error instanceof FeedbackRequestError) {
+      return NextResponse.json({ error: error.message }, { status: error.status, headers: corsHeaders() });
+    }
     console.error('Discord ingest error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500, headers: corsHeaders() });
   }

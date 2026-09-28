@@ -93,6 +93,8 @@ test('投稿後の一覧更新でタイトル・宛先・本文を表示し、HT
     await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
     await page.goto(url);
     await page.getByRole('heading', { name: '送信したお便り' }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '返信を送る' }).count(), 0);
+    assert.equal(await page.locator('#conversationReplyForm').count(), 0);
     await page.locator('#audience').selectOption('member');
     await page.locator('#memberNumber').fill('10001');
     await page.getByPlaceholder('タイトル').fill('確認用');
@@ -111,54 +113,6 @@ test('投稿後の一覧更新でタイトル・宛先・本文を表示し、HT
     await page.reload();
     await page.locator('#announcementHistory summary').filter({ hasText: '確認用' }).waitFor();
     await page.locator('#announcementHistory').getByText('配信停止中').waitFor({ state: 'attached' });
-  } finally {
-    await browser.close();
-    await new Promise(resolve => server.close(resolve));
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('開発者ダッシュボードから同じ会話に返信し、画面を更新しても読める', async () => {
-  const originalFetch = globalThis.fetch;
-  const id = '207705bd-64b9-4f8f-a458-287fdfd94ca5';
-  const memberId = '11111111-1111-4111-8111-111111111111';
-  const messages = [{ message_id: { stringValue: 'user-1' }, author_type: { stringValue: 'user' }, body: { stringValue: 'こんにちは' }, created_at: { stringValue: '2026-09-28T00:00:00Z' } }];
-  let replyWrite;
-  globalThis.fetch = async (url, init) => {
-    const target = String(url);
-    if (target.includes('documents:commit')) {
-      replyWrite = JSON.parse(init.body).writes;
-      messages.push(replyWrite[0].update.fields);
-      return { ok: true };
-    }
-    if (target.includes(`/member_environments/development/conversations/${id}`)) return { ok: true, json: async () => ({ fields: { payload: { stringValue: JSON.stringify({ memberId }) } } }) };
-    if (target.includes(`/member_environments/development/members/${memberId}`)) return { ok: true, json: async () => ({ fields: { payload: { stringValue: JSON.stringify({ generalNumber: 10001 }) } } }) };
-    if (target.includes(`/feedback_conversations/${id}/messages?`)) return { ok: true, json: async () => ({ documents: messages.map((fields, index) => ({ name: `projects/test/databases/(default)/documents/feedback_conversations/${id}/messages/${index}`, fields })) }) };
-    if (target.endsWith(`/feedback_conversations/${id}`)) return { ok: true, json: async () => ({ fields: { updated_at: { stringValue: '2026-09-28T00:00:00Z' }, delivery_enabled: { booleanValue: true } } }) };
-    if (target.includes('/feedback_conversations?')) return { ok: true, json: async () => ({ documents: [{ name: `projects/test/databases/(default)/documents/feedback_conversations/${id}`, fields: { updated_at: { stringValue: '2026-09-28T00:00:00Z' } } }] }) };
-    return { ok: true, json: async () => ({ documents: [] }) };
-  };
-  const html = generateHtml([], 1, 10001, 0, 0, [], [], '2026/09/28', { today: 0, week: 0, unknown: 1 }, true, 'development');
-  const { server, url } = await serveDashboard(html, 'test-token', false, new Set([10001]), 'development');
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const rejected = await originalFetch(`${url}conversation-reply`, { method: 'POST', headers: { Origin: url.slice(0, -1), 'Content-Type': 'application/json' }, body: JSON.stringify({ conversationId: id, body: '不正な返信' }) });
-    assert.equal(rejected.status, 403);
-    assert.equal(replyWrite, undefined);
-    const page = await browser.newPage();
-    await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
-    await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
-    await page.goto(url);
-    await page.locator('#conversationInbox button').first().click();
-    await page.locator('#conversationMessages').getByText('こんにちは').waitFor();
-    await page.getByRole('textbox', { name: '開発者の返信' }).fill('すぐ返事します');
-    await page.getByRole('button', { name: '返信を送る' }).click();
-    await page.locator('#conversationMessages').getByText('すぐ返事します').waitFor();
-    assert.equal(replyWrite[0].update.fields.body.stringValue, 'すぐ返事します');
-    assert.equal(replyWrite[0].update.fields.author_type.stringValue, 'developer');
-    await page.reload();
-    await page.locator('#conversationInbox button').first().click();
-    await page.locator('#conversationMessages').getByText('すぐ返事します').waitFor();
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

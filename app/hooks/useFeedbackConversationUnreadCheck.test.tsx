@@ -37,11 +37,11 @@ it('会話後の常駐中は10分ごとに確認し、新しい返信だけ通�
   render(<BackgroundCheck />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(createWindow).toHaveBeenCalledWith('developer-reply-notice-reply-1', expect.objectContaining({ url: expect.stringContaining('kind=reply') }));
+  await vi.waitFor(() => expect(createWindow).toHaveBeenCalledWith('developer-reply-notice-reply-1', expect.objectContaining({ url: expect.stringContaining('kind=reply') })));
   await act(async () => { await vi.advanceTimersByTimeAsync(9 * 60_000); });
   expect(fetchMock).toHaveBeenCalledTimes(1);
   replyId = 'reply-2';
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(fetchMock).toHaveBeenCalledTimes(2);
-  expect(createWindow).toHaveBeenCalledWith('developer-reply-notice-reply-2', expect.anything());
+  await vi.waitFor(() => expect(createWindow).toHaveBeenCalledWith('developer-reply-notice-reply-2', expect.anything()));
 });

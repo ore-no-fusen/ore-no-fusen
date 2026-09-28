@@ -36,6 +36,7 @@ import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
 import { trackEvent } from './utils/analytics';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
+import { useDiscordReplyIngest } from './hooks/useDiscordReplyIngest';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
 import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
@@ -302,6 +303,7 @@ function OrchestratorContent() {
     isSearchOpen: isMainWindow && isSearchOpen,
   });
   useFeedbackConversationUnreadCheck(isMainWindow);
+  useDiscordReplyIngest(isMainWindow);
 
   // ウィンドウラベル生成
   const getWindowLabel = useCallback((path: string) => {

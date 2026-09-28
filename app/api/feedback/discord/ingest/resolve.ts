@@ -12,6 +12,7 @@ export type DiscordMessage = {
   id: string;
   channel_id: string;
   content: string;
+  timestamp?: string;
   embeds?: DiscordEmbed[];
   author?: {
     id?: string;
