@@ -20,4 +20,13 @@ test('作者PCでsecretを保存した場合だけDiscord返信の自動取り�
   await page.getByRole('checkbox', { name: 'このPCにingest secretを保存する' }).uncheck();
   await expect(automatic).toBeDisabled();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('ore-no-fusen.feedback.discord_auto_ingest'))).toBeNull();
+
+  let manualRequestBody: string | null = null;
+  await page.route('**/api/feedback/discord/ingest', async (route) => {
+    manualRequestBody = route.request().postData();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ingested: 0, rejected: [] }) });
+  });
+  await page.getByRole('button', { name: '取り込み実行' }).click();
+  await expect(page.getByText('取り込み: 0 件')).toBeVisible();
+  expect(manualRequestBody).toBe('{}');
 });

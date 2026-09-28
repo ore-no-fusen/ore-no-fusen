@@ -3407,6 +3407,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${secret}`,
                 },
+                 body: '{}',
             })
             const result = await response.json().catch(() => null) as {
                 ingested?: number;
