@@ -1142,6 +1142,7 @@ const StickyNote = memo(function StickyNote() {
                 const uReload = await listen<{ path: string }>('fusen:reload_note', async (event) => {
                     const targetPath = event.payload?.path;
                     if (targetPath && selectedFile?.path && pathsEqual(targetPath, selectedFile.path)) {
+                        setSavePending(false);
                         console.log('[DBG:reload_note] FIRED targetPath=', targetPath, 'isEditing=', isEditingForListenerRef.current, 'stack=', new Error().stack?.split('\n').slice(1,3).join(' | '));
                         const body = await loadNote();
                         // [FIX] loadNote()が失敗して空を返した場合は上書きしない（C-2対策）
@@ -1198,7 +1199,7 @@ const StickyNote = memo(function StickyNote() {
             safeUnlisten(unlistenReload);
         };
         // [FIX] deps を selectedFile のみに絞る（loadNote は path 変更時のみ再生成、isEditing は ref 経由）
-    }, [selectedFile, loadNote, noteFilePathRef, setContent, setCurrentTags, setEditBody, setIsEditing, setRawFrontmatter]);
+    }, [selectedFile, loadNote, noteFilePathRef, setContent, setCurrentTags, setEditBody, setIsEditing, setRawFrontmatter, setSavePending]);
 
     // 全文検索スクロールイベントリスナー
     useEffect(() => {
