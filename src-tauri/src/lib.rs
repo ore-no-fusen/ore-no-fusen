@@ -104,6 +104,37 @@ fn fusen_get_distribution_info() -> String {
 }
 
 #[tauri::command]
+fn fusen_check_store_update(window: tauri::Window) -> Result<bool, String> {
+    if !distribution::is_msix_packaged() {
+        return Ok(false);
+    }
+    #[cfg(windows)]
+    {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        use windows::core::ComInterface;
+        use windows::Services::Store::StoreContext;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Shell::IInitializeWithWindow;
+
+        let handle = window.window_handle().map_err(|e| e.to_string())?;
+        let RawWindowHandle::Win32(win32_handle) = handle.as_raw() else {
+            return Err("Windows window handle is unavailable".to_string());
+        };
+        let context = StoreContext::GetDefault().map_err(|e| e.to_string())?;
+        let initializer: IInitializeWithWindow = context.cast().map_err(|e| e.to_string())?;
+        unsafe { initializer.Initialize(HWND(win32_handle.hwnd.get())) }.map_err(|e| e.to_string())?;
+        let updates = context
+            .GetAppAndOptionalStorePackageUpdatesAsync()
+            .map_err(|e| e.to_string())?
+            .get()
+            .map_err(|e| e.to_string())?;
+        return updates.Size().map(|size| size > 0).map_err(|e| e.to_string());
+    }
+    #[cfg(not(windows))]
+    Ok(false)
+}
+
+#[tauri::command]
 fn fusen_open_startup_settings() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -5596,6 +5627,25 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
 
 // --- Entry Point ---
 
+fn should_exit_after_close(label: &str) -> bool {
+    !matches!(label, "main" | "quick_launcher" | "recipe-create" | "qa-create" | "term-create")
+        && !label.starts_with("announcement-notice-")
+        && !label.starts_with("developer-reply-notice-")
+}
+
+#[cfg(test)]
+mod announcement_window_close_tests {
+    use super::should_exit_after_close;
+
+    #[test]
+    fn closing_announcement_notice_does_not_exit_the_app() {
+        assert!(!should_exit_after_close("announcement-notice-mail-1"));
+        assert!(!should_exit_after_close("developer-reply-notice-reply-1"));
+        assert!(!should_exit_after_close("quick_launcher"));
+        assert!(should_exit_after_close("note-1"));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 注入DLL由来の不正命令例外を最初期に捕捉するため、何より先に登録する。
@@ -5645,14 +5695,18 @@ pub fn run() {
             member_identity::member_set_consent,
             member_identity::member_record_batch,
             member_identity::member_flush,
+            member_identity::member_open_time_tick,
+            member_identity::member_sync_usage,
             member_identity::member_closed_summaries,
             member_identity::member_mark_summary_sent,
             member_identity::member_needs_sync,
             member_identity::member_sync,
             member_identity::member_link_conversation,
             member_identity::member_heartbeat,
+            member_identity::member_announcements,
             fusen_debug_log, // [NEW] Frontend Logging Bridge
             fusen_get_distribution_info,
+            fusen_check_store_update,
             fusen_open_startup_settings,
             desktop_shortcut::fusen_get_desktop_shortcut_state,
             desktop_shortcut::fusen_create_desktop_shortcut,
@@ -5777,7 +5831,7 @@ pub fn run() {
                 if label == "main" {
                     // mainウィンドウの×はアプリを終了させず、JSの onCloseRequested に委ねる（win.hide()）
                     api.prevent_close();
-                } else if label == "quick_launcher" || label == "recipe-create" || label == "qa-create" || label == "term-create" {
+                } else if !should_exit_after_close(label) {
                     // Transient utility windows; closing them must not exit the app.
                 } else {
                     // 付箋ウィンドウをタスクバーから「ウィンドウを閉じる」→ アプリ終了

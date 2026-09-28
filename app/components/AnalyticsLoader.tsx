@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { safeUnlisten } from '../utils/safeUnlisten';
 
@@ -18,6 +18,33 @@ function loadGa4(sendPageView: boolean) {
   w.gtag=function gtag(..._args:unknown[]){w.dataLayer?.push(arguments);};
   w.gtag('js',new Date()); w.gtag('config',GA_ID,{send_page_view:sendPageView});
   const script=document.createElement('script');script.async=true;script.src=`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;script.dataset.fusenAnalytics='ga4';document.head.appendChild(script);
+}
+
+async function checkAnnouncements(granted:boolean) {
+  // 開発者ホットライン: 新着があれば通知窓を開く。
+  try {
+    type Announcement = { id: string; title: string; body: string; segment: string; createdAt: string };
+    const unread = await invoke<Announcement[]>('member_heartbeat',{analyticsConsent:granted});
+    if (unread.length > 0) {
+      await emit('fusen:announcements_updated');
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      const newest = unread[unread.length - 1];
+      const label = `announcement-notice-${newest.id}`;
+      const existing = await WebviewWindow.getByLabel(label);
+      if (existing) {
+        await existing.setFocus();
+      } else {
+        const params = new URLSearchParams({ title: newest.title, count: String(unread.length) });
+        new WebviewWindow(label, {
+          url: `/announcement-notice?${params.toString()}`,
+          title: '開発者からのお便り',
+          width: 400, height: 240,
+          resizable: false, decorations: true,
+          alwaysOnTop: true,
+        });
+      }
+    }
+  } catch { /* heartbeat失敗は無視 */ }
 }
 
 async function runDesktopBackground(cancelled:()=>boolean) {
@@ -40,27 +67,7 @@ async function runDesktopBackground(cancelled:()=>boolean) {
       await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
     }
   }
-  // 開発者ホットライン: heartbeat で未読お便りを取得し、ウィンドウで表示
-  try {
-    type Announcement = { id: string; title: string; body: string; segment: string; createdAt: string };
-    const unread = await invoke<Announcement[]>('member_heartbeat');
-    if (unread.length > 0) {
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      for (const a of unread) {
-        const label = `announcement-${a.id}`;
-        const existing = await WebviewWindow.getByLabel(label);
-        if (existing) { await existing.setFocus(); continue; }
-        const params = new URLSearchParams({ title: a.title, body: a.body, createdAt: a.createdAt });
-        new WebviewWindow(label, {
-          url: `/announcement?${params.toString()}`,
-          title: `✉️ ${a.title}`,
-          width: 480, height: 400,
-          resizable: true, decorations: true,
-          alwaysOnTop: true,
-        });
-      }
-    }
-  } catch { /* heartbeat失敗は無視 */ }
+  await checkAnnouncements(granted);
 }
 
 export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
@@ -73,7 +80,6 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
       // TAURI_DEV is also used by browser-based E2E. Do not require a Tauri window there.
       return;
     }
-    if(windowLabel!=='main')return;
     let cancelled=false;
     let unlisten:(()=>void)|undefined;
     // This local asynchronous read does not delay rendering or note input.
@@ -83,8 +89,23 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
     void listen<{analytics_consent?:string}>('settings_updated',event=>{
       (window as AnalyticsWindow).__FUSEN_ANALYTICS_GRANTED__=event.payload.analytics_consent==='granted';
     }).then(dispose=>{if(cancelled)dispose();else unlisten=dispose;}).catch(()=>undefined);
+    if(windowLabel!=='main')return()=>{cancelled=true;safeUnlisten(unlisten);};
+    // Initialize the local member before the first queued feature batch arrives.
+    void invoke('member_get').catch(()=>undefined);
+    void invoke<{analytics_consent?:string}>('get_settings')
+      .then(settings=>invoke('member_open_time_tick',{analyticsConsent:settings.analytics_consent==='granted'}))
+      .catch(()=>undefined);
     const start=window.setTimeout(()=>void runDesktopBackground(()=>cancelled).catch(()=>undefined),60_000);
-    const flush=window.setInterval(()=>void invoke('member_flush').catch(()=>undefined),300_000);
+    const flush=window.setInterval(()=>{
+      void invoke<{analytics_consent?:string}>('get_settings')
+        .then(async settings=>{
+          const analyticsConsent=settings.analytics_consent==='granted';
+          await invoke('member_open_time_tick',{analyticsConsent});
+          await invoke('member_flush');
+          if(!cancelled) await checkAnnouncements(analyticsConsent);
+        })
+        .catch(()=>undefined);
+    },300_000);
     return()=>{cancelled=true;safeUnlisten(unlisten);window.clearTimeout(start);window.clearInterval(flush);};
   },[isTauriBuild]);
   return null;

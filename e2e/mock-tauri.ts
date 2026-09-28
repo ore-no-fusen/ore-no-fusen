@@ -8,8 +8,11 @@ import { Page } from '@playwright/test';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en'; iphoneReturn?: boolean } = {}) {
+export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en'; iphoneReturn?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
     await page.addInitScript((mockOptions) => {
+        (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+            unregisterListener: () => {},
+        };
         const iphoneCalls: Array<{ cmd: string; args: any }> = [];
         (window as any).__MOCK_IPHONE_CALLS__ = iphoneCalls;
         // --- Windowsアプリ側コマンドの処理定義 ---
@@ -171,6 +174,13 @@ updated: 2026-01-31
 
                 case 'fusen_debug_log':
                     return null;
+
+                case 'member_announcements':
+                    return mockOptions.announcements ?? [];
+                case 'fusen_get_distribution_info':
+                    return 'desktop';
+                case 'fusen_check_store_update':
+                    return false;
 
                 // Tauri v2 Event Plugin Support
                 case 'plugin:event|listen':

@@ -5,7 +5,11 @@ const SECRET_TOKEN_KEY = 'ore-no-fusen.feedback.secret_token';
 const LAST_POLL_KEY = 'ore-no-fusen.feedback.last_poll_at';
 const HAS_UNREAD_DEVELOPER_REPLY_KEY = 'ore-no-fusen.feedback.has_unread_developer_reply';
 const LAST_UNREAD_CHECK_DATE_KEY = 'ore-no-fusen.feedback.last_unread_check_date';
+const ACTIVE_CONVERSATION_UNTIL_KEY = 'ore-no-fusen.feedback.active_conversation_until';
+const LAST_UNREAD_ATTEMPT_AT_KEY = 'ore-no-fusen.feedback.last_unread_attempt_at';
+const LAST_NOTIFIED_REPLY_KEY = 'ore-no-fusen.feedback.last_notified_reply_id';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAILY_UNREAD_CHECK_HOUR_JST = 4;
 const PRODUCTION_FEEDBACK_API_BASE_URL = 'https://ore-no-fusen.vercel.app/api/feedback';
@@ -169,6 +173,9 @@ export function clearFeedbackConversationIdentity(storage?: StorageLike): void {
   target.removeItem(LAST_POLL_KEY);
   target.removeItem(HAS_UNREAD_DEVELOPER_REPLY_KEY);
   target.removeItem(LAST_UNREAD_CHECK_DATE_KEY);
+  target.removeItem(ACTIVE_CONVERSATION_UNTIL_KEY);
+  target.removeItem(LAST_UNREAD_ATTEMPT_AT_KEY);
+  target.removeItem(LAST_NOTIFIED_REPLY_KEY);
   cachedImageSession = null;
 }
 
@@ -219,6 +226,34 @@ export function markDailyFeedbackUnreadCheck(now = new Date(), storage?: Storage
   const target = getStorage(storage);
   if (!target) return;
   target.setItem(LAST_UNREAD_CHECK_DATE_KEY, getJstDateParts(now).date);
+}
+
+export function markFeedbackConversationActive(now = Date.now(), storage?: StorageLike): void {
+  const target = getStorage(storage);
+  target?.setItem(ACTIVE_CONVERSATION_UNTIL_KEY, String(now + ONE_DAY_MS));
+}
+
+export function shouldRunActiveFeedbackUnreadCheck(now = Date.now(), storage?: StorageLike): boolean {
+  const target = getStorage(storage);
+  if (!target) return false;
+  const activeUntil = Number(target.getItem(ACTIVE_CONVERSATION_UNTIL_KEY));
+  if (!Number.isFinite(activeUntil) || activeUntil <= now) return false;
+  const rawLastAttempt = target.getItem(LAST_UNREAD_ATTEMPT_AT_KEY);
+  const lastAttempt = Number(rawLastAttempt);
+  return !rawLastAttempt || !Number.isFinite(lastAttempt) || now - lastAttempt >= ACTIVE_CHECK_INTERVAL_MS;
+}
+
+export function markFeedbackUnreadAttempt(now = Date.now(), storage?: StorageLike): void {
+  getStorage(storage)?.setItem(LAST_UNREAD_ATTEMPT_AT_KEY, String(now));
+}
+
+export function shouldNotifyDeveloperReply(messageId: string, storage?: StorageLike): boolean {
+  const target = getStorage(storage);
+  return Boolean(target && messageId && target.getItem(LAST_NOTIFIED_REPLY_KEY) !== messageId);
+}
+
+export function markDeveloperReplyNotified(messageId: string, storage?: StorageLike): void {
+  getStorage(storage)?.setItem(LAST_NOTIFIED_REPLY_KEY, messageId);
 }
 
 export function hasUnreadDeveloperReply(messages: FeedbackConversationMessage[]): boolean {

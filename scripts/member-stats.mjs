@@ -10,6 +10,34 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 const propertyId = '524376317';
+const FEATURE_LABELS = {
+  note_created: '付箋の作成', note_edited: '付箋の編集', tag_add: 'タグの追加',
+  alarm_set: 'アラームの設定', iphone_send: 'iPhoneへ送信', iphone_receive: 'iPhoneから受信',
+  search_open: '検索画面を開く', note_duplicate: '付箋の複製', note_archive: '付箋をしまう',
+  outline_toggle: '付箋の折りたたみ', image_attach: '画像の添付',
+};
+
+function isoWeek(date = new Date()) {
+  const day = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  day.setUTCDate(day.getUTCDate() + 4 - (day.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(day.getUTCFullYear(), 0, 1));
+  return `${day.getUTCFullYear()}-W${String(Math.ceil(((day - yearStart) / 86400000 + 1) / 7)).padStart(2, '0')}`;
+}
+
+function featureUsageStats(members, week = isoWeek()) {
+  const reporting = members.filter(member => member.usageWeek === week && member.usageConsent === true);
+  return {
+    week, reporting: reporting.length,
+    memberOpenTimes: members.filter(member => member.usageConsent === true && Number.isSafeInteger(member.usageOpenMinutes) && member.usageOpenMinutes >= 0)
+      .map(member => ({ number: member.generalNumber, minutes: member.usageOpenMinutes }))
+      .filter(member => Number.isSafeInteger(member.number))
+      .sort((a, b) => a.number - b.number),
+    rows: Object.entries(FEATURE_LABELS).map(([name, label]) => {
+      const users = reporting.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)).length;
+      return { name, label, users, percent: members.length ? Math.round(users / members.length * 100) : 0 };
+    }),
+  };
+}
 function firestoreRoot(environment = 'production') {
   if (environment !== 'production' && environment !== 'development') throw new Error('環境は production または development を指定してください');
   return `projects/${serviceAccount.project_id}/databases/(default)/documents/member_environments/${environment}`;
@@ -53,12 +81,13 @@ function survivalStats(members, today = new Date()) {
   return { today: seen.filter(d => d === currentDay).length, week: seen.filter(d => d >= firstDay).length, unknown: members.length - seen.length };
 }
 
-async function publishAnnouncement(token, title, body, audience = 'all', memberNumber = null, memberNumbers = new Set(), environment = 'production') {
+async function publishAnnouncement(token, title, body, audience = 'all', memberNumber = null, memberNumbers = new Set(), environment = 'production', featureName = null) {
   const root = firestoreRoot(environment);
   if (typeof title !== 'string' || !title.trim() || title.length > 120 || typeof body !== 'string' || !body.trim() || body.length > 10000) {
     throw new Error('タイトル（120文字以内）と本文（10000文字以内）を入力してください');
   }
-  const segments = new Set(['all', 'veteran', 'newcomer', 'feature_active', 'feature_inactive']);
+  const segments = new Set(['all', 'veteran', 'newcomer', 'feature_active', 'feature_inactive', 'iphone_week_unused']);
+  const features = new Set(Object.keys(FEATURE_LABELS));
   let segment = audience;
   if (audience === 'member') {
     const number = Number(memberNumber);
@@ -66,6 +95,9 @@ async function publishAnnouncement(token, title, body, audience = 'all', memberN
       throw new Error('登録済みの会員番号を指定してください');
     }
     segment = `member:${number}`;
+  } else if (audience === 'feature_week_used' || audience === 'feature_week_unused') {
+    if (!features.has(featureName)) throw new Error('対象の機能を選択してください');
+    segment = `${audience}:${featureName}`;
   } else if (!segments.has(audience)) {
     throw new Error('宛先を選択してください');
   }
@@ -83,6 +115,46 @@ async function publishAnnouncement(token, title, body, audience = 'all', memberN
   return id;
 }
 
+async function fetchFirestoreAnnouncements(token, environment = 'production') {
+  const prefix = `${firestoreRoot(environment)}/announcements`;
+  const results = [];
+  let pageToken = '';
+  do {
+    const url = `https://firestore.googleapis.com/v1/${prefix}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`お便りの取得に失敗しました (${res.status})`);
+    const data = await res.json();
+    for (const doc of data.documents || []) {
+      const value = JSON.parse(doc.fields.payload.stringValue);
+      results.push({ ...value, id: doc.name.split('/').at(-1) });
+    }
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return results.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+async function stopAnnouncement(token, id, environment = 'production') {
+  if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error('お便りIDが不正です');
+  }
+  const name = `${firestoreRoot(environment)}/announcements/${id}`;
+  const docResponse = await fetch(`https://firestore.googleapis.com/v1/${name}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!docResponse.ok) throw new Error(`お便りを確認できませんでした (${docResponse.status})`);
+  const doc = await docResponse.json();
+  const value = JSON.parse(doc.fields.payload.stringValue);
+  if (value.active === false) return;
+  if (value.active !== true || !doc.updateTime) throw new Error('お便りの状態を確認できませんでした');
+  const response = await fetch(`https://firestore.googleapis.com/v1/projects/${serviceAccount.project_id}/databases/(default)/documents:commit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ writes: [{
+      update: { name, fields: { payload: { stringValue: JSON.stringify({ ...value, active: false }) } } },
+      currentDocument: { updateTime: doc.updateTime },
+    }] }),
+  });
+  if (!response.ok) throw new Error(`配信停止に失敗しました (${response.status})`);
+}
+
 async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers = new Set(), environment = 'production') {
   firestoreRoot(environment);
   const csrfToken = crypto.randomBytes(32).toString('hex');
@@ -93,11 +165,39 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
     response.setHeader('X-Content-Type-Options', 'nosniff');
     if (request.method === 'GET' && request.url === '/') {
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      response.end(html.replace('__CSRF_TOKEN__', csrfToken));
+      response.end(html.replaceAll('__CSRF_TOKEN__', csrfToken));
+      return;
+    }
+    if (request.method === 'GET' && request.url === '/feature-usage' && request.headers['x-csrf-token'] === csrfToken) {
+      try {
+        if (Date.now() - tokenAt > 50 * 60 * 1000) {
+          currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
+          tokenAt = Date.now();
+        }
+        const members = await fetchFirestoreMembers(currentToken, environment);
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ ...featureUsageStats(members), totalMembers: members.length }));
+      } catch {
+        response.writeHead(503); response.end();
+      }
+      return;
+    }
+    if (request.method === 'GET' && request.url === '/announcement-history' && request.headers['x-csrf-token'] === csrfToken) {
+      try {
+        if (Date.now() - tokenAt > 50 * 60 * 1000) {
+          currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
+          tokenAt = Date.now();
+        }
+        const announcements = await fetchFirestoreAnnouncements(currentToken, environment);
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify(announcements));
+      } catch {
+        response.writeHead(503); response.end();
+      }
       return;
     }
     const origin = `http://127.0.0.1:${server.address().port}`;
-    if (request.method !== 'POST' || request.url !== '/announcements' || request.headers.origin !== origin || request.headers['x-csrf-token'] !== csrfToken || request.headers['content-type'] !== 'application/json') {
+    if (request.method !== 'POST' || !['/announcements', '/announcement-stop'].includes(request.url) || request.headers.origin !== origin || request.headers['x-csrf-token'] !== csrfToken || request.headers['content-type'] !== 'application/json') {
       response.writeHead(403); response.end(); return;
     }
     try {
@@ -106,14 +206,21 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
         input += chunk;
         if (input.length > 25000) throw new Error('入力が長すぎます');
       }
-      const { title, body, audience, memberNumber } = JSON.parse(input);
+      const data = JSON.parse(input);
       if (Date.now() - tokenAt > 50 * 60 * 1000) {
         currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
         tokenAt = Date.now();
       }
-      const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, memberNumbers, environment);
-      response.writeHead(201, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ id }));
+      if (request.url === '/announcement-stop') {
+        await stopAnnouncement(currentToken, data.id, environment);
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ stopped: true }));
+      } else {
+        const { title, body, audience, memberNumber, featureName } = data;
+        const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, memberNumbers, environment, featureName);
+        response.writeHead(201, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ id }));
+      }
     } catch (error) {
       response.writeHead(400, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ error: error.message }));
@@ -218,7 +325,7 @@ async function fetchGa4Data(token) {
   return { dauData, eventData, featData };
 }
 
-function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, canPublish, environment = 'production') {
+function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, canPublish, environment = 'production', featureStats = featureUsageStats([])) {
   firestoreRoot(environment);
   const environmentLabel = environment === 'development' ? '開発環境' : '本番環境';
   const analyticsLabel = environment === 'development' ? 'GA4 集計なし' : `GA4 プロパティ: ${propertyId}`;
@@ -247,6 +354,14 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   `).join('');
 
   const todayDau = combinedStats[combinedStats.length - 1]?.activeUsers ?? 0;
+  const featureUsageRows = featureStats.rows.map(feature => `
+    <tr class="border-b border-slate-800">
+      <td class="py-2 pr-4">${feature.label}</td>
+      <td class="py-2 text-right">${feature.users}人</td>
+      <td class="py-2 text-right">${feature.percent}%</td>
+    </tr>
+  `).join('');
+  const memberOpenTimeRows = featureStats.memberOpenTimes.map(member => `<tr class="border-b border-slate-800"><td class="py-2">#${member.number}</td><td class="py-2 text-right">${Math.floor(member.minutes / 60)}時間${member.minutes % 60}分</td></tr>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="ja" class="dark">
@@ -309,6 +424,21 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <p class="text-sm text-emerald-300">過去7日: ${totalMembers ? Math.round(survival.week / totalMembers * 100) : 0}%（${survival.week} / ${totalMembers}人）</p>
     </div>
 
+    <div class="glass p-6 rounded-2xl shadow-xl space-y-3">
+      <h2 class="text-lg font-bold">今週の機能別利用者</h2>
+      <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
+      <p class="text-sm text-amber-300">利用情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。</p>
+      <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">利用人数</th><th class="pb-2 text-right">全会員比</th></tr></thead>
+          <tbody id="featureUsageRows">${featureUsageRows}</tbody>
+        </table>
+      </div>
+      <h3 class="font-semibold pt-3">会員別の起動時間（累計）</h3>
+      <table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">会員番号</th><th class="pb-2 text-right">起動時間</th></tr></thead><tbody id="memberOpenTimeRows">${memberOpenTimeRows}</tbody></table>
+    </div>
+
     ${canPublish ? `<div class="glass p-6 rounded-2xl shadow-xl space-y-4">
       <h2 class="text-lg font-bold">開発者からのお便り</h2>
       <p class="text-sm text-slate-400">公開後30日間有効。対象会員の次回起動時チェックで配信されます。</p>
@@ -320,7 +450,24 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
           <option value="newcomer">新規会員（番号10100以降）</option>
           <option value="feature_active">今週の機能利用あり</option>
           <option value="feature_inactive">今週の機能利用なし（利用分析に同意済み）</option>
+          <option value="feature_week_used">今週、指定した機能を使用</option>
+          <option value="feature_week_unused">今週、指定した機能を未使用（利用分析に同意済み）</option>
+          <option value="iphone_week_unused">今週、iPhoneへ送信・iPhoneから受信をしていない（利用分析に同意済み）</option>
           <option value="member">会員番号を指定</option>
+        </select>
+        <select id="featureName" name="featureName" hidden class="w-full rounded-lg bg-slate-900 border border-slate-600 p-3" aria-label="対象の機能">
+          <option value="">機能を選択</option>
+          <option value="note_created">付箋の作成</option>
+          <option value="note_edited">付箋の編集</option>
+          <option value="tag_add">タグの追加</option>
+          <option value="alarm_set">アラームの設定</option>
+          <option value="iphone_send">iPhoneへ送信</option>
+          <option value="iphone_receive">iPhoneから受信</option>
+          <option value="search_open">検索画面を開く</option>
+          <option value="note_duplicate">付箋の複製</option>
+          <option value="note_archive">付箋をしまう</option>
+          <option value="outline_toggle">付箋の折りたたみ</option>
+          <option value="image_attach">画像の添付</option>
         </select>
         <p class="text-xs text-slate-400">機能利用別の宛先はPC内で判定します。機密の本文には使用しないでください。</p>
         <input id="memberNumber" name="memberNumber" type="number" min="10000" step="1" placeholder="会員番号" hidden class="w-full rounded-lg bg-slate-900 border border-slate-600 p-3">
@@ -329,7 +476,16 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <button type="submit" class="rounded-lg bg-indigo-600 px-5 py-2 font-semibold">投稿する</button>
         <span id="publishStatus" role="status" class="ml-3 text-sm"></span>
       </form>
-    </div>` : ''}
+    </div>
+    <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-bold">送信したお便り</h2>
+        <button id="refreshAnnouncementHistory" type="button" class="rounded-lg border border-slate-600 px-4 py-2 text-sm">一覧を更新</button>
+      </div>
+      <p id="announcementHistoryStatus" role="status" class="text-sm text-slate-400">読み込み中…</p>
+      <div id="announcementHistory" class="space-y-3"></div>
+    </div>
+    ` : ''}
 
     <!-- Main Charts Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -362,10 +518,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
       <!-- Feature Usage -->
       <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
-        <h2 class="text-lg font-bold text-slate-200">機能利用カウント（feature_used）</h2>
-        <div class="h-64 w-full">
-          <canvas id="featureChart"></canvas>
-        </div>
+        <h2 class="text-lg font-bold text-slate-200">GA4の機能操作回数</h2>
+        ${gaFeatures.length ? `<div class="h-64 w-full"><canvas id="featureChart"></canvas></div>` : `<p class="text-sm text-slate-400">GA4の機能別データはまだありません。上の表で今週の会員別利用人数を確認できます。</p>`}
       </div>
     </div>
 
@@ -394,15 +548,118 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   </div>
 
   <script>
+    ${canPublish ? `fetch('/feature-usage', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } })
+      .then(response => response.ok ? response.json() : Promise.reject())
+      .then(stats => {
+        document.getElementById('featureWeek').textContent = stats.week;
+        document.getElementById('featureTotal').textContent = String(stats.totalMembers);
+        document.getElementById('featureCoverageTotal').textContent = String(stats.totalMembers);
+        document.getElementById('featureReporting').textContent = String(stats.reporting);
+        const rows = document.getElementById('featureUsageRows');
+        rows.replaceChildren();
+        for (const feature of stats.rows) {
+          const row = document.createElement('tr');
+          row.className = 'border-b border-slate-800';
+          for (const value of [feature.label, String(feature.users) + '人', String(feature.percent) + '%']) {
+            const cell = document.createElement('td');
+            cell.className = 'py-2';
+            cell.textContent = value;
+            row.appendChild(cell);
+          }
+          rows.appendChild(row);
+        }
+        const timeRows = document.getElementById('memberOpenTimeRows');
+        timeRows.replaceChildren();
+        for (const member of stats.memberOpenTimes) {
+          const row = document.createElement('tr');
+          row.className = 'border-b border-slate-800';
+          for (const value of ['#' + member.number, Math.floor(member.minutes / 60) + '時間' + (member.minutes % 60) + '分']) {
+            const cell = document.createElement('td');
+            cell.className = 'py-2';
+            cell.textContent = value;
+            row.appendChild(cell);
+          }
+          timeRows.appendChild(row);
+        }
+      }).catch(() => undefined);` : ''}
     const announcementForm = document.getElementById('announcementForm');
     const audienceSelect = document.getElementById('audience');
     const memberNumberInput = document.getElementById('memberNumber');
+    const featureNameInput = document.getElementById('featureName');
     if (audienceSelect) audienceSelect.addEventListener('change', () => {
       const isMember = audienceSelect.value === 'member';
       memberNumberInput.hidden = !isMember;
       memberNumberInput.required = isMember;
       if (!isMember) memberNumberInput.value = '';
+      const isSpecificFeature = audienceSelect.value === 'feature_week_used' || audienceSelect.value === 'feature_week_unused';
+      featureNameInput.hidden = !isSpecificFeature;
+      featureNameInput.required = isSpecificFeature;
+      if (!isSpecificFeature) featureNameInput.value = '';
     });
+    const audienceLabels = {
+      all: '全会員', veteran: '古参会員（番号10000〜10049）', newcomer: '新規会員（番号10100以降）',
+      feature_active: '今週の機能利用あり', feature_inactive: '今週の機能利用なし（利用分析に同意済み）',
+      iphone_week_unused: '今週、iPhone送受信なし（利用分析に同意済み）',
+    };
+    const featureLabels = ${JSON.stringify(FEATURE_LABELS)};
+    function audienceText(segment) {
+      if (audienceLabels[segment]) return audienceLabels[segment];
+      if (segment.startsWith('member:')) return '会員番号 ' + segment.slice(7);
+      if (segment.startsWith('feature_week_used:')) return '今週使用: ' + (featureLabels[segment.slice(18)] || segment.slice(18));
+      if (segment.startsWith('feature_week_unused:')) return '今週未使用: ' + (featureLabels[segment.slice(20)] || segment.slice(20));
+      return segment;
+    }
+    async function loadAnnouncementHistory() {
+      const container = document.getElementById('announcementHistory');
+      const status = document.getElementById('announcementHistoryStatus');
+      if (!container) return;
+      status.textContent = '読み込み中…';
+      try {
+        const response = await fetch('/announcement-history', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } });
+        if (!response.ok) throw new Error('一覧を取得できませんでした');
+        const announcements = await response.json();
+        container.replaceChildren();
+        for (const announcement of announcements) {
+          const card = document.createElement('details');
+          card.className = 'rounded-lg border border-slate-700 bg-slate-900/60 p-4';
+          const heading = document.createElement('summary');
+          heading.className = 'cursor-pointer font-semibold';
+          heading.textContent = announcement.title;
+          const meta = document.createElement('p');
+          meta.className = 'mt-2 text-sm text-slate-400';
+          const created = new Date(announcement.createdAt);
+          meta.textContent = (Number.isNaN(created.getTime()) ? announcement.createdAt : created.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })) + ' · 宛先: ' + audienceText(announcement.segment) + (announcement.active === false ? ' · 配信停止中' : announcement.expiresAt <= new Date().toISOString() ? ' · 配信期限切れ' : ' · 配信中');
+          const body = document.createElement('pre');
+          body.className = 'mt-3 whitespace-pre-wrap break-words font-sans text-sm';
+          body.textContent = announcement.body;
+          heading.appendChild(meta);
+          card.append(heading, body);
+          if (announcement.active === true && announcement.expiresAt > new Date().toISOString()) {
+            const stop = document.createElement('button');
+            stop.type = 'button';
+            stop.className = 'mt-3 rounded-lg border border-rose-500 px-3 py-2 text-sm text-rose-300';
+            stop.textContent = '配信を停止';
+            stop.addEventListener('click', async () => {
+              if (!confirm('「' + announcement.title + '」の配信を停止しますか？ すでに受信した会員のお便りは残ります。')) return;
+              stop.disabled = true;
+              try {
+                const response = await fetch('/announcement-stop', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ id: announcement.id }) });
+                if (!response.ok) {
+                  const result = await response.json();
+                  throw new Error(result.error || '配信停止に失敗しました');
+                }
+                await loadAnnouncementHistory();
+              } catch (error) { status.textContent = error.message; stop.disabled = false; }
+            });
+            card.appendChild(stop);
+          }
+          container.appendChild(card);
+        }
+        status.textContent = announcements.length ? announcements.length + '件（新しい順。タイトルを押すと本文を表示）' : '送信したお便りはありません。';
+      } catch (error) { status.textContent = error.message; }
+    }
+    document.getElementById('refreshAnnouncementHistory')?.addEventListener('click', loadAnnouncementHistory);
+    void loadAnnouncementHistory();
     if (announcementForm) announcementForm.addEventListener('submit', async event => {
       event.preventDefault();
       const button = announcementForm.querySelector('button');
@@ -411,11 +668,13 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       status.textContent = '投稿中…';
       try {
         const fields = new FormData(announcementForm);
-        const response = await fetch('/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ title: fields.get('title'), body: fields.get('body'), audience: fields.get('audience'), memberNumber: fields.get('memberNumber') }) });
+        const response = await fetch('/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ title: fields.get('title'), body: fields.get('body'), audience: fields.get('audience'), memberNumber: fields.get('memberNumber'), featureName: fields.get('featureName') }) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || '投稿に失敗しました');
         status.textContent = '投稿しました。ID: ' + result.id;
         announcementForm.reset();
+        audienceSelect.dispatchEvent(new Event('change'));
+        await loadAnnouncementHistory();
       } catch (error) { status.textContent = error.message; }
       finally { button.disabled = false; }
     });
@@ -523,7 +782,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     });
 
     // 4. Features Chart
-    new Chart(document.getElementById('featureChart').getContext('2d'), {
+    if (document.getElementById('featureChart')) new Chart(document.getElementById('featureChart').getContext('2d'), {
       type: 'bar',
       data: {
         labels: ${featureLabels},
@@ -614,6 +873,7 @@ async function main() {
 
   const totalMembers = members.length;
   const survival = survivalStats(members);
+  const featureStats = featureUsageStats(members);
   const latestNumber = members.length > 0 ? members[members.length - 1].generalNumber : 10000;
 
   const now = new Date();
@@ -678,12 +938,12 @@ async function main() {
   const outDir = path.resolve(rootDir, 'my');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const htmlPath = path.resolve(outDir, environment === 'development' ? 'member_stats.development.html' : 'member_stats.html');
-  fs.writeFileSync(htmlPath, generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, false, environment), 'utf8');
+  fs.writeFileSync(htmlPath, generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, false, environment, featureStats), 'utf8');
 
   console.log(`対象環境: ${environment}`);
   if (open) {
     console.log(`Updated: ${htmlPath}`);
-    await serveDashboard(generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true, environment), dbToken, true, new Set(members.map(m => m.generalNumber)), environment);
+    await serveDashboard(generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true, environment, featureStats), dbToken, true, new Set(members.map(m => m.generalNumber)), environment);
   } else {
     console.log(`総会員数: ${totalMembers}人 (最新番号: #${latestNumber})`);
     console.log(`本日新規: +${todayNew}人 / 昨日新規: +${yesterdayNew}人`);
@@ -693,7 +953,7 @@ async function main() {
   }
 }
 
-export { survivalStats, publishAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, parseOptions };
+export { survivalStats, featureUsageStats, isoWeek, publishAnnouncement, stopAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, fetchFirestoreAnnouncements, parseOptions };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch(err => {

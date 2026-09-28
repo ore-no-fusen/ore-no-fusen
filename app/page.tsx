@@ -37,6 +37,7 @@ import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
 import { trackEvent } from './utils/analytics';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
+import { useDiscordReplyIngest } from './hooks/useDiscordReplyIngest';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
 import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
@@ -276,7 +277,7 @@ function OrchestratorContent() {
   const [isArchiveRestoreOpen, setIsArchiveRestoreOpen] = useState(false);
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
   // [NEW] アップデートチェック（useUpdateCheckに委譲）
-  const { pendingUpdate, showUpdateDialog, isHidingAfterUpdate, handleUpdateConfirm, handleUpdateCancel, tUpdate }
+  const { pendingUpdate, showUpdateDialog, isHidingAfterUpdate, handleUpdateConfirm, handleUpdateCancel, tUpdate, storeUpdateAvailable, dismissStoreUpdate }
     = useUpdateCheck({ isMainWindow });
 
   const isSearchOpenRef = useRef(false);
@@ -305,10 +306,11 @@ function OrchestratorContent() {
     setupRequired: isMainWindow && setupRequired,
     isSettingsOpen: isMainWindow && isSettingsOpen,
     isCheckingSetup: isMainWindow && isCheckingSetup,
-    showUpdateDialog: isMainWindow && showUpdateDialog,
+    showUpdateDialog: isMainWindow && (showUpdateDialog || storeUpdateAvailable),
     isSearchOpen: isMainWindow && isSearchOpen,
   });
   useFeedbackConversationUnreadCheck(isMainWindow);
+  useDiscordReplyIngest(isMainWindow);
 
   // ウィンドウラベル生成
   const getWindowLabel = useCallback((path: string) => {
@@ -2014,7 +2016,7 @@ function OrchestratorContent() {
 
   }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
-  const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isArchiveRestoreOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
+  const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isArchiveRestoreOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !storeUpdateAvailable && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
 
   useEffect(() => {
     if (!isMainWindow || isCheckingSetup || setupRequired || settingsLoading || settings.analytics_consent) return;
@@ -2235,6 +2237,23 @@ function OrchestratorContent() {
         cancelText={tUpdate('update.cancel')}
         onConfirm={handleUpdateConfirm}
         onCancel={handleUpdateCancel}
+      />
+    );
+  }
+  if (storeUpdateAvailable) {
+    return (
+      <ConfirmDialog
+        isOpen={true}
+        title="最新版があります"
+        message="Microsoft Storeで俺の付箋の更新を入手できます。"
+        confirmText="Storeを開く"
+        cancelText="あとで"
+        onConfirm={async () => {
+          const { open } = await import('@tauri-apps/plugin-shell');
+          await open('https://apps.microsoft.com/detail/9N4MW0V2MVVG');
+          dismissStoreUpdate();
+        }}
+        onCancel={async () => { dismissStoreUpdate(); }}
       />
     );
   }

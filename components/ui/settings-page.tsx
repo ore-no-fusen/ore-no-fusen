@@ -9,10 +9,12 @@
 
 "use client"
 
-import React, { useState, useMemo, useEffect, useCallback } from "react"
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import MemberSettings from "@/app/components/MemberSettings"
 import SupportMemberNumber from "@/app/components/SupportMemberNumber"
+import AnnouncementCard, { announcementReplyDraft, type ReceivedAnnouncement } from "@/app/components/AnnouncementCard"
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText, Heart } from "lucide-react"
 
 // ★さっき作った「倉庫番」をインポート
@@ -54,6 +56,7 @@ import {
     ackFeedbackConversationMessages,
     getFeedbackAppVersion,
     linkFeedbackMember,
+    markFeedbackConversationActive,
     clearFeedbackConversationIdentity,
     deleteFeedbackUploadedAttachment,
     deleteFeedbackConversation,
@@ -69,6 +72,8 @@ import {
     uploadFeedbackAttachment,
 } from "@/app/utils/feedbackConversation"
 import { assertFeedbackImages } from "@/app/utils/feedbackImage"
+import { buildConversationTimeline, parseAnnouncementReply } from "@/app/utils/developerConversationTimeline"
+import { DISCORD_AUTO_INGEST_STORAGE_KEY, DISCORD_INGEST_SECRET_STORAGE_KEY } from "@/app/utils/discordReplyIngest"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -90,7 +95,6 @@ type SettingsPageProps = {
     missingFolderPath?: string | null;
 }
 
-const DISCORD_INGEST_SECRET_STORAGE_KEY = 'ore-no-fusen.feedback.discord_ingest_secret';
 const PRODUCTION_SUPPORT_PAGE_URL = 'https://ore-no-fusen.vercel.app/endroll';
 const DEVELOP_SUPPORT_PAGE_URL = 'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/endroll';
 
@@ -2451,6 +2455,7 @@ function FeedbackSection({ t, language }: { t: (key: any) => string; language: L
                     secretToken: result.secretToken,
                 });
             }
+            markFeedbackConversationActive()
 
             setSent(true)
             setContent('')
@@ -2567,6 +2572,29 @@ type BoardMessage = {
     readByUser: boolean;
 };
 
+function ConversationMessageBubble({ message, isEnglish, inThread = false }: { message: BoardMessage; isEnglish: boolean; inThread?: boolean }) {
+    const reply = message.authorType === 'user' ? parseAnnouncementReply(message.body) : null
+    const date = new Date(message.createdAt)
+    return (
+        <div data-conversation-message={message.messageId} className={`flex ${message.authorType === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[78%] rounded-lg border px-4 py-3 text-sm leading-6 ${message.authorType === 'user'
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-900 border-gray-200'}`}>
+                <div className={`mb-1 text-xs font-bold ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
+                    {message.authorType === 'user' ? (isEnglish ? 'You' : 'ユーザー') : (isEnglish ? 'Developer' : 'アプリ開発者')}
+                </div>
+                {reply && <div className="mb-2 border-l-2 border-blue-300 pl-2 text-xs text-blue-100">
+                    {inThread ? (isEnglish ? '↳ Reply to this letter' : '↳ このお便りへの返信') : `↳ お便り「${reply.title}」への返信`}
+                </div>}
+                <div className="whitespace-pre-wrap break-words">{reply ? reply.reply : message.body}</div>
+                {!Number.isNaN(date.getTime()) && <time className={`mt-1 block text-right text-xs ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
+                    {date.toLocaleString(isEnglish ? 'en-US' : 'ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </time>}
+            </div>
+        </div>
+    )
+}
+
 function SelectedConversationImage({ file, onRemove }: { file: File; onRemove: () => void }) {
     const [url, setUrl] = useState<string | null>(null)
     useEffect(() => {
@@ -2599,16 +2627,36 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const feedbackApiBaseUrl = getFeedbackApiBaseUrl()
     const feedbackApiTargetLabel = getFeedbackApiTargetLabel(feedbackApiBaseUrl)
     const [messages, setMessages] = useState<BoardMessage[]>([])
+    const [announcements, setAnnouncements] = useState<ReceivedAnnouncement[]>([])
+    const [replyTarget, setReplyTarget] = useState<ReceivedAnnouncement | null>(null)
+    const [replyDraft, setReplyDraft] = useState('')
     const [draft, setDraft] = useState('')
     const [selectedImages, setSelectedImages] = useState<File[]>([])
     const [loading, setLoading] = useState(false)
     const [sending, setSending] = useState(false)
     const [deleting, setDeleting] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [newDeveloperReply, setNewDeveloperReply] = useState(false)
+    const timeline = useMemo(() => buildConversationTimeline(announcements, messages), [announcements, messages])
+    const historyRef = useRef<HTMLDivElement>(null)
+    const scrollToLatestRef = useRef(true)
 
-    const loadMessages = useCallback(async () => {
-        setLoading(true)
-        setError(null)
+    useEffect(() => {
+        if (loading || timeline.length === 0 || !scrollToLatestRef.current) return
+        scrollToLatestRef.current = false
+        requestAnimationFrame(() => {
+            if (historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight
+        })
+    }, [loading, timeline])
+
+    const loadMessages = useCallback(async (quiet = false) => {
+        if (!quiet) {
+            setLoading(true)
+            setError(null)
+            try {
+                setAnnouncements(await invoke<ReceivedAnnouncement[]>('member_announcements'))
+            } catch { /* ブラウザ版には会員のお便りがない。 */ }
+        }
         try {
             const nextMessages = await pollFeedbackConversationMessages(conversationIdentity)
             setMessages(nextMessages)
@@ -2616,6 +2664,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             const unreadDeveloperMessageIds = getUnreadDeveloperReplyIds(nextMessages)
 
             if (unreadDeveloperMessageIds.length > 0) {
+                setNewDeveloperReply(true)
                 setFeedbackConversationUnreadState(true)
                 requestAnimationFrame(() => {
                     ackFeedbackConversationMessages(conversationIdentity, unreadDeveloperMessageIds)
@@ -2628,14 +2677,28 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                 setFeedbackConversationUnreadState(hasUnreadDeveloperReply(nextMessages))
             }
         } catch (e) {
-            setError(String(e))
+            if (!quiet) setError(String(e))
         } finally {
-            setLoading(false)
+            if (!quiet) setLoading(false)
         }
     }, [conversationIdentity])
 
     useEffect(() => {
         loadMessages()
+    }, [loadMessages])
+
+    useEffect(() => {
+        const timer = window.setInterval(() => { void loadMessages(true) }, 60_000)
+        return () => window.clearInterval(timer)
+    }, [loadMessages])
+
+    useEffect(() => {
+        let dispose: (() => void) | undefined
+        let cancelled = false
+        void listen('fusen:announcements_updated', () => { void loadMessages() })
+            .then((unlisten) => { if (cancelled) unlisten(); else dispose = unlisten })
+            .catch(() => { })
+        return () => { cancelled = true; dispose?.() }
     }, [loadMessages])
 
     const addImages = useCallback((incoming: File[]) => {
@@ -2656,9 +2719,10 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         })
     }, [isEnglish])
 
-    const sendMessage = async () => {
-        const content = draft.trim()
-        if (!content) return
+    const sendMessage = async (target: ReceivedAnnouncement | null = null) => {
+        const reply = (target ? replyDraft : draft).trim()
+        if (!reply) return
+        const content = target ? `${announcementReplyDraft(target)}${reply}` : reply
 
         setSending(true)
         setError(null)
@@ -2666,7 +2730,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         try {
             await linkFeedbackMember(conversationIdentity);
             const appVersion = await getFeedbackAppVersion()
-            for (const file of selectedImages) {
+            for (const file of target ? [] : selectedImages) {
                 uploadedAttachmentIds.push(await uploadFeedbackAttachment(conversationIdentity, file))
             }
             const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
@@ -2690,8 +2754,12 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     secretToken: result.secretToken,
                 })
             }
+            markFeedbackConversationActive()
             setDraft('')
+            setReplyDraft('')
+            setReplyTarget(null)
             setSelectedImages([])
+            scrollToLatestRef.current = true
             await loadMessages()
         } catch (e) {
             await Promise.all(uploadedAttachmentIds.map((fileId) =>
@@ -2742,31 +2810,38 @@ function DeveloperConversationSection({ language }: { language: Language }) {
 
             <SupportMemberNumber language={language} />
 
+            {announcements.length > 0 && (
+                <div role="status" className="rounded-xl border-2 border-blue-300 bg-blue-50 px-5 py-4 text-blue-950">
+                    <div className="text-lg font-bold">✉️ 開発者からのお便りが{announcements.length}件届いています</div>
+                    <p className="mt-1 text-sm">お便りごとに返信をまとめ、最近やりとりしたものを下に表示しています。</p>
+                </div>
+            )}
+
             <div className="border rounded-lg overflow-hidden bg-white">
-                <div className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
+                <div ref={historyRef} data-conversation-history className="min-h-[320px] max-h-[460px] overflow-y-auto p-5 space-y-4 bg-slate-50">
                     {loading && messages.length === 0 ? (
                         <div className="text-sm text-gray-500">{isEnglish ? 'Loading...' : '読み込み中...'}</div>
-                    ) : messages.length === 0 ? (
+                    ) : messages.length === 0 && announcements.length === 0 ? (
                         <div className="rounded-md border border-dashed bg-white p-6 text-sm text-gray-500">
                             {isEnglish ? 'No messages yet. You can send one using the field below.' : 'まだやりとりはありません。下の入力欄からメッセージを送れます。'}
                         </div>
                     ) : (
-                        messages.map((message) => (
-                            <div
-                                key={message.messageId}
-                                className={`flex ${message.authorType === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div className={`max-w-[78%] rounded-lg border px-4 py-3 text-sm leading-6 ${message.authorType === 'user'
-                                    ? 'bg-gray-900 text-white border-gray-900'
-                                    : 'bg-white text-gray-900 border-gray-200'
-                                    }`}>
-                                    <div className={`text-xs font-bold mb-1 ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
-                                        {message.authorType === 'user' ? (isEnglish ? 'You' : 'ユーザー') : (isEnglish ? 'Developer' : 'アプリ開発者')}
-                                    </div>
-                                    <div className="whitespace-pre-wrap break-words">{message.body}</div>
-                                </div>
-                            </div>
-                        ))
+                        timeline.map((item) => item.kind === 'announcement' ? (
+                        <AnnouncementCard
+                            key={item.key}
+                            announcement={item.announcement}
+                            onReply={() => { setReplyTarget(item.announcement); setReplyDraft('') }}
+                            replying={replyTarget?.id === item.announcement.id}
+                            replyText={replyDraft}
+                            onReplyTextChange={setReplyDraft}
+                            onSend={() => void sendMessage(item.announcement)}
+                            onCancel={() => { setReplyTarget(null); setReplyDraft('') }}
+                            sending={sending}
+                            error={Boolean(error)}
+                        >
+                            {item.replies.map((message) => <ConversationMessageBubble key={message.messageId} message={message} isEnglish={isEnglish} inThread />)}
+                        </AnnouncementCard>
+                        ) : <ConversationMessageBubble key={item.key} message={item.message} isEnglish={isEnglish} />)
                     )}
                 </div>
 
@@ -2785,11 +2860,21 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                         addImages(Array.from(event.dataTransfer.files))
                     }}
                 >
+                    {newDeveloperReply && (
+                        <div role="status" className="flex items-center justify-between gap-3 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-950">
+                            <span>{isEnglish ? 'A new reply from the developer has arrived.' : '開発者から新しい返信が届きました。'}</span>
+                            <Button type="button" variant="outline" onClick={() => {
+                                if (historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight
+                                setNewDeveloperReply(false)
+                            }}>{isEnglish ? 'View latest' : '最新の返信を見る'}</Button>
+                        </div>
+                    )}
                     {error && (
                         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                             {isEnglish ? 'Communication failed. Please wait and try again.' : '通信に失敗しました。時間をおいて再試行してください。'}
                         </div>
                     )}
+                    {!replyTarget && <>
                     <textarea
                         className="flex min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         placeholder={isEnglish ? 'Write a message to the developer' : '開発者に伝えたいことを書いてください'}
@@ -2825,9 +2910,10 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             {isEnglish ? 'Paste a screenshot with Ctrl+V or drop it here. Images are compressed before upload.' : '画面キャプチャーはCtrl+Vで貼り付けできます。画像は送信前に自動圧縮します。'}
                         </p>
                     </div>
+                    </>}
                     <div className="flex flex-wrap justify-between gap-2 items-center">
                         <div className="flex gap-2">
-                        <Button variant="outline" onClick={loadMessages} disabled={loading || sending || deleting}>
+                        <Button variant="outline" onClick={() => { void loadMessages() }} disabled={loading || sending || deleting}>
                             <RefreshCw className="mr-2 h-4 w-4" />
                             {isEnglish ? 'Refresh' : '更新'}
                         </Button>
@@ -2836,10 +2922,10 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             {deleting ? (isEnglish ? 'Deleting...' : '削除中...') : (isEnglish ? 'Delete Conversation' : '会話を削除')}
                         </Button>
                         </div>
-                        <Button onClick={() => void sendMessage()} disabled={sending || deleting || !draft.trim()}>
+                        {!replyTarget && <Button onClick={() => void sendMessage()} disabled={sending || deleting || !draft.trim()}>
                             <Send className="mr-2 h-4 w-4" />
                             {sending ? (isEnglish ? 'Sending...' : '送信中...') : (isEnglish ? 'Send' : '送信')}
-                        </Button>
+                        </Button>}
                     </div>
                 </div>
             </div>
@@ -2899,6 +2985,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
 
     const [discordIngestSecret, setDiscordIngestSecret] = useState(() => getStoredDiscordIngestSecret())
     const [shouldSaveDiscordIngestSecret, setShouldSaveDiscordIngestSecret] = useState(() => getStoredDiscordIngestSecret() !== '')
+    const [autoDiscordIngest, setAutoDiscordIngest] = useState(() => getStoredDiscordIngestSecret() !== '' && typeof window !== 'undefined' && window.localStorage.getItem(DISCORD_AUTO_INGEST_STORAGE_KEY) === 'true')
     const [discordIngestLoading, setDiscordIngestLoading] = useState(false)
     const [discordIngestResult, setDiscordIngestResult] = useState<{
         ingested: number;
@@ -3320,6 +3407,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${secret}`,
                 },
+                 body: '{}',
             })
             const result = await response.json().catch(() => null) as {
                 ingested?: number;
@@ -3345,6 +3433,10 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
         if (shouldSaveDiscordIngestSecret) {
             window.localStorage.setItem(DISCORD_INGEST_SECRET_STORAGE_KEY, value)
         }
+        if (!value.trim()) {
+            setAutoDiscordIngest(false)
+            window.localStorage.removeItem(DISCORD_AUTO_INGEST_STORAGE_KEY)
+        }
     }
 
     const updateShouldSaveDiscordIngestSecret = (checked: boolean) => {
@@ -3353,6 +3445,8 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
             window.localStorage.setItem(DISCORD_INGEST_SECRET_STORAGE_KEY, discordIngestSecret)
         } else {
             window.localStorage.removeItem(DISCORD_INGEST_SECRET_STORAGE_KEY)
+            window.localStorage.removeItem(DISCORD_AUTO_INGEST_STORAGE_KEY)
+            setAutoDiscordIngest(false)
         }
     }
 
@@ -4016,11 +4110,11 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                 </div>
                 <div className="rounded-lg border border-red-200 bg-red-50/40 px-5 py-4 space-y-4">
                     <div>
-                        <p className="text-sm font-bold text-slate-900">{isEnglish ? 'Manual Import' : '手動ingest'}</p>
+                        <p className="text-sm font-bold text-slate-900">{isEnglish ? 'Deliver Discord replies to users' : 'Discordの返信をユーザーへ届ける'}</p>
                         <p className="text-xs text-slate-600 mt-1">
                             {isEnglish
-                                ? 'Manually import developer replies from Discord into the current feedback API. The secret is not saved unless you enable the option below.'
-                                : 'Discordの開発者返信を、現在のフィードバックAPIへ手動で取り込みます。下の設定を有効にしない限り、secretは保存されません。'}
+                                ? 'Save the ingest secret on this PC and enable automatic import for replies to appear soon after you send them in Discord. The button also imports immediately.'
+                                : 'このPCにingest secretを保存して自動取り込みを有効にすると、Discordで書いた返信がユーザーへ届きます。「取り込み実行」は今すぐ確認したいときに使います。'}
                         </p>
                     </div>
                     <div className="flex items-end gap-3">
@@ -4044,6 +4138,20 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                                     className="h-4 w-4 rounded border-slate-300"
                                 />
                                 {isEnglish ? 'Save the ingest secret on this PC' : 'このPCにingest secretを保存する'}
+                            </label>
+                            <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                                <input
+                                    type="checkbox"
+                                    checked={autoDiscordIngest}
+                                    disabled={!shouldSaveDiscordIngestSecret || !discordIngestSecret.trim()}
+                                    onChange={(e) => {
+                                        setAutoDiscordIngest(e.target.checked)
+                                        if (e.target.checked) window.localStorage.setItem(DISCORD_AUTO_INGEST_STORAGE_KEY, 'true')
+                                        else window.localStorage.removeItem(DISCORD_AUTO_INGEST_STORAGE_KEY)
+                                    }}
+                                    className="h-4 w-4 rounded border-slate-300"
+                                />
+                                {isEnglish ? 'Import Discord replies automatically every minute while this PC app is running' : 'このPCのアプリが起動中はDiscord返信を約1分ごとに自動取り込みする'}
                             </label>
                         </div>
                         <Button

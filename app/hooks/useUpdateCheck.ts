@@ -24,10 +24,13 @@ type UseUpdateCheckReturn = {
     handleUpdateConfirm: () => Promise<void>;
     handleUpdateCancel: () => Promise<void>;
     tUpdate: ReturnType<typeof getTranslation>;
+    storeUpdateAvailable: boolean;
+    dismissStoreUpdate: () => void;
 };
 
 export function useUpdateCheck({ isMainWindow }: UseUpdateCheckOptions): UseUpdateCheckReturn {
     const [pendingUpdate, setPendingUpdate] = useState<any>(null);
+    const [storeUpdateAvailable, setStoreUpdateAvailable] = useState(false);
     const [showUpdateDialog, setShowUpdateDialog] = useState(false);
     const [isHidingAfterUpdate, setIsHidingAfterUpdate] = useState(false);
     const [uiLanguage, setUiLanguage] = useState<Language>('ja');
@@ -58,7 +61,10 @@ export function useUpdateCheck({ isMainWindow }: UseUpdateCheckOptions): UseUpda
         const checkForUpdate = async () => {
             try {
                 const distributionKind = await invoke<string>('fusen_get_distribution_info').catch(() => 'desktop');
-                if (distributionKind === 'msix') return;
+                if (distributionKind === 'msix') {
+                    setStoreUpdateAvailable(await invoke<boolean>('fusen_check_store_update'));
+                    return;
+                }
 
                 const { check } = await import('@tauri-apps/plugin-updater');
                 const update = await check();
@@ -77,7 +83,7 @@ export function useUpdateCheck({ isMainWindow }: UseUpdateCheckOptions): UseUpda
 
     // ダイアログ表示時のウィンドウリサイズ（レンダー内サイドエフェクト排除）
     useEffect(() => {
-        if (!showUpdateDialog || !pendingUpdate) return;
+        if ((!showUpdateDialog || !pendingUpdate) && !storeUpdateAvailable) return;
         import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
             const { LogicalSize } = await import('@tauri-apps/api/dpi');
             const win = getCurrentWindow();
@@ -86,7 +92,7 @@ export function useUpdateCheck({ isMainWindow }: UseUpdateCheckOptions): UseUpda
             await win.show().catch(() => {});
             await win.setFocus().catch(() => {});
         });
-    }, [showUpdateDialog, pendingUpdate]);
+    }, [showUpdateDialog, pendingUpdate, storeUpdateAvailable]);
 
     // ダウンロード＆インストール実行
     const handleUpdateConfirm = useCallback(async () => {
@@ -128,5 +134,7 @@ export function useUpdateCheck({ isMainWindow }: UseUpdateCheckOptions): UseUpda
         handleUpdateConfirm,
         handleUpdateCancel,
         tUpdate,
+        storeUpdateAvailable,
+        dismissStoreUpdate: () => setStoreUpdateAvailable(false),
     };
 }
