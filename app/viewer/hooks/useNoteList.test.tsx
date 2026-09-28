@@ -113,4 +113,25 @@ describe('useNoteList', () => {
     );
     unmount();
   });
+
+  it('PC送信の元付箋IDをIndexedDBに残し、同じ本文の既存ノートにも補完する', async () => {
+    mocks.loadAllDrafts.mockResolvedValue([{
+      id: 'pc-note', title: '元', body: '本文', created_at: '', images: [], received_pc: true,
+    }]);
+    mocks.downloadWithAutoRefresh.mockResolvedValue({ items: [{
+      id: 'pc-note', title: '元', body: '本文',
+      originNoteId: 'origin', originBodyHash: 'hash', originPcId: 'pc-a',
+      originAppearance: { backgroundColor: '#ffeeaa', x: 100, y: 200, width: 400, height: 300 },
+    }] });
+    mocks.saveDraft.mockResolvedValue(undefined);
+    const { unmount } = renderHook(() => useNoteList({
+      step: 'list', accessToken: 'token', setHistoryNotes: vi.fn(),
+      setIsHistoryLoading: vi.fn(), setThumbnailUrls: vi.fn(), initLockedNoteIds: vi.fn(),
+    }));
+    await waitFor(() => expect(mocks.saveDraft).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'pc-note', originNoteId: 'origin', originBodyHash: 'hash', originPcId: 'pc-a',
+      originAppearance: { backgroundColor: '#ffeeaa', x: 100, y: 200, width: 400, height: 300 },
+    })));
+    unmount();
+  });
 });

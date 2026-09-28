@@ -4,6 +4,16 @@ export type ReceivedIphoneNote = {
   body: string;
   context: string;
   tags?: string[];
+  originNoteId?: string;
+  originBodyHash?: string;
+  originPcId?: string;
+  originAppearance?: {
+    backgroundColor?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  };
 };
 
 export type CreatedIphoneNote = {

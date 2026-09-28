@@ -714,10 +714,214 @@ fn iphone_source_hash(note_id: &str) -> String {
     format!("{:x}", Sha256::digest(note_id.as_bytes()))
 }
 
+fn iphone_origin_note_id(pc_id: &str, path: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let normalized = path.replace('\\', "/").to_lowercase();
+    format!("{:x}", Sha256::digest(format!("{}:{}", pc_id, normalized).as_bytes()))
+}
+
+fn iphone_body_hash(body: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(body.as_bytes()))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IphoneOriginMatch {
+    path: String,
+    body: String,
+    body_hash: String,
+    changed_since_send: bool,
+    background_color: Option<String>,
+    x: Option<f64>,
+    y: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IphoneAppearance {
+    background_color: Option<String>,
+    x: Option<f64>,
+    y: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
+}
+
+fn apply_iphone_appearance(data: &mut logic::CreateNoteData, appearance: &IphoneAppearance) {
+    if let Some(color) = appearance.background_color.as_deref().filter(|color|
+        color.len() == 7 && color.starts_with('#') && color[1..].bytes().all(|b| b.is_ascii_hexdigit())) {
+        data.frontmatter = logic::update_frontmatter_value(&data.frontmatter, "backgroundColor", format!("\"{}\"", color));
+        data.meta.background_color = Some(color.to_string());
+    }
+    if let (Some(x), Some(y), Some(width), Some(height)) =
+        (appearance.x, appearance.y, appearance.width, appearance.height) {
+        if x.is_finite() && y.is_finite() && width.is_finite() && height.is_finite()
+            && width > 0.0 && height > 0.0 {
+            let x = x + 24.0;
+            let y = y + 24.0;
+            data.frontmatter = logic::update_frontmatter_value(&data.frontmatter, "window", format!(
+                "{{ x: {}, y: {}, width: {}, height: {} }}", x, y, width, height));
+            data.meta.x = Some(x);
+            data.meta.y = Some(y);
+            data.meta.width = Some(width);
+            data.meta.height = Some(height);
+        }
+    }
+}
+
+#[tauri::command]
+fn fusen_find_iphone_origin(
+    state: State<'_, Mutex<AppState>>,
+    origin_note_id: String,
+    origin_body_hash: String,
+    origin_pc_id: String,
+) -> Result<Option<IphoneOriginMatch>, String> {
+    if origin_note_id.len() != 64 || !origin_note_id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Ok(None);
+    }
+    if origin_pc_id != gdrive::local_pc_id()? {
+        return Ok(None);
+    }
+    let paths: Vec<String> = state.lock().unwrap_or_else(|p| p.into_inner())
+        .notes.iter().map(|note| note.path.clone()).collect();
+    for path in paths {
+        if iphone_origin_note_id(&origin_pc_id, &path) != origin_note_id {
+            continue;
+        }
+        let note = storage::read_note(&path)?;
+        let (_, body) = logic::split_frontmatter(&note.body);
+        let (x, y, width, height, background_color, _, _, _) = logic::extract_meta_from_content(&note.body);
+        let body_hash = iphone_body_hash(body);
+        return Ok(Some(IphoneOriginMatch {
+            path,
+            body: body.to_string(),
+            changed_since_send: body_hash != origin_body_hash,
+            body_hash,
+            background_color,
+            x, y, width, height,
+        }));
+    }
+    Ok(None)
+}
+
+fn build_iphone_return_content(
+    original: &str,
+    expected_body_hash: &str,
+    incoming_body: &str,
+    receipt_hash: &str,
+) -> Result<String, String> {
+    let (frontmatter, current_body) = logic::split_frontmatter(original);
+    if frontmatter.is_empty() || iphone_body_hash(current_body) != expected_body_hash {
+        return Err("確認中にPC側の付箋が変わりました。内容をもう一度確認してください。".into());
+    }
+    let frontmatter = logic::update_frontmatter_value(frontmatter, "iphone_return_hash", receipt_hash.to_string());
+    Ok(format!("{}\n\n{}", frontmatter, incoming_body))
+}
+
+fn build_iphone_undo_content(current: &str, backup: &str, expected_body_hash: &str) -> Result<String, String> {
+    let (frontmatter, current_body) = logic::split_frontmatter(current);
+    if frontmatter.is_empty() || iphone_body_hash(current_body) != expected_body_hash {
+        return Err("反映後に付箋が変更されたため、自動で戻せません。".into());
+    }
+    let (_, old_body) = logic::split_frontmatter(backup);
+    Ok(format!("{}\n\n{}", frontmatter, old_body))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IphoneReturnApplyResult {
+    backup_path: Option<String>,
+    body_hash: String,
+}
+
+#[tauri::command]
+fn fusen_apply_iphone_return(
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    origin_note_id: String,
+    origin_pc_id: String,
+    expected_body_hash: String,
+    body: String,
+    note_id: String,
+) -> Result<IphoneReturnApplyResult, String> {
+    let pc_id = gdrive::local_pc_id()?;
+    if origin_pc_id != pc_id || iphone_origin_note_id(&pc_id, &path) != origin_note_id {
+        return Err("送信元の付箋を確認できません。元の付箋は変更していません。".into());
+    }
+    let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+    if !guard.notes.iter().any(|note| note.path == path) {
+        return Err("元の付箋が見つかりません。".into());
+    }
+    let original = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let receipt_hash = iphone_source_hash(&note_id);
+    if original.contains(&format!("iphone_return_hash: {}", receipt_hash)) {
+        let (_, current_body) = logic::split_frontmatter(&original);
+        return Ok(IphoneReturnApplyResult {
+            backup_path: None,
+            body_hash: iphone_body_hash(current_body),
+        });
+    }
+    let updated = build_iphone_return_content(&original, &expected_body_hash, &body, &receipt_hash)?;
+    let parent = std::path::Path::new(&path).parent().ok_or("付箋の保存先が見つかりません。")?;
+    let backup_dir = parent.join(".iphone-backups");
+    std::fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
+    let backup_name = format!("{}_{}.md", chrono::Utc::now().format("%Y%m%dT%H%M%S%3f"), uuid::Uuid::new_v4());
+    let backup_path = backup_dir.join(backup_name);
+    std::fs::write(&backup_path, &original).map_err(|e| format!("反映前の保存に失敗しました: {}", e))?;
+    storage::write_note(&path, &updated)?;
+    let receipts = parent.join(".iphone-receipts");
+    if std::fs::create_dir_all(&receipts).is_ok() {
+        let _ = std::fs::write(receipts.join(receipt_hash), path.as_bytes());
+    }
+    drop(guard);
+    Ok(IphoneReturnApplyResult {
+        backup_path: Some(backup_path.to_string_lossy().to_string()),
+        body_hash: iphone_body_hash(&body),
+    })
+}
+
+#[tauri::command]
+fn fusen_undo_iphone_return(
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+    backup_path: String,
+    expected_body_hash: String,
+) -> Result<(), String> {
+    let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+    if !guard.notes.iter().any(|note| note.path == path) {
+        return Err("元の付箋が見つかりません。".into());
+    }
+    let parent = std::path::Path::new(&path).parent().ok_or("付箋の保存先が見つかりません。")?;
+    let backup_dir = parent.join(".iphone-backups");
+    let safe_dir = backup_dir.canonicalize().map_err(|e| e.to_string())?;
+    let safe_backup = std::path::Path::new(&backup_path).canonicalize().map_err(|e| e.to_string())?;
+    if safe_backup.parent() != Some(safe_dir.as_path()) {
+        return Err("バックアップの場所を確認できません。".into());
+    }
+    let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let backup = std::fs::read_to_string(&safe_backup).map_err(|e| e.to_string())?;
+    let restored = build_iphone_undo_content(&current, &backup, &expected_body_hash)?;
+    let returned_copy = backup_dir.join(format!("undo_{}.md", uuid::Uuid::new_v4()));
+    std::fs::write(returned_copy, &current).map_err(|e| e.to_string())?;
+    storage::write_note(&path, &restored)?;
+    drop(guard);
+    Ok(())
+}
+
 #[tauri::command]
 fn fusen_has_iphone_note(folder_path: String, note_id: String) -> bool {
     let source_hash = iphone_source_hash(&note_id);
-    storage::find_note_by_iphone_source_hash(&folder_path, &source_hash).is_some()
+    if storage::find_note_by_iphone_source_hash(&folder_path, &source_hash).is_some()
+        || std::path::Path::new(&folder_path).join(".iphone-receipts").join(&source_hash).exists() {
+        return true;
+    }
+    std::fs::read_dir(&folder_path).ok().into_iter().flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|extension| extension == "md"))
+        .any(|entry| std::fs::read_to_string(entry.path()).map(|content|
+            content.contains(&format!("iphone_return_hash: {}", source_hash))).unwrap_or(false))
 }
 
 /// iPhone受信付箋を、受信ID単位で一度だけ作成する。
@@ -729,6 +933,9 @@ fn fusen_create_iphone_note(
     context: String,
     body: String,
     note_id: String,
+    origin_note_id: Option<String>,
+    origin_pc_id: Option<String>,
+    origin_appearance: Option<IphoneAppearance>,
 ) -> Result<IphoneNoteCreateResult, String> {
     let source_hash = iphone_source_hash(&note_id);
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
@@ -743,6 +950,21 @@ fn fusen_create_iphone_note(
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let next_seq = storage::get_next_seq(&folder_path);
     let mut data = logic::build_create_note_data(&folder_path, &context, next_seq, &today);
+    let mut appearance = origin_appearance;
+    if let (Some(origin_id), Some(pc_id)) = (origin_note_id.as_deref(), origin_pc_id.as_deref()) {
+        if gdrive::local_pc_id().ok().as_deref() == Some(pc_id) {
+            if let Some(source) = app_state.notes.iter().find(|note|
+                iphone_origin_note_id(pc_id, &note.path) == origin_id) {
+                appearance = Some(IphoneAppearance {
+                    background_color: source.background_color.clone(),
+                    x: source.x, y: source.y, width: source.width, height: source.height,
+                });
+            }
+        }
+    }
+    if let Some(appearance) = appearance {
+        apply_iphone_appearance(&mut data, &appearance);
+    }
     let closing_fence = data
         .frontmatter
         .rfind("---")
@@ -4238,6 +4460,17 @@ async fn fusen_send_to_iphone(
         .unwrap_or(std::path::Path::new("."));
     let sent_at = chrono::Utc::now().to_rfc3339();
     let note_id = uuid::Uuid::new_v4().to_string();
+    // A path-derived opaque ID identifies the exact source note without exposing its path.
+    // Renamed or deleted notes deliberately stop matching on return.
+    let origin_pc_id = gdrive::local_pc_id()?;
+    let origin_note_id = iphone_origin_note_id(&origin_pc_id, &path);
+    let origin_body_hash = iphone_body_hash(logic::split_frontmatter(&note).1);
+    let (appearance_x, appearance_y, appearance_width, appearance_height, appearance_color, _, _, _) =
+        logic::extract_meta_from_content(&frontmatter);
+    let origin_appearance = IphoneAppearance {
+        background_color: appearance_color,
+        x: appearance_x, y: appearance_y, width: appearance_width, height: appearance_height,
+    };
 
     // 先頭画像はタイトルにせず本文へ残し、Driveアップロード対象にする。
     let (title, body_content) = split_iphone_title_body(&body);
@@ -4255,6 +4488,10 @@ async fn fusen_send_to_iphone(
 
     let note_json_drive = serde_json::json!({
         "id": note_id.clone(),
+        "originNoteId": origin_note_id,
+        "originBodyHash": origin_body_hash,
+        "originPcId": origin_pc_id,
+        "originAppearance": origin_appearance,
         "title": title,
         "body": body_rich,
         "tags": note_tags,
@@ -4263,6 +4500,10 @@ async fn fusen_send_to_iphone(
     });
     let mut note_json_push = serde_json::json!({
         "id": note_id.clone(),
+        "originNoteId": origin_note_id,
+        "originBodyHash": origin_body_hash,
+        "originPcId": origin_pc_id,
+        "originAppearance": origin_appearance,
         "title": title.clone(),
         "body": body_push,
         "tags": note_tags,
@@ -4734,6 +4975,14 @@ struct IphoneNotePayload {
     body: String,
     context: String,
     tags: Vec<String>,
+    #[serde(rename = "originNoteId")]
+    origin_note_id: Option<String>,
+    #[serde(rename = "originBodyHash")]
+    origin_body_hash: Option<String>,
+    #[serde(rename = "originPcId")]
+    origin_pc_id: Option<String>,
+    #[serde(rename = "originAppearance")]
+    origin_appearance: Option<IphoneAppearance>,
 }
 
 fn collect_iphone_image_names(item: &serde_json::Value) -> Vec<String> {
@@ -4833,6 +5082,79 @@ mod iphone_receive_routing_tests {
 
         assert_eq!(first, iphone_source_hash("iphone-note-1"));
         assert_ne!(first, iphone_source_hash("iphone-note-2"));
+    }
+
+    #[test]
+    fn iphone_origin_id_uses_pc_and_path_not_the_first_line() {
+        let first = iphone_origin_note_id("pc-a", "C:\\Notes\\memo.md");
+        assert_eq!(first, iphone_origin_note_id("pc-a", "c:/notes/memo.md"));
+        assert_ne!(first, iphone_origin_note_id("pc-b", "C:\\Notes\\memo.md"));
+        assert_ne!(first, iphone_origin_note_id("pc-a", "C:\\Notes\\other.md"));
+    }
+
+    #[test]
+    fn iphone_return_changes_only_body_and_records_receipt() {
+        let original = "---\ntype: sticky\nbackgroundColor: \"#ffeeaa\"\nwindow: { x: 42, y: 80, width: 400, height: 300 }\n---\n\nPC本文";
+        let updated = build_iphone_return_content(original, &iphone_body_hash("PC本文"), "iPhone本文", "receipt")
+            .expect("unchanged PC note should accept the return");
+        assert!(updated.contains("backgroundColor: \"#ffeeaa\""));
+        assert!(updated.contains("window: { x: 42, y: 80, width: 400, height: 300 }"));
+        assert!(updated.contains("iphone_return_hash: receipt"));
+        assert!(updated.ends_with("iPhone本文"));
+        assert!(!updated.contains("PC本文"));
+    }
+
+    #[test]
+    fn iphone_return_refuses_a_pc_note_changed_after_confirmation() {
+        let original = "---\nwindow: { x: 1, y: 2, width: 3, height: 4 }\n---\n\nPCで追記";
+        let result = build_iphone_return_content(original, &iphone_body_hash("送信時の本文"), "iPhone本文", "receipt");
+        assert!(result.is_err());
+        assert_eq!(original.lines().last(), Some("PCで追記"));
+    }
+
+    #[test]
+    fn iphone_return_undo_restores_pc_body_without_changing_current_color_or_position() {
+        let backup = "---\nbackgroundColor: \"#ffeeaa\"\nwindow: { x: 1, y: 2, width: 3, height: 4 }\n---\n\n以前のPC本文";
+        let current = "---\nbackgroundColor: \"#aabbcc\"\nwindow: { x: 20, y: 30, width: 3, height: 4 }\n---\n\niPhone本文";
+        let restored = build_iphone_undo_content(current, backup, &iphone_body_hash("iPhone本文")).unwrap();
+        assert!(restored.contains("backgroundColor: \"#aabbcc\""));
+        assert!(restored.contains("window: { x: 20, y: 30, width: 3, height: 4 }"));
+        assert!(restored.ends_with("以前のPC本文"));
+        assert!(build_iphone_undo_content(current, backup, &iphone_body_hash("さらに編集")).is_err());
+    }
+
+    #[test]
+    fn returned_note_receipt_prevents_reprocessing_when_drive_ack_is_lost() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().to_string_lossy().to_string();
+        assert!(!fusen_has_iphone_note(folder.clone(), "return-1".into()));
+        let receipts = dir.path().join(".iphone-receipts");
+        std::fs::create_dir(&receipts).unwrap();
+        std::fs::write(receipts.join(iphone_source_hash("return-1")), b"done").unwrap();
+        assert!(fusen_has_iphone_note(folder, "return-1".into()));
+    }
+
+    #[test]
+    fn new_note_uses_sent_appearance_when_the_original_is_missing() {
+        let mut data = logic::build_create_note_data("notes", "返送", 1, "2026-09-26");
+        apply_iphone_appearance(&mut data, &IphoneAppearance {
+            background_color: Some("#aabbcc".into()),
+            x: Some(100.0), y: Some(200.0), width: Some(450.0), height: Some(320.0),
+        });
+        assert!(data.frontmatter.contains("backgroundColor: \"#aabbcc\""));
+        assert!(data.frontmatter.contains("window: { x: 124, y: 224, width: 450, height: 320 }"));
+        assert_eq!(data.meta.background_color.as_deref(), Some("#aabbcc"));
+    }
+
+    #[test]
+    fn invalid_sent_appearance_does_not_replace_safe_defaults() {
+        let mut data = logic::build_create_note_data("notes", "返送", 1, "2026-09-26");
+        apply_iphone_appearance(&mut data, &IphoneAppearance {
+            background_color: Some("javascript:bad".into()),
+            x: Some(f64::NAN), y: Some(200.0), width: Some(-1.0), height: Some(320.0),
+        });
+        assert_eq!(logic::extract_meta_from_content(&data.frontmatter).4.as_deref(), Some("#f7e9b0"));
+        assert!(data.frontmatter.contains("window: { x: 100, y: 100, width: 400, height: 300 }"));
     }
 }
 
@@ -5284,6 +5606,11 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                     body: pc_body,
                     context,
                     tags,
+                    origin_note_id: item.get("originNoteId").and_then(|v| v.as_str()).map(str::to_string),
+                    origin_body_hash: item.get("originBodyHash").and_then(|v| v.as_str()).map(str::to_string),
+                    origin_pc_id: item.get("originPcId").and_then(|v| v.as_str()).map(str::to_string),
+                    origin_appearance: item.get("originAppearance").and_then(|value|
+                        serde_json::from_value(value.clone()).ok()),
                 },
             )
             .is_ok()
@@ -5399,6 +5726,9 @@ pub fn run() {
             fusen_read_note,
             fusen_create_note,
             fusen_has_iphone_note,
+            fusen_find_iphone_origin,
+            fusen_apply_iphone_return,
+            fusen_undo_iphone_return,
             fusen_create_iphone_note,
             fusen_create_note_lazy,
             fusen_get_recipe_candidates,

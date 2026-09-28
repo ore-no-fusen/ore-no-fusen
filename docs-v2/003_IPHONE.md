@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.5 / 2026-05-06
+設計書 v1.37 / 2026-09-26
 </p>
 
 ---
@@ -752,12 +752,20 @@ Drive 上の JSON は、以下の構成を基本とする。
 | 5 | `items[].tags` | `string[]` | ○ | タグ一覧 |
 | 6 | `items[].sent_at` | `string` | ○ | PC送信時刻 |
 | 7 | `items[].received_at` | `null` | △ | 現行ソースが互換目的で出力している残項目。処理判定には使わない |
+| 8 | `items[].originNoteId` | `string` | ○ | 送信元PC IDと付箋パスから作る不透明な識別子。本文や1行目で照合しない |
+| 9 | `items[].originBodyHash` | `string` | ○ | 送信時点のPC本文のSHA-256。戻るまでのPC側変更を検出する |
+| 10 | `items[].originPcId` | `string` | ○ | 元付箋があるPCのID。別PCで同じ識別子を誤使用しない |
+| 11 | `items[].originAppearance` | `Object` | ○ | 送信時点の色・位置・大きさ。元付箋が見つからない場合の新規保存用の予備情報 |
 
 ```json
 {
   "items": [
     {
       "id": "uuid",
+      "originNoteId": "sha256-of-pc-and-note-path",
+      "originBodyHash": "sha256-of-pc-body",
+      "originPcId": "pc-id",
+      "originAppearance": { "backgroundColor": "#ffeeaa", "x": 100, "y": 200, "width": 400, "height": 300 },
       "title": "買い物",
       "body": "牛乳\n![photo](fusen_img_20260505_120000_0.jpg)",
       "tags": ["shopping"],
@@ -782,6 +790,8 @@ Drive 上の JSON は、以下の構成を基本とする。
 | 8 | `items[].videos` | `Object[]` | △ | 添付動画一覧。各要素は <code>{ videoFileName, originalFileName }</code> を持つ。複数動画可 |
 | 9 | `items[].videoFileName` / `items[].originalFileName` | `string` | △ | 旧実装互換用の先頭動画情報。新規実装では <code>videos[]</code> を正とする |
 | 10 | `items[].targetPcId` | `string` | △ | 複数PC接続時の送信先PC ID。未指定の旧データは従来互換として全PCが受信対象にできる |
+| 11 | `items[].originNoteId` / `originBodyHash` / `originPcId` | `string` | △ | PCから受け取った付箋を送り返す場合だけ保持。iPhoneで新規作成したメモには付けない |
+| 12 | `items[].originAppearance` | `Object` | △ | PCから受け取った付箋の送信時点の見た目。元付箋が見つからない場合の新規付箋に使用 |
 
 ```json
 {
@@ -1057,14 +1067,27 @@ sequenceDiagram
     Note over Drive,PC: 30秒ポーリングで自動検出
     PC->>Drive: ❼ notes_from_iphone.json を確認
     Drive-->>PC: ❽ 新着データ + 画像/動画ファイル名
-    PC->>Drive: ❾ fusen_img_*.jpg / fusen_video_* をダウンロード
-    PC->>PC: ❿ 受信IDハッシュを確認<br>未保存なら Vault に .md / assets / assets/video を保存
-    PC->>Drive: ⓫ 処理済みアイテムまたはキューファイルを削除
-    PC->>Drive: ⓬ fusen_img_*.jpg / fusen_video_* を削除
-    PC->>UserPC: ⓭ 新規付箋ウィンドウを開く
-    UserPC->>PC: ② 内容を確認する
+    PC->>PC: ❾ 受信IDの処理済み確認と送信元IDの照合
+    alt 元付箋IDがある返送
+        PC->>UserPC: ❿ PCとiPhoneの本文を並べて選択を求める
+        UserPC->>PC: ② 元付箋に反映・新規付箋・保留を選ぶ
+        alt 保留
+            PC->>PC: キューを残し次回起動時に再表示
+        else 反映または新規付箋
+            PC->>Drive: ⓫ 必要な画像・動画を取得
+            PC->>PC: ⓬ バックアップ後に反映、または新規付箋を保存
+            PC->>Drive: ⓭ 保存済みアイテムをキューから削除
+        end
+    else 旧データまたはiPhone新規メモ
+        PC->>Drive: ❿ 必要な画像・動画を取得
+        PC->>PC: ⓫ 新規付箋を保存
+        PC->>Drive: ⓬ 保存済みアイテムをキューから削除
+        PC->>UserPC: ⓭ 新規付箋ウィンドウを開く
+    end
 ```
 <p class="mermaid-caption">図 3-4　iPhone → PC 送信シーケンス</p>
+
+PCから送った付箋の返送には `originNoteId`、`originBodyHash`、`originPcId`、`originAppearance` を付ける。PCはIDが一致する元付箋を探し、現在のPC本文と返送本文を並べて「元の付箋に反映」「新しい付箋として開く」「あとで決める」を選ばせる。送信後にPC側も編集されていれば、その旨を明示する。反映時は現在のPC本文が確認画面表示時から変わっていないことを再確認し、元の内容を `.iphone-backups/` に保存してから本文だけを書き換える。色と位置は現在のPC付箋の値を保持する。反映直後の画面から元の本文に戻せる。戻す前にPC本文が再編集されていれば自動復元しない。元付箋が見つからない場合は自動反映しない。新規付箋として開く場合は元付箋の現在の色・大きさ・位置を引き継ぎ、見つからなければ送信時の `originAppearance` を使う。重なりを避けるため位置を少しずらす。保留した返送はDriveキューに残し、次回起動時に再表示する。旧送信データとiPhone新規メモは従来どおり新規付箋として受信する。
 
 <Note type="success">
 <strong>「iPhoneに置いておく」との違い：</strong>Drive を使わない。テキスト＋画像＋動画を IndexedDB のみに保存。PC への送信は発生しない。
@@ -1416,5 +1439,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 35 | **1.34** | 26-08-11 | URLリンク化の対象をメモ一覧からライトモードの編集本文へ訂正。リンク化後も保存本文を変更しない規則を追加。 |
 | 36 | **1.35** | 26-08-11 | iPhone PWAでURLリンクをタップした際、新規画面ではなく現在の画面でリンク先へ移動する仕様へ訂正。 |
 | 37 | **1.36** | 26-08-12 | iOSのcontenteditable内リンク制限を避けるため、編集領域外の確認画面から通常リンクを開く仕様へ変更。 |
+| 38 | **1.37** | 26-09-26 | PC付箋のiPhone返送に送信元IDと本文ハッシュを追加。PC側の内容比較、反映・新規・保留の選択、反映前バックアップ、色と位置の維持を追加。 |
 
 </div>

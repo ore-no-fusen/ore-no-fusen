@@ -15,7 +15,7 @@ import { useSearchParams } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { emitTo, listen } from '@tauri-apps/api/event';
+import { emit, emitTo, listen } from '@tauri-apps/api/event';
 import { pathsEqual, normalizePath, getFileName, encodeNotePathForUrl } from './utils/pathUtils';
 import { playLocalSound, playCreateSound, playDuplicateSound, SoundType } from './utils/soundManager';
 import { type NoteMeta } from './api/notes';
@@ -27,6 +27,7 @@ import ArchivedNotesRestoreDialog from './components/ArchivedNotesRestoreDialog'
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
 import AnalyticsConsentDialog from './components/AnalyticsConsentDialog';
 import BackupResultDialog from './components/BackupResultDialog';
+import IphoneReturnDialog, { type IphoneOriginMatch } from './components/IphoneReturnDialog';
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
 import { useSettings } from '@/lib/settings-store';
@@ -50,7 +51,7 @@ import {
 } from './utils/startupRestore';
 import { FreshRequestQueue } from './utils/freshRequestQueue';
 import { NOTE_COLORS } from './utils/noteAppearance';
-import { receiveIphoneNote } from './utils/receiveIphoneNote';
+import { receiveIphoneNote, type ReceivedIphoneNote } from './utils/receiveIphoneNote';
 import { restoredNoteWindowMeta } from './utils/archiveRestore';
 
 // Global AppState type definition
@@ -80,6 +81,8 @@ type HotkeyRegisterFailuresResponse = {
 };
 
 type BackupRecord = { path: string; created_at: string; file_count: number };
+type PendingIphoneReturn = { note: ReceivedIphoneNote; origin: IphoneOriginMatch | null };
+type AppliedIphoneReturn = { path: string; backupPath: string; bodyHash: string };
 type MonthlyBackupResult =
   | { status: 'success'; record: BackupRecord; nextPromptAt?: string }
   | { status: 'error'; message: string };
@@ -219,6 +222,10 @@ function OrchestratorContent() {
   const [folderPath, setFolderPath] = useState<string>('');
   const folderPathRef = useRef<string>(''); // [FIX] スロットル用にRefでも保持
   const [iphoneDriveDisconnected, setIphoneDriveDisconnected] = useState(false);
+  const [pendingIphoneReturns, setPendingIphoneReturns] = useState<PendingIphoneReturn[]>([]);
+  const [iphoneReturnBusy, setIphoneReturnBusy] = useState(false);
+  const [iphoneReturnError, setIphoneReturnError] = useState<string | null>(null);
+  const [appliedIphoneReturn, setAppliedIphoneReturn] = useState<AppliedIphoneReturn | null>(null);
   // 保存先フォルダが消えていて再セットアップ中かどうか
   const [recoveredMissingFolder, setRecoveredMissingFolder] = useState<string | null>(null);
   const usedPoolWindowsRef = useRef<Set<string>>(new Set()); // [NEW] 昇格済みのプールウィンドウのラベルを記録し、再利用を防ぐ
@@ -1436,44 +1443,75 @@ function OrchestratorContent() {
     return () => { safeUnlisten(unlisten); };
   }, [isMainWindow]);
 
-  // [iPhone受信] iPhoneから付箋受信 → 新規付箋ウィンドウを右上に開く (POLL-02)
+  const createReceivedIphoneNote = useCallback(async (note: ReceivedIphoneNote, origin?: IphoneOriginMatch | null) => {
+    await receiveIphoneNote(note, {
+      hasSavedNote: (noteId) => invoke<boolean>('fusen_has_iphone_note', { folderPath, noteId }),
+      downloadImages: (remoteBody) => invoke<string>('fusen_download_iphone_images', { folderPath, body: remoteBody }),
+      createNote: ({ context: receivedContext, body: resolvedBody, noteId }) => invoke<{
+        note: { meta: { path: string } };
+        created: boolean;
+      }>('fusen_create_iphone_note', {
+        folderPath,
+        context: receivedContext,
+        body: resolvedBody,
+        noteId,
+        originNoteId: note.originNoteId,
+        originPcId: note.originPcId,
+        originAppearance: note.originAppearance,
+      }),
+      addTag: (path, tag) => invoke('fusen_add_tag', { path, tag }),
+      waitBeforeTagRetry: (attempt) => new Promise((resolve) => setTimeout(resolve, 50 * attempt)),
+      openCreatedNote: async (path) => {
+        playCreateSound();
+        const saved = (origin || note.originAppearance) ? await invoke<{ meta: {
+          x?: number; y?: number; width?: number; height?: number; background_color?: string;
+        } }>('fusen_read_note', { path }) : null;
+        await openNoteWindow(path, saved ? {
+          x: saved.meta.x, y: saved.meta.y,
+          width: saved.meta.width, height: saved.meta.height,
+          background_color: saved.meta.background_color,
+        } : { x: window.screen.width - 430, y: 50, width: 400, height: 350 }, false, true);
+      },
+      acknowledge: async (noteId) => {
+        await invoke('fusen_ack_iphone_note', { noteId }).catch((ackError) => {
+          console.error('[iphone] Drive受信キューのack失敗:', ackError);
+        });
+      },
+      onTagFailure: (tag, tagError) => console.error(`[iphone] タグ付与に失敗: ${tag}`, tagError),
+    });
+  }, [folderPath, openNoteWindow]);
+
+  // [iPhone受信] 元付箋IDがあればPCで比較・選択。旧データは新規付箋として受信する。
   useEffect(() => {
     if (!isMainWindow) return;
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ id: string; title: string; body: string; context: string; tags?: string[] }>(
+    const promise = listen<ReceivedIphoneNote>(
       'fusen:note_from_iphone',
       async (event) => {
-        const { id, title, body, context, tags } = event.payload;
+        const note = event.payload;
         try {
-          await receiveIphoneNote(
-            { id, title, body, context, tags },
-            {
-              hasSavedNote: (noteId) => invoke<boolean>('fusen_has_iphone_note', { folderPath, noteId }),
-              downloadImages: (remoteBody) => invoke<string>('fusen_download_iphone_images', { folderPath, body: remoteBody }),
-              createNote: ({ context: receivedContext, body: resolvedBody, noteId }) => invoke<{
-                note: { meta: { path: string } };
-                created: boolean;
-              }>('fusen_create_iphone_note', {
-                folderPath,
-                context: receivedContext,
-                body: resolvedBody,
-                noteId,
-              }),
-              addTag: (path, tag) => invoke('fusen_add_tag', { path, tag }),
-              waitBeforeTagRetry: (attempt) => new Promise((resolve) => setTimeout(resolve, 50 * attempt)),
-              openCreatedNote: async (path) => {
-                playCreateSound();
-                const sw = window.screen.width;
-                await openNoteWindow(path, { x: sw - 430, y: 50, width: 400, height: 350 }, false, true);
-              },
-              acknowledge: async (noteId) => {
-                await invoke('fusen_ack_iphone_note', { noteId }).catch((ackError) => {
-                  console.error('[iphone] Drive受信キューのack失敗:', ackError);
-                });
-              },
-              onTagFailure: (tag, tagError) => console.error(`[iphone] タグ付与に失敗: ${tag}`, tagError),
-            },
-          );
+          if (await invoke<boolean>('fusen_has_iphone_note', { folderPath, noteId: note.id })) {
+            await invoke('fusen_ack_iphone_note', { noteId: note.id });
+            return;
+          }
+          if (note.originNoteId && note.originPcId && note.originBodyHash) {
+            const origin = await invoke<IphoneOriginMatch | null>('fusen_find_iphone_origin', {
+              originNoteId: note.originNoteId,
+              originBodyHash: note.originBodyHash,
+              originPcId: note.originPcId,
+            });
+            setPendingIphoneReturns((current) => current.some((pending) => pending.note.id === note.id)
+              ? current : [...current, { note, origin }]);
+            const win = getCurrentWindow();
+            const { LogicalSize } = await import('@tauri-apps/api/dpi');
+            await win.setSize(new LogicalSize(780, 560));
+            await win.center();
+            await win.unminimize();
+            await win.show();
+            await win.setFocus();
+          } else {
+            await createReceivedIphoneNote(note);
+          }
           trackEvent('feature_used', { event_category: 'usage', feature_name: 'iphone_receive' });
         } catch (e) {
           console.error('[iphone] 付箋作成失敗:', e);
@@ -1485,7 +1523,82 @@ function OrchestratorContent() {
       if (unlisten) safeUnlisten(unlisten);
       else safeUnlistenWhenResolved(promise);
     };
-  }, [isMainWindow, openNoteWindow, folderPath]);
+  }, [isMainWindow, createReceivedIphoneNote, folderPath]);
+
+  const decideIphoneReturn = async (decision: 'apply' | 'new' | 'later') => {
+    const pending = pendingIphoneReturns[0];
+    if (!pending || iphoneReturnBusy) return;
+    if (decision === 'later') {
+      setPendingIphoneReturns((current) => current.slice(1));
+      setIphoneReturnError(null);
+      if (pendingIphoneReturns.length === 1) await getCurrentWindow().hide();
+      return;
+    }
+    setIphoneReturnBusy(true);
+    setIphoneReturnError(null);
+    let showUndo = false;
+    try {
+      if (decision === 'new') {
+        await createReceivedIphoneNote(pending.note, pending.origin);
+      } else {
+        const { note, origin } = pending;
+        if (!origin || !note.originNoteId || !note.originPcId) {
+          throw new Error('元の付箋が見つかりません。新しい付箋として開いてください。');
+        }
+        const resolvedBody = await invoke<string>('fusen_download_iphone_images', {
+          folderPath, body: note.body,
+        });
+        if (/!\[[^\]]*\]\(fusen_img_[^)]+\)/.test(resolvedBody)) {
+          throw new Error('画像を保存できなかったため、元の付箋への反映を中止しました。再試行してください。');
+        }
+        const applied = await invoke<{ backupPath: string | null; bodyHash: string }>('fusen_apply_iphone_return', {
+          path: origin.path,
+          originNoteId: note.originNoteId,
+          originPcId: note.originPcId,
+          expectedBodyHash: origin.bodyHash,
+          body: resolvedBody,
+          noteId: note.id,
+        });
+        if (applied.backupPath) {
+          setAppliedIphoneReturn({ path: origin.path, backupPath: applied.backupPath, bodyHash: applied.bodyHash });
+          showUndo = true;
+        }
+        await emit('fusen:reload_note', { path: origin.path });
+        await invoke('fusen_ack_iphone_note', { noteId: note.id }).catch((ackError) => {
+          console.error('[iphone] Drive受信キューのack失敗:', ackError);
+        });
+        const existingWindow = await WebviewWindow.getByLabel(getWindowLabel(origin.path));
+        if (existingWindow) await existingWindow.show();
+        else {
+          const latest = await invoke<IphoneOriginMatch | null>('fusen_find_iphone_origin', {
+            originNoteId: note.originNoteId,
+            originPcId: note.originPcId,
+            originBodyHash: note.originBodyHash ?? '',
+          });
+          await openNoteWindow(origin.path, {
+            x: latest?.x, y: latest?.y, width: latest?.width, height: latest?.height,
+            background_color: latest?.backgroundColor,
+          });
+        }
+        if (showUndo) await getCurrentWindow().setFocus();
+      }
+      setPendingIphoneReturns((current) => current.slice(1));
+      if (pendingIphoneReturns.length === 1 && !showUndo) await getCurrentWindow().hide();
+    } catch (error) {
+      setIphoneReturnError(String(error));
+      if (pending.origin && pending.note.originNoteId && pending.note.originPcId && pending.note.originBodyHash) {
+        const fresh = await invoke<IphoneOriginMatch | null>('fusen_find_iphone_origin', {
+          originNoteId: pending.note.originNoteId,
+          originPcId: pending.note.originPcId,
+          originBodyHash: pending.note.originBodyHash,
+        }).catch(() => null);
+        setPendingIphoneReturns((current) => current.map((item) => item.note.id === pending.note.id
+          ? { ...item, origin: fresh } : item));
+      }
+    } finally {
+      setIphoneReturnBusy(false);
+    }
+  };
 
   // [iPhone受信] Drive接続状態 → 赤ドット制御
   useEffect(() => {
@@ -2016,6 +2129,51 @@ function OrchestratorContent() {
   // [FIX] アップデートダイアログは最優先で表示（isDashboard より前に判定）
   // isDashboard=true だとメインウィンドウが非表示になるため、先にreturnしないと届かない
   if (isHidingAfterUpdate) return null;
+  if (appliedIphoneReturn) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-6 text-slate-900" role="dialog" aria-modal="true">
+        <h1 className="text-xl font-bold">{language === 'en' ? 'iPhone changes applied' : 'iPhoneの内容を反映しました'}</h1>
+        <p className="mt-3">{language === 'en' ? 'The original PC content was backed up. You can undo this update now.' : '反映前のPCの内容を保存しました。ここで元に戻すこともできます。'}</p>
+        <p className="mt-2 break-all text-xs text-slate-600">{appliedIphoneReturn.backupPath}</p>
+        {iphoneReturnError && <p className="mt-3 text-sm text-red-700" role="alert">{iphoneReturnError}</p>}
+        <div className="mt-5 flex gap-2">
+          <button type="button" disabled={iphoneReturnBusy} className="rounded border px-4 py-2"
+            onClick={async () => {
+              setIphoneReturnBusy(true);
+              setIphoneReturnError(null);
+              try {
+                await invoke('fusen_undo_iphone_return', {
+                  path: appliedIphoneReturn.path,
+                  backupPath: appliedIphoneReturn.backupPath,
+                  expectedBodyHash: appliedIphoneReturn.bodyHash,
+                });
+                await emit('fusen:reload_note', { path: appliedIphoneReturn.path });
+                setAppliedIphoneReturn(null);
+                if (pendingIphoneReturns.length === 0) await getCurrentWindow().hide();
+              } catch (error) {
+                setIphoneReturnError(String(error));
+              } finally {
+                setIphoneReturnBusy(false);
+              }
+            }}>{language === 'en' ? 'Undo update' : '元の内容に戻す'}</button>
+          <button type="button" disabled={iphoneReturnBusy} className="rounded bg-blue-700 px-4 py-2 text-white"
+            onClick={async () => {
+              setAppliedIphoneReturn(null);
+              setIphoneReturnError(null);
+              if (pendingIphoneReturns.length === 0) await getCurrentWindow().hide();
+            }}>{language === 'en' ? 'Done' : '完了'}</button>
+        </div>
+      </main>
+    );
+  }
+  if (pendingIphoneReturns.length > 0) {
+    const { note, origin } = pendingIphoneReturns[0];
+    return (
+      <IphoneReturnDialog note={note} origin={origin} busy={iphoneReturnBusy}
+        error={iphoneReturnError} language={language}
+        onDecide={(decision) => void decideIphoneReturn(decision)} />
+    );
+  }
   if (monthlyBackupResult) {
     return (
       <BackupResultDialog
