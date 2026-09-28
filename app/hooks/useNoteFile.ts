@@ -286,6 +286,31 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
                 if (!cancelled) setSavePending(false);
             } catch (e) {
                 if (cancelled) return;
+                if (String(e).includes('古い画面の保存を止めました')) {
+                    try {
+                        const currentPath = pathRef.current;
+                        if (currentPath) {
+                            const latest = await readNote(currentPath);
+                            const { front, body } = splitFrontMatter(latest.body);
+                            if (body === content) {
+                                if (!cancelled) {
+                                    setRawFrontmatter(front);
+                                    setSavePending(false);
+                                }
+                                return;
+                            }
+                        }
+                    } catch (reloadError) {
+                        console.error('[useNoteFile] Failed to inspect the applied iPhone return:', reloadError);
+                    }
+                    // The editor contains different text. Keep it visible and do not retry an
+                    // obsolete save or replace it with the returned body.
+                    if (!cancelled) {
+                        setSavePending(false);
+                        onSaveError?.();
+                    }
+                    return;
+                }
                 console.error(`[useNoteFile] Auto-save failed (attempt ${attempt}/${MAX_RETRY}):`, e);
                 if (attempt < MAX_RETRY) {
                     const delay = 1000 * Math.pow(2, attempt); // 2s, 4s
