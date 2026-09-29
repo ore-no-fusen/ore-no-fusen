@@ -8,6 +8,7 @@ const windowMocks = vi.hoisted(() => ({
   show: vi.fn(),
   unminimize: vi.fn(),
   setFocus: vi.fn(),
+  innerSize: vi.fn(() => Promise.resolve({ width: 780, height: 560 })),
 }));
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -16,6 +17,7 @@ vi.mock('@tauri-apps/api/window', () => ({
 vi.mock('@tauri-apps/api/dpi', () => ({
   LogicalSize: class { constructor(public width: number, public height: number) {} },
 }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
 const options = {
   setupRequired: false,
@@ -28,10 +30,12 @@ const options = {
 describe('メイン窓のリサイズ', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('iPhone返送の確認中は比較できる大きさを維持する', async () => {
+  it('iPhone返送の確認画面を表示すると左右比較できる大きさに広げる', async () => {
     renderHook(() => useMainWindowResizePolicy({ ...options, showIphoneReturnDialog: true }));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
-    expect(windowMocks.setSize).not.toHaveBeenCalled();
+    expect(windowMocks.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 780, height: 560 }));
+    expect(windowMocks.show).toHaveBeenCalled();
+    expect(windowMocks.show.mock.invocationCallOrder[0]).toBeLessThan(windowMocks.setSize.mock.invocationCallOrder[0]);
   });
 
   it('通常画面では従来の小さいサイズへ戻す', async () => {

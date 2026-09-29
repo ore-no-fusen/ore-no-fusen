@@ -1503,13 +1503,6 @@ function OrchestratorContent() {
             });
             setPendingIphoneReturns((current) => current.some((pending) => pending.note.id === note.id)
               ? current : [...current, { note, origin }]);
-            const win = getCurrentWindow();
-            const { LogicalSize } = await import('@tauri-apps/api/dpi');
-            await win.setSize(new LogicalSize(780, 560));
-            await win.center();
-            await win.unminimize();
-            await win.show();
-            await win.setFocus();
           } else {
             await createReceivedIphoneNote(note);
           }

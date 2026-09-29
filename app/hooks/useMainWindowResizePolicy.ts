@@ -74,8 +74,19 @@ export function useMainWindowResizePolicy({
                 // アップデートダイアログ表示中はリサイズしない（useUpdateCheckが制御済み）
                 if (showUpdateDialog) return;
 
-                // iPhone返送確認・反映結果の画面サイズは受信処理が設定する
-                if (showIphoneReturnDialog) return;
+                // 返送画面の表示が確定した後に広げる。起動時の通常サイズ変更と競合させない。
+                if (showIphoneReturnDialog) {
+                    await win.unminimize();
+                    await win.show();
+                    if (cancelled) return;
+                    await win.setSize(new LogicalSize(780, 560));
+                    await win.center();
+                    await win.setFocus();
+                    const actualSize = await win.innerSize();
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    await invoke('fusen_debug_log', { message: `[iPhone return window] label=${win.label} requested=780x560 actual=${actualSize.width}x${actualSize.height}` });
+                    return;
+                }
 
                 if (settingsVisible) {
                     // セットアップ中 or 設定画面表示中 → モニタに合わせて大きく
@@ -95,6 +106,10 @@ export function useMainWindowResizePolicy({
                 }
             } catch (e) {
                 console.error('[useMainWindowResizePolicy] failed:', e);
+                if (showIphoneReturnDialog) {
+                    import('@tauri-apps/api/core').then(({ invoke }) =>
+                        invoke('fusen_debug_log', { message: `[iPhone return window] resize failed: ${String(e)}` })).catch(() => {});
+                }
             }
         };
         resize();
