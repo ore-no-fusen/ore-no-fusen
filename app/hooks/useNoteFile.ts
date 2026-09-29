@@ -31,7 +31,7 @@ export type UseNoteFileReturn = {
     loading: boolean;
     savePending: boolean;
 
-    loadNote: () => Promise<string>;
+    loadNote: (forceReload?: boolean) => Promise<string>;
     saveNoteContent: (body: string, frontmatter: string, allowRename: boolean) => Promise<boolean>;
     updateFrontmatter: (key: string, value: any) => void;
     removeFrontmatter: (key: string) => void;
@@ -85,13 +85,13 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
         }
     }, [path, isNew]);
 
-    const loadNote = useCallback(async (): Promise<string> => {
+    const loadNote = useCallback(async (forceReload = false): Promise<string> => {
         if (!path) return '';
 
         // リネームによるURL更新の場合は、再読み込みをスキップ
         if (isRenamingRef.current) {
             isRenamingRef.current = false;
-            return contentRef.current; // ref 経由で取得（stale closure 回避）
+            if (!forceReload) return contentRef.current; // ref 経由で取得（stale closure 回避）
         }
 
         console.log('[DBG:loadNote] START path=', path, 'stack=', new Error().stack?.split('\n').slice(1,4).join(' | '));
