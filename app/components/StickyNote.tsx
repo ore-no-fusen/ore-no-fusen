@@ -1144,7 +1144,7 @@ const StickyNote = memo(function StickyNote() {
                     if (targetPath && selectedFile?.path && pathsEqual(targetPath, selectedFile.path)) {
                         setSavePending(false);
                         console.log('[DBG:reload_note] FIRED targetPath=', targetPath, 'isEditing=', isEditingForListenerRef.current, 'stack=', new Error().stack?.split('\n').slice(1,3).join(' | '));
-                        const body = await loadNote();
+                        const body = await loadNote(true);
                         // [FIX] loadNote()が失敗して空を返した場合は上書きしない（C-2対策）
                         if (!body) {
                             console.error('[StickyNote] reload_note: loadNote returned empty, skipping content update to prevent data loss.');

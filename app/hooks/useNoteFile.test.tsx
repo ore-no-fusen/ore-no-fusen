@@ -57,3 +57,35 @@ describe('iPhone return and delayed auto-save',()=>{
     expect(save).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('reload after a new PC note is renamed',()=>{
+  it('reads the returned file even when the rename skip is still pending',async()=>{
+    save.mockResolvedValue('C:/notes/test.md');
+    read.mockResolvedValue({body:'---\niphone_return_hash: receipt\n---\n\ntest\n- [x] 5',meta:{opacity:1}});
+    const onPathChange=vi.fn();
+    const {result,rerender}=renderHook(({path})=>useNoteFile({path,isNew:true,onPathChange}),{
+      initialProps:{path:'C:/notes/untitled.md'},
+    });
+    await act(async()=>{await result.current.saveNoteContent('test\n- [ ] 5','---\n---',true);});
+    expect(onPathChange).toHaveBeenCalledWith('C:/notes/test.md');
+    rerender({path:'C:/notes/test.md'});
+    let body='';
+    await act(async()=>{body=await result.current.loadNote(true);});
+    expect(read).toHaveBeenCalledWith('C:/notes/test.md');
+    expect(body).toBe('test\n- [x] 5');
+    expect(result.current.content).toBe('test\n- [x] 5');
+  });
+
+  it('still skips the immediate reload caused only by renaming',async()=>{
+    save.mockResolvedValue('C:/notes/test.md');
+    const {result,rerender}=renderHook(({path})=>useNoteFile({path,isNew:true}),{
+      initialProps:{path:'C:/notes/untitled.md'},
+    });
+    await act(async()=>{await result.current.saveNoteContent('test','---\n---',true);});
+    rerender({path:'C:/notes/test.md'});
+    let body='';
+    await act(async()=>{body=await result.current.loadNote();});
+    expect(body).toBe('test');
+    expect(read).not.toHaveBeenCalled();
+  });
+});
