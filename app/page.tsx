@@ -308,6 +308,7 @@ function OrchestratorContent() {
     isCheckingSetup: isMainWindow && isCheckingSetup,
     showUpdateDialog: isMainWindow && (showUpdateDialog || storeUpdateAvailable),
     isSearchOpen: isMainWindow && isSearchOpen,
+    showIphoneReturnDialog: isMainWindow && (pendingIphoneReturns.length > 0 || appliedIphoneReturn !== null),
   });
   useFeedbackConversationUnreadCheck(isMainWindow);
   useDiscordReplyIngest(isMainWindow);
