@@ -43,6 +43,7 @@ type UseMainWindowResizePolicyOptions = {
     isCheckingSetup: boolean;
     showUpdateDialog: boolean;
     isSearchOpen: boolean;
+    showIphoneReturnDialog: boolean;
 };
 
 export function useMainWindowResizePolicy({
@@ -51,6 +52,7 @@ export function useMainWindowResizePolicy({
     isCheckingSetup,
     showUpdateDialog,
     isSearchOpen,
+    showIphoneReturnDialog,
 }: UseMainWindowResizePolicyOptions): void {
     useEffect(() => {
         let cancelled = false;
@@ -71,6 +73,9 @@ export function useMainWindowResizePolicy({
 
                 // アップデートダイアログ表示中はリサイズしない（useUpdateCheckが制御済み）
                 if (showUpdateDialog) return;
+
+                // iPhone返送確認・反映結果の画面サイズは受信処理が設定する
+                if (showIphoneReturnDialog) return;
 
                 if (settingsVisible) {
                     // セットアップ中 or 設定画面表示中 → モニタに合わせて大きく
@@ -96,5 +101,5 @@ export function useMainWindowResizePolicy({
         return () => {
             cancelled = true;
         };
-    }, [setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen]);
+    }, [setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen, showIphoneReturnDialog]);
 }

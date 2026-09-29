@@ -66,6 +66,7 @@ test('ブラウザでPC付箋を編集して返送し、PC側で比較して反�
   expect(returned.originAppearance).toEqual(source.originAppearance);
 
   const pc = await context.newPage();
+  await pc.setViewportSize({ width: 780, height: 560 });
   await mockTauriAPI(pc, { iphoneReturn: true });
   await pc.goto('/');
   await pc.waitForLoadState('networkidle');
@@ -83,6 +84,14 @@ test('ブラウザでPC付箋を編集して返送し、PC側で比較して反�
   await expect(dialog).toContainText('PCで更新した本文');
   await expect(dialog).toContainText('ブラウザで追加した本文');
   await expect(dialog).toContainText('送信後にPC側も変更されています');
+  const [pcContent, iphoneContent] = await Promise.all([
+    dialog.locator('section').nth(0).boundingBox(),
+    dialog.locator('section').nth(1).boundingBox(),
+  ]);
+  expect(pcContent).not.toBeNull();
+  expect(iphoneContent).not.toBeNull();
+  expect(Math.abs(pcContent!.y - iphoneContent!.y)).toBeLessThan(2);
+  await pc.screenshot({ path: 'test-results/iphone-return-dialog-wide.png' });
   await dialog.getByRole('button', { name: '元の付箋に反映' }).click();
   await expect.poll(() => pc.evaluate(() => (window as any).__MOCK_IPHONE_CALLS__
     .filter((call: any) => call.cmd === 'fusen_apply_iphone_return').length)).toBe(1);
