@@ -5661,6 +5661,25 @@ fn should_exit_after_close(label: &str) -> bool {
         && !label.starts_with("developer-reply-notice-")
 }
 
+fn is_visible_note_window(label: &str, visible: bool) -> bool {
+    visible && (label.starts_with("note-") || label.starts_with("pool-window-"))
+}
+
+#[cfg(test)]
+mod single_instance_focus_tests {
+    use super::is_visible_note_window;
+
+    #[test]
+    fn second_launch_focuses_only_a_visible_note() {
+        assert!(is_visible_note_window("note-123", true));
+        assert!(is_visible_note_window("pool-window-1", true));
+        assert!(!is_visible_note_window("pool-window-1", false));
+        assert!(!is_visible_note_window("recipe-create", false));
+        assert!(!is_visible_note_window("recipe-create", true));
+        assert!(!is_visible_note_window("main", true));
+    }
+}
+
 #[cfg(test)]
 mod announcement_window_close_tests {
     use super::should_exit_after_close;
@@ -5687,12 +5706,12 @@ pub fn run() {
             let state = app.state::<Mutex<AppState>>();
             let label = state.lock().unwrap_or_else(|p| p.into_inner())
                 .last_alt_tab_window.clone();
-            let target_win = if let Some(label) = label {
-                app.get_webview_window(&label)
-            } else {
-                app.webview_windows().into_values()
-                    .find(|w| w.label() != "main" && !w.label().starts_with("pool-window-"))
-            };
+            let target_win = label
+                .and_then(|label| app.get_webview_window(&label))
+                .filter(|w| is_visible_note_window(w.label(), w.is_visible().unwrap_or(false)))
+                .or_else(|| app.webview_windows().into_values()
+                    .find(|w| is_visible_note_window(w.label(), w.is_visible().unwrap_or(false))))
+                .or_else(|| app.get_webview_window("main"));
             if let Some(win) = target_win {
                 let _ = win.show();
                 // AttachThreadInput + SetForegroundWindow でスレッド間のフォアグラウンド制限を回避
