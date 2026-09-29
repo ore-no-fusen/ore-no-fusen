@@ -35,12 +35,12 @@ export default function IphoneReturnDialog({ note, origin, busy, error, language
             : (en ? 'The original PC note was found. Review the returned content.' : '元の付箋が見つかりました。反映する内容を確認してください。')
           : (en ? 'The original PC note was not found. Save a new note or decide later.' : '元の付箋が見つかりません。新しい付箋として保存するか、あとで確認できます。')}
       </p>
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <section className="rounded-lg border bg-white p-3">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <section className="min-w-0 rounded-lg border bg-white p-3">
           <h2 className="font-semibold">{en ? 'Current PC content' : 'PCの現在の内容'}</h2>
           <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-sm">{origin?.body ?? (en ? 'Original note not found' : '元の付箋が見つかりません')}</pre>
         </section>
-        <section className="rounded-lg border bg-white p-3">
+        <section className="min-w-0 rounded-lg border bg-white p-3">
           <h2 className="font-semibold">{en ? 'Returned iPhone content' : 'iPhoneから戻った内容'}</h2>
           <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-sm">{note.body}</pre>
         </section>
