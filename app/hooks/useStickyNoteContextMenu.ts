@@ -56,7 +56,13 @@ type HotkeyBindings = {
     new_note_trigger: string;
     new_note: string;
     arrange: string;
+    quick_launcher: string;
 };
+
+export function getFavoriteMenuLabel(action: string, shortcut: string, language: Language): string {
+    const key = formatShortcutLabel(shortcut).replace(/ \+ /g, '+');
+    return `📌 ${action}  (${language === 'en' ? 'Quick Launcher' : 'クイックランチャー'}: ${key})`;
+}
 
 export function getAppOperationMenuLabels(bindings: HotkeyBindings, language: Language) {
     const arrangeShortcut = formatShortcutLabel(bindings.arrange).replace(/ \+ /g, '+');
@@ -381,6 +387,7 @@ export function useStickyNoteContextMenu({
                     new_note_trigger: 'shortcut',
                     new_note: 'ctrl+n',
                     arrange: 'ctrl+shift+l',
+                    quick_launcher: 'ctrl+p',
                 })),
             ]);
 
@@ -675,7 +682,11 @@ export function useStickyNoteContextMenu({
             if (selectedFile && shortcutShelfMenuState.visible && shortcutShelfMenuState.label) {
                 menuItems.push(await MenuItem.new({
                     id: 'ctx_shortcut_shelf',
-                    text: `📌 ${shortcutShelfMenuState.isRegistered ? t('menu.favoriteRemove') : t('menu.favoriteAdd')}`,
+                    text: getFavoriteMenuLabel(
+                        shortcutShelfMenuState.isRegistered ? t('menu.favoriteRemove') : t('menu.favoriteAdd'),
+                        hotkeyBindings.quick_launcher,
+                        language,
+                    ),
                     action: handleToggleShortcutShelf
                 }));
                 menuItems.push(await PredefinedMenuItem.new({ item: 'Separator' }));

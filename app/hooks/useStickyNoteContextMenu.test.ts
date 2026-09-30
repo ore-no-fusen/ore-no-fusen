@@ -4,6 +4,7 @@ import {
     buildDuplicateRequestPayload,
     filterAssignableTags,
     getAppOperationMenuLabels,
+    getFavoriteMenuLabel,
     getOpenFolderRequest,
     getShortcutShelfMenuState,
     releaseDeleteLockWhenMoveIsRejected,
@@ -30,6 +31,13 @@ describe('existing context-menu helpers', () => {
         expect(getShortcutShelfMenuState(['project', 'SHORTCUT']).isRegistered).toBe(true);
     });
 
+    it('shows the configured launcher key beside the favorite action', () => {
+        expect(getFavoriteMenuLabel('お気に入りに登録', 'Shift+Control+KeyP', 'ja'))
+            .toBe('📌 お気に入りに登録  (クイックランチャー: Ctrl+Shift+P)');
+        expect(getFavoriteMenuLabel('Remove from Favorites', 'ctrl+p', 'en'))
+            .toBe('📌 Remove from Favorites  (Quick Launcher: Ctrl+P)');
+    });
+
     it('builds open-folder requests', () => {
         expect(getOpenFolderRequest('C:\\notes\\note.md', 'C:\\notes')).toEqual({
             command: 'fusen_open_containing_folder',
@@ -53,6 +61,7 @@ describe('existing context-menu helpers', () => {
             new_note_trigger: 'shortcut',
             new_note: 'ctrl+n',
             arrange: 'Shift+Control+KeyL',
+            quick_launcher: 'ctrl+p',
         }, 'ja').arrange).toBe('タグで整列  Ctrl+Shift+L');
     });
 });
