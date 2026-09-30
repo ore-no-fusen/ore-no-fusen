@@ -28,6 +28,13 @@ function featureUsageStats(members, week = isoWeek()) {
   const reporting = members.filter(member => member.usageWeek === week && member.usageConsent === true);
   return {
     week, reporting: reporting.length,
+    memberVersions: members.filter(member => Number.isSafeInteger(member.generalNumber))
+      .map(member => ({
+        number: member.generalNumber,
+        version: typeof member.appVersion === 'string' && /^\d+\.\d+\.\d+$/.test(member.appVersion) ? member.appVersion : null,
+        lastSeenAt: typeof member.lastSeenAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(member.lastSeenAt) ? member.lastSeenAt : null,
+      }))
+      .sort((a, b) => a.number - b.number),
     memberOpenTimes: members.filter(member => member.usageConsent === true && Number.isSafeInteger(member.usageOpenMinutes) && member.usageOpenMinutes >= 0)
       .map(member => ({ number: member.generalNumber, minutes: member.usageOpenMinutes }))
       .filter(member => Number.isSafeInteger(member.number))
@@ -362,6 +369,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     </tr>
   `).join('');
   const memberOpenTimeRows = featureStats.memberOpenTimes.map(member => `<tr class="border-b border-slate-800"><td class="py-2">#${member.number}</td><td class="py-2 text-right">${Math.floor(member.minutes / 60)}時間${member.minutes % 60}分</td></tr>`).join('');
+  const memberVersionRows = (featureStats.memberVersions ?? []).map(member => `<tr class="border-b border-slate-800"><td class="py-2">#${member.number}</td><td class="py-2">${member.version ?? '未報告（旧版）'}</td><td class="py-2">${member.lastSeenAt ?? '未確認'}</td></tr>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="ja" class="dark">
@@ -422,6 +430,12 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <p class="text-sm text-slate-400">最終アクセス日（UTC）で集計。今日 ${survival.today}人 / 過去7日 ${survival.week}人 / 日付未確認 ${survival.unknown}人</p>
       <div class="h-4 rounded-full bg-slate-700 overflow-hidden"><div class="h-full bg-emerald-400" style="width:${totalMembers ? Math.min(100, survival.week / totalMembers * 100) : 0}%"></div></div>
       <p class="text-sm text-emerald-300">過去7日: ${totalMembers ? Math.round(survival.week / totalMembers * 100) : 0}%（${survival.week} / ${totalMembers}人）</p>
+    </div>
+
+    <div class="glass p-6 rounded-2xl shadow-xl space-y-3">
+      <h2 class="text-lg font-bold">会員別アプリ版</h2>
+      <p class="text-sm text-slate-400">会員のPCが定期通信で報告した版と最終確認日（UTC）。旧版など版番号を送らないPCは未報告と表示します。</p>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">会員番号</th><th class="pb-2">アプリ版</th><th class="pb-2">最終確認日</th></tr></thead><tbody id="memberVersionRows">${memberVersionRows}</tbody></table></div>
     </div>
 
     <div class="glass p-6 rounded-2xl shadow-xl space-y-3">

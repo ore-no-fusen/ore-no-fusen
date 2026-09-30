@@ -40,11 +40,22 @@ describe('member heartbeat', () => {
     const db = new MemoryDb();
     const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));
     await service.register(auth);
-    await service.heartbeat(auth, '2026-W39', ['note_edited', 'note_edited'], true, 1440);
+    await service.heartbeat(auth, '2026-W39', ['note_edited', 'note_edited'], true, 1440, '5.5.1');
     expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({
-      lastSeenAt: '2026-09-23', usageWeek: '2026-W39', usageFeatures: ['note_edited'], usageConsent: true, usageOpenMinutes: 1440,
+      lastSeenAt: '2026-09-23', appVersion: '5.5.1', usageWeek: '2026-W39', usageFeatures: ['note_edited'], usageConsent: true, usageOpenMinutes: 1440,
     });
     await expect(service.heartbeat(auth, '2026-W39', ['invalid'], true, 1440)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('records the version without analytics consent and treats old clients as unreported', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));
+    await service.register(auth);
+    await service.heartbeat(auth, '2026-W39', [], false, 0, '5.5.1');
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value.appVersion).toBe('5.5.1');
+    await expect(service.heartbeat(auth, '2026-W39', [], false, 0, '<script>')).rejects.toMatchObject({ status: 400 });
+    await service.heartbeat(auth, '2026-W39', [], false, 0);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value.appVersion).toBeUndefined();
   });
 
   it('updates lastSeenAt and returns active announcements', async () => {
