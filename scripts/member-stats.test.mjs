@@ -225,7 +225,7 @@ test('更新時にFirestoreから機能別の人数を読み直す', async () =>
   const originalFetch = globalThis.fetch;
   const currentWeek = featureUsageStats([]).week;
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ documents: [
-    { fields: { payload: { stringValue: JSON.stringify({ usageWeek: currentWeek, usageConsent: true, usageFeatures: ['iphone_send'] }) } } },
+    { fields: { payload: { stringValue: JSON.stringify({ generalNumber: 10001, appVersion: '5.5.0', lastSeenAt: '2026-09-30', usageWeek: currentWeek, usageConsent: true, usageFeatures: ['iphone_send'] }) } } },
   ] }) });
   const { server, url } = await serveDashboard('<input value="__CSRF_TOKEN__">', 'test-token', false, new Set(), 'development');
   try {
@@ -237,6 +237,7 @@ test('更新時にFirestoreから機能別の人数を読み直す', async () =>
     assert.equal(stats.totalMembers, 1);
     assert.equal(stats.reporting, 1);
     assert.equal(stats.rows.find(row => row.name === 'iphone_send').users, 1);
+    assert.deepEqual(stats.memberVersions, [{ number: 10001, version: '5.5.0', lastSeenAt: '2026-09-30' }]);
     assert.equal((await originalFetch(`${url}feature-usage`)).status, 403);
   } finally {
     globalThis.fetch = originalFetch;

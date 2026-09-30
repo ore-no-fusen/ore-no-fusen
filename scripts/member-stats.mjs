@@ -595,6 +595,19 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
           }
           timeRows.appendChild(row);
         }
+        const versionRows = document.getElementById('memberVersionRows');
+        versionRows.replaceChildren();
+        for (const member of stats.memberVersions) {
+          const row = document.createElement('tr');
+          row.className = 'border-b border-slate-800';
+          for (const value of ['#' + member.number, member.version ?? '未報告（旧版）', member.lastSeenAt ?? '未確認']) {
+            const cell = document.createElement('td');
+            cell.className = 'py-2';
+            cell.textContent = value;
+            row.appendChild(cell);
+          }
+          versionRows.appendChild(row);
+        }
       }).catch(() => undefined);` : ''}
     const announcementForm = document.getElementById('announcementForm');
     const audienceSelect = document.getElementById('audience');
