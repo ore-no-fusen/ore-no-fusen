@@ -30,7 +30,7 @@ jobs:
       RAW_VERSION: ${{ inputs.version }}
     steps:
       - name: Checkout develop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: develop
           fetch-depth: 1
@@ -106,7 +106,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ steps.generate-token.outputs.token }}
           ref: main
@@ -185,7 +185,7 @@ jobs:
       SOURCE_REF: ${{ inputs.dry_run && 'develop (dry run)' || needs.prepare-store-release.outputs.main_ref }}
     steps:
       - name: Checkout Store source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.dry_run && 'develop' || needs.prepare-store-release.outputs.main_ref }}
           fetch-depth: 1
