@@ -2727,6 +2727,110 @@ fn fusen_register_crystal_arrange_window(
     Ok(())
 }
 
+/// Resolve the actual window for a note. A renamed note or promoted Pool window
+/// keeps its original label, so its label cannot always be derived from its path.
+fn resolve_arrange_window_path(
+    label: &str,
+    note_paths: &[String],
+    open_note_windows: &std::collections::HashMap<String, String>,
+    crystal_window_paths: &std::collections::HashMap<String, String>,
+) -> Option<(String, bool)> {
+    if let Some(path) = note_paths.iter().find(|path| {
+        open_note_windows
+            .get(&normalize_path_for_label(path))
+            .map(String::as_str)
+            == Some(label)
+    }) {
+        return Some((path.clone(), false));
+    }
+    if let Some(path) = note_paths.iter().find(|path| get_window_label(path) == label) {
+        return Some((path.clone(), false));
+    }
+    crystal_window_paths
+        .get(label)
+        .cloned()
+        .map(|path| (path, true))
+}
+
+#[cfg(test)]
+mod arrange_window_path_tests {
+    use super::{get_window_label, resolve_arrange_window_path};
+    use std::collections::HashMap;
+
+    #[test]
+    fn renamed_and_pool_notes_remain_arrangeable_after_duplicate() {
+        let original = "C:\\notes\\0001_2026-09-30_NewNote.md".to_string();
+        let a = "C:\\notes\\0001_2026-09-30_A.md".to_string();
+        let b = "C:\\notes\\0002_2026-09-30_A.md".to_string();
+        let c = "C:\\notes\\0003_2026-09-30_C.md".to_string();
+        let a_label = get_window_label(&original);
+        assert_ne!(a_label, get_window_label(&a));
+
+        let mut open = HashMap::new();
+        open.insert(super::normalize_path_for_label(&a), a_label.clone());
+        let crystals = HashMap::new();
+        let notes = vec![a.clone()];
+        assert_eq!(
+            resolve_arrange_window_path(&a_label, &notes, &open, &crystals),
+            Some((a.clone(), false))
+        );
+
+        let b_label = get_window_label(&b);
+        let notes = vec![a.clone(), b.clone()];
+        assert_eq!(
+            resolve_arrange_window_path(&b_label, &notes, &open, &crystals),
+            Some((b, false))
+        );
+
+        let c_label = "pool-window-test".to_string();
+        open.insert(super::normalize_path_for_label(&c), c_label.clone());
+        let notes = vec![a.clone(), notes[1].clone(), c.clone()];
+        assert_eq!(
+            resolve_arrange_window_path(&a_label, &notes, &open, &crystals),
+            Some((a, false))
+        );
+        assert_eq!(
+            resolve_arrange_window_path(&c_label, &notes, &open, &crystals),
+            Some((c, false))
+        );
+        assert_eq!(
+            resolve_arrange_window_path("quick_launcher", &notes, &open, &crystals),
+            None
+        );
+    }
+
+    #[test]
+    fn restarted_and_fallback_windows_resolve_from_their_current_paths() {
+        let path = "C:\\notes\\0001_2026-09-30_A.md".to_string();
+        let label = get_window_label(&path);
+        assert_eq!(
+            resolve_arrange_window_path(&label, &[path.clone()], &HashMap::new(), &HashMap::new()),
+            Some((path, false)),
+        );
+    }
+
+    #[test]
+    fn stale_open_mapping_is_not_arranged_and_crystal_mapping_is_preserved() {
+        let stale_path = "C:\\notes\\missing.md".to_string();
+        let crystal_path = "C:\\notes\\Recipes\\recipe.md".to_string();
+        let mut open = HashMap::new();
+        open.insert(
+            super::normalize_path_for_label(&stale_path),
+            "pool-window-stale".to_string(),
+        );
+        let mut crystals = HashMap::new();
+        crystals.insert("pool-window-crystal".to_string(), crystal_path.clone());
+        assert_eq!(
+            resolve_arrange_window_path("pool-window-stale", &[], &open, &crystals),
+            None
+        );
+        assert_eq!(
+            resolve_arrange_window_path("pool-window-crystal", &[], &open, &crystals),
+            Some((crystal_path, true)),
+        );
+    }
+}
+
 #[tauri::command]
 async fn fusen_arrange_by_tag(app: tauri::AppHandle) -> Result<(), String> {
     run_fusen_arrange_by_tag(app).await
@@ -2740,19 +2844,19 @@ async fn fusen_arrange_undo(app: tauri::AppHandle) -> Result<(), String> {
 pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<(), String> {
-    let note_paths: Vec<String> = {
+    let (note_paths, crystal_window_paths, open_note_windows) = {
         let state = app.state::<Mutex<AppState>>();
         let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-        app_state
+        let note_paths: Vec<String> = app_state
             .notes
             .iter()
             .map(|note| note.path.clone())
-            .collect()
-    };
-    let crystal_window_paths = {
-        let state = app.state::<Mutex<AppState>>();
-        let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-        app_state.arrange_crystal_windows.clone()
+            .collect();
+        (
+            note_paths,
+            app_state.arrange_crystal_windows.clone(),
+            app_state.open_note_windows.clone(),
+        )
     };
 
     let mut notes: Vec<arrange::ArrangeNote> = Vec::new();
@@ -2763,6 +2867,20 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
         if label == "main" {
             continue;
         }
+
+        let Some((path, is_crystal)) = resolve_arrange_window_path(
+            &label,
+            &note_paths,
+            &open_note_windows,
+            &crystal_window_paths,
+        ) else {
+            if label != "note-oldest"
+                && (label.starts_with("note-") || label.starts_with("pool-window-"))
+            {
+                logger::log_info(&format!("[ARRANGE] path not found for label: {}", label));
+            }
+            continue;
+        };
 
         logger::log_info(&format!("[ARRANGE] note window: {}", label));
 
@@ -2782,16 +2900,6 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
             _ => None,
         };
 
-        let normal_path = note_paths
-            .iter()
-            .find(|path| get_window_label(path) == label)
-            .cloned();
-        let crystal_path = crystal_window_paths.get(&label).cloned();
-        let is_crystal = normal_path.is_none() && crystal_path.is_some();
-        let Some(path) = normal_path.or(crystal_path) else {
-            logger::log_info(&format!("[ARRANGE] path not found for label: {}", label));
-            continue;
-        };
         window_labels_by_path.insert(path.clone(), label.clone());
 
         let content = match storage::read_note(&path) {
@@ -3001,9 +3109,14 @@ pub(crate) async fn run_fusen_arrange_undo<R: Runtime>(
             let state = app.state::<Mutex<AppState>>();
             let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
             app_state
-                .arrange_crystal_windows
-                .iter()
-                .find_map(|(label, crystal_path)| (crystal_path == path).then(|| label.clone()))
+                .open_note_windows
+                .get(&normalize_path_for_label(path))
+                .cloned()
+                .or_else(|| {
+                    app_state.arrange_crystal_windows.iter().find_map(
+                        |(label, crystal_path)| (crystal_path == path).then(|| label.clone()),
+                    )
+                })
                 .unwrap_or_else(|| get_window_label(path))
         };
         let Some(window) = app.get_webview_window(&label) else {
