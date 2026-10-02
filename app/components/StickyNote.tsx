@@ -686,13 +686,12 @@ const StickyNote = memo(function StickyNote() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [urlPath, isNew]);
 
-    // イベントリスナー設定（move, resize）
+    // 移動直後のgeometryを保存する。resizeはuseWindowManagerが監視する。
     useEffect(() => {
         if (!selectedFile) return;
 
         let isMounted = true;
         let unlistenMove: (() => void) | null = null;
-        let unlistenResize: (() => void) | null = null;
 
         const setupListeners = async () => {
             try {
@@ -712,12 +711,6 @@ const StickyNote = memo(function StickyNote() {
                 const safeMove = wrapUnlisten(uMove);
                 if (isMounted) unlistenMove = safeMove; else safeMove();
 
-                const uResize = await win.listen('tauri://resize', () => {
-                    saveWindowState();
-                });
-                const safeResize = wrapUnlisten(uResize);
-                if (isMounted) unlistenResize = safeResize; else safeResize();
-
             } catch (err) {
                 // Event listener setup failed
             }
@@ -734,7 +727,6 @@ const StickyNote = memo(function StickyNote() {
                 } catch (e) { }
             };
             safeUnlisten(unlistenMove);
-            safeUnlisten(unlistenResize);
         };
     }, [selectedFile, saveWindowState]);
 

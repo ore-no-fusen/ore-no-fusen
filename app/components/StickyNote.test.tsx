@@ -44,6 +44,7 @@ const mockWindow = {
     emit: vi.fn(),
     isFocused: vi.fn().mockResolvedValue(false),
     setFocus: vi.fn().mockResolvedValue(undefined),
+    outerPosition: vi.fn().mockResolvedValue({ x: 120, y: 240 }),
     innerSize: vi.fn().mockResolvedValue({ width: 400, height: 300 }),
     scaleFactor: vi.fn().mockResolvedValue(1),
     setSize: vi.fn().mockResolvedValue(undefined),
@@ -156,6 +157,38 @@ describe('StickyNote Component', () => {
         render(<StickyNote />);
 
         expect(await screen.findByRole('button', { name: 'アーカイブへしまう' })).not.toBeNull();
+    });
+
+    it('resizeのgeometry監視を付箋1枚につき1本だけ登録する', async () => {
+        render(<StickyNote />);
+        await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
+        await waitFor(() => expect(mockWindow.listen.mock.calls.filter(([name]) => name === 'tauri://resize').length).toBeGreaterThan(0));
+        expect(mockWindow.listen.mock.calls.filter(([name]) => name === 'tauri://resize')).toHaveLength(1);
+        // moveの即時保存経路は今回維持する。
+        expect(mockWindow.listen.mock.calls.filter(([name]) => name === 'tauri://move')).toHaveLength(2);
+    });
+
+    it('resize後のgeometryを本文と既存frontmatterを保って保存する', async () => {
+        mockInvoke.mockImplementation((cmd, args) => {
+            if (cmd === 'fusen_read_note') return Promise.resolve({
+                meta: { path: 'd:/test/note.md', width: 400, height: 300, tags: [] },
+                body: '---\ntags: []\ncustom_field: keep\n---\nTest Content',
+            });
+            if (cmd === 'fusen_save_note') return Promise.resolve(args?.path);
+            if (cmd === 'fusen_get_all_tags') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+        render(<StickyNote />);
+        await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
+        await waitFor(() => expect(mockWindow.listen.mock.calls.filter(([name]) => name === 'tauri://resize')).toHaveLength(1));
+        const resize = mockWindow.listen.mock.calls.find(([name]) => name === 'tauri://resize')![1];
+        await act(async () => { await resize(); });
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_save_note', expect.objectContaining({
+            body: 'Test Content',
+            frontmatterRaw: expect.stringContaining('custom_field: keep'),
+        })), { timeout: 3000 });
+        const saveCall = mockInvoke.mock.calls.find(([name]) => name === 'fusen_save_note')![1];
+        expect(saveCall.frontmatterRaw).toContain('window: { x: 120, y: 240, width: 400, height: 300 }');
     });
 
     it('Explorerの画像ドロップを保存して表示モードでは本文末尾へ追加する', async () => {
