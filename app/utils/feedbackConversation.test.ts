@@ -117,15 +117,15 @@ describe('feedback conversation identity', () => {
     expect(shouldRunDailyFeedbackUnreadCheck(new Date('2026-06-04T19:00:00.000Z'), storage)).toBe(true);
   });
 
-  it('checks a recently active conversation every minute for one day', () => {
+  it('checks a recently active conversation every ten minutes for one day', () => {
     const storage = createMemoryStorage();
     const start = Date.parse('2026-09-28T00:00:00Z');
     expect(shouldRunActiveFeedbackUnreadCheck(start, storage)).toBe(false);
     markFeedbackConversationActive(start, storage);
     expect(shouldRunActiveFeedbackUnreadCheck(start, storage)).toBe(true);
     markFeedbackUnreadAttempt(start, storage);
-    expect(shouldRunActiveFeedbackUnreadCheck(start + 59_999, storage)).toBe(false);
-    expect(shouldRunActiveFeedbackUnreadCheck(start + 60_000, storage)).toBe(true);
+    expect(shouldRunActiveFeedbackUnreadCheck(start + 9 * 60_000, storage)).toBe(false);
+    expect(shouldRunActiveFeedbackUnreadCheck(start + 10 * 60_000, storage)).toBe(true);
     expect(shouldRunActiveFeedbackUnreadCheck(start + 24 * 60 * 60_000, storage)).toBe(false);
   });
 

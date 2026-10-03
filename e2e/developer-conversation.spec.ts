@@ -40,7 +40,7 @@ test('会話を開いている間の新着返信を入力欄の上で知らせ�
   await page.evaluate(() => (window as any).__MOCK_EMIT__('fusen:open_settings', { tab: 'conversation' }));
   await expect(page.locator('[data-conversation-history]')).toBeVisible();
   newReply = true;
-  await page.clock.fastForward(15_000);
+  await page.clock.fastForward(60_000);
   await expect(page.getByText('開発者から新しい返信が届きました。')).toBeVisible();
   await page.getByRole('button', { name: '最新の返信を見る' }).click();
   await expect(page.locator('[data-conversation-history]').getByText('Discordからの返信です')).toBeVisible();

@@ -2688,7 +2688,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     }, [loadMessages])
 
     useEffect(() => {
-        const timer = window.setInterval(() => { void loadMessages(true) }, 15_000)
+        const timer = window.setInterval(() => { void loadMessages(true) }, 60_000)
         return () => window.clearInterval(timer)
     }, [loadMessages])
 

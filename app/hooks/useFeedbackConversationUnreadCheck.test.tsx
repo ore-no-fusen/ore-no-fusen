@@ -24,7 +24,7 @@ afterEach(() => {
   createWindow.mockReset();
 });
 
-it('会話後の常駐中は1分ごとに確認し、新しい返信だけ通知する', async () => {
+it('会話後の常駐中は10分ごとに確認し、新しい返信だけ通知する', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-09-28T00:00:00Z'));
   saveFeedbackConversationIdentity({ conversationId: 'conversation-1', secretToken: 'secret-1' });
@@ -38,10 +38,10 @@ it('会話後の常駐中は1分ごとに確認し、新しい返信だけ通知
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(fetchMock).toHaveBeenCalledTimes(1);
   await vi.waitFor(() => expect(createWindow).toHaveBeenCalledWith('developer-reply-notice-reply-1', expect.objectContaining({ url: expect.stringContaining('kind=reply') })));
-  await act(async () => { await vi.advanceTimersByTimeAsync(59_000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(9 * 60_000); });
   expect(fetchMock).toHaveBeenCalledTimes(1);
   replyId = 'reply-2';
-  await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(fetchMock).toHaveBeenCalledTimes(2);
   await vi.waitFor(() => expect(createWindow).toHaveBeenCalledWith('developer-reply-notice-reply-2', expect.anything()));
 });

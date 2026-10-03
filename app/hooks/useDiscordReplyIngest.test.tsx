@@ -21,23 +21,23 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it('作者PCで有効にしたときだけ約15秒ごとに取り込み、失敗時は5分待つ', async () => {
+it('作者PCで有効にしたときだけ約1分ごとに取り込み、失敗時は5分待つ', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-09-28T00:00:00Z'));
   ready.mockReturnValue(false);
   ingest.mockResolvedValue(0);
   render(<MainWindow />);
-  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(ingest).not.toHaveBeenCalled();
 
   ready.mockReturnValue(true);
-  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(ingest).toHaveBeenCalledTimes(1);
   ingest.mockRejectedValueOnce(new Error('offline'));
-  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(ingest).toHaveBeenCalledTimes(2);
-  await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000 - 15_000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(4 * 60_000); });
   expect(ingest).toHaveBeenCalledTimes(2);
-  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
   expect(ingest).toHaveBeenCalledTimes(3);
 });
