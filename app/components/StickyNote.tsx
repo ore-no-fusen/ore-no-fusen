@@ -2103,6 +2103,33 @@ const StickyNote = memo(function StickyNote() {
                 .notePaper::-webkit-scrollbar-thumb:hover { background-color: rgba(0, 0, 0, 0.5); }
             `}</style>
 
+            {/* 枠なしウィンドウの右下はネイティブのつかめる範囲が狭いため、
+                付箋内側にも明示的なリサイズハンドルを置く。折りたたみ中は
+                右上のピンと重ならないよう下辺中央で縦方向に広げる。 */}
+            <div
+                data-testid="sticky-resize-handle"
+                aria-hidden="true"
+                className={`absolute bottom-0 z-[210] flex items-end justify-end select-none text-stone-600/60 hover:text-stone-700 ${isMinimized
+                    ? 'left-1/2 h-2 w-12 -translate-x-1/2 cursor-ns-resize justify-center'
+                    : 'right-0 h-5 w-5 cursor-nwse-resize pr-[2px] pb-[2px]'
+                    }`}
+                onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void getCurrentWindow().startResizeDragging(isMinimized ? 'South' : 'SouthEast')
+                        .catch((error) => console.error('startResizeDragging failed', error));
+                }}
+            >
+                {isMinimized ? (
+                    <span className="mb-[2px] h-[2px] w-6 rounded bg-current" />
+                ) : (
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                        <path d="M3 12L12 3M7 12l5-5M11 12l1-1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                    </svg>
+                )}
+            </div>
+
             {/* アラーム点滅バー */}
             {isAlarmRinging && (
                 <div
@@ -2257,7 +2284,7 @@ const StickyNote = memo(function StickyNote() {
                             className="cursor-pointer select-none text-black flex-1 flex flex-col overflow-hidden"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                toggleMinimize();
+                                void handleToggleMinimizeWithSave();
                             }}
                         >
                             <MarkdownRenderer
@@ -2271,7 +2298,7 @@ const StickyNote = memo(function StickyNote() {
                                 onImageResize={handleImageResize}
                                 onDoubleClick={(e) => {
                                     e.stopPropagation();
-                                    toggleMinimize();
+                                    void handleToggleMinimizeWithSave();
                                 }}
                                 selectedFilePath={selectedFile?.path}
                                 basePath={basePath}

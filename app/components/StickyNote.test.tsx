@@ -344,6 +344,30 @@ describe('StickyNote Component', () => {
             .toBeLessThan(vi.mocked(emitEvent).mock.invocationCallOrder[0]);
     });
 
+    it('折りたたんだ本文を押して展開すると、再起動用のfolded状態も保存する', async () => {
+        mockNoteFolded = true;
+        mockInvoke.mockImplementation((cmd, args) => {
+            if (cmd === 'fusen_read_note') return Promise.resolve({
+                meta: { path: 'd:/test/note.md', width: 400, height: 300, tags: [], folded: true },
+                body: '---\ncustom_field: keep\nfolded: true\n---\nFirst line\nSecond line',
+            });
+            if (cmd === 'fusen_save_note') return Promise.resolve(args?.path);
+            if (cmd === 'fusen_get_all_tags') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+
+        render(<StickyNote />);
+        await waitFor(() => expect(screen.getByText('First line')).not.toBeNull());
+        await waitFor(() => expect(screen.getByText('▽')).not.toBeNull());
+        await act(async () => { fireEvent.click(screen.getByText('First line')); });
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_save_note', expect.objectContaining({
+            body: 'First line\nSecond line',
+            frontmatterRaw: expect.stringContaining('folded: false'),
+        })));
+        const saveCall = mockInvoke.mock.calls.find(([name]) => name === 'fusen_save_note')![1];
+        expect(saveCall.frontmatterRaw).toContain('custom_field: keep');
+    });
+
     it('ホバーだけでは付箋を前面化しない', async () => {
         const { container } = render(<StickyNote />);
         await waitFor(() => expect(screen.getAllByText('Test Content').length).toBeGreaterThan(0));
