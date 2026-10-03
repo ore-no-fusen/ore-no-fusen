@@ -117,7 +117,7 @@ flowchart LR
 
 | 領域 | 責務 |
 |:---|:---|
-| PCアプリ | 匿名会話IDの保持、掲示板UI表示、投稿、画面表示中は約1分ごとの会話更新、投稿後24時間は常駐中に約10分ごとの新着確認、それ以外は日次確認 |
+| PCアプリ | 匿名会話IDの保持、掲示板UI表示、投稿、画面表示中は約15秒ごとの会話更新、投稿後24時間は常駐中に約1分ごとの新着確認、それ以外は日次確認 |
 | Vercel API | secret token 照合、Firestore保存、Discord通知、Discord返信取り込み |
 | Firebase / Firestore | 会話本文、開発者返信、既読状態、Discord通知との対応を永続保存 |
 | Appwrite Storage | 掲示板で明示的に選択した画像本体とファイル権限を保存する。会話本文の正本にはしない |
@@ -139,7 +139,7 @@ flowchart LR
 | 3 | `last_message_check_at` | PCローカル設定 | 従来の確認時刻を保持する |
 | 4 | `has_unread_developer_reply` | PCローカル設定 | 右クリックメニューの新着表示に使う |
 | 5 | `last_unread_check_date` | PCローカル設定 | JST 4:00 頃の自動確認を同じ日に重複実行しない |
-| 6 | 投稿後24時間の期限・前回確認時刻 | PCローカル設定 | 会話中だけ常駐確認を約10分間隔にする |
+| 6 | 投稿後24時間の期限・前回確認時刻 | PCローカル設定 | 会話中だけ常駐確認を約1分間隔にする |
 | 7 | 通知済みの返信ID | PCローカル設定 | 同じ返信の小窓を繰り返し出さない |
 | 8 | 作者PCのingest secretと自動取り込み設定 | 作者PCのlocalStorageのみ | 本人のPCだけでDiscord返信の自動取り込みを認証する |
 | 9 | 作者PCのDiscord最終確認ID | 作者PCのlocalStorageのみ | 次回は新しい投稿だけを確認する |
@@ -334,7 +334,7 @@ sequenceDiagram
 
 Discordは、開発者の作業場所としてだけ使います。ユーザーごとのDiscordチャンネルは作りません。
 開発者は、1つの開発者用チャンネルに届く通知を見て、対象通知に返信を書きます。
-会話の正本は Firestore に保存します。作者PCのアプリは保存済みの管理用secretで約1分ごとに新着Discord投稿だけを取り込み、日次Cronも予備として継続します。
+会話の正本は Firestore に保存します。作者PCのアプリは保存済みの管理用secretで約15秒ごとに新着Discord投稿だけを取り込み、日次Cronも予備として継続します。
 
 <p class="table-caption">表 7-1　Discordをユーザー数分作らない理由</p>
 
@@ -427,15 +427,15 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 2 | `POST /api/feedback/conversation/poll` | 設定画面が会話ログ・未読返信を取得する |
 | 3 | `POST /api/feedback/conversation/ack` | ユーザーが見た返信を既読にする |
 | 4 | `POST /api/feedback/conversation/delete` | secret tokenを照合し、会話・メッセージ・Discord対応表を完全に削除する |
-| 5 | `POST /api/feedback/discord/ingest` | 開発者PCのアプリが約1分ごとに新着Discord返信を取り込む。手動実行も可能 |
+| 5 | `POST /api/feedback/discord/ingest` | 開発者PCのアプリが約15秒ごとに新着Discord返信を取り込む。手動実行も可能 |
 | 6 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
 | 7 | `POST /api/feedback/conversation/session` | 会話を認証し、PCがAppwrite Storageへ直接画像を送るための15分JWTを発行する |
 
 公開POST APIはJSON本文と各文字列の長さを検証する。`/api/feedback` と `conversation/messages` は本文32KB以内、`conversation/poll` は4KB以内、`conversation/ack` は16KB以内とする。Discord Webhookへの送信は10秒で中止し、応答待ちによるVercel実行枠の占有を防ぐ。
 
 2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。右クリックメニュー表示時には呼びません。  
-PC アプリは通常 JST 4:00 頃に1日1回 `conversation/poll` を呼びます。ユーザーの投稿成功後24時間は常駐中に約10分ごとに確認します。「開発者とのやりとり」を開いている間は約1分ごとに取得します。未読返信はローカルの `has_unread_developer_reply` を true にし、新しい返信IDごとに小窓を1回表示します。掲示板に表示できた返信だけ `conversation/ack` で既読化します。
-5 の `discord/ingest` は、開発者PCのアプリが自動取り込みを有効にした場合に約1分ごとに呼びます。Discordの前回確認IDをそのPCだけに保持し、次回は新しい投稿だけを確認します。新着がなければFirestoreへはアクセスしません。失敗時は5分待って再試行し、カーソルを進めません。管理者ツールからの手動実行も可能です。
+PC アプリは通常 JST 4:00 頃に1日1回 `conversation/poll` を呼びます。ユーザーの投稿成功後24時間は常駐中に約1分ごとに確認します。「開発者とのやりとり」を開いている間は約15秒ごとに取得します。未読返信はローカルの `has_unread_developer_reply` を true にし、新しい返信IDごとに小窓を1回表示します。掲示板に表示できた返信だけ `conversation/ack` で既読化します。
+5 の `discord/ingest` は、開発者PCのアプリが自動取り込みを有効にした場合に約15秒ごとに呼びます。Discordの前回確認IDをそのPCだけに保持し、次回は新しい投稿だけを確認します。新着がなければFirestoreへはアクセスしません。失敗時は5分待って再試行し、カーソルを進めません。管理者ツールからの手動実行も可能です。
 6 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で JST 3:00 に1日1回実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
 7 の `conversation/session` は画像添付時だけ呼び、Vercel APIが画像バイトを中継しない直接アップロードに使います。
 
@@ -512,5 +512,6 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 14 | 3.1 | 26-09-28 | 会話表示中の約1分更新、投稿後24時間の常駐中約10分確認、新着返信の通知小窓を追加。 |
 | 15 | 3.2 | 26-09-28 | 開発者返信をDiscordに一本化し、作者PCで約1分ごとに新着だけを自動取り込みする方式を追加。会員ダッシュボードはお便り配信専用とする。 |
 | 16 | 3.3 | 26-09-28 | 重複したシーケンス図を6章へ集約。ユーザーからの問い合わせ、画像添付、開発者からのお便りと返信を分け、Discord通知成功後に会話へ保存する順序を実装と一致させた。9章はAPIと実行間隔の説明に限定。 |
+| 17 | 3.4 | 26-10-04 | Discord取り込みと会話表示中の更新を15秒、投稿後24時間の常駐確認を1分に短縮。 |
 
 </div>

@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { ingestNewDiscordReplies, isDiscordAutoIngestReady } from '@/app/utils/discordReplyIngest';
 
-const CHECK_INTERVAL_MS = 60_000;
+const CHECK_INTERVAL_MS = 15_000;
 const FAILURE_RETRY_MS = 5 * 60_000;
 
 export function useDiscordReplyIngest(enabled: boolean): void {
