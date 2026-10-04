@@ -1,6 +1,13 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-10-05 開発環境でDiscord往復を検証できるよう分離
+
+- ユーザー依頼で最新developから`codex/discord-development`を作成。開発Workerを追加し、固定develop Preview宛先・独立Durable Object・管理secret設定で約1分取り込み。本番Workerの再デプロイはしない。
+- 会話ストアが環境のパスを分けていなかったため、Preview・ローカルを`feedback_environments/development`配下へ分離。本番は既存パスを維持。Discord対応表・重複判定・既読・削除も同じ環境に限定。旧共有履歴のコピーはせず、新しい開発問い合わせで検証する。
+- 開発WorkerはPOST前にGETでAPIの開発宣言を確認し、旧Preview・本番宣言・リダイレクトの場合にはPOSTしない。Discord通知に環境ラベルを追加。仕様v3.6と運用手順に「開発実往復→本番反映」を明記。
+- Worker11件、会話API69件と追加GET環境確認1件、型検査、対象Lint、開発dry-run、workerd模擬定期実行2回、仕様ビルドが成功。対象E2E3件が成功し、新着本文がボタン操作前に表示されることを確認。実開発Preview・Worker有効化と人がDiscordへ返信する往復は未完了。
+
 ### 2026-10-04 作者PCを返信配送の必須条件から外す設計・サーバー実装
 
 - ユーザー画像でsecret保存オン・自動取り込みオフを確認。その後オンの画像を確認。ただし作者PCのアプリ起動が返信配送を左右する設計自体をユーザーが拒否し、サーバー方式への変更を依頼。

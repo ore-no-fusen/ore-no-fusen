@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hashSecretToken } from '../../lib/security';
 import { createMemoryFeedbackConversationStore } from '../../lib/store';
 import { resolveDiscordConversationIdForMessage } from './resolve';
-import { POST } from './route';
+import { GET, POST } from './route';
 
 describe('Discord ingest conversation resolution', () => {
   afterEach(() => {
@@ -98,6 +98,16 @@ describe('Discord ingest conversation resolution', () => {
 
 describe('Discord ingest cursor input', () => {
   afterEach(() => vi.unstubAllEnvs());
+
+  it('declares the data environment without accepting a GET import', async () => {
+    for (const environment of ['preview', 'production']) {
+      vi.stubEnv('VERCEL_ENV', environment);
+      const response = await GET();
+      expect(response.status).toBe(405);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect((await response.json()).environment).toBe(environment === 'production' ? 'production' : 'development');
+    }
+  });
 
   it('rejects an invalid cursor before calling Discord', async () => {
     vi.stubEnv('FEEDBACK_CONVERSATION_INGEST_SECRET', 'test-secret');

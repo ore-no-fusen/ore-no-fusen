@@ -76,6 +76,7 @@ test('会話を開いている間の新着返信を入力欄の上で知らせ�
   newReply = true;
   await page.clock.fastForward(60_000);
   await expect(page.getByText('開発者から新しい返信が届きました。')).toBeVisible();
+  await expect(page.locator('[data-conversation-history]').getByText('Discordからの返信です')).toBeVisible();
   await page.getByRole('button', { name: '最新の返信を見る' }).click();
   await expect(page.locator('[data-conversation-history]').getByText('Discordからの返信です')).toBeVisible();
   await expect(page.getByText('開発者から新しい返信が届きました。')).toHaveCount(0);

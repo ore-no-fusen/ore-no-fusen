@@ -1,4 +1,5 @@
 import { FeedbackRequestError, hashSecretToken, safeEqualHash } from './security';
+import { feedbackEnvironment, feedbackFirestorePrefix } from './environment';
 import type { FeedbackConversation, FeedbackConversationMessage } from './types';
 
 export interface FeedbackConversationStore {
@@ -264,7 +265,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
     private readonly privateKey: string,
     databaseId = '(default)',
   ) {
-    this.rootUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents`;
+    this.rootUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents${feedbackFirestorePrefix()}`;
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -470,7 +471,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
 }
 
 const globalStore = globalThis as typeof globalThis & {
-  __feedbackConversationMemoryStore?: FeedbackConversationStore;
+  __feedbackConversationMemoryStores?: Partial<Record<'production' | 'development', FeedbackConversationStore>>;
 };
 
 export function createFeedbackConversationStore(): FeedbackConversationStore {
@@ -486,10 +487,14 @@ export function createFeedbackConversationStore(): FeedbackConversationStore {
     );
   }
 
-  if (!globalStore.__feedbackConversationMemoryStore) {
-    globalStore.__feedbackConversationMemoryStore = new MemoryFeedbackConversationStore();
+  if (!globalStore.__feedbackConversationMemoryStores) {
+    globalStore.__feedbackConversationMemoryStores = {};
   }
-  return globalStore.__feedbackConversationMemoryStore;
+  const environment = feedbackEnvironment();
+  if (!globalStore.__feedbackConversationMemoryStores[environment]) {
+    globalStore.__feedbackConversationMemoryStores[environment] = new MemoryFeedbackConversationStore();
+  }
+  return globalStore.__feedbackConversationMemoryStores[environment]!;
 }
 
 export function createMemoryFeedbackConversationStore(): FeedbackConversationStore {

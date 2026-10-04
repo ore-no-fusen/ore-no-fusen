@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { DiscordIngestCoordinator } from './index.js';
 
-function fixture(initial = {}) {
+function fixture(initial = {}, env = {}) {
   const entries = new Map(Object.entries(initial));
   const puts = [];
   let queue = Promise.resolve();
@@ -17,7 +17,7 @@ function fixture(initial = {}) {
       return next;
     },
   };
-  return { entries, puts, coordinator: new DiscordIngestCoordinator(state, { FEEDBACK_CONVERSATION_INGEST_SECRET: 'test-secret' }) };
+  return { entries, puts, coordinator: new DiscordIngestCoordinator(state, { FEEDBACK_CONVERSATION_INGEST_SECRET: 'test-secret', INGEST_ENVIRONMENT: 'production', ...env }) };
 }
 const tick = () => new Request('https://coordinator/tick', { method: 'POST' });
 
@@ -101,4 +101,60 @@ test('missing server credential makes no network request', async (t) => {
   const mock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('Unexpected request'); });
   assert.equal((await fixtureData.coordinator.fetch(tick())).status, 503);
   assert.equal(mock.mock.callCount(), 0);
+});
+
+test('development uses only its fixed API and independently resumes its checkpoint', async (t) => {
+  const production = fixture({ 'discord-cursor': '223456789012345678' });
+  const development = fixture({}, { INGEST_ENVIRONMENT: 'development' });
+  const bodies = [];
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    assert.equal(url, 'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback/discord/ingest');
+    if (init.method === 'GET') {
+      assert.equal(init.headers, undefined);
+      return Response.json({ environment: 'development' }, { status: 405 });
+    }
+    bodies.push(JSON.parse(init.body));
+    return Response.json({ environment: 'development', ingested: 1, rejected: [], lastSeenId: '123456789012345678' });
+  });
+  assert.equal((await development.coordinator.fetch(tick())).status, 200);
+  assert.equal((await development.coordinator.fetch(tick())).status, 200);
+  assert.deepEqual(bodies, [{}, { afterId: '123456789012345678' }]);
+  assert.equal(production.entries.get('discord-cursor'), '223456789012345678');
+});
+
+test('development refuses a response without confirmed data isolation', async (t) => {
+  const development = fixture({}, { INGEST_ENVIRONMENT: 'development' });
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    requests.push(init.method);
+    return Response.json({ environment: 'production' }, { status: 405 });
+  });
+  assert.equal((await development.coordinator.fetch(tick())).status, 502);
+  assert.deepEqual(requests, ['GET']);
+  assert.equal(development.entries.has('discord-cursor'), false);
+});
+
+test('development rejects an unexpected import environment without advancing its checkpoint', async (t) => {
+  const development = fixture({}, { INGEST_ENVIRONMENT: 'development' });
+  t.mock.method(globalThis, 'fetch', async (_url, init) => init.method === 'GET'
+    ? Response.json({ environment: 'development' }, { status: 405 })
+    : Response.json({ environment: 'production', ingested: 0, rejected: [], lastSeenId: '123456789012345678' }));
+  assert.equal((await development.coordinator.fetch(tick())).status, 502);
+  assert.equal(development.entries.has('discord-cursor'), false);
+});
+
+test('unknown environment makes no request and development scheduler uses its own coordinator', async (t) => {
+  const invalid = fixture({}, { INGEST_ENVIRONMENT: 'https://untrusted.example' });
+  const mock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('Unexpected request'); });
+  assert.equal((await invalid.coordinator.fetch(tick())).status, 503);
+  assert.equal(mock.mock.callCount(), 0);
+  assert.equal((await fixture({}, { INGEST_ENVIRONMENT: undefined }).coordinator.fetch(tick())).status, 503);
+  assert.equal(mock.mock.callCount(), 0);
+  await worker.scheduled({}, {
+    INGEST_ENVIRONMENT: 'development',
+    INGEST_COORDINATOR: {
+      idFromName(name) { assert.equal(name, 'development'); return name; },
+      get(id) { assert.equal(id, 'development'); return { async fetch() { return Response.json({ ingested: 0 }); } }; },
+    },
+  });
 });

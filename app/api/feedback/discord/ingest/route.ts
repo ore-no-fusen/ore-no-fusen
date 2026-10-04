@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isDiscordIngestFailure, runDiscordIngest } from './run';
 import { FeedbackRequestError, readFeedbackJson } from '../../lib/security';
+import { feedbackEnvironment } from '../../lib/environment';
 
 function corsHeaders() {
   return {
@@ -18,7 +19,7 @@ function isAuthorized(req: Request): boolean {
 }
 
 export async function GET() {
-  return NextResponse.json({ error: 'Method Not Allowed' }, { status: 405, headers: corsHeaders() });
+  return NextResponse.json({ error: 'Method Not Allowed', environment: feedbackEnvironment() }, { status: 405, headers: { ...corsHeaders(), 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req: Request) {
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
     if (isDiscordIngestFailure(result)) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: corsHeaders() });
     }
-    return NextResponse.json(result, { headers: corsHeaders() });
+    return NextResponse.json({ ...result, environment: feedbackEnvironment() }, { headers: corsHeaders() });
   } catch (error) {
     if (error instanceof FeedbackRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status, headers: corsHeaders() });

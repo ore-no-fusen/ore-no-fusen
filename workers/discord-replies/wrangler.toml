@@ -3,6 +3,9 @@ main = "src/index.js"
 compatibility_date = "2026-06-16"
 workers_dev = false
 
+[vars]
+INGEST_ENVIRONMENT = "production"
+
 [triggers]
 crons = ["* * * * *"]
 
@@ -16,3 +19,17 @@ new_sqlite_classes = ["DiscordIngestCoordinator"]
 
 [observability]
 enabled = true
+
+[env.development]
+name = "ore-no-fusen-discord-replies-development"
+workers_dev = false
+
+[env.development.vars]
+INGEST_ENVIRONMENT = "development"
+
+[env.development.triggers]
+crons = ["* * * * *"]
+
+[[env.development.durable_objects.bindings]]
+name = "INGEST_COORDINATOR"
+class_name = "DiscordIngestCoordinator"
