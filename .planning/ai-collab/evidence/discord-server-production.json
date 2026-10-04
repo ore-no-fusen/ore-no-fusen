@@ -1,0 +1,29 @@
+{
+  "verifiedAt": "2026-10-05T05:19:35+09:00",
+  "worker": "ore-no-fusen-discord-replies",
+  "versionId": "379ddf04-d13b-4dc1-a72d-384ef99dc0ed",
+  "cron": "* * * * *",
+  "secretBindingVerified": true,
+  "coordinatorBindingVerified": true,
+  "scheduledEvent": {
+    "scheduledTime": 1791145128000,
+    "outcome": "ok",
+    "exceptions": []
+  },
+  "coordinatorEvent": {
+    "outcome": "ok",
+    "responseStatus": 200,
+    "exceptions": []
+  },
+  "secondScheduledEvent": {
+    "scheduledTime": 1791145188000,
+    "outcome": "ok",
+    "coordinatorResponseStatus": 200,
+    "exceptions": []
+  },
+  "limitations": [
+    "This confirms the deployed server schedule completed, not delivery to a specific user's PC.",
+    "The author application's legacy automatic ingestion has not been disabled.",
+    "The account's complete billing plan and Vercel usage have not been verified."
+  ]
+}
