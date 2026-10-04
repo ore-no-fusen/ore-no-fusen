@@ -2,6 +2,16 @@
 
 <!-- NEW_ENTRIES_BELOW -->
 
+### 2026-10-05 5.5.1開発署名MSIX導入完了・起動前で待機（STEP 1-4）
+
+- ユーザー依頼の複数ワークツリー統合を1be3b8fまでローカルdevelopに統合・push。Test、Rust Windows Test、仕様CIが成功。未採用の20枚以上並行起動案と過去の7月リリース実験は取り込まない。
+- e4bf228で候補版5.5.1を設定し、ローカルdevelop/mainを同じ候補へ揃えた。origin/mainは未変更、origin/developは1be3b8f。候補作業場所は.w/release-integration（main）。
+- 本番exe作成成功592秒、開発署名MSIX作成・署名検証成功10秒、Add-AppxPackage導入成功7秒。開発パッケージONFStudios.FUSEN.Dev、Version5.5.1.0。ビルドexe・MSIX梱包exe・導入exeのSHA-256が33CA97C75FE54644FE9E9DF7367A1E7F56676CDC4B0C4ED194FDBCE783E26E95で一致。
+- 通常設定の控えと既存直下Markdown14枚の変更前hashを候補内.sandbox-resize/release-5.5.1/beforeへローカル保存。起動中debug版PID46280は停止していない。Computer Useは付箋指定でも別アプリ画面を返し、再選択1回でも不一致。入力は行わず実機操作を停止した。
+- ユーザーへ現在のアプリをトレイから通常終了する一手を依頼し、新MSIX起動を待機。iPhone実機確認可否も質問中。STEP 1-5の既存データ・画像保存/複製・PC/iPhone往復・今回のハンドル/展開保存確認は未完了。Store用MSIX確定、origin/main push、Partner Center認定申請は実行しない。
+- 開発MSIX: .w/release-integration/packaging/msix/dev/out/ore-no-fusen-dev.msix。次は通常版停止を確認して導入済みDev MSIXを起動、実機確認後に同じexeからSTEP 2へ進む。コードや型の変更がない文書記録のためアプリ検査は繰り返さない。
+
+
 ### 2026-10-05 複数ワークツリーのリリース統合候補を準備（STEP 0）
 
 - ユーザーが別ワークツリーの作業もまとめてリリースするよう依頼。最新ローカルdevelop 0a66c63からcodex/release-integration（.w/release-integration）を作成。
