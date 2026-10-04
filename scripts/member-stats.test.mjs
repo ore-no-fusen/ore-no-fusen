@@ -318,3 +318,63 @@ test('投稿画面で会員番号を選び、登録済みの1人だけを宛先�
     globalThis.fetch = originalFetch;
   }
 });
+
+test('最新状態に更新ボタンを押すとサーバー側で再集計され画面が最新化される', async () => {
+  const originalFetch = globalThis.fetch;
+  let refreshCount = 0;
+  const mockRefresh = async () => {
+    refreshCount++;
+    return {
+      html: generateHtml([], refreshCount, 10000 + refreshCount, 0, 0, [], [], `2026/10/0${refreshCount}`, { today: 0, week: 0, unknown: refreshCount }, true, 'development'),
+      nowJst: `2026/10/0${refreshCount}`,
+      members: [{ generalNumber: 10000 + refreshCount }],
+      dbToken: 'refreshed-token'
+    };
+  };
+
+  const initialHtml = generateHtml([], 0, 10000, 0, 0, [], [], '2026/10/00', { today: 0, week: 0, unknown: 0 }, true, 'development');
+  const { server, url } = await serveDashboard(initialHtml, 'test-token', false, new Set(), 'development', mockRefresh);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
+    await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
+    await page.goto(url);
+    assert.match(await page.locator('body').innerText(), /2026\/10\/00/);
+
+    await Promise.all([
+      page.waitForNavigation(),
+      page.locator('#refreshDashboardBtn').click()
+    ]);
+    assert.equal(refreshCount, 1);
+    assert.match(await page.locator('body').innerText(), /2026\/10\/01/);
+  } finally {
+    await browser.close();
+    await new Promise(resolve => server.close(resolve));
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test('再集計は正しいOriginとCSRFが必要で、失敗時は前の画面を保持する', async () => {
+  let calls = 0;
+  const { server, url } = await serveDashboard('<input value="__CSRF_TOKEN__">previous-data', 'test-token', false, new Set(), 'development', async () => {
+    calls++;
+    throw new Error('test refresh failure');
+  });
+  try {
+    const html = await (await fetch(url)).text();
+    const token = html.match(/value="([a-f0-9]{64})"/)[1];
+    const origin = url.slice(0, -1);
+    for (const headers of [{ Origin: origin }, { Origin: 'https://example.invalid', 'X-CSRF-Token': token }]) {
+      assert.equal((await fetch(`${url}refresh-data`, { method: 'POST', headers })).status, 403);
+    }
+    assert.equal(calls, 0);
+    const response = await fetch(`${url}refresh-data`, { method: 'POST', headers: { Origin: origin, 'X-CSRF-Token': token } });
+    assert.equal(response.status, 500);
+    assert.equal(calls, 1);
+    assert.equal(await (await fetch(url)).text(), html);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});

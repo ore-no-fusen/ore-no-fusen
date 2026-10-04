@@ -162,17 +162,20 @@ async function stopAnnouncement(token, id, environment = 'production') {
   if (!response.ok) throw new Error(`配信停止に失敗しました (${response.status})`);
 }
 
-async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers = new Set(), environment = 'production') {
+async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers = new Set(), environment = 'production', refreshFn = null, port = undefined) {
   firestoreRoot(environment);
   const csrfToken = crypto.randomBytes(32).toString('hex');
   let currentToken = dbToken;
+  let currentHtml = html;
+  let currentMemberNumbers = memberNumbers;
   let tokenAt = Date.now();
+  const effectiveRefreshFn = refreshFn || (() => collectStats(environment, true));
   const server = createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     if (request.method === 'GET' && request.url === '/') {
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      response.end(html.replaceAll('__CSRF_TOKEN__', csrfToken));
+      response.end(currentHtml.replaceAll('__CSRF_TOKEN__', csrfToken));
       return;
     }
     if (request.method === 'GET' && request.url === '/feature-usage' && request.headers['x-csrf-token'] === csrfToken) {
@@ -204,6 +207,26 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
       return;
     }
     const origin = `http://127.0.0.1:${server.address().port}`;
+    if (request.method === 'POST' && request.url === '/refresh-data' && request.headers.origin === origin && request.headers['x-csrf-token'] === csrfToken) {
+      try {
+        const refreshed = await effectiveRefreshFn();
+        currentHtml = refreshed.html;
+        if (refreshed.members) {
+          currentMemberNumbers = new Set(refreshed.members.map(m => m.generalNumber));
+        }
+        if (refreshed.dbToken) {
+          currentToken = refreshed.dbToken;
+          tokenAt = Date.now();
+        }
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify({ ok: true, nowJst: refreshed.nowJst }));
+      } catch (error) {
+        console.error('Refresh error:', error);
+        response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify({ error: error.message }));
+      }
+      return;
+    }
     if (request.method !== 'POST' || !['/announcements', '/announcement-stop'].includes(request.url) || request.headers.origin !== origin || request.headers['x-csrf-token'] !== csrfToken || request.headers['content-type'] !== 'application/json') {
       response.writeHead(403); response.end(); return;
     }
@@ -224,7 +247,7 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
         response.end(JSON.stringify({ stopped: true }));
       } else {
         const { title, body, audience, memberNumber, featureName } = data;
-        const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, memberNumbers, environment, featureName);
+        const id = await publishAnnouncement(currentToken, title, body, audience, memberNumber, currentMemberNumbers, environment, featureName);
         response.writeHead(201, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ id }));
       }
@@ -233,7 +256,18 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
       response.end(JSON.stringify({ error: error.message }));
     }
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const targetPort = port !== undefined ? port : (openBrowser ? 3005 : 0);
+  await new Promise((resolve, reject) => {
+    server.once('error', err => {
+      if (err.code === 'EADDRINUSE' && targetPort !== 0) {
+        console.warn(`ポート ${targetPort} が使用中のため、別のポートで起動します...`);
+        server.listen(0, '127.0.0.1', resolve);
+      } else {
+        reject(err);
+      }
+    });
+    server.listen(targetPort, '127.0.0.1', resolve);
+  });
   const url = `http://127.0.0.1:${server.address().port}/`;
   console.log(`ダッシュボード: ${url} （終了は Ctrl+C）`);
   if (openBrowser) exec(`start "" "${url}"`);
@@ -395,8 +429,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <p class="text-sm text-amber-300 mt-1">対象: ${environmentLabel}の会員・お便り</p>
         <p class="text-sm text-slate-400 mt-1">集計日時: ${nowJst} (JST) | ${analyticsLabel}</p>
       </div>
-      <button onclick="location.reload()" class="self-start sm:self-auto px-4 py-2 text-sm font-medium bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 rounded-xl transition-all shadow-lg flex items-center gap-2">
-        <span>🔄</span> 最新状態に更新
+      <button id="refreshDashboardBtn" type="button" class="self-start sm:self-auto px-4 py-2 text-sm font-medium bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 rounded-xl transition-all shadow-lg flex items-center gap-2">
+        <span id="refreshIcon">🔄</span> <span id="refreshText">最新状態に更新</span>
       </button>
     </div>
 
@@ -609,6 +643,38 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
           versionRows.appendChild(row);
         }
       }).catch(() => undefined);` : ''}
+    const refreshDashboardBtn = document.getElementById('refreshDashboardBtn');
+    if (refreshDashboardBtn) {
+      refreshDashboardBtn.addEventListener('click', async () => {
+        if (window.location.protocol === 'file:') {
+          alert('静的ファイルを開いています。最新データを再集計するには「my/会員数推移.bat」を実行してください。');
+          return;
+        }
+        const icon = document.getElementById('refreshIcon');
+        const text = document.getElementById('refreshText');
+        refreshDashboardBtn.disabled = true;
+        refreshDashboardBtn.classList.add('opacity-60', 'cursor-not-allowed');
+        if (icon) icon.classList.add('inline-block', 'animate-spin');
+        if (text) text.textContent = 'データ再集計中…';
+        try {
+          const response = await fetch('/refresh-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' },
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'HTTP ' + response.status);
+          }
+          location.reload();
+        } catch (error) {
+          alert('最新データの取得に失敗しました。サーバーが停止している場合は「my/会員数推移.bat」を再実行してください。 (' + error.message + ')');
+          refreshDashboardBtn.disabled = false;
+          refreshDashboardBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+          if (icon) icon.classList.remove('animate-spin');
+          if (text) text.textContent = '最新状態に更新';
+        }
+      });
+    }
     const announcementForm = document.getElementById('announcementForm');
     const audienceSelect = document.getElementById('audience');
     const memberNumberInput = document.getElementById('memberNumber');
@@ -835,8 +901,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 </html>`;
 }
 
-async function main() {
-  const { environment, open } = parseOptions(process.argv.slice(2));
+async function collectStats(environment = 'production', canPublish = true) {
   const [dbToken, gaToken] = await Promise.all([
     getAccessToken('https://www.googleapis.com/auth/datastore'),
     environment === 'production' ? getAccessToken('https://www.googleapis.com/auth/analytics.readonly') : null
@@ -961,26 +1026,47 @@ async function main() {
       users: parseInt(r.metricValues[1].value, 10)
     }));
 
-  // Write HTML
+  // Write static HTML
   const outDir = path.resolve(rootDir, 'my');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const htmlPath = path.resolve(outDir, environment === 'development' ? 'member_stats.development.html' : 'member_stats.html');
-  fs.writeFileSync(htmlPath, generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, false, environment, featureStats), 'utf8');
+  const staticHtml = generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, false, environment, featureStats);
+  fs.writeFileSync(htmlPath, staticHtml, 'utf8');
+
+  const html = canPublish ? generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true, environment, featureStats) : staticHtml;
+
+  return {
+    html,
+    dbToken,
+    members,
+    combinedStats,
+    totalMembers,
+    latestNumber,
+    todayNew,
+    yesterdayNew,
+    nowJst,
+    htmlPath
+  };
+}
+
+async function main() {
+  const { environment, open } = parseOptions(process.argv.slice(2));
+  const stats = await collectStats(environment, open);
 
   console.log(`対象環境: ${environment}`);
   if (open) {
-    console.log(`Updated: ${htmlPath}`);
-    await serveDashboard(generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true, environment, featureStats), dbToken, true, new Set(members.map(m => m.generalNumber)), environment);
+    console.log(`Updated: ${stats.htmlPath}`);
+    await serveDashboard(stats.html, stats.dbToken, true, new Set(stats.members.map(m => m.generalNumber)), environment, () => collectStats(environment, true));
   } else {
-    console.log(`総会員数: ${totalMembers}人 (最新番号: #${latestNumber})`);
-    console.log(`本日新規: +${todayNew}人 / 昨日新規: +${yesterdayNew}人`);
-    console.log(`更新日時: ${nowJst} JST`);
-    console.table(combinedStats.slice(-7));
-    console.log(`詳細HTML: ${htmlPath}`);
+    console.log(`総会員数: ${stats.totalMembers}人 (最新番号: #${stats.latestNumber})`);
+    console.log(`本日新規: +${stats.todayNew}人 / 昨日新規: +${stats.yesterdayNew}人`);
+    console.log(`更新日時: ${stats.nowJst} JST`);
+    console.table(stats.combinedStats.slice(-7));
+    console.log(`詳細HTML: ${stats.htmlPath}`);
   }
 }
 
-export { survivalStats, featureUsageStats, isoWeek, publishAnnouncement, stopAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, fetchFirestoreAnnouncements, parseOptions };
+export { collectStats, survivalStats, featureUsageStats, isoWeek, publishAnnouncement, stopAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, fetchFirestoreAnnouncements, parseOptions };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch(err => {

@@ -832,6 +832,43 @@ mod tests {
     }
 
     #[test]
+    fn resize_save_writes_geometry_without_changing_body_or_unknown_frontmatter() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("0001_2026-10-02_ResizeTest.md");
+        let path_str = path.to_string_lossy().to_string();
+        let original = "---\ntype: sticky\nseq: 1\ncreated: 2026-10-02\nupdated: 2026-10-02\nwindow: { x: 120, y: 120, width: 360, height: 280 }\ncustomField: keep-me\n---\n\nResize Test";
+        std::fs::write(&path, original).unwrap();
+
+        let mut state = AppState::default();
+        state.notes = crate::storage::list_notes(&dir.path().to_string_lossy());
+        let frontmatter = "---\ntype: sticky\nseq: 1\ncreated: 2026-10-02\nupdated: 2026-10-02\nwindow: { x: 120, y: 120, width: 440, height: 340 }\ncustomField: keep-me\n---";
+        let (saved_path, effect) = handle_save_note(
+            &mut state,
+            &path_str,
+            "Resize Test",
+            "Resize Test",
+            frontmatter,
+            false,
+        ).unwrap();
+
+        assert_eq!(saved_path, path_str);
+        let Effect::WriteNote { path: write_path, content } = effect else {
+            panic!("resize must produce a file write");
+        };
+        crate::storage::write_note(&write_path, &content).unwrap();
+        let persisted = std::fs::read_to_string(&path).unwrap();
+        assert!(persisted.contains("window: { x: 120, y: 120, width: 440, height: 340 }"));
+        assert!(persisted.contains("customField: keep-me"));
+        assert!(persisted.ends_with("\n\nResize Test"));
+        assert_eq!(state.notes[0].width, Some(440.0));
+        assert_eq!(state.notes[0].height, Some(340.0));
+        let reloaded = crate::storage::list_notes(&dir.path().to_string_lossy());
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].width, Some(440.0));
+        assert_eq!(reloaded[0].height, Some(340.0));
+    }
+
+    #[test]
     fn sanitize_real_world_example() {
         // 実際のユースケース: Windowsパスをファイル名に
         let input = "C:\\Users\\test\\Documents";
