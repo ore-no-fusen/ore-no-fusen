@@ -1,0 +1,8 @@
+{
+  "name": "ore-no-fusen-discord-replies",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/index.test.mjs"
+  }
+}

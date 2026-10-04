@@ -1,0 +1,18 @@
+name = "ore-no-fusen-discord-replies"
+main = "src/index.js"
+compatibility_date = "2026-06-16"
+workers_dev = false
+
+[triggers]
+crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "INGEST_COORDINATOR"
+class_name = "DiscordIngestCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiscordIngestCoordinator"]
+
+[observability]
+enabled = true

@@ -1,6 +1,15 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-10-04 作者PCを返信配送の必須条件から外す設計・サーバー実装
+
+- ユーザー画像でsecret保存オン・自動取り込みオフを確認。その後オンの画像を確認。ただし作者PCのアプリ起動が返信配送を左右する設計自体をユーザーが拒否し、サーバー方式への変更を依頼。
+- 旧仕様の該当箇所は007_COMMUNICATIONの4章、図6-1・6-3、7章、9章。作者PCの1分確認とVercelの日次Cronが記述されていた。
+- `codex/discord-server-ingest`でCloudflare Workerの1分Cronとサーバー永続チェックポイントを実装。既存の本番ingest APIを呼び、作者PCやユーザー側への管理secret配布を不要とする。新着なし時は既存APIがFirestoreへアクセスしない。全会話で1系統。失敗時5分待機、重複Cron直列化、リダイレクト禁止、公開HTTP起動なし。
+- 仕様v3.5の図4-1・6-1・6-3をユーザーPC／サーバー／Discordの3参加者へ整理。内部サーバー構成は本文で説明。概ね1分の取り込みと会話更新による約2分を正常時の目安とし、即時プッシュとは記載しない。古い未達返信は初回直近50件だけで復旧保証しない。
+- Workerの対象7件、TypeScript型検査、Wrangler dry-run成功。workerdで2回のscheduledイベント成功（APIは模擬）。VitePressビルド成功、4図のSVG描画とSyntax errorなしを確認。実画面証拠はevidence/discord-server-sequence.png。
+- 本番Workerは未デプロイ。Cloudflareへsecretを保存して有効化し、作者PCの手動取り込みを使わずに本番の対象会話への保存と別PCでの表示を確認する。合格後に作者PCの旧自動取り込みを解除する。必要な本番操作と停止・復帰手順はworkers/discord-replies/README.mdに記録。
+
 ### 2026-10-04 作者PCのDiscord取り込み先を明示する
 
 - 優先1は、作者がDiscordで返信しても別PCの本番ユーザーに届かない件。前のチャットでは手動取り込みの成功報告あり。間隔短縮は取り消し済み。ユーザー側へ管理secretを渡さない。

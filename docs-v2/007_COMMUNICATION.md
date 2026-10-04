@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-コミュニケーション設計 v3.0 / 2026-09-21
+コミュニケーション設計 v3.5 / 2026-10-04
 </p>
 
 ---
@@ -28,7 +28,7 @@ outline: deep
 
 ### 1.1 登場人物と用語
 
-本章では「サーバー」という曖昧な言葉を使わず、次の名前で役割を区別します。
+実装上の役割は次の名前で区別します。図4-1・図6-1・図6-3では会話の流れを読みやすくするため、Cloudflare Worker、Vercel API、Firestoreを「サーバー」にまとめます。
 
 <p class="table-caption">表 1.1-1　登場人物と責務</p>
 
@@ -41,6 +41,7 @@ outline: deep
 | 5 | Discord Webhook | Vercel APIからDiscordサーバーへ通知を投稿する入口 | Webhook URL |
 | 6 | Discord Bot | Discordサーバー上の返信をVercel APIへ取り込むために読む主体 | Bot Token |
 | 7 | Appwrite Storage | ユーザーが掲示板で明示的に添付した画像本体を保存する | 画像ファイル、所有者を示す読取・削除権限 |
+| 8 | Cloudflare Worker | 作者PCを経由せず定期的に返信取り込みを起動する | ingest secret、サーバーの最終確認ID、失敗時の再試行時刻 |
 
 ---
 
@@ -54,6 +55,7 @@ outline: deep
 | 2 | Discord チャンネルをユーザー数分作る | 不採用 | チャンネル数、権限、API制限、削除、運用管理が重すぎる |
 | 3 | 設定画面内に 1 対 1 掲示板を作る | 採用 | ユーザーが見に行く形なので自然で、誤表示時の影響範囲も設定画面内に閉じる |
 | 4 | ユーザーごとに会話ファイルを作って自前同期する | 将来候補 | 考え方は近いが、初期実装では Vercel API + Firebase / Firestore で会話データを管理する方が単純 |
+| 5 | 作者PCの起動・設定を返信配送の必須条件にする | 不採用 | Discordで返信しても作者PCの状態で配送が止まる。返信取り込みはサーバーの責務とする |
 
 ---
 
@@ -86,29 +88,17 @@ outline: deep
 
 ## 4 全体構成
 
-ユーザー側は設定画面だけを使います。開発者はDiscordで通知を読み、その通知に返信します。開発者PCのアプリが起動中で自動取り込みが有効なら、約1分ごとに新しいDiscord投稿だけをFirestoreへ取り込みます。ローカル会員ダッシュボードは一斉・宛先指定のお便り配信に使い、個別会話には使いません。Discord はユーザーに直接見せません。
+ユーザー側は設定画面だけを使います。開発者はDiscordで通知を読み、その通知に返信します。Discord返信の取り込みはサーバー側で約1分ごとに行います。作者PCの起動、アプリ、管理者設定には依存しません。ローカル会員ダッシュボードは一斉・宛先指定のお便り配信に使い、個別会話には使いません。Discord はユーザーに直接見せません。
 
 ```mermaid
 flowchart LR
-    User["ユーザー<br>設定画面の掲示板"]
-    PC["PCアプリ<br>conversation_id + secret_token"]
-    API["Vercel API<br>会話データ管理"]
-    Firestore["Firebase / Firestore<br>会話ストア"]
-    Storage["Appwrite Storage<br>明示添付画像"]
-    Discord["Discord<br>通知・開発者返信"]
-    Dev["開発者"]
-
-    User --> PC
-    PC --> API
-    PC --> Storage
-    API --> Storage
-    API --> Firestore
-    API --> Discord
-    Dev --> Discord
-    Discord --> API
-    API --> Firestore
-    API --> PC
-    PC --> User
+    PC["ユーザーのPC<br>開発者とのやりとり"]
+    Server["サーバー<br>会話保存・返信の自動取り込み"]
+    Discord["Discord<br>開発者が通知を読み返信"]
+    PC -->|問い合わせ・会話更新| Server
+    Server -->|このユーザー宛ての返信| PC
+    Server -->|投稿通知・新しい返信の確認| Discord
+    Discord -->|開発者の返信| Server
 ```
 
 <p class="mermaid-caption">図 4-1　1 対 1 掲示板方式の全体構成</p>
@@ -119,6 +109,7 @@ flowchart LR
 |:---|:---|
 | PCアプリ | 匿名会話IDの保持、掲示板UI表示、投稿、画面表示中は約1分ごとの会話更新、投稿後24時間は常駐中に約10分ごとの新着確認、それ以外は日次確認 |
 | Vercel API | secret token 照合、Firestore保存、Discord通知、Discord返信取り込み |
+| Cloudflare Workers | 約1分ごとの返信取り込み起動、サーバー上の確認位置保存、失敗時の再試行。作者PCを経由しない |
 | Firebase / Firestore | 会話本文、開発者返信、既読状態、Discord通知との対応を永続保存 |
 | Appwrite Storage | 掲示板で明示的に選択した画像本体とファイル権限を保存する。会話本文の正本にはしない |
 | Discord | ユーザー投稿を開発者へ知らせ、開発者が同じ通知に返信する裏側 UI |
@@ -141,8 +132,8 @@ flowchart LR
 | 5 | `last_unread_check_date` | PCローカル設定 | JST 4:00 頃の自動確認を同じ日に重複実行しない |
 | 6 | 投稿後24時間の期限・前回確認時刻 | PCローカル設定 | 会話中だけ常駐確認を約10分間隔にする |
 | 7 | 通知済みの返信ID | PCローカル設定 | 同じ返信の小窓を繰り返し出さない |
-| 8 | 作者PCのingest secretと自動取り込み設定 | 作者PCのlocalStorageのみ | 本人のPCだけでDiscord返信の自動取り込みを認証する |
-| 9 | 作者PCのDiscord最終確認ID | 作者PCのlocalStorageのみ | 次回は新しい投稿だけを確認する |
+| 8 | サーバーのingest secret | Cloudflare WorkerのSecrets | 返信取り込みAPIを認証する。ユーザーPCへ渡さない |
+| 9 | Discord最終確認ID | Cloudflare Durable Object | 次回は新しい投稿だけを確認する。作者PCの停止・再起動に依存しない |
 
 <p class="table-caption">表 5-2　Firebase / Firestore に保存する情報</p>
 
@@ -222,27 +213,18 @@ feedback_conversations/{conversation_id}/messages/{message_id}
 
 ```mermaid
 sequenceDiagram
-    participant User as ユーザー
-    participant PC as PCアプリ
-    participant API as Vercel API
-    participant DB as Firestore
+    participant PC as ユーザーのPC
+    participant Server as サーバー
     participant Discord as Discord
-    participant Dev as 開発者
-    participant AuthorPC as 作者PCアプリ
 
-    User->>PC: 「開発者とのやりとり」から問い合わせる
-    PC->>API: 本文と画像の参照情報を送る
-    API->>DB: tokenを照合し、会話を確認
-    API->>Discord: 開発者へ投稿を通知
-    API->>DB: Discord通知IDと投稿を会話に保存
-    Dev->>Discord: 同じ通知に返信を書く
-    AuthorPC->>API: 作者が選んだ本番／開発APIへ返信の取り込みを依頼
-    API->>Discord: 前回以降の返信を取得
-    API->>DB: 開発者と返信先を検証し、同じ会話に保存
-    PC->>API: 新しい返信を確認
-    API->>DB: tokenを照合し、このユーザーの会話を取得
-    API-->>PC: 開発者の返信を返す
-    PC-->>User: 会話に表示し、新着を知らせる
+    PC->>Server: 問い合わせを送る
+    Server->>Discord: 問い合わせを通知
+    Note right of Discord: 開発者が元の通知に返信
+    Server->>Discord: 約1分ごとに新しい返信を確認
+    Discord-->>Server: 開発者の返信
+    Note over Server: 返信先を検証して会話へ保存
+    PC->>Server: 会話を更新
+    Server-->>PC: このユーザー宛ての返信を表示
 ```
 
 <p class="mermaid-caption">図 6-1　ユーザーからの問い合わせとDiscordでの返信</p>
@@ -297,33 +279,21 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Dev as 開発者
-    participant Dash as 会員ダッシュボード
-    participant DB as Firestore
-    participant API as Vercel API
-    participant PC as PCアプリ
-    participant User as ユーザー
+    participant PC as ユーザーのPC
+    participant Server as サーバー
     participant Discord as Discord
-    participant AuthorPC as 作者PCアプリ
 
-    Dev->>Dash: 宛先・タイトル・本文を指定して投稿
-    Dash->>DB: お便りを保存
-    PC->>API: heartbeatでお便りを確認
-    API->>DB: 対象会員のお便りを取得
-    API-->>PC: お便りを返す
-    PC-->>User: 「開発者とのやりとり」に表示
-    User->>PC: そのお便りに返信
-    PC->>API: お便りのタイトル・IDと返信本文を送る
-    API->>DB: tokenを照合し、会話を確認
-    API->>Discord: 開発者へ返信を通知
-    API->>DB: Discord通知IDと投稿を会話に保存
-    Dev->>Discord: 同じ通知に返信を書く
-    AuthorPC->>API: 新しいDiscord返信の取り込みを依頼
-    API->>Discord: 新しい返信を取得
-    API->>DB: 返信先を検証し、同じ会話に保存
-    PC->>API: 新しい返信を確認
-    API-->>PC: 開発者の返信を返す
-    PC-->>User: 会話に表示し、新着を知らせる
+    Note over Server: 開発者がお便りをダッシュボードから配信
+    PC->>Server: お便りを確認
+    Server-->>PC: 対象のお便りを表示
+    PC->>Server: お便りに返信
+    Server->>Discord: ユーザーの返信を通知
+    Note right of Discord: 開発者が元の通知に返信
+    Server->>Discord: 約1分ごとに新しい返信を確認
+    Discord-->>Server: 開発者の返信
+    Note over Server: 返信先を検証して会話へ保存
+    PC->>Server: 会話を更新
+    Server-->>PC: このユーザー宛ての返信を表示
 ```
 
 <p class="mermaid-caption">図 6-3　開発者からのお便りとDiscordで続ける個別会話</p>
@@ -334,7 +304,11 @@ sequenceDiagram
 
 Discordは、開発者の作業場所としてだけ使います。ユーザーごとのDiscordチャンネルは作りません。
 開発者は、1つの開発者用チャンネルに届く通知を見て、対象通知に返信を書きます。
-会話の正本は Firestore に保存します。作者PCのアプリは保存済みの管理用secretで約1分ごとに新着Discord投稿だけを取り込み、日次Cronも予備として継続します。
+会話の正本は Firestore に保存します。Cloudflare Workerが約1分ごとにVercel APIへ返信取り込みを依頼します。作者PCを停止していても動作します。定期取り込みは全会話で1系統（約1,440回/日）とし、会員ごとに取り込みタイマーを増やしません。日次Vercel Cronは予備として継続します。
+
+図6-1・図6-3の「サーバー」は、Cloudflare Worker、Vercel API、Firestoreをまとめた表記です。内部の中継を図に並べず、ユーザーと開発者から見える会話の流れを示します。会話画面の取得も約1分ごとのため、正常時の表示までの待ちは目安で約2分です。即時プッシュではなく、障害時の時間保証もしません。
+
+この改訂のサーバー方式は本番有効化前です。本番でWorkerを有効化し、作者PCを経由しない往復確認に合格するまで、移行完了とは扱いません。
 
 <p class="table-caption">表 7-1　Discordをユーザー数分作らない理由</p>
 
@@ -427,7 +401,7 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 | 2 | `POST /api/feedback/conversation/poll` | 設定画面が会話ログ・未読返信を取得する |
 | 3 | `POST /api/feedback/conversation/ack` | ユーザーが見た返信を既読にする |
 | 4 | `POST /api/feedback/conversation/delete` | secret tokenを照合し、会話・メッセージ・Discord対応表を完全に削除する |
-| 5 | `POST /api/feedback/discord/ingest` | 開発者PCのアプリが約1分ごとに新着Discord返信を取り込む。手動実行も可能 |
+| 5 | `POST /api/feedback/discord/ingest` | Cloudflare Workerが約1分ごとに新着Discord返信を取り込む。管理者の手動実行は障害調査用 |
 | 6 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
 | 7 | `POST /api/feedback/conversation/session` | 会話を認証し、PCがAppwrite Storageへ直接画像を送るための15分JWTを発行する |
 
@@ -435,11 +409,11 @@ Discordは、開発者の作業場所としてだけ使います。ユーザー�
 
 2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。右クリックメニュー表示時には呼びません。  
 PC アプリは通常 JST 4:00 頃に1日1回 `conversation/poll` を呼びます。ユーザーの投稿成功後24時間は常駐中に約10分ごとに確認します。「開発者とのやりとり」を開いている間は約1分ごとに取得します。未読返信はローカルの `has_unread_developer_reply` を true にし、新しい返信IDごとに小窓を1回表示します。掲示板に表示できた返信だけ `conversation/ack` で既読化します。
-5 の `discord/ingest` は、開発者PCのアプリが自動取り込みを有効にした場合に約1分ごとに呼びます。Discordの前回確認IDをそのPCだけに保持し、次回は新しい投稿だけを確認します。新着がなければFirestoreへはアクセスしません。失敗時は5分待って再試行し、カーソルを進めません。管理者ツールからの手動実行も可能です。
+5 の `discord/ingest` はCloudflare Workerが約1分ごとに呼びます。前回確認IDはサーバーのDurable Objectに保持し、取り込みを直列化します。成功時だけ確認位置を進め、新着がなければFirestoreへはアクセスしません。失敗時は5分待って再試行し、確認位置を進めません。認証secretはWorkerのSecretsに保存します。公開HTTP要求からWorkerの取り込みを起動する経路は設けません。初回は既存APIの直近50件を確認するため、それより古い未達返信の調査は別途行います。
 6 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で JST 3:00 に1日1回実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
 7 の `conversation/session` は画像添付時だけ呼び、Vercel APIが画像バイトを中継しない直接アップロードに使います。
 
-管理者ツールでは開発者PCの `localStorage` に `FEEDBACK_CONVERSATION_INGEST_SECRET` を保存できます。作者はアプリの版とは独立に「本番ユーザーへの返信」「開発環境のテスト返信」の取り込み先を選べます。手動・自動とも同じ選択先を使用し、Discordのカーソルは接続先ごとに保持します。切り替え時はsecretと自動取り込み設定を解除し、選んだ環境のsecretを再入力します。未選択の既存設定は従来の接続先を維持します。自動取り込みは保存と専用チェックを両方有効にした場合だけ動作し、配布アプリにはsecretを埋め込みません。ユーザー側へ管理用secretを渡す必要はありません。`CRON_SECRET` は通常PCアプリで入力しないため、保存対象にしません。
+作者PCの管理者ツールは障害調査時の手動取り込みだけに使います。通常の返信配送に作者PCのsecret保存・自動取り込み設定は不要です。既存版の作者PCによる自動取り込みは移行中の互換経路であり、新しいサーバー方式の必須条件ではありません。Worker有効化を確認した後に作者PCの自動取り込みをオフにします。ユーザー側へ管理用secretを渡しません。
 
 <p class="table-caption">表 9-2　環境変数</p>
 
@@ -468,7 +442,7 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 
 | 区分 | 内容 |
 |:---|:---|
-| 実装する | 設定画面内の掲示板、匿名会話ID、secret token、Firestore保存、本文＋最大3枚の画像をDiscordへ送信、開発者PCでのDiscord返信自動取り込み、会話中の短い間隔の確認、新着小窓 |
+| 実装する | 設定画面内の掲示板、匿名会話ID、secret token、Firestore保存、本文＋最大3枚の画像をDiscordへ送信、サーバー側でのDiscord返信自動取り込み、会話中の短い間隔の確認、新着小窓 |
 | 実装しない | 返信付箋、ユーザー数分のDiscordチャンネル、自動プッシュ通知、Google Drive内の会話ファイル同期、Discordからユーザーへの画像返信、送信済み画像の会話ログ再表示、30日自動削除 |
 | 将来検討 | 開発者からの画像返信、画像の自動削除、既読表示、サポート対応ステータス |
 
@@ -486,6 +460,8 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 4 | 自分のテスト会話だけで取得確認 | 正しい会話にだけ返信が出る |
 | 5 | public delivery 有効化 | 設定画面内に返信が表示される |
 | 6 | 監視 | rejected理由、重複、誤配信ゼロを確認する |
+
+既存版からサーバー取り込みへ移行する場合は、`workers/discord-replies/README.md`の有効化手順を使用します。Workerの定期実行を確認し、作者PCで手動取り込みを行わずに、Discord返信が本番の対象会話へ保存され別PCで表示されることを確認します。確認後に作者PCの旧自動取り込みをオフにします。失敗時はWorkerの定期実行だけを停止し、確認位置や会話を削除せず原因を調査します。
 
 ---
 
@@ -513,5 +489,6 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 15 | 3.2 | 26-09-28 | 開発者返信をDiscordに一本化し、作者PCで約1分ごとに新着だけを自動取り込みする方式を追加。会員ダッシュボードはお便り配信専用とする。 |
 | 16 | 3.3 | 26-09-28 | 重複したシーケンス図を6章へ集約。ユーザーからの問い合わせ、画像添付、開発者からのお便りと返信を分け、Discord通知成功後に会話へ保存する順序を実装と一致させた。9章はAPIと実行間隔の説明に限定。 |
 | 17 | 3.4 | 26-10-04 | 作者PCの手動・自動取り込み先をアプリ版と独立して本番／開発から選択。切替時のsecretと自動設定の解除、接続先ごとのカーソル保持を明記。 |
+| 18 | 3.5 | 26-10-04 | 返信取り込みを作者PCからサーバーへ移行する設計に変更。図6-1・図6-3をユーザーPC・サーバー・Discordの3参加者に整理。約1分の取り込みと会話更新の待ち、本番有効化前の状態を明記。 |
 
 </div>
