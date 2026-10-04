@@ -1,6 +1,40 @@
 import { expect, test } from '@playwright/test';
 import { mockTauriAPI } from './mock-tauri';
 
+test('作者の開発版から本番へ手動取り込みでき、切替時にsecretと自動設定を解除する', async ({ page }) => {
+  await mockTauriAPI(page, { language: 'en' });
+  const requests: string[] = [];
+  await page.route('**/discord/ingest', route => {
+    requests.push(route.request().url());
+    return route.fulfill({ json: { ingested: 1, rejected: [] } });
+  });
+  await page.goto('/');
+  await page.waitForFunction(() => (window as any).__MOCK_HAS_LISTENER__('fusen:open_settings'));
+  await page.evaluate(() => (window as any).__MOCK_EMIT__('fusen:open_settings', {}));
+  await page.locator('aside button').filter({ hasText: 'Admin Tools' }).click();
+  await page.locator('summary').filter({ hasText: 'Developer Only' }).click();
+  await page.getByLabel('Reply destination').selectOption('production');
+  await page.locator('#discord-ingest-secret').fill('test-author-secret');
+  await page.getByLabel('Save the ingest secret on this PC', { exact: true }).check();
+  await page.getByRole('button', { name: 'Run Import', exact: true }).click();
+  await expect(page.getByText('Imported: 1', { exact: true })).toBeVisible();
+  expect(requests).toEqual(['https://ore-no-fusen.vercel.app/api/feedback/discord/ingest']);
+  await page.getByLabel('Import Discord replies automatically every minute while this PC app is running').check();
+  await page.getByLabel('Reply destination').selectOption('development');
+  await expect(page.locator('#discord-ingest-secret')).toHaveValue('');
+  await expect(page.getByLabel('Save the ingest secret on this PC', { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel('Import Discord replies automatically every minute while this PC app is running')).not.toBeChecked();
+  const stored = await page.evaluate(() => ({
+    secret: localStorage.getItem('ore-no-fusen.feedback.discord_ingest_secret'),
+    enabled: localStorage.getItem('ore-no-fusen.feedback.discord_auto_ingest'),
+    target: localStorage.getItem('ore-no-fusen.feedback.discord_ingest_target'),
+  }));
+  expect(stored).toEqual({ secret: null, enabled: null, target: 'development' });
+  await page.getByRole('button', { name: 'Run Import', exact: true }).click();
+  await expect(page.getByText('Enter the ingest secret.', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(1);
+});
+
 test('お便りと返信を古い順に表示し、開いたときは最新が見える', async ({ page }) => {
   await mockTauriAPI(page, { announcements: [
     { id: 'new', title: '新しいお便り', body: '新しい本文', createdAt: '2026-09-26T10:00:00Z' },

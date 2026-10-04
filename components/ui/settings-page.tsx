@@ -60,7 +60,6 @@ import {
     clearFeedbackConversationIdentity,
     deleteFeedbackUploadedAttachment,
     deleteFeedbackConversation,
-    getDeveloperFeedbackApiBaseUrl,
     getFeedbackApiBaseUrl,
     getFeedbackConversationIdentity,
     getOrCreateFeedbackConversationIdentity,
@@ -73,7 +72,7 @@ import {
 } from "@/app/utils/feedbackConversation"
 import { assertFeedbackImages } from "@/app/utils/feedbackImage"
 import { buildConversationTimeline, parseAnnouncementReply } from "@/app/utils/developerConversationTimeline"
-import { DISCORD_AUTO_INGEST_STORAGE_KEY, DISCORD_INGEST_SECRET_STORAGE_KEY } from "@/app/utils/discordReplyIngest"
+import { DISCORD_AUTO_INGEST_STORAGE_KEY, DISCORD_INGEST_SECRET_STORAGE_KEY, DISCORD_INGEST_TARGET_STORAGE_KEY, getDiscordIngestApiBaseUrl, getDiscordIngestTarget, type DiscordIngestTarget } from "@/app/utils/discordReplyIngest"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -2984,6 +2983,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
     const [queueDeleting, setQueueDeleting] = useState<'to_iphone' | 'from_iphone' | null>(null)
 
     const [discordIngestSecret, setDiscordIngestSecret] = useState(() => getStoredDiscordIngestSecret())
+    const [discordIngestTarget, setDiscordIngestTarget] = useState(() => getDiscordIngestTarget(typeof window === 'undefined' ? undefined : window.localStorage))
     const [shouldSaveDiscordIngestSecret, setShouldSaveDiscordIngestSecret] = useState(() => getStoredDiscordIngestSecret() !== '')
     const [autoDiscordIngest, setAutoDiscordIngest] = useState(() => getStoredDiscordIngestSecret() !== '' && typeof window !== 'undefined' && window.localStorage.getItem(DISCORD_AUTO_INGEST_STORAGE_KEY) === 'true')
     const [discordIngestLoading, setDiscordIngestLoading] = useState(false)
@@ -3401,7 +3401,7 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
         setDiscordIngestError(null)
         setDiscordIngestResult(null)
         try {
-            const response = await fetch(`${getDeveloperFeedbackApiBaseUrl()}/discord/ingest`, {
+            const response = await fetch(`${getDiscordIngestApiBaseUrl()}/discord/ingest`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4119,6 +4119,33 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                     </div>
                     <div className="flex items-end gap-3">
                         <div className="flex-1 min-w-0">
+                            <Label htmlFor="discord-ingest-target" className="text-xs font-bold text-slate-600">
+                                {isEnglish ? 'Reply destination' : '返信の取り込み先'}
+                            </Label>
+                            <select
+                                id="discord-ingest-target"
+                                value={discordIngestTarget}
+                                disabled={discordIngestLoading}
+                                onChange={(e) => {
+                                    const target = e.target.value as DiscordIngestTarget
+                                    window.localStorage.removeItem(DISCORD_AUTO_INGEST_STORAGE_KEY)
+                                    window.localStorage.removeItem(DISCORD_INGEST_SECRET_STORAGE_KEY)
+                                    window.localStorage.setItem(DISCORD_INGEST_TARGET_STORAGE_KEY, target)
+                                    setDiscordIngestTarget(target)
+                                    setAutoDiscordIngest(false)
+                                    setDiscordIngestSecret('')
+                                    setShouldSaveDiscordIngestSecret(false)
+                                    setDiscordIngestResult(null)
+                                    setDiscordIngestError(null)
+                                }}
+                                className="mt-1 mb-2 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                            >
+                                <option value="production">{isEnglish ? 'Production users' : '本番ユーザーへの返信'}</option>
+                                <option value="development">{isEnglish ? 'Development testing' : '開発環境のテスト返信'}</option>
+                            </select>
+                            <p className="mb-3 text-xs text-slate-600">
+                                {isEnglish ? 'Select the destination independently of this app version. Changing it clears the secret and disables automatic import; enter the secret for the selected destination.' : 'このアプリの版に関係なく選べます。切り替えるとsecretと自動取り込み設定を解除します。選んだ環境のsecretを入力してください。'}
+                            </p>
                             <Label htmlFor="discord-ingest-secret" className="text-xs font-bold text-slate-600">
                                 ingest secret
                             </Label>
