@@ -1,6 +1,12 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-10-05 同じ会話IDでもDiscord返信が環境間で混ざらないよう補強
+
+- 追加確認で、既存本番が通知の「会話ID」から補完するため、PCが開発・本番で同じIDを使う場合は保存場所の分離だけでは不十分と判明。開発Cronを一時停止し、追加修正を分離ブランチで実施。
+- 開発通知は「開発会話ID」を使用し、既存本番の補完対象から除外。開発取り込みは開発専用の通知・スレッド対応表だけを参照し、本番通知の会話ID補完を使わない。同一会話IDの両方向混入と正常な開発通知解決をテストに追加。
+- 会話API73件、Worker12件、型検査、対象Lint、追加workerd模擬実行が成功。GETの開発宣言に`developmentReplyMapping: notification-only`を追加し、対応前のAPIへWorkerがPOSTしないことも確認。開発Cronは補強版の反映後に再開する。
+
 ### 2026-10-05 開発環境でDiscord往復を検証できるよう分離
 
 - ユーザー依頼で最新developから`codex/discord-development`を作成。開発Workerを追加し、固定develop Preview宛先・独立Durable Object・管理secret設定で約1分取り込み。本番Workerの再デプロイはしない。

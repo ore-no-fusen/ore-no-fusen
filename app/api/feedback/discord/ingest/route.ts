@@ -19,7 +19,10 @@ function isAuthorized(req: Request): boolean {
 }
 
 export async function GET() {
-  return NextResponse.json({ error: 'Method Not Allowed', environment: feedbackEnvironment() }, { status: 405, headers: { ...corsHeaders(), 'Cache-Control': 'no-store' } });
+  const environment = feedbackEnvironment();
+  return NextResponse.json({ error: 'Method Not Allowed', environment,
+    ...(environment === 'development' ? { developmentReplyMapping: 'notification-only' } : {}),
+  }, { status: 405, headers: { ...corsHeaders(), 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req: Request) {

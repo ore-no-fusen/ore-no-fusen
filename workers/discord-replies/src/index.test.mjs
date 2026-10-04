@@ -111,7 +111,7 @@ test('development uses only its fixed API and independently resumes its checkpoi
     assert.equal(url, 'https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback/discord/ingest');
     if (init.method === 'GET') {
       assert.equal(init.headers, undefined);
-      return Response.json({ environment: 'development' }, { status: 405 });
+      return Response.json({ environment: 'development', developmentReplyMapping: 'notification-only' }, { status: 405 });
     }
     bodies.push(JSON.parse(init.body));
     return Response.json({ environment: 'development', ingested: 1, rejected: [], lastSeenId: '123456789012345678' });
@@ -137,9 +137,21 @@ test('development refuses a response without confirmed data isolation', async (t
 test('development rejects an unexpected import environment without advancing its checkpoint', async (t) => {
   const development = fixture({}, { INGEST_ENVIRONMENT: 'development' });
   t.mock.method(globalThis, 'fetch', async (_url, init) => init.method === 'GET'
-    ? Response.json({ environment: 'development' }, { status: 405 })
+    ? Response.json({ environment: 'development', developmentReplyMapping: 'notification-only' }, { status: 405 })
     : Response.json({ environment: 'production', ingested: 0, rejected: [], lastSeenId: '123456789012345678' }));
   assert.equal((await development.coordinator.fetch(tick())).status, 502);
+  assert.equal(development.entries.has('discord-cursor'), false);
+});
+
+test('development does not POST to an API without notification mapping isolation', async (t) => {
+  const development = fixture({}, { INGEST_ENVIRONMENT: 'development' });
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    requests.push(init.method);
+    return Response.json({ environment: 'development' }, { status: 405 });
+  });
+  assert.equal((await development.coordinator.fetch(tick())).status, 502);
+  assert.deepEqual(requests, ['GET']);
   assert.equal(development.entries.has('discord-cursor'), false);
 });
 

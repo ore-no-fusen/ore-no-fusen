@@ -15,7 +15,7 @@
 ## 開発を先に検証する
 
 1. APIの環境分離修正をローカルで確認し、developへ統合・pushする。
-2. develop Previewの下記URLへGETして、405と`environment: "development"`を確認する。
+2. develop Previewの下記URLへGETして、405、`environment: "development"`と`developmentReplyMapping: "notification-only"`を確認する。
    `https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback/discord/ingest`
 3. 開発用Workerだけに管理secretを設定し、`--env development`でデプロイする。
 4. 開発版アプリの「開発者とのやりとり」から問い合わせを送る。Discordに「環境: 開発（検証用）」と出た通知へ返信する。会話画面を開いたまま、更新ボタンなしで返信が表示されることを確認する。正常時は目安約2分。
@@ -23,6 +23,8 @@
 開発の保存先は`feedback_environments/development`配下。本番の既存会話を移動しない。
 旧Previewの共有場所の履歴はコピーせず、新しい問い合わせで検証する。
 作者PCの手動取り込み・旧自動取り込みを使わずに検証し、本番への混入も確認する。
+開発通知は「開発会話ID」を使い、開発取り込みは保存済み通知対応表だけを解決する。
+PCが本番と同じ会話IDを持っていても、既存本番の通知補完で混ざらない。
 Cron成功だけを、返信保存・ユーザー画面への表示成功と扱わない。
 
 ```powershell
@@ -58,5 +60,7 @@ Discordの対象通知への返信が本番の対象会話に保存され、別P
 合格後、作者PCの旧自動取り込みをオフにする。日次Vercel Cronは予備として残す。
 
 停止・復帰は`wrangler.toml`の`crons = []`へ変更して再デプロイする。
+開発だけを停止する場合は`[env.development.triggers]`の`crons = []`とし、
+`wrangler deploy --env development`を実行する。本番の`[triggers]`は変えない。
 Durable Objectや確認位置を削除しない。必要なら作者PCの既存取り込みを一時的に使い、
 原因を解消したら`crons = ["* * * * *"]`を戻す。

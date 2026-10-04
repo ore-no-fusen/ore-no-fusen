@@ -18,6 +18,7 @@ import {
     readFeedbackJson,
 } from './lib/security';
 import { createFeedbackConversationStore } from './lib/store';
+import { feedbackEnvironment, feedbackDiscordConversationFieldName } from './lib/environment';
 import { conversationMemberNumber } from '../members/lib/conversation-number';
 
 // Static export (Tauri build) requires at least one GET handler per route.
@@ -78,6 +79,7 @@ export async function POST(req: Request) {
             title: `📨 新着フィードバック: ${type}`,
             color: type === 'bug' ? 0xff0000 : type === 'feature' ? 0x00ff00 : 0x0099ff,
             fields: [
+                { name: '環境', value: feedbackEnvironment() === 'development' ? '開発（検証用）' : '本番', inline: true },
                 ...(memberNumber ? [{ name:'会員番号', value:memberNumber }] : []),
                 {
                     name: '内容',
@@ -94,7 +96,7 @@ export async function POST(req: Request) {
                     inline: true,
                 },
                 {
-                    name: '会話ID',
+                    name: feedbackDiscordConversationFieldName(),
                     value: conversationId,
                 },
                 {

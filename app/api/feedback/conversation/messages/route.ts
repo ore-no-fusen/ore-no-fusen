@@ -9,7 +9,7 @@ import {
   readFeedbackJson,
 } from '../../lib/security';
 import { createFeedbackConversationStore } from '../../lib/store';
-import { feedbackEnvironment } from '../../lib/environment';
+import { feedbackEnvironment, feedbackDiscordConversationFieldName } from '../../lib/environment';
 import { conversationMemberNumber } from '../../../members/lib/conversation-number';
 import {
   createPrivateImageViewUrl,
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
         { name: '内容', value: content },
         { name: '連絡先', value: contact || 'なし', inline: true },
         { name: 'バージョン', value: version || '不明', inline: true },
-        { name: '会話ID', value: conversationId },
+        { name: feedbackDiscordConversationFieldName(), value: conversationId },
         { name: '直近5件', value: formatRecentContext(recentMessages) },
       ],
       footer: {

@@ -39,7 +39,9 @@ export class DiscordIngestCoordinator {
           const probe = await fetch(INGEST_URLS.development, {
             method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(5_000),
           });
-          if (probe.status !== 405 || (await probe.json()).environment !== 'development') {
+          const declaration = await probe.json();
+          if (probe.status !== 405 || declaration.environment !== 'development'
+            || declaration.developmentReplyMapping !== 'notification-only') {
             throw new Error('Development isolation not confirmed');
           }
         }

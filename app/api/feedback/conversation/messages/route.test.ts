@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryFeedbackConversationStore } from '../../lib/store';
 import { hashSecretToken } from '../../lib/security';
+import { extractConversationIdFromDiscordEmbeds } from '../../lib/security';
 
 const mocks = vi.hoisted(() => ({
   store: null as ReturnType<typeof createMemoryFeedbackConversationStore> | null,
@@ -44,6 +45,9 @@ describe('conversation messages attachments', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect((await mocks.store!.listMessages(body.conversationId, body.secretToken))[0].body).toBe('hello');
+    const payload = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    expect(payload.embeds[0].fields).toContainEqual({ name: '開発会話ID', value: body.conversationId });
+    expect(extractConversationIdFromDiscordEmbeds(payload.embeds)).toBeNull();
   });
 
   it('sends an owned image to Discord together with the required body text', async () => {

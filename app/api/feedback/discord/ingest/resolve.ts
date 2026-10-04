@@ -1,4 +1,5 @@
 import { extractConversationIdFromDiscordEmbeds } from '../../lib/security';
+import { feedbackEnvironment } from '../../lib/environment';
 import type { FeedbackConversationStore } from '../../lib/store';
 
 type DiscordEmbed = {
@@ -58,6 +59,12 @@ export async function resolveDiscordConversationIdForMessage(
 
   if (!mappedConversationId && message.thread?.id) {
     mappedConversationId = await store.getConversationIdByDiscordThread(message.thread.id);
+  }
+
+  // Only server-owned notification mappings can resolve development replies.
+  // A production embed may carry the same client-generated conversation ID.
+  if (feedbackEnvironment() === 'development') {
+    return { conversationId: mappedConversationId, referencedMessageId };
   }
 
   if (!mappedConversationId) {

@@ -1,12 +1,14 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hashSecretToken } from '../../lib/security';
 import { createMemoryFeedbackConversationStore } from '../../lib/store';
 import { resolveDiscordConversationIdForMessage } from './resolve';
 import { GET, POST } from './route';
 
 describe('Discord ingest conversation resolution', () => {
+  beforeEach(() => vi.stubEnv('VERCEL_ENV', 'production'));
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('fetches the referenced Discord message when the message list omits embedded conversation data', async () => {
@@ -93,6 +95,51 @@ describe('Discord ingest conversation resolution', () => {
       conversationId: null,
       referencedMessageId: 'feedback-message-unknown',
     });
+  });
+});
+
+describe('Discord reply environment isolation', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  it('does not resolve a production embed into a development conversation with the same ID', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    const network = vi.fn(); vi.stubGlobal('fetch', network);
+    const store = {
+      getConversationIdByDiscordMessage: vi.fn(async () => null),
+      getConversationIdByDiscordThread: vi.fn(async () => null),
+      getConversation: vi.fn(async () => ({ conversationId: 'same-id' })),
+    } as unknown as Parameters<typeof resolveDiscordConversationIdForMessage>[2];
+    const result = await resolveDiscordConversationIdForMessage({
+      id: 'reply', channel_id: 'channel', content: 'production reply',
+      referenced_message: { id: 'production-notification', embeds: [{ fields: [{ name: '会話ID', value: 'same-id' }] }] },
+    }, 'test-bot', store);
+    expect(result.conversationId).toBeNull();
+    expect(store.getConversation).not.toHaveBeenCalled();
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it('existing production fallback cannot resolve a development notification with the same ID', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    const notification = { id: 'development-notification', embeds: [{ fields: [{ name: '開発会話ID', value: 'same-id' }] }] };
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(notification)));
+    const store = {
+      getConversationIdByDiscordMessage: vi.fn(async () => null),
+      getConversationIdByDiscordThread: vi.fn(async () => null),
+      getConversation: vi.fn(async () => ({ conversationId: 'same-id' })),
+    } as unknown as Parameters<typeof resolveDiscordConversationIdForMessage>[2];
+    const result = await resolveDiscordConversationIdForMessage({ id: 'reply', channel_id: 'channel', content: 'development reply', referenced_message: notification }, 'test-bot', store);
+    expect(result.conversationId).toBeNull();
+    expect(store.getConversation).not.toHaveBeenCalled();
+  });
+
+  it('development resolves only its saved notification mapping', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    const store = {
+      getConversationIdByDiscordMessage: vi.fn(async () => 'development-conversation'),
+      getConversationIdByDiscordThread: vi.fn(async () => null),
+      getConversation: vi.fn(),
+    } as unknown as Parameters<typeof resolveDiscordConversationIdForMessage>[2];
+    expect((await resolveDiscordConversationIdForMessage({ id: 'reply', channel_id: 'channel', content: 'development reply', message_reference: { message_id: 'development-notification' } }, 'test-bot', store)).conversationId).toBe('development-conversation');
   });
 });
 
