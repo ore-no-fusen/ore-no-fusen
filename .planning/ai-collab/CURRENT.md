@@ -2,11 +2,29 @@
 
 <!-- NEW_ENTRIES_BELOW -->
 
+### 2026-10-06 更新案内の表示維持を修正
+
+- codex/keep-update-promptで実装。page.tsxの復元完了・初回付箋作成・ダッシュボード非表示経路で案内の最新状態を参照し、表示中はminimize/hideを抑止。操作中に更新が判明した競合でもunminimize/showで復帰。useUpdateCheckも最小化解除を実施。更新なしは従来の動作を維持。
+- startupRestore/useUpdateCheckの対象12テスト成功、TypeScript型検査成功。表示中・更新なし・hide/minimize実行中の更新検知を両方検証。配布仕様§7と改版履歴に利用者が閉じるまで表示する方針を反映。
+- 5.5.1 Store公開後の追加修正であり、公開済み5.5.1のMSIXには未収録。次のMSIXで実起動・案内維持・利用者による閉じる操作を照合する必要あり。版番号・main・Store申請は変更しない。
+
+### 2026-10-06 Store更新案内が起動完了時に消える原因調査
+
+- ユーザーのStore 5.5.0起動で最新版案内表示を画像確認。ただし付箋表示完了と同時に案内が消えるとの実機報告。
+- useUpdateCheckは起動3秒後に更新を検知しmainをshowする一方、page.tsxの既存付箋復元完了は更新案内の有無を確認せずmainをminimizeする（1909〜1910行）。表示effectは更新状態が変わらないと再実行されず、案内が最小化されたままになる。初回付箋作成経路にもmain.hideがある。ダッシュボード判定にはstoreUpdateAvailable除外が既にあるため、主原因は復元完了の無条件minimize。
+- 最小修正案：起動完了時の非表示・最小化に最新の案内表示状態を反映し、ユーザーの「あとで」・Storeを開く・閉じる操作まで案内を維持する。更新なしは従来どおり。今回は原因調査のみ、コード未変更。
+
+### 2026-10-06 5.5.1 Store認定へ送信完了
+
+- ユーザーの送信直前の「はい」を受け、既存Submission 22（1152921505702049593）の「送信して認定を受ける」を実行。更新プログラムの認定中、申請完了・前処理中、認定合格後すぐ公開の画面表示を確認。公開完了ではなくMicrosoft側の認定待ち。
+- 証拠：.w/release-integration/.sandbox-resize/release-5.5.1/store-submission-22-certification.png。次は認定・公開後のStore更新と起動確認（STEP 3-4）。再送や新規申請は不要。
+
 ### 2026-10-06 Store Computer Use手順化・Submission 22準備
 
 - ユーザー依頼によりdocs/store-submission.mdに再利用手順を追加。既存Chrome・製品入口・通常サインイン復帰・下書き再利用・ファイル選択API・アップロード待ち・保存後の概要確認・最小の引き継ぎ5点を記載。要素番号と座標を固定せず、同じ画面の再探索を減らす。diff --check成功。
 - Submission 22（1152921505702049593）へ固定保存先の5.5.1 MSIXをアップロードし、v5.5.1.0／X64を確認してSave。概要のパッケージValidated・更新済みを確認。旧5.5.0は上位版による通常置換。
 - 次：日本語（日本）と追加言語の英語の最新情報を保存、main/develop反映、公開設定確認、認定送信。送信はまだ実施していない。
+- 追記：日英の5.5.1最新情報を保存。公開設定「認定後すぐに公開」を確認。main/develop 9561464をpush、6f35705の本番VercelデプロイReadyと本番ingest GET405/environment=productionを確認。9561464は文書のみの差分。Store最終送信は010_RELEASE.md STEP 3-3の直前承認を依頼して待機中。証拠.w/release-integration/.sandbox-resize/release-5.5.1/store-submission-22-ready.png。既存申請22を再利用して再開し、新規申請は作らない。
 
 ### 2026-10-06 5.5.1 Store用MSIX確定・更新申請準備（STEP 2〜3）
 

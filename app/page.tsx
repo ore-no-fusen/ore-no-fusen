@@ -44,6 +44,7 @@ import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
 import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
 import {
   partitionStartupLabels,
+  settleStartupMainWindow,
   runWithConcurrency,
   STARTUP_INITIAL_READY_TIMEOUT_MS,
   STARTUP_RETRY_READY_TIMEOUT_MS,
@@ -279,6 +280,10 @@ function OrchestratorContent() {
   // [NEW] アップデートチェック（useUpdateCheckに委譲）
   const { pendingUpdate, showUpdateDialog, isHidingAfterUpdate, handleUpdateConfirm, handleUpdateCancel, tUpdate, storeUpdateAvailable, dismissStoreUpdate }
     = useUpdateCheck({ isMainWindow });
+
+  // 復元処理は起動時のクロージャーを保持するため、案内の最新状態を参照する。
+  const updatePromptVisibleRef = useRef(false);
+  updatePromptVisibleRef.current = showUpdateDialog || storeUpdateAvailable;
 
   const isSearchOpenRef = useRef(false);
   const hotkeyRegisterFailuresCheckedRef = useRef(false);
@@ -1907,7 +1912,7 @@ function OrchestratorContent() {
                     return;
                   }
                   const mainWindow = await WebviewWindow.getByLabel('main');
-                  if (mainWindow) await mainWindow.minimize();
+                  if (mainWindow) await settleStartupMainWindow(mainWindow, () => updatePromptVisibleRef.current, 'minimize');
                   setIsCheckingSetup(false);
                   logStartupStep('6/6', startupResult.missing.length === 0
                     ? '起動完了: すべての付箋を表示しました'
@@ -1953,7 +1958,7 @@ function OrchestratorContent() {
                     if (mainWindow) {
                       // フォルダ消失からの再起動時は、設定画面で通知バナーを見てもらう必要があるので隠さない
                       if (!baseFolderMissing) {
-                        await mainWindow.hide();
+                        await settleStartupMainWindow(mainWindow, () => updatePromptVisibleRef.current, 'hide');
                       }
                       setIsCheckingSetup(false);
                       logStartupStep('6/6', '起動完了: はじめての付箋を開きました');
@@ -2102,7 +2107,7 @@ function OrchestratorContent() {
           const isVisible = await win.isVisible();
 
           if (isVisible) {
-            await win.hide();
+            await settleStartupMainWindow(win, () => updatePromptVisibleRef.current, 'hide');
           }
         }
       } catch (e) {

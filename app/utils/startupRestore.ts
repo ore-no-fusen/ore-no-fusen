@@ -1,6 +1,20 @@
 export const STARTUP_INITIAL_READY_TIMEOUT_MS = 4_000;
 export const STARTUP_RETRY_READY_TIMEOUT_MS = 12_000;
 
+export async function settleStartupMainWindow(
+    window: { hide(): Promise<void>; minimize(): Promise<void>; show(): Promise<void>; unminimize(): Promise<void> },
+    shouldKeepVisible: () => boolean,
+    action: 'hide' | 'minimize',
+): Promise<void> {
+    if (shouldKeepVisible()) return;
+    await window[action]();
+    // 更新確認がウィンドウ操作中に完了した場合も、案内を隠したままにしない。
+    if (shouldKeepVisible()) {
+        await window.unminimize();
+        await window.show();
+    }
+}
+
 export async function runWithConcurrency<T>(
     items: readonly T[],
     concurrency: number,

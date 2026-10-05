@@ -90,6 +90,7 @@ export function useUpdateCheck({ isMainWindow }: UseUpdateCheckOptions): UseUpda
             await win.setSize(new LogicalSize(420, 280)).catch(() => {});
             await win.center().catch(() => {});
             await win.show().catch(() => {});
+            await win.unminimize().catch(() => {});
             await win.setFocus().catch(() => {});
         });
     }, [showUpdateDialog, pendingUpdate, storeUpdateAvailable]);

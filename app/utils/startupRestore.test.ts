@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
     partitionStartupLabels,
+    settleStartupMainWindow,
     runWithConcurrency,
     STARTUP_INITIAL_READY_TIMEOUT_MS,
     STARTUP_RETRY_READY_TIMEOUT_MS,
@@ -8,6 +9,28 @@ import {
 } from './startupRestore';
 
 describe('startup restore', () => {
+    it.each(['hide', 'minimize'] as const)('案内表示中は起動完了時の%sを実行しない', async (action) => {
+        const window = { hide: vi.fn(async () => {}), minimize: vi.fn(async () => {}), show: vi.fn(async () => {}), unminimize: vi.fn(async () => {}) };
+        await settleStartupMainWindow(window, () => true, action);
+        expect(window.hide).not.toHaveBeenCalled();
+        expect(window.minimize).not.toHaveBeenCalled();
+    });
+
+    it.each(['hide', 'minimize'] as const)('案内がない場合は従来の%sを維持する', async (action) => {
+        const window = { hide: vi.fn(async () => {}), minimize: vi.fn(async () => {}), show: vi.fn(async () => {}), unminimize: vi.fn(async () => {}) };
+        await settleStartupMainWindow(window, () => false, action);
+        expect(window[action]).toHaveBeenCalledOnce();
+        expect(window.show).not.toHaveBeenCalled();
+    });
+
+    it.each(['hide', 'minimize'] as const)('%s実行中に更新案内が届いた場合は表示を復帰する', async (action) => {
+        let promptVisible = false;
+        const window = { hide: vi.fn(async () => {}), minimize: vi.fn(async () => {}), show: vi.fn(async () => {}), unminimize: vi.fn(async () => {}) };
+        window[action].mockImplementation(async () => { promptVisible = true; });
+        await settleStartupMainWindow(window, () => promptVisible, action);
+        expect(window.unminimize).toHaveBeenCalledOnce();
+        expect(window.show).toHaveBeenCalledOnce();
+    });
     it('初回は4秒、再試行後は12秒まで準備完了を待つ', () => {
         expect(STARTUP_INITIAL_READY_TIMEOUT_MS).toBe(4_000);
         expect(STARTUP_RETRY_READY_TIMEOUT_MS).toBe(12_000);

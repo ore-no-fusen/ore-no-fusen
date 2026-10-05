@@ -10,6 +10,7 @@ vi.mock('@tauri-apps/api/window', () => ({
     setSize: vi.fn(async () => {}),
     center: vi.fn(async () => {}),
     show: vi.fn(async () => {}),
+    unminimize: vi.fn(async () => {}),
     setFocus: vi.fn(async () => {}),
   }),
 }));
