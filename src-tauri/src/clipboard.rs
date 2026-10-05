@@ -229,6 +229,18 @@ fn replace_file_safely(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 pub fn save_annotated_image(path: &str, data: &str) -> Result<(), String> {
+    save_annotated_image_with_crop(path, data, None)
+}
+
+#[derive(serde::Deserialize)]
+pub struct ImageCrop {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+fn save_annotated_image_with_crop(path: &str, data: &str, crop: Option<ImageCrop>) -> Result<(), String> {
     use base64::{engine::general_purpose, Engine as _};
 
     let b64 = data
@@ -262,6 +274,15 @@ pub fn save_annotated_image(path: &str, data: &str) -> Result<(), String> {
         );
     }
     image::imageops::overlay(&mut original, &overlay, 0, 0);
+
+    if let Some(crop) = crop {
+        if crop.width == 0 || crop.height == 0
+            || crop.x.checked_add(crop.width).map_or(true, |right| right > original.width())
+            || crop.y.checked_add(crop.height).map_or(true, |bottom| bottom > original.height()) {
+            return Err("切り取り範囲が画像の外です。元画像は変更しません。".to_string());
+        }
+        original = image::imageops::crop_imm(&original, crop.x, crop.y, crop.width, crop.height).to_image();
+    }
 
     let mut composed = Vec::new();
     PngEncoder::new_with_quality(
@@ -300,8 +321,8 @@ pub fn read_local_image_data_url(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn fusen_save_annotated_image(path: String, data: String) -> Result<(), String> {
-    save_annotated_image(&path, &data)
+pub fn fusen_save_annotated_image(path: String, data: String, crop: Option<ImageCrop>) -> Result<(), String> {
+    save_annotated_image_with_crop(&path, &data, crop)
 }
 
 #[tauri::command]
@@ -447,6 +468,29 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn annotated_crop_saves_only_selected_pixels() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("crop.png");
+        save_rgba_png_fast(&target, &[0, 0, 255, 255, 0, 0, 255, 255], 2, 1).unwrap();
+        save_annotated_image_with_crop(target.to_str().unwrap(), &valid_png_data_url(), Some(ImageCrop { x: 1, y: 0, width: 1, height: 1 })).unwrap();
+        let saved = image::open(target).unwrap().to_rgba8();
+        assert_eq!(saved.dimensions(), (1, 1));
+        assert_eq!(saved.as_raw(), &[0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn invalid_crop_keeps_original_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("crop.png");
+        save_rgba_png_fast(&target, &[0, 0, 255, 255, 0, 0, 255, 255], 2, 1).unwrap();
+        let before = fs::read(&target).unwrap();
+        for crop in [ImageCrop { x: 0, y: 0, width: 0, height: 1 }, ImageCrop { x: u32::MAX, y: 0, width: 2, height: 1 }] {
+            assert!(save_annotated_image_with_crop(target.to_str().unwrap(), &valid_png_data_url(), Some(crop)).is_err());
+            assert_eq!(fs::read(&target).unwrap(), before);
+        }
     }
 
     #[test]

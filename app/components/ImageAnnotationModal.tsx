@@ -13,9 +13,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { AnnotationHistory } from '../utils/annotationHistory';
+import { selectedImageCrop, cropToOriginal, type ImageCrop } from '../utils/imageCrop';
 import type { Language } from '@/lib/i18n';
 
-type Tool = 'pen' | 'highlight' | 'arrow' | 'rect' | 'callout';
+type Tool = 'pen' | 'highlight' | 'arrow' | 'rect' | 'callout' | 'crop';
 type AnnotationNode = import('konva/lib/Shape').Shape | import('konva/lib/Group').Group;
 
 export const DEFAULT_ANNOTATION_SETTINGS = {
@@ -92,12 +93,17 @@ const TOOLS: { value: Tool; ja: string; en: string }[] = [
     { value: 'arrow', ja: '矢印', en: 'Arrow' },
     { value: 'rect', ja: '四角', en: 'Rectangle' },
     { value: 'callout', ja: '吹き出し', en: 'Callout' },
+    { value: 'crop', ja: 'トリミング', en: 'Crop' },
 ];
 
 export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved, onCancel, language }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<import('konva/lib/Stage').Stage | null>(null);
     const drawLayerRef = useRef<import('konva/lib/Layer').Layer | null>(null);
+    const cropOutlineRef = useRef<import('konva/lib/shapes/Rect').Rect | null>(null);
+    const cropRef = useRef<ImageCrop | null>(null);
+    const cropDraggingRef = useRef(false);
+    const [crop, setCrop] = useState<ImageCrop | null>(null);
     const historyRef = useRef(new AnnotationHistory<AnnotationNode>());
     const toolRef = useRef<Tool>(DEFAULT_ANNOTATION_SETTINGS.tool);
     const colorRef = useRef<string>(DEFAULT_ANNOTATION_SETTINGS.color);
@@ -183,12 +189,25 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             stageRef.current = stage;
             drawLayerRef.current = layer;
 
+            // 選択枠は保存する描画レイヤーから分離する。
+            const selectionLayer = new Konva.Layer({ listening: false });
+            const outline = new Konva.Rect({ stroke: '#2563eb', strokeWidth: 2, dash: [6, 4], visible: false });
+            selectionLayer.add(outline);
+            stage.add(selectionLayer);
+            cropOutlineRef.current = outline;
+
             stage.on('mousedown touchstart', () => {
                 const pos = stage.getPointerPosition();
                 if (!pos) return;
 
                 const t = toolRef.current;
                 const c = colorRef.current;
+
+                if (t === 'crop') {
+                    originRef.current = pos;
+                    cropDraggingRef.current = true;
+                    return;
+                }
 
                 if (t === 'callout') {
                     const text = window.prompt(
@@ -265,6 +284,16 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             });
 
             stage.on('mousemove touchmove', () => {
+                if (cropDraggingRef.current) {
+                    const pos = stage.getPointerPosition();
+                    if (!pos) return;
+                    const selected = selectedImageCrop(originRef.current, pos, stageW, stageH);
+                    cropRef.current = selected;
+                    setCrop(selected);
+                    outline.setAttrs(selected ? { ...selected, visible: true } : { visible: false });
+                    selectionLayer.batchDraw();
+                    return;
+                }
                 if (!isDrawingRef.current) return;
                 const pos = stage.getPointerPosition();
                 if (!pos) return;
@@ -295,6 +324,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             });
 
             stage.on('mouseup touchend', () => {
+                if (cropDraggingRef.current) { cropDraggingRef.current = false; return; }
                 if (!isDrawingRef.current) return;
                 isDrawingRef.current = false;
                 const completedShape = currentShapeRef.current;
@@ -313,6 +343,9 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             stageRef.current?.destroy();
             stageRef.current = null;
             drawLayerRef.current = null;
+            cropOutlineRef.current = null;
+            cropRef.current = null;
+            setCrop(null);
         };
     }, [absolutePath, displayUrl, language, syncHistoryCounts]);
 
@@ -343,6 +376,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     }, [syncHistoryCounts]);
 
     const handleSave = useCallback(async () => {
+        if (toolRef.current === 'crop' && !cropRef.current) return;
         const layer = drawLayerRef.current;
         if (!layer) return;
         setIsSaving(true);
@@ -351,7 +385,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             const { w: sw, h: sh } = stageSizeRef.current;
             const pixelRatio = sw > 0 && nw > 0 ? nw / sw : 1;
             const dataUrl = await exportDrawingLayerAsPng(layer, sw, sh, pixelRatio);
-            await invoke('fusen_save_annotated_image', { path: absolutePath, data: dataUrl });
+            await invoke('fusen_save_annotated_image', { path: absolutePath, data: dataUrl,
+                crop: cropRef.current ? cropToOriginal(cropRef.current, stageSizeRef.current, naturalSizeRef.current) : null });
             onSaved();
         } catch (err) {
             console.error('[ANNOTATION] save error', err);
@@ -398,7 +433,14 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             }
         };
         window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
+        const endCropSelection = () => { cropDraggingRef.current = false; };
+        window.addEventListener('mouseup', endCropSelection);
+        window.addEventListener('touchend', endCropSelection);
+        return () => {
+            window.removeEventListener('keydown', handler);
+            window.removeEventListener('mouseup', endCropSelection);
+            window.removeEventListener('touchend', endCropSelection);
+        };
     }, [onCancel, handleUndo, handleRedo]);
 
     return (
@@ -439,6 +481,13 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         </>
                     )}
                 </div>
+                {tool === 'crop' && <div className="px-4 py-2 text-sm text-gray-700 bg-blue-50">
+                    {language === 'en' ? 'Drag to select the area to keep. Save crops the image.' : '残す範囲をドラッグで選択してください。保存すると切り取ります。'}
+                    {crop && <button className="ml-3 underline" onClick={() => {
+                        cropRef.current = null; setCrop(null);
+                        cropOutlineRef.current?.hide(); cropOutlineRef.current?.getLayer()?.batchDraw();
+                    }}>{language === 'en' ? 'Clear selection' : '選択を解除'}</button>}
+                </div>}
                 <div className="overflow-auto flex-1 flex items-center justify-center bg-gray-100 p-4">
                     <div ref={containerRef} style={{ cursor: 'crosshair', lineHeight: 0 }} />
                 </div>
@@ -455,7 +504,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         <button onClick={onCancel} className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100">
                             {language === 'en' ? 'Cancel' : 'キャンセル'}
                         </button>
-                        <button onClick={handleSave} disabled={isSaving} className="px-5 py-1.5 rounded bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button onClick={handleSave} disabled={isSaving || (tool === 'crop' && !crop)} className="px-5 py-1.5 rounded bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
                             {isSaving ? (language === 'en' ? 'Saving…' : '保存中…') : (language === 'en' ? 'Save' : '保存')}
                         </button>
                     </div>
