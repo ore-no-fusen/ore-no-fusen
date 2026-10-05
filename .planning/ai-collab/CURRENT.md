@@ -2,6 +2,22 @@
 
 <!-- NEW_ENTRIES_BELOW -->
 
+### 2026-10-05 5.5.1リリース準備を再開・必須実機確認を照合中（STEP 1-5）
+
+- ユーザーが画像送信復旧について「大丈夫そう」と報告し、リリース準備を依頼。サーバー復旧への了承として記録し、他の実機項目の確認済みとは扱わない。
+- 本番exeのSHA-256が33CA97C75FE54644FE9E9DF7367A1E7F56676CDC4B0C4ED194FDBCE783E26E95のまま、Store manifestがONFStudios.FUSEN／CN=4820A467-BFE8-46A3-A142-42A0E840F3A5／5.5.1.0／x64であることを再確認。再ビルド不要。
+- store-submission.mdの必須4項目（既存データ、画像描き込み保存、画像付き複製、iPhone連携）の確認状況をユーザーへ照会中。回答前のSTEP 2実行・main push・提出はしない。
+- Store用日本語案：**5.5.1の更新内容**／「付箋の拡大ハンドルを追加し、サイズを調整しやすくしました。」「折りたたんだ付箋を本文クリックで開いたとき、展開状態を保存するよう修正しました。」「開発者との会話で、Discord返信をサーバーから自動で取り込むよう改善しました。」
+- Store用英語案：**What's new in 5.5.1**／“Added visible resize handles to make sticky notes easier to resize.”／“Fixed saving the expanded state when opening a folded sticky note by clicking its text.”／“Improved conversations with the developer by automatically importing Discord replies on the server.”
+- 管理者ダッシュボードと検証環境分離は一般利用者向けノートから省略。画像保存サービスの復旧はアプリのコード修正ではないため、5.5.1の新機能とは記載しない。
+
+### 2026-10-05 5.5.1 MSIXの会話画像送信失敗・Appwrite休止を復旧（STEP 1-5）
+
+- ユーザーが開発MSIX 5.5.1の会話画像送信で通信エラーを報告。release版の接続先は本番API。送信時刻付近の本番画像session APIで503が3件あり、独立した診断会話でも503「Image user unavailable」を再現。本文やDiscord通知は送っていない。
+- Vercelの本番・PreviewのAPPWRITE_PROJECT_IDが管理画面のOre No Fusen Image Devと一致。同プロジェクトに「利用がなく休止された」と表示されていた。既存の無料プランと権限を維持してRestore projectを実行、停止表示が消えたことを確認。
+- 再開後、本番画像session APIが200、1px診断PNG（diagnostic.png）のStorage保存が201へ回復。診断画像のJWTによる削除は401で未完了。実ユーザー画像や会話は削除していない。診断画像は残存として記録し、削除成功を主張しない。
+- ユーザーに添付を残したまま送信再試行を依頼。アプリ画面からDiscordへの画像到達は回答待ち。コード変更・再ビルド・Store配布は実施していない。無料プランの休止再発と、本番・開発の画像保存先共有は今後の運用課題。STEP 1-5の他の実機確認も未完了。
+
 ### 2026-10-05 5.5.1開発MSIX起動・実画面確認待ち（STEP 1-5）
 
 - ユーザーが通常終了を報告。プロセス停止を確認後、導入済みONFStudios.FUSEN.Dev_5.5.1.0をAppsFolderから起動。PID42836の実行パスがWindowsAppsの開発MSIXであることを確認。
