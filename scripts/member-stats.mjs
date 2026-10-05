@@ -400,10 +400,10 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <td class="py-2 pr-4">${feature.label}</td>
       <td class="py-2 text-right">${feature.users}人</td>
       <td class="py-2 text-right">${feature.percent}%</td>
+      <td class="py-2 text-right">${featureStats.reporting ? Math.round(feature.users / featureStats.reporting * 100) + "%" : "集計対象なし"}</td>
     </tr>
   `).join('');
-  const memberOpenTimeRows = featureStats.memberOpenTimes.map(member => `<tr class="border-b border-slate-800"><td class="py-2">#${member.number}</td><td class="py-2 text-right">${Math.floor(member.minutes / 60)}時間${member.minutes % 60}分</td></tr>`).join('');
-  const memberVersionRows = (featureStats.memberVersions ?? []).map(member => `<tr class="border-b border-slate-800"><td class="py-2">#${member.number}</td><td class="py-2">${member.version ?? '未報告（旧版）'}</td><td class="py-2">${member.lastSeenAt ?? '未確認'}</td></tr>`).join('');
+  const dashboardData = JSON.stringify({ versions: featureStats.memberVersions ?? [], times: featureStats.memberOpenTimes, total: totalMembers, target: JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version, day: new Date().toISOString().slice(0, 10) }).replaceAll('<', '\\u003c');
 
   return `<!DOCTYPE html>
 <html lang="ja" class="dark">
@@ -415,6 +415,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { background: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+    [hidden] { display: none !important; }
+    button:disabled { opacity: .4; }
     .glass { background: rgba(22, 27, 44, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
   </style>
 </head>
@@ -460,31 +462,42 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
     <!-- Member survival meter: lastSeenAt is a UTC date, not a timestamp. -->
     <div class="glass p-6 rounded-2xl shadow-xl space-y-3">
-      <h2 class="text-lg font-bold">会員生存メーター</h2>
+      <h2 class="text-lg font-bold">最近の利用状況</h2>
       <p class="text-sm text-slate-400">最終アクセス日（UTC）で集計。今日 ${survival.today}人 / 過去7日 ${survival.week}人 / 日付未確認 ${survival.unknown}人</p>
       <div class="h-4 rounded-full bg-slate-700 overflow-hidden"><div class="h-full bg-emerald-400" style="width:${totalMembers ? Math.min(100, survival.week / totalMembers * 100) : 0}%"></div></div>
       <p class="text-sm text-emerald-300">過去7日: ${totalMembers ? Math.round(survival.week / totalMembers * 100) : 0}%（${survival.week} / ${totalMembers}人）</p>
     </div>
 
-    <div class="glass p-6 rounded-2xl shadow-xl space-y-3">
-      <h2 class="text-lg font-bold">会員別アプリ版</h2>
-      <p class="text-sm text-slate-400">会員のPCが定期通信で報告した版と最終確認日（UTC）。旧版など版番号を送らないPCは未報告と表示します。</p>
-      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">会員番号</th><th class="pb-2">アプリ版</th><th class="pb-2">最終確認日</th></tr></thead><tbody id="memberVersionRows">${memberVersionRows}</tbody></table></div>
+    <div class="glass p-6 rounded-2xl space-y-3" id="versionSummary">
+      <h2 class="text-lg font-bold">アプリ更新状況</h2>
+      <p id="updateRate" class="text-sm text-slate-300"></p>
+      <div id="versionCards" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+      <p class="text-xs text-slate-400">最後に報告された版で集計。未報告の現行版は判定できません。人数を押すと会員一覧へ移動します。</p>
+    </div>
+    <div class="glass p-6 rounded-2xl space-y-4" id="membersPanel">
+      <h2 class="text-lg font-bold">会員一覧</h2>
+      <div class="flex flex-wrap gap-3">
+        <input id="memberSearch" type="search" placeholder="会員番号で検索" aria-label="会員番号で検索" class="bg-slate-900 border border-slate-600 rounded-lg p-2">
+        <select id="versionFilter" aria-label="アプリ版で絞り込み" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="all">すべての版</option></select>
+        <select id="activityFilter" aria-label="通信日で絞り込み" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="all">すべての通信日</option><option value="week">過去7日に通信</option><option value="older">7日より前に通信</option><option value="unknown">通信日未確認</option></select>
+        <select id="memberSort" aria-label="並べ替え" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="number">会員番号順</option><option value="recent">通信が新しい順</option><option value="minutes">起動時間が長い順</option></select>
+      </div>
+      <p class="text-xs text-slate-400">最終通信日はUTC。累計起動時間は同意済みの報告値。未集計は利用ゼロを意味しません。</p>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>会員番号</th><th>アプリ版</th><th>最終通信日（UTC）</th><th>累計起動時間</th></tr></thead><tbody id="memberRows"></tbody></table></div>
+      <div class="flex items-center justify-between"><span id="memberPageStatus" aria-live="polite"></span><div class="flex gap-2"><button id="memberPrev" class="border rounded-lg px-3 py-2">前へ</button><button id="memberNext" class="border rounded-lg px-3 py-2">次へ</button></div></div>
     </div>
 
     <div class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
-      <p class="text-sm text-amber-300">利用情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。</p>
+      <p class="text-sm text-amber-300">利用情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。報告者内比は今週の利用情報が届いた会員だけを分母にします。</p>
       <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
-          <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">利用人数</th><th class="pb-2 text-right">全会員比</th></tr></thead>
+          <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">利用人数</th><th class="pb-2 text-right">全会員比</th><th class="pb-2 text-right">今週の報告者内比</th></tr></thead>
           <tbody id="featureUsageRows">${featureUsageRows}</tbody>
         </table>
       </div>
-      <h3 class="font-semibold pt-3">会員別の起動時間（累計）</h3>
-      <table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">会員番号</th><th class="pb-2 text-right">起動時間</th></tr></thead><tbody id="memberOpenTimeRows">${memberOpenTimeRows}</tbody></table>
     </div>
 
     ${canPublish ? `<div class="glass p-6 rounded-2xl shadow-xl space-y-4">
@@ -555,7 +568,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     </div>
 
     <!-- Secondary Charts / Event Stats -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div data-dashboard-group="features" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- App Actions -->
       <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
         <h2 class="text-lg font-bold text-slate-200">アプリ内アクション発生数（直近30日）</h2>
@@ -596,6 +609,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   </div>
 
   <script>
+    const dashboard = ${dashboardData};
+    ${fs.readFileSync(path.join(rootDir, "scripts/dashboard-ui.js"), "utf8")}
     ${canPublish ? `fetch('/feature-usage', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } })
       .then(response => response.ok ? response.json() : Promise.reject())
       .then(stats => {
@@ -608,7 +623,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         for (const feature of stats.rows) {
           const row = document.createElement('tr');
           row.className = 'border-b border-slate-800';
-          for (const value of [feature.label, String(feature.users) + '人', String(feature.percent) + '%']) {
+          for (const value of [feature.label, String(feature.users) + '人', String(feature.percent) + '%', stats.reporting ? Math.round(feature.users / stats.reporting * 100) + '%' : '集計対象なし']) {
             const cell = document.createElement('td');
             cell.className = 'py-2';
             cell.textContent = value;
@@ -616,32 +631,10 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
           }
           rows.appendChild(row);
         }
-        const timeRows = document.getElementById('memberOpenTimeRows');
-        timeRows.replaceChildren();
-        for (const member of stats.memberOpenTimes) {
-          const row = document.createElement('tr');
-          row.className = 'border-b border-slate-800';
-          for (const value of ['#' + member.number, Math.floor(member.minutes / 60) + '時間' + (member.minutes % 60) + '分']) {
-            const cell = document.createElement('td');
-            cell.className = 'py-2';
-            cell.textContent = value;
-            row.appendChild(cell);
-          }
-          timeRows.appendChild(row);
-        }
-        const versionRows = document.getElementById('memberVersionRows');
-        versionRows.replaceChildren();
-        for (const member of stats.memberVersions) {
-          const row = document.createElement('tr');
-          row.className = 'border-b border-slate-800';
-          for (const value of ['#' + member.number, member.version ?? '未報告（旧版）', member.lastSeenAt ?? '未確認']) {
-            const cell = document.createElement('td');
-            cell.className = 'py-2';
-            cell.textContent = value;
-            row.appendChild(cell);
-          }
-          versionRows.appendChild(row);
-        }
+        dashboard.times = stats.memberOpenTimes;
+        dashboard.versions = stats.memberVersions;
+        dashboard.total = stats.totalMembers;
+        renderDashboard();
       }).catch(() => undefined);` : ''}
     const refreshDashboardBtn = document.getElementById('refreshDashboardBtn');
     if (refreshDashboardBtn) {

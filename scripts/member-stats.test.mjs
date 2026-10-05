@@ -92,6 +92,7 @@ test('投稿後の一覧更新でタイトル・宛先・本文を表示し、HT
     await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
     await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
     await page.goto(url);
+    if (await page.getByRole('button', { name: 'お便り', exact: true }).count()) await page.getByRole('button', { name: 'お便り', exact: true }).click();
     await page.getByRole('heading', { name: '送信したお便り' }).waitFor();
     assert.equal(await page.getByRole('button', { name: '返信を送る' }).count(), 0);
     assert.equal(await page.locator('#conversationReplyForm').count(), 0);
@@ -111,6 +112,7 @@ test('投稿後の一覧更新でタイトル・宛先・本文を表示し、HT
     assert.equal(letters[0].active, false);
     assert.equal(await page.getByRole('button', { name: '配信を停止' }).count(), 0);
     await page.reload();
+    await page.getByRole('button', { name: 'お便り', exact: true }).click();
     await page.locator('#announcementHistory summary').filter({ hasText: '確認用' }).waitFor();
     await page.locator('#announcementHistory').getByText('配信停止中').waitFor({ state: 'attached' });
   } finally {
@@ -202,9 +204,7 @@ test('機能ごとの利用者数は会員単位で数え、割合の分母は�
   const html = generateHtml([], 4, 10003, 0, 0, [], [], '2026/09/27', { today: 0, week: 0, unknown: 4 }, false, 'development', stats);
   assert.match(html, /今週の機能別利用者/);
   assert.match(html, /id="featureReporting">2<\/span> \/ <span id="featureCoverageTotal">4<\/span>人/);
-  assert.match(html, /#10001<\/td><td class="py-2 text-right">8時間15分/);
-  assert.match(html, /会員別アプリ版/);
-  assert.match(html, /#10001<\/td><td class="py-2">5\.5\.1<\/td><td class="py-2">2026-09-27/);
+  assert.match(html, /アプリ更新状況/);
 });
 
 test('旧版や不正な版番号は会員ダッシュボードで未報告とする', () => {
@@ -217,7 +217,6 @@ test('旧版や不正な版番号は会員ダッシュボードで未報告と�
     { number: 10002, version: null, lastSeenAt: '2026-09-28' },
   ]);
   const html = generateHtml([], 2, 10002, 0, 0, [], [], '2026/09/28', { today: 0, week: 0, unknown: 2 }, false, 'development', stats);
-  assert.match(html, /#10001<\/td><td class="py-2">未報告（旧版）<\/td><td class="py-2">未確認/);
   assert.doesNotMatch(html, /<script><\/script>/);
 });
 
@@ -279,6 +278,7 @@ test('投稿画面で会員番号を選び、登録済みの1人だけを宛先�
     await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
     await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
     await page.goto(url);
+    if (await page.getByRole('button', { name: 'お便り', exact: true }).count()) await page.getByRole('button', { name: 'お便り', exact: true }).click();
     await page.locator('#audience').selectOption('member');
     assert.equal(await page.locator('#memberNumber').isVisible(), true);
     await page.locator('#memberNumber').fill('10124');
@@ -340,6 +340,7 @@ test('最新状態に更新ボタンを押すとサーバー側で再集計さ�
     await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
     await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
     await page.goto(url);
+    if (await page.getByRole('button', { name: 'お便り', exact: true }).count()) await page.getByRole('button', { name: 'お便り', exact: true }).click();
     assert.match(await page.locator('body').innerText(), /2026\/10\/00/);
 
     await Promise.all([
@@ -377,4 +378,50 @@ test('再集計は正しいOriginとCSRFが必要で、失敗時は前の画面�
   } finally {
     await new Promise(resolve => server.close(resolve));
   }
+});
+test('本番・検証とも概要から版別人数を確認し、会員検索・25件分割・未集計を区別する', async () => {
+  const browser = await chromium.launch({ headless: true });
+  const day = new Date().toISOString().slice(0, 10);
+  const members = Array.from({ length: 61 }, (_, index) => ({ generalNumber: 10000 + index, appVersion: index < 30 ? '5.5.1' : index < 60 ? '5.4.0' : null, lastSeenAt: index < 60 ? day : null, usageConsent: index === 0, usageOpenMinutes: 0 }));
+  try {
+    for (const environment of ['production', 'development']) {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
+      await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
+      await page.setContent(generateHtml([], 61, 10060, 0, 0, [], [], day, { today: 60, week: 60, unknown: 1 }, false, environment, featureUsageStats(members)));
+      assert.equal(await page.locator('#membersPanel').isVisible(), false);
+      assert.match(await page.locator('#updateRate').innerText(), /30 \/ 61人（49%）.*30 \/ 60人（50%）/);
+      await page.getByRole('button', { name: '会員一覧', exact: true }).click();
+      assert.equal(await page.locator('#memberRows tr').count(), 25);
+      assert.match(await page.locator('#memberRows tr').first().innerText(), /0時間0分/);
+      assert.match(await page.locator('#memberRows tr').nth(1).innerText(), /未集計/);
+      await page.locator('#memberNext').click();
+      assert.match(await page.locator('#memberPageStatus').innerText(), /26〜50件 \/ 61人/);
+      await page.locator('#memberSearch').fill('#10060');
+      assert.equal(await page.locator('#memberRows tr').count(), 1);
+      assert.match(await page.locator('#memberRows').innerText(), /版番号未報告.*未確認.*未集計/s);
+      await page.locator('#memberSearch').fill('99999');
+      assert.match(await page.locator('#memberRows').innerText(), /該当する会員はいません/);
+      await page.getByRole('button', { name: '概要', exact: true }).click();
+      await page.locator('#versionCards button').filter({ hasText: '5.5.1' }).click();
+      assert.equal(await page.locator('#versionFilter').inputValue(), '5.5.1');
+      assert.match(await page.locator('#memberPageStatus').innerText(), /1〜25件 \/ 30人/);
+      await page.locator('#activityFilter').selectOption('older');
+      assert.match(await page.locator('#memberRows').innerText(), /該当する会員はいません/);
+      await page.locator('#activityFilter').selectOption('all');
+      await page.locator('#versionFilter').selectOption('all');
+      await page.locator('#memberSort').selectOption('minutes');
+      assert.match(await page.locator('#memberRows tr').first().innerText(), /#10000/);
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+    const empty = await browser.newPage();
+    await empty.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
+    await empty.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class { constructor() {} };' }));
+    await empty.setContent(generateHtml([], 0, 0, 0, 0, [], [], day, { today: 0, week: 0, unknown: 0 }, false));
+    assert.match(await empty.locator('#updateRate').innerText(), /集計対象なし/);
+    assert.doesNotMatch(await empty.locator('#updateRate').innerText(), /NaN|Infinity/);
+  } finally { await browser.close(); }
 });
