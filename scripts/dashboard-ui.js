@@ -76,9 +76,9 @@ function renderDashboard() {
   if (!versions.length) cards.textContent = '会員データはありません';
   if (counts.has(selection)) versionFilter.value = selection;
   const active = dashboard.versions.filter(inWeek);
-  const updated = active.filter(m => m.version === dashboard.target).length;
-  const totalUpdated = counts.get(dashboard.target) ?? 0;
-  document.getElementById('updateRate').textContent = '対象版 '+dashboard.target+'：全会員 '+totalUpdated+' / '+dashboard.total+'人（'+(dashboard.total ? Math.round(totalUpdated/dashboard.total*100) : 0)+'%）・過去7日の通信会員 '+updated+' / '+active.length+'人'+(active.length ? '（'+Math.round(updated/active.length*100)+'%）' : '（集計対象なし）');
+  const updated = dashboard.target ? active.filter(m => m.version === dashboard.target).length : 0;
+  const totalUpdated = dashboard.target ? counts.get(dashboard.target) ?? 0 : 0;
+  document.getElementById('updateRate').textContent = '最大報告版 '+(dashboard.target ?? '未報告')+'：全会員 '+totalUpdated+' / '+dashboard.total+'人（'+(dashboard.total ? Math.round(totalUpdated/dashboard.total*100) : 0)+'%）・過去7日の通信会員 '+updated+' / '+active.length+'人'+(active.length ? '（'+Math.round(updated/active.length*100)+'%）' : '（集計対象なし）');
   renderMembers();
 }
 for (const id of ['memberSearch','versionFilter','activityFilter','memberSort']) document.getElementById(id).addEventListener(id === 'memberSearch' ? 'input' : 'change', () => { memberPage = 0; renderMembers(); });

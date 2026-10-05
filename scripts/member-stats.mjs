@@ -403,7 +403,12 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <td class="py-2 text-right">${featureStats.reporting ? Math.round(feature.users / featureStats.reporting * 100) + "%" : "集計対象なし"}</td>
     </tr>
   `).join('');
-  const dashboardData = JSON.stringify({ versions: featureStats.memberVersions ?? [], times: featureStats.memberOpenTimes, total: totalMembers, target: JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version, day: new Date().toISOString().slice(0, 10) }).replaceAll('<', '\\u003c');
+  // Compare numeric version parts; the reported maximum is not a release declaration.
+  const targetVersion = (featureStats.memberVersions ?? []).map(m => m.version).filter(Boolean).sort((a, b) => {
+    const left = a.split('.').map(Number), right = b.split('.').map(Number);
+    return right[0] - left[0] || right[1] - left[1] || right[2] - left[2];
+  })[0] ?? null;
+  const dashboardData = JSON.stringify({ versions: featureStats.memberVersions ?? [], times: featureStats.memberOpenTimes, total: totalMembers, target: targetVersion, day: new Date().toISOString().slice(0, 10) }).replaceAll('<', '\\u003c');
 
   return `<!DOCTYPE html>
 <html lang="ja" class="dark">
@@ -472,7 +477,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <h2 class="text-lg font-bold">アプリ更新状況</h2>
       <p id="updateRate" class="text-sm text-slate-300"></p>
       <div id="versionCards" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
-      <p class="text-xs text-slate-400">最後に報告された版で集計。未報告の現行版は判定できません。人数を押すと会員一覧へ移動します。</p>
+      <p class="text-xs text-slate-400">最後に報告された版で集計。割合の対象は報告された版の最大です（配布中の最新版を保証しません）。未報告の現行版は判定できません。人数を押すと会員一覧へ移動します。</p>
     </div>
     <div class="glass p-6 rounded-2xl space-y-4" id="membersPanel">
       <h2 class="text-lg font-bold">会員一覧</h2>
