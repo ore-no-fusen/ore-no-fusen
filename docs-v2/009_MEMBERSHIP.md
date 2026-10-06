@@ -7,6 +7,10 @@ outline: deep
 
 承認日: 26-09-04。実装中。配信前に本書の実機確認を完了する。
 
+本書は、会員番号、利用情報の収集、お便りの配信、開発者ダッシュボードを定義する。
+
+**ダッシュボードの目的・見方・使用／未使用の判断は「5 開発者ダッシュボード」を参照する。** 利用情報を送る仕組みは「3 機能利用分析」、お便りを配信する仕組みは「4 開発者ホットライン」に記載する。
+
 ## 1 識別と保存
 
 固定IDをRustで一度だけ生成し、一般番号はサーバーが10000から採番する。有料番号は別枠で将来1から採番し、両方を同じ固定IDに対応付ける。今回は決済接続を行わず、未接続を未購入とは扱わない。番号は認証秘密ではない。再インストール・別PCの同一人物性を番号だけで証明しない。
@@ -45,7 +49,11 @@ sequenceDiagram
 
 ## 3 機能利用分析
 
+### 3.1 同意と個人情報の扱い
+
 会員番号の発行と分析同意を分離する。既存GA4同意と会員別分析同意の両方が有効な場合だけ集計する。同意を断っても全機能が利用できる。会員番号はGA4へ送らず、Firestoreに保存するランダムな分析IDをGA4 User-IDとして使用する。
+
+### 3.2 操作の記録から送信まで
 
 ```mermaid
 sequenceDiagram
@@ -70,7 +78,20 @@ sequenceDiagram
 ```
 <p class="mermaid-caption">図 3-1　基本機能を待たせない週次集計</p>
 
-固定機能名、週間使用回数、使用日数、最終使用日、アプリ版、計測版を扱う。週はUTCの月曜日から日曜日までとし、ISO週番号 `YYYY-Www` で識別する。本文・検索語・タグ名・添付内容・パスを送らない。生の操作列は保存しない。Firestoreの会員データには、利用分析に同意した会員について今週使った機能名と累計起動時間を保存する。付箋の本文・検索語・タグ名・画像は保存しない。同意撤回時はPC内の未送信集計を削除し、Firestore側の利用情報も消す。
+### 3.3 保存する情報
+
+週はUTCの月曜日から日曜日までとし、ISO週番号 `YYYY-Www` で識別する。
+
+<p class="table-caption">表 3.3-1　利用分析で扱う情報</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">項目</th><th style="white-space:normal;overflow-wrap:anywhere;">内容</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">集計情報</td><td style="white-space:normal;overflow-wrap:anywhere;">固定機能名、週間使用回数、使用日数、最終使用日、アプリ版、計測版。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">会員台帳に保存する利用情報</td><td style="white-space:normal;overflow-wrap:anywhere;">利用分析に同意した会員の、今週使った機能の一覧と累計起動時間。対象機能は5.3に定義する。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">保存・送信しない内容</td><td style="white-space:normal;overflow-wrap:anywhere;">付箋本文、検索語、タグ名、添付内容、画像、パス、生の操作列。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">同意撤回時</td><td style="white-space:normal;overflow-wrap:anywhere;">PC内の未送信集計を削除し、Firestore側の利用情報も消す。</td></tr>
+</tbody></table>
+
+### 3.4 集計と送信のタイミング
 
 通常操作ではメモリ上の整数を増やすだけとし、ディスク・GA4・Vercelへアクセスしない。文字入力はキー単位で数えず、保存に成功した編集を1回とする。他の機能も成功時だけ数える。UIからRustへの通知は60秒単位、保護ローカル保存と起動時間の加算は5分単位、会員APIへの同期は常駐中も前回成功から24時間後のheartbeatに同梱し、GA4送信は翌週の起動から60秒経過後とする。同意変更時は次のheartbeatを待たずに利用情報を同期し、同意撤回をFirestoreへ反映する。同期に失敗した場合は次の5分間隔の確認で再試行する。集計の失敗や異常終了直前の欠損を許容し、付箋の表示・入力・保存を失敗または待機させない。
 
@@ -78,7 +99,7 @@ sequenceDiagram
 
 ## 4 開発者ホットライン
 
-PCのメイン画面は起動後の静穏期間が終わると、分析同意の有無にかかわらず会員認証付きheartbeatを送る。常駐中は約5分ごとに送信要否を確認し、本番環境では前回成功から24時間経過するまで再送しない。ただし新版へ更新後の最初の起動では前回通信から24時間未満でも新版を報告する。開発環境ではお便りの投稿後に約5分以内で確認できる。保存済みのお便りでは会話画面を再度自動で開かない。APIは会員台帳の`lastSeenAt`をUTC日付で更新し、報告されたアプリ版を同じ会員レコードに保存する。版番号を送らない旧版からの通信では版を未報告に戻す。開発者ダッシュボードは今日・過去7日・日付未確認の会員数と、会員番号別の報告版・最終確認日を表示する。ダッシュボードは本番・開発環境とも概要、会員一覧、機能利用、お便りに表示を分ける。概要には版別人数と最大報告版への更新率を全会員・過去7日の通信会員の両方の分母で表示する。会員一覧は報告版・最終通信日・同意済みの累計起動時間を統合し、会員番号検索、版・通信日での絞り込み、並べ替えと25件単位のページ表示を備える。版番号未報告は旧版と断定せず、起動時間の未集計も利用ゼロと扱わない。日付だけを保存するため、厳密な直近24時間は算出しない。更新前のPCや通信していないPCの現行版は確定できない。
+PCのメイン画面は起動後の静穏期間が終わると、分析同意の有無にかかわらず会員認証付きheartbeatを送る。常駐中は約5分ごとに送信要否を確認し、本番環境では前回成功から24時間経過するまで再送しない。ただし新版へ更新後の最初の起動では前回通信から24時間未満でも新版を報告する。開発環境ではお便りの投稿後に約5分以内で確認できる。保存済みのお便りでは会話画面を再度自動で開かない。APIは会員台帳の`lastSeenAt`をUTC日付で更新し、報告されたアプリ版を同じ会員レコードに保存する。版番号を送らない旧版からの通信では版を未報告に戻す。
 
 開発者はローカルダッシュボードからタイトルとMarkdown本文を投稿する。宛先は全会員、古参会員（会員番号10000〜10049）、新規会員（10100以降）、今週の機能利用あり、今週の機能利用なし（利用分析に同意済み）、または登録済みの会員番号1件を選べる。投稿は30日間有効とする。未登録番号・不明な宛先は保存しない。ダッシュボードでは過去に送信したお便りを期限切れも含めて新しい順に読み出し、日時・宛先・タイトル・本文・配信状態を確認できる。配信中のお便りは確認操作を経て配信停止できる。停止後も履歴と既にPCへ届いたお便りは残し、次回以降の配信対象から外す。個別宛てと会員番号で判定できる区分はAPIでも対象外会員へ本文を返さない。機能利用による区分はPC内にしか判定材料がないため、APIから配信された後にRustで対象判定する。機能利用区分には機密の本文を使わない。
 
@@ -103,15 +124,157 @@ sequenceDiagram
 
 今週の機能別宛先は、対象の機能を選んで使用・未使用を指定できる。iPhone連携未使用は、今週のiPhone送信と受信がともに記録されていない、利用分析への同意済み会員を対象とする。機能の利用判定はPC内で行い、同意していない会員を未使用と断定しない。
 
-ダッシュボードはFirestoreの会員データにある今週の機能名一覧から、機能ごとの利用人数と全会員比を表示する。全会員比に加えて今週の報告者内比（今週の利用情報が届いた同意済み会員を分母）を表示する。報告者が全利用者を代表するとは限らない。集計情報が届いた会員数と、会員番号別の累計起動時間を併記する。PCは起動時と約5分ごとにheartbeatの要否を確認し、本番環境では前回成功から24時間以上経過したとき、お便り確認・生存確認・同意済みの利用情報を1回のAPI呼び出しで扱う。同意変更時だけ利用情報を別途同期する。同期後に初めて使った機能は次のheartbeatで反映する。
+## 5 開発者ダッシュボード
 
-本番・開発とも、利用情報を「使った機能が分かる」「届いたが、機能名なし」「今週分はまだ届いていない」「利用情報の送信がオフ」「情報がなく、まだ分からない」の五つに分ける。状態別人数から会員一覧へ移動し、状態で絞り込める。設定は最後に届いた情報で判定し、現在の設定や未送信理由を断定しない。機能記録がない欄は「届いた情報に記録なし」とし、全会員の未使用を示す0人・0%と混同させない。取得失敗時は前回の集計を保持して失敗を明示する。GA4のグラフは2026-09-08以降のイベント受信件数であり、今週の利用人数や操作回数とは区別する。
+### 5.1 目的
 
-## 5 合格条件
+**ユーザーがどの機能を使っているかを把握し、周知や機能改善の判断に使う。** 会員が増えても、全体の傾向と確認が必要な会員をすぐに見つけられる画面にする。
+
+本番用と検証用は同じ表示ルールを使い、データを混ぜない。画面上部に対象環境と集計日時を表示する。
+
+### 5.2 画面の構成
+
+<p class="table-caption">表 5.2-1　四つの表示と確認できること</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">表示</th><th style="white-space:normal;overflow-wrap:anywhere;">確認できること</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">概要</td><td style="white-space:normal;overflow-wrap:anywhere;">総会員数、新規登録、最近の通信状況、アプリ版別人数、更新状況、会員数の推移。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">会員一覧</td><td style="white-space:normal;overflow-wrap:anywhere;">会員番号、アプリ版、最終通信日、累計起動時間、利用情報の状態。検索・絞り込み・並べ替えを行い、25件ずつ表示する。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">機能利用</td><td style="white-space:normal;overflow-wrap:anywhere;">今週の利用情報が届いた人数、対象機能ごとの利用人数と割合、GA4のイベント受信件数。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">お便り</td><td style="white-space:normal;overflow-wrap:anywhere;">宛先を指定した投稿、送信済み履歴、配信状態、配信停止。配信条件は4章に定義する。</td></tr>
+</tbody></table>
+
+概要の版別人数、機能利用の状態別人数を押すと、該当する会員に絞った会員一覧へ移動する。
+
+### 5.3 利用を確認する対象機能
+
+対象は次の11機能である。**機能名はあらかじめ決まっている。使用記録がない場合も、機能名を消さず「未使用」と表示する。**
+
+<p class="table-caption">表 5.3-1　対象機能</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">No.</th><th style="white-space:normal;overflow-wrap:anywhere;">機能</th></tr></thead><tbody>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">1</td><td style="white-space:normal;overflow-wrap:anywhere;">付箋の作成</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">2</td><td style="white-space:normal;overflow-wrap:anywhere;">付箋の編集</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">3</td><td style="white-space:normal;overflow-wrap:anywhere;">タグの追加</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">4</td><td style="white-space:normal;overflow-wrap:anywhere;">アラームの設定</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">5</td><td style="white-space:normal;overflow-wrap:anywhere;">iPhoneへ送信</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">6</td><td style="white-space:normal;overflow-wrap:anywhere;">iPhoneから受信</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">7</td><td style="white-space:normal;overflow-wrap:anywhere;">検索画面を開く</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">8</td><td style="white-space:normal;overflow-wrap:anywhere;">付箋の複製</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">9</td><td style="white-space:normal;overflow-wrap:anywhere;">付箋をしまう</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">10</td><td style="white-space:normal;overflow-wrap:anywhere;">付箋の折りたたみ</td></tr>
+<tr><td style="width:8% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">11</td><td style="white-space:normal;overflow-wrap:anywhere;">画像の添付</td></tr>
+</tbody></table>
+
+### 5.4 データの意味と使用・未使用の判定
+
+ここでいう「利用情報」は、アプリが自動で送る利用記録である。ユーザーが報告文を書く操作ではない。
+
+利用情報には、その週に使った対象機能の一覧が入る。ダッシュボードは、届いた今週の情報をもとに各機能を判定する。
+
+<p class="table-caption">表 5.4-1　会員ごとの判定ルール</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">データの状態</th><th style="white-space:normal;overflow-wrap:anywhere;">各機能の表示</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の利用情報が届き、その機能の使用記録がある</td><td style="white-space:normal;overflow-wrap:anywhere;">使用</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の利用情報が届き、その機能の使用記録がない</td><td style="white-space:normal;overflow-wrap:anywhere;">未使用</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の利用情報が届き、使用した機能の一覧が空</td><td style="white-space:normal;overflow-wrap:anywhere;">対象の11機能すべてを未使用とする。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の利用情報が届いていない、送信がオフ、または判定に必要な情報が不足</td><td style="white-space:normal;overflow-wrap:anywhere;">不明。未使用には数えない。</td></tr>
+</tbody></table>
+
+**「利用情報が届いているが使用記録はない」と「利用情報自体が届いていない」を区別する。** 前者は未使用、後者は不明である。「機能名なし」「機能名が空」という表現は使わない。
+
+#### 具体例
+
+「付箋の作成」だけを使った情報が届いた会員は、次のように表示する。
+
+<p class="table-caption">表 5.4-2　表示例</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">機能</th><th style="white-space:normal;overflow-wrap:anywhere;">状態</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">付箋の作成</td><td style="white-space:normal;overflow-wrap:anywhere;">使用</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">付箋の編集</td><td style="white-space:normal;overflow-wrap:anywhere;">未使用</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">iPhoneへ送信</td><td style="white-space:normal;overflow-wrap:anywhere;">未使用</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">その他の対象機能</td><td style="white-space:normal;overflow-wrap:anywhere;">未使用</td></tr>
+</tbody></table>
+
+### 5.5 利用情報の到着状況
+
+機能利用の画面では、全会員を次の五つに分けて人数を表示する。各会員は一つの状態だけに属し、合計は全会員数と一致する。
+
+<p class="table-caption">表 5.5-1　状態別人数の意味</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">表示</th><th style="white-space:normal;overflow-wrap:anywhere;">意味</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">対象機能の利用あり</td><td style="white-space:normal;overflow-wrap:anywhere;">今週の情報が届き、11機能のいずれかを使用している。各機能の使用・未使用を判定できる。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">対象機能の利用なし</td><td style="white-space:normal;overflow-wrap:anywhere;">今週の情報が届き、11機能すべてが未使用。情報が届いていない状態とは区別する。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週分はまだ届いていない</td><td style="white-space:normal;overflow-wrap:anywhere;">以前の情報はあるが、今週分がない。今週の各機能は不明。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">利用情報の送信がオフ</td><td style="white-space:normal;overflow-wrap:anywhere;">最後に届いた情報で送信がオフ。各機能は不明。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">情報がなく、まだ分からない</td><td style="white-space:normal;overflow-wrap:anywhere;">利用情報がない、または判定に必要な情報が不足。各機能は不明。</td></tr>
+</tbody></table>
+
+送信がオフかどうかは、最後に届いた設定で判定する。情報がない理由を、未起動・旧版・通信失敗などと推測して表示しない。
+
+### 5.6 機能別人数と割合
+
+同じ会員が何回使っても、機能ごとの利用人数は1人として数える。対象期間はUTCの月曜日から日曜日までの今週である。
+
+<p class="table-caption">表 5.6-1　集計値の読み方</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">項目</th><th style="white-space:normal;overflow-wrap:anywhere;">計算・表示ルール</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の情報が届いた人数</td><td style="white-space:normal;overflow-wrap:anywhere;">今週の利用情報が届いた、利用分析に同意済みの会員数。対象機能すべて未使用の会員も含む。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">機能ごとの利用人数</td><td style="white-space:normal;overflow-wrap:anywhere;">今週の情報が届いた会員のうち、その機能を使用した人数。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">機能ごとの未使用人数</td><td style="white-space:normal;overflow-wrap:anywhere;">今週の情報が届いた会員のうち、その機能を使用していない人数。不明な会員は含めない。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">全会員比</td><td style="white-space:normal;overflow-wrap:anywhere;">確認できた利用人数 ÷ 全会員数。情報が届いていない会員も分母に含むため、全会員の実際の使用率を確定する値ではない。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の情報が届いた会員内の使用率</td><td style="white-space:normal;overflow-wrap:anywhere;">利用人数 ÷ 今週の情報が届いた人数。画面の「今週の報告者内比」はこの値を指す。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">情報が届いた会員がいて、利用人数が0人</td><td style="white-space:normal;overflow-wrap:anywhere;">利用人数は0人、使用率は0%。届いた会員について、その機能が未使用であることを示す。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の情報が届いた会員が0人</td><td style="white-space:normal;overflow-wrap:anywhere;">今週の機能利用は不明。人数・割合は「不明」または「—」とし、未使用0人・使用率0%と表示しない。</td></tr>
+</tbody></table>
+
+たとえば全会員100人のうち、今週の情報が届いた人が10人、iPhone送信を使った人が2人なら、利用2人・未使用8人・不明90人となる。全会員比は2%、情報が届いた会員内の使用率は20%である。
+
+周知や機能改善の判断では、割合だけでなく、対象期間・全会員数・情報が届いた人数を一緒に見る。上の例の2%だけを見て「98人が未使用」と判断しない。
+
+### 5.7 アプリ版と通信状況
+
+<p class="table-caption">表 5.7-1　会員情報の見方</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">項目</th><th style="white-space:normal;overflow-wrap:anywhere;">意味・表示ルール</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">アプリ版</td><td style="white-space:normal;overflow-wrap:anywhere;">最後に報告された版。版番号が届いていない場合は「版番号未報告」とし、旧版とは断定しない。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">更新状況</td><td style="white-space:normal;overflow-wrap:anywhere;">最大報告版の人数と割合を、全会員・過去7日の通信会員の両方について表示する。最大報告版は配布中の最新版を保証しない。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">最終通信日</td><td style="white-space:normal;overflow-wrap:anywhere;">会員台帳のUTC日付。今日・過去7日・日付未確認で集計する。日付だけのため厳密な直近24時間は算出しない。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">累計起動時間</td><td style="white-space:normal;overflow-wrap:anywhere;">利用分析に同意済みの会員から届いた値。0分は0分、情報がなければ「未集計」とする。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">一覧の操作</td><td style="white-space:normal;overflow-wrap:anywhere;">会員番号で検索。アプリ版・通信日・利用情報の状態で絞り込み。会員番号順・通信が新しい順・起動時間順で並べ替え、25件ずつ表示する。</td></tr>
+</tbody></table>
+
+### 5.8 GA4のグラフと更新失敗
+
+<p class="table-caption">表 5.8-1　別の集計との区別と更新時の表示</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">項目</th><th style="white-space:normal;overflow-wrap:anywhere;">表示ルール</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">GA4のグラフ</td><td style="white-space:normal;overflow-wrap:anywhere;">2026-09-08以降のイベント受信件数。期間と単位「件」を明記する。週次レポートも含むため、実際の操作回数とは呼ばない。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の機能別利用者との違い</td><td style="white-space:normal;overflow-wrap:anywhere;">会員台帳の表は今週の人数、GA4は別期間の受信件数。GA4の棒があることと、今週の表の利用人数が0人であることは両立する。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">正常に更新できた場合</td><td style="white-space:normal;overflow-wrap:anywhere;">最新データで再集計し、集計日時・人数・会員一覧を更新する。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">取得・更新に失敗した場合</td><td style="white-space:normal;overflow-wrap:anywhere;">前回の表示を保持し、取得失敗と前回集計であることを明示する。失敗を0人や未使用に置き換えない。</td></tr>
+</tbody></table>
+
+### 5.9 仕様を確認する具体例
+
+表示とテストは、次の意味を満たすことを確認する。期待する表示は、実装中の文字列ではなく、この仕様から決める。
+
+<p class="table-caption">表 5.9-1　表示の確認例</p>
+
+<table style="display:table;width:100%;table-layout:fixed"><thead><tr><th style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">入力・状況</th><th style="white-space:normal;overflow-wrap:anywhere;">期待する結果</th></tr></thead><tbody>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の情報に「付箋の作成」だけがある</td><td style="white-space:normal;overflow-wrap:anywhere;">作成は使用、残り10機能は未使用。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の情報の使用機能一覧が空</td><td style="white-space:normal;overflow-wrap:anywhere;">対象11機能すべて未使用。「対象機能の利用なし」に1人を数える。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の利用情報がない</td><td style="white-space:normal;overflow-wrap:anywhere;">各機能は不明。未使用人数へ加えない。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">今週の情報が届いた1人が全機能未使用</td><td style="white-space:normal;overflow-wrap:anywhere;">各機能の利用人数0人・未使用人数1人・会員内使用率0%。</td></tr>
+<tr><td style="width:32% !important;min-width:0 !important;max-width:none !important;white-space:normal !important;text-align:left !important;padding:10px 12px !important;overflow-wrap:anywhere;">データの取得に失敗</td><td style="white-space:normal;overflow-wrap:anywhere;">前回の人数を保持して失敗を表示。未使用へ分類し直さない。</td></tr>
+</tbody></table>
+
+**実装との差分：** 26-10-07の現行画面には「届いたが、機能名なし」「届いた情報に記録なし」という誤った表現が残っている。本節が正しい判断基準であり、画面とテストの修正は別途必要である。
+
+## 6 合格条件
 
 2個体の異なる操作が別の分析IDに対応し、全体集計とも一致することを確認する。通常操作でネットワーク通信とディスク書込みが発生しないこと、操作経路の追加処理が10ミリ秒未満であること、集計失敗時も付箋操作が成功することを計測する。同時登録・複数窓・更新・同意撤回・保存失敗・無権限取得も検証する。本番DBの番号保持とGA4週次受信を実際に確認するまでリリースしない。
 
-## 6 改版履歴
+## 7 改版履歴
 
 <div class="history-table">
 
@@ -136,5 +299,6 @@ sequenceDiagram
 | 17 | 26-09-27 | ダッシュボードに送信済みお便りの履歴と配信停止を追加。 |
 | 18 | 26-09-30 | 会員認証付きheartbeatへアプリ版を同梱し、分析同意にかかわらず会員台帳と開発者ダッシュボードで版・確認日を表示。旧版は未報告とする。 |
 | 19 | 26-10-06 | 本番・開発ダッシュボードの表示分割、版別集計、会員一覧の検索・25件分割、報告者内比を追加。 |
-| 20 | 26-10-07 | 利用情報の五つの状態、状態別会員一覧、記録なし・取得失敗の表示、GA4の期間と単位を明示。 |
+| 20 | 26-10-07 | 利用情報の状態別表示、取得失敗の表示、GA4の期間と単位を追加。使用記録が空の意味と表現は改版21で訂正。 |
+| 21 | 26-10-07 | ダッシュボードを独立した節へ整理。目的、11対象機能、使用・未使用・不明の判定、人数と割合、具体例を表で明示。「機能名なし」という誤った解釈を訂正。 |
 </div>
