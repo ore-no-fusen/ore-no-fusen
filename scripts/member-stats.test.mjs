@@ -3,6 +3,57 @@ import { test } from 'node:test';
 import { chromium } from '@playwright/test';
 import { featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats } from './member-stats.mjs';
 
+test('利用情報の五つの状態は重複せず、不明・古い記録を未使用と断定しない', () => {
+  const week = '2026-W41';
+  const stats = featureUsageStats([
+    { generalNumber: 10000, usageConsent: true, usageWeek: week, usageFeatures: ['note_created'] },
+    { generalNumber: 10001, usageConsent: true, usageWeek: week, usageFeatures: [] },
+    { generalNumber: 10002, usageConsent: true, usageWeek: '2026-W40', usageFeatures: ['note_created'] },
+    { generalNumber: 10003, usageConsent: false },
+    { generalNumber: 10004 },
+    { generalNumber: 10005, usageConsent: true, usageWeek: '2026-W42', usageFeatures: [] },
+    { generalNumber: 10006, usageConsent: true, usageWeek: week },
+  ], week);
+  assert.deepEqual(stats.usageStates.map(s => [s.key, s.count]), [['recorded', 1], ['empty', 1], ['stale', 1], ['disabled', 1], ['unknown', 3]]);
+  assert.equal(stats.usageStates.reduce((n,s) => n+s.count, 0), 7);
+  assert.equal(stats.rows.find(row => row.name === 'note_created').users, 1);
+});
+
+test('本番・検証とも状態から会員を確認し、機能記録なしと取得失敗を区別する', async () => {
+  const browser = await chromium.launch({ headless: true });
+  const week = isoWeek(new Date());
+  const stats = featureUsageStats([
+    { generalNumber: 10000, appVersion: '5.5.1', usageConsent: true, usageWeek: week, usageFeatures: [] },
+    { generalNumber: 10001, appVersion: '5.5.1', usageConsent: false },
+    { generalNumber: 10002, appVersion: '5.5.1' },
+  ], week);
+  try {
+    for (const environment of ['production', 'development']) {
+      const page = await browser.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
+      await page.route('https://cdn.jsdelivr.net/npm/chart.js', route => route.fulfill({ body: 'window.Chart = class {}' }));
+      await page.route('http://dashboard.test/**', route => route.request().url().endsWith('/feature-usage') ? route.fulfill({ status: 503, body: '' }) : route.fulfill({ body: generateHtml([], 3, 10002, 0, 0, [], [], '2026/10/07', { today: 0, week: 0, unknown: 3 }, true, environment, stats), contentType: 'text/html' }));
+      await page.goto('http://dashboard.test/');
+      await page.getByRole('button', { name: '機能利用', exact: true }).click();
+      assert.equal(await page.locator('#usageStateCards button').count(), 5);
+      await page.locator('#featureRefreshStatus').filter({ hasText: '取得できませんでした' }).waitFor();
+      assert.match(await page.locator('#featureEvidence').innerText(), /全会員が利用ゼロという意味ではありません/);
+      assert.doesNotMatch(await page.locator('#featureUsageRows').innerText(), /0人|0%/);
+      assert.match(await page.locator('#featureUsageRows').innerText(), /届いた情報に記録なし/);
+      await page.locator('[data-usage-state="empty"]').click();
+      assert.match(await page.locator('#memberRows').innerText(), /#10000.*届いたが、機能名なし/s);
+      assert.doesNotMatch(await page.locator('#memberRows').innerText(), /#10001/);
+      await page.getByRole('button', { name: '概要', exact: true }).click();
+      await page.locator('#versionCards button').filter({ hasText: '5.5.1' }).click();
+      assert.match(await page.locator('#memberPageStatus').innerText(), /3人/);
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
 test('開発環境を明示したときだけ切り替え、不正な指定は拒否する', () => {
   assert.deepEqual(parseOptions([]), { environment: 'production', open: false });
   assert.deepEqual(parseOptions(['--environment', 'development', '--open']), { environment: 'development', open: true });

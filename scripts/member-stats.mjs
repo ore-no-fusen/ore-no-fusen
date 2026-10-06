@@ -10,6 +10,21 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 const propertyId = '524376317';
+const GA_START_DATE = '2026-09-08';
+const USAGE_STATES = {
+  recorded: { label: '使った機能が分かる', description: '今週使った機能名が届いています。', color: 'text-emerald-300' },
+  empty: { label: '届いたが、機能名なし', description: '情報は届きましたが、使った機能の欄が空です。未使用とは断定できません。', color: 'text-amber-300' },
+  stale: { label: '今週分はまだ届いていない', description: '以前の情報はありますが、今週の使い方はまだ分かりません。', color: 'text-sky-300' },
+  disabled: { label: '利用情報の送信がオフ', description: '最後に届いた情報では、利用記録を送らない設定でした。現在の設定は未確認です。', color: 'text-slate-300' },
+  unknown: { label: '情報がなく、まだ分からない', description: '分析情報を確認できません。設定・未起動・通信失敗などの理由は不明です。', color: 'text-slate-300' },
+};
+function memberUsageState(member, week) {
+  if (member.usageConsent === false) return 'disabled';
+  if (member.usageConsent !== true || typeof member.usageWeek !== 'string' || !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(member.usageWeek) || !Array.isArray(member.usageFeatures)) return 'unknown';
+  if (member.usageWeek < week) return 'stale';
+  if (member.usageWeek !== week || member.usageFeatures.some(name => !Object.hasOwn(FEATURE_LABELS, name))) return 'unknown';
+  return member.usageFeatures.length ? 'recorded' : 'empty';
+}
 const FEATURE_LABELS = {
   note_created: '付箋の作成', note_edited: '付箋の編集', tag_add: 'タグの追加',
   alarm_set: 'アラームの設定', iphone_send: 'iPhoneへ送信', iphone_receive: 'iPhoneから受信',
@@ -26,8 +41,11 @@ function isoWeek(date = new Date()) {
 
 function featureUsageStats(members, week = isoWeek()) {
   const reporting = members.filter(member => member.usageWeek === week && member.usageConsent === true);
+  const statuses = members.map(member => ({ number: member.generalNumber, state: memberUsageState(member, week) }));
   return {
     week, reporting: reporting.length,
+    usageStates: Object.entries(USAGE_STATES).map(([key, state]) => ({ key, ...state, count: statuses.filter(member => member.state === key).length })),
+    memberUsageStates: statuses.filter(member => Number.isSafeInteger(member.number)).map(member => ({ ...member, label: USAGE_STATES[member.state].label })),
     memberVersions: members.filter(member => Number.isSafeInteger(member.generalNumber))
       .map(member => ({
         number: member.generalNumber,
@@ -329,7 +347,7 @@ async function fetchGa4Data(token) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      dateRanges: [{ startDate: '2026-09-08', endDate: 'today' }],
+      dateRanges: [{ startDate: GA_START_DATE, endDate: 'today' }],
       dimensions: [{ name: 'date' }],
       metrics: [{ name: 'activeUsers' }, { name: 'sessions' }],
       orderBys: [{ dimension: { dimensionName: 'date' } }]
@@ -342,7 +360,7 @@ async function fetchGa4Data(token) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      dateRanges: [{ startDate: '2026-09-08', endDate: 'today' }],
+      dateRanges: [{ startDate: GA_START_DATE, endDate: 'today' }],
       dimensions: [{ name: 'eventName' }],
       metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }],
       orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }]
@@ -355,7 +373,7 @@ async function fetchGa4Data(token) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      dateRanges: [{ startDate: '2026-09-08', endDate: 'today' }],
+      dateRanges: [{ startDate: GA_START_DATE, endDate: 'today' }],
       dimensions: [{ name: 'customEvent:feature_name' }],
       metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }],
       orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }]
@@ -398,9 +416,9 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   const featureUsageRows = featureStats.rows.map(feature => `
     <tr class="border-b border-slate-800">
       <td class="py-2 pr-4">${feature.label}</td>
-      <td class="py-2 text-right">${feature.users}人</td>
-      <td class="py-2 text-right">${feature.percent}%</td>
-      <td class="py-2 text-right">${featureStats.reporting ? Math.round(feature.users / featureStats.reporting * 100) + "%" : "集計対象なし"}</td>
+<td class="py-2 text-right">${feature.users ? feature.users + "人" : "届いた情報に記録なし"}</td>
+<td class="py-2 text-right">${feature.users ? feature.percent + "%" : "—"}</td>
+      <td class="py-2 text-right">${feature.users && featureStats.reporting ? Math.round(feature.users / featureStats.reporting * 100) + "%" : "—"}</td>
     </tr>
   `).join('');
   // Compare numeric version parts; the reported maximum is not a release declaration.
@@ -408,7 +426,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     const left = a.split('.').map(Number), right = b.split('.').map(Number);
     return right[0] - left[0] || right[1] - left[1] || right[2] - left[2];
   })[0] ?? null;
-  const dashboardData = JSON.stringify({ versions: featureStats.memberVersions ?? [], times: featureStats.memberOpenTimes, total: totalMembers, target: targetVersion, day: new Date().toISOString().slice(0, 10) }).replaceAll('<', '\\u003c');
+  const dashboardData = JSON.stringify({ versions: featureStats.memberVersions ?? [], times: featureStats.memberOpenTimes, usageStates: featureStats.memberUsageStates ?? [], total: totalMembers, target: targetVersion, day: new Date().toISOString().slice(0, 10) }).replaceAll('<', '\\u003c');
 
   return `<!DOCTYPE html>
 <html lang="ja" class="dark">
@@ -485,17 +503,29 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <input id="memberSearch" type="search" placeholder="会員番号で検索" aria-label="会員番号で検索" class="bg-slate-900 border border-slate-600 rounded-lg p-2">
         <select id="versionFilter" aria-label="アプリ版で絞り込み" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="all">すべての版</option></select>
         <select id="activityFilter" aria-label="通信日で絞り込み" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="all">すべての通信日</option><option value="week">過去7日に通信</option><option value="older">7日より前に通信</option><option value="unknown">通信日未確認</option></select>
+        <select id="usageStateFilter" aria-label="利用情報の状態で絞り込み" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="all">利用情報の状態: すべて</option>${Object.entries(USAGE_STATES).map(([key,state]) => `<option value="${key}">${state.label}</option>`).join('')}</select>
         <select id="memberSort" aria-label="並べ替え" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="number">会員番号順</option><option value="recent">通信が新しい順</option><option value="minutes">起動時間が長い順</option></select>
       </div>
       <p class="text-xs text-slate-400">最終通信日はUTC。累計起動時間は同意済みの報告値。未集計は利用ゼロを意味しません。</p>
-      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>会員番号</th><th>アプリ版</th><th>最終通信日（UTC）</th><th>累計起動時間</th></tr></thead><tbody id="memberRows"></tbody></table></div>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>会員番号</th><th>アプリ版</th><th>最終通信日（UTC）</th><th>累計起動時間</th><th>利用情報の状態</th></tr></thead><tbody id="memberRows"></tbody></table></div>
       <div class="flex items-center justify-between"><span id="memberPageStatus" aria-live="polite"></span><div class="flex gap-2"><button id="memberPrev" class="border rounded-lg px-3 py-2">前へ</button><button id="memberNext" class="border rounded-lg px-3 py-2">次へ</button></div></div>
     </div>
 
-    <div class="glass p-6 rounded-2xl shadow-xl space-y-3">
+    <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-4" id="usageStatePanel">
+      <h2 class="text-lg font-bold">使い方が分かる人・まだ分からない人</h2>
+      <p class="text-sm text-slate-300">最後に届いた情報をもとに、全会員を分けています。情報がない人を「使っていない人」とは数えません。</p>
+      <div id="usageStateCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        ${(featureStats.usageStates ?? []).map(state => `<button type="button" data-usage-state="${state.key}" class="text-left rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm ${state.color}">${state.label}</div><div class="text-2xl font-bold mt-1 ${state.color}">${state.count}人</div><p class="text-xs text-slate-400 mt-2">${state.description}</p></button>`).join('')}
+      </div>
+      <p class="text-sm text-amber-300">「届いたが、機能名なし」は、アプリから情報は届いたものの「使った機能」の欄が空だった状態です。操作の記録がまだ送られていない場合もあります。</p>
+      <p id="usageStateUpdated" class="text-xs text-slate-400">確認日時: ${nowJst} (JST)・人数を押すと会員一覧へ移動します。</p>
+      <p id="featureRefreshStatus" class="text-sm text-amber-300" role="status"></p>
+    </div>
+    <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
-      <p class="text-sm text-amber-300">利用情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。報告者内比は今週の利用情報が届いた会員だけを分母にします。</p>
+      <p class="text-sm text-amber-300">今週の情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。報告者内比は今週の利用情報が届いた会員だけを分母にします。</p>
+      <p id="featureEvidence" class="text-sm text-amber-300">${(featureStats.usageStates ?? []).find(state => state.key === "recorded")?.count ? "下の人数は、届いた情報で確認できた利用者だけです。" : "今週使った機能の情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
       <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
@@ -576,7 +606,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     <div data-dashboard-group="features" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- App Actions -->
       <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
-        <h2 class="text-lg font-bold text-slate-200">アプリ内アクション発生数（直近30日）</h2>
+        <h2 class="text-lg font-bold text-slate-200">GA4のイベント受信件数</h2>
+        <p class="text-xs text-slate-400">集計期間: ${GA_START_DATE}から今回のGA4集計まで。単位は件で、週次レポートも含みます。今週の会員人数や操作回数とは異なります。</p>
         <div class="h-64 w-full">
           <canvas id="eventChart"></canvas>
         </div>
@@ -584,7 +615,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
       <!-- Feature Usage -->
       <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
-        <h2 class="text-lg font-bold text-slate-200">GA4の機能操作回数</h2>
+        <h2 class="text-lg font-bold text-slate-200">GA4の機能別受信件数</h2>
+        <p class="text-xs text-slate-400">集計期間: ${GA_START_DATE}から今回のGA4集計まで。単位は件で、週次レポートも含みます。今週の会員人数や操作回数とは異なります。</p>
         ${gaFeatures.length ? `<div class="h-64 w-full"><canvas id="featureChart"></canvas></div>` : `<p class="text-sm text-slate-400">GA4の機能別データはまだありません。上の表で今週の会員別利用人数を確認できます。</p>`}
       </div>
     </div>
@@ -628,7 +660,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         for (const feature of stats.rows) {
           const row = document.createElement('tr');
           row.className = 'border-b border-slate-800';
-          for (const value of [feature.label, String(feature.users) + '人', String(feature.percent) + '%', stats.reporting ? Math.round(feature.users / stats.reporting * 100) + '%' : '集計対象なし']) {
+          for (const value of [feature.label, feature.users ? String(feature.users) + '人' : '届いた情報に記録なし', feature.users ? String(feature.percent) + '%' : '—', feature.users && stats.reporting ? Math.round(feature.users / stats.reporting * 100) + '%' : '—']) {
             const cell = document.createElement('td');
             cell.className = 'py-2';
             cell.textContent = value;
@@ -636,11 +668,13 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
           }
           rows.appendChild(row);
         }
+        renderUsageStates(stats);
+        dashboard.usageStates = stats.memberUsageStates;
         dashboard.times = stats.memberOpenTimes;
         dashboard.versions = stats.memberVersions;
         dashboard.total = stats.totalMembers;
         renderDashboard();
-      }).catch(() => undefined);` : ''}
+      }).catch(() => { document.getElementById('featureRefreshStatus').textContent = '最新の利用情報を取得できませんでした。表示中の人数は前回の集計です。「最新状態に更新」で再確認してください。'; });` : ''}
     const refreshDashboardBtn = document.getElementById('refreshDashboardBtn');
     if (refreshDashboardBtn) {
       refreshDashboardBtn.addEventListener('click', async () => {
@@ -855,7 +889,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       data: {
         labels: ${eventLabels},
         datasets: [{
-          label: '発生回数',
+          label: '受信件数',
           data: ${eventCounts},
           backgroundColor: '#f59e0b',
           borderRadius: 6
@@ -878,7 +912,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       data: {
         labels: ${featureLabels},
         datasets: [{
-          label: '利用回数',
+          label: '受信件数',
           data: ${featureCounts},
           backgroundColor: '#ec4899',
           borderRadius: 6
@@ -1004,6 +1038,7 @@ async function collectStats(environment = 'production', canPublish = true) {
     }));
 
   const friendlyFeatureNames = {
+    'note_created': '付箋の作成',
     'tag_add': 'タグ追加',
     'alarm_set': 'アラーム設定',
     'iphone_send': 'iPhone送信',

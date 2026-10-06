@@ -34,11 +34,13 @@ function inWeek(member) {
   return member.lastSeenAt && member.lastSeenAt >= start.toISOString().slice(0, 10) && member.lastSeenAt <= dashboard.day;
 }
 function renderMembers() {
+  const usageStates = new Map((dashboard.usageStates ?? []).map(m => [m.number, m]));
+  const selectedState = document.getElementById('usageStateFilter').value;
   const times = new Map(dashboard.times.map(m => [m.number, m.minutes]));
   const search = document.getElementById('memberSearch').value.trim().replace(/^#/, '');
   const activity = document.getElementById('activityFilter').value;
   const sort = document.getElementById('memberSort').value;
-  const members = dashboard.versions.filter(m => String(m.number).includes(search) && (versionFilter.value === 'all' || (m.version ?? 'unknown') === versionFilter.value) && (activity === 'all' || (activity === 'week' ? inWeek(m) : activity === 'unknown' ? !m.lastSeenAt || m.lastSeenAt > dashboard.day : m.lastSeenAt && m.lastSeenAt <= dashboard.day && !inWeek(m))));
+  const members = dashboard.versions.filter(m => String(m.number).includes(search) && (selectedState === 'all' || usageStates.get(m.number)?.state === selectedState) && (versionFilter.value === 'all' || (m.version ?? 'unknown') === versionFilter.value) && (activity === 'all' || (activity === 'week' ? inWeek(m) : activity === 'unknown' ? !m.lastSeenAt || m.lastSeenAt > dashboard.day : m.lastSeenAt && m.lastSeenAt <= dashboard.day && !inWeek(m))));
   members.sort((a,b) => sort === 'recent' ? (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? '') || a.number-b.number : sort === 'minutes' ? (times.get(b.number) ?? -1)-(times.get(a.number) ?? -1) || a.number-b.number : a.number-b.number);
   memberPage = Math.min(memberPage, Math.max(0, Math.ceil(members.length / 25)-1));
   const rows = document.getElementById('memberRows');
@@ -47,12 +49,12 @@ function renderMembers() {
     const row = document.createElement('tr');
     row.className = 'border-b border-slate-800';
     const minutes = times.get(member.number);
-    for (const value of ['#'+member.number, member.version ?? '版番号未報告', member.lastSeenAt ?? '未確認', minutes === undefined ? '未集計' : Math.floor(minutes/60)+'時間'+minutes%60+'分']) {
+    for (const value of ['#'+member.number, member.version ?? '版番号未報告', member.lastSeenAt ?? '未確認', minutes === undefined ? '未集計' : Math.floor(minutes/60)+'時間'+minutes%60+'分', usageStates.get(member.number)?.label ?? '情報がなく、まだ分からない']) {
       const cell = document.createElement('td'); cell.className = 'py-3 pr-4'; cell.textContent = value; row.appendChild(cell);
     }
     rows.appendChild(row);
   }
-  if (!members.length) { const row = rows.insertRow(); const cell = row.insertCell(); cell.colSpan = 4; cell.textContent = '該当する会員はいません'; }
+  if (!members.length) { const row = rows.insertRow(); const cell = row.insertCell(); cell.colSpan = 5; cell.textContent = '該当する会員はいません'; }
   document.getElementById('memberPageStatus').textContent = members.length ? (memberPage*25+1)+'〜'+Math.min(members.length,memberPage*25+25)+'件 / '+members.length+'人' : '0人';
   document.getElementById('memberPrev').disabled = memberPage === 0;
   document.getElementById('memberNext').disabled = (memberPage+1)*25 >= members.length;
@@ -71,7 +73,7 @@ function renderDashboard() {
     card.className = 'text-left rounded-xl border border-slate-600 bg-slate-900 p-4';
     const title = document.createElement('div'); title.textContent = label; title.className = 'text-sm text-slate-300';
     const count = document.createElement('div'); count.textContent = counts.get(version)+'人'; count.className = 'text-2xl font-bold text-emerald-300';
-    card.append(title,count); card.onclick = () => { versionFilter.value = version; document.getElementById('memberSearch').value = ''; document.getElementById('activityFilter').value = 'all'; memberPage = 0; renderMembers(); showTab('members'); }; cards.appendChild(card);
+    card.append(title,count); card.onclick = () => { versionFilter.value = version; document.getElementById('memberSearch').value = ''; document.getElementById('activityFilter').value = 'all'; document.getElementById('usageStateFilter').value = 'all'; memberPage = 0; renderMembers(); showTab('members'); }; cards.appendChild(card);
   }
   if (!versions.length) cards.textContent = '会員データはありません';
   if (counts.has(selection)) versionFilter.value = selection;
@@ -81,7 +83,32 @@ function renderDashboard() {
   document.getElementById('updateRate').textContent = '最大報告版 '+(dashboard.target ?? '未報告')+'：全会員 '+totalUpdated+' / '+dashboard.total+'人（'+(dashboard.total ? Math.round(totalUpdated/dashboard.total*100) : 0)+'%）・過去7日の通信会員 '+updated+' / '+active.length+'人'+(active.length ? '（'+Math.round(updated/active.length*100)+'%）' : '（集計対象なし）');
   renderMembers();
 }
-for (const id of ['memberSearch','versionFilter','activityFilter','memberSort']) document.getElementById(id).addEventListener(id === 'memberSearch' ? 'input' : 'change', () => { memberPage = 0; renderMembers(); });
+for (const id of ['memberSearch','versionFilter','activityFilter','memberSort','usageStateFilter']) document.getElementById(id).addEventListener(id === 'memberSearch' ? 'input' : 'change', () => { memberPage = 0; renderMembers(); });
 document.getElementById('memberPrev').onclick = () => { memberPage--; renderMembers(); };
 document.getElementById('memberNext').onclick = () => { memberPage++; renderMembers(); };
 renderDashboard(); showTab('overview');
+
+function renderUsageStates(stats) {
+  const cards = document.getElementById('usageStateCards');
+  cards.replaceChildren();
+  for (const state of stats.usageStates) {
+    const card = document.createElement('button');
+    card.type = 'button'; card.dataset.usageState = state.key;
+    card.className = 'text-left rounded-xl border border-slate-600 bg-slate-900 p-4';
+    const label = document.createElement('div'); label.className = 'text-sm '+state.color; label.textContent = state.label;
+    const count = document.createElement('div'); count.className = 'text-2xl font-bold mt-1 '+state.color; count.textContent = state.count+'人';
+    const description = document.createElement('p'); description.className = 'text-xs text-slate-400 mt-2'; description.textContent = state.description;
+    card.append(label,count,description); cards.appendChild(card);
+  }
+  document.getElementById('featureEvidence').textContent = stats.usageStates.some(s => s.key === 'recorded' && s.count) ? '下の人数は、届いた情報で確認できた利用者だけです。' : '今週使った機能の情報はまだ届いていません。全会員が利用ゼロという意味ではありません。';
+  document.getElementById('usageStateUpdated').textContent = '確認日時: '+new Date().toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})+' (JST)・人数を押すと会員一覧へ移動します。';
+  document.getElementById('featureRefreshStatus').textContent = '';
+}
+document.getElementById('usageStateCards').addEventListener('click', event => {
+  const button = event.target.closest('button[data-usage-state]');
+  if (!button) return;
+  document.getElementById('usageStateFilter').value = button.dataset.usageState;
+  document.getElementById('memberSearch').value = '';
+  document.getElementById('activityFilter').value = 'all'; versionFilter.value = 'all';
+  memberPage = 0; renderMembers(); showTab('members');
+});
