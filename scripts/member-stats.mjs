@@ -13,7 +13,7 @@ const propertyId = '524376317';
 const GA_START_DATE = '2026-09-08';
 const USAGE_STATES = {
   recorded: { label: '使った機能が分かる', description: '今週使った機能名が届いています。', color: 'text-emerald-300' },
-  empty: { label: '届いたが、機能名なし', description: '情報は届きましたが、使った機能の欄が空です。未使用とは断定できません。', color: 'text-amber-300' },
+  empty: { label: '対象機能すべて未使用', description: '今週の情報が届き、対象の11機能はすべて未使用です。', color: 'text-amber-300' },
   stale: { label: '今週分はまだ届いていない', description: '以前の情報はありますが、今週の使い方はまだ分かりません。', color: 'text-sky-300' },
   disabled: { label: '利用情報の送信がオフ', description: '最後に届いた情報では、利用記録を送らない設定でした。現在の設定は未確認です。', color: 'text-slate-300' },
   unknown: { label: '情報がなく、まだ分からない', description: '分析情報を確認できません。設定・未起動・通信失敗などの理由は不明です。', color: 'text-slate-300' },
@@ -40,10 +40,15 @@ function isoWeek(date = new Date()) {
 }
 
 function featureUsageStats(members, week = isoWeek()) {
-  const reporting = members.filter(member => member.usageWeek === week && member.usageConsent === true);
+  const reporting = members.filter(member => ['recorded', 'empty'].includes(memberUsageState(member, week)));
   const statuses = members.map(member => ({ number: member.generalNumber, state: memberUsageState(member, week) }));
   return {
     week, reporting: reporting.length,
+    consentCounts: {
+      granted: members.filter(member => member.usageConsent === true).length,
+      denied: members.filter(member => member.usageConsent === false).length,
+      unknown: members.filter(member => typeof member.usageConsent !== 'boolean').length,
+    },
     usageStates: Object.entries(USAGE_STATES).map(([key, state]) => ({ key, ...state, count: statuses.filter(member => member.state === key).length })),
     memberUsageStates: statuses.filter(member => Number.isSafeInteger(member.number)).map(member => ({ ...member, label: USAGE_STATES[member.state].label })),
     memberVersions: members.filter(member => Number.isSafeInteger(member.generalNumber))
@@ -416,9 +421,9 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   const featureUsageRows = featureStats.rows.map(feature => `
     <tr class="border-b border-slate-800">
       <td class="py-2 pr-4">${feature.label}</td>
-<td class="py-2 text-right">${feature.users ? feature.users + "人" : "届いた情報に記録なし"}</td>
-<td class="py-2 text-right">${feature.users ? feature.percent + "%" : "—"}</td>
-      <td class="py-2 text-right">${feature.users && featureStats.reporting ? Math.round(feature.users / featureStats.reporting * 100) + "%" : "—"}</td>
+<td class="py-2 text-right">${featureStats.reporting ? feature.users + "人" : "不明"}</td>
+      <td class="py-2 text-right">${featureStats.reporting ? feature.percent + "%" : "—"}</td>
+      <td class="py-2 text-right">${featureStats.reporting ? Math.round(feature.users / featureStats.reporting * 100) + "%" : "—"}</td>
     </tr>
   `).join('');
   // Compare numeric version parts; the reported maximum is not a release declaration.
@@ -512,12 +517,21 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     </div>
 
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-4" id="usageStatePanel">
+      <h2 class="text-lg font-bold">送信の設定と、情報の到着</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" id="consentSummary">
+        <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-emerald-300">送信を許可（確認済み）</div><div class="text-2xl font-bold mt-1 text-emerald-300"><span id="consentGranted">${featureStats.consentCounts?.granted ?? 0}</span>人</div></div>
+        <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-slate-300">送信を停止（確認済み）</div><div class="text-2xl font-bold mt-1"><span id="consentDenied">${featureStats.consentCounts?.denied ?? 0}</span>人</div></div>
+        <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-amber-300">送信の設定が未確認</div><div class="text-2xl font-bold mt-1 text-amber-300"><span id="consentUnknown">${featureStats.consentCounts?.unknown ?? totalMembers}</span>人</div></div>
+        <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-sky-300">今週の情報が届いた</div><div class="text-2xl font-bold mt-1 text-sky-300"><span id="consentReporting">${featureStats.reporting}</span>人</div></div>
+      </div>
+      <p class="text-sm text-slate-300">許可・停止は最後に届いた設定です。未確認の人は、許可にも停止にも数えません。今週届いた人数は許可人数の内訳であり、4つの人数を足すものではありません。</p>
+      <p class="text-sm text-slate-400">旧版から届いた設定は、以前の会員別分析の選択です。更新後の共通設定が届くまでは、初回に協力を選んだ人数や今後届く人数は確定できません。</p>
       <h2 class="text-lg font-bold">使い方が分かる人・まだ分からない人</h2>
       <p class="text-sm text-slate-300">最後に届いた情報をもとに、全会員を分けています。情報がない人を「使っていない人」とは数えません。</p>
       <div id="usageStateCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         ${(featureStats.usageStates ?? []).map(state => `<button type="button" data-usage-state="${state.key}" class="text-left rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm ${state.color}">${state.label}</div><div class="text-2xl font-bold mt-1 ${state.color}">${state.count}人</div><p class="text-xs text-slate-400 mt-2">${state.description}</p></button>`).join('')}
       </div>
-      <p class="text-sm text-amber-300">「届いたが、機能名なし」は、アプリから情報は届いたものの「使った機能」の欄が空だった状態です。操作の記録がまだ送られていない場合もあります。</p>
+      <p class="text-sm text-amber-300">今週の情報が届いた人は、機能ごとに使用・未使用を判定できます。情報が届いていない人の使用状況は不明です。</p>
       <p id="usageStateUpdated" class="text-xs text-slate-400">確認日時: ${nowJst} (JST)・人数を押すと会員一覧へ移動します。</p>
       <p id="featureRefreshStatus" class="text-sm text-amber-300" role="status"></p>
     </div>
@@ -525,7 +539,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
       <p class="text-sm text-amber-300">今週の情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。報告者内比は今週の利用情報が届いた会員だけを分母にします。</p>
-      <p id="featureEvidence" class="text-sm text-amber-300">${(featureStats.usageStates ?? []).find(state => state.key === "recorded")?.count ? "下の人数は、届いた情報で確認できた利用者だけです。" : "今週使った機能の情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
+      <p id="featureEvidence" class="text-sm text-amber-300">${featureStats.reporting ? "届いた会員の情報について、機能ごとの使用・未使用を集計しています。全会員の使用状況を確定する値ではありません。" : "今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
       <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
@@ -655,12 +669,16 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         document.getElementById('featureTotal').textContent = String(stats.totalMembers);
         document.getElementById('featureCoverageTotal').textContent = String(stats.totalMembers);
         document.getElementById('featureReporting').textContent = String(stats.reporting);
+        document.getElementById('consentGranted').textContent = String(stats.consentCounts.granted);
+        document.getElementById('consentDenied').textContent = String(stats.consentCounts.denied);
+        document.getElementById('consentUnknown').textContent = String(stats.consentCounts.unknown);
+        document.getElementById('consentReporting').textContent = String(stats.reporting);
         const rows = document.getElementById('featureUsageRows');
         rows.replaceChildren();
         for (const feature of stats.rows) {
           const row = document.createElement('tr');
           row.className = 'border-b border-slate-800';
-          for (const value of [feature.label, feature.users ? String(feature.users) + '人' : '届いた情報に記録なし', feature.users ? String(feature.percent) + '%' : '—', feature.users && stats.reporting ? Math.round(feature.users / stats.reporting * 100) + '%' : '—']) {
+          for (const value of [feature.label, stats.reporting ? String(feature.users) + '人' : '不明', stats.reporting ? String(feature.percent) + '%' : '—', stats.reporting ? Math.round(feature.users / stats.reporting * 100) + '%' : '—']) {
             const cell = document.createElement('td');
             cell.className = 'py-2';
             cell.textContent = value;

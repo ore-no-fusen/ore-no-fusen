@@ -3,6 +3,45 @@ import { test } from 'node:test';
 import { chromium } from '@playwright/test';
 import { featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats } from './member-stats.mjs';
 
+test('送信の許可人数と今週届いた人数を区別し、未確認を停止扱いしない', () => {
+  const stats = featureUsageStats([
+    { usageConsent: true, usageWeek: '2026-W41', usageFeatures: [] },
+    { usageConsent: true, usageWeek: '2026-W40', usageFeatures: [] },
+    { usageConsent: false }, {}, { usageConsent: null }, { usageConsent: 'false' },
+  ], '2026-W41');
+  assert.deepEqual(stats.consentCounts, { granted: 2, denied: 1, unknown: 3 });
+  assert.equal(stats.reporting, 1);
+  assert.deepEqual(featureUsageStats([]).consentCounts, { granted: 0, denied: 0, unknown: 0 });
+});
+
+test('本番と検証で送信設定と到着人数を表示し、最新取得後も別々に更新する', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const environment of ['production', 'development']) {
+      const page = await browser.newPage();
+      const initial = featureUsageStats([{}, {}, {}]);
+      const latest = featureUsageStats([
+        { usageConsent: true, usageWeek: initial.week, usageFeatures: [] },
+        { usageConsent: true, usageWeek: '2025-W01', usageFeatures: [] },
+        { usageConsent: false },
+      ]);
+      await page.route('https://cdn.tailwindcss.com/**', route => route.fulfill({ body: '' }));
+      await page.route('https://cdn.jsdelivr.net/**', route => route.fulfill({ body: 'window.Chart = class {}' }));
+      await page.route('http://consent.test/**', route => route.request().url().endsWith('/feature-usage')
+        ? route.fulfill({ json: { ...latest, totalMembers: 3 } })
+        : route.fulfill({ body: generateHtml([], 3, 10002, 0, 0, [], [], '2026/10/08', { today: 0, week: 0, unknown: 3 }, true, environment, initial), contentType: 'text/html' }));
+      await page.goto('http://consent.test/');
+      await page.getByRole('button', { name: '機能利用', exact: true }).click();
+      await page.locator('#consentGranted').filter({ hasText: '2' }).waitFor();
+      assert.equal(await page.locator('#consentDenied').innerText(), '1');
+      assert.equal(await page.locator('#consentUnknown').innerText(), '0');
+      assert.equal(await page.locator('#consentReporting').innerText(), '1');
+      assert.match(await page.locator('#usageStatePanel').innerText(), /最後に届いた設定/);
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
 test('利用情報の五つの状態は重複せず、不明・古い記録を未使用と断定しない', () => {
   const week = '2026-W41';
   const stats = featureUsageStats([
@@ -39,11 +78,11 @@ test('本番・検証とも状態から会員を確認し、機能記録なし�
       await page.getByRole('button', { name: '機能利用', exact: true }).click();
       assert.equal(await page.locator('#usageStateCards button').count(), 5);
       await page.locator('#featureRefreshStatus').filter({ hasText: '取得できませんでした' }).waitFor();
-      assert.match(await page.locator('#featureEvidence').innerText(), /全会員が利用ゼロという意味ではありません/);
-      assert.doesNotMatch(await page.locator('#featureUsageRows').innerText(), /0人|0%/);
-      assert.match(await page.locator('#featureUsageRows').innerText(), /届いた情報に記録なし/);
+      assert.match(await page.locator('#featureEvidence').innerText(), /機能ごとの使用・未使用を集計/);
+      assert.match(await page.locator('#featureUsageRows').innerText(), /0人/);
+      assert.match(await page.locator('#featureUsageRows').innerText(), /0%/);
       await page.locator('[data-usage-state="empty"]').click();
-      assert.match(await page.locator('#memberRows').innerText(), /#10000.*届いたが、機能名なし/s);
+      assert.match(await page.locator('#memberRows').innerText(), /#10000.*対象機能すべて未使用/s);
       assert.doesNotMatch(await page.locator('#memberRows').innerText(), /#10001/);
       await page.getByRole('button', { name: '概要', exact: true }).click();
       await page.locator('#versionCards button').filter({ hasText: '5.5.1' }).click();
