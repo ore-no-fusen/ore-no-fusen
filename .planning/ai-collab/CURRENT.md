@@ -1,6 +1,11 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-10-08 FileDrop 汎用形式を選択可能に
+
+- ユーザー要望でPDF限定のaccept/拡張子拒否を解除。Excel（xls/xlsx）、Word（doc/docx）、ZIP、音声を含む汎用ファイルを選択可能。MIME型を保持し、空ならapplication/octet-stream。PC保存/ack/IndexedDB/送信経路は共通実装を継続。
+- 最新develop 06874b27からcodex/file-drop-formats。関連Vitest33件、TypeScript、diff検査成功。PWA worker 5.5.1-pwa.2。003_IPHONEと004_TESTを更新。
+- 先行PDF実機はユーザーが新付箋とPDF閲覧成功を報告。assets/filesに元名PDF 60502バイト、07:27:56に該当受信のack completed記録あり。添付削除エラー記録なし（Drive上の残存を独立照会した確認ではない）。Excel/Word/ZIP/音声の実機確認は未実施。
 
 ### 2026-10-08 FileDrop：計画・設計・実装・テスト・主要キャプチャ
 

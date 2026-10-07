@@ -454,17 +454,14 @@ export function WriteStep({
         </div>
       )}
 
-      <input ref={attachmentInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" aria-label="PDFファイルを選択"
+      <input ref={attachmentInputRef} type="file" multiple className="hidden" aria-label="ファイルを選択"
         onChange={async (e) => {
           const selected = Array.from(e.target.files ?? []);
           e.target.value = '';
           if (!selected.length) return;
-          if (selected.some(file => !file.name.toLowerCase().endsWith('.pdf'))) {
-            setErrorMessage('PDFファイルを選択してください。'); return;
-          }
           await changeFiles([...(filesRef?.current ?? files), ...selected.map(file => ({
             fileName: buildFileName(), originalFileName: file.name,
-            mimeType: file.type || 'application/pdf', size: file.size, blob: file,
+            mimeType: file.type || 'application/octet-stream', size: file.size, blob: file,
           }))]);
         }} />
       {files.map(file => <div key={file.fileName} className="mx-4 mb-2 px-3 py-2 rounded-xl bg-white flex items-center justify-between gap-2 text-sm">

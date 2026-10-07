@@ -1333,13 +1333,13 @@ graph LR
 
 ### 6.4.1 FileDrop（汎用ファイル添付）
 
-初期の選択対象はPDF。write画面の📷・🎬と並ぶ「📎 ファイル」で、iOS標準のファイル選択画面を開く。選択後に元名を表示し、×で解除できる。本文なしでも送信でき、ファイル名で本文を上書きしない。
+PDF・Excel（xls/xlsx）・Word（doc/docx）・ZIP・音声を含む汎用ファイルを選択できる。形式で選択を制限しない。write画面の📷・🎬と並ぶ「📎 ファイル」で、iOS標準のファイル選択画面を開く。選択後に元名を表示し、×で解除できる。本文なしでも送信でき、ファイル名で本文を上書きしない。
 
 **表 6.4-2　FileDropのデータと保存条件**
 
 | 項目 | 内容 |
 | --- | --- |
-| 汎用構造 | `files[]`はPDF専用ではない。Word・Excel・ZIP・音声等にも使えるメタデータ構造。初期UIの選択対象だけPDF |
+| 汎用構造 | `files[]`はPDF専用ではない。Word・Excel・ZIP・音声等にも使えるメタデータ構造。UIも汎用ファイルを選択可能。MIME型は端末の値を保持し、不明な場合は`application/octet-stream` |
 | Driveメタデータ | `fileName`、`originalFileName`、`mimeType`、`size`（bytes）を各要素に保持。一時名は`fusen_file_{時刻}_{UUID}`で元名と分離 |
 | IndexedDB | `files[]`のメタデータとバイナリをArrayBufferで保存し、読み込み時にBlobへ復元。選択・解除は即時保存、本文自動保存・バックグラウンド保存でも維持 |
 | PC保存 | Vault配下の`assets/files/`。元の拡張子・日本語名を保持。危険な文字・Windows予約名を安全化。同名は`資料_2.pdf`、`資料_3.pdf`。排他的作成で既存ファイルを上書きしない |
@@ -1354,7 +1354,7 @@ sequenceDiagram
     participant PWA as iPhone PWA
     participant Drive as Google Drive
     participant PC as PC App / Vault
-    PWA->>PWA: 📎でPDF選択・元名表示・IndexedDB保存
+    PWA->>PWA: 📎でファイル選択・元名表示・IndexedDB保存
     PWA->>Drive: PCへ送る：fusen_file_*をアップロード
     PWA->>Drive: notes_from_iphone.jsonへfiles[]を追加
     loop 30秒ごと（targetPcIdを判定）

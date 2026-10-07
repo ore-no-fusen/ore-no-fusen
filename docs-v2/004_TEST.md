@@ -270,3 +270,6 @@ CI での実行は未整備（ローカル手動実行のみ）。
 | 6 | 1.5 | 26-10-08 | FileDropの選択・復元・汎用送信・連番保存・ack保護・画像動画回帰と最初のiPhone実機受け入れ試験を追加。 |
 
 </div>
+
+
+FileDrop追加確認：Excel（xls/xlsx）、Word（doc/docx）、ZIP、音声（m4a/mp3）を選択し、元名・本文・バイト列を保持して送信・保存できること。MIME型が空でもapplication/octet-streamで扱い、同名連番と送信失敗時保持を維持する。

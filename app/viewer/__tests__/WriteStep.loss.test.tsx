@@ -263,7 +263,7 @@ describe('WriteStep loss prevention', () => {
     const { editor, getByLabelText } = renderWriteStep({ filesRef, setFiles });
     editor.textContent = '';
     const pdf = new File(['%PDF'], 'ChatGPT.pdf', { type: 'application/pdf' });
-    fireEvent.change(getByLabelText('PDFファイルを選択'), { target: { files: [pdf] } });
+    fireEvent.change(getByLabelText('ファイルを選択'), { target: { files: [pdf] } });
     await waitFor(() => expect(setFiles).toHaveBeenCalled());
     expect(editor.textContent).toBe('');
     expect(filesRef.current[0]).toEqual(expect.objectContaining({ fileName: expect.stringMatching(/^fusen_file_/), originalFileName: 'ChatGPT.pdf', mimeType: 'application/pdf', size: 4, blob: pdf }));
@@ -280,12 +280,28 @@ describe('WriteStep loss prevention', () => {
     expect(editor.textContent).toBe('大事な付箋');
     expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({ files: [] }));
   });
-  it('FileDrop: PDF以外の選択は添付せず、既存本文を維持する', () => {
+  it.each([
+    ['資料.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['資料.doc', 'application/msword'],
+    ['資料.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    ['資料.zip', 'application/zip'],
+    ['録音.m4a', 'audio/mp4'],
+    ['録音.mp3', 'audio/mpeg'],
+    ['資料.xls', ''],
+    ['任意.bin', ''],
+  ])('FileDrop: %sを元名とバイト列のまま添付し本文を維持する', async (name, type) => {
+    const filesRef = { current: [] as import('../types').DraftFileAttachment[] };
     const setFiles = vi.fn();
-    const { editor, getByLabelText } = renderWriteStep({ setFiles });
-    fireEvent.change(getByLabelText('PDFファイルを選択'), { target: { files: [new File(['zip'], 'test.zip')] } });
-    expect(setFiles).not.toHaveBeenCalled();
+    const { editor, getByLabelText } = renderWriteStep({ filesRef, setFiles });
+    const input = getByLabelText('ファイルを選択');
+    expect(input.hasAttribute('accept')).toBe(false);
+    const file = new File(['binary-data'], name, { type });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({
+      files: [expect.objectContaining({ originalFileName: name, mimeType: type || 'application/octet-stream', size: file.size, blob: file })],
+    })));
     expect(editor.textContent).toBe('大事な付箋');
+    expect(filesRef.current[0].blob).toBe(file);
   });
   it('FileDrop: 送信失敗後も本文と添付を保持し、送信前バックアップにPDFを含める', async () => {
     const file = { fileName: 'fusen_file_1', originalFileName: 'ChatGPT.pdf', mimeType: 'application/pdf', size: 4, blob: new Blob(['%PDF']) };
