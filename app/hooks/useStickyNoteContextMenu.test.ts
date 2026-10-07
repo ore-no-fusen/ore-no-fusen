@@ -32,10 +32,10 @@ describe('existing context-menu helpers', () => {
     });
 
     it('shows the configured launcher key beside the favorite action', () => {
-        expect(getFavoriteMenuLabel('お気に入りに登録', 'Shift+Control+KeyP', 'ja'))
-            .toBe('📌 お気に入りに登録  (クイックランチャー: Ctrl+Shift+P)');
-        expect(getFavoriteMenuLabel('Remove from Favorites', 'ctrl+p', 'en'))
-            .toBe('📌 Remove from Favorites  (Quick Launcher: Ctrl+P)');
+        expect(getFavoriteMenuLabel('ランチャーに登録', 'Shift+Control+KeyP', 'ja'))
+            .toBe('📌 ランチャーに登録  (クイックランチャー: Ctrl+Shift+P)');
+        expect(getFavoriteMenuLabel('Remove from Launcher', 'ctrl+p', 'en'))
+            .toBe('📌 Remove from Launcher  (Quick Launcher: Ctrl+P)');
     });
 
     it('builds open-folder requests', () => {
