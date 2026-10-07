@@ -8,7 +8,7 @@ import { safeUnlisten } from '../utils/safeUnlisten';
 
 const GA_ID = 'G-MGPKF0MQH4';
 type AnalyticsWindow = Window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void; __FUSEN_ANALYTICS_GRANTED__?: boolean; 'ga-disable-G-MGPKF0MQH4'?: boolean };
-type MemberView = { analyticsSubject: string | null; consent: boolean | null };
+type MemberView = { analyticsSubject: string | null; };
 type WeeklyUsage = { week: string; schema: number; appVersion: string; features: Record<string,{ count: number; activeDays: string[]; lastUsedDay: string }> };
 
 function loadGa4(sendPageView: boolean) {
@@ -20,11 +20,11 @@ function loadGa4(sendPageView: boolean) {
   const script=document.createElement('script');script.async=true;script.src=`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;script.dataset.fusenAnalytics='ga4';document.head.appendChild(script);
 }
 
-async function checkAnnouncements(granted:boolean) {
+async function checkAnnouncements() {
   // 開発者ホットライン: 新着があれば通知窓を開く。
   try {
     type Announcement = { id: string; title: string; body: string; segment: string; createdAt: string };
-    const unread = await invoke<Announcement[]>('member_heartbeat',{analyticsConsent:granted});
+    const unread = await invoke<Announcement[]>('member_heartbeat');
     if (unread.length > 0) {
       await emit('fusen:announcements_updated');
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
@@ -48,14 +48,16 @@ async function checkAnnouncements(granted:boolean) {
 }
 
 async function runDesktopBackground(cancelled:()=>boolean) {
+  // Loading the member applies the one-time legacy consent migration first.
+  const member=await invoke<MemberView>('member_get');
   const settings=await invoke<{analytics_consent?:string}>('get_settings');
   if(cancelled())return;
   const granted=settings.analytics_consent==='granted';
   const w=window as AnalyticsWindow; w.__FUSEN_ANALYTICS_GRANTED__=granted; w['ga-disable-G-MGPKF0MQH4']=true;
   if(await invoke<boolean>('member_needs_sync')) await invoke('member_sync').catch(()=>undefined);
-  const member=await invoke<MemberView>('member_get');
   if(cancelled())return;
-  if(granted&&member.consent===true&&member.analyticsSubject){
+  await invoke('member_sync_usage').catch(()=>undefined);
+  if(granted&&member.analyticsSubject){
     loadGa4(false); w['ga-disable-G-MGPKF0MQH4']=false;
     w.gtag?.('config',GA_ID,{send_page_view:false,user_id:member.analyticsSubject});
     const summaries=await invoke<WeeklyUsage[]>('member_closed_summaries');
@@ -67,7 +69,7 @@ async function runDesktopBackground(cancelled:()=>boolean) {
       await invoke('member_mark_summary_sent',{week:summary.week}).catch(()=>undefined);
     }
   }
-  await checkAnnouncements(granted);
+  await checkAnnouncements();
 }
 
 export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
@@ -81,28 +83,30 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
       return;
     }
     let cancelled=false;
+    let backgroundStarted=false;
     let unlisten:(()=>void)|undefined;
     // This local asynchronous read does not delay rendering or note input.
     void invoke<{analytics_consent?:string}>('get_settings').then(settings=>{
       if(!cancelled)(window as AnalyticsWindow).__FUSEN_ANALYTICS_GRANTED__=settings.analytics_consent==='granted';
     }).catch(()=>undefined);
     void listen<{analytics_consent?:string}>('settings_updated',event=>{
-      (window as AnalyticsWindow).__FUSEN_ANALYTICS_GRANTED__=event.payload.analytics_consent==='granted';
+      const granted=event.payload.analytics_consent==='granted';
+      const w=window as AnalyticsWindow;
+      w.__FUSEN_ANALYTICS_GRANTED__=granted;
+      if(!granted) w['ga-disable-G-MGPKF0MQH4']=true;
+      if(windowLabel==='main') void invoke('member_sync_usage').catch(()=>undefined);
+      if(windowLabel==='main'&&backgroundStarted&&granted) void runDesktopBackground(()=>cancelled).catch(()=>undefined);
     }).then(dispose=>{if(cancelled)dispose();else unlisten=dispose;}).catch(()=>undefined);
     if(windowLabel!=='main')return()=>{cancelled=true;safeUnlisten(unlisten);};
     // Initialize the local member before the first queued feature batch arrives.
     void invoke('member_get').catch(()=>undefined);
-    void invoke<{analytics_consent?:string}>('get_settings')
-      .then(settings=>invoke('member_open_time_tick',{analyticsConsent:settings.analytics_consent==='granted'}))
-      .catch(()=>undefined);
-    const start=window.setTimeout(()=>void runDesktopBackground(()=>cancelled).catch(()=>undefined),60_000);
+    void invoke('member_open_time_tick').catch(()=>undefined);
+    const start=window.setTimeout(()=>{backgroundStarted=true;void runDesktopBackground(()=>cancelled).catch(()=>undefined);},60_000);
     const flush=window.setInterval(()=>{
-      void invoke<{analytics_consent?:string}>('get_settings')
-        .then(async settings=>{
-          const analyticsConsent=settings.analytics_consent==='granted';
-          await invoke('member_open_time_tick',{analyticsConsent});
+      void invoke('member_open_time_tick')
+        .then(async()=>{
           await invoke('member_flush');
-          if(!cancelled) await checkAnnouncements(analyticsConsent);
+          if(!cancelled) await checkAnnouncements();
         })
         .catch(()=>undefined);
     },300_000);
