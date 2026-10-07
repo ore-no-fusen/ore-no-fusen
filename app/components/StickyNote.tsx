@@ -11,6 +11,7 @@
  */
 
 'use client';
+import { playShelfMotion, storeFavoriteInOrder } from '../utils/shelfMotion';
 
 import { useState, useEffect, useCallback, useRef, memo, useMemo, lazy, Suspense } from 'react';
 import React from 'react';
@@ -1097,6 +1098,42 @@ const StickyNote = memo(function StickyNote() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
     ensureFilePathForDropRef.current = handleFirstChar;
+    useEffect(() => {
+        let cancelled = false;
+        let dispose: (() => void) | undefined;
+        import('@tauri-apps/api/event').then(({ listen }) => listen<{path:string; requestId:string}>('fusen:store_favorite', async ({ payload }) => {
+            if (payload.path.replace(/\\/g, '/').toLowerCase() !== noteFilePathRef.current?.replace(/\\/g, '/').toLowerCase()) return;
+            let error: string | null = null;
+            let stored = false;
+            if (isDeletingRef.current) {
+                await invoke('fusen_complete_store', {requestId:payload.requestId, error:'付箋の操作中です'});
+                return;
+            }
+            isDeletingRef.current = true;
+            try {
+                const body = isEditingForListenerRef.current ? editBodyRef.current : contentForListenerRef.current;
+                const win = (await import('@tauri-apps/api/webviewWindow')).getCurrentWebviewWindow();
+                const success = await storeFavoriteInOrder(
+                    () => saveNoteContent(body, rawFrontmatterForAlarmRef.current, false),
+                    async () => { await invoke('fusen_store_favorite', {path:payload.path, windowLabel:win.label, requestId:payload.requestId}); stored = true; },
+                    () => playShelfMotion(document.body, 'return'),
+                    () => win.hide(),
+                );
+                if (!success) throw new Error('保存できなかったため画面に残します');
+            } catch (e) {
+                error = String(e);
+                if (stored) {
+                    await invoke('fusen_take_out_favorite', {path:payload.path}).catch(() => {});
+                    const win = (await import('@tauri-apps/api/webviewWindow')).getCurrentWebviewWindow();
+                    await win.show().catch(() => {});
+                }
+            } finally {
+                isDeletingRef.current = false;
+                await invoke('fusen_complete_store', {requestId:payload.requestId, error});
+            }
+        })).then(unlisten => { if (cancelled) unlisten(); else dispose = unlisten; });
+        return () => { cancelled = true; dispose?.(); };
+    }, [editBodyRef, noteFilePathRef, saveNoteContent]);
 
     useEffect(() => {
         let unlisten: (() => void) | undefined;
@@ -1114,6 +1151,14 @@ const StickyNote = memo(function StickyNote() {
         };
     }, []);
 
+    useEffect(() => {
+        let dispose: (() => void) | undefined;
+        let cancelled = false;
+        import('@tauri-apps/api/event').then(({listen}) => listen('fusen:shelf_enter', () => {
+            void playShelfMotion(document.body, 'enter').catch(() => {});
+        })).then(fn => { if(cancelled) fn(); else dispose=fn; }).catch(() => {});
+        return () => { cancelled=true; dispose?.(); };
+    }, []);
     // リロードイベントリスナー
     useEffect(() => {
         if (!selectedFile) return;

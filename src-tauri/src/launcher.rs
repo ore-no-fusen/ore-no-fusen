@@ -592,7 +592,7 @@ fn remove_from_shelf_at_base(_base_path: &Path, path: &Path) -> Result<Option<Pa
     Err("note is not on a launcher shelf".to_string())
 }
 
-fn build_quick_launcher_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
+fn build_quick_launcher_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<tauri::WebviewWindow<R>, String> {
     tauri::WebviewWindowBuilder::new(
         app,
         QUICK_LAUNCHER_LABEL,
@@ -1442,7 +1442,7 @@ pub(crate) fn requests_quick_launcher(arguments: &[String]) -> bool {
 }
 
 /// Taskbar actions always show the launcher; repeated requests never toggle it off.
-pub(crate) fn show_quick_launcher(app: AppHandle) -> Result<(), String> {
+pub(crate) fn show_quick_launcher<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), String> {
     let app_for_show = app.clone();
     app.run_on_main_thread(move || {
         let result = (|| {
