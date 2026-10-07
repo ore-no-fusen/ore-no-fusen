@@ -21,6 +21,7 @@ pub struct MemberLocal {
     member_id: String, secret: String, general_number: Option<u64>,
     #[serde(default)] analytics_subject: Option<String>,
     consent: Option<bool>,
+    #[serde(default)] consent_linked: bool,
     #[serde(default)] weeks: BTreeMap<String, WeeklyUsage>,
     #[serde(default)] read_announcement_ids: BTreeSet<String>,
     #[serde(default)] announcements: Vec<AnnouncementPayload>,
@@ -83,7 +84,7 @@ fn replace_file(from:&std::path::Path,to:&std::path::Path)->Result<(),String>{
 }
 #[cfg(not(windows))]
 fn replace_file(from:&std::path::Path,to:&std::path::Path)->Result<(),String>{std::fs::rename(from,to).map_err(|_|"Cannot replace member identity".into())}
-fn ensure(state:&mut AppState)->Result<&mut MemberLocal,String>{
+fn load_member(state:&mut AppState)->Result<(),String>{
     if state.member.is_none(){
         let path=identity_path()?;
         let value=match std::fs::read(&path){
@@ -96,7 +97,47 @@ fn ensure(state:&mut AppState)->Result<&mut MemberLocal,String>{
             Err(_)=>return Err("Cannot read member identity".into()),
         }; state.member=Some(value);
     }
-    state.member.as_mut().ok_or("Member identity unavailable".into())
+    Ok(())
+}
+fn ensure(state:&mut AppState)->Result<&mut MemberLocal,String>{
+    load_member(state)?;
+    let member = state.member.as_mut().ok_or("Member identity unavailable")?;
+    let mut settings = crate::storage::load_settings()?;
+    let mut changed = !member.consent_linked;
+    if !member.consent_linked {
+        // A previous explicit refusal must not become permission during migration.
+        if preserve_legacy_refusal(member.consent, settings.analytics_consent.as_deref()) {
+            settings.analytics_consent = Some("denied".into());
+            crate::storage::save_settings(&settings)?;
+        }
+        member.consent_linked = true;
+    }
+    let choice = match settings.analytics_consent.as_deref() { Some("granted") => Some(true), Some("denied") => Some(false), _ => None };
+    if member.consent != choice {
+        apply_consent(member, choice);
+        changed = true;
+    }
+    if changed { persist(member)?; }
+    Ok(member)
+}
+
+fn apply_consent(member: &mut MemberLocal, choice: Option<bool>) {
+    member.consent = choice;
+    if choice != Some(true) { member.weeks.clear(); member.open_seconds = 0; }
+}
+
+fn preserve_legacy_refusal(legacy: Option<bool>, analytics: Option<&str>) -> bool {
+    legacy == Some(false) && analytics == Some("granted")
+}
+
+pub fn link_saved_consent(state: &mut AppState, choice: Option<&str>) -> Result<(), String> {
+    load_member(state)?;
+    if let Some(member) = state.member.as_mut() {
+        member.consent_linked = true;
+        apply_consent(member, match choice { Some("granted") => Some(true), Some("denied") => Some(false), _ => None });
+        persist(member)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -104,8 +145,11 @@ pub fn member_get(state:State<'_,Mutex<AppState>>)->Result<MemberView,String>{le
 
 #[tauri::command]
 pub fn member_set_consent(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>,granted:bool)->Result<MemberView,String>{
-    let mut g=state.lock().map_err(|_|"State unavailable")?; let value=ensure(&mut g)?; value.consent=Some(granted); if !granted{value.weeks.clear();value.open_seconds=0;} persist(value)?;
-    let view=value.view(); let _=app.emit("member_updated",view.clone()); Ok(view)
+    let mut settings = crate::storage::load_settings()?;
+    settings.analytics_consent = Some(if granted { "granted" } else { "denied" }.into());
+    crate::settings::save_settings(app.clone(), state.clone(), settings)?;
+    let mut g=state.lock().map_err(|_|"State unavailable")?;
+    let view=ensure(&mut g)?.view(); let _=app.emit("member_updated",view.clone()); Ok(view)
 }
 
 /// Adds a UI-side batch to memory. It deliberately performs no persistence.
@@ -355,6 +399,28 @@ fn unprotect(bytes:&[u8])->Result<Vec<u8>,String>{use windows::Win32::{Foundatio
 #[cfg(test)]
 mod segment_tests {
     use super::*;
+
+    #[test]
+    fn linked_consent_enables_collection_and_stop_clears_local_usage() {
+        let mut member = MemberLocal::default();
+        apply_consent(&mut member, Some(true));
+        assert!(current_usage_snapshot(&member, true, "2026-W41").1);
+        member.open_seconds = 120;
+        member.weeks.insert("2026-W41".into(), WeeklyUsage { week: "2026-W41".into(), schema: 1, app_version: "5.5.1".into(), features: BTreeMap::new() });
+        apply_consent(&mut member, Some(false));
+        assert!(!current_usage_snapshot(&member, true, "2026-W41").1);
+        assert!(member.weeks.is_empty());
+        assert_eq!(member.open_seconds, 0);
+    }
+
+    #[test]
+    fn migration_does_not_treat_unselected_as_refusal_or_override_explicit_refusal() {
+        assert!(!preserve_legacy_refusal(None, Some("granted")));
+        assert!(!preserve_legacy_refusal(Some(true), Some("granted")));
+        assert!(preserve_legacy_refusal(Some(false), Some("granted")));
+        assert!(!preserve_legacy_refusal(None, Some("denied")));
+        assert!(!preserve_legacy_refusal(None, None));
+    }
 
     #[test]
     fn production_waits_twenty_four_hours_while_development_rechecks() {

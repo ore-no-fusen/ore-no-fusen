@@ -48,13 +48,15 @@ async function checkAnnouncements(granted:boolean) {
 }
 
 async function runDesktopBackground(cancelled:()=>boolean) {
+  // Loading the member applies the one-time legacy consent migration first.
+  const member=await invoke<MemberView>('member_get');
   const settings=await invoke<{analytics_consent?:string}>('get_settings');
   if(cancelled())return;
   const granted=settings.analytics_consent==='granted';
   const w=window as AnalyticsWindow; w.__FUSEN_ANALYTICS_GRANTED__=granted; w['ga-disable-G-MGPKF0MQH4']=true;
   if(await invoke<boolean>('member_needs_sync')) await invoke('member_sync').catch(()=>undefined);
-  const member=await invoke<MemberView>('member_get');
   if(cancelled())return;
+  await invoke('member_sync_usage',{analyticsConsent:granted}).catch(()=>undefined);
   if(granted&&member.consent===true&&member.analyticsSubject){
     loadGa4(false); w['ga-disable-G-MGPKF0MQH4']=false;
     w.gtag?.('config',GA_ID,{send_page_view:false,user_id:member.analyticsSubject});
@@ -81,13 +83,19 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
       return;
     }
     let cancelled=false;
+    let backgroundStarted=false;
     let unlisten:(()=>void)|undefined;
     // This local asynchronous read does not delay rendering or note input.
     void invoke<{analytics_consent?:string}>('get_settings').then(settings=>{
       if(!cancelled)(window as AnalyticsWindow).__FUSEN_ANALYTICS_GRANTED__=settings.analytics_consent==='granted';
     }).catch(()=>undefined);
     void listen<{analytics_consent?:string}>('settings_updated',event=>{
-      (window as AnalyticsWindow).__FUSEN_ANALYTICS_GRANTED__=event.payload.analytics_consent==='granted';
+      const granted=event.payload.analytics_consent==='granted';
+      const w=window as AnalyticsWindow;
+      w.__FUSEN_ANALYTICS_GRANTED__=granted;
+      if(!granted) w['ga-disable-G-MGPKF0MQH4']=true;
+      if(windowLabel==='main') void invoke('member_sync_usage',{analyticsConsent:event.payload.analytics_consent==='granted'}).catch(()=>undefined);
+      if(windowLabel==='main'&&backgroundStarted&&granted) void runDesktopBackground(()=>cancelled).catch(()=>undefined);
     }).then(dispose=>{if(cancelled)dispose();else unlisten=dispose;}).catch(()=>undefined);
     if(windowLabel!=='main')return()=>{cancelled=true;safeUnlisten(unlisten);};
     // Initialize the local member before the first queued feature batch arrives.
@@ -95,7 +103,7 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
     void invoke<{analytics_consent?:string}>('get_settings')
       .then(settings=>invoke('member_open_time_tick',{analyticsConsent:settings.analytics_consent==='granted'}))
       .catch(()=>undefined);
-    const start=window.setTimeout(()=>void runDesktopBackground(()=>cancelled).catch(()=>undefined),60_000);
+    const start=window.setTimeout(()=>{backgroundStarted=true;void runDesktopBackground(()=>cancelled).catch(()=>undefined);},60_000);
     const flush=window.setInterval(()=>{
       void invoke<{analytics_consent?:string}>('get_settings')
         .then(async settings=>{
