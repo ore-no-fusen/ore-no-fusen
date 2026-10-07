@@ -2,7 +2,7 @@ import React from 'react';
 import { serializeEditor, extractTitleBody } from '../editor-helpers';
 import { saveDraft, loadDraft } from '../lib/indexeddb';
 import { createId, nowJST } from '../utils';
-import type { VideoBlobMap } from '../types';
+import type { DraftFileAttachment, VideoBlobMap } from '../types';
 
 // ---------------------------------------------------------------------------
 // useVisibilitySave: アプリがバックグラウンドになった瞬間に保存
@@ -12,6 +12,7 @@ type VisibilitySaveRefs = {
   editorRef: React.RefObject<HTMLDivElement | null>;
   currentDraftIdRef: React.MutableRefObject<string | null>;
   imageBlobsRef: React.RefObject<Map<string, Blob>>;
+  filesRef?: React.RefObject<DraftFileAttachment[]>;
   videoBlobsRef?: React.RefObject<VideoBlobMap>;
   writeTagsRef: React.RefObject<string[]>;
 };
@@ -28,7 +29,7 @@ export function useVisibilitySave(refs: VisibilitySaveRefs): void {
       if (document.visibilityState !== 'hidden') return;
       if (!refs.editorRef.current) return;
       const rawText = serializeEditor(refs.editorRef.current);
-      if (!rawText.trim()) return;
+      if (!rawText.trim() && !refs.filesRef?.current?.length) return;
       const { title, body } = extractTitleBody(rawText);
       const draftId = refs.currentDraftIdRef.current ?? createId();
       refs.currentDraftIdRef.current = draftId;
@@ -42,6 +43,7 @@ export function useVisibilitySave(refs: VisibilitySaveRefs): void {
           body,
           created_at: nowJST(),
           images: imagesArr,
+          ...(refs.filesRef ? { files: refs.filesRef.current ?? [] } : {}),
           tags: refs.writeTagsRef.current ?? [],
           ...(existing?.locked ? { locked: true as const } : {}),
         }).catch(() => {});

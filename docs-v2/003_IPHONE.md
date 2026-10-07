@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.37 / 2026-09-26
+設計書 v1.41 / 2026-10-08
 </p>
 
 ---
@@ -792,6 +792,7 @@ Drive 上の JSON は、以下の構成を基本とする。
 | 10 | `items[].targetPcId` | `string` | △ | 複数PC接続時の送信先PC ID。未指定の旧データは従来互換として全PCが受信対象にできる |
 | 11 | `items[].originNoteId` / `originBodyHash` / `originPcId` | `string` | △ | PCから受け取った付箋を送り返す場合だけ保持。iPhoneで新規作成したメモには付けない |
 | 12 | `items[].originAppearance` | `Object` | △ | PCから受け取った付箋の送信時点の見た目。元付箋が見つからない場合の新規付箋に使用 |
+| 13 | `items[].files` | `Object[]` | △ | 汎用添付。各要素に `fileName`（fusen_file_*）、`originalFileName`、`mimeType`、`size` を保持。本文・動画と独立 |
 
 ```json
 {
@@ -1057,8 +1058,8 @@ sequenceDiagram
     Note over UserPhone: メモを書いている
     UserPhone->>PWA: ① 「PCに送る」ボタン
     PWA->>PWA: ❶ トークン期限を確認<br>必要なら /api/auth/refresh
-    PWA->>Drive: ❷ fusen_img_*.jpg / fusen_video_* を並列アップロード（添付がある場合）
-    PWA->>Drive: ❸ notes_from_iphone.json を取得<br>旧スキーマなら配列へ変換
+    PWA->>Drive: ❷ notes_from_iphone.json を取得<br>旧スキーマなら配列へ変換、取得失敗は中止
+    PWA->>Drive: ❸ fusen_img_* / fusen_video_* / fusen_file_* を並列アップロード
     PWA->>Drive: ❹ notes_from_iphone.json に追記して上書き
     PWA->>PWA: ❺ IndexedDB に sent_at を保存
     PWA->>UserPhone: ❻ 送信完了を表示
@@ -1066,8 +1067,9 @@ sequenceDiagram
 
     Note over Drive,PC: 30秒ポーリングで自動検出
     PC->>Drive: ❼ notes_from_iphone.json を確認
-    Drive-->>PC: ❽ 新着データ + 画像/動画ファイル名
+    Drive-->>PC: ❽ 新着データ + 画像/動画/files添付情報
     PC->>PC: ❾ 受信IDの処理済み確認と送信元IDの照合
+    PC->>PC: FileDropをassets/filesへ保存<br>失敗時は付箋作成とackを行わない（図3-4a）
     alt 元付箋IDがある返送
         PC->>UserPC: ❿ PCとiPhoneの本文を並べて選択を求める
         UserPC->>PC: ② 元付箋に反映・新規付箋・保留を選ぶ
@@ -1097,7 +1099,7 @@ PCから送った付箋の返送には `originNoteId`、`originBodyHash`、`orig
 
 <Note type="warning">
 <strong>本文保護：</strong>ユーザーが入力した <code>body</code> と、添付ファイルの元ファイル名・Drive 一時ファイル名・PC 保存パスは別の情報として扱う。
-動画を選んでも本文をファイル名で上書きしてはならない。PC 受信時は既存本文の後ろに保存先パスを追記する。
+動画・PDFを選んでも本文をファイル名で上書きしてはならない。PC 受信時は既存本文の後ろに保存先パスを追記する。
 </Note>
 
 <Note type="warning">
@@ -1329,6 +1331,53 @@ graph LR
 | 6 | ⑥ 成功フィードバック | 3秒間 `backgroundSendSuccess = true` にして UI に成功インジケータを表示。その後自動で消える |
 | 7 | ⑦ VideoDrop | 🎬で選ばれた動画は選択時点では送信しない。「PCへ送る」時に `fusen_video_*.mp4/mov` として Drive へアップロードし、キューには `videos[]` を入れる。PC側は受信時に `assets/video/` へ保存し、本文にはクリック可能な絶対パスを末尾へ追記し、ack後にDrive上の一時動画を削除する |
 
+### 6.4.1 FileDrop（汎用ファイル添付）
+
+初期の選択対象はPDF。write画面の📷・🎬と並ぶ「📎 ファイル」で、iOS標準のファイル選択画面を開く。選択後に元名を表示し、×で解除できる。本文なしでも送信でき、ファイル名で本文を上書きしない。
+
+**表 6.4-2　FileDropのデータと保存条件**
+
+| 項目 | 内容 |
+| --- | --- |
+| 汎用構造 | `files[]`はPDF専用ではない。Word・Excel・ZIP・音声等にも使えるメタデータ構造。初期UIの選択対象だけPDF |
+| Driveメタデータ | `fileName`、`originalFileName`、`mimeType`、`size`（bytes）を各要素に保持。一時名は`fusen_file_{時刻}_{UUID}`で元名と分離 |
+| IndexedDB | `files[]`のメタデータとバイナリをArrayBufferで保存し、読み込み時にBlobへ復元。選択・解除は即時保存、本文自動保存・バックグラウンド保存でも維持 |
+| PC保存 | Vault配下の`assets/files/`。元の拡張子・日本語名を保持。危険な文字・Windows予約名を安全化。同名は`資料_2.pdf`、`資料_3.pdf`。排他的作成で既存ファイルを上書きしない |
+| 本文 | 既存本文末尾に「📎 元ファイル名」「保存先:」「PC上の絶対パス」を追記。タイトル・本文・タグは添付選択で変更しない |
+| 成功とack | 全FileDropのバイナリ保存成功後だけ受信イベントを送る。既存PC付箋保存成功後のackでキュー項目と`fusen_file_*`を削除 |
+| 失敗 | メタデータ不正、Drive取得失敗、サイズ不一致、Vault保存失敗は受信イベントとackを行わない。キュー・一時ファイルを残し次のポーリングで再試行。部分成功したローカル添付は保持され、再試行で連番の副本が残る場合がある |
+| 一時掃除 | `fusen_file_*`も対象。未処理キューの参照中は削除しない。ack後の削除失敗で残った添付は通常の掃除対象になる |
+| 互換 | filesなしの旧データ、30秒ポーリング、targetPcId、画像、videos[]、VideoDrop単体フィールドを維持。画像・動画・ファイルを同じ付箋へ添付できる |
+
+```mermaid
+sequenceDiagram
+    participant PWA as iPhone PWA
+    participant Drive as Google Drive
+    participant PC as PC App / Vault
+    PWA->>PWA: 📎でPDF選択・元名表示・IndexedDB保存
+    PWA->>Drive: PCへ送る：fusen_file_*をアップロード
+    PWA->>Drive: notes_from_iphone.jsonへfiles[]を追加
+    loop 30秒ごと（targetPcIdを判定）
+        PC->>Drive: キュー・添付バイナリを取得
+        alt 全FileDrop保存成功
+            PC->>PC: assets/files/へ排他的保存・本文末尾に保存先追記
+            PC->>PC: 既存経路で付箋を保存
+            alt 付箋保存成功
+                PC->>Drive: ack：処理済み項目・fusen_file_*を削除
+            else 付箋保存失敗
+                PC->>PC: ackせず未処理データを保持
+            end
+        else 添付保存失敗
+            PC->>PC: 付箋作成へ進めず、次回再試行
+        end
+    end
+```
+<p class="mermaid-caption">図 3-4a　FileDropの送信・保存・ack（3参加者）</p>
+
+**最初の受け入れ試験（iPhone実機）**
+
+ChatGPTで作成したPDFをiPhoneのファイルに保存 → 俺の付箋PWAで📎を押す → PDFを選択 → PCへ送る → PCに新しい付箋が現れる → `assets/files/`に元PDFが保存される → 付箋から保存先が分かる → Driveの一時ファイルが削除される。
+
 ### 6.5 通知許可・デバイス登録（push 画面）
 
 <p class="table-caption">表 6.5-1　プッシュ通知登録の処理ステップ</p>
@@ -1445,5 +1494,6 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 39 | **1.38** | 26-09-29 | 元付箋への反映後に開いている画面を再読み込みし、古い画面からの遅延保存で反映結果を消さない規則を追加。 |
 | 40 | **1.39** | 26-09-29 | 遅延保存の拒否後、同じ本文が既に保存済みなら管理情報を再取得して誤った自動保存失敗表示を防ぎ、未保存の異なる本文は画面に残す。 |
 | 41 | **1.40** | 26-09-30 | 新規付箋のファイル名変更後もiPhone反映時の再読み込みを省略せず、保存済み本文を開いている画面へ反映する。 |
+| 42 | **1.41** | 26-10-08 | FileDropの汎用files[]、PDF選択、IndexedDBバイナリ復元、assets/files保存、連番・失敗時保持・ack・一時掃除と最初の実機受け入れ試験を追加。 |
 
 </div>

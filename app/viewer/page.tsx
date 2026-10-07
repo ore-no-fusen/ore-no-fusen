@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor, nowJST } from './utils';
 import { getTranslation, type Language } from '@/lib/i18n';
-import type { IphoneNote, PendingHydrate, DraftRecord, PendingVideoMeta, VideoBlobMap } from './types';
+import type { IphoneNote, PendingHydrate, DraftRecord, DraftFileAttachment, PendingVideoMeta, VideoBlobMap } from './types';
 import { NoteListStep } from './NoteListStep';
 import { PushStep } from './PushStep';
 import { WriteStep } from './WriteStep';
@@ -88,6 +88,8 @@ export default function ViewerPage() {
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<string, string>>(new Map());
   const [showMermaidModal, setShowMermaidModal] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<DraftFileAttachment[]>([]);
+  const filesRef = React.useRef<DraftFileAttachment[]>([]);
   const videoInputRef = React.useRef<HTMLInputElement>(null);
   const [videoBlobs, setVideoBlobs] = useState<VideoBlobMap>(new Map());
   const [videoMetas, setVideoMetas] = useState<PendingVideoMeta[]>([]);
@@ -191,11 +193,11 @@ export default function ViewerPage() {
   }, []);
 
   // visibilitychange: バックグラウンドになった瞬間に保存
-  useVisibilitySave({ editorRef, currentDraftIdRef, imageBlobsRef, videoBlobsRef, writeTagsRef });
+  useVisibilitySave({ editorRef, currentDraftIdRef, imageBlobsRef, videoBlobsRef, filesRef, writeTagsRef });
 
   // onInput 自動保存
   const handleEditorInput = useAutoSave(
-    { editorRef, currentDraftIdRef, imageBlobsRef, videoBlobsRef, writeTagsRef },
+    { editorRef, currentDraftIdRef, imageBlobsRef, videoBlobsRef, filesRef, writeTagsRef },
     { setCurrentDraftId }
   );
 
@@ -227,6 +229,8 @@ export default function ViewerPage() {
       setCurrentDraftId(pendingHydrate.draftId);
       setWriteTags(pendingHydrate.tags);
       setShowTagBar(pendingHydrate.tags.length > 0);
+      filesRef.current = pendingHydrate.files ?? [];
+      setFiles(filesRef.current);
       const nextVideoBlobMap = pendingHydrate.videoBlobMap ?? new Map();
       videoBlobsRef.current = nextVideoBlobMap;
       setVideoBlobs(nextVideoBlobMap);
@@ -290,6 +294,7 @@ export default function ViewerPage() {
           tags: draft.tags ?? [],
           videoMetas: videoMetasFromRecord(draft),
           videoBlobMap: videoBlobMapFromDraft(draft),
+          files: draft?.files ?? [],
           notificationSource: 'visibility',
         });
         appendDiagnosticLog(formatNavigationLog('detail_requested', {
@@ -373,6 +378,7 @@ export default function ViewerPage() {
           tags: draft.tags ?? [],
           videoMetas: videoMetasFromRecord(draft),
           videoBlobMap: videoBlobMapFromDraft(draft),
+          files: draft?.files ?? [],
           notificationSource: 'open_note',
         });
         pageLog(formatNavigationLog('detail_requested', {
@@ -434,6 +440,7 @@ export default function ViewerPage() {
               status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
               created_at: d.created_at, tags: d.tags,
               type: d.type,
+              files: d.files,
               videoFileName: d.videoFileName,
               originalFileName: d.originalFileName,
               videos: (d.videos ?? []).map((video) => ({
@@ -567,6 +574,9 @@ export default function ViewerPage() {
           <WriteStep
             editorRef={editorRef}
             fileInputRef={fileInputRef}
+            files={files}
+            filesRef={filesRef}
+            setFiles={setFiles}
             videoInputRef={videoInputRef}
             imageBlobsRef={imageBlobsRef}
             videoBlobsRef={videoBlobsRef}
@@ -620,6 +630,8 @@ export default function ViewerPage() {
             t={t}
             language={lang}
             onNew={() => {
+              filesRef.current = [];
+              setFiles([]);
               videoBlobsRef.current = new Map();
               setVideoBlobs(new Map());
               setVideoMetas([]);
@@ -644,6 +656,7 @@ export default function ViewerPage() {
                 tags: note.tags ?? [],
                 videoMetas: videoMetasFromRecord(draft ?? note),
                 videoBlobMap: videoBlobMapFromDraft(draft),
+                files: draft?.files ?? [],
               });
               setStep('write');
 

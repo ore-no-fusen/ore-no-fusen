@@ -881,7 +881,7 @@ pub async fn list_temp_media_files(
     Ok(resp
         .files
         .into_iter()
-        .filter(|f| f.name.starts_with("fusen_img_") || f.name.starts_with("fusen_video_"))
+        .filter(|f| f.name.starts_with("fusen_img_") || f.name.starts_with("fusen_video_") || f.name.starts_with("fusen_file_"))
         .map(|f| DriveTempMediaFile {
             id: f.id,
             name: f.name,

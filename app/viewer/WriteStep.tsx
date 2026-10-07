@@ -14,13 +14,17 @@ import {
 import { saveDraft } from './lib/indexeddb';
 import { serializeEditor, extractTitleBody, mergeKnownTags, loadKnownTags } from './editor-helpers';
 import type { TranslationKey } from '@/lib/i18n';
-import type { PcDevice, PendingHydrate, PendingVideoMeta, VideoBlobMap } from './types';
+import { buildFileName } from './file-attachments';
+import type { DraftFileAttachment, PcDevice, PendingHydrate, PendingVideoMeta, VideoBlobMap } from './types';
 
 // ---------------------------------------------------------------------------
 // WriteStep: メモ編集画面（step === 'write'）
 // ---------------------------------------------------------------------------
 
 type WriteStepProps = {
+  files?: DraftFileAttachment[];
+  filesRef?: React.MutableRefObject<DraftFileAttachment[]>;
+  setFiles?: React.Dispatch<React.SetStateAction<DraftFileAttachment[]>>;
   // refs
   editorRef: React.MutableRefObject<HTMLDivElement | null>;
   fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
@@ -66,7 +70,7 @@ type WriteStepProps = {
   refreshPcDevices?: () => Promise<string>;
   // handlers
   handleEditorInput: () => void;
-  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoBlobs?: VideoBlobMap; draftId: string | null; targetPcId?: string }) => Promise<boolean>;
+  sendToPC: (payload: { rawText: string; tags: string[]; blobs: Map<string, Blob>; videoBlobs?: VideoBlobMap; files?: DraftFileAttachment[]; draftId: string | null; targetPcId?: string }) => Promise<boolean>;
 };
 
 function formatPcUpdatedAt(value: string | undefined, t: (key: TranslationKey) => string) {
@@ -83,6 +87,9 @@ function formatPcUpdatedAt(value: string | undefined, t: (key: TranslationKey) =
  * 副作用: なし（コールバックは親から注入）
  */
 export function WriteStep({
+  files = [],
+  filesRef,
+  setFiles,
   editorRef,
   fileInputRef,
   videoInputRef,
@@ -126,6 +133,26 @@ export function WriteStep({
   handleEditorInput,
   sendToPC,
 }: WriteStepProps) {
+  const attachmentInputRef = React.useRef<HTMLInputElement>(null);
+  const saveFiles = async (next: DraftFileAttachment[]) => {
+    if (!editorRef.current) return;
+    const { title, body } = extractTitleBody(serializeEditor(editorRef.current));
+    const id = currentDraftId ?? createId();
+    await saveDraft({ id, title, body, created_at: nowJST(), tags: writeTags,
+      images: Array.from(imageBlobsRef.current, ([fileName, blob]) => ({ fileName, blob })), files: next });
+    setCurrentDraftId(id);
+  };
+  const changeFiles = async (next: DraftFileAttachment[]) => {
+    try {
+      await saveFiles(next);
+      if (filesRef) filesRef.current = next;
+      setFiles?.(next);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage('ファイル添付の保存に失敗しました: ' + String(error));
+    }
+  };
+  const clearFiles = () => { if (filesRef) filesRef.current = []; setFiles?.([]); };
   const selectedPc = pcDevices.find((pc) => pc.pcId === selectedPcId) ?? null;
   const [isRefreshingPcDevices, setIsRefreshingPcDevices] = React.useState(false);
   const [previewImageSrc, setPreviewImageSrc] = React.useState<string | null>(null);
@@ -169,7 +196,7 @@ export function WriteStep({
       {/* ヘッダー */}
       <div className="flex items-center px-4 py-3 bg-[#F2F2F7] gap-1">
         <button
-          className="text-blue-500 text-sm font-medium px-2 py-2 rounded-xl hover:bg-gray-200 active:bg-gray-300 transition-colors"
+          className="shrink-0 whitespace-nowrap text-blue-500 text-sm font-medium px-1 py-2 rounded-xl hover:bg-gray-200 active:bg-gray-300 transition-colors"
           onClick={async () => {
             if (editorRef.current) {
               const rawText = serializeEditor(editorRef.current);
@@ -188,7 +215,7 @@ export function WriteStep({
           📋 {t('pwa.listTitle')}
         </button>
         <div className="flex-1" />
-        <div className="flex items-center gap-0 p-1">
+        <div className="flex items-center gap-0 min-w-0 overflow-x-auto">
           {/* 画像ボタン */}
           <button
             className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
@@ -207,6 +234,7 @@ export function WriteStep({
           >
             🎬
           </button>
+          <button type="button" className="h-9 px-1 shrink-0 whitespace-nowrap rounded-lg text-xs hover:bg-gray-100" onClick={() => attachmentInputRef.current?.click()} aria-label="ファイルを添付">📎 ファイル</button>
           {/* Mermaid ボタン */}
           <button
             className="w-9 h-9 flex items-center justify-center hover:bg-gray-100 active:bg-gray-200 text-gray-600 rounded-lg text-lg transition-colors"
@@ -426,6 +454,23 @@ export function WriteStep({
         </div>
       )}
 
+      <input ref={attachmentInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" aria-label="PDFファイルを選択"
+        onChange={async (e) => {
+          const selected = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          if (!selected.length) return;
+          if (selected.some(file => !file.name.toLowerCase().endsWith('.pdf'))) {
+            setErrorMessage('PDFファイルを選択してください。'); return;
+          }
+          await changeFiles([...(filesRef?.current ?? files), ...selected.map(file => ({
+            fileName: buildFileName(), originalFileName: file.name,
+            mimeType: file.type || 'application/pdf', size: file.size, blob: file,
+          }))]);
+        }} />
+      {files.map(file => <div key={file.fileName} className="mx-4 mb-2 px-3 py-2 rounded-xl bg-white flex items-center justify-between gap-2 text-sm">
+        <span className="truncate">📎 {file.originalFileName}</span>
+        <button type="button" aria-label={file.originalFileName + ' の添付を解除'} onClick={() => changeFiles((filesRef?.current ?? files).filter(entry => entry.fileName !== file.fileName))}>×</button>
+      </div>)}
       {/* 隠し file input */}
       <input
         ref={fileInputRef}
@@ -450,14 +495,14 @@ export function WriteStep({
         multiple
         className="hidden"
         onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
+          const selectedVideos = Array.from(e.target.files ?? []);
           e.target.value = '';
-          if (files.length === 0) return;
-          const validFiles = files.filter((file) => {
+          if (selectedVideos.length === 0) return;
+          const validFiles = selectedVideos.filter((file) => {
             const lower = file.name.toLowerCase();
             return lower.endsWith('.mp4') || lower.endsWith('.mov');
           });
-          if (validFiles.length !== files.length) {
+          if (validFiles.length !== selectedVideos.length) {
             setErrorMessage(t('pwa.write.invalidVideo'));
           }
           if (validFiles.length === 0) {
@@ -493,6 +538,7 @@ export function WriteStep({
                 title,
                 body,
                 created_at: nowJST(),
+                files: filesRef?.current ?? files,
                 images: imagesArr,
                 tags: writeTags,
               }).catch(() => {});
@@ -605,9 +651,11 @@ export function WriteStep({
                 title,
                 body,
                 created_at: nowJST(),
+                files: filesRef?.current ?? files,
                 images: imagesArr,
                 tags: writeTags,
               });
+              clearFiles();
               imageBlobsRef.current = new Map();
               setImageBlobs(new Map());
               videoBlobsRef.current = new Map();
@@ -647,6 +695,7 @@ export function WriteStep({
                 title,
                 body,
                 created_at: nowJST(),
+                files: filesRef?.current ?? files,
                 images: imagesArr,
                 tags: capturedTags,
               });
@@ -675,12 +724,14 @@ export function WriteStep({
               rawText,
               tags: capturedTags,
               blobs: capturedBlobs,
+              files: [...(filesRef?.current ?? files)],
               videoBlobs: new Map(videoBlobsRef.current),
               draftId,
               ...(targetPcId ? { targetPcId } : {}),
             });
             if (!sent) return;
 
+            clearFiles();
             editorRef.current.innerHTML = '';
             imageBlobsRef.current = new Map();
             setImageBlobs(new Map());

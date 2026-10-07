@@ -176,6 +176,7 @@ export function useAppInit({
                 tags: draft.tags ?? [],
                 videoMetas: videoMetasFromDraft(draft),
                 videoBlobMap: videoBlobMapFromDraft(draft),
+                files: draft.files ?? [],
               });
               localStorage.removeItem('pending_note');
             }
@@ -239,6 +240,7 @@ export function useAppInit({
             tags: draft.tags ?? [],
             videoMetas: videoMetasFromDraft(draft),
             videoBlobMap: videoBlobMapFromDraft(draft),
+                files: draft.files ?? [],
             notificationSource: 'url',
           });
           window.history.replaceState(
@@ -278,6 +280,7 @@ export function useAppInit({
             tags: draft.tags ?? [],
             videoMetas: videoMetasFromDraft(draft),
             videoBlobMap: videoBlobMapFromDraft(draft),
+                files: draft.files ?? [],
           });
           localStorage.removeItem('pending_note');
         }
@@ -346,6 +349,7 @@ export function useAppInit({
               tags: draft.tags ?? [],
               videoMetas: videoMetasFromDraft(draft),
               videoBlobMap: videoBlobMapFromDraft(draft),
+                files: draft.files ?? [],
               notificationSource: 'pending_open',
             });
             pageLog(formatNavigationLog('detail_requested', {

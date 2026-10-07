@@ -49,6 +49,7 @@ export function useNoteList({
           id: d.id, type: d.type, title: d.title, body: d.body,
           status: d.sent_at ? ('sent' as const) : d.received_pc ? ('received_pc' as const) : ('draft' as const),
           created_at: d.created_at, tags: d.tags,
+          files: d.files,
           videoFileName: d.videoFileName,
           originalFileName: d.originalFileName,
           videos: (d.videos ?? []).map((video) => ({

@@ -136,6 +136,7 @@ export function NoteListStep({
                       </p>
                       )}
                     </div>
+                    {(note.files ?? []).map(file => <p key={file.fileName} className="text-xs text-gray-500 mt-1 truncate">📎 {file.originalFileName}</p>)}
                   </div>
                   <div className="flex flex-col items-end justify-between py-2 pr-2 flex-shrink-0">
                     <div className="flex flex-col items-end gap-0.5">

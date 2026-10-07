@@ -1,6 +1,7 @@
 // app/viewer/lib/indexeddb.ts
 // IndexedDB の CRUD 純粋関数。'use client' / import React は不要。
 
+import { serializeFiles, deserializeFiles } from '../file-attachments';
 import type { DraftRecord } from '../types';
 
 /**
@@ -97,6 +98,8 @@ function logToFusenLogs(msg: string): void {
 }
 
 export async function saveDraft(draft: DraftRecord): Promise<void> {
+  const hasFiles = Object.prototype.hasOwnProperty.call(draft, 'files');
+  const files = hasFiles ? await serializeFiles(draft.files || []) : undefined;
   const images = await serializeImages(draft.images || []);
   const hasVideos = Object.prototype.hasOwnProperty.call(draft, 'videos');
   const videos = hasVideos ? await serializeVideos(draft.videos || []) : undefined;
@@ -120,6 +123,7 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
         videoFileName: hasVideoFileName ? draft.videoFileName : existing?.videoFileName,
         originalFileName: hasOriginalFileName ? draft.originalFileName : existing?.originalFileName,
         videos: hasVideos ? videos : stripVideoBlobs(existing?.videos),
+        files: hasFiles ? files : existing?.files,
         memo: hasMemo ? draft.memo : existing?.memo,
         images,
       };
@@ -154,6 +158,7 @@ export async function loadAllDrafts(): Promise<DraftRecord[]> {
         ...d,
         images: deserializeImages(d.images || []),
         videos: deserializeVideos(d.videos || []),
+        files: deserializeFiles(d.files || []),
       }));
       resolve(drafts);
     };
@@ -179,6 +184,7 @@ export async function loadDraft(id: string): Promise<DraftRecord | null> {
         ...d,
         images: deserializeImages(d.images || []),
         videos: deserializeVideos(d.videos || []),
+        files: deserializeFiles(d.files || []),
       });
     };
     req.onerror = () => reject(req.error);

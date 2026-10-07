@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.9 / 2026-08-26
+設計書 v1.10 / 2026-10-08
 </p>
 
 ---
@@ -112,10 +112,10 @@ sequenceDiagram
     loop Every 30 seconds (tokio::time::interval)
         PC->>Drive: ❶ notes_from_iphone.json を確認
         alt Found data
-            PC->>Drive: ❷ 添付画像・動画をダウンロード
-            PC->>PC: ❸ Vault に .md / assets / assets/video を保存
+            PC->>Drive: ❷ 添付画像・動画・files[]をダウンロード
+            PC->>PC: ❸ Vault に .md / assets / assets/video / assets/files を保存
             PC->>PC: ❹ React へ受信イベントを emit
-            PC->>Drive: ❺ 処理済み item / 画像・動画を削除
+            PC->>Drive: ❺ 付箋保存成功後のackで item / 画像・動画・ファイルを削除
         end
     end
     end
@@ -129,6 +129,7 @@ sequenceDiagram
 <Note type="warning">
 <strong>添付メディアの境界：</strong>iPhone → PC 方向の画像・動画は、付箋本文と同じ意味に統合しない。
 ユーザー本文は <code>body</code>、添付動画は <code>videos[]</code>、Drive 一時ファイル名は <code>fusen_video_*</code>、PC 保存先は <code>assets/video/</code> のパスとして別々に扱う。
+FileDropは <code>files[]</code> / <code>fusen_file_*</code> / <code>assets/files/</code> を使い、全添付保存成功後だけ付箋作成へ進める。失敗時はackせず未処理キューを保持する。
 </Note>
 
 ---
@@ -274,6 +275,7 @@ flowchart LR
 | 8 | 1.7 | 26-06-01 | 007 章の表現に合わせ、ユーザーとの距離感を守る制約として参照文言を更新。 |
 | 9 | 1.8 | 26-07-31 | 5.2 にTauri WebViewのCSP、外部接続先、asset protocolの許可方針を追加。 |
 | 10 | 1.9 | 26-08-26 | 5.2 のGoogle Analytics通信許可を公式CSP仕様の全送信先へ修正。 |
+| 11 | 1.10 | 26-10-08 | FileDropの汎用添付保存・失敗時保持・付箋保存後ackを通信シーケンスへ追加。 |
 
 </div>
 
