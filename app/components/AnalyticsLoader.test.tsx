@@ -76,6 +76,22 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(tickPositions).toHaveLength(2);
     expect(syncPositions).toHaveLength(2);
     expect(tickPositions[1]).toBeLessThan(syncPositions[1]);
+    const usagePositions=commands.map((command,index)=>command==='member_sync_usage'?index:-1).filter(index=>index>=0);
+    expect(usagePositions).toHaveLength(2);
+    expect(usagePositions[1]).toBeLessThan(syncPositions[1]);
+  });
+
+  it('flushes a feature recorded just before the five-minute check before syncing usage',async()=>{
+    (window as any).__TAURI_INTERNALS__={};
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(299_000);
+    trackEvent('feature_used',{feature_name:'note_duplicate'});
+    invokeMock.mockClear();
+    await vi.advanceTimersByTimeAsync(1_000);
+    const commands=invokeMock.mock.calls.map(([command])=>command);
+    expect(invokeMock).toHaveBeenCalledWith('member_record_batch',{counts:{note_duplicate:1}});
+    expect(commands.indexOf('member_record_batch')).toBeLessThan(commands.indexOf('member_sync_usage'));
+    expect(commands.indexOf('member_flush')).toBeLessThan(commands.indexOf('member_sync_usage'));
   });
 
   it('shows a new letter found while the app remains running', async()=>{

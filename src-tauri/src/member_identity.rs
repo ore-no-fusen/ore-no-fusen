@@ -30,6 +30,8 @@ pub struct MemberLocal {
     #[serde(default)] last_heartbeat_version: Option<String>,
     #[serde(default)] open_seconds: u64,
     #[serde(default)] last_usage_sync_consent: bool,
+    #[serde(default)] last_usage_sync_week: Option<String>,
+    #[serde(default)] last_usage_sync_features: Vec<String>,
     #[serde(skip)] syncing: bool,
     #[serde(skip)] usage_syncing: bool,
     #[serde(skip)] open_time_tick: Option<Instant>,
@@ -201,7 +203,7 @@ pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>)->Result<(),Strin
         let member=g.member.as_mut().ok_or("Member identity unavailable")?;
         let week=week_key(Utc::now());
         let (features,consent)=current_usage_snapshot(&member,analytics_consent,&week);
-        if member.usage_syncing || !should_sync_usage(member,consent) { return Ok(()); }
+        if member.usage_syncing || !should_sync_usage(member,consent,&week,&features) { return Ok(()); }
         member.usage_syncing=true;
         (member.clone(),week,features,consent,member.open_seconds)
     };
@@ -214,13 +216,20 @@ pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>)->Result<(),Strin
     let member=ensure(&mut g)?;
     member.usage_syncing=false;
     result?;
-    member.last_usage_sync_consent=consent;
+    mark_usage_synced(member,consent,&week,&features);
     persist(member)
 }
 
-fn should_sync_usage(member:&MemberLocal,consent:bool)->bool {
+fn should_sync_usage(member:&MemberLocal,consent:bool,week:&str,features:&[String])->bool {
     if !consent && !member.last_usage_sync_consent { return false; }
-    member.last_usage_sync_consent!=consent
+    member.last_usage_sync_consent!=consent || (consent &&
+        (member.last_usage_sync_week.as_deref()!=Some(week) || member.last_usage_sync_features!=features))
+}
+
+fn mark_usage_synced(member:&mut MemberLocal,consent:bool,week:&str,features:&[String]) {
+    member.last_usage_sync_consent=consent;
+    member.last_usage_sync_week=Some(week.into());
+    member.last_usage_sync_features=features.to_vec();
 }
 
 #[tauri::command]
@@ -367,9 +376,9 @@ pub async fn member_heartbeat(
     ).map_err(|_| "Invalid heartbeat response")?;
 
     // 対象のお便りをローカルの会話画面へ保存する。
-    let week = week_key(Utc::now());
+    let received_week = week_key(Utc::now());
     let latest_consent = crate::storage::load_settings()?.analytics_consent.as_deref() == Some("granted");
-    let received = new_announcements(&snapshot, response.announcements, &week, latest_consent);
+    let received = new_announcements(&snapshot, response.announcements, &received_week, latest_consent);
 
     // 状態更新: last_heartbeat_date + 受信履歴
     {
@@ -378,7 +387,7 @@ pub async fn member_heartbeat(
         value.last_heartbeat_date = Some(today);
         value.last_heartbeat_at = Some(Utc::now().to_rfc3339());
         value.last_heartbeat_version = Some(env!("CARGO_PKG_VERSION").into());
-        value.last_usage_sync_consent = consent;
+        mark_usage_synced(value,consent,&week,&features);
         for a in &received {
             value.read_announcement_ids.insert(a.id.clone());
         }
@@ -520,26 +529,42 @@ mod segment_tests {
     }
 
     #[test]
-    fn separate_usage_api_syncs_only_consent_changes() {
+    fn usage_api_syncs_changed_features_and_week_without_resending_unchanged_data() {
         let mut member=MemberLocal::default();
-        assert!(!should_sync_usage(&member,false));
-        assert!(should_sync_usage(&member,true));
-        member.last_usage_sync_consent=true;
-        assert!(!should_sync_usage(&member,true));
+        let week="2026-W41";
+        let features=vec!["note_edited".into()];
+        assert!(!should_sync_usage(&member,false,week,&[]));
+        assert!(should_sync_usage(&member,true,week,&[]));
+        mark_usage_synced(&mut member,true,week,&[]);
+        assert!(!should_sync_usage(&member,true,week,&[]));
         member.open_seconds=24*60*60;
-        assert!(!should_sync_usage(&member,true));
-        assert!(should_sync_usage(&member,false));
-        member.last_usage_sync_consent=false;
-        assert!(!should_sync_usage(&member,false));
-        assert!(should_sync_usage(&member,true));
+        assert!(!should_sync_usage(&member,true,week,&[]));
+        assert!(should_sync_usage(&member,true,week,&features));
+        // Failed sends do not update the marker, so the next check retries.
+        assert!(should_sync_usage(&member,true,week,&features));
+        mark_usage_synced(&mut member,true,week,&features);
+        assert!(!should_sync_usage(&member,true,week,&features));
+        assert!(should_sync_usage(&member,true,"2026-W42",&[]));
+        assert!(should_sync_usage(&member,false,week,&[]));
+        mark_usage_synced(&mut member,false,week,&[]);
+        assert!(!should_sync_usage(&member,false,week,&[]));
+        assert!(should_sync_usage(&member,true,week,&features));
     }
 
     #[test]
     fn usage_consent_sync_progress_survives_restart() {
-        let member=MemberLocal { open_seconds: 24*60*60, last_usage_sync_consent: true, ..Default::default() };
+        let mut member=MemberLocal { open_seconds: 24*60*60, ..Default::default() };
+        let features=vec!["note_duplicate".into(),"note_edited".into()];
+        mark_usage_synced(&mut member,true,"2026-W41",&features);
         let restored:MemberLocal=serde_json::from_slice(&serde_json::to_vec(&member).unwrap()).unwrap();
-        assert!(!should_sync_usage(&restored,true));
+        assert!(!should_sync_usage(&restored,true,"2026-W41",&features));
         assert_eq!(restored.open_seconds,24*60*60);
+    }
+
+    #[test]
+    fn legacy_success_without_a_feature_marker_resends_retained_usage() {
+        let member=MemberLocal { last_usage_sync_consent:true, ..Default::default() };
+        assert!(should_sync_usage(&member,true,"2026-W41",&vec!["note_edited".into()]));
     }
 }
 
