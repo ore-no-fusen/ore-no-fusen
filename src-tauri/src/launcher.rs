@@ -1435,3 +1435,41 @@ mod tests {
         assert!(order.orders["shortcut"].is_empty());
     }
 }
+
+/// Explicit taskbar request. Ordinary launches keep their existing behavior.
+pub(crate) fn requests_quick_launcher(arguments: &[String]) -> bool {
+    arguments.iter().any(|argument| argument == "--quick-launcher")
+}
+
+/// Taskbar actions always show the launcher; repeated requests never toggle it off.
+pub(crate) fn show_quick_launcher(app: AppHandle) -> Result<(), String> {
+    let app_for_show = app.clone();
+    app.run_on_main_thread(move || {
+        let result = (|| {
+            let window = match app_for_show.get_webview_window(QUICK_LAUNCHER_LABEL) {
+                Some(window) => window,
+                None => build_quick_launcher_window(&app_for_show)?,
+            };
+            window.unminimize().map_err(|e| e.to_string())?;
+            window.show().map_err(|e| e.to_string())?;
+            window.set_focus().map_err(|e| e.to_string())?;
+            let _ = window.emit("fusen:launcher_shown", ());
+            Ok::<(), String>(())
+        })();
+        if let Err(error) = result {
+            logger::log_warn(&format!("[Launcher] taskbar show failed: {error}"));
+        }
+    }).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod taskbar_request_tests {
+    use super::requests_quick_launcher;
+    #[test]
+    fn taskbar_argument_is_explicit_and_normal_launches_are_unchanged() {
+        assert!(requests_quick_launcher(&["app.exe".into(), "--quick-launcher".into()]));
+        for args in [vec![], vec!["app.exe".into()], vec!["--quick-launcher-other".into()], vec!["C:/notes/--quick-launcher.md".into()]] {
+            assert!(!requests_quick_launcher(&args));
+        }
+    }
+}

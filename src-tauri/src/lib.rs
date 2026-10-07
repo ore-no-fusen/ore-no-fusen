@@ -24,6 +24,7 @@ mod hotkey_manager;
 mod import; // インポート機能
 mod logger; // ログシステム
 mod launcher;
+mod launcher_taskbar;
 mod logic;
 mod perflog; // パフォーマンス計測ログ（JSON Lines）
 mod settings;
@@ -5814,7 +5815,13 @@ pub fn run() {
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .plugin(tauri_plugin_os::init()) // Added tauri_plugin_os::init()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if launcher::requests_quick_launcher(&argv) {
+                if let Err(error) = launcher::show_quick_launcher(app.clone()) {
+                    logger::log_warn(&format!("[Launcher] taskbar request failed: {error}"));
+                }
+                return;
+            }
             // 二重起動時: 最後にフォーカスした付箋を前面に出す
             let state = app.state::<Mutex<AppState>>();
             let label = state.lock().unwrap_or_else(|p| p.into_inner())
@@ -6169,6 +6176,12 @@ pub fn run() {
             hotkey_manager::register_global_shortcuts(app);
             // クイックランチャー窓を隠したまま作り置き（Ctrl+P の初回表示を速くする）
             launcher::preload_quick_launcher(app.handle());
+            launcher_taskbar::install(app.handle());
+            if launcher::requests_quick_launcher(&std::env::args().collect::<Vec<_>>()) {
+                if let Err(error) = launcher::show_quick_launcher(app.handle().clone()) {
+                    logger::log_warn(&format!("[Launcher] startup request failed: {error}"));
+                }
+            }
             {
                 let app_handle = app.handle().clone();
                 app.listen("fusen:toggle_quick_launcher", move |_| {
