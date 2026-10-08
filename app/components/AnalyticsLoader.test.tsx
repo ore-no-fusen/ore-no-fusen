@@ -77,14 +77,13 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(syncPositions).toHaveLength(2);
     expect(tickPositions[1]).toBeLessThan(syncPositions[1]);
     const usagePositions=commands.map((command,index)=>command==='member_sync_usage'?index:-1).filter(index=>index>=0);
-    expect(usagePositions).toHaveLength(2);
-    expect(usagePositions[1]).toBeLessThan(syncPositions[1]);
+    expect(usagePositions).toHaveLength(1);
   });
 
-  it('flushes a feature recorded just before the five-minute check before syncing usage',async()=>{
+  it('syncs usage at three hours and flushes the latest feature before sending',async()=>{
     (window as any).__TAURI_INTERNALS__={};
     render(<AnalyticsLoader isTauriBuild/>);
-    await vi.advanceTimersByTimeAsync(299_000);
+    await vi.advanceTimersByTimeAsync(3*60*60*1000-1_000);
     trackEvent('feature_used',{feature_name:'note_duplicate'});
     invokeMock.mockClear();
     await vi.advanceTimersByTimeAsync(1_000);

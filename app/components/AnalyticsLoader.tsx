@@ -109,12 +109,17 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
         .then(async()=>{
           await flushMemberFeatureQueue();
           await invoke('member_flush');
-          await invoke('member_sync_usage').catch(()=>undefined);
           if(!cancelled) await checkAnnouncements();
         })
         .catch(()=>undefined);
     },300_000);
-    return()=>{cancelled=true;safeUnlisten(unlisten);window.clearTimeout(start);window.clearInterval(flush);};
+    const usage=window.setInterval(()=>{
+      void flushMemberFeatureQueue()
+        .then(()=>invoke('member_flush'))
+        .then(()=>{if(!cancelled)return invoke('member_sync_usage');})
+        .catch(()=>undefined);
+    },3*60*60*1000);
+    return()=>{cancelled=true;safeUnlisten(unlisten);window.clearTimeout(start);window.clearInterval(flush);window.clearInterval(usage);};
   },[isTauriBuild]);
   return null;
 }
