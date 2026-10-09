@@ -11,7 +11,7 @@ export default function TopRightResizeHandle({ title, onFinished }: { title: str
     useEffect(() => () => { void dragRef.current?.finish(); }, []);
 
     return <div data-testid="sticky-top-resize-handle" title={title}
-        className="absolute top-0 right-0 z-[210] h-8 w-8 cursor-nesw-resize select-none"
+        className="absolute top-0 right-0 z-[90] h-16 w-16 cursor-nesw-resize select-none"
         style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }}
         onPointerDown={e => {
             if (e.button !== 0 || dragRef.current) return;
