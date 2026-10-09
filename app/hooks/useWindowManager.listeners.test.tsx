@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWindowManager } from './useWindowManager';
+import { suspendGeometryPersistence } from '../utils/temporaryWindowGeometry';
 
 const { listen, innerSize, scaleFactor, geometry } = vi.hoisted(() => ({
     listen: vi.fn(),
@@ -27,6 +28,37 @@ afterEach(() => {
 });
 
 describe('useWindowManager のウィンドウイベント', () => {
+    it('一時配置中はmove/resize/明示保存を無視し、復元後の手動変更は保存する', async () => {
+        const onGeometryChange = vi.fn();
+        const { result } = renderHook(() => useWindowManager({ onGeometryChange }));
+        await waitFor(() => expect(listen).toHaveBeenCalledTimes(2));
+        const handlers = Object.fromEntries(listen.mock.calls.map(([name, callback]) => [name, callback]));
+        const resume = suspendGeometryPersistence();
+        await act(async () => {
+            handlers['tauri://move']();
+            await handlers['tauri://resize']();
+            await result.current.saveWindowState();
+        });
+        expect(geometry).not.toHaveBeenCalled();
+        resume();
+        await act(async () => { await handlers['tauri://resize'](); });
+        expect(onGeometryChange).toHaveBeenCalledWith({ x: 10, y: 20, width: 400, height: 300 });
+    });
+
+    it('編集開始前に取得中だったgeometryも保存しない', async () => {
+        const onGeometryChange = vi.fn();
+        let finish!: (value: any) => void;
+        geometry.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const { result } = renderHook(() => useWindowManager({ onGeometryChange }));
+        const saving = result.current.saveWindowState();
+        const resume = suspendGeometryPersistence();
+        resume();
+        await act(async () => {
+            finish({ x: 0, y: 0, width: 760, height: 620 });
+            await saving;
+        });
+        expect(onGeometryChange).not.toHaveBeenCalled();
+    });
     it('moveは停止後に最終geometryを1回渡し、resizeは直ちに渡す', async () => {
         const onGeometryChange = vi.fn();
         const { unmount } = renderHook(() => useWindowManager({ onGeometryChange }));

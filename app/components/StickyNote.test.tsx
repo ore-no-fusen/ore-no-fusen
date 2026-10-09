@@ -48,6 +48,7 @@ const mockWindow = {
     innerSize: vi.fn().mockResolvedValue({ width: 400, height: 300 }),
     scaleFactor: vi.fn().mockResolvedValue(1),
     setSize: vi.fn().mockResolvedValue(undefined),
+    startResizeDragging: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -166,6 +167,16 @@ describe('StickyNote Component', () => {
         expect(mockWindow.listen.mock.calls.filter(([name]) => name === 'tauri://resize')).toHaveLength(1);
         // moveの即時保存経路は今回維持する。
         expect(mockWindow.listen.mock.calls.filter(([name]) => name === 'tauri://move')).toHaveLength(2);
+    });
+
+    it('右上からサイズ変更を始め、右クリックはサイズ変更しない', async () => {
+        render(<StickyNote />);
+        const handle = await screen.findByTestId('sticky-top-resize-handle');
+        fireEvent.pointerDown(handle, { button: 0 });
+        expect(mockWindow.startResizeDragging).toHaveBeenCalledWith('NorthEast');
+        mockWindow.startResizeDragging.mockClear();
+        fireEvent.pointerDown(handle, { button: 2 });
+        expect(mockWindow.startResizeDragging).not.toHaveBeenCalled();
     });
 
     it('resize後のgeometryを本文と既存frontmatterを保って保存する', async () => {
