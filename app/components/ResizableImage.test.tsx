@@ -31,6 +31,18 @@ beforeEach(() => {
 });
 
 describe('ResizableImage', () => {
+    it('reports the reloaded crop dimensions at the saved display scale', async () => {
+        const onImageLoaded = vi.fn();
+        render(<ResizableImage src="C:/test/crop.png" alt="crop" scale={0.68} baseOffset={0} onResizeEnd={vi.fn()} onImageLoaded={onImageLoaded} />);
+        const img = screen.getByRole('img', { name: 'crop' });
+        await waitFor(() => expect(img.getAttribute('src')).toBe('asset://C:/test/crop.png'));
+        Object.defineProperties(img, { naturalWidth: { value: 250 }, naturalHeight: { value: 325 } });
+        fireEvent.load(img);
+        expect(onImageLoaded.mock.calls[0][0]).toBe('C:/test/crop.png');
+        expect(onImageLoaded.mock.calls[0][1]).toBeCloseTo(170);
+        expect(onImageLoaded.mock.calls[0][2]).toBeCloseTo(221);
+        expect(img.style.width).toBe('170px');
+    });
     it('places the annotation action at the image top-left away from the note toolbar', async () => {
         const { container } = render(
             <ResizableImage

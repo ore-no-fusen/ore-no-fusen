@@ -169,12 +169,9 @@ describe('StickyNote Component', () => {
         expect(mockWindow.listen.mock.calls.filter(([name]) => name === 'tauri://move')).toHaveLength(2);
     });
 
-    it('右上からサイズ変更を始め、右クリックはサイズ変更しない', async () => {
+    it('右上のサイズ変更つまみを表示し、右クリックはサイズ変更しない', async () => {
         render(<StickyNote />);
         const handle = await screen.findByTestId('sticky-top-resize-handle');
-        fireEvent.pointerDown(handle, { button: 0 });
-        expect(mockWindow.startResizeDragging).toHaveBeenCalledWith('NorthEast');
-        mockWindow.startResizeDragging.mockClear();
         fireEvent.pointerDown(handle, { button: 2 });
         expect(mockWindow.startResizeDragging).not.toHaveBeenCalled();
     });

@@ -23,6 +23,7 @@ import { useNoteFile } from '@/app/hooks/useNoteFile';
 import { useEditMode } from '@/app/hooks/useEditMode';
 import { useWindowManager } from '@/app/hooks/useWindowManager';
 import { fitCroppedNote } from '@/app/utils/fitCroppedNote';
+import TopRightResizeHandle from './TopRightResizeHandle';
 import { useTagManager } from '@/app/hooks/useTagManager';
 import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
@@ -2135,22 +2136,7 @@ const StickyNote = memo(function StickyNote() {
 
             {/* アラーム点滅バー */}
             {!isMinimized && !annotationTarget && (
-                <div
-                    data-testid="sticky-top-resize-handle"
-                    title={language === 'en' ? 'Resize note' : '付箋のサイズ変更'}
-                    className="absolute top-0 right-0 z-[210] flex h-6 w-6 cursor-nesw-resize items-start justify-end pr-[3px] pt-[3px] select-none text-stone-600/60 hover:text-stone-700"
-                    onPointerDown={(e) => {
-                        if (e.button !== 0) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        void getCurrentWindow().startResizeDragging('NorthEast')
-                            .catch(error => console.error('startResizeDragging failed', error));
-                    }}
-                >
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
-                        <path d="M3 1L12 10M7 1l5 5M11 1l1 1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                    </svg>
-                </div>
+                <TopRightResizeHandle title={language === 'en' ? 'Resize note' : '付箋のサイズ変更'} onFinished={saveWindowState} />
             )}
             {isAlarmRinging && (
                 <div
@@ -2178,7 +2164,7 @@ const StickyNote = memo(function StickyNote() {
             )}
 
             {/* ツールバー */}
-            <div className={`absolute top-0 ${isMinimized ? 'right-0' : 'right-6'} z-toolbar`}>
+            <div className="absolute top-0 right-0 z-toolbar">
                 <ToolbarButtons
                     isEditing={isEditing}
                     isMinimized={isMinimized}
@@ -2441,7 +2427,10 @@ const StickyNote = memo(function StickyNote() {
                                     const article = noteContentRef.current?.querySelector<HTMLElement>('article');
                                     if (!article) return;
                                     const otherImages = Array.from(article.querySelectorAll('img'));
-                                    const imageWidth = Math.max(width, ...otherImages.map(img => img.getBoundingClientRect().width));
+                                    const imageWidth = Math.max(width, ...otherImages.map(img =>
+                                        img.naturalWidth > 0
+                                            ? img.naturalWidth * Number(img.dataset.imageScale ?? 1)
+                                            : img.getBoundingClientRect().width));
                                     void fitCroppedNote(imageWidth, () => {
                                         const range = document.createRange();
                                         range.selectNodeContents(article.firstElementChild ?? article);

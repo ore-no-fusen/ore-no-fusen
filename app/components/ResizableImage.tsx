@@ -214,6 +214,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                 ref={imgRef}
                 src={displaySrc}
                 alt={alt}
+                data-image-scale={scale}
                 title={alt}
                 onLoad={handleImageLoad}
                 onError={() => {
