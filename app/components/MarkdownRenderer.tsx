@@ -181,6 +181,7 @@ export type MarkdownRendererProps = {
     basePath?: string | null;
     resolvePath: (baseFile: string, relativePath: string) => string;
     onAnnotationClick?: (absolutePath: string) => void;
+    onImageLoaded?: (path: string, width: number, height: number) => void;
     imageVersion?: number;
     language?: Language;
     collapsedOutlineLines?: number[];
@@ -227,6 +228,7 @@ export default function MarkdownRenderer({
     basePath = null,
     resolvePath,
     onAnnotationClick,
+    onImageLoaded,
     imageVersion = 0,
     language = 'ja',
     collapsedOutlineLines = [],
@@ -449,6 +451,7 @@ export default function MarkdownRenderer({
                         onResizeEnd={(s) => onImageResize(s, baseOffset + index, fullMatch)}
                         contentReadOnly={false}
                         onAnnotationClick={onAnnotationClick}
+                        onImageLoaded={onImageLoaded}
                     />
                 );
             }

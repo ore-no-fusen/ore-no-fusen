@@ -22,6 +22,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useNoteFile } from '@/app/hooks/useNoteFile';
 import { useEditMode } from '@/app/hooks/useEditMode';
 import { useWindowManager } from '@/app/hooks/useWindowManager';
+import { fitCroppedNote } from '@/app/utils/fitCroppedNote';
+import TopRightResizeHandle from './TopRightResizeHandle';
 import { useTagManager } from '@/app/hooks/useTagManager';
 import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
@@ -134,6 +136,8 @@ const StickyNote = memo(function StickyNote() {
 
     // 画像アノテーションモーダル
     const [annotationTarget, setAnnotationTarget] = useState<{ path: string; url: string } | null>(null);
+    const cropResizePathRef = useRef<string | null>(null);
+    const noteContentRef = useRef<HTMLElement>(null);
     const [imageVersion, setImageVersion] = useState(0);
     const [basePath, setBasePath] = useState<string | null>(null);
 
@@ -2131,6 +2135,9 @@ const StickyNote = memo(function StickyNote() {
             </div>
 
             {/* アラーム点滅バー */}
+            {!isMinimized && !annotationTarget && (
+                <TopRightResizeHandle title={language === 'en' ? 'Resize note' : '付箋のサイズ変更'} onFinished={saveWindowState} />
+            )}
             {isAlarmRinging && (
                 <div
                     onClick={handleStopAlarm}
@@ -2235,6 +2242,7 @@ const StickyNote = memo(function StickyNote() {
 
             {/* メインコンテンツ - 付箋のほぼ全域を占める */}
             <main
+                ref={noteContentRef}
                 className={`flex-1 flex flex-col overflow-auto relative ${isEditing ? 'p-0' : 'py-[var(--editor-padding)] pr-[var(--editor-padding)] pl-0'}`}
                 onClick={(e) => {
                     // 編集モードで、エディタより下にあるこのコンテナ領域（＝黄色いフッタ領域）をクリックした場合は編集モードを終了
@@ -2411,6 +2419,27 @@ const StickyNote = memo(function StickyNote() {
                             basePath={basePath}
                             resolvePath={resolvePath}
                             onAnnotationClick={handleAnnotationClick}
+                            onImageLoaded={(path, width) => {
+                                if (cropResizePathRef.current !== path) return;
+                                cropResizePathRef.current = null;
+                                // ResizableImage commits its new display width before measuring text layout.
+                                requestAnimationFrame(() => {
+                                    const article = noteContentRef.current?.querySelector<HTMLElement>('article');
+                                    if (!article) return;
+                                    const otherImages = Array.from(article.querySelectorAll('img'));
+                                    const imageWidth = Math.max(width, ...otherImages.map(img =>
+                                        img.naturalWidth > 0
+                                            ? img.naturalWidth * Number(img.dataset.imageScale ?? 1)
+                                            : img.getBoundingClientRect().width));
+                                    void fitCroppedNote(imageWidth, () => {
+                                        const range = document.createRange();
+                                        range.selectNodeContents(article.firstElementChild ?? article);
+                                        return range.getBoundingClientRect().height;
+                                    })
+                                        .then(() => saveWindowState())
+                                        .catch(error => console.error('[CROP] fit note failed', error));
+                                });
+                            }}
                             imageVersion={imageVersion}
                             collapsedOutlineLines={collapsedOutlineLines}
                             onCollapsedOutlineLinesChange={updateCollapsedOutlineLines}
@@ -2552,7 +2581,8 @@ const StickyNote = memo(function StickyNote() {
                     absolutePath={annotationTarget.path}
                     displayUrl={annotationTarget.url}
                     language={language}
-                    onSaved={() => {
+                    onSaved={(cropped) => {
+                        cropResizePathRef.current = cropped ? annotationTarget.path : null;
                         setAnnotationTarget(null);
                         setImageVersion(v => v + 1);
                     }}

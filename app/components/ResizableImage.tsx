@@ -20,6 +20,7 @@ export interface ResizableImageProps {
     baseOffset: number;
     contentReadOnly?: boolean;
     onAnnotationClick?: (absolutePath: string) => void;
+    onImageLoaded?: (path: string, width: number, height: number) => void;
     markdownFallback?: string;
     fallbackSrcs?: string[];
     cacheKey?: number;
@@ -58,7 +59,7 @@ function initialDisplaySrc(src: string): string {
         : src;
 }
 
-export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick, markdownFallback, fallbackSrcs = EMPTY_FALLBACK_SRCS, cacheKey = 0 }: ResizableImageProps) {
+export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onDragStart, baseOffset, contentReadOnly = false, onAnnotationClick, onImageLoaded, markdownFallback, fallbackSrcs = EMPTY_FALLBACK_SRCS, cacheKey = 0 }: ResizableImageProps) {
     const [currentWidth, setCurrentWidth] = useState<number | undefined>(undefined);
     const [isResizing, setIsResizing] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
@@ -134,6 +135,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
             // Actually usually we want to sync with prop if not resizing.
             if (!isResizing) {
                 setCurrentWidth(nw * scale);
+                onImageLoaded?.(src, nw * scale, img.naturalHeight * scale);
             }
         }
     };
@@ -212,6 +214,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                 ref={imgRef}
                 src={displaySrc}
                 alt={alt}
+                data-image-scale={scale}
                 title={alt}
                 onLoad={handleImageLoad}
                 onError={() => {
