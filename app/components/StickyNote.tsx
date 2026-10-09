@@ -2164,7 +2164,7 @@ const StickyNote = memo(function StickyNote() {
             )}
 
             {/* ツールバー */}
-            <div className="absolute top-0 right-0 z-toolbar">
+            <div className={`absolute ${isMinimized || annotationTarget ? 'top-0' : 'top-6'} right-0 z-toolbar`}>
                 <ToolbarButtons
                     isEditing={isEditing}
                     isMinimized={isMinimized}
