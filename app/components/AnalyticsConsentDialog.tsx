@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import type { Language } from '@/lib/i18n';
 
 type Props = {
@@ -11,9 +12,9 @@ type Props = {
 export default function AnalyticsConsentDialog({ language, onAccept, onDecline }: Props) {
   const en = language === 'en';
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-7 shadow-2xl">
-        <h2 className="text-xl font-bold text-slate-900">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-2 sm:p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" tabIndex={0} className="w-full min-w-0 max-w-lg max-h-[90vh] overflow-y-auto break-words rounded-2xl bg-white p-4 sm:p-7 shadow-2xl">
+        <h2 id="analytics-consent-title" className="text-xl font-bold text-slate-900">
           {en ? 'Help improve Ore No Fusen?' : '俺の付箋の改善に協力しますか？'}
         </h2>
         <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -36,7 +37,7 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline }
             ? 'Declining does not disable any feature. You can change this later in Settings → Developer Messages.'
             : '送信しなくても、すべての機能を利用できます。後から「設定 → 開発者とのやりとり」で変更できます。'}
         </p>
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
           <button onClick={onDecline} className="rounded-lg bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200">
             {en ? 'Do not send' : '送信しない'}
           </button>

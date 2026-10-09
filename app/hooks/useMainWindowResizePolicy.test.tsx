@@ -30,6 +30,24 @@ const options = {
 describe('メイン窓のリサイズ', () => {
   afterEach(() => vi.clearAllMocks());
 
+  it('同意画面中は縮小せず、選択後に通常サイズへ戻す', async () => {
+    const { rerender } = renderHook(({ pending }) => useMainWindowResizePolicy({
+      ...options, showIphoneReturnDialog: false, showAnalyticsConsent: pending,
+    }), { initialProps: { pending: true } });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(windowMocks.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 640, height: 520 }));
+    expect(windowMocks.setSize).not.toHaveBeenCalledWith(expect.objectContaining({ width: 240, height: 300 }));
+    rerender({ pending: false });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(windowMocks.setSize).toHaveBeenLastCalledWith(expect.objectContaining({ width: 240, height: 300 }));
+  });
+
+  it('設定読み込み中は縮小しない', async () => {
+    renderHook(() => useMainWindowResizePolicy({ ...options, isCheckingSetup: true, showIphoneReturnDialog: false }));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(windowMocks.setSize).not.toHaveBeenCalled();
+  });
+
   it('iPhone返送の確認画面を表示すると左右比較できる大きさに広げる', async () => {
     renderHook(() => useMainWindowResizePolicy({ ...options, showIphoneReturnDialog: true }));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });

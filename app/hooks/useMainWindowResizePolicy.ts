@@ -38,6 +38,7 @@ export async function calcSettingsWindowSize(): Promise<{ width: number; height:
 }
 
 type UseMainWindowResizePolicyOptions = {
+    showAnalyticsConsent?: boolean;
     setupRequired: boolean;
     isSettingsOpen: boolean;
     isCheckingSetup: boolean;
@@ -47,6 +48,7 @@ type UseMainWindowResizePolicyOptions = {
 };
 
 export function useMainWindowResizePolicy({
+    showAnalyticsConsent = false,
     setupRequired,
     isSettingsOpen,
     isCheckingSetup,
@@ -67,6 +69,17 @@ export function useMainWindowResizePolicy({
 
                 const settingsVisible = !isCheckingSetup && (setupRequired || isSettingsOpen);
                 if (cancelled) return;
+
+                if (showAnalyticsConsent) {
+                    await win.show();
+                    await win.unminimize();
+                    if (cancelled) return;
+                    await win.setSize(new LogicalSize(640, 520));
+                    if (cancelled) return;
+                    await win.center();
+                    await win.setFocus();
+                    return;
+                }
 
                 // 検索オーバーレイ表示中はリサイズしない（setSize(600,450)を上書きしないよう）
                 if (isSearchOpen) return;
@@ -116,5 +129,5 @@ export function useMainWindowResizePolicy({
         return () => {
             cancelled = true;
         };
-    }, [setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen, showIphoneReturnDialog]);
+    }, [showAnalyticsConsent, setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen, showIphoneReturnDialog]);
 }

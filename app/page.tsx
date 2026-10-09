@@ -308,9 +308,10 @@ function OrchestratorContent() {
 
   // ウィンドウリサイズポリシー（useMainWindowResizePolicyに委譲）
   useMainWindowResizePolicy({
+    showAnalyticsConsent: isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && !settings.analytics_consent,
     setupRequired: isMainWindow && setupRequired,
     isSettingsOpen: isMainWindow && isSettingsOpen,
-    isCheckingSetup: isMainWindow && isCheckingSetup,
+    isCheckingSetup: isMainWindow && (isCheckingSetup || settingsLoading),
     showUpdateDialog: isMainWindow && (showUpdateDialog || storeUpdateAvailable),
     isSearchOpen: isMainWindow && isSearchOpen,
     showIphoneReturnDialog: isMainWindow && (pendingIphoneReturns.length > 0 || appliedIphoneReturn !== null),
@@ -2016,20 +2017,6 @@ function OrchestratorContent() {
   }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
   const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isArchiveRestoreOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !storeUpdateAvailable && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
-
-  useEffect(() => {
-    if (!isMainWindow || isCheckingSetup || setupRequired || settingsLoading || settings.analytics_consent) return;
-    const showConsent = async () => {
-      const { LogicalSize } = await import('@tauri-apps/api/dpi');
-      const win = getCurrentWindow();
-      await win.setSize(new LogicalSize(640, 520));
-      await win.center();
-      await win.unminimize();
-      await win.show();
-      await win.setFocus();
-    };
-    void showConsent().catch((e) => console.error('[AnalyticsConsent] prompt display failed:', e));
-  }, [isMainWindow, isCheckingSetup, setupRequired, settingsLoading, settings.analytics_consent]);
 
   useEffect(() => {
     if (!isMainWindow || isCheckingSetup || setupRequired || isSettingsOpen || !settings.analytics_consent || desktopShortcutPromptCheckedRef.current) return;
