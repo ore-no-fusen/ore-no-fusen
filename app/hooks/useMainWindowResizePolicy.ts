@@ -39,6 +39,7 @@ export async function calcSettingsWindowSize(): Promise<{ width: number; height:
 
 type UseMainWindowResizePolicyOptions = {
     showAnalyticsConsent?: boolean;
+    showMessageDialog?: boolean;
     setupRequired: boolean;
     isSettingsOpen: boolean;
     isCheckingSetup: boolean;
@@ -49,6 +50,7 @@ type UseMainWindowResizePolicyOptions = {
 
 export function useMainWindowResizePolicy({
     showAnalyticsConsent = false,
+    showMessageDialog = false,
     setupRequired,
     isSettingsOpen,
     isCheckingSetup,
@@ -70,11 +72,11 @@ export function useMainWindowResizePolicy({
                 const settingsVisible = !isCheckingSetup && (setupRequired || isSettingsOpen);
                 if (cancelled) return;
 
-                if (showAnalyticsConsent) {
+                if (showAnalyticsConsent || showMessageDialog) {
                     await win.show();
                     await win.unminimize();
                     if (cancelled) return;
-                    await win.setSize(new LogicalSize(640, 520));
+                    await win.setSize(new LogicalSize(showAnalyticsConsent ? 640 : 720, showAnalyticsConsent ? 520 : 560));
                     if (cancelled) return;
                     await win.center();
                     await win.setFocus();
@@ -129,5 +131,5 @@ export function useMainWindowResizePolicy({
         return () => {
             cancelled = true;
         };
-    }, [showAnalyticsConsent, setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen, showIphoneReturnDialog]);
+    }, [showAnalyticsConsent, showMessageDialog, setupRequired, isSettingsOpen, isCheckingSetup, showUpdateDialog, isSearchOpen, showIphoneReturnDialog]);
 }

@@ -9,6 +9,7 @@
 'use client';
 
 import React from 'react';
+import MessageSurface, { MessageBody, MessageActions } from './MessageSurface';
 import type { Language } from '@/lib/i18n';
 
 type ConfirmDialogProps = {
@@ -41,15 +42,17 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
             padding: '16px',
             backgroundColor: 'rgba(0, 0, 0, 0.5)'
         }}>
-            <div style={{
+            <MessageSurface role="dialog" aria-modal="true" aria-label={title} style={{
                 backgroundColor: '#fff',
                 borderRadius: '8px',
                 boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
                 maxWidth: '24rem',
                 width: '100%',
-                padding: '24px'
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column'
             }}>
-                <h3 style={{
+                <MessageBody><h3 style={{
                     fontSize: '1.125rem',
                     fontWeight: 700,
                     color: '#111827',
@@ -63,8 +66,8 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
                     lineHeight: 1.6
                 }}>
                     {message}
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                </p></MessageBody>
+                <MessageActions style={{ justifyContent: 'flex-end' }}>
                     <button
                         onClick={onCancel}
                         style={{
@@ -96,8 +99,8 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
                     >
                         {resolvedConfirmText}
                     </button>
-                </div>
-            </div>
+                </MessageActions>
+            </MessageSurface>
         </div>
     );
 }

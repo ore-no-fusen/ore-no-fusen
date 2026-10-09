@@ -11,6 +11,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
+import MessageSurface from './MessageSurface';
 import type { Language } from '@/lib/i18n';
 
 type PoolWaitToastProps = {
@@ -43,13 +44,13 @@ export default function PoolWaitToast({ x, y, visible, language = 'ja', onClose 
     if (!visible) return null;
 
     return (
-        <div
+        <MessageSurface
             role="status"
             aria-live="polite"
             style={{
                 position: 'fixed',
-                left: x,
-                top: y,
+                left: `clamp(8px, ${x}px, max(8px, calc(100vw - 180px)))`,
+                top: `clamp(8px, ${y}px, max(8px, calc(100dvh - 60px)))`,
                 zIndex: 99999,
                 padding: '8px 14px',
                 backgroundColor: 'rgba(30, 30, 30, 0.88)',
@@ -60,12 +61,13 @@ export default function PoolWaitToast({ x, y, visible, language = 'ja', onClose 
                 lineHeight: 1.4,
                 boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
                 backdropFilter: 'blur(4px)',
-                whiteSpace: 'nowrap',
+                width: 'min(164px, calc(100vw - 16px))',
+                whiteSpace: 'normal',
                 pointerEvents: 'none', // クリックを透過
                 userSelect: 'none',
             }}
         >
             {language === 'en' ? 'Please wait…' : '少々お待ちください…'}
-        </div>
+        </MessageSurface>
     );
 }

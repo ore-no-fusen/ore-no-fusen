@@ -2,6 +2,7 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import MessageSurface, { MessageBody, MessageActions } from '../components/MessageSurface';
 
 function Notice() {
   const params = useSearchParams();
@@ -18,14 +19,14 @@ function Notice() {
   };
 
   return (
-    <main style={{ minHeight: '100vh', boxSizing: 'border-box', padding: 24, background: '#fff', color: '#111827', fontFamily: 'Segoe UI, Yu Gothic UI, sans-serif' }}>
+    <MessageSurface role="dialog" aria-label={isReply ? '開発者から返信が届きました' : '開発者からのお便りが届きました'} style={{ height: 'calc(100dvh - 16px)', margin: 8, padding: 16, background: '#fff', color: '#111827', fontFamily: 'Segoe UI, Yu Gothic UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
       <div style={{ color: '#1d4ed8', fontWeight: 700, fontSize: 15 }}>{isReply ? '✉️ 開発者から返信が届きました' : '✉️ 開発者からのお便りが届きました'}</div>
-      <h1 style={{ margin: '18px 0 8px', fontSize: 20, overflowWrap: 'anywhere' }}>{isReply ? '開発者とのやり取り' : title}</h1>
+      <MessageBody><h1 style={{ margin: '12px 0 8px', fontSize: 20, overflowWrap: 'anywhere' }}>{isReply ? '開発者とのやり取り' : title}</h1>
       {multiple && <p style={{ margin: '0 0 12px', color: '#475569' }}>{isReply ? `未読の返信が${count}件あります。` : `新しいお便りが${count}件あります。`}</p>}
-      <button type="button" onClick={() => void openConversation()} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 8, background: '#1d4ed8', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+      </MessageBody><MessageActions><button type="button" onClick={() => void openConversation()} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 8, background: '#1d4ed8', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
         {isReply ? '返信を読む' : 'お便りを読む・返信する'}
-      </button>
-    </main>
+      </button></MessageActions>
+    </MessageSurface>
   );
 }
 

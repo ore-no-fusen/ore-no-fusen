@@ -43,6 +43,7 @@ import ImageAnnotationModal from './ImageAnnotationModal';
 import ConfirmDialog from './ConfirmDialog';
 import AlarmDialog from './AlarmDialog';
 import SaveErrorToast from './SaveErrorToast';
+import MessageSurface from './MessageSurface';
 import Tooltip from './Tooltip';
 
 
@@ -2675,15 +2676,16 @@ const StickyNote = memo(function StickyNote() {
 
             {/* iPhone送信トースト */}
             {toastMessage && (
-                <div style={{
+                <MessageSurface role="status" style={{
                     position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+                    maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', overflowWrap: 'anywhere', whiteSpace: 'normal', boxSizing: 'border-box',
                     background: 'rgba(30,30,30,0.85)', color: 'white',
                     padding: '8px 18px', borderRadius: 8, fontSize: 13,
                     pointerEvents: 'none', zIndex: 9999,
                     backdropFilter: 'blur(4px)',
                 }}>
                     {toastMessage}
-                </div>
+                </MessageSurface>
             )}
 
         </div >

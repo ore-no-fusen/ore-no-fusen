@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import MessageSurface from './MessageSurface';
 import type { Language } from '@/lib/i18n';
 
 type Props = {
@@ -13,7 +14,7 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline }
   const en = language === 'en';
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" tabIndex={0} className="w-full min-w-0 max-w-lg max-h-[90vh] overflow-y-auto break-words rounded-2xl bg-white p-4 sm:p-7 shadow-2xl">
+      <MessageSurface role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" tabIndex={0} className="w-full min-w-0 max-w-lg max-h-[90vh] overflow-y-auto break-words rounded-2xl bg-white p-4 sm:p-7 shadow-2xl">
         <h2 id="analytics-consent-title" className="text-xl font-bold text-slate-900">
           {en ? 'Help improve Ore No Fusen?' : '俺の付箋の改善に協力しますか？'}
         </h2>
@@ -45,7 +46,7 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline }
             {en ? 'Help improve (Recommended)' : '協力する（おすすめ）'}
           </button>
         </div>
-      </div>
+      </MessageSurface>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import MessageSurface from '../components/MessageSurface';
 import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor, nowJST } from './utils';
 import { getTranslation, type Language } from '@/lib/i18n';
 import type { IphoneNote, PendingHydrate, DraftRecord, DraftFileAttachment, PendingVideoMeta, VideoBlobMap } from './types';
@@ -506,19 +507,19 @@ export default function ViewerPage() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-white text-gray-900">
       {/* バックグラウンド送信トースト */}
       {isSendingInBackground && (
-        <div className="fixed top-4 right-4 bg-blue-500 text-white text-sm px-3 py-2 rounded shadow z-50">
+        <MessageSurface role="status" className="fixed top-4 left-4 right-4 max-h-[calc(100dvh-32px)] overflow-y-auto break-words bg-blue-500 text-white text-sm px-3 py-2 rounded shadow z-50">
           {t('pwa.sending')}
-        </div>
+        </MessageSurface>
       )}
       {backgroundSendSuccess && (
-        <div className="fixed top-4 right-4 bg-green-500 text-white text-sm px-3 py-2 rounded shadow z-50">
+        <MessageSurface role="status" className="fixed top-4 left-4 right-4 max-h-[calc(100dvh-32px)] overflow-y-auto break-words bg-green-500 text-white text-sm px-3 py-2 rounded shadow z-50">
           {t('pwa.sent')}
-        </div>
+        </MessageSurface>
       )}
       {backgroundSendError && (
-        <div className="fixed top-4 right-4 bg-red-500 text-white text-sm px-3 py-2 rounded shadow z-50">
+        <MessageSurface role="status" className="fixed top-4 left-4 right-4 max-h-[calc(100dvh-32px)] overflow-y-auto break-words bg-red-500 text-white text-sm px-3 py-2 rounded shadow z-50">
           {backgroundSendError}
-        </div>
+        </MessageSurface>
       )}
       <div className="max-w-prose mx-auto w-full">
         {step === 'login' && (

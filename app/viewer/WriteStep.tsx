@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import MessageSurface from '../components/MessageSurface';
 import { CropModal } from './CropModal';
 import { MermaidModal } from './MermaidModal';
 import {
@@ -863,7 +864,7 @@ export function WriteStep({
           aria-label={t('pwa.write.openLinkTitle')}
           onClick={() => setPendingLinkHref(null)}
         >
-          <div
+          <MessageSurface
             className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
@@ -885,7 +886,7 @@ export function WriteStep({
                 {t('pwa.write.openLink')}
               </a>
             </div>
-          </div>
+          </MessageSurface>
         </div>
       )}
     </div>
