@@ -23,16 +23,20 @@
     if (info.changes.length && !ownChanges) blockers.push(`未保存変更があります：${info.changes.join(', ')}`);
     if (info.mainChanges.length) blockers.push(`正式リリースに未保存変更があります：${info.mainChanges.join(', ')}`);
     $('prepare').disabled = locked || blockers.length > 0 || s.status === 'confirm' || (pending && s.operation === 'package');
-    $('prepare').textContent = s.status === 'failed' && s.operation === 'prepare' ? '🔨 止まった工程から再試行' : '🔨 リリース準備をポン！';
+    $('prepare').textContent = s.status === 'failed' && s.operation === 'prepare' ? '🔨 止まった工程から再試行' : '確認用MSIXを作って起動';
     const prepared = s.steps.install?.status === 'done';
     $('confirmed').disabled = !prepared || locked || s.status === 'complete';
     $('package').disabled = !prepared || !$('confirmed').checked || locked || blockers.length > 0 || s.status === 'complete';
-    $('package').textContent = s.status === 'failed' && s.operation === 'package' ? '🚀 止まった工程から再試行' : '🚀 提出用作成 ＆ Pushをポン！';
+    $('package').textContent = s.status === 'failed' && s.operation === 'package' ? '🚀 止まった工程から再試行' : 'Store用MSIXを作成・Push';
     $('gate').textContent = prepared && $('confirmed').checked ? '実機確認済み。同じexeから提出用を作ります。' : '準備完了と実機確認のチェックが必要です。';
-    $('notice').textContent = networkError || s.error || blockers.join('\n') || (s.status === 'confirm' ? '確認用MSIXを起動しました。実機で確認してください。' : s.status === 'complete' ? '提出準備が完了しました。次はPartner Centerで申請します。' : info.busy ? '処理中です。この画面を閉じても処理は続きます。起動用のシェルは終了しないでください。' : '準備を開始できます。');
-    $('notice').classList.toggle('warning', Boolean(networkError || s.error || blockers.length));
-    $('current').textContent = s.current || '待機中：1つ目のボタンを押してください';
-    if (s.status === 'failed') $('current').textContent = `停止：${s.current || '開始前の確認'}`;
+    const blocked = Boolean(networkError || s.error || blockers.length);
+    $('current').textContent = networkError ? '接続を確認してください' : s.error || s.status === 'failed' ? '処理が止まりました' : info.busy || posting ? (s.current || '処理を開始しています…') : blockers.length ? '今は開始できません' : s.status === 'confirm' ? 'アプリを実機で確認してください' : s.status === 'complete' ? '提出準備ができました' : '準備を開始できます';
+    $('notice').textContent = networkError ? '詳しい理由をご確認ください。' : s.error ? (s.current || '開始前の確認で停止しました。') : blockers.length ? (info.readOnly ? '表示確認モードです。' : '未保存の変更や作業環境を確認してください。') : info.busy || posting ? '起動用ウィンドウを閉じずにお待ちください。' : s.status === 'confirm' ? '確認が済んだら、下のチェックを入れてください。' : s.status === 'complete' ? '次はPartner Centerで提出します。' : '①のボタンから進めてください。';
+    $('reason').hidden = !blocked;
+    $('reason-text').textContent = networkError || s.error || blockers.join('\n');
+    document.querySelector('.overview').classList.toggle('warning', blocked);
+    document.querySelector('.confirmation').classList.toggle('ready', s.status === 'confirm');
+    $('result').hidden = s.status !== 'complete';
     const running = Object.values(s.steps).find(step => step.status === 'running');
     $('elapsed').textContent = running ? `経過 ${Math.floor((Date.now()-new Date(running.started).getTime())/1000)}秒` : '';
     $('steps').replaceChildren(...stages.map(([id,label]) => {
@@ -50,7 +54,7 @@
   }
   async function poll() {
     try { info = await request('/api/state'); networkError = null; render(); }
-    catch(error) { networkError = error.message; $('notice').textContent=networkError; $('notice').classList.add('warning'); $('prepare').disabled=true; $('package').disabled=true; }
+    catch(error) { networkError = error.message; $('notice').textContent=networkError; $('current').textContent='接続を確認してください';document.querySelector('.overview').classList.add('warning'); $('prepare').disabled=true; $('package').disabled=true; }
     setTimeout(poll, info?.busy ? 1000 : 2500);
   }
   async function start(action) {

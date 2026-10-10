@@ -23,14 +23,14 @@ test('two-button browser flow, fixed confirmation, command logs, narrow screen a
   assert.equal(await page.locator('button').count(),2);assert.equal(await page.locator('input[type=checkbox]').count(),1);
   assert.match(await page.locator('.premise').innerText(),/developへマージ済み/);
   assert.equal(await page.locator('#package').isDisabled(),true);
-  await page.locator('#prepare').click();await page.waitForFunction(()=>document.querySelector('#current').textContent.includes('確認待ち'));
+  await page.locator('#prepare').click();await page.waitForFunction(()=>document.querySelector('#current').textContent.includes('実機で確認'));
   assert.equal(await page.locator('#package').isDisabled(),true);await page.locator('#confirmed').check();assert.equal(await page.locator('#package').isEnabled(),true);
-  assert.match(await page.locator('#log').innerText(),/powershell.exe/);
+  assert.equal(await page.locator('.details').first().getAttribute('open'),null); await page.locator('.details > summary').first().click(); assert.match(await page.locator('#log').innerText(),/powershell.exe/);
   const output=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../my/release-machine-ui-check');fs.mkdirSync(output,{recursive:true});
   await page.screenshot({path:path.join(output,'desktop.png'),fullPage:true});
   await page.setViewportSize({width:360,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:path.join(output,'narrow.png'),fullPage:true});
   await page.locator('#package').click();await page.waitForFunction(()=>!document.querySelector('#complete').hidden);assert.match(await page.locator('#destination').innerText(),/5.6.2/);
-  info.changes=['unrelated.txt'];Object.assign(state,{status:'idle',steps:{},id:null});await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('unrelated.txt'));assert.equal(await page.locator('#prepare').isDisabled(),true);
-  assert.deepEqual(errors,[]);
+  info.changes=['unrelated.txt'];Object.assign(state,{status:'idle',steps:{},id:null});await page.waitForFunction(()=>document.querySelector('#reason-text').textContent.includes('unrelated.txt'));assert.equal(await page.locator('#prepare').isDisabled(),true);
+  assert.match(await page.locator('#current').innerText(),/開始できません/); assert.doesNotMatch(await page.locator('#notice').innerText(),/押してください/); assert.deepEqual(errors,[]);
 });
