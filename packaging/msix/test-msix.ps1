@@ -1,15 +1,24 @@
-param(
+﻿param(
   [switch] $SkipBuild,
-  [switch] $NoInstall
+  [switch] $NoInstall,
+  [string] $ReleaseDirectory
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Resolve-Path (Join-Path $ScriptRoot "..\..")
 $ExePath = Join-Path $RepoRoot "src-tauri\target\release\ore-no-fusen.exe"
 $ResourcesPath = Join-Path $RepoRoot "src-tauri\target\release\resources"
+if ($ReleaseDirectory) {
+  if (-not $SkipBuild) { throw "ReleaseDirectory requires SkipBuild; preserved binaries must not be rebuilt." }
+  $ReleaseDirectory = (Resolve-Path -LiteralPath $ReleaseDirectory).Path
+  $ExePath = Join-Path $ReleaseDirectory "ore-no-fusen.exe"
+  $ResourcesPath = Join-Path $ReleaseDirectory "resources"
+}
 $SourceManifestPath = Join-Path $ScriptRoot "AppxManifest.xml"
 $IconRoot = Join-Path $RepoRoot "src-tauri\icons"
 
@@ -70,14 +79,9 @@ function Invoke-NativeCommand {
   )
 
   Write-Host "Running native command: $([IO.Path]::GetFileName($FilePath)) $($Arguments -join ' ')"
-  $Process = Start-Process `
-    -FilePath $FilePath `
-    -ArgumentList $Arguments `
-    -PassThru `
-    -Wait `
-    -NoNewWindow
-  if ($Process.ExitCode -ne 0) {
-    throw "$FilePath failed with exit code $($Process.ExitCode)."
+  & $FilePath @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "$FilePath failed with exit code $LASTEXITCODE."
   }
 }
 

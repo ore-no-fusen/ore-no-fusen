@@ -1,5 +1,13 @@
 CHANGED=$(git diff --cached --name-only)
 
+# Release Machine starts only after STEP 0. Accept its version-only commit
+# only after checking the staged contents against the existing version updater.
+# Normal source commits and mixed version/code changes retain all checks.
+if [ "$RELEASE_MACHINE_VERSION_COMMIT" = "1" ]; then
+  node scripts/release-machine/check-version-commit.mjs
+  exit $?
+fi
+
 # Documentation-only commits cannot affect the application runtime.
 # Skip the expensive application checks when every staged file is documentation.
 CHECK_MODE=$(node scripts/precommit-classify.mjs)

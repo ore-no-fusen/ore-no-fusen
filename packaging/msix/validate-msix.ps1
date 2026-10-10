@@ -1,17 +1,28 @@
-param(
+﻿param(
   [Parameter(Mandatory = $true)]
   [string] $PackagePath,
 
   [Parameter(Mandatory = $false)]
-  [string] $ExpectedVersion
+  [string] $ExpectedVersion,
+  [string] $ExpectedReleaseDirectory
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 $ExpectedName = "ONFStudios.FUSEN"
 $ExpectedPublisher = "CN=4820A467-BFE8-46A3-A142-42A0E840F3A5"
 $ExpectedArchitecture = "x64"
+
+function Get-Sha256 {
+  param([string] $Path)
+  $stream = [IO.File]::OpenRead($Path)
+  $algorithm = [Security.Cryptography.SHA256]::Create()
+  try { return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '') }
+  finally { $stream.Dispose(); $algorithm.Dispose() }
+}
 
 function Get-LatestMakeAppx {
   $sdkRoot = "C:\Program Files (x86)\Windows Kits\10\bin"
@@ -82,6 +93,30 @@ try {
   $signaturePath = Join-Path $unpackPath "AppxSignature.p7x"
   if (Test-Path -LiteralPath $signaturePath -PathType Leaf) {
     throw "Store submission package must be unsigned, but AppxSignature.p7x is present."
+  }
+
+  if ($ExpectedReleaseDirectory) {
+    $expectedRoot = (Resolve-Path -LiteralPath $ExpectedReleaseDirectory).Path
+    $expectedFiles = @(Get-Item -LiteralPath (Join-Path $expectedRoot "ore-no-fusen.exe"))
+    $expectedResources = Join-Path $expectedRoot "resources"
+    if (Test-Path -LiteralPath $expectedResources -PathType Container) {
+      $expectedFiles += @(Get-ChildItem -LiteralPath $expectedResources -Recurse -File)
+    }
+    foreach ($file in $expectedFiles) {
+      $relative = $file.FullName.Substring($expectedRoot.Length).TrimStart('\', '/')
+      $packedFile = Join-Path $unpackPath $relative
+      if (-not (Test-Path -LiteralPath $packedFile -PathType Leaf)) { throw "Missing preserved file: $relative" }
+      if ((Get-Sha256 $file.FullName) -ne (Get-Sha256 $packedFile)) {
+        throw "Preserved file SHA256 mismatch: $relative"
+      }
+    }
+    $packedResources = Join-Path $unpackPath "resources"
+    $packedCount = 0
+    if (Test-Path -LiteralPath $packedResources -PathType Container) {
+      $packedCount = @(Get-ChildItem -LiteralPath $packedResources -Recurse -File).Count
+    }
+    if ($packedCount -ne ($expectedFiles.Count - 1)) { throw "Resources file count mismatch." }
+    Write-Host "  Preserved executable and resources: SHA256 match"
   }
 
   Write-Host "MSIX validation passed."

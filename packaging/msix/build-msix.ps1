@@ -1,11 +1,20 @@
-﻿Set-StrictMode -Version Latest
+﻿param([string] $ReleaseDirectory)
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Resolve-Path (Join-Path $ScriptRoot "..\..")
 
 $ExePath = Join-Path $RepoRoot "src-tauri\target\release\ore-no-fusen.exe"
 $ResourcesPath = Join-Path $RepoRoot "src-tauri\target\release\resources"
+if ($ReleaseDirectory) {
+  $ReleaseDirectory = (Resolve-Path -LiteralPath $ReleaseDirectory).Path
+  $ExePath = Join-Path $ReleaseDirectory "ore-no-fusen.exe"
+  $ResourcesPath = Join-Path $ReleaseDirectory "resources"
+}
 $ManifestPath = Join-Path $ScriptRoot "AppxManifest.xml"
 $IconRoot = Join-Path $RepoRoot "src-tauri\icons"
 

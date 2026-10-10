@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>画面でポン！リリースマシン</title><link rel="stylesheet" href="/ui.css"><script src="/ui.js" defer></script></head>
+<body><main>
+<header><div class="mark">▣</div><div><h1>画面でポン！リリースマシン</h1><p>俺の付箋 · MSIXで確認して、Store提出用を作る</p></div></header>
+<section class="premise"><strong>このツールを使う前提</strong><p>修正・テスト・必要な確認を終え、developへマージ済み（STEP 0完了）の状態からスタートします。あとはMSIXでリリース確認をする段階で使います。</p><p>1つ目のボタンを押す前に、付箋アプリを終了してください。確認用MSIXも通常の付箋保存先を使うため、大切なデータはバックアップしてください。</p></section>
+<div class="status"><span>ブランチ <b id="branch">確認中</b></span><span>現在の版 <b id="current-version">—</b></span><span>作業状態 <b id="clean">確認中</b></span></div>
+<div id="notice" role="status" aria-live="polite">状態を確認しています…</div>
+<div class="cards">
+<section class="card"><span class="step">STEP 1</span><h2>リリース準備</h2><p>本番アプリを作り、確認用MSIXを起動します。</p>
+<label class="version">新しいバージョン<input id="version" type="text" inputmode="decimal" autocomplete="off" maxlength="30"></label>
+<button id="prepare" disabled>🔨 リリース準備をポン！</button>
+<details><summary>実際の作業・手動で引き継ぐ場合</summary><pre id="prepare-plan"></pre></details>
+<div class="confirmation"><h3>起動したアプリを確認</h3><p>起動・保存・再起動と、今回直した箇所・影響範囲を確認してください。</p><label class="check"><input id="confirmed" type="checkbox" disabled>実機で確認しました。問題ありません。</label></div>
+</section>
+<section class="card"><span class="step">STEP 2</span><h2>Store提出用を作成</h2><p>実機確認した同じアプリを梱包・検証し、保存とGitHubへの反映まで進めます。</p>
+<button id="package" disabled>🚀 提出用作成 ＆ Pushをポン！</button><p id="gate" class="secondary">準備完了と実機確認のチェックが必要です。</p>
+<details><summary>実際の作業・手動で引き継ぐ場合</summary><pre id="package-plan"></pre></details>
+<div class="destination"><strong>提出ファイル</strong><p id="destination">Documents / 俺の付箋-Store提出 / &lt;版&gt; / ore-no-fusen.msix</p></div>
+<p id="complete" hidden>✓ Store提出準備が完了しました。次はPartner Centerでアップロード・認定申請を行ってください。</p>
+</section></div>
+<section class="card activity"><h2>現在の状況・実行ログ</h2><p id="current" aria-live="polite">待機中</p><p id="elapsed" class="secondary"></p><ol id="steps"></ol><details open><summary>実行コマンドと結果</summary><pre id="log">未開始</pre></details><p>ログ・手動復旧用の記録：<span id="log-path">—</span></p></section>
+<footer>ツールの完了はStore提出準備までです。認定申請・公開後の更新確認は手動で行います。<br>リリース手順を変えるときは、このツールも一緒に更新します。</footer>
+</main></body></html>
