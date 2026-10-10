@@ -59,7 +59,7 @@ oauth2 = { version = "5.0", features = ["reqwest"] }
 url = "2"
 tauri-plugin-oauth = "2"
 p256 = { version = "0.13", features = ["ecdh", "ecdsa", "pkcs8"] }
-jsonwebtoken = "9"
+jsonwebtoken = "11"
 aes-gcm = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"
