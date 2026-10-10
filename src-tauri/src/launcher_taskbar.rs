@@ -6,6 +6,8 @@ pub(crate) fn install(app: &tauri::AppHandle) {
         std::thread::spawn(move || {
             if let Err(e) = install_windows(is_en) {
                 crate::logger::log_warn(&format!("[Launcher] Jump List unavailable: {e}"));
+            } else {
+                crate::logger::log_info("[Launcher] Jump List installed");
             }
         });
     }
@@ -39,7 +41,8 @@ fn install_windows(is_en: bool) -> windows::core::Result<()> {
                 link.SetIconLocation(PCWSTR(exe.as_ptr()), 0)?;
                 let mut title = wide(if is_en { "Open Quick Launcher" } else { "クイックランチャーを開く" });
                 let props: IPropertyStore = link.cast()?;
-                let title_key = PROPERTYKEY { fmtid: GUID::from_u128(0xb725f130_47ef_101a_a5f1_02608c9eebac), pid: 2 };
+                // System.Title (PKEY_Title), required for Jump List task links.
+                let title_key = PROPERTYKEY { fmtid: GUID::from_u128(0xf29f85e0_4ff9_1068_ab91_08002b27b3d9), pid: 2 };
                 // Borrow the buffer only for SetValue, which copies the value. Do not clear this borrowed variant.
                 let mut value = PROPVARIANT::default();
                 (*value.Anonymous.Anonymous).vt = VT_LPWSTR;
