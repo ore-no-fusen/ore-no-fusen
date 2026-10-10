@@ -71,7 +71,7 @@ export class ReleaseMachine {
       onPid: logged ? pid => { this.state.childPid = pid; this.save(); } : undefined }); }
     finally { if (logged && versionCommit) this.log('Remove-Item Env:RELEASE_MACHINE_VERSION_COMMIT -ErrorAction SilentlyContinue'); }
   }
-  git(args, cwd = this.root, logged = true) { return this.cmd('git', args, cwd, logged); }
+  git(args, cwd = this.root, logged = true) { return this.cmd('git', logged ? args : ['--no-optional-locks', ...args], cwd, logged); }
   async head(cwd = this.root) { return this.git(['rev-parse', 'HEAD'], cwd, false); }
   async branch(cwd = this.root) { return this.git(['branch', '--show-current'], cwd, false); }
   async changes(cwd = this.root) {

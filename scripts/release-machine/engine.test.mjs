@@ -157,3 +157,14 @@ test('version-only hook accepts updater output and rejects staged code changes',
 test('a live child process after interruption blocks retry without killing it',async t=>{
   const f=await fixture(t);await prepare(f.machine);f.machine.state.childPid=process.pid;f.machine.save();await packageRelease(f.machine);assert.match(f.machine.state.error,/子プロセス/);assert.equal(f.config.pushCount,0);
 });
+
+test('inspection does not refresh the Git index while a release commit is pending', async t => {
+  const f = await fixture(t);
+  const index = path.join(f.root, '.git/index');
+  const before = fs.readFileSync(index);
+  const file = path.join(f.root, 'package.json');
+  const later = new Date(Date.now() + 10000);
+  fs.utimesSync(file, later, later);
+  assert.deepEqual(await f.machine.changes(), []);
+  assert.deepEqual(fs.readFileSync(index), before);
+});

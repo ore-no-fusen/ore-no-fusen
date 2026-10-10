@@ -2,7 +2,7 @@
   const $ = id => document.getElementById(id);
   const token = location.hash.slice(1) || sessionStorage.getItem('release-machine-token');
   if (location.hash) { sessionStorage.setItem('release-machine-token', token); history.replaceState(null, '', location.pathname); }
-  let info, key, versionInitialized = false, posting = false, networkError = null;
+  let info, key, versionInitialized = false, posting = false, networkError = null, startedAt = null;
   const stages = [ ['version','版番号設定'], ['commit','5ファイル限定コミット'], ['main','main同期'], ['build','本番ビルド・保全'], ['dev','開発署名MSIX作成'], ['install','導入・起動'], ['store','Store用MSIX作成'], ['validate','形式・exe一致検証'], ['copy','固定提出先へ保存'], ['push-main','main反映'], ['push-develop','develop反映'], ['open','提出フォルダーを開く'] ];
   async function request(url, body) {
     const response = await fetch(url, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type':'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -39,6 +39,17 @@
     $('result').hidden = s.status !== 'complete';
     const running = Object.values(s.steps).find(step => step.status === 'running');
     $('elapsed').textContent = running ? `経過 ${Math.floor((Date.now()-new Date(running.started).getTime())/1000)}秒` : '';
+    const working = !networkError && (info.busy || posting);
+    document.querySelector('.overview').classList.toggle('running', working);
+    if (working) {
+      startedAt ??= Date.now();
+      document.querySelector('.overview').classList.remove('warning');
+      $('current').textContent = posting ? '再開要求を送っています…' : `処理中：${s.current || '開始条件を確認しています…'}`;
+      $('notice').textContent = '処理は進行中です。起動用ウィンドウを閉じずにお待ちください。';
+      $('reason').hidden = true;
+      $('elapsed').textContent = `経過 ${Math.floor((Date.now() - (running ? new Date(running.started).getTime() : startedAt))/1000)}秒`;
+      $(s.operation === 'package' ? 'package' : 'prepare').textContent = '処理中…';
+    } else { startedAt = null; }
     $('steps').replaceChildren(...stages.map(([id,label]) => {
       const li=document.createElement('li'), status=s.steps[id];
       const text=document.createElement('span'); text.textContent=`${status?.status==='done'?'✓':status?.status==='running'?'▶':status?.status==='failed'?'×':'○'} ${label}`;
@@ -59,7 +70,7 @@
   }
   async function start(action) {
     posting=true;render();
-    try { await request(`/api/${action}`, { version:$('version').value, confirmed:$('confirmed').checked }); }
+    try { await request(`/api/${action}`, { version:$('version').value, confirmed:$('confirmed').checked }); info = await request('/api/state'); networkError = null; }
     catch(error) { networkError=error.message; }
     finally { posting=false;render(); }
   }

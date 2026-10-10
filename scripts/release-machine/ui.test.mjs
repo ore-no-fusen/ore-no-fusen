@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 
 const require=createRequire(import.meta.url);const {chromium}=require('@playwright/test');
 test('two-button browser flow, fixed confirmation, command logs, narrow screen and blocked state',async t=>{
-  const state={status:'idle',steps:{}};let busy=false;
+  const state={id:'fixture',version:'5.6.2',operation:'prepare',status:'failed',error:'以前のGitロックエラー',steps:{}};let busy=false;
   const info={root:'D:\\開発\\俺の付箋',version:'5.6.1',branch:'develop',changes:[],mainChanges:[],mainRoot:null,state,dataDir:'D:\\開発\\俺の付箋\\my\\release-machine',platform:'win32',log:''};
   const machine={inspect:async()=>({...info,busy}),start:(kind,input)=>{
     if(busy)throw new Error('busy');busy=true;
-    if(kind==='prepare') {Object.assign(state,{id:'fixture',version:input.version,operation:kind,status:'running',current:'STEP 1-2 本番ビルド中',steps:{build:{status:'running',started:new Date().toISOString(),title:'本番ビルド'}}});info.log='> powershell.exe -File windows.ps1 -Action Build\n→ npx.cmd tauri build --no-bundle';setTimeout(()=>{Object.assign(state,{status:'confirm',current:'STEP 1-5 実機確認待ち'});state.steps.build.status='done';state.steps.build.seconds=2;state.steps.install={status:'done',seconds:1};busy=false;},1200);}
+    if(kind==='prepare') {Object.assign(state,{id:'fixture',version:input.version,operation:kind,status:'running',current:'STEP 1-2 本番ビルド中',steps:{build:{status:'running',started:new Date().toISOString(),title:'本番ビルド'}}});info.log='> powershell.exe -File windows.ps1 -Action Build\n→ npx.cmd tauri build --no-bundle';setTimeout(()=>{Object.assign(state,{status:'confirm',error:null,current:'STEP 1-5 実機確認待ち'});state.steps.build.status='done';state.steps.build.seconds=2;state.steps.install={status:'done',seconds:1};busy=false;},1200);}
     else {assert.equal(input.confirmed,true);Object.assign(state,{operation:kind,status:'complete',current:'Store提出準備完了',destination:'D:\\提出\\5.6.2\\ore-no-fusen.msix'});info.log+='\n> build-msix.ps1\n✓ 内部exe一致\n✓ main / develop反映';busy=false;}
   }};
   const token='browser-test';const port=await new Promise(resolve=>{const temp=createServer(machine,{token,port:0});temp.listen(0,'127.0.0.1',()=>{const p=temp.address().port;temp.close(()=>resolve(p));});});
@@ -23,7 +23,7 @@ test('two-button browser flow, fixed confirmation, command logs, narrow screen a
   assert.equal(await page.locator('button').count(),2);assert.equal(await page.locator('input[type=checkbox]').count(),1);
   assert.match(await page.locator('.premise').innerText(),/developへマージ済み/);
   assert.equal(await page.locator('#package').isDisabled(),true);
-  await page.locator('#prepare').click();await page.waitForFunction(()=>document.querySelector('#current').textContent.includes('実機で確認'));
+  await page.locator('#prepare').click(); await page.waitForFunction(()=>document.querySelector('.overview').classList.contains('running')); assert.match(await page.locator('#current').innerText(),/処理中|再開/); assert.equal(await page.locator('#reason').isHidden(),true); assert.match(await page.locator('#elapsed').innerText(),/経過/); assert.equal(await page.locator('#prepare').isDisabled(),true); await page.waitForFunction(()=>document.querySelector('#current').textContent.includes('実機で確認'));
   assert.equal(await page.locator('#package').isDisabled(),true);await page.locator('#confirmed').check();assert.equal(await page.locator('#package').isEnabled(),true);
   assert.equal(await page.locator('.details').first().getAttribute('open'),null); await page.locator('.details > summary').first().click(); assert.match(await page.locator('#log').innerText(),/powershell.exe/);
   const output=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../my/release-machine-ui-check');fs.mkdirSync(output,{recursive:true});
