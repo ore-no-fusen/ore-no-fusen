@@ -1,11 +1,19 @@
 import { defineConfig } from 'vitepress'
 import { withMermaid } from 'vitepress-plugin-mermaid'
+import { htmlBaseLinks } from './html-links.mjs'
+
+const docsBase = '/ore-no-fusen/'
 
 // https://vitepress.dev/reference/site-config
 export default withMermaid(defineConfig({
   title: '俺の付箋',
   description: 'DESIGN DOCS PORTAL',
-  base: '/ore-no-fusen/',
+  base: docsBase,
+  markdown: {
+    config(md) {
+      md.use(htmlBaseLinks, docsBase)
+    }
+  },
   head: [
     ['script', { defer: '', src: 'https://cloud.umami.is/script.js', 'data-website-id': 'ab93c6f7-275c-43f5-a539-7f399e98e27f' }],
     ['meta', { name: 'google-site-verification', content: 'pofQfdwMUYp6bCxtOlqPb52NCLpYSF6LiUoRCCFbLWw' }]

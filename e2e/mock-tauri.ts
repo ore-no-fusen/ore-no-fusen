@@ -1,4 +1,5 @@
 import { Page } from '@playwright/test';
+import type { AppSettings } from '../lib/settings-store';
 
 /**
  * Tauri API モックユーティリティ
@@ -8,7 +9,7 @@ import { Page } from '@playwright/test';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { language?: 'ja' | 'en'; iphoneReturn?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
+export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
     await page.addInitScript((mockOptions) => {
         (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
@@ -94,6 +95,7 @@ updated: 2026-01-31
                         sound_enabled: true,
                         iphone_send_enabled: false,
                         analytics_consent: 'denied',
+                        ...mockOptions.settings,
                     };
 
                 // 設定保存

@@ -37,6 +37,7 @@ html.dark .help-pill { background:#0f172a; border-color:#334155; }
 <div class="help-grid">
   <a class="help-card" href="/user-guide/install"><strong>はじめて使う</strong>ダウンロード、インストール、初回起動。</a>
   <a class="help-card" href="/user-guide/basic"><strong>付箋を書く</strong>作成、編集、検索、タグ、削除。</a>
+  <a class="help-card" href="/user-guide/basic#quick-launcher"><strong>クイックランチャーを使う</strong>よく使う付箋の登録、格納、取り出し。</a>
   <a class="help-card" href="/user-guide/advanced"><strong>使い込む</strong>表、画像、Mermaid、アラーム、整列。</a>
   <a class="help-card" href="/user-guide/iphone"><strong>iPhoneから送る</strong>Google Drive経由でPCへ送信。</a>
   <a class="help-card" href="/user-guide/troubleshooting"><strong>困ったとき</strong>表示されない、消えた、届かない。</a>

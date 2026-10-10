@@ -8,6 +8,10 @@ pageClass: user-guide-page
 
 Ore No Fusen supports tables, Mermaid diagrams, images, alarms, font sizing, and tag-based arrangement.
 
+## Fold part of a note
+
+In reading mode, hover over a heading or parent line and click **⌄** on its left to hide its children. Click **›** to show them again. A heading folds the content of its section. To make a plain-text hierarchy, indent child lines with **Tab** while editing; **Shift+Tab** removes indentation. Editing shows all lines. This is separate from the **△ / ▽** buttons that fold the whole note.
+
 ## Annotate an image
 
 After pasting an image, use the edit button at its top-left. The default tool is a green highlighter with width 15 and opacity 50. Undo and redo remain available until you save, even after switching tools.

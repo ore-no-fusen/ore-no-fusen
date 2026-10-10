@@ -196,6 +196,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                     t={t}
                     language={settings.language}
                     launcherShortcutLabel={formatShortcutLabel(settings.shortcut_quick_launcher || "ctrl+p")}
+                    shortcutSettings={settings}
                     newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language)}
                 />
             case "feedback":
@@ -2090,8 +2091,9 @@ function StepIllustration({ kind }: { kind: 'write' | 'pin' | 'iphone' }) {
     );
 }
 
-function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }: { t: (key: any) => string; newNoteTriggerLabel: string; launcherShortcutLabel: string; language: Language }) {
+function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSettings, language }: { t: (key: any) => string; newNoteTriggerLabel: string; launcherShortcutLabel: string; shortcutSettings: AppSettings; language: Language }) {
     const isEnglish = language === 'en'
+    const guideUrl = `https://ore-no-fusen.github.io/ore-no-fusen/${isEnglish ? 'en/' : ''}user-guide/`;
     const withNewNoteTrigger = (value: string) => value.replace(/Ctrl\s*\+\s*N/g, newNoteTriggerLabel);
     const onboardingSteps = [
         {
@@ -2119,7 +2121,7 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }
             icon: <Sparkles className="h-5 w-5" />,
             tone: 'amber' as const,
             label: t('settings.help.goals.write.label'),
-            body: t('settings.help.goals.write.body'),
+            body: withNewNoteTrigger(t('settings.help.goals.write.body')),
         },
         {
             icon: <Pin className="h-5 w-5" />,
@@ -2138,6 +2140,36 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }
             tone: 'sky' as const,
             label: t('settings.help.goals.findLater.label'),
             body: t('settings.help.goals.findLater.body'),
+        },
+        {
+            icon: <Type className="h-5 w-5" />,
+            tone: 'sky' as const,
+            label: isEnglish ? "Fold a note or part of its text" : "付箋や本文を折りたたむ",
+            body: isEnglish ? "Click △ at the top-right to fold the whole note, and ▽ to expand it.\nTo fold part of the text in reading mode, hover over a heading or parent line and click ⌄ on its left. Click › to expand.\nIndent child lines with Tab and unindent with Shift+Tab. Editing shows all lines." : "付箋全体：右上の「△」で小さくし、「▽」で元に戻します。\n本文の一部分：閲覧中に見出しや親の行へマウスを置き、左の「⌄」で配下を隠し、「›」で開きます。\n親子の行を作るには、編集時に子の行を Tab で字下げします。Shift+Tab で戻せます。編集中はすべての行が見えます。",
+        },
+        {
+            icon: <ImageIcon className="h-5 w-5" />,
+            tone: 'sky' as const,
+            label: isEnglish ? "Add an image or screenshot" : "画像・スクリーンショットを貼る",
+            body: isEnglish ? "1. Copy an image or capture an area with Shift+Win+S.\n2. Double-click the note body to edit, then press Ctrl+V.\n3. Click outside to save. To draw on the image, use the edit button at its top-left." : "① 画像をコピー、または Shift+Win+S で画面を切り取ります。\n② 本文をダブルクリックして編集し、Ctrl+V で貼ります。\n③ 外側をクリックして保存します。画像に書き込みたいときは、画像左上の編集ボタンを押します。",
+        },
+        {
+            icon: <Inbox className="h-5 w-5" />,
+            tone: 'sky' as const,
+            label: isEnglish ? "Put notes away and bring them back" : "デスクトップを片付ける・付箋を戻す",
+            body: isEnglish ? "Store in Launcher: register a note, then click Store in Quick Launcher. Return it from Stored in Launcher.\nPut Away by Tag: right-click the note → Put Away by Tag, or use its box button. Return it from the tray menu → Take Out Put-Away Notes. Select notes and confirm how many to take out.\nData Management import copies external Markdown or filed notes; it is separate from taking notes out." : "ランチャーへ格納：付箋を登録し、クイックランチャーの「格納」を押します。「格納した付箋」から取り出せます。\nタグフォルダへしまう：右クリック →「タグフォルダへしまう」、または右側の箱ボタン。戻すときはトレイを右クリック →「しまった付箋を取り出す」で選び、「○枚を取り出す」を押します。\nデータ管理のインポートは、外部のMarkdownやしまった付箋をコピーして取り込む別の操作です。",
+        },
+        {
+            icon: <Sparkles className="h-5 w-5" />,
+            tone: 'sky' as const,
+            label: isEnglish ? "Reuse notes as Q&A, terms, or recipes" : "QA・用語・手順として残す",
+            body: isEnglish ? "Right-click → Crystallize → choose Q&A, Term, or Recipe. Review the draft in the creation screen and save. Find it later in the corresponding Quick Launcher tab." : "右クリック →「結晶にする」→ QA・用語・手順から用途を選びます。作成画面の叩き台を確認して保存します。作ったものはクイックランチャーの「QA」「用語集」「手順」タブから探して開けます。",
+        },
+        {
+            icon: <HardDrive className="h-5 w-5" />,
+            tone: 'sky' as const,
+            label: isEnglish ? "Back up my notes" : "付箋のバックアップを取る",
+            body: isEnglish ? "Open Settings → Data Management → Backup. Create a manual backup, choose whether to include Trash, or set the automatic backup interval. Automatic backup asks for confirmation. To recover, choose Restore from this backup and follow the restart instructions." : "設定 →「データ管理」→「バックアップ」で手動バックアップを作れます。Trashを含めるか、自動バックアップの間隔も設定できます。自動バックアップは確認してから実行されます。復旧するときは「このバックアップから復旧」を選び、案内に沿ってアプリを起動し直します。",
         },
         {
             icon: <AlertCircle className="h-5 w-5" />,
@@ -2164,11 +2196,21 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }
         ['settings.help.contextTable.delete.action', 'settings.help.contextTable.delete.when'],
     ];
     const shortcutRows = [
-        ['settings.help.shortcutTable.newNote.keys', 'settings.help.shortcutTable.newNote.action'],
-        ['settings.help.shortcutTable.delete.keys', 'settings.help.shortcutTable.delete.action'],
-        ['settings.help.shortcutTable.capture.keys', 'settings.help.shortcutTable.capture.action'],
-        ['settings.help.shortcutTable.paste.keys', 'settings.help.shortcutTable.paste.action'],
-        ['settings.help.shortcutTable.save.keys', 'settings.help.shortcutTable.save.action'],
+        [newNoteTriggerLabel, t('settings.help.shortcutTable.newNote.action')],
+        [launcherShortcutLabel, isEnglish ? 'Open or close Quick Launcher.' : 'クイックランチャーを開く／閉じる。'],
+        ['Ctrl+F', isEnglish ? 'Search notes while a note is active.' : '付箋を選んで全文検索を開きます。'],
+        [formatShortcutLabel(shortcutSettings.shortcut_toggle_visibility || 'ctrl+shift+h'), isEnglish ? 'Hide all desktop notes; press again to show them.' : '付箋をまとめて隠します。もう一度押すと戻ります。'],
+        [formatShortcutLabel(shortcutSettings.shortcut_arrange || 'ctrl+shift+l'), isEnglish ? 'Arrange open notes by tag.' : '開いている付箋をタグごとに並べます。'],
+        ['F2', isEnglish ? 'Edit the active note.' : '操作中の付箋を編集します。'],
+        [t('settings.help.shortcutTable.delete.keys'), t('settings.help.shortcutTable.delete.action')],
+        [t('settings.help.shortcutTable.capture.keys'), t('settings.help.shortcutTable.capture.action')],
+        [t('settings.help.shortcutTable.paste.keys'), t('settings.help.shortcutTable.paste.action')],
+        [t('settings.help.shortcutTable.save.keys'), t('settings.help.shortcutTable.save.action')],
+        [formatShortcutLabel(shortcutSettings.shortcut_bold || 'ctrl+b'), isEnglish ? 'Make selected text bold. (while editing)' : '選んだ文字を太字にします。（編集中）'],
+        [formatShortcutLabel(shortcutSettings.shortcut_heading || 'ctrl+h'), isEnglish ? 'Insert a heading. (while editing)' : '見出しを入れます。（編集中）'],
+        [formatShortcutLabel(shortcutSettings.shortcut_bullet_list || 'ctrl+l'), isEnglish ? 'Insert a bullet list. (while editing)' : '箇条書きを入れます。（編集中）'],
+        [formatShortcutLabel(shortcutSettings.shortcut_checkbox || 'ctrl+shift+c'), isEnglish ? 'Insert a checkbox. (while editing)' : 'チェックボックスを入れます。（編集中）'],
+        ['Tab / Shift+Tab', isEnglish ? 'Indent or unindent lines while editing.' : '編集中の行を字下げ／字下げ解除します。'],
     ];
     const troubleRows = [
         ['settings.help.troubleTable.iphone.issue', 'settings.help.troubleTable.iphone.check'],
@@ -2252,7 +2294,7 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }
                                     <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
                                 </summary>
                                 <div className="px-4 pb-4 pt-1 pl-16">
-                                    <p className="text-sm leading-7 text-slate-600">{goal.body}</p>
+                                    <p className="whitespace-pre-line text-sm leading-7 text-slate-600">{goal.body}</p>
                                 </div>
                             </details>
                         );
@@ -2265,7 +2307,7 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }
                 <p className="text-sm leading-6 text-slate-700">
                     {isEnglish ? 'Open it with ' : '開くキーは '}
                     <kbd className="rounded border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold">{launcherShortcutLabel}</kbd>
-                    {isEnglish ? '. You can also right-click the tray icon or taskbar app icon and choose “Open Quick Launcher”. Change the key in Settings → General → Quick Launcher Trigger.' : ' です。トレイアイコンやタスクバーのアプリアイコンを右クリック →「クイックランチャーを開く」でも開けます。キーは設定 → 全般 → クイックランチャートリガーで変更できます。'}
+                    {isEnglish ? '. You can also right-click the tray icon or taskbar app icon and choose “Open Quick Launcher”. Change the key in Settings → Hotkeys → Quick Launcher Trigger.' : ' です。トレイアイコンやタスクバーのアプリアイコンを右クリック →「クイックランチャーを開く」でも開けます。キーは設定 → ホットキー → クイックランチャートリガーで変更できます。'}
                 </p>
                 <HelpTable
                     title={isEnglish ? 'Register, store, and take out' : '登録・格納・取り出しの手順'}
@@ -2288,7 +2330,7 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }
                     ]}
                 />
                 <p className="rounded-lg bg-sky-50 p-3 text-sm leading-6 text-sky-900">
-                    {isEnglish ? 'Store in Launcher hides the note without moving its file. Put Away by Tag moves it to a tag folder or Archive; return those notes with Take Out Put-Away Notes.' : 'ランチャーの「格納」は、ファイルを移動せずに付箋を隠す操作です。従来の「タグフォルダへしまう」は保存場所を移す操作で、こちらは「しまった付箋を取り出す」から戻します。'}
+                    {isEnglish ? 'Store in Launcher hides the note without moving its file. Put Away by Tag moves it to a tag folder or Archive; return those notes with Take Out Put-Away Notes.' : 'ランチャーの「格納」は、ファイルを移動せずに付箋を隠す操作です。従来の「タグフォルダへしまう」は保存場所を移す操作で、こちらはトレイを右クリック →「しまった付箋を取り出す」から戻します。'}
                 </p>
             </SettingsItemCard>
 
@@ -2298,21 +2340,29 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }
                 title={t('settings.help.contextTable.title')}
                 firstHeader={t('settings.help.table.action')}
                 secondHeader={t('settings.help.table.when')}
-                rows={contextRows.map(([action, when]) => [t(action), t(when)])}
+                rows={[
+                    ...contextRows.map(([action, when]) => [t(action), t(when)]),
+                    [t('menu.favoriteAdd'), isEnglish ? 'Register a shortcut in Quick Launcher. The note stays on the desktop.' : 'クイックランチャーに近道を登録します。付箋はデスクトップに残ります。'],
+                    [isEnglish ? 'App Actions' : 'アプリ操作', isEnglish ? 'Search, Arrange by Tag, Undo Arrange, or Settings.' : '検索・タグで整列・整列を元に戻す・設定を開けます。'],
+                ]}
             />
 
+            <p className="text-sm leading-6 text-slate-600">{isEnglish ? 'The table shows your configured keys. Change note creation, Launcher, visibility, arrangement, and text formatting in Hotkeys. F2, Ctrl+F, and Ctrl+D apply while a note is active.' : '表には現在設定されているキーを表示しています。新規作成・ランチャー・表示切替・整列・文字の書式は「ホットキー」で変更できます。F2・Ctrl+F・Ctrl+Dは付箋を選んで使います。'}</p>
             <HelpTable
                 title={t('settings.help.shortcutTable.title')}
                 firstHeader={t('settings.help.table.keys')}
                 secondHeader={t('settings.help.table.action')}
-                rows={shortcutRows.map(([keys, action], index) => [index === 0 ? newNoteTriggerLabel : t(keys), t(action)])}
+                rows={shortcutRows}
             />
 
             <HelpTable
                 title={t('settings.help.troubleTable.title')}
                 firstHeader={t('settings.help.table.issue')}
                 secondHeader={t('settings.help.table.check')}
-                rows={troubleRows.map(([issue, check]) => [t(issue), t(check)])}
+                rows={[
+                    [isEnglish ? 'A note is no longer visible' : '付箋が見えなくなった', isEnglish ? 'Use the tray menu to show notes. If stored in Launcher, use Stored in Launcher → Take out. If filed in Archive or a tag folder, use the tray menu → Take Out Put-Away Notes.' : 'トレイのメニューで付箋を表示します。ランチャーへ格納したものは「格納した付箋」から取り出します。タグフォルダやArchiveへしまったものは、トレイの「しまった付箋を取り出す」で戻します。'],
+                    ...troubleRows.map(([issue, check]) => [t(issue), t(check)]),
+                ]}
                 tone="amber"
             />
 
@@ -2332,10 +2382,10 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }
                     onClick={async () => {
                         try {
                             const { open } = await import('@tauri-apps/plugin-shell');
-                            await open('https://ore-no-fusen.github.io/ore-no-fusen/user-guide/');
+                            await open(guideUrl);
                         } catch (e) {
                             console.error('[HelpSection] open user guide failed:', e);
-                            window.open('https://ore-no-fusen.github.io/ore-no-fusen/user-guide/', '_blank');
+                            window.open(guideUrl, '_blank');
                         }
                     }}
                     className="shrink-0 rounded-md bg-sky-700 px-4 py-2 text-sm font-bold text-white hover:bg-sky-800 transition-colors"

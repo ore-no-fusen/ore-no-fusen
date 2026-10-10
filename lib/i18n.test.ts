@@ -20,7 +20,7 @@ describe('i18n Utility', () => {
         expect(t('settings.data.importTagDesc')).toContain('元のタグフォルダにも残ります');
         expect(t('settings.help.menuTitle')).toBe('使い方');
         expect(t('settings.help.workflow.title')).toBe('よくある使い方');
-        expect(t('settings.help.contextTable.title')).toBe('右クリックメニュー早見表');
+        expect(t('settings.help.contextTable.title')).toBe("付箋を右クリックしてできること");
         expect(t('settings.help.contextTable.archive.action')).toBe('タグフォルダへしまう');
         expect(t('menu.archive')).toBe('タグフォルダへしまう');
         expect(t('menu.openHelp')).toBe('使い方を開く');
@@ -37,7 +37,7 @@ describe('i18n Utility', () => {
         expect(t('settings.data.import')).toBe('Import Markdown & Put-Away Tags');
         expect(t('settings.help.menuTitle')).toBe('Help');
         expect(t('settings.help.workflow.title')).toBe('Common Workflows');
-        expect(t('settings.help.contextTable.title')).toBe('Right-Click Menu Reference');
+        expect(t('settings.help.contextTable.title')).toBe("Actions in the note’s right-click menu");
         expect(t('menu.openHelp')).toBe('Open Help');
         expect(t('menu.colors.yellow')).toBe('Yellow - ideas');
         expect(t('menu.colors.black')).toBe('Black - recipes');
