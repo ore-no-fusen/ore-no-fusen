@@ -6,7 +6,9 @@
  * - Windows用コンソール制御
  */
 
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Jump List starts this executable directly, including in development.
+// Avoid allocating a console before the single-instance request is forwarded.
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 fn main() {
   app_lib::run();
