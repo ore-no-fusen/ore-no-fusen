@@ -1032,7 +1032,7 @@ PC付箋の先頭行が画像Markdownの場合はタイトルへ分離せず本�
 </Note>
 
 <Note type="warning">
-<strong>ユーザー体験の全体像（<a href="./000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）：</strong>
+<strong>ユーザー体験の全体像（<a href="./000_REQUIREMENTS.html#_9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）：</strong>
 図 3-3 の通常送信は、送信〜初回表示までを示す。通知をタップした後も再通知されロック画面から消えない体験、および OFF 操作は 4.4 を参照。
 </Note>
 
@@ -1113,7 +1113,7 @@ PCから送った付箋の返送には `originNoteId`、`originBodyHash`、`orig
 PC保存後、Driveの処理済み更新前にアプリが終了して同じIDを再受信した場合は、新しい付箋や添付ファイルを作らず、Driveの処理済み更新だけを再試行する。
 </Note>
 
-### 4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="./000_REQUIREMENTS#sec9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）
+### 4.4 ロック画面に表示 ON/OFF と再通知サイクル（<a href="./000_REQUIREMENTS.html#_9-4-iphoneロック画面常駐体験">REQ_IP_05</a>）
 
 「消す意思がないかぎりロック画面から消えない」体験を実現する ON/OFF 操作と、タップ後の再通知サイクル。
 シーケンス図では、<strong>①②③</strong> はユーザーが実施する操作、<strong>❶❷❸</strong> は PWA・Service Worker・IndexedDB が自動実行する処理を表します。

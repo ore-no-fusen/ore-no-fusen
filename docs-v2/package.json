@@ -5,8 +5,9 @@
   "main": "index.js",
   "scripts": {
     "docs:dev": "vitepress dev",
-    "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
+    "docs:build": "vitepress build && node scripts/check-links.mjs",
+    "docs:preview": "vitepress preview",
+    "docs:test-links": "node --test .vitepress/html-links.test.mjs"
   },
   "keywords": [],
   "author": "",

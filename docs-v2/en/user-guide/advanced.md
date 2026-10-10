@@ -8,6 +8,10 @@ pageClass: user-guide-page
 
 Ore No Fusen supports tables, Mermaid diagrams, images, alarms, font sizing, and tag-based arrangement.
 
+## Fold part of a note
+
+In reading mode, hover over a heading or parent line and click **⌄** on its left to hide its children. Click **›** to show them again. A heading folds the content of its section. To make a plain-text hierarchy, indent child lines with **Tab** while editing; **Shift+Tab** removes indentation. Editing shows all lines. This is separate from the **△ / ▽** buttons that fold the whole note.
+
 ## Annotate an image
 
 After pasting an image, use the edit button at its top-left. The default tool is a green highlighter with width 15 and opacity 50. Undo and redo remain available until you save, even after switching tools.
@@ -24,6 +28,8 @@ Use a note's context menu to create a Recipe, Q&A, or Term. New files use these 
 
 Existing files are not renamed automatically.
 
+See [Quick Launcher: register, store, and take out](/en/user-guide/basic#quick-launcher) for the basic steps.
+
 ## Quick Launcher filters
 
 Below each type tab, Quick Launcher shows **All**, user tags, and **Unclassified**. Tag filtering and text search work together. Internal tags such as `recipe`, `qa`, `term`, and `shortcut` are not shown as categories.
@@ -34,6 +40,7 @@ Below each type tab, Quick Launcher shows **All**, user tags, and **Unclassified
 |---|---|
 | `Ctrl+N` | New note |
 | `Ctrl+F` | Search |
+| `Ctrl+P` | Open / close Quick Launcher |
 | `Ctrl+Shift+H` | Hide or restore all notes |
 | `Ctrl+Shift+L` | Arrange by tag |
 
