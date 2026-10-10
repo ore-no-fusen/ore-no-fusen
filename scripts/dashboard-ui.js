@@ -49,7 +49,7 @@ function renderMembers() {
     const row = document.createElement('tr');
     row.className = 'border-b border-slate-800';
     const minutes = times.get(member.number);
-    for (const value of ['#'+member.number, member.version ?? '版番号未報告', member.lastSeenAt ?? '未確認', minutes === undefined ? '未集計' : Math.floor(minutes/60)+'時間'+minutes%60+'分', usageStates.get(member.number)?.label ?? '情報がなく、まだ分からない']) {
+    for (const value of ['#'+member.number, member.version ?? '版番号未報告', member.lastSeenAt ?? '日本日付未確認', minutes === undefined ? '未集計' : Math.floor(minutes/60)+'時間'+minutes%60+'分', usageStates.get(member.number)?.label ?? '情報がなく、まだ分からない']) {
       const cell = document.createElement('td'); cell.className = 'py-3 pr-4'; cell.textContent = value; row.appendChild(cell);
     }
     rows.appendChild(row);

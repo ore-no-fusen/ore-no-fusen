@@ -214,10 +214,10 @@ test('投稿後の一覧更新でタイトル・宛先・本文を表示し、HT
 
 test('生存メーターは日付が不明な会員や未来の日付を活動人数に含めない', () => {
   const members = [
-    { lastSeenAt: '2026-09-24' },
-    { lastSeenAt: '2026-09-18' },
-    { lastSeenAt: '2026-09-17' },
-    { lastSeenAt: '2026-09-25' },
+    { lastSeenTimestamp: '2026-09-24T00:00:00Z' },
+    { lastSeenTimestamp: '2026-09-18T00:00:00Z' },
+    { lastSeenTimestamp: '2026-09-17T00:00:00Z' },
+    { lastSeenTimestamp: '2026-09-25T00:00:00Z' },
     {},
   ];
   assert.deepEqual(survivalStats(members, new Date('2026-09-24T12:00:00Z')), { today: 1, week: 2, unknown: 2 });
@@ -278,7 +278,7 @@ test('指定した機能とiPhone送受信未使用を宛先として保存で�
 test('機能ごとの利用者数は会員単位で数え、割合の分母は全会員にする', () => {
   assert.equal(isoWeek(new Date('2027-01-01T00:00:00Z')), '2026-W53');
   const members = [
-    { generalNumber: 10001, appVersion: '5.5.1', lastSeenAt: '2026-09-27', usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send', 'note_edited'], usageOpenMinutes: 495 },
+    { generalNumber: 10001, appVersion: '5.5.1', lastSeenTimestamp: '2026-09-27T00:00:00Z', usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send', 'note_edited'], usageOpenMinutes: 495 },
     { usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send'] },
     { usageWeek: '2026-W38', usageConsent: true, usageFeatures: ['iphone_send'] },
     { usageWeek: '2026-W39', usageConsent: false, usageFeatures: ['iphone_send'] },
@@ -299,7 +299,7 @@ test('機能ごとの利用者数は会員単位で数え、割合の分母は�
 
 test('旧版や不正な版番号は会員ダッシュボードで未報告とする', () => {
   const stats = featureUsageStats([
-    { generalNumber: 10002, lastSeenAt: '2026-09-28' },
+    { generalNumber: 10002, lastSeenTimestamp: '2026-09-28T00:00:00Z' },
     { generalNumber: 10001, appVersion: '<script>', lastSeenAt: 'bad' },
   ]);
   assert.deepEqual(stats.memberVersions, [
@@ -314,7 +314,7 @@ test('更新時にFirestoreから機能別の人数を読み直す', async () =>
   const originalFetch = globalThis.fetch;
   const currentWeek = featureUsageStats([]).week;
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ documents: [
-    { fields: { payload: { stringValue: JSON.stringify({ generalNumber: 10001, appVersion: '5.5.0', lastSeenAt: '2026-09-30', usageWeek: currentWeek, usageConsent: true, usageFeatures: ['iphone_send'] }) } } },
+    { fields: { payload: { stringValue: JSON.stringify({ generalNumber: 10001, appVersion: '5.5.0', lastSeenTimestamp: '2026-09-30T00:00:00Z', usageWeek: currentWeek, usageConsent: true, usageFeatures: ['iphone_send'] }) } } },
   ] }) });
   const { server, url } = await serveDashboard('<input value="__CSRF_TOKEN__">', 'test-token', false, new Set(), 'development');
   try {
@@ -472,7 +472,7 @@ test('再集計は正しいOriginとCSRFが必要で、失敗時は前の画面�
 test('本番・検証とも概要から版別人数を確認し、会員検索・25件分割・未集計を区別する', async () => {
   const browser = await chromium.launch({ headless: true });
   const day = new Date().toISOString().slice(0, 10);
-  const members = Array.from({ length: 61 }, (_, index) => ({ generalNumber: 10000 + index, appVersion: index < 30 ? '5.5.1' : index < 60 ? '5.4.0' : null, lastSeenAt: index < 60 ? day : null, usageConsent: index === 0, usageOpenMinutes: 0 }));
+  const members = Array.from({ length: 61 }, (_, index) => ({ generalNumber: 10000 + index, appVersion: index < 30 ? '5.5.1' : index < 60 ? '5.4.0' : null, lastSeenTimestamp: index < 60 ? day + 'T00:00:00Z' : null, usageConsent: index === 0, usageOpenMinutes: 0 }));
   try {
     for (const environment of ['production', 'development']) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -491,7 +491,7 @@ test('本番・検証とも概要から版別人数を確認し、会員検索�
       assert.match(await page.locator('#memberPageStatus').innerText(), /26〜50件 \/ 61人/);
       await page.locator('#memberSearch').fill('#10060');
       assert.equal(await page.locator('#memberRows tr').count(), 1);
-      assert.match(await page.locator('#memberRows').innerText(), /版番号未報告.*未確認.*未集計/s);
+      assert.match(await page.locator('#memberRows').innerText(), /版番号未報告.*日本日付未確認.*未集計/s);
       await page.locator('#memberSearch').fill('99999');
       assert.match(await page.locator('#memberRows').innerText(), /該当する会員はいません/);
       await page.getByRole('button', { name: '概要', exact: true }).click();
@@ -514,4 +514,15 @@ test('本番・検証とも概要から版別人数を確認し、会員検索�
     assert.match(await empty.locator('#updateRate').innerText(), /集計対象なし/);
     assert.doesNotMatch(await empty.locator('#updateRate').innerText(), /NaN|Infinity/);
   } finally { await browser.close(); }
+});
+
+test('通信日と今日の人数は日本の午前0時で切り替わり、旧記録を推測しない', () => {
+  const members = [
+    { generalNumber: 10000, lastSeenTimestamp: '2026-10-10T14:59:59.000Z' },
+    { generalNumber: 10001, lastSeenTimestamp: '2026-10-10T15:00:00.000Z' },
+    { generalNumber: 10002, lastSeenAt: '2026-10-10' },
+    { generalNumber: 10003, lastSeenTimestamp: 'invalid' },
+  ];
+  assert.deepEqual(featureUsageStats(members).memberVersions.map(m => m.lastSeenAt), ['2026-10-10', '2026-10-11', null, null]);
+  assert.deepEqual(survivalStats(members, new Date('2026-10-10T22:00:00Z')), { today: 1, week: 2, unknown: 2 });
 });

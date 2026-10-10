@@ -3,7 +3,7 @@ import type { MemberDatabase, Row } from './database';
 import { createFeedbackConversationStore } from '../../feedback/lib/store';
 import { randomBytes } from 'node:crypto';
 
-export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; appVersion?: string; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean; usageOpenMinutes?: number };
+export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; lastSeenTimestamp?: string; appVersion?: string; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean; usageOpenMinutes?: number };
 
 const featureNames = new Set(['note_created', 'note_edited', 'tag_add', 'alarm_set', 'iphone_send', 'iphone_receive', 'search_open', 'note_duplicate', 'note_archive', 'outline_toggle', 'image_attach']);
 
@@ -81,11 +81,12 @@ export class MemberService {
     }
     const usage = week === undefined && features === undefined && consent === undefined && openMinutes === undefined
       ? null : usageSnapshot(week, features, consent, openMinutes);
-    const today = this.now().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const lastSeenTimestamp = this.now().toISOString();
+    const today = lastSeenTimestamp.slice(0, 10); // "YYYY-MM-DD"
     let member: Row<Member> | undefined;
     for (let attempt = 0; attempt < 4; attempt++) {
       const current = await this.authenticate(auth);
-      const updated = { ...current.value, lastSeenAt: today, appVersion: appVersion as string | undefined,
+      const updated = { ...current.value, lastSeenAt: today, lastSeenTimestamp, appVersion: appVersion as string | undefined,
         ...(usage && { usageWeek: usage.week, usageFeatures: usage.consent ? usage.features : [], usageConsent: usage.consent,
           usageOpenMinutes: usage.consent ? (usage.openMinutes ?? current.value.usageOpenMinutes) : undefined }) };
       if (await this.db.commit([{ path: `members/${auth.memberId}`, value: updated, version: current.version }])) {

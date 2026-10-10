@@ -36,6 +36,17 @@ describe('member registration',()=>{
 });
 
 describe('member heartbeat', () => {
+  it('preserves the communication instant across Japan midnight', async () => {
+    const db = new MemoryDb();
+    let instant = new Date('2026-10-10T14:59:59Z');
+    const service = new MemberService(db, () => instant);
+    await service.register(auth);
+    await service.heartbeat(auth);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value.lastSeenTimestamp).toBe('2026-10-10T14:59:59.000Z');
+    instant = new Date('2026-10-10T15:00:00Z');
+    await service.heartbeat(auth);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({ lastSeenAt: '2026-10-10', lastSeenTimestamp: '2026-10-10T15:00:00.000Z' });
+  });
   it('stores the consented usage snapshot with the heartbeat in one member update', async () => {
     const db = new MemoryDb();
     const service = new MemberService(db, () => new Date('2026-09-23T12:00:00Z'));

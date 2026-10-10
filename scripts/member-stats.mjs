@@ -39,6 +39,15 @@ function isoWeek(date = new Date()) {
   return `${day.getUTCFullYear()}-W${String(Math.ceil(((day - yearStart) / 86400000 + 1) / 7)).padStart(2, '0')}`;
 }
 
+function japanDay(date = new Date()) {
+  return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+function communicationDay(member) {
+  const timestamp = member.lastSeenTimestamp;
+  if (typeof timestamp !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(timestamp)) return null;
+  const date = new Date(timestamp);
+  return Number.isFinite(date.getTime()) ? japanDay(date) : null;
+}
 function featureUsageStats(members, week = isoWeek()) {
   const reporting = members.filter(member => ['recorded', 'empty'].includes(memberUsageState(member, week)));
   const statuses = members.map(member => ({ number: member.generalNumber, state: memberUsageState(member, week) }));
@@ -55,7 +64,7 @@ function featureUsageStats(members, week = isoWeek()) {
       .map(member => ({
         number: member.generalNumber,
         version: typeof member.appVersion === 'string' && /^\d+\.\d+\.\d+$/.test(member.appVersion) ? member.appVersion : null,
-        lastSeenAt: typeof member.lastSeenAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(member.lastSeenAt) ? member.lastSeenAt : null,
+        lastSeenAt: communicationDay(member),
       }))
       .sort((a, b) => a.number - b.number),
     memberOpenTimes: members.filter(member => member.usageConsent === true && Number.isSafeInteger(member.usageOpenMinutes) && member.usageOpenMinutes >= 0)
@@ -103,11 +112,11 @@ function base64Url(input) {
 }
 
 function survivalStats(members, today = new Date()) {
-  const currentDay = today.toISOString().slice(0, 10);
+  const currentDay = japanDay(today);
   const weekStart = new Date(today);
   weekStart.setUTCDate(weekStart.getUTCDate() - 6);
-  const firstDay = weekStart.toISOString().slice(0, 10);
-  const seen = members.map(m => m.lastSeenAt).filter(d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= currentDay);
+  const firstDay = japanDay(weekStart);
+  const seen = members.map(communicationDay).filter(d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= currentDay);
   return { today: seen.filter(d => d === currentDay).length, week: seen.filter(d => d >= firstDay).length, unknown: members.length - seen.length };
 }
 
@@ -431,7 +440,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     const left = a.split('.').map(Number), right = b.split('.').map(Number);
     return right[0] - left[0] || right[1] - left[1] || right[2] - left[2];
   })[0] ?? null;
-  const dashboardData = JSON.stringify({ versions: featureStats.memberVersions ?? [], times: featureStats.memberOpenTimes, usageStates: featureStats.memberUsageStates ?? [], total: totalMembers, target: targetVersion, day: new Date().toISOString().slice(0, 10) }).replaceAll('<', '\\u003c');
+  const dashboardData = JSON.stringify({ versions: featureStats.memberVersions ?? [], times: featureStats.memberOpenTimes, usageStates: featureStats.memberUsageStates ?? [], total: totalMembers, target: targetVersion, day: japanDay() }).replaceAll('<', '\\u003c');
 
   return `<!DOCTYPE html>
 <html lang="ja" class="dark">
@@ -488,10 +497,10 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       </div>
     </div>
 
-    <!-- Member survival meter: lastSeenAt is a UTC date, not a timestamp. -->
+    <!-- Communication dates and activity windows use Japan time. -->
     <div class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">最近の利用状況</h2>
-      <p class="text-sm text-slate-400">最終アクセス日（UTC）で集計。今日 ${survival.today}人 / 過去7日 ${survival.week}人 / 日付未確認 ${survival.unknown}人</p>
+      <p class="text-sm text-slate-400">最終通信日（日本時間）で集計。今日 ${survival.today}人 / 過去7日 ${survival.week}人 / 日付未確認 ${survival.unknown}人</p>
       <div class="h-4 rounded-full bg-slate-700 overflow-hidden"><div class="h-full bg-emerald-400" style="width:${totalMembers ? Math.min(100, survival.week / totalMembers * 100) : 0}%"></div></div>
       <p class="text-sm text-emerald-300">過去7日: ${totalMembers ? Math.round(survival.week / totalMembers * 100) : 0}%（${survival.week} / ${totalMembers}人）</p>
     </div>
@@ -511,8 +520,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <select id="usageStateFilter" aria-label="利用情報の状態で絞り込み" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="all">利用情報の状態: すべて</option>${Object.entries(USAGE_STATES).map(([key,state]) => `<option value="${key}">${state.label}</option>`).join('')}</select>
         <select id="memberSort" aria-label="並べ替え" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="number">会員番号順</option><option value="recent">通信が新しい順</option><option value="minutes">起動時間が長い順</option></select>
       </div>
-      <p class="text-xs text-slate-400">最終通信日はUTC。累計起動時間は同意済みの報告値。未集計は利用ゼロを意味しません。</p>
-      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>会員番号</th><th>アプリ版</th><th>最終通信日（UTC）</th><th>累計起動時間</th><th>利用情報の状態</th></tr></thead><tbody id="memberRows"></tbody></table></div>
+      <p class="text-xs text-slate-400">最終通信日は日本時間。時刻のない過去の記録は日本日付未確認。累計起動時間は同意済みの報告値。未集計は利用ゼロを意味しません。</p>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>会員番号</th><th>アプリ版</th><th>最終通信日（日本時間）</th><th>累計起動時間</th><th>利用情報の状態</th></tr></thead><tbody id="memberRows"></tbody></table></div>
       <div class="flex items-center justify-between"><span id="memberPageStatus" aria-live="polite"></span><div class="flex gap-2"><button id="memberPrev" class="border rounded-lg px-3 py-2">前へ</button><button id="memberNext" class="border rounded-lg px-3 py-2">次へ</button></div></div>
     </div>
 
