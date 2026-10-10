@@ -313,7 +313,7 @@ fn read_shortcut_item(path: &Path) -> Option<QuickOpenItem> {
 
 fn load_shortcut_items(base_path: &Path) -> Result<Vec<QuickOpenItem>, String> {
     let order = load_launcher_order()?;
-    let items = storage::list_recipe_material_note_paths(base_path)
+    let items = crate::favorite_storage::desktop_note_paths(base_path)
         .into_iter()
         .filter_map(|path| read_shortcut_item(&path))
         .collect();
@@ -386,7 +386,7 @@ fn quick_note_paths(base_path: &Path, tab: &str) -> Vec<PathBuf> {
     } else if tab == "term" {
         term_note_paths(base_path)
     } else {
-        storage::list_recipe_material_note_paths(base_path)
+        crate::favorite_storage::desktop_note_paths(base_path)
     }
 }
 

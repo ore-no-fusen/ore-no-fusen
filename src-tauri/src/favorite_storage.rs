@@ -228,8 +228,14 @@ fn base(app: &AppHandle) -> String {
 fn eligible(note: &crate::state::NoteMeta) -> bool {
     !note.tags.iter().any(|t| matches!(logic::normalize_reserved_tag(t).as_str(), "recipe" | "qa" | "term"))
 }
+pub(crate) fn desktop_note_paths(base: &Path) -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(base).into_iter().flatten().filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "md"))
+        .collect()
+}
 fn accessible_notes(base: &str) -> Vec<crate::state::NoteMeta> {
-    storage::list_recipe_material_note_paths(Path::new(base)).into_iter()
+    desktop_note_paths(Path::new(base)).into_iter()
         .filter_map(|path| storage::read_note(&path.to_string_lossy()).ok().map(|n| n.meta)).collect()
 }
 fn tag_targets(notes: Vec<crate::state::NoteMeta>, tag: &str) -> Vec<crate::state::NoteMeta> {
@@ -237,7 +243,7 @@ fn tag_targets(notes: Vec<crate::state::NoteMeta>, tag: &str) -> Vec<crate::stat
 }
 fn validate_target(base: &str, path: &str) -> Result<crate::state::NoteMeta, String> {
     // Preserve the existing folder/exclusion rules without reading every other body.
-    let target = storage::list_recipe_material_note_paths(Path::new(base)).into_iter()
+    let target = desktop_note_paths(Path::new(base)).into_iter()
         .find(|candidate| key(&candidate.to_string_lossy()) == key(path))
         .ok_or("付箋が現在のフォルダーにありません")?;
     storage::read_note(&target.to_string_lossy()).map(|n| n.meta)
@@ -332,7 +338,7 @@ pub(crate) struct TagStoreResult { stored: usize, failed: Vec<String> }
 #[tauri::command]
 pub(crate) async fn fusen_store_tag(app: AppHandle, tag: String) -> Result<TagStoreResult, String> {
     if tag.trim().is_empty() || matches!(logic::normalize_reserved_tag(&tag).as_str(), "shortcut" | "qa" | "term" | "recipe") { return Err("ユーザーのタグを選んでください".into()); }
-    let notes = storage::list_notes(&base(&app));
+    let notes = accessible_notes(&base(&app));
     let mut result = TagStoreResult {stored:0, failed:Vec::new()};
     for note in tag_targets(notes, &tag) {
         match fusen_request_store(app.clone(), note.path.clone(), None).await {
@@ -374,7 +380,7 @@ mod tag_storage_tests {
             std::fs::write(path, "---\ntags: [仕事]\n---\n本文 ![画像](assets/a.png)").unwrap();
         }
         let notes = accessible_notes(&dir.path().to_string_lossy());
-        assert_eq!(notes.len(), 2);
+        assert_eq!(notes.len(), 1);
         assert!(notes.iter().all(|n| !n.path.contains("Trash") && !n.path.contains("Archive")));
     }
     #[test]
@@ -386,10 +392,10 @@ mod tag_storage_tests {
             std::fs::write(path, "---\ntags: [shortcut]\n---\nbody").unwrap();
         }
         let base = dir.path().to_string_lossy();
-        for relative in ["normal.md", "tags/work/saved.md"] {
+        for relative in ["normal.md"] {
             assert!(validate_target(&base, &dir.path().join(relative).to_string_lossy()).is_ok());
         }
-        for relative in ["Archive/old.md", "Trash/deleted.md", "tags/work/Trash/deleted.md", "missing.md"] {
+        for relative in ["tags/work/saved.md", "Archive/old.md", "Trash/deleted.md", "tags/work/Trash/deleted.md", "missing.md"] {
             assert!(validate_target(&base, &dir.path().join(relative).to_string_lossy()).is_err());
         }
         let foreign = tempfile::NamedTempFile::new().unwrap();
