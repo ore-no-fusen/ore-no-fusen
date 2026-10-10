@@ -12,6 +12,7 @@
 
 'use client';
 import { storeFavoriteInOrder } from '../utils/shelfMotion';
+import { useStoreFavoriteListener } from '../hooks/useStoreFavoriteListener';
 
 import { useState, useEffect, useCallback, useRef, memo, useMemo, lazy, Suspense } from 'react';
 import React from 'react';
@@ -1110,10 +1111,7 @@ const StickyNote = memo(function StickyNote() {
             invoke('fusen_register_open_note_window', { path: urlPath, label: getCurrentWebviewWindow().label }),
         ).catch(error => console.warn('[付箋表示] 復元ウィンドウの登録に失敗しました:', error));
     }, [urlPath]);
-    useEffect(() => {
-        let cancelled = false;
-        let dispose: (() => void) | undefined;
-        import('@tauri-apps/api/event').then(({ listen }) => listen<{path:string; requestId:string}>('fusen:store_favorite', async ({ payload }) => {
+    useStoreFavoriteListener(async (payload) => {
             if (payload.path.replace(/\\/g, '/').toLowerCase() !== noteFilePathRef.current?.replace(/\\/g, '/').toLowerCase()) return;
             let error: string | null = null;
             let stored = false;
@@ -1147,9 +1145,7 @@ const StickyNote = memo(function StickyNote() {
                 isDeletingRef.current = false;
                 await invoke('fusen_complete_store', {requestId:payload.requestId, error});
             }
-        })).then(unlisten => { if (cancelled) unlisten(); else dispose = unlisten; });
-        return () => { cancelled = true; dispose?.(); };
-    }, [editBodyRef, noteFilePathRef, saveNoteContent]);
+    });
 
     useEffect(() => {
         let unlisten: (() => void) | undefined;
