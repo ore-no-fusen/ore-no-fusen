@@ -207,7 +207,7 @@ export default function QuickLauncher() {
     useEffect(() => {
         let disposed = false;
         let dispose: (() => void) | undefined;
-        listen('fusen:storage_changed', () => { reloadItems(activeTab, debouncedQuery); }).then(fn => { if(disposed) fn(); else dispose=fn; });
+        listen('fusen:storage_changed', () => { if (!operationRef.current) void reloadItems(activeTab, debouncedQuery); }).then(fn => { if(disposed) fn(); else dispose=fn; });
         return () => { disposed=true; dispose?.(); };
     }, [activeTab, debouncedQuery, reloadItems]);
     useEffect(() => {
@@ -239,7 +239,7 @@ export default function QuickLauncher() {
         let unlisten: (() => void) | undefined;
 
         listen(LAUNCHER_SHELF_CHANGED_EVENT, () => {
-            if (shouldReloadLauncherForEvent(LAUNCHER_SHELF_CHANGED_EVENT)) {
+            if (!operationRef.current && shouldReloadLauncherForEvent(LAUNCHER_SHELF_CHANGED_EVENT)) {
                 reloadItems(activeTab, debouncedQuery);
             }
         })
@@ -354,9 +354,13 @@ export default function QuickLauncher() {
         if (operationRef.current) return;
         operationRef.current = true; setBusy(true); setError(null);
         try {
-            if (storedPaths.includes(item.path)) await openQuickNote(item.path);
+            const takingOut = storedPaths.includes(item.path);
+            if (takingOut) await openQuickNote(item.path);
             else await storeQuickNote(item.path);
-            await reloadItems(activeTab, debouncedQuery);
+            setStoredPaths(prev => takingOut ? prev.filter(path => path !== item.path) : Array.from(new Set([...prev, item.path])));
+            setStoredItems(prev => takingOut ? prev.filter(note => note.path !== item.path) : [...prev.filter(note => note.path !== item.path), item]);
+            // The transaction is done; reconciliation must not hold the action buttons disabled.
+            void reloadItems(activeTab, debouncedQuery);
         } catch(e) { setError(String(e)); }
         finally { operationRef.current = false; setBusy(false); }
     };

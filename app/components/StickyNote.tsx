@@ -11,7 +11,7 @@
  */
 
 'use client';
-import { playShelfMotion, storeFavoriteInOrder } from '../utils/shelfMotion';
+import { storeFavoriteInOrder } from '../utils/shelfMotion';
 
 import { useState, useEffect, useCallback, useRef, memo, useMemo, lazy, Suspense } from 'react';
 import React from 'react';
@@ -1129,7 +1129,7 @@ const StickyNote = memo(function StickyNote() {
                 const success = await storeFavoriteInOrder(
                     () => saveNoteContent(body, rawFrontmatterForAlarmRef.current, false),
                     async () => { await invoke('fusen_store_favorite', {path:payload.path, windowLabel:win.label, requestId:payload.requestId}); stored = true; },
-                    () => playShelfMotion(document.body, 'return'),
+                    async () => {},
                     async () => {
                         await win.hide();
                         if (process.env.NODE_ENV === 'development') void invoke('fusen_debug_log', {message: `[LauncherStorage] hidden_ms=${Math.round(performance.now() - storageStarted)}`}).catch(() => {});
@@ -1171,7 +1171,7 @@ const StickyNote = memo(function StickyNote() {
         let dispose: (() => void) | undefined;
         let cancelled = false;
         import('@tauri-apps/api/event').then(({listen}) => listen('fusen:shelf_enter', () => {
-            void playShelfMotion(document.body, 'enter').catch(() => {});
+            // Retained windows are shown immediately; do not fade them out again.
         })).then(fn => { if(cancelled) fn(); else dispose=fn; }).catch(() => {});
         return () => { cancelled=true; dispose?.(); };
     }, []);

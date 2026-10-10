@@ -79,7 +79,7 @@ pub(crate) fn fusen_take_out_favorite(app: AppHandle, path: String) -> Result<()
     Ok(())
 }
 #[tauri::command]
-pub(crate) fn fusen_store_favorite(app: AppHandle, path: String, window_label: String, request_id: String) -> Result<(), String> {
+pub(crate) async fn fusen_store_favorite(app: AppHandle, path: String, window_label: String, request_id: String) -> Result<(), String> {
     if !pending().lock().unwrap_or_else(|p| p.into_inner()).contains_key(&request_id) { return Err("収納要求は期限切れです".into()); }
     validate_path(&app, &path)?;
     let state = app.state::<Mutex<AppState>>();
@@ -235,8 +235,15 @@ fn accessible_notes(base: &str) -> Vec<crate::state::NoteMeta> {
 fn tag_targets(notes: Vec<crate::state::NoteMeta>, tag: &str) -> Vec<crate::state::NoteMeta> {
     notes.into_iter().filter(|n| eligible(n) && n.tags.iter().any(|t| t == tag)).collect()
 }
+fn validate_target(base: &str, path: &str) -> Result<crate::state::NoteMeta, String> {
+    // Preserve the existing folder/exclusion rules without reading every other body.
+    let target = storage::list_recipe_material_note_paths(Path::new(base)).into_iter()
+        .find(|candidate| key(&candidate.to_string_lossy()) == key(path))
+        .ok_or("付箋が現在のフォルダーにありません")?;
+    storage::read_note(&target.to_string_lossy()).map(|n| n.meta)
+}
 fn validate_path(app: &AppHandle, path: &str) -> Result<(), String> {
-    let note = accessible_notes(&base(app)).into_iter().find(|n| key(&n.path) == key(path)).ok_or("付箋が現在のフォルダーにありません")?;
+    let note = validate_target(&base(app), path)?;
     if !eligible(&note) { return Err("QA・用語・手順は既存の返却操作を使ってください".into()); }
     Ok(())
 }
@@ -247,9 +254,12 @@ pub(crate) struct StorageSnapshot {
     tags: Vec<String>,
 }
 #[tauri::command]
-pub(crate) fn fusen_storage_snapshot(app: AppHandle) -> Result<StorageSnapshot, String> {
+pub(crate) async fn fusen_storage_snapshot(app: AppHandle) -> Result<StorageSnapshot, String> {
+    tokio::task::spawn_blocking(move || storage_snapshot(&app)).await.map_err(|e| e.to_string())?
+}
+fn storage_snapshot(app: &AppHandle) -> Result<StorageSnapshot, String> {
     let stored = stored_paths()?;
-    let notes = accessible_notes(&base(&app));
+    let notes = accessible_notes(&base(app));
     let mut tags = BTreeSet::new();
     let mut items = Vec::new();
     let mut paths = Vec::new();
@@ -271,8 +281,18 @@ pub(crate) fn fusen_complete_store(request_id: String, error: Option<String>) {
         let _ = sender.send(error.map_or(Ok(()), Err));
     }
 }
+pub(crate) fn log_visibility_latency(action: &str, requested_at: Option<u64>) {
+    if cfg!(debug_assertions) {
+        if let Some(start) = requested_at {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+            let message = format!("[LauncherVisibility] click_to_{}_ms={}", action, now.saturating_sub(start));
+            crate::logger::log_info(&message);
+            println!("{}", message);
+        }
+    }
+}
 #[tauri::command]
-pub(crate) async fn fusen_request_store(app: AppHandle, path: String) -> Result<(), String> {
+pub(crate) async fn fusen_request_store(app: AppHandle, path: String, requested_at: Option<u64>) -> Result<(), String> {
     validate_path(&app, &path)?;
     if stored_paths()?.contains(&key(&path)) { return Ok(()); }
     let label = {
@@ -280,21 +300,32 @@ pub(crate) async fn fusen_request_store(app: AppHandle, path: String) -> Result<
         let state = state.lock().unwrap_or_else(|p| p.into_inner());
         state.open_note_windows.get(&key(&path)).cloned().unwrap_or_else(|| crate::get_window_label(&path))
     };
-    if app.get_webview_window(&label).is_none() {
+    let window = app.get_webview_window(&label);
+    if window.is_none() {
         set_stored(&path, true)?;
         app.emit("fusen:storage_changed", &path).map_err(|e| e.to_string())?;
         return Ok(());
     }
+    let window = window.unwrap();
+    // Switch visibility directly; frontend saving and reconciliation follow afterwards.
+    window.hide().map_err(|e| e.to_string())?;
+    log_visibility_latency("hide", requested_at);
     let id = uuid::Uuid::new_v4().to_string();
     let (sender, receiver) = tokio::sync::oneshot::channel();
     pending().lock().unwrap_or_else(|p| p.into_inner()).insert(id.clone(), sender);
     if let Err(e) = app.emit_to(&label, "fusen:store_favorite", serde_json::json!({"path":path,"requestId":id})) {
         pending().lock().unwrap_or_else(|p| p.into_inner()).remove(&id);
+        let _ = window.show();
         return Err(e.to_string());
     }
     let result = tokio::time::timeout(std::time::Duration::from_secs(15), receiver).await;
     pending().lock().unwrap_or_else(|p| p.into_inner()).remove(&id);
-    result.map_err(|_| "付箋の保存応答を待てませんでした。状態を確認して再試行してください".to_string())?.map_err(|e| e.to_string())?
+    let outcome = result.map_err(|_| "付箋の保存応答を待てませんでした。状態を確認して再試行してください".to_string()).and_then(|reply| reply.map_err(|e| e.to_string())).and_then(|reply| reply);
+    if outcome.is_err() {
+        let _ = set_stored(&path, false);
+        let _ = window.show();
+    }
+    outcome
 }
 #[derive(Serialize)]
 pub(crate) struct TagStoreResult { stored: usize, failed: Vec<String> }
@@ -304,7 +335,7 @@ pub(crate) async fn fusen_store_tag(app: AppHandle, tag: String) -> Result<TagSt
     let notes = storage::list_notes(&base(&app));
     let mut result = TagStoreResult {stored:0, failed:Vec::new()};
     for note in tag_targets(notes, &tag) {
-        match fusen_request_store(app.clone(), note.path.clone()).await {
+        match fusen_request_store(app.clone(), note.path.clone(), None).await {
             Ok(()) => result.stored += 1,
             Err(e) => result.failed.push(format!("{}: {}", note.context, e)),
         }
@@ -346,4 +377,23 @@ mod tag_storage_tests {
         assert_eq!(notes.len(), 2);
         assert!(notes.iter().all(|n| !n.path.contains("Trash") && !n.path.contains("Archive")));
     }
+    #[test]
+    fn single_target_validation_keeps_folder_boundaries() {
+        let dir = tempfile::tempdir().unwrap();
+        for relative in ["normal.md", "tags/work/saved.md", "Archive/old.md", "Trash/deleted.md", "tags/work/Trash/deleted.md"] {
+            let path = dir.path().join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "---\ntags: [shortcut]\n---\nbody").unwrap();
+        }
+        let base = dir.path().to_string_lossy();
+        for relative in ["normal.md", "tags/work/saved.md"] {
+            assert!(validate_target(&base, &dir.path().join(relative).to_string_lossy()).is_ok());
+        }
+        for relative in ["Archive/old.md", "Trash/deleted.md", "tags/work/Trash/deleted.md", "missing.md"] {
+            assert!(validate_target(&base, &dir.path().join(relative).to_string_lossy()).is_err());
+        }
+        let foreign = tempfile::NamedTempFile::new().unwrap();
+        assert!(validate_target(&base, &foreign.path().to_string_lossy()).is_err());
+    }
+
 }

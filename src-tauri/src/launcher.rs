@@ -816,7 +816,19 @@ where
 }
 
 #[tauri::command]
-pub(crate) fn fusen_open_quick_note(app: AppHandle, path: String) -> Result<(), String> {
+pub(crate) async fn fusen_open_quick_note(app: AppHandle, path: String, requested_at: Option<u64>) -> Result<(), String> {
+    let retained = {
+        let state = app.state::<std::sync::Mutex<crate::state::AppState>>();
+        let state = state.lock().unwrap_or_else(|p| p.into_inner());
+        state.open_note_windows.get(&crate::normalize_path_for_label(&path)).cloned()
+    }.and_then(|label| app.get_webview_window(&label));
+    if let Some(window) = &retained {
+        window.show().map_err(|e| e.to_string())?;
+        crate::favorite_storage::log_visibility_latency("show", requested_at);
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        crate::favorite_storage::fusen_take_out_favorite(app.clone(), path.clone())?;
+    }
     let content = cached_quick_open_content(Path::new(&path))?;
     let tags = parse_launcher_tags(&content);
     let (x, y, width, height) = launcher_window_geometry(&content);
@@ -827,6 +839,7 @@ pub(crate) fn fusen_open_quick_note(app: AppHandle, path: String) -> Result<(), 
     run_quick_open_after_read(
         &content,
         |background_color| {
+            if retained.is_some() { return Ok(()); }
             app.emit(
                 "fusen:open_note",
                 serde_json::json!({
