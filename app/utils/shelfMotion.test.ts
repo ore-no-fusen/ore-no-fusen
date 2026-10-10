@@ -2,31 +2,42 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { playShelfMotion, storeFavoriteInOrder } from './shelfMotion';
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('favorite storage workflow', () => {
-    it('saves and persists before motion and closing', async () => {
-        const actions: string[] = [];
-        expect(await storeFavoriteInOrder(async () => { actions.push('save'); return true; },
-            async () => { actions.push('store'); }, async () => { actions.push('motion'); },
-            async () => { actions.push('close'); })).toBe(true);
-        expect(actions).toEqual(['save', 'store', 'motion', 'close']);
-    });
-    it('keeps the note visible when the save is rejected', async () => {
-        const store = vi.fn(), motion = vi.fn(), close = vi.fn();
-        expect(await storeFavoriteInOrder(async () => false, store, motion, close)).toBe(false);
+    it('hides without waiting for a slow save, but commits only after saving', async () => {
+        let completeSave!: (ok: boolean) => void;
+        const saving = new Promise<boolean>(resolve => { completeSave = resolve; });
+        const store = vi.fn(), close = vi.fn(), restore = vi.fn();
+        const result = storeFavoriteInOrder(() => saving, store, async () => {}, close, restore);
+        await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
         expect(store).not.toHaveBeenCalled();
-        expect(motion).not.toHaveBeenCalled();
-        expect(close).not.toHaveBeenCalled();
+        completeSave(true);
+        expect(await result).toBe(true);
+        expect(store).toHaveBeenCalledOnce();
+        expect(restore).not.toHaveBeenCalled();
     });
-    it('keeps the note visible when storage persistence fails', async () => {
-        const motion = vi.fn(), close = vi.fn();
+    it('restores the live note and does not commit when saving is rejected', async () => {
+        const store = vi.fn(), close = vi.fn(), restore = vi.fn();
+        expect(await storeFavoriteInOrder(async () => false, store, async () => {}, close, restore)).toBe(false);
+        expect(close).toHaveBeenCalledOnce();
+        expect(store).not.toHaveBeenCalled();
+        expect(restore).toHaveBeenCalledOnce();
+    });
+    it('restores the live note when saving throws', async () => {
+        const store = vi.fn(), restore = vi.fn();
+        await expect(storeFavoriteInOrder(async () => { throw Error('save failed'); }, store,
+            async () => {}, async () => {}, restore)).rejects.toThrow('save failed');
+        expect(store).not.toHaveBeenCalled();
+        expect(restore).toHaveBeenCalledOnce();
+    });
+    it('restores the live note when storage persistence fails', async () => {
+        const restore = vi.fn();
         await expect(storeFavoriteInOrder(async () => true, async () => { throw Error('disk full'); },
-            motion, close)).rejects.toThrow('disk full');
-        expect(motion).not.toHaveBeenCalled();
-        expect(close).not.toHaveBeenCalled();
+            async () => {}, async () => {}, restore)).rejects.toThrow('disk full');
+        expect(restore).toHaveBeenCalledOnce();
     });
-    it('still closes a saved note if optional animation fails', async () => {
+    it('still hides and stores if optional animation fails', async () => {
         const close = vi.fn();
         expect(await storeFavoriteInOrder(async () => true, async () => {},
-            async () => { throw Error('animation'); }, close)).toBe(true);
+            async () => { throw Error('animation'); }, close, vi.fn())).toBe(true);
         expect(close).toHaveBeenCalledOnce();
     });
 });

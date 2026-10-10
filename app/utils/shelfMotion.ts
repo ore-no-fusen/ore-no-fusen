@@ -18,15 +18,22 @@ export async function playShelfMotion(element: HTMLElement | null, action: 'ente
     } catch { /* OS motion cancellation is harmless. */ }
     finally { animation.cancel(); }
 }
+// Hide promptly while saving; a failed transaction restores the same live window.
 export async function storeFavoriteInOrder(
     save: () => Promise<boolean>,
     store: () => Promise<void>,
     motion: () => Promise<void>,
     close: () => Promise<void>,
+    restore: () => Promise<void>,
 ): Promise<boolean> {
-    if (!await save()) return false;
-    await store();
-    try { await motion(); } catch { /* Optional animation must not block storage. */ }
-    await close();
-    return true;
+    try {
+        try { await motion(); } catch { /* Optional animation must not block storage. */ }
+        await close();
+        if (!await save()) { await restore(); return false; }
+        await store();
+        return true;
+    } catch (error) {
+        await restore();
+        throw error;
+    }
 }

@@ -1103,6 +1103,13 @@ const StickyNote = memo(function StickyNote() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
     ensureFilePathForDropRef.current = handleFirstChar;
+    // Restored notes must register too, not only newly promoted/renamed notes.
+    useEffect(() => {
+        if (!urlPath) return;
+        import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) =>
+            invoke('fusen_register_open_note_window', { path: urlPath, label: getCurrentWebviewWindow().label }),
+        ).catch(error => console.warn('[付箋表示] 復元ウィンドウの登録に失敗しました:', error));
+    }, [urlPath]);
     useEffect(() => {
         let cancelled = false;
         let dispose: (() => void) | undefined;
@@ -1115,6 +1122,7 @@ const StickyNote = memo(function StickyNote() {
                 return;
             }
             isDeletingRef.current = true;
+            const storageStarted = performance.now();
             try {
                 const body = isEditingForListenerRef.current ? editBodyRef.current : contentForListenerRef.current;
                 const win = (await import('@tauri-apps/api/webviewWindow')).getCurrentWebviewWindow();
@@ -1122,16 +1130,19 @@ const StickyNote = memo(function StickyNote() {
                     () => saveNoteContent(body, rawFrontmatterForAlarmRef.current, false),
                     async () => { await invoke('fusen_store_favorite', {path:payload.path, windowLabel:win.label, requestId:payload.requestId}); stored = true; },
                     () => playShelfMotion(document.body, 'return'),
-                    () => win.hide(),
+                    async () => {
+                        await win.hide();
+                        if (process.env.NODE_ENV === 'development') void invoke('fusen_debug_log', {message: `[LauncherStorage] hidden_ms=${Math.round(performance.now() - storageStarted)}`}).catch(() => {});
+                    },
+                    async () => {
+                        if (stored) await invoke('fusen_take_out_favorite', {path:payload.path});
+                        await win.show();
+                    },
                 );
-                if (!success) throw new Error('保存できなかったため画面に残します');
+                if (!success) throw new Error('保存できなかったため画面に戻します');
+                if (process.env.NODE_ENV === 'development') void invoke('fusen_debug_log', {message: `[LauncherStorage] committed_ms=${Math.round(performance.now() - storageStarted)}`}).catch(() => {});
             } catch (e) {
                 error = String(e);
-                if (stored) {
-                    await invoke('fusen_take_out_favorite', {path:payload.path}).catch(() => {});
-                    const win = (await import('@tauri-apps/api/webviewWindow')).getCurrentWebviewWindow();
-                    await win.show().catch(() => {});
-                }
             } finally {
                 isDeletingRef.current = false;
                 await invoke('fusen_complete_store', {requestId:payload.requestId, error});
