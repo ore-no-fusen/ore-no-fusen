@@ -100,7 +100,7 @@ function renderUsageStates(stats) {
     const description = document.createElement('p'); description.className = 'text-xs text-slate-400 mt-2'; description.textContent = state.description;
     card.append(label,count,description); cards.appendChild(card);
   }
-  document.getElementById('featureEvidence').textContent = stats.usageStates.some(s => s.key === 'recorded' && s.count) ? '下の人数は、届いた情報で確認できた利用者だけです。' : '今週使った機能の情報はまだ届いていません。全会員が利用ゼロという意味ではありません。';
+  document.getElementById('featureEvidence').textContent = stats.reporting ? '届いた会員の情報について、機能ごとの使用・未使用を集計しています。全会員の使用状況を確定する値ではありません。' : '今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。';
   document.getElementById('usageStateUpdated').textContent = '確認日時: '+new Date().toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})+' (JST)・人数を押すと会員一覧へ移動します。';
   document.getElementById('featureRefreshStatus').textContent = '';
 }

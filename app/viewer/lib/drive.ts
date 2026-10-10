@@ -426,3 +426,43 @@ export async function deleteFileFromDrive(accessToken: string, fileName: string)
     await deleteFileFromDriveInternal(newToken, fileName);
   }
 }
+
+export async function uploadFileToDrive(
+  accessToken: string,
+  file: Blob,
+  fileName: string
+): Promise<void> {
+  const folderId = await getAppFolderId(accessToken);
+  const parentId = folderId ?? 'root';
+  const metadata = JSON.stringify({
+    name: fileName,
+    mimeType: file.type || 'application/octet-stream',
+    parents: [parentId],
+  });
+  const form = new FormData();
+  form.append('metadata', new Blob([metadata], { type: 'application/json' }));
+  form.append('file', file);
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    }
+  );
+  if (!res.ok) throw new Error(`Drive file upload failed: ${res.status}`);
+}
+
+export async function uploadFileWithAutoRefresh(
+  token: string,
+  file: Blob,
+  fileName: string
+): Promise<void> {
+  try {
+    await uploadFileToDrive(token, file, fileName);
+  } catch {
+    const newToken = await refreshAccessToken();
+    if (!newToken) throw new Error('session expired');
+    await uploadFileToDrive(newToken, file, fileName);
+  }
+}

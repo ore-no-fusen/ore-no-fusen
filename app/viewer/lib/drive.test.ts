@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getAppFolderId, uploadToDrive, downloadFromDrive, uploadWithAutoRefresh, resetCachedFolderId } from './drive';
+import { getAppFolderId, uploadToDrive, downloadFromDrive, uploadWithAutoRefresh, resetCachedFolderId, uploadFileToDrive } from './drive';
 
 // fetch モックのセットアップ
 const mockFetch = vi.fn();
@@ -8,6 +8,28 @@ vi.stubGlobal('fetch', mockFetch);
 const TEST_TOKEN = 'test-access-token';
 const TEST_FOLDER_ID = 'folder-id-123';
 const TEST_FILE_ID = 'file-id-456';
+
+describe('FileDrop multipart upload', () => {
+  beforeEach(() => { mockFetch.mockReset(); resetCachedFolderId(); });
+  it('実multipartに汎用MIME・Drive一時名・元のバイナリを分離して送る', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ files: [{ id: TEST_FOLDER_ID }] }) });
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    const pdf = new File(['%PDF'], '元資料.pdf', { type: 'application/pdf' });
+    await uploadFileToDrive(TEST_TOKEN, pdf, 'fusen_file_uuid');
+    const [url, options] = mockFetch.mock.calls[1];
+    expect(url).toContain('uploadType=multipart');
+    const metadata = options.body.get('metadata') as Blob;
+    const text = await new Promise<string>((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.readAsText(metadata); });
+    expect(JSON.parse(text)).toEqual({ name: 'fusen_file_uuid', mimeType: 'application/pdf', parents: [TEST_FOLDER_ID] });
+    expect(options.body.get('file').size).toBe(4);
+    expect(options.headers.Authorization).toBe('Bearer ' + TEST_TOKEN);
+  });
+  it('アップロードHTTP失敗を成功として扱わない', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ files: [{ id: TEST_FOLDER_ID }] }) });
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
+    await expect(uploadFileToDrive(TEST_TOKEN, new Blob(['data']), 'fusen_file_uuid')).rejects.toThrow('503');
+  });
+});
 
 describe('Drive API — getAppFolderId', () => {
   beforeEach(() => {

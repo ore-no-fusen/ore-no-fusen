@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const versionPattern = /^\d+\.\d+\.\d+$/;
 
@@ -58,4 +59,4 @@ function main() {
   console.log(`Release version updated: ${current} -> ${next}`);
 }
 
-if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/')}`) main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

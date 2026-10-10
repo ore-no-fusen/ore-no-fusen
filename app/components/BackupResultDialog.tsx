@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import MessageSurface from './MessageSurface'
 import type { Language } from '@/lib/i18n'
 
 type BackupResultDialogProps = {
@@ -34,8 +35,8 @@ export default function BackupResultDialog({
     const isEnglish = language === 'en'
 
     return (
-        <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6">
-            <section className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <main className="flex h-screen items-center justify-center bg-slate-950 p-2">
+            <MessageSurface role="dialog" aria-label={success ? 'Backup completed' : 'Backup failed'} className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
                 <div className={`px-8 pb-7 pt-8 text-center ${success ? 'bg-emerald-50' : 'bg-red-50'}`}>
                     <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full text-3xl font-black text-white shadow-lg ${success ? 'bg-emerald-500 shadow-emerald-200' : 'bg-red-500 shadow-red-200'}`}>
                         {success ? '✓' : '!'}
@@ -78,7 +79,7 @@ export default function BackupResultDialog({
                         {isEnglish ? 'Close' : '閉じる'}
                     </button>
                 </div>
-            </section>
+            </MessageSurface>
         </main>
     )
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { serializeEditor, extractTitleBody } from '../editor-helpers';
 import { saveDraft } from '../lib/indexeddb';
 import { createId, nowJST } from '../utils';
-import type { VideoBlobMap } from '../types';
+import type { DraftFileAttachment, VideoBlobMap } from '../types';
 
 // ---------------------------------------------------------------------------
 // useAutoSave: contenteditable の onInput 自動保存ロジック
@@ -12,6 +12,7 @@ type AutoSaveRefs = {
   editorRef: React.RefObject<HTMLDivElement | null>;
   currentDraftIdRef: React.RefObject<string | null>;
   imageBlobsRef: React.RefObject<Map<string, Blob>>;
+  filesRef?: React.RefObject<DraftFileAttachment[]>;
   videoBlobsRef?: React.RefObject<VideoBlobMap>;
   writeTagsRef: React.RefObject<string[]>;
 };
@@ -37,7 +38,7 @@ export function useAutoSave(
     autoSaveTimerRef.current = setTimeout(async () => {
       if (!refs.editorRef.current) return;
       const rawText = serializeEditor(refs.editorRef.current);
-      if (!rawText.trim()) return;
+      if (!rawText.trim() && !refs.filesRef?.current?.length) return;
       const { title, body } = extractTitleBody(rawText);
       const draftId = refs.currentDraftIdRef.current ?? createId();
       if (!refs.currentDraftIdRef.current) {
@@ -51,6 +52,7 @@ export function useAutoSave(
         body,
         created_at: nowJST(),
         images: imagesArr,
+        ...(refs.filesRef ? { files: refs.filesRef.current ?? [] } : {}),
         tags: refs.writeTagsRef.current ?? [],
       }).catch(() => {});
     }, 3000);

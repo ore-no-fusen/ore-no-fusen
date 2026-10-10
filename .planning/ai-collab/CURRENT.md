@@ -1,6 +1,29 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-10-09 FileDrop 実機確認とユーザー受入判断
+
+- 検証PWA 5.5.1-pwa.2で、PDF・ExcelのiPhone選択→Drive経由送信→PC付箋作成→ファイル保存→保存ファイルを開く経路をユーザーが確認。ExcelはiPhone再起動後に選択可能となった。選択不可の根本原因は未確定。
+- ユーザーは「大丈夫と思います」と回答し、現状の動作に問題なしと判断。実機確認結果と判断をコミットするよう明示依頼。
+- Word・ZIP・音声は形式選択・添付等の自動テストと共通送受信実装で対応。各形式の実機送信・閲覧は未実施。今回のExcelのDrive一時ファイル削除の独立照会も未実施。未確認を実機成功として扱わない。
+### 2026-10-08 FileDrop 汎用形式を選択可能に
+
+- ユーザー要望でPDF限定のaccept/拡張子拒否を解除。Excel（xls/xlsx）、Word（doc/docx）、ZIP、音声を含む汎用ファイルを選択可能。MIME型を保持し、空ならapplication/octet-stream。PC保存/ack/IndexedDB/送信経路は共通実装を継続。
+- 最新develop 06874b27からcodex/file-drop-formats。関連Vitest33件、TypeScript、diff検査成功。PWA worker 5.5.1-pwa.2。003_IPHONEと004_TESTを更新。
+- 先行PDF実機はユーザーが新付箋とPDF閲覧成功を報告。assets/filesに元名PDF 60502バイト、07:27:56に該当受信のack completed記録あり。添付削除エラー記録なし（Drive上の残存を独立照会した確認ではない）。Excel/Word/ZIP/音声の実機確認は未実施。
+
+### 2026-10-08 FileDrop：計画・設計・実装・テスト・主要キャプチャ
+
+- ユーザー指定の範囲（計画、設計書、テスト設計、別ワークツリーのソース修正、テスト、主要キャプチャ）を実施。最新ローカルdevelop 9a5f1dd3から.w/ファイル添付、codex/file-dropを作成。計画/テスト設計は.planning/features/file-drop.md。
+- PWA writeに📎ファイル（初期PDF）と元名表示/×解除を追加。files[]はfileName/originalFileName/mimeType/sizeの汎用構造。本文・タグ・targetPcId・画像・動画と分離し、IndexedDBへArrayBuffer保存、通知URL/一覧/起動復帰でBlob復元。添付/解除即時保存・自動保存・送信前退避にも接続。
+- Driveのfusen_file_*を既存キューに追加。Rustでバイナリ/サイズを確認しVaultのassets/filesへ元拡張子/日本語名を保持してcreate_newで排他的保存、同名は_2/_3。パス/Windows予約名を安全化しVault外保存を拒否。元名と絶対パスを本文末尾へ追記。添付保存失敗はemit/ackせずキューを残す。保存済み受信IDは添付を再保存せずack再試行。ackと一時掃除を拡張し未処理参照を保護。
+- 関連Vitest20ファイル133件、Rust FileDrop/掃除/VideoDrop互換8件＋iPhone関連26件=34件成功。TypeScript、対象Lint、cargo check、diff --check成功。Rustは検証用ダミー認証値、既存save_annotated_imageのdead_code警告1件。画像/動画混在・本文/タグ/宛先・アップロード/キュー読込/保存失敗・ack順序を確認。
+- ローカルChrome実PWAの5項目成功：PDF選択/本文保護、実IndexedDB全バイト保存、再読込復元、×解除、multipart/JSON送信/送信後リセット。Driveは模擬。撮影で一覧ボタンの折返しを直し再確認。
+- docs-v2/003_IPHONE（6.4.1とFileDrop3参加者図）、004_TEST、005_GLOSSARY、006_ARCHITECTURE、100_PRIVACYを更新。設計表2列・図3参加者をVitePress Markdownレンダー＋Mermaidの別プレビューで描画し1280px/390px確認。VitePressサイト全体は既存@docsearch/css不足で未確認、依存追加なし。
+- 主要証拠は.w/ファイル添付/my/file-drop/test-results.png（実ログから生成）、pwa-pdf.png、pwa-sent.png、design-data.png、design-sequence.png、design-mobile.png。結果元データresults.json・vitest.json・実行ログも同所。
+- iPhone実機の最初の受け入れ試験は未実施：ChatGPT作成PDF→iPhoneファイル→📎選択→PCへ送る→新付箋→assets/filesの元PDF→本文の保存先→Drive一時名削除。本文なし/同名/混在/別PC/Drive切断/Vault書込不可も実機確認対象。部分成功後の再試行でローカル副本が残る場合がある。ユーザー指定の作業範囲に合わせ、develop統合・push・配布は行わず専用ブランチに保持。
+
+
 
 ### 2026-10-08 ランチャーの「登録」「格納」に呼称を確定
 

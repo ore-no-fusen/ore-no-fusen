@@ -11,6 +11,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getWindowGeometry } from '@/app/api/window';
 import { PhysicalSize } from '@tauri-apps/api/dpi';
+import { temporaryGeometryActive, geometryRevision } from '../utils/temporaryWindowGeometry';
 
 export const FOLDED_MAX_WIDTH = 320;
 
@@ -68,11 +69,13 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
      * ウィンドウの座標とサイズを保存する
      */
     const saveWindowState = useCallback(async () => {
-        if (isMinimizedRef.current) {
+        if (isMinimizedRef.current || temporaryGeometryActive()) {
             return;
         }
         try {
+            const revision = geometryRevision();
             const geometry = await getWindowGeometry();
+            if (temporaryGeometryActive() || revision !== geometryRevision()) return;
             onGeometryChange(geometry);
         } catch (e) {
             console.error('[useWindowManager] Failed to save window state:', e);
@@ -155,6 +158,7 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
                 // 150ms 間イベントが来なくなった（＝移動が止まった）タイミングで1回だけ保存する。
                 // これにより移動中の通信がゼロになりドラッグがなめらかになる。
                 const uMove = await win.listen('tauri://move', () => {
+                    if (temporaryGeometryActive()) return;
                     if (moveTimer) clearTimeout(moveTimer);
                     moveTimer = setTimeout(() => {
                         moveTimer = null;
@@ -165,10 +169,13 @@ export function useWindowManager({ onGeometryChange, onAutoExpand, getMinimizedH
                 if (isMounted) unlistenMove = safeMove; else safeMove();
 
                 const uResize = await win.listen('tauri://resize', async () => {
+                    if (temporaryGeometryActive()) return;
                     if (isMinimizedRef.current) {
+                        const revision = geometryRevision();
                         // ミニマイズ中にリサイズされた場合、高さが一定以上増えていたら「自動展開」とする
                         const size = await win.innerSize();
                         const factor = await win.scaleFactor();
+                        if (temporaryGeometryActive() || revision !== geometryRevision()) return;
                         const logicalHeight = getMinimizedHeightRef.current ? getMinimizedHeightRef.current() : 40;
                         const targetHeight = Math.round(logicalHeight * factor);
 

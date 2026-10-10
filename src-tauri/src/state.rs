@@ -68,6 +68,9 @@ pub struct CreateRecipeNoteRequest {
 pub struct AppState {
     #[serde(skip)]
     pub member: Option<crate::member_identity::MemberLocal>,
+    /// Runtime cache of Settings.analytics_consent; never persisted separately.
+    #[serde(skip)]
+    pub usage_consent: Option<bool>,
     pub base_path: Option<String>,
     pub folder_path: Option<String>,
     pub notes: Vec<NoteMeta>,

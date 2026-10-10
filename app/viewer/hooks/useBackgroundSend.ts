@@ -6,12 +6,14 @@ import {
   uploadWithAutoRefresh,
   uploadImageWithAutoRefresh,
   uploadVideoWithAutoRefresh,
+  uploadFileWithAutoRefresh,
   refreshAccessToken,
 } from '../lib/drive';
 import { loadDraft, saveDraft } from '../lib/indexeddb';
 import { buildVideoFileName, createId, nowJST } from '../utils';
 import { extractTitleBody, mergeKnownTags } from '../editor-helpers';
-import type { VideoBlobMap } from '../types';
+import { fileMetadata } from '../file-attachments';
+import type { DraftFileAttachment, VideoBlobMap } from '../types';
 
 // ---------------------------------------------------------------------------
 // useBackgroundSend
@@ -27,6 +29,7 @@ type SendPayload = {
   blobs: Map<string, Blob>;
   /** 送信対象の動画 blob Map<driveName, { blob, originalName }> */
   videoBlobs?: VideoBlobMap;
+  files?: DraftFileAttachment[];
   /** 現在の下書き ID（null なら新規） */
   draftId: string | null;
   /** 送信先PC ID。未指定なら従来どおり全PCが受信候補になる */
@@ -70,7 +73,7 @@ export function useBackgroundSend({
    * 出力: 送信に成功したら true、未接続・失敗・再ログインが必要なら false
    * 副作用: Drive API 呼び出し（画像アップロード・JSON 更新）、IndexedDB 書き込み（saveDraft）、localStorage 読み書き（トークン）
    */
-  const sendToPC = async ({ rawText, tags, blobs, videoBlobs, draftId, targetPcId }: SendPayload): Promise<boolean> => {
+  const sendToPC = async ({ rawText, tags, blobs, videoBlobs, files = [], draftId, targetPcId }: SendPayload): Promise<boolean> => {
     if (!accessToken) {
       setBackgroundSendError('Driveに接続してください。');
       setTimeout(() => setBackgroundSendError(null), 5000);
@@ -98,6 +101,9 @@ export function useBackgroundSend({
         onTokenRefreshed(newToken);
       }
 
+      if (files.some(file => !file.blob || file.blob.size !== file.size)) {
+        throw new Error('添付ファイルのデータがありません。ファイルを選び直してください。');
+      }
       mergeKnownTags(tags);
 
       const mergedBlobs = new Map(blobs);
@@ -152,6 +158,7 @@ export function useBackgroundSend({
 
       // 画像を並列アップロード
       await Promise.all([
+        ...files.map(file => uploadFileWithAutoRefresh(token, file.blob!, file.fileName)),
         ...Array.from(mergedBlobs.entries()).map(([fileName, file]) =>
           uploadImageWithAutoRefresh(token, file, fileName)
         ),
@@ -186,6 +193,7 @@ export function useBackgroundSend({
             memo: videoMemo ?? '',
           }
         : { id: noteId, ...originFields, ...targetFields, title, body: fullBody, sent_at: sentAt, tags };
+      Object.assign(newItem, { files: files.map(fileMetadata) });
       const updatedItems = [...currentItems, newItem];
       await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: updatedItems });
 
@@ -195,6 +203,7 @@ export function useBackgroundSend({
         title,
         body: fullBody,
         created_at: sentAt,
+        files: files.map(fileMetadata),
         images: Array.from(mergedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
         videos: Array.from(legacyVideosToSend.entries()).map(([fileName, { originalName }]) => ({
           fileName,

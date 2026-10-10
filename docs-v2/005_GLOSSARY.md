@@ -165,6 +165,15 @@ v1.1 / 2026-05-06
 
 ---
 
+## FileDrop用語
+
+| 用語 | 内容 |
+| --- | --- |
+| FileDrop | PWAから汎用ファイルを添付してDrive経由でPC Vaultへ送る機能。初期UIはPDF選択 |
+| files[] | 元名・Drive一時名・MIME・サイズを分離した汎用添付配列 |
+| fusen_file_* | ackまでDriveに置く一時添付名。元名とは別 |
+| assets/files/ | PC Vault内の汎用添付保存先。元拡張子を保持し同名は連番 |
+
 ## 7 データ形式
 
 <div class="glossary-table">
@@ -196,5 +205,6 @@ v1.1 / 2026-05-06
 | 2 | 1.1 | 26-05-06 | 1 認証・セキュリティ、2 Push 通知、3 ブラウザ技術、4 フレームワーク・ランタイム、5 設計用語、6 Google Drive API、7 データ形式を修正。全表に「主な対象」を追加し、OAuth / client_secret / VAPID / Drive ファイルを「俺の付箋で何のために使うか」が分かる表現へ修正。 |
 | 3 | 1.2 | 26-05-25 | VideoDrop、添付メディア、`fusen_video_*`、`videos[]`、`originalFileName` を追加。本文・元ファイル名・Drive 一時名・PC 保存パスを混同しない用語境界を明記。 |
 | 4 | 1.3 | 26-05-31 | 0 章「登場人物と関係」を新設。3 者（ユーザー / 俺の付箋アプリ開発者 / 悪意ある第三者）と互いの警戒関係を表で明記。VAPID / 秘密鍵 / push_keys.json / client_secret / ore-no-fusen フォルダの記述を 3 者語彙に統一。「作者」「攻撃者」「第三者」表記を整理。 |
+| 5 | 1.4 | 26-10-08 | FileDrop、files[]、fusen_file_*、assets/filesの用語と役割を追加。 |
 
 </div>

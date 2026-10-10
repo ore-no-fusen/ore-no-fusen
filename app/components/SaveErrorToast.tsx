@@ -10,6 +10,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import MessageSurface from './MessageSurface';
 import type { Language } from '@/lib/i18n';
 
 type SaveErrorToastProps = {
@@ -34,14 +35,14 @@ export default function SaveErrorToast({ isVisible, onDismiss, language }: SaveE
     if (!isVisible) return null;
 
     return (
-        <div
+        <MessageSurface
             role="alert"
             aria-live="assertive"
             style={{
                 position: 'fixed',
                 bottom: 0,
-                left: 0,
-                right: 0,
+                left: 8,
+                right: 8,
                 zIndex: 99999,
                 padding: '10px 12px',
                 backgroundColor: '#dc2626',
@@ -58,7 +59,7 @@ export default function SaveErrorToast({ isVisible, onDismiss, language }: SaveE
             }}
         >
             {/* アイコン＋メッセージ */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, lineHeight: 1.4 }}>
+            <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, lineHeight: 1.4 }}>
                 <span style={{ fontSize: '16px', flexShrink: 0 }}>⚠️</span>
                 <span>
                     {language === 'en' ? 'Automatic save failed.' : '自動保存に失敗しました。'}<br />
@@ -89,6 +90,6 @@ export default function SaveErrorToast({ isVisible, onDismiss, language }: SaveE
             >
                 ✕
             </button>
-        </div>
+        </MessageSurface>
     );
 }

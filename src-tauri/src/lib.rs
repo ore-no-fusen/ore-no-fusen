@@ -19,7 +19,8 @@ mod crash_guard;
 mod distribution;
 mod desktop_shortcut;
 mod double_tap;
-mod gdrive; // Google Drive 連携
+mod gdrive;
+mod file_drop; // Google Drive 連携
 mod hotkey_manager;
 mod import; // インポート機能
 mod logger; // ログシステム
@@ -4053,6 +4054,8 @@ fn drive_temp_file_kind(name: &str) -> &'static str {
         "image"
     } else if name.starts_with("fusen_video_") {
         "video"
+    } else if name.starts_with("fusen_file_") {
+        "file"
     } else {
         "unknown"
     }
@@ -4075,7 +4078,7 @@ fn drive_temp_image_mime(name: &str) -> Option<&'static str> {
 }
 
 fn collect_temp_tokens_from_str(text: &str, names: &mut std::collections::HashSet<String>) {
-    for prefix in ["fusen_img_", "fusen_video_"] {
+    for prefix in ["fusen_img_", "fusen_video_", "fusen_file_"] {
         let mut rest = text;
         while let Some(pos) = rest.find(prefix) {
             let candidate = &rest[pos..];
@@ -4110,6 +4113,47 @@ fn collect_temp_refs_from_value(
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod file_drop_cleanup_tests {
+    use super::*;
+    #[test]
+    fn file_drop_queue_refs_are_protected_by_temp_cleanup() {
+        let pending = serde_json::json!({"items":[{"files":[{"fileName":"fusen_file_pdf"}]}]});
+        let mut refs = std::collections::HashSet::new();
+        collect_temp_refs_from_value(&pending, &mut refs);
+        assert!(refs.contains("fusen_file_pdf"));
+        let files = vec![
+            gdrive::DriveTempMediaFile { id:"pending".into(), name:"fusen_file_pdf".into(), modified_time:Some("2020-01-01T00:00:00Z".into()), size:Some(4) },
+            gdrive::DriveTempMediaFile { id:"orphan".into(), name:"fusen_file_orphan".into(), modified_time:Some("2020-01-01T00:00:00Z".into()), size:Some(4) },
+        ];
+        let summary = summarize_drive_temp_files(&files, &refs);
+        assert_eq!(summary.deletable_count, 1);
+        assert_eq!(summary.skipped_referenced_count, 1);
+        assert_eq!(drive_temp_file_kind("fusen_file_pdf"), "file");
+    }
+
+    #[test]
+    fn video_drop_refs_remain_separate_from_generic_files() {
+        let mixed = serde_json::json!({
+            "videos":[{"videoFileName":"fusen_video_1.mp4","originalFileName":"dance.mp4"},
+                      {"videoFileName":"fusen_video_2.mov","originalFileName":"dance.mov"}],
+            "files":[{"fileName":"fusen_file_1","originalFileName":"memo.pdf","mimeType":"application/pdf","size":4}]
+        });
+        assert_eq!(collect_iphone_video_names(&mixed), vec!["fusen_video_1.mp4", "fusen_video_2.mov"]);
+        let legacy = serde_json::json!({"videoFileName":"fusen_video_old.mov","originalFileName":"old.mov"});
+        assert_eq!(collect_iphone_videos(&legacy)[0].original_file_name, "old.mov");
+    }
+
+    #[test]
+    fn video_drop_collision_still_preserves_existing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("dance.mov"), b"first").unwrap();
+        std::fs::write(dir.path().join("dance_2.mov"), b"second").unwrap();
+        assert_eq!(resolve_video_path_with_suffix(dir.path(), "dance.mov"), dir.path().join("dance_3.mov"));
+        assert_eq!(std::fs::read(dir.path().join("dance.mov")).unwrap(), b"first");
     }
 }
 
@@ -5466,6 +5510,7 @@ async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
             found = true;
             image_names.extend(collect_iphone_image_names(&item));
             video_names.extend(collect_iphone_video_names(&item));
+            video_names.extend(file_drop::collect(&item)?.into_iter().map(|file| file.file_name));
         } else if item.get("received_at").is_none() {
             remaining.push(item);
         }
@@ -5658,6 +5703,46 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                     .collect()
             })
             .unwrap_or_default();
+
+        // Fail closed: no event/ack if any FileDrop binary cannot be saved.
+        let file_refs = match file_drop::collect(item) {
+            Ok(files) => files,
+            Err(error) => { logger::log_info(&format!("[iphone file] invalid metadata: {}", error)); continue; }
+        };
+        if !file_refs.is_empty() {
+            let folder_path = {
+                let state = app.state::<Mutex<AppState>>();
+                let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+                guard.base_path.clone().or(guard.folder_path.clone())
+            };
+            let Some(folder_path) = folder_path else { continue; };
+            // A saved receipt means only ack needs retrying, even if Drive's binary is gone.
+            if fusen_has_iphone_note(folder_path.clone(), note_id.clone()) {
+                if let Err(error) = fusen_ack_iphone_note(note_id.clone()).await {
+                    logger::log_info(&format!("[iphone file] ack retry failed: {}", error));
+                }
+                continue;
+            }
+            let mut file_lines = Vec::new();
+            let mut failed = false;
+            for file in &file_refs {
+                let result = match gdrive::download_binary(client, &token, &file.file_name).await {
+                    Ok(bytes) => file_drop::save(std::path::Path::new(&folder_path), file, &bytes),
+                    Err(error) => Err(error),
+                };
+                match result {
+                    Ok(path) => file_lines.push(format!("📎 {}\n保存先:\n{}", file.original_file_name, path.to_string_lossy())),
+                    Err(error) => {
+                        logger::log_info(&format!("[iphone file] save failed {}: {}", file.file_name, error));
+                        failed = true;
+                        break;
+                    }
+                }
+            }
+            if failed { continue; }
+            if !pc_body.is_empty() { pc_body.push_str("\n\n"); }
+            pc_body.push_str(&file_lines.join("\n\n"));
+        }
 
         if item_type == "video" && !video_refs.is_empty() {
             let folder_path = {
@@ -5866,7 +5951,6 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             member_identity::member_get,
-            member_identity::member_set_consent,
             member_identity::member_record_batch,
             member_identity::member_flush,
             member_identity::member_open_time_tick,

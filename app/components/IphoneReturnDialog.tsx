@@ -1,4 +1,5 @@
 import React from 'react';
+import MessageSurface from './MessageSurface';
 import type { ReceivedIphoneNote } from '../utils/receiveIphoneNote';
 
 export type IphoneOriginMatch = {
@@ -25,7 +26,7 @@ type Props = {
 export default function IphoneReturnDialog({ note, origin, busy, error, language, onDecide }: Props) {
   const en = language === 'en';
   return (
-    <main className="min-h-screen bg-slate-50 p-6 text-slate-900" role="dialog" aria-modal="true"
+    <MessageSurface className="w-full bg-slate-50 p-6 text-slate-900" role="dialog" aria-modal="true"
       aria-label={en ? 'Note returned from iPhone' : 'iPhoneから戻った付箋'}>
       <h1 className="text-xl font-bold">{en ? 'A note returned from your iPhone' : 'iPhoneから付箋が戻りました'}</h1>
       <p className="mt-2 text-sm text-slate-700">
@@ -57,6 +58,6 @@ export default function IphoneReturnDialog({ note, origin, busy, error, language
       <p className="mt-3 text-xs text-slate-600">{en
         ? 'The PC note is backed up before applying. Decide later will show this again on the next app launch.'
         : '反映前のPCの内容はバックアップに保存します。「あとで決める」は次回起動時に再表示します。'}</p>
-    </main>
+    </MessageSurface>
   );
 }

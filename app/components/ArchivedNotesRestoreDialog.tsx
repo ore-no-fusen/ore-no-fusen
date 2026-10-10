@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import MessageSurface from './MessageSurface';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -107,7 +108,7 @@ export default function ArchivedNotesRestoreDialog({ language, onClose, onRestor
       <button disabled={!selected.size || restoring} onClick={restore} className="rounded-lg bg-sky-600 disabled:bg-neutral-700 px-5 py-2 font-semibold">{restoring ? (en ? 'Restoring…' : '取り出し中…') : en ? `Restore ${selected.size}` : `${selected.size}枚を取り出す`}</button>
     </div>
     {detail && <div className="absolute inset-8 z-10 rounded-xl bg-neutral-900 border border-neutral-600 p-5 overflow-auto"><button className="float-right" onClick={() => setDetail(null)}>✕</button><pre className="whitespace-pre-wrap font-sans mt-8">{detailBody || detail.preview}</pre></div>}
-    {result && <div className="absolute bottom-20 left-5 right-5 rounded-lg bg-neutral-800 border border-neutral-600 p-3"><button className="float-right" onClick={() => setResult(null)}>✕</button><p>{en ? `${result.restored.length} restored` : `${result.restored.length}枚を取り出しました`}</p>{result.conflicts.map(item => <p key={item.sourcePath} className="text-amber-300">{en ? 'Not overwritten: ' : '上書きしませんでした: '}{item.sourcePath.split(/[\\/]/).pop()}</p>)}{result.failed.map(item => <p key={item.sourcePath} className="text-red-300">{item.error}</p>)}</div>}
+    {result && <MessageSurface role="status" style={{ maxHeight: '40dvh' }} className="absolute bottom-20 left-5 right-5 max-h-[40vh] overflow-y-auto break-words rounded-lg bg-neutral-800 border border-neutral-600 p-3"><button className="float-right" onClick={() => setResult(null)}>✕</button><p>{en ? `${result.restored.length} restored` : `${result.restored.length}枚を取り出しました`}</p>{result.conflicts.map(item => <p key={item.sourcePath} className="text-amber-300">{en ? 'Not overwritten: ' : '上書きしませんでした: '}{item.sourcePath.split(/[\\/]/).pop()}</p>)}{result.failed.map(item => <p key={item.sourcePath} className="text-red-300">{item.error}</p>)}</MessageSurface>}
   </div>;
 }
 

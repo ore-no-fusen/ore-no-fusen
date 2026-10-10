@@ -10,8 +10,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { LogicalSize, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
+import { beginTemporaryWindowGeometry } from '../utils/temporaryWindowGeometry';
 import { AnnotationHistory } from '../utils/annotationHistory';
 import { selectedImageCrop, cropToOriginal, type ImageCrop } from '../utils/imageCrop';
 import type { Language } from '@/lib/i18n';
@@ -31,7 +30,7 @@ export const ANNOTATION_WINDOW_SIZE = { width: 760, height: 620 } as const;
 interface Props {
     absolutePath: string;
     displayUrl: string;
-    onSaved: () => void;
+    onSaved: (cropped: boolean) => void;
     onCancel: () => void;
     language: Language;
 }
@@ -98,6 +97,7 @@ const TOOLS: { value: Tool; ja: string; en: string }[] = [
 
 export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved, onCancel, language }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
+    const restoreWindowRef = useRef<(() => Promise<void>) | null>(null);
     const stageRef = useRef<import('konva/lib/Stage').Stage | null>(null);
     const drawLayerRef = useRef<import('konva/lib/Layer').Layer | null>(null);
     const cropOutlineRef = useRef<import('konva/lib/shapes/Rect').Rect | null>(null);
@@ -119,6 +119,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     const [highlightOpacity, setHighlightOpacity] = useState<number>(DEFAULT_ANNOTATION_SETTINGS.highlightOpacity);
     const highlightOpacityRef = useRef<number>(DEFAULT_ANNOTATION_SETTINGS.highlightOpacity);
     const [isSaving, setIsSaving] = useState(false);
+    const isSavingRef = useRef(false);
     const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 });
 
     const naturalSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -376,9 +377,11 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
     }, [syncHistoryCounts]);
 
     const handleSave = useCallback(async () => {
+        if (isSavingRef.current) return;
         if (toolRef.current === 'crop' && !cropRef.current) return;
         const layer = drawLayerRef.current;
         if (!layer) return;
+        isSavingRef.current = true;
         setIsSaving(true);
         try {
             const { w: nw } = naturalSizeRef.current;
@@ -387,41 +390,28 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
             const dataUrl = await exportDrawingLayerAsPng(layer, sw, sh, pixelRatio);
             await invoke('fusen_save_annotated_image', { path: absolutePath, data: dataUrl,
                 crop: cropRef.current ? cropToOriginal(cropRef.current, stageSizeRef.current, naturalSizeRef.current) : null });
-            onSaved();
+            await restoreWindowRef.current?.();
+            onSaved(cropRef.current !== null);
         } catch (err) {
             console.error('[ANNOTATION] save error', err);
             alert(`${language === 'en' ? 'Could not save: ' : '保存に失敗しました: '}${err}`);
         } finally {
+            isSavingRef.current = false;
             setIsSaving(false);
         }
     }, [absolutePath, language, onSaved]);
 
     useEffect(() => {
-        const win = getCurrentWindow();
-        let disposed = false;
-        let originalSize: { width: number; height: number } | null = null;
-        let originalPosition: { x: number; y: number } | null = null;
-        Promise.all([win.outerSize(), win.outerPosition()]).then(async ([size, position]) => {
-            if (disposed) return;
-            originalSize = { width: size.width, height: size.height };
-            originalPosition = { x: position.x, y: position.y };
-            await win.setSize(new LogicalSize(ANNOTATION_WINDOW_SIZE.width, ANNOTATION_WINDOW_SIZE.height));
-            await win.center();
-        }).catch(() => {});
+        const restore = beginTemporaryWindowGeometry(ANNOTATION_WINDOW_SIZE.width, ANNOTATION_WINDOW_SIZE.height);
+        restoreWindowRef.current = restore;
         return () => {
-            disposed = true;
-            if (originalSize) {
-                win.setSize(new PhysicalSize(originalSize.width, originalSize.height)).catch(() => {});
-            }
-            if (originalPosition) {
-                win.setPosition(new PhysicalPosition(originalPosition.x, originalPosition.y)).catch(() => {});
-            }
+            void restore().catch(error => console.error('[ANNOTATION] restore failed', error));
         };
     }, []);
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onCancel();
+            if (e.key === 'Escape' && !isSavingRef.current) onCancel();
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
                 if (e.shiftKey) handleRedo();
@@ -501,7 +491,7 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         </button>
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={onCancel} className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100">
+                        <button onClick={onCancel} disabled={isSaving} className="px-4 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50">
                             {language === 'en' ? 'Cancel' : 'キャンセル'}
                         </button>
                         <button onClick={handleSave} disabled={isSaving || (tool === 'crop' && !crop)} className="px-5 py-1.5 rounded bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">

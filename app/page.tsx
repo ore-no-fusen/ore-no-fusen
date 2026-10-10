@@ -27,6 +27,7 @@ import ArchivedNotesRestoreDialog from './components/ArchivedNotesRestoreDialog'
 import ConfirmDialog from './components/ConfirmDialog'; // [NEW] アプリ内確認ダイアログ
 import AnalyticsConsentDialog from './components/AnalyticsConsentDialog';
 import BackupResultDialog from './components/BackupResultDialog';
+import MessageSurface from './components/MessageSurface';
 import IphoneReturnDialog, { type IphoneOriginMatch } from './components/IphoneReturnDialog';
 import PoolWaitToast from './components/PoolWaitToast'; // [NEW] Pool 枯渇時トースト
 import { getTranslation, type Language } from '@/lib/i18n';
@@ -308,9 +309,11 @@ function OrchestratorContent() {
 
   // ウィンドウリサイズポリシー（useMainWindowResizePolicyに委譲）
   useMainWindowResizePolicy({
+    showMessageDialog: isMainWindow && (showMonthlyBackupPrompt || showDesktopShortcutPrompt || !!monthlyBackupResult || !!hotkeyRegisterFailureMessage),
+    showAnalyticsConsent: isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && !settings.analytics_consent,
     setupRequired: isMainWindow && setupRequired,
     isSettingsOpen: isMainWindow && isSettingsOpen,
-    isCheckingSetup: isMainWindow && isCheckingSetup,
+    isCheckingSetup: isMainWindow && (isCheckingSetup || settingsLoading),
     showUpdateDialog: isMainWindow && (showUpdateDialog || storeUpdateAvailable),
     isSearchOpen: isMainWindow && isSearchOpen,
     showIphoneReturnDialog: isMainWindow && (pendingIphoneReturns.length > 0 || appliedIphoneReturn !== null),
@@ -2026,20 +2029,6 @@ function OrchestratorContent() {
   const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isArchiveRestoreOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !storeUpdateAvailable && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
 
   useEffect(() => {
-    if (!isMainWindow || isCheckingSetup || setupRequired || settingsLoading || settings.analytics_consent) return;
-    const showConsent = async () => {
-      const { LogicalSize } = await import('@tauri-apps/api/dpi');
-      const win = getCurrentWindow();
-      await win.setSize(new LogicalSize(640, 520));
-      await win.center();
-      await win.unminimize();
-      await win.show();
-      await win.setFocus();
-    };
-    void showConsent().catch((e) => console.error('[AnalyticsConsent] prompt display failed:', e));
-  }, [isMainWindow, isCheckingSetup, setupRequired, settingsLoading, settings.analytics_consent]);
-
-  useEffect(() => {
     if (!isMainWindow || isCheckingSetup || setupRequired || isSettingsOpen || !settings.analytics_consent || desktopShortcutPromptCheckedRef.current) return;
     desktopShortcutPromptCheckedRef.current = true;
     const checkDesktopShortcut = async () => {
@@ -2138,7 +2127,7 @@ function OrchestratorContent() {
   if (isHidingAfterUpdate) return null;
   if (appliedIphoneReturn) {
     return (
-      <main className="min-h-screen bg-slate-50 p-6 text-slate-900" role="dialog" aria-modal="true">
+      <MessageSurface className="w-full bg-slate-50 p-4 text-slate-900" role="dialog" aria-modal="true">
         <h1 className="text-xl font-bold">{language === 'en' ? 'iPhone changes applied' : 'iPhoneの内容を反映しました'}</h1>
         <p className="mt-3">{language === 'en' ? 'The original PC content was backed up. You can undo this update now.' : '反映前のPCの内容を保存しました。ここで元に戻すこともできます。'}</p>
         <p className="mt-2 break-all text-xs text-slate-600">{appliedIphoneReturn.backupPath}</p>
@@ -2170,7 +2159,7 @@ function OrchestratorContent() {
               if (pendingIphoneReturns.length === 0) await getCurrentWindow().hide();
             }}>{language === 'en' ? 'Done' : '完了'}</button>
         </div>
-      </main>
+      </MessageSurface>
     );
   }
   if (pendingIphoneReturns.length > 0) {

@@ -2,15 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import React from 'react';
 
-const { invokeMock, getCurrentWindowMock, windowLabel, emitMock, createWindowMock } = vi.hoisted(() => ({
+const { invokeMock, getCurrentWindowMock, windowLabel, emitMock, createWindowMock, handlers } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   getCurrentWindowMock: vi.fn(),
   emitMock: vi.fn(),
   createWindowMock: vi.fn(),
   windowLabel: { value: 'main' },
+  handlers: new Map<string, (event: any) => void>(),
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async()=>vi.fn()), emit: emitMock }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async(name:string,handler:any)=>{handlers.set(name,handler);return ()=>handlers.delete(name);}), emit: emitMock }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: getCurrentWindowMock }));
 vi.mock('@tauri-apps/api/webviewWindow', () => ({ WebviewWindow: class {
   static getByLabel = vi.fn(async () => null);
@@ -51,8 +52,19 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await vi.advanceTimersByTimeAsync(0);
     expect(invokeMock).toHaveBeenCalledWith('member_closed_summaries');
-    expect(invokeMock).toHaveBeenCalledWith('member_heartbeat',{analyticsConsent:true});
+    expect(invokeMock).toHaveBeenCalledWith('member_heartbeat');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).not.toBeNull();
+  });
+
+  it('stops GA4 immediately when the linked setting is disabled', async()=>{
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((window as any)['ga-disable-G-MGPKF0MQH4']).toBe(false);
+    handlers.get('settings_updated')?.({payload:{analytics_consent:'denied'}});
+    await vi.advanceTimersByTimeAsync(0);
+    expect((window as any)['ga-disable-G-MGPKF0MQH4']).toBe(true);
+    expect((window as any).__FUSEN_ANALYTICS_GRANTED__).toBe(false);
+    expect(invokeMock).toHaveBeenCalledWith('member_sync_usage');
   });
 
   it('checks for letters while resident after recording app-open time', async()=>{
@@ -64,6 +76,21 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(tickPositions).toHaveLength(2);
     expect(syncPositions).toHaveLength(2);
     expect(tickPositions[1]).toBeLessThan(syncPositions[1]);
+    const usagePositions=commands.map((command,index)=>command==='member_sync_usage'?index:-1).filter(index=>index>=0);
+    expect(usagePositions).toHaveLength(1);
+  });
+
+  it('syncs usage at three hours and flushes the latest feature before sending',async()=>{
+    (window as any).__TAURI_INTERNALS__={};
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(3*60*60*1000-1_000);
+    trackEvent('feature_used',{feature_name:'note_duplicate'});
+    invokeMock.mockClear();
+    await vi.advanceTimersByTimeAsync(1_000);
+    const commands=invokeMock.mock.calls.map(([command])=>command);
+    expect(invokeMock).toHaveBeenCalledWith('member_record_batch',{counts:{note_duplicate:1}});
+    expect(commands.indexOf('member_record_batch')).toBeLessThan(commands.indexOf('member_sync_usage'));
+    expect(commands.indexOf('member_flush')).toBeLessThan(commands.indexOf('member_sync_usage'));
   });
 
   it('shows a new letter found while the app remains running', async()=>{
@@ -145,8 +172,8 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     render(<AnalyticsLoader isTauriBuild />);
     await vi.advanceTimersByTimeAsync(60_000);
     await vi.advanceTimersByTimeAsync(0);
-    expect(invokeMock).toHaveBeenCalledWith('member_heartbeat',{analyticsConsent:false});
-    expect(invokeMock).not.toHaveBeenCalledWith('member_sync_usage',expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith('member_heartbeat');
+    expect(invokeMock).toHaveBeenCalledWith('member_sync_usage');
     expect(invokeMock).not.toHaveBeenCalledWith('member_closed_summaries');
     expect(document.querySelector('[data-fusen-analytics="ga4"]')).toBeNull();
     expect(emitMock).not.toHaveBeenCalledWith('fusen:open_settings', { tab: 'conversation' });

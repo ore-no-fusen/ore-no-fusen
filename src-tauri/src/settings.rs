@@ -57,6 +57,7 @@ pub fn save_settings<R: Runtime>(
         let mut app_state = state.lock().unwrap_or_else(|e| e.into_inner());
         app_state.base_path = settings.base_path.clone();
         app_state.folder_path = settings.base_path.clone();
+        crate::member_identity::apply_usage_setting(&mut app_state, settings.analytics_consent.as_deref())?;
 
         // ベースパスが変わったらノート一覧も再読み込み
         if let Some(path) = &settings.base_path {

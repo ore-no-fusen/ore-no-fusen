@@ -20,7 +20,8 @@ pub struct WeeklyUsage { week: String, schema: u8, app_version: String, features
 pub struct MemberLocal {
     member_id: String, secret: String, general_number: Option<u64>,
     #[serde(default)] analytics_subject: Option<String>,
-    consent: Option<bool>,
+    #[serde(default, rename="consent", skip_serializing)] legacy_consent: Option<bool>,
+    #[serde(default, rename="consent_linked", skip_serializing)] legacy_consent_linked: bool,
     #[serde(default)] weeks: BTreeMap<String, WeeklyUsage>,
     #[serde(default)] read_announcement_ids: BTreeSet<String>,
     #[serde(default)] announcements: Vec<AnnouncementPayload>,
@@ -29,6 +30,8 @@ pub struct MemberLocal {
     #[serde(default)] last_heartbeat_version: Option<String>,
     #[serde(default)] open_seconds: u64,
     #[serde(default)] last_usage_sync_consent: bool,
+    #[serde(default)] last_usage_sync_week: Option<String>,
+    #[serde(default)] last_usage_sync_features: Vec<String>,
     #[serde(skip)] syncing: bool,
     #[serde(skip)] usage_syncing: bool,
     #[serde(skip)] open_time_tick: Option<Instant>,
@@ -36,9 +39,9 @@ pub struct MemberLocal {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct MemberView { general_number: Option<u64>, analytics_subject: Option<String>, consent: Option<bool>, environment: String }
+pub struct MemberView { general_number: Option<u64>, analytics_subject: Option<String>, environment: String }
 impl MemberLocal {
-    fn view(&self) -> MemberView { MemberView { general_number:self.general_number, analytics_subject:self.analytics_subject.clone(), consent:self.consent, environment:environment().into() } }
+    fn view(&self) -> MemberView { MemberView { general_number:self.general_number, analytics_subject:self.analytics_subject.clone(),  environment:environment().into() } }
 }
 fn week_key(now: chrono::DateTime<Utc>) -> String { let iso=now.iso_week(); format!("{}-W{:02}",iso.year(),iso.week()) }
 
@@ -83,7 +86,7 @@ fn replace_file(from:&std::path::Path,to:&std::path::Path)->Result<(),String>{
 }
 #[cfg(not(windows))]
 fn replace_file(from:&std::path::Path,to:&std::path::Path)->Result<(),String>{std::fs::rename(from,to).map_err(|_|"Cannot replace member identity".into())}
-fn ensure(state:&mut AppState)->Result<&mut MemberLocal,String>{
+fn load_member(state:&mut AppState)->Result<(),String>{
     if state.member.is_none(){
         let path=identity_path()?;
         let value=match std::fs::read(&path){
@@ -96,24 +99,68 @@ fn ensure(state:&mut AppState)->Result<&mut MemberLocal,String>{
             Err(_)=>return Err("Cannot read member identity".into()),
         }; state.member=Some(value);
     }
-    state.member.as_mut().ok_or("Member identity unavailable".into())
+    Ok(())
+}
+fn ensure(state:&mut AppState)->Result<&mut MemberLocal,String>{
+    load_member(state)?;
+    let mut settings = crate::storage::load_settings()?;
+    let member = state.member.as_mut().ok_or("Member identity unavailable")?;
+    if !member.legacy_consent_linked && preserve_legacy_refusal(member.legacy_consent, settings.analytics_consent.as_deref()) {
+        settings.analytics_consent = Some("denied".into());
+        crate::storage::save_settings(&settings)?;
+    }
+    let next = choice(settings.analytics_consent.as_deref());
+    if state.usage_consent != next { member.open_time_tick = None; }
+    state.usage_consent = next;
+    let migrated = member.legacy_consent.take().is_some() || member.legacy_consent_linked;
+    member.legacy_consent_linked = false;
+    let cleared = state.usage_consent != Some(true) && clear_usage(member);
+    if migrated || cleared { persist(member)?; }
+    Ok(member)
+}
+
+fn choice(value: Option<&str>) -> Option<bool> {
+    match value { Some("granted") => Some(true), Some("denied") => Some(false), _ => None }
+}
+
+fn clear_usage(member: &mut MemberLocal) -> bool {
+    let changed = !member.weeks.is_empty() || member.open_seconds != 0;
+    member.weeks.clear(); member.open_seconds = 0; member.open_time_tick = None;
+    changed
+}
+
+fn preserve_legacy_refusal(legacy: Option<bool>, analytics: Option<&str>) -> bool {
+    legacy == Some(false) && analytics == Some("granted")
+}
+
+pub fn apply_usage_setting(state: &mut AppState, value: Option<&str>) -> Result<(), String> {
+    load_member(state)?;
+    let changed = state.usage_consent != choice(value);
+    state.usage_consent = choice(value);
+    let member = state.member.as_mut().ok_or("Member identity unavailable")?;
+    if changed { member.open_time_tick = None; }
+    let migrated = member.legacy_consent.take().is_some() || member.legacy_consent_linked;
+    member.legacy_consent_linked = false;
+    let cleared = state.usage_consent != Some(true) && clear_usage(member);
+    if migrated || cleared { persist(member)?; }
+    Ok(())
+}
+
+fn usage_enabled(state: &mut AppState) -> Result<bool,String> {
+    ensure(state)?;
+    Ok(state.usage_consent == Some(true))
 }
 
 #[tauri::command]
 pub fn member_get(state:State<'_,Mutex<AppState>>)->Result<MemberView,String>{let mut g=state.lock().map_err(|_|"State unavailable")?;Ok(ensure(&mut g)?.view())}
-
-#[tauri::command]
-pub fn member_set_consent(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>,granted:bool)->Result<MemberView,String>{
-    let mut g=state.lock().map_err(|_|"State unavailable")?; let value=ensure(&mut g)?; value.consent=Some(granted); if !granted{value.weeks.clear();value.open_seconds=0;} persist(value)?;
-    let view=value.view(); let _=app.emit("member_updated",view.clone()); Ok(view)
-}
 
 /// Adds a UI-side batch to memory. It deliberately performs no persistence.
 #[tauri::command]
 pub fn member_record_batch(state:State<'_,Mutex<AppState>>,counts:BTreeMap<String,u64>)->Result<(),String>{
     if counts.is_empty(){return Ok(());} if counts.len()>FEATURES.len() || counts.iter().any(|(n,c)|!FEATURES.contains(&n.as_str())||*c==0||*c>1_000_000){return Err("Invalid feature batch".into());}
     let mut g=state.lock().map_err(|_|"State unavailable")?;
-    let member=match g.member.as_mut(){Some(v) if v.consent==Some(true)=>v,_=>return Ok(())};
+    if g.usage_consent != Some(true) { return Ok(()); }
+    let member=match g.member.as_mut(){Some(v)=>v,None=>return Ok(())};
     let now=Utc::now(); let week=week_key(now); let day=now.format("%Y-%m-%d").to_string();
     let usage=member.weeks.entry(week.clone()).or_insert_with(||WeeklyUsage{week,schema:1,app_version:env!("CARGO_PKG_VERSION").into(),features:BTreeMap::new()});
     for(name,increment)in counts{let f=usage.features.entry(name).or_default();f.count=f.count.saturating_add(increment);f.active_days.insert(day.clone());f.last_used_day=day.clone();} Ok(())
@@ -125,12 +172,13 @@ pub fn member_flush(state:State<'_,Mutex<AppState>>)->Result<(),String>{
 }
 
 #[tauri::command]
-pub fn member_open_time_tick(state:State<'_,Mutex<AppState>>,analytics_consent:bool)->Result<(),String>{
+pub fn member_open_time_tick(state:State<'_,Mutex<AppState>>)->Result<(),String>{
     let mut g=state.lock().map_err(|_|"State unavailable")?;
-    let member=ensure(&mut g)?;
+    let granted=usage_enabled(&mut g)?;
+    let member=g.member.as_mut().ok_or("Member identity unavailable")?;
     let now=Instant::now();
     if let Some(previous)=member.open_time_tick {
-        if member.consent==Some(true) && analytics_consent {
+        if granted {
             member.open_seconds=member.open_seconds.saturating_add(now.duration_since(previous).as_secs());
             persist(member)?;
         }
@@ -140,21 +188,22 @@ pub fn member_open_time_tick(state:State<'_,Mutex<AppState>>,analytics_consent:b
 }
 
 fn current_usage_snapshot(member:&MemberLocal,analytics_consent:bool,week:&str)->(Vec<String>,bool){
-    let consent=analytics_consent && member.consent==Some(true);
+    let consent=analytics_consent;
     let features=if consent {member.weeks.get(week)
         .map(|usage|usage.features.keys().cloned().collect()).unwrap_or_default()} else {Vec::new()};
     (features,consent)
 }
 
 #[tauri::command]
-pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>,analytics_consent:bool)->Result<(),String>{
+pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>)->Result<(),String>{
     let base=endpoint()?;
     let (snapshot,week,features,consent,open_seconds)={
         let mut g=state.lock().map_err(|_|"State unavailable")?;
-        let member=ensure(&mut g)?;
+        let analytics_consent=usage_enabled(&mut g)?;
+        let member=g.member.as_mut().ok_or("Member identity unavailable")?;
         let week=week_key(Utc::now());
         let (features,consent)=current_usage_snapshot(&member,analytics_consent,&week);
-        if member.usage_syncing || !should_sync_usage(member,consent) { return Ok(()); }
+        if member.usage_syncing || !should_sync_usage(member,consent,&week,&features) { return Ok(()); }
         member.usage_syncing=true;
         (member.clone(),week,features,consent,member.open_seconds)
     };
@@ -167,19 +216,26 @@ pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>,analytics_consent
     let member=ensure(&mut g)?;
     member.usage_syncing=false;
     result?;
-    member.last_usage_sync_consent=consent;
+    mark_usage_synced(member,consent,&week,&features);
     persist(member)
 }
 
-fn should_sync_usage(member:&MemberLocal,consent:bool)->bool {
+fn should_sync_usage(member:&MemberLocal,consent:bool,week:&str,features:&[String])->bool {
     if !consent && !member.last_usage_sync_consent { return false; }
-    member.last_usage_sync_consent!=consent
+    member.last_usage_sync_consent!=consent || (consent &&
+        (member.last_usage_sync_week.as_deref()!=Some(week) || member.last_usage_sync_features!=features))
+}
+
+fn mark_usage_synced(member:&mut MemberLocal,consent:bool,week:&str,features:&[String]) {
+    member.last_usage_sync_consent=consent;
+    member.last_usage_sync_week=Some(week.into());
+    member.last_usage_sync_features=features.to_vec();
 }
 
 #[tauri::command]
 pub fn member_closed_summaries(state:State<'_,Mutex<AppState>>)->Result<Vec<WeeklyUsage>,String>{
-    let current=week_key(Utc::now()); let mut g=state.lock().map_err(|_|"State unavailable")?; let member=ensure(&mut g)?;
-    if member.consent!=Some(true)||member.analytics_subject.is_none(){return Ok(Vec::new());}
+    let current=week_key(Utc::now()); let mut g=state.lock().map_err(|_|"State unavailable")?; let granted=usage_enabled(&mut g)?; let member=g.member.as_mut().ok_or("Member identity unavailable")?;
+    if !granted||member.analytics_subject.is_none(){return Ok(Vec::new());}
     Ok(member.weeks.iter().filter(|(week,_)|*week<&current).map(|(_,v)|v.clone()).collect())
 }
 
@@ -238,22 +294,22 @@ fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str, anal
         "all" => true,
         "veteran" => member.general_number.map_or(false, |n| n < 10050),
         "newcomer" => member.general_number.map_or(false, |n| n >= 10100),
-        "feature_active" => analytics_consent && member.consent == Some(true) && member.weeks.get(current_week)
+        "feature_active" => analytics_consent && member.weeks.get(current_week)
             .map_or(false, |w| !w.features.is_empty()),
-        "feature_inactive" => analytics_consent && member.consent == Some(true)
+        "feature_inactive" => analytics_consent
             && member.weeks.get(current_week)
                 .map_or(true, |w| w.features.is_empty()),
-        "iphone_week_unused" => analytics_consent && member.consent == Some(true)
+        "iphone_week_unused" => analytics_consent
             && member.weeks.get(current_week).map_or(true, |w|
                 !w.features.contains_key("iphone_send") && !w.features.contains_key("iphone_receive")),
         _ => {
             if let Some(feature) = segment.strip_prefix("feature_week_used:") {
-                return analytics_consent && member.consent == Some(true) && FEATURES.contains(&feature)
+                return analytics_consent && FEATURES.contains(&feature)
                     && member.weeks.get(current_week)
                         .map_or(false, |w| w.features.contains_key(feature));
             }
             if let Some(feature) = segment.strip_prefix("feature_week_unused:") {
-                return analytics_consent && member.consent == Some(true) && FEATURES.contains(&feature)
+                return analytics_consent && FEATURES.contains(&feature)
                     && member.weeks.get(current_week)
                         .map_or(true, |w| !w.features.contains_key(feature));
             }
@@ -293,12 +349,12 @@ pub fn member_announcements(state: State<'_, Mutex<AppState>>) -> Result<Vec<Ann
 #[tauri::command]
 pub async fn member_heartbeat(
     state: State<'_, Mutex<AppState>>,
-    analytics_consent: bool,
-) -> Result<Vec<AnnouncementPayload>, String> {
+ ) -> Result<Vec<AnnouncementPayload>, String> {
     let base = endpoint()?;
     let (snapshot, today, week, features, consent, open_seconds) = {
         let mut g = state.lock().map_err(|_| "State unavailable")?;
-        let value = ensure(&mut g)?;
+        let analytics_consent=usage_enabled(&mut g)?;
+        let value=g.member.as_mut().ok_or("Member identity unavailable")?;
         let now = Utc::now();
         let today = now.format("%Y-%m-%d").to_string();
 
@@ -320,8 +376,9 @@ pub async fn member_heartbeat(
     ).map_err(|_| "Invalid heartbeat response")?;
 
     // 対象のお便りをローカルの会話画面へ保存する。
-    let week = week_key(Utc::now());
-    let received = new_announcements(&snapshot, response.announcements, &week, analytics_consent);
+    let received_week = week_key(Utc::now());
+    let latest_consent = crate::storage::load_settings()?.analytics_consent.as_deref() == Some("granted");
+    let received = new_announcements(&snapshot, response.announcements, &received_week, latest_consent);
 
     // 状態更新: last_heartbeat_date + 受信履歴
     {
@@ -330,7 +387,7 @@ pub async fn member_heartbeat(
         value.last_heartbeat_date = Some(today);
         value.last_heartbeat_at = Some(Utc::now().to_rfc3339());
         value.last_heartbeat_version = Some(env!("CARGO_PKG_VERSION").into());
-        value.last_usage_sync_consent = consent;
+        mark_usage_synced(value,consent,&week,&features);
         for a in &received {
             value.read_announcement_ids.insert(a.id.clone());
         }
@@ -355,6 +412,27 @@ fn unprotect(bytes:&[u8])->Result<Vec<u8>,String>{use windows::Win32::{Foundatio
 #[cfg(test)]
 mod segment_tests {
     use super::*;
+
+    #[test]
+    fn single_consent_enables_collection_and_stop_clears_local_usage() {
+        let mut member = MemberLocal::default();
+        assert!(current_usage_snapshot(&member, true, "2026-W41").1);
+        member.open_seconds = 120;
+        member.weeks.insert("2026-W41".into(), WeeklyUsage { week: "2026-W41".into(), schema: 1, app_version: "5.5.1".into(), features: BTreeMap::new() });
+        clear_usage(&mut member);
+        assert!(!current_usage_snapshot(&member, false, "2026-W41").1);
+        assert!(member.weeks.is_empty());
+        assert_eq!(member.open_seconds, 0);
+    }
+
+    #[test]
+    fn migration_does_not_treat_unselected_as_refusal_or_override_explicit_refusal() {
+        assert!(!preserve_legacy_refusal(None, Some("granted")));
+        assert!(!preserve_legacy_refusal(Some(true), Some("granted")));
+        assert!(preserve_legacy_refusal(Some(false), Some("granted")));
+        assert!(!preserve_legacy_refusal(None, Some("denied")));
+        assert!(!preserve_legacy_refusal(None, None));
+    }
 
     #[test]
     fn production_waits_twenty_four_hours_while_development_rechecks() {
@@ -403,7 +481,7 @@ mod segment_tests {
 
     #[test]
     fn specific_weekly_features_require_consent_and_match_the_selected_feature() {
-        let mut member = MemberLocal { consent: Some(true), ..Default::default() };
+        let mut member = MemberLocal::default();
         let mut features = BTreeMap::new();
         features.insert("note_edited".to_string(), FeatureCount::default());
         member.weeks.insert("2026-W39".to_string(), WeeklyUsage {
@@ -415,14 +493,13 @@ mod segment_tests {
         assert!(!matches_segment("feature_week_used:iphone_send", &member, "2026-W39", true));
         assert!(!matches_segment("feature_week_unused:unknown", &member, "2026-W39", true));
         assert!(!matches_segment("feature_week_unused:iphone_send", &member, "2026-W39", false));
-        member.consent = Some(false);
-        assert!(!matches_segment("feature_week_used:note_edited", &member, "2026-W39", true));
-        assert!(!matches_segment("feature_week_unused:iphone_send", &member, "2026-W39", true));
+        assert!(!matches_segment("feature_week_used:note_edited", &member, "2026-W39", false));
+        assert!(!matches_segment("feature_week_unused:iphone_send", &member, "2026-W39", false));
     }
 
     #[test]
     fn iphone_week_unused_requires_consent_and_no_send_or_receive_this_week() {
-        let mut member = MemberLocal { consent: Some(true), ..Default::default() };
+        let mut member = MemberLocal::default();
         assert!(matches_segment("iphone_week_unused", &member, "2026-W39", true));
         let mut features = BTreeMap::new();
         features.insert("iphone_send".to_string(), FeatureCount::default());
@@ -434,13 +511,12 @@ mod segment_tests {
         member.weeks.get_mut("2026-W39").unwrap().features.clear();
         member.weeks.get_mut("2026-W39").unwrap().features.insert("iphone_receive".into(), FeatureCount::default());
         assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", true));
-        member.consent = None;
-        assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", true));
+        assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", false));
     }
 
     #[test]
-    fn usage_snapshot_contains_only_this_week_and_respects_both_consents() {
-        let mut member = MemberLocal { consent: Some(true), ..Default::default() };
+    fn usage_snapshot_contains_only_this_week_and_respects_single_consent() {
+        let mut member = MemberLocal::default();
         let mut features = BTreeMap::new();
         features.insert("iphone_send".into(), FeatureCount::default());
         member.weeks.insert("2026-W39".into(), WeeklyUsage {
@@ -449,33 +525,74 @@ mod segment_tests {
         assert_eq!(current_usage_snapshot(&member,true,"2026-W39"),(vec!["iphone_send".into()],true));
         assert_eq!(current_usage_snapshot(&member,true,"2026-W40"),(Vec::new(),true));
         assert_eq!(current_usage_snapshot(&member,false,"2026-W39"),(Vec::new(),false));
-        member.consent=Some(false);
-        assert_eq!(current_usage_snapshot(&member,true,"2026-W39"),(Vec::new(),false));
+        assert_eq!(current_usage_snapshot(&member,false,"2026-W39"),(Vec::new(),false));
     }
 
     #[test]
-    fn separate_usage_api_syncs_only_consent_changes() {
+    fn usage_api_syncs_changed_features_and_week_without_resending_unchanged_data() {
         let mut member=MemberLocal::default();
-        assert!(!should_sync_usage(&member,false));
-        assert!(should_sync_usage(&member,true));
-        member.last_usage_sync_consent=true;
-        assert!(!should_sync_usage(&member,true));
+        let week="2026-W41";
+        let features=vec!["note_edited".into()];
+        assert!(!should_sync_usage(&member,false,week,&[]));
+        assert!(should_sync_usage(&member,true,week,&[]));
+        mark_usage_synced(&mut member,true,week,&[]);
+        assert!(!should_sync_usage(&member,true,week,&[]));
         member.open_seconds=24*60*60;
-        assert!(!should_sync_usage(&member,true));
-        assert!(should_sync_usage(&member,false));
-        member.last_usage_sync_consent=false;
-        assert!(!should_sync_usage(&member,false));
-        assert!(should_sync_usage(&member,true));
+        assert!(!should_sync_usage(&member,true,week,&[]));
+        assert!(should_sync_usage(&member,true,week,&features));
+        // Failed sends do not update the marker, so the next check retries.
+        assert!(should_sync_usage(&member,true,week,&features));
+        mark_usage_synced(&mut member,true,week,&features);
+        assert!(!should_sync_usage(&member,true,week,&features));
+        assert!(should_sync_usage(&member,true,"2026-W42",&[]));
+        assert!(should_sync_usage(&member,false,week,&[]));
+        mark_usage_synced(&mut member,false,week,&[]);
+        assert!(!should_sync_usage(&member,false,week,&[]));
+        assert!(should_sync_usage(&member,true,week,&features));
     }
 
     #[test]
     fn usage_consent_sync_progress_survives_restart() {
-        let member=MemberLocal { open_seconds: 24*60*60, last_usage_sync_consent: true, ..Default::default() };
+        let mut member=MemberLocal { open_seconds: 24*60*60, ..Default::default() };
+        let features=vec!["note_duplicate".into(),"note_edited".into()];
+        mark_usage_synced(&mut member,true,"2026-W41",&features);
         let restored:MemberLocal=serde_json::from_slice(&serde_json::to_vec(&member).unwrap()).unwrap();
-        assert!(!should_sync_usage(&restored,true));
+        assert!(!should_sync_usage(&restored,true,"2026-W41",&features));
         assert_eq!(restored.open_seconds,24*60*60);
+    }
+
+    #[test]
+    fn legacy_success_without_a_feature_marker_resends_retained_usage() {
+        let member=MemberLocal { last_usage_sync_consent:true, ..Default::default() };
+        assert!(should_sync_usage(&member,true,"2026-W41",&vec!["note_edited".into()]));
     }
 }
 
 #[cfg(all(test,windows))]
 mod tests{use super::*;use chrono::TimeZone;#[test]fn iso_week_key_uses_monday_based_week_year(){assert_eq!(week_key(Utc.with_ymd_and_hms(2027,1,1,0,0,0).unwrap()),"2026-W53");}#[test]fn protected_identity_roundtrip(){let identity=MemberLocal{member_id:uuid::Uuid::new_v4().to_string(),secret:"private-member-secret".into(),general_number:Some(10000),analytics_subject:Some("0123456789abcdef0123456789abcdef".into()),..Default::default()};let bytes=serde_json::to_vec(&identity).unwrap();let protected=protect(&bytes).unwrap();assert!(!protected.windows(identity.secret.len()).any(|w|w==identity.secret.as_bytes()));let restored:MemberLocal=serde_json::from_slice(&unprotect(&protected).unwrap()).unwrap();assert_eq!(restored.analytics_subject,identity.analytics_subject);}#[test]fn protected_file_can_replace_an_existing_identity(){let dir=std::env::temp_dir().join(format!("fusen-member-{}",uuid::Uuid::new_v4()));std::fs::create_dir_all(&dir).unwrap();let target=dir.join("identity.bin");let replacement=dir.join("identity.tmp");std::fs::write(&target,b"old").unwrap();std::fs::write(&replacement,b"new").unwrap();replace_file(&replacement,&target).unwrap();assert_eq!(std::fs::read(&target).unwrap(),b"new");std::fs::remove_dir_all(dir).unwrap();}#[test]fn app_state_never_serializes_member(){let mut state=AppState::default();state.member=Some(MemberLocal{secret:"private-member-secret".into(),..Default::default()});let json=serde_json::to_value(state).unwrap();assert!(json.get("member").is_none());}}
+
+#[cfg(test)]
+mod single_setting_tests {
+    use super::*;
+    #[test]
+    fn legacy_choice_is_read_but_never_written() {
+        let mut old=serde_json::to_value(MemberLocal::default()).unwrap();
+        old["consent"]=false.into();
+        old["consent_linked"]=true.into();
+        let member: MemberLocal = serde_json::from_value(old).unwrap();
+        assert_eq!(member.legacy_consent, Some(false));
+        assert!(member.legacy_consent_linked);
+        let saved=serde_json::to_value(member).unwrap();
+        assert!(saved.get("consent").is_none());
+        assert!(saved.get("consent_linked").is_none());
+    }
+    #[test]
+    fn only_the_saved_setting_defines_the_choice() {
+        assert_eq!(choice(Some("granted")),Some(true));
+        assert_eq!(choice(Some("denied")),Some(false));
+        assert_eq!(choice(None),None);
+        let mut state=AppState::default();
+        state.usage_consent=Some(true);
+        assert!(serde_json::to_value(state).unwrap().get("usage_consent").is_none());
+    }
+}

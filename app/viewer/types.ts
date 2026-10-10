@@ -3,6 +3,14 @@
 
 import type { Language, TranslationKey } from '@/lib/i18n';
 
+export type FileAttachment = {
+  fileName: string;
+  originalFileName: string;
+  mimeType: string;
+  size: number;
+};
+export type DraftFileAttachment = FileAttachment & { blob?: Blob };
+
 export type IphoneNote = {
   id: string;
   status: 'sent' | 'draft' | 'received_pc';
@@ -15,6 +23,7 @@ export type IphoneNote = {
   videoFileName?: string;
   originalFileName?: string;
   videos?: VideoAttachment[];
+  files?: FileAttachment[];
   memo?: string;
 };
 
@@ -43,6 +52,7 @@ export type PendingHydrate = {
   blobMap: Map<string, Blob>;
   draftId: string | null;
   tags: string[];
+  files?: DraftFileAttachment[];
   videoMeta?: PendingVideoMeta | null;
   videoMetas?: PendingVideoMeta[];
   videoBlobMap?: VideoBlobMap;
@@ -80,6 +90,7 @@ export type DraftRecord = {
   videoFileName?: string;
   originalFileName?: string;
   videos?: { fileName: string; originalName: string; blob?: Blob }[];
+  files?: DraftFileAttachment[];
   memo?: string;
 };
 
