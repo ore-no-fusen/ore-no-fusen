@@ -40,10 +40,11 @@ async function fixture(t) {
   const config={ history:[], fail:null, installed:null, buildCount:0, pushCount:0 };
   const real=createRunner();
   const runner=async(file,args,options)=>{
+    const effectiveArgs=file==='git'&&args[0]==='-c'&&args[1].startsWith('safe.directory=')?args.slice(2):args;
     if(process.env.RELEASE_MACHINE_TEST_TRACE)console.error('TEST command',file,args);
     config.history.push({file,args,cwd:options.cwd});
-    if(config.fail?.(file,args,options))throw new Error('injected failure');
-    if(file!=='powershell.exe') {if(file==='git'&&args[0]==='push')config.pushCount++;return real(file,args,options);}
+    if(config.fail?.(file,effectiveArgs,options))throw new Error('injected failure');
+    if(file!=='powershell.exe') {if(file==='git'&&effectiveArgs[0]==='push')config.pushCount++;return real(file,args,options);}
     const value=flag=>args[args.indexOf(flag)+1];
     const write=(file,data)=>{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,data);};
     const action=args.includes('-Action')?value('-Action'):null;

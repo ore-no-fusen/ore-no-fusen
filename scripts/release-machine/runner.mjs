@@ -11,14 +11,14 @@ export function createRunner(secrets = []) {
   return (file, args, options = {}) => new Promise((resolve, reject) => {
     const child = spawn(file, args, { cwd: options.cwd, env: options.env ?? process.env, windowsHide: true, shell: false });
     options.onPid?.(child.pid);
-    let output = '';
+    let output = '', errors = '';
     function consume(stream, collect) {
       const decoder = new StringDecoder('utf8'); let pending = '';
       function flush(final = false) {
         if (final && !pending) return;
         const lines = pending.split(/\r?\n/); pending = final ? '' : lines.pop();
         for (const line of lines) {
-          const safe = redact(line, secrets); if (collect) output += `${safe}\n`; options.onOutput?.(`${safe}\n`);
+          const safe = redact(line, secrets); if (collect) output += `${safe}\n`; else errors = `${errors}${safe}\n`.slice(-3000); options.onOutput?.(`${safe}\n`);
         }
       }
       stream.on('data', data => { pending += decoder.write(data); flush(); });
@@ -28,7 +28,7 @@ export function createRunner(secrets = []) {
     child.on('error', reject);
     child.on('close', (code, signal) => {
       options.onPid?.(null);
-      if (code !== 0) reject(new Error(`${file} が終了コード ${code ?? signal} で停止しました。上のログを確認してください。`));
+      if (code !== 0) reject(new Error(`${file} が終了コード ${code ?? signal} で停止しました。${errors.trim() ? `\n${errors.trim()}` : '上のログを確認してください。'}`));
       else resolve(output.trimEnd());
     });
   });

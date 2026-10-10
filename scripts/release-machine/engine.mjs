@@ -60,6 +60,9 @@ export class ReleaseMachine {
   save() { atomicJSON(this.stateFile, this.state); if (this.state.id) atomicJSON(path.join(this.runDir, 'state.json'), this.state); }
   log(text) { if (this.state.id) fs.appendFileSync(path.join(this.runDir, 'commands.log'), `[${new Date().toISOString()}] ${text}\n`); }
   async cmd(file, args, cwd = this.root, logged = true, env) {
+    // Trust only the explicitly selected local checkout for this command.
+    // This also permits read-only inspection from a different Windows account.
+    if (file === 'git') args = ['-c', `safe.directory=${cwd.replaceAll('\\', '/')}`, ...args];
     const quote = value => `'${String(value).replaceAll("'", "''")}'`;
     const versionCommit = env?.RELEASE_MACHINE_VERSION_COMMIT === '1';
     if (logged) this.log(`場所: ${cwd}\nSet-Location -LiteralPath ${quote(cwd)}\n${versionCommit ? "$env:RELEASE_MACHINE_VERSION_COMMIT = '1'\n" : ''}& ${[file, ...args].map(quote).join(' ')}`);
