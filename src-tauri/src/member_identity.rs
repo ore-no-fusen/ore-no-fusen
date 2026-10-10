@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
 use crate::state::AppState;
 
-const FEATURES: &[&str] = &["note_created", "note_edited", "tag_add", "alarm_set", "iphone_send", "iphone_receive", "search_open", "note_duplicate", "note_archive", "outline_toggle", "image_attach"];
+const FEATURES: &[&str] = &["note_created", "note_edited", "tag_add", "alarm_set", "iphone_send", "iphone_receive", "search_open", "note_duplicate", "note_archive", "launcher_store", "outline_toggle", "image_attach"];
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -159,11 +159,19 @@ pub fn member_get(state:State<'_,Mutex<AppState>>)->Result<MemberView,String>{le
 pub fn member_record_batch(state:State<'_,Mutex<AppState>>,counts:BTreeMap<String,u64>)->Result<(),String>{
     if counts.is_empty(){return Ok(());} if counts.len()>FEATURES.len() || counts.iter().any(|(n,c)|!FEATURES.contains(&n.as_str())||*c==0||*c>1_000_000){return Err("Invalid feature batch".into());}
     let mut g=state.lock().map_err(|_|"State unavailable")?;
-    if g.usage_consent != Some(true) { return Ok(()); }
-    let member=match g.member.as_mut(){Some(v)=>v,None=>return Ok(())};
-    let now=Utc::now(); let week=week_key(now); let day=now.format("%Y-%m-%d").to_string();
+    record_counts(&mut g, counts, Utc::now());
+    Ok(())
+}
+fn record_counts(g: &mut AppState, counts: BTreeMap<String,u64>, now: chrono::DateTime<Utc>) {
+    if g.usage_consent != Some(true) { return; }
+    let member=match g.member.as_mut(){Some(v)=>v,None=>return};
+    let week=week_key(now); let day=now.format("%Y-%m-%d").to_string();
     let usage=member.weeks.entry(week.clone()).or_insert_with(||WeeklyUsage{week,schema:1,app_version:env!("CARGO_PKG_VERSION").into(),features:BTreeMap::new()});
-    for(name,increment)in counts{let f=usage.features.entry(name).or_default();f.count=f.count.saturating_add(increment);f.active_days.insert(day.clone());f.last_used_day=day.clone();} Ok(())
+    usage.schema = 2;
+    for(name,increment)in counts{let f=usage.features.entry(name).or_default();f.count=f.count.saturating_add(increment);f.active_days.insert(day.clone());f.last_used_day=day.clone();}
+}
+pub(crate) fn record_launcher_store(state: &mut AppState) {
+    record_counts(state, BTreeMap::from([("launcher_store".into(), 1)]), Utc::now());
 }
 
 #[tauri::command]
@@ -209,7 +217,7 @@ pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>)->Result<(),Strin
     };
     let result=async {
         let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().map_err(|_|"Cannot create member client")?;
-        post(&client,&base,"usage",&snapshot,serde_json::json!({"week":week,"features":features,"consent":consent,"openMinutes":open_seconds/60})).await?;
+        post(&client,&base,"usage",&snapshot,serde_json::json!({"week":week,"features":features,"consent":consent,"usageSchema":2,"openMinutes":open_seconds/60})).await?;
         Ok::<(),String>(())
     }.await;
     let mut g=state.lock().map_err(|_|"State unavailable")?;
@@ -412,6 +420,26 @@ fn unprotect(bytes:&[u8])->Result<Vec<u8>,String>{use windows::Win32::{Foundatio
 #[cfg(test)]
 mod segment_tests {
     use super::*;
+    #[test]
+    fn launcher_store_records_counts_and_days_only_with_consent() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-10-11T00:00:00Z").unwrap().with_timezone(&Utc);
+        let mut state = AppState { member: Some(MemberLocal::default()), usage_consent: Some(false), ..Default::default() };
+        record_counts(&mut state, BTreeMap::from([("launcher_store".into(), 1)]), now);
+        assert!(state.member.as_ref().unwrap().weeks.is_empty());
+        state.usage_consent = Some(true);
+        record_counts(&mut state, BTreeMap::from([("launcher_store".into(), 1)]), now);
+        record_counts(&mut state, BTreeMap::from([("launcher_store".into(), 1)]), now);
+        let usage = &state.member.as_ref().unwrap().weeks["2026-W41"];
+        assert_eq!(usage.schema, 2);
+        let recorded = &usage.features["launcher_store"];
+        assert_eq!(recorded.count, 2);
+        assert_eq!(recorded.active_days.len(), 1);
+        assert_eq!(recorded.last_used_day, "2026-10-11");
+        assert!(!usage.features.contains_key("note_archive"));
+        state.usage_consent = None;
+        record_launcher_store(&mut state);
+        assert_eq!(state.member.as_ref().unwrap().weeks["2026-W41"].features["launcher_store"].count, 2);
+    }
 
     #[test]
     fn single_consent_enables_collection_and_stop_clears_local_usage() {

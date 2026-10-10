@@ -3,17 +3,18 @@ import type { MemberDatabase, Row } from './database';
 import { createFeedbackConversationStore } from '../../feedback/lib/store';
 import { randomBytes } from 'node:crypto';
 
-export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; lastSeenTimestamp?: string; appVersion?: string; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean; usageOpenMinutes?: number };
+export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; lastSeenTimestamp?: string; appVersion?: string; usageSchema?: number; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean; usageOpenMinutes?: number };
 
-const featureNames = new Set(['note_created', 'note_edited', 'tag_add', 'alarm_set', 'iphone_send', 'iphone_receive', 'search_open', 'note_duplicate', 'note_archive', 'outline_toggle', 'image_attach']);
+const featureNames = new Set(['note_created', 'note_edited', 'tag_add', 'alarm_set', 'iphone_send', 'iphone_receive', 'search_open', 'note_duplicate', 'note_archive', 'launcher_store', 'outline_toggle', 'image_attach']);
 
-function usageSnapshot(week: unknown, features: unknown, consent: unknown, openMinutes: unknown) {
-  if (typeof week !== 'string' || !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(week)
+function usageSnapshot(week: unknown, features: unknown, consent: unknown, openMinutes: unknown, schema: unknown) {
+  if ((schema !== undefined && schema !== 1 && schema !== 2) || (Array.isArray(features) && features.includes('launcher_store') && schema !== 2)
+    || typeof week !== 'string' || !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(week)
     || typeof consent !== 'boolean' || !Array.isArray(features) || features.length > featureNames.size
     || features.some(name => typeof name !== 'string' || !featureNames.has(name))
     || (!consent && features.length > 0)
     || (openMinutes !== undefined && (!Number.isSafeInteger(openMinutes) || (openMinutes as number) < 0))) throw new FeedbackRequestError('Invalid usage snapshot', 400);
-  return { week, features: [...new Set(features as string[])].sort(), consent, openMinutes: openMinutes as number | undefined };
+  return { schema: (schema ?? 1) as number, week, features: [...new Set(features as string[])].sort(), consent, openMinutes: openMinutes as number | undefined };
 }
 
 function matchesServerAudience(segment: string, number: number): boolean {
@@ -75,19 +76,19 @@ export class MemberService {
       paidNumber: member.value.paidNumber,
     };
   }
-  async heartbeat(auth: Credentials, week?: unknown, features?: unknown, consent?: unknown, openMinutes?: unknown, appVersion?: unknown) {
+  async heartbeat(auth: Credentials, week?: unknown, features?: unknown, consent?: unknown, openMinutes?: unknown, appVersion?: unknown, usageSchema?: unknown) {
     if (appVersion !== undefined && (typeof appVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(appVersion) || appVersion.length > 32)) {
       throw new FeedbackRequestError('Invalid app version', 400);
     }
     const usage = week === undefined && features === undefined && consent === undefined && openMinutes === undefined
-      ? null : usageSnapshot(week, features, consent, openMinutes);
+      ? null : usageSnapshot(week, features, consent, openMinutes, usageSchema);
     const lastSeenTimestamp = this.now().toISOString();
     const today = lastSeenTimestamp.slice(0, 10); // "YYYY-MM-DD"
     let member: Row<Member> | undefined;
     for (let attempt = 0; attempt < 4; attempt++) {
       const current = await this.authenticate(auth);
       const updated = { ...current.value, lastSeenAt: today, lastSeenTimestamp, appVersion: appVersion as string | undefined,
-        ...(usage && { usageWeek: usage.week, usageFeatures: usage.consent ? usage.features : [], usageConsent: usage.consent,
+        ...(usage && { usageSchema: usage.schema, usageWeek: usage.week, usageFeatures: usage.consent ? usage.features : [], usageConsent: usage.consent,
           usageOpenMinutes: usage.consent ? (usage.openMinutes ?? current.value.usageOpenMinutes) : undefined }) };
       if (await this.db.commit([{ path: `members/${auth.memberId}`, value: updated, version: current.version }])) {
         member = current;
@@ -116,11 +117,11 @@ export class MemberService {
 
     return { lastSeenAt: today, announcements };
   }
-  async recordUsage(auth: Credentials, week: unknown, features: unknown, consent: unknown, openMinutes: unknown) {
-    const usage = usageSnapshot(week, features, consent, openMinutes);
+  async recordUsage(auth: Credentials, week: unknown, features: unknown, consent: unknown, openMinutes: unknown, usageSchema?: unknown) {
+    const usage = usageSnapshot(week, features, consent, openMinutes, usageSchema);
     for (let attempt = 0; attempt < 4; attempt++) {
       const member = await this.authenticate(auth);
-      const updated: Member = { ...member.value, usageWeek: usage.week, usageFeatures: usage.consent ? usage.features : [], usageConsent: usage.consent,
+      const updated: Member = { ...member.value, usageSchema: usage.schema, usageWeek: usage.week, usageFeatures: usage.consent ? usage.features : [], usageConsent: usage.consent,
         usageOpenMinutes: usage.consent ? (usage.openMinutes ?? member.value.usageOpenMinutes) : undefined };
       if (await this.db.commit([{ path: `members/${auth.memberId}`, value: updated, version: member.version }])) return { saved: true };
     }

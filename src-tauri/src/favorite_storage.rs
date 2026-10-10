@@ -100,7 +100,8 @@ pub(crate) async fn fusen_store_favorite(app: AppHandle, path: String, window_la
     storage::write_note(&path, &content)?;
     let saved = storage::read_note(&path)?.meta;
     // Persistence must succeed before the frontend animates or destroys its window.
-    set_stored(&path, true)?;
+    let changed = set_stored(&path, true)?;
+    if let Some(request) = pending().lock().unwrap_or_else(|p| p.into_inner()).get_mut(&request_id) { request.changed |= changed; }
     launcher::invalidate_quick_open_content(&path);
     launcher::emit_launcher_shelf_changed_for_tag(&app, "shortcut");
     let state = app.state::<Mutex<AppState>>();
@@ -118,6 +119,19 @@ pub(crate) async fn fusen_store_favorite(app: AppHandle, path: String, window_la
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn store_completion_counts_changes_only_when_the_operation_succeeds() {
+        for (changed, error, expected) in [(true, None, Ok(true)), (false, None, Ok(false)), (true, Some("save failed".to_string()), Err("save failed".to_string()))] {
+            let id = uuid::Uuid::new_v4().to_string();
+            let (sender, mut receiver) = tokio::sync::oneshot::channel();
+            pending().lock().unwrap().insert(id.clone(), StoreReply { sender, changed });
+            fusen_complete_store(id.clone(), error);
+            assert_eq!(receiver.try_recv().unwrap(), expected);
+            assert!(!pending().lock().unwrap().contains_key(&id));
+            // A duplicate completion cannot add a second operation.
+            fusen_complete_store(id, None);
+        }
+    }
     #[test]
     fn storing_and_taking_out_survive_reload_without_touching_note() {
         let dir = tempfile::tempdir().unwrap();
@@ -215,7 +229,7 @@ mod tests {
 }
 use serde::Serialize;
 use std::collections::HashMap;
-type StoreReply = tokio::sync::oneshot::Sender<Result<(), String>>;
+struct StoreReply { sender: tokio::sync::oneshot::Sender<Result<bool, String>>, changed: bool }
 fn pending() -> &'static Mutex<HashMap<String, StoreReply>> {
     static PENDING: OnceLock<Mutex<HashMap<String, StoreReply>>> = OnceLock::new();
     PENDING.get_or_init(|| Mutex::new(HashMap::new()))
@@ -283,8 +297,8 @@ fn storage_snapshot(app: &AppHandle) -> Result<StorageSnapshot, String> {
 }
 #[tauri::command]
 pub(crate) fn fusen_complete_store(request_id: String, error: Option<String>) {
-    if let Some(sender) = pending().lock().unwrap_or_else(|p| p.into_inner()).remove(&request_id) {
-        let _ = sender.send(error.map_or(Ok(()), Err));
+    if let Some(reply) = pending().lock().unwrap_or_else(|p| p.into_inner()).remove(&request_id) {
+        let _ = reply.sender.send(error.map_or(Ok(reply.changed), Err));
     }
 }
 pub(crate) fn log_visibility_latency(action: &str, requested_at: Option<u64>) {
@@ -308,8 +322,9 @@ pub(crate) async fn fusen_request_store(app: AppHandle, path: String, requested_
     };
     let window = app.get_webview_window(&label);
     if window.is_none() {
-        set_stored(&path, true)?;
+        let changed = set_stored(&path, true)?;
         app.emit("fusen:storage_changed", &path).map_err(|e| e.to_string())?;
+        count_successful_store(&app, changed);
         return Ok(());
     }
     let window = window.unwrap();
@@ -318,7 +333,7 @@ pub(crate) async fn fusen_request_store(app: AppHandle, path: String, requested_
     log_visibility_latency("hide", requested_at);
     let id = uuid::Uuid::new_v4().to_string();
     let (sender, receiver) = tokio::sync::oneshot::channel();
-    pending().lock().unwrap_or_else(|p| p.into_inner()).insert(id.clone(), sender);
+    pending().lock().unwrap_or_else(|p| p.into_inner()).insert(id.clone(), StoreReply { sender, changed: false });
     if let Err(e) = app.emit_to(&label, "fusen:store_favorite", serde_json::json!({"path":path,"requestId":id})) {
         pending().lock().unwrap_or_else(|p| p.into_inner()).remove(&id);
         let _ = window.show();
@@ -331,7 +346,13 @@ pub(crate) async fn fusen_request_store(app: AppHandle, path: String, requested_
         let _ = set_stored(&path, false);
         let _ = window.show();
     }
-    outcome
+    if let Ok(changed) = &outcome { count_successful_store(&app, *changed); }
+    outcome.map(|_| ())
+}
+fn count_successful_store(app: &AppHandle, changed: bool) {
+    if !changed { return; }
+    let state = app.state::<Mutex<AppState>>();
+    if let Ok(mut state) = state.lock() { crate::member_identity::record_launcher_store(&mut state); };
 }
 #[derive(Serialize)]
 pub(crate) struct TagStoreResult { stored: usize, failed: Vec<String> }

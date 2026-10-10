@@ -13,7 +13,7 @@ const propertyId = '524376317';
 const GA_START_DATE = '2026-09-08';
 const USAGE_STATES = {
   recorded: { label: '使った機能が分かる', description: '今週使った機能名が届いています。', color: 'text-emerald-300' },
-  empty: { label: '対象機能すべて未使用', description: '今週の情報が届き、対象の11機能はすべて未使用です。', color: 'text-amber-300' },
+  empty: { label: '対象機能すべて未使用', description: '今週の情報が届き、従来の対象機能はすべて未使用です。', color: 'text-amber-300' },
   stale: { label: '今週分はまだ届いていない', description: '以前の情報はありますが、今週の使い方はまだ分かりません。', color: 'text-sky-300' },
   disabled: { label: '利用情報の送信がオフ', description: '最後に届いた情報では、利用記録を送らない設定でした。現在の設定は未確認です。', color: 'text-slate-300' },
   unknown: { label: '情報がなく、まだ分からない', description: '分析情報を確認できません。設定・未起動・通信失敗などの理由は不明です。', color: 'text-slate-300' },
@@ -28,7 +28,7 @@ function memberUsageState(member, week) {
 const FEATURE_LABELS = {
   note_created: '付箋の作成', note_edited: '付箋の編集', tag_add: 'タグの追加',
   alarm_set: 'アラームの設定', iphone_send: 'iPhoneへ送信', iphone_receive: 'iPhoneから受信',
-  search_open: '検索画面を開く', note_duplicate: '付箋の複製', note_archive: '付箋をしまう',
+  search_open: '検索画面を開く', note_duplicate: '付箋の複製', note_archive: 'フォルダーへしまう', launcher_store: 'クイックランチャーへしまう',
   outline_toggle: '付箋の折りたたみ', image_attach: '画像の添付',
 };
 
@@ -72,8 +72,9 @@ function featureUsageStats(members, week = isoWeek()) {
       .filter(member => Number.isSafeInteger(member.number))
       .sort((a, b) => a.number - b.number),
     rows: Object.entries(FEATURE_LABELS).map(([name, label]) => {
-      const users = reporting.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)).length;
-      return { name, label, users, percent: members.length ? Math.round(users / members.length * 100) : 0 };
+      const measured = name === 'launcher_store' ? reporting.filter(m => m.usageSchema === 2) : reporting;
+      const users = measured.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)).length;
+      return { name, label, users, reporting: measured.length, percent: members.length ? Math.round(users / members.length * 100) : 0 };
     }),
   };
 }
@@ -430,9 +431,10 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   const featureUsageRows = featureStats.rows.map(feature => `
     <tr class="border-b border-slate-800">
       <td class="py-2 pr-4">${feature.label}</td>
-<td class="py-2 text-right">${featureStats.reporting ? feature.users + "人" : "不明"}</td>
-      <td class="py-2 text-right">${featureStats.reporting ? feature.percent + "%" : "—"}</td>
-      <td class="py-2 text-right">${featureStats.reporting ? Math.round(feature.users / featureStats.reporting * 100) + "%" : "—"}</td>
+<td class="py-2 text-right">${feature.reporting ? feature.users + "人" : "不明"}</td>
+      <td class="py-2 text-right">${feature.reporting ? feature.percent + "%" : "—"}</td>
+      <td class="py-2 text-right">${feature.reporting ? Math.round(feature.users / feature.reporting * 100) + "%" : "—"}</td>
+      <td class="py-2 text-right">${feature.reporting}人</td>
     </tr>
   `).join('');
   // Compare numeric version parts; the reported maximum is not a release declaration.
@@ -540,19 +542,20 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <div id="usageStateCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         ${(featureStats.usageStates ?? []).map(state => `<button type="button" data-usage-state="${state.key}" class="text-left rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm ${state.color}">${state.label}</div><div class="text-2xl font-bold mt-1 ${state.color}">${state.count}人</div><p class="text-xs text-slate-400 mt-2">${state.description}</p></button>`).join('')}
       </div>
-      <p class="text-sm text-amber-300">今週の情報が届いた人は、機能ごとに使用・未使用を判定できます。情報が届いていない人の使用状況は不明です。</p>
+      <p class="text-sm text-amber-300">今週の情報が届いた人は、計測対象の機能ごとに使用・未使用を判定できます。情報が届いていない人の使用状況は不明です。</p>
       <p id="usageStateUpdated" class="text-xs text-slate-400">確認日時: ${nowJst} (JST)・人数を押すと会員一覧へ移動します。</p>
       <p id="featureRefreshStatus" class="text-sm text-amber-300" role="status"></p>
     </div>
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
-      <p class="text-sm text-amber-300">今週の情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。報告者内比は今週の利用情報が届いた会員だけを分母にします。</p>
+      <p class="text-sm text-amber-300">今週の情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。報告者内比は、その機能を計測できる今週の報告者だけを分母にします。</p>
+      <p class="text-sm text-slate-400">クイックランチャーへしまうは計測対応版から届いた情報だけで判定します。旧版の未計測は利用ゼロではありません。タグ一括格納は成功した付箋1枚につき1回記録します。</p>
       <p id="featureEvidence" class="text-sm text-amber-300">${featureStats.reporting ? "届いた会員の情報について、機能ごとの使用・未使用を集計しています。全会員の使用状況を確定する値ではありません。" : "今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
       <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
-          <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">利用人数</th><th class="pb-2 text-right">全会員比</th><th class="pb-2 text-right">今週の報告者内比</th></tr></thead>
+          <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">利用人数</th><th class="pb-2 text-right">全会員比</th><th class="pb-2 text-right">今週の報告者内比</th><th class="pb-2 text-right">判定できた人数</th></tr></thead>
           <tbody id="featureUsageRows">${featureUsageRows}</tbody>
         </table>
       </div>
@@ -584,7 +587,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
           <option value="iphone_receive">iPhoneから受信</option>
           <option value="search_open">検索画面を開く</option>
           <option value="note_duplicate">付箋の複製</option>
-          <option value="note_archive">付箋をしまう</option>
+          <option value="note_archive">フォルダーへしまう</option>
           <option value="outline_toggle">付箋の折りたたみ</option>
           <option value="image_attach">画像の添付</option>
         </select>
@@ -687,7 +690,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         for (const feature of stats.rows) {
           const row = document.createElement('tr');
           row.className = 'border-b border-slate-800';
-          for (const value of [feature.label, stats.reporting ? String(feature.users) + '人' : '不明', stats.reporting ? String(feature.percent) + '%' : '—', stats.reporting ? Math.round(feature.users / stats.reporting * 100) + '%' : '—']) {
+          for (const value of [feature.label, feature.reporting ? String(feature.users) + '人' : '不明', feature.reporting ? String(feature.percent) + '%' : '—', feature.reporting ? Math.round(feature.users / feature.reporting * 100) + '%' : '—', String(feature.reporting) + '人']) {
             const cell = document.createElement('td');
             cell.className = 'py-2';
             cell.textContent = value;
@@ -1073,6 +1076,7 @@ async function collectStats(environment = 'production', canPublish = true) {
     'search_open': '検索画面オープン',
     'note_duplicate': '付箋の複製',
     'note_archive': '付箋の整理/アーカイブ',
+    'launcher_store': 'クイックランチャーへしまう',
     'note_edited': '本文編集',
     'outline_toggle': '見出し折りたたみ',
     'image_attach': '画像添付',

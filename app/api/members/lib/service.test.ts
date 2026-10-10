@@ -36,6 +36,19 @@ describe('member registration',()=>{
 });
 
 describe('member heartbeat', () => {
+  it('accepts launcher usage only from the measured schema and resets support for old reports', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db, () => new Date('2026-10-11T00:00:00Z'));
+    await service.register(auth);
+    await service.heartbeat(auth, '2026-W41', ['launcher_store'], true, 10, '5.7.0', 2);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({ usageSchema: 2, usageFeatures: ['launcher_store'] });
+    await expect(service.recordUsage(auth, '2026-W41', ['launcher_store'], true, 10)).rejects.toMatchObject({ status: 400 });
+    await expect(service.recordUsage(auth, '2026-W41', [], true, 10, 99)).rejects.toMatchObject({ status: 400 });
+    await service.recordUsage(auth, '2026-W41', [], true, 10, 2);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({ usageSchema: 2, usageFeatures: [] });
+    await service.recordUsage(auth, '2026-W41', [], false, 10);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({ usageSchema: 1, usageConsent: false });
+  });
   it('preserves the communication instant across Japan midnight', async () => {
     const db = new MemoryDb();
     let instant = new Date('2026-10-10T14:59:59Z');

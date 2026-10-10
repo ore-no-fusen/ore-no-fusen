@@ -526,3 +526,28 @@ test('通信日と今日の人数は日本の午前0時で切り替わり、旧�
   assert.deepEqual(featureUsageStats(members).memberVersions.map(m => m.lastSeenAt), ['2026-10-10', '2026-10-11', null, null]);
   assert.deepEqual(survivalStats(members, new Date('2026-10-10T22:00:00Z')), { today: 1, week: 2, unknown: 2 });
 });
+
+test('ランチャー格納は旧版の未計測を0人とせず、対応版の成功記録だけを集計する', async () => {
+  const old = { generalNumber: 10000, usageConsent: true, usageWeek: '2026-W41', usageFeatures: [] };
+  const stats = featureUsageStats([
+    old,
+    { ...old, generalNumber: 10001, usageSchema: 2, usageFeatures: ['launcher_store', 'launcher_store'] },
+    { ...old, generalNumber: 10002, usageSchema: 2 },
+    { ...old, generalNumber: 10003, usageSchema: 2, usageWeek: '2026-W40', usageFeatures: ['launcher_store'] },
+    { ...old, generalNumber: 10004, usageSchema: 2, usageConsent: false },
+  ], '2026-W41');
+  const row = stats.rows.find(r => r.name === 'launcher_store');
+  assert.deepEqual(row, { name: 'launcher_store', label: 'クイックランチャーへしまう', users: 1, reporting: 2, percent: 20 });
+  assert.equal(stats.rows.find(r => r.name === 'note_archive').users, 0);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route('https://cdn.tailwindcss.com/**', r => r.fulfill({ body: '' }));
+    await page.route('https://cdn.jsdelivr.net/npm/chart.js', r => r.fulfill({ body: 'window.Chart = class {};' }));
+    await page.setContent(generateHtml([], 5, 10004, 0, 0, [], [], '2026/10/11', { today: 0, week: 0, unknown: 5 }, false, 'production', stats));
+    assert.match(await page.locator('#featureUsageRows tr').filter({ hasText: 'クイックランチャーへしまう' }).innerText(), /1人.*20%.*50%/s);
+    const legacy = featureUsageStats([old], '2026-W41');
+    await page.setContent(generateHtml([], 1, 10000, 0, 0, [], [], '2026/10/11', { today: 0, week: 0, unknown: 1 }, false, 'production', legacy));
+    assert.match(await page.locator('#featureUsageRows tr').filter({ hasText: 'クイックランチャーへしまう' }).innerText(), /不明.*—.*—/s);
+  } finally { await browser.close(); }
+});
