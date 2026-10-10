@@ -195,6 +195,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 return <HelpSection
                     t={t}
                     language={settings.language}
+                    launcherShortcutLabel={formatShortcutLabel(settings.shortcut_quick_launcher || "ctrl+p")}
                     newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language)}
                 />
             case "feedback":
@@ -2089,7 +2090,7 @@ function StepIllustration({ kind }: { kind: 'write' | 'pin' | 'iphone' }) {
     );
 }
 
-function HelpSection({ t, newNoteTriggerLabel, language }: { t: (key: any) => string; newNoteTriggerLabel: string; language: Language }) {
+function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, language }: { t: (key: any) => string; newNoteTriggerLabel: string; launcherShortcutLabel: string; language: Language }) {
     const isEnglish = language === 'en'
     const withNewNoteTrigger = (value: string) => value.replace(/Ctrl\s*\+\s*N/g, newNoteTriggerLabel);
     const onboardingSteps = [
@@ -2260,8 +2261,39 @@ function HelpSection({ t, newNoteTriggerLabel, language }: { t: (key: any) => st
             </section>
             </SettingsItemCard>
 
+            <SettingsItemCard number={3} title={isEnglish ? 'Quick Launcher' : 'クイックランチャー'} description={isEnglish ? 'Keep useful notes close, store them, and take them out again.' : 'よく使う付箋を登録し、必要なときにしまう・取り出すことができます。'}>
+                <p className="text-sm leading-6 text-slate-700">
+                    {isEnglish ? 'Open it with ' : '開くキーは '}
+                    <kbd className="rounded border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold">{launcherShortcutLabel}</kbd>
+                    {isEnglish ? '. You can also right-click the tray icon or taskbar app icon and choose “Open Quick Launcher”. Change the key in Settings → General → Quick Launcher Trigger.' : ' です。トレイアイコンやタスクバーのアプリアイコンを右クリック →「クイックランチャーを開く」でも開けます。キーは設定 → 全般 → クイックランチャートリガーで変更できます。'}
+                </p>
+                <HelpTable
+                    title={isEnglish ? 'Register, store, and take out' : '登録・格納・取り出しの手順'}
+                    firstHeader={isEnglish ? 'Action' : 'やりたいこと'}
+                    secondHeader={isEnglish ? 'How' : '操作'}
+                    rows={isEnglish ? [
+                        ['Register a note', 'Right-click the note → Register in Launcher. It appears under the Launcher tab. Registration keeps the note on your desktop.'],
+                        ['Find and open', 'Select the Launcher tab. Search by title or content, or choose a tag. Click a row, or use ↑ / ↓ and Enter. QA, Terms, and Recipes have their own tabs.'],
+                        ['Store a note', 'Click Store on the note’s row. The note leaves the desktop while its content and registration stay intact.'],
+                        ['Take out a note', 'Under Stored in Launcher, click Take out or the note’s row. The note returns to the desktop.'],
+                        ['Store a tag together', 'Select a user tag → Store tag in Launcher. All desktop notes with that tag are included, even unregistered notes and notes outside the current text search.'],
+                        ['Remove registration', 'Right-click a row → Remove from Launcher. The note is not deleted. A stored note is taken out first.'],
+                    ] : [
+                        ['付箋を登録する', '付箋を右クリック →「ランチャーに登録」。「ランチャー」タブの登録一覧に追加されます。登録しただけでは付箋は隠れません。'],
+                        ['探して開く', '「ランチャー」タブで名前・本文を検索したり、タグで絞り込めます。行をクリック、または ↑ / ↓ で選んで Enter。QA・用語集・手順はそれぞれのタブから開けます。'],
+                        ['1枚しまう', '付箋の行の「格納」を押します。デスクトップから隠れますが、本文やランチャー登録は残ります。'],
+                        ['取り出す', '「格納した付箋」で「取り出す」、または付箋の行をクリック。デスクトップへ戻ります。'],
+                        ['タグごとしまう', 'ユーザータグを選ぶ →「このタグをまとめて格納」。ランチャー未登録の付箋や、文字検索で表示されていない付箋も含め、同じタグのデスクトップ付箋を格納します。'],
+                        ['登録を解除する', '行を右クリック →「ランチャーの登録を解除」。付箋は削除されません。格納中なら先に取り出されます。'],
+                    ]}
+                />
+                <p className="rounded-lg bg-sky-50 p-3 text-sm leading-6 text-sky-900">
+                    {isEnglish ? 'Store in Launcher hides the note without moving its file. Put Away by Tag moves it to a tag folder or Archive; return those notes with Take Out Put-Away Notes.' : 'ランチャーの「格納」は、ファイルを移動せずに付箋を隠す操作です。従来の「タグフォルダへしまう」は保存場所を移す操作で、こちらは「しまった付箋を取り出す」から戻します。'}
+                </p>
+            </SettingsItemCard>
+
             {/* ===== 既存の参照テーブル群（情報を求める人向けに残す） ===== */}
-            <SettingsItemCard number={3} title={isEnglish ? 'References & Troubleshooting' : '一覧・トラブル解決'} description={isEnglish ? 'Review actions, shortcuts, and troubleshooting references.' : '操作一覧、ショートカット、困ったときの確認先です。'}>
+            <SettingsItemCard number={4} title={isEnglish ? 'References & Troubleshooting' : '一覧・トラブル解決'} description={isEnglish ? 'Review actions, shortcuts, and troubleshooting references.' : '操作一覧、ショートカット、困ったときの確認先です。'}>
             <HelpTable
                 title={t('settings.help.contextTable.title')}
                 firstHeader={t('settings.help.table.action')}

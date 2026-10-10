@@ -43,6 +43,8 @@ html.dark .help-pill { background:#0f172a; border-color:#334155; }
   <a class="help-card" href="/user-guide/comic"><strong>漫画で知る</strong>全9話で機能をざっと見る。</a>
 </div>
 
+[クイックランチャーの使い方](/user-guide/basic#quick-launcher) — 登録・格納・取り出し、タグ一括格納。
+
 ## まず読むなら
 
 1. [はじめに・インストール](/user-guide/install)

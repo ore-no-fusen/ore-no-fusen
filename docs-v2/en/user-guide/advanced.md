@@ -24,6 +24,8 @@ Use a note's context menu to create a Recipe, Q&A, or Term. New files use these 
 
 Existing files are not renamed automatically.
 
+See [Quick Launcher: register, store, and take out](/en/user-guide/basic#quick-launcher) for the basic steps.
+
 ## Quick Launcher filters
 
 Below each type tab, Quick Launcher shows **All**, user tags, and **Unclassified**. Tag filtering and text search work together. Internal tags such as `recipe`, `qa`, `term`, and `shortcut` are not shown as categories.
@@ -34,6 +36,7 @@ Below each type tab, Quick Launcher shows **All**, user tags, and **Unclassified
 |---|---|
 | `Ctrl+N` | New note |
 | `Ctrl+F` | Search |
+| `Ctrl+P` | Open / close Quick Launcher |
 | `Ctrl+Shift+H` | Hide or restore all notes |
 | `Ctrl+Shift+L` | Arrange by tag |
 
