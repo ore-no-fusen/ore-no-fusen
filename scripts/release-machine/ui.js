@@ -15,20 +15,23 @@
     $('branch').textContent = info.branch; $('current-version').textContent = info.version;
     $('clean').textContent = info.changes.length ? '未保存変更あり' : 'クリーン';
     if (!versionInitialized) { $('version').value = pending ? s.version : info.version.split('.').map((v,i)=>i===2?Number(v)+1:v).join('.'); versionInitialized = true; }
-    $('version').disabled = pending || locked;
+    const complete = s.status === 'complete';
+    if (complete) $('version').value = s.version;
+    $('version').disabled = pending || locked || complete;
     const ownChanges = pending && s.operation === 'prepare' && s.steps.commit?.status !== 'done' && info.changes.every(f => ['package.json','package-lock.json','src-tauri/Cargo.toml','src-tauri/Cargo.lock','packaging/msix/AppxManifest.xml'].includes(f));
     const blockers = [];
     if (info.readOnly) blockers.push('表示確認モードです。リリース操作は無効です。');
     if (info.branch !== 'develop') blockers.push('基本フォルダーのdevelopから起動してください。');
     if (info.changes.length && !ownChanges) blockers.push(`未保存変更があります：${info.changes.join(', ')}`);
     if (info.mainChanges.length) blockers.push(`正式リリースに未保存変更があります：${info.mainChanges.join(', ')}`);
-    $('prepare').disabled = locked || blockers.length > 0 || s.status === 'confirm' || (pending && s.operation === 'package');
-    $('prepare').textContent = s.status === 'failed' && s.operation === 'prepare' ? '🔨 止まった工程から再試行' : '確認用MSIXを作って起動';
+    $('prepare').disabled = complete || locked || blockers.length > 0 || s.status === 'confirm' || (pending && s.operation === 'package');
+    $('prepare').textContent = complete ? '✓ 確認用MSIX・実機確認 完了' : s.status === 'failed' && s.operation === 'prepare' ? '🔨 止まった工程から再試行' : '確認用MSIXを作って起動';
     const prepared = s.steps.install?.status === 'done';
     $('confirmed').disabled = !prepared || locked || s.status === 'complete';
     $('package').disabled = !prepared || !$('confirmed').checked || locked || blockers.length > 0 || s.status === 'complete';
-    $('package').textContent = s.status === 'failed' && s.operation === 'package' ? '🚀 止まった工程から再試行' : 'Store用MSIXを作成・Push';
-    $('gate').textContent = prepared && $('confirmed').checked ? '実機確認済み。同じexeから提出用を作ります。' : '準備完了と実機確認のチェックが必要です。';
+    $('package').textContent = complete ? '✓ Store用MSIX作成・Push 完了' : s.status === 'failed' && s.operation === 'package' ? '🚀 止まった工程から再試行' : 'Store用MSIXを作成・Push';
+    if (complete) $('confirmed').checked = true;
+    $('gate').textContent = complete ? '次はMicrosoft Store（Partner Center）へ提出します。' : prepared && $('confirmed').checked ? '実機確認済み。同じexeから提出用を作ります。' : '準備完了と実機確認のチェックが必要です。';
     const blocked = Boolean(networkError || s.error || blockers.length);
     $('current').textContent = networkError ? '接続を確認してください' : s.error || s.status === 'failed' ? '処理が止まりました' : info.busy || posting ? (s.current || '処理を開始しています…') : blockers.length ? '今は開始できません' : s.status === 'confirm' ? 'アプリを実機で確認してください' : s.status === 'complete' ? '提出準備ができました' : '準備を開始できます';
     $('notice').textContent = networkError ? '詳しい理由をご確認ください。' : s.error ? (s.current || '開始前の確認で停止しました。') : blockers.length ? (info.readOnly ? '表示確認モードです。' : '未保存の変更や作業環境を確認してください。') : info.busy || posting ? '起動用ウィンドウを閉じずにお待ちください。' : s.status === 'confirm' ? '確認が済んだら、下のチェックを入れてください。' : s.status === 'complete' ? '次はPartner Centerで提出します。' : '①のボタンから進めてください。';

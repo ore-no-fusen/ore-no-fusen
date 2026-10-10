@@ -217,7 +217,7 @@ sequenceDiagram
         M->>P: 候補コミット・保全物・導入済み版を照合
         M->>P: 同じ保全exeからStore MSIX作成・形式とSHA256検証
         M->>P: 固定提出先へコピー・main/developをpush確認
-        M-->>U: 提出準備完了・提出先フォルダー
+        M-->>U: 提出準備完了・作成ボタン無効・Store提出案内
     end
 ```
 

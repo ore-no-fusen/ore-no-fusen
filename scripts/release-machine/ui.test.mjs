@@ -31,6 +31,15 @@ test('two-button browser flow, fixed confirmation, command logs, narrow screen a
   await page.setViewportSize({width:360,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:path.join(output,'narrow.png'),fullPage:true});
   await page.locator('#package').click();await page.waitForFunction(()=>!document.querySelector('#complete').hidden);assert.match(await page.locator('#destination').innerText(),/5.6.2/);
+  assert.equal(await page.locator('#prepare').isDisabled(),true);
+  assert.equal(await page.locator('#package').isDisabled(),true);
+  assert.match(await page.locator('#prepare').innerText(),/完了/);
+  assert.match(await page.locator('#package').innerText(),/完了/);
+  assert.match(await page.locator('#gate').innerText(),/Microsoft Store/);
+  await page.reload();await page.waitForFunction(()=>!document.querySelector('#complete').hidden);
+  assert.equal(await page.locator('#prepare').isDisabled(),true);
+  assert.equal(await page.locator('#version').inputValue(),'5.6.2');
+  assert.equal(await page.locator('#confirmed').isChecked(),true);
   info.changes=['unrelated.txt'];Object.assign(state,{status:'idle',steps:{},id:null});await page.waitForFunction(()=>document.querySelector('#reason-text').textContent.includes('unrelated.txt'));assert.equal(await page.locator('#prepare').isDisabled(),true);
   assert.match(await page.locator('#current').innerText(),/開始できません/); assert.doesNotMatch(await page.locator('#notice').innerText(),/押してください/); assert.deepEqual(errors,[]);
 });
