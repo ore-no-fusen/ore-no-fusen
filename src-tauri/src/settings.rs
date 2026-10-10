@@ -67,6 +67,8 @@ pub fn save_settings<R: Runtime>(
 
     // 3. 全ウィンドウに通知を飛ばす（全体更新イベント）
     let _ = app.emit("settings_updated", &settings);
+    // Keep the taskbar shortcut hint in sync with language and key settings.
+    crate::launcher_taskbar::install(&app);
 
     // [Fix] トレイメニュー更新はメインスレッドで行う（Windowsでのクラッシュ防止）
     let app_handle = app.clone();

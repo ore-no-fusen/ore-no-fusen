@@ -1,10 +1,12 @@
 //! Windows Jump List task. Failure never blocks the existing keyboard entry.
-pub(crate) fn install(app: &tauri::AppHandle) {
+pub(crate) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     #[cfg(windows)]
     {
-        let is_en = crate::settings::get_settings(app.clone()).unwrap_or_default().language == "en";
+        let settings = crate::settings::get_settings(app.clone()).unwrap_or_default();
+        let is_en = settings.language == "en";
+        let shortcut = settings.shortcut_quick_launcher.unwrap_or_else(|| "ctrl+p".into());
         std::thread::spawn(move || {
-            if let Err(e) = install_windows(is_en) {
+            if let Err(e) = install_windows(is_en, &shortcut) {
                 crate::logger::log_warn(&format!("[Launcher] Jump List unavailable: {e}"));
             } else {
                 crate::logger::log_info("[Launcher] Jump List installed");
@@ -15,7 +17,7 @@ pub(crate) fn install(app: &tauri::AppHandle) {
     let _ = app;
 }
 #[cfg(windows)]
-fn install_windows(is_en: bool) -> windows::core::Result<()> {
+fn install_windows(is_en: bool, shortcut: &str) -> windows::core::Result<()> {
     use windows::core::{ComInterface, GUID, PCWSTR, PWSTR};
     use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoUninitialize, CoTaskMemFree, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
     use windows::Win32::System::{Com::StructuredStorage::PROPVARIANT, Variant::VT_LPWSTR};
@@ -39,7 +41,8 @@ fn install_windows(is_en: bool) -> windows::core::Result<()> {
                 link.SetPath(PCWSTR(exe.as_ptr()))?;
                 link.SetArguments(PCWSTR(args.as_ptr()))?;
                 link.SetIconLocation(PCWSTR(exe.as_ptr()), 0)?;
-                let mut title = wide(if is_en { "Open Quick Launcher" } else { "クイックランチャーを開く" });
+                let label = format!("{} ({})", if is_en { "Open Quick Launcher" } else { "クイックランチャーを開く" }, crate::tray::format_shortcut_for_menu(shortcut));
+                let mut title = wide(&label);
                 let props: IPropertyStore = link.cast()?;
                 // System.Title (PKEY_Title), required for Jump List task links.
                 let title_key = PROPERTYKEY { fmtid: GUID::from_u128(0xf29f85e0_4ff9_1068_ab91_08002b27b3d9), pid: 2 };

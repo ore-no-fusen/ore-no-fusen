@@ -17,7 +17,7 @@ use crate::logic;
 use crate::storage;
 use std::sync::Mutex;
 
-fn format_shortcut_for_menu(shortcut: &str) -> String {
+pub(crate) fn format_shortcut_for_menu(shortcut: &str) -> String {
     let mut modifiers = Vec::new();
     let mut keys = Vec::new();
 
@@ -112,6 +112,11 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         is_en,
     );
     let label_search = menu_label(if is_en { "Search" } else { "検索 (Search)" }, "Ctrl+F", is_en);
+    let label_launcher = menu_label(
+        if is_en { "Open Quick Launcher" } else { "クイックランチャーを開く" },
+        &format_shortcut_for_menu(settings.shortcut_quick_launcher.as_deref().unwrap_or("ctrl+p")),
+        is_en,
+    );
     let label_archive_restore = if is_en { "📤 Restore Archived Notes" } else { "📤 しまった付箋を取り出す" };
     let label_arrange_by_tag = menu_label(
         if is_en { "Arrange by Tag" } else { "タグで整列 (Arrange by Tag)" },
@@ -126,7 +131,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let show_i = MenuItem::with_id(app, "show_all", label_show, true, None::<&str>)?;
     let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?; 
     let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
-    let launcher_i = MenuItem::with_id(app, "open_quick_launcher", if is_en { "Open Quick Launcher" } else { "クイックランチャーを開く" }, true, None::<&str>)?;
+    let launcher_i = MenuItem::with_id(app, "open_quick_launcher", label_launcher, true, None::<&str>)?;
     let search_i = MenuItem::with_id(app, "open_search", label_search, true, None::<&str>)?; // [NEW] 全文検索
     let archive_restore_i = MenuItem::with_id(app, "open_archive_restore", label_archive_restore, true, None::<&str>)?;
     let arrange_by_tag_i = MenuItem::with_id(app, "arrange_by_tag", label_arrange_by_tag, true, None::<&str>)?;
