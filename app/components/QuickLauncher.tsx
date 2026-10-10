@@ -619,8 +619,9 @@ export default function QuickLauncher() {
                                     <span className="text-base">{activeTab === 'shortcut' && !item.tags.includes('shortcut') ? '📦' : activeTab === 'qa' ? '❓' : activeTab === 'term' ? '📖' : item.is_recipe ? '🍳' : '📌'}</span>
                                     <span className="truncate">{truncateRecipeName(item.title || (isEnglish ? 'Untitled' : '無題'), 20)}</span>
                                     <span className="flex items-center justify-end gap-0.5">
-                                        {activeTab === 'shortcut' && <button type="button" disabled={busy} aria-label={`${item.title}を${storedPaths.includes(item.path) ? '取り出す' : '格納'}`} onClick={(e) => { e.stopPropagation(); void changeStorage(item); }} className="mr-1 rounded border border-zinc-600 px-2 py-1 text-[11px] text-sky-200 hover:bg-zinc-700 disabled:opacity-50">{storedPaths.includes(item.path) ? (isEnglish ? 'Take out' : '取り出す') : (isEnglish ? 'Store' : '格納')}</button>}
-                                        <span className="mr-1 text-[11px] text-zinc-500 group-hover:hidden">{item.launches}</span>
+                                        {activeTab === 'shortcut' && <button type="button" disabled={busy} aria-label={`${item.title}を${storedPaths.includes(item.path) ? '取り出す' : '格納'}`} onClick={(e) => { e.stopPropagation(); void changeStorage(item); }} className="mr-1 min-w-14 shrink-0 rounded border border-zinc-600 px-2 py-1 text-[11px] text-sky-200 hover:bg-zinc-700 disabled:opacity-50">{storedPaths.includes(item.path) ? (isEnglish ? 'Take out' : '取り出す') : (isEnglish ? 'Store' : '格納')}</button>}
+                                        <span className="relative flex w-16 shrink-0 items-center justify-end gap-0.5">
+                                        <span className="absolute right-1 text-[11px] text-zinc-500 group-hover:invisible">{item.launches}</span>
                                         {(activeTab !== 'shortcut' || item.tags.includes('shortcut')) && <><button
                                             type="button"
                                             title={isEnglish ? 'Move up' : '上へ'}
@@ -630,7 +631,7 @@ export default function QuickLauncher() {
                                                 setSelectedIndex(index);
                                                 handleReorder('up', item).catch(() => {});
                                             }}
-                                            className="hidden h-6 w-5 rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white group-hover:inline-flex group-hover:items-center group-hover:justify-center"
+                                            className="invisible inline-flex h-6 w-5 items-center justify-center rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white group-hover:visible"
                                         >
                                             ↑
                                         </button>
@@ -643,7 +644,7 @@ export default function QuickLauncher() {
                                                 setSelectedIndex(index);
                                                 handleReorder('down', item).catch(() => {});
                                             }}
-                                            className="hidden h-6 w-5 rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white group-hover:inline-flex group-hover:items-center group-hover:justify-center"
+                                            className="invisible inline-flex h-6 w-5 items-center justify-center rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white group-hover:visible"
                                         >
                                             ↓
                                         </button>
@@ -656,10 +657,11 @@ export default function QuickLauncher() {
                                                 setSelectedIndex(index);
                                                 handleRemove(item).catch(() => {});
                                             }}
-                                            className="hidden h-6 w-5 rounded text-[11px] text-red-200 hover:bg-red-950 hover:text-red-100 group-hover:inline-flex group-hover:items-center group-hover:justify-center"
+                                            className="invisible inline-flex h-6 w-5 items-center justify-center rounded text-[11px] text-red-200 hover:bg-red-950 hover:text-red-100 group-hover:visible"
                                         >
                                             ×
                                         </button></>}
+                                        </span>
                                     </span>
                                 </div>
                             ))}
