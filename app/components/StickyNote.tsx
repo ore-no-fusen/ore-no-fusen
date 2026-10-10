@@ -11,6 +11,7 @@
  */
 
 'use client';
+import { storeFavoriteInOrder } from '../utils/shelfMotion';
 
 import { useState, useEffect, useCallback, useRef, memo, useMemo, lazy, Suspense } from 'react';
 import React from 'react';
@@ -1102,6 +1103,53 @@ const StickyNote = memo(function StickyNote() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // deps なし: 全て ref 経由でアクセスするため stale closure なし
     ensureFilePathForDropRef.current = handleFirstChar;
+    // Restored notes must register too, not only newly promoted/renamed notes.
+    useEffect(() => {
+        if (!urlPath) return;
+        import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) =>
+            invoke('fusen_register_open_note_window', { path: urlPath, label: getCurrentWebviewWindow().label }),
+        ).catch(error => console.warn('[付箋表示] 復元ウィンドウの登録に失敗しました:', error));
+    }, [urlPath]);
+    useEffect(() => {
+        let cancelled = false;
+        let dispose: (() => void) | undefined;
+        import('@tauri-apps/api/event').then(({ listen }) => listen<{path:string; requestId:string}>('fusen:store_favorite', async ({ payload }) => {
+            if (payload.path.replace(/\\/g, '/').toLowerCase() !== noteFilePathRef.current?.replace(/\\/g, '/').toLowerCase()) return;
+            let error: string | null = null;
+            let stored = false;
+            if (isDeletingRef.current) {
+                await invoke('fusen_complete_store', {requestId:payload.requestId, error:'付箋の操作中です'});
+                return;
+            }
+            isDeletingRef.current = true;
+            const storageStarted = performance.now();
+            try {
+                const body = isEditingForListenerRef.current ? editBodyRef.current : contentForListenerRef.current;
+                const win = (await import('@tauri-apps/api/webviewWindow')).getCurrentWebviewWindow();
+                const success = await storeFavoriteInOrder(
+                    () => saveNoteContent(body, rawFrontmatterForAlarmRef.current, false),
+                    async () => { await invoke('fusen_store_favorite', {path:payload.path, windowLabel:win.label, requestId:payload.requestId}); stored = true; },
+                    async () => {},
+                    async () => {
+                        await win.hide();
+                        if (process.env.NODE_ENV === 'development') void invoke('fusen_debug_log', {message: `[LauncherStorage] hidden_ms=${Math.round(performance.now() - storageStarted)}`}).catch(() => {});
+                    },
+                    async () => {
+                        if (stored) await invoke('fusen_take_out_favorite', {path:payload.path});
+                        await win.show();
+                    },
+                );
+                if (!success) throw new Error('保存できなかったため画面に戻します');
+                if (process.env.NODE_ENV === 'development') void invoke('fusen_debug_log', {message: `[LauncherStorage] committed_ms=${Math.round(performance.now() - storageStarted)}`}).catch(() => {});
+            } catch (e) {
+                error = String(e);
+            } finally {
+                isDeletingRef.current = false;
+                await invoke('fusen_complete_store', {requestId:payload.requestId, error});
+            }
+        })).then(unlisten => { if (cancelled) unlisten(); else dispose = unlisten; });
+        return () => { cancelled = true; dispose?.(); };
+    }, [editBodyRef, noteFilePathRef, saveNoteContent]);
 
     useEffect(() => {
         let unlisten: (() => void) | undefined;
@@ -1119,6 +1167,14 @@ const StickyNote = memo(function StickyNote() {
         };
     }, []);
 
+    useEffect(() => {
+        let dispose: (() => void) | undefined;
+        let cancelled = false;
+        import('@tauri-apps/api/event').then(({listen}) => listen('fusen:shelf_enter', () => {
+            // Retained windows are shown immediately; do not fade them out again.
+        })).then(fn => { if(cancelled) fn(); else dispose=fn; }).catch(() => {});
+        return () => { cancelled=true; dispose?.(); };
+    }, []);
     // リロードイベントリスナー
     useEffect(() => {
         if (!selectedFile) return;

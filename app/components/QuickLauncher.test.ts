@@ -38,7 +38,7 @@ describe('QuickLauncher logic', () => {
 
     it('selects the specified empty-state message for each tab', () => {
         expect(emptyMessageForTab('recipe')).toBe('青付箋を右クリック → レシピにする で最初のレシピを作れます。');
-        expect(emptyMessageForTab('shortcut')).toBe('付箋を右クリック → お気に入りに登録 で追加できます。');
+        expect(emptyMessageForTab('shortcut')).toBe('付箋を右クリック → ランチャーに登録 で追加できます。');
         expect(emptyMessageForTab('qa')).toBe('付箋を右クリック → ❓ QAにする で最初のQAを作れます。');
         expect(emptyMessageForTab('term')).toBe('付箋を右クリック → 📖 用語にする で最初の用語を作れます。');
     });
@@ -70,7 +70,7 @@ describe('QuickLauncher logic', () => {
     });
 
     it('uses crystal trash for crystals and shelf removal for favorites', () => {
-        expect(removeActionLabel('shortcut')).toBe('棚から外す');
+        expect(removeActionLabel('shortcut')).toBe('登録を解除');
         expect(removeActionLabel('recipe')).toBe('ゴミ箱へ移動');
         expect(removeActionLabel('qa')).toBe('ゴミ箱へ移動');
         expect(removeActionLabel('term')).toBe('ゴミ箱へ移動');

@@ -592,7 +592,7 @@ fn remove_from_shelf_at_base(_base_path: &Path, path: &Path) -> Result<Option<Pa
     Err("note is not on a launcher shelf".to_string())
 }
 
-fn build_quick_launcher_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
+fn build_quick_launcher_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<tauri::WebviewWindow<R>, String> {
     tauri::WebviewWindowBuilder::new(
         app,
         QUICK_LAUNCHER_LABEL,
@@ -816,7 +816,19 @@ where
 }
 
 #[tauri::command]
-pub(crate) fn fusen_open_quick_note(app: AppHandle, path: String) -> Result<(), String> {
+pub(crate) async fn fusen_open_quick_note(app: AppHandle, path: String, requested_at: Option<u64>) -> Result<(), String> {
+    let retained = {
+        let state = app.state::<std::sync::Mutex<crate::state::AppState>>();
+        let state = state.lock().unwrap_or_else(|p| p.into_inner());
+        state.open_note_windows.get(&crate::normalize_path_for_label(&path)).cloned()
+    }.and_then(|label| app.get_webview_window(&label));
+    if let Some(window) = &retained {
+        window.show().map_err(|e| e.to_string())?;
+        crate::favorite_storage::log_visibility_latency("show", requested_at);
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        crate::favorite_storage::fusen_take_out_favorite(app.clone(), path.clone())?;
+    }
     let content = cached_quick_open_content(Path::new(&path))?;
     let tags = parse_launcher_tags(&content);
     let (x, y, width, height) = launcher_window_geometry(&content);
@@ -827,6 +839,7 @@ pub(crate) fn fusen_open_quick_note(app: AppHandle, path: String) -> Result<(), 
     run_quick_open_after_read(
         &content,
         |background_color| {
+            if retained.is_some() { return Ok(()); }
             app.emit(
                 "fusen:open_note",
                 serde_json::json!({
@@ -1433,5 +1446,43 @@ mod tests {
 
         assert_eq!(order.orders["recipe"], vec!["a.md"]);
         assert!(order.orders["shortcut"].is_empty());
+    }
+}
+
+/// Explicit taskbar request. Ordinary launches keep their existing behavior.
+pub(crate) fn requests_quick_launcher(arguments: &[String]) -> bool {
+    arguments.iter().any(|argument| argument == "--quick-launcher")
+}
+
+/// Taskbar actions always show the launcher; repeated requests never toggle it off.
+pub(crate) fn show_quick_launcher<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    let app_for_show = app.clone();
+    app.run_on_main_thread(move || {
+        let result = (|| {
+            let window = match app_for_show.get_webview_window(QUICK_LAUNCHER_LABEL) {
+                Some(window) => window,
+                None => build_quick_launcher_window(&app_for_show)?,
+            };
+            window.unminimize().map_err(|e| e.to_string())?;
+            window.show().map_err(|e| e.to_string())?;
+            window.set_focus().map_err(|e| e.to_string())?;
+            let _ = window.emit("fusen:launcher_shown", ());
+            Ok::<(), String>(())
+        })();
+        if let Err(error) = result {
+            logger::log_warn(&format!("[Launcher] taskbar show failed: {error}"));
+        }
+    }).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod taskbar_request_tests {
+    use super::requests_quick_launcher;
+    #[test]
+    fn taskbar_argument_is_explicit_and_normal_launches_are_unchanged() {
+        assert!(requests_quick_launcher(&["app.exe".into(), "--quick-launcher".into()]));
+        for args in [vec![], vec!["app.exe".into()], vec!["--quick-launcher-other".into()], vec!["C:/notes/--quick-launcher.md".into()]] {
+            assert!(!requests_quick_launcher(&args));
+        }
     }
 }

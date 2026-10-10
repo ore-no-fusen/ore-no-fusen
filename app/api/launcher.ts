@@ -33,7 +33,7 @@ export async function quickOpenNotes(tab: LauncherTab, query: string): Promise<Q
 }
 
 export async function openQuickNote(path: string): Promise<void> {
-    await invoke('fusen_open_quick_note', { path });
+    await invoke('fusen_open_quick_note', { path, requestedAt: Date.now() });
 }
 
 export async function reorderQuickNote(
@@ -51,3 +51,8 @@ export async function removeFromShelf(path: string): Promise<void> {
 export async function renameQuickNote(path: string, title: string): Promise<void> {
     await invoke('fusen_rename_quick_note', { path, title });
 }
+
+export type StorageSnapshot = {paths:string[]; items:QuickOpenItem[]; tags:string[]};
+export const storageSnapshot = () => invoke<StorageSnapshot>('fusen_storage_snapshot');
+export const storeQuickNote = (path:string) => invoke<void>('fusen_request_store', {path, requestedAt: Date.now()});
+export const storeTag = (tag:string) => invoke<{stored:number;failed:string[]}>('fusen_store_tag', {tag});

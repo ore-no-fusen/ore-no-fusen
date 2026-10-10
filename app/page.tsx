@@ -411,7 +411,7 @@ function OrchestratorContent() {
     try {
       const existing = await resolveOpenWindow(path);
       if (existing) {
-        if (!startupRestore) await existing.show();
+        if (!startupRestore) { await existing.show(); await invoke("fusen_take_out_favorite", {path}); await existing.emit("fusen:shelf_enter"); }
         await existing.unminimize();
         if (!startupRestore) await existing.setFocus();
         return;
@@ -429,6 +429,8 @@ function OrchestratorContent() {
           await existing.unminimize();
           if (!startupRestore) {
             await existing.show();
+            await invoke("fusen_take_out_favorite", {path});
+            await existing.emit("fusen:shelf_enter");
             await existing.setFocus();
           }
           return;
@@ -443,6 +445,8 @@ function OrchestratorContent() {
               await win.unminimize();
               if (!startupRestore) {
                 await win.show();
+                await invoke("fusen_take_out_favorite", {path});
+                await win.emit("fusen:shelf_enter");
                 await win.setFocus();
               }
               return;
@@ -510,6 +514,7 @@ function OrchestratorContent() {
                 console.warn('[付箋表示] ツールウィンドウ化に失敗しました:', e);
               }
               }
+              if (!startupRestore) await invoke("fusen_take_out_favorite", {path});
               settleCreation();
             });
 
@@ -1418,10 +1423,11 @@ function OrchestratorContent() {
       unlistenVisible = await listen<boolean>('fusen:set_all_notes_visible', async (event) => {
         const visible = event.payload;
         try {
+          const storedLabels = new Set(visible ? await invoke<string[]>("fusen_stored_window_labels") : []);
           const wins = (await getAllWebviewWindows()).filter(w => w.label.startsWith('note-'));
           for (const win of wins) {
             try {
-              if (visible) { await win.show(); } else { await win.hide(); }
+              if (visible && !storedLabels.has(win.label)) { await win.show(); } else { await win.hide(); }
             } catch (e) { /* per-window エラーは無視 */ }
             await delay(50); // Win32 メッセージキューをドレインしてから次へ
           }
@@ -1927,6 +1933,8 @@ function OrchestratorContent() {
                     ? 'Failed to show notes. Please restart the app.'
                     : '付箋の表示に失敗しました: ' + String(e));
                 }
+              } else if (await invoke<boolean>('fusen_has_stored_favorites')) {
+                setLoadingStatus('');
               } else {
                 setLoadingStatus(startupIsEnglish ? 'Creating your welcome note...' : 'ようこそノートを作成中...');
                 try {

@@ -126,6 +126,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let show_i = MenuItem::with_id(app, "show_all", label_show, true, None::<&str>)?;
     let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?; 
     let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
+    let launcher_i = MenuItem::with_id(app, "open_quick_launcher", if is_en { "Open Quick Launcher" } else { "クイックランチャーを開く" }, true, None::<&str>)?;
     let search_i = MenuItem::with_id(app, "open_search", label_search, true, None::<&str>)?; // [NEW] 全文検索
     let archive_restore_i = MenuItem::with_id(app, "open_archive_restore", label_archive_restore, true, None::<&str>)?;
     let arrange_by_tag_i = MenuItem::with_id(app, "arrange_by_tag", label_arrange_by_tag, true, None::<&str>)?;
@@ -157,6 +158,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     
     let menu = Menu::with_items(app, &[
         &new_note_i, // [NEW] 最上部に配置
+        &launcher_i,
         &search_i, // [NEW] 全文検索
         &archive_restore_i,
         &arrange_by_tag_i,
@@ -238,6 +240,9 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                         if let Some(win) = app.get_webview_window("main") {
                             let _ = win.emit("fusen:create_note_from_tray", ());
                         }
+                    },
+                    "open_quick_launcher" => {
+                        if let Err(e) = crate::launcher::show_quick_launcher(app.clone()) { crate::logger::log_warn(&format!("[Tray] launcher: {e}")); }
                     },
                     "open_search" => { // [NEW] 全文検索
                         eprintln!("[Tray] Opening search...");

@@ -4,6 +4,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
+    storageSnapshot,
+    storeQuickNote,
+    storeTag,
     getLauncherState,
     openQuickNote,
     quickOpenNotes,
@@ -35,7 +38,7 @@ type ContextMenuState = {
 } | null;
 
 export const LAUNCHER_TABS: LauncherTabConfig[] = [
-    { key: 'shortcut', label: 'お気に入り' },
+    { key: 'shortcut', label: 'ランチャー' },
     { key: 'qa', label: 'QA' },
     { key: 'term', label: '用語集' },
     { key: 'recipe', label: '手順' },
@@ -59,7 +62,7 @@ export function emptyMessageForTab(tab: LauncherTab, language: Language = 'ja'):
         case 'recipe':
             return isEnglish ? 'Right-click a blue note and choose “Create Recipe” to make your first recipe.' : '青付箋を右クリック → レシピにする で最初のレシピを作れます。';
         case 'shortcut':
-            return isEnglish ? 'Right-click a note and choose “Add to Favorites” to add it here.' : '付箋を右クリック → お気に入りに登録 で追加できます。';
+            return isEnglish ? 'Right-click a note and choose “Register in Launcher” to add it here.' : '付箋を右クリック → ランチャーに登録 で追加できます。';
         case 'qa':
             return isEnglish ? 'Right-click a note and choose “❓ Create Q&A” to make your first Q&A.' : '付箋を右クリック → ❓ QAにする で最初のQAを作れます。';
         case 'term':
@@ -93,8 +96,8 @@ export function shouldCloseLauncherAfterBlur(locked: boolean, isFocused: boolean
 
 export function removeActionLabel(tab: LauncherTab, language: Language = 'ja'): string {
     return language === 'en'
-        ? (tab === 'shortcut' ? 'Remove from Favorites' : 'Move to Trash')
-        : (tab === 'shortcut' ? '棚から外す' : 'ゴミ箱へ移動');
+        ? (tab === 'shortcut' ? 'Remove from Launcher' : 'Move to Trash')
+        : (tab === 'shortcut' ? '登録を解除' : 'ゴミ箱へ移動');
 }
 
 export function isLatestLauncherRequest(requestId: number, currentRequestId: number): boolean {
@@ -148,11 +151,17 @@ export default function QuickLauncher() {
     const launcherTabs = LAUNCHER_TABS.map((tab) => ({
         ...tab,
         label: isEnglish
-            ? ({ shortcut: 'Favorites', qa: 'Q&A', term: 'Terms', recipe: 'Recipes' } as const)[tab.key]
+            ? ({ shortcut: 'Launcher', qa: 'Q&A', term: 'Terms', recipe: 'Recipes' } as const)[tab.key]
             : tab.label,
     }));
     const [activeTab, setActiveTab] = useState<LauncherTab>('recipe');
     const [query, setQuery] = useState('');
+    const [storedPaths, setStoredPaths] = useState<string[]>([]);
+    const [storedItems, setStoredItems] = useState<QuickOpenItem[]>([]);
+    const [allTags, setAllTags] = useState<string[]>([]);
+    const [showStored, setShowStored] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const operationRef = useRef(false);
     const [items, setItems] = useState<QuickOpenItem[]>([]);
     const [tagFilters, setTagFilters] = useState<Partial<Record<LauncherTab, string>>>({});
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -175,7 +184,11 @@ export default function QuickLauncher() {
         setIsLoading(true);
         setError(null);
         try {
-            const nextItems = await quickOpenNotes(tabToReservedTag(tab), search);
+            const [nextItems, storage] = await Promise.all([quickOpenNotes(tabToReservedTag(tab), search), storageSnapshot()]);
+            if (!isLatestLauncherRequest(requestId, requestGenerationRef.current)) return;
+            setStoredPaths(storage.paths);
+            setStoredItems(storage.items);
+            setAllTags(storage.tags);
             if (!isLatestLauncherRequest(requestId, requestGenerationRef.current)) return;
             setItems(nextItems);
             setSelectedIndex((current) => Math.min(current, Math.max(nextItems.length - 1, 0)));
@@ -191,6 +204,12 @@ export default function QuickLauncher() {
         }
     }, [isEnglish]);
 
+    useEffect(() => {
+        let disposed = false;
+        let dispose: (() => void) | undefined;
+        listen('fusen:storage_changed', () => { if (!operationRef.current) void reloadItems(activeTab, debouncedQuery); }).then(fn => { if(disposed) fn(); else dispose=fn; });
+        return () => { disposed=true; dispose?.(); };
+    }, [activeTab, debouncedQuery, reloadItems]);
     useEffect(() => {
         let cancelled = false;
         getLauncherState()
@@ -220,7 +239,7 @@ export default function QuickLauncher() {
         let unlisten: (() => void) | undefined;
 
         listen(LAUNCHER_SHELF_CHANGED_EVENT, () => {
-            if (shouldReloadLauncherForEvent(LAUNCHER_SHELF_CHANGED_EVENT)) {
+            if (!operationRef.current && shouldReloadLauncherForEvent(LAUNCHER_SHELF_CHANGED_EVENT)) {
                 reloadItems(activeTab, debouncedQuery);
             }
         })
@@ -321,6 +340,7 @@ export default function QuickLauncher() {
     }, []);
 
     const openItem = useCallback(async (item: QuickOpenItem) => {
+        if (operationRef.current) return;
         await openQuickNote(item.path);
         if (!lockedRef.current) {
             await closeLauncherWindow();
@@ -328,7 +348,33 @@ export default function QuickLauncher() {
     }, []);
 
     const activeTagFilter = tagFilters[activeTab] ?? ALL_TAGS_FILTER;
-    const tagOptions = useMemo(() => launcherTagOptions(items), [items]);
+    const storageSource = activeTab === 'shortcut' && showStored ? storedItems.filter(i => !query.trim() || (i.title+' '+i.tags.join(' ')).toLowerCase().includes(query.trim().toLowerCase())) : items;
+    const tagOptions = useMemo(() => activeTab === 'shortcut' ? Array.from(new Set([...launcherTagOptions(storageSource), ...allTags])) : launcherTagOptions(storageSource), [activeTab, allTags, storageSource]);
+    const changeStorage = async (item: QuickOpenItem) => {
+        if (operationRef.current) return;
+        operationRef.current = true; setBusy(true); setError(null);
+        try {
+            const takingOut = storedPaths.includes(item.path);
+            if (takingOut) await openQuickNote(item.path);
+            else await storeQuickNote(item.path);
+            setStoredPaths(prev => takingOut ? prev.filter(path => path !== item.path) : Array.from(new Set([...prev, item.path])));
+            setStoredItems(prev => takingOut ? prev.filter(note => note.path !== item.path) : [...prev.filter(note => note.path !== item.path), item]);
+            // The transaction is done; reconciliation must not hold the action buttons disabled.
+            void reloadItems(activeTab, debouncedQuery);
+        } catch(e) { setError(String(e)); }
+        finally { operationRef.current = false; setBusy(false); }
+    };
+    const storeSelectedTag = async () => {
+        if (operationRef.current) return;
+        operationRef.current = true; setBusy(true); setError(null);
+        try {
+            const result = await storeTag(activeTagFilter);
+            setShowStored(true);
+            await reloadItems(activeTab, debouncedQuery);
+            if (result.failed.length) setError(result.failed.join(' / '));
+        } catch(e) { setError(String(e)); }
+        finally { operationRef.current = false; setBusy(false); }
+    };
     const displayTagOptions = useMemo(() => {
         if (activeTagFilter !== ALL_TAGS_FILTER && !tagOptions.includes(activeTagFilter)) {
             return [activeTagFilter, ...tagOptions];
@@ -336,8 +382,8 @@ export default function QuickLauncher() {
         return tagOptions;
     }, [activeTagFilter, tagOptions]);
     const visibleItems = useMemo(
-        () => filterLauncherItemsByTag(items, activeTagFilter),
-        [items, activeTagFilter],
+        () => filterLauncherItemsByTag(storageSource, activeTagFilter),
+        [storageSource, activeTagFilter],
     );
     const selectedItem = useMemo(() => visibleItems[selectedIndex] ?? null, [visibleItems, selectedIndex]);
 
@@ -366,6 +412,7 @@ export default function QuickLauncher() {
             return;
         }
 
+        if (operationRef.current || (e.target as HTMLElement).closest('button')) return;
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
             e.preventDefault();
             switchTab(nextTab(activeTab, e.key === 'ArrowLeft' ? 'left' : 'right')).catch(() => {});
@@ -410,19 +457,20 @@ export default function QuickLauncher() {
         const targetPath = targetItem.path;
         setContextMenu(null);
         if (activeTab === 'shortcut' && !window.confirm(isEnglish
-            ? 'Remove this item from Favorites? The note will not be deleted.'
-            : 'お気に入りから外しますか？（付箋は消えません）')) {
+            ? 'Remove this item from Launcher? The note will not be deleted.'
+            : 'ランチャーの登録を解除しますか？（付箋は消えません）')) {
             return;
         }
 
         try {
+            if (storedPaths.includes(targetPath)) { await openQuickNote(targetPath); }
             await removeFromShelf(targetPath);
             await reloadItems(activeTab, debouncedQuery);
         } catch (e) {
             console.error('[QuickLauncher] Failed to remove item:', e);
             setError(isEnglish ? 'Could not remove the item. Please try again.' : (e instanceof Error ? e.message : String(e)));
         }
-    }, [activeTab, contextMenu, debouncedQuery, isEnglish, reloadItems]);
+    }, [activeTab, contextMenu, debouncedQuery, isEnglish, reloadItems, storedPaths]);
 
     const startRename = useCallback((item?: QuickOpenItem) => {
         const targetItem = item ?? contextMenu?.item;
@@ -520,6 +568,12 @@ export default function QuickLauncher() {
                     ))}
                 </div>
 
+                {activeTab === 'shortcut' && <div className="flex flex-wrap gap-2 text-xs">
+                    <button type="button" onClick={() => setShowStored(false)} className={showStored ? 'text-zinc-400' : 'text-sky-300'}>{isEnglish ? 'Registered' : '登録一覧'}</button>
+                    <button type="button" onClick={() => setShowStored(true)} className={showStored ? 'text-sky-300' : 'text-zinc-400'}>{isEnglish ? 'Stored in Launcher' : '格納した付箋'} ({storedItems.length})</button>
+                    {activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <button type="button" disabled={busy} onClick={() => void storeSelectedTag()} className="ml-auto rounded bg-zinc-800 px-2 py-1 disabled:opacity-50">{busy ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Store tag in Launcher' : 'このタグをまとめて格納')}</button>}
+                </div>}
+                {activeTab === 'shortcut' && activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <p className="text-[11px] text-zinc-400">{isEnglish ? 'Stores all desktop notes with this tag, including unregistered notes.' : 'タグ全体の格納は、未登録の付箋も対象です。'}</p>}
                 <input
                     ref={inputRef}
                     value={query}
@@ -541,7 +595,7 @@ export default function QuickLauncher() {
                 <div className="min-h-0 flex-1 overflow-y-auto rounded border border-zinc-800 bg-zinc-900/70">
                     {visibleItems.length === 0 && !isLoading ? (
                         <div className="flex h-full items-center justify-center px-5 text-center text-sm leading-6 text-zinc-500">
-                            {items.length === 0 ? emptyMessageForTab(activeTab, language) : (isEnglish ? 'No items match this tag.' : 'このタグに該当する項目はありません。')}
+                            {showStored && activeTab === 'shortcut' && storageSource.length === 0 ? (isEnglish ? 'No stored notes.' : '格納した付箋はありません。') : items.length === 0 ? emptyMessageForTab(activeTab, language) : (isEnglish ? 'No items match this tag.' : 'このタグに該当する項目はありません。')}
                         </div>
                     ) : (
                         <div className="py-1">
@@ -560,17 +614,19 @@ export default function QuickLauncher() {
                                         setContextMenu({ x: e.clientX, y: e.clientY, item });
                                     }}
                                     onMouseEnter={() => setSelectedIndex(index)}
-                                    className={`group grid h-9 w-full cursor-default grid-cols-[1.75rem_1fr_4.75rem] items-center gap-2 px-2 text-left text-sm ${
+                                    className={`group grid h-9 w-full cursor-default grid-cols-[1.75rem_1fr_9rem] items-center gap-2 px-2 text-left text-sm ${
                                         selectedIndex === index
                                             ? 'bg-sky-500/25 text-white'
                                             : 'text-zinc-200 hover:bg-zinc-800'
                                     }`}
                                 >
-                                    <span className="text-base">{activeTab === 'qa' ? '❓' : activeTab === 'term' ? '📖' : item.is_recipe ? '🍳' : '📌'}</span>
+                                    <span className="text-base">{activeTab === 'shortcut' && !item.tags.includes('shortcut') ? '📦' : activeTab === 'qa' ? '❓' : activeTab === 'term' ? '📖' : item.is_recipe ? '🍳' : '📌'}</span>
                                     <span className="truncate">{truncateRecipeName(item.title || (isEnglish ? 'Untitled' : '無題'), 20)}</span>
                                     <span className="flex items-center justify-end gap-0.5">
-                                        <span className="mr-1 text-[11px] text-zinc-500 group-hover:hidden">{item.launches}</span>
-                                        <button
+                                        {activeTab === 'shortcut' && <button type="button" disabled={busy} aria-label={`${item.title}を${storedPaths.includes(item.path) ? '取り出す' : '格納'}`} onClick={(e) => { e.stopPropagation(); void changeStorage(item); }} className="mr-1 min-w-14 shrink-0 rounded border border-zinc-600 px-2 py-1 text-[11px] text-sky-200 hover:bg-zinc-700 disabled:opacity-50">{storedPaths.includes(item.path) ? (isEnglish ? 'Take out' : '取り出す') : (isEnglish ? 'Store' : '格納')}</button>}
+                                        <span className="relative flex w-16 shrink-0 items-center justify-end gap-0.5">
+                                        <span className="absolute right-1 text-[11px] text-zinc-500 group-hover:invisible">{item.launches}</span>
+                                        {(activeTab !== 'shortcut' || item.tags.includes('shortcut')) && <><button
                                             type="button"
                                             title={isEnglish ? 'Move up' : '上へ'}
                                             aria-label={isEnglish ? 'Move up' : '上へ'}
@@ -579,7 +635,7 @@ export default function QuickLauncher() {
                                                 setSelectedIndex(index);
                                                 handleReorder('up', item).catch(() => {});
                                             }}
-                                            className="hidden h-6 w-5 rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white group-hover:inline-flex group-hover:items-center group-hover:justify-center"
+                                            className="invisible inline-flex h-6 w-5 items-center justify-center rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white group-hover:visible"
                                         >
                                             ↑
                                         </button>
@@ -592,7 +648,7 @@ export default function QuickLauncher() {
                                                 setSelectedIndex(index);
                                                 handleReorder('down', item).catch(() => {});
                                             }}
-                                            className="hidden h-6 w-5 rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white group-hover:inline-flex group-hover:items-center group-hover:justify-center"
+                                            className="invisible inline-flex h-6 w-5 items-center justify-center rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white group-hover:visible"
                                         >
                                             ↓
                                         </button>
@@ -605,10 +661,11 @@ export default function QuickLauncher() {
                                                 setSelectedIndex(index);
                                                 handleRemove(item).catch(() => {});
                                             }}
-                                            className="hidden h-6 w-5 rounded text-[11px] text-red-200 hover:bg-red-950 hover:text-red-100 group-hover:inline-flex group-hover:items-center group-hover:justify-center"
+                                            className="invisible inline-flex h-6 w-5 items-center justify-center rounded text-[11px] text-red-200 hover:bg-red-950 hover:text-red-100 group-hover:visible"
                                         >
                                             ×
-                                        </button>
+                                        </button></>}
+                                        </span>
                                     </span>
                                 </div>
                             ))}
@@ -617,7 +674,7 @@ export default function QuickLauncher() {
                 </div>
 
                 <div className="flex h-5 items-center justify-between text-[11px] text-zinc-600">
-                    <span>{isLoading ? (isEnglish ? 'Loading' : '読み込み中') : `${visibleItems.length} / ${items.length}${isEnglish ? '' : ' 件'}`}</span>
+                    <span>{isLoading ? (isEnglish ? 'Loading' : '読み込み中') : `${visibleItems.length} / ${storageSource.length}${isEnglish ? '' : ' 件'}`}</span>
                     <span>{isLocked ? (isEnglish ? 'Locked' : 'ロック中') : (isEnglish ? 'Close with Esc or blur' : 'Esc / blur で閉じる')}</span>
                 </div>
             </div>

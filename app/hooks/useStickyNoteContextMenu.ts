@@ -113,7 +113,7 @@ export function getShortcutShelfMenuState(tags: string[]): ShortcutShelfMenuStat
     return {
         visible: true,
         isRegistered,
-        label: isRegistered ? '📌 お気に入りを解除' : '📌 お気に入りに登録',
+        label: isRegistered ? '📌 ランチャーの登録を解除' : '📌 ランチャーに登録',
     };
 }
 
@@ -306,10 +306,10 @@ export function useStickyNoteContextMenu({
 
         if (state.isRegistered) {
             await removeRawTag(selectedFile.path, 'shortcut');
-            onToast?.(language === 'en' ? '📌 Removed from Favorites' : '📌 お気に入りを解除しました');
+            onToast?.(language === 'en' ? '📌 Removed from Launcher' : '📌 ランチャーの登録を解除しました');
         } else {
             await addRawTag(selectedFile.path, 'shortcut');
-            onToast?.(language === 'en' ? '📌 Added to Favorites' : '📌 お気に入りに登録しました');
+            onToast?.(language === 'en' ? '📌 Registered in Launcher' : '📌 ランチャーに登録しました');
         }
 
         const { emit } = await import('@tauri-apps/api/event');

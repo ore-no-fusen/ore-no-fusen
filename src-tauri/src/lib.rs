@@ -25,6 +25,8 @@ mod hotkey_manager;
 mod import; // インポート機能
 mod logger; // ログシステム
 mod launcher;
+mod favorite_storage;
+mod launcher_taskbar;
 mod logic;
 mod perflog; // パフォーマンス計測ログ（JSON Lines）
 mod settings;
@@ -609,7 +611,9 @@ fn fusen_list_notes(state: State<'_, Mutex<AppState>>, folder_path: String) -> V
         folder_path,
         notes.clone(),
     );
-    notes
+    let mut visible = notes;
+    favorite_storage::exclude_stored(&mut visible);
+    visible
 }
 
 #[tauri::command]
@@ -1817,7 +1821,9 @@ fn search_notes_logic(folder_path: &str, query: &str) -> Vec<SearchHit> {
 
 #[tauri::command]
 fn fusen_get_state(state: State<'_, Mutex<AppState>>) -> AppState {
-    state.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    let mut snapshot = state.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    favorite_storage::exclude_stored(&mut snapshot.notes);
+    snapshot
 }
 
 #[tauri::command]
@@ -2297,6 +2303,7 @@ fn get_filtered_note_paths(
 
     // 全ノート取得 & タグ解析
     let mut all_notes = storage::list_notes(&base_path);
+    favorite_storage::exclude_stored(&mut all_notes);
     for n in all_notes.iter_mut() {
         if let Ok(note) = storage::read_note(&n.path) {
             let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&note.body);
@@ -2848,8 +2855,9 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
     let (note_paths, crystal_window_paths, open_note_windows) = {
         let state = app.state::<Mutex<AppState>>();
         let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-        let note_paths: Vec<String> = app_state
-            .notes
+        let mut desktop_notes = app_state.notes.clone();
+        favorite_storage::exclude_stored(&mut desktop_notes);
+        let note_paths: Vec<String> = desktop_notes
             .iter()
             .map(|note| note.path.clone())
             .collect();
@@ -5899,7 +5907,13 @@ pub fn run() {
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
         .plugin(tauri_plugin_os::init()) // Added tauri_plugin_os::init()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if launcher::requests_quick_launcher(&argv) {
+                if let Err(error) = launcher::show_quick_launcher(app.clone()) {
+                    logger::log_warn(&format!("[Launcher] taskbar request failed: {error}"));
+                }
+                return;
+            }
             // 二重起動時: 最後にフォーカスした付箋を前面に出す
             let state = app.state::<Mutex<AppState>>();
             let label = state.lock().unwrap_or_else(|p| p.into_inner())
@@ -6026,6 +6040,14 @@ pub fn run() {
             hotkey_manager::hotkey_get_register_failures,
             hotkey_manager::hotkey_check,
             hotkey_manager::hotkey_apply,
+            favorite_storage::fusen_store_favorite,
+            favorite_storage::fusen_take_out_favorite,
+            favorite_storage::fusen_has_stored_favorites,
+            favorite_storage::fusen_storage_snapshot,
+            favorite_storage::fusen_stored_window_labels,
+            favorite_storage::fusen_request_store,
+            favorite_storage::fusen_complete_store,
+            favorite_storage::fusen_store_tag,
             launcher::fusen_quick_open_notes,
             launcher::fusen_open_quick_note,
             launcher::fusen_rename_quick_note,
@@ -6253,6 +6275,12 @@ pub fn run() {
             hotkey_manager::register_global_shortcuts(app);
             // クイックランチャー窓を隠したまま作り置き（Ctrl+P の初回表示を速くする）
             launcher::preload_quick_launcher(app.handle());
+            launcher_taskbar::install(app.handle());
+            if launcher::requests_quick_launcher(&std::env::args().collect::<Vec<_>>()) {
+                if let Err(error) = launcher::show_quick_launcher(app.handle().clone()) {
+                    logger::log_warn(&format!("[Launcher] startup request failed: {error}"));
+                }
+            }
             {
                 let app_handle = app.handle().clone();
                 app.listen("fusen:toggle_quick_launcher", move |_| {
