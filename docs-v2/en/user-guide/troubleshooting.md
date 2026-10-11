@@ -6,6 +6,15 @@ pageClass: user-guide-page
 
 [日本語](/user-guide/troubleshooting)
 
+Right-click a note and select **Developer Messages** to send the developer a message at any time. Use it for questions, problems, or feature requests. You do not need to try every check below before asking for help.
+
+## Ask the developer for help
+
+1. Right-click a note and select **Developer Messages**.
+2. Describe what you were trying to do and what happened.
+3. To show the screen, paste a screenshot with **Ctrl+V** or choose **Attach images**.
+4. Click **Send**. Read replies in the same window; click **Refresh** when needed.
+
 ::: warning
 Before uninstalling, changing the data location, or attempting recovery, copy the entire data folder as a backup.
 :::
@@ -33,4 +42,4 @@ Confirm that Google connection is enabled, both devices use the same Google acco
 
 ## Contact support
 
-Use **Feedback** or **Developer Messages** in Settings. Include what happened, the preceding action, Windows state, and whether the data folder still contains `.md` files.
+Follow **Ask the developer for help** above. If you know them, include the preceding action, Windows state, and whether the data folder still contains `.md` files. You can ask for help even if you cannot check these details.
