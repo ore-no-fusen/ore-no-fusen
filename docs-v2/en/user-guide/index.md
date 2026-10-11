@@ -8,10 +8,14 @@ pageClass: user-guide-page
 
 [日本語ガイド](/user-guide/)
 
-Ore No Fusen is a Windows desktop sticky-note app with Markdown support. This guide covers installation, everyday use, images, templates, iPhone Sync, and recovery.
+**Write it down. Put it away and bring it back. Stuck? Ask the person who made it.**
 
-::: tip Contact the developer directly, at any time
+This guide takes you from installation to everyday use.
+
+::: tip Stuck? Ask the person who made it
 Have a question or a feature request? Right-click a note and select **Developer Messages** to send a message. You can attach screenshots and read replies in the same window.
+
+If the developer has a moment, you might get a quick reply.
 
 [See how to contact the developer](/en/user-guide/troubleshooting#ask-the-developer-for-help)
 :::
