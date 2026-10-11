@@ -10,6 +10,12 @@ pageClass: user-guide-page
 
 Ore No Fusen is a Windows desktop sticky-note app with Markdown support. This guide covers installation, everyday use, images, templates, iPhone Sync, and recovery.
 
+::: tip Contact the developer directly, at any time
+Have a question or a feature request? Right-click a note and select **Developer Messages** to send a message. You can attach screenshots and read replies in the same window.
+
+[See how to contact the developer](/en/user-guide/troubleshooting#ask-the-developer-for-help)
+:::
+
 ## Choose what you need
 
 - [Install and get started](/en/user-guide/install)

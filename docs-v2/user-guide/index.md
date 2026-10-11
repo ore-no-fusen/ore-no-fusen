@@ -26,6 +26,12 @@ html.dark .help-pill { background:#0f172a; border-color:#334155; }
 
 [English Guide](/en/user-guide/)
 
+::: tip いつでも開発者に直接相談できます
+使い方が分からないときも、「こんな機能がほしい」と思ったときも、付箋を右クリック → **「開発者とのやりとり」** から気軽にメッセージを送れます。スクリーンショットも添付でき、返信は同じ画面で確認できます。
+
+[開発者への問い合わせ手順を見る](/user-guide/troubleshooting#開発者へ問い合わせる)
+:::
+
 <div class="help-strip">
   <div class="help-pill">Windows向け</div>
   <div class="help-pill">Markdown付箋</div>
@@ -40,7 +46,7 @@ html.dark .help-pill { background:#0f172a; border-color:#334155; }
   <a class="help-card" href="/user-guide/basic#quick-launcher"><strong>クイックランチャーを使う</strong>よく使う付箋の登録、格納、取り出し。</a>
   <a class="help-card" href="/user-guide/advanced"><strong>使い込む</strong>表、画像、Mermaid、アラーム、整列。</a>
   <a class="help-card" href="/user-guide/iphone"><strong>iPhoneから送る</strong>Google Drive経由でPCへ送信。</a>
-  <a class="help-card" href="/user-guide/troubleshooting"><strong>困ったとき</strong>表示されない、消えた、届かない。</a>
+  <a class="help-card" href="/user-guide/troubleshooting"><strong>困ったとき・開発者に相談</strong>いつでも直接問い合わせ。使い方の質問、不具合、機能の要望。</a>
   <a class="help-card" href="/user-guide/comic"><strong>漫画で知る</strong>全9話で機能をざっと見る。</a>
 </div>
 
