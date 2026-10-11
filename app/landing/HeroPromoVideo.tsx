@@ -1,88 +1,34 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-
-export default function HeroPromoVideo() {
-    const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
-
-    useEffect(() => {
-        const id = 'hero-promo-video-slot';
-
-        const placeVideo = () => {
-            const existing = document.getElementById(id);
-            if (existing) {
-                setMountNode(existing);
-                return true;
-            }
-
-            const hero = document.querySelector('section');
-            if (!hero) return false;
-
-            // Next/Image でも alt は実DOMに残る。src変換には依存しない。
-            const screenshot = Array.from(hero.querySelectorAll('img')).find((img) => {
-                const alt = img.getAttribute('alt') ?? '';
-                return alt.includes('俺の付箋') || alt.includes('FUSEN sticky notes');
-            });
-            if (!screenshot) return false;
-
-            // page.tsx の製品スクショ構造:
-            // outer(relative mt-16) > frame(relative rounded...) > img
-            const frame = screenshot.parentElement;
-            const screenshotBlock = frame?.parentElement;
-            const parent = screenshotBlock?.parentElement;
-            if (!screenshotBlock || !parent) return false;
-
-            const slot = document.createElement('div');
-            slot.id = id;
-            parent.insertBefore(slot, screenshotBlock);
-            setMountNode(slot);
-            return true;
-        };
-
-        if (placeVideo()) return;
-
-        // layout は page より先に mount される場合があるので、
-        // Hero のスクショがDOMに現れるまで監視する。
-        const observer = new MutationObserver(() => {
-            if (placeVideo()) observer.disconnect();
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        return () => observer.disconnect();
-    }, []);
-
-    if (!mountNode) return null;
-
-    return createPortal(
-        <div className="relative mt-16 max-w-3xl mx-auto">
-            <div
-                className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 w-16 h-5 rounded-sm opacity-70 -rotate-1"
-                style={{ backgroundColor: '#F0E0A0', border: '1px solid #D8C880' }}
-                aria-hidden="true"
-            />
-            <div
-                className="relative rounded-sm overflow-hidden"
-                style={{
-                    boxShadow: '4px 6px 24px rgba(0,0,0,0.18)',
-                    border: '1px solid #C8B898',
-                    background: '#000',
-                }}
-            >
+export default function HeroPromoVideo({ isEn = false }: { isEn?: boolean }) {
+    return (
+        <div className="relative mt-12 max-w-lg mx-auto" aria-labelledby="promo-video-title">
+            <h2 id="promo-video-title" className="text-xl sm:text-2xl font-bold text-[#2C1F0E] mb-3">
+                {isEn ? 'Meet FUSEN in 30 seconds' : '30秒でわかる「俺の付箋」'}
+            </h2>
+            <p className="text-sm text-[#6A5540] leading-relaxed mb-5">
+                {isEn
+                    ? 'Fold long notes, put them away, and bring them back. Ask the maker when you need help.'
+                    : '折りたたむ。しまって呼び出す。困ったら、作った人に聞ける。'}
+            </p>
+            <div className="overflow-hidden rounded-xl border border-[#C8B898] bg-[#F6F5FC] shadow-lg">
                 <video
                     controls
                     playsInline
-                    preload="metadata"
-                    className="w-full h-auto block"
-                    aria-label="俺の付箋の操作デモ動画"
+                    preload="none"
+                    poster="/screenshots/fusen-intro-30s-poster.jpg"
+                    width={1080}
+                    height={1080}
+                    className="w-full h-auto block aspect-square"
+                    aria-label={isEn ? 'FUSEN 30-second introduction, Japanese captions, no audio' : '俺の付箋の30秒紹介動画（字幕付き・音声なし）'}
                 >
-                    <source
-                        src="/ore-no-fusen-cm.mp4"
-                        type="video/mp4"
-                    />
+                    <source src="/screenshots/fusen-intro-30s.mp4" type="video/mp4" />
+                    <a href="/screenshots/fusen-intro-30s.mp4">
+                        {isEn ? 'Open the introduction video' : '紹介動画を開く'}
+                    </a>
                 </video>
             </div>
-        </div>,
-        mountNode
+            <p className="mt-3 text-xs text-[#7A6A50]">
+                {isEn ? 'Japanese captions · No audio · Press play to watch' : '字幕付き・音声なし／再生ボタンでご覧ください'}
+            </p>
+        </div>
     );
 }
