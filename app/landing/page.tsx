@@ -24,6 +24,7 @@ import Image from 'next/image';
 import { Check, Copy, Download, Globe, Volume2, VolumeX } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { trackDonationEvent } from '@/app/utils/analytics';
+import HeroPromoVideo from './HeroPromoVideo';
 
 export default function LandingPage() {
     const microsoftStoreUrl = 'https://apps.microsoft.com/detail/9N4MW0V2MVVG';
@@ -279,6 +280,8 @@ export default function LandingPage() {
                             </div>
                         </details>
                     </div>
+
+                    <HeroPromoVideo isEn={isEn} />
 
                     {/* 製品スクリーンショット（まず「何のソフトか」を一目で伝える） */}
                     <div className="relative mt-16 max-w-3xl mx-auto">
