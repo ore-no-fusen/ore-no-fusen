@@ -28,6 +28,10 @@ pub struct MemberLocal {
     #[serde(default)] last_heartbeat_date: Option<String>,
     #[serde(default)] last_heartbeat_at: Option<String>,
     #[serde(default)] last_heartbeat_version: Option<String>,
+    #[serde(default)] last_announcement_check_at: Option<String>,
+    #[serde(default)] last_announcement_attempt_at: Option<String>,
+    #[serde(default)] last_announcement_error: bool,
+    #[serde(skip)] announcement_checking: bool,
     #[serde(default)] open_seconds: u64,
     #[serde(default)] last_usage_sync_consent: bool,
     #[serde(default)] last_usage_sync_week: Option<String>,
@@ -297,6 +301,18 @@ fn heartbeat_due(environment: &str, last_at: Option<&str>, last_date: Option<&st
     last_version != Some(env!("CARGO_PKG_VERSION")) || should_request_heartbeat(environment, last_at, last_date, now)
 }
 
+fn announcement_check_due(member: &MemberLocal, now: chrono::DateTime<Utc>) -> bool {
+    if member.announcement_checking { return false; }
+    should_request_announcements(environment(), member.last_announcement_attempt_at.as_deref(), member.last_announcement_error, now)
+}
+
+fn should_request_announcements(environment: &str, last_attempt: Option<&str>, failed: bool, now: chrono::DateTime<Utc>) -> bool {
+    let minutes = if environment == "development" { 5 } else if failed { 15 } else { 180 };
+    last_attempt
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .map_or(true, |last| now.signed_duration_since(last.with_timezone(&Utc)) >= Duration::minutes(minutes))
+}
+
 fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str, analytics_consent: bool) -> bool {
     match segment {
         "all" => true,
@@ -344,8 +360,22 @@ pub struct AnnouncementPayload {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct HeartbeatResponse {
-    #[allow(dead_code)] last_seen_at: String,
     announcements: Vec<AnnouncementPayload>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnouncementStatus { last_checked_at: Option<String>, failed: bool, interval_minutes: u32 }
+fn announcement_status(member: &MemberLocal) -> AnnouncementStatus {
+    AnnouncementStatus { last_checked_at: member.last_announcement_check_at.clone(), failed: member.last_announcement_error,
+        interval_minutes: if environment() == "development" { 5 } else { 180 } }
+}
+
+#[tauri::command]
+pub fn member_announcement_status(state: State<'_, Mutex<AppState>>) -> Result<AnnouncementStatus, String> {
+    let mut guard = state.lock().map_err(|_| "State unavailable")?;
+    let member = ensure(&mut guard)?;
+    Ok(announcement_status(member))
 }
 
 #[tauri::command]
@@ -357,57 +387,78 @@ pub fn member_announcements(state: State<'_, Mutex<AppState>>) -> Result<Vec<Ann
 #[tauri::command]
 pub async fn member_heartbeat(
     state: State<'_, Mutex<AppState>>,
+    app: tauri::AppHandle,
  ) -> Result<Vec<AnnouncementPayload>, String> {
     let base = endpoint()?;
-    let (snapshot, today, week, features, consent, open_seconds) = {
+    let (snapshot, today, week, features, consent, open_seconds, report_member) = {
         let mut g = state.lock().map_err(|_| "State unavailable")?;
         let analytics_consent=usage_enabled(&mut g)?;
         let value=g.member.as_mut().ok_or("Member identity unavailable")?;
         let now = Utc::now();
         let today = now.format("%Y-%m-%d").to_string();
 
-        // 開発環境は起動のたびに確認し、本番環境は1日1回に抑える。
-        if !heartbeat_due(environment(), value.last_heartbeat_at.as_deref(), value.last_heartbeat_date.as_deref(), value.last_heartbeat_version.as_deref(), now) {
+        let report_member = heartbeat_due(environment(), value.last_heartbeat_at.as_deref(), value.last_heartbeat_date.as_deref(), value.last_heartbeat_version.as_deref(), now);
+        let new_version = value.last_heartbeat_version.as_deref() != Some(env!("CARGO_PKG_VERSION"));
+        if value.announcement_checking || (!announcement_check_due(value, now) && !(new_version && !value.last_announcement_error)) {
             return Ok(Vec::new());
         }
         let week = week_key(Utc::now());
         let (features, consent) = current_usage_snapshot(value, analytics_consent, &week);
-        (value.clone(), today, week, features, consent, value.open_seconds)
+        value.last_announcement_attempt_at = Some(now.to_rfc3339());
+        value.announcement_checking = true;
+        (value.clone(), today, week, features, consent, value.open_seconds, report_member)
     };
 
-    // API呼び出し
-    let client = reqwest::Client::builder()
+    // Daily member reports and read-only letter checks share one request when due.
+    let result = async {
+      let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build().map_err(|_| "Cannot create client")?;
-    let response: HeartbeatResponse = serde_json::from_value(
-        post(&client, &base, "heartbeat", &snapshot, serde_json::json!({"week":week,"features":features,"consent":consent,"openMinutes":open_seconds/60,"appVersion":env!("CARGO_PKG_VERSION")})).await?
-    ).map_err(|_| "Invalid heartbeat response")?;
+      let (operation, payload) = if report_member {
+        ("heartbeat", serde_json::json!({"week":week,"features":features,"consent":consent,"usageSchema":2,"openMinutes":open_seconds/60,"appVersion":env!("CARGO_PKG_VERSION")}))
+      } else { ("announcements", serde_json::json!({})) };
+      let response: HeartbeatResponse = serde_json::from_value(post(&client, &base, operation, &snapshot, payload).await?)
+        .map_err(|_| "Invalid announcement response")?;
 
-    // 対象のお便りをローカルの会話画面へ保存する。
-    let received_week = week_key(Utc::now());
-    let latest_consent = crate::storage::load_settings()?.analytics_consent.as_deref() == Some("granted");
-    let received = new_announcements(&snapshot, response.announcements, &received_week, latest_consent);
+      let received_week = week_key(Utc::now());
+      let latest_consent = crate::storage::load_settings()?.analytics_consent.as_deref() == Some("granted");
+      Ok::<_, String>(new_announcements(&snapshot, response.announcements, &received_week, latest_consent))
+    }.await;
 
-    // 状態更新: last_heartbeat_date + 受信履歴
-    {
+    let status;
+    let outcome = {
         let mut g = state.lock().map_err(|_| "State unavailable")?;
-        let value = ensure(&mut g)?;
-        value.last_heartbeat_date = Some(today);
-        value.last_heartbeat_at = Some(Utc::now().to_rfc3339());
-        value.last_heartbeat_version = Some(env!("CARGO_PKG_VERSION").into());
-        mark_usage_synced(value,consent,&week,&features);
-        for a in &received {
-            value.read_announcement_ids.insert(a.id.clone());
+        let value = g.member.as_mut().ok_or("Member identity unavailable")?;
+        value.announcement_checking = false;
+        let before = value.clone();
+        value.last_announcement_error = result.is_err();
+        if let Ok(received) = &result {
+            value.last_announcement_check_at = Some(Utc::now().to_rfc3339());
+            if report_member {
+                value.last_heartbeat_date = Some(today);
+                value.last_heartbeat_at = value.last_announcement_check_at.clone();
+                value.last_heartbeat_version = Some(env!("CARGO_PKG_VERSION").into());
+                mark_usage_synced(value,consent,&week,&features);
+            }
+            for a in received { value.read_announcement_ids.insert(a.id.clone()); }
+            value.announcements.extend(received.iter().cloned());
+            if value.announcements.len() > 100 {
+                let excess = value.announcements.len() - 100;
+                value.announcements.drain(..excess);
+            }
         }
-        value.announcements.extend(received.iter().cloned());
-        if value.announcements.len() > 100 {
-            let excess = value.announcements.len() - 100;
-            value.announcements.drain(..excess);
+        if let Err(error) = persist(value) {
+            *value = before;
+            value.last_announcement_error = true;
+            status = announcement_status(value);
+            Err(error)
+        } else {
+            status = announcement_status(value);
+            result
         }
-        persist(value)?;
-    }
-
-    Ok(received)
+    };
+    let _ = app.emit("fusen:announcement_status", status);
+    outcome
 }
 
 #[cfg(not(windows))] fn protect(_: &[u8])->Result<Vec<u8>,String>{Err("Protected member storage requires Windows".into())}
@@ -473,6 +524,27 @@ mod segment_tests {
         assert!(!should_request_heartbeat("production",None,Some("2026-09-24"),now));
         assert!(should_request_heartbeat("production",None,Some("2026-09-23"),now));
         assert!(should_request_heartbeat("production",None,None,now));
+    }
+
+    #[test]
+    fn letters_check_every_three_hours_without_waiting_for_daily_member_report() {
+        use chrono::TimeZone;
+        let now = Utc.with_ymd_and_hms(2026, 10, 12, 13, 0, 0).unwrap();
+        assert!(!should_request_announcements("production", Some("2026-10-12T10:00:01Z"), false, now));
+        assert!(should_request_announcements("production", Some("2026-10-12T10:00:00Z"), false, now));
+        assert!(!should_request_heartbeat("production", Some("2026-10-12T10:00:00Z"), None, now));
+        assert!(should_request_announcements("production", None, false, now));
+        assert!(!should_request_announcements("production", Some("2026-10-12T14:00:00Z"), false, now));
+    }
+
+    #[test]
+    fn failed_letter_checks_retry_after_fifteen_minutes_and_never_overlap() {
+        use chrono::TimeZone;
+        let now = Utc.with_ymd_and_hms(2026, 10, 12, 13, 0, 0).unwrap();
+        assert!(!should_request_announcements("production", Some("2026-10-12T12:45:01Z"), true, now));
+        assert!(should_request_announcements("production", Some("2026-10-12T12:45:00Z"), true, now));
+        assert!(should_request_announcements("development", Some("2026-10-12T12:55:00Z"), false, now));
+        assert!(!announcement_check_due(&MemberLocal { announcement_checking: true, ..Default::default() }, now));
     }
 
     #[test]

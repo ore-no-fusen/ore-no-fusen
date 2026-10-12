@@ -13,6 +13,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import MemberSettings from "@/app/components/MemberSettings"
 import SupportMemberNumber from "@/app/components/SupportMemberNumber"
 import AnnouncementCard, { announcementReplyDraft, type ReceivedAnnouncement } from "@/app/components/AnnouncementCard"
+import AnnouncementDeliveryStatus from "@/app/components/AnnouncementDeliveryStatus"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { Monitor, Moon, Sun, Laptop, Save, FolderOpen, Info, Settings, Database, Type, Volume2, Globe, Reply, Smartphone, HelpCircle, MousePointer2, Keyboard, ShieldCheck, Sparkles, Pin, Search, AlertCircle, ChevronRight, Wrench, ExternalLink, HardDrive, Cloud, RefreshCw, Send, Inbox, Trash2, FileJson, Copy, X, Activity, ImageIcon, Video, FileText, Heart } from "lucide-react"
@@ -2867,6 +2868,8 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             </div>
 
             <SupportMemberNumber language={language} />
+
+            <AnnouncementDeliveryStatus isEnglish={isEnglish} />
 
             {announcements.length > 0 && (
                 <div role="status" className="rounded-xl border-2 border-blue-300 bg-blue-50 px-5 py-4 text-blue-950">

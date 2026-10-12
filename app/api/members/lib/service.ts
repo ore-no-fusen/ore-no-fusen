@@ -97,16 +97,25 @@ export class MemberService {
     }
     if (!member) throw new FeedbackRequestError('Heartbeat update busy; retry later', 503);
 
-    // 3. announcements を取得
-    const rows = await this.db.list<{
+    return { lastSeenAt: today, announcements: await this.announcementsFor(member.value.generalNumber) };
+  }
+  async announcements(auth: Credentials) {
+    const member = await this.authenticate(auth);
+    return { announcements: await this.announcementsFor(member.value.generalNumber) };
+  }
+  private async announcementsFor(number: number) {
+    type Announcement = {
       title: string; body: string; segment: string;
       active: boolean; createdAt: string; expiresAt: string;
-    }>('announcements');
+    };
+    const rows = this.db.deliveryAnnouncements
+      ? await this.db.deliveryAnnouncements<Announcement>()
+      : await this.db.list<Announcement>('announcements');
 
-    const now = this.now().toISOString();
+    const now = this.now().getTime();
     const announcements = rows
-      .filter(r => r.value.active && r.value.expiresAt > now
-        && matchesServerAudience(r.value.segment, member.value.generalNumber))
+      .filter(r => r.value.active && Date.parse(r.value.expiresAt) > now
+        && matchesServerAudience(r.value.segment, number))
       .map(r => ({
         id: r.path.split('/').pop()!,
         title: r.value.title,
@@ -115,7 +124,7 @@ export class MemberService {
         createdAt: r.value.createdAt,
       }));
 
-    return { lastSeenAt: today, announcements };
+    return announcements;
   }
   async recordUsage(auth: Credentials, week: unknown, features: unknown, consent: unknown, openMinutes: unknown, usageSchema?: unknown) {
     const usage = usageSnapshot(week, features, consent, openMinutes, usageSchema);

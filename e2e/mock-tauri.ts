@@ -179,6 +179,8 @@ updated: 2026-01-31
 
                 case 'member_announcements':
                     return mockOptions.announcements ?? [];
+                case 'member_announcement_status':
+                    return { lastCheckedAt: null, failed: false, intervalMinutes: 180 };
                 case 'fusen_get_distribution_info':
                     return 'desktop';
                 case 'fusen_check_store_update':

@@ -563,7 +563,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
     ${canPublish ? `<div class="glass p-6 rounded-2xl shadow-xl space-y-4">
       <h2 class="text-lg font-bold">開発者からのお便り</h2>
-      <p class="text-sm text-slate-400">公開後30日間有効。対象会員の次回起動時チェックで配信されます。</p>
+        <p class="text-sm text-slate-400">公開後30日間有効。対応版のPCアプリが起動中なら約3時間ごとに受信確認します。旧版は最大24時間かかります。「配信中」は受信完了を示す表示ではありません。</p>
       <form id="announcementForm" class="space-y-3">
         <label class="block text-sm text-slate-300" for="audience">宛先</label>
         <select id="audience" name="audience" required class="w-full rounded-lg bg-slate-900 border border-slate-600 p-3">
