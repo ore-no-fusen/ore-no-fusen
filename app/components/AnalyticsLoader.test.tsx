@@ -161,6 +161,21 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(invokeMock).toHaveBeenCalledWith('member_mark_summary_sent',{week:'2026-W35'});
   });
 
+  it('keeps local closed-week history until Firestore history synchronization succeeds',async()=>{
+    invokeMock.mockImplementation((command:string)=>{
+      if(command==='get_settings')return Promise.resolve({analytics_consent:'granted'});
+      if(command==='member_needs_sync')return Promise.resolve(false);
+      if(command==='member_get')return Promise.resolve({analyticsSubject:'0123456789abcdef0123456789abcdef'});
+      if(command==='member_sync_usage')return Promise.reject(new Error('offline'));
+      if(command==='member_closed_summaries')return Promise.resolve([{week:'2026-W35',schema:3,appVersion:'5.8.0',features:{note_edited:{count:1,activeDays:[],lastUsedDay:'2026-08-27'}}}]);
+      return Promise.resolve(undefined);
+    });
+    render(<AnalyticsLoader isTauriBuild/>);
+    await vi.advanceTimersByTimeAsync(60_000);await vi.advanceTimersByTimeAsync(0);
+    expect(invokeMock).not.toHaveBeenCalledWith('member_mark_summary_sent',expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith('member_closed_summaries');
+  });
+
   it('records heartbeat and shows a notice without opening settings when analytics consent is denied', async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === 'get_settings') return Promise.resolve({ analytics_consent: 'denied' });

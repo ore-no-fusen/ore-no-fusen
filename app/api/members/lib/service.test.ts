@@ -63,9 +63,17 @@ describe('member heartbeat', () => {
     await expect(service.recordUsage(auth, '2026-W41', ['launcher_store'], true, 10)).rejects.toMatchObject({ status: 400 });
     await expect(service.recordUsage(auth, '2026-W41', [], true, 10, 99)).rejects.toMatchObject({ status: 400 });
     await service.recordUsage(auth, '2026-W41', [], true, 10, 2);
-    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({ usageSchema: 2, usageFeatures: [] });
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({ usageSchema: 2, usageFeatures: ['launcher_store'] });
     await service.recordUsage(auth, '2026-W41', [], false, 10);
     expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({ usageSchema: 1, usageConsent: false });
+  });
+
+  it('does not let a second same-week heartbeat overwrite features or measurement support',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-12T12:00:00Z'));
+    await service.register(auth);
+    await service.heartbeat(auth,'2026-W41',['launcher_store'],true,0,'5.8.0',3);
+    await service.heartbeat(auth,'2026-W41',['note_edited'],true,0,'5.7.0',2);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({usageSchema:3,usageWeek:'2026-W41',usageFeatures:['launcher_store','note_edited']});
   });
   it('preserves the communication instant across Japan midnight', async () => {
     const db = new MemoryDb();
@@ -87,6 +95,69 @@ describe('member heartbeat', () => {
       lastSeenAt: '2026-09-23', appVersion: '5.5.1', usageWeek: '2026-W39', usageFeatures: ['note_edited'], usageConsent: true, usageOpenMinutes: 1440,
     });
     await expect(service.heartbeat(auth, '2026-W39', ['invalid'], true, 1440)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('does not let a delayed previous-week device report roll back the latest compatible snapshot',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-20T12:00:00Z'));
+    await service.register(auth);
+    await service.recordUsage(auth,'2026-W42',['tag_add'],true,10,3);
+    await service.recordUsage(auth,'2026-W41',['note_edited'],true,5,2);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({usageWeek:'2026-W42',usageFeatures:['tag_add'],usageSchema:3});
+  });
+
+  it('archives consented daily history idempotently per installation and retains same-week features', async()=>{
+    const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-12T12:00:00Z'));
+    await service.register(auth);
+    const history={week:'2026-W41',schema:3,appVersion:'5.8.0',supportedFeatures:['note_edited','tag_add'],measurementStartedAt:'2026-10-01T10:00:00Z',features:{note_edited:{count:1,activeDays:['2026-10-12'],lastUsedDay:'2026-10-12',firstUsedAt:'2026-10-12T11:00:00Z',lastUsedAt:'2026-10-12T11:00:00Z'}},days:{'2026-10-12':{observedAt:'2026-10-12T10:00:00Z',observedThrough:'2026-10-12T12:00:00Z',supportedFeatures:['note_edited','tag_add'],features:{note_edited:{count:1,activeDays:['2026-10-12'],lastUsedDay:'2026-10-12',firstUsedAt:'2026-10-12T11:00:00Z',lastUsedAt:'2026-10-12T11:00:00Z'}}}}};
+    const reporter='123e4567-e89b-42d3-a456-426614174000';
+    await service.recordUsage(auth,'2026-W41',['note_edited'],true,1,3,[history],reporter,'2026-10-12T11:00:00Z');
+    await service.recordUsage(auth,'2026-W41',['tag_add'],true,1,3,[{...history,features:{tag_add:{count:1,activeDays:['2026-10-12'],lastUsedDay:'2026-10-12',firstUsedAt:'2026-10-12T11:30:00Z',lastUsedAt:'2026-10-12T11:30:00Z'}},days:{'2026-10-12':{...history.days['2026-10-12'],features:{tag_add:{count:1,activeDays:['2026-10-12'],lastUsedDay:'2026-10-12',firstUsedAt:'2026-10-12T11:30:00Z',lastUsedAt:'2026-10-12T11:30:00Z'}}}}}],reporter,'2026-10-12T11:00:00Z');
+    const subject=(await db.get<any>(`members/${auth.memberId}`))!.value.analyticsSubject;
+    const rows=await db.list<any>('usage_history');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].value.analyticsSubject).toBe(subject);
+    expect(rows[0].value.reports[reporter].days['2026-10-12'].features).toHaveProperty('note_edited');
+    expect(rows[0].value.reports[reporter].days['2026-10-12'].features).toHaveProperty('tag_add');
+    expect(rows[0].value.reports[reporter].features).toHaveProperty('note_edited');
+    expect(rows[0].value.reports[reporter].features).toHaveProperty('tag_add');
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value.usageFeatures).toEqual(['note_edited','tag_add']);
+    await service.recordUsage(auth,'2026-W41',[],false,0,3);
+    expect(await db.list<any>('usage_history')).toHaveLength(0);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({usageConsent:false,usageFeatures:[]});
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value.firstRealUseAt).toBeUndefined();
+  });
+
+  it('keeps reports from multiple installations separate and rejects malformed or unsupported history',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-12T12:00:00Z'));
+    await service.register(auth);
+    const report={week:'2026-W41',schema:3,appVersion:'5.8.0',supportedFeatures:['note_edited'],features:{},days:{'2026-10-12':{observedAt:'2026-10-12T10:00:00Z',observedThrough:'2026-10-12T12:00:00Z',supportedFeatures:['note_edited'],features:{}}}};
+    await service.recordUsage(auth,'2026-W41',[],true,0,3,[report],'123e4567-e89b-42d3-a456-426614174000',null);
+    await service.recordUsage(auth,'2026-W41',[],true,0,3,[report],'123e4567-e89b-42d3-a456-426614174001',null);
+    const stored=await db.list<any>('usage_history'); expect(stored).toHaveLength(2);
+    await expect(service.recordUsage(auth,'2026-W41',[],true,0,3,[{...report,days:{'2026-10-12':{observedAt:'2026-10-12T10:00:00Z',observedThrough:'2026-10-12T12:00:00Z',supportedFeatures:['note_edited'],features:{private_note:{count:1}}}}}],'123e4567-e89b-42d3-a456-426614174002',null)).rejects.toMatchObject({status:400});
+  });
+
+  it('stores unknown consent separately from refusal and clears previously consented reports without usage fields',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-12T12:00:00Z'));
+    await service.register(auth);
+    const report={week:'2026-W41',schema:3,appVersion:'5.8.0',supportedFeatures:['note_edited'],features:{},days:{'2026-10-12':{observedAt:'2026-10-12T10:00:00Z',observedThrough:'2026-10-12T12:00:00Z',supportedFeatures:['note_edited'],features:{}}}};
+    await service.recordUsage(auth,'2026-W41',[],true,0,3,[report],'123e4567-e89b-42d3-a456-426614174000',null,'granted');
+    expect(await db.list<any>('usage_history')).toHaveLength(1);
+    await service.recordUsage(auth,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,'unknown');
+    expect(await db.list<any>('usage_history')).toHaveLength(0);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({usageConsent:null});
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value.usageFeatures).toBeUndefined();
+  });
+
+  it('deletes saved history when a heartbeat carries an explicit refusal',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-12T12:00:00Z'));
+    await service.register(auth);
+    const report={week:'2026-W41',schema:3,appVersion:'5.8.0',supportedFeatures:['note_edited'],features:{},days:{'2026-10-12':{observedAt:'2026-10-12T10:00:00Z',observedThrough:'2026-10-12T12:00:00Z',supportedFeatures:['note_edited'],features:{}}}};
+    await service.recordUsage(auth,'2026-W41',[],true,0,3,[report],'123e4567-e89b-42d3-a456-426614174000',null);
+    expect(await db.list<any>('usage_history')).toHaveLength(1);
+    await service.heartbeat(auth,'2026-W41',[],false,0,'5.8.0',3);
+    expect(await db.list<any>('usage_history')).toHaveLength(0);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({usageConsent:false,usageFeatures:[]});
   });
 
   it('records the version without analytics consent and treats old clients as unreported', async () => {

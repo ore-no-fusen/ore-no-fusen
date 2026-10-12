@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium } from '@playwright/test';
-import { featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats } from './member-stats.mjs';
+import { featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, fetchFirestoreUsageHistory, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats, weeklyGaFeatureRows } from './member-stats.mjs';
 
 test('送信の許可人数と今週届いた人数を区別し、未確認を停止扱いしない', () => {
   const stats = featureUsageStats([
@@ -99,6 +99,20 @@ test('開発環境を明示したときだけ切り替え、不正な指定は�
   assert.throws(() => parseOptions(['--environment', 'staging']), /環境/);
   assert.throws(() => parseOptions(['--environment']), /オプション/);
   assert.throws(() => parseOptions(['--environment', 'production', '--environment', 'development']), /重複/);
+  assert.equal(parseOptions(['--analysis-only']).analysisOnly, true);
+});
+
+test('GA4の日別機能実績をISO週ごとに集計し、日別利用者を週人数と誤認しない',()=>{
+  const rows=weeklyGaFeatureRows({rows:[
+    {dimensionValues:[{value:'20260104'},{value:'note_created'}],metricValues:[{value:'2'},{value:'2'}]},
+    {dimensionValues:[{value:'20260104'},{value:'note_created'}],metricValues:[{value:'3'},{value:'2'}]},
+    {dimensionValues:[{value:'20260105'},{value:'note_created'}],metricValues:[{value:'7'},{value:'6'}]},
+    {dimensionValues:[{value:'20260105'},{value:'(not set)'}],metricValues:[{value:'99'},{value:'99'}]},
+  ]});
+  assert.deepEqual(rows.map(({week,feature,eventCount,weeklyUniqueUsers})=>({week,feature,eventCount,weeklyUniqueUsers})),[
+    {week:'2026-W01',feature:'note_created',eventCount:5,weeklyUniqueUsers:null},
+    {week:'2026-W02',feature:'note_created',eventCount:7,weeklyUniqueUsers:null},
+  ]);
 });
 
 test('開発環境では開発会員だけを読み取る', async () => {
@@ -113,6 +127,19 @@ test('開発環境では開発会員だけを読み取る', async () => {
     assert.match(requestedUrl, /\/member_environments\/development\/members\?/);
     assert.doesNotMatch(requestedUrl, /\/production\//);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test('週別利用履歴は全ページを指定環境からだけ読み取る',async()=>{
+  const originalFetch=globalThis.fetch,urls=[];
+  globalThis.fetch=async url=>{
+    urls.push(String(url));
+    if(urls.length===1)return {ok:true,json:async()=>({documents:[{fields:{payload:{stringValue:'{"week":"2026-W41"}'}}}],nextPageToken:'next-page'})};
+    return {ok:true,json:async()=>({documents:[{fields:{payload:{stringValue:'{"week":"2026-W42"}'}}}]})};
+  };
+  try{
+    assert.deepEqual(await fetchFirestoreUsageHistory('token','development'),[{week:'2026-W41'},{week:'2026-W42'}]);
+    assert.equal(urls.length,2);assert.match(urls[0],/member_environments\/development\/usage_history/);assert.match(urls[1],/pageToken=next-page/);assert.doesNotMatch(urls.join(''),/member_environments\/production/);
+  }finally{globalThis.fetch=originalFetch;}
 });
 
 test('送信履歴は開発環境の全ページを読み、期限切れも含めて新しい順に返す', async () => {

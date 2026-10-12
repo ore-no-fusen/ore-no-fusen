@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       case 'link-conversation': result = await service.linkConversation(auth,body.conversationId,body.conversationSecret); break;
       case 'heartbeat': result = await service.heartbeat(auth, body.week, body.features, body.consent, body.openMinutes, body.appVersion, body.usageSchema); break;
       case 'announcements': result = await service.announcements(auth); break;
-      case 'usage': result = await service.recordUsage(auth, body.week, body.features, body.consent, body.openMinutes, body.usageSchema); break;
+      case 'usage': result = await service.recordUsage(auth, body.week, body.features, body.consent, body.openMinutes, body.usageSchema, body.history, body.reporterId, body.firstUseAt, body.consentStatus); break;
       default: throw new FeedbackRequestError('Not found', 404);
     }
     return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });

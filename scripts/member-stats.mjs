@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { exec } from 'node:child_process';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { buildUsageComparison, ANALYSIS_FEATURES } from './member-usage-analysis.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,11 +73,66 @@ function featureUsageStats(members, week = isoWeek()) {
       .filter(member => Number.isSafeInteger(member.number))
       .sort((a, b) => a.number - b.number),
     rows: Object.entries(FEATURE_LABELS).map(([name, label]) => {
-      const measured = name === 'launcher_store' ? reporting.filter(m => m.usageSchema === 2) : reporting;
+      const measured = name === 'launcher_store' ? reporting.filter(m => m.usageSchema >= 2) : reporting;
       const users = measured.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)).length;
       return { name, label, users, reporting: measured.length, percent: members.length ? Math.round(users / members.length * 100) : 0 };
     }),
   };
+}
+
+function analysisKey() {
+  const directory=path.resolve(rootDir,'my'); fs.mkdirSync(directory,{recursive:true});
+  const keyPath=path.join(directory,'member-analysis-hmac.key');
+  try { const key=fs.readFileSync(keyPath); if(key.length!==32)throw new Error('分析用仮名鍵の長さが不正です'); return key; }
+  catch(error) { if(error.code!=='ENOENT')throw error; const key=crypto.randomBytes(32); fs.writeFileSync(keyPath,key,{flag:'wx'}); return key; }
+}
+
+function writeUsageAnalysis(comparison,environment,supplement={}) {
+  const outDir=path.resolve(rootDir,'my','analysis-exports'); fs.mkdirSync(outDir,{recursive:true});
+  const outputPath=path.join(outDir,`member-usage-analysis-${environment}.json`);
+  fs.writeFileSync(outputPath,JSON.stringify({schema:1,environment,scope:'all_members',...supplement,historicalLimitations:[
+    '計測スキーマ3の導入前にFirestore/端末へ保存されていない日別履歴は復元できません。',
+    '旧会員の初回7日間は、計測開始後に新たな実利用が観測されるまで比較対象になりません。',
+    '同意拒否・不明の会員には機能利用情報を収集せず、同意撤回時は保存済み履歴を削除します。',
+  ],...comparison},null,2),'utf8');
+  return outputPath;
+}
+
+function weeklyGaFeatureRows(data) {
+  const grouped=new Map();
+  for(const row of data?.rows??[]) {
+    const rawDate=row.dimensionValues?.[0]?.value,feature=row.dimensionValues?.[1]?.value;
+    if(!/^\d{8}$/.test(rawDate??'')||!feature||feature==='(not set)')continue;
+    const parsed=new Date(`${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6,8)}T00:00:00Z`);
+    const monday=new Date(Date.UTC(parsed.getUTCFullYear(),parsed.getUTCMonth(),parsed.getUTCDate()));monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+    const thursday=new Date(monday);thursday.setUTCDate(thursday.getUTCDate()+3);const year=thursday.getUTCFullYear();
+    const first=new Date(Date.UTC(year,0,4));first.setUTCDate(first.getUTCDate()-((first.getUTCDay()+6)%7));
+    const week=`${year}-W${String(1+Math.round((monday-first)/604800000)).padStart(2,'0')}`;
+    const key=`${week}\0${feature}`,value=grouped.get(key)??{week,feature,eventCount:0};value.eventCount+=Number(row.metricValues?.[0]?.value??0);grouped.set(key,value);
+  }
+  return [...grouped.values()].map(row=>({...row,timezone:'GA4 property reporting timezone',weeklyUniqueUsers:null,weeklyUniqueUsersNote:'not available from daily totals without double-counting'})).sort((a,b)=>a.week.localeCompare(b.week)||a.feature.localeCompare(b.feature));
+}
+
+function pseudonymizedMemberRecords(members,comparison) {
+  return comparison.records.map((record,index)=>{const member=members[index],lastCommunicationAt=member.lastSeenTimestamp??member.lastSeenAt??null,hasConsent=member.usageConsent===true;return {...record,registeredAt:member.registeredAt??null,registrationMissingReason:member.registeredAt?null:'registration date not present in Firestore member record',lastCommunicationAt,communicationMissingReason:lastCommunicationAt?null:'no heartbeat timestamp available (no report or legacy record)',appVersion:member.appVersion??null,latestWeeklySnapshot:{week:hasConsent?member.usageWeek??null:null,schema:hasConsent?member.usageSchema??null:null,features:hasConsent&&Array.isArray(member.usageFeatures)?member.usageFeatures:[],status:member.usageConsent===false?'denied':hasConsent?(member.usageWeek?'reported':'granted_no_weekly_snapshot'):'unknown',missingReason:member.usageConsent===false?'usage sharing declined':hasConsent?(member.usageWeek?null:'no weekly snapshot saved'):'consent status unavailable'}};});
+}
+
+async function collectUsageAnalysis(environment='production') {
+  firestoreRoot(environment);
+  let members=[],history=[],dbStatus={status:'unavailable',reason:'Firestore credentials, permissions, or network unavailable'};
+  try {const token=await getAccessToken('https://www.googleapis.com/auth/datastore');[members,history]=await Promise.all([fetchFirestoreMembers(token,environment),fetchFirestoreUsageHistory(token,environment)]);members.sort((a,b)=>(a.generalNumber??0)-(b.generalNumber??0));dbStatus={status:'read',memberCount:members.length,historyReportCount:history.length};}catch{/* Do not serialize credential or API details. */}
+  let gaData={weeklyFeatureData:null,weeklyFeatureError:environment==='development'?'GA4 is not queried for the development environment':'GA4 credentials, permissions, or network unavailable'};
+  if(environment==='production')try{const token=await getAccessToken('https://www.googleapis.com/auth/analytics.readonly');gaData=await fetchGa4Data(token);}catch{gaData={weeklyFeatureData:null,weeklyFeatureError:'GA4 credentials, permissions, or network unavailable'};}
+  const comparison=buildUsageComparison(members,history,new Date(),analysisKey()),exported={...comparison,records:pseudonymizedMemberRecords(members,comparison)};
+  return writeUsageAnalysis(exported,environment,{dataSources:{firestore:dbStatus,ga4:{status:gaData.weeklyFeatureData?'read':'unavailable',propertyId,timezone:'GA4 uses its configured property reporting timezone; member event periods use UTC',weeklyFeatureError:gaData.weeklyFeatureError??null,joinToMemberRecords:false}},ga4WeeklyFeatures:weeklyGaFeatureRows(gaData.weeklyFeatureData)});
+}
+
+function comparisonMarkup(data) {
+  const counts=data.classificationCounts;
+  const labels={active:'アクティブ',churn_candidate:'離脱候補',new:'新規・初回7日未満',legacy_unmeasured:'旧版・初回未計測',unmeasured:'未計測',observation_insufficient:'観測不足',consent_denied:'同意拒否',consent_unknown:'同意不明'};
+  const chart=data.features.map(f=>`<tr class="border-b border-slate-800"><td class="py-2 pr-3">${f.label}</td><td class="py-2">${f.active.users} / ${f.active.denominator}<small class="ml-1 text-slate-400">${f.active.rate===null?'—':f.active.rate+'%'}</small><div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-emerald-400" style="width:${f.active.rate??0}%"></div></div></td><td class="py-2">${f.churn_candidate.users} / ${f.churn_candidate.denominator}<small class="ml-1 text-slate-400">${f.churn_candidate.rate===null?'—':f.churn_candidate.rate+'%'}</small><div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-amber-400" style="width:${f.churn_candidate.rate??0}%"></div></div></td><td class="py-2 text-right">${f.differencePp===null?'—':(f.differencePp>0?'+':'')+f.differencePp+' pp'}</td></tr>`).join('');
+  const candidates=data.candidates.map((f,i)=>`<li>${i+1}. ${f.label} <strong>+${f.differencePp} pp</strong>（${f.active.users}/${f.active.denominator} 対 ${f.churn_candidate.users}/${f.churn_candidate.denominator}）</li>`).join('')||'<li>現時点で正の差を確認できる候補はありません。</li>';
+  return `<div class="grid grid-cols-2 md:grid-cols-4 gap-2">${Object.entries(labels).map(([key,label])=>`<div class="rounded bg-slate-900 p-2 text-sm">${label}: <b>${counts[key]??0}</b></div>`).join('')}</div><p class="text-xs text-amber-300">比較対象：初回実利用から7日経過し、その間の日別観測と機能対応がそろった会員。各群20人未満は参考値。最近の通信だけでアクティブとは判定しません。</p><h3 class="font-semibold">案内強化候補（利用率差が大きい順）</h3><ol class="list-none space-y-1">${candidates}</ol><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="text-left">機能</th><th class="text-left">アクティブの初回7日</th><th class="text-left">離脱候補の初回7日</th><th class="text-right">差</th></tr></thead><tbody>${chart}</tbody></table></div>`;
 }
 function firestoreRoot(environment = 'production') {
   if (environment !== 'production' && environment !== 'development') throw new Error('環境は production または development を指定してください');
@@ -86,9 +142,11 @@ function firestoreRoot(environment = 'production') {
 function parseOptions(args) {
   let environment = 'production';
   let open = false;
+  let analysisOnly = false;
   let environmentSpecified = false;
   for (let index = 0; index < args.length; index++) {
     if (args[index] === '--open' && !open) open = true;
+    else if (args[index] === '--analysis-only' && !analysisOnly) analysisOnly = true;
     else if (args[index] === '--environment' && args[index + 1] && !environmentSpecified) {
       environment = args[++index];
       environmentSpecified = true;
@@ -96,17 +154,12 @@ function parseOptions(args) {
     else throw new Error(`不明または重複したオプション: ${args[index]}`);
   }
   firestoreRoot(environment);
-  return { environment, open };
+  return analysisOnly ? { environment, open, analysisOnly } : { environment, open };
 }
 
 // Load service account
 const keyPath = path.resolve(rootDir, 'my', 'serviceAccountKey.json');
-if (!fs.existsSync(keyPath)) {
-  console.error('Error: my/serviceAccountKey.json not found.');
-  process.exit(1);
-}
-
-const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+const serviceAccount = fs.existsSync(keyPath) ? JSON.parse(fs.readFileSync(keyPath, 'utf8')) : { project_id: 'test-project' };
 
 function base64Url(input) {
   return Buffer.from(input).toString('base64url');
@@ -217,12 +270,20 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
           currentToken = await getAccessToken('https://www.googleapis.com/auth/datastore');
           tokenAt = Date.now();
         }
-        const members = await fetchFirestoreMembers(currentToken, environment);
+        const [members,history] = await Promise.all([fetchFirestoreMembers(currentToken, environment),fetchFirestoreUsageHistory(currentToken,environment)]);
         response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify({ ...featureUsageStats(members), totalMembers: members.length }));
+        response.end(JSON.stringify({ ...featureUsageStats(members), comparison:buildUsageComparison(members,history), totalMembers: members.length }));
       } catch {
         response.writeHead(503); response.end();
       }
+      return;
+    }
+    if (request.method === 'GET' && request.url === '/usage-analysis.json' && request.headers['x-csrf-token'] === csrfToken) {
+      try {
+        const outputPath=path.resolve(rootDir,'my','analysis-exports',`member-usage-analysis-${environment}.json`);
+        const data=fs.readFileSync(outputPath);
+        response.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':`attachment; filename="member-usage-analysis-${environment}.json"`}); response.end(data);
+      } catch { response.writeHead(503); response.end(); }
       return;
     }
     if (request.method === 'GET' && request.url === '/announcement-history' && request.headers['x-csrf-token'] === csrfToken) {
@@ -308,6 +369,7 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
 }
 
 async function getAccessToken(scope) {
+  if (!serviceAccount.client_email || !serviceAccount.private_key) throw new Error('my/serviceAccountKey.json is required for Google API access');
   const nowSeconds = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const claim = base64Url(JSON.stringify({
@@ -356,6 +418,20 @@ async function fetchFirestoreMembers(token, environment = 'production') {
   return results;
 }
 
+async function fetchFirestoreUsageHistory(token, environment = 'production') {
+  const prefix = `${firestoreRoot(environment)}/usage_history`;
+  const results=[]; let pageToken='';
+  do {
+    const url=`https://firestore.googleapis.com/v1/${prefix}?pageSize=300${pageToken?`&pageToken=${encodeURIComponent(pageToken)}`:''}`;
+    const res=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error(`利用履歴取得失敗: ${res.status}`);
+    const data=await res.json();
+    for(const doc of data.documents||[])results.push(JSON.parse(doc.fields.payload.stringValue));
+    pageToken=data.nextPageToken||'';
+  } while(pageToken);
+  return results;
+}
+
 async function fetchGa4Data(token) {
   // 1. Daily active users & sessions
   const dauRes = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
@@ -396,10 +472,15 @@ async function fetchGa4Data(token) {
   });
   const featData = featRes.ok ? await featRes.json() : null;
 
-  return { dauData, eventData, featData };
+  const weeklyFeatureRes = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dateRanges: [{ startDate: GA_START_DATE, endDate: 'today' }], dimensions: [{ name: 'date' }, { name: 'customEvent:feature_name' }], metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }], limit: 25000 })
+  });
+  const weeklyFeatureData = weeklyFeatureRes.ok ? await weeklyFeatureRes.json() : null;
+  return { dauData, eventData, featData, weeklyFeatureData, weeklyFeatureError: weeklyFeatureRes.ok ? null : `GA4 weekly feature report unavailable (HTTP ${weeklyFeatureRes.status})` };
 }
 
-function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, canPublish, environment = 'production', featureStats = featureUsageStats([])) {
+function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, canPublish, environment = 'production', featureStats = featureUsageStats([]), comparison = buildUsageComparison([],[])) {
   firestoreRoot(environment);
   const environmentLabel = environment === 'development' ? '開発環境' : '本番環境';
   const analyticsLabel = environment === 'development' ? 'GA4 集計なし' : `GA4 プロパティ: ${propertyId}`;
@@ -546,6 +627,13 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <p id="usageStateUpdated" class="text-xs text-slate-400">確認日時: ${nowJst} (JST)・人数を押すと会員一覧へ移動します。</p>
       <p id="featureRefreshStatus" class="text-sm text-amber-300" role="status"></p>
     </div>
+    <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-4" id="retentionPanel">
+      <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="text-lg font-bold">継続・離脱候補の初回7日間比較</h2>${canPublish?'<a id="analysisExport" data-csrf="__CSRF_TOKEN__" class="rounded-lg border border-sky-500 px-3 py-2 text-sm text-sky-300" href="/usage-analysis.json">分析JSONを保存</a>':''}</div>
+      <p class="text-sm text-slate-400">${comparison.recentWindow.start} 〜 ${comparison.recentWindow.end}（UTC・直近168時間）</p>
+      <div id="retentionComparison">${comparisonMarkup(comparison)}</div>
+      <p class="text-xs text-slate-500">会員単位の実利用履歴は同意済みの場合のみ保存します。通信日時やheartbeatを実利用日時に使いません。</p>
+    </div>
+
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
@@ -674,6 +762,14 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   <script>
     const dashboard = ${dashboardData};
     ${fs.readFileSync(path.join(rootDir, "scripts/dashboard-ui.js"), "utf8")}
+    function renderRetentionComparison(data) {
+      const labels={active:'アクティブ',churn_candidate:'離脱候補',new:'新規・初回7日未満',legacy_unmeasured:'旧版・初回未計測',unmeasured:'未計測',observation_insufficient:'観測不足',consent_denied:'同意拒否',consent_unknown:'同意不明'};
+      const counts=Object.entries(labels).map(([key,label])=>'<div class="rounded bg-slate-900 p-2 text-sm">'+label+': <b>'+(data.classificationCounts[key]||0)+'</b></div>').join('');
+      const candidates=data.candidates.map((f,i)=>'<li>'+(i+1)+'. '+f.label+' <strong>+'+f.differencePp+' pp</strong>（'+f.active.users+'/'+f.active.denominator+' 対 '+f.churn_candidate.users+'/'+f.churn_candidate.denominator+'）</li>').join('')||'<li>現時点で正の差を確認できる候補はありません。</li>';
+      const rows=data.features.map(f=>'<tr class="border-b border-slate-800"><td class="py-2 pr-3">'+f.label+'</td><td class="py-2">'+f.active.users+' / '+f.active.denominator+' ('+(f.active.rate===null?'—':f.active.rate+'%')+')<div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-emerald-400" style="width:'+(f.active.rate||0)+'%"></div></div></td><td class="py-2">'+f.churn_candidate.users+' / '+f.churn_candidate.denominator+' ('+(f.churn_candidate.rate===null?'—':f.churn_candidate.rate+'%')+')<div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-amber-400" style="width:'+(f.churn_candidate.rate||0)+'%"></div></div></td><td class="py-2 text-right">'+(f.differencePp===null?'—':(f.differencePp>0?'+':'')+f.differencePp+' pp')+'</td></tr>').join('');
+      return '<div class="grid grid-cols-2 md:grid-cols-4 gap-2">'+counts+'</div><p class="text-xs text-amber-300">初回実利用から7日経過し、日別観測と機能対応がそろった会員のみ比較。各群20人未満は参考値。通信だけでアクティブとは判定しません。</p><h3 class="font-semibold">案内強化候補</h3><ol class="list-none space-y-1">'+candidates+'</ol><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="text-left">機能</th><th class="text-left">アクティブの初回7日</th><th class="text-left">離脱候補の初回7日</th><th class="text-right">差</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }
+    document.getElementById('analysisExport')?.addEventListener('click',async event=>{event.preventDefault();const link=event.currentTarget;try{const response=await fetch('/usage-analysis.json',{headers:{'X-CSRF-Token':link.dataset.csrf}});if(!response.ok)throw new Error('JSONを取得できません');const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='member-usage-analysis.json';a.click();URL.revokeObjectURL(url);}catch(error){document.getElementById('featureRefreshStatus').textContent=error.message;}});
     ${canPublish ? `fetch('/feature-usage', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } })
       .then(response => response.ok ? response.json() : Promise.reject())
       .then(stats => {
@@ -704,6 +800,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         dashboard.versions = stats.memberVersions;
         dashboard.total = stats.totalMembers;
         renderDashboard();
+        if(stats.comparison)document.getElementById('retentionComparison').innerHTML=renderRetentionComparison(stats.comparison);
       }).catch(() => { document.getElementById('featureRefreshStatus').textContent = '最新の利用情報を取得できませんでした。表示中の人数は前回の集計です。「最新状態に更新」で再確認してください。'; });` : ''}
     const refreshDashboardBtn = document.getElementById('refreshDashboardBtn');
     if (refreshDashboardBtn) {
@@ -964,16 +1061,18 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 }
 
 async function collectStats(environment = 'production', canPublish = true) {
-  const [dbToken, gaToken] = await Promise.all([
+  const [dbToken, gaAuth] = await Promise.all([
     getAccessToken('https://www.googleapis.com/auth/datastore'),
-    environment === 'production' ? getAccessToken('https://www.googleapis.com/auth/analytics.readonly') : null
+    environment === 'production' ? getAccessToken('https://www.googleapis.com/auth/analytics.readonly').then(token=>({token})).catch(()=>({token:null,error:'GA4 authentication or network request failed'})) : null
   ]);
+  const gaToken=gaAuth?.token??null;
 
-  const [members, gaData] = await Promise.all([
+  const [members,history, gaData] = await Promise.all([
     fetchFirestoreMembers(dbToken, environment),
-    (environment === 'production' ? fetchGa4Data(gaToken) : Promise.resolve({ dauData: null, eventData: null, featData: null })).catch(err => {
-      console.warn('GA4 fetch error:', err.message);
-      return { dauData: null, eventData: null, featData: null };
+    fetchFirestoreUsageHistory(dbToken,environment),
+    (environment === 'production' && gaToken ? fetchGa4Data(gaToken) : Promise.resolve({ dauData: null, eventData: null, featData: null, weeklyFeatureData:null, weeklyFeatureError:environment==='development'?'GA4 is not queried for the development environment':gaAuth?.error??'GA4 authentication was unavailable' })).catch(() => {
+      console.warn('GA4 request failed; weekly data will be marked unavailable.');
+      return { dauData: null, eventData: null, featData: null, weeklyFeatureData:null, weeklyFeatureError:'GA4 request failed due to network or API response error' };
     })
   ]);
 
@@ -1028,6 +1127,11 @@ async function collectStats(environment = 'production', canPublish = true) {
   const totalMembers = members.length;
   const survival = survivalStats(members);
   const featureStats = featureUsageStats(members);
+  const comparison=buildUsageComparison(members,history,new Date(),analysisKey());
+  const ga4WeeklyFeatures=weeklyGaFeatureRows(gaData.weeklyFeatureData);
+  const exportedRecords=pseudonymizedMemberRecords(members,comparison);
+  const exportedComparison={...comparison,records:exportedRecords};
+  const usageAnalysisPath=writeUsageAnalysis(exportedComparison,environment,{dataSources:{firestore:{status:'read',memberCount:members.length,historyReportCount:history.length},ga4:{status:gaData.weeklyFeatureData?'read':'unavailable',propertyId,timezone:'GA4 property reporting timezone; member analysis timestamps and periods are UTC',weeklyFeatureError:gaData.weeklyFeatureError??null,weeklyFeatureRows:ga4WeeklyFeatures.length,joinToMemberRecords:false}},ga4WeeklyFeatures});
   const latestNumber = members.length > 0 ? members[members.length - 1].generalNumber : 10000;
 
   const now = new Date();
@@ -1094,10 +1198,10 @@ async function collectStats(environment = 'production', canPublish = true) {
   const outDir = path.resolve(rootDir, 'my');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const htmlPath = path.resolve(outDir, environment === 'development' ? 'member_stats.development.html' : 'member_stats.html');
-  const staticHtml = generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, false, environment, featureStats);
+  const staticHtml = generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, false, environment, featureStats,comparison);
   fs.writeFileSync(htmlPath, staticHtml, 'utf8');
 
-  const html = canPublish ? generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true, environment, featureStats) : staticHtml;
+  const html = canPublish ? generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, true, environment, featureStats,comparison) : staticHtml;
 
   return {
     html,
@@ -1110,11 +1214,13 @@ async function collectStats(environment = 'production', canPublish = true) {
     yesterdayNew,
     nowJst,
     htmlPath
+    , usageAnalysisPath
   };
 }
 
 async function main() {
-  const { environment, open } = parseOptions(process.argv.slice(2));
+  const { environment, open, analysisOnly } = parseOptions(process.argv.slice(2));
+  if (analysisOnly) { console.log(`分析JSON: ${await collectUsageAnalysis(environment)}`); return; }
   const stats = await collectStats(environment, open);
 
   console.log(`対象環境: ${environment}`);
@@ -1130,7 +1236,7 @@ async function main() {
   }
 }
 
-export { collectStats, survivalStats, featureUsageStats, isoWeek, publishAnnouncement, stopAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, fetchFirestoreAnnouncements, parseOptions };
+export { collectStats, collectUsageAnalysis, survivalStats, featureUsageStats, isoWeek, publishAnnouncement, stopAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, fetchFirestoreUsageHistory, fetchFirestoreAnnouncements, parseOptions, writeUsageAnalysis, weeklyGaFeatureRows };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch(err => {

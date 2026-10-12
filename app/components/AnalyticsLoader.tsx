@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { safeUnlisten } from '../utils/safeUnlisten';
-import { flushMemberFeatureQueue } from '../utils/memberUsageQueue';
+import { clearMemberFeatureQueue, flushMemberFeatureQueue } from '../utils/memberUsageQueue';
 
 const GA_ID = 'G-MGPKF0MQH4';
 type AnalyticsWindow = Window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void; __FUSEN_ANALYTICS_GRANTED__?: boolean; 'ga-disable-G-MGPKF0MQH4'?: boolean };
@@ -58,8 +58,8 @@ async function runDesktopBackground(cancelled:()=>boolean) {
   if(await invoke<boolean>('member_needs_sync')) await invoke('member_sync').catch(()=>undefined);
   if(cancelled())return;
   await flushMemberFeatureQueue();
-  await invoke('member_sync_usage').catch(()=>undefined);
-  if(granted&&member.analyticsSubject){
+  const usageHistoryReady=await invoke('member_sync_usage').then(()=>true).catch(()=>false);
+  if(granted&&member.analyticsSubject&&usageHistoryReady){
     loadGa4(false); w['ga-disable-G-MGPKF0MQH4']=false;
     w.gtag?.('config',GA_ID,{send_page_view:false,user_id:member.analyticsSubject});
     const summaries=await invoke<WeeklyUsage[]>('member_closed_summaries');
@@ -95,7 +95,7 @@ export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
       const granted=event.payload.analytics_consent==='granted';
       const w=window as AnalyticsWindow;
       w.__FUSEN_ANALYTICS_GRANTED__=granted;
-      if(!granted) w['ga-disable-G-MGPKF0MQH4']=true;
+      if(!granted) { w['ga-disable-G-MGPKF0MQH4']=true; clearMemberFeatureQueue(); }
       if(windowLabel==='main') void invoke('member_sync_usage').catch(()=>undefined);
       if(windowLabel==='main'&&backgroundStarted&&granted) void runDesktopBackground(()=>cancelled).catch(()=>undefined);
     }).then(dispose=>{if(cancelled)dispose();else unlisten=dispose;}).catch(()=>undefined);

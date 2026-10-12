@@ -10,11 +10,15 @@ const FEATURES: &[&str] = &["note_created", "note_edited", "tag_add", "alarm_set
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct FeatureCount { count: u64, active_days: BTreeSet<String>, last_used_day: String }
+pub struct FeatureCount { count: u64, active_days: BTreeSet<String>, last_used_day: String, #[serde(default)] first_used_at: Option<String>, #[serde(default)] last_used_at: Option<String> }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct WeeklyUsage { week: String, schema: u8, app_version: String, features: BTreeMap<String, FeatureCount> }
+pub struct DailyUsage { observed_at: Option<String>, #[serde(default)] observed_through: Option<String>, #[serde(default)] supported_features: Vec<String>, features: BTreeMap<String, FeatureCount> }
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WeeklyUsage { week: String, schema: u8, app_version: String, features: BTreeMap<String, FeatureCount>, #[serde(default)] days: BTreeMap<String, DailyUsage>, #[serde(default)] measurement_started_at: Option<String>, #[serde(default)] supported_features: Vec<String> }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct MemberLocal {
@@ -23,6 +27,9 @@ pub struct MemberLocal {
     #[serde(default, rename="consent", skip_serializing)] legacy_consent: Option<bool>,
     #[serde(default, rename="consent_linked", skip_serializing)] legacy_consent_linked: bool,
     #[serde(default)] weeks: BTreeMap<String, WeeklyUsage>,
+    #[serde(default)] first_use_at: Option<String>,
+    #[serde(default)] measurement_started_at: Option<String>,
+    #[serde(default)] reporter_id: Option<String>,
     #[serde(default)] read_announcement_ids: BTreeSet<String>,
     #[serde(default)] announcements: Vec<AnnouncementPayload>,
     #[serde(default)] last_heartbeat_date: Option<String>,
@@ -33,9 +40,10 @@ pub struct MemberLocal {
     #[serde(default)] last_announcement_error: bool,
     #[serde(skip)] announcement_checking: bool,
     #[serde(default)] open_seconds: u64,
-    #[serde(default)] last_usage_sync_consent: bool,
+    #[serde(default)] last_usage_sync_consent: Option<bool>,
     #[serde(default)] last_usage_sync_week: Option<String>,
     #[serde(default)] last_usage_sync_features: Vec<String>,
+    #[serde(default)] last_usage_sync_at: Option<String>,
     #[serde(skip)] syncing: bool,
     #[serde(skip)] usage_syncing: bool,
     #[serde(skip)] open_time_tick: Option<Instant>,
@@ -116,6 +124,7 @@ fn ensure(state:&mut AppState)->Result<&mut MemberLocal,String>{
     let next = choice(settings.analytics_consent.as_deref());
     if state.usage_consent != next { member.open_time_tick = None; }
     state.usage_consent = next;
+    if next == Some(true) && member.measurement_started_at.is_none() { member.measurement_started_at = Some(Utc::now().to_rfc3339()); }
     let migrated = member.legacy_consent.take().is_some() || member.legacy_consent_linked;
     member.legacy_consent_linked = false;
     let cleared = state.usage_consent != Some(true) && clear_usage(member);
@@ -128,8 +137,8 @@ fn choice(value: Option<&str>) -> Option<bool> {
 }
 
 fn clear_usage(member: &mut MemberLocal) -> bool {
-    let changed = !member.weeks.is_empty() || member.open_seconds != 0;
-    member.weeks.clear(); member.open_seconds = 0; member.open_time_tick = None;
+    let changed = !member.weeks.is_empty() || member.open_seconds != 0 || member.first_use_at.is_some() || member.measurement_started_at.is_some();
+    member.weeks.clear(); member.open_seconds = 0; member.open_time_tick = None; member.first_use_at=None; member.measurement_started_at=None;
     changed
 }
 
@@ -154,6 +163,7 @@ fn usage_enabled(state: &mut AppState) -> Result<bool,String> {
     ensure(state)?;
     Ok(state.usage_consent == Some(true))
 }
+fn usage_choice(state:&mut AppState)->Result<Option<bool>,String>{ensure(state)?;Ok(state.usage_consent)}
 
 #[tauri::command]
 pub fn member_get(state:State<'_,Mutex<AppState>>)->Result<MemberView,String>{let mut g=state.lock().map_err(|_|"State unavailable")?;Ok(ensure(&mut g)?.view())}
@@ -169,10 +179,23 @@ pub fn member_record_batch(state:State<'_,Mutex<AppState>>,counts:BTreeMap<Strin
 fn record_counts(g: &mut AppState, counts: BTreeMap<String,u64>, now: chrono::DateTime<Utc>) {
     if g.usage_consent != Some(true) { return; }
     let member=match g.member.as_mut(){Some(v)=>v,None=>return};
-    let week=week_key(now); let day=now.format("%Y-%m-%d").to_string();
-    let usage=member.weeks.entry(week.clone()).or_insert_with(||WeeklyUsage{week,schema:1,app_version:env!("CARGO_PKG_VERSION").into(),features:BTreeMap::new()});
-    usage.schema = 2;
-    for(name,increment)in counts{let f=usage.features.entry(name).or_default();f.count=f.count.saturating_add(increment);f.active_days.insert(day.clone());f.last_used_day=day.clone();}
+    let week=week_key(now); let day=now.format("%Y-%m-%d").to_string(); let instant=now.to_rfc3339();
+    member.first_use_at.get_or_insert_with(||instant.clone());
+    let supported=FEATURES.iter().map(|v|(*v).to_string()).collect::<Vec<_>>();
+    let measurement_started_at=member.measurement_started_at.clone();
+    let usage=member.weeks.entry(week.clone()).or_insert_with(||WeeklyUsage{week,schema:3,app_version:env!("CARGO_PKG_VERSION").into(),features:BTreeMap::new(),days:BTreeMap::new(),measurement_started_at:measurement_started_at.clone(),supported_features:supported});
+    usage.schema = 3; usage.supported_features=FEATURES.iter().map(|v|(*v).to_string()).collect(); if usage.measurement_started_at.is_none(){usage.measurement_started_at=measurement_started_at;}
+    let daily=usage.days.entry(day.clone()).or_default(); daily.observed_at.get_or_insert_with(||instant.clone()); daily.observed_through=Some(instant.clone());
+    daily.supported_features=FEATURES.iter().map(|v|(*v).to_string()).collect();
+    for(name,increment)in counts{let f=usage.features.entry(name.clone()).or_default();f.count=f.count.saturating_add(increment);f.active_days.insert(day.clone());f.last_used_day=day.clone();f.first_used_at.get_or_insert_with(||instant.clone());f.last_used_at=Some(instant.clone());let d=daily.features.entry(name).or_default();d.count=d.count.saturating_add(increment);d.active_days.insert(day.clone());d.last_used_day=day.clone();d.first_used_at.get_or_insert_with(||instant.clone());d.last_used_at=Some(instant.clone());}
+}
+fn observe_current_day(member: &mut MemberLocal, now: chrono::DateTime<Utc>) {
+    let week=week_key(now); let day=now.format("%Y-%m-%d").to_string(); let instant=now.to_rfc3339();
+    let supported_features=FEATURES.iter().map(|v|(*v).to_string()).collect::<Vec<_>>();
+    let measurement_started_at=member.measurement_started_at.clone();
+    let usage=member.weeks.entry(week.clone()).or_insert_with(||WeeklyUsage{week,schema:3,app_version:env!("CARGO_PKG_VERSION").into(),features:BTreeMap::new(),days:BTreeMap::new(),measurement_started_at,supported_features});
+    usage.schema=3; usage.supported_features=FEATURES.iter().map(|v|(*v).to_string()).collect();
+    let daily=usage.days.entry(day).or_default(); daily.observed_at.get_or_insert_with(||instant.clone()); daily.observed_through=Some(instant); daily.supported_features=FEATURES.iter().map(|v|(*v).to_string()).collect();
 }
 pub(crate) fn record_launcher_store(state: &mut AppState) {
     record_counts(state, BTreeMap::from([("launcher_store".into(), 1)]), Utc::now());
@@ -188,20 +211,20 @@ pub fn member_open_time_tick(state:State<'_,Mutex<AppState>>)->Result<(),String>
     let mut g=state.lock().map_err(|_|"State unavailable")?;
     let granted=usage_enabled(&mut g)?;
     let member=g.member.as_mut().ok_or("Member identity unavailable")?;
+    if granted { observe_current_day(member,Utc::now()); }
     let now=Instant::now();
     if let Some(previous)=member.open_time_tick {
         if granted {
             member.open_seconds=member.open_seconds.saturating_add(now.duration_since(previous).as_secs());
-            persist(member)?;
         }
     }
     member.open_time_tick=Some(now);
+    if granted { persist(member)?; }
     Ok(())
 }
 
-fn current_usage_snapshot(member:&MemberLocal,analytics_consent:bool,week:&str)->(Vec<String>,bool){
-    let consent=analytics_consent;
-    let features=if consent {member.weeks.get(week)
+fn current_usage_snapshot(member:&MemberLocal,consent:Option<bool>,week:&str)->(Vec<String>,Option<bool>){
+    let features=if consent==Some(true) {member.weeks.get(week)
         .map(|usage|usage.features.keys().cloned().collect()).unwrap_or_default()} else {Vec::new()};
     (features,consent)
 }
@@ -209,19 +232,24 @@ fn current_usage_snapshot(member:&MemberLocal,analytics_consent:bool,week:&str)-
 #[tauri::command]
 pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>)->Result<(),String>{
     let base=endpoint()?;
-    let (snapshot,week,features,consent,open_seconds)={
+    let (snapshot,week,features,consent,open_seconds,history,reporter_id)={
         let mut g=state.lock().map_err(|_|"State unavailable")?;
-        let analytics_consent=usage_enabled(&mut g)?;
+        let consent=usage_choice(&mut g)?;
         let member=g.member.as_mut().ok_or("Member identity unavailable")?;
+        if consent.is_none()&&member.last_usage_sync_consent.is_none(){return Ok(());}
         let week=week_key(Utc::now());
-        let (features,consent)=current_usage_snapshot(&member,analytics_consent,&week);
+        if consent==Some(true)&&member.reporter_id.is_none() { member.reporter_id=Some(uuid::Uuid::new_v4().to_string()); }
+        let history=if consent==Some(true){member.weeks.values().filter(|v|v.schema>=3).cloned().collect::<Vec<_>>()}else{Vec::new()};
+        let (features,_)=current_usage_snapshot(&member,consent,&week);
         if member.usage_syncing || !should_sync_usage(member,consent,&week,&features) { return Ok(()); }
         member.usage_syncing=true;
-        (member.clone(),week,features,consent,member.open_seconds)
+        (member.clone(),week,features,consent,member.open_seconds,history,member.reporter_id.clone().unwrap_or_default())
     };
     let result=async {
         let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().map_err(|_|"Cannot create member client")?;
-        post(&client,&base,"usage",&snapshot,serde_json::json!({"week":week,"features":features,"consent":consent,"usageSchema":2,"openMinutes":open_seconds/60})).await?;
+        let mut payload=serde_json::json!({"consentStatus":match consent{Some(true)=>"granted",Some(false)=>"denied",None=>"unknown"}});
+        if let Some(granted)=consent { payload.as_object_mut().unwrap().extend(serde_json::json!({"week":week,"features":features,"consent":granted,"usageSchema":3,"openMinutes":open_seconds/60,"history":history,"reporterId":reporter_id,"firstUseAt":snapshot.first_use_at}).as_object().unwrap().clone()); }
+        post(&client,&base,"usage",&snapshot,payload).await?;
         Ok::<(),String>(())
     }.await;
     let mut g=state.lock().map_err(|_|"State unavailable")?;
@@ -232,16 +260,18 @@ pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>)->Result<(),Strin
     persist(member)
 }
 
-fn should_sync_usage(member:&MemberLocal,consent:bool,week:&str,features:&[String])->bool {
-    if !consent && !member.last_usage_sync_consent { return false; }
-    member.last_usage_sync_consent!=consent || (consent &&
-        (member.last_usage_sync_week.as_deref()!=Some(week) || member.last_usage_sync_features!=features))
+fn should_sync_usage(member:&MemberLocal,consent:Option<bool>,week:&str,features:&[String])->bool {
+    if member.last_usage_sync_consent!=consent { return true; }
+    let Some(consent)=consent else{return false;};
+    member.last_usage_sync_consent!=Some(consent) || (consent &&
+        (member.last_usage_sync_week.as_deref()!=Some(week) || member.last_usage_sync_features!=features || member.last_usage_sync_at.as_deref().and_then(|v|chrono::DateTime::parse_from_rfc3339(v).ok()).map(|v|Utc::now()-v.with_timezone(&Utc)>=Duration::hours(3)).unwrap_or(true)))
 }
 
-fn mark_usage_synced(member:&mut MemberLocal,consent:bool,week:&str,features:&[String]) {
+fn mark_usage_synced(member:&mut MemberLocal,consent:Option<bool>,week:&str,features:&[String]) {
     member.last_usage_sync_consent=consent;
     member.last_usage_sync_week=Some(week.into());
     member.last_usage_sync_features=features.to_vec();
+    member.last_usage_sync_at=Some(Utc::now().to_rfc3339());
 }
 
 #[tauri::command]
@@ -392,7 +422,7 @@ pub async fn member_heartbeat(
     let base = endpoint()?;
     let (snapshot, today, week, features, consent, open_seconds, report_member) = {
         let mut g = state.lock().map_err(|_| "State unavailable")?;
-        let analytics_consent=usage_enabled(&mut g)?;
+        let consent=usage_choice(&mut g)?;
         let value=g.member.as_mut().ok_or("Member identity unavailable")?;
         let now = Utc::now();
         let today = now.format("%Y-%m-%d").to_string();
@@ -403,7 +433,7 @@ pub async fn member_heartbeat(
             return Ok(Vec::new());
         }
         let week = week_key(Utc::now());
-        let (features, consent) = current_usage_snapshot(value, analytics_consent, &week);
+        let (features, consent) = current_usage_snapshot(value, consent, &week);
         value.last_announcement_attempt_at = Some(now.to_rfc3339());
         value.announcement_checking = true;
         (value.clone(), today, week, features, consent, value.open_seconds, report_member)
@@ -415,7 +445,9 @@ pub async fn member_heartbeat(
         .timeout(std::time::Duration::from_secs(15))
         .build().map_err(|_| "Cannot create client")?;
       let (operation, payload) = if report_member {
-        ("heartbeat", serde_json::json!({"week":week,"features":features,"consent":consent,"usageSchema":2,"openMinutes":open_seconds/60,"appVersion":env!("CARGO_PKG_VERSION")}))
+        let mut payload=serde_json::json!({"appVersion":env!("CARGO_PKG_VERSION")});
+        if let Some(consent)=consent { payload.as_object_mut().unwrap().extend(serde_json::json!({"week":week,"features":features,"consent":consent,"usageSchema":3,"openMinutes":open_seconds/60}).as_object().unwrap().clone()); }
+        ("heartbeat",payload)
       } else { ("announcements", serde_json::json!({})) };
       let response: HeartbeatResponse = serde_json::from_value(post(&client, &base, operation, &snapshot, payload).await?)
         .map_err(|_| "Invalid announcement response")?;
@@ -481,7 +513,7 @@ mod segment_tests {
         record_counts(&mut state, BTreeMap::from([("launcher_store".into(), 1)]), now);
         record_counts(&mut state, BTreeMap::from([("launcher_store".into(), 1)]), now);
         let usage = &state.member.as_ref().unwrap().weeks["2026-W41"];
-        assert_eq!(usage.schema, 2);
+        assert_eq!(usage.schema, 3);
         let recorded = &usage.features["launcher_store"];
         assert_eq!(recorded.count, 2);
         assert_eq!(recorded.active_days.len(), 1);
@@ -493,15 +525,32 @@ mod segment_tests {
     }
 
     #[test]
+    fn daily_real_use_timestamps_are_utc_and_weeks_switch_without_overwriting() {
+        let mut state=AppState{member:Some(MemberLocal::default()),usage_consent:Some(true),..Default::default()};
+        let first=chrono::DateTime::parse_from_rfc3339("2026-10-11T23:59:59Z").unwrap().with_timezone(&Utc);
+        let next_week=chrono::DateTime::parse_from_rfc3339("2026-10-12T00:00:01Z").unwrap().with_timezone(&Utc);
+        record_counts(&mut state,BTreeMap::from([("note_edited".into(),1)]),first);
+        record_counts(&mut state,BTreeMap::from([("note_edited".into(),1)]),next_week);
+        let member=state.member.as_ref().unwrap();
+        assert_eq!(member.weeks["2026-W41"].days["2026-10-11"].features["note_edited"].first_used_at.as_deref(),Some("2026-10-11T23:59:59+00:00"));
+        assert_eq!(member.weeks["2026-W42"].days["2026-10-12"].features["note_edited"].last_used_at.as_deref(),Some("2026-10-12T00:00:01+00:00"));
+        assert_eq!(member.weeks["2026-W41"].supported_features.len(),FEATURES.len());
+    }
+
+    #[test]
     fn single_consent_enables_collection_and_stop_clears_local_usage() {
         let mut member = MemberLocal::default();
-        assert!(current_usage_snapshot(&member, true, "2026-W41").1);
+        assert_eq!(current_usage_snapshot(&member, Some(true), "2026-W41").1, Some(true));
         member.open_seconds = 120;
-        member.weeks.insert("2026-W41".into(), WeeklyUsage { week: "2026-W41".into(), schema: 1, app_version: "5.5.1".into(), features: BTreeMap::new() });
+        member.first_use_at=Some("2026-10-01T10:00:00Z".into());
+        member.measurement_started_at=Some("2026-10-01T09:00:00Z".into());
+        member.weeks.insert("2026-W41".into(), WeeklyUsage { week: "2026-W41".into(), schema: 1, app_version: "5.5.1".into(), features: BTreeMap::new(), ..Default::default() });
         clear_usage(&mut member);
-        assert!(!current_usage_snapshot(&member, false, "2026-W41").1);
+        assert_eq!(current_usage_snapshot(&member, Some(false), "2026-W41").1, Some(false));
         assert!(member.weeks.is_empty());
         assert_eq!(member.open_seconds, 0);
+        assert_eq!(member.first_use_at,None);
+        assert_eq!(member.measurement_started_at,None);
     }
 
     #[test]
@@ -586,6 +635,7 @@ mod segment_tests {
         features.insert("note_edited".to_string(), FeatureCount::default());
         member.weeks.insert("2026-W39".to_string(), WeeklyUsage {
             week: "2026-W39".into(), schema: 1, app_version: "5.4.0".into(), features,
+            ..Default::default()
         });
         assert!(matches_segment("feature_week_used:note_edited", &member, "2026-W39", true));
         assert!(!matches_segment("feature_week_unused:note_edited", &member, "2026-W39", true));
@@ -605,6 +655,7 @@ mod segment_tests {
         features.insert("iphone_send".to_string(), FeatureCount::default());
         member.weeks.insert("2026-W39".into(), WeeklyUsage {
             week: "2026-W39".into(), schema: 1, app_version: "5.4.0".into(), features,
+            ..Default::default()
         });
         assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", true));
         assert!(matches_segment("iphone_week_unused", &member, "2026-W40", true));
@@ -621,11 +672,12 @@ mod segment_tests {
         features.insert("iphone_send".into(), FeatureCount::default());
         member.weeks.insert("2026-W39".into(), WeeklyUsage {
             week: "2026-W39".into(), schema: 1, app_version: "5.4.0".into(), features,
+            ..Default::default()
         });
-        assert_eq!(current_usage_snapshot(&member,true,"2026-W39"),(vec!["iphone_send".into()],true));
-        assert_eq!(current_usage_snapshot(&member,true,"2026-W40"),(Vec::new(),true));
-        assert_eq!(current_usage_snapshot(&member,false,"2026-W39"),(Vec::new(),false));
-        assert_eq!(current_usage_snapshot(&member,false,"2026-W39"),(Vec::new(),false));
+        assert_eq!(current_usage_snapshot(&member,Some(true),"2026-W39"),(vec!["iphone_send".into()],Some(true)));
+        assert_eq!(current_usage_snapshot(&member,Some(true),"2026-W40"),(Vec::new(),Some(true)));
+        assert_eq!(current_usage_snapshot(&member,Some(false),"2026-W39"),(Vec::new(),Some(false)));
+        assert_eq!(current_usage_snapshot(&member,None,"2026-W39"),(Vec::new(),None));
     }
 
     #[test]
@@ -633,38 +685,57 @@ mod segment_tests {
         let mut member=MemberLocal::default();
         let week="2026-W41";
         let features=vec!["note_edited".into()];
-        assert!(!should_sync_usage(&member,false,week,&[]));
-        assert!(should_sync_usage(&member,true,week,&[]));
-        mark_usage_synced(&mut member,true,week,&[]);
-        assert!(!should_sync_usage(&member,true,week,&[]));
+        assert!(!should_sync_usage(&member,None,week,&[]));
+        // Default local state models a previously granted device so this path
+        // can verify sending a withdrawal; a never-selected user sends nothing.
+        member.last_usage_sync_consent=Some(true);
+        assert!(should_sync_usage(&member,Some(false),week,&[]));
+        mark_usage_synced(&mut member,Some(false),week,&[]);
+        assert!(!should_sync_usage(&member,Some(false),week,&[]));
+        assert!(should_sync_usage(&member,Some(true),week,&[]));
+        mark_usage_synced(&mut member,Some(true),week,&[]);
+        assert!(!should_sync_usage(&member,Some(true),week,&[]));
         member.open_seconds=24*60*60;
-        assert!(!should_sync_usage(&member,true,week,&[]));
-        assert!(should_sync_usage(&member,true,week,&features));
+        assert!(!should_sync_usage(&member,Some(true),week,&[]));
+        assert!(should_sync_usage(&member,Some(true),week,&features));
         // Failed sends do not update the marker, so the next check retries.
-        assert!(should_sync_usage(&member,true,week,&features));
-        mark_usage_synced(&mut member,true,week,&features);
-        assert!(!should_sync_usage(&member,true,week,&features));
-        assert!(should_sync_usage(&member,true,"2026-W42",&[]));
-        assert!(should_sync_usage(&member,false,week,&[]));
-        mark_usage_synced(&mut member,false,week,&[]);
-        assert!(!should_sync_usage(&member,false,week,&[]));
-        assert!(should_sync_usage(&member,true,week,&features));
+        assert!(should_sync_usage(&member,Some(true),week,&features));
+        mark_usage_synced(&mut member,Some(true),week,&features);
+        assert!(!should_sync_usage(&member,Some(true),week,&features));
+        assert!(should_sync_usage(&member,Some(true),"2026-W42",&[]));
+        assert!(should_sync_usage(&member,Some(false),week,&[]));
+        mark_usage_synced(&mut member,Some(false),week,&[]);
+        assert!(!should_sync_usage(&member,Some(false),week,&[]));
+        assert!(should_sync_usage(&member,None,week,&[]));
+        mark_usage_synced(&mut member,None,week,&[]);
+        assert!(!should_sync_usage(&member,None,week,&[]));
+        assert!(should_sync_usage(&member,Some(true),week,&features));
+    }
+
+    #[test]
+    fn daily_history_resends_at_three_hour_interval_but_not_each_five_minute_flush() {
+        let mut member=MemberLocal::default(); let features=Vec::new();
+        mark_usage_synced(&mut member,Some(true),"2026-W41",&features);
+        member.last_usage_sync_at=Some((Utc::now()-Duration::hours(2)).to_rfc3339());
+        assert!(!should_sync_usage(&member,Some(true),"2026-W41",&features));
+        member.last_usage_sync_at=Some((Utc::now()-Duration::hours(3)).to_rfc3339());
+        assert!(should_sync_usage(&member,Some(true),"2026-W41",&features));
     }
 
     #[test]
     fn usage_consent_sync_progress_survives_restart() {
         let mut member=MemberLocal { open_seconds: 24*60*60, ..Default::default() };
         let features=vec!["note_duplicate".into(),"note_edited".into()];
-        mark_usage_synced(&mut member,true,"2026-W41",&features);
+        mark_usage_synced(&mut member,Some(true),"2026-W41",&features);
         let restored:MemberLocal=serde_json::from_slice(&serde_json::to_vec(&member).unwrap()).unwrap();
-        assert!(!should_sync_usage(&restored,true,"2026-W41",&features));
+        assert!(!should_sync_usage(&restored,Some(true),"2026-W41",&features));
         assert_eq!(restored.open_seconds,24*60*60);
     }
 
     #[test]
     fn legacy_success_without_a_feature_marker_resends_retained_usage() {
-        let member=MemberLocal { last_usage_sync_consent:true, ..Default::default() };
-        assert!(should_sync_usage(&member,true,"2026-W41",&vec!["note_edited".into()]));
+        let member=MemberLocal { last_usage_sync_consent:Some(true), ..Default::default() };
+        assert!(should_sync_usage(&member,Some(true),"2026-W41",&vec!["note_edited".into()]));
     }
 }
 

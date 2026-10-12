@@ -24,3 +24,9 @@ export function countMemberFeature(feature: string) {
 export function flushMemberFeatureQueue() {
   return flush();
 }
+
+export function clearMemberFeatureQueue() {
+  pending.clear();
+  if (timer !== undefined) window.clearTimeout(timer);
+  timer = undefined;
+}
