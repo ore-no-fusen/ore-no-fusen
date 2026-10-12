@@ -6,9 +6,14 @@ export interface MemberDatabase {
   get<T>(path: string): Promise<Row<T> | null>;
   commit(changes: Change[]): Promise<boolean>;
   list<T>(collection: string): Promise<Array<Row<T> & { path: string }>>;
+  deliveryAnnouncements?<T>(): Promise<Array<Row<T> & { path: string }>>;
   remove(paths: string[]): Promise<void>;
 }
 type Document = { name: string; updateTime: string; fields: { payload: { stringValue: string } } };
+
+type DeliveryRow = Row<{ active: boolean; expiresAt: string }> & { path: string };
+// Only authenticated server code consumes this cache. Recipients are filtered per request.
+const deliveryCache = new Map<string, { until: number; rows: Promise<DeliveryRow[]> }>();
 
 // The database deliberately has no in-memory fallback.
 export class FirestoreMemberDatabase implements MemberDatabase {
@@ -67,6 +72,20 @@ export class FirestoreMemberDatabase implements MemberDatabase {
       const response = await this.request(':commit', { method: 'POST', body: JSON.stringify({ writes: paths.slice(i, i + 400).map(path => ({ delete: `${this.root}/${this.prefix}${path}` })) }) });
       if (!response.ok) throw new Error('Member data deletion failed');
     }
+  }
+  async deliveryAnnouncements<T>(): Promise<Array<Row<T> & { path: string }>> {
+    const key = `${this.root}/${this.prefix}`;
+    const now = Date.now();
+    let entry = deliveryCache.get(key);
+    if (!entry || entry.until <= now) {
+      if (deliveryCache.size >= 32) deliveryCache.clear();
+      const rows = this.list<{ active: boolean; expiresAt: string }>('announcements')
+        .then(rows => rows.filter(row => row.value.active && Date.parse(row.value.expiresAt) > Date.now()));
+      entry = { until: now + 5 * 60 * 1000, rows };
+      deliveryCache.set(key, entry);
+      rows.catch(() => { if (deliveryCache.get(key)?.rows === rows) deliveryCache.delete(key); });
+    }
+    return await entry.rows as Array<Row<T> & { path: string }>;
   }
 }
 

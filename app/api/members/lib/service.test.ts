@@ -36,6 +36,24 @@ describe('member registration',()=>{
 });
 
 describe('member heartbeat', () => {
+  it('checks letters without changing the daily member report and authenticates before reading', async () => {
+    const db = new MemoryDb();
+    const service = new MemberService(db, () => new Date('2026-10-12T12:00:00Z'));
+    await service.register(auth);
+    await service.heartbeat(auth);
+    for (const [id, segment, active, expiresAt] of [
+      ['personal', 'member:10000', true, '2026-11-01T00:00:00Z'],
+      ['other', 'member:10001', true, '2026-11-01T00:00:00Z'],
+      ['stopped', 'all', false, '2026-11-01T00:00:00Z'],
+      ['expired', 'all', true, '2026-10-12T12:00:00Z'],
+    ] as const) db.rows.set(`announcements/${id}`, { version: '1', value: {
+      title: id, body: id, segment, active, expiresAt, createdAt: '2026-10-12T00:00:00Z',
+    } });
+    const before = JSON.stringify([...db.rows]);
+    expect((await service.announcements(auth)).announcements.map(a => a.title)).toEqual(['personal']);
+    expect(JSON.stringify([...db.rows])).toBe(before);
+    await expect(service.announcements({ ...auth, secretToken: 'b'.repeat(43) })).rejects.toMatchObject({ status: 403 });
+  });
   it('accepts launcher usage only from the measured schema and resets support for old reports', async () => {
     const db = new MemoryDb();
     const service = new MemberService(db, () => new Date('2026-10-11T00:00:00Z'));
