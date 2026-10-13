@@ -518,7 +518,7 @@ test('本番・検証とも概要から版別人数を確認し、会員検索�
       assert.match(await page.locator('#memberPageStatus').innerText(), /26〜50件 \/ 61人/);
       await page.locator('#memberSearch').fill('#10060');
       assert.equal(await page.locator('#memberRows tr').count(), 1);
-      assert.match(await page.locator('#memberRows').innerText(), /版番号未報告.*日本日付未確認.*未集計/s);
+      assert.match(await page.locator('#memberRows').innerText(), /5\.5\.0以前と推定.*日本日付未確認.*未集計/s);
       await page.locator('#memberSearch').fill('99999');
       assert.match(await page.locator('#memberRows').innerText(), /該当する会員はいません/);
       await page.getByRole('button', { name: '概要', exact: true }).click();
