@@ -49,7 +49,7 @@ function renderMembers() {
     const row = document.createElement('tr');
     row.className = 'border-b border-slate-800';
     const minutes = times.get(member.number);
-    for (const value of ['#'+member.number, member.version ?? '版番号未報告', member.lastSeenAt ?? '日本日付未確認', minutes === undefined ? '未集計' : Math.floor(minutes/60)+'時間'+minutes%60+'分', usageStates.get(member.number)?.label ?? '情報がなく、まだ分からない']) {
+    for (const value of ['#'+member.number, member.version ?? '5.5.0以前と推定', member.lastSeenAt ?? '日本日付未確認', minutes === undefined ? '未集計' : Math.floor(minutes/60)+'時間'+minutes%60+'分', usageStates.get(member.number)?.label ?? '情報がなく、まだ分からない']) {
       const cell = document.createElement('td'); cell.className = 'py-3 pr-4'; cell.textContent = value; row.appendChild(cell);
     }
     rows.appendChild(row);
@@ -67,7 +67,7 @@ function renderDashboard() {
   const cards = document.getElementById('versionCards'); cards.replaceChildren();
   const versions = [...counts.keys()].sort((a,b) => a === 'unknown' ? 1 : b === 'unknown' ? -1 : b.localeCompare(a, undefined, { numeric: true }));
   for (const version of versions) {
-    const label = version === 'unknown' ? '版番号未報告' : version;
+    const label = version === 'unknown' ? '5.5.0以前と推定' : version;
     versionFilter.add(new Option(label,version));
     const card = document.createElement('button');
     card.className = 'text-left rounded-xl border border-slate-600 bg-slate-900 p-4';
