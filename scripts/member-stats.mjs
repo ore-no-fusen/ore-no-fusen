@@ -64,6 +64,7 @@ function featureUsageStats(members, week = isoWeek()) {
     memberVersions: members.filter(member => Number.isSafeInteger(member.generalNumber))
       .map(member => ({
         number: member.generalNumber,
+        partnerStars: Number.isSafeInteger(member.partnerStars) && member.partnerStars >= 0 && member.partnerStars <= 999999 ? member.partnerStars : 0,
         version: typeof member.appVersion === 'string' && /^\d+\.\d+\.\d+$/.test(member.appVersion) ? member.appVersion : null,
         lastSeenAt: communicationDay(member),
       }))
@@ -515,7 +516,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 <td class="py-2 text-right">${feature.reporting ? feature.users + "人" : "不明"}</td>
       <td class="py-2 text-right">${feature.reporting ? feature.percent + "%" : "—"}</td>
       <td class="py-2 text-right">${feature.reporting ? Math.round(feature.users / feature.reporting * 100) + "%" : "—"}</td>
-      <td class="py-2 text-right">${feature.reporting}人</td>
+<td class="py-2 text-right">${feature.reporting}人</td>
     </tr>
   `).join('');
   // Compare numeric version parts; the reported maximum is not a release declaration.
@@ -604,7 +605,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <select id="memberSort" aria-label="並べ替え" class="bg-slate-900 border border-slate-600 rounded-lg p-2"><option value="number">会員番号順</option><option value="recent">通信が新しい順</option><option value="minutes">起動時間が長い順</option></select>
       </div>
       <p class="text-xs text-slate-400">最終通信日は日本時間。時刻のない過去の記録は日本日付未確認。累計起動時間は同意済みの報告値。未集計は利用ゼロを意味しません。</p>
-      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>会員番号</th><th>アプリ版</th><th>最終通信日（日本時間）</th><th>累計起動時間</th><th>利用情報の状態</th></tr></thead><tbody id="memberRows"></tbody></table></div>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>会員番号・★ポイント</th><th>アプリ版</th><th>最終通信日（日本時間）</th><th>累計起動時間</th><th>利用情報の状態</th></tr></thead><tbody id="memberRows"></tbody></table></div>
       <div class="flex items-center justify-between"><span id="memberPageStatus" aria-live="polite"></span><div class="flex gap-2"><button id="memberPrev" class="border rounded-lg px-3 py-2">前へ</button><button id="memberNext" class="border rounded-lg px-3 py-2">次へ</button></div></div>
     </div>
 

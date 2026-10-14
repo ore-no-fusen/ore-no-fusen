@@ -21,6 +21,10 @@ describe('member registration',()=>{
     expect(first.generalNumber).toBe(10000); expect(first.analyticsSubject).toMatch(/^[A-Za-z0-9_-]{32}$/);
     expect(retry.analyticsSubject).toBe(first.analyticsSubject); expect(first).not.toHaveProperty('secretHash');
   });
+  it('starts every member with zero partner stars',async()=>{
+    const service=new MemberService(new MemoryDb(),()=>new Date('2026-09-05T00:00:00Z'));
+    expect((await service.register(auth)).partnerStars).toBe(0);
+  });
   it('looks up only the analysis mapping for one general member number',async()=>{
     const service=new MemberService(new MemoryDb(),()=>new Date('2026-09-05T00:00:00Z'));
     const registered=await service.register(auth);
@@ -259,6 +263,28 @@ describe('member heartbeat', () => {
       }, version: '1' });
     }
     expect((await service.heartbeat(auth)).announcements.map(a => a.title)).toEqual(['weekly', 'iphone-week']);
+  });
+});
+
+describe('improvement partner stars',()=>{
+  it('adds one point per consented week, deduplicates retries, and keeps earned points after stopping',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-12T12:00:00Z'));
+    await service.register(auth);
+    const first=await service.recordUsage(auth,'2026-W41',[],true,0,3,undefined,undefined,undefined,'granted');
+    expect(first).toEqual({saved:true,partnerStars:1});
+    expect(await service.recordUsage(auth,'2026-W41',['note_edited'],true,15,3,undefined,undefined,undefined,'granted')).toEqual({saved:true,partnerStars:1});
+    expect(await service.recordUsage(auth,'2026-W42',[],true,0,3,undefined,undefined,undefined,'granted')).toEqual({saved:true,partnerStars:2});
+    await service.recordUsage(auth,'2026-W50',[],true,0,3,undefined,undefined,undefined,'granted');
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value.partnerStars).toBe(2);
+    expect(await service.recordUsage(auth,'2026-W42',[],false,0,3,undefined,undefined,undefined,'denied')).toEqual({saved:true,partnerStars:2});
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({partnerStars:2,partnerLastStarWeek:'2026-W42',usageConsent:false});
+  });
+  it('does not add stars for unknown consent and returns an already-earned balance',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-12T12:00:00Z'));
+    await service.register(auth);
+    await service.recordUsage(auth,'2026-W41',[],true,0,3,undefined,undefined,undefined,'granted');
+    expect(await service.recordUsage(auth,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,'unknown')).toEqual({saved:true,partnerStars:1});
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value.partnerStars).toBe(1);
   });
 });
 

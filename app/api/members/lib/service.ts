@@ -3,7 +3,7 @@ import type { MemberDatabase, Row } from './database';
 import { createFeedbackConversationStore } from '../../feedback/lib/store';
 import { randomBytes } from 'node:crypto';
 
-export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; lastSeenTimestamp?: string; firstRealUseAt?: string; measurementStartedAt?: string; appVersion?: string; usageSchema?: number; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean | null; usageOpenMinutes?: number };
+export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; lastSeenTimestamp?: string; firstRealUseAt?: string; measurementStartedAt?: string; appVersion?: string; usageSchema?: number; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean | null; usageOpenMinutes?: number; partnerStars?: number; partnerLastStarWeek?: string };
 type UsageFeatureCount = {count:number;activeDays:string[];lastUsedDay:string;firstUsedAt?:string|null;lastUsedAt?:string|null};
 type UsageHistoryWeek = { week: string; schema: number; appVersion: string; features: Record<string,UsageFeatureCount>; days: Record<string,{observedAt?:string|null;observedThrough?:string|null;supportedFeatures?:string[];features:Record<string,UsageFeatureCount>}>; measurementStartedAt?: string|null; supportedFeatures: string[] };
 
@@ -12,6 +12,10 @@ const isoInstant = (value: unknown): value is string => typeof value==='string' 
 const isoDay = (value: unknown): value is string => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
 function minInstant(...values:(string|null|undefined)[]) {return values.filter(isoInstant).sort((a,b)=>Date.parse(a!)-Date.parse(b!))[0]??undefined;}
 function maxInstant(...values:(string|null|undefined)[]) {return values.filter(isoInstant).sort((a,b)=>Date.parse(b!)-Date.parse(a!))[0]??undefined;}
+function isoWeek(date:Date) { const day=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate())); day.setUTCDate(day.getUTCDate()+4-(day.getUTCDay()||7)); const year=day.getUTCFullYear(),yearStart=new Date(Date.UTC(year,0,1)); return `${year}-W${String(Math.ceil(((day.getTime()-yearStart.getTime())/86400000+1)/7)).padStart(2,'0')}`; }
+function recentPartnerWeeks(now:Date) { const monday=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate())); monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7)); return new Set([isoWeek(monday),isoWeek(new Date(monday.getTime()-7*86400000))]); }
+function safePartnerStars(value: unknown): number { return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 999999 ? value as number : 0; }
+function validPartnerWeek(value: unknown): value is string { return typeof value === 'string' && /^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(value); }
 function validFeatureCount(feature:UsageFeatureCount) {
   return !!feature&&Number.isSafeInteger(feature.count)&&feature.count>0&&feature.count<=1000000&&Array.isArray(feature.activeDays)&&feature.activeDays.length>0&&feature.activeDays.length<=8&&feature.activeDays.every(isoDay)&&isoDay(feature.lastUsedDay)&&feature.activeDays.includes(feature.lastUsedDay)&&isoInstant(feature.firstUsedAt)&&isoInstant(feature.lastUsedAt)&&Date.parse(feature.firstUsedAt!)<=Date.parse(feature.lastUsedAt!);
 }
@@ -65,7 +69,7 @@ export class MemberService {
       const counter = await this.db.get<{ next: number }>('counters/general');
       const number = counter?.value.next ?? 10000;
       if (!Number.isSafeInteger(number) || number < 10000 || number === Number.MAX_SAFE_INTEGER) throw new Error('Invalid counter');
-      const member: Member = { ...auth, generalNumber: number, analyticsSubject: randomBytes(24).toString('base64url'), paidNumber: null, billingLinkStatus: 'not_connected', registeredAt: this.now().toISOString(), secretHash: hashSecretToken(auth.secretToken) };
+      const member: Member = { ...auth, generalNumber: number, analyticsSubject: randomBytes(24).toString('base64url'), paidNumber: null, billingLinkStatus: 'not_connected', registeredAt: this.now().toISOString(), secretHash: hashSecretToken(auth.secretToken), partnerStars: 0 };
       // Do not persist the plaintext credential supplied to registration.
       delete (member as Member & { secretToken?: string }).secretToken;
       if (await this.db.commit([
@@ -151,9 +155,9 @@ export class MemberService {
     if(consentStatus==='unknown'&&week===undefined&&features===undefined&&consent===undefined&&openMinutes===undefined) {
       for(let attempt=0;attempt<4;attempt++) {
         const member=await this.authenticate(auth);
-        if(member.value.usageConsent===null) { await this.clearUsageHistory(member.value.analyticsSubject); return {saved:true}; }
+        if(member.value.usageConsent===null) { await this.clearUsageHistory(member.value.analyticsSubject); return {saved:true,partnerStars:safePartnerStars(member.value.partnerStars)}; }
         const updated:Member={...member.value,usageConsent:null,usageSchema:undefined,usageWeek:undefined,usageFeatures:undefined,usageOpenMinutes:undefined,firstRealUseAt:undefined,measurementStartedAt:undefined};
-        if(await this.db.commit([{path:`members/${auth.memberId}`,value:updated,version:member.version}])) { await this.clearUsageHistory(member.value.analyticsSubject); return {saved:true}; }
+        if(await this.db.commit([{path:`members/${auth.memberId}`,value:updated,version:member.version}])) { await this.clearUsageHistory(member.value.analyticsSubject); return {saved:true,partnerStars:safePartnerStars(updated.partnerStars)}; }
       }
       throw new FeedbackRequestError('Usage consent update busy; retry later',503);
     }
@@ -169,7 +173,11 @@ export class MemberService {
       const keepCurrentWeek=usage.consent&&member.value.usageConsent===true&&!!member.value.usageWeek&&member.value.usageWeek>usage.week;
       const sameConsentedWeek=usage.consent&&member.value.usageConsent===true&&member.value.usageWeek===usage.week;
       const retainedFeatures=keepCurrentWeek?member.value.usageFeatures??[]:sameConsentedWeek?[...new Set([...(member.value.usageFeatures??[]),...usage.features])].sort():usage.consent?usage.features:[];
+      const partnerStars=safePartnerStars(member.value.partnerStars);
+      const lastStarWeek=validPartnerWeek(member.value.partnerLastStarWeek)?member.value.partnerLastStarWeek:undefined;
+      const earnsWeeklyStar=usage.consent&&recentPartnerWeeks(this.now()).has(usage.week)&&(!lastStarWeek||usage.week>lastStarWeek)&&partnerStars<999999;
       const updated: Member = { ...member.value, usageSchema: keepCurrentWeek?member.value.usageSchema:sameConsentedWeek?Math.max(member.value.usageSchema??1,usage.schema):usage.schema, usageWeek: keepCurrentWeek?member.value.usageWeek:usage.week, usageFeatures: retainedFeatures, usageConsent: usage.consent,
+        partnerStars:partnerStars+(earnsWeeklyStar?1:0), partnerLastStarWeek:earnsWeeklyStar?usage.week:lastStarWeek,
         firstRealUseAt: usage.consent ? minInstant(member.value.firstRealUseAt,typeof firstUseAt==='string'?firstUseAt:undefined) : undefined,
         measurementStartedAt: usage.consent ? minInstant(member.value.measurementStartedAt,...(reports as UsageHistoryWeek[]).map(item=>item.measurementStartedAt)) : undefined,
         usageOpenMinutes: usage.consent ? (keepCurrentWeek?member.value.usageOpenMinutes:usage.openMinutes ?? member.value.usageOpenMinutes) : undefined };
@@ -187,7 +195,7 @@ export class MemberService {
         } else {
           await this.clearUsageHistory(member.value.analyticsSubject);
         }
-        return { saved: true };
+        return { saved: true, partnerStars: updated.partnerStars };
       }
     }
     throw new FeedbackRequestError('Usage update busy; retry later', 503);

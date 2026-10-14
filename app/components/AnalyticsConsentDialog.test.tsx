@@ -25,6 +25,10 @@ describe('AnalyticsConsentDialog', () => {
     const onDecline = vi.fn();
     const onPostpone = vi.fn();
     render(<AnalyticsConsentDialog language={language} onAccept={onAccept} onDecline={onDecline} onPostpone={onPostpone} />);
+    expect(screen.getByRole('heading', { name: language === 'en' ? /support each other and grow Ore-no-Fusen together/ : /応援し合って、俺の付箋を一緒に育てる/ })).toBeTruthy();
+    expect(screen.getByText(language === 'en' ? /every feature works either way/ : /送らなくても全機能を使えます/)).toBeTruthy();
+    expect(screen.getByText(language === 'en' ? /return that support by sharing progress and changes/ : /こちらからも進み具合や変えたことを「開発者からのお便り」で返す/)).toBeTruthy();
+    expect(screen.getByText(language === 'en' ? /title ranks up at 1, 4, 12, 26, and 52 total reporting weeks/ : /累計1・4・12・26・52週で称号がランクアップ/)).toBeTruthy();
     fireEvent.click(screen.getByText(language === 'en' ? 'What is sent' : '送信される項目を見る'));
     fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'Help improve' : '協力する' }));
     fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'Do not send' : '送信しない' }));

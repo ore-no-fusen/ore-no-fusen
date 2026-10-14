@@ -21,7 +21,7 @@ test('本番と検証で送信設定と到着人数を表示し、最新取得�
       const page = await browser.newPage();
       const initial = featureUsageStats([{}, {}, {}]);
       const latest = featureUsageStats([
-        { usageConsent: true, usageWeek: initial.week, usageFeatures: [] },
+        { generalNumber: 10000, partnerStars: 3, usageConsent: true, usageWeek: initial.week, usageFeatures: [] },
         { usageConsent: true, usageWeek: '2025-W01', usageFeatures: [] },
         { usageConsent: false },
       ]);
@@ -37,6 +37,8 @@ test('本番と検証で送信設定と到着人数を表示し、最新取得�
       assert.equal(await page.locator('#consentUnknown').innerText(), '0');
       assert.equal(await page.locator('#consentReporting').innerText(), '1');
       assert.match(await page.locator('#usageStatePanel').innerText(), /最後に届いた設定/);
+      await page.locator('[data-usage-state="empty"]').click();
+      assert.match(await page.locator('#memberRows').innerText(), /#10000　★ × 3/);
       await page.close();
     }
   } finally { await browser.close(); }
@@ -317,7 +319,7 @@ test('機能ごとの利用者数は会員単位で数え、割合の分母は�
   assert.equal(stats.rows.find(row => row.name === 'note_edited').percent, 25);
   assert.equal(stats.reporting, 2);
   assert.deepEqual(stats.memberOpenTimes, [{ number: 10001, minutes: 495 }]);
-  assert.deepEqual(stats.memberVersions, [{ number: 10001, version: '5.5.1', lastSeenAt: '2026-09-27' }]);
+  assert.deepEqual(stats.memberVersions, [{ number: 10001, partnerStars: 0, version: '5.5.1', lastSeenAt: '2026-09-27' }]);
   const html = generateHtml([], 4, 10003, 0, 0, [], [], '2026/09/27', { today: 0, week: 0, unknown: 4 }, false, 'development', stats);
   assert.match(html, /今週の機能別利用者/);
   assert.match(html, /id="featureReporting">2<\/span> \/ <span id="featureCoverageTotal">4<\/span>人/);
@@ -330,8 +332,8 @@ test('旧版や不正な版番号は会員ダッシュボードで未報告と�
     { generalNumber: 10001, appVersion: '<script>', lastSeenAt: 'bad' },
   ]);
   assert.deepEqual(stats.memberVersions, [
-    { number: 10001, version: null, lastSeenAt: null },
-    { number: 10002, version: null, lastSeenAt: '2026-09-28' },
+    { number: 10001, partnerStars: 0, version: null, lastSeenAt: null },
+    { number: 10002, partnerStars: 0, version: null, lastSeenAt: '2026-09-28' },
   ]);
   const html = generateHtml([], 2, 10002, 0, 0, [], [], '2026/09/28', { today: 0, week: 0, unknown: 2 }, false, 'development', stats);
   assert.doesNotMatch(html, /<script><\/script>/);
@@ -353,7 +355,7 @@ test('更新時にFirestoreから機能別の人数を読み直す', async () =>
     assert.equal(stats.totalMembers, 1);
     assert.equal(stats.reporting, 1);
     assert.equal(stats.rows.find(row => row.name === 'iphone_send').users, 1);
-    assert.deepEqual(stats.memberVersions, [{ number: 10001, version: '5.5.0', lastSeenAt: '2026-09-30' }]);
+    assert.deepEqual(stats.memberVersions, [{ number: 10001, partnerStars: 0, version: '5.5.0', lastSeenAt: '2026-09-30' }]);
     assert.equal((await originalFetch(`${url}feature-usage`)).status, 403);
   } finally {
     globalThis.fetch = originalFetch;

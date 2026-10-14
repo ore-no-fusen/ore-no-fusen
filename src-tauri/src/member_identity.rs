@@ -45,6 +45,7 @@ pub struct MemberLocal {
     #[serde(default)] last_usage_sync_week: Option<String>,
     #[serde(default)] last_usage_sync_features: Vec<String>,
     #[serde(default)] last_usage_sync_at: Option<String>,
+    #[serde(default)] partner_stars: u64,
     #[serde(skip)] syncing: bool,
     #[serde(skip)] usage_syncing: bool,
     #[serde(skip)] open_time_tick: Option<Instant>,
@@ -52,9 +53,9 @@ pub struct MemberLocal {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct MemberView { general_number: Option<u64>, analytics_subject: Option<String>, environment: String }
+pub struct MemberView { general_number: Option<u64>, analytics_subject: Option<String>, environment: String, partner_stars: u64 }
 impl MemberLocal {
-    fn view(&self) -> MemberView { MemberView { general_number:self.general_number, analytics_subject:self.analytics_subject.clone(),  environment:environment().into() } }
+    fn view(&self) -> MemberView { MemberView { general_number:self.general_number, analytics_subject:self.analytics_subject.clone(), environment:environment().into(), partner_stars:self.partner_stars } }
 }
 fn week_key(now: chrono::DateTime<Utc>) -> String { let iso=now.iso_week(); format!("{}-W{:02}",iso.year(),iso.week()) }
 
@@ -246,7 +247,7 @@ fn current_usage_snapshot(member:&MemberLocal,consent:Option<bool>,week:&str)->(
 }
 
 #[tauri::command]
-pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>)->Result<(),String>{
+pub async fn member_sync_usage(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>)->Result<(),String>{
     let base=endpoint()?;
     let (snapshot,week,features,consent,open_seconds,history,reporter_id)={
         let mut g=state.lock().map_err(|_|"State unavailable")?;
@@ -265,15 +266,17 @@ pub async fn member_sync_usage(state:State<'_,Mutex<AppState>>)->Result<(),Strin
         let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().map_err(|_|"Cannot create member client")?;
         let mut payload=serde_json::json!({"consentStatus":match consent{Some(true)=>"granted",Some(false)=>"denied",None=>"unknown"}});
         if let Some(granted)=consent { payload.as_object_mut().unwrap().extend(serde_json::json!({"week":week,"features":features,"consent":granted,"usageSchema":3,"openMinutes":open_seconds/60,"history":history,"reporterId":reporter_id,"firstUseAt":snapshot.first_use_at}).as_object().unwrap().clone()); }
-        post(&client,&base,"usage",&snapshot,payload).await?;
-        Ok::<(),String>(())
+        let response=post(&client,&base,"usage",&snapshot,payload).await?;
+        Ok::<Option<u64>,String>(response["partnerStars"].as_u64().filter(|stars|*stars<=999999))
     }.await;
     let mut g=state.lock().map_err(|_|"State unavailable")?;
     let member=ensure(&mut g)?;
     member.usage_syncing=false;
-    result?;
+    if let Some(stars)=result? { member.partner_stars=stars; }
     mark_usage_synced(member,consent,&week,&features);
-    persist(member)
+    persist(member)?;
+    let _=app.emit("member_updated",member.view());
+    Ok(())
 }
 
 fn should_sync_usage(member:&MemberLocal,consent:Option<bool>,week:&str,features:&[String])->bool {
@@ -813,5 +816,30 @@ mod single_setting_tests {
         let mut state=AppState::default();
         state.usage_consent=Some(true);
         assert!(serde_json::to_value(state).unwrap().get("usage_consent").is_none());
+    }
+}
+
+#[cfg(test)]
+mod partner_star_tests {
+    use super::*;
+
+    #[test]
+    fn partner_stars_are_kept_in_protected_identity_and_exposed_as_camel_case() {
+        let member = MemberLocal { partner_stars: 12, ..Default::default() };
+        let saved = serde_json::to_vec(&member).unwrap();
+        let restored: MemberLocal = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(restored.partner_stars, 12);
+
+        let view = serde_json::to_value(restored.view()).unwrap();
+        assert_eq!(view["partnerStars"], 12);
+        assert!(view.get("partner_stars").is_none());
+    }
+
+    #[test]
+    fn old_member_identity_without_partner_stars_defaults_to_zero() {
+        let mut saved = serde_json::to_value(MemberLocal::default()).unwrap();
+        saved.as_object_mut().unwrap().remove("partner_stars");
+        let restored: MemberLocal = serde_json::from_value(saved).unwrap();
+        assert_eq!(restored.partner_stars, 0);
     }
 }
