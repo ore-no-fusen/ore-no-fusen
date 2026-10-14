@@ -15,7 +15,7 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline, 
   const en = language === 'en';
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <MessageSurface role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" tabIndex={0} className="w-full min-w-0 max-w-lg max-h-[90vh] overflow-y-auto break-words rounded-2xl bg-white p-4 sm:p-7 shadow-2xl">
+      <MessageSurface role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" tabIndex={0} style={{ maxWidth: '32rem' }} className="w-full min-w-0 max-w-lg max-h-[90vh] overflow-y-auto break-words rounded-2xl bg-white p-4 sm:p-7 shadow-2xl">
         <h2 id="analytics-consent-title" className="text-xl font-bold text-slate-900">
           {en ? 'Share usage information?' : '利用情報の送信に協力しますか？'}
         </h2>
