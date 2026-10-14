@@ -42,4 +42,5 @@ it('自分のFirestore同期済み星ポイントを会員番号の横に表示�
  expect(screen.getByText('次の「改善アンバサダー」まであと8★です。')).toBeTruthy();
  expect(screen.getByText(/同意した利用報告がサーバーに届いた週に、★を1つ/)).toBeTruthy();
  expect(screen.getByText(/あなたの毎日も少しよくなる/)).toBeTruthy();
+ expect(screen.getByText(/小さな「ありがとう」のたねです.*助言を改善に活かし/)).toBeTruthy();
 });

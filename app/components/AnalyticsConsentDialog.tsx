@@ -25,11 +25,11 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline, 
             : '届いた助言や、同意を選んだ方の利用報告を改善に活かします。俺の付箋が使いやすくなれば、あなたの毎日も少しよくなる。そんな改善を目指しています。利用情報の送信は任意で、送らなくても全機能を使えます。付箋の本文・画像・タグ名・検索語・ファイル名・保存場所は送りません。'}
         </p>
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          <p className="font-bold">{en ? '★ Stars for shared reports' : '★ 報告が届いた週に星がたまります'}</p>
+          <p className="font-bold">{en ? '★ Thank you for using Ore-no-Fusen' : '★ 使ってくれて、ありがとう'}</p>
           <p className="mt-1">
             {en
-              ? 'A consented weekly report earns one star when it reaches the server, up to one per week. Ranks rise at 1, 4, 12, 26, and 52 reporting weeks. Feature use counts do not affect stars; earned stars remain if you stop sharing. Future rewards are being considered, but their details and timing are undecided.'
-              : '同意した週の利用報告がサーバーに届くと、その週に★を1つ獲得できます（週1つまで）。累計1・4・12・26・52週で称号が上がります。機能の利用回数は関係なく、送信を停止しても獲得済みの★は残ります。将来のごほうびも検討していますが、内容と時期は未定です。'}
+              ? 'When you choose to share, each weekly report that reaches the server adds one star, up to one per week. Ranks rise at 1, 4, 12, 26, and 52 reporting weeks. Feature use counts do not affect stars, and earned stars remain if you stop sharing. Stars are a small seed of thanks for using Ore-no-Fusen. Your suggestions help us make it better, so it can become an app that brings a little more ease to everyday life. We are grateful to everyone who helps it grow.'
+              : '利用情報の送信を選んだ方は、週次報告がサーバーに届いた週に★が1つ増えます（週1つまで）。累計1・4・12・26・52週で称号が上がります。機能の利用回数では増減せず、送信を停止しても獲得済みの★は残ります。★は、俺の付箋を使ってくれることへの、小さな「ありがとう」のたねです。いただいた助言を改善に活かし、毎日が少し便利になるアプリに育てていきます。一緒に育ててくれる皆さんに感謝しています。'}
           </p>
         </div>
         <p className="mt-3 text-sm leading-6 text-slate-600">{en ? 'We will share improvement progress and changes through Developer Messages.' : '改善の進み具合や変更内容は、「開発者からのお便り」でお知らせします。'}</p>

@@ -30,6 +30,8 @@ describe('AnalyticsConsentDialog', () => {
     expect(screen.getByText(language === 'en' ? /every feature works either way/i : /送らなくても全機能を使えます/)).toBeTruthy();
     expect(screen.getByText(language === 'en' ? /Ranks rise at 1, 4, 12, 26, and 52 reporting weeks/ : /累計1・4・12・26・52週で称号が上がります/)).toBeTruthy();
     expect(screen.getByText(language === 'en' ? /A more useful app can make everyday life a little easier/ : /あなたの毎日も少しよくなる/)).toBeTruthy();
+    expect(screen.getByText(language === 'en' ? /a small seed of thanks[\s\S]*suggestions help us make it better/ : /小さな「ありがとう」のたねです[\s\S]*助言を改善に活かし/)).toBeTruthy();
+    expect(screen.queryByText(language === 'en' ? /Future rewards are being considered/ : /将来のごほうび/)).toBeNull();
     fireEvent.click(screen.getByText(language === 'en' ? 'What is sent' : '送信される項目を見る'));
     fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'Help improve' : '協力する' }));
     fireEvent.click(screen.getByRole('button', { name: language === 'en' ? 'Do not send' : '送信しない' }));
