@@ -38,6 +38,7 @@ import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
 import { trackEvent } from './utils/analytics';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
+import { shouldShowAnalyticsConsentPrompt, useAnalyticsConsentPromptPostponed } from './hooks/useAnalyticsConsentPrompt';
 import { useDiscordReplyIngest } from './hooks/useDiscordReplyIngest';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
@@ -272,7 +273,7 @@ function OrchestratorContent() {
   const [hotkeyRegisterFailureMessage, setHotkeyRegisterFailureMessage] = useState<string | null>(null);
   const [showMonthlyBackupPrompt, setShowMonthlyBackupPrompt] = useState(false);
   const [showDesktopShortcutPrompt, setShowDesktopShortcutPrompt] = useState(false);
-  const [analyticsConsentPostponed, setAnalyticsConsentPostponed] = useState(false);
+  const { postponed: analyticsConsentPostponed, postpone: postponeAnalyticsConsent } = useAnalyticsConsentPromptPostponed();
   const desktopShortcutPromptCheckedRef = useRef(false);
   const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
   const monthlyBackupCheckedRef = useRef(false);
@@ -2255,7 +2256,14 @@ function OrchestratorContent() {
     );
   }
 
-  if (isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && !settings.analytics_consent && !analyticsConsentPostponed) {
+  if (shouldShowAnalyticsConsentPrompt({
+    isMainWindow,
+    isCheckingSetup,
+    setupRequired,
+    settingsLoading,
+    consent: settings.analytics_consent,
+    postponed: analyticsConsentPostponed,
+  })) {
     const saveAnalyticsConsent = async (consent: 'granted' | 'denied') => {
       await saveSettings({ ...settings, analytics_consent: consent });
     };
@@ -2264,7 +2272,7 @@ function OrchestratorContent() {
         language={language}
         onAccept={() => { void saveAnalyticsConsent('granted'); }}
         onDecline={() => { void saveAnalyticsConsent('denied'); }}
-        onPostpone={() => setAnalyticsConsentPostponed(true)}
+        onPostpone={postponeAnalyticsConsent}
       />
     );
   }
