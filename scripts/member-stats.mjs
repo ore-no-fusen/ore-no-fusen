@@ -14,7 +14,7 @@ const propertyId = '524376317';
 const GA_START_DATE = '2026-09-08';
 const USAGE_STATES = {
   recorded: { label: '使った機能が分かる', description: '今週使った機能名が届いています。', color: 'text-emerald-300' },
-  empty: { label: '対象機能すべて未使用', description: '今週の情報が届き、従来の対象機能はすべて未使用です。', color: 'text-amber-300' },
+  empty: { label: '機能名の記録なし（実利用は不明）', description: '今週の通信は届きましたが機能名はありません。未使用か記録漏れかは判定できません。', color: 'text-amber-300' },
   stale: { label: '今週分はまだ届いていない', description: '以前の情報はありますが、今週の使い方はまだ分かりません。', color: 'text-sky-300' },
   disabled: { label: '利用情報の送信がオフ', description: '最後に届いた情報では、利用記録を送らない設定でした。現在の設定は未確認です。', color: 'text-slate-300' },
   unknown: { label: '情報がなく、まだ分からない', description: '分析情報を確認できません。設定・未起動・通信失敗などの理由は不明です。', color: 'text-slate-300' },
@@ -623,7 +623,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <div id="usageStateCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         ${(featureStats.usageStates ?? []).map(state => `<button type="button" data-usage-state="${state.key}" class="text-left rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm ${state.color}">${state.label}</div><div class="text-2xl font-bold mt-1 ${state.color}">${state.count}人</div><p class="text-xs text-slate-400 mt-2">${state.description}</p></button>`).join('')}
       </div>
-      <p class="text-sm text-amber-300">今週の情報が届いた人は、計測対象の機能ごとに使用・未使用を判定できます。情報が届いていない人の使用状況は不明です。</p>
+      <p class="text-sm text-amber-300">届いた利用記録に機能名があれば確認できます。機能名がない場合は、未使用か記録漏れかを判定できません。</p>
       <p id="usageStateUpdated" class="text-xs text-slate-400">確認日時: ${nowJst} (JST)・人数を押すと会員一覧へ移動します。</p>
       <p id="featureRefreshStatus" class="text-sm text-amber-300" role="status"></p>
     </div>
@@ -639,11 +639,11 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
       <p class="text-sm text-amber-300">今週の情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。報告者内比は、その機能を計測できる今週の報告者だけを分母にします。</p>
       <p class="text-sm text-slate-400">クイックランチャーへしまうは計測対応版から届いた情報だけで判定します。旧版の未計測は利用ゼロではありません。タグ一括格納は成功した付箋1枚につき1回記録します。</p>
-      <p id="featureEvidence" class="text-sm text-amber-300">${featureStats.reporting ? "届いた会員の情報について、機能ごとの使用・未使用を集計しています。全会員の使用状況を確定する値ではありません。" : "今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
+      <p id="featureEvidence" class="text-sm text-amber-300">${featureStats.reporting ? "届いた利用記録の機能名を集計しています。機能名なしは未使用ではなく不明として扱います。" : "今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
       <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
-          <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">利用人数</th><th class="pb-2 text-right">全会員比</th><th class="pb-2 text-right">今週の報告者内比</th><th class="pb-2 text-right">判定できた人数</th></tr></thead>
+          <thead><tr class="border-b border-slate-600 text-slate-400"><th class="pb-2">機能</th><th class="pb-2 text-right">記録あり人数</th><th class="pb-2 text-right">全会員比</th><th class="pb-2 text-right">今週の報告者内記録率</th><th class="pb-2 text-right">判定できた人数</th></tr></thead>
           <tbody id="featureUsageRows">${featureUsageRows}</tbody>
         </table>
       </div>
@@ -659,9 +659,9 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
           <option value="veteran">古参会員（番号10000〜10049）</option>
           <option value="newcomer">新規会員（番号10100以降）</option>
           <option value="feature_active">今週の機能利用あり</option>
-          <option value="feature_inactive">今週の機能利用なし（利用分析に同意済み）</option>
+          <option value="feature_inactive">今週の計測対応済み記録に機能名なし（同意済み）</option>
           <option value="feature_week_used">今週、指定した機能を使用</option>
-          <option value="feature_week_unused">今週、指定した機能を未使用（利用分析に同意済み）</option>
+          <option value="feature_week_unused">今週、計測対応済みの記録で機能名なし（同意済み）</option>
           <option value="iphone_week_unused">今週、iPhoneへ送信・iPhoneから受信をしていない（利用分析に同意済み）</option>
           <option value="member">会員番号を指定</option>
         </select>

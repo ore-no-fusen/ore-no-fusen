@@ -2,23 +2,46 @@
 import { invoke } from '@tauri-apps/api/core';
 
 const pending = new Map<string, number>();
-let timer: number | undefined;
+let retryBatch: { batchId: string; counts: Record<string, number> } | undefined;
+let retryTimer: number | undefined;
+let generation = 0;
+let flushing: Promise<void> | undefined;
+let flushScheduled = false;
 
 async function flush() {
-  timer = undefined;
-  if (pending.size === 0) return;
-  const counts = Object.fromEntries(pending);
-  pending.clear();
+  if (flushing) return flushing;
+  flushing = flushOnce().finally(() => {
+    flushing = undefined;
+    if (!retryBatch && pending.size > 0) void flush();
+  });
+  return flushing;
+}
+
+async function flushOnce() {
+  if (!retryBatch) {
+    if (pending.size === 0) return;
+    retryBatch = { batchId: crypto.randomUUID(), counts: Object.fromEntries(pending) };
+    pending.clear();
+  }
+  const batch = retryBatch;
+  const startedAt = generation;
   try {
-    await invoke('member_record_batch', { counts });
+    await invoke('member_record_batch', batch);
+    if (generation === startedAt && retryBatch === batch) retryBatch = undefined;
   } catch {
-    // Analysis is best-effort. Never retry in the foreground or block note work.
+    // Keep the same batch id and payload: Rust persists it atomically and deduplicates retries.
+    if (generation === startedAt && retryBatch === batch && retryTimer === undefined) {
+      retryTimer = window.setTimeout(() => { retryTimer = undefined; void flush(); }, 60_000);
+    }
   }
 }
 
 export function countMemberFeature(feature: string) {
   pending.set(feature, (pending.get(feature) ?? 0) + 1);
-  if (timer === undefined) timer = window.setTimeout(() => void flush(), 60_000);
+  if (!flushScheduled) {
+    flushScheduled = true;
+    queueMicrotask(() => { flushScheduled = false; void flush(); });
+  }
 }
 
 export function flushMemberFeatureQueue() {
@@ -26,7 +49,10 @@ export function flushMemberFeatureQueue() {
 }
 
 export function clearMemberFeatureQueue() {
+  generation++;
   pending.clear();
-  if (timer !== undefined) window.clearTimeout(timer);
-  timer = undefined;
+  retryBatch = undefined;
+  if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+  retryTimer = undefined;
+  flushScheduled = false;
 }

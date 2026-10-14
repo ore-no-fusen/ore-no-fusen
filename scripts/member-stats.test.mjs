@@ -78,11 +78,11 @@ test('本番・検証とも状態から会員を確認し、機能記録なし�
       await page.getByRole('button', { name: '機能利用', exact: true }).click();
       assert.equal(await page.locator('#usageStateCards button').count(), 5);
       await page.locator('#featureRefreshStatus').filter({ hasText: '取得できませんでした' }).waitFor();
-      assert.match(await page.locator('#featureEvidence').innerText(), /機能ごとの使用・未使用を集計/);
+      assert.match(await page.locator('#featureEvidence').innerText(), /機能名なしは未使用ではなく不明/);
       assert.match(await page.locator('#featureUsageRows').innerText(), /0人/);
       assert.match(await page.locator('#featureUsageRows').innerText(), /0%/);
       await page.locator('[data-usage-state="empty"]').click();
-      assert.match(await page.locator('#memberRows').innerText(), /#10000.*対象機能すべて未使用/s);
+      assert.match(await page.locator('#memberRows').innerText(), /#10000.*機能名の記録なし（実利用は不明）/s);
       assert.doesNotMatch(await page.locator('#memberRows').innerText(), /#10001/);
       await page.getByRole('button', { name: '概要', exact: true }).click();
       await page.locator('#versionCards button').filter({ hasText: '5.5.1' }).click();

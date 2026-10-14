@@ -30,6 +30,7 @@ pub struct MemberLocal {
     #[serde(default)] first_use_at: Option<String>,
     #[serde(default)] measurement_started_at: Option<String>,
     #[serde(default)] reporter_id: Option<String>,
+    #[serde(default)] recorded_batch_ids: Vec<String>,
     #[serde(default)] read_announcement_ids: BTreeSet<String>,
     #[serde(default)] announcements: Vec<AnnouncementPayload>,
     #[serde(default)] last_heartbeat_date: Option<String>,
@@ -137,8 +138,8 @@ fn choice(value: Option<&str>) -> Option<bool> {
 }
 
 fn clear_usage(member: &mut MemberLocal) -> bool {
-    let changed = !member.weeks.is_empty() || member.open_seconds != 0 || member.first_use_at.is_some() || member.measurement_started_at.is_some();
-    member.weeks.clear(); member.open_seconds = 0; member.open_time_tick = None; member.first_use_at=None; member.measurement_started_at=None;
+    let changed = !member.weeks.is_empty() || member.open_seconds != 0 || member.first_use_at.is_some() || member.measurement_started_at.is_some() || !member.recorded_batch_ids.is_empty();
+    member.weeks.clear(); member.recorded_batch_ids.clear(); member.open_seconds = 0; member.open_time_tick = None; member.first_use_at=None; member.measurement_started_at=None;
     changed
 }
 
@@ -168,13 +169,28 @@ fn usage_choice(state:&mut AppState)->Result<Option<bool>,String>{ensure(state)?
 #[tauri::command]
 pub fn member_get(state:State<'_,Mutex<AppState>>)->Result<MemberView,String>{let mut g=state.lock().map_err(|_|"State unavailable")?;Ok(ensure(&mut g)?.view())}
 
-/// Adds a UI-side batch to memory. It deliberately performs no persistence.
+/// Adds and durably saves one UI-side batch. Replayed batch IDs are ignored.
 #[tauri::command]
-pub fn member_record_batch(state:State<'_,Mutex<AppState>>,counts:BTreeMap<String,u64>)->Result<(),String>{
-    if counts.is_empty(){return Ok(());} if counts.len()>FEATURES.len() || counts.iter().any(|(n,c)|!FEATURES.contains(&n.as_str())||*c==0||*c>1_000_000){return Err("Invalid feature batch".into());}
+pub fn member_record_batch(state:State<'_,Mutex<AppState>>,batch_id:String,counts:BTreeMap<String,u64>)->Result<(),String>{
+    if counts.is_empty(){return Ok(());} if batch_id.len()!=36 || uuid::Uuid::parse_str(&batch_id).is_err() || counts.len()>FEATURES.len() || counts.iter().any(|(n,c)|!FEATURES.contains(&n.as_str())||*c==0||*c>1_000_000){return Err("Invalid feature batch".into());}
     let mut g=state.lock().map_err(|_|"State unavailable")?;
-    record_counts(&mut g, counts, Utc::now());
+    ensure(&mut g)?;
+    if g.usage_consent != Some(true) { return Ok(()); }
+    if g.member.as_ref().ok_or("Member identity unavailable")?.recorded_batch_ids.iter().any(|id|id==&batch_id) { return Ok(()); }
+    let before=g.member.as_ref().ok_or("Member identity unavailable")?.clone();
+    record_batch(&mut g,batch_id,counts,Utc::now());
+    if let Err(error)=persist(g.member.as_ref().ok_or("Member identity unavailable")?) { g.member=Some(before); return Err(error); }
     Ok(())
+}
+fn record_batch(g:&mut AppState,batch_id:String,counts:BTreeMap<String,u64>,now:chrono::DateTime<Utc>)->bool{
+    if g.usage_consent!=Some(true){return false;}
+    let Some(member)=g.member.as_ref()else{return false;};
+    if member.recorded_batch_ids.iter().any(|id|id==&batch_id){return false;}
+    record_counts(g,counts,now);
+    let Some(member)=g.member.as_mut()else{return false;};
+    member.recorded_batch_ids.push(batch_id);
+    if member.recorded_batch_ids.len()>512{let remove=member.recorded_batch_ids.len()-512;member.recorded_batch_ids.drain(..remove);}
+    true
 }
 fn record_counts(g: &mut AppState, counts: BTreeMap<String,u64>, now: chrono::DateTime<Utc>) {
     if g.usage_consent != Some(true) { return; }
@@ -352,10 +368,11 @@ fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str, anal
             .map_or(false, |w| !w.features.is_empty()),
         "feature_inactive" => analytics_consent
             && member.weeks.get(current_week)
-                .map_or(true, |w| w.features.is_empty()),
+                .map_or(false, |w| w.schema>=3 && FEATURES.iter().all(|feature|w.supported_features.iter().any(|name|name==feature)) && w.features.is_empty()),
         "iphone_week_unused" => analytics_consent
-            && member.weeks.get(current_week).map_or(true, |w|
-                !w.features.contains_key("iphone_send") && !w.features.contains_key("iphone_receive")),
+            && member.weeks.get(current_week).map_or(false, |w|
+                w.schema>=3 && w.supported_features.contains(&"iphone_send".to_string()) && w.supported_features.contains(&"iphone_receive".to_string())
+                    && !w.features.contains_key("iphone_send") && !w.features.contains_key("iphone_receive")),
         _ => {
             if let Some(feature) = segment.strip_prefix("feature_week_used:") {
                 return analytics_consent && FEATURES.contains(&feature)
@@ -365,7 +382,7 @@ fn matches_segment(segment: &str, member: &MemberLocal, current_week: &str, anal
             if let Some(feature) = segment.strip_prefix("feature_week_unused:") {
                 return analytics_consent && FEATURES.contains(&feature)
                     && member.weeks.get(current_week)
-                        .map_or(true, |w| !w.features.contains_key(feature));
+                        .map_or(false, |w| w.schema>=3 && w.supported_features.iter().any(|name|name==feature) && !w.features.contains_key(feature));
             }
             segment.strip_prefix("member:")
                 .and_then(|number| number.parse::<u64>().ok())
@@ -525,6 +542,19 @@ mod segment_tests {
     }
 
     #[test]
+    fn feature_batches_are_idempotent_and_never_record_without_consent() {
+        let now=chrono::DateTime::parse_from_rfc3339("2026-10-11T00:00:00Z").unwrap().with_timezone(&Utc);
+        let counts=BTreeMap::from([("note_edited".into(),2)]);
+        let mut state=AppState{member:Some(MemberLocal::default()),usage_consent:Some(true),..Default::default()};
+        assert!(record_batch(&mut state,"batch-1".into(),counts.clone(),now));
+        assert!(!record_batch(&mut state,"batch-1".into(),counts.clone(),now));
+        assert_eq!(state.member.as_ref().unwrap().weeks["2026-W41"].features["note_edited"].count,2);
+        state.usage_consent=Some(false);
+        assert!(!record_batch(&mut state,"batch-2".into(),counts,now));
+        assert_eq!(state.member.as_ref().unwrap().weeks["2026-W41"].features["note_edited"].count,2);
+    }
+
+    #[test]
     fn daily_real_use_timestamps_are_utc_and_weeks_switch_without_overwriting() {
         let mut state=AppState{member:Some(MemberLocal::default()),usage_consent:Some(true),..Default::default()};
         let first=chrono::DateTime::parse_from_rfc3339("2026-10-11T23:59:59Z").unwrap().with_timezone(&Utc);
@@ -631,10 +661,11 @@ mod segment_tests {
     #[test]
     fn specific_weekly_features_require_consent_and_match_the_selected_feature() {
         let mut member = MemberLocal::default();
+        assert!(!matches_segment("feature_week_unused:note_edited", &member, "2026-W39", true));
         let mut features = BTreeMap::new();
         features.insert("note_edited".to_string(), FeatureCount::default());
         member.weeks.insert("2026-W39".to_string(), WeeklyUsage {
-            week: "2026-W39".into(), schema: 1, app_version: "5.4.0".into(), features,
+            week: "2026-W39".into(), schema: 3, app_version: "5.5.1".into(), features, supported_features: FEATURES.iter().map(|f|f.to_string()).collect(),
             ..Default::default()
         });
         assert!(matches_segment("feature_week_used:note_edited", &member, "2026-W39", true));
@@ -648,16 +679,33 @@ mod segment_tests {
     }
 
     #[test]
+    fn inactive_segment_requires_a_complete_supported_week_and_consent() {
+        let mut member=MemberLocal::default();
+        assert!(!matches_segment("feature_inactive",&member,"2026-W41",true));
+        member.weeks.insert("2026-W41".into(),WeeklyUsage{week:"2026-W41".into(),schema:3,supported_features:FEATURES.iter().map(|f|f.to_string()).collect(),..Default::default()});
+        assert!(matches_segment("feature_inactive",&member,"2026-W41",true));
+        member.weeks.get_mut("2026-W41").unwrap().features.insert("note_edited".into(),FeatureCount::default());
+        assert!(!matches_segment("feature_inactive",&member,"2026-W41",true));
+        member.weeks.get_mut("2026-W41").unwrap().features.clear();
+        member.weeks.get_mut("2026-W41").unwrap().supported_features.pop();
+        assert!(!matches_segment("feature_inactive",&member,"2026-W41",true));
+        assert!(!matches_segment("feature_inactive",&member,"2026-W41",false));
+    }
+
+    #[test]
     fn iphone_week_unused_requires_consent_and_no_send_or_receive_this_week() {
         let mut member = MemberLocal::default();
+        assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", true));
+        member.weeks.insert("2026-W39".into(), WeeklyUsage { week:"2026-W39".into(), schema:3, supported_features:FEATURES.iter().map(|f|f.to_string()).collect(), ..Default::default() });
         assert!(matches_segment("iphone_week_unused", &member, "2026-W39", true));
         let mut features = BTreeMap::new();
         features.insert("iphone_send".to_string(), FeatureCount::default());
         member.weeks.insert("2026-W39".into(), WeeklyUsage {
-            week: "2026-W39".into(), schema: 1, app_version: "5.4.0".into(), features,
+            week: "2026-W39".into(), schema: 3, app_version: "5.5.1".into(), features, supported_features: FEATURES.iter().map(|f|f.to_string()).collect(),
             ..Default::default()
         });
         assert!(!matches_segment("iphone_week_unused", &member, "2026-W39", true));
+        member.weeks.insert("2026-W40".into(), WeeklyUsage { week:"2026-W40".into(), schema:3, supported_features:FEATURES.iter().map(|f|f.to_string()).collect(), ..Default::default() });
         assert!(matches_segment("iphone_week_unused", &member, "2026-W40", true));
         member.weeks.get_mut("2026-W39").unwrap().features.clear();
         member.weeks.get_mut("2026-W39").unwrap().features.insert("iphone_receive".into(), FeatureCount::default());

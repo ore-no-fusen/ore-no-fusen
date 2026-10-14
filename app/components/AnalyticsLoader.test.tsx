@@ -88,7 +88,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     invokeMock.mockClear();
     await vi.advanceTimersByTimeAsync(1_000);
     const commands=invokeMock.mock.calls.map(([command])=>command);
-    expect(invokeMock).toHaveBeenCalledWith('member_record_batch',{counts:{note_duplicate:1}});
+    expect(invokeMock).toHaveBeenCalledWith('member_record_batch',expect.objectContaining({batchId:expect.any(String),counts:{note_duplicate:1}}));
     expect(commands.indexOf('member_record_batch')).toBeLessThan(commands.indexOf('member_sync_usage'));
     expect(commands.indexOf('member_flush')).toBeLessThan(commands.indexOf('member_sync_usage'));
   });
@@ -118,7 +118,7 @@ describe('AnalyticsLoader low-impact scheduling', () => {
     expect(invokeMock).toHaveBeenCalledWith('get_settings');
     trackEvent('feature_used',{feature_name:'note_edited'});
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(invokeMock).toHaveBeenCalledWith('member_record_batch',{counts:{note_edited:1}});
+    expect(invokeMock).toHaveBeenCalledWith('member_record_batch',expect.objectContaining({batchId:expect.any(String),counts:{note_edited:1}}));
     expect(invokeMock).not.toHaveBeenCalledWith('member_needs_sync');
     expect(invokeMock).not.toHaveBeenCalledWith('member_heartbeat');
   });
