@@ -35,10 +35,11 @@ it('保存失敗を成功と表示しない',async()=>{
 it('自分のFirestore同期済み星ポイントを会員番号の横に表示する',async()=>{
  ipc.invoke.mockImplementation(async(command:string)=>command==='get_settings'?{analytics_consent:'granted',language:'ja'}:{generalNumber:10000,partnerStars:4});
  render(<MemberSettings language="ja"/>);
- await screen.findByText('応援し合って、俺の付箋を一緒に育てよう。');
+ await screen.findByText('俺の付箋は、使う人と一緒に育っていきます。');
  await screen.findByLabelText('星ポイント 4 個');
  expect(screen.getByRole('heading',{name:/会員番号：10000.*星ポイント 4 個/})).toBeTruthy();
  expect(screen.getByLabelText('改善パートナー称号').textContent).toContain('継続パートナー');
  expect(screen.getByText('次の「改善アンバサダー」まであと8★です。')).toBeTruthy();
  expect(screen.getByText(/同意した利用報告がサーバーに届いた週に、★を1つ/)).toBeTruthy();
+ expect(screen.getByText(/あなたの毎日も少しよくなる/)).toBeTruthy();
 });
