@@ -1289,6 +1289,20 @@ mod tests {
     static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
+    fn legacy_settings_default_reconfirmation_marker_without_changing_denial() {
+        let legacy = r#"{"base_path":null,"analytics_consent":"denied"}"#;
+        let mut settings: Settings = serde_json::from_str(legacy).unwrap();
+
+        assert_eq!(settings.analytics_consent.as_deref(), Some("denied"));
+        assert_eq!(settings.analytics_consent_reconfirmation_version, None);
+
+        settings.analytics_consent_reconfirmation_version = Some(1);
+        let saved = serde_json::to_value(settings).unwrap();
+        assert_eq!(saved["analytics_consent"], "denied");
+        assert_eq!(saved["analytics_consent_reconfirmation_version"], 1);
+    }
+
+    #[test]
     fn archived_at_is_added_replaced_and_removed() {
         let original = "---\ntags: [仕事]\n---\n\n本文";
         let added = add_archived_at(original, "2026-09-06T01:02:03+00:00");

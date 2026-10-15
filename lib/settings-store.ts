@@ -21,6 +21,8 @@ export type AppSettings = {
     auto_start: boolean
     desktop_shortcut_prompted: boolean
     analytics_consent?: "granted" | "denied"
+    /** 再確認ダイアログの表示リビジョン。利用情報の送信同意とは独立。 */
+    analytics_consent_reconfirmation_version?: number
     font_size: number
     sound_enabled: boolean
     sound_create: SoundPreset
@@ -130,6 +132,7 @@ export function useSettings() {
                         auto_start: parsed.auto_start ?? parsed.autoStart ?? DEFAULT_SETTINGS.auto_start,
                         desktop_shortcut_prompted: parsed.desktop_shortcut_prompted ?? false,
                         analytics_consent: parsed.analytics_consent,
+                        analytics_consent_reconfirmation_version: parsed.analytics_consent_reconfirmation_version,
                         font_size: parsed.font_size ?? parsed.fontSize ?? DEFAULT_SETTINGS.font_size,
                         sound_enabled: parsed.sound_enabled ?? parsed.soundEnabled ?? DEFAULT_SETTINGS.sound_enabled,
                         sound_create: normalizeSoundPreset(parsed.sound_create), sound_duplicate: normalizeSoundPreset(parsed.sound_duplicate), sound_archive: normalizeSoundPreset(parsed.sound_archive ?? parsed.sound_save), sound_delete: normalizeSoundPreset(parsed.sound_delete), sound_checkbox: normalizeSoundPreset(parsed.sound_checkbox), sound_pin: normalizeSoundPreset(parsed.sound_pin), sound_unpin: normalizeSoundPreset(parsed.sound_unpin), sound_alarm: normalizeSoundPreset(parsed.sound_alarm),
@@ -167,6 +170,7 @@ export function useSettings() {
                     auto_start: loaded.auto_start,
                     desktop_shortcut_prompted: loaded.desktop_shortcut_prompted ?? false,
                     analytics_consent: loaded.analytics_consent,
+                    analytics_consent_reconfirmation_version: loaded.analytics_consent_reconfirmation_version,
                     font_size: loaded.font_size,
                     sound_enabled: loaded.sound_enabled,
                     sound_create: normalizeSoundPreset(loaded.sound_create), sound_duplicate: normalizeSoundPreset(loaded.sound_duplicate), sound_archive: normalizeSoundPreset(loaded.sound_archive ?? loaded.sound_save), sound_delete: normalizeSoundPreset(loaded.sound_delete), sound_checkbox: normalizeSoundPreset(loaded.sound_checkbox), sound_pin: normalizeSoundPreset(loaded.sound_pin), sound_unpin: normalizeSoundPreset(loaded.sound_unpin), sound_alarm: normalizeSoundPreset(loaded.sound_alarm),

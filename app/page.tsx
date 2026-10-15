@@ -39,6 +39,7 @@ import { trackEvent } from './utils/analytics';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { shouldShowAnalyticsConsentPrompt, useAnalyticsConsentPromptPostponed } from './hooks/useAnalyticsConsentPrompt';
+import { ANALYTICS_CONSENT_RECONFIRMATION_VERSION } from './utils/analyticsConsentPrompt';
 import { useDiscordReplyIngest } from './hooks/useDiscordReplyIngest';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
@@ -273,7 +274,13 @@ function OrchestratorContent() {
   const [hotkeyRegisterFailureMessage, setHotkeyRegisterFailureMessage] = useState<string | null>(null);
   const [showMonthlyBackupPrompt, setShowMonthlyBackupPrompt] = useState(false);
   const [showDesktopShortcutPrompt, setShowDesktopShortcutPrompt] = useState(false);
-  const { postponed: analyticsConsentPostponed, postpone: postponeAnalyticsConsent } = useAnalyticsConsentPromptPostponed();
+  const {
+    postponed: analyticsConsentPostponed,
+    reconfirmationPresented: analyticsConsentReconfirmationPresented,
+    postpone: postponeAnalyticsConsent,
+    markReconfirmationPresented: markAnalyticsConsentReconfirmationPresented,
+  } = useAnalyticsConsentPromptPostponed();
+  const analyticsConsentReconfirmationSavePromiseRef = useRef<Promise<void> | null>(null);
   const desktopShortcutPromptCheckedRef = useRef(false);
   const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
   const monthlyBackupCheckedRef = useRef(false);
@@ -312,7 +319,13 @@ function OrchestratorContent() {
   // ウィンドウリサイズポリシー（useMainWindowResizePolicyに委譲）
   useMainWindowResizePolicy({
     showMessageDialog: isMainWindow && (showMonthlyBackupPrompt || showDesktopShortcutPrompt || !!monthlyBackupResult || !!hotkeyRegisterFailureMessage),
-    showAnalyticsConsent: isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && !settings.analytics_consent,
+    showAnalyticsConsent: isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && (
+      !settings.analytics_consent
+      || (settings.analytics_consent === 'denied' && (
+        analyticsConsentReconfirmationPresented
+        || (settings.analytics_consent_reconfirmation_version ?? 0) < ANALYTICS_CONSENT_RECONFIRMATION_VERSION
+      ))
+    ),
     setupRequired: isMainWindow && setupRequired,
     isSettingsOpen: isMainWindow && isSettingsOpen,
     isCheckingSetup: isMainWindow && (isCheckingSetup || settingsLoading),
@@ -2262,14 +2275,44 @@ function OrchestratorContent() {
     setupRequired,
     settingsLoading,
     consent: settings.analytics_consent,
+    reconfirmationVersion: settings.analytics_consent_reconfirmation_version,
+    reconfirmationPresented: analyticsConsentReconfirmationPresented,
     postponed: analyticsConsentPostponed,
   })) {
+    const persistReconfirmationPresented = async () => {
+      markAnalyticsConsentReconfirmationPresented();
+      if (!analyticsConsentReconfirmationSavePromiseRef.current) {
+        analyticsConsentReconfirmationSavePromiseRef.current = (async () => {
+          try {
+            const latestSettings = await invoke<typeof settings>('get_settings');
+            await invoke('save_settings', {
+              settings: {
+                ...latestSettings,
+                analytics_consent_reconfirmation_version: ANALYTICS_CONSENT_RECONFIRMATION_VERSION,
+              },
+            });
+          } catch (error) {
+            console.error('利用情報の再確認表示状態を保存できませんでした:', error);
+          }
+        })();
+      }
+      await analyticsConsentReconfirmationSavePromiseRef.current;
+    };
     const saveAnalyticsConsent = async (consent: 'granted' | 'denied') => {
-      await saveSettings({ ...settings, analytics_consent: consent });
+      // If a denied user answers immediately, wait for the display marker first so
+      // a slower marker write cannot overwrite their explicit choice.
+      if (settings.analytics_consent === 'denied') await persistReconfirmationPresented();
+      await saveSettings({
+        ...settings,
+        analytics_consent: consent,
+        analytics_consent_reconfirmation_version: ANALYTICS_CONSENT_RECONFIRMATION_VERSION,
+      });
     };
     return (
       <AnalyticsConsentDialog
         language={language}
+        isDeniedReconfirmation={settings.analytics_consent === 'denied'}
+        onReconfirmationPresented={persistReconfirmationPresented}
         onAccept={() => { void saveAnalyticsConsent('granted'); }}
         onDecline={() => { void saveAnalyticsConsent('denied'); }}
         onPostpone={postponeAnalyticsConsent}

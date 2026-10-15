@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import MessageSurface from './MessageSurface';
 import type { Language } from '@/lib/i18n';
 
@@ -9,16 +9,30 @@ type Props = {
   onAccept: () => void;
   onDecline: () => void;
   onPostpone: () => void;
+  isDeniedReconfirmation?: boolean;
+  onReconfirmationPresented?: () => void;
 };
 
-export default function AnalyticsConsentDialog({ language, onAccept, onDecline, onPostpone }: Props) {
+export default function AnalyticsConsentDialog({ language, onAccept, onDecline, onPostpone, isDeniedReconfirmation = false, onReconfirmationPresented }: Props) {
   const en = language === 'en';
+  const presentedRef = useRef(false);
+  useEffect(() => {
+    if (!isDeniedReconfirmation || presentedRef.current) return;
+    presentedRef.current = true;
+    onReconfirmationPresented?.();
+  }, [isDeniedReconfirmation, onReconfirmationPresented]);
+
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-2 sm:p-4">
       <MessageSurface role="dialog" aria-modal="true" aria-labelledby="analytics-consent-title" tabIndex={0} style={{ maxWidth: '32rem' }} className="w-full min-w-0 max-w-lg max-h-[90vh] overflow-y-auto break-words rounded-2xl bg-white p-4 sm:p-7 shadow-2xl">
         <h2 id="analytics-consent-title" className="text-xl font-bold text-slate-900">
           {en ? 'About sharing usage information' : '利用情報の送信について'}
         </h2>
+        {isDeniedReconfirmation ? (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            {en ? 'One quick check. No usage information is sent unless you choose to share.' : '今回だけ確認します。送信を選ぶまで、利用情報は送られません。'}
+          </p>
+        ) : <>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           {en
             ? 'Usage information means things like which features you use and how long the app is open. It does not include the contents of your notes, images, tag names, search terms, file names, or other personal content.'
@@ -57,6 +71,7 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline, 
             ? 'If you choose “Decide later,” we will ask again next time you start the app. You can change your choice later in Settings → Developer Messages.'
             : '「今は決めない」を選ぶと、次回起動時にもう一度確認します。送信設定は後から「設定 → 開発者とのやりとり」で変更できます。'}
         </p>
+        </>}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
           <button onClick={onAccept} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
             {en ? 'Share usage information' : '送信に協力する'}

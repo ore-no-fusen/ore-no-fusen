@@ -130,6 +130,9 @@ pub struct Settings {
     /// 匿名利用状況の送信同意。未選択は None、同意は granted、拒否は denied。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub analytics_consent: Option<String>,
+    /// 利用情報を拒否した既存ユーザー向け再確認の表示リビジョン。同意状態とは独立したUI制御値。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analytics_consent_reconfirmation_version: Option<u32>,
     #[serde(alias = "fontSize")]
     #[serde(default = "default_font_size")]
     pub font_size: f64,
@@ -218,6 +221,7 @@ impl Default for Settings {
             auto_start: default_auto_start(),
             desktop_shortcut_prompted: false,
             analytics_consent: None,
+            analytics_consent_reconfirmation_version: None,
             font_size: default_font_size(),
             sound_enabled: default_sound_enabled(),
             sound_create: default_sound_preset(), sound_duplicate: default_sound_preset(), sound_archive: default_sound_preset(), sound_delete: default_sound_preset(), sound_checkbox: default_sound_preset(), sound_pin: default_sound_preset(), sound_unpin: default_sound_preset(), sound_alarm: default_sound_preset(),

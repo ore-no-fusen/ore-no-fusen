@@ -1,26 +1,52 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAnalyticsConsentPromptPostponed, shouldShowAnalyticsConsentPrompt } from '../hooks/useAnalyticsConsentPrompt';
+import { ANALYTICS_CONSENT_RECONFIRMATION_VERSION } from '../utils/analyticsConsentPrompt';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AnalyticsConsentDialog from './AnalyticsConsentDialog';
 
-function ConsentFlowHarness({ consent, saveConsent }: { consent?: 'granted' | 'denied'; saveConsent: (choice: 'granted' | 'denied') => void }) {
-  const { postponed, postpone } = useAnalyticsConsentPromptPostponed();
+function ConsentFlowHarness({
+  consent,
+  version,
+  saveConsent,
+}: {
+  consent?: 'granted' | 'denied';
+  version?: number;
+  saveConsent: (choice: 'granted' | 'denied') => void;
+}) {
+  const [storedVersion, setStoredVersion] = useState(version);
+  const { postponed, postpone, reconfirmationPresented, markReconfirmationPresented } = useAnalyticsConsentPromptPostponed();
   const showPrompt = shouldShowAnalyticsConsentPrompt({
     isMainWindow: true,
     isCheckingSetup: false,
     setupRequired: false,
     settingsLoading: false,
     consent,
+    reconfirmationVersion: storedVersion,
+    reconfirmationPresented,
     postponed,
   });
   if (!showPrompt) return <main>付箋画面</main>;
-  return <AnalyticsConsentDialog language="ja" onAccept={() => saveConsent('granted')} onDecline={() => saveConsent('denied')} onPostpone={postpone} />;
+  const isDeniedReconfirmation = consent === 'denied';
+  return (
+    <AnalyticsConsentDialog
+      language="ja"
+      isDeniedReconfirmation={isDeniedReconfirmation}
+      onReconfirmationPresented={() => {
+        markReconfirmationPresented();
+        setStoredVersion(ANALYTICS_CONSENT_RECONFIRMATION_VERSION);
+      }}
+      onAccept={() => saveConsent('granted')}
+      onDecline={() => saveConsent('denied')}
+      onPostpone={postpone}
+    />
+  );
 }
 
 describe('AnalyticsConsentDialog', () => {
   afterEach(cleanup);
-  it.each(['ja', 'en'] as const)('%s: 3つの選択を操作できる', (language) => {
+
+  it.each(['ja', 'en'] as const)('%s: 初回画面で送信内容の説明と3つの選択を表示する', (language) => {
     const onAccept = vi.fn();
     const onDecline = vi.fn();
     const onPostpone = vi.fn();
@@ -29,7 +55,6 @@ describe('AnalyticsConsentDialog', () => {
     expect(screen.getByText(language === 'en' ? /Usage information means things like which features you use and how long the app is open/ : /利用情報とは、使った機能やアプリの起動時間などです/)).toBeTruthy();
     expect(screen.getByText(language === 'en' ? /does not include the contents of your notes, images, tag names, search terms, file names, or other personal content/ : /付箋の内容、画像、タグ名、検索語、ファイル名など、個人の内容は含まれません/)).toBeTruthy();
     expect(screen.getByText(language === 'en' ? /Sharing helps us decide which features to improve/ : /どの機能を改善するとよいかを考える参考になります/)).toBeTruthy();
-    expect(screen.getByText(language === 'en' ? /Improvements may make your daily notes and organizing easier/ : /毎日のメモや整理がもっと使いやすくなるかもしれません/)).toBeTruthy();
     expect(screen.getByText(language === 'en' ? /All features work if you do not share/ : /送信は任意です。送らなくても全機能を使えます/)).toBeTruthy();
     expect(screen.getByText(language === 'en' ? /one star for each week a report arrives/ : /週次報告が届いた週に★が1つ増えます/)).toBeTruthy();
     fireEvent.click(screen.getByText(language === 'en' ? 'What is sent' : '送信される項目を見る'));
@@ -41,22 +66,47 @@ describe('AnalyticsConsentDialog', () => {
     expect(onPostpone).toHaveBeenCalledOnce();
   });
 
-  it('保留では設定を保存せずアプリへ進み、同意未選択の新しい起動では再表示する', () => {
+  it('拒否中の再確認は短い説明で、表示されたリビジョンを記録する', () => {
+    const onPresented = vi.fn();
+    render(<AnalyticsConsentDialog language="ja" isDeniedReconfirmation onReconfirmationPresented={onPresented} onAccept={vi.fn()} onDecline={vi.fn()} onPostpone={vi.fn()} />);
+    expect(screen.getByText('今回だけ確認します。送信を選ぶまで、利用情報は送られません。')).toBeTruthy();
+    expect(screen.queryByText(/利用情報とは、使った機能/)).toBeNull();
+    expect(screen.getByRole('button', { name: '送信に協力する' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '送信しない' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '今は決めない' })).toBeTruthy();
+    expect(onPresented).toHaveBeenCalledOnce();
+  });
+
+  it('「今は決めない」は未選択者に次回起動で再表示し、同意状態を保存しない', () => {
     const saveConsent = vi.fn();
     const firstLaunch = render(<ConsentFlowHarness saveConsent={saveConsent} />);
-
     fireEvent.click(screen.getByRole('button', { name: '今は決めない' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('付箋画面')).toBeTruthy();
     expect(saveConsent).not.toHaveBeenCalled();
-
     firstLaunch.unmount();
     render(<ConsentFlowHarness saveConsent={saveConsent} />);
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 
-  it.each(['granted', 'denied'] as const)('%s は保留・再表示の状態にならない', (consent) => {
-    render(<ConsentFlowHarness consent={consent} saveConsent={vi.fn()} />);
+  it('拒否者には一度だけ表示し、表示済みなら次回起動では再表示しない', () => {
+    const saveConsent = vi.fn();
+    const firstLaunch = render(<ConsentFlowHarness consent="denied" saveConsent={saveConsent} />);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByText('今回だけ確認します。送信を選ぶまで、利用情報は送られません。')).toBeTruthy();
+    // 保存済みフラグの反映後も、現在の確認画面は閉じるまで表示され続ける。
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '今は決めない' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(saveConsent).not.toHaveBeenCalled();
+    firstLaunch.unmount();
+    render(<ConsentFlowHarness consent="denied" version={ANALYTICS_CONSENT_RECONFIRMATION_VERSION} saveConsent={saveConsent} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('付箋画面')).toBeTruthy();
+  });
+
+  it('送信許可済みの人には再確認を出さない', () => {
+    render(<ConsentFlowHarness consent="granted" saveConsent={vi.fn()} />);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('付箋画面')).toBeTruthy();
   });

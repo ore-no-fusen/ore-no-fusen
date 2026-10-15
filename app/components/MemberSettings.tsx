@@ -4,9 +4,10 @@ import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { safeUnlisten } from '../utils/safeUnlisten';
+import { ANALYTICS_CONSENT_RECONFIRMATION_VERSION } from '../utils/analyticsConsentPrompt';
 
 type MemberView = { generalNumber: number | null; analyticsSubject: string | null; environment: string; partnerStars?: number };
-type UsageSettings = { analytics_consent?: 'granted' | 'denied'; [key: string]: unknown };
+type UsageSettings = { analytics_consent?: 'granted' | 'denied'; analytics_consent_reconfirmation_version?: number; [key: string]: unknown };
 const PARTNER_RANKS = [
   { min: 1, stars: 1, ja: '改善パートナー', en: 'Improvement Partner' },
   { min: 4, stars: 2, ja: '継続パートナー', en: 'Continuing Partner' },
@@ -37,7 +38,7 @@ export default function MemberSettings({ language }: { language: string }) {
     try {
       const settings=await invoke<UsageSettings>('get_settings');
       const analytics_consent=granted ? 'granted' : 'denied';
-      await invoke('save_settings',{settings:{...settings,analytics_consent}});
+      await invoke('save_settings',{settings:{...settings,analytics_consent,analytics_consent_reconfirmation_version:ANALYTICS_CONSENT_RECONFIRMATION_VERSION}});
       setChoice(analytics_consent);
       void invoke('member_sync_usage').catch(()=>undefined);
     } catch { setError(true); } finally { setBusy(false); }
