@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-コミュニケーション設計 v3.6 / 2026-10-05
+コミュニケーション設計 v3.12 / 2026-10-17
 </p>
 
 ---
@@ -28,7 +28,7 @@ outline: deep
 
 ### 1.1 登場人物と用語
 
-実装上の役割は次の名前で区別します。図4-1・図6-1・図6-3では会話の流れを読みやすくするため、Cloudflare Worker、Vercel API、Firestoreを「サーバー」にまとめます。
+実装上の役割は次の名前で区別します。図4-1では会話の流れを読みやすくするため、Cloudflare Worker、Vercel API、Firestoreを「サーバー」にまとめます。図6-1はGateway・API・Firestoreを分けて示します。
 
 <p class="table-caption">表 1.1-1　登場人物と責務</p>
 
@@ -207,96 +207,130 @@ feedback_conversations/{conversation_id}/messages/{message_id}
 
 ## 6 シーケンス
 
-### 6.1 ユーザーからの問い合わせ
+### 6.1 ユーザーからの問い合わせ（送信・返信受信方式の変更案）
 
-個別の会話は、ユーザー側では「開発者とのやりとり」、開発者側ではDiscordで続けます。添付画像がある場合の詳細は図 6-2を参照します。
+このユースケースでは、ユーザーの問い合わせが開発者へ届き、Discordでの開発者返信が同じユーザーへ戻ります。返信受信は、サーバーからDiscordへの通常時の定期確認をやめ、Cloudflare Durable ObjectでGatewayイベントを受け取る変更案です。まだ未実装で、現在はサーバーが約1分ごとにDiscordを確認します。画像を添付する場合だけStorage経由の処理が加わります。画像なしの場合は本文をそのままAPIへ送ります。
 
 ```mermaid
 sequenceDiagram
+    actor User as ユーザー
     participant PC as ユーザーのPC
-    participant Server as サーバー
-    participant Discord as Discord
-
-    PC->>Server: 問い合わせを送る
-    Server->>Discord: 問い合わせを通知
-    Note right of Discord: 開発者が元の通知に返信
-    Server->>Discord: 約1分ごとに新しい返信を確認
-    Discord-->>Server: 開発者の返信
-    Note over Server: 返信先を検証して会話へ保存
-    PC->>Server: 画面表示中は約1分ごとに会話を自動取得
-    Server-->>PC: このユーザー宛ての返信を表示
-```
-
-<p class="mermaid-caption">図 6-1　ユーザーからの問い合わせとDiscordでの返信</p>
-
-### 6.2 添付画像を含む問い合わせの送信
-
-画像本体はPCアプリからAppwrite Storageへ直接アップロードします。Vercel APIには本文と画像の参照情報を送ります。Discordからユーザーへ画像を返信する経路は含めません。
-
-```mermaid
-sequenceDiagram
-    participant User as ユーザー
-    participant PC as PCアプリ
-    participant API as Vercel API
-    participant DB as Firestore
+    participant Gateway as 共通Cloudflare Durable Object<br/>Gateway受信・永続inbox
+    participant Server as Vercel API・Firestore
     participant Storage as Appwrite Storage
     participant Discord as Discord
+    actor Developer as 開発者
 
-    User->>PC: 必須本文と画像0〜3枚を選択
-    PC->>PC: PNG・JPEG・WebP、各5MiB以下を確認
-    PC->>PC: 長辺2048px以内へ縮小し、必要ならWebP圧縮
-    PC->>API: POST conversation/session<br/>conversation_id + secret_token
-    API->>API: 会話を認証しAppwriteユーザーを確定
-    API-->>PC: 15分JWT、Storage接続情報、user_id
-
-    loop 選択した画像ごと
-        PC->>Storage: JWTで画像本体を直接アップロード<br/>user_idのread・delete権限を記録
-        Storage-->>PC: file_id
+    User->>PC: [01] 問い合わせ本文を入力
+    opt 画像を添付する場合（最大3枚）
+        User->>PC: [02] PNG・JPEG・WebP画像を選択
+        Note over PC: 各5MiB以下を確認し、長辺2048px以内へ縮小・圧縮
+        PC->>Server: [03] conversation/session<br/>会話ID・確認用トークン
+        Server-->>PC: [04] 15分JWTとStorage接続情報
+        loop 選択した画像ごと
+            PC->>Storage: [05] 画像本体を直接アップロード<br/>ユーザー本人のread・delete権限
+            Storage-->>PC: [06] file_id
+        end
     end
-
-    PC->>API: POST conversation/messages<br/>本文 + file_id一覧 + アプリ版数
-    API->>Storage: MIME形式・容量・権限を検証
-    Storage-->>API: ファイルメタデータ
-    API->>Storage: 15分の画像表示トークンを発行
-    Storage-->>API: 短期表示URL
-    alt 本文とDiscord送信に成功
-        API->>Discord: 本文embed + 画像embed
-        Discord-->>API: DiscordメッセージID
-        API->>DB: 会話履歴へ本文だけを保存
-        API-->>PC: 送信成功
-        PC->>PC: 本文・選択画像をクリアして履歴更新
-    else 画像アップロード後に送信失敗
-        API-->>PC: 送信失敗
-        PC->>Storage: 今回アップロードした画像を削除
+    alt 画像なし
+        PC->>Server: [07a] 本文を送信
+        Server->>Discord: [08a] 本文を通知
+    else 画像あり
+        PC->>Server: [07b] 本文 + file_id一覧を送信
+        Server->>Storage: [08b] 画像の形式・容量・権限を検証し表示URLを発行
+        Storage-->>Server: [09b] 15分の画像表示URL
+        Server->>Discord: [10b] 本文 + 画像を通知
+    end
+    Discord-->>Server: [11] Discord通知メッセージID
+    Note over Server: 会話本文を保存し、Discord通知IDと紐付け
+    Server-->>PC: [12] 送信成功・本文を会話画面へ表示
+    Discord-->>Developer: [13] 問い合わせ通知を表示
+    Developer->>Discord: [14] 元の通知へ返信
+    Discord-->>Gateway: [15] Gateway MESSAGE_CREATEイベント
+    Gateway->>Gateway: [16] DiscordメッセージIDを永続inboxへ保存
+    Gateway->>Server: [17] 開発検証中は開発APIのみへ配送<br/>合格後に本番API配送を有効化
+    Server->>Discord: [18] Discord APIで対象メッセージを取得
+    Discord-->>Server: メッセージ本文・返信元・投稿者
+    Server->>Server: [19] guild/channel/投稿者/返信先を検証し、message IDで原子的に保存
+    Server-->>Gateway: [20] 環境ごとに保存済み・対象外・再試行可能を返す
+    Gateway->>Gateway: [21] 有効な配送先すべての確定結果後に処理済みにする
+    Note over Gateway,Discord: 切断時は保存済みGateway sessionでResume。Resume不能時は環境ごとのREST回復cursorから差分取得し、同じ検証・保存経路へ流す ※1
+    alt 「開発者とのやりとり」画面を表示中
+        PC->>Server: [22] 画面を開いた時に会話ログを取得
+        Server-->>PC: [23] 最新の会話ログ
+        loop 画面表示中・約1分ごと ※2
+            PC->>Server: [24] 会話ログを取得
+            Server-->>PC: [25] 最新の会話ログ
+            Note over PC: [25a] 新着返信を表示し既読化
+        end
+    else 画面を表示していない・ユーザー投稿から24時間以内
+        loop アプリ常駐中・最短10分ごと ※3
+            PC->>Server: [26] 未読返信を確認
+            Server-->>PC: [27] 会話ログ・未読返信
+            Note over PC: [27a] 未読状態を保存し、新着通知を1回表示
+        end
+    else 画面を表示していない・24時間経過後
+        Note over PC: アプリ常駐中、JST 4:00以降に日次確認 ※4
+        PC->>Server: [28] 未読返信を確認
+        Server-->>PC: [29] 会話ログ・未読返信
+        Note over PC: [29a] 未読状態を保存し、新着通知を1回表示
     end
 ```
 
-<p class="mermaid-caption">図 6-2　PCからDiscordへ本文と最大3枚の画像を送る最小版シーケンス</p>
+<p class="mermaid-caption">図 6-1　ユーザーからの問い合わせと開発者返信（画像添付は任意）</p>
 
-### 6.3 開発者からのお便りと返信
+**図 6-1 の注記**
 
-ダッシュボードは全会員または指定した宛先へのお便り配信に使います。お便りを受け取ったユーザーが返信した後は、図 6-1と同じ個別会話としてDiscordで続けます。ユーザーの返信には元のお便りのタイトルとIDを付け、アプリでは元のお便りとの対応を表示します。
+- 番号は図 6-1 内の通信・処理番号です。画像あり/なしの分岐番号は `a` / `b` で区別します。番号のないNoteは補足です。以後「図6-1の[14]」のように指定できます。
+- 図は変更後の目標案で、まだ未実装です。現行動作と料金・稼働条件は第7章に記載します。
+- [15]以降はGateway受信の推奨構成です。常時接続するGateway Durable Objectはアカウント全体で1つだけにします。初期検証では開発API配送だけを有効にし、本番は既存のREST定期取り込みを継続します。開発往復検証と無課金条件の確認に合格後、本番API配送を有効にし、本番往復検証に合格してから本番のREST定期取り込みを停止します。任意URLへの配送や本番へのfallbackは禁止します。
+- 環境ごとに独立したinbox配送状態を保持します。未有効環境は配送済みと扱わず保留状態にし、有効化時に保存済みのDiscord回復cursorから差分回復してからライブ配送を開始します。一方のAPIが「対象外」と返しても、他方への配送が未確定ならイベント全体を処理済みにしません。元通知IDの対応表が書き込まれる前に返信イベントが着いた場合は「対象外」で確定せず、一定時間inboxで再試行します。
+- Durable ObjectはイベントIDとGateway再開用sequenceを整合する永続transactionで保存し、未保存イベントを越えて再開位置を進めません。受信sequence、永続化済みGateway checkpoint、環境別REST回復cursorを別々に管理します。古い接続callbackは接続世代を検査して破棄します。
+- [19]のAPI保存は `環境 + Discord message ID` をキーに原子的に行い、イベント再送・REST回復との競合で二重保存しないことが必要です。
+- [24]のユーザー画面側の会話取得は、画面表示中の約1分ごとのままです。Discordからサーバーへの受信を速めても、画面への反映はユーザーPCの次回確認時になります。
+- ※1 Gatewayの通常受信では定期REST走査を行わず、切断・Resume不能時などの欠落回復だけREST差分取得を使います。Gateway接続・再接続・安全な回復に加え、常時接続に伴う無課金条件を確認する必要があります（§6.1.1）。
+
+### 6.1.1 Gateway受信の実装・運用条件
+
+- Gateway Identifyでは `GUILD_MESSAGES` Intentだけを使い、`MESSAGE_CREATE` の本文は扱わず、Durable Objectには対象channel/guild、author ID、message ID、reply reference、Gateway sequenceだけを永続inboxへ記録します。本文のREST取得にも `MESSAGE_CONTENT` の制限が適用されます。BotのDeveloper PortalでMessage Content accessが有効であることと、対象Botに必要な承認があることを事前確認します。右クリック返信をBotへのmentionとみなす設計にはしません。
+- HELLO heartbeat interval、初回jitter、ACK欠落、Opcode 7/9、close code別のResume/Identify、session start limit、429/backoffを扱います。無効なBot token・Intent拒否など恒久設定エラーでは自動再接続を続けず停止・記録し、再試行可能な切断・HTTP 429/5xxはbackoff後に再開します。
+- Gatewayイベントの取得・転送が確認できるまでイベントinboxとcheckpointを同一のDurable Object storage transactionで確定します。配送先URLは本番・開発のコード固定値、secretは環境別Cloudflare Secretsとします。受信本文・token・secretをログへ出しません。
+- 開発Workerを本番とは別の常時Gatewayにしません。初期は1つのGatewayから開発APIだけへ配送し、本番APIは既存REST取り込みを使います。開発検証後に本番API配送を有効にし、本番検証後に本番REST取り込みを止めます。各環境のinbox処理結果は独立して保存し、有効な全配送先が確定するまでイベントを完了扱いにしません。切替中は未有効環境の状態を保留し、環境別REST回復cursorから差分を処理して重複は冪等保存で抑えます。
+- 通知元メッセージ自体の削除などで返信本文をREST取得できない場合は、無限再試行せず取得不能として記録します。Discord側の保持・削除や停止時間による欠落ゼロは保証しません。
+- Cloudflare Durable Objectの外向きWebSocketはhibernationできず、常時接続中は実行時間の料金対象になります。Workers Freeの13,000 GB-s/日では常時1個でも概算約11,059 GB-s/日を使い、他のDO使用量を含めると無料範囲内と保証できません。Free枠での運用、プラン変更・自動課金なし、無料枠不足時はGatewayを停止して配送遅延を許容しinbox/cursorを保持する方針とします。アカウントプラン・他用途を含む利用量が確認でき、無課金で動くと確認できるまでデプロイ・有効化しません。
+- ※2 ユーザーが会話を見ている間に返信を自動反映し、手動更新を不要にするためです。画面を開いた時点でも取得します。
+- ※3 直近24時間にユーザー投稿があった場合、画面外でも通知を保ちつつ、会話中より問い合わせ頻度を下げるためです。対象はアプリ常駐中です。
+- ※4 直近24時間の対象期間を過ぎた後も未読を知らせながら、短間隔の問い合わせを避けるためです。JST 4:00以降、アプリ常駐中に日次で確認します。
+
+**画像の有無による違い**
+
+画像の有無で会話の往復方向や開発者の返信方法は変わりません。画像ありの場合だけ、PCからAppwrite Storageへ画像本体を直接アップロードし、APIが画像を検証してDiscord通知へ添付します。画像なしの場合は本文だけをAPIとDiscordへ送ります。会話ログに保存・表示するのは本文で、送信した画像を会話履歴へ再表示しません。開発者からユーザーへ画像を返信する経路はありません。
+
+### 6.2 開発者からのお知らせ（配信）
+
+開発者のお知らせは、ダッシュボードからユーザーへ届ける一方向の配信です。PCは間隔を空けてサーバーへ新着確認を送りますが、図ではお知らせ本文の流れを見やすくするため取得要求を省略し、ユーザー側からの返信データがないことを示します。ユーザーがお知らせへ返信する場合は独立した新規投稿ではなく、図 6-1 の問い合わせユースケースに入ります。
 
 ```mermaid
 sequenceDiagram
+    actor Developer as 開発者
+    participant Dashboard as 開発者用ダッシュボード
+    participant Server as お知らせサーバー
     participant PC as ユーザーのPC
-    participant Server as サーバー
-    participant Discord as Discord
 
-    Note over Server: 開発者がお便りをダッシュボードから配信
-    PC->>Server: お便りを確認
-    Server-->>PC: 対象のお便りを表示
-    PC->>Server: お便りに返信
-    Server->>Discord: ユーザーの返信を通知
-    Note right of Discord: 開発者が元の通知に返信
-    Server->>Discord: 約1分ごとに新しい返信を確認
-    Discord-->>Server: 開発者の返信
-    Note over Server: 返信先を検証して会話へ保存
-    PC->>Server: 画面表示中は約1分ごとに会話を自動取得
-    Server-->>PC: このユーザー宛ての返信を表示
+    Developer->>Dashboard: [01] お知らせ本文・対象を指定して配信
+    Dashboard->>Server: [02] 対象ユーザー向けに保存
+    Note over PC: 本番は通常約3時間ごと、開発環境は約5分ごとに確認 ※5
+    Server-->>PC: [03] 対象ユーザー向けのお知らせ
+    PC->>PC: [04] ローカルへ保存し、お知らせ通知を表示
+    PC->>PC: [05] 掲示板のお知らせ一覧へ表示
 ```
 
-<p class="mermaid-caption">図 6-3　開発者からのお便りとDiscordで続ける個別会話</p>
+<p class="mermaid-caption">図 6-2　開発者からユーザーへのお知らせ配信（下りのみ）</p>
+
+**図 6-2 の注記**
+
+- 番号は図 6-2 内の処理番号です。以後「図6-2の[03]」のように指定できます。
+- ※5 図では省略していますが、実装ではユーザーPCが定期的に新着確認を要求し、応答としてお知らせを受信します。ユーザーから開発者への返信本文はこのユースケースに含みません。お知らせは会話画面を開かなくても受け取れるようにし、問い合わせを常時短間隔にせず、本番は通常約3時間ごとに確認します。開発環境は検証を早く行うため約5分ごとです。確認失敗時は約15分後に再試行します。
 
 ---
 
@@ -304,17 +338,17 @@ sequenceDiagram
 
 Discordは、開発者の作業場所としてだけ使います。ユーザーごとのDiscordチャンネルは作りません。
 開発者は、1つの開発者用チャンネルに届く通知を見て、対象通知に返信を書きます。
-会話の正本は Firestore に保存します。Cloudflare Workerが約1分ごとにVercel APIへ返信取り込みを依頼します。作者PCを停止していても動作します。定期取り込みは全会話で1系統（約1,440回/日）とし、会員ごとに取り込みタイマーを増やしません。日次Vercel Cronは予備として継続します。
+会話の正本は Firestore に保存します。現行はCloudflare Workerが約1分ごとにVercel APIへ返信取り込みを依頼し、作者PCを停止していても動作します。今後は第6章の段階移行により、開発検証中は開発環境だけGatewayイベント配送を使い、本番は現行REST取り込みを継続します。開発・本番の往復検証に合格後、本番もGateway配送へ切り替えます。移行中のREST取り込みは環境ごとに管理し、会員ごとに取り込みタイマーを増やしません。日次Vercel Cronは移行後も欠落回復用として継続します。
 
-図6-1・図6-3の「サーバー」は、Cloudflare Worker、Vercel API、Firestoreをまとめた表記です。内部の中継を図に並べず、ユーザーと開発者から見える会話の流れを示します。会話画面の取得も約1分ごとのため、正常時の表示までの待ちは目安で約2分です。即時プッシュではなく、障害時の時間保証もしません。
+図6-1ではCloudflare Gateway Durable Object、Vercel API、Firestoreを別参加者として示します。現行のDiscord返信取り込みは全会話共通で約1分ごとです。Gateway方式への移行後は通常時にイベント配送を使い、REST走査は欠落回復用にします。ユーザーPCは、会話画面を表示中なら約1分ごと、画面を表示していなくてもユーザー投稿から24時間以内なら常駐中に最短10分ごと、それ以外はJST 4:00以降に日次で未読確認します。会話画面を表示中の正常時は、現行は返信がサーバーへ取り込まれてから画面に反映されるまで最大約2分が目安です。移行後はサーバー取り込み待ちを短縮しますが、画面側は引き続き次回の約1分確認を待つため即時プッシュではなく、障害時の時間保証もしません。
 
-会話画面を開いている間は、新しい返信の取得と会話本文の反映を自動で行います。ユーザーが更新ボタンを押す必要はありません。「最新の返信を見る」は最新位置へスクロールするための操作です。
+「開発者とのやりとり」画面を表示している間は、約1分ごとに新しい返信を取得し、会話本文へ自動反映して既読化します。ユーザーが更新ボタンを押す必要はありません。画面を表示していない間は別の未読確認が動作し、ユーザー投稿後24時間以内は常駐中に最短10分ごと、それ以外はJST 4:00以降に日次で確認します。アプリ側の未読確認タイマーは1分ごとに期限を判定しますが、サーバーへの問い合わせ自体は上記の間隔に達した場合だけです。
 
 この改訂のサーバー方式は2026年10月5日に本番で有効化しました。CloudflareのCron登録と本番の定期実行成功を確認済みです。対象会話の返信保存・別PCでの表示と、作者PCの旧自動取り込み停止後の往復確認は未完了のため、移行完了とは扱いません。
 
 ### 7.1 開発環境で先に検証する
 
-開発版アプリはdevelopのVercel Previewへ接続します。開発用Worker `ore-no-fusen-discord-replies-development`が、そのPreviewだけへ約1分ごとに取り込みを依頼します。本番用Workerとは別のWorker・管理secret設定・Durable Object・確認位置を使用します。取り込み先は環境ごとに固定し、任意のURLや本番へのフォールバックは認めません。
+開発版アプリはdevelopのVercel Previewへ接続します。初期検証では共通Gatewayを開発API配送だけで有効にし、本番は現行のREST定期取り込みを継続します。開発用の常時Gatewayを別に作らず、API secretと会話対応表は環境ごとに分離します。取り込み先は環境ごとに固定し、任意のURLや本番へのフォールバックは認めません。
 
 Vercelの`VERCEL_ENV=production`の場合だけ既存の本番会話・Discord対応表の保存場所を使用します。Previewとローカル開発は`feedback_environments/development`配下へ保存し、本番の会話、既読、削除、Discord返信の重複判定と分離します。同じFirebaseプロジェクト・データベース設定でも混ざりません。既存の本番会話は移動・削除しません。旧Previewで共有場所に保存した履歴を開発側へ自動コピーしないため、検証では新しい問い合わせを送ります。
 
@@ -322,7 +356,7 @@ Vercelの`VERCEL_ENV=production`の場合だけ既存の本番会話・Discord�
 
 開発通知の識別欄は「開発会話ID」とし、既存本番取り込みの「会話ID」による補完対象にはしません。開発側は保存済みの通知ID・スレッドID対応表だけを使い、本文の会話IDから返信先を補完しません。開発版と本番版のPCが同じ会話IDを保持していても、互いの通知への返信を取り込みません。
 
-検証は、開発版の会話画面から問い合わせを送る → Discordの開発通知へ返信する → 更新ボタンを押さずに会話へ表示される、の順で行います。作者PCの手動取り込み・旧自動取り込みを使わず、開発Workerの定期実行、対象返信の保存と表示を照合します。本番の会話へ同じ検証返信が入らないことも確認します。単体テストやCronの正常終了だけでは往復成功としません。開発の往復確認に合格してから、本番用Worker・本番APIの変更を反映し、本番の対象会話で最終確認します。
+検証は、開発版の会話画面から問い合わせを送る → Discordの開発通知へ返信する → 更新ボタンを押さずに会話へ表示される、の順で行います。作者PCの手動取り込み・旧自動取り込みを使わず、共通Gatewayから開発APIへの配送、対象返信の保存と表示を照合します。本番の会話へ同じ検証返信が入らないことも確認します。単体テストだけでは往復成功としません。開発の往復検証と無課金条件の確認に合格後、本番API配送を有効化します。本番の対象会話で往復検証に合格してから、本番REST定期取り込みを停止します。切替時は環境別REST回復cursorから差分を確認し、未処理イベントを欠落させず冪等保存で重複を防ぎます。
 
 <p class="table-caption">表 7-1　Discordをユーザー数分作らない理由</p>
 
@@ -505,5 +539,11 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 17 | 3.4 | 26-10-04 | 作者PCの手動・自動取り込み先をアプリ版と独立して本番／開発から選択。切替時のsecretと自動設定の解除、接続先ごとのカーソル保持を明記。 |
 | 18 | 3.5 | 26-10-04 | 返信取り込みを作者PCからサーバーへ移行する設計に変更。図6-1・図6-3をユーザーPC・サーバー・Discordの3参加者に整理。約1分の取り込みと会話更新の待ち、本番有効化前の状態を明記。 |
 | 19 | 3.6 | 26-10-05 | 開発Worker・確認位置・会話とDiscord対応表を本番から分離。開発Previewの確認を取り込み前に行い、開発での実往復検証を本番反映の前提とする。 |
+| 20 | 3.7 | 26-10-17 | 図6-1に画面を開いた直後と表示中の約1分確認、画面を表示していない間の投稿後24時間・日次確認、Discord返信の約1分サーバー取り込みを区別して記載。実装の未読確認周期と整合させた。 |
+| 21 | 3.8 | 26-10-17 | シーケンス図をユースケース別の2図に整理。問い合わせの画像有無を1図内の分岐に統合し、お知らせ配信は返信を含まない下り配信として明確化。 |
+| 22 | 3.9 | 26-10-17 | 図6-1に開発者を独立した参加者として追加し、Discord通知の受信と元通知への返信を明示。 |
+| 23 | 3.10 | 26-10-17 | 図6-1の変更案として、サーバーのDiscord定期確認をGatewayイベント受信へ置き換え。ユーザー画面側の約1分確認は維持し、未実装であることを明記。 |
+| 24 | 3.11 | 26-10-17 | Gateway Durable Object、永続inbox、環境別配送、原子的冪等保存、Resume/REST差分回復、無料枠条件を図6-1と運用条件へ追記。 |
+| 25 | 3.12 | 26-10-17 | Astraレビューを反映。MESSAGE_CONTENT要件と開発先行の段階移行を明記し、現行REST取り込みと目標Gateway方式を区別。 |
 
 </div>
