@@ -79,14 +79,42 @@ export class DiscordIngestCoordinator {
 }
 
 export default {
-  fetch() {
-    return new Response(null, { status: 404 });
+  async fetch(request, env) {
+    const path = new URL(request.url).pathname;
+    if (!path.startsWith('/gateway/') || !env?.DISCORD_GATEWAY) return new Response(null, { status: 404 });
+    const id = env.DISCORD_GATEWAY.idFromName('discord-feedback-gateway');
+    const internalUrl = new URL(request.url);
+    internalUrl.pathname = path.slice('/gateway'.length);
+    return env.DISCORD_GATEWAY.get(id).fetch(new Request(internalUrl, request));
   },
   async scheduled(_event, env) {
     const environment = ingestEnvironment(env);
     if (!environment) throw new Error('Invalid ingest environment');
+    if (environment === 'production' && env.DISCORD_GATEWAY) {
+      const gatewayId = env.DISCORD_GATEWAY.idFromName('discord-feedback-gateway');
+      const gateway = env.DISCORD_GATEWAY.get(gatewayId);
+      const controlSecret = env.DISCORD_GATEWAY_CONTROL_SECRET?.trim();
+      if (env.DISCORD_GATEWAY_ENABLED === 'true' && controlSecret) {
+        const start = await gateway.fetch('https://gateway/start', {
+          method: 'POST', headers: { Authorization: `Bearer ${controlSecret}` },
+        });
+        if (start.ok) {
+          const activeEnvironments = (env.GATEWAY_DELIVERY_ENVIRONMENTS || 'development')
+            .split(',').map(value => value.trim());
+          if (activeEnvironments.includes('production')) return;
+          // Keep production REST recovery active while only the development API is under test.
+        }
+      } else if (controlSecret) {
+        await gateway.fetch('https://gateway/stop', {
+          method: 'POST', headers: { Authorization: `Bearer ${controlSecret}` },
+        });
+      }
+    }
     const id = env.INGEST_COORDINATOR.idFromName(environment);
     const response = await env.INGEST_COORDINATOR.get(id).fetch('https://coordinator/tick', { method: 'POST' });
     if (!response.ok) throw new Error('Discord server import failed');
   },
 };
+import { DiscordGateway } from './gateway.js';
+
+export { DiscordGateway };

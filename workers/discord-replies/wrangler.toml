@@ -5,6 +5,8 @@ workers_dev = false
 
 [vars]
 INGEST_ENVIRONMENT = "production"
+DISCORD_GATEWAY_ENABLED = "false"
+GATEWAY_DELIVERY_ENVIRONMENTS = "development"
 
 [triggers]
 crons = ["* * * * *"]
@@ -12,10 +14,17 @@ crons = ["* * * * *"]
 [[durable_objects.bindings]]
 name = "INGEST_COORDINATOR"
 class_name = "DiscordIngestCoordinator"
+[[durable_objects.bindings]]
+name = "DISCORD_GATEWAY"
+class_name = "DiscordGateway"
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["DiscordIngestCoordinator"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["DiscordGateway"]
 
 [observability]
 enabled = true

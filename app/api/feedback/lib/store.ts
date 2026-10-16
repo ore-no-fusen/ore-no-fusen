@@ -60,7 +60,12 @@ class MemoryFeedbackConversationStore implements FeedbackConversationStore {
 
   async appendMessage(message: FeedbackConversationMessage): Promise<boolean> {
     if (this.messages.has(message.messageId)) return false;
-    if (message.discordMessageId && await this.hasDiscordMessage(message.discordMessageId)) return false;
+    if (message.discordMessageId) {
+      const existingId = [...this.messages.values()].find(
+        (stored) => stored.discordMessageId === message.discordMessageId,
+      )?.messageId;
+      if (existingId) return false;
+    }
     this.messages.set(message.messageId, message);
     return true;
   }
@@ -340,7 +345,9 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
   }
 
   async appendMessage(message: FeedbackConversationMessage): Promise<boolean> {
-    if (message.discordMessageId && await this.hasDiscordMessage(message.discordMessageId)) return false;
+    if (message.discordMessageId && message.authorType === 'developer') {
+      return await this.appendDiscordDeveloperReply(message);
+    }
 
     await this.request(`/feedback_conversations/${message.conversationId}/messages/${message.messageId}`, {
       method: 'PATCH',
@@ -362,6 +369,52 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
       await this.writeDiscordIndex(message.discordMessageId, message.conversationId, 'developer_message');
     }
     return true;
+  }
+
+  private async appendDiscordDeveloperReply(message: FeedbackConversationMessage): Promise<boolean> {
+    const discordMessageId = message.discordMessageId!;
+    if (!/^\d{15,25}$/.test(discordMessageId)) throw new Error('Invalid Discord message ID');
+    if (await this.hasDiscordMessage(discordMessageId)) return false;
+
+    const databaseId = process.env.FIREBASE_DATABASE_ID || '(default)';
+    const databaseRoot = `projects/${this.projectId}/databases/${databaseId}`;
+    const documentsRoot = `${databaseRoot}/documents${feedbackFirestorePrefix()}`;
+    const messageName = `${documentsRoot}/feedback_conversations/${message.conversationId}/messages/discord_${discordMessageId}`;
+    const mappingName = `${documentsRoot}/feedback_discord_mappings/${discordMessageId}`;
+    const fields = toFirestoreFields({
+      message_id: `discord_${discordMessageId}`,
+      conversation_id: message.conversationId,
+      author_type: 'developer',
+      body: message.body,
+      created_at: message.createdAt,
+      discord_message_id: discordMessageId,
+      read_by_user: message.readByUser,
+      shadow_only: message.shadowOnly,
+    });
+    const token = await getFirestoreAccessToken(this.clientEmail, this.privateKey);
+    const response = await fetch(
+      `https://firestore.googleapis.com/v1/${databaseRoot}/documents:commit`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ writes: [
+          { update: { name: messageName, fields }, currentDocument: { exists: false } },
+          { update: { name: mappingName, fields: toFirestoreFields({
+            discord_id: discordMessageId,
+            conversation_id: message.conversationId,
+            kind: 'developer_message',
+          }) }, currentDocument: { exists: false } },
+        ] }),
+      },
+    );
+    if (response.ok) return true;
+
+    // Firestore Commit is atomic. A failed exists=false precondition means a
+    // concurrent event/recovery path already stored this Discord message.
+    if (response.status === 400 || response.status === 409) {
+      if (await this.hasDiscordMessage(discordMessageId)) return false;
+    }
+    throw new Error(`Firestore atomic Discord reply commit failed: ${response.status}`);
   }
 
   async hasDiscordMessage(discordMessageId: string): Promise<boolean> {

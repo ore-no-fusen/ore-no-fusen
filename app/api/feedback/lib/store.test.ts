@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { generateKeyPairSync } from 'crypto';
 import { hashSecretToken } from './security';
-import { createMemoryFeedbackConversationStore } from './store';
+import { createFeedbackConversationStore, createMemoryFeedbackConversationStore } from './store';
 
 describe('feedback conversation store', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
   it('deletes only a conversation authenticated by its secret', async () => {
     const store = createMemoryFeedbackConversationStore();
     await store.createConversation({
@@ -143,6 +149,48 @@ describe('feedback conversation store', () => {
 
     expect(first).toBe(true);
     expect(second).toBe(false);
+  });
+
+  it('writes a Discord developer message and its idempotency mapping in one Firestore commit', async () => {
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    vi.stubEnv('FIREBASE_PROJECT_ID', 'test-project');
+    vi.stubEnv('FIREBASE_CLIENT_EMAIL', 'test@example.test');
+    vi.stubEnv('FIREBASE_PRIVATE_KEY', privateKey.export({ type: 'pkcs8', format: 'pem' }).toString());
+    vi.stubEnv('FIREBASE_DATABASE_ID', '(default)');
+    const commitRequests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return Response.json({ access_token: 'test-access-token', expires_in: 3600 });
+      }
+      if (url.includes('/feedback_discord_mappings/')) return new Response('', { status: 404 });
+      if (url.endsWith('/documents:commit')) {
+        commitRequests.push({ url, body: JSON.parse(String(init?.body)) });
+        return Response.json({ writeResults: [] });
+      }
+      throw new Error(`Unexpected Firestore request: ${url}`);
+    }));
+
+    const store = createFeedbackConversationStore();
+    const saved = await store.appendMessage({
+      messageId: 'discord_323456789012345678',
+      conversationId: 'conversation-1',
+      authorType: 'developer',
+      body: 'reply',
+      discordMessageId: '323456789012345678',
+      createdAt: '2026-10-17T00:00:00.000Z',
+      readByUser: false,
+      shadowOnly: false,
+    });
+
+    expect(saved).toBe(true);
+    expect(commitRequests).toHaveLength(1);
+    expect(commitRequests[0].url).toContain('/projects/test-project/databases/(default)/documents:commit');
+    const writes = commitRequests[0].body.writes as Array<{ update: { name: string }; currentDocument: { exists: boolean } }>;
+    expect(writes).toHaveLength(2);
+    expect(writes.map((write) => write.currentDocument.exists)).toEqual([false, false]);
+    expect(writes[0].update.name).toContain('/messages/discord_323456789012345678');
+    expect(writes[1].update.name).toContain('/feedback_discord_mappings/323456789012345678');
   });
 
   it('marks developer messages read only with the correct token', async () => {

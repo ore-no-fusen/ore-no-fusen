@@ -164,4 +164,41 @@ describe('Discord ingest cursor input', () => {
     }));
     expect(response.status).toBe(400);
   });
+
+  it('accepts only an authenticated, well-formed Gateway event and returns its environment result', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('FEEDBACK_CONVERSATION_INGEST_SECRET', 'gateway-secret');
+    vi.stubEnv('DISCORD_BOT_TOKEN', 'bot-secret');
+    vi.stubEnv('DISCORD_FEEDBACK_CHANNEL_ID', '423456789012345678');
+    vi.stubEnv('ALLOWED_DISCORD_USER_IDS', '623456789012345678');
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      id: '323456789012345678',
+      channel_id: '423456789012345678',
+      content: 'reply',
+      author: { id: '723456789012345678', bot: false },
+    })));
+
+    const response = await POST(new Request('https://example.test/api/feedback/discord/ingest', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer gateway-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'gateway-event', messageId: '323456789012345678',
+        channelId: '423456789012345678', guildId: '523456789012345678' }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ outcome: 'ignored', environment: 'production' });
+  });
+
+  it('rejects malformed Gateway IDs before making any Discord request', async () => {
+    vi.stubEnv('FEEDBACK_CONVERSATION_INGEST_SECRET', 'gateway-secret');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await POST(new Request('https://example.test/api/feedback/discord/ingest', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer gateway-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'gateway-event', messageId: 'bad', channelId: '423456789012345678', guildId: '523456789012345678' }),
+    }));
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

@@ -40,7 +40,8 @@ async function fetchDiscordMessage(
   const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
     headers: { Authorization: `Bot ${botToken}` },
   });
-  if (!response.ok) return null;
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Discord message lookup failed: ${response.status}`);
   return await response.json() as DiscordMessage;
 }
 

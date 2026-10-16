@@ -7,7 +7,7 @@ const { store, resolve } = vi.hoisted(() => ({
 vi.mock('../../lib/store', () => ({ createFeedbackConversationStore: () => store }));
 vi.mock('./resolve', () => ({ resolveDiscordConversationIdForMessage: resolve }));
 
-import { runDiscordIngest } from './run';
+import { runDiscordGatewayIngest, runDiscordIngest } from './run';
 
 beforeEach(() => {
   vi.stubEnv('DISCORD_BOT_TOKEN', 'bot-secret');
@@ -66,4 +66,38 @@ it('100件を超える新着があっても古いページまで読み、返信�
   expect(fetchMock).toHaveBeenCalledTimes(2);
   expect(store.appendMessage).toHaveBeenCalledTimes(101);
   expect(result).toMatchObject({ ingested: 101, lastSeenId: String(200).padStart(18, '0') });
+});
+
+it('Gateway通知を受けた返信をRESTで取り直し、既存の検証経路と冪等保存へ通す', async () => {
+  const reply = {
+    id: '323456789012345678', channel_id: 'channel-1', content: 'Discordからの返信',
+    author: { id: 'developer-1', bot: false }, message_reference: { message_id: '223456789012345678' },
+    timestamp: '2026-10-17T00:00:00.000Z',
+  };
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(reply)));
+
+  const result = await runDiscordGatewayIngest({
+    messageId: reply.id, channelId: reply.channel_id, guildId: 'guild-1',
+  });
+
+  expect(fetch).toHaveBeenCalledWith(
+    `https://discord.com/api/v10/channels/channel-1/messages/${reply.id}`,
+    expect.objectContaining({ headers: { Authorization: 'Bot bot-secret' } }),
+  );
+  expect(resolve).toHaveBeenCalledWith(reply, 'bot-secret', store);
+  expect(store.appendMessage).toHaveBeenCalledWith(expect.objectContaining({
+    messageId: `discord_${reply.id}`, discordMessageId: reply.id,
+    conversationId: 'conversation-1', body: 'Discordからの返信',
+  }));
+  expect(result).toEqual({ outcome: 'saved' });
+});
+
+it('Gatewayイベントが対象チャンネル外ならDiscord APIへ問い合わせない', async () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+
+  expect(await runDiscordGatewayIngest({
+    messageId: '323456789012345678', channelId: 'other-channel', guildId: 'guild-1',
+  })).toEqual({ outcome: 'ignored' });
+  expect(fetchMock).not.toHaveBeenCalled();
 });

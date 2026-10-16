@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isDiscordIngestFailure, runDiscordIngest } from './run';
+import { isDiscordIngestFailure, runDiscordGatewayIngest, runDiscordIngest } from './run';
 import { FeedbackRequestError, readFeedbackJson } from '../../lib/security';
 import { feedbackEnvironment } from '../../lib/environment';
 
@@ -31,6 +31,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders() });
     }
     const body = req.headers.get('content-type') === 'application/json' ? await readFeedbackJson(req, 1024) : {};
+    if (body.mode === 'gateway-event') {
+      const { messageId, channelId, guildId } = body;
+      const snowflake = (value: unknown) => typeof value === 'string' && /^\d{15,25}$/.test(value);
+      if (!snowflake(messageId) || !snowflake(channelId) || !snowflake(guildId)) {
+        return NextResponse.json({ error: 'Invalid Discord gateway event' }, { status: 400, headers: corsHeaders() });
+      }
+      const result = await runDiscordGatewayIngest({
+        messageId: messageId as string,
+        channelId: channelId as string,
+        guildId: guildId as string,
+      });
+      if ('error' in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status, headers: corsHeaders() });
+      }
+      return NextResponse.json({ ...result, environment: feedbackEnvironment() }, { headers: corsHeaders() });
+    }
     const afterId = body.afterId;
     if (afterId !== undefined && (typeof afterId !== 'string' || !/^\d{15,25}$/.test(afterId))) {
       return NextResponse.json({ error: 'Invalid Discord cursor' }, { status: 400, headers: corsHeaders() });

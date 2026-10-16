@@ -100,3 +100,78 @@ export async function runDiscordIngest(afterId?: string): Promise<DiscordIngestR
 
   return { ingested, rejected, ...(lastSeenId ? { lastSeenId } : {}) };
 }
+
+export type DiscordGatewayIngestResult = {
+  outcome: 'saved' | 'duplicate' | 'ignored';
+};
+
+/** Fetch and validate one Gateway-notified message through the same trust boundary as REST recovery. */
+export async function runDiscordGatewayIngest(
+  event: { messageId: string; channelId: string; guildId: string },
+): Promise<DiscordGatewayIngestResult | DiscordIngestFailure> {
+  if (process.env.FEEDBACK_CONVERSATION_ENABLED === 'false') {
+    return { error: 'Feedback conversation is disabled', status: 503 };
+  }
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  const channelId = process.env.DISCORD_FEEDBACK_CHANNEL_ID;
+  const configuredGuildId = process.env.DISCORD_FEEDBACK_GUILD_ID;
+  if (!botToken || !channelId) return { error: 'Missing Discord configuration', status: 500 };
+  if (event.channelId !== channelId || (configuredGuildId && event.guildId !== configuredGuildId)) {
+    return { outcome: 'ignored' };
+  }
+
+  const response = await fetch(
+    `https://discord.com/api/v10/channels/${channelId}/messages/${event.messageId}`,
+    { headers: { Authorization: `Bot ${botToken}` }, signal: AbortSignal.timeout(10_000) },
+  );
+  if (response.status === 404) return { outcome: 'ignored' };
+  if (!response.ok) return { error: `Discord API error: ${response.status}`, status: 503 };
+  const message = await response.json() as DiscordMessage;
+  if (message.id !== event.messageId || message.channel_id !== channelId) return { outcome: 'ignored' };
+
+  const allowedDiscordUserIds = parseAllowedDiscordUserIds(process.env.ALLOWED_DISCORD_USER_IDS);
+  if (message.author?.bot || !allowedDiscordUserIds.includes(message.author?.id ?? '')) {
+    return { outcome: 'ignored' };
+  }
+  const hasReplyReference = Boolean(message.message_reference?.message_id ?? message.referenced_message?.id);
+  if (hasReplyReference && !message.content.trim()) {
+    return { error: 'Discord reply content is unavailable; check Message Content access', status: 503 };
+  }
+
+  const store = createFeedbackConversationStore();
+  const { conversationId: mappedConversationId, referencedMessageId } =
+    await resolveDiscordConversationIdForMessage(message, botToken, store);
+  const candidate: DiscordCandidateMessage = {
+    id: message.id,
+    channelId: message.channel_id,
+    authorId: message.author?.id ?? '',
+    authorIsBot: message.author?.bot === true,
+    content: message.content,
+    referencedMessageId,
+    threadId: message.thread?.id ?? null,
+  };
+  const eligibility = evaluateDeveloperReplyEligibility({
+    message: candidate,
+    allowedDiscordUserIds,
+    mappedConversationId,
+    alreadyIngested: await store.hasDiscordMessage(message.id),
+  });
+  if (!eligibility.ok) {
+    if (eligibility.reason === 'duplicate') return { outcome: 'duplicate' };
+    return { outcome: 'ignored' };
+  }
+
+  const saved = await store.appendMessage({
+    messageId: `discord_${message.id}`,
+    conversationId: eligibility.conversationId,
+    authorType: 'developer',
+    body: message.content.trim(),
+    discordMessageId: message.id,
+    createdAt: message.timestamp && Number.isFinite(Date.parse(message.timestamp))
+      ? message.timestamp
+      : new Date().toISOString(),
+    readByUser: false,
+    shadowOnly: process.env.FEEDBACK_CONVERSATION_SHADOW_MODE === 'true',
+  });
+  return { outcome: saved ? 'saved' : 'duplicate' };
+}

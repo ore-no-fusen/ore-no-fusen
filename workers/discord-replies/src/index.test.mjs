@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { DiscordIngestCoordinator } from './index.js';
+import worker, { DiscordGateway, DiscordIngestCoordinator } from './index.js';
 
 function fixture(initial = {}, env = {}) {
   const entries = new Map(Object.entries(initial));
@@ -78,8 +78,72 @@ test('malformed or regressing checkpoint never advances the saved state', async 
 });
 
 test('public HTTP requests cannot trigger import', async () => {
-  assert.equal(worker.fetch().status, 404);
+  assert.equal((await worker.fetch(new Request('https://worker.example/public'))).status, 404);
   assert.equal((await fixture().coordinator.fetch(new Request('https://coordinator/tick'))).status, 404);
+});
+
+function gatewayFixture(env = {}) {
+  const entries = new Map();
+  const storage = {
+    async get(key) { return entries.get(key); },
+    async put(key, value) { entries.set(key, value); },
+    async delete(key) { return entries.delete(key); },
+    async deleteAlarm() {},
+    async setAlarm() {},
+    async list({ prefix }) { return new Map([...entries].filter(([key]) => key.startsWith(prefix))); },
+    async transaction(callback) { return callback(storage); },
+  };
+  const state = { storage };
+  const gateway = new DiscordGateway(state, {
+    DISCORD_GATEWAY_ENABLED: 'true',
+    DISCORD_FEEDBACK_CHANNEL_ID: '423456789012345678',
+    DISCORD_FEEDBACK_GUILD_ID: '523456789012345678',
+    DISCORD_ALLOWED_USER_IDS: '623456789012345678',
+    GATEWAY_DELIVERY_ENVIRONMENTS: 'development',
+    FEEDBACK_INGEST_SECRET_PRODUCTION: 'prod-secret',
+    FEEDBACK_INGEST_SECRET_DEVELOPMENT: 'dev-secret',
+    ...env,
+  });
+  return { entries, gateway };
+}
+
+test('Gateway inbox stores only reply identifiers and checkpoints sequence atomically', async () => {
+  const { entries, gateway } = gatewayFixture();
+  await gateway.persistMessageEvent({
+    id: '123456789012345678', channel_id: '423456789012345678', guild_id: '523456789012345678',
+    author: { id: '623456789012345678', bot: false }, content: 'must not persist',
+    message_reference: { message_id: '223456789012345678' },
+  }, 42);
+  assert.equal(entries.get('gateway-sequence'), 42);
+  const item = entries.get('inbox:123456789012345678');
+  assert.equal(item.referencedMessageId, '223456789012345678');
+  assert.equal(JSON.stringify(item).includes('must not persist'), false);
+  assert.deepEqual(item.deliveries, { production: 'held', development: 'held' });
+});
+
+test('Gateway retains held environment results and deletes an event only after both environments confirm', async (t) => {
+  const { entries, gateway } = gatewayFixture();
+  entries.set('inbox:123456789012345678', {
+    messageId: '123456789012345678', channelId: '423456789012345678', guildId: '523456789012345678',
+    deliveries: { production: 'held', development: 'held' },
+  });
+  const requests = [];
+  let phase = 'development';
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    requests.push({ url, body: JSON.parse(init.body) });
+    const environment = url.includes('-git-develop-') ? 'development' : 'production';
+    return Response.json({ environment, outcome: phase === 'development' ? 'saved' : 'duplicate' });
+  });
+  await gateway.deliverPending();
+  assert.equal(entries.get('inbox:123456789012345678').deliveries.development, 'confirmed');
+  assert.equal(entries.get('inbox:123456789012345678').deliveries.production, 'held');
+  assert.equal(requests.length, 1);
+  assert.equal(JSON.stringify(requests[0].body).includes('content'), false);
+
+  phase = 'all';
+  gateway.env.GATEWAY_DELIVERY_ENVIRONMENTS = 'production,development';
+  await gateway.deliverPending();
+  assert.equal(entries.has('inbox:123456789012345678'), false);
 });
 
 test('redirect is rejected without following it or advancing checkpoint', async (t) => {
