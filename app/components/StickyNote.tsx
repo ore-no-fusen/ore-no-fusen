@@ -1191,14 +1191,19 @@ const StickyNote = memo(function StickyNote() {
                 const uReload = await listen<{ path: string }>('fusen:reload_note', async (event) => {
                     const targetPath = event.payload?.path;
                     if (targetPath && selectedFile?.path && pathsEqual(targetPath, selectedFile.path)) {
-                        setSavePending(false);
                         console.log('[DBG:reload_note] FIRED targetPath=', targetPath, 'isEditing=', isEditingForListenerRef.current, 'stack=', new Error().stack?.split('\n').slice(1,3).join(' | '));
+                        if (isEditingForListenerRef.current && editBodyRef.current !== contentForListenerRef.current) {
+                            setToastMessage('同期による再読込を保留しました。入力中の内容はそのままです。');
+                            setTimeout(() => setToastMessage(null), 3000);
+                            return;
+                        }
                         const body = await loadNote(true);
                         // [FIX] loadNote()が失敗して空を返した場合は上書きしない（C-2対策）
                         if (!body) {
                             console.error('[StickyNote] reload_note: loadNote returned empty, skipping content update to prevent data loss.');
                             return;
                         }
+                        setSavePending(false);
                         console.log('[DBG:reload_note] setContent+setEditBody body=', JSON.stringify(body.slice(0, 50)));
                         setContent(body);
                         setEditBody(body);

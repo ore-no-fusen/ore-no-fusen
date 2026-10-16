@@ -34,11 +34,7 @@ impl TripleRightClickDetector {
         }
     }
 
-    pub fn on_event(
-        &mut self,
-        event: MouseClickEvent,
-        now_ms: u64,
-    ) -> TripleRightClickOutcome {
+    pub fn on_event(&mut self, event: MouseClickEvent, now_ms: u64) -> TripleRightClickOutcome {
         match event {
             MouseClickEvent::RightDown => self.on_right_down(now_ms),
             MouseClickEvent::OtherDown => {
@@ -92,8 +88,8 @@ mod windows_hook {
     use windows::Win32::System::Threading::GetCurrentThreadId;
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, GetMessageW, PeekMessageW, PostThreadMessageW, SetWindowsHookExW,
-        UnhookWindowsHookEx, HHOOK, MSLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_MOUSE_LL,
-        WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_QUIT, WM_RBUTTONDOWN,
+        UnhookWindowsHookEx, HHOOK, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, WH_MOUSE_LL, WM_LBUTTONDOWN,
+        WM_MBUTTONDOWN, WM_QUIT, WM_RBUTTONDOWN,
     };
 
     use super::{MouseClickEvent, TripleRightClickDetector, TripleRightClickOutcome};
@@ -144,8 +140,7 @@ mod windows_hook {
                 sender: callback_tx,
             });
 
-            let hook =
-                unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), HINSTANCE(0), 0) };
+            let hook = unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), HINSTANCE(0), 0) };
             let hook = match hook {
                 Ok(hook) => hook,
                 Err(e) => {
@@ -211,7 +206,10 @@ mod windows_hook {
             .take();
         if let Some(runtime) = runtime {
             if let Err(e) = unsafe { UnhookWindowsHookEx(HHOOK(runtime.hook)) } {
-                logger::log_warn(&format!("[Shortcut] triple right click unhook failed: {}", e));
+                logger::log_warn(&format!(
+                    "[Shortcut] triple right click unhook failed: {}",
+                    e
+                ));
             }
             if let Err(e) =
                 unsafe { PostThreadMessageW(runtime.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }

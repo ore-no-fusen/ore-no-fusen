@@ -1,18 +1,26 @@
-use crate::{logic, logger, storage};
 use crate::state::AppState;
+use crate::web_share_contract::{
+    self, OperationKind, ShareImageManifest, ShareOperation, SharePayload, ShareScope,
+};
+use crate::{logger, logic, storage};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
+
+const MAX_WEB_SHARE_IMAGE_BYTES: u64 = 50 * 1024 * 1024;
 
 const LAUNCHER_ORDER_FILE: &str = "launcher_order.json";
 const CRYSTAL_FORMATS_FILE: &str = "crystal_formats.json";
 const QUICK_LAUNCHER_LABEL: &str = "quick_launcher";
 pub(crate) const LAUNCHER_SHELF_CHANGED_EVENT: &str = "fusen:launcher_shelf_changed";
 static TOGGLE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static WEB_SHARE_SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 const TABS: [&str; 4] = ["recipe", "shortcut", "qa", "term"];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -99,7 +107,9 @@ fn get_or_load_shortcut_items<F>(
 where
     F: FnOnce() -> Result<Vec<QuickOpenItem>, String>,
 {
-    let mut guard = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some(items) = guard.get(base_path) {
         return Ok(items.clone());
     }
@@ -172,7 +182,9 @@ fn normalize_order(mut order: LauncherOrder) -> LauncherOrder {
         order.orders.entry(tab.to_string()).or_default();
     }
     order.orders.retain(|tab, _| TABS.contains(&tab.as_str()));
-    order.selected_tags.retain(|tab, _| TABS.contains(&tab.as_str()));
+    order
+        .selected_tags
+        .retain(|tab, _| TABS.contains(&tab.as_str()));
     order
 }
 
@@ -206,8 +218,8 @@ fn save_launcher_order_to_path(path: &Path, order: &LauncherOrder) -> Result<(),
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let content = serde_json::to_string_pretty(&normalize_order(order.clone()))
-        .map_err(|e| e.to_string())?;
+    let content =
+        serde_json::to_string_pretty(&normalize_order(order.clone())).map_err(|e| e.to_string())?;
     fs::write(path, content).map_err(|e| e.to_string())
 }
 
@@ -224,7 +236,9 @@ fn load_crystal_formats_from_path(path: &Path) -> Result<Option<String>, String>
         return Ok(None);
     }
 
-    fs::read_to_string(path).map(Some).map_err(|e| e.to_string())
+    fs::read_to_string(path)
+        .map(Some)
+        .map_err(|e| e.to_string())
 }
 
 fn save_crystal_formats_to_path(path: &Path, json: &str) -> Result<(), String> {
@@ -295,7 +309,11 @@ fn parse_launcher_launches(content: &str) -> i32 {
 
 fn read_shortcut_item(path: &Path) -> Option<QuickOpenItem> {
     let content = fs::read_to_string(path).ok()?;
-    let tags = parse_launcher_tags(&content);
+    shortcut_item_from_content(path, &content)
+}
+
+fn shortcut_item_from_content(path: &Path, content: &str) -> Option<QuickOpenItem> {
+    let tags = parse_launcher_tags(content);
     if !note_has_tag(&tags, "shortcut") {
         return None;
     }
@@ -305,7 +323,7 @@ fn read_shortcut_item(path: &Path) -> Option<QuickOpenItem> {
     Some(QuickOpenItem {
         path: path_str,
         title: context,
-        launches: parse_launcher_launches(&content),
+        launches: parse_launcher_launches(content),
         is_recipe: note_has_tag(&tags, "recipe"),
         tags,
     })
@@ -327,10 +345,836 @@ fn load_shortcut_items(base_path: &Path) -> Result<Vec<QuickOpenItem>, String> {
     ))
 }
 
+/// Sync must not interpret a note read failure as removal from Quick Launcher:
+/// that could otherwise append a Drive revoke record for an unreadable note.
+fn load_shortcut_items_strict(base_path: &Path) -> Result<Vec<QuickOpenItem>, String> {
+    let entries = fs::read_dir(base_path)
+        .map_err(|error| format!("Quick Launcher登録一覧を読めず同期を止めました: {error}"))?;
+    let mut items = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!("Quick Launcher登録一覧を確認できず同期を止めました: {error}")
+        })?;
+        let path = entry.path();
+        if !path.is_file() || path.extension().map_or(true, |ext| ext != "md") {
+            continue;
+        }
+        let content = fs::read_to_string(&path).map_err(|error| {
+            format!("付箋を読み取れず共有解除を含む同期を止めました: {error}")
+        })?;
+        if let Some(item) = shortcut_item_from_content(&path, &content) {
+            items.push(item);
+        }
+    }
+    let order = load_launcher_order()?;
+    Ok(merge_ordered_items(
+        order
+            .orders
+            .get("shortcut")
+            .map(Vec::as_slice)
+            .unwrap_or(&[]),
+        items,
+    ))
+}
+
 fn cached_shortcut_items(base_path: &Path) -> Result<Vec<QuickOpenItem>, String> {
     get_or_load_shortcut_items(shortcut_cache(), base_path, || {
         load_shortcut_items(base_path)
     })
+}
+
+fn prepare_registered_share_payload(
+    base_path: &Path,
+    path: &str,
+    registered_paths: &[String],
+) -> Result<SharePayload, String> {
+    let base = base_path.canonicalize().map_err(|e| e.to_string())?;
+    let target = Path::new(path).canonicalize().map_err(|e| e.to_string())?;
+    if !target.starts_with(&base) || target.extension().and_then(|ext| ext.to_str()) != Some("md") {
+        return Err("付箋が現在の保管場所にありません".to_string());
+    }
+    let registered = registered_paths.iter().any(|registered_path| {
+        Path::new(registered_path)
+            .canonicalize()
+            .is_ok_and(|candidate| candidate == target)
+    });
+    if !registered {
+        return Err("クイックランチャーに登録されていない付箋です".to_string());
+    }
+
+    let note_snapshot = fs::read_to_string(&target).map_err(|e| e.to_string())?;
+    prepare_registered_share_payload_from_snapshot(
+        base_path,
+        &target,
+        registered_paths,
+        &note_snapshot,
+    )
+}
+
+fn prepare_registered_share_payload_from_snapshot(
+    base_path: &Path,
+    target: &Path,
+    registered_paths: &[String],
+    note_snapshot: &str,
+) -> Result<SharePayload, String> {
+    let base = base_path.canonicalize().map_err(|e| e.to_string())?;
+    let target = target.canonicalize().map_err(|e| e.to_string())?;
+    if !target.starts_with(&base) || target.extension().and_then(|ext| ext.to_str()) != Some("md") {
+        return Err("付箋が現在の保管場所にありません".to_string());
+    }
+    let registered = registered_paths.iter().any(|registered_path| {
+        Path::new(registered_path)
+            .canonicalize()
+            .is_ok_and(|candidate| candidate == target)
+    });
+    if !registered {
+        return Err("クイックランチャーに登録されていない付箋です".to_string());
+    }
+    if !crate::web_share_markdown::local_note_has_frontmatter_tag(note_snapshot, "shortcut")? {
+        return Err("付箋のランチャー登録状態が変わりました。再読込してください".to_string());
+    }
+    let filename = target
+        .file_name()
+        .ok_or_else(|| "付箋のファイル名が不正です".to_string())?
+        .to_string_lossy();
+    let (_, _, launcher_title) = logic::parse_filename(&filename);
+    let images = prepare_local_share_image_manifests(&target, &note_snapshot)?;
+    let mut payload =
+        crate::web_share_markdown::local_note_to_share_payload(&note_snapshot, &images)?;
+    payload.title = launcher_title;
+    Ok(payload)
+}
+
+fn prepare_local_share_image_manifests(
+    note_path: &Path,
+    note_file: &str,
+) -> Result<HashMap<String, ShareImageManifest>, String> {
+    Ok(read_local_share_images(note_path, note_file)?
+        .into_iter()
+        .map(|(path, image)| (path, image.manifest))
+        .collect())
+}
+
+struct LocalShareImage {
+    manifest: ShareImageManifest,
+    bytes: Vec<u8>,
+}
+
+async fn apply_web_payload_to_windows_note(
+    path: &Path,
+    original: &str,
+    with_share_id: &str,
+    windows_payload: &SharePayload,
+    web_payload: &SharePayload,
+    client: &reqwest::Client,
+    token: &str,
+    share_folder: &str,
+) -> Result<(), String> {
+    if windows_payload.title != web_payload.title {
+        return Err("Web側のタイトル変更はWindows原本に反映できないため保留しました".into());
+    }
+    let latest = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    if latest != original {
+        return Err(
+            "同期中にWindows付箋が変更されました。内容を再確認して再同期してください".into(),
+        );
+    }
+    let local = read_local_share_images(path, with_share_id)?;
+    let local_manifests = unique_image_manifests(local.values().map(|image| &image.manifest))?;
+    let expected_manifests = unique_image_manifests(windows_payload.images.iter())?;
+    let incoming_manifests = unique_image_manifests(web_payload.images.iter())?;
+    if local_manifests != expected_manifests || expected_manifests != incoming_manifests {
+        return Err("Web側の画像変更はまだWindowsへ反映できないため保留しました".into());
+    }
+    for manifest in &web_payload.images {
+        if manifest.size_bytes == 0 || manifest.size_bytes as u64 > MAX_WEB_SHARE_IMAGE_BYTES {
+            return Err("共有画像のサイズ上限を超えているため保留しました".into());
+        }
+        let filename = format!("image-{}", manifest.sha256);
+        let id = crate::gdrive::find_web_share_file(client, token, share_folder, &filename)
+            .await?
+            .ok_or_else(|| {
+                "共有画像がDriveに見つからず、Windows原本は変更していません".to_string()
+            })?;
+        let bytes = crate::gdrive::download_web_share_bytes(client, token, &id).await?;
+        if bytes.len() != manifest.size_bytes as usize
+            || format!("{:x}", Sha256::digest(&bytes)) != manifest.sha256
+        {
+            return Err(
+                "Drive上の共有画像の内容が一致しないため、Windows原本は変更していません".into(),
+            );
+        }
+    }
+    let mut markdown = web_payload.markdown.clone();
+    for (local_path, image) in &local {
+        let relative_path = Path::new(local_path);
+        if relative_path.as_os_str().is_empty()
+            || relative_path
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err("付箋画像の相対パスが不正なため保留しました".into());
+        }
+        let relative = local_path.replace('\\', "/");
+        markdown = markdown.replace(
+            &format!("ore-fusen-image://{}", image.manifest.image_id),
+            &relative,
+        );
+    }
+    if markdown.contains("ore-fusen-image://") {
+        return Err("Web付箋にWindows側で確認できない画像参照があるため保留しました".into());
+    }
+    // Keep the stable identity embedded in the Windows original so a rename
+    // after a down-sync still belongs to the same shared note.
+    let mut updated = logic::replace_web_share_note_body(with_share_id, &markdown)?;
+    let receipt = format!("{:x}", Sha256::digest(web_payload.markdown.as_bytes()));
+    updated = logic::update_frontmatter_value_for_web_share(&updated, "web_sync_receipt", &receipt);
+    storage::write_note_if_unchanged(&path.to_string_lossy(), original, &updated)
+        .map_err(|e| format!("Web変更を書き戻せませんでした: {e}"))
+}
+
+fn unique_image_manifests<'a>(
+    manifests: impl IntoIterator<Item = &'a ShareImageManifest>,
+) -> Result<Vec<ShareImageManifest>, String> {
+    let mut unique = HashMap::<String, ShareImageManifest>::new();
+    for manifest in manifests {
+        match unique.get(&manifest.image_id) {
+            Some(previous) if previous != manifest => {
+                return Err("同じ画像IDに異なる画像情報があるため保留しました".into());
+            }
+            Some(_) => {}
+            None => {
+                unique.insert(manifest.image_id.clone(), manifest.clone());
+            }
+        }
+    }
+    let mut result = unique.into_values().collect::<Vec<_>>();
+    result.sort_by(|a, b| a.image_id.cmp(&b.image_id));
+    Ok(result)
+}
+
+fn read_local_share_images(
+    note_path: &Path,
+    note_file: &str,
+) -> Result<HashMap<String, LocalShareImage>, String> {
+    let note_dir = note_path
+        .parent()
+        .ok_or_else(|| "付箋の保存場所が不正です".to_string())?;
+    let references = crate::web_share_markdown::local_note_image_references(note_file)?;
+    if references.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let assets_dir = note_dir.join("assets");
+    let canonical_note_dir = note_dir
+        .canonicalize()
+        .map_err(|_| "付箋の保存場所を確認できません".to_string())?;
+    let assets_root = assets_dir
+        .canonicalize()
+        .map_err(|_| "付箋の画像フォルダーを確認できません".to_string())?;
+    if !assets_root.starts_with(&canonical_note_dir) {
+        return Err("付箋の画像フォルダーが保存場所の外を指しています".to_string());
+    }
+    let mut manifests = HashMap::new();
+    for relative in references {
+        let relative_path = Path::new(&relative);
+        if relative_path
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err("付箋画像の相対パスが不正です".to_string());
+        }
+        let image_path = note_dir.join(relative_path);
+        let canonical_image = image_path
+            .canonicalize()
+            .map_err(|_| "付箋画像を読み込めません".to_string())?;
+        if !canonical_image.starts_with(&assets_root) || !canonical_image.is_file() {
+            return Err("付箋画像が画像フォルダーの外を指しています".to_string());
+        }
+        let bytes = read_limited_image_file(&canonical_image)?;
+        let format =
+            image::guess_format(&bytes).map_err(|_| "画像形式を判定できません".to_string())?;
+        let mime_type = match format {
+            image::ImageFormat::Png => "image/png",
+            image::ImageFormat::Jpeg => "image/jpeg",
+            image::ImageFormat::Gif => "image/gif",
+            image::ImageFormat::WebP => "image/webp",
+            image::ImageFormat::Bmp => "image/bmp",
+            _ => return Err("Web共有に対応していない画像形式です".to_string()),
+        };
+        let mut reader = image::ImageReader::with_format(std::io::Cursor::new(&bytes), format);
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(4096);
+        limits.max_image_height = Some(4096);
+        limits.max_alloc = Some(128 * 1024 * 1024);
+        reader.limits(limits);
+        reader
+            .decode()
+            .map_err(|_| "付箋画像が壊れているか、画像サイズ上限を超えています".to_string())?;
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        let manifest = ShareImageManifest {
+            image_id: format!("img-{digest}"),
+            mime_type: mime_type.to_string(),
+            size_bytes: u32::try_from(bytes.len())
+                .map_err(|_| "画像サイズを共有形式に変換できません".to_string())?,
+            sha256: digest,
+        };
+        manifests.insert(relative.to_string(), LocalShareImage { manifest, bytes });
+    }
+    Ok(manifests)
+}
+
+fn persist_web_share_sync_state(path: &Path, state: &WebShareSyncState) -> Result<(), String> {
+    let serialized = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+    storage::write_note(&path.to_string_lossy(), &serialized)
+        .map_err(|e| format!("同期結果をPCに記録できません: {e}"))
+}
+
+fn read_limited_image_file(path: &Path) -> Result<Vec<u8>, String> {
+    read_limited_image_bytes(
+        fs::File::open(path).map_err(|error| error.to_string())?,
+        MAX_WEB_SHARE_IMAGE_BYTES,
+    )
+}
+
+fn read_limited_image_bytes<R: Read>(reader: R, max_bytes: u64) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    reader
+        .take(max_bytes + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.is_empty() || bytes.len() as u64 > max_bytes {
+        return Err("付箋画像が空、またはサイズ上限を超えています".to_string());
+    }
+    Ok(bytes)
+}
+
+#[tauri::command]
+pub(crate) fn fusen_prepare_web_share_note(
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+) -> Result<SharePayload, String> {
+    let base = base_path_from_state(&state)?;
+    let items = load_shortcut_items(Path::new(&base))?;
+    let registered_paths = items.into_iter().map(|item| item.path).collect::<Vec<_>>();
+    prepare_registered_share_payload(Path::new(&base), &path, &registered_paths)
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct WebShareSyncState {
+    account_subject: String,
+    notes: HashMap<String, WebShareNoteSyncState>,
+    #[serde(default)]
+    note_ids: HashMap<String, String>,
+    #[serde(default)]
+    revoked_ids: HashSet<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WebShareNoteSyncState {
+    head_id: String,
+    payload: SharePayload,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WebShareSyncSummary {
+    uploaded: usize,
+    applied: usize,
+    unchanged: usize,
+    revoked: usize,
+    held: Vec<String>,
+}
+
+enum WebSyncOutcome {
+    Uploaded,
+    Applied,
+    Unchanged,
+}
+
+struct WebShareSyncGuard;
+impl Drop for WebShareSyncGuard {
+    fn drop(&mut self) {
+        WEB_SHARE_SYNC_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
+
+/// Quick Launcherの登録付箋だけを手動でDriveへ送る。取得/検証に失敗した変更は保留し、
+/// 既存操作ファイルを更新する経路は使用しない。
+#[tauri::command]
+pub(crate) async fn fusen_sync_quick_launcher_to_web(
+    app: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<WebShareSyncSummary, String> {
+    if WEB_SHARE_SYNC_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        return Err("Web同期はすでに実行中です。完了を待ってください".to_string());
+    }
+    let _sync_guard = WebShareSyncGuard;
+    let base = PathBuf::from(base_path_from_state(&state)?)
+        .canonicalize()
+        .map_err(|e| format!("付箋の保存場所を確認できません: {e}"))?;
+    let items = load_shortcut_items_strict(&base)?;
+    let registered_paths = items
+        .iter()
+        .map(|item| item.path.clone())
+        .collect::<Vec<_>>();
+    let client = reqwest::Client::new();
+    let token = crate::gdrive::get_access_token(&client)
+        .await
+        .map_err(|error| format!("Google Driveに接続できません: {error}"))?;
+    let account = crate::gdrive::get_google_account_with_token(&client, &token)
+        .await
+        .map_err(|error| format!("Googleアカウントを確認できません: {error}"))?;
+    let account_subject = account
+        .email_address
+        .filter(|email| !email.trim().is_empty())
+        .ok_or_else(|| "Googleアカウントのメールアドレスを取得できません".to_string())?
+        .trim()
+        .to_lowercase();
+    let share_folder = crate::gdrive::ensure_web_share_folder(&client, &token).await?;
+    let remote_files =
+        crate::gdrive::list_web_share_records(&client, &token, &share_folder).await?;
+    let mut all_remote = Vec::<ShareOperation>::new();
+    for (id, _) in remote_files {
+        let value = crate::gdrive::download_web_share_record(&client, &token, &id).await?;
+        let record: ShareOperation = serde_json::from_value(value).map_err(|error| {
+            format!("共有記録を読み取れません。Driveへの保存は中止しました: {error}")
+        })?;
+        all_remote.push(record);
+    }
+
+    let state_path = crate::gdrive::get_token_path().with_file_name("web_share_sync.json");
+    let mut sync_state = if state_path.exists() {
+        serde_json::from_slice::<WebShareSyncState>(
+            &fs::read(&state_path).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| format!("前回同期の記録が壊れています。安全のため中止しました: {e}"))?
+    } else {
+        WebShareSyncState::default()
+    };
+    if !sync_state.account_subject.is_empty() && sync_state.account_subject != account_subject {
+        return Err(
+            "Windows側の前回同期アカウントとGoogleアカウントが異なります。同期を保留しました"
+                .to_string(),
+        );
+    }
+    sync_state.account_subject = account_subject.clone();
+
+    let mut summary = WebShareSyncSummary {
+        uploaded: 0,
+        applied: 0,
+        unchanged: 0,
+        revoked: 0,
+        held: Vec::new(),
+    };
+    let mut id_owners = HashMap::<String, String>::new();
+    let mut note_ids_by_path = HashMap::<String, String>::new();
+    let mut duplicate_id_paths = HashSet::<String>::new();
+    let remote_note_ids = all_remote
+        .iter()
+        .filter(|record| record.scope.account_subject == account_subject)
+        .map(|record| record.scope.note_id.clone())
+        .collect::<HashSet<_>>();
+    let mut remote_revoked_ids = HashSet::new();
+    for note_id in remote_note_ids {
+        let scope = ShareScope {
+            account_subject: account_subject.clone(),
+            note_id: note_id.clone(),
+            generation: 1,
+        };
+        let scoped = all_remote
+            .iter()
+            .filter(|record| record.scope == scope)
+            .cloned()
+            .collect::<Vec<_>>();
+        let validated = web_share_contract::validate_log(&scope, &scoped)
+            .map_err(|error| format!("Drive上の共有記録を確認できず同期を止めました: {error:?}"))?;
+        if validated.control_records.iter().any(|id| {
+            scoped
+                .iter()
+                .any(|record| record.operation_id == *id && record.kind == OperationKind::Revoke)
+        }) {
+            remote_revoked_ids.insert(note_id);
+        }
+    }
+    for item in &items {
+        let path = Path::new(&item.path);
+        let canonical = path.canonicalize().map_err(|error| {
+            format!("登録付箋を確認できず、解除を含む同期を止めました: {error}")
+        })?;
+        if !canonical.starts_with(&base) {
+            return Err("登録付箋が保管場所の外にあり、同期を止めました".into());
+        }
+        let Ok(relative) = canonical
+            .strip_prefix(&base)
+            .map(|path| path.to_string_lossy().replace('\\', "/"))
+        else {
+            return Err("登録付箋の保存場所を特定できず、同期を止めました".into());
+        };
+        let source = fs::read_to_string(&canonical).map_err(|error| {
+            format!("登録付箋を読み取れず、解除を含む同期を止めました: {error}")
+        })?;
+        let stored_id = sync_state.note_ids.get(&relative).cloned();
+        let embedded_id = logic::web_share_note_id(&source);
+        let prior_id = stored_id.clone().or(embedded_id.clone());
+        let id = if prior_id.as_ref().is_some_and(|id| {
+            sync_state.revoked_ids.contains(id) || remote_revoked_ids.contains(id)
+        }) {
+            let id = uuid::Uuid::new_v4().to_string();
+            sync_state.note_ids.insert(relative.clone(), id.clone());
+            id
+        } else if let Some(id) = stored_id {
+            id
+        } else if let Some(id) = embedded_id {
+            sync_state
+                .note_ids
+                .entry(relative.clone())
+                .or_insert_with(|| id.clone());
+            id
+        } else {
+            sync_state
+                .note_ids
+                .entry(relative.clone())
+                .or_insert_with(|| uuid::Uuid::new_v4().to_string())
+                .clone()
+        };
+        let with_id = logic::set_web_share_note_id(&source, &id)?;
+        let (_, body) = logic::split_frontmatter(&with_id);
+        let receipt = format!("{:x}", Sha256::digest(body.as_bytes()));
+        let with_id =
+            logic::update_frontmatter_value_for_web_share(&with_id, "web_sync_receipt", &receipt);
+        if with_id != source {
+            storage::write_note_if_unchanged(&canonical.to_string_lossy(), &source, &with_id)
+                .map_err(|error| format!("共有IDをWindows原本に記録できず保留しました: {error}"))?;
+            let _ = app.emit(
+                "fusen:reload_note",
+                serde_json::json!({ "path": canonical.to_string_lossy() }),
+            );
+        }
+        if let Some(previous_path) = id_owners.insert(id.clone(), relative.clone()) {
+            duplicate_id_paths.insert(previous_path);
+            duplicate_id_paths.insert(relative.clone());
+        }
+        note_ids_by_path.insert(relative, id);
+    }
+    // Persist stable local IDs before any Drive write so an interrupted upload can be retried.
+    persist_web_share_sync_state(&state_path, &sync_state)?;
+    let active_ids = note_ids_by_path.values().cloned().collect::<HashSet<_>>();
+    let account_note_prefix = format!("{}:", account_subject);
+    let removed_ids = sync_state
+        .notes
+        .keys()
+        .filter_map(|key| key.strip_prefix(&account_note_prefix))
+        .filter(|note_id| {
+            !active_ids.contains(*note_id) && !sync_state.revoked_ids.contains(*note_id)
+        })
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+    for note_id in removed_ids {
+        if !duplicate_id_paths.is_empty() {
+            summary
+                .held
+                .push("付箋IDの重複があるため、未登録付箋の共有解除を保留しました".into());
+            break;
+        }
+        let key = format!("{}:{}", account_subject, note_id);
+        let Some(previous) = sync_state.notes.get(&key).cloned() else {
+            continue;
+        };
+        let scope = ShareScope {
+            account_subject: account_subject.clone(),
+            note_id: note_id.clone(),
+            generation: 1,
+        };
+        let scoped = all_remote
+            .iter()
+            .filter(|record| record.scope == scope)
+            .cloned()
+            .collect::<Vec<_>>();
+        let validated = web_share_contract::validate_log(&scope, &scoped).map_err(|error| {
+            format!("共有解除対象のDrive記録を確認できず保留しました: {error:?}")
+        })?;
+        let is_revoked = validated.control_records.iter().any(|id| {
+            scoped
+                .iter()
+                .any(|record| &record.operation_id == id && record.kind == OperationKind::Revoke)
+        });
+        if !is_revoked {
+            let mut revoke = ShareOperation {
+                scope,
+                operation_id: String::new(),
+                kind: OperationKind::Revoke,
+                parents: Vec::new(),
+                payload_hash: String::new(),
+                payload: previous.payload,
+                resolved_ids: Vec::new(),
+            };
+            revoke.operation_id = format!(
+                "op-{:x}",
+                Sha256::digest(format!("{}:{}:revoke", account_subject, note_id).as_bytes())
+            );
+            revoke.payload_hash = web_share_contract::calculate_payload_hash(&revoke)
+                .map_err(|error| format!("共有解除記録を作れません: {error:?}"))?;
+            let bytes = serde_json::to_vec(&revoke).map_err(|error| error.to_string())?;
+            crate::gdrive::create_web_share_file(
+                &client,
+                &token,
+                &share_folder,
+                &format!("{}.json", revoke.operation_id),
+                bytes,
+                "application/json",
+            )
+            .await?;
+        }
+        sync_state.revoked_ids.insert(note_id);
+        summary.revoked += 1;
+    }
+    for item in items {
+        let path = Path::new(&item.path);
+        let relative = path.canonicalize().ok().and_then(|canonical| {
+            canonical
+                .strip_prefix(&base)
+                .ok()
+                .map(|path| path.to_string_lossy().replace('\\', "/"))
+        });
+        if let Some(relative) = &relative {
+            if duplicate_id_paths.contains(relative) {
+                summary.held.push(format!(
+                    "{}: 共有IDが別の登録付箋と重複しているため保留しました",
+                    item.title
+                ));
+                continue;
+            }
+        }
+        let Some(note_id) = relative
+            .as_ref()
+            .and_then(|relative| note_ids_by_path.get(relative))
+            .cloned()
+        else {
+            summary.held.push(format!(
+                "{}: 付箋のIDを安全に準備できず保留しました",
+                item.title
+            ));
+            continue;
+        };
+        let result = sync_one_registered_note(
+            &app,
+            &base,
+            path,
+            &registered_paths,
+            &account_subject,
+            &token,
+            &client,
+            &share_folder,
+            &all_remote,
+            &mut sync_state,
+            &note_id,
+        )
+        .await;
+        match result {
+            Ok(WebSyncOutcome::Uploaded) => summary.uploaded += 1,
+            Ok(WebSyncOutcome::Applied) => summary.applied += 1,
+            Ok(WebSyncOutcome::Unchanged) => summary.unchanged += 1,
+            Err(error) => summary.held.push(format!("{}: {}", item.title, error)),
+        }
+    }
+    persist_web_share_sync_state(&state_path, &sync_state)?;
+    Ok(summary)
+}
+
+async fn sync_one_registered_note(
+    app: &AppHandle,
+    base: &Path,
+    path: &Path,
+    registered_paths: &[String],
+    account_subject: &str,
+    token: &str,
+    client: &reqwest::Client,
+    share_folder: &str,
+    all_remote: &[ShareOperation],
+    sync_state: &mut WebShareSyncState,
+    note_id: &str,
+) -> Result<WebSyncOutcome, String> {
+    let canonical = path.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical.starts_with(base.canonicalize().map_err(|e| e.to_string())?) {
+        return Err("登録付箋が保管場所の外にあります".into());
+    }
+    let original = fs::read_to_string(&canonical).map_err(|e| e.to_string())?;
+    if !crate::web_share_markdown::local_note_has_frontmatter_tag(&original, "shortcut")? {
+        return Err("Quick Launcher登録を確認できないため保留しました".into());
+    }
+    let note_id = note_id.to_string();
+    let with_share_id = logic::set_web_share_note_id(&original, &note_id)?;
+    let payload = prepare_registered_share_payload_from_snapshot(
+        base,
+        &canonical,
+        registered_paths,
+        &with_share_id,
+    )?;
+    let scope = ShareScope {
+        account_subject: account_subject.to_string(),
+        note_id: note_id.clone(),
+        generation: 1,
+    };
+    let scoped_records = all_remote
+        .iter()
+        .filter(|record| record.scope == scope)
+        .cloned()
+        .collect::<Vec<_>>();
+    let validated = web_share_contract::validate_log(&scope, &scoped_records)
+        .map_err(|e| format!("Drive上の共有記録を安全に読めないため保留しました: {e:?}"))?;
+    let key = format!("{}:{}", account_subject, note_id);
+    let previous = sync_state.notes.get(&key).cloned();
+    let remote_heads = validated.content_heads;
+    let remote_head = match remote_heads.as_slice() {
+        [] if previous.is_none() => None,
+        [] => return Err("Drive上の前回同期記録が見つからないため保留しました".into()),
+        [head] => Some(head.as_str()),
+        _ => return Err("WindowsとWebの両方に変更があり、競合を保留しました".into()),
+    };
+    let remote_operation = remote_head.and_then(|head| {
+        scoped_records
+            .iter()
+            .find(|record| record.operation_id == head)
+    });
+    if let Some(remote) = remote_operation {
+        if remote.payload == payload {
+            sync_state.notes.insert(
+                key,
+                WebShareNoteSyncState {
+                    head_id: remote.operation_id.clone(),
+                    payload,
+                },
+            );
+            return Ok(WebSyncOutcome::Unchanged);
+        }
+        if previous.as_ref().map(|entry| entry.head_id.as_str())
+            != Some(remote.operation_id.as_str())
+        {
+            let baseline = previous
+                .as_ref()
+                .ok_or_else(|| "同期基準がないためWeb変更を安全に適用できません".to_string())?;
+            if baseline.payload != payload {
+                return Err("WindowsとWebの同じ付箋に変更があり、競合を保留しました".into());
+            }
+            apply_web_payload_to_windows_note(
+                &canonical,
+                &original,
+                &with_share_id,
+                &payload,
+                &remote.payload,
+                client,
+                token,
+                share_folder,
+            )
+            .await?;
+            let _ = app.emit(
+                "fusen:reload_note",
+                serde_json::json!({ "path": canonical.to_string_lossy() }),
+            );
+            sync_state.notes.insert(
+                key,
+                WebShareNoteSyncState {
+                    head_id: remote.operation_id.clone(),
+                    payload: remote.payload.clone(),
+                },
+            );
+            return Ok(WebSyncOutcome::Applied);
+        }
+    }
+    let parent = remote_operation
+        .map(|record| record.operation_id.clone())
+        .unwrap_or_else(|| {
+            format!(
+                "root:{}:{}:{}:{}:{}",
+                scope.account_subject.len(),
+                scope.account_subject,
+                scope.note_id.len(),
+                scope.note_id,
+                scope.generation
+            )
+        });
+
+    let latest = fs::read_to_string(&canonical).map_err(|e| e.to_string())?;
+    if latest != original {
+        return Err(
+            "同期中にWindows付箋が変更されました。内容を再確認して再同期してください".into(),
+        );
+    }
+    let verified_images = read_local_share_images(&canonical, &with_share_id)?;
+    let verified_manifests =
+        unique_image_manifests(verified_images.values().map(|image| &image.manifest))?;
+    let payload_manifests = unique_image_manifests(payload.images.iter())?;
+    if verified_manifests != payload_manifests {
+        return Err("画像が同期中に変更されました。もう一度同期してください".into());
+    }
+    for image in verified_images.values() {
+        if image.bytes.is_empty() || image.bytes.len() as u64 > MAX_WEB_SHARE_IMAGE_BYTES {
+            return Err("共有画像のサイズ上限を超えているため保留しました".into());
+        }
+        let file_name = format!("image-{}", image.manifest.sha256);
+        if let Some(existing_id) =
+            crate::gdrive::find_web_share_file(client, token, share_folder, &file_name).await?
+        {
+            let existing =
+                crate::gdrive::download_web_share_bytes(client, token, &existing_id).await?;
+            let existing_hash = format!("{:x}", Sha256::digest(&existing));
+            if existing.len() != image.manifest.size_bytes as usize
+                || existing_hash != image.manifest.sha256
+            {
+                return Err("Drive上の同名画像が検証に失敗したため保留しました".into());
+            }
+        } else {
+            crate::gdrive::create_web_share_file(
+                client,
+                token,
+                share_folder,
+                &file_name,
+                image.bytes.clone(),
+                &image.manifest.mime_type,
+            )
+            .await?;
+        }
+    }
+
+    let mut operation = ShareOperation {
+        scope,
+        operation_id: String::new(),
+        kind: OperationKind::Edit,
+        parents: vec![parent.clone()],
+        payload_hash: String::new(),
+        payload,
+        resolved_ids: Vec::new(),
+    };
+    operation.payload_hash = web_share_contract::calculate_payload_hash(&operation)
+        .map_err(|e| format!("共有内容の検証に失敗しました: {e:?}"))?;
+    let operation_seed = format!(
+        "{}:{}:{}",
+        operation.scope.note_id, parent, operation.payload_hash
+    );
+    operation.operation_id = format!("op-{:x}", Sha256::digest(operation_seed.as_bytes()));
+    let json = serde_json::to_vec(&operation).map_err(|e| e.to_string())?;
+    crate::gdrive::create_web_share_file(
+        client,
+        token,
+        share_folder,
+        &format!("{}.json", operation.operation_id),
+        json,
+        "application/json",
+    )
+    .await?;
+    sync_state.notes.insert(
+        key,
+        WebShareNoteSyncState {
+            head_id: operation.operation_id.clone(),
+            payload: operation.payload,
+        },
+    );
+    Ok(WebSyncOutcome::Uploaded)
 }
 
 fn recipe_note_paths(base_path: &Path) -> Vec<PathBuf> {
@@ -437,7 +1281,11 @@ fn merge_ordered_items(order_paths: &[String], items: Vec<QuickOpenItem>) -> Vec
     ordered
 }
 
-fn list_quick_open_notes(base_path: &Path, tab: &str, query: &str) -> Result<Vec<QuickOpenItem>, String> {
+fn list_quick_open_notes(
+    base_path: &Path,
+    tab: &str,
+    query: &str,
+) -> Result<Vec<QuickOpenItem>, String> {
     let tab = validate_tab(tab)?;
     if tab == "shortcut" {
         return cached_shortcut_items(base_path).map(|items| apply_query_filter(items, query));
@@ -447,11 +1295,18 @@ fn list_quick_open_notes(base_path: &Path, tab: &str, query: &str) -> Result<Vec
         .into_iter()
         .filter_map(|path| read_quick_item(&path, tab))
         .collect();
-    let ordered = merge_ordered_items(order.orders.get(tab).map(Vec::as_slice).unwrap_or(&[]), items);
+    let ordered = merge_ordered_items(
+        order.orders.get(tab).map(Vec::as_slice).unwrap_or(&[]),
+        items,
+    );
     Ok(apply_query_filter(ordered, query))
 }
 
-fn move_path_in_order(paths: Vec<String>, path: &str, direction: &str) -> Result<Vec<String>, String> {
+fn move_path_in_order(
+    paths: Vec<String>,
+    path: &str,
+    direction: &str,
+) -> Result<Vec<String>, String> {
     let mut next = paths;
     let index = next
         .iter()
@@ -492,7 +1347,10 @@ fn collision_free_root_path(base_path: &Path, file_name: &std::ffi::OsStr) -> Pa
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("note");
-    let extension = source.extension().and_then(|value| value.to_str()).unwrap_or("md");
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("md");
 
     for index in 1.. {
         let filename = format!("{}-{}.{}", stem, index, extension);
@@ -528,7 +1386,11 @@ pub(crate) fn emit_launcher_shelf_changed_for_tag(app: &AppHandle, tag: &str) {
     }
 }
 
-pub(crate) fn handle_note_trashed(app: &AppHandle, old_path: &str, new_path: &str) -> Result<(), String> {
+pub(crate) fn handle_note_trashed(
+    app: &AppHandle,
+    old_path: &str,
+    new_path: &str,
+) -> Result<(), String> {
     let mut order = load_launcher_order()?;
     remove_path_from_orders(&mut order, old_path);
     remove_path_from_orders(&mut order, new_path);
@@ -538,7 +1400,9 @@ pub(crate) fn handle_note_trashed(app: &AppHandle, old_path: &str, new_path: &st
 }
 
 fn move_crystal_to_local_trash(path: &Path, content: &str) -> Result<PathBuf, String> {
-    let parent = path.parent().ok_or_else(|| "invalid note parent".to_string())?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "invalid note parent".to_string())?;
     let trash_dir = storage::ensure_trash_dir(parent)?;
     let file_name = path
         .file_name()
@@ -592,7 +1456,9 @@ fn remove_from_shelf_at_base(_base_path: &Path, path: &Path) -> Result<Option<Pa
     Err("note is not on a launcher shelf".to_string())
 }
 
-fn build_quick_launcher_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<tauri::WebviewWindow<R>, String> {
+fn build_quick_launcher_window<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<tauri::WebviewWindow<R>, String> {
     tauri::WebviewWindowBuilder::new(
         app,
         QUICK_LAUNCHER_LABEL,
@@ -622,13 +1488,19 @@ pub(crate) fn preload_quick_launcher(app: &AppHandle) {
     std::thread::spawn(move || {
         let state = app.state::<Mutex<AppState>>();
         let base_path = {
-            let app_state = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let app_state = state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             app_state
                 .base_path
                 .clone()
                 .or_else(|| app_state.folder_path.clone())
         }
-        .or_else(|| storage::load_settings().ok().and_then(|settings| settings.base_path));
+        .or_else(|| {
+            storage::load_settings()
+                .ok()
+                .and_then(|settings| settings.base_path)
+        });
         if let Some(base_path) = base_path {
             let base_path = Path::new(&base_path);
             let _ = cached_shortcut_items(base_path);
@@ -777,7 +1649,10 @@ fn launcher_background_color(content: &str) -> Option<String> {
 }
 
 fn launcher_window_geometry(content: &str) -> (Option<i32>, Option<i32>, Option<u32>, Option<u32>) {
-    let Some(window) = content.lines().find_map(|line| line.trim().strip_prefix("window:")) else {
+    let Some(window) = content
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("window:"))
+    else {
         return (None, None, None, None);
     };
     let mut x = None;
@@ -785,7 +1660,9 @@ fn launcher_window_geometry(content: &str) -> (Option<i32>, Option<i32>, Option<
     let mut width = None;
     let mut height = None;
     for field in window.trim().trim_matches(['{', '}']).split(',') {
-        let Some((key, value)) = field.split_once(':') else { continue };
+        let Some((key, value)) = field.split_once(':') else {
+            continue;
+        };
         let parsed = value.trim().parse::<u32>().ok();
         match key.trim() {
             "x" => x = value.trim().parse::<i32>().ok(),
@@ -816,12 +1693,20 @@ where
 }
 
 #[tauri::command]
-pub(crate) async fn fusen_open_quick_note(app: AppHandle, path: String, requested_at: Option<u64>) -> Result<(), String> {
+pub(crate) async fn fusen_open_quick_note(
+    app: AppHandle,
+    path: String,
+    requested_at: Option<u64>,
+) -> Result<(), String> {
     let retained = {
         let state = app.state::<std::sync::Mutex<crate::state::AppState>>();
         let state = state.lock().unwrap_or_else(|p| p.into_inner());
-        state.open_note_windows.get(&crate::normalize_path_for_label(&path)).cloned()
-    }.and_then(|label| app.get_webview_window(&label));
+        state
+            .open_note_windows
+            .get(&crate::normalize_path_for_label(&path))
+            .cloned()
+    }
+    .and_then(|label| app.get_webview_window(&label));
     if let Some(window) = &retained {
         window.show().map_err(|e| e.to_string())?;
         crate::favorite_storage::log_visibility_latency("show", requested_at);
@@ -833,13 +1718,18 @@ pub(crate) async fn fusen_open_quick_note(app: AppHandle, path: String, requeste
     let tags = parse_launcher_tags(&content);
     let (x, y, width, height) = launcher_window_geometry(&content);
     let is_crystal = tags.iter().any(|tag| {
-        matches!(logic::normalize_reserved_tag(tag).as_str(), "recipe" | "qa" | "term")
+        matches!(
+            logic::normalize_reserved_tag(tag).as_str(),
+            "recipe" | "qa" | "term"
+        )
     });
     let emit_path = path.clone();
     run_quick_open_after_read(
         &content,
         |background_color| {
-            if retained.is_some() { return Ok(()); }
+            if retained.is_some() {
+                return Ok(());
+            }
             app.emit(
                 "fusen:open_note",
                 serde_json::json!({
@@ -925,13 +1815,12 @@ pub(crate) fn fusen_remove_from_shelf(
     if is_crystal {
         let label = crate::get_window_label(&path);
         if app.get_webview_window(&label).is_some() {
-            app
-                .emit_to(
-                    &label,
-                    "fusen:move_to_crystal_trash",
-                    serde_json::json!({ "path": path }),
-                )
-                .map_err(|e| e.to_string())?;
+            app.emit_to(
+                &label,
+                "fusen:move_to_crystal_trash",
+                serde_json::json!({ "path": path }),
+            )
+            .map_err(|e| e.to_string())?;
             return Ok(());
         }
     }
@@ -956,7 +1845,10 @@ pub(crate) fn fusen_remove_from_shelf(
                 let _ = window.destroy();
             }
         }) {
-            logger::log_warn(&format!("[Launcher] failed to schedule crystal window close: {}", e));
+            logger::log_warn(&format!(
+                "[Launcher] failed to schedule crystal window close: {}",
+                e
+            ));
         }
     }
     Ok(())
@@ -1031,6 +1923,172 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
     use tempfile::tempdir;
 
+    #[test]
+    fn strict_web_sync_listing_stops_when_folder_cannot_be_read() {
+        let directory = tempdir().unwrap();
+        let missing = directory.path().join("missing-notes");
+        let error = load_shortcut_items_strict(&missing).unwrap_err();
+        assert!(error.contains("登録一覧"));
+    }
+
+    #[test]
+    fn duplicate_image_references_compare_as_one_verified_manifest() {
+        let manifest = ShareImageManifest {
+            image_id: "img-abc".into(),
+            mime_type: "image/png".into(),
+            size_bytes: 3,
+            sha256: "abc".into(),
+        };
+        let unique = unique_image_manifests([&manifest, &manifest]).unwrap();
+        assert_eq!(unique, vec![manifest.clone()]);
+        let conflicting = ShareImageManifest {
+            size_bytes: 4,
+            ..manifest.clone()
+        };
+        assert!(unique_image_manifests([&manifest, &conflicting]).is_err());
+    }
+
+    #[test]
+    fn share_payload_reads_only_registered_launcher_notes_without_writing_source() {
+        let dir = tempdir().unwrap();
+        let note_path = dir.path().join("20261016_1_Shopping.md");
+        let original = "---\ntype: sticky\ntitle: 買い物リスト\ntags: [shortcut]\nwindow: { x: 10 }\n---\n\n- [ ] 牛乳\n";
+        fs::write(&note_path, original).unwrap();
+        let path = note_path.to_string_lossy().to_string();
+
+        let payload =
+            prepare_registered_share_payload(dir.path(), &path, std::slice::from_ref(&path))
+                .unwrap();
+
+        assert_eq!(payload.title, "Shopping");
+        assert_eq!(payload.markdown, "\n- [ ] 牛乳\n");
+        assert!(!payload.markdown.contains("window:"));
+        assert_eq!(fs::read_to_string(note_path).unwrap(), original);
+    }
+
+    #[test]
+    fn share_payload_rejects_unregistered_and_outside_notes() {
+        let dir = tempdir().unwrap();
+        let other = tempdir().unwrap();
+        let note_path = dir.path().join("registered.md");
+        let outside_path = other.path().join("outside.md");
+        let contents = "---\ntitle: Note\n---\nBody";
+        fs::write(&note_path, contents).unwrap();
+        fs::write(&outside_path, contents).unwrap();
+        let note = note_path.to_string_lossy().to_string();
+        let outside = outside_path.to_string_lossy().to_string();
+
+        assert!(prepare_registered_share_payload(dir.path(), &note, &[]).is_err());
+        assert!(prepare_registered_share_payload(
+            dir.path(),
+            &outside,
+            std::slice::from_ref(&outside)
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn share_payload_fails_closed_for_local_image_links_without_upload_manifest() {
+        let dir = tempdir().unwrap();
+        let note_path = dir.path().join("with-image.md");
+        let original = "---\ntitle: Image\ntags: [shortcut]\n---\n![private](assets/private.png)\n";
+        fs::write(&note_path, original).unwrap();
+        let path = note_path.to_string_lossy().to_string();
+
+        assert!(
+            prepare_registered_share_payload(dir.path(), &path, std::slice::from_ref(&path))
+                .is_err()
+        );
+        assert_eq!(fs::read_to_string(note_path).unwrap(), original);
+    }
+
+    #[test]
+    fn share_payload_converts_verified_assets_to_hash_bound_ids_without_touching_source() {
+        let dir = tempdir().unwrap();
+        let assets = dir.path().join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let image_path = assets.join("photo.png");
+        image::RgbaImage::from_pixel(1, 1, image::Rgba([10, 20, 30, 255]))
+            .save(&image_path)
+            .unwrap();
+        let note_path = dir.path().join("20261016_1_Photo.md");
+        let original =
+            "---\ntitle: Photo\ntags: [shortcut]\n---\n![photo](<assets/photo.png> \"caption\")\n";
+        fs::write(&note_path, original).unwrap();
+        let path = note_path.to_string_lossy().to_string();
+
+        let payload =
+            prepare_registered_share_payload(dir.path(), &path, std::slice::from_ref(&path))
+                .unwrap();
+
+        assert_eq!(payload.title, "Photo");
+        assert_eq!(payload.images.len(), 1);
+        assert_eq!(payload.images[0].mime_type, "image/png");
+        assert_eq!(
+            payload.images[0].size_bytes as usize,
+            fs::metadata(image_path).unwrap().len() as usize
+        );
+        assert_eq!(
+            payload.images[0].image_id,
+            format!("img-{}", payload.images[0].sha256)
+        );
+        assert_eq!(
+            payload.markdown,
+            format!(
+                "![photo](ore-fusen-image://{} \"caption\")\n",
+                payload.images[0].image_id
+            )
+        );
+        assert_eq!(fs::read_to_string(note_path).unwrap(), original);
+    }
+
+    #[test]
+    fn share_payload_rejects_image_paths_outside_assets_and_invalid_image_bytes() {
+        let dir = tempdir().unwrap();
+        let assets = dir.path().join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        fs::write(assets.join("bad.png"), [137, 80, 78, 71, 13, 10, 26, 10]).unwrap();
+        let note_path = dir.path().join("note.md");
+        let path = note_path.to_string_lossy().to_string();
+        for body in [
+            "![escape](assets/../private.png)",
+            "![invalid](assets/bad.png)",
+        ] {
+            let note = format!("---\ntitle: Note\ntags: [shortcut]\n---\n{body}");
+            fs::write(&note_path, &note).unwrap();
+            assert!(prepare_registered_share_payload(
+                dir.path(),
+                &path,
+                std::slice::from_ref(&path)
+            )
+            .is_err());
+            assert_eq!(fs::read_to_string(&note_path).unwrap(), note);
+        }
+    }
+
+    #[test]
+    fn image_reader_enforces_the_byte_limit_on_the_open_file_handle() {
+        assert!(read_limited_image_bytes(std::io::Cursor::new(b"1234"), 3).is_err());
+        assert_eq!(
+            read_limited_image_bytes(std::io::Cursor::new(b"123"), 3).unwrap(),
+            b"123"
+        );
+    }
+
+    #[test]
+    fn share_payload_does_not_treat_body_tags_as_launcher_registration() {
+        let dir = tempdir().unwrap();
+        let note_path = dir.path().join("unregistered.md");
+        let original = "---\ntitle: Example\n---\nCode example:\ntags: [shortcut]\n";
+        fs::write(&note_path, original).unwrap();
+        let path = note_path.to_string_lossy().to_string();
+
+        assert!(
+            prepare_registered_share_payload(dir.path(), &path, std::slice::from_ref(&path))
+                .is_err()
+        );
+        assert_eq!(fs::read_to_string(note_path).unwrap(), original);
+    }
 
     fn item(path: &str, title: &str, tags: &[&str]) -> QuickOpenItem {
         QuickOpenItem {
@@ -1191,7 +2249,9 @@ mod tests {
         run_quick_open_after_read(
             content,
             move |color| {
-                emit_calls.borrow_mut().push(format!("emit:{}", color.unwrap_or_default()));
+                emit_calls
+                    .borrow_mut()
+                    .push(format!("emit:{}", color.unwrap_or_default()));
                 Ok(())
             },
             move |updated| {
@@ -1209,8 +2269,14 @@ mod tests {
     #[test]
     fn quick_open_lightweight_style_parser_preserves_color_and_window_size() {
         let content = "---\nbackgroundColor: \"#cfd8dc\"\nwindow: { x: 10, y: 20, width: 640, height: 520 }\n---\nbody";
-        assert_eq!(launcher_background_color(content).as_deref(), Some("#cfd8dc"));
-        assert_eq!(launcher_window_geometry(content), (Some(10), Some(20), Some(640), Some(520)));
+        assert_eq!(
+            launcher_background_color(content).as_deref(),
+            Some("#cfd8dc")
+        );
+        assert_eq!(
+            launcher_window_geometry(content),
+            (Some(10), Some(20), Some(640), Some(520))
+        );
     }
 
     #[test]
@@ -1238,8 +2304,12 @@ mod tests {
         let path = dir.path().join(LAUNCHER_ORDER_FILE);
         let mut order = LauncherOrder::default();
         order.last_tab = "qa".to_string();
-        order.orders.insert("qa".to_string(), vec!["a.md".to_string()]);
-        order.selected_tags.insert("qa".to_string(), "work".to_string());
+        order
+            .orders
+            .insert("qa".to_string(), vec!["a.md".to_string()]);
+        order
+            .selected_tags
+            .insert("qa".to_string(), "work".to_string());
 
         save_launcher_order_to_path(&path, &order).unwrap();
         let loaded = load_launcher_order_from_path(&path).unwrap();
@@ -1367,7 +2437,9 @@ mod tests {
         let source = recipes.join("recipe-note.md");
         fs::write(&source, note_content("work, recipe")).unwrap();
 
-        let moved = remove_from_shelf_at_base(dir.path(), &source).unwrap().unwrap();
+        let moved = remove_from_shelf_at_base(dir.path(), &source)
+            .unwrap()
+            .unwrap();
 
         assert_eq!(moved, recipes.join("Trash").join("recipe-note.md"));
         assert!(!source.exists());
@@ -1383,7 +2455,9 @@ mod tests {
         let source = qa_dir.join("qa-note.md");
         fs::write(&source, note_content("work, qa")).unwrap();
 
-        let moved = remove_from_shelf_at_base(dir.path(), &source).unwrap().unwrap();
+        let moved = remove_from_shelf_at_base(dir.path(), &source)
+            .unwrap()
+            .unwrap();
 
         assert_eq!(moved, qa_dir.join("Trash").join("qa-note.md"));
         assert!(!source.exists());
@@ -1399,7 +2473,9 @@ mod tests {
         let source = terms_dir.join("term-note.md");
         fs::write(&source, note_content("work, term")).unwrap();
 
-        let moved = remove_from_shelf_at_base(dir.path(), &source).unwrap().unwrap();
+        let moved = remove_from_shelf_at_base(dir.path(), &source)
+            .unwrap()
+            .unwrap();
 
         assert_eq!(moved, terms_dir.join("Trash").join("term-note.md"));
         assert!(!source.exists());
@@ -1440,7 +2516,9 @@ mod tests {
             "recipe".to_string(),
             vec!["a.md".to_string(), "b.md".to_string()],
         );
-        order.orders.insert("shortcut".to_string(), vec!["b.md".to_string()]);
+        order
+            .orders
+            .insert("shortcut".to_string(), vec!["b.md".to_string()]);
 
         remove_path_from_orders(&mut order, "b.md");
 
@@ -1451,7 +2529,9 @@ mod tests {
 
 /// Explicit taskbar request. Ordinary launches keep their existing behavior.
 pub(crate) fn requests_quick_launcher(arguments: &[String]) -> bool {
-    arguments.iter().any(|argument| argument == "--quick-launcher")
+    arguments
+        .iter()
+        .any(|argument| argument == "--quick-launcher")
 }
 
 /// Taskbar actions always show the launcher; repeated requests never toggle it off.
@@ -1472,7 +2552,8 @@ pub(crate) fn show_quick_launcher<R: tauri::Runtime>(app: AppHandle<R>) -> Resul
         if let Err(error) = result {
             logger::log_warn(&format!("[Launcher] taskbar show failed: {error}"));
         }
-    }).map_err(|e| e.to_string())
+    })
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -1480,8 +2561,16 @@ mod taskbar_request_tests {
     use super::requests_quick_launcher;
     #[test]
     fn taskbar_argument_is_explicit_and_normal_launches_are_unchanged() {
-        assert!(requests_quick_launcher(&["app.exe".into(), "--quick-launcher".into()]));
-        for args in [vec![], vec!["app.exe".into()], vec!["--quick-launcher-other".into()], vec!["C:/notes/--quick-launcher.md".into()]] {
+        assert!(requests_quick_launcher(&[
+            "app.exe".into(),
+            "--quick-launcher".into()
+        ]));
+        for args in [
+            vec![],
+            vec!["app.exe".into()],
+            vec!["--quick-launcher-other".into()],
+            vec!["C:/notes/--quick-launcher.md".into()],
+        ] {
             assert!(!requests_quick_launcher(&args));
         }
     }

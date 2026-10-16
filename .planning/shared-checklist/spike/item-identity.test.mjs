@@ -1,0 +1,10 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {identify,applyCheck} from './item-identity.mjs';
+const base='- [ ] 牛乳 <!-- fusen-item:milk -->\n- [ ] 卵 <!-- fusen-item:eggs -->';
+test('insertion does not check the wrong row',()=>{const s='- [ ] パン <!-- fusen-item:bread -->\n'+base;assert.equal(applyCheck(s,'eggs',true).split('\n')[2],'- [x] 卵 <!-- fusen-item:eggs -->');});
+test('reordered lines preserve identities',()=>{const s=base.split('\n').reverse().join('\n');assert.equal(applyCheck(s,'milk',true).split('\n')[1],'- [x] 牛乳 <!-- fusen-item:milk -->');});
+test('same text has separate identities',()=>{const s=base.replace('卵','牛乳');assert.equal(applyCheck(s,'eggs',true).split('\n')[0],base.split('\n')[0]);});
+test('duplicate ID from paste is rejected',()=>assert.throws(()=>identify(base+'\n'+base.split('\n')[0]),/Ambiguous/));
+test('deleted item is not applied elsewhere',()=>assert.throws(()=>applyCheck(base.split('\n')[1],'milk',true),/missing/));
+test('non-task text and image references are preserved',()=>{const s=base+'\n\n![図](assets/map.png)';assert.ok(applyCheck(s,'milk',true).endsWith('![図](assets/map.png)'));});
+test('new items get IDs only once',()=>{let n=0;const s=identify('- [ ] 米',()=>String(++n));assert.equal(identify(s),s);assert.equal(n,1);});

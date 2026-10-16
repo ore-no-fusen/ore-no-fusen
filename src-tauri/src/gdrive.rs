@@ -8,11 +8,11 @@
  * - push_config の AppState へのキャッシュ
  */
 
-use std::sync::Mutex;
-use std::path::PathBuf;
+use crate::state::{AppState, ProConfig};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use crate::state::{AppState, ProConfig};
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 // ------ 定数 ------
 const FOLDER_NAME: &str = "ore-no-fusen";
@@ -36,11 +36,14 @@ fn protect_token_bytes(plaintext: &[u8]) -> Result<Vec<u8>, String> {
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::{LocalFree, HLOCAL};
     use windows::Win32::Security::Cryptography::{
-        CryptProtectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
+        CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
 
     let input = CRYPT_INTEGER_BLOB {
-        cbData: plaintext.len().try_into().map_err(|_| "Token is too large")?,
+        cbData: plaintext
+            .len()
+            .try_into()
+            .map_err(|_| "Token is too large")?,
         pbData: plaintext.as_ptr() as *mut u8,
     };
     let mut output = CRYPT_INTEGER_BLOB::default();
@@ -67,11 +70,14 @@ fn protect_token_bytes(plaintext: &[u8]) -> Result<Vec<u8>, String> {
 fn unprotect_token_bytes(protected: &[u8]) -> Result<Vec<u8>, String> {
     use windows::Win32::Foundation::{LocalFree, HLOCAL};
     use windows::Win32::Security::Cryptography::{
-        CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
+        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
 
     let input = CRYPT_INTEGER_BLOB {
-        cbData: protected.len().try_into().map_err(|_| "Token is too large")?,
+        cbData: protected
+            .len()
+            .try_into()
+            .map_err(|_| "Token is too large")?,
         pbData: protected.as_ptr() as *mut u8,
     };
     let mut output = CRYPT_INTEGER_BLOB::default();
@@ -253,8 +259,7 @@ struct DriveAboutResponse {
 
 /// Tauri app data dir 内の token ファイルパスを返す
 pub fn get_token_path() -> PathBuf {
-    let base = directories::BaseDirs::new()
-        .expect("BaseDirs::new() failed");
+    let base = directories::BaseDirs::new().expect("BaseDirs::new() failed");
     let dir = base.data_local_dir().join(FOLDER_NAME);
     if !dir.exists() {
         std::fs::create_dir_all(&dir).ok();
@@ -281,11 +286,16 @@ fn migrate_legacy_pc_device_file() -> Option<String> {
     if !path.exists() {
         return None;
     }
-    let pc_id = std::fs::read_to_string(&path).ok()
+    let pc_id = std::fs::read_to_string(&path)
+        .ok()
         .and_then(|raw| serde_json::from_str::<PcDeviceInfo>(&raw).ok())
         .and_then(|pc| {
             let id = pc.pc_id.trim().to_string();
-            if id.is_empty() { None } else { Some(id) }
+            if id.is_empty() {
+                None
+            } else {
+                Some(id)
+            }
         });
     // 旧ファイルは settings.json に移したのでもう不要。読み終わったら削除する
     let _ = std::fs::remove_file(&path);
@@ -298,7 +308,12 @@ pub fn load_or_create_pc_device() -> Result<PcDeviceInfo, String> {
     let mut settings = crate::storage::load_settings()?;
 
     let mut needs_save = false;
-    let pc_id = if let Some(id) = settings.pc_id.as_ref().filter(|s| !s.trim().is_empty()).cloned() {
+    let pc_id = if let Some(id) = settings
+        .pc_id
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+        .cloned()
+    {
         id
     } else if let Some(legacy_id) = migrate_legacy_pc_device_file() {
         settings.pc_id = Some(legacy_id.clone());
@@ -352,8 +367,8 @@ fn parse_oauth_callback(callback_url: &str, expected_state: &str) -> Result<Stri
 /// Google OAuth2 PKCE フロー。ブラウザを開き、認証後に SavedToken を保存して返す。
 pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, String> {
     use oauth2::{
-        basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl,
-        CsrfToken, PkceCodeChallenge, Scope, AuthorizationCode, TokenResponse,
+        basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+        PkceCodeChallenge, RedirectUrl, Scope, TokenResponse, TokenUrl,
     };
 
     let client_id = env!("GDRIVE_CLIENT_ID").to_string();
@@ -363,21 +378,22 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     let port = tauri_plugin_oauth::start(move |url| {
         let _ = tx.send(url);
-    }).map_err(|e| e.to_string())?;
+    })
+    .map_err(|e| e.to_string())?;
 
-    let redirect_url = RedirectUrl::new(format!("http://127.0.0.1:{}", port))
-        .map_err(|e| e.to_string())?;
+    let redirect_url =
+        RedirectUrl::new(format!("http://127.0.0.1:{}", port)).map_err(|e| e.to_string())?;
 
     // oauth2 v5: BasicClient::new(ClientId) + チェーンメソッドで設定
     let oauth_client = BasicClient::new(ClientId::new(client_id))
         .set_client_secret(ClientSecret::new(client_secret))
         .set_auth_uri(
             AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
-                .map_err(|e| e.to_string())?
+                .map_err(|e| e.to_string())?,
         )
         .set_token_uri(
             TokenUrl::new("https://oauth2.googleapis.com/token".to_string())
-                .map_err(|e| e.to_string())?
+                .map_err(|e| e.to_string())?,
         )
         .set_redirect_uri(redirect_url.clone());
 
@@ -385,7 +401,9 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
     // oauth2 v5: authorize_url チェーンにも明示的に redirect_uri を渡す必要あり
     let (auth_url, csrf_token) = oauth_client
         .authorize_url(CsrfToken::new_random)
-        .add_scope(Scope::new("https://www.googleapis.com/auth/drive.file".to_string()))
+        .add_scope(Scope::new(
+            "https://www.googleapis.com/auth/drive.file".to_string(),
+        ))
         .set_pkce_challenge(pkce_challenge)
         .set_redirect_uri(std::borrow::Cow::Owned(redirect_url.clone()))
         .url();
@@ -404,7 +422,8 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
         .map_err(|e| e.to_string())?;
 
     // コールバック URL を待機（5分でタイムアウト）
-    let callback_url = rx.recv_timeout(std::time::Duration::from_secs(300))
+    let callback_url = rx
+        .recv_timeout(std::time::Duration::from_secs(300))
         .map_err(|_| "OAuth callback not received (timeout or browser closed)".to_string())?;
 
     // state を検証してから code を抽出
@@ -425,7 +444,8 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
         .map_err(|e| e.to_string())?;
 
     let access_token = token_response.access_token().secret().to_string();
-    let refresh_token = token_response.refresh_token()
+    let refresh_token = token_response
+        .refresh_token()
         .ok_or("No refresh_token in response")?
         .secret()
         .to_string();
@@ -450,14 +470,16 @@ pub async fn oauth_pkce_flow(_app: &tauri::AppHandle) -> Result<SavedToken, Stri
 pub async fn get_access_token(client: &Client) -> Result<String, String> {
     let path = get_token_path();
     if !path.exists() {
-        return Err("Googleアカウントが接続されていません。設定画面から再接続してください。".to_string());
+        return Err(
+            "Googleアカウントが接続されていません。設定画面から再接続してください。".to_string(),
+        );
     }
 
     let mut saved = load_token(&path)?;
 
     let now = chrono::Utc::now().timestamp();
-    let needs_refresh = saved.access_token.is_none()
-        || saved.expires_at.map_or(true, |exp| exp - now < 60);
+    let needs_refresh =
+        saved.access_token.is_none() || saved.expires_at.map_or(true, |exp| exp - now < 60);
 
     if needs_refresh {
         let client_id = env!("GDRIVE_CLIENT_ID").to_string();
@@ -498,6 +520,13 @@ pub async fn get_access_token(client: &Client) -> Result<String, String> {
 /// Google Drive に接続しているユーザー情報を返す
 pub async fn get_google_account(client: &Client) -> Result<GoogleAccountInfo, String> {
     let token = get_access_token(client).await?;
+    get_google_account_with_token(client, &token).await
+}
+
+pub async fn get_google_account_with_token(
+    client: &Client,
+    token: &str,
+) -> Result<GoogleAccountInfo, String> {
     let resp = client
         .get("https://www.googleapis.com/drive/v3/about")
         .query(&[("fields", "user")])
@@ -511,7 +540,8 @@ pub async fn get_google_account(client: &Client) -> Result<GoogleAccountInfo, St
     }
 
     let body: DriveAboutResponse = resp.json().await.map_err(|e| e.to_string())?;
-    body.user.ok_or_else(|| "Googleアカウント情報を取得できませんでした".to_string())
+    body.user
+        .ok_or_else(|| "Googleアカウント情報を取得できませんでした".to_string())
 }
 
 /// Drive 内の ore-no-fusen フォルダの file id を返す（なければ作成）
@@ -541,7 +571,9 @@ pub async fn ensure_folder(client: &Client, access_token: &str) -> Result<String
         "mimeType": "application/vnd.google-apps.folder"
     });
     #[derive(Deserialize)]
-    struct CreatedFile { id: String }
+    struct CreatedFile {
+        id: String,
+    }
     let created: CreatedFile = client
         .post("https://www.googleapis.com/drive/v3/files")
         .bearer_auth(access_token)
@@ -554,6 +586,231 @@ pub async fn ensure_folder(client: &Client, access_token: &str) -> Result<String
         .map_err(|e| e.to_string())?;
 
     Ok(created.id)
+}
+
+/// Web共有用の専用フォルダーを作成する。iPhone連携ファイルとは分離する。
+pub async fn ensure_web_share_folder(
+    client: &Client,
+    access_token: &str,
+) -> Result<String, String> {
+    let app_folder = ensure_folder(client, access_token).await?;
+    let q = format!(
+        "'{}' in parents and name='web-share-temp' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        app_folder
+    );
+    let found: DriveFileList = client
+        .get("https://www.googleapis.com/drive/v3/files")
+        .bearer_auth(access_token)
+        .query(&[("q", q.as_str()), ("fields", "files(id)")])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| format!("共有フォルダー検索失敗: {e}"))?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(folder) = found.files.into_iter().next() {
+        return Ok(folder.id);
+    }
+    #[derive(Deserialize)]
+    struct Created {
+        id: String,
+    }
+    let body = serde_json::json!({
+        "name": "web-share-temp",
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [app_folder]
+    });
+    let created: Created = client
+        .post("https://www.googleapis.com/drive/v3/files")
+        .bearer_auth(access_token)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| format!("共有フォルダー作成失敗: {e}"))?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(created.id)
+}
+
+/// 共有フォルダーの操作記録をすべて列挙する（ページ送り込み）。
+pub async fn list_web_share_records(
+    client: &Client,
+    access_token: &str,
+    folder_id: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let q = format!(
+        "'{}' in parents and name contains 'op-' and trashed=false",
+        folder_id
+    );
+    let mut token: Option<String> = None;
+    let mut records = Vec::new();
+    loop {
+        let mut request = client
+            .get("https://www.googleapis.com/drive/v3/files")
+            .bearer_auth(access_token)
+            .query(&[
+                ("q", q.as_str()),
+                ("pageSize", "1000"),
+                ("fields", "nextPageToken,files(id,name)"),
+            ]);
+        if let Some(page) = token.as_deref() {
+            request = request.query(&[("pageToken", page)]);
+        }
+        let response: DriveShareRecordList = request
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .error_for_status()
+            .map_err(|e| format!("共有記録一覧の取得失敗: {e}"))?
+            .json()
+            .await
+            .map_err(|e| e.to_string())?;
+        records.extend(
+            response
+                .files
+                .into_iter()
+                .filter(|file| file.name.ends_with(".json"))
+                .map(|file| (file.id, file.name)),
+        );
+        token = response.next_page_token;
+        if token.is_none() {
+            break;
+        }
+    }
+    Ok(records)
+}
+
+#[derive(Deserialize)]
+struct DriveShareRecordList {
+    #[serde(default)]
+    files: Vec<DriveShareRecord>,
+    #[serde(rename = "nextPageToken")]
+    next_page_token: Option<String>,
+}
+#[derive(Deserialize)]
+struct DriveShareRecord {
+    id: String,
+    name: String,
+}
+
+pub async fn download_web_share_record(
+    client: &Client,
+    access_token: &str,
+    id: &str,
+) -> Result<serde_json::Value, String> {
+    client
+        .get(format!(
+            "https://www.googleapis.com/drive/v3/files/{}",
+            url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>()
+        ))
+        .query(&[("alt", "media")])
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| format!("共有記録の読取失敗: {e}"))?
+        .json()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 操作記録を新規作成のみで保存する。既存ファイルを更新する経路は持たない。
+pub async fn create_web_share_file(
+    client: &Client,
+    access_token: &str,
+    folder_id: &str,
+    filename: &str,
+    bytes: Vec<u8>,
+    mime_type: &str,
+) -> Result<(), String> {
+    let metadata = serde_json::json!({ "name": filename, "parents": [folder_id] });
+    let response = client
+        .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+        .bearer_auth(access_token)
+        .multipart(
+            reqwest::multipart::Form::new()
+                .part(
+                    "metadata",
+                    reqwest::multipart::Part::text(metadata.to_string())
+                        .mime_str("application/json")
+                        .map_err(|e| e.to_string())?,
+                )
+                .part(
+                    "file",
+                    reqwest::multipart::Part::bytes(bytes)
+                        .mime_str(mime_type)
+                        .map_err(|e| e.to_string())?,
+                ),
+        )
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Drive共有ファイル保存失敗: {}", response.status()));
+    }
+    Ok(())
+}
+
+pub async fn find_web_share_file(
+    client: &Client,
+    access_token: &str,
+    folder_id: &str,
+    filename: &str,
+) -> Result<Option<String>, String> {
+    let q = format!(
+        "'{}' in parents and name='{}' and trashed=false",
+        folder_id, filename
+    );
+    let response: DriveFileList = client
+        .get("https://www.googleapis.com/drive/v3/files")
+        .bearer_auth(access_token)
+        .query(&[("q", q.as_str()), ("fields", "files(id)")])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| format!("共有ファイル検索失敗: {e}"))?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(response.files.into_iter().next().map(|file| file.id))
+}
+
+pub async fn download_web_share_bytes(
+    client: &Client,
+    access_token: &str,
+    id: &str,
+) -> Result<Vec<u8>, String> {
+    const MAX_BYTES: usize = 50 * 1024 * 1024;
+    let mut response = client
+        .get(format!("https://www.googleapis.com/drive/v3/files/{id}"))
+        .query(&[("alt", "media")])
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| format!("共有ファイル読取失敗: {e}"))?;
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_BYTES as u64)
+    {
+        return Err("共有画像のサイズ上限を超えています".to_string());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len().saturating_add(chunk.len()) > MAX_BYTES {
+            return Err("共有画像のサイズ上限を超えています".to_string());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
 }
 
 /// Drive の指定フォルダ内のファイルを名前で検索し、存在すれば id を返す
@@ -604,7 +861,7 @@ pub async fn upload_json(
                     .part(
                         "metadata",
                         reqwest::multipart::Part::text(
-                            serde_json::json!({"name": filename}).to_string()
+                            serde_json::json!({"name": filename}).to_string(),
                         )
                         .mime_str("application/json")
                         .map_err(|e| e.to_string())?,
@@ -676,11 +933,20 @@ pub async fn upload_binary(
             .bearer_auth(access_token)
             .multipart(
                 reqwest::multipart::Form::new()
-                    .part("metadata", reqwest::multipart::Part::text(
-                        serde_json::json!({"name": filename}).to_string()
-                    ).mime_str("application/json").map_err(|e| e.to_string())?)
-                    .part("file", reqwest::multipart::Part::bytes(bytes)
-                        .mime_str(mime_type).map_err(|e| e.to_string())?)
+                    .part(
+                        "metadata",
+                        reqwest::multipart::Part::text(
+                            serde_json::json!({"name": filename}).to_string(),
+                        )
+                        .mime_str("application/json")
+                        .map_err(|e| e.to_string())?,
+                    )
+                    .part(
+                        "file",
+                        reqwest::multipart::Part::bytes(bytes)
+                            .mime_str(mime_type)
+                            .map_err(|e| e.to_string())?,
+                    ),
             )
             .send()
             .await
@@ -695,10 +961,18 @@ pub async fn upload_binary(
             .bearer_auth(access_token)
             .multipart(
                 reqwest::multipart::Form::new()
-                    .part("metadata", reqwest::multipart::Part::text(metadata.to_string())
-                        .mime_str("application/json").map_err(|e| e.to_string())?)
-                    .part("file", reqwest::multipart::Part::bytes(bytes)
-                        .mime_str(mime_type).map_err(|e| e.to_string())?)
+                    .part(
+                        "metadata",
+                        reqwest::multipart::Part::text(metadata.to_string())
+                            .mime_str("application/json")
+                            .map_err(|e| e.to_string())?,
+                    )
+                    .part(
+                        "file",
+                        reqwest::multipart::Part::bytes(bytes)
+                            .mime_str(mime_type)
+                            .map_err(|e| e.to_string())?,
+                    ),
             )
             .send()
             .await
@@ -729,7 +1003,9 @@ pub async fn download_json(
         .json()
         .await
         .map_err(|e| e.to_string())?;
-    let file_id = resp.files.into_iter()
+    let file_id = resp
+        .files
+        .into_iter()
         .next()
         .ok_or_else(|| format!("File not found: {}", filename))?
         .id;
@@ -845,7 +1121,10 @@ pub async fn delete_file_by_name(
         None => return Ok(()), // 存在しなければ無視
     };
     let resp = client
-        .delete(format!("https://www.googleapis.com/drive/v3/files/{}", file_id))
+        .delete(format!(
+            "https://www.googleapis.com/drive/v3/files/{}",
+            file_id
+        ))
         .bearer_auth(access_token)
         .send()
         .await
@@ -881,7 +1160,11 @@ pub async fn list_temp_media_files(
     Ok(resp
         .files
         .into_iter()
-        .filter(|f| f.name.starts_with("fusen_img_") || f.name.starts_with("fusen_video_") || f.name.starts_with("fusen_file_"))
+        .filter(|f| {
+            f.name.starts_with("fusen_img_")
+                || f.name.starts_with("fusen_video_")
+                || f.name.starts_with("fusen_file_")
+        })
         .map(|f| DriveTempMediaFile {
             id: f.id,
             name: f.name,
@@ -897,7 +1180,10 @@ pub async fn delete_file_by_id(
     file_id: &str,
 ) -> Result<(), String> {
     let resp = client
-        .delete(format!("https://www.googleapis.com/drive/v3/files/{}", file_id))
+        .delete(format!(
+            "https://www.googleapis.com/drive/v3/files/{}",
+            file_id
+        ))
         .bearer_auth(access_token)
         .send()
         .await
@@ -931,26 +1217,28 @@ pub async fn download_binary_by_id(
 /// push_config を Drive からダウンロードして AppState.pro_configs に設定する
 /// 新スキーマ: { "devices": [...] }
 /// 旧スキーマ後方互換: { "endpoint": "...", "keys": {...} }
-pub async fn poll_push_config(
-    client: &Client,
-    state: &Mutex<AppState>,
-) -> Result<(), String> {
+pub async fn poll_push_config(client: &Client, state: &Mutex<AppState>) -> Result<(), String> {
     let token = get_access_token(client).await?;
-    let value = download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json").await?;
+    let value =
+        download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json")
+            .await?;
 
-    let config: PushConfigJson = serde_json::from_value(value)
-        .map_err(|e| format!("push_config parse error: {}", e))?;
+    let config: PushConfigJson =
+        serde_json::from_value(value).map_err(|e| format!("push_config parse error: {}", e))?;
 
     let pro_configs: Vec<ProConfig> = if let Some(devices) = config.devices {
         // 新スキーマ: devices 配列
-        devices.into_iter().map(|d| ProConfig {
-            push_endpoint: d.endpoint,
-            p256dh: d.keys.p256dh,
-            auth: d.keys.auth,
-            device_id: d.device_id,
-            device_name: d.device_name,
-            google_account_email: d.google_account_email,
-        }).collect()
+        devices
+            .into_iter()
+            .map(|d| ProConfig {
+                push_endpoint: d.endpoint,
+                p256dh: d.keys.p256dh,
+                auth: d.keys.auth,
+                device_id: d.device_id,
+                device_name: d.device_name,
+                google_account_email: d.google_account_email,
+            })
+            .collect()
     } else if let (Some(endpoint), Some(keys)) = (config.endpoint, config.keys) {
         // 旧スキーマ後方互換: 単一デバイスとして扱う
         vec![ProConfig {
@@ -965,10 +1253,7 @@ pub async fn poll_push_config(
         return Err("push_config: デバイス情報が見つかりませんでした".to_string());
     };
 
-    state
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .pro_configs = pro_configs;
+    state.lock().unwrap_or_else(|p| p.into_inner()).pro_configs = pro_configs;
 
     Ok(())
 }
@@ -976,21 +1261,27 @@ pub async fn poll_push_config(
 /// Drive から push_devices.json を読み込み、デバイス一覧を返す
 pub async fn list_push_devices(client: &Client) -> Result<Vec<PushDeviceInfo>, String> {
     let token = get_access_token(client).await?;
-    let value = download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json").await?;
+    let value =
+        download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json")
+            .await?;
 
-    let config: PushConfigJson = serde_json::from_value(value)
-        .map_err(|e| format!("push_config parse error: {}", e))?;
+    let config: PushConfigJson =
+        serde_json::from_value(value).map_err(|e| format!("push_config parse error: {}", e))?;
 
     let devices = config.devices.unwrap_or_default();
-    Ok(devices.into_iter().enumerate().map(|(i, d)| PushDeviceInfo {
-        device_id: d.device_id.unwrap_or_else(|| format!("device_{}", i)),
-        endpoint: d.endpoint,
-        registered_at: d.registered_at.unwrap_or_default(),
-        device_name: d.device_name,
-        google_account_email: d.google_account_email,
-        google_account_name: d.google_account_name,
-        google_account_photo: d.google_account_photo,
-    }).collect())
+    Ok(devices
+        .into_iter()
+        .enumerate()
+        .map(|(i, d)| PushDeviceInfo {
+            device_id: d.device_id.unwrap_or_else(|| format!("device_{}", i)),
+            endpoint: d.endpoint,
+            registered_at: d.registered_at.unwrap_or_default(),
+            device_name: d.device_name,
+            google_account_email: d.google_account_email,
+            google_account_name: d.google_account_name,
+            google_account_photo: d.google_account_photo,
+        })
+        .collect())
 }
 
 pub async fn list_pc_devices(client: &Client) -> Result<Vec<PcDeviceInfo>, String> {
@@ -1000,8 +1291,8 @@ pub async fn list_pc_devices(client: &Client) -> Result<Vec<PcDeviceInfo>, Strin
         Err(e) if e.contains("File not found") => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
-    let parsed: PcDevicesJson = serde_json::from_value(value)
-        .map_err(|e| format!("pc_devices parse error: {}", e))?;
+    let parsed: PcDevicesJson =
+        serde_json::from_value(value).map_err(|e| format!("pc_devices parse error: {}", e))?;
     Ok(parsed.pcs.unwrap_or_default())
 }
 
@@ -1024,7 +1315,13 @@ pub async fn register_pc_device(client: &Client) -> Result<PcDeviceInfo, String>
     } else {
         pcs.push(pc.clone());
     }
-    upload_json(client, &token, PC_DEVICES_FILE, &serde_json::json!({ "pcs": pcs })).await?;
+    upload_json(
+        client,
+        &token,
+        PC_DEVICES_FILE,
+        &serde_json::json!({ "pcs": pcs }),
+    )
+    .await?;
     // pc_id は settings.json に保存済み（load_or_create_pc_device 内）。updated_at / email は Drive 上で管理。
     Ok(pc)
 }
@@ -1045,14 +1342,22 @@ pub async fn delete_pc_device_by_id(client: &Client, pc_id: &str) -> Result<(), 
         // 削除対象が無い場合もエラーにはしない（既に消えている）
         return Ok(());
     }
-    upload_json(client, &token, PC_DEVICES_FILE, &serde_json::json!({ "pcs": pcs })).await?;
+    upload_json(
+        client,
+        &token,
+        PC_DEVICES_FILE,
+        &serde_json::json!({ "pcs": pcs }),
+    )
+    .await?;
     Ok(())
 }
 
 /// push_devices.json から特定デバイスを削除して Drive に書き戻す
 pub async fn delete_push_device(client: &Client, device_id: &str) -> Result<(), String> {
     let token = get_access_token(client).await?;
-    let mut value = download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json").await?;
+    let mut value =
+        download_json_with_migration(client, &token, PUSH_CONFIG_FILE, "fusen_push_config.json")
+            .await?;
 
     if !ensure_push_devices_writable(&value)? {
         return Ok(());
@@ -1068,7 +1373,13 @@ pub async fn delete_push_device(client: &Client, device_id: &str) -> Result<(), 
 /// push_devices.json の全デバイスを削除して Drive に書き戻す
 pub async fn delete_all_push_devices(client: &Client) -> Result<(), String> {
     let token = get_access_token(client).await?;
-    upload_json(client, &token, PUSH_CONFIG_FILE, &serde_json::json!({"devices": []})).await
+    upload_json(
+        client,
+        &token,
+        PUSH_CONFIG_FILE,
+        &serde_json::json!({"devices": []}),
+    )
+    .await
 }
 
 // ------ Unit Tests ------
@@ -1087,7 +1398,10 @@ mod tests {
     fn test_push_config_json_parses_to_pro_config() {
         let json_str = r#"{"endpoint":"https://api.push.apple.com/3/device/ABC","keys":{"p256dh":"BNcR","auth":"tBy8"},"created_at":"2026-01-01T00:00:00Z"}"#;
         let config: PushConfigJson = serde_json::from_str(json_str).unwrap();
-        assert_eq!(config.endpoint.unwrap(), "https://api.push.apple.com/3/device/ABC");
+        assert_eq!(
+            config.endpoint.unwrap(),
+            "https://api.push.apple.com/3/device/ABC"
+        );
         let keys = config.keys.unwrap();
         assert_eq!(keys.p256dh, "BNcR");
         assert_eq!(keys.auth, "tBy8");
@@ -1139,7 +1453,9 @@ mod tests {
 
         save_token(&path, &token).unwrap();
         let stored = std::fs::read(&path).unwrap();
-        assert!(!stored.windows(b"refresh-secret".len()).any(|part| part == b"refresh-secret"));
+        assert!(!stored
+            .windows(b"refresh-secret".len())
+            .any(|part| part == b"refresh-secret"));
 
         let loaded = load_token(&path).unwrap();
         assert_eq!(loaded.refresh_token, token.refresh_token);

@@ -1,0 +1,17 @@
+{
+  "scope": {
+    "accountSubject": "acct-1",
+    "noteId": "note-1",
+    "generation": 4
+  },
+  "operationId": "op-fixed",
+  "kind": "edit",
+  "parents": ["root:6:acct-1:6:note-1:4"],
+  "payloadHash": "d7aa323cd4fe24de3389dc0aadaf4a29e4e6da3471ee0b0ea761390a91c5b627",
+  "payload": {
+    "title": "Title",
+    "markdown": "Body",
+    "images": []
+  },
+  "resolvedIds": []
+}

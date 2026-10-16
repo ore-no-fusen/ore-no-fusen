@@ -16,29 +16,34 @@
  * 3. 本文中に `---` があっても、フロントマターとして誤認しない
  */
 export function splitFrontMatter(src: string) {
-    // 先頭の空白やBOMを除去してからチェック
-    const trimmedSrc = src.replace(/^\uFEFF/, '').trimStart();
-    if (!trimmedSrc.startsWith('---')) return { front: '', body: src };
-
-    // 元の文字列で位置を計算
     const firstFenceIndex = src.indexOf('---');
-    if (firstFenceIndex === -1) return { front: '', body: src };
+    if (firstFenceIndex === -1 || src.slice(0, firstFenceIndex).replace(/\uFEFF/g, '').trim() !== '') {
+        return { front: '', body: src };
+    }
+    const firstLineEnd = src.indexOf('\n', firstFenceIndex);
+    const openingLine = src.slice(firstFenceIndex, firstLineEnd === -1 ? src.length : firstLineEnd).replace(/\r$/, '');
+    if (openingLine !== '---') return { front: '', body: src };
 
-    // Skip the first '---'
-    const nextFence = src.indexOf('---', firstFenceIndex + 3);
-    if (nextFence === -1) return { front: '', body: src };
+    let offset = firstLineEnd === -1 ? src.length : firstLineEnd + 1;
+    let closeStart = -1;
+    let closeEnd = -1;
+    for (const line of src.slice(offset).split(/(?<=\n)/)) {
+        const lineEnd = offset + line.length;
+        const value = line.replace(/\r?\n$/, '').replace(/\r$/, '');
+        if (value === '---') {
+            closeStart = offset;
+            closeEnd = lineEnd;
+            break;
+        }
+        offset = lineEnd;
+    }
+    if (closeStart === -1) return { front: '', body: src };
 
-    // 閉じ `---` を含むようにする (nextFence + 3)
-    const closingFenceEnd = nextFence + 3;
-    const front = src.slice(firstFenceIndex, closingFenceEnd);
-
-    // Find the end of '---' and potential trailing newline
-    let bodyStart = closingFenceEnd;
-    if (src[bodyStart] === '\n') bodyStart += 1;
-    else if (src[bodyStart] === '\r' && src[bodyStart + 1] === '\n') bodyStart += 2;
-
-    const body = src.slice(bodyStart).replace(/^\s+/, '');
-    return { front, body };
+    const front = src.slice(firstFenceIndex, closeStart + 3);
+    const body = src.slice(closeEnd);
+    // Web同期の本文は共有形式と同じ位置を維持し、再保存時の偽変更を防ぐ。
+    // 既存ノートは従来どおり先頭の空白行を表示時に除く。
+    return { front, body: front.includes('web_sync_receipt:') ? body : body.replace(/^\s+/, '') };
 }
 
 /**

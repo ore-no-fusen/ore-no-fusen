@@ -162,6 +162,11 @@ export function useAppInit({
           saveAuthToken(t).catch(() => {}); // SW が push 時に参照するため IndexedDB にも保存
           setAccessToken(t);
           window.history.replaceState({}, '', '/viewer');
+          if (localStorage.getItem('viewer_return_to') === '/shared') {
+            localStorage.removeItem('viewer_return_to');
+            window.location.replace('/shared');
+            return;
+          }
           const pendingNote = localStorage.getItem('pending_note');
           if (pendingNote) {
             const draft = await loadDraft(pendingNote).catch(() => null);

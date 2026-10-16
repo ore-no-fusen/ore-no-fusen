@@ -17,6 +17,7 @@ import {
     reorderQuickNote,
     setLauncherLastTab,
     setLauncherTagFilter,
+    syncQuickLauncherToWeb,
 } from '../api/launcher';
 import { truncateRecipeName } from '../utils/recipeFormat';
 import { getUserTags } from '../utils/reservedTags';
@@ -161,6 +162,7 @@ export default function QuickLauncher() {
     const [allTags, setAllTags] = useState<string[]>([]);
     const [showStored, setShowStored] = useState(false);
     const [busy, setBusy] = useState(false);
+    const [webSyncBusy, setWebSyncBusy] = useState(false);
     const operationRef = useRef(false);
     const [items, setItems] = useState<QuickOpenItem[]>([]);
     const [tagFilters, setTagFilters] = useState<Partial<Record<LauncherTab, string>>>({});
@@ -168,6 +170,7 @@ export default function QuickLauncher() {
     const [isLocked, setIsLocked] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [webSyncMessage, setWebSyncMessage] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
     const [renameTarget, setRenameTarget] = useState<{ path: string; value: string } | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -493,6 +496,23 @@ export default function QuickLauncher() {
         }
     }, [renameTarget, activeTab, debouncedQuery, isEnglish, reloadItems]);
 
+    const syncLauncherToWeb = useCallback(async () => {
+        if (webSyncBusy) return;
+        setWebSyncBusy(true);
+        setWebSyncMessage(null);
+        try {
+            const result = await syncQuickLauncherToWeb();
+            const summary = isEnglish
+                ? `Web sync: ${result.uploaded} sent, ${result.applied} received, ${result.revoked} removed from Web, ${result.unchanged} unchanged, ${result.held.length} held.`
+                : `Web同期：${result.uploaded}件を送信、${result.applied}件を受信、${result.revoked}件をWebから解除、${result.unchanged}件は変更なし、${result.held.length}件を保留。`;
+            setWebSyncMessage(result.held.length ? `${summary} ${result.held.join(' / ')}` : summary);
+        } catch (e) {
+            setWebSyncMessage(isEnglish ? `Web sync failed: ${String(e)}` : `Web同期に失敗しました：${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            setWebSyncBusy(false);
+        }
+    }, [webSyncBusy, isEnglish]);
+
     return (
         <div
             className="h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100"
@@ -571,8 +591,10 @@ export default function QuickLauncher() {
                 {activeTab === 'shortcut' && <div className="flex flex-wrap gap-2 text-xs">
                     <button type="button" onClick={() => setShowStored(false)} className={showStored ? 'text-zinc-400' : 'text-sky-300'}>{isEnglish ? 'Registered' : '登録一覧'}</button>
                     <button type="button" onClick={() => setShowStored(true)} className={showStored ? 'text-sky-300' : 'text-zinc-400'}>{isEnglish ? 'Stored in Launcher' : '格納した付箋'} ({storedItems.length})</button>
+                    {!showStored && <button type="button" onClick={() => void syncLauncherToWeb()} disabled={webSyncBusy} className="ml-auto rounded bg-sky-700 px-3 py-1 font-medium text-white hover:bg-sky-600 disabled:opacity-50">{webSyncBusy ? (isEnglish ? 'Syncing…' : 'Web同期中…') : (isEnglish ? 'Sync with Web' : 'Webと同期')}</button>}
                     {activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <button type="button" disabled={busy} onClick={() => void storeSelectedTag()} className="ml-auto rounded bg-zinc-800 px-2 py-1 disabled:opacity-50">{busy ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Store tag in Launcher' : 'このタグをまとめて格納')}</button>}
                 </div>}
+                {webSyncMessage && activeTab === 'shortcut' && <div role="status" className="rounded border border-sky-500/30 bg-sky-950/30 px-2 py-1 text-xs text-sky-100">{webSyncMessage}</div>}
                 {activeTab === 'shortcut' && activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <p className="text-[11px] text-zinc-400">{isEnglish ? 'Stores all desktop notes with this tag, including unregistered notes.' : 'タグ全体の格納は、未登録の付箋も対象です。'}</p>}
                 <input
                     ref={inputRef}

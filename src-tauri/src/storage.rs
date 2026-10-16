@@ -7,19 +7,20 @@
  * - ディレクトリ操作（作成、走査）
  */
 
+use crate::logic;
+use crate::state::{Note, NoteMeta};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use walkdir::WalkDir;
-use sha2::{Digest, Sha256};
-use crate::state::{Note, NoteMeta};
-use crate::logic;
 
 pub const RECIPES_DIR_NAME: &str = "Recipes";
 pub const QA_DIR_NAME: &str = "QA";
 pub const TERMS_DIR_NAME: &str = "Terms";
 static SETTINGS_IO_LOCK: Mutex<()> = Mutex::new(());
+static NOTE_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -57,10 +58,20 @@ fn replace_frontmatter_value(content: &str, key: &str, value: Option<&str>) -> S
     let prefix = format!("{key}:");
 
     if lines.first().is_some_and(|line| line.trim() == "---") {
-        if let Some(end) = lines.iter().skip(1).position(|line| line.trim() == "---").map(|i| i + 1) {
+        if let Some(end) = lines
+            .iter()
+            .skip(1)
+            .position(|line| line.trim() == "---")
+            .map(|i| i + 1)
+        {
             lines.retain(|line| !line.trim().starts_with(&prefix));
             if let Some(value) = value {
-                let insert_at = lines.iter().skip(1).position(|line| line.trim() == "---").map(|i| i + 1).unwrap_or(end);
+                let insert_at = lines
+                    .iter()
+                    .skip(1)
+                    .position(|line| line.trim() == "---")
+                    .map(|i| i + 1)
+                    .unwrap_or(end);
                 lines.insert(insert_at, format!("{key}: {value}"));
             }
             return lines.join("\n");
@@ -96,7 +107,10 @@ fn archived_note_summary(
         .collect::<Vec<_>>()
         .join("\n");
     let preview = if preview.is_empty() {
-        path.file_stem().unwrap_or_default().to_string_lossy().to_string()
+        path.file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
     } else {
         preview
     };
@@ -106,13 +120,15 @@ fn archived_note_summary(
         .map(|capture| path.parent().unwrap_or(Path::new(".")).join(&capture[1]))
         .filter(|asset| asset.is_file())
         .map(|asset| asset.to_string_lossy().to_string());
-    let archived_at = frontmatter_value(&content, "archivedAt").filter(|value| !value.is_empty()).unwrap_or_else(|| {
-        fs::metadata(path)
-            .and_then(|metadata| metadata.modified())
-            .map(chrono::DateTime::<chrono::Utc>::from)
-            .map(|value| value.to_rfc3339())
-            .unwrap_or_default()
-    });
+    let archived_at = frontmatter_value(&content, "archivedAt")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .map(chrono::DateTime::<chrono::Utc>::from)
+                .map(|value| value.to_rfc3339())
+                .unwrap_or_default()
+        });
 
     Ok(ArchivedNoteSummary {
         path: path.to_string_lossy().to_string(),
@@ -131,28 +147,42 @@ pub fn list_archived_notes(base_path: &Path) -> Vec<ArchivedNoteSummary> {
     if let Ok(entries) = fs::read_dir(&archive_dir) {
         notes.extend(entries.filter_map(Result::ok).filter_map(|entry| {
             let path = entry.path();
-            (path.is_file() && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
-                .then(|| archived_note_summary(&path, "archive", "Archive"))?
-                .ok()
+            (path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
+            .then(|| archived_note_summary(&path, "archive", "Archive"))?
+            .ok()
         }));
     }
 
     let tags_dir = base_path.join("tags");
     if let Ok(tag_entries) = fs::read_dir(&tags_dir) {
-        for tag_entry in tag_entries.filter_map(Result::ok).filter(|entry| entry.path().is_dir()) {
+        for tag_entry in tag_entries
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().is_dir())
+        {
             let location_name = tag_entry.file_name().to_string_lossy().to_string();
             if let Ok(entries) = fs::read_dir(tag_entry.path()) {
                 notes.extend(entries.filter_map(Result::ok).filter_map(|entry| {
                     let path = entry.path();
-                    (path.is_file() && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
-                        .then(|| archived_note_summary(&path, "tag", &location_name))?
-                        .ok()
+                    (path.is_file()
+                        && path
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
+                    .then(|| archived_note_summary(&path, "tag", &location_name))?
+                    .ok()
                 }));
             }
         }
     }
 
-    notes.sort_by(|left, right| right.archived_at.cmp(&left.archived_at).then_with(|| left.path.cmp(&right.path)));
+    notes.sort_by(|left, right| {
+        right
+            .archived_at
+            .cmp(&left.archived_at)
+            .then_with(|| left.path.cmp(&right.path))
+    });
     notes
 }
 
@@ -172,7 +202,11 @@ fn is_allowed_archive_source(base_path: &Path, source: &Path) -> Result<(), Stri
 
 pub fn restore_archived_note(base_path: &Path, source_path: &Path) -> Result<PathBuf, String> {
     let source = dunce::canonicalize(source_path).map_err(|e| e.to_string())?;
-    if !source.is_file() || !source.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")) {
+    if !source.is_file()
+        || !source
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+    {
         return Err("source is not a Markdown file".to_string());
     }
     is_allowed_archive_source(base_path, &source)?;
@@ -192,7 +226,10 @@ pub fn restore_archived_note(base_path: &Path, source_path: &Path) -> Result<Pat
 
     for capture in get_assets_regex().captures_iter(&original) {
         let relative = capture[1].to_string();
-        if replacements.iter().any(|(old, _): &(String, String)| old == &relative) {
+        if replacements
+            .iter()
+            .any(|(old, _): &(String, String)| old == &relative)
+        {
             continue;
         }
         let asset = source_dir.join(&relative);
@@ -208,7 +245,10 @@ pub fn restore_archived_note(base_path: &Path, source_path: &Path) -> Result<Pat
             continue;
         }
         fs::create_dir_all(&destination_assets).map_err(|e| e.to_string())?;
-        let stem = canonical_asset.file_stem().and_then(|value| value.to_str()).unwrap_or("image");
+        let stem = canonical_asset
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("image");
         let extension = canonical_asset.extension().and_then(|value| value.to_str());
         let unique = uuid::Uuid::new_v4().simple();
         let filename = extension
@@ -216,7 +256,9 @@ pub fn restore_archived_note(base_path: &Path, source_path: &Path) -> Result<Pat
             .unwrap_or_else(|| format!("{stem}_restore_{unique}"));
         let copied_path = destination_assets.join(&filename);
         if let Err(error) = fs::copy(&canonical_asset, &copied_path) {
-            for path in &copied { let _ = fs::remove_file(path); }
+            for path in &copied {
+                let _ = fs::remove_file(path);
+            }
             return Err(error.to_string());
         }
         copied.push(copied_path);
@@ -227,21 +269,35 @@ pub fn restore_archived_note(base_path: &Path, source_path: &Path) -> Result<Pat
         rewritten = rewritten.replace(&format!("({old})"), &format!("({new})"));
     }
     if let Err(error) = write_note(&destination.to_string_lossy(), &rewritten) {
-        for path in &copied { let _ = fs::remove_file(path); }
+        for path in &copied {
+            let _ = fs::remove_file(path);
+        }
         return Err(error);
     }
     if let Err(error) = fs::remove_file(&source) {
         let _ = fs::remove_file(&destination);
-        for path in &copied { let _ = fs::remove_file(path); }
+        for path in &copied {
+            let _ = fs::remove_file(path);
+        }
         return Err(error.to_string());
     }
 
     for (old, _) in &replacements {
-        let still_referenced = fs::read_dir(source_dir).ok().into_iter().flatten()
+        let still_referenced = fs::read_dir(source_dir)
+            .ok()
+            .into_iter()
+            .flatten()
             .filter_map(Result::ok)
             .map(|entry| entry.path())
-            .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
-            .any(|path| fs::read_to_string(path).is_ok_and(|content| content.contains(&format!("({old})"))));
+            .filter(|path| {
+                path.is_file()
+                    && path
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+            })
+            .any(|path| {
+                fs::read_to_string(path).is_ok_and(|content| content.contains(&format!("({old})")))
+            });
         if !still_referenced {
             let _ = fs::remove_file(source_dir.join(old));
         }
@@ -259,7 +315,11 @@ pub fn get_settings_path() -> Result<PathBuf, String> {
     Ok(config_dir.join("settings.json"))
 }
 
-pub fn append_trash_operation(source: &Path, destination: &Path, origin: &str) -> Result<(), String> {
+pub fn append_trash_operation(
+    source: &Path,
+    destination: &Path,
+    origin: &str,
+) -> Result<(), String> {
     use std::io::Write;
 
     let settings_path = get_settings_path()?;
@@ -374,17 +434,16 @@ fn read_settings_file(path: &Path) -> Result<Settings, String> {
     serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
-fn corrupt_settings_archive_path(
-    settings_path: &Path,
-    timestamp: &str,
-    backup: bool,
-) -> PathBuf {
+fn corrupt_settings_archive_path(settings_path: &Path, timestamp: &str, backup: bool) -> PathBuf {
     let file_name = if backup {
         format!("settings.backup-corrupt-{}.json", timestamp)
     } else {
         format!("settings.corrupt-{}.json", timestamp)
     };
-    settings_path.parent().unwrap_or(Path::new(".")).join(file_name)
+    settings_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(file_name)
 }
 
 /// 両方とも存在し、両方とも読めない設定だけを、安全な既定設定へ置き換える。
@@ -403,8 +462,7 @@ fn recover_corrupt_settings_at(
         return Err("settings primary and backup are not both invalid".to_string());
     }
 
-    fs::create_dir_all(base_path)
-        .map_err(|e| format!("failed to create recovery vault: {}", e))?;
+    fs::create_dir_all(base_path).map_err(|e| format!("failed to create recovery vault: {}", e))?;
     check_storage_health(&base_path.to_string_lossy())?;
 
     let primary_archive = corrupt_settings_archive_path(settings_path, timestamp, false);
@@ -520,8 +578,7 @@ pub fn check_storage_health(path: &str) -> Result<(), String> {
         return Err("保存先に指定された場所はフォルダではありません".to_string());
     }
 
-    fs::read_dir(target)
-        .map_err(|e| format!("保存先フォルダを読み取れません: {}", e))?;
+    fs::read_dir(target).map_err(|e| format!("保存先フォルダを読み取れません: {}", e))?;
 
     let probe_name = format!(
         ".fusen_storage_probe_{}_{}.tmp",
@@ -589,47 +646,52 @@ fn is_path_under(path: &Path, parent: &Path) -> bool {
 // UC-02: インポート機能（.mdファイルをコピー + Δ0.7形式フロントマター生成）
 pub fn import_files(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
     let mut count = 0;
-    
-    for entry in WalkDir::new(source_dir).max_depth(1).into_iter().filter_map(|e| e.ok()) {
+
+    for entry in WalkDir::new(source_dir)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if entry.file_type().is_file() {
             let path = entry.path();
             if path.extension().map_or(false, |ext| ext == "md") {
                 // 1. ファイルを読み込む
                 let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-                
+
                 // 2. 既存のフロントマターを削除して本文を抽出
                 let body = extract_body_without_frontmatter(&content);
-                
+
                 // 3. 1行目を取得してcontextを生成
-                let first_line = body.lines()
+                let first_line = body
+                    .lines()
                     .map(|l| l.trim())
                     .find(|l| !l.is_empty() && !l.starts_with("!["))
                     .unwrap_or("imported");
                 let safe_context = logic::sanitize_context(first_line);
-                let context = if safe_context.is_empty() { 
-                    "imported".to_string() 
-                } else { 
-                    safe_context 
+                let context = if safe_context.is_empty() {
+                    "imported".to_string()
+                } else {
+                    safe_context
                 };
-                
+
                 // 4. 新しいseqとファイル名を生成
                 let seq = get_next_seq(dest_dir);
                 let today = chrono::Local::now().format("%Y-%m-%d").to_string();
                 let new_filename = logic::generate_filename(seq, &today, &context);
-                
+
                 // 5. 新しいフロントマターを生成（Δ0.7完全形式）
                 let frontmatter = logic::generate_frontmatter(
-                    seq, 
-                    &context, 
-                    &today,  // created
-                    &today,  // updated
+                    seq,
+                    &context,
+                    &today, // created
+                    &today, // updated
                     Some("#f7e9b0"),
                     &[],
                     None, // folded
                     None,
-                    None
+                    None,
                 );
-                
+
                 // 6. 新しい内容を作成して保存
                 let new_content = format!("{}\n\n{}", frontmatter, body);
                 let dest_path = PathBuf::from(dest_dir).join(new_filename);
@@ -638,7 +700,7 @@ pub fn import_files(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
             }
         }
     }
-    
+
     Ok(count)
 }
 
@@ -704,7 +766,15 @@ pub fn list_notes(folder_path: &str) -> Vec<NoteMeta> {
             seq,
             context,
             updated,
-            x, y, width, height, background_color, always_on_top, folded, opacity, font_size,
+            x,
+            y,
+            width,
+            height,
+            background_color,
+            always_on_top,
+            folded,
+            opacity,
+            font_size,
             tags,
         });
     }
@@ -750,9 +820,7 @@ fn looks_like_note_stub_name(filename: &str) -> bool {
         return false;
     }
 
-    parts[0].len() == 4
-        && parts[0].chars().all(|c| c.is_ascii_digit())
-        && is_ymd_date(parts[1])
+    parts[0].len() == 4 && parts[0].chars().all(|c| c.is_ascii_digit()) && is_ymd_date(parts[1])
 }
 
 fn is_ymd_date(value: &str) -> bool {
@@ -768,25 +836,44 @@ fn is_ymd_date(value: &str) -> bool {
 
 /// フロントマターなしの .md ファイルを標準形式に移行する。
 /// 新しいパスを返す。失敗した場合は元のパスをそのまま返す。
-fn migrate_to_frontmatter(path: &PathBuf, content: &str, folder_path: &str) -> Result<PathBuf, PathBuf> {
+fn migrate_to_frontmatter(
+    path: &PathBuf,
+    content: &str,
+    folder_path: &str,
+) -> Result<PathBuf, PathBuf> {
     // 空ファイルは移行しない（コンテンツが消える危険を避ける）
     if content.trim().is_empty() {
         return Err(path.clone());
     }
 
-    let first_line = content.lines()
+    let first_line = content
+        .lines()
         .map(|l| l.trim())
         .find(|l| !l.is_empty() && !l.starts_with("!["))
         .unwrap_or("note");
     let safe_context = logic::sanitize_context(first_line);
-    let context = if safe_context.is_empty() { "note".to_string() } else { safe_context };
+    let context = if safe_context.is_empty() {
+        "note".to_string()
+    } else {
+        safe_context
+    };
 
     let seq = get_next_seq(folder_path);
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let new_filename = logic::generate_filename(seq, &today, &context);
     let new_path = PathBuf::from(folder_path).join(&new_filename);
 
-    let frontmatter = logic::generate_frontmatter(seq, &context, &today, &today, Some("#f7e9b0"), &[], None, None, None);
+    let frontmatter = logic::generate_frontmatter(
+        seq,
+        &context,
+        &today,
+        &today,
+        Some("#f7e9b0"),
+        &[],
+        None,
+        None,
+        None,
+    );
     let new_content = format!("{}\n\n{}", frontmatter, content);
 
     if fs::write(&new_path, &new_content).is_err() {
@@ -810,34 +897,36 @@ fn migrate_to_frontmatter(path: &PathBuf, content: &str, folder_path: &str) -> R
 
 pub fn read_note(path: &str) -> Result<Note, String> {
     let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    
+
     // 1. ファイル名から基本情報を解析
     let path_obj = Path::new(path);
-    let filename = path_obj.file_name()
+    let filename = path_obj
+        .file_name()
         .ok_or("Invalid filename")?
         .to_string_lossy()
         .to_string();
     let (seq, updated, context) = logic::parse_filename(&filename);
 
     // 2. コンテンツから拡張メタデータを解析（list_notesと同様のロジック）
-    let (x, y, width, height, background_color, always_on_top, tags, folded) = logic::extract_meta_from_content(&content);
+    let (x, y, width, height, background_color, always_on_top, tags, folded) =
+        logic::extract_meta_from_content(&content);
     let opacity = logic::extract_opacity(&content);
     let font_size = logic::extract_font_size(&content);
 
     // 3. 正しい値をセットして返す
     Ok(Note {
         body: content,
-        frontmatter: String::new(), 
-        meta: NoteMeta { 
+        frontmatter: String::new(),
+        meta: NoteMeta {
             path: path.to_string(),
             seq,
             context,
             updated,
-            x, 
-            y, 
-            width, 
-            height, 
-            background_color, 
+            x,
+            y,
+            width,
+            height,
+            background_color,
             always_on_top,
             tags,
             folded,
@@ -868,17 +957,69 @@ pub fn find_note_by_iphone_source_hash(folder_path: &str, source_hash: &str) -> 
 }
 
 pub fn write_note(path: &str, content: &str) -> Result<(), String> {
+    let _guard = NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    write_note_unlocked(path, content)
+}
+
+/// Update a note only if its exact on-disk snapshot still matches the one inspected by the caller.
+pub fn write_note_if_unchanged(path: &str, expected: &str, content: &str) -> Result<(), String> {
+    let _guard = NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let current =
+        fs::read_to_string(path).map_err(|e| format!("付箋の再確認に失敗しました: {e}"))?;
+    if current != expected {
+        return Err(
+            "同期中にWindows付箋が変更されました。原本は上書きせず保留しました".to_string(),
+        );
+    }
+    write_note_unlocked(path, content)
+}
+
+/// Create a note only when its destination is still absent.
+pub fn write_note_if_absent(path: &str, content: &str) -> Result<(), String> {
+    let _guard = NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if Path::new(path).exists() {
+        return Err("保存先がすでに存在するため上書きを止めました".to_string());
+    }
+    write_note_unlocked(path, content)
+}
+
+/// Rename a note only when the exact snapshot inspected by the caller remains on disk.
+pub fn rename_note_if_unchanged(
+    old_path: &str,
+    new_path: &str,
+    expected: &str,
+) -> Result<(), String> {
+    let _guard = NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let current = fs::read_to_string(old_path).map_err(|e| format!("付箋の再確認に失敗しました: {e}"))?;
+    if current != expected {
+        return Err("同期中にWindows付箋が変更されました。名前変更を保留しました".to_string());
+    }
+    fs::rename(old_path, new_path).map_err(|e| e.to_string())
+}
+
+fn write_note_unlocked(path: &str, content: &str) -> Result<(), String> {
     // Atomic Write attempt: Write to temp file then rename
     let path_obj = Path::new(path);
     // temp path: same dir, different extension to ensure same filesystem
-    
-    // Add a random suffix or just .tmp extension. 
+
+    // Add a random suffix or just .tmp extension.
     // using .tmp extension might conflict if multiple writes happen, but sufficient for single user app.
     // Better: use UUID or timestamp if possible, but let's stick to simple .tmp for now.
     let file_stem = path_obj.file_stem().unwrap_or_default().to_string_lossy();
     let extension = path_obj.extension().unwrap_or_default().to_string_lossy();
     let temp_filename = format!("{}.{}.tmp", file_stem, extension);
-    let temp_path = path_obj.parent().unwrap_or(Path::new(".")).join(temp_filename);
+    let temp_path = path_obj
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(temp_filename);
 
     if let Err(e) = fs::write(&temp_path, content) {
         return Err(format!("Failed to write temp file: {}", e));
@@ -911,7 +1052,10 @@ pub fn write_note(path: &str, content: &str) -> Result<(), String> {
                     // 失敗 → バックアップから元ファイルを復元してデータを保護
                     let _ = fs::rename(&backup_path, path_obj);
                     let _ = fs::remove_file(&temp_path);
-                    Err(format!("保存に失敗しました（元データは保護されています）: {}", e))
+                    Err(format!(
+                        "保存に失敗しました（元データは保護されています）: {}",
+                        e
+                    ))
                 }
             }
         }
@@ -929,7 +1073,9 @@ pub fn get_next_seq(folder_path: &str) -> i32 {
         for entry in entries.filter_map(|e| e.ok()) {
             let name = entry.file_name().to_string_lossy().to_string();
             let (seq, _, _) = logic::parse_filename(&name);
-            if seq > max_seq { max_seq = seq; }
+            if seq > max_seq {
+                max_seq = seq;
+            }
         }
     }
     max_seq + 1
@@ -991,7 +1137,11 @@ pub fn list_recipe_material_note_paths(parent_path: &Path) -> Vec<PathBuf> {
 fn has_excluded_recipe_material_component(path: &Path) -> bool {
     path.components().any(|component| {
         let name = component.as_os_str().to_string_lossy();
-        name == "Trash" || name == "Archive" || name == RECIPES_DIR_NAME || name == QA_DIR_NAME || name == TERMS_DIR_NAME
+        name == "Trash"
+            || name == "Archive"
+            || name == RECIPES_DIR_NAME
+            || name == QA_DIR_NAME
+            || name == TERMS_DIR_NAME
     })
 }
 
@@ -1058,7 +1208,10 @@ pub fn duplicate_associated_assets(
         }
 
         fs::create_dir_all(&target_assets_dir).map_err(|e| e.to_string())?;
-        let stem = source.file_stem().and_then(|value| value.to_str()).ok_or("No asset stem")?;
+        let stem = source
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .ok_or("No asset stem")?;
         let extension = source.extension().and_then(|value| value.to_str());
         let unique = uuid::Uuid::new_v4().simple();
         let filename = match extension {
@@ -1090,14 +1243,14 @@ fn copy_associated_assets_with_policy(
     for cap in re.captures_iter(&content) {
         let asset_rel_path = &cap[1];
         let src_asset_path = note_dir.join(asset_rel_path);
-        
+
         if src_asset_path.exists() {
             if !target_assets_dir.exists() {
                 fs::create_dir_all(&target_assets_dir).map_err(|e| e.to_string())?;
             }
             let asset_filename = src_asset_path.file_name().ok_or("No asset filename")?;
             let dest_asset_path = target_assets_dir.join(asset_filename);
-            
+
             if overwrite || !dest_asset_path.exists() {
                 fs::copy(&src_asset_path, &dest_asset_path).map_err(|e| e.to_string())?;
             }
@@ -1111,11 +1264,11 @@ pub fn delete_associated_assets(note_path: &Path) -> Result<(), String> {
     let re = get_assets_regex(); // OnceLock 共有インスタンスを使用
 
     let note_dir = note_path.parent().ok_or("No parent")?;
-    
+
     for cap in re.captures_iter(&content) {
         let asset_rel_path = &cap[1];
         let src_asset_path = note_dir.join(asset_rel_path);
-        
+
         if src_asset_path.exists() {
             fs::remove_file(&src_asset_path).map_err(|e| e.to_string())?;
             // Optional: Try removing parent 'assets' dir if empty, but might be risky/noisy
@@ -1127,16 +1280,16 @@ pub fn delete_associated_assets(note_path: &Path) -> Result<(), String> {
 pub fn open_in_explorer(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
         use std::path::Path;
+        use std::process::Command;
 
         let arg_path = normalize_explorer_arg(path);
 
         // [DEBUG] Log path
         crate::logger::log_info(&format!("[DEBUG] open_in_explorer called with: '{}'", path));
-        
+
         let path_obj = Path::new(&arg_path);
-        
+
         if path_obj.exists() {
             // Plan A: File exists, select it
             Command::new("explorer")
@@ -1146,15 +1299,18 @@ pub fn open_in_explorer(path: &str) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
         } else {
             // Plan B: File missing, open parent folder (Fallback)
-            crate::logger::log_warn(&format!("[WARN] File not found: '{}'. Opening parent folder.", arg_path));
+            crate::logger::log_warn(&format!(
+                "[WARN] File not found: '{}'. Opening parent folder.",
+                arg_path
+            ));
             if let Some(parent) = path_obj.parent() {
-                 Command::new("explorer")
+                Command::new("explorer")
                     .arg(parent)
                     .spawn()
                     .map_err(|e| e.to_string())?;
             } else {
-                 // Fallback if parent lookup fails (e.g. root), try opening path directly
-                  Command::new("explorer")
+                // Fallback if parent lookup fails (e.g. root), try opening path directly
+                Command::new("explorer")
                     .arg(&arg_path)
                     .spawn()
                     .map_err(|e| e.to_string())?;
@@ -1237,7 +1393,11 @@ pub fn backup_notes(source_dir: &str, dest_dir: &str) -> Result<usize, String> {
     backup_notes_with_options(source_dir, dest_dir, true)
 }
 
-pub fn backup_notes_with_options(source_dir: &str, dest_dir: &str, include_trash: bool) -> Result<usize, String> {
+pub fn backup_notes_with_options(
+    source_dir: &str,
+    dest_dir: &str,
+    include_trash: bool,
+) -> Result<usize, String> {
     let src = std::path::Path::new(source_dir);
     let dst = std::path::Path::new(dest_dir);
 
@@ -1259,12 +1419,23 @@ pub fn backup_notes_with_options(source_dir: &str, dest_dir: &str, include_trash
     Ok(count)
 }
 
-fn backup_dir_recursive(src: &std::path::Path, dst: &std::path::Path, count: &mut usize, include_trash: bool) -> Result<(), String> {
-    for entry in fs::read_dir(src).map_err(|e| e.to_string())?.filter_map(|e| e.ok()) {
+fn backup_dir_recursive(
+    src: &std::path::Path,
+    dst: &std::path::Path,
+    count: &mut usize,
+    include_trash: bool,
+) -> Result<(), String> {
+    for entry in fs::read_dir(src)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         let dest = dst.join(entry.file_name());
         if path.is_dir() {
-            let is_trash = entry.file_name().to_string_lossy().eq_ignore_ascii_case("Trash");
+            let is_trash = entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("Trash");
             if is_trash && !include_trash && dest.exists() {
                 fs::remove_dir_all(&dest).map_err(|e| e.to_string())?;
             }
@@ -1287,6 +1458,38 @@ mod tests {
     use tempfile::tempdir;
 
     static SETTINGS_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn conditional_note_write_preserves_newer_content() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("note.md");
+        fs::write(&path, "latest Windows version").unwrap();
+        assert!(
+            write_note_if_unchanged(&path.to_string_lossy(), "stale snapshot", "Web version",)
+                .is_err()
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "latest Windows version");
+    }
+
+    #[test]
+    fn conditional_note_rename_and_create_refuse_stale_or_existing_targets() {
+        let directory = tempdir().unwrap();
+        let old_path = directory.path().join("old.md");
+        let new_path = directory.path().join("new.md");
+        fs::write(&old_path, "latest Windows version").unwrap();
+
+        assert!(rename_note_if_unchanged(
+            &old_path.to_string_lossy(),
+            &new_path.to_string_lossy(),
+            "stale snapshot"
+        )
+        .is_err());
+        assert!(old_path.exists());
+        assert!(!new_path.exists());
+
+        assert!(write_note_if_absent(&old_path.to_string_lossy(), "overwrite").is_err());
+        assert_eq!(fs::read_to_string(&old_path).unwrap(), "latest Windows version");
+    }
 
     #[test]
     fn archived_at_is_added_replaced_and_removed() {
@@ -1322,7 +1525,8 @@ mod tests {
         fs::write(
             work.join("newer.md"),
             "---\narchivedAt: 2026-09-05T00:00:00+00:00\n---\n\n新しい付箋",
-        ).unwrap();
+        )
+        .unwrap();
         fs::write(nested.join("excluded.md"), "対象外").unwrap();
 
         let notes = list_archived_notes(vault.path());
@@ -1333,7 +1537,10 @@ mod tests {
         assert_eq!(notes[1].location_kind, "archive");
         assert_eq!(notes[1].preview, "一行目\n二行目\n三行目");
         assert_eq!(notes[1].background_color.as_deref(), Some("#ffeeaa"));
-        assert!(notes[1].preview_image_path.as_deref().is_some_and(|path| path.ends_with("photo.png")));
+        assert!(notes[1]
+            .preview_image_path
+            .as_deref()
+            .is_some_and(|path| path.ends_with("photo.png")));
     }
 
     #[test]
@@ -1354,7 +1561,11 @@ mod tests {
         let archive = vault.path().join("Archive");
         fs::create_dir_all(archive.join("assets")).unwrap();
         let source = archive.join("note.md");
-        fs::write(&source, "---\narchivedAt: 2026-09-06T00:00:00+00:00\n---\n\n本文\n![写真](assets/photo.png)").unwrap();
+        fs::write(
+            &source,
+            "---\narchivedAt: 2026-09-06T00:00:00+00:00\n---\n\n本文\n![写真](assets/photo.png)",
+        )
+        .unwrap();
         fs::write(archive.join("assets/photo.png"), "image-body").unwrap();
 
         let restored = restore_archived_note(vault.path(), &source).unwrap();
@@ -1362,8 +1573,12 @@ mod tests {
         assert!(!source.exists());
         assert!(!restored_content.contains("archivedAt:"));
         assert!(restored_content.contains("assets/photo_restore_"));
-        let restored_asset_name = get_assets_regex().captures(&restored_content).unwrap()[1].to_string();
-        assert_eq!(fs::read_to_string(vault.path().join(restored_asset_name)).unwrap(), "image-body");
+        let restored_asset_name =
+            get_assets_regex().captures(&restored_content).unwrap()[1].to_string();
+        assert_eq!(
+            fs::read_to_string(vault.path().join(restored_asset_name)).unwrap(),
+            "image-body"
+        );
         assert!(!archive.join("assets/photo.png").exists());
     }
 
@@ -1417,10 +1632,7 @@ mod tests {
         let destination = tempdir().unwrap();
         fs::create_dir_all(source.path().join("assets")).unwrap();
         fs::create_dir_all(destination.path().join("assets")).unwrap();
-        fs::write(
-            source.path().join("note.md"),
-            "![image](assets/shared.png)",
-        ).unwrap();
+        fs::write(source.path().join("note.md"), "![image](assets/shared.png)").unwrap();
         fs::write(source.path().join("assets/shared.png"), "later").unwrap();
         fs::write(destination.path().join("assets/shared.png"), "earlier").unwrap();
 
@@ -1467,9 +1679,15 @@ mod tests {
         let copied_relative = &get_assets_regex().captures(&rewritten).unwrap()[1];
         assert!(copied_relative.starts_with("assets/screen_copy_"));
         assert_eq!(get_assets_regex().captures_iter(&rewritten).count(), 2);
-        assert_eq!(fs::read_to_string(folder.path().join(copied_relative)).unwrap(), "original");
+        assert_eq!(
+            fs::read_to_string(folder.path().join(copied_relative)).unwrap(),
+            "original"
+        );
         fs::write(folder.path().join(copied_relative), "duplicate-edited").unwrap();
-        assert_eq!(fs::read_to_string(folder.path().join("assets/screen.png")).unwrap(), "original");
+        assert_eq!(
+            fs::read_to_string(folder.path().join("assets/screen.png")).unwrap(),
+            "original"
+        );
     }
 
     #[test]
@@ -1486,12 +1704,18 @@ mod tests {
             source.path().to_string_lossy().as_ref(),
             destination.path().to_string_lossy().as_ref(),
             false,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(count, 1);
         assert!(destination.path().join("note.md").exists());
         assert!(destination.path().join("Trash").is_dir());
-        assert_eq!(fs::read_dir(destination.path().join("Trash")).unwrap().count(), 0);
+        assert_eq!(
+            fs::read_dir(destination.path().join("Trash"))
+                .unwrap()
+                .count(),
+            0
+        );
     }
 
     #[test]
@@ -1505,7 +1729,8 @@ mod tests {
             source.path().to_string_lossy().as_ref(),
             destination.path().to_string_lossy().as_ref(),
             true,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(count, 1);
         assert!(destination.path().join("Trash").join("deleted.md").exists());
@@ -1532,31 +1757,34 @@ mod tests {
 
     // === write_note と read_note のテスト ===
     // ファイルI/O操作の基本
-    
+
     #[test]
     fn test_write_and_read_note() {
         // 一時ディレクトリを作成（テスト終了時に自動削除される）
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test_note.md");
         let file_path_str = file_path.to_string_lossy().to_string();
-        
+
         // テストデータ
         let content = "---\nseq: 1\n---\n\nテスト本文";
-        
+
         // 1. 書き込み
         let write_result = write_note(&file_path_str, content);
         assert!(write_result.is_ok(), "書き込みが成功すること");
-        
+
         // 2. ファイルが存在することを確認
         assert!(file_path.exists(), "ファイルが作成されていること");
-        
+
         // 3. 読み込み
         let read_result = read_note(&file_path_str);
         assert!(read_result.is_ok(), "読み込みが成功すること");
-        
+
         // 4. 内容が一致することを確認
         let note = read_result.unwrap();
-        assert_eq!(note.body, content, "書き込んだ内容と読み込んだ内容が一致すること");
+        assert_eq!(
+            note.body, content,
+            "書き込んだ内容と読み込んだ内容が一致すること"
+        );
     }
 
     #[test]
@@ -1564,13 +1792,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("new_file.md");
         let file_path_str = file_path.to_string_lossy().to_string();
-        
+
         // ファイルがまだ存在しない
         assert!(!file_path.exists());
-        
+
         // 書き込み
         write_note(&file_path_str, "新しいファイル").unwrap();
-        
+
         // ファイルが作成された
         assert!(file_path.exists());
     }
@@ -1580,13 +1808,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("overwrite.md");
         let file_path_str = file_path.to_string_lossy().to_string();
-        
+
         // 最初の書き込み
         write_note(&file_path_str, "最初の内容").unwrap();
-        
+
         // 上書き
         write_note(&file_path_str, "上書きされた内容").unwrap();
-        
+
         // 読み込んで確認
         let note = read_note(&file_path_str).unwrap();
         assert_eq!(note.body, "上書きされた内容");
@@ -1666,12 +1894,10 @@ mod tests {
         let _guard = SETTINGS_ENV_LOCK.lock().unwrap();
         let appdata_dir = tempdir().unwrap();
         let base_dir = tempdir().unwrap();
-        let raw_base_path = base_dir.path().join("..").join(
-            base_dir
-                .path()
-                .file_name()
-                .expect("temp dir has file name"),
-        );
+        let raw_base_path = base_dir
+            .path()
+            .join("..")
+            .join(base_dir.path().file_name().expect("temp dir has file name"));
         let raw_base_path_str = raw_base_path.to_string_lossy().to_string();
         let old_appdata = std::env::var("APPDATA").ok();
 
@@ -1781,8 +2007,14 @@ mod tests {
 
         recover_corrupt_settings_at(&settings_path, &vault, "20260714-123456").unwrap();
 
-        assert!(root.path().join("settings.corrupt-20260714-123456.json").exists());
-        assert!(root.path().join("settings.backup-corrupt-20260714-123456.json").exists());
+        assert!(root
+            .path()
+            .join("settings.corrupt-20260714-123456.json")
+            .exists());
+        assert!(root
+            .path()
+            .join("settings.backup-corrupt-20260714-123456.json")
+            .exists());
     }
 
     #[test]
@@ -1826,18 +2058,17 @@ mod tests {
         )
         .unwrap();
 
-        let error = match recover_corrupt_settings_at(
-            &settings_path,
-            &vault,
-            "20260714-123456",
-        ) {
+        let error = match recover_corrupt_settings_at(&settings_path, &vault, "20260714-123456") {
             Ok(_) => panic!("valid backup must keep the normal backup recovery path"),
             Err(error) => error,
         };
 
         assert!(error.contains("both invalid"));
         assert!(backup_path.exists());
-        assert!(!root.path().join("settings.corrupt-20260714-123456.json").exists());
+        assert!(!root
+            .path()
+            .join("settings.corrupt-20260714-123456.json")
+            .exists());
     }
 
     #[test]
@@ -1869,7 +2100,10 @@ mod tests {
         write_note(&note_path_str, "saved").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
         save_recovery_draft(&note_path_str, "recovered").unwrap();
-        assert_eq!(load_newer_recovery_draft(&note_path_str).as_deref(), Some("recovered"));
+        assert_eq!(
+            load_newer_recovery_draft(&note_path_str).as_deref(),
+            Some("recovered")
+        );
 
         std::thread::sleep(std::time::Duration::from_millis(20));
         write_note(&note_path_str, "newer saved").unwrap();
@@ -1937,7 +2171,11 @@ mod tests {
         .unwrap();
 
         let log = fs::read_to_string(
-            get_settings_path().unwrap().parent().unwrap().join("trash_operations.jsonl"),
+            get_settings_path()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("trash_operations.jsonl"),
         )
         .unwrap();
         let record: serde_json::Value = serde_json::from_str(log.trim()).unwrap();
@@ -1953,30 +2191,30 @@ mod tests {
     }
 
     // === rename_note のテスト ===
-    
+
     #[test]
     fn test_rename_note() {
         let dir = tempdir().unwrap();
         let old_path = dir.path().join("old_name.md");
         let new_path = dir.path().join("new_name.md");
-        
+
         let old_path_str = old_path.to_string_lossy().to_string();
         let new_path_str = new_path.to_string_lossy().to_string();
-        
+
         // ファイルを作成
         write_note(&old_path_str, "リネームテスト").unwrap();
         assert!(old_path.exists());
-        
+
         // リネーム実行
         let rename_result = rename_note(&old_path_str, &new_path_str);
         assert!(rename_result.is_ok(), "リネームが成功すること");
-        
+
         // 古いファイルが存在しない
         assert!(!old_path.exists(), "古いファイルが削除されていること");
-        
+
         // 新しいファイルが存在する
         assert!(new_path.exists(), "新しいファイルが作成されていること");
-        
+
         // 内容が保持されている
         let note = read_note(&new_path_str).unwrap();
         assert_eq!(note.body, "リネームテスト", "内容が保持されていること");
@@ -1987,24 +2225,24 @@ mod tests {
         let dir = tempdir().unwrap();
         let old_path = dir.path().join("nonexistent.md");
         let new_path = dir.path().join("new.md");
-        
+
         // 存在しないファイルをリネームしようとする
-        let result = rename_note(
-            &old_path.to_string_lossy(),
-            &new_path.to_string_lossy()
-        );
-        
+        let result = rename_note(&old_path.to_string_lossy(), &new_path.to_string_lossy());
+
         // エラーが返されること
-        assert!(result.is_err(), "存在しないファイルのリネームは失敗すること");
+        assert!(
+            result.is_err(),
+            "存在しないファイルのリネームは失敗すること"
+        );
     }
 
     // === list_notes のテスト ===
-    
+
     #[test]
     fn test_list_notes_empty_folder() {
         let dir = tempdir().unwrap();
         let dir_path = dir.path().to_string_lossy().to_string();
-        
+
         // 空のフォルダ
         let notes = list_notes(&dir_path);
         assert_eq!(notes.len(), 0, "空のフォルダではリストも空");
@@ -2014,24 +2252,30 @@ mod tests {
     fn test_list_notes_finds_md_files() {
         let dir = tempdir().unwrap();
         let dir_path = dir.path().to_string_lossy().to_string();
-        
+
         // .mdファイルを2つ作成
         write_note(
-            &dir.path().join("0001_2026-01-12_Note1.md").to_string_lossy(),
-            "---\nseq: 1\n---\n\nNote1"
-        ).unwrap();
-        
+            &dir.path()
+                .join("0001_2026-01-12_Note1.md")
+                .to_string_lossy(),
+            "---\nseq: 1\n---\n\nNote1",
+        )
+        .unwrap();
+
         write_note(
-            &dir.path().join("0002_2026-01-12_Note2.md").to_string_lossy(),
-            "---\nseq: 2\n---\n\nNote2"
-        ).unwrap();
-        
+            &dir.path()
+                .join("0002_2026-01-12_Note2.md")
+                .to_string_lossy(),
+            "---\nseq: 2\n---\n\nNote2",
+        )
+        .unwrap();
+
         // .txtファイルも作成（これは無視されるべき）
         std::fs::write(dir.path().join("ignore.txt"), "ignore").unwrap();
-        
+
         // list_notes実行
         let notes = list_notes(&dir_path);
-        
+
         // .mdファイルのみ取得されること
         assert_eq!(notes.len(), 2, ".mdファイルのみがリストされること");
         assert_eq!(notes[0].seq, 1);
@@ -2039,12 +2283,12 @@ mod tests {
     }
 
     // === get_next_seq のテスト ===
-    
+
     #[test]
     fn test_get_next_seq_empty_folder() {
         let dir = tempdir().unwrap();
         let dir_path = dir.path().to_string_lossy().to_string();
-        
+
         // 空のフォルダでは1が返される
         let next_seq = get_next_seq(&dir_path);
         assert_eq!(next_seq, 1);
@@ -2054,18 +2298,20 @@ mod tests {
     fn test_get_next_seq_with_existing_files() {
         let dir = tempdir().unwrap();
         let dir_path = dir.path().to_string_lossy().to_string();
-        
+
         // シーケンス番号のファイルを作成
         write_note(
             &dir.path().join("0001_2026-01-12_Test.md").to_string_lossy(),
-            "test"
-        ).unwrap();
-        
+            "test",
+        )
+        .unwrap();
+
         write_note(
             &dir.path().join("0005_2026-01-12_Test.md").to_string_lossy(),
-            "test"
-        ).unwrap();
-        
+            "test",
+        )
+        .unwrap();
+
         // 最大値(5) + 1 = 6 が返される
         let next_seq = get_next_seq(&dir_path);
         assert_eq!(next_seq, 6);
@@ -2075,13 +2321,13 @@ mod tests {
     fn test_ensure_tag_dir() {
         let dir = tempdir().unwrap();
         let vault_path = dir.path();
-        
+
         let tag = "work";
         let tag_dir = ensure_tag_dir(vault_path, tag).unwrap();
-        
+
         assert!(tag_dir.exists());
         assert!(tag_dir.ends_with(format!("tags/{}", tag)));
-        
+
         // Check if tags/ dir exists
         let tags_base = vault_path.join("tags");
         assert!(tags_base.exists());
@@ -2091,9 +2337,9 @@ mod tests {
     fn test_ensure_archive_dir() {
         let dir = tempdir().unwrap();
         let vault_path = dir.path();
-        
+
         let archive_dir = ensure_archive_dir(vault_path).unwrap();
-        
+
         assert!(archive_dir.exists());
         assert!(archive_dir.ends_with("Archive"));
     }
@@ -2164,11 +2410,23 @@ mod tests {
         fs::write(trash_dir.join("0003_2026-07-05_trash.md"), "trash").unwrap();
         fs::write(archive_dir.join("0004_2026-07-05_archive.md"), "archive").unwrap();
         fs::write(recipes_dir.join("0005_2026-07-05_recipe.md"), "recipe").unwrap();
-        fs::write(nested_archive_dir.join("0006_2026-07-05_nested_archive.md"), "nested").unwrap();
+        fs::write(
+            nested_archive_dir.join("0006_2026-07-05_nested_archive.md"),
+            "nested",
+        )
+        .unwrap();
         fs::write(qa_dir.join("0007_2026-07-05_qa.md"), "qa").unwrap();
-        fs::write(nested_qa_dir.join("0008_2026-07-05_nested_qa.md"), "nested qa").unwrap();
+        fs::write(
+            nested_qa_dir.join("0008_2026-07-05_nested_qa.md"),
+            "nested qa",
+        )
+        .unwrap();
         fs::write(terms_dir.join("0009_2026-07-05_term.md"), "term").unwrap();
-        fs::write(nested_terms_dir.join("0010_2026-07-05_nested_term.md"), "nested term").unwrap();
+        fs::write(
+            nested_terms_dir.join("0010_2026-07-05_nested_term.md"),
+            "nested term",
+        )
+        .unwrap();
 
         let paths = list_recipe_material_note_paths(dir.path());
 
@@ -2176,7 +2434,6 @@ mod tests {
         assert!(paths.contains(&root_note));
         assert!(paths.iter().any(|p| p.ends_with("0002_2026-07-05_tag.md")));
     }
-
 
     #[test]
     fn test_read_note_should_parse_metadata() {
@@ -2193,7 +2450,7 @@ tags: ["important"]
 ---
 
 本文"#;
-        
+
         write_note(&file_path_str, content).unwrap();
 
         // 読み込み実行
@@ -2202,7 +2459,10 @@ tags: ["important"]
         // 検証：修正前はここで失敗する
         assert_eq!(note.meta.x, Some(100.0), "x座標が読み込まれていません");
         assert_eq!(note.meta.y, Some(200.0), "y座標が読み込まれていません");
-        assert!(note.meta.tags.contains(&"important".to_string()), "タグが読み込まれていません");
+        assert!(
+            note.meta.tags.contains(&"important".to_string()),
+            "タグが読み込まれていません"
+        );
     }
 
     // === migrate_to_frontmatter / list_notes フロントマター自動付与のテスト ===
@@ -2221,7 +2481,10 @@ tags: ["important"]
         assert_eq!(notes.len(), 1);
 
         // 元ファイルが消えて標準形式にリネームされていること
-        assert!(!dir.path().join("メモ.md").exists(), "元ファイルが残っている");
+        assert!(
+            !dir.path().join("メモ.md").exists(),
+            "元ファイルが残っている"
+        );
         let renamed: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
             .filter_map(|e| e.ok())
@@ -2265,7 +2528,10 @@ tags: ["important"]
         let notes = list_notes(&dir_path);
 
         assert_eq!(notes.len(), 1);
-        assert!(file_path.exists(), "既存の標準形式ファイルが消えてはいけない");
+        assert!(
+            file_path.exists(),
+            "既存の標準形式ファイルが消えてはいけない"
+        );
     }
 
     #[test]
@@ -2286,10 +2552,19 @@ tags: ["important"]
         let notes = list_notes(&dir_path);
 
         assert_eq!(notes.len(), 1);
-        assert!(!stub_path.exists(), "zero-byte extensionless note stub should be removed");
-        assert!(non_empty_stub_path.exists(), "non-empty extensionless file should be kept");
+        assert!(
+            !stub_path.exists(),
+            "zero-byte extensionless note stub should be removed"
+        );
+        assert!(
+            non_empty_stub_path.exists(),
+            "non-empty extensionless file should be kept"
+        );
         assert!(md_path.exists(), ".md note should be kept");
-        assert!(unrelated_empty_path.exists(), "unrelated empty file should be kept");
+        assert!(
+            unrelated_empty_path.exists(),
+            "unrelated empty file should be kept"
+        );
     }
 
     // === normalize_explorer_arg のテスト ===

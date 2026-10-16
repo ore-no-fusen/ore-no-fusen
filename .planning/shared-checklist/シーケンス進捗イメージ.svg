@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="970" viewBox="0 0 1280 970" role="img" aria-labelledby="title desc">
+  <title id="title">付箋共有シーケンスの確認状況</title>
+  <desc id="desc">上り、Web閲覧、Web保存、Windowsへの下りの4つの流れ。Web画面は作業ブランチにありdevelop未統合。実Drive表示・実端末確認は未実施。</desc>
+  <defs>
+    <style>
+      text { font-family: "Yu Gothic UI", "Meiryo", sans-serif; fill: #17243a; }
+      .title { font-size: 32px; font-weight: 700; }
+      .sub { font-size: 18px; fill: #53647d; }
+      .rowtitle { font-size: 22px; font-weight: 700; }
+      .part { font-size: 16px; font-weight: 700; }
+      .msg { font-size: 14px; fill: #42526a; }
+      .state { font-size: 15px; font-weight: 700; }
+      .note { font-size: 15px; }
+    </style>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#16805c"/></marker>
+    <marker id="arrowBlue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#3d6fb4"/></marker>
+    <marker id="arrowGray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#8a97a9"/></marker>
+  </defs>
+  <rect width="1280" height="930" fill="#f3f6fb"/>
+  <text x="48" y="56" class="title">シーケンス図の「ここまで確認した」</text>
+  <text x="50" y="88" class="sub">4つの使い方それぞれを分けて表示。青はコード実装、橙は部品確認、灰色点線は未確認の想定操作です。</text>
+
+  <rect x="50" y="110" width="1180" height="64" rx="14" fill="#fff4dc" stroke="#e9bf67"/>
+  <text x="76" y="138" class="state" fill="#8b5b00">現在地</text>
+  <text x="158" y="138" class="note">原因判明：/shared は作業ブランチのみ。develop未統合で3002番サーバー停止中。Drive付箋表示は未確認。</text>
+  <text x="158" y="160" class="note">下り後ID維持・未保存入力保護・同時保存防止・読取失敗時の解除停止を修正。</text>
+
+  <!-- Row 1 -->
+  <rect x="50" y="196" width="1180" height="145" rx="16" fill="#fff" stroke="#d7e0eb"/>
+  <text x="74" y="228" class="rowtitle">① 上り：Windows → Web</text>
+  <rect x="825" y="207" width="370" height="30" rx="15" fill="#fff4dc"/><text x="1010" y="228" class="state" text-anchor="middle" fill="#8b5b00">コード・Mock確認済み／実Drive未確認</text>
+  <text x="130" y="269" class="part" text-anchor="middle">利用者</text><text x="372" y="269" class="part" text-anchor="middle">Windowsランチャー</text><text x="646" y="269" class="part" text-anchor="middle">Google Drive</text><text x="1012" y="269" class="part" text-anchor="middle">Web画面</text>
+  <line x1="130" y1="277" x2="130" y2="327" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="372" y1="277" x2="372" y2="327" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="646" y1="277" x2="646" y2="327" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="1012" y1="277" x2="1012" y2="327" stroke="#bac5d3" stroke-dasharray="4 4"/>
+  <line x1="130" y1="290" x2="372" y2="290" stroke="#3d6fb4" stroke-width="2" marker-end="url(#arrowBlue)"/><text x="245" y="286" class="msg" text-anchor="middle">「Webと同期」を押す（実装済み）</text>
+  <line x1="372" y1="311" x2="646" y2="311" stroke="#3d6fb4" stroke-width="2" marker-end="url(#arrowBlue)"/><text x="510" y="307" class="msg" text-anchor="middle">登録付箋を検査して追記送信</text>
+  <line x1="646" y1="327" x2="1012" y2="327" stroke="#e0a32d" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowOrange)"/><text x="830" y="323" class="msg" text-anchor="middle">共有ページから読取（Mock試験済・実接続待ち）</text>
+
+  <!-- Row 2 -->
+  <rect x="50" y="359" width="1180" height="145" rx="16" fill="#fff" stroke="#d7e0eb"/>
+  <text x="74" y="391" class="rowtitle">② 閲覧：Webで付箋を見る</text>
+  <rect x="910" y="370" width="285" height="30" rx="15" fill="#fff4dc"/><text x="1052" y="391" class="state" text-anchor="middle" fill="#8b5b00">/shared表示失敗・原因調査</text>
+  <text x="130" y="432" class="part" text-anchor="middle">利用者</text><text x="372" y="432" class="part" text-anchor="middle">共通Web画面</text><text x="646" y="432" class="part" text-anchor="middle">Googleログイン</text><text x="1012" y="432" class="part" text-anchor="middle">Google Drive</text>
+  <line x1="130" y1="440" x2="130" y2="490" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="372" y1="440" x2="372" y2="490" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="646" y1="440" x2="646" y2="490" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="1012" y1="440" x2="1012" y2="490" stroke="#bac5d3" stroke-dasharray="4 4"/>
+  <line x1="130" y1="454" x2="372" y2="454" stroke="#8a97a9" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowGray)"/><text x="250" y="450" class="msg" text-anchor="middle">共通URLを開く</text>
+  <line x1="372" y1="475" x2="646" y2="475" stroke="#e0a32d" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowOrange)"/><text x="510" y="471" class="msg" text-anchor="middle">共有済みGoogleログインを再利用</text>
+  <line x1="372" y1="491" x2="1012" y2="491" stroke="#e0a32d" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowOrange)"/><text x="695" y="487" class="msg" text-anchor="middle">Drive全ページ取得・記録を検査（Mock確認済）</text>
+
+  <!-- Row 3 -->
+  <rect x="50" y="522" width="1180" height="145" rx="16" fill="#fff" stroke="#d7e0eb"/>
+  <text x="74" y="554" class="rowtitle">③ 保存：Webで編集 → Driveへ保存</text>
+  <rect x="910" y="533" width="285" height="30" rx="15" fill="#fff4dc"/><text x="1052" y="554" class="state" text-anchor="middle" fill="#8b5b00">画面・追記処理実装／Mock確認</text>
+  <text x="130" y="595" class="part" text-anchor="middle">利用者</text><text x="372" y="595" class="part" text-anchor="middle">Web画面</text><text x="744" y="595" class="part" text-anchor="middle">共有データ検査</text><text x="1050" y="595" class="part" text-anchor="middle">Google Drive</text>
+  <line x1="130" y1="603" x2="130" y2="653" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="372" y1="603" x2="372" y2="653" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="744" y1="603" x2="744" y2="653" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="1050" y1="603" x2="1050" y2="653" stroke="#bac5d3" stroke-dasharray="4 4"/>
+  <line x1="130" y1="617" x2="372" y2="617" stroke="#8a97a9" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowGray)"/><text x="250" y="613" class="msg" text-anchor="middle">編集して保存</text>
+  <line x1="372" y1="638" x2="744" y2="638" stroke="#3d6fb4" stroke-width="3" marker-end="url(#arrowBlue)"/><text x="555" y="634" class="msg" text-anchor="middle">hash・履歴・競合を検査し保存候補を作る</text>
+  <line x1="744" y1="654" x2="1050" y2="654" stroke="#3d6fb4" stroke-width="2" marker-end="url(#arrowBlue)"/><text x="895" y="650" class="msg" text-anchor="middle">上書きせず新規JSONを追記（Mock試験済）</text>
+
+  <!-- Row 4 -->
+  <rect x="50" y="685" width="1180" height="145" rx="16" fill="#fff" stroke="#d7e0eb"/>
+  <text x="74" y="717" class="rowtitle">④ 下り：Webの変更 → Windows原本</text>
+  <rect x="910" y="696" width="285" height="30" rx="15" fill="#fff4dc"/><text x="1052" y="717" class="state" text-anchor="middle" fill="#8b5b00">コード・部品試験済／実接続未確認</text>
+  <text x="130" y="758" class="part" text-anchor="middle">利用者</text><text x="372" y="758" class="part" text-anchor="middle">Windowsランチャー</text><text x="646" y="758" class="part" text-anchor="middle">Google Drive</text><text x="1012" y="758" class="part" text-anchor="middle">Windows付箋</text>
+  <line x1="130" y1="766" x2="130" y2="816" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="372" y1="766" x2="372" y2="816" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="646" y1="766" x2="646" y2="816" stroke="#bac5d3" stroke-dasharray="4 4"/><line x1="1012" y1="766" x2="1012" y2="816" stroke="#bac5d3" stroke-dasharray="4 4"/>
+  <line x1="130" y1="780" x2="372" y2="780" stroke="#3d6fb4" stroke-width="2" marker-end="url(#arrowBlue)"/><text x="250" y="776" class="msg" text-anchor="middle">「Webと同期」を押す（実装済み）</text>
+  <line x1="372" y1="801" x2="646" y2="801" stroke="#3d6fb4" stroke-width="2" marker-end="url(#arrowBlue)"/><text x="510" y="797" class="msg" text-anchor="middle">記録・競合・画像hashを確認（部品試験済）</text>
+  <line x1="646" y1="817" x2="1012" y2="817" stroke="#e0a32d" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowOrange)"/><text x="830" y="813" class="msg" text-anchor="middle">競合なしだけ原本へ反映。差替中は保留（全体未確認）</text>
+
+  <line x1="65" y1="858" x2="105" y2="858" stroke="#3d6fb4" stroke-width="4"/><text x="118" y="864" class="note">青：コード実装済み（実Driveの通し動作は未確認）</text>
+  <line x1="655" y1="858" x2="695" y2="858" stroke="#e0a32d" stroke-width="4" stroke-dasharray="6 5"/><text x="708" y="864" class="note">橙：Mock/部品試験済み・実接続待ち</text>
+  <line x1="65" y1="888" x2="105" y2="888" stroke="#8a97a9" stroke-width="2" stroke-dasharray="6 5"/><text x="118" y="894" class="note">灰色点線：仕様上の操作（製品通し未確認）</text>
+  <circle cx="655" cy="888" r="7" fill="#16805c"/><text x="672" y="894" class="note">緑：架空データでDrive基本試験済み（この4本の通し試験とは別）</text>
+  <text x="50" y="934" font-size="14" fill="#627189">青い矢印の操作はコードにあります。ただし青だけでは、実際のGoogle Driveを使った一連の動作が完了した意味にはなりません。</text>
+</svg>
+

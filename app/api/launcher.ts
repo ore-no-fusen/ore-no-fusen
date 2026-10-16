@@ -32,6 +32,11 @@ export async function quickOpenNotes(tab: LauncherTab, query: string): Promise<Q
     return await invoke<QuickOpenItem[]>('fusen_quick_open_notes', { tab, query });
 }
 
+export type WebShareSyncSummary = { uploaded: number; applied: number; unchanged: number; revoked: number; held: string[] };
+export async function syncQuickLauncherToWeb(): Promise<WebShareSyncSummary> {
+    return await invoke<WebShareSyncSummary>('fusen_sync_quick_launcher_to_web');
+}
+
 export async function openQuickNote(path: string): Promise<void> {
     await invoke('fusen_open_quick_note', { path, requestedAt: Date.now() });
 }
