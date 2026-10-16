@@ -2702,8 +2702,18 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const scrollToLatestRef = useRef(true)
 
     useEffect(() => {
-        setFeedbackConversationBoardOpen(true)
-        return () => setFeedbackConversationBoardOpen(false)
+        const syncVisibility = () => setFeedbackConversationBoardOpen(document.visibilityState === 'visible')
+        syncVisibility()
+        document.addEventListener('visibilitychange', syncVisibility)
+        const markHidden = () => setFeedbackConversationBoardOpen(false)
+        window.addEventListener('pagehide', markHidden)
+        window.addEventListener('pageshow', syncVisibility)
+        return () => {
+            document.removeEventListener('visibilitychange', syncVisibility)
+            window.removeEventListener('pagehide', markHidden)
+            window.removeEventListener('pageshow', syncVisibility)
+            setFeedbackConversationBoardOpen(false)
+        }
     }, [])
 
     useEffect(() => {
@@ -2714,7 +2724,8 @@ function DeveloperConversationSection({ language }: { language: Language }) {
         })
     }, [loading, timeline])
 
-    const loadMessages = useCallback(async (quiet = false) => {
+    const loadMessages = useCallback(async (quiet = false): Promise<boolean> => {
+        if (document.visibilityState !== 'visible') return false
         if (!quiet) {
             setLoading(true)
             setError(null)
@@ -2735,15 +2746,20 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                 requestAnimationFrame(() => {
                     ackFeedbackConversationMessages(conversationIdentity, unreadDeveloperMessageIds)
                         .then((success) => {
-                            if (success) setFeedbackConversationUnreadState(false)
+                            if (success) {
+                                setFeedbackConversationUnreadState(false)
+                                setNewDeveloperReply(false)
+                            }
                         })
                         .catch(() => { })
                 })
             } else {
                 setFeedbackConversationUnreadState(hasUnreadDeveloperReply(nextMessages))
             }
+            return true
         } catch (e) {
             if (!quiet) setError(String(e))
+            return false
         } finally {
             if (!quiet) setLoading(false)
         }
@@ -2827,7 +2843,12 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             setSelectedImages([])
             scrollToLatestRef.current = true
             setSending(false)
-            void loadMessages(true)
+            const refreshed = await loadMessages(true)
+            if (!refreshed) {
+                setError(isEnglish
+                    ? 'Your message was sent, but the conversation could not refresh. It will retry automatically.'
+                    : 'メッセージは送信済みですが、会話履歴を更新できませんでした。自動更新で再試行します。')
+            }
         } catch (e) {
             await Promise.all(uploadedAttachmentIds.map((fileId) =>
                 deleteFeedbackUploadedAttachment(conversationIdentity, fileId).catch(() => false)

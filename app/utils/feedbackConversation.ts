@@ -8,7 +8,6 @@ const LAST_UNREAD_CHECK_DATE_KEY = 'ore-no-fusen.feedback.last_unread_check_date
 const ACTIVE_CONVERSATION_UNTIL_KEY = 'ore-no-fusen.feedback.active_conversation_until';
 const LAST_UNREAD_ATTEMPT_AT_KEY = 'ore-no-fusen.feedback.last_unread_attempt_at';
 const LAST_NOTIFIED_REPLY_KEY = 'ore-no-fusen.feedback.last_notified_reply_id';
-const CONVERSATION_BOARD_OPEN_KEY = 'ore-no-fusen.feedback.conversation_board_open';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -54,6 +53,7 @@ type FeedbackImageSession = {
   endpoint: string; projectId: string; bucketId: string; userId: string; jwt: string; expiresAt: string;
 };
 let cachedImageSession: { conversationId: string; value: FeedbackImageSession } | null = null;
+let feedbackConversationBoardOpen = false;
 
 async function feedbackImageSession(identity: FeedbackConversationIdentity, fetchImpl: typeof fetch): Promise<FeedbackImageSession> {
   if (cachedImageSession?.conversationId === identity.conversationId
@@ -257,15 +257,12 @@ export function markDeveloperReplyNotified(messageId: string, storage?: StorageL
   getStorage(storage)?.setItem(LAST_NOTIFIED_REPLY_KEY, messageId);
 }
 
-export function isFeedbackConversationBoardOpen(storage?: StorageLike): boolean {
-  return getStorage(storage)?.getItem(CONVERSATION_BOARD_OPEN_KEY) === 'true';
+export function isFeedbackConversationBoardOpen(): boolean {
+  return feedbackConversationBoardOpen;
 }
 
-export function setFeedbackConversationBoardOpen(isOpen: boolean, storage?: StorageLike): void {
-  const target = getStorage(storage);
-  if (!target) return;
-  if (isOpen) target.setItem(CONVERSATION_BOARD_OPEN_KEY, 'true');
-  else target.removeItem?.(CONVERSATION_BOARD_OPEN_KEY);
+export function setFeedbackConversationBoardOpen(isOpen: boolean): void {
+  feedbackConversationBoardOpen = isOpen;
 }
 
 export function hasUnreadDeveloperReply(messages: FeedbackConversationMessage[]): boolean {

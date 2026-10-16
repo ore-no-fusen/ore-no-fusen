@@ -1,7 +1,7 @@
 import { act, cleanup, render } from '@testing-library/react';
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { markFeedbackConversationActive, saveFeedbackConversationIdentity } from '@/app/utils/feedbackConversation';
+import { markFeedbackConversationActive, saveFeedbackConversationIdentity, setFeedbackConversationBoardOpen } from '@/app/utils/feedbackConversation';
 
 const { createWindow } = vi.hoisted(() => ({ createWindow: vi.fn() }));
 vi.mock('@tauri-apps/api/webviewWindow', () => ({ WebviewWindow: class {
@@ -22,6 +22,20 @@ afterEach(() => {
   vi.useRealTimers();
   localStorage.clear();
   createWindow.mockReset();
+  setFeedbackConversationBoardOpen(false);
+});
+
+it('会話画面を表示中は返信の小窓を出さない', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-28T00:00:00Z'));
+  saveFeedbackConversationIdentity({ conversationId: 'conversation-open', secretToken: 'secret-open' });
+  setFeedbackConversationBoardOpen(true);
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ messages: [
+    { messageId: 'reply-open', authorType: 'developer', body: '返事', createdAt: '2026-09-28T00:00:00Z', readByUser: false },
+  ] }) })));
+  render(<BackgroundCheck />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(createWindow).not.toHaveBeenCalled();
 });
 
 it('会話後の常駐中は10分ごとに確認し、新しい返信だけ通知する', async () => {

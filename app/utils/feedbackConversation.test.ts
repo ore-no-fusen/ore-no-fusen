@@ -53,6 +53,7 @@ describe('feedback conversation identity', () => {
     expect(isFeedbackConversationBoardOpen()).toBe(false);
   });
   afterEach(() => {
+    setFeedbackConversationBoardOpen(false);
     vi.unstubAllEnvs();
     vi.clearAllMocks();
     clearFeedbackConversationIdentity();
