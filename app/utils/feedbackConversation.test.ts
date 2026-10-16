@@ -16,6 +16,7 @@ import {
   getOrCreateFeedbackConversationIdentity,
   getUnreadDeveloperReplyIds,
   hasUnreadDeveloperReply,
+  isFeedbackConversationBoardOpen,
   markDeveloperReplyNotified,
   markDailyFeedbackUnreadCheck,
   markFeedbackConversationActive,
@@ -23,6 +24,7 @@ import {
   markFeedbackUnreadAttempt,
   pollFeedbackConversationMessages,
   setFeedbackConversationUnreadState,
+  setFeedbackConversationBoardOpen,
   shouldRunDailyFeedbackUnreadCheck,
   shouldRunActiveFeedbackUnreadCheck,
   shouldNotifyDeveloperReply,
@@ -44,6 +46,12 @@ function createMemoryStorage() {
 }
 
 describe('feedback conversation identity', () => {
+  it('掲示板の表示状態をローカルに切り替える', () => {
+    setFeedbackConversationBoardOpen(true);
+    expect(isFeedbackConversationBoardOpen()).toBe(true);
+    setFeedbackConversationBoardOpen(false);
+    expect(isFeedbackConversationBoardOpen()).toBe(false);
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.clearAllMocks();

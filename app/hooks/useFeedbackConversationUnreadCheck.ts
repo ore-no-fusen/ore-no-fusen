@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import {
   getFeedbackConversationIdentity,
   hasUnreadDeveloperReply,
+  isFeedbackConversationBoardOpen,
   markDeveloperReplyNotified,
   markDailyFeedbackUnreadCheck,
   markFeedbackUnreadAttempt,
@@ -55,7 +56,7 @@ export function useFeedbackConversationUnreadCheck(enabled: boolean) {
           setFeedbackConversationUnreadState(hasUnreadDeveloperReply(messages));
           const unread = messages.filter(message => message.authorType === 'developer' && !message.readByUser);
           const newest = unread.at(-1);
-          if (newest && shouldNotifyDeveloperReply(newest.messageId)) {
+          if (newest && !isFeedbackConversationBoardOpen() && shouldNotifyDeveloperReply(newest.messageId)) {
             await showDeveloperReplyNotice(newest.messageId, unread.length);
             markDeveloperReplyNotified(newest.messageId);
           }

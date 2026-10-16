@@ -69,6 +69,7 @@ import {
     pollFeedbackConversationMessages,
     saveFeedbackConversationIdentity,
     setFeedbackConversationUnreadState,
+    setFeedbackConversationBoardOpen,
     uploadFeedbackAttachment,
 } from "@/app/utils/feedbackConversation"
 import { assertFeedbackImages } from "@/app/utils/feedbackImage"
@@ -2701,6 +2702,11 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const scrollToLatestRef = useRef(true)
 
     useEffect(() => {
+        setFeedbackConversationBoardOpen(true)
+        return () => setFeedbackConversationBoardOpen(false)
+    }, [])
+
+    useEffect(() => {
         if (loading || timeline.length === 0 || !scrollToLatestRef.current) return
         scrollToLatestRef.current = false
         requestAnimationFrame(() => {
@@ -2723,6 +2729,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             const unreadDeveloperMessageIds = getUnreadDeveloperReplyIds(nextMessages)
 
             if (unreadDeveloperMessageIds.length > 0) {
+                scrollToLatestRef.current = true
                 setNewDeveloperReply(true)
                 setFeedbackConversationUnreadState(true)
                 requestAnimationFrame(() => {
@@ -2819,7 +2826,8 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             setReplyTarget(null)
             setSelectedImages([])
             scrollToLatestRef.current = true
-            await loadMessages()
+            setSending(false)
+            void loadMessages(true)
         } catch (e) {
             await Promise.all(uploadedAttachmentIds.map((fileId) =>
                 deleteFeedbackUploadedAttachment(conversationIdentity, fileId).catch(() => false)
@@ -2922,12 +2930,8 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     }}
                 >
                     {newDeveloperReply && (
-                        <div role="status" className="flex items-center justify-between gap-3 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-950">
-                            <span>{isEnglish ? 'A new reply from the developer has arrived.' : '開発者から新しい返信が届きました。'}</span>
-                            <Button type="button" variant="outline" onClick={() => {
-                                if (historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight
-                                setNewDeveloperReply(false)
-                            }}>{isEnglish ? 'View latest' : '最新の返信を見る'}</Button>
+                        <div role="status" className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-950">
+                            {isEnglish ? 'A new reply from the developer has arrived.' : '開発者から新しい返信が届きました。'}
                         </div>
                     )}
                     {error && (
