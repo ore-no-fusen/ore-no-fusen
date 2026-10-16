@@ -252,7 +252,9 @@ export class ReleaseMachine {
     });
     await this.assertSnapshot();
     await this.step('dev', 'STEP 1-3 開発署名MSIXを作成', async () => {
-      await this.ps(path.join(this.state.mainRoot, 'packaging/msix/test-msix.ps1'), ['-SkipBuild', '-NoInstall', '-ReleaseDirectory', this.state.releaseDir]);
+      // Keep the development package upgradeable even when retrying the same app release.
+      // Store package and executable remain X.Y.Z.0 / X.Y.Z; only Dev MSIX uses X.Y.Z.1.
+      await this.ps(path.join(this.state.mainRoot, 'packaging/msix/test-msix.ps1'), ['-SkipBuild', '-NoInstall', '-ReleaseDirectory', this.state.releaseDir, '-DevPackageVersion', `${version}.1`]);
       const dev = path.join(this.state.mainRoot, 'packaging/msix/dev/out/ore-no-fusen-dev.msix');
       this.state.devPackage = path.join(this.runDir, 'ore-no-fusen-dev.msix'); fs.copyFileSync(dev, this.state.devPackage);
       this.state.devHash = hashFile(this.state.devPackage); this.save();
@@ -260,7 +262,7 @@ export class ReleaseMachine {
     await this.step('install', 'STEP 1-4 開発署名MSIXを導入・起動', async () => {
       await this.assertSnapshot();
       if (hashFile(this.state.devPackage) !== this.state.devHash) throw new Error('開発署名MSIXが変化しています。');
-      await this.windows('Install', ['-PackagePath', this.state.devPackage, '-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', `${version}.0`, '-RequireAppClosed']);
+      await this.windows('Install', ['-PackagePath', this.state.devPackage, '-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', `${version}.1`, '-RequireAppClosed']);
     });
     this.state.status = 'confirm'; this.state.current = 'STEP 1-5 実機確認待ち'; this.save();
   }
@@ -276,7 +278,7 @@ export class ReleaseMachine {
   async package() {
     if (this.state.status === 'complete') throw new Error('提出準備は既に完了しています。');
     await this.guards(); await this.assertSnapshot();
-    await this.windows('VerifyInstalled', ['-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', `${this.state.version}.0`]);
+    await this.windows('VerifyInstalled', ['-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', `${this.state.version}.1`]);
     this.state.confirmation = { at: new Date().toISOString(), candidate: this.state.candidate, hashes: this.state.hashes };
     this.state.status = 'running'; this.state.operation = 'package'; this.state.error = null; this.save(); this.log('STEP 1-5 利用者が実機合格を確認');
     await this.step('store', 'STEP 2-1 合格exeからStore用MSIXを作成', async () => {

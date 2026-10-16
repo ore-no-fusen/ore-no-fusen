@@ -1,7 +1,8 @@
 ﻿param(
   [switch] $SkipBuild,
   [switch] $NoInstall,
-  [string] $ReleaseDirectory
+  [string] $ReleaseDirectory,
+  [string] $DevPackageVersion
 )
 
 Set-StrictMode -Version Latest
@@ -197,6 +198,20 @@ foreach ($IconName in $RequiredIcons) {
 }
 
 $Manifest = Get-Content -LiteralPath $SourceManifestPath -Raw -Encoding UTF8
+$SourceVersion = [regex]::Match($Manifest, '<Identity\b[^>]*\bVersion="([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)"').Groups[1].Value
+if ([string]::IsNullOrWhiteSpace($SourceVersion)) { throw "Could not read Store package version from $SourceManifestPath." }
+if ($DevPackageVersion) {
+  $ParsedDevVersion = $null
+  if (-not [version]::TryParse($DevPackageVersion, [ref] $ParsedDevVersion) -or
+      $ParsedDevVersion.Build -lt 0 -or $ParsedDevVersion.Revision -lt 0 -or
+      $ParsedDevVersion.Major -ne ([version]$SourceVersion).Major -or
+      $ParsedDevVersion.Minor -ne ([version]$SourceVersion).Minor -or
+      $ParsedDevVersion.Build -ne ([version]$SourceVersion).Build -or
+      $ParsedDevVersion.Revision -le ([version]$SourceVersion).Revision) {
+    throw "DevPackageVersion must be a four-part version greater than the Store package version $SourceVersion and share its first three parts."
+  }
+  $Manifest = [regex]::Replace($Manifest, '(<Identity\b[^>]*\bVersion=")[^"]+(")', ('${1}' + $DevPackageVersion + '${2}'), 1)
+}
 $Manifest = $Manifest.Replace('Name="ONFStudios.FUSEN"', ('Name="' + $DevPackageName + '"'))
 $Manifest = $Manifest.Replace('Publisher="CN=4820A467-BFE8-46A3-A142-42A0E840F3A5"', ('Publisher="' + $DevPublisher + '"'))
 $Manifest = $Manifest.Replace('Id="OreNoFusen"', ('Id="' + $DevApplicationId + '"'))

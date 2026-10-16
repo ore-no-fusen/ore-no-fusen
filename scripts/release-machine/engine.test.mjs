@@ -72,9 +72,15 @@ const packageRelease = machine => machine.start('package',{version:'5.6.2',confi
 
 test('success uses preserved binary even when shared target changes; two branches reflect same candidate',async t=>{
   const f=await fixture(t);await prepare(f.machine);assert.equal(f.machine.state.status,'confirm',f.machine.state.error);
+  const devBuild=f.config.history.find(h=>h.args.some(s=>s.endsWith('test-msix.ps1')));
+  assert.ok(devBuild.args.includes('-DevPackageVersion'));assert.ok(devBuild.args.includes('5.6.2.1'));
+  const install=f.config.history.find(h=>h.args.includes('Install'));
+  assert.ok(install.args.includes('5.6.2.1'));
   assert.throws(()=>f.machine.start('package',{version:'5.6.2',confirmed:false}),/チェック/);
   fs.writeFileSync(path.join(f.machine.state.mainRoot,'src-tauri/target/release/ore-no-fusen.exe'),'other build');
   await packageRelease(f.machine);assert.equal(f.machine.state.status,'complete');assert.equal(f.config.buildCount,1);
+  const storeBuild=f.config.history.find(h=>h.args.some(s=>s.endsWith('build-msix.ps1')));
+  assert.ok(!storeBuild.args.includes('-DevPackageVersion'));
   assert.equal(f.git('ls-remote','origin','refs/heads/main').split(/\s/)[0],f.machine.state.candidate);
   assert.equal(hashFile(f.machine.state.destination),f.machine.state.storeHash);
   const before=f.machine.state.status;assert.throws(()=>packageRelease(f.machine),/既に完了/);assert.equal(f.machine.state.status,before);
