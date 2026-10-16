@@ -104,6 +104,19 @@ test('interrupted commit result is recognized and persisted state resumes after 
   delete f.machine.state.steps.main;delete f.machine.state.steps.build;delete f.machine.state.steps.dev;delete f.machine.state.steps.install;f.machine.save();
   const restored=new ReleaseMachine(f.options);assert.equal(restored.state.status,'failed');await prepare(restored);assert.equal(restored.state.status,'confirm');
 });
+test('public version comes from origin/main and an already-bumped target uses the current develop commit',async t=>{
+  const f=await fixture(t);
+  execFileSync(process.execPath,['scripts/set-release-version.mjs','5.6.2'],{cwd:f.root});
+  f.git('add','--',...['package.json','package-lock.json','src-tauri/Cargo.toml','src-tauri/Cargo.lock','packaging/msix/AppxManifest.xml']);
+  f.git('commit','-m','release candidate already prepared');
+  const candidate=await f.machine.head();
+  assert.equal((await f.machine.inspect()).version,'5.6.1');
+  await f.machine.start('prepare',{version:'5.6.2'});
+  assert.equal(f.machine.state.status,'confirm',f.machine.state.error);
+  assert.equal(f.machine.state.candidate,candidate);
+  assert.equal(await f.machine.head(),candidate);
+  assert.equal(f.config.buildCount,1);
+});
 test('changed preserved exe blocks Store creation and push',async t=>{
   const f=await fixture(t);await prepare(f.machine);fs.writeFileSync(path.join(f.machine.state.releaseDir,'ore-no-fusen.exe'),'changed');await packageRelease(f.machine);
   assert.equal(f.machine.state.status,'failed');assert.match(f.machine.state.error,/保全済み/);assert.equal(f.config.pushCount,0);

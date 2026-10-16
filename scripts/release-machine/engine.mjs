@@ -74,6 +74,12 @@ export class ReleaseMachine {
   git(args, cwd = this.root, logged = true) { return this.cmd('git', logged ? args : ['--no-optional-locks', ...args], cwd, logged); }
   async head(cwd = this.root) { return this.git(['rev-parse', 'HEAD'], cwd, false); }
   async branch(cwd = this.root) { return this.git(['branch', '--show-current'], cwd, false); }
+  async releasedVersion() {
+    const source = await this.git(['show', 'origin/main:package.json'], this.root, false);
+    const version = JSON.parse(source).version;
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('origin/mainの公開版番号を確認できません。');
+    return version;
+  }
   async changes(cwd = this.root) {
     const out = await this.git(['-c', 'core.quotepath=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'], cwd, false);
     // No silent exclusions: even untracked files are blockers. Rename records also block.
@@ -101,7 +107,7 @@ export class ReleaseMachine {
   }
   windows(action, args = [], env) { return this.ps(path.join(this.root, 'scripts/release-machine/windows.ps1'), ['-Action', action, ...args], this.root, env); }
   async inspect() {
-    const result = { root: this.root, version: readJSON(path.join(this.root, 'package.json')).version, branch: await this.branch(), changes: await this.changes(), state: this.state, busy: this.busy, dataDir: this.dataDir, platform: this.platform };
+    const result = { root: this.root, version: await this.releasedVersion(), branch: await this.branch(), changes: await this.changes(), state: this.state, busy: this.busy, dataDir: this.dataDir, platform: this.platform };
     result.mainRoot = await this.findMain();
     result.mainChanges = result.mainRoot ? await this.changes(result.mainRoot) : [];
     result.log = this.state.id && fs.existsSync(path.join(this.runDir, 'commands.log')) ? fs.readFileSync(path.join(this.runDir, 'commands.log'), 'utf8').slice(-80000) : '';
@@ -166,7 +172,7 @@ export class ReleaseMachine {
     const continuing = this.state.id && this.state.status !== 'complete';
     if (continuing && version !== this.state.version) throw new Error('途中のリリースがあります。同じ版番号で再開してください。取り消す場合は手動復旧手順を確認してください。');
     if (!continuing) {
-      const current = readJSON(path.join(this.root, 'package.json')).version; validateVersion(version, current);
+      const current = await this.releasedVersion(); validateVersion(version, current);
       // Complete all read-only guards before recording a new attempt or modifying Git.
       await this.guards({ appClosed: true });
       const base = await this.head();
@@ -180,7 +186,8 @@ export class ReleaseMachine {
         await this.clean();
         const texts = VERSION_FILES.map(file => fs.readFileSync(path.join(this.root, file), 'utf8'));
         const files = Object.fromEntries(VERSION_KEYS.map((key, i) => [key, texts[i]]));
-        const updated = updateReleaseVersionTexts(files, JSON.parse(texts[0]).version, version);
+        const currentSourceVersion = JSON.parse(texts[0]).version;
+        const updated = currentSourceVersion === version ? files : updateReleaseVersionTexts(files, currentSourceVersion, version);
         this.state.versionTexts = VERSION_FILES.map((file, i) => ({ file, before: texts[i], after: updated[VERSION_KEYS[i]] })); this.save();
       }
       for (const item of this.state.versionTexts) {
@@ -189,11 +196,17 @@ export class ReleaseMachine {
       }
       // A partially interrupted version write is replayed only when each file is original or expected.
       const allOriginal = this.state.versionTexts.every(item => fs.readFileSync(path.join(this.root, item.file), 'utf8') === item.before);
-      if (allOriginal) await this.cmd(process.execPath, ['scripts/set-release-version.mjs', version]);
+      if (allOriginal && this.state.versionTexts.every(item => item.before === item.after)) this.log('版番号はすでに候補と一致しています。');
+      else if (allOriginal) await this.cmd(process.execPath, ['scripts/set-release-version.mjs', version]);
       else for (const item of this.state.versionTexts) { fs.writeFileSync(path.join(this.root, item.file), item.after); this.log(`版番号の中断復旧: ${item.file}`); }
       for (const item of this.state.versionTexts) if (fs.readFileSync(path.join(this.root, item.file), 'utf8') !== item.after) throw new Error(`版番号の結果不一致: ${item.file}`);
     });
     await this.step('commit', 'STEP 1-1 5ファイル限定コミット', async () => {
+      if (this.state.versionTexts.every(item => item.before === item.after)) {
+        if (readJSON(path.join(this.root, 'package.json')).version !== version) throw new Error('既存の版番号が候補と一致しません。');
+        this.state.candidate = await this.head(); this.save(); this.log('版番号はdevelop上ですでに候補と一致するため、現在の確認済みコミットを使用します。');
+        return;
+      }
       const head = await this.head();
       if (head !== this.state.base) {
         const parent = await this.git(['rev-parse', 'HEAD^'], this.root, false);

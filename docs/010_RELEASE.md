@@ -36,6 +36,7 @@ GitHub Release、Gitタグ、Winget公開、GitHub ActionsからのMicrosoft Sto
 
 - ログと保全成果物は基本フォルダーの `my/release-machine/runs/<実行ID>/` に保存する。`commands.log` は実行場所・コマンド・結果、`timings.jsonl` は各試行の開始・終了・秒数、`state.json` は版番号・コミット・工程状態・SHA256・実機合格記録である。工程別時間の原記録とし、本書の実測時間表へ転記するときはこの記録を使う。現在の実行状態は `my/release-machine/active.json`。公開版の集計・試行詳細表への転記はリリース完了時に行う。
 - 本番ビルドは正式リリースのmainで1回実行し、exe/resourcesを実行ID配下の `build-<ID>/` へ保全する。`test-msix.ps1 -SkipBuild -NoInstall -ReleaseDirectory <保全先>` で開発署名MSIXを作り、`scripts/release-machine/windows.ps1 -Action Install` で導入済み版と保全exeを照合して起動する。アプリの先行アンインストールは行わない。
+- リリース画面の「現在」は `origin/main:package.json` の版番号を使う。確認済みdevelopの5ファイルが候補版番号へすでに更新済みなら、そのdevelopコミットをそのまま候補にして版番号コミットを重ねない。
 - STEP 2は `build-msix.ps1 -ReleaseDirectory <保全先>` と `validate-msix.ps1 -PackagePath <作成MSIX> -ExpectedVersion <X.Y.Z.0> -ExpectedReleaseDirectory <保全先>` を呼ぶ。既存の指定なしの手動コマンドも従来どおり利用できる。SHA256が違う提出物は上書きしない。
 - 失敗した場合は同じボタンで再試行する。途中の版番号は固定し、完了した工程を繰り返さない。初回の版番号コミットでは、コミットフックの専用経路で5ファイルが既存版番号更新スクリプトの出力と完全一致することを検証する。混在変更は拒否する。STEP 0済みのテストや、開発サーバーを停止するE2Eは繰り返さない。通常のコード変更のコミット検査は従来どおり行う。合格後のSTEP 2でテスト・exeビルドは繰り返さない。中断後の子プロセスが残っている場合は再開を停止する。コードや保全exeが変わった場合も合格を引き継がず停止する。
 - 手動引継ぎでは、起動用ウィンドウを処理停止後に終了し、`commands.log` と `state.json` を確認する。コマンドは画面の説明用プレースホルダーではなく、ログに残った実際の絶対パス・版番号・候補コミットを使用する。版番号5ファイルの変更前/変更後は `state.json` の `versionTexts` に記録する。コミット前の取り消しでは、他者の変更がないことを照合してこの5ファイルだけを戻す。reset --hard、git add -A、強制pushは使用しない。
