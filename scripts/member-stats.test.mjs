@@ -601,16 +601,23 @@ test('機能利用分母は機能別に計測可能と確認できた会員だ�
   const history = [6, 7].map(index => ({
     analyticsSubject: `subject-${index}`, week: '2026-W41', consent: true,
     reports: { reporter: { week: '2026-W41', schema: 3, supportedFeatures: ['note_created'], days: {} } },
-  }));
+  })).concat([{ analyticsSubject: 'subject-8', week: '2026-W41', consent: true, reports: {
+    reporter: { week: '2026-W41', schema: 3, supportedFeatures: ['note_edited'], days: {} },
+  } }]);
   const stats = featureUsageStats(members, '2026-W41', history);
   const row = stats.rows.find(item => item.name === 'note_created');
   assert.equal(stats.reporting, 16);
   assert.equal(stats.usageStates.find(state => state.key === 'recorded').count, 5);
   assert.equal(stats.usageStates.find(state => state.key === 'empty').count, 11);
   assert.equal(row.users, 3);
-  assert.equal(row.reporting, 5, '3人の利用記録と履歴で計測対応を確認できた空記録2人だけが分母');
+  assert.equal(row.reporting, 5, '今週の利用3人と対応確認済みの報告者2人だけが分母');
   assert.equal(Math.round(row.users / row.reporting * 100), 60);
-  assert.equal(stats.rows.find(item => item.name === 'note_edited').reporting, 2);
+  assert.equal(stats.rows.find(item => item.name === 'note_edited').reporting, 3);
+  const withoutCurrentReport = featureUsageStats([
+    ...members,
+    { analyticsSubject: 'not-arrived', usageConsent: true, usageWeek: '2026-W40', usageFeatures: [] },
+  ], '2026-W41', history).rows.find(item => item.name === 'note_created');
+  assert.equal(withoutCurrentReport.reporting, 5, '今週の報告も機能使用履歴もない会員は分母から除外');
 });
 
 test('schema3日別の対応機能は分母へ加え、対応を確認できない空記録は除外する', () => {
@@ -635,4 +642,25 @@ test('launcher_storeの分母にはusageSchema 2以上の報告者だけを含�
   ];
   const row = featureUsageStats(members, '2026-W41').rows.find(item => item.name === 'launcher_store');
   assert.deepEqual({ users: row.users, denominator: row.reporting }, { users: 0, denominator: 1 });
+});
+
+test('判定可能人数が0なら機能利用率は不明と表示する', () => {
+  const stats = featureUsageStats([{ usageConsent: true, usageWeek: '2026-W41', usageSchema: 1, usageFeatures: [] }], '2026-W41');
+  const html = generateHtml([], 1, 10000, 0, 0, [], [], '2026/10/12', { today: 0, week: 0, unknown: 1 }, false, 'development', stats);
+  const row = stats.rows.find(item => item.name === 'note_created');
+  assert.equal(row.reporting, 0);
+  assert.match(html, /付箋の作成<\/td>\s*<td class="py-2 text-right">不明<\/td>\s*<td class="py-2 text-right">—<\/td>\s*<td class="py-2 text-right">—<\/td>\s*<td class="py-2 text-right">0人/);
+});
+
+test('同意状況はアプリバージョン別の匿名集計で表示する', () => {
+  const stats = featureUsageStats([
+    ...Array.from({ length: 6 }, () => ({ appVersion: '5.7.3', usageConsent: true })),
+    ...Array.from({ length: 2 }, () => ({ appVersion: '5.7.3', usageConsent: false })),
+    ...Array.from({ length: 2 }, () => ({ appVersion: '5.7.3' })),
+  ], '2026-W41');
+  assert.deepEqual(stats.consentByVersion[0], { version: '5.7.3', members: 10, granted: 6, denied: 2, unknown: 2, cooperationRate: 60 });
+  const html = generateHtml([], 10, 10009, 0, 0, [], [], '2026/10/12', { today: 0, week: 0, unknown: 10 }, false, 'development', stats);
+  assert.match(html, /consentByVersionRows/);
+  assert.match(html, /5\.7\.3/);
+  assert.match(html, /60%/);
 });

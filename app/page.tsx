@@ -39,7 +39,7 @@ import { trackEvent } from './utils/analytics';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { shouldShowAnalyticsConsentPrompt, useAnalyticsConsentPromptPostponed } from './hooks/useAnalyticsConsentPrompt';
-import { ANALYTICS_CONSENT_RECONFIRMATION_VERSION } from './utils/analyticsConsentPrompt';
+import { ANALYTICS_CONSENT_RECONFIRMATION_VERSION, hasPreviouslyUsedNote } from './utils/analyticsConsentPrompt';
 import { useDiscordReplyIngest } from './hooks/useDiscordReplyIngest';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
@@ -279,7 +279,11 @@ function OrchestratorContent() {
     reconfirmationPresented: analyticsConsentReconfirmationPresented,
     postpone: postponeAnalyticsConsent,
     markReconfirmationPresented: markAnalyticsConsentReconfirmationPresented,
-  } = useAnalyticsConsentPromptPostponed();
+    valueExperiencedAt: analyticsConsentValueExperiencedAt,
+    deferredUntil: analyticsConsentDeferredUntil,
+    now: analyticsConsentPromptNow,
+    markValueExperienced: markAnalyticsConsentValueExperienced,
+  } = useAnalyticsConsentPromptPostponed(isMainWindow);
   const analyticsConsentReconfirmationSavePromiseRef = useRef<Promise<void> | null>(null);
   const desktopShortcutPromptCheckedRef = useRef(false);
   const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
@@ -293,7 +297,17 @@ function OrchestratorContent() {
 
   // 復元処理は起動時のクロージャーを保持するため、案内の最新状態を参照する。
   const updatePromptVisibleRef = useRef(false);
-  updatePromptVisibleRef.current = showUpdateDialog || storeUpdateAvailable;
+  const consentPromptReadyAfterSetup = shouldShowAnalyticsConsentPrompt({
+    isMainWindow, isCheckingSetup: false, setupRequired, settingsLoading,
+    consent: settings.analytics_consent,
+    reconfirmationVersion: settings.analytics_consent_reconfirmation_version,
+    reconfirmationPresented: analyticsConsentReconfirmationPresented,
+    postponed: analyticsConsentPostponed,
+    valueExperiencedAt: analyticsConsentValueExperiencedAt,
+    deferredUntil: analyticsConsentDeferredUntil,
+    now: analyticsConsentPromptNow,
+  });
+  updatePromptVisibleRef.current = showUpdateDialog || storeUpdateAvailable || consentPromptReadyAfterSetup;
 
   const isSearchOpenRef = useRef(false);
   const hotkeyRegisterFailuresCheckedRef = useRef(false);
@@ -320,7 +334,12 @@ function OrchestratorContent() {
   useMainWindowResizePolicy({
     showMessageDialog: isMainWindow && (showMonthlyBackupPrompt || showDesktopShortcutPrompt || !!monthlyBackupResult || !!hotkeyRegisterFailureMessage),
     showAnalyticsConsent: isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && (
-      !settings.analytics_consent
+      (!settings.analytics_consent && shouldShowAnalyticsConsentPrompt({
+        isMainWindow, isCheckingSetup, setupRequired, settingsLoading, consent: settings.analytics_consent,
+        reconfirmationVersion: settings.analytics_consent_reconfirmation_version,
+        reconfirmationPresented: analyticsConsentReconfirmationPresented, postponed: analyticsConsentPostponed,
+        valueExperiencedAt: analyticsConsentValueExperiencedAt, deferredUntil: analyticsConsentDeferredUntil, now: analyticsConsentPromptNow,
+      }))
       || (settings.analytics_consent === 'denied' && (
         analyticsConsentReconfirmationPresented
         || (settings.analytics_consent_reconfirmation_version ?? 0) < ANALYTICS_CONSENT_RECONFIRMATION_VERSION
@@ -1825,6 +1844,7 @@ function OrchestratorContent() {
                 setSetupRequired(false);
               }
               const notes = state.notes;
+              if (hasPreviouslyUsedNote(notes)) markAnalyticsConsentValueExperienced();
               logStartupStep('5/6', `復元する付箋を確定しました: ${notes.length}件`);
 
               if (notes.length > 0) {
@@ -2039,7 +2059,7 @@ function OrchestratorContent() {
     // I will stick to what was inside checkAndRestore in the broken file as it seemed to combine logic
     // Actually, looking at the broken file line 1066.
 
-  }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState]);
+  }, [getWindowLabel, handleCreateNote, isMainWindow, openNoteWindow, path, syncState, markAnalyticsConsentValueExperienced]);
   // [MOVED] isDashboard計算と診断用ログ（早期returnの前に配置）
   const isDashboard = isMainWindow && !!settings.analytics_consent && !isSearchOpen && !isArchiveRestoreOpen && !isCheckingSetup && !setupRequired && !isSettingsOpen && !showUpdateDialog && !storeUpdateAvailable && !hotkeyRegisterFailureMessage && !showMonthlyBackupPrompt && !showDesktopShortcutPrompt && !monthlyBackupResult;
 
@@ -2278,6 +2298,9 @@ function OrchestratorContent() {
     reconfirmationVersion: settings.analytics_consent_reconfirmation_version,
     reconfirmationPresented: analyticsConsentReconfirmationPresented,
     postponed: analyticsConsentPostponed,
+    valueExperiencedAt: analyticsConsentValueExperiencedAt,
+    deferredUntil: analyticsConsentDeferredUntil,
+    now: analyticsConsentPromptNow,
   })) {
     const persistReconfirmationPresented = async () => {
       markAnalyticsConsentReconfirmationPresented();

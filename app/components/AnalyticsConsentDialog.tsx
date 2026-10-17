@@ -28,21 +28,19 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline, 
         <h2 id="analytics-consent-title" className="text-xl font-bold text-slate-900">
           {en ? 'About sharing usage information' : '利用情報の送信について'}
         </h2>
-        {isDeniedReconfirmation ? (
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {en ? 'One quick check. No usage information is sent unless you choose to share.' : '今回だけ確認します。送信を選ぶまで、利用情報は送られません。'}
-          </p>
-        ) : <>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          {en
-            ? 'Usage information means things like which features you use and how long the app is open. It does not include the contents of your notes, images, tag names, search terms, file names, or other personal content.'
-            : '利用情報とは、使った機能やアプリの起動時間などです。付箋の内容、画像、タグ名、検索語、ファイル名など、個人の内容は含まれません。'}
+          {isDeniedReconfirmation
+            ? (en ? 'We have shortened the explanation. Nothing is sent unless you choose to share.' : '説明を短く整理しました。送信を選ぶまで、利用情報は送られません。')
+            : (en ? 'Usage sharing is optional. All features work if you do not share.' : '利用情報の送信は任意です。送らなくても全機能を使えます。')}
         </p>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          {en
-            ? 'Sharing helps us decide which features to improve. You can also send us a quick note about anything you notice. Improvements may make your daily notes and organizing easier.'
-            : '送信に協力すると、どの機能を改善するとよいかを考える参考になります。気づいたことも、かんたんに送れます。改善が進めば、毎日のメモや整理がもっと使いやすくなるかもしれません。'}
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          {en ? 'We ask after you have used and saved a note. If you decide later, we wait seven days before asking again.' : '付箋を使って保存した後に確認します。「今は決めない」の場合、7日間は再表示しません。'}
         </p>
+        <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+          <p><strong>{en ? 'Sent:' : '送るもの：'}</strong> {en ? 'Features used, approximate app-open time, days used, app version, and anonymous random identifiers.' : '使った機能、おおよそのアプリ利用時間、使用日、アプリバージョン、分析用の匿名・ランダム識別情報。'}</p>
+          <p><strong>{en ? 'Not sent:' : '送らないもの：'}</strong> {en ? 'Note text, tag names, search terms, images or attachments, file names, and file paths.' : '付箋本文、タグ名、検索語、画像・添付内容、ファイル名、ファイルパス。'}</p>
+          <p><strong>{en ? 'Purpose:' : '目的：'}</strong> {en ? 'Understand which features are used and choose improvement priorities together.' : '使われている機能を知り、改善する機能の優先順位を一緒に考えます。'}</p>
+        </div>
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
           <p className="font-bold">{en ? '★ Thank you for using Ore-no-Fusen' : '★ 使ってくれて、ありがとう'}</p>
           <p className="mt-1">
@@ -53,25 +51,17 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline, 
         </div>
         <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
           <summary className="cursor-pointer font-semibold text-slate-800">
-            {en ? 'What is sent' : '送信される項目を見る'}
+            {en ? 'Details about data and storage' : '送信内容と保存先を詳しく見る'}
           </summary>
           <p className="mt-2 leading-6">
             {en
-              ? 'App start, first note creation/save, restore outcomes, app version, distribution type, language, and safe error categories go to Google Analytics 4. Weekly feature names, counts, active days, and last-used day use a random analysis ID there. The features used this week and approximate total app-open time are stored with your member number in Firestore. These are sent only after you choose to help.'
-              : 'アプリ起動、初回の付箋作成・保存、復元結果、アプリ版、配布形式、言語、安全なエラー分類をGoogle Analytics 4へ送信します。週間の機能名・使用回数・使用日数・最終使用日はランダムな分析IDで送信します。今週使った機能と累計起動時間は会員番号とともにFirestoreへ保存します。協力を選ぶまでは送信しません。'}
+              ? 'GA4 receives app start, first note creation/save, restore outcomes, app version, distribution type, language, and safe error categories. Weekly feature names, counts, active days, and last-used day use a random analysis ID. Firestore stores this week’s feature names and approximate total app-open time with your member number. No note content or file location is sent.'
+              : 'Google Analytics 4には、アプリ起動、初回の付箋作成・保存、復元結果、アプリ版、配布形式、言語、安全なエラー分類を送ります。週間の機能名・使用回数・使用日数・最終使用日はランダムな分析IDで送ります。今週使った機能と累計起動時間は会員番号とともにFirestoreへ保存します。付箋の内容やファイルの場所は送りません。'}
           </p>
         </details>
         <p className="mt-4 text-sm leading-6 text-slate-600">
-          {en
-            ? 'Sharing is optional. All features work if you do not share. Choose whether to send usage information.'
-            : '送信は任意です。送らなくても全機能を使えます。送信するかどうかを選んでください。'}
+          {en ? 'You can change your choice anytime in Settings → Developer Messages.' : '設定からいつでも変更できます（設定 → 開発者とのやりとり）。'}
         </p>
-        <p className="mt-2 text-xs leading-5 text-slate-500">
-          {en
-            ? 'If you choose “Decide later,” we will ask again next time you start the app. You can change your choice later in Settings → Developer Messages.'
-            : '「今は決めない」を選ぶと、次回起動時にもう一度確認します。送信設定は後から「設定 → 開発者とのやりとり」で変更できます。'}
-        </p>
-        </>}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
           <button onClick={onAccept} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
             {en ? 'Share usage information' : '送信に協力する'}

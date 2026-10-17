@@ -52,19 +52,42 @@ function communicationDay(member) {
 function featureUsageStats(members, week = isoWeek(), historyRows = []) {
   const reporting = members.filter(member => ['recorded', 'empty'].includes(memberUsageState(member, week)));
   const supportedBySubject = new Map();
+  const recordedBySubject = new Map();
   for (const row of historyRows) {
     if (row?.consent !== true || typeof row.analyticsSubject !== 'string' || row.week !== week) continue;
     const supported = supportedBySubject.get(row.analyticsSubject) ?? new Set();
+    const recorded = recordedBySubject.get(row.analyticsSubject) ?? new Set();
     const reports = row.reports && typeof row.reports === 'object' ? Object.values(row.reports) : [];
     for (const report of reports) {
       if (report?.schema !== 3 || report.week !== week) continue;
       for (const name of report.supportedFeatures ?? []) supported.add(name);
+      for (const name of Object.keys(report.features ?? {})) recorded.add(name);
       for (const day of Object.values(report.days ?? {})) {
         for (const name of day?.supportedFeatures ?? []) supported.add(name);
+        for (const name of Object.keys(day?.features ?? {})) recorded.add(name);
       }
     }
     supportedBySubject.set(row.analyticsSubject, supported);
+    recordedBySubject.set(row.analyticsSubject, recorded);
   }
+  const consentVersions = new Map();
+  for (const member of members) {
+    const version = typeof member.appVersion === 'string' && /^\d+\.\d+\.\d+$/.test(member.appVersion) ? member.appVersion : '不明';
+    const item = consentVersions.get(version) ?? { version, members: 0, granted: 0, denied: 0, unknown: 0 };
+    item.members++;
+    if (member.usageConsent === true) item.granted++;
+    else if (member.usageConsent === false) item.denied++;
+    else item.unknown++;
+    consentVersions.set(version, item);
+  }
+  const consentByVersion = [...consentVersions.values()]
+    .map(item => ({ ...item, cooperationRate: item.members ? Math.round(item.granted / item.members * 100) : null }))
+    .sort((a, b) => {
+      if (a.version === '不明') return 1;
+      if (b.version === '不明') return -1;
+      const left = a.version.split('.').map(Number), right = b.version.split('.').map(Number);
+      return right[0] - left[0] || right[1] - left[1] || right[2] - left[2];
+    });
   const statuses = members.map(member => ({ number: member.generalNumber, state: memberUsageState(member, week) }));
   return {
     week, reporting: reporting.length,
@@ -73,6 +96,7 @@ function featureUsageStats(members, week = isoWeek(), historyRows = []) {
       denied: members.filter(member => member.usageConsent === false).length,
       unknown: members.filter(member => typeof member.usageConsent !== 'boolean').length,
     },
+    consentByVersion,
     usageStates: Object.entries(USAGE_STATES).map(([key, state]) => ({ key, ...state, count: statuses.filter(member => member.state === key).length })),
     memberUsageStates: statuses.filter(member => Number.isSafeInteger(member.number)).map(member => ({ ...member, label: USAGE_STATES[member.state].label })),
     memberVersions: members.filter(member => Number.isSafeInteger(member.generalNumber))
@@ -89,12 +113,17 @@ function featureUsageStats(members, week = isoWeek(), historyRows = []) {
       .sort((a, b) => a.number - b.number),
     rows: Object.entries(FEATURE_LABELS).map(([name, label]) => {
       const measured = reporting.filter(member => {
-        const recorded = Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name);
+        const recorded = Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)
+          || recordedBySubject.get(member.analyticsSubject)?.has(name) === true;
         const historySupports = supportedBySubject.get(member.analyticsSubject)?.has(name) ?? false;
+        const historyRecorded = recordedBySubject.get(member.analyticsSubject)?.has(name) === true;
         const versionSupports = name === 'launcher_store' ? member.usageSchema >= 2 || historySupports : historySupports;
-        return recorded || versionSupports;
+        // A historical/current positive record is evidence of use; proving non-use
+        // still requires a current-week report and explicit instrumentation support.
+        return memberUsageState(member, week) === 'recorded' && recorded || historyRecorded || versionSupports;
       });
-      const users = measured.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)).length;
+      const users = measured.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)
+        || recordedBySubject.get(member.analyticsSubject)?.has(name) === true).length;
       return { name, label, users, reporting: measured.length, percent: members.length ? Math.round(users / members.length * 100) : 0 };
     }),
   };
@@ -638,6 +667,9 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       </div>
       <p class="text-sm text-slate-300">許可・停止は最後に届いた設定です。未確認の人は、許可にも停止にも数えません。今週届いた人数は許可人数の内訳であり、4つの人数を足すものではありません。</p>
       <p class="text-sm text-slate-400">旧版から届いた設定は、以前の会員別分析の選択です。更新後の共通設定が届くまでは、初回に協力を選んだ人数や今後届く人数は確定できません。</p>
+      <h3 class="text-base font-semibold">アプリバージョン別の同意状況</h3>
+      <p class="text-xs text-slate-400">会員番号を表示しない集計です。協力率は各バージョンの会員数に対する、最後に届いた送信許可の割合です。端末の最新バージョンとは限りません。</p>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>バージョン</th><th class="text-right">会員数</th><th class="text-right">協力中</th><th class="text-right">送信オフ</th><th class="text-right">不明</th><th class="text-right">協力率</th></tr></thead><tbody id="consentByVersionRows">${(featureStats.consentByVersion ?? []).map(item => `<tr class="border-b border-slate-800"><td class="py-2">${item.version}</td><td class="py-2 text-right">${item.members}人</td><td class="py-2 text-right">${item.granted}人</td><td class="py-2 text-right">${item.denied}人</td><td class="py-2 text-right">${item.unknown}人</td><td class="py-2 text-right">${item.cooperationRate === null ? '—' : item.cooperationRate + '%'}</td></tr>`).join('')}</tbody></table></div>
       <h2 class="text-lg font-bold">使い方が分かる人・まだ分からない人</h2>
       <p class="text-sm text-slate-300">最後に届いた情報をもとに、全会員を分けています。情報がない人を「使っていない人」とは数えません。</p>
       <div id="usageStateCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -657,7 +689,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。全会員比の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
-      <p class="text-sm text-amber-300">今週の報告者: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。各機能の「今週の報告者内記録率」と「判定できた人数」は、その機能の利用記録があるか、対応スキーマで計測可能と確認できた報告者だけで計算します。機能名なし・未計測・情報不足は未使用とは扱いません。</p>
+      <p class="text-sm text-amber-300">今週の報告者: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。機能別の今週の報告者内記録率は「記録あり人数 ÷ 判定できた人数」です。利用記録があるか、今週の対応情報で計測可能と確認できた報告者だけを分母にします。機能名なし・未計測・情報不足は未使用とは扱いません。判定できた人数が0人なら割合は不明です。</p>
       <p class="text-sm text-slate-400">クイックランチャーへしまうは計測対応版から届いた情報だけで判定します。旧版の未計測は利用ゼロではありません。タグ一括格納は成功した付箋1枚につき1回記録します。</p>
       <p id="featureEvidence" class="text-sm text-amber-300">${featureStats.reporting ? "今週の報告者のうち、機能ごとに計測可否を確認できる会員を分母にします。未計測は未使用ではありません。" : "今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
       <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
@@ -801,6 +833,20 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         document.getElementById('consentDenied').textContent = String(stats.consentCounts.denied);
         document.getElementById('consentUnknown').textContent = String(stats.consentCounts.unknown);
         document.getElementById('consentReporting').textContent = String(stats.reporting);
+        const consentRows = document.getElementById('consentByVersionRows');
+        consentRows.replaceChildren();
+        for (const item of stats.consentByVersion ?? []) {
+          const row = document.createElement('tr');
+          row.className = 'border-b border-slate-800';
+          const values = [item.version, String(item.members) + '人', String(item.granted) + '人', String(item.denied) + '人', String(item.unknown) + '人', item.cooperationRate === null ? '—' : String(item.cooperationRate) + '%'];
+          for (const value of values) {
+            const cell = document.createElement('td');
+            cell.className = 'py-2 text-right';
+            cell.textContent = value;
+            row.appendChild(cell);
+          }
+          consentRows.appendChild(row);
+        }
         const rows = document.getElementById('featureUsageRows');
         rows.replaceChildren();
         for (const feature of stats.rows) {
