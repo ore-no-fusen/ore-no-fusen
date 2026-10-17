@@ -49,8 +49,22 @@ function communicationDay(member) {
   const date = new Date(timestamp);
   return Number.isFinite(date.getTime()) ? japanDay(date) : null;
 }
-function featureUsageStats(members, week = isoWeek()) {
+function featureUsageStats(members, week = isoWeek(), historyRows = []) {
   const reporting = members.filter(member => ['recorded', 'empty'].includes(memberUsageState(member, week)));
+  const supportedBySubject = new Map();
+  for (const row of historyRows) {
+    if (row?.consent !== true || typeof row.analyticsSubject !== 'string' || row.week !== week) continue;
+    const supported = supportedBySubject.get(row.analyticsSubject) ?? new Set();
+    const reports = row.reports && typeof row.reports === 'object' ? Object.values(row.reports) : [];
+    for (const report of reports) {
+      if (report?.schema !== 3 || report.week !== week) continue;
+      for (const name of report.supportedFeatures ?? []) supported.add(name);
+      for (const day of Object.values(report.days ?? {})) {
+        for (const name of day?.supportedFeatures ?? []) supported.add(name);
+      }
+    }
+    supportedBySubject.set(row.analyticsSubject, supported);
+  }
   const statuses = members.map(member => ({ number: member.generalNumber, state: memberUsageState(member, week) }));
   return {
     week, reporting: reporting.length,
@@ -74,7 +88,12 @@ function featureUsageStats(members, week = isoWeek()) {
       .filter(member => Number.isSafeInteger(member.number))
       .sort((a, b) => a.number - b.number),
     rows: Object.entries(FEATURE_LABELS).map(([name, label]) => {
-      const measured = name === 'launcher_store' ? reporting.filter(m => m.usageSchema >= 2) : reporting;
+      const measured = reporting.filter(member => {
+        const recorded = Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name);
+        const historySupports = supportedBySubject.get(member.analyticsSubject)?.has(name) ?? false;
+        const versionSupports = name === 'launcher_store' ? member.usageSchema >= 2 || historySupports : historySupports;
+        return recorded || versionSupports;
+      });
       const users = measured.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)).length;
       return { name, label, users, reporting: measured.length, percent: members.length ? Math.round(users / members.length * 100) : 0 };
     }),
@@ -273,7 +292,7 @@ async function serveDashboard(html, dbToken, openBrowser = true, memberNumbers =
         }
         const [members,history] = await Promise.all([fetchFirestoreMembers(currentToken, environment),fetchFirestoreUsageHistory(currentToken,environment)]);
         response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify({ ...featureUsageStats(members), comparison:buildUsageComparison(members,history), totalMembers: members.length }));
+        response.end(JSON.stringify({ ...featureUsageStats(members, isoWeek(), history), comparison:buildUsageComparison(members,history), totalMembers: members.length }));
       } catch {
         response.writeHead(503); response.end();
       }
@@ -637,10 +656,10 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
-      <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。割合の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
-      <p class="text-sm text-amber-300">今週の情報が届いた会員: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。未送信・同意なしの会員は利用状況を判定できません。報告者内比は、その機能を計測できる今週の報告者だけを分母にします。</p>
+      <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。全会員比の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
+      <p class="text-sm text-amber-300">今週の報告者: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。各機能の「今週の報告者内記録率」と「判定できた人数」は、その機能の利用記録があるか、対応スキーマで計測可能と確認できた報告者だけで計算します。機能名なし・未計測・情報不足は未使用とは扱いません。</p>
       <p class="text-sm text-slate-400">クイックランチャーへしまうは計測対応版から届いた情報だけで判定します。旧版の未計測は利用ゼロではありません。タグ一括格納は成功した付箋1枚につき1回記録します。</p>
-      <p id="featureEvidence" class="text-sm text-amber-300">${featureStats.reporting ? "届いた利用記録の機能名を集計しています。機能名なしは未使用ではなく不明として扱います。" : "今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
+      <p id="featureEvidence" class="text-sm text-amber-300">${featureStats.reporting ? "今週の報告者のうち、機能ごとに計測可否を確認できる会員を分母にします。未計測は未使用ではありません。" : "今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
       <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
@@ -1127,7 +1146,7 @@ async function collectStats(environment = 'production', canPublish = true) {
 
   const totalMembers = members.length;
   const survival = survivalStats(members);
-  const featureStats = featureUsageStats(members);
+  const featureStats = featureUsageStats(members, isoWeek(), history);
   const comparison=buildUsageComparison(members,history,new Date(),analysisKey());
   const ga4WeeklyFeatures=weeklyGaFeatureRows(gaData.weeklyFeatureData);
   const exportedRecords=pseudonymizedMemberRecords(members,comparison);

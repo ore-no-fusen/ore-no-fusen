@@ -80,7 +80,7 @@ test('本番・検証とも状態から会員を確認し、機能記録なし�
       await page.getByRole('button', { name: '機能利用', exact: true }).click();
       assert.equal(await page.locator('#usageStateCards button').count(), 5);
       await page.locator('#featureRefreshStatus').filter({ hasText: '取得できませんでした' }).waitFor();
-      assert.match(await page.locator('#featureEvidence').innerText(), /機能名なしは未使用ではなく不明/);
+      assert.match(await page.locator('#featureEvidence').innerText(), /未計測は未使用ではありません/);
       assert.match(await page.locator('#featureUsageRows').innerText(), /0人/);
       assert.match(await page.locator('#featureUsageRows').innerText(), /0%/);
       await page.locator('[data-usage-state="empty"]').click();
@@ -304,7 +304,7 @@ test('指定した機能とiPhone送受信未使用を宛先として保存で�
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test('機能ごとの利用者数は会員単位で数え、割合の分母は全会員にする', () => {
+test('機能ごとの利用者数は会員単位で数え、全会員比は全会員を分母にする', () => {
   assert.equal(isoWeek(new Date('2027-01-01T00:00:00Z')), '2026-W53');
   const members = [
     { generalNumber: 10001, appVersion: '5.5.1', lastSeenTimestamp: '2026-09-27T00:00:00Z', usageWeek: '2026-W39', usageConsent: true, usageFeatures: ['iphone_send', 'note_edited'], usageOpenMinutes: 495 },
@@ -322,6 +322,9 @@ test('機能ごとの利用者数は会員単位で数え、割合の分母は�
   assert.deepEqual(stats.memberVersions, [{ number: 10001, partnerStars: 0, version: '5.5.1', lastSeenAt: '2026-09-27' }]);
   const html = generateHtml([], 4, 10003, 0, 0, [], [], '2026/09/27', { today: 0, week: 0, unknown: 4 }, false, 'development', stats);
   assert.match(html, /今週の機能別利用者/);
+  assert.match(html, /今週の報告者内記録率/);
+  assert.match(html, /判定できた人数/);
+  assert.match(html, /機能名なし・未計測・情報不足は未使用とは扱いません/);
   assert.match(html, /id="featureReporting">2<\/span> \/ <span id="featureCoverageTotal">4<\/span>人/);
   assert.match(html, /アプリ更新状況/);
 });
@@ -579,4 +582,57 @@ test('ランチャー格納は旧版の未計測を0人とせず、対応版の�
     await page.setContent(generateHtml([], 1, 10000, 0, 0, [], [], '2026/10/11', { today: 0, week: 0, unknown: 1 }, false, 'production', legacy));
     assert.match(await page.locator('#featureUsageRows tr').filter({ hasText: 'クイックランチャーへしまう' }).innerText(), /不明.*—.*—/s);
   } finally { await browser.close(); }
+});
+
+test('機能利用分母は機能別に計測可能と確認できた会員だけにし、空記録・不同意・未到着を未使用扱いしない', () => {
+  const members = [
+    ...Array.from({ length: 5 }, (_, index) => ({
+      generalNumber: 10001 + index, analyticsSubject: `subject-${index + 1}`, usageConsent: true,
+      usageWeek: '2026-W41', usageSchema: 3, usageFeatures: index < 3 ? ['note_created'] : ['note_edited'],
+    })),
+    ...Array.from({ length: 11 }, (_, index) => ({
+      generalNumber: 10006 + index, analyticsSubject: `subject-${index + 6}`, usageConsent: true,
+      usageWeek: '2026-W41', usageSchema: 3, usageFeatures: [],
+    })),
+    { generalNumber: 10017, analyticsSubject: 'denied', usageConsent: false, usageWeek: '2026-W41', usageFeatures: ['note_created'] },
+    { generalNumber: 10018, analyticsSubject: 'unknown', usageConsent: null, usageWeek: '2026-W41', usageFeatures: ['note_created'] },
+    { generalNumber: 10019, analyticsSubject: 'stale', usageConsent: true, usageWeek: '2026-W40', usageFeatures: ['note_created'] },
+  ];
+  const history = [6, 7].map(index => ({
+    analyticsSubject: `subject-${index}`, week: '2026-W41', consent: true,
+    reports: { reporter: { week: '2026-W41', schema: 3, supportedFeatures: ['note_created'], days: {} } },
+  }));
+  const stats = featureUsageStats(members, '2026-W41', history);
+  const row = stats.rows.find(item => item.name === 'note_created');
+  assert.equal(stats.reporting, 16);
+  assert.equal(stats.usageStates.find(state => state.key === 'recorded').count, 5);
+  assert.equal(stats.usageStates.find(state => state.key === 'empty').count, 11);
+  assert.equal(row.users, 3);
+  assert.equal(row.reporting, 5, '3人の利用記録と履歴で計測対応を確認できた空記録2人だけが分母');
+  assert.equal(Math.round(row.users / row.reporting * 100), 60);
+  assert.equal(stats.rows.find(item => item.name === 'note_edited').reporting, 2);
+});
+
+test('schema3日別の対応機能は分母へ加え、対応を確認できない空記録は除外する', () => {
+  const members = [
+    { analyticsSubject: 'used', usageConsent: true, usageWeek: '2026-W41', usageFeatures: ['iphone_send'] },
+    { analyticsSubject: 'supported', usageConsent: true, usageWeek: '2026-W41', usageFeatures: [] },
+    { analyticsSubject: 'unknown', usageConsent: true, usageWeek: '2026-W41', usageFeatures: [] },
+  ];
+  const history = [{ analyticsSubject: 'supported', week: '2026-W41', consent: true, reports: { r: {
+    week: '2026-W41', schema: 3, supportedFeatures: [],
+    days: { '2026-10-12': { supportedFeatures: ['iphone_send'], features: {} } },
+  } } }];
+  const row = featureUsageStats(members, '2026-W41', history).rows.find(item => item.name === 'iphone_send');
+  assert.deepEqual({ users: row.users, denominator: row.reporting }, { users: 1, denominator: 2 });
+});
+
+test('launcher_storeの分母にはusageSchema 2以上の報告者だけを含める', () => {
+  const members = [
+    { usageConsent: true, usageWeek: '2026-W41', usageFeatures: [] },
+    { usageConsent: true, usageWeek: '2026-W41', usageSchema: 1, usageFeatures: [] },
+    { usageConsent: true, usageWeek: '2026-W41', usageSchema: 2, usageFeatures: [] },
+  ];
+  const row = featureUsageStats(members, '2026-W41').rows.find(item => item.name === 'launcher_store');
+  assert.deepEqual({ users: row.users, denominator: row.reporting }, { users: 0, denominator: 1 });
 });
