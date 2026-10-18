@@ -16,6 +16,56 @@ const ROOT_FOLDER = 'ore-no-fusen';
 let latestAccessToken = '';
 
 export type SharedNote = { scope: ShareScope; operation: ShareOperation; heads: string[] };
+export type WebCreateRequest = { schemaVersion: 1; accountSubject: string; targetPcId: string; noteId: string; markdown: string };
+export type WebReceiver = { pcId: string; name: string };
+
+export async function webReceivers(token: string): Promise<{ account: string; pcs: WebReceiver[] }> {
+  latestAccessToken = token;
+  const account = await connectedAccount(token);
+  const folder = await shareFolder(token, false, account);
+  if (!folder) return { account, pcs: [] };
+  const files = await listAll(token, folder, account);
+  const pcs = new Map<string, WebReceiver>();
+  for (const file of files.filter(f => /^web-pc-[0-9a-f-]{36}\.json$/.test(f.name))) {
+    const value = await downloadJson<{schemaVersion: number; accountSubject: string; pcId: string; name: string}>(token, file.id, account);
+    if (value.schemaVersion === 1 && value.accountSubject === account && file.name === `web-pc-${value.pcId}.json` && typeof value.name === 'string') pcs.set(value.pcId, {pcId:value.pcId,name:value.name});
+  }
+  return {account, pcs:[...pcs.values()]};
+}
+
+export async function submitWebCreate(token: string, request: WebCreateRequest): Promise<void> {
+  latestAccessToken = token;
+  const {account,pcs} = await webReceivers(token);
+  if (account !== request.accountSubject || !pcs.some(pc=>pc.pcId===request.targetPcId)) throw new Error('受取PCまたはGoogleアカウントが変わりました。保存を中止しました。');
+  if (!/^[0-9a-f-]{36}$/.test(request.noteId) || !request.markdown.trim() || new TextEncoder().encode(request.markdown).length > 100_000 || /!\[|ore-fusen-image:/.test(request.markdown)) throw new Error('新規付箋は文字のみ・100KB以内で入力してください。');
+  const folder=await shareFolder(token,true,account);
+  if(!folder) throw new Error('先にWindowsで「Webと同期」を実行してください。');
+  const name=`web-request-${request.noteId}.json`;
+  const existing=(await listAll(token,folder,account)).filter(f=>f.name===name);
+  for(const file of existing) {
+    const prior=await downloadJson<WebCreateRequest>(token,file.id,account);
+    if (Object.keys(request).some(key=>prior[key as keyof WebCreateRequest]!==request[key as keyof WebCreateRequest])) throw new Error('同じ作成IDの内容が異なります。上書きせず保存を中止しました。');
+  }
+  if(existing.length) return;
+  const form=new FormData();
+  form.append('metadata',new Blob([JSON.stringify({name,parents:[folder]})],{type:'application/json'}));
+  form.append('file',new Blob([JSON.stringify(request)],{type:'application/json'}),name);
+  await authorizedFetch(token,UPLOAD,{method:'POST',body:form},account);
+}
+
+export async function revokeWebNote(token:string,current:SharedNote):Promise<void> {
+  latestAccessToken=token;
+  const expected=current.scope.accountSubject;
+  const loaded=await loadSharedNotes(token,expected);
+  const latest=loaded.notes.find(n=>n.scope.noteId===current.scope.noteId && n.scope.generation===current.scope.generation);
+  if(!latest) return; // Includes a successful revoke whose response was lost.
+  if(latest.heads.length!==1 || latest.operation.operationId!==current.operation.operationId) throw new Error('別の端末で変更されています。Webを更新してから共有を解除してください。');
+  const operation:ShareOperation={...current.operation,kind:'revoke',parents:[current.operation.operationId],resolvedIds:[],operationId:`web-revoke-${current.scope.noteId}-${current.scope.generation}`,payloadHash:''};
+  operation.payloadHash=await calculateSharePayloadHash({...operation.scope,...operation});
+  const folder=await shareFolder(token,false,expected);
+  if(!folder) throw new Error('共有フォルダーがありません。');
+  await uploadCreateOnly(token,folder,`op-${operation.operationId}.json`,new Blob([JSON.stringify(operation)],{type:'application/json'}),expected);
+}
 
 async function verifyAccount(token: string, expectedAccount: string): Promise<void> {
   const response = await fetch(`${API}/about?fields=user(emailAddress)`, {

@@ -643,9 +643,15 @@ pub async fn list_web_share_records(
     access_token: &str,
     folder_id: &str,
 ) -> Result<Vec<(String, String)>, String> {
+    list_web_share_named_records(client, access_token, folder_id, "op-").await
+}
+
+pub async fn list_web_share_named_records(
+    client: &Client, access_token: &str, folder_id: &str, prefix: &str,
+) -> Result<Vec<(String, String)>, String> {
     let q = format!(
-        "'{}' in parents and name contains 'op-' and trashed=false",
-        folder_id
+        "'{}' in parents and name contains '{}' and trashed=false",
+        folder_id, prefix
     );
     let mut token: Option<String> = None;
     let mut records = Vec::new();

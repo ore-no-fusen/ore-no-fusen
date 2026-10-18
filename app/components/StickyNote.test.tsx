@@ -168,6 +168,19 @@ describe('StickyNote Component', () => {
         expect(await screen.findByRole('button', { name: 'アーカイブへしまう' })).not.toBeNull();
     });
 
+    it('Windows canonicalパスの同期通知で閲覧中の付箋を再読込する', async () => {
+        render(<StickyNote />);
+        await screen.findByText('Test Content');
+        await waitFor(() => expect(mockEventHandlers.has('fusen:reload_note')).toBe(true));
+        mockInvoke.mockImplementation((cmd) => cmd === 'fusen_read_note'
+            ? Promise.resolve({meta: {path: 'd:/test/note.md', tags: []}, body: '---\ntags: []\n---\nWeb updated content'})
+            : Promise.resolve(null));
+        await act(async () => {
+            await mockEventHandlers.get('fusen:reload_note')?.({payload: {path: '\\\\?\\D:\\test\\note.md'}});
+        });
+        expect(await screen.findByText('Web updated content')).toBeTruthy();
+    });
+
     it('同期後の再読込は未保存の編集中本文を上書きしない', async () => {
         render(<StickyNote />);
         const visible = await screen.findByText('Test Content');

@@ -6,7 +6,8 @@ import { refreshAccessToken } from '@/app/viewer/lib/drive';
 import { renderSecureMermaid } from '@/app/utils/mermaid';
 import { copySharedConnectionDiagnostics, logSharedConnection } from './lib/connection-diagnostic';
 import { markSharedLoginReturn } from './lib/login-return';
-import { appendWebEdit, downloadSharedImage, loadSharedNotes, type SharedNote } from './lib/drive';
+import { appendWebEdit, downloadSharedImage, loadSharedNotes, revokeWebNote, type SharedNote } from './lib/drive';
+import { NewNote } from './NewNote';
 import { replaceTaskText } from './lib/markdown';
 
 type DriveFile = { id: string; name: string; mimeType?: string };
@@ -122,6 +123,7 @@ export default function SharedNotesPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Google Driveに接続して付箋を読み込みます。');
   const [diagnosticMessage, setDiagnosticMessage] = useState('');
+  const [creating,setCreating]=useState(false);
 
   useEffect(() => {
     logSharedConnection('shared_page_loaded');
@@ -280,6 +282,7 @@ export default function SharedNotesPage() {
       <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid #e2e8f0', paddingBottom: 16 }}>
         <div><div style={{ fontSize: 13, color: '#55708f' }}>Windowsランチャーの付箋をどの端末からも</div><h1 style={{ margin: '4px 0 0', fontSize: 27 }}>俺の付箋 · Web</h1></div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {token && <button style={button} disabled={busy||editing} onClick={()=>setCreating(true)}>＋新規</button>}
           {!token && <a href="/viewer?shared=1" onClick={() => {
             markSharedLoginReturn();
             logSharedConnection('shared_connect_clicked', { targetPath: '/viewer', sharedMode: true });
@@ -291,6 +294,7 @@ export default function SharedNotesPage() {
         </div>
       </header>
       <p role="status" style={{ color: '#52627a', minHeight: 24 }}>{message}</p>
+      {creating&&token&&<NewNote token={token} onDone={text=>{setCreating(false);setMessage(text);}}/>}
       {process.env.NODE_ENV === 'development' && <div style={{ margin: '8px 0 14px', fontSize: 13, color: '#52627a' }}>
         <button type="button" style={button} onClick={() => void copyDiagnostics()}>接続診断をコピー</button>
         <span role="status" aria-live="polite" style={{ marginLeft: 8 }}>{diagnosticMessage}</span>
@@ -327,6 +331,13 @@ export default function SharedNotesPage() {
         {current && <section style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 12 }}>
             <strong>付箋の内容</strong>
+            {!editing&&<button style={button} disabled={busy} onClick={async()=>{
+              if(!window.confirm('Webの共有から外します。Windowsの元の付箋は残ります。続けますか？'))return;
+              setBusy(true);
+              try {await revokeWebNote(token,current);await reload(token);setMessage('共有から外しました。Windowsの登録解除は次回の「Webと同期」で反映します。');}
+              catch(e){setMessage(e instanceof Error?e.message:'共有を解除できませんでした。');}
+              finally{setBusy(false);}
+            }}>共有から外す</button>}
             {!editing ? <button style={button} onClick={() => {
               const initialLines = current.operation.payload.markdown.split('\n');
               const firstLine = initialLines.findIndex((line) => line.trim().length > 0);

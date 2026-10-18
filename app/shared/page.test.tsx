@@ -7,6 +7,7 @@ import SharedNotesPage from './page';
 const mocks = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(),
   appendWebEdit: vi.fn(),
+  revokeWebNote: vi.fn(),
   downloadSharedImage: vi.fn(),
   loadSharedNotes: vi.fn(),
   renderSecureMermaid: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('@/app/viewer/lib/drive', () => ({ refreshAccessToken: mocks.refreshAcce
 vi.mock('@/app/utils/mermaid', () => ({ renderSecureMermaid: mocks.renderSecureMermaid }));
 vi.mock('./lib/drive', () => ({
   appendWebEdit: mocks.appendWebEdit,
+  revokeWebNote: mocks.revokeWebNote,
   downloadSharedImage: mocks.downloadSharedImage,
   loadSharedNotes: mocks.loadSharedNotes,
 }));
@@ -34,6 +36,15 @@ function sharedNote(markdown: string, title = 'テスト付箋'): SharedNote {
 }
 
 describe('shared note editor', () => {
+  it('共有解除は原本を消さない確認を出して明示操作で解除する', async () => {
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
+    mocks.revokeWebNote.mockResolvedValue(undefined);
+    render(<SharedNotesPage />);await screen.findByText('1件の付箋を読み込みました。');
+    fireEvent.click(screen.getByRole('button',{name:'共有から外す'}));
+    await waitFor(()=>expect(mocks.revokeWebNote).toHaveBeenCalledWith('test-token',expect.objectContaining({scope:expect.objectContaining({noteId:'test-note'})})));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Windowsの元の付箋は残ります'));
+    confirm.mockRestore();
+  });
   afterEach(() => cleanup());
 
   beforeEach(() => {

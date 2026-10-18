@@ -726,10 +726,6 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         .canonicalize()
         .map_err(|e| format!("付箋の保存場所を確認できません: {e}"))?;
     let items = load_shortcut_items_strict(&base)?;
-    let registered_paths = items
-        .iter()
-        .map(|item| item.path.clone())
-        .collect::<Vec<_>>();
     let client = reqwest::Client::new();
     let token = crate::gdrive::get_access_token(&client)
         .await
@@ -809,6 +805,28 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
             remote_revoked_ids.insert(note_id);
         }
     }
+    // A Web revoke removes sharing, never the Windows original. Apply only
+    // once; an explicit later launcher registration receives a fresh note ID.
+    for item in &items {
+        let path = Path::new(&item.path);
+        let source = fs::read_to_string(path).map_err(|e|e.to_string())?;
+        if let Some(id) = logic::web_share_note_id(&source) {
+            if remote_revoked_ids.contains(&id) && !sync_state.revoked_ids.contains(&id) {
+                if let Some(updated) = web_unshare_content(&source,&id) {
+                    storage::write_note_if_unchanged(&path.to_string_lossy(), &source, &updated)?;
+                }
+                sync_state.revoked_ids.insert(id);
+                persist_web_share_sync_state(&state_path, &sync_state)?;
+                summary.revoked += 1;
+                let _ = app.emit("fusen:reload_note", serde_json::json!({"path":item.path}));
+            }
+        }
+    }
+    summary.applied += crate::web_create::receive(&base,&account_subject,&client,&token,&share_folder,&state).await?;
+    let items = load_shortcut_items_strict(&base)?;
+    let registered_paths = items.iter().map(|item|item.path.clone()).collect::<Vec<_>>();
+    invalidate_shortcut_cache(shortcut_cache());
+    emit_launcher_shelf_changed(&app);
     for item in &items {
         let path = Path::new(&item.path);
         let canonical = path.canonicalize().map_err(|error| {
@@ -1347,6 +1365,33 @@ fn remove_tag_from_content(content: &str, tag: &str) -> String {
     let (_, _, _, _, _, _, mut tags, _) = logic::extract_meta_from_content(content);
     tags.retain(|value| logic::normalize_reserved_tag(value) != tag);
     logic::update_frontmatter_value(content, "tags", format!("[{}]", tags.join(", ")))
+}
+
+fn web_unshare_content(source: &str, id: &str) -> Option<String> {
+    let (front,_) = logic::split_frontmatter(source);
+    if front.lines().any(|line|line.trim()==format!("webRevokedId: {}",id)) {return None;}
+    let unregistered=remove_tag_from_content(source,"shortcut");
+    Some(logic::update_frontmatter_value_for_web_share(&unregistered,"webRevokedId",id))
+}
+
+#[cfg(test)]
+mod web_unshare_tests {
+    use super::*;
+    #[test]
+    fn web_unshare_preserves_body_and_other_tags_and_marks_the_same_write() {
+        let source="---\ntype: sticky\ntags: [shortcut, work]\n---\n\n本文\n- [x] 項目";
+        let updated=web_unshare_content(source,"test-id").unwrap();
+        assert_eq!(logic::split_frontmatter(&source).1,logic::split_frontmatter(&updated).1);
+        assert!(!note_has_tag(&parse_launcher_tags(&updated),"shortcut"));
+        assert!(note_has_tag(&parse_launcher_tags(&updated),"work"));
+        assert!(updated.contains("webRevokedId: test-id"));
+        let registered=logic::update_frontmatter_value_for_web_share(&updated,"tags","[shortcut, work]");
+        assert!(web_unshare_content(&registered,"test-id").is_none());
+    }
+    #[test]
+    fn body_text_cannot_impersonate_an_applied_revoke_marker() {
+        assert!(web_unshare_content("---\ntags: [shortcut]\n---\n\nwebRevokedId: test-id","test-id").is_some());
+    }
 }
 
 fn collision_free_root_path(base_path: &Path, file_name: &std::ffi::OsStr) -> PathBuf {

@@ -23,6 +23,29 @@ function jsonResponse(data: unknown) {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('shared Drive storage', () => {
+  it('deduplicates a Web create retry and rejects a changed request or account', async () => {
+    const request={schemaVersion:1 as const,accountSubject:'uck@example.test',targetPcId:'11111111-1111-4111-8111-111111111111',noteId:'22222222-2222-4222-8222-222222222222',markdown:'試験\n**太字**'};
+    let uploaded=false;let writes=0;
+    vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{
+      const url=String(input);
+      if(init?.method==='POST'){writes++;uploaded=true;return jsonResponse({id:'created'});}
+      if(url.includes('/about?'))return jsonResponse({user:{emailAddress:request.accountSubject}});
+      if(url.includes('/files?')){
+        const q=new URL(url).searchParams.get('q')??'';
+        if(q.includes("name='ore-no-fusen'"))return jsonResponse({files:[{id:'root-folder'}]});
+        if(q.includes("name='web-share-temp'"))return jsonResponse({files:[{id:'share-folder'}]});
+        return jsonResponse({files:[{id:'pc',name:`web-pc-${request.targetPcId}.json`},...(uploaded?[{id:'request',name:`web-request-${request.noteId}.json`}]:[])]});
+      }
+      if(url.includes('/files/pc?'))return jsonResponse({schemaVersion:1,accountSubject:request.accountSubject,pcId:request.targetPcId,name:'試験PC'});
+      if(url.includes('/files/request?'))return jsonResponse(request);
+      throw new Error(`Unexpected ${url}`);
+    }));
+    const {submitWebCreate}=await import('./drive');
+    await submitWebCreate('token',request);await submitWebCreate('token',request);expect(writes).toBe(1);
+    await expect(submitWebCreate('token',{...request,markdown:'別内容'})).rejects.toThrow('内容が異なります');
+    await expect(submitWebCreate('token',{...request,accountSubject:'other@test'})).rejects.toThrow('アカウント');
+    expect(writes).toBe(1);
+  });
   it('reads all Drive pages and validates records before returning notes', async () => {
     const seed = await seedOperation();
     const calls: string[] = [];
