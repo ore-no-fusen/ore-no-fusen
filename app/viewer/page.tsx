@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { isSharedLoginAttempt, markSharedLoginReturn } from '@/app/shared/lib/login-return';
 import MessageSurface from '../components/MessageSurface';
 import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor, nowJST } from './utils';
 import { getTranslation, type Language } from '@/lib/i18n';
@@ -64,6 +65,7 @@ export default function ViewerPage() {
 
   const [isStandalone, setIsStandalone] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [isSharedWebLogin, setIsSharedWebLogin] = useState(false);
   const [showDebugLog, setShowDebugLog] = useState(false);
   const [step, setStep] = useState<
     'banner' | 'login' | 'push' | 'ready' | 'write' | 'list'
@@ -106,7 +108,9 @@ export default function ViewerPage() {
 
   useEffect(() => {
     setIsMounted(true);
-    setShowDebugLog(new URLSearchParams(window.location.search).get('debug') === '1');
+    const params = new URLSearchParams(window.location.search);
+    setShowDebugLog(params.get('debug') === '1');
+    setIsSharedWebLogin(isSharedLoginAttempt(window.location.search));
     setRuntimeOrigin(window.location.origin);
   }, []);
 
@@ -473,7 +477,7 @@ export default function ViewerPage() {
   }
 
   // 非standalone → ホーム画面追加バナー
-  if (isMounted && !isStandalone) {
+  if (isMounted && !isStandalone && !isSharedWebLogin) {
     return (
       <div className="min-h-screen bg-[#F2F2F7] px-4 py-8 overflow-y-auto max-w-sm mx-auto relative">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('pwa.install.title')}</h1>
@@ -537,6 +541,7 @@ export default function ViewerPage() {
               className="bg-blue-600 text-white rounded-lg px-6 py-3 font-medium disabled:opacity-40"
               disabled={!swReady}
               onClick={async () => {
+                if (isSharedWebLogin) markSharedLoginReturn();
                 const { verifier, challenge } = await generatePKCE();
                 localStorage.setItem('pkce_verifier', verifier);
                 startOAuth(challenge);

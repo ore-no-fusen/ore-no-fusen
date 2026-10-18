@@ -39,12 +39,22 @@ pub struct ShareImageManifest {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SharePayload {
+    /// Version 1 is the original payload; version 2 includes display metadata.
+    #[serde(default = "default_share_payload_schema", skip_serializing_if = "is_legacy_share_payload_schema")]
+    pub schema_version: u32,
     pub title: String,
     /// Markdown body; local filesystem paths must be replaced with manifest image IDs.
     pub markdown: String,
     #[serde(default)]
     pub images: Vec<ShareImageManifest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
+
+fn default_share_payload_schema() -> u32 { 1 }
+fn is_legacy_share_payload_schema(value: &u32) -> bool { *value == 1 }
 
 impl OperationKind {
     fn is_content(self) -> bool {
@@ -76,6 +86,8 @@ pub struct ValidatedLog {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValidationError {
+    UnsupportedPayloadSchema { operation_id: String },
+    InvalidDisplayMetadata { operation_id: String },
     InvalidScope,
     WrongScope {
         operation_id: String,
@@ -134,6 +146,27 @@ fn append_bytes(
 /// byte lengths, u32 big-endian integers, and sorted parent/resolution/image-ID arrays. It does
 /// not depend on JSON number rendering, object key order, Drive metadata, or download order.
 pub fn calculate_payload_hash(record: &ShareOperation) -> Result<String, ValidationError> {
+    if !matches!(record.payload.schema_version, 1 | 2) {
+        return Err(ValidationError::UnsupportedPayloadSchema { operation_id: record.operation_id.clone() });
+    }
+    if record.payload.schema_version == 1
+        && (record.payload.background_color.is_some() || !record.payload.tags.is_empty())
+    {
+        return Err(ValidationError::InvalidDisplayMetadata { operation_id: record.operation_id.clone() });
+    }
+    if record.payload.schema_version == 2 && record.payload.background_color.as_deref().is_some_and(|color| {
+        !matches!(color, "#f7e9b0" | "#ffcdd2" | "#80d8ff" | "#fafaf0" | "#cfd8dc")
+    }) {
+        return Err(ValidationError::InvalidDisplayMetadata { operation_id: record.operation_id.clone() });
+    }
+    let mut seen_tags = HashSet::new();
+    if record.payload.tags.len() > 64 || record.payload.tags.iter().any(|tag| {
+        let trimmed = tag.trim();
+        trimmed.is_empty() || trimmed != tag || tag.as_bytes().len() > 256 || tag.chars().any(char::is_control)
+            || crate::logic::is_reserved_tag(tag) || !seen_tags.insert(tag.to_lowercase())
+    }) {
+        return Err(ValidationError::InvalidDisplayMetadata { operation_id: record.operation_id.clone() });
+    }
     let mut parents = record.parents.clone();
     parents.sort();
     let mut resolved_ids = record.resolved_ids.clone();
@@ -141,7 +174,11 @@ pub fn calculate_payload_hash(record: &ShareOperation) -> Result<String, Validat
     let mut images = record.payload.images.clone();
     images.sort_by(|a, b| a.image_id.cmp(&b.image_id));
 
-    let mut bytes = b"ore-no-fusen-share-v1\0".to_vec();
+    let mut bytes = if record.payload.schema_version == 1 {
+        b"ore-no-fusen-share-v1\0".to_vec()
+    } else {
+        b"ore-no-fusen-share-v2\0".to_vec()
+    };
     append_bytes(
         &mut bytes,
         record.scope.account_subject.as_bytes(),
@@ -188,6 +225,22 @@ pub fn calculate_payload_hash(record: &ShareOperation) -> Result<String, Validat
         append_bytes(&mut bytes, image.mime_type.as_bytes(), &record.operation_id)?;
         bytes.extend_from_slice(&image.size_bytes.to_be_bytes());
         append_bytes(&mut bytes, image.sha256.as_bytes(), &record.operation_id)?;
+    }
+    if record.payload.schema_version == 2 {
+        append_bytes(
+            &mut bytes,
+            record.payload.background_color.as_deref().unwrap_or("").as_bytes(),
+            &record.operation_id,
+        )?;
+        let mut tags = record.payload.tags.clone();
+        tags.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        let tag_count = u32::try_from(tags.len()).map_err(|_| ValidationError::HashFieldTooLarge {
+            operation_id: record.operation_id.clone(),
+        })?;
+        bytes.extend_from_slice(&tag_count.to_be_bytes());
+        for tag in tags {
+            append_bytes(&mut bytes, tag.as_bytes(), &record.operation_id)?;
+        }
     }
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
@@ -440,9 +493,12 @@ mod tests {
             parents: parents.iter().map(|s| (*s).into()).collect(),
             payload_hash: String::new(),
             payload: SharePayload {
+                schema_version: 1,
                 title: format!("title-{id}"),
                 markdown: format!("body-{id}"),
                 images: Vec::new(),
+                background_color: None,
+                tags: Vec::new(),
             },
             resolved_ids: Vec::new(),
         };
@@ -603,9 +659,12 @@ mod tests {
             parents: vec!["root-x".into()],
             payload_hash: String::new(),
             payload: SharePayload {
+                schema_version: 1,
                 title: "Title".into(),
                 markdown: "Body".into(),
                 images: Vec::new(),
+                background_color: None,
+                tags: Vec::new(),
             },
             resolved_ids: Vec::new(),
         };
@@ -616,6 +675,30 @@ mod tests {
     }
 
     #[test]
+    fn schema_v2_hash_covers_display_color_and_tags_canonically() {
+        let scope = scope();
+        let root = scope_root(&scope);
+        let mut record = op("op-v2-fixed", OperationKind::Edit, &[&root]);
+        record.payload.schema_version = 2;
+        record.payload.title = "Title".into();
+        record.payload.markdown = "Body".into();
+        record.payload.background_color = Some("#80d8ff".into());
+        record.payload.tags = vec!["旅行".into(), "予定".into()];
+        let first = calculate_payload_hash(&record).unwrap();
+        record.payload.tags.reverse();
+        assert_eq!(calculate_payload_hash(&record).unwrap(), first);
+        record.payload.background_color = Some("#ffcdd2".into());
+        assert_ne!(calculate_payload_hash(&record).unwrap(), first);
+        record.payload.background_color = Some("".into());
+        assert!(matches!(calculate_payload_hash(&record), Err(ValidationError::InvalidDisplayMetadata { .. })));
+        record.payload.background_color = Some("url(javascript:bad)".into());
+        assert!(matches!(calculate_payload_hash(&record), Err(ValidationError::InvalidDisplayMetadata { .. })));
+        record.payload.background_color = Some("#80d8ff".into());
+        record.payload.tags = vec!["shortcut".into()];
+        assert!(matches!(calculate_payload_hash(&record), Err(ValidationError::InvalidDisplayMetadata { .. })));
+    }
+
+    #[test]
     fn rust_and_web_share_the_same_nested_json_fixture() {
         let fixture: ShareOperation = serde_json::from_str(include_str!(
             "../../test-fixtures/web-share-operation-v1.json"
@@ -623,6 +706,16 @@ mod tests {
         .expect("shared wire fixture must deserialize like a Drive record");
         let result = validate_log(&scope(), &[fixture]).expect("shared wire fixture must validate");
         assert_eq!(result.content_heads, vec!["op-fixed"]);
+    }
+
+    #[test]
+    fn rust_validates_the_shared_v2_color_and_tag_hash_fixture() {
+        let fixture: ShareOperation = serde_json::from_str(include_str!(
+            "../../test-fixtures/web-share-operation-v2.json"
+        ))
+        .expect("shared v2 fixture must deserialize");
+        let result = validate_log(&scope(), &[fixture]).expect("shared v2 fixture hash must validate");
+        assert_eq!(result.content_heads, vec!["op-v2-fixed"]);
     }
 
     #[test]

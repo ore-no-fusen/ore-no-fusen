@@ -25,27 +25,27 @@
   <text x="132" y="340" class="body">付箋の識別・変更記録の安全規則を実装</text>
   <text x="132" y="364" class="body">Rust/Webの記録検査テストとレビュー完了</text>
   <circle cx="105" cy="407" r="11" fill="#16805c"/>
-  <text x="132" y="412" class="date">10/16（本日）</text>
-  <text x="132" y="441" class="body">共通Web・Windows手動上り/下り同期を実装</text>
+  <text x="132" y="412" class="date">10/16（実績）</text>
+  <text x="132" y="441" class="body">共通Web・上下同期を実装し、部品試験</text>
   <text x="132" y="465" class="body">競合保留・画像検証・共有解除・再試行を追加</text>
-  <text x="132" y="489" class="small">対象試験合格。Astra指摘4件を修正し再レビュー完了。最終ビルド再試行はEPERM。</text>
+  <text x="132" y="489" class="small">10/17 No.1〜7を実装・部品確認。No.3/7 Astra追レビューP1〜P3なし。</text>
 
   <rect x="655" y="112" width="575" height="390" rx="18" fill="#fff" stroke="#d9e1ec"/>
   <text x="683" y="151" font-size="24" font-weight="700">これからの目標日（仮）</text>
   <line x1="710" y1="189" x2="710" y2="446" stroke="#c4cfde" stroke-width="4"/>
   <circle cx="710" cy="205" r="11" fill="#e0a32d"/>
-  <text x="737" y="210" class="date">10/16（本日）</text>
-  <text x="737" y="239" class="body">Astra再レビューと指摘修正（完了）</text>
+  <text x="737" y="210" class="date">10/17（進行中）</text>
+  <text x="737" y="239" class="body">No.8 見出し・箇条書き表示を確認</text>
   <circle cx="710" cy="275" r="10" fill="#aebaca"/>
-  <text x="737" y="280" class="date">10/19〜21</text>
-  <text x="737" y="309" class="body">実Driveで上り・編集・下り・競合を通し試験</text>
+  <text x="737" y="280" class="date">次：No.8後</text>
+  <text x="737" y="309" class="body">No.9 題名の重複と見せ方を確認</text>
   <circle cx="710" cy="345" r="10" fill="#aebaca"/>
-  <text x="737" y="350" class="date">10/22〜26</text>
-  <text x="737" y="379" class="body">Android・iPhoneを含む表示・編集を確認</text>
+  <text x="737" y="350" class="date">No.1〜11の順</text>
+  <text x="737" y="379" class="body">色・画面・タグ・画像・Markdown等を段階実装</text>
   <circle cx="710" cy="415" r="10" fill="#aebaca"/>
-  <text x="737" y="420" class="date">10/27〜30</text>
-  <text x="737" y="449" class="body">不具合修正・Astra・端末確認・develop統合</text>
-  <text x="737" y="483" class="small">目標：10/30ごろ。実装・試験で問題が出た場合は後ろへ調整。</text>
+  <text x="737" y="420" class="date">仕上げ工程</text>
+  <text x="737" y="449" class="body">Windows/Android/iPhoneで確認し、問題修正・統合</text>
+  <text x="737" y="483" class="small">日付は未確定。各段階の結果を見てから現実的な見込みを更新。</text>
 
   <rect x="50" y="518" width="1180" height="28" rx="10" fill="#fff4dc"/>
   <text x="72" y="538" class="small" fill="#805400">これは現在の作業量から置いた仮日程です。日ごとの進み具合を記録して更新します。完成を保証する日付ではありません。</text>

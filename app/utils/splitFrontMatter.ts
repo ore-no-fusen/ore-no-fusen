@@ -41,9 +41,9 @@ export function splitFrontMatter(src: string) {
 
     const front = src.slice(firstFenceIndex, closeStart + 3);
     const body = src.slice(closeEnd);
-    // Web同期の本文は共有形式と同じ位置を維持し、再保存時の偽変更を防ぐ。
-    // 既存ノートは従来どおり先頭の空白行を表示時に除く。
-    return { front, body: front.includes('web_sync_receipt:') ? body : body.replace(/^\s+/, '') };
+    // Rust側の保存形式（frontmatter + 空行 + 本文）に合わせ、区切りの空行を本文に含めない。
+    // 同期済み付箋でも同じ境界に揃えないと、通常保存のたびに先頭改行が増える。
+    return { front, body: body.replace(/^\s+/, '') };
 }
 
 /**

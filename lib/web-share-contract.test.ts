@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateShareLog, validateShareLogJson, type ShareOperation, type ShareScope } from './web-share-contract';
 import { calculateSharePayloadHash, type ShareHashInput } from './web-share-payload-hash';
 import rustWireFixture from '../test-fixtures/web-share-operation-v1.json';
+import v2WireFixture from '../test-fixtures/web-share-operation-v2.json';
 
 const scope: ShareScope = { accountSubject: 'acct-1', noteId: 'note-1', generation: 4 };
 const rootId = 'root:6:acct-1:6:note-1:4';
@@ -32,6 +33,45 @@ async function operation(
 }
 
 describe('validateShareLog', () => {
+  it('payload schema v2ハッシュに色とタグを含め、旧v1 fixtureも読める', async () => {
+    const base: ShareHashInput = {
+      ...scope,
+      kind: 'edit',
+      parents: [rootId],
+      resolvedIds: [],
+      payload: { schemaVersion: 2, title: 'Title', markdown: 'Body', images: [], backgroundColor: '#80d8ff', tags: ['旅行', '予定'] },
+    };
+    const first = await calculateSharePayloadHash(base);
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, tags: ['予定', '旅行'] } }))
+      .resolves.toBe(first);
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, backgroundColor: '#ffcdd2' } }))
+      .resolves.not.toBe(first);
+    await expect(validateShareLogJson(scope, [JSON.parse(JSON.stringify(rustWireFixture))]))
+      .resolves.toMatchObject({ contentHeads: ['op-fixed'] });
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, backgroundColor: 'url(javascript:bad)' } }))
+      .rejects.toThrow('Invalid background color');
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, backgroundColor: '' } }))
+      .rejects.toThrow('Invalid background color');
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, tags: ['shortcut'] } }))
+      .rejects.toThrow('Invalid tags');
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, tags: ['LINK'] } }))
+      .rejects.toThrow('Invalid tags');
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, tags: ['買い物', '買い物'] } }))
+      .rejects.toThrow('Invalid tags');
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, tags: ['I', 'i'] } }))
+      .rejects.toThrow('Invalid tags');
+    await expect(calculateSharePayloadHash({ ...base, payload: { ...base.payload, schemaVersion: 1, backgroundColor: '' } }))
+      .rejects.toThrow('Display metadata requires payload schema 2');
+  });
+
+  it('色と日本語タグを含むRust/Web共通v2 fixtureの固定hashを検証する', async () => {
+    await expect(validateShareLogJson(scope, [JSON.parse(JSON.stringify(v2WireFixture))]))
+      .resolves.toMatchObject({ contentHeads: ['op-v2-fixed'] });
+    const invalidColor = JSON.parse(JSON.stringify(v2WireFixture)) as { payload: { backgroundColor: string } };
+    invalidColor.payload.backgroundColor = '';
+    await expect(validateShareLogJson(scope, [invalidColor])).rejects.toThrow('payload.backgroundColor is invalid');
+  });
+
   it('順序に関係なく連鎖を検証し、本文先端と制御記録を分ける', async () => {
     const first = await operation('op-1', 'edit', [rootId]);
     const second = await operation('op-2', 'edit', ['op-1']);

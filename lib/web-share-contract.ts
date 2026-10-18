@@ -73,6 +73,16 @@ export function parseShareOperation(value: unknown): ShareOperation {
       sha256: stringValue(image.sha256, `payload.images[${index}].sha256`),
     };
   });
+  const schemaVersion = payload.schemaVersion === undefined ? 1 : u32Value(payload.schemaVersion, 'payload.schemaVersion', false);
+  assert(schemaVersion === 1 || schemaVersion === 2, 'payload.schemaVersion is unsupported');
+  const backgroundColor = payload.backgroundColor === undefined || payload.backgroundColor === null
+    ? undefined
+    : stringValue(payload.backgroundColor, 'payload.backgroundColor');
+  const tags = payload.tags === undefined ? [] : stringArray(payload.tags, 'payload.tags');
+  if (schemaVersion === 2 && backgroundColor !== undefined) {
+    assert(['#f7e9b0', '#ffcdd2', '#80d8ff', '#fafaf0', '#cfd8dc'].includes(backgroundColor), 'payload.backgroundColor is invalid');
+  }
+  if (schemaVersion === 1) assert(backgroundColor === undefined && tags.length === 0, 'display metadata requires payload schema 2');
   const kind = stringValue(raw.kind, 'kind');
   assert(allKinds.has(kind), 'kind is invalid');
   const resolvedIds = raw.resolvedIds === undefined ? [] : stringArray(raw.resolvedIds, 'resolvedIds');
@@ -87,9 +97,12 @@ export function parseShareOperation(value: unknown): ShareOperation {
     parents: stringArray(raw.parents, 'parents'),
     payloadHash: stringValue(raw.payloadHash, 'payloadHash'),
     payload: {
+      schemaVersion: schemaVersion as 1 | 2,
       title: stringValue(payload.title, 'payload.title'),
       markdown: stringValue(payload.markdown, 'payload.markdown'),
       images,
+      backgroundColor,
+      tags,
     },
     resolvedIds,
   };
@@ -131,6 +144,9 @@ function sameLogicalOperation(a: ShareOperation, b: ShareOperation): boolean {
     JSON.stringify(sorted(a.resolvedIds)) === JSON.stringify(sorted(b.resolvedIds)) &&
     a.payloadHash === b.payloadHash && a.payload.title === b.payload.title &&
     a.payload.markdown === b.payload.markdown &&
+    a.payload.schemaVersion === b.payload.schemaVersion &&
+    a.payload.backgroundColor === b.payload.backgroundColor &&
+    JSON.stringify(sorted(a.payload.tags ?? [])) === JSON.stringify(sorted(b.payload.tags ?? [])) &&
     JSON.stringify(sortImages(a)) === JSON.stringify(sortImages(b));
 }
 

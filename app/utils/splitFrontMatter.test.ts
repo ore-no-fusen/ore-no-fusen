@@ -83,12 +83,13 @@ type: sticky
 ---`);
     });
 
-    it('同期済み付箋はfrontmatter内の---誤認を避け、本文の先頭改行を保持する', () => {
+    it('同期済み付箋も区切りの空行を除き、Windows保存形式で往復できる', () => {
         const input = '---\r\ncustomField: "---"\r\nweb_sync_receipt: receipt\r\n---\r\n\r\n本文';
         const { front, body } = splitFrontMatter(input);
         expect(front).toContain('customField: "---"');
         expect(front).toContain('web_sync_receipt: receipt');
-        expect(body).toBe('\r\n本文');
+        expect(body).toBe('本文');
+        expect(`${front}\n\n${body}`).toBe('---\r\ncustomField: "---"\r\nweb_sync_receipt: receipt\r\n---\n\n本文');
     });
 
     //

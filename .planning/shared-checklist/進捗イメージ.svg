@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
   <title id="title">全付箋補完計画の現在地</title>
-  <desc id="desc">8工程中、工程7まで完了。共通Web画面は作業ブランチにありdevelop未統合。3002番の開発サーバーも停止中。実Drive表示は未確認。</desc>
+  <desc id="desc">表示No.1〜11の実装・部品試験は完了。下り1件のDrive試験と編集画面の題名重複修正も確認。競合・別アカウント・ビルド・統合・Astra再確認は未完了。</desc>
   <defs>
     <style>
       text { font-family: "Yu Gothic UI", "Meiryo", sans-serif; fill: #162238; }
@@ -12,7 +12,7 @@
   </defs>
   <rect width="1280" height="720" fill="#f3f6fb"/>
   <text x="50" y="58" font-size="34" font-weight="700">付箋をどの端末でも使えるようにする計画</text>
-  <text x="52" y="93" class="body muted">現在地：工程8の前段　｜　/ shared未統合・開発サーバー停止</text>
+  <text x="52" y="93" class="body muted">全体：No.1〜11の実装・部品試験済み　｜　下り1件と編集画面修正を確認　｜　現在：公開前の安全確認・統合</text>
 
   <line x1="115" y1="179" x2="1162" y2="179" stroke="#c4cfde" stroke-width="8" stroke-linecap="round"/>
   <line x1="115" y1="179" x2="766" y2="179" stroke="#1a9b70" stroke-width="8" stroke-linecap="round"/>
@@ -23,7 +23,7 @@
     <circle cx="440" cy="179" r="28" fill="#1a9b70"/><text x="440" y="187" text-anchor="middle" font-size="23" fill="white">✓</text>
     <circle cx="603" cy="179" r="28" fill="#1a9b70"/><text x="603" y="187" text-anchor="middle" font-size="23" fill="white">✓</text>
     <circle cx="766" cy="179" r="28" fill="#1a9b70"/><text x="766" y="187" text-anchor="middle" font-size="23" fill="white">✓</text>
-    <circle cx="929" cy="179" r="30" fill="#e7a52e" stroke="white" stroke-width="5"/><text x="929" y="187" text-anchor="middle" font-size="20" font-weight="700" fill="white">7</text>
+    <circle cx="929" cy="179" r="30" fill="#e7a52e" stroke="white" stroke-width="5"/><text x="929" y="187" text-anchor="middle" font-size="20" font-weight="700" fill="white">2</text>
     <circle cx="1092" cy="179" r="25" fill="#fff" stroke="#9aa9bc" stroke-width="4"/><text x="1092" y="187" text-anchor="middle" font-size="19" class="muted">7–8</text>
   </g>
   <text x="115" y="231" text-anchor="middle" class="small" font-weight="700">方針と画面案</text>
@@ -33,13 +33,13 @@
   <text x="440" y="231" text-anchor="middle" class="small" font-weight="700">共有変換</text>
   <text x="440" y="253" text-anchor="middle" class="small" fill="#1a9b70">実装・部品試験済み</text>
   <text x="603" y="231" text-anchor="middle" class="small" font-weight="700">Web画面</text>
-  <text x="603" y="253" text-anchor="middle" class="small" fill="#1a9b70">画面実装済み</text>
+  <text x="603" y="253" text-anchor="middle" class="small" fill="#1a9b70">画面修正・部品試験済み</text>
   <text x="766" y="231" text-anchor="middle" class="small" font-weight="700">Windows同期</text>
   <text x="766" y="253" text-anchor="middle" class="small" fill="#1a9b70">上下・解除を実装済み</text>
-  <text x="929" y="231" text-anchor="middle" class="small" font-weight="700">Astra最終レビュー</text>
-  <text x="929" y="253" text-anchor="middle" class="small" fill="#9a6100">再レビュー完了</text>
+  <text x="929" y="231" text-anchor="middle" class="small" font-weight="700">Windowsに近づける表示</text>
+  <text x="929" y="253" text-anchor="middle" class="small" fill="#9a6100">No.1〜11完了（部品試験）</text>
   <text x="1092" y="231" text-anchor="middle" class="small" font-weight="700">実機確認・統合</text>
-  <text x="1092" y="253" text-anchor="middle" class="small muted">これから</text>
+  <text x="1092" y="253" text-anchor="middle" class="small muted">各No.の後に実施</text>
 
   <rect x="50" y="300" width="1180" height="150" rx="18" fill="#fff" stroke="#d9e1ec"/>
   <text x="78" y="340" class="head">いま作っているもの</text>
@@ -58,15 +58,15 @@
   <text x="78" y="515" font-size="24" font-weight="700" fill="#176b50">確認できたこと</text>
   <text x="83" y="552" class="body">✓ 画像の場所をそのまま外へ出さない</text>
   <text x="83" y="585" class="body">✓ 曖昧な書き方は安全のため処理を止める</text>
-  <text x="83" y="618" class="body">✓ Rust共有・画像・本文試験 38件合格</text>
-  <text x="83" y="646" class="body">✓ Web/画面/画像試験 45件合格</text>
+  <text x="83" y="618" class="body">✓ No.1 色共有：Rust 33件・画面/Web 14件合格</text>
+  <text x="83" y="646" class="body">✓ No.5〜10画面/描画試験35件・型検査合格</text>
 
   <rect x="655" y="476" width="575" height="188" rx="18" fill="#fff" stroke="#d9e1ec"/>
   <text x="683" y="515" font-size="24" font-weight="700">次にやること</text>
   <circle cx="701" cy="555" r="15" fill="#e7a52e"/><text x="701" y="561" text-anchor="middle" font-size="16" font-weight="700" fill="white">1</text>
-  <text x="730" y="562" class="body">既存起動方法で画面表示を確認</text>
+  <text x="730" y="562" class="body">下り競合・開いた画面の反映を実確認</text>
   <circle cx="701" cy="594" r="15" fill="#b9c4d2"/><text x="701" y="600" text-anchor="middle" font-size="16" font-weight="700" fill="white">2</text>
-  <text x="730" y="601" class="body">先にdevelopで /shared を起動し、実Driveの付箋表示を確認</text>
+  <text x="730" y="601" class="body">別アカウント・本番ビルド・Astra確認</text>
   <circle cx="701" cy="633" r="15" fill="#b9c4d2"/><text x="701" y="639" text-anchor="middle" font-size="16" font-weight="700" fill="white">3</text>
-  <text x="730" y="640" class="body">実Drive/端末確認→develop統合</text>
+  <text x="730" y="640" class="body">develop統合 → Preview確認 → 公開判断</text>
 </svg>

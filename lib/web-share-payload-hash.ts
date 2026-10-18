@@ -8,9 +8,12 @@ export type ShareImageManifest = {
 };
 
 export type SharePayload = {
+  schemaVersion?: 1 | 2;
   title: string;
   markdown: string;
   images: ShareImageManifest[];
+  backgroundColor?: string | null;
+  tags?: string[];
 };
 
 export type ShareHashInput = {
@@ -124,6 +127,26 @@ export async function calculateSharePayloadHash(input: ShareHashInput): Promise<
   if (!input.payload || typeof input.payload !== 'object') throw new Error('payload must be an object');
   assertString(input.payload.title, 'title');
   assertString(input.payload.markdown, 'markdown');
+  const schemaVersion = input.payload.schemaVersion ?? 1;
+  if (schemaVersion !== 1 && schemaVersion !== 2) throw new Error('Unsupported payload schema');
+  const backgroundColor = input.payload.backgroundColor ?? '';
+  const tags = input.payload.tags ?? [];
+  if (schemaVersion === 2 && input.payload.backgroundColor != null && !['#f7e9b0', '#ffcdd2', '#80d8ff', '#fafaf0', '#cfd8dc'].includes(backgroundColor)) {
+    throw new Error('Invalid background color');
+  }
+  if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== 'string')) throw new Error('Invalid tags');
+  const seenTags = new Set<string>();
+  if (tags.length > 64 || tags.some((tag) => {
+    const normalized = tag.trim().toLowerCase();
+    const invalid = !tag.trim() || tag.trim() !== tag || encoder.encode(tag).length > 256 ||
+      /[\u0000-\u001f\u007f-\u009f]/.test(tag) ||
+      ['recipe', 'link', 'term', 'qa', 'shortcut'].includes(normalized) || seenTags.has(normalized);
+    seenTags.add(normalized);
+    return invalid;
+  })) {
+    throw new Error('Invalid tags');
+  }
+  if (schemaVersion === 1 && (input.payload.backgroundColor != null || tags.length)) throw new Error('Display metadata requires payload schema 2');
   if (!Array.isArray(input.parents) || !Array.isArray(input.resolvedIds) || !Array.isArray(input.payload.images)) {
     throw new Error('operation arrays are invalid');
   }
@@ -147,7 +170,7 @@ export async function calculateSharePayloadHash(input: ShareHashInput): Promise<
   }
 
   const writer = new ByteWriter();
-  writer.raw('ore-no-fusen-share-v1\0');
+  writer.raw(schemaVersion === 1 ? 'ore-no-fusen-share-v1\0' : 'ore-no-fusen-share-v2\0');
   writer.string(input.accountSubject, 'accountSubject');
   writer.string(input.noteId, 'noteId');
   writer.u32(input.generation, 'generation');
@@ -162,6 +185,10 @@ export async function calculateSharePayloadHash(input: ShareHashInput): Promise<
     writer.string(image.mimeType, 'mimeType');
     writer.u32(image.sizeBytes, 'image sizeBytes');
     writer.string(image.sha256, 'image sha256');
+  }
+  if (schemaVersion === 2) {
+    writer.string(backgroundColor, 'backgroundColor');
+    writer.strings(tags, 'tags');
   }
 
   const data = writer.finish();

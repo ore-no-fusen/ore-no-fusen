@@ -26,6 +26,12 @@ pub fn local_note_to_share_payload(
     local_path_to_manifest: &HashMap<String, ShareImageManifest>,
 ) -> Result<SharePayload, String> {
     let (title, body) = split_note_frontmatter(note_file)?;
+    let frontmatter = &note_file[..note_file.len() - body.len()];
+    let (_, _, _, _, parsed_color, _, _, _) = crate::logic::extract_meta_from_content(frontmatter);
+    let tags = extract_share_frontmatter_tags(frontmatter)?;
+    let background_color = parsed_color
+        .filter(|color| matches!(color.as_str(), "#f7e9b0" | "#ffcdd2" | "#80d8ff" | "#fafaf0" | "#cfd8dc"))
+        .or_else(|| Some("#f7e9b0".to_string()));
     let path_to_id = local_path_to_manifest
         .iter()
         .map(|(path, manifest)| (path.clone(), manifest.image_id.clone()))
@@ -52,10 +58,67 @@ pub fn local_note_to_share_payload(
     let mut images = manifests.into_values().collect::<Vec<_>>();
     images.sort_by(|left, right| left.image_id.as_bytes().cmp(right.image_id.as_bytes()));
     Ok(SharePayload {
+        schema_version: 2,
         title,
         markdown,
         images,
+        background_color,
+        tags,
     })
+}
+
+fn extract_share_frontmatter_tags(frontmatter: &str) -> Result<Vec<String>, String> {
+    let mut lines = frontmatter.split_inclusive('\n');
+    let first = lines.next().unwrap_or_default();
+    if first.trim_end_matches(['\r', '\n']) != "---" {
+        return Err("note frontmatter is missing while reading tags".into());
+    }
+    let mut raw_tags = None;
+    let mut closed = false;
+    for line in lines {
+        let value = line.trim_end_matches(['\r', '\n']);
+        if value == "---" {
+            closed = true;
+            break;
+        }
+        if let Some(value) = value.strip_prefix("tags:") {
+            if raw_tags.is_some() {
+                return Err("duplicate tags in note frontmatter".into());
+            }
+            raw_tags = Some(value.trim());
+        }
+    }
+    if !closed {
+        return Err("note frontmatter is not closed while reading tags".into());
+    }
+    let Some(value) = raw_tags else { return Ok(Vec::new()) };
+    if value.contains(['\"', '\'', '#']) {
+        return Err("quoted tags and YAML comments are unsupported for web sharing".into());
+    }
+    let list = if value == "[]" { return Ok(Vec::new()) }
+    else if value.starts_with('[') && value.ends_with(']') { &value[1..value.len() - 1] }
+    else if value.starts_with('[') || value.ends_with(']') { return Err("ambiguous tags syntax is unsupported".into()) }
+    else { value };
+    if list.trim().is_empty() { return Ok(Vec::new()) }
+
+    let mut tags = Vec::new();
+    let mut seen = HashSet::new();
+    for tag in list.split(',') {
+        let tag = tag.trim();
+        if tag.is_empty() || tag.len() > 256 || tag.chars().any(char::is_control) {
+            return Err("invalid tag in note frontmatter".into());
+        }
+        if crate::logic::is_reserved_tag(tag) {
+            continue;
+        }
+        if seen.insert(tag.to_lowercase()) {
+            tags.push(tag.to_string());
+        }
+    }
+    if tags.len() > 64 {
+        return Err("too many tags to share".into());
+    }
+    Ok(tags)
 }
 
 /// Returns only image destinations that the same Markdown scanner treats as live
@@ -547,15 +610,38 @@ mod tests {
 
     #[test]
     fn local_note_conversion_keeps_title_body_and_checkbox_state_but_drops_frontmatter() {
-        let note = "---\ntype: sticky\ntitle: 買い物リスト\nwindow: { x: 1 }\n---\n\n牛乳を買う\n- [ ] 卵\n* [x] パン\n+ [X] 米\n";
+        let note = "---\ntype: sticky\ntitle: 買い物リスト\ntags: [shortcut, 買い物, prompt, 買い物]\nwindow: { x: 1 }\n---\n\n牛乳を買う\n- [ ] 卵\n* [x] パン\n+ [X] 米\n";
         let payload = local_note_to_share_payload(note, &HashMap::new()).unwrap();
         assert_eq!(payload.title, "買い物リスト");
+        assert_eq!(payload.schema_version, 2);
+        assert_eq!(payload.background_color.as_deref(), Some("#f7e9b0"));
+        assert_eq!(payload.tags, vec!["買い物", "prompt"]);
         assert_eq!(
             payload.markdown,
             "\n牛乳を買う\n- [ ] 卵\n* [x] パン\n+ [X] 米\n"
         );
         assert!(payload.images.is_empty());
         assert!(!payload.markdown.contains("window:"));
+    }
+
+    #[test]
+    fn local_note_conversion_shares_only_supported_frontmatter_colors() {
+        let blue = "---\ntitle: 青い付箋\nbackgroundColor: '#80d8ff'\n---\n本文";
+        assert_eq!(local_note_to_share_payload(blue, &HashMap::new()).unwrap().background_color.as_deref(), Some("#80d8ff"));
+        let invalid = "---\ntitle: 不正色\nbackgroundColor: 'url(javascript:bad)'\n---\n本文";
+        assert_eq!(local_note_to_share_payload(invalid, &HashMap::new()).unwrap().background_color.as_deref(), Some("#f7e9b0"));
+    }
+
+    #[test]
+    fn local_note_conversion_rejects_ambiguous_tags_instead_of_sharing_them() {
+        for note in [
+            "---\ntitle: Note\ntags: [買い物, shortcut\n---\nBody",
+            "---\ntitle: Note\ntags: [買い物, # comment]\n---\nBody",
+            "---\ntitle: Note\ntags: [買い物]\ntags: [家]\n---\nBody",
+            "---\ntitle: Note\ntags: [買い物,]\n---\nBody",
+        ] {
+            assert!(local_note_to_share_payload(note, &HashMap::new()).is_err());
+        }
     }
 
     #[test]

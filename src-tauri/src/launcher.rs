@@ -553,6 +553,14 @@ fn unique_image_manifests<'a>(
     Ok(result)
 }
 
+fn same_share_content_ignoring_display_metadata(a: &SharePayload, b: &SharePayload) -> bool {
+    let mut a_images = a.images.clone();
+    let mut b_images = b.images.clone();
+    a_images.sort_by(|left, right| left.image_id.cmp(&right.image_id));
+    b_images.sort_by(|left, right| left.image_id.cmp(&right.image_id));
+    a.title == b.title && a.markdown == b.markdown && a_images == b_images
+}
+
 fn read_local_share_images(
     note_path: &Path,
     note_file: &str,
@@ -1058,7 +1066,12 @@ async fn sync_one_registered_note(
             let baseline = previous
                 .as_ref()
                 .ok_or_else(|| "同期基準がないためWeb変更を安全に適用できません".to_string())?;
-            if baseline.payload != payload {
+            let baseline_matches = if baseline.payload.schema_version == 1 {
+                same_share_content_ignoring_display_metadata(&baseline.payload, &payload)
+            } else {
+                baseline.payload == payload
+            };
+            if !baseline_matches {
                 return Err("WindowsとWebの同じ付箋に変更があり、競合を保留しました".into());
             }
             apply_web_payload_to_windows_note(
@@ -1946,6 +1959,24 @@ mod tests {
             ..manifest.clone()
         };
         assert!(unique_image_manifests([&manifest, &conflicting]).is_err());
+    }
+
+    #[test]
+    fn legacy_share_baseline_ignores_new_display_metadata_but_keeps_content_conflicts() {
+        let old = SharePayload {
+            schema_version: 1,
+            title: "Title".into(),
+            markdown: "Body".into(),
+            images: vec![],
+            background_color: None,
+            tags: vec![],
+        };
+        let mut current = old.clone();
+        current.schema_version = 2;
+        current.background_color = Some("#80d8ff".into());
+        assert!(same_share_content_ignoring_display_metadata(&old, &current));
+        current.markdown.push_str(" changed");
+        assert!(!same_share_content_ignoring_display_metadata(&old, &current));
     }
 
     #[test]
