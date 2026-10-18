@@ -13,8 +13,9 @@ import { describe, it, expect, vi, beforeEach, afterEach, assert } from 'vitest'
 import { emit as emitEvent } from '@tauri-apps/api/event';
 import StickyNote from './StickyNote';
 
-const { mockArchiveMenuPopup } = vi.hoisted(() => ({
+const { mockArchiveMenuPopup, mockEventHandlers } = vi.hoisted(() => ({
     mockArchiveMenuPopup: vi.fn(),
+    mockEventHandlers: new Map<string, (event: any) => void>(),
 }));
 
 // Mock Next.js hooks
@@ -57,11 +58,17 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('@tauri-apps/api/event', () => ({
     emit: vi.fn(),
-    listen: vi.fn().mockResolvedValue(() => { }),
+    listen: vi.fn(async (name: string, handler: (event: any) => void) => {
+        mockEventHandlers.set(name, handler);
+        return () => mockEventHandlers.delete(name);
+    }),
     // Ensure dynamic import finds these
     default: {
         emit: vi.fn(),
-        listen: vi.fn().mockResolvedValue(() => { })
+        listen: vi.fn(async (name: string, handler: (event: any) => void) => {
+            mockEventHandlers.set(name, handler);
+            return () => mockEventHandlers.delete(name);
+        })
     }
 }));
 
@@ -130,6 +137,7 @@ describe('StickyNote Component', () => {
             configurable: true,
         });
         mockStartupRestore = false;
+        mockEventHandlers.clear();
         mockNoteTags = [];
         mockNoteFolded = false;
         mockWebviewWindow.getByLabel.mockResolvedValue(null);
@@ -158,6 +166,24 @@ describe('StickyNote Component', () => {
         render(<StickyNote />);
 
         expect(await screen.findByRole('button', { name: 'アーカイブへしまう' })).not.toBeNull();
+    });
+
+    it('同期後の再読込は未保存の編集中本文を上書きしない', async () => {
+        render(<StickyNote />);
+        const visible = await screen.findByText('Test Content');
+        await act(async () => { fireEvent.doubleClick(visible); });
+        const editor = await screen.findByTestId('rich-text-editor');
+        fireEvent.change(editor, { target: { value: 'Unsaved draft' } });
+
+        await waitFor(() => expect(mockEventHandlers.has('fusen:reload_note')).toBe(true));
+        const reloadCount = mockInvoke.mock.calls.filter(([command]) => command === 'fusen_read_note').length;
+        await act(async () => {
+            await mockEventHandlers.get('fusen:reload_note')?.({ payload: { path: 'd:/test/note.md' } });
+        });
+
+        expect((screen.getByTestId('rich-text-editor') as HTMLTextAreaElement).value).toBe('Unsaved draft');
+        expect(mockInvoke.mock.calls.filter(([command]) => command === 'fusen_read_note')).toHaveLength(reloadCount);
+        expect(screen.getByText('同期による再読込を保留しました。入力中の内容はそのままです。')).toBeTruthy();
     });
 
     it('resizeのgeometry監視を付箋1枚につき1本だけ登録する', async () => {

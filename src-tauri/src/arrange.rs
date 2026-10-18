@@ -98,7 +98,11 @@ fn color_bucket(note: &ArrangeNote) -> ColorBucket {
 }
 
 fn classify(note: &ArrangeNote) -> NotePlacement {
-    let Some(tag) = note.tags.iter().find(|tag| !crate::logic::is_reserved_tag(tag)) else {
+    let Some(tag) = note
+        .tags
+        .iter()
+        .find(|tag| !crate::logic::is_reserved_tag(tag))
+    else {
         return NotePlacement::Other;
     };
 
@@ -967,7 +971,12 @@ mod tests {
             note("blue.md", &["tag"], Some(COLOR_BLUE)),
             note("bucket.md", &[], Some(COLOR_WHITE)),
         ];
-        let work_area = WorkArea { x: 0.0, y: 0.0, width: 500.0, height: 800.0 };
+        let work_area = WorkArea {
+            x: 0.0,
+            y: 0.0,
+            width: 500.0,
+            height: 800.0,
+        };
 
         let positions = calculate_arrange_by_tag_positions(&notes, work_area);
 

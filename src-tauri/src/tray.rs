@@ -7,15 +7,15 @@
  * - 言語設定に応じたメニュー項目のローカライズ
  */
 
+use crate::logic;
+use crate::state::AppState;
+use crate::storage;
+use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager, AppHandle, Runtime, Emitter,
+    AppHandle, Emitter, Manager, Runtime,
 };
-use crate::state::AppState;
-use crate::logic;
-use crate::storage;
-use std::sync::Mutex;
 
 pub(crate) fn format_shortcut_for_menu(shortcut: &str) -> String {
     let mut modifiers = Vec::new();
@@ -64,10 +64,18 @@ fn menu_label(base: &str, shortcut: &str, is_en: bool) -> String {
 fn new_note_shortcut_for_menu(trigger: &str, shortcut: &str, is_en: bool) -> String {
     match trigger {
         "double_ctrl" => {
-            if is_en { "Double Ctrl".to_string() } else { "Ctrl 2回".to_string() }
+            if is_en {
+                "Double Ctrl".to_string()
+            } else {
+                "Ctrl 2回".to_string()
+            }
         }
         "double_shift" => {
-            if is_en { "Double Shift".to_string() } else { "Shift 2回".to_string() }
+            if is_en {
+                "Double Shift".to_string()
+            } else {
+                "Shift 2回".to_string()
+            }
         }
         _ => format_shortcut_for_menu(shortcut),
     }
@@ -76,7 +84,6 @@ fn new_note_shortcut_for_menu(trigger: &str, shortcut: &str, is_en: bool) -> Str
 pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     refresh_tray_menu(app)
 }
-
 
 pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     // [i18n] Get language and shortcut settings
@@ -88,10 +95,16 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         is_en,
     );
     let toggle_shortcut = format_shortcut_for_menu(
-        settings.shortcut_toggle_visibility.as_deref().unwrap_or("ctrl+shift+h"),
+        settings
+            .shortcut_toggle_visibility
+            .as_deref()
+            .unwrap_or("ctrl+shift+h"),
     );
     let arrange_shortcut = format_shortcut_for_menu(
-        settings.shortcut_arrange.as_deref().unwrap_or("ctrl+shift+l"),
+        settings
+            .shortcut_arrange
+            .as_deref()
+            .unwrap_or("ctrl+shift+l"),
     );
 
     // Labels
@@ -101,45 +114,105 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         is_en,
     );
     let label_show = menu_label(
-        if is_en { "Show All" } else { "全部戻す (Show All)" },
+        if is_en {
+            "Show All"
+        } else {
+            "全部戻す (Show All)"
+        },
         &toggle_shortcut,
         is_en,
     );
-    let label_settings = if is_en { "Settings" } else { "設定 (Settings)" };
+    let label_settings = if is_en {
+        "Settings"
+    } else {
+        "設定 (Settings)"
+    };
     let label_new_note = menu_label(
-        if is_en { "New Note" } else { "新規メモ (New Note)" },
+        if is_en {
+            "New Note"
+        } else {
+            "新規メモ (New Note)"
+        },
         &new_note_shortcut,
         is_en,
     );
-    let label_search = menu_label(if is_en { "Search" } else { "検索 (Search)" }, "Ctrl+F", is_en);
-    let label_launcher = menu_label(
-        if is_en { "Open Quick Launcher" } else { "クイックランチャーを開く" },
-        &format_shortcut_for_menu(settings.shortcut_quick_launcher.as_deref().unwrap_or("ctrl+p")),
+    let label_search = menu_label(
+        if is_en { "Search" } else { "検索 (Search)" },
+        "Ctrl+F",
         is_en,
     );
-    let label_archive_restore = if is_en { "📤 Restore Archived Notes" } else { "📤 しまった付箋を取り出す" };
+    let label_launcher = menu_label(
+        if is_en {
+            "Open Quick Launcher"
+        } else {
+            "クイックランチャーを開く"
+        },
+        &format_shortcut_for_menu(
+            settings
+                .shortcut_quick_launcher
+                .as_deref()
+                .unwrap_or("ctrl+p"),
+        ),
+        is_en,
+    );
+    let label_archive_restore = if is_en {
+        "📤 Restore Archived Notes"
+    } else {
+        "📤 しまった付箋を取り出す"
+    };
     let label_arrange_by_tag = menu_label(
-        if is_en { "Arrange by Tag" } else { "タグで整列 (Arrange by Tag)" },
+        if is_en {
+            "Arrange by Tag"
+        } else {
+            "タグで整列 (Arrange by Tag)"
+        },
         &arrange_shortcut,
         is_en,
     );
-    let label_arrange_undo = if is_en { "Undo Arrange" } else { "整列を元に戻す (Undo Arrange)" };
-    let label_filter = if is_en { "Filter by Tags" } else { "タグで絞り込む (Filter by Tags)" };
+    let label_arrange_undo = if is_en {
+        "Undo Arrange"
+    } else {
+        "整列を元に戻す (Undo Arrange)"
+    };
+    let label_filter = if is_en {
+        "Filter by Tags"
+    } else {
+        "タグで絞り込む (Filter by Tags)"
+    };
     let label_quit = if is_en { "Quit" } else { "終了 (Quit)" };
 
     let hide_i = MenuItem::with_id(app, "hide_all", label_hide, true, None::<&str>)?;
     let show_i = MenuItem::with_id(app, "show_all", label_show, true, None::<&str>)?;
-    let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?; 
+    let settings_i = MenuItem::with_id(app, "open_settings", label_settings, true, None::<&str>)?;
     let new_note_i = MenuItem::with_id(app, "create_note", label_new_note, true, None::<&str>)?; // [NEW]
-    let launcher_i = MenuItem::with_id(app, "open_quick_launcher", label_launcher, true, None::<&str>)?;
+    let launcher_i = MenuItem::with_id(
+        app,
+        "open_quick_launcher",
+        label_launcher,
+        true,
+        None::<&str>,
+    )?;
     let search_i = MenuItem::with_id(app, "open_search", label_search, true, None::<&str>)?; // [NEW] 全文検索
-    let archive_restore_i = MenuItem::with_id(app, "open_archive_restore", label_archive_restore, true, None::<&str>)?;
-    let arrange_by_tag_i = MenuItem::with_id(app, "arrange_by_tag", label_arrange_by_tag, true, None::<&str>)?;
-    let arrange_undo_i = MenuItem::with_id(app, "arrange_undo", label_arrange_undo, true, None::<&str>)?;
-    
+    let archive_restore_i = MenuItem::with_id(
+        app,
+        "open_archive_restore",
+        label_archive_restore,
+        true,
+        None::<&str>,
+    )?;
+    let arrange_by_tag_i = MenuItem::with_id(
+        app,
+        "arrange_by_tag",
+        label_arrange_by_tag,
+        true,
+        None::<&str>,
+    )?;
+    let arrange_undo_i =
+        MenuItem::with_id(app, "arrange_undo", label_arrange_undo, true, None::<&str>)?;
+
     // Generate Tag Filter Submenu
     let world_menu = tauri::menu::Submenu::with_id(app, "choose_world", label_filter, true)?;
-    
+
     // Get tags from state
     let state = app.state::<Mutex<AppState>>();
     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
@@ -148,36 +221,43 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(base_path) = &app_state.base_path.clone() {
         app_state.notes = storage::list_notes(base_path);
     }
-    
+
     let tags = logic::get_all_unique_tags(&*app_state);
     let active_tags = app_state.active_tags.clone(); // 選択中のタグ
-    
+
     for tag in tags {
         let is_selected = active_tags.contains(&tag);
-        let text = if is_selected { format!("☑ {}", tag) } else { format!("☐ {}", tag) };
+        let text = if is_selected {
+            format!("☑ {}", tag)
+        } else {
+            format!("☐ {}", tag)
+        };
         let item = MenuItem::with_id(app, format!("world_{}", tag), text, true, None::<&str>)?;
         world_menu.append(&item)?;
     }
-    
+
     let quit_i = MenuItem::with_id(app, "quit", label_quit, true, None::<&str>)?;
-    
-    let menu = Menu::with_items(app, &[
-        &new_note_i, // [NEW] 最上部に配置
-        &launcher_i,
-        &search_i, // [NEW] 全文検索
-        &archive_restore_i,
-        &arrange_by_tag_i,
-        &arrange_undo_i,
-        &tauri::menu::PredefinedMenuItem::separator(app)?, 
-        &hide_i, 
-        &show_i,
-        &tauri::menu::PredefinedMenuItem::separator(app)?, 
-        &world_menu, 
-        &tauri::menu::PredefinedMenuItem::separator(app)?, 
-        &settings_i,
-        &tauri::menu::PredefinedMenuItem::separator(app)?, 
-        &quit_i
-    ])?;
+
+    let menu = Menu::with_items(
+        app,
+        &[
+            &new_note_i, // [NEW] 最上部に配置
+            &launcher_i,
+            &search_i, // [NEW] 全文検索
+            &archive_restore_i,
+            &arrange_by_tag_i,
+            &arrange_undo_i,
+            &tauri::menu::PredefinedMenuItem::separator(app)?,
+            &hide_i,
+            &show_i,
+            &tauri::menu::PredefinedMenuItem::separator(app)?,
+            &world_menu,
+            &tauri::menu::PredefinedMenuItem::separator(app)?,
+            &settings_i,
+            &tauri::menu::PredefinedMenuItem::separator(app)?,
+            &quit_i,
+        ],
+    )?;
 
     // Use existing tray or build new one
     if let Some(tray) = app.tray_by_id("tray") {
@@ -195,13 +275,17 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 let id = event.id().as_ref();
                 match id {
                     "hide_all" => {
-                        if !crate::can_do_visibility_op() { return; }
+                        if !crate::can_do_visibility_op() {
+                            return;
+                        }
                         let _ = app.emit("fusen:set_all_notes_visible", false);
-                    },
+                    }
                     "show_all" => {
-                        if !crate::can_do_visibility_op() { return; }
+                        if !crate::can_do_visibility_op() {
+                            return;
+                        }
                         let _ = app.emit("fusen:set_all_notes_visible", true);
-                    },
+                    }
                     id if id.starts_with("world_") => {
                         let tag = id.replace("world_", "");
                         let app_clone = app.clone();
@@ -218,38 +302,47 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                             let active_tags = app_state.active_tags.clone();
                             drop(app_state);
 
-                            eprintln!("[Tray] Toggled tag '{}'. Current Active Tags: {:?}", tag, active_tags);
+                            eprintln!(
+                                "[Tray] Toggled tag '{}'. Current Active Tags: {:?}",
+                                tag, active_tags
+                            );
 
                             let _ = refresh_tray_menu(&app_clone);
 
                             let state = app_clone.state::<Mutex<AppState>>();
-                            if let Err(e) = crate::update_tag_filter(&app_clone, state, &active_tags) {
+                            if let Err(e) =
+                                crate::update_tag_filter(&app_clone, state, &active_tags)
+                            {
                                 eprintln!("[Tray] Failed to apply tag filter: {}", e);
                             }
                         });
-                    },
+                    }
                     "quit" => {
                         app.exit(0);
-                    },
-                    "open_settings" => { 
+                    }
+                    "open_settings" => {
                         eprintln!("[Tray] Opening settings...");
                         if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.emit("fusen:open_settings", ()); 
+                            let _ = win.emit("fusen:open_settings", ());
                             let _ = win.show();
                             let _ = win.unminimize();
                             let _ = win.set_focus();
                         }
-                    },
-                    "create_note" => { // [NEW] 新規作成イベント
+                    }
+                    "create_note" => {
+                        // [NEW] 新規作成イベント
                         eprintln!("[Tray] Creating new note...");
                         if let Some(win) = app.get_webview_window("main") {
                             let _ = win.emit("fusen:create_note_from_tray", ());
                         }
-                    },
+                    }
                     "open_quick_launcher" => {
-                        if let Err(e) = crate::launcher::show_quick_launcher(app.clone()) { crate::logger::log_warn(&format!("[Tray] launcher: {e}")); }
-                    },
-                    "open_search" => { // [NEW] 全文検索
+                        if let Err(e) = crate::launcher::show_quick_launcher(app.clone()) {
+                            crate::logger::log_warn(&format!("[Tray] launcher: {e}"));
+                        }
+                    }
+                    "open_search" => {
+                        // [NEW] 全文検索
                         eprintln!("[Tray] Opening search...");
                         if let Some(win) = app.get_webview_window("main") {
                             let _ = win.emit("fusen:open_search", ());
@@ -257,7 +350,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                             let _ = win.unminimize();
                             let _ = win.set_focus();
                         }
-                    },
+                    }
                     "open_archive_restore" => {
                         if let Some(win) = app.get_webview_window("main") {
                             let _ = win.emit("fusen:open_archive_restore", ());
@@ -265,25 +358,31 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                             let _ = win.unminimize();
                             let _ = win.set_focus();
                         }
-                    },
+                    }
                     "arrange_by_tag" => {
                         crate::logger::log_info("[Tray] Arrange by Tag trigger");
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             if let Err(e) = crate::run_fusen_arrange_by_tag(app_handle).await {
-                                crate::logger::log_warn(&format!("[Tray] Arrange by Tag failed: {}", e));
+                                crate::logger::log_warn(&format!(
+                                    "[Tray] Arrange by Tag failed: {}",
+                                    e
+                                ));
                             }
                         });
-                    },
+                    }
                     "arrange_undo" => {
                         crate::logger::log_info("[Tray] Undo Arrange trigger");
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             if let Err(e) = crate::run_fusen_arrange_undo(app_handle).await {
-                                crate::logger::log_warn(&format!("[Tray] Undo Arrange failed: {}", e));
+                                crate::logger::log_warn(&format!(
+                                    "[Tray] Undo Arrange failed: {}",
+                                    e
+                                ));
                             }
                         });
-                    },
+                    }
                     _ => {}
                 }
             })
@@ -301,7 +400,10 @@ mod tests {
     fn formats_saved_shortcuts_for_tray_display() {
         assert_eq!(format_shortcut_for_menu("ctrl+shift+l"), "Ctrl+Shift+L");
         assert_eq!(format_shortcut_for_menu("super+n"), "Win+N");
-        assert_eq!(format_shortcut_for_menu("Shift+Control+KeyL"), "Ctrl+Shift+L");
+        assert_eq!(
+            format_shortcut_for_menu("Shift+Control+KeyL"),
+            "Ctrl+Shift+L"
+        );
         assert_eq!(format_shortcut_for_menu("Control+Digit1"), "Ctrl+1");
     }
 
@@ -313,8 +415,17 @@ mod tests {
 
     #[test]
     fn displays_the_configured_new_note_trigger() {
-        assert_eq!(new_note_shortcut_for_menu("shortcut", "alt+n", false), "Alt+N");
-        assert_eq!(new_note_shortcut_for_menu("double_ctrl", "ctrl+n", false), "Ctrl 2回");
-        assert_eq!(new_note_shortcut_for_menu("double_shift", "ctrl+n", true), "Double Shift");
+        assert_eq!(
+            new_note_shortcut_for_menu("shortcut", "alt+n", false),
+            "Alt+N"
+        );
+        assert_eq!(
+            new_note_shortcut_for_menu("double_ctrl", "ctrl+n", false),
+            "Ctrl 2回"
+        );
+        assert_eq!(
+            new_note_shortcut_for_menu("double_shift", "ctrl+n", true),
+            "Double Shift"
+        );
     }
 }

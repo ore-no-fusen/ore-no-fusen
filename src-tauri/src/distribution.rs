@@ -8,7 +8,7 @@
 #[cfg(windows)]
 pub fn is_msix_packaged() -> bool {
     use windows::core::PWSTR;
-    use windows::Win32::Foundation::{WIN32_ERROR, APPMODEL_ERROR_NO_PACKAGE};
+    use windows::Win32::Foundation::{APPMODEL_ERROR_NO_PACKAGE, WIN32_ERROR};
     use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
 
     let mut length = 0u32;

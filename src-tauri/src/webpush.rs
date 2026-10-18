@@ -8,19 +8,19 @@
  * - APNs HTTP/2 POST 送信
  */
 
-use reqwest::Client;
+use crate::state::ProConfig;
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::Aes128Gcm;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use hkdf::Hkdf;
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use p256::ecdh::EphemeralSecret;
-use p256::{PublicKey, EncodedPoint};
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::EncodePrivateKey;
-use aes_gcm::Aes128Gcm;
-use aes_gcm::aead::{Aead, KeyInit};
-use hkdf::Hkdf;
-use sha2::Sha256;
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use p256::{EncodedPoint, PublicKey};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use crate::state::ProConfig;
+use sha2::Sha256;
 
 // ------ 型定義 ------
 
@@ -74,14 +74,16 @@ pub fn sign_vapid_jwt(endpoint: &str, keys: &VapidKeys) -> Result<String, String
         sub: keys.subject.clone(),
     };
 
-    let private_key_bytes = URL_SAFE_NO_PAD.decode(&keys.private_key_b64url)
+    let private_key_bytes = URL_SAFE_NO_PAD
+        .decode(&keys.private_key_b64url)
         .map_err(|e| e.to_string())?;
 
     // jsonwebtoken 9: EncodingKey::from_ec_der expects SEC1 DER-encoded key
     // p256 SigningKey から SEC1 DER を生成する
-    let signing_key = SigningKey::from_bytes(private_key_bytes.as_slice().into())
-        .map_err(|e| e.to_string())?;
-    let pkcs8_der = signing_key.to_pkcs8_der()
+    let signing_key =
+        SigningKey::from_bytes(private_key_bytes.as_slice().into()).map_err(|e| e.to_string())?;
+    let pkcs8_der = signing_key
+        .to_pkcs8_der()
         .map_err(|e: p256::pkcs8::Error| e.to_string())?;
 
     let encoding_key = EncodingKey::from_ec_der(pkcs8_der.as_bytes());
@@ -109,7 +111,8 @@ pub fn encrypt_payload(
     plaintext: &[u8],
 ) -> Result<Vec<u8>, String> {
     // 1. 受信側公開鍵をデコード
-    let peer_pub_bytes = URL_SAFE_NO_PAD.decode(p256dh_b64url)
+    let peer_pub_bytes = URL_SAFE_NO_PAD
+        .decode(p256dh_b64url)
         .map_err(|e| format!("p256dh decode error: {e}"))?;
     let peer_pub_key = PublicKey::from_sec1_bytes(&peer_pub_bytes)
         .map_err(|e| format!("peer public key parse error: {e}"))?;
@@ -124,7 +127,8 @@ pub fn encrypt_payload(
     let shared_secret_bytes = shared_secret.raw_secret_bytes();
 
     // 4. auth secret デコード
-    let auth_bytes = URL_SAFE_NO_PAD.decode(auth_b64url)
+    let auth_bytes = URL_SAFE_NO_PAD
+        .decode(auth_b64url)
         .map_err(|e| format!("auth decode error: {e}"))?;
 
     // 5. salt = 16 random bytes
@@ -141,29 +145,32 @@ pub fn encrypt_payload(
 
     let hk_key = Hkdf::<Sha256>::new(Some(&auth_bytes), &shared_secret_bytes[..]);
     let mut prk_key = [0u8; 32];
-    hk_key.expand(&info_key, &mut prk_key)
+    hk_key
+        .expand(&info_key, &mut prk_key)
         .map_err(|_| "HKDF expand (key) failed".to_string())?;
 
     // CEK = HKDF-SHA256(salt=salt, IKM=PRK_key, info="Content-Encoding: aes128gcm\x00")
     let hk_cek = Hkdf::<Sha256>::new(Some(&salt), &prk_key);
     let mut cek = [0u8; 16];
-    hk_cek.expand(b"Content-Encoding: aes128gcm\x00", &mut cek)
+    hk_cek
+        .expand(b"Content-Encoding: aes128gcm\x00", &mut cek)
         .map_err(|_| "HKDF expand (CEK) failed".to_string())?;
 
     // Nonce = HKDF-SHA256(salt=salt, IKM=PRK_key, info="Content-Encoding: nonce\x00")[..12]
     let mut nonce_bytes = [0u8; 12];
-    hk_cek.expand(b"Content-Encoding: nonce\x00", &mut nonce_bytes)
+    hk_cek
+        .expand(b"Content-Encoding: nonce\x00", &mut nonce_bytes)
         .map_err(|_| "HKDF expand (nonce) failed".to_string())?;
 
     // 7. AES-128-GCM 暗号化
-    let cipher = Aes128Gcm::new_from_slice(&cek)
-        .map_err(|e| format!("AES-GCM key error: {e}"))?;
+    let cipher = Aes128Gcm::new_from_slice(&cek).map_err(|e| format!("AES-GCM key error: {e}"))?;
 
     // padding: plaintext + \x02 (delimiter)
     let mut padded = plaintext.to_vec();
     padded.push(0x02); // RFC 8291 delimiter byte
 
-    let ciphertext = cipher.encrypt((&nonce_bytes).into(), padded.as_slice())
+    let ciphertext = cipher
+        .encrypt((&nonce_bytes).into(), padded.as_slice())
         .map_err(|e| format!("AES-GCM encrypt error: {e}"))?;
 
     // 8. RFC 8291 ヘッダー構築:
@@ -187,7 +194,11 @@ pub async fn send_web_push(
     keys: &VapidKeys,
     plaintext_json: &str,
 ) -> Result<(), String> {
-    let encrypted = encrypt_payload(&pro_config.p256dh, &pro_config.auth, plaintext_json.as_bytes())?;
+    let encrypted = encrypt_payload(
+        &pro_config.p256dh,
+        &pro_config.auth,
+        plaintext_json.as_bytes(),
+    )?;
     let jwt = sign_vapid_jwt(&pro_config.push_endpoint, &keys)?;
 
     let authorization = format!("vapid t={},k={}", jwt, keys.public_key_b64url);
@@ -226,7 +237,11 @@ mod tests {
         let keys = generate_vapid_keys().unwrap();
         let pub_bytes = URL_SAFE_NO_PAD.decode(&keys.public_key_b64url).unwrap();
         let priv_bytes = URL_SAFE_NO_PAD.decode(&keys.private_key_b64url).unwrap();
-        assert_eq!(pub_bytes.len(), 65, "Public key must be 65 bytes (uncompressed P-256)");
+        assert_eq!(
+            pub_bytes.len(),
+            65,
+            "Public key must be 65 bytes (uncompressed P-256)"
+        );
         assert_eq!(priv_bytes.len(), 32, "Private key must be 32 bytes");
     }
 

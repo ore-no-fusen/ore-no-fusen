@@ -16,32 +16,34 @@ mod arrange;
 mod capture; // [NEW] キャプチャ機能
 mod clipboard; // [NEW] クリップボード機能
 mod crash_guard;
-mod distribution;
 mod desktop_shortcut;
+mod distribution;
 mod double_tap;
-mod gdrive;
+mod favorite_storage;
 mod file_drop; // Google Drive 連携
+mod gdrive;
 mod hotkey_manager;
 mod import; // インポート機能
-mod logger; // ログシステム
 mod launcher;
-mod favorite_storage;
 mod launcher_taskbar;
+mod logger; // ログシステム
 mod logic;
+mod member_identity;
 mod perflog; // パフォーマンス計測ログ（JSON Lines）
 mod settings;
-mod member_identity;
 mod sound; // [NEW] サウンド機能
 mod state;
 mod storage;
 mod tray;
 mod triple_right_click;
+#[allow(dead_code)] // 接続処理は同期UIとDrive層の安全ゲート後に追加する
+mod web_share_contract;
+mod web_share_markdown;
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs) // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）
 use state::{AppState, CreateRecipeNoteRequest, Note, NoteMeta, ProConfig, RecipeCandidates};
 
-static TRASH_OPERATIONS_IN_FLIGHT: std::sync::LazyLock<
-    Mutex<std::collections::HashSet<String>>,
-> = std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+static TRASH_OPERATIONS_IN_FLIGHT: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
 
 #[derive(serde::Serialize)]
 struct TrashMoveResult {
@@ -125,13 +127,17 @@ fn fusen_check_store_update(window: tauri::Window) -> Result<bool, String> {
         };
         let context = StoreContext::GetDefault().map_err(|e| e.to_string())?;
         let initializer: IInitializeWithWindow = context.cast().map_err(|e| e.to_string())?;
-        unsafe { initializer.Initialize(HWND(win32_handle.hwnd.get())) }.map_err(|e| e.to_string())?;
+        unsafe { initializer.Initialize(HWND(win32_handle.hwnd.get())) }
+            .map_err(|e| e.to_string())?;
         let updates = context
             .GetAppAndOptionalStorePackageUpdatesAsync()
             .map_err(|e| e.to_string())?
             .get()
             .map_err(|e| e.to_string())?;
-        return updates.Size().map(|size| size > 0).map_err(|e| e.to_string());
+        return updates
+            .Size()
+            .map(|size| size > 0)
+            .map_err(|e| e.to_string());
     }
     #[cfg(not(windows))]
     Ok(false)
@@ -145,8 +151,8 @@ fn fusen_open_startup_settings() -> Result<(), String> {
         use windows::Foundation::Uri;
         use windows::System::Launcher;
 
-        let uri = Uri::CreateUri(&HSTRING::from("ms-settings:startupapps"))
-            .map_err(|e| e.to_string())?;
+        let uri =
+            Uri::CreateUri(&HSTRING::from("ms-settings:startupapps")).map_err(|e| e.to_string())?;
         let launched = Launcher::LaunchUriAsync(&uri)
             .map_err(|e| e.to_string())?
             .get()
@@ -296,14 +302,22 @@ fn fusen_import_from_folder(
 }
 
 #[tauri::command]
-fn fusen_backup(app: AppHandle, source_path: String, dest_path: String, include_trash: bool) -> Result<usize, String> {
+fn fusen_backup(
+    app: AppHandle,
+    source_path: String,
+    dest_path: String,
+    include_trash: bool,
+) -> Result<usize, String> {
     let count = storage::backup_notes_with_options(&source_path, &dest_path, include_trash)?;
     let mut settings = storage::load_settings()?;
-    settings.backup_history.insert(0, state::BackupRecord {
-        path: dest_path,
-        created_at: chrono::Local::now().to_rfc3339(),
-        file_count: count,
-    });
+    settings.backup_history.insert(
+        0,
+        state::BackupRecord {
+            path: dest_path,
+            created_at: chrono::Local::now().to_rfc3339(),
+            file_count: count,
+        },
+    );
     settings.backup_history.truncate(2);
     storage::save_settings(&settings)?;
     let _ = app.emit("settings_updated", &settings);
@@ -332,9 +346,8 @@ fn fusen_snooze_monthly_backup(app: AppHandle) -> Result<(), String> {
         settings.monthly_backup_enabled = false;
         settings.monthly_backup_next_prompt = None;
     } else {
-        settings.monthly_backup_next_prompt = Some(
-            (chrono::Local::now() + chrono::Duration::days(7)).to_rfc3339(),
-        );
+        settings.monthly_backup_next_prompt =
+            Some((chrono::Local::now() + chrono::Duration::days(7)).to_rfc3339());
     }
     storage::save_settings(&settings)?;
     let _ = app.emit("settings_updated", &settings);
@@ -344,10 +357,15 @@ fn fusen_snooze_monthly_backup(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, String> {
     let mut settings = storage::load_settings()?;
-    let source_path = settings.base_path.clone().ok_or("データ保存場所が未設定です")?;
-    let user_profile = std::env::var("USERPROFILE")
-        .map_err(|_| "USERPROFILE not found".to_string())?;
-    let root = Path::new(&user_profile).join("Documents").join("OreNoFusen_Backup");
+    let source_path = settings
+        .base_path
+        .clone()
+        .ok_or("データ保存場所が未設定です")?;
+    let user_profile =
+        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not found".to_string())?;
+    let root = Path::new(&user_profile)
+        .join("Documents")
+        .join("OreNoFusen_Backup");
     let current = root.join("Monthly");
     let pending = root.join("Monthly_pending");
     let previous = root.join("Monthly_previous");
@@ -368,8 +386,11 @@ fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, Strin
             return Err(error);
         }
     };
-    let copied_count = walkdir::WalkDir::new(&pending).into_iter().filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file()).count();
+    let copied_count = walkdir::WalkDir::new(&pending)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+        .count();
     if count != copied_count {
         let _ = std::fs::remove_dir_all(&pending);
         return Err("月次バックアップの検証に失敗しました".to_string());
@@ -397,7 +418,8 @@ fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, Strin
     settings.monthly_backup_record = Some(record.clone());
     settings.monthly_backup_skip_count = 0;
     settings.monthly_backup_next_prompt = Some(
-        (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days)).to_rfc3339(),
+        (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days))
+            .to_rfc3339(),
     );
     storage::save_settings(&settings)?;
     let _ = app.emit("settings_updated", &settings);
@@ -417,13 +439,15 @@ fn fusen_restore_backup(
     let markdown_count = walkdir::WalkDir::new(source)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md"))
+        .filter(|entry| {
+            entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md")
+        })
         .count();
     if markdown_count == 0 {
         return Err("復旧できるMarkdownファイルがありません".to_string());
     }
-    let user_profile = std::env::var("USERPROFILE")
-        .map_err(|_| "USERPROFILE not found".to_string())?;
+    let user_profile =
+        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not found".to_string())?;
     let recovery_root = Path::new(&user_profile)
         .join("Documents")
         .join("OreNoFusen_Recovery");
@@ -440,7 +464,9 @@ fn fusen_restore_backup(
     let recovered_markdown_count = walkdir::WalkDir::new(&recovery)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md"))
+        .filter(|entry| {
+            entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md")
+        })
         .count();
     if recovered_markdown_count != markdown_count {
         let _ = std::fs::remove_dir_all(&recovery);
@@ -722,7 +748,10 @@ fn iphone_source_hash(note_id: &str) -> String {
 fn iphone_origin_note_id(pc_id: &str, path: &str) -> String {
     use sha2::{Digest, Sha256};
     let normalized = path.replace('\\', "/").to_lowercase();
-    format!("{:x}", Sha256::digest(format!("{}:{}", pc_id, normalized).as_bytes()))
+    format!(
+        "{:x}",
+        Sha256::digest(format!("{}:{}", pc_id, normalized).as_bytes())
+    )
 }
 
 fn iphone_body_hash(body: &str) -> String {
@@ -755,19 +784,41 @@ struct IphoneAppearance {
 }
 
 fn apply_iphone_appearance(data: &mut logic::CreateNoteData, appearance: &IphoneAppearance) {
-    if let Some(color) = appearance.background_color.as_deref().filter(|color|
-        color.len() == 7 && color.starts_with('#') && color[1..].bytes().all(|b| b.is_ascii_hexdigit())) {
-        data.frontmatter = logic::update_frontmatter_value(&data.frontmatter, "backgroundColor", format!("\"{}\"", color));
+    if let Some(color) = appearance.background_color.as_deref().filter(|color| {
+        color.len() == 7
+            && color.starts_with('#')
+            && color[1..].bytes().all(|b| b.is_ascii_hexdigit())
+    }) {
+        data.frontmatter = logic::update_frontmatter_value(
+            &data.frontmatter,
+            "backgroundColor",
+            format!("\"{}\"", color),
+        );
         data.meta.background_color = Some(color.to_string());
     }
-    if let (Some(x), Some(y), Some(width), Some(height)) =
-        (appearance.x, appearance.y, appearance.width, appearance.height) {
-        if x.is_finite() && y.is_finite() && width.is_finite() && height.is_finite()
-            && width > 0.0 && height > 0.0 {
+    if let (Some(x), Some(y), Some(width), Some(height)) = (
+        appearance.x,
+        appearance.y,
+        appearance.width,
+        appearance.height,
+    ) {
+        if x.is_finite()
+            && y.is_finite()
+            && width.is_finite()
+            && height.is_finite()
+            && width > 0.0
+            && height > 0.0
+        {
             let x = x + 24.0;
             let y = y + 24.0;
-            data.frontmatter = logic::update_frontmatter_value(&data.frontmatter, "window", format!(
-                "{{ x: {}, y: {}, width: {}, height: {} }}", x, y, width, height));
+            data.frontmatter = logic::update_frontmatter_value(
+                &data.frontmatter,
+                "window",
+                format!(
+                    "{{ x: {}, y: {}, width: {}, height: {} }}",
+                    x, y, width, height
+                ),
+            );
             data.meta.x = Some(x);
             data.meta.y = Some(y);
             data.meta.width = Some(width);
@@ -789,15 +840,21 @@ fn fusen_find_iphone_origin(
     if origin_pc_id != gdrive::local_pc_id()? {
         return Ok(None);
     }
-    let paths: Vec<String> = state.lock().unwrap_or_else(|p| p.into_inner())
-        .notes.iter().map(|note| note.path.clone()).collect();
+    let paths: Vec<String> = state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .notes
+        .iter()
+        .map(|note| note.path.clone())
+        .collect();
     for path in paths {
         if iphone_origin_note_id(&origin_pc_id, &path) != origin_note_id {
             continue;
         }
         let note = storage::read_note(&path)?;
         let (_, body) = logic::split_frontmatter(&note.body);
-        let (x, y, width, height, background_color, _, _, _) = logic::extract_meta_from_content(&note.body);
+        let (x, y, width, height, background_color, _, _, _) =
+            logic::extract_meta_from_content(&note.body);
         let body_hash = iphone_body_hash(body);
         return Ok(Some(IphoneOriginMatch {
             path,
@@ -805,7 +862,10 @@ fn fusen_find_iphone_origin(
             changed_since_send: body_hash != origin_body_hash,
             body_hash,
             background_color,
-            x, y, width, height,
+            x,
+            y,
+            width,
+            height,
         }));
     }
     Ok(None)
@@ -821,11 +881,19 @@ fn build_iphone_return_content(
     if frontmatter.is_empty() || iphone_body_hash(current_body) != expected_body_hash {
         return Err("確認中にPC側の付箋が変わりました。内容をもう一度確認してください。".into());
     }
-    let frontmatter = logic::update_frontmatter_value(frontmatter, "iphone_return_hash", receipt_hash.to_string());
+    let frontmatter = logic::update_frontmatter_value(
+        frontmatter,
+        "iphone_return_hash",
+        receipt_hash.to_string(),
+    );
     Ok(format!("{}\n\n{}", frontmatter, incoming_body))
 }
 
-fn build_iphone_undo_content(current: &str, backup: &str, expected_body_hash: &str) -> Result<String, String> {
+fn build_iphone_undo_content(
+    current: &str,
+    backup: &str,
+    expected_body_hash: &str,
+) -> Result<String, String> {
     let (frontmatter, current_body) = logic::split_frontmatter(current);
     if frontmatter.is_empty() || iphone_body_hash(current_body) != expected_body_hash {
         return Err("反映後に付箋が変更されたため、自動で戻せません。".into());
@@ -834,7 +902,10 @@ fn build_iphone_undo_content(current: &str, backup: &str, expected_body_hash: &s
     Ok(format!("{}\n\n{}", frontmatter, old_body))
 }
 
-fn reject_stale_iphone_return_save(current: &str, incoming_frontmatter: &str) -> Result<(), String> {
+fn reject_stale_iphone_return_save(
+    current: &str,
+    incoming_frontmatter: &str,
+) -> Result<(), String> {
     let (current_frontmatter, _) = logic::split_frontmatter(current);
     if let Some(current_receipt) = iphone_return_receipt(current_frontmatter) {
         if iphone_return_receipt(incoming_frontmatter) != Some(current_receipt) {
@@ -844,9 +915,22 @@ fn reject_stale_iphone_return_save(current: &str, incoming_frontmatter: &str) ->
     Ok(())
 }
 
+fn reject_stale_web_share_save(current: &str, incoming_frontmatter: &str) -> Result<(), String> {
+    let current_receipt = logic::web_share_sync_receipt(current);
+    if current_receipt.is_some()
+        && logic::web_share_sync_receipt(incoming_frontmatter) != current_receipt
+    {
+        return Err("Web同期の後に付箋が更新されました。古い画面からの保存を止めました。付箋を開き直してください。".into());
+    }
+    Ok(())
+}
+
 fn iphone_return_receipt(frontmatter: &str) -> Option<&str> {
-    frontmatter.lines().find_map(|line|
-        line.trim().strip_prefix("iphone_return_hash:").map(str::trim))
+    frontmatter.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("iphone_return_hash:")
+            .map(str::trim)
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -883,13 +967,21 @@ fn fusen_apply_iphone_return(
             body_hash: iphone_body_hash(current_body),
         });
     }
-    let updated = build_iphone_return_content(&original, &expected_body_hash, &body, &receipt_hash)?;
-    let parent = std::path::Path::new(&path).parent().ok_or("付箋の保存先が見つかりません。")?;
+    let updated =
+        build_iphone_return_content(&original, &expected_body_hash, &body, &receipt_hash)?;
+    let parent = std::path::Path::new(&path)
+        .parent()
+        .ok_or("付箋の保存先が見つかりません。")?;
     let backup_dir = parent.join(".iphone-backups");
     std::fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
-    let backup_name = format!("{}_{}.md", chrono::Utc::now().format("%Y%m%dT%H%M%S%3f"), uuid::Uuid::new_v4());
+    let backup_name = format!(
+        "{}_{}.md",
+        chrono::Utc::now().format("%Y%m%dT%H%M%S%3f"),
+        uuid::Uuid::new_v4()
+    );
     let backup_path = backup_dir.join(backup_name);
-    std::fs::write(&backup_path, &original).map_err(|e| format!("反映前の保存に失敗しました: {}", e))?;
+    std::fs::write(&backup_path, &original)
+        .map_err(|e| format!("反映前の保存に失敗しました: {}", e))?;
     storage::write_note(&path, &updated)?;
     let receipts = parent.join(".iphone-receipts");
     if std::fs::create_dir_all(&receipts).is_ok() {
@@ -913,10 +1005,14 @@ fn fusen_undo_iphone_return(
     if !guard.notes.iter().any(|note| note.path == path) {
         return Err("元の付箋が見つかりません。".into());
     }
-    let parent = std::path::Path::new(&path).parent().ok_or("付箋の保存先が見つかりません。")?;
+    let parent = std::path::Path::new(&path)
+        .parent()
+        .ok_or("付箋の保存先が見つかりません。")?;
     let backup_dir = parent.join(".iphone-backups");
     let safe_dir = backup_dir.canonicalize().map_err(|e| e.to_string())?;
-    let safe_backup = std::path::Path::new(&backup_path).canonicalize().map_err(|e| e.to_string())?;
+    let safe_backup = std::path::Path::new(&backup_path)
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
     if safe_backup.parent() != Some(safe_dir.as_path()) {
         return Err("バックアップの場所を確認できません。".into());
     }
@@ -934,14 +1030,29 @@ fn fusen_undo_iphone_return(
 fn fusen_has_iphone_note(folder_path: String, note_id: String) -> bool {
     let source_hash = iphone_source_hash(&note_id);
     if storage::find_note_by_iphone_source_hash(&folder_path, &source_hash).is_some()
-        || std::path::Path::new(&folder_path).join(".iphone-receipts").join(&source_hash).exists() {
+        || std::path::Path::new(&folder_path)
+            .join(".iphone-receipts")
+            .join(&source_hash)
+            .exists()
+    {
         return true;
     }
-    std::fs::read_dir(&folder_path).ok().into_iter().flatten()
+    std::fs::read_dir(&folder_path)
+        .ok()
+        .into_iter()
+        .flatten()
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|extension| extension == "md"))
-        .any(|entry| std::fs::read_to_string(entry.path()).map(|content|
-            content.contains(&format!("iphone_return_hash: {}", source_hash))).unwrap_or(false))
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "md")
+        })
+        .any(|entry| {
+            std::fs::read_to_string(entry.path())
+                .map(|content| content.contains(&format!("iphone_return_hash: {}", source_hash)))
+                .unwrap_or(false)
+        })
 }
 
 /// iPhone受信付箋を、受信ID単位で一度だけ作成する。
@@ -973,11 +1084,17 @@ fn fusen_create_iphone_note(
     let mut appearance = origin_appearance;
     if let (Some(origin_id), Some(pc_id)) = (origin_note_id.as_deref(), origin_pc_id.as_deref()) {
         if gdrive::local_pc_id().ok().as_deref() == Some(pc_id) {
-            if let Some(source) = app_state.notes.iter().find(|note|
-                iphone_origin_note_id(pc_id, &note.path) == origin_id) {
+            if let Some(source) = app_state
+                .notes
+                .iter()
+                .find(|note| iphone_origin_note_id(pc_id, &note.path) == origin_id)
+            {
                 appearance = Some(IphoneAppearance {
                     background_color: source.background_color.clone(),
-                    x: source.x, y: source.y, width: source.width, height: source.height,
+                    x: source.x,
+                    y: source.y,
+                    width: source.width,
+                    height: source.height,
                 });
             }
         }
@@ -1097,7 +1214,11 @@ fn fusen_create_recipe_note(
         request.title.trim().to_string()
     };
     let safe_title = logic::sanitize_context(&title);
-    let context = if safe_title.is_empty() { "recipe".to_string() } else { safe_title };
+    let context = if safe_title.is_empty() {
+        "recipe".to_string()
+    } else {
+        safe_title
+    };
     let tags = logic::recipe_tags_from_request(&request.tags);
     let next_seq = storage::get_next_seq(&recipes_dir.to_string_lossy());
     let filename = logic::generate_crystal_filename("Reci", next_seq, &today, &context);
@@ -1111,7 +1232,10 @@ fn fusen_create_recipe_note(
     Ok(path.to_string_lossy().to_string())
 }
 
-fn create_qa_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Result<String, String> {
+fn create_qa_note_file(
+    base_path: &Path,
+    request: CreateRecipeNoteRequest,
+) -> Result<String, String> {
     let qa_dir = storage::ensure_qa_dir(base_path)?;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let now = chrono::Local::now().to_rfc3339();
@@ -1121,7 +1245,11 @@ fn create_qa_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Re
         request.title.trim().to_string()
     };
     let safe_title = logic::sanitize_context(&title);
-    let context = if safe_title.is_empty() { "qa".to_string() } else { safe_title };
+    let context = if safe_title.is_empty() {
+        "qa".to_string()
+    } else {
+        safe_title
+    };
     let tags = logic::qa_tags_from_request(&request.tags);
     let next_seq = storage::get_next_seq(&qa_dir.to_string_lossy());
     let filename = logic::generate_crystal_filename("QA", next_seq, &today, &context);
@@ -1134,7 +1262,10 @@ fn create_qa_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Re
     Ok(path.to_string_lossy().to_string())
 }
 
-fn create_term_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> Result<String, String> {
+fn create_term_note_file(
+    base_path: &Path,
+    request: CreateRecipeNoteRequest,
+) -> Result<String, String> {
     let terms_dir = storage::ensure_terms_dir(base_path)?;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let now = chrono::Local::now().to_rfc3339();
@@ -1144,7 +1275,11 @@ fn create_term_note_file(base_path: &Path, request: CreateRecipeNoteRequest) -> 
         request.title.trim().to_string()
     };
     let safe_title = logic::sanitize_context(&title);
-    let context = if safe_title.is_empty() { "term".to_string() } else { safe_title };
+    let context = if safe_title.is_empty() {
+        "term".to_string()
+    } else {
+        safe_title
+    };
     let tags = logic::term_tags_from_request(&request.tags);
     let next_seq = storage::get_next_seq(&terms_dir.to_string_lossy());
     let filename = logic::generate_crystal_filename("Term", next_seq, &today, &context);
@@ -1343,8 +1478,17 @@ fn fusen_save_note(
     // An open note window can still hold the pre-return content. Never let its
     // delayed auto-save overwrite the newly applied iPhone body and receipt.
     let old_note = storage::read_note(&path).ok();
+    if old_note.is_none() && std::path::Path::new(&path).exists() {
+        return Err("保存対象の付箋を読み直せないため、上書きを止めました".into());
+    }
+    let expected_snapshot = old_note.as_ref().map(|note| note.body.clone());
+    let incoming_snapshot = format!("{}\n\n{}", frontmatter_raw, body);
     if let Some(current) = &old_note {
-        reject_stale_iphone_return_save(&current.body, &frontmatter_raw)?;
+        if let Err(error) = reject_stale_iphone_return_save(&current.body, &frontmatter_raw)
+            .and_then(|_| reject_stale_web_share_save(&current.body, &frontmatter_raw))
+        {
+            return Err(preserve_failed_save(&path, &incoming_snapshot, error));
+        }
     }
     let old_body = old_note
         .as_ref()
@@ -1369,27 +1513,39 @@ fn fusen_save_note(
     // CommandはI/Oを実行するだけ
     match effect {
         logic::Effect::WriteNote { path, content } => {
-            if let Err(error) = storage::write_note(&path, &content) {
+            let write_result = match expected_snapshot.as_deref() {
+                Some(expected) => storage::write_note_if_unchanged(&path, expected, &content),
+                None => storage::write_note_if_absent(&path, &content),
+            };
+            if let Err(error) = write_result {
                 return Err(preserve_failed_save(&path, &content, error));
             }
         }
         logic::Effect::RenameNote { old_path, new_path } => {
-            if std::path::Path::new(&old_path).exists() {
-                storage::rename_note(&old_path, &new_path)?;
-            }
+            let expected = expected_snapshot
+                .as_deref()
+                .ok_or_else(|| "名前変更する付箋の内容を確認できません".to_string())?;
+            storage::rename_note_if_unchanged(&old_path, &new_path, expected)?;
         }
         logic::Effect::Batch(effects) => {
             for e in effects {
                 match e {
                     logic::Effect::WriteNote { path, content } => {
-                        if let Err(error) = storage::write_note(&path, &content) {
+                        let write_result = match expected_snapshot.as_deref() {
+                            Some(expected) => {
+                                storage::write_note_if_unchanged(&path, expected, &content)
+                            }
+                            None => storage::write_note_if_absent(&path, &content),
+                        };
+                        if let Err(error) = write_result {
                             return Err(preserve_failed_save(&path, &content, error));
                         }
                     }
                     logic::Effect::RenameNote { old_path, new_path } => {
-                        if std::path::Path::new(&old_path).exists() {
-                            storage::rename_note(&old_path, &new_path)?;
-                        }
+                        let expected = expected_snapshot.as_deref().ok_or_else(|| {
+                            "名前変更する付箋の内容を確認できません".to_string()
+                        })?;
+                        storage::rename_note_if_unchanged(&old_path, &new_path, expected)?;
                     }
                     logic::Effect::Batch(_) => {} // Nested batch not supported
                 }
@@ -1657,13 +1813,23 @@ fn fusen_restore_archived_notes(
 ) -> Result<RestoreArchivedNotesResult, String> {
     let base_path = {
         let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-        app_state.base_path.clone().or(app_state.folder_path.clone()).ok_or("base_path is not set")?
+        app_state
+            .base_path
+            .clone()
+            .or(app_state.folder_path.clone())
+            .ok_or("base_path is not set")?
     };
-    let mut result = RestoreArchivedNotesResult { restored: Vec::new(), conflicts: Vec::new(), failed: Vec::new() };
+    let mut result = RestoreArchivedNotesResult {
+        restored: Vec::new(),
+        conflicts: Vec::new(),
+        failed: Vec::new(),
+    };
     let mut seen = std::collections::HashSet::new();
 
     for source_path in paths {
-        if !seen.insert(source_path.clone()) { continue; }
+        if !seen.insert(source_path.clone()) {
+            continue;
+        }
         match storage::restore_archived_note(Path::new(&base_path), Path::new(&source_path)) {
             Ok(path) => result.restored.push(RestoreArchivedNoteResult {
                 source_path,
@@ -1671,12 +1837,14 @@ fn fusen_restore_archived_notes(
                 status: "restored".to_string(),
                 error: None,
             }),
-            Err(error) if error.starts_with("conflict:") => result.conflicts.push(RestoreArchivedNoteResult {
-                source_path,
-                restored_path: None,
-                status: "conflict".to_string(),
-                error: Some(error),
-            }),
+            Err(error) if error.starts_with("conflict:") => {
+                result.conflicts.push(RestoreArchivedNoteResult {
+                    source_path,
+                    restored_path: None,
+                    status: "conflict".to_string(),
+                    error: Some(error),
+                })
+            }
             Err(error) => result.failed.push(RestoreArchivedNoteResult {
                 source_path,
                 restored_path: None,
@@ -1872,10 +2040,7 @@ fn fusen_resolve_open_note_window(
 }
 
 #[tauri::command]
-fn fusen_unregister_open_note_window(
-    state: State<'_, Mutex<AppState>>,
-    label: String,
-) {
+fn fusen_unregister_open_note_window(state: State<'_, Mutex<AppState>>, label: String) {
     state
         .lock()
         .unwrap_or_else(|p| p.into_inner())
@@ -2181,10 +2346,8 @@ fn fusen_delete_tag_globally(
                                 modified_paths.push(write_path);
                             }
                             Err(e) => {
-                                failed_writes.push(format!(
-                                    "{} ({}回試行後): {}",
-                                    write_path, attempts, e
-                                ));
+                                failed_writes
+                                    .push(format!("{} ({}回試行後): {}", write_path, attempts, e));
                             }
                         }
                     }
@@ -2581,7 +2744,8 @@ fn setup_first_launch(
     settings.base_path = Some(base_path.clone());
     if settings.monthly_backup_next_prompt.is_none() && settings.monthly_backup_record.is_none() {
         settings.monthly_backup_next_prompt = Some(
-            (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days)).to_rfc3339(),
+            (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days))
+                .to_rfc3339(),
         );
     }
 
@@ -2685,7 +2849,11 @@ fn is_crystal_tags(tags: &[String]) -> bool {
 }
 
 fn arrange_tags_for_window(tags: Vec<String>, is_crystal: bool) -> Vec<String> {
-    if is_crystal { Vec::new() } else { tags }
+    if is_crystal {
+        Vec::new()
+    } else {
+        tags
+    }
 }
 
 #[cfg(test)]
@@ -2751,7 +2919,10 @@ fn resolve_arrange_window_path(
     }) {
         return Some((path.clone(), false));
     }
-    if let Some(path) = note_paths.iter().find(|path| get_window_label(path) == label) {
+    if let Some(path) = note_paths
+        .iter()
+        .find(|path| get_window_label(path) == label)
+    {
         return Some((path.clone(), false));
     }
     crystal_window_paths
@@ -2857,10 +3028,7 @@ pub(crate) async fn run_fusen_arrange_by_tag<R: Runtime>(
         let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
         let mut desktop_notes = app_state.notes.clone();
         favorite_storage::exclude_stored(&mut desktop_notes);
-        let note_paths: Vec<String> = desktop_notes
-            .iter()
-            .map(|note| note.path.clone())
-            .collect();
+        let note_paths: Vec<String> = desktop_notes.iter().map(|note| note.path.clone()).collect();
         (
             note_paths,
             app_state.arrange_crystal_windows.clone(),
@@ -3114,20 +3282,21 @@ pub(crate) async fn run_fusen_arrange_undo<R: Runtime>(
     let mut move_failed_count = 0;
     let mut moved_positions: Vec<(String, f64, f64)> = Vec::new();
     for (path, x, y) in &undo_snapshot {
-        let label = {
-            let state = app.state::<Mutex<AppState>>();
-            let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-            app_state
-                .open_note_windows
-                .get(&normalize_path_for_label(path))
-                .cloned()
-                .or_else(|| {
-                    app_state.arrange_crystal_windows.iter().find_map(
-                        |(label, crystal_path)| (crystal_path == path).then(|| label.clone()),
-                    )
-                })
-                .unwrap_or_else(|| get_window_label(path))
-        };
+        let label =
+            {
+                let state = app.state::<Mutex<AppState>>();
+                let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+                app_state
+                    .open_note_windows
+                    .get(&normalize_path_for_label(path))
+                    .cloned()
+                    .or_else(|| {
+                        app_state.arrange_crystal_windows.iter().find_map(
+                            |(label, crystal_path)| (crystal_path == path).then(|| label.clone()),
+                        )
+                    })
+                    .unwrap_or_else(|| get_window_label(path))
+            };
         let Some(window) = app.get_webview_window(&label) else {
             logger::log_info(&format!(
                 "[ARRANGE] undo move skipped path={} label={} reason=window_not_found",
@@ -3482,8 +3651,8 @@ async fn fusen_show_at_position(
 
                         // T2_READY: SetForegroundWindow 後（エディタ focus 到達の直前）
                         if let Some(rid) = &run_id {
-                            let elapsed = perf_started
-                                .map(|started| started.elapsed().as_millis() as u64);
+                            let elapsed =
+                                perf_started.map(|started| started.elapsed().as_millis() as u64);
                             crate::perf_event!(
                                 rid,
                                 "T2_READY",
@@ -4126,8 +4295,18 @@ mod file_drop_cleanup_tests {
         collect_temp_refs_from_value(&pending, &mut refs);
         assert!(refs.contains("fusen_file_pdf"));
         let files = vec![
-            gdrive::DriveTempMediaFile { id:"pending".into(), name:"fusen_file_pdf".into(), modified_time:Some("2020-01-01T00:00:00Z".into()), size:Some(4) },
-            gdrive::DriveTempMediaFile { id:"orphan".into(), name:"fusen_file_orphan".into(), modified_time:Some("2020-01-01T00:00:00Z".into()), size:Some(4) },
+            gdrive::DriveTempMediaFile {
+                id: "pending".into(),
+                name: "fusen_file_pdf".into(),
+                modified_time: Some("2020-01-01T00:00:00Z".into()),
+                size: Some(4),
+            },
+            gdrive::DriveTempMediaFile {
+                id: "orphan".into(),
+                name: "fusen_file_orphan".into(),
+                modified_time: Some("2020-01-01T00:00:00Z".into()),
+                size: Some(4),
+            },
         ];
         let summary = summarize_drive_temp_files(&files, &refs);
         assert_eq!(summary.deletable_count, 1);
@@ -4142,9 +4321,16 @@ mod file_drop_cleanup_tests {
                       {"videoFileName":"fusen_video_2.mov","originalFileName":"dance.mov"}],
             "files":[{"fileName":"fusen_file_1","originalFileName":"memo.pdf","mimeType":"application/pdf","size":4}]
         });
-        assert_eq!(collect_iphone_video_names(&mixed), vec!["fusen_video_1.mp4", "fusen_video_2.mov"]);
-        let legacy = serde_json::json!({"videoFileName":"fusen_video_old.mov","originalFileName":"old.mov"});
-        assert_eq!(collect_iphone_videos(&legacy)[0].original_file_name, "old.mov");
+        assert_eq!(
+            collect_iphone_video_names(&mixed),
+            vec!["fusen_video_1.mp4", "fusen_video_2.mov"]
+        );
+        let legacy =
+            serde_json::json!({"videoFileName":"fusen_video_old.mov","originalFileName":"old.mov"});
+        assert_eq!(
+            collect_iphone_videos(&legacy)[0].original_file_name,
+            "old.mov"
+        );
     }
 
     #[test]
@@ -4152,8 +4338,14 @@ mod file_drop_cleanup_tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("dance.mov"), b"first").unwrap();
         std::fs::write(dir.path().join("dance_2.mov"), b"second").unwrap();
-        assert_eq!(resolve_video_path_with_suffix(dir.path(), "dance.mov"), dir.path().join("dance_3.mov"));
-        assert_eq!(std::fs::read(dir.path().join("dance.mov")).unwrap(), b"first");
+        assert_eq!(
+            resolve_video_path_with_suffix(dir.path(), "dance.mov"),
+            dir.path().join("dance_3.mov")
+        );
+        assert_eq!(
+            std::fs::read(dir.path().join("dance.mov")).unwrap(),
+            b"first"
+        );
     }
 }
 
@@ -4581,7 +4773,9 @@ mod iphone_send_queue_tests {
         );
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("既存の未送信データを守るため送信を中止"));
+        assert!(result
+            .unwrap_err()
+            .contains("既存の未送信データを守るため送信を中止"));
     }
 
     #[test]
@@ -4589,13 +4783,20 @@ mod iphone_send_queue_tests {
         let existing = serde_json::json!({
             "items": (0..20).map(|index| serde_json::json!({ "id": format!("old-{index}") })).collect::<Vec<_>>(),
         });
-        let data = append_note_to_iphone_queue(Ok(existing), serde_json::json!({ "id": "new-note" }))
-            .expect("queue update should be prepared");
+        let data =
+            append_note_to_iphone_queue(Ok(existing), serde_json::json!({ "id": "new-note" }))
+                .expect("queue update should be prepared");
         let items = data["items"].as_array().expect("items array");
 
         assert_eq!(items.len(), 20);
-        assert_eq!(items.first().and_then(|item| item["id"].as_str()), Some("old-1"));
-        assert_eq!(items.last().and_then(|item| item["id"].as_str()), Some("new-note"));
+        assert_eq!(
+            items.first().and_then(|item| item["id"].as_str()),
+            Some("old-1")
+        );
+        assert_eq!(
+            items.last().and_then(|item| item["id"].as_str()),
+            Some("new-note")
+        );
     }
 }
 
@@ -4648,11 +4849,22 @@ async fn fusen_send_to_iphone(
     let origin_pc_id = gdrive::local_pc_id()?;
     let origin_note_id = iphone_origin_note_id(&origin_pc_id, &path);
     let origin_body_hash = iphone_body_hash(logic::split_frontmatter(&note).1);
-    let (appearance_x, appearance_y, appearance_width, appearance_height, appearance_color, _, _, _) =
-        logic::extract_meta_from_content(&frontmatter);
+    let (
+        appearance_x,
+        appearance_y,
+        appearance_width,
+        appearance_height,
+        appearance_color,
+        _,
+        _,
+        _,
+    ) = logic::extract_meta_from_content(&frontmatter);
     let origin_appearance = IphoneAppearance {
         background_color: appearance_color,
-        x: appearance_x, y: appearance_y, width: appearance_width, height: appearance_height,
+        x: appearance_x,
+        y: appearance_y,
+        width: appearance_width,
+        height: appearance_height,
     };
 
     // 先頭画像はタイトルにせず本文へ残し、Driveアップロード対象にする。
@@ -4793,11 +5005,7 @@ async fn fusen_send_to_iphone(
     Ok(())
 }
 
-fn insert_distinct_body_rich(
-    payload: &mut serde_json::Value,
-    body_push: &str,
-    body_rich: &str,
-) {
+fn insert_distinct_body_rich(payload: &mut serde_json::Value, body_push: &str, body_rich: &str) {
     if body_rich != body_push {
         payload["body_rich"] = serde_json::Value::String(body_rich.to_string());
     }
@@ -4968,7 +5176,10 @@ fn collect_iphone_image_refs(body: &str) -> Vec<(String, String)> {
                 .extension()
                 .and_then(|value| value.to_str())?
                 .to_ascii_lowercase();
-            if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") {
+            if !matches!(
+                extension.as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+            ) {
                 return None;
             }
             Some((reference.to_string(), filename.to_string()))
@@ -5038,10 +5249,8 @@ async fn fusen_download_iphone_images(folder_path: String, body: String) -> Resu
 
         // 既存ファイルはスキップ（冪等）
         if local_path.exists() {
-            rewritten = rewritten.replace(
-                &format!("({reference})"),
-                &format!("(assets/{filename})"),
-            );
+            rewritten =
+                rewritten.replace(&format!("({reference})"), &format!("(assets/{filename})"));
             continue;
         }
 
@@ -5049,10 +5258,8 @@ async fn fusen_download_iphone_images(folder_path: String, body: String) -> Resu
             Ok(bytes) => {
                 std::fs::write(&local_path, &bytes)
                     .map_err(|e| format!("画像保存失敗 {}: {}", filename, e))?;
-                rewritten = rewritten.replace(
-                    &format!("({reference})"),
-                    &format!("(assets/{filename})"),
-                );
+                rewritten =
+                    rewritten.replace(&format!("({reference})"), &format!("(assets/{filename})"));
             }
             Err(e) => {
                 logger::log_info(&format!("[assets] download failed {}: {}", filename, e));
@@ -5278,8 +5485,13 @@ mod iphone_receive_routing_tests {
     #[test]
     fn iphone_return_changes_only_body_and_records_receipt() {
         let original = "---\ntype: sticky\nbackgroundColor: \"#ffeeaa\"\nwindow: { x: 42, y: 80, width: 400, height: 300 }\n---\n\nPC本文";
-        let updated = build_iphone_return_content(original, &iphone_body_hash("PC本文"), "iPhone本文", "receipt")
-            .expect("unchanged PC note should accept the return");
+        let updated = build_iphone_return_content(
+            original,
+            &iphone_body_hash("PC本文"),
+            "iPhone本文",
+            "receipt",
+        )
+        .expect("unchanged PC note should accept the return");
         assert!(updated.contains("backgroundColor: \"#ffeeaa\""));
         assert!(updated.contains("window: { x: 42, y: 80, width: 400, height: 300 }"));
         assert!(updated.contains("iphone_return_hash: receipt"));
@@ -5290,17 +5502,53 @@ mod iphone_receive_routing_tests {
     #[test]
     fn delayed_pc_save_cannot_replace_an_applied_iphone_return() {
         let before = "---\nseq: 1\n---\n\nPC本文";
-        let applied = build_iphone_return_content(before, &iphone_body_hash("PC本文"), "iPhone本文", "return-1").unwrap();
+        let applied = build_iphone_return_content(
+            before,
+            &iphone_body_hash("PC本文"),
+            "iPhone本文",
+            "return-1",
+        )
+        .unwrap();
         assert!(reject_stale_iphone_return_save(&applied, "---\nseq: 1\n---").is_err());
-        assert!(reject_stale_iphone_return_save(&applied, "---\nseq: 1\niphone_return_hash: other\n---").is_err());
-        assert!(reject_stale_iphone_return_save(&applied, "---\nseq: 1\niphone_return_hash: return-1\n---").is_ok());
+        assert!(reject_stale_iphone_return_save(
+            &applied,
+            "---\nseq: 1\niphone_return_hash: other\n---"
+        )
+        .is_err());
+        assert!(reject_stale_iphone_return_save(
+            &applied,
+            "---\nseq: 1\niphone_return_hash: return-1\n---"
+        )
+        .is_ok());
         assert!(reject_stale_iphone_return_save(before, "---\nseq: 1\n---").is_ok());
+    }
+
+    #[test]
+    fn delayed_pc_save_cannot_replace_an_applied_web_sync() {
+        let applied = "---\nseq: 1\nweb_sync_receipt: web-v2\n---\n\nWeb本文";
+        assert!(reject_stale_web_share_save(applied, "---\nseq: 1\n---").is_err());
+        assert!(
+            reject_stale_web_share_save(applied, "---\nseq: 1\nweb_sync_receipt: web-v1\n---")
+                .is_err()
+        );
+        assert!(
+            reject_stale_web_share_save(applied, "---\nseq: 1\nweb_sync_receipt: web-v2\n---")
+                .is_ok()
+        );
+        assert!(
+            reject_stale_web_share_save("---\nseq: 1\n---\n\nBefore", "---\nseq: 1\n---").is_ok()
+        );
     }
 
     #[test]
     fn iphone_return_refuses_a_pc_note_changed_after_confirmation() {
         let original = "---\nwindow: { x: 1, y: 2, width: 3, height: 4 }\n---\n\nPCで追記";
-        let result = build_iphone_return_content(original, &iphone_body_hash("送信時の本文"), "iPhone本文", "receipt");
+        let result = build_iphone_return_content(
+            original,
+            &iphone_body_hash("送信時の本文"),
+            "iPhone本文",
+            "receipt",
+        );
         assert!(result.is_err());
         assert_eq!(original.lines().last(), Some("PCで追記"));
     }
@@ -5309,11 +5557,14 @@ mod iphone_receive_routing_tests {
     fn iphone_return_undo_restores_pc_body_without_changing_current_color_or_position() {
         let backup = "---\nbackgroundColor: \"#ffeeaa\"\nwindow: { x: 1, y: 2, width: 3, height: 4 }\n---\n\n以前のPC本文";
         let current = "---\nbackgroundColor: \"#aabbcc\"\nwindow: { x: 20, y: 30, width: 3, height: 4 }\n---\n\niPhone本文";
-        let restored = build_iphone_undo_content(current, backup, &iphone_body_hash("iPhone本文")).unwrap();
+        let restored =
+            build_iphone_undo_content(current, backup, &iphone_body_hash("iPhone本文")).unwrap();
         assert!(restored.contains("backgroundColor: \"#aabbcc\""));
         assert!(restored.contains("window: { x: 20, y: 30, width: 3, height: 4 }"));
         assert!(restored.ends_with("以前のPC本文"));
-        assert!(build_iphone_undo_content(current, backup, &iphone_body_hash("さらに編集")).is_err());
+        assert!(
+            build_iphone_undo_content(current, backup, &iphone_body_hash("さらに編集")).is_err()
+        );
     }
 
     #[test]
@@ -5330,24 +5581,45 @@ mod iphone_receive_routing_tests {
     #[test]
     fn new_note_uses_sent_appearance_when_the_original_is_missing() {
         let mut data = logic::build_create_note_data("notes", "返送", 1, "2026-09-26");
-        apply_iphone_appearance(&mut data, &IphoneAppearance {
-            background_color: Some("#aabbcc".into()),
-            x: Some(100.0), y: Some(200.0), width: Some(450.0), height: Some(320.0),
-        });
+        apply_iphone_appearance(
+            &mut data,
+            &IphoneAppearance {
+                background_color: Some("#aabbcc".into()),
+                x: Some(100.0),
+                y: Some(200.0),
+                width: Some(450.0),
+                height: Some(320.0),
+            },
+        );
         assert!(data.frontmatter.contains("backgroundColor: \"#aabbcc\""));
-        assert!(data.frontmatter.contains("window: { x: 124, y: 224, width: 450, height: 320 }"));
+        assert!(data
+            .frontmatter
+            .contains("window: { x: 124, y: 224, width: 450, height: 320 }"));
         assert_eq!(data.meta.background_color.as_deref(), Some("#aabbcc"));
     }
 
     #[test]
     fn invalid_sent_appearance_does_not_replace_safe_defaults() {
         let mut data = logic::build_create_note_data("notes", "返送", 1, "2026-09-26");
-        apply_iphone_appearance(&mut data, &IphoneAppearance {
-            background_color: Some("javascript:bad".into()),
-            x: Some(f64::NAN), y: Some(200.0), width: Some(-1.0), height: Some(320.0),
-        });
-        assert_eq!(logic::extract_meta_from_content(&data.frontmatter).4.as_deref(), Some("#f7e9b0"));
-        assert!(data.frontmatter.contains("window: { x: 100, y: 100, width: 400, height: 300 }"));
+        apply_iphone_appearance(
+            &mut data,
+            &IphoneAppearance {
+                background_color: Some("javascript:bad".into()),
+                x: Some(f64::NAN),
+                y: Some(200.0),
+                width: Some(-1.0),
+                height: Some(320.0),
+            },
+        );
+        assert_eq!(
+            logic::extract_meta_from_content(&data.frontmatter)
+                .4
+                .as_deref(),
+            Some("#f7e9b0")
+        );
+        assert!(data
+            .frontmatter
+            .contains("window: { x: 100, y: 100, width: 400, height: 300 }"));
     }
 }
 
@@ -5510,7 +5782,11 @@ async fn fusen_ack_iphone_note(note_id: String) -> Result<(), String> {
             found = true;
             image_names.extend(collect_iphone_image_names(&item));
             video_names.extend(collect_iphone_video_names(&item));
-            video_names.extend(file_drop::collect(&item)?.into_iter().map(|file| file.file_name));
+            video_names.extend(
+                file_drop::collect(&item)?
+                    .into_iter()
+                    .map(|file| file.file_name),
+            );
         } else if item.get("received_at").is_none() {
             remaining.push(item);
         }
@@ -5707,7 +5983,10 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
         // Fail closed: no event/ack if any FileDrop binary cannot be saved.
         let file_refs = match file_drop::collect(item) {
             Ok(files) => files,
-            Err(error) => { logger::log_info(&format!("[iphone file] invalid metadata: {}", error)); continue; }
+            Err(error) => {
+                logger::log_info(&format!("[iphone file] invalid metadata: {}", error));
+                continue;
+            }
         };
         if !file_refs.is_empty() {
             let folder_path = {
@@ -5715,7 +5994,9 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                 let guard = state.lock().unwrap_or_else(|p| p.into_inner());
                 guard.base_path.clone().or(guard.folder_path.clone())
             };
-            let Some(folder_path) = folder_path else { continue; };
+            let Some(folder_path) = folder_path else {
+                continue;
+            };
             // A saved receipt means only ack needs retrying, even if Drive's binary is gone.
             if fusen_has_iphone_note(folder_path.clone(), note_id.clone()) {
                 if let Err(error) = fusen_ack_iphone_note(note_id.clone()).await {
@@ -5731,16 +6012,27 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                     Err(error) => Err(error),
                 };
                 match result {
-                    Ok(path) => file_lines.push(format!("📎 {}\n保存先:\n{}", file.original_file_name, path.to_string_lossy())),
+                    Ok(path) => file_lines.push(format!(
+                        "📎 {}\n保存先:\n{}",
+                        file.original_file_name,
+                        path.to_string_lossy()
+                    )),
                     Err(error) => {
-                        logger::log_info(&format!("[iphone file] save failed {}: {}", file.file_name, error));
+                        logger::log_info(&format!(
+                            "[iphone file] save failed {}: {}",
+                            file.file_name, error
+                        ));
                         failed = true;
                         break;
                     }
                 }
             }
-            if failed { continue; }
-            if !pc_body.is_empty() { pc_body.push_str("\n\n"); }
+            if failed {
+                continue;
+            }
+            if !pc_body.is_empty() {
+                pc_body.push_str("\n\n");
+            }
             pc_body.push_str(&file_lines.join("\n\n"));
         }
 
@@ -5840,11 +6132,21 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
                     body: pc_body,
                     context,
                     tags,
-                    origin_note_id: item.get("originNoteId").and_then(|v| v.as_str()).map(str::to_string),
-                    origin_body_hash: item.get("originBodyHash").and_then(|v| v.as_str()).map(str::to_string),
-                    origin_pc_id: item.get("originPcId").and_then(|v| v.as_str()).map(str::to_string),
-                    origin_appearance: item.get("originAppearance").and_then(|value|
-                        serde_json::from_value(value.clone()).ok()),
+                    origin_note_id: item
+                        .get("originNoteId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    origin_body_hash: item
+                        .get("originBodyHash")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    origin_pc_id: item
+                        .get("originPcId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    origin_appearance: item
+                        .get("originAppearance")
+                        .and_then(|value| serde_json::from_value(value.clone()).ok()),
                 },
             )
             .is_ok()
@@ -5862,8 +6164,10 @@ async fn poll_iphone_note(client: &reqwest::Client, app: &tauri::AppHandle) {
 // --- Entry Point ---
 
 fn should_exit_after_close(label: &str) -> bool {
-    !matches!(label, "main" | "quick_launcher" | "recipe-create" | "qa-create" | "term-create")
-        && !label.starts_with("announcement-notice-")
+    !matches!(
+        label,
+        "main" | "quick_launcher" | "recipe-create" | "qa-create" | "term-create"
+    ) && !label.starts_with("announcement-notice-")
         && !label.starts_with("developer-reply-notice-")
 }
 
@@ -6055,6 +6359,8 @@ pub fn run() {
             launcher::fusen_reorder_quick_note,
             launcher::fusen_remove_from_shelf,
             launcher::fusen_get_launcher_state,
+            launcher::fusen_prepare_web_share_note,
+            launcher::fusen_sync_quick_launcher_to_web,
             launcher::fusen_set_launcher_last_tab,
             launcher::fusen_set_launcher_tag_filter,
             launcher::fusen_get_crystal_formats,
@@ -6426,9 +6732,7 @@ mod image_embed_tests {
     #[test]
     fn iphone_send_places_body_image_markdown_on_its_own_line() {
         assert_eq!(
-            put_iphone_images_on_separate_lines(
-                "8/2 MSIXの一本化![image](assets/pasted.png)"
-            ),
+            put_iphone_images_on_separate_lines("8/2 MSIXの一本化![image](assets/pasted.png)"),
             "8/2 MSIXの一本化\n![image](assets/pasted.png)"
         );
     }
@@ -6525,13 +6829,18 @@ mod qa_note_tests {
                 body: "# 問い\n\n質問".to_string(),
                 tags: vec!["work".to_string(), "recipe".to_string(), "qa".to_string()],
             },
-        ).unwrap();
+        )
+        .unwrap();
 
         let path = std::path::PathBuf::from(path);
         let content = fs::read_to_string(&path).unwrap();
 
         assert!(path.starts_with(dir.path().join("QA")));
-        assert!(path.file_name().unwrap().to_string_lossy().starts_with("QA0001_"));
+        assert!(path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("QA0001_"));
         assert!(content.contains("seq: 1"));
         assert!(content.contains("title: 質問"));
         assert!(content.contains("backgroundColor: \"#cfd8dc\""));
@@ -6557,15 +6866,25 @@ mod term_note_tests {
             CreateRecipeNoteRequest {
                 title: "用語".to_string(),
                 body: "# 意味\n\n説明".to_string(),
-                tags: vec!["work".to_string(), "recipe".to_string(), "qa".to_string(), "term".to_string()],
+                tags: vec![
+                    "work".to_string(),
+                    "recipe".to_string(),
+                    "qa".to_string(),
+                    "term".to_string(),
+                ],
             },
-        ).unwrap();
+        )
+        .unwrap();
 
         let path = std::path::PathBuf::from(path);
         let content = fs::read_to_string(&path).unwrap();
 
         assert!(path.starts_with(dir.path().join("Terms")));
-        assert!(path.file_name().unwrap().to_string_lossy().starts_with("Term0001_"));
+        assert!(path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("Term0001_"));
         assert!(content.contains("seq: 1"));
         assert!(content.contains("title: 用語"));
         assert!(content.contains("backgroundColor: \"#cfd8dc\""));
@@ -6586,13 +6905,18 @@ mod term_note_tests {
                 body: "# 意味\n\n説明".to_string(),
                 tags: vec![],
             },
-        ).unwrap();
+        )
+        .unwrap();
 
         let path = std::path::PathBuf::from(path);
         let content = fs::read_to_string(&path).unwrap();
 
         assert!(path.starts_with(dir.path().join("Terms")));
-        assert!(path.file_name().unwrap().to_string_lossy().contains("_term.md"));
+        assert!(path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains("_term.md"));
         assert!(content.contains("title: term"));
         assert!(content.contains("tags: [term]"));
     }
@@ -6639,8 +6963,7 @@ mod pool_tests {
         let tmp = tempdir().unwrap();
         let state = Mutex::new(AppState::default());
 
-        let note =
-            create_settings_recovery_notice(&state, tmp.path().to_str().unwrap()).unwrap();
+        let note = create_settings_recovery_notice(&state, tmp.path().to_str().unwrap()).unwrap();
 
         let saved = std::fs::read_to_string(&note.meta.path).unwrap();
         assert!(

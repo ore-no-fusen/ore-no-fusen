@@ -83,6 +83,14 @@ type: sticky
 ---`);
     });
 
+    it('同期済み付箋はfrontmatter内の---誤認を避け、本文の先頭改行を保持する', () => {
+        const input = '---\r\ncustomField: "---"\r\nweb_sync_receipt: receipt\r\n---\r\n\r\n本文';
+        const { front, body } = splitFrontMatter(input);
+        expect(front).toContain('customField: "---"');
+        expect(front).toContain('web_sync_receipt: receipt');
+        expect(body).toBe('\r\n本文');
+    });
+
     //
     // ❌ 先頭に設定欄がない場合
     //
