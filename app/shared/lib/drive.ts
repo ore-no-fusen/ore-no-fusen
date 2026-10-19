@@ -81,14 +81,23 @@ async function verifyAccount(token: string, expectedAccount: string): Promise<vo
 
 async function authorizedFetch(token: string, input: RequestInfo | URL, init?: RequestInit, expectedAccount?: string): Promise<Response> {
   let activeToken = latestAccessToken || token;
-  let response = await fetch(input, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${activeToken}` } });
+  const request = async () => {
+    try { return await fetch(input, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${activeToken}` } }); }
+    catch {
+      const url = String(input);
+      const phase = url.includes('/about?') ? 'アカウント確認' : url.includes('alt=media') ? '共有記録の読取' : (init?.method === 'POST' ? '保存' : '一覧取得');
+      console.warn('[shared-drive] network failure', { phase, method: init?.method ?? 'GET' });
+      throw new Error(`Google Driveの${phase}で通信に失敗しました。${init?.method === 'POST' ? '保存結果を確認できません。' : '取得を完了できませんでした。'}`);
+    }
+  };
+  let response = await request();
   if (response.status === 401) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       if (expectedAccount) await verifyAccount(refreshed, expectedAccount);
       latestAccessToken = refreshed;
       activeToken = refreshed;
-      response = await fetch(input, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${activeToken}` } });
+      response = await request();
     }
   }
   if (!response.ok) throw new Error(`Google Driveへの接続に失敗しました (${response.status})`);

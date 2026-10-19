@@ -30,6 +30,28 @@ describe('minimal Web creation',()=>{
     mocks.webReceivers.mockResolvedValue({account:'a@test',pcs:[]});render(<NewNote token="token" onDone={vi.fn()}/>);
     await screen.findByText(/受取PCがありません/);expect((screen.getByRole('button',{name:'保存'}) as HTMLButtonElement).disabled).toBe(true);
   });
+  it('can recheck receivers after Windows sync while keeping the typed draft',async()=>{
+    mocks.webReceivers.mockResolvedValueOnce({account:'a@test',pcs:[]});
+    render(<NewNote token="token" onDone={vi.fn()}/>);
+    await screen.findByText(/受取PCがありません/);
+    fireEvent.change(screen.getByLabelText('新規付箋の本文'),{target:{value:'入力を保持'}});
+    fireEvent.click(screen.getByRole('button',{name:'受取PCを再確認'}));
+    await screen.findByText('試験PC');
+    expect((screen.getByLabelText('新規付箋の本文') as HTMLTextAreaElement).value).toBe('入力を保持');
+    fireEvent.change(screen.getByLabelText('受取PC'),{target:{value:'pc1'}});
+    expect((screen.getByRole('button',{name:'保存'}) as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('does not redirect an existing draft to another PC when its receiver disappears',async()=>{
+    render(<NewNote token="token" onDone={vi.fn()}/>);
+    await screen.findByText('試験PC');
+    fireEvent.change(screen.getByLabelText('新規付箋の本文'),{target:{value:'元PC宛の本文'}});
+    mocks.webReceivers.mockResolvedValue({account:'a@test',pcs:[{pcId:'pc2',name:'別のPC'}]});
+    fireEvent.click(screen.getByRole('button',{name:'受取PCを再確認'}));
+    await screen.findByText('別のPC');
+    expect((screen.getByLabelText('受取PC') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByRole('button',{name:'保存'}) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('新規付箋の本文') as HTMLTextAreaElement).value).toBe('元PC宛の本文');
+  });
   it('restores a durable draft after tab-local storage is lost and keeps its request ID',async()=>{
     const id='33333333-3333-4333-8333-333333333333';
     localStorage.setItem(`shared-create:a@test:${id}`,JSON.stringify({body:'復元する本文',target:'pc1',pending:null,requestId:id}));

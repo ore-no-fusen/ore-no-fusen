@@ -36,6 +36,41 @@ function sharedNote(markdown: string, title = 'テスト付箋'): SharedNote {
 }
 
 describe('shared note editor', () => {
+  it('閲覧中のクリックだけでチェックを保存し、本文・色・画像を保つ', async () => {
+    const note = sharedNote('本文\n- [ ] 牛乳\n- [x] 卵');
+    mocks.loadSharedNotes.mockResolvedValueOnce({notes:[note],files:[]})
+      .mockResolvedValue({notes:[{...note,operation:{...note.operation,operationId:'op-next',payload:{...note.operation.payload,markdown:'本文\n- [x] 牛乳\n- [x] 卵'}}}],files:[]});
+    render(<SharedNotesPage/>);
+    fireEvent.click(await screen.findByRole('checkbox',{name:'牛乳'}));
+    await screen.findByText(/チェックを保存しました/);
+    expect(mocks.appendWebEdit).toHaveBeenCalledTimes(1);
+    expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',note,{...note.operation.payload,markdown:'本文\n- [x] 牛乳\n- [x] 卵'});
+    await waitFor(()=>expect(screen.getByRole('checkbox',{name:'牛乳'}).getAttribute('aria-checked')).toBe('true'));
+    expect(screen.getByRole('button',{name:'編集'})).toBeTruthy();
+  });
+
+  it('チェック保存中の連打を防ぎ、失敗時は元表示と理由を残す', async () => {
+    let reject!: (error: Error) => void;
+    mocks.appendWebEdit.mockImplementation(()=>new Promise((_resolve,fail)=>{reject=fail;}));
+    render(<SharedNotesPage/>);
+    const task=await screen.findByRole('checkbox',{name:'牛乳'});
+    fireEvent.click(task);fireEvent.click(task);
+    expect((task as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.appendWebEdit).toHaveBeenCalledTimes(1);
+    reject(new Error('別の端末で変更されています'));
+    await screen.findByText(/別の端末で変更されています/);
+    expect(task.getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByText(/チェックを保存しました/)).toBeNull();
+  });
+
+  it('保存後の読込失敗を成功と表示しない', async () => {
+    mocks.loadSharedNotes.mockResolvedValueOnce({notes:[sharedNote('- [ ] 牛乳')],files:[]}).mockRejectedValue(new Error('読込失敗'));
+    render(<SharedNotesPage/>);
+    fireEvent.click(await screen.findByRole('checkbox',{name:'牛乳'}));
+    await screen.findByText(/Webを更新して保存結果を確認/);
+    expect(screen.getByRole('checkbox',{name:'牛乳'}).getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByText(/チェックを保存しました/)).toBeNull();
+  });
   it('共有解除は原本を消さない確認を出して明示操作で解除する', async () => {
     const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
     mocks.revokeWebNote.mockResolvedValue(undefined);
@@ -95,27 +130,21 @@ describe('shared note editor', () => {
     expect(mocks.downloadSharedImage).toHaveBeenCalledTimes(2);
   });
 
-  it('Windowsと同じチェック記号と完了線を表示し、編集時だけ切り替えられる', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('- [ ] 牛乳\n- [x] 卵', '買い物')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByText('1件の付箋を読み込みました。');
-    const milk = await screen.findByRole('checkbox', { name: '牛乳' });
-    const egg = await screen.findByRole('checkbox', { name: '卵' });
-    expect(milk.getAttribute('aria-checked')).toBe('false');
-    expect(egg.getAttribute('aria-checked')).toBe('true');
-    expect((milk as HTMLButtonElement).disabled).toBe(true);
-    expect((egg as HTMLButtonElement).textContent).toBe('☑');
-    expect(screen.getByText('卵').getAttribute('style')).toContain('line-through');
-
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const editableMilk = await screen.findByRole('checkbox', { name: '牛乳' });
-    expect((editableMilk as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(editableMilk);
-    expect(editableMilk.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token', expect.anything(), expect.objectContaining({ markdown: '- [x] 牛乳\n- [x] 卵' }),
-    ));
+  it("Windowsと同じチェック記号と完了線を表示し、編集時だけ切り替えられる（一つの本文欄）", async () => {
+    const original="- [ ] 牛乳\n- [x] 卵";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"- [x] 牛乳\n- [x] 卵"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"- [x] 牛乳\n- [x] 卵",backgroundColor:'#80d8ff',images:[]})));
   });
 
   it('空行と段落を保ち、空白のない長文もカード幅で折り返せる', async () => {
@@ -131,23 +160,21 @@ describe('shared note editor', () => {
     expect((screen.getByText(longLine) as HTMLElement).style.whiteSpace).toBe('pre-wrap');
   });
 
-  it('編集時も題名を二重表示せず、元のMarkdownと空行を保って保存する', async () => {
-    const original = '思い出プロンプト\n\n説明の一行目\n\n説明の二行目';
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote(original, '思い出プロンプト')], files: [] });
-    render(<SharedNotesPage />);
-    const article = await screen.findByRole('article');
-    expect(article.textContent?.match(/思い出プロンプト/g)).toHaveLength(1);
-
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    expect(article.textContent?.match(/思い出プロンプト/g)).toHaveLength(1);
-    const editor = screen.getByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
-    expect(editor.value).toBe('\n説明の一行目\n\n説明の二行目');
+  it("編集時も題名を二重表示せず、元のMarkdownと空行を保って保存する（一つの本文欄）", async () => {
+    const original="思い出プロンプト\n\n説明の一行目\n\n説明の二行目";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
-
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token', expect.anything(), expect.objectContaining({ markdown: original }),
-    ));
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"思い出プロンプト\n\n説明の一行目\n\n説明の二行目"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"思い出プロンプト\n\n説明の一行目\n\n説明の二行目",backgroundColor:'#80d8ff',images:[]})));
   });
 
   it('Windowsと同じ赤い太字を表示し、コード内とエスケープされた記号は強調しない', async () => {
@@ -288,7 +315,7 @@ describe('shared note editor', () => {
     mocks.downloadSharedImage.mockResolvedValue('blob:test-image');
 
     render(<SharedNotesPage />);
-    await screen.findByText('後', { exact: false });
+    await screen.findByText('強調後', { selector: 'strong', exact: true });
     await screen.findAllByRole('img', { name: '図' });
     expect(screen.getByText('強調チェック', { selector: 'strong' })).toBeTruthy();
     expect(screen.getByText('強調前', { selector: 'strong' })).toBeTruthy();
@@ -300,63 +327,55 @@ describe('shared note editor', () => {
     expect(screen.getByRole('article').textContent).toContain(`\`${imageRef}\``);
   });
 
-  it('チェック項目入力の $&, $1, $$ を文字どおり保存する', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('- [ ] 元の項目', '置換確認')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByRole('checkbox', { name: '元の項目' });
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const input = await screen.findByRole('textbox', { name: '項目 1' });
-    fireEvent.change(input, { target: { value: '$& / $1 / $$' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token', expect.anything(), expect.objectContaining({ markdown: '- [ ] $& / $1 / $$' }),
-    ));
+  it("チェック項目入力の $&, $1, $$ を文字どおり保存する（一つの本文欄）", async () => {
+    const original="- [ ] 元の項目";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"- [ ] $& / $1 / $$"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"- [ ] $& / $1 / $$",backgroundColor:'#80d8ff',images:[]})));
   });
 
-  it('コードフェンスを複数行の独立欄として編集し、前後の本文を重複させず保存する', async () => {
-    const original = '前の本文\n```md\n- [ ] コード中の見本\n```\n後の本文';
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote(original, 'コード境界')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByText('後の本文');
-    expect(screen.queryByRole('checkbox')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const before = await screen.findByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
-    const code = await screen.findByRole('textbox', { name: 'コード 2' }) as HTMLTextAreaElement;
-    expect(before.value).toBe('前の本文');
-    expect(code.value).toBe('```md\n- [ ] コード中の見本\n```');
-    expect((screen.getByRole('textbox', { name: '付箋本文（続き）' }) as HTMLTextAreaElement).value).toBe('後の本文');
-
-    fireEvent.focus(code);
-    fireEvent.change(code, { target: { value: '```md\n- [ ] コード中の見本\n追加行\n```' } });
-    const codeAfterFirstLine = await screen.findByRole('textbox', { name: 'コード 2' }) as HTMLTextAreaElement;
-    fireEvent.change(codeAfterFirstLine, { target: { value: '```md\n- [ ] コード中の見本\n追加行\nさらに追加\n```' } });
-    const editedCode = screen.getByRole('textbox', { name: 'コード 2' }) as HTMLTextAreaElement;
-    expect(editedCode.value).toBe('```md\n- [ ] コード中の見本\n追加行\nさらに追加\n```');
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token', expect.anything(), expect.objectContaining({
-        markdown: '前の本文\n```md\n- [ ] コード中の見本\n追加行\nさらに追加\n```\n後の本文',
-      }),
-    ));
+  it("コードフェンスを複数行の独立欄として編集し、前後の本文を重複させず保存する（一つの本文欄）", async () => {
+    const original="前の本文\n```md\n- [ ] コード中の見本\n```\n後の本文";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"前の本文\n```md\n- [ ] コード中の見本\n追加行\nさらに追加\n```\n後の本文"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"前の本文\n```md\n- [ ] コード中の見本\n追加行\nさらに追加\n```\n後の本文",backgroundColor:'#80d8ff',images:[]})));
   });
 
-  it('編集中にコードフェンス記号を変えても同じ入力欄で続けて編集できる', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('```md\n例\n```\n本文', '記号編集')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByText('本文');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const code = await screen.findByRole('textbox', { name: 'コード 1' }) as HTMLTextAreaElement;
-    fireEvent.focus(code);
-    fireEvent.change(code, { target: { value: '``md\n例\n```' } });
-    const afterFirstChange = screen.getByRole('textbox', { name: 'コード 1' }) as HTMLTextAreaElement;
-    expect(afterFirstChange).toBe(code);
-    fireEvent.change(afterFirstChange, { target: { value: '``mdx\n例を更新\n```' } });
-    expect(screen.getByRole('textbox', { name: 'コード 1' })).toBe(code);
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token', expect.anything(), expect.objectContaining({ markdown: '``mdx\n例を更新\n```\n本文' }),
-    ));
+  it("編集中にコードフェンス記号を変えても同じ入力欄で続けて編集できる（一つの本文欄）", async () => {
+    const original="```md\n例\n```\n本文";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"``mdx\n例を更新\n```\n本文"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"``mdx\n例を更新\n```\n本文",backgroundColor:'#80d8ff',images:[]})));
   });
 
   it('Quick Launcher風の検索で題名と本文を絞り込み、Driveを再読込しない', async () => {
@@ -436,7 +455,7 @@ describe('shared note editor', () => {
     const home = screen.getByRole('button', { name: '家', pressed: false });
     expect((all as HTMLButtonElement).disabled).toBe(true);
     expect((home as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole('heading', { name: '付箋1' })).toBeTruthy();
+    expect((screen.getByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement).value).toBe('本文1');
   });
 
   it('Windows側で選択中のタグがなくなった後もすべての付箋へ戻れる', async () => {
@@ -470,49 +489,38 @@ describe('shared note editor', () => {
     expect(await screen.findByRole('button', { name: 'work', pressed: true })).toBeTruthy();
   });
 
-  it('edits ordinary note text in one multiline field and preserves line breaks on save', async () => {
-    render(<SharedNotesPage />);
-    await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-
-    const body = await screen.findByRole('textbox', { name: '付箋本文' });
-    fireEvent.change(body, { target: { value: '買い物メモ\n牛乳を買う\n卵を買う' } });
-    expect((body as HTMLTextAreaElement).value).toBe('買い物メモ\n牛乳を買う\n卵を買う');
-    expect(screen.getAllByRole('textbox')).toHaveLength(2); // 本文1欄 + チェック項目1欄
-
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token',
-      expect.anything(),
-      expect.objectContaining({
-        markdown: '買い物メモ\n牛乳を買う\n卵を買う\n- [ ] 牛乳',
-        schemaVersion: 2,
-        backgroundColor: '#80d8ff',
-        tags: [],
-      }),
-    ));
+  it("edits ordinary note text in one multiline field and preserves line breaks on save（一つの本文欄）", async () => {
+    const original="買い物メモ\n牛乳を買う\n- [ ] 牛乳";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"買い物メモ\n牛乳を買う\n卵を買う\n- [ ] 牛乳"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"買い物メモ\n牛乳を買う\n卵を買う\n- [ ] 牛乳",backgroundColor:'#80d8ff',images:[]})));
   });
 
-  it('shows a title copied to the first body line once and preserves the full edit on save', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('\nWeb下りテスト\n\nあいうえお\nWeb下りテスト\n- [ ] 牛乳', 'Web下りテスト')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByRole('heading', { name: 'Web下りテスト' });
-
-    await waitFor(() => expect(screen.getAllByText('Web下りテスト')).toHaveLength(2)); // h2 + 後半に意図的に書いた同じ文字列
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const body = await screen.findByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
-    expect(body.value).toBe('\nWeb下りテスト\n\nあいうえお\nWeb下りテスト');
-    expect(screen.getAllByRole('textbox')).toHaveLength(2); // 本文1欄 + チェック項目1欄（題名の重複行を含めても重ならない）
-    fireEvent.change(body, { target: { value: '\nWeb下りテスト\n\nあいうえお\nWeb下りテスト\n追記' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: '牛乳' }));
-    fireEvent.click(screen.getByRole('button', { name: '＋ チェック項目を追加' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: '新しい項目' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token',
-      expect.anything(),
-      expect.objectContaining({ markdown: '\nWeb下りテスト\n\nあいうえお\nWeb下りテスト\n追記\n- [x] 牛乳\n- [x] 新しい項目' }),
-    ));
+  it("shows a title copied to the first body line once and preserves the full edit on save（一つの本文欄）", async () => {
+    const original="\nWeb下りテスト\n\nあいうえお\nWeb下りテスト\n- [ ] 牛乳";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"\nWeb下りテスト\n\nあいうえお\nWeb下りテスト\n追記\n- [x] 牛乳\n- [x] 新しい項目"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"\nWeb下りテスト\n\nあいうえお\nWeb下りテスト\n追記\n- [x] 牛乳\n- [x] 新しい項目",backgroundColor:'#80d8ff',images:[]})));
   });
 
   it('keeps the editor mounted when body text becomes equal to the title', async () => {
@@ -529,77 +537,89 @@ describe('shared note editor', () => {
     expect((screen.getByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement).value).toBe('題名\n続き');
   });
 
-  it('lets a title-only note gain body text without duplicating or deleting its original title line', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('買い物', '買い物')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const append = await screen.findByRole('textbox', { name: '付箋本文を追加' });
-    fireEvent.change(append, { target: { value: '牛乳を買う' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token',
-      expect.anything(),
-      expect.objectContaining({ markdown: '買い物\n牛乳を買う' }),
-    ));
-  });
-
-  it('preserves a duplicated title and checklist when no optional body is added', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('買い物\n- [ ] 牛乳', '買い物')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    expect(await screen.findByRole('textbox', { name: '付箋本文を追加' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token',
-      expect.anything(),
-      expect.objectContaining({ markdown: '買い物\n- [ ] 牛乳' }),
-    ));
-  });
-
-  it('does not hide a checklist when editing removes a duplicated title after a leading blank', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('\n題名\n- [ ] 牛乳', '題名')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    const body = await screen.findByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
-    expect(body.value).toBe('\n題名');
-
-    fireEvent.change(body, { target: { value: 'メモ' } });
-    expect(screen.getByRole('checkbox', { name: '牛乳' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mocks.appendWebEdit).toHaveBeenCalledWith(
-      'test-token',
-      expect.anything(),
-      expect.objectContaining({ markdown: 'メモ\n- [ ] 牛乳' }),
-    ));
-  });
-
-  it('keeps a text area stable while a user types a checklist line', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('メモ')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    await screen.findByRole('button', { name: '保存' });
-    const body = await screen.findByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
-    fireEvent.focus(body);
-    fireEvent.change(body, { target: { value: 'メモ\n- [ ] 牛乳' } });
-    expect((screen.getByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement).value)
-      .toBe('メモ\n- [ ] 牛乳');
+  it("lets a title-only note gain body text without duplicating or deleting its original title line（一つの本文欄）", async () => {
+    const original="買い物";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"買い物\n牛乳を買う"}});
     fireEvent.blur(body);
-    expect((await screen.findByRole('textbox', { name: '項目 2' }) as HTMLInputElement).value)
-      .toBe('牛乳');
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"買い物\n牛乳を買う",backgroundColor:'#80d8ff',images:[]})));
   });
 
-  it('adds a real checklist item while keeping the body as free-form text', async () => {
-    mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('自由な文章')], files: [] });
-    render(<SharedNotesPage />);
-    await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
-    fireEvent.click(screen.getByRole('button', { name: '＋ チェック項目を追加' }));
-
-    expect((screen.getByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement).value).toBe('自由な文章');
-    expect((screen.getByRole('textbox', { name: '項目 2' }) as HTMLInputElement).value).toBe('新しい項目');
+  it("preserves a duplicated title and checklist when no optional body is added（一つの本文欄）", async () => {
+    const original="買い物\n- [ ] 牛乳";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"買い物\n- [ ] 牛乳"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"買い物\n- [ ] 牛乳",backgroundColor:'#80d8ff',images:[]})));
   });
+
+  it("does not hide a checklist when editing removes a duplicated title after a leading blank（一つの本文欄）", async () => {
+    const original="\n題名\n- [ ] 牛乳";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"メモ\n- [ ] 牛乳"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"メモ\n- [ ] 牛乳",backgroundColor:'#80d8ff',images:[]})));
+  });
+
+  it("keeps a text area stable while a user types a checklist line（一つの本文欄）", async () => {
+    const original="メモ";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"メモ\n- [ ] 牛乳"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"メモ\n- [ ] 牛乳",backgroundColor:'#80d8ff',images:[]})));
+  });
+
+  it("adds a real checklist item while keeping the body as free-form text（一つの本文欄）", async () => {
+    const original="自由な文章";
+    mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('article');
+    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
+    expect(body.value).toBe(original);
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByRole('button',{name:'＋ チェック項目を追加'})).toBeNull();
+    fireEvent.change(body,{target:{value:"自由な文章\n- [ ] 新しい項目"}});
+    fireEvent.blur(body);
+    expect(screen.getByRole('textbox',{name:'付箋本文'})).toBe(body);
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await waitFor(()=>expect(mocks.appendWebEdit).toHaveBeenCalledWith('test-token',expect.anything(),expect.objectContaining({markdown:"自由な文章\n- [ ] 新しい項目",backgroundColor:'#80d8ff',images:[]})));
+  });
+
 });

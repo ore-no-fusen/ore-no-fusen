@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import React from 'react';
 import { refreshAccessToken } from '@/app/viewer/lib/drive';
 import { renderSecureMermaid } from '@/app/utils/mermaid';
@@ -8,7 +8,6 @@ import { copySharedConnectionDiagnostics, logSharedConnection } from './lib/conn
 import { markSharedLoginReturn } from './lib/login-return';
 import { appendWebEdit, downloadSharedImage, loadSharedNotes, revokeWebNote, type SharedNote } from './lib/drive';
 import { NewNote } from './NewNote';
-import { replaceTaskText } from './lib/markdown';
 
 type DriveFile = { id: string; name: string; mimeType?: string };
 
@@ -35,11 +34,6 @@ function setTaskLine(markdown: string, lineIndex: number, checked: boolean): str
   return markdown.split('\n').map((line, index) => index === lineIndex
     ? line.replace(/^(\s*[-*+]\s*\[)[ xX](\]\s*)/, `$1${checked ? 'x' : ' '}$2`)
     : line).join('\n');
-}
-
-function replaceMarkdownLines(markdown: string, start: number, end: number, replacement: string): string {
-  const lines = markdown.split('\n');
-  return [...lines.slice(0, start), ...replacement.split('\n'), ...lines.slice(end + 1)].join('\n');
 }
 
 function safeWebHref(destination: string): string | null {
@@ -114,13 +108,11 @@ export default function SharedNotesPage() {
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [editing, setEditing] = useState(false);
-  const [editingDuplicateTitleLine, setEditingDuplicateTitleLine] = useState<number | null>(null);
-  const [appendedBody, setAppendedBody] = useState('');
-  const [activeBodyBlock, setActiveBodyBlock] = useState<{ start: number; text: string; kind?: 'code' | 'text' } | null>(null);
   const [title, setTitle] = useState('');
   const [markdown, setMarkdown] = useState('');
   const [images, setImages] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const checkSaving = useRef(false);
   const [message, setMessage] = useState('Google Driveに接続して付箋を読み込みます。');
   const [diagnosticMessage, setDiagnosticMessage] = useState('');
   const [creating,setCreating]=useState(false);
@@ -158,7 +150,6 @@ export default function SharedNotesPage() {
       setSelected((index) => Math.min(index, Math.max(0, loaded.notes.length - 1)));
       setMessage(loaded.notes.length ? `${loaded.notes.length}件の付箋を読み込みました。` : 'まだ付箋がありません。先にWindowsのランチャーから同期してください。');
       setEditing(false);
-      setAppendedBody('');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Driveから読み込めませんでした。');
     } finally {
@@ -210,13 +201,12 @@ export default function SharedNotesPage() {
     }
   }, [allTags, selectedTag]);
   const dirty = Boolean(current && editing && (
-    title !== current.operation.payload.title || markdown !== current.operation.payload.markdown || appendedBody.length > 0
+    title !== current.operation.payload.title || markdown !== current.operation.payload.markdown
   ));
   useEffect(() => {
     if (!current) return;
     setTitle(current.operation.payload.title);
     setMarkdown(current.operation.payload.markdown);
-    setActiveBodyBlock(null);
   }, [current?.operation.operationId]);
 
   useEffect(() => {
@@ -242,10 +232,7 @@ export default function SharedNotesPage() {
     setBusy(true);
     setMessage('変更をDriveに保存しています…');
     try {
-      const savedMarkdown = appendedBody
-        ? `${markdown}${markdown && !markdown.endsWith('\n') ? '\n' : ''}${appendedBody}`
-        : markdown;
-      await appendWebEdit(token, current, { ...current.operation.payload, title, markdown: savedMarkdown });
+      await appendWebEdit(token, current, { ...current.operation.payload, title, markdown });
       await reload(token);
       setMessage('保存しました。Windowsに反映するには、PC側で「Webと同期」を押してください。');
     } catch (error) {
@@ -253,12 +240,35 @@ export default function SharedNotesPage() {
     } finally { setBusy(false); }
   }
 
+  async function toggleViewedTask(lineIndex: number, checked: boolean) {
+    if (!current || !token || busy || checkSaving.current) return;
+    if (editing) { setMarkdown(value => setTaskLine(value, lineIndex, checked)); return; }
+    checkSaving.current = true;
+    setBusy(true);
+    setMessage('チェックの変更を保存しています…');
+    try {
+      await appendWebEdit(token, current, {
+        ...current.operation.payload,
+        markdown: setTaskLine(current.operation.payload.markdown, lineIndex, checked),
+      });
+      // Read the new operation/head before another click; an old head must not
+      // be reused for the next change. Do not optimistically show unsaved data.
+      const loaded = await loadSharedNotes(token);
+      setNotes(loaded.notes);
+      setFiles(loaded.files);
+      setMessage('チェックを保存しました。Windowsには「Webと同期」で反映します。');
+    } catch (error) {
+      setMessage(`${error instanceof Error ? error.message : '保存結果を確認できませんでした。'} Webを更新して保存結果を確認してください。`);
+    } finally {
+      checkSaving.current = false;
+      setBusy(false);
+    }
+  }
+
   const button: React.CSSProperties = { border: '1px solid #cbd5e1', borderRadius: 8, padding: '9px 14px', background: 'white', color: '#162238', fontWeight: 600, cursor: 'pointer' };
   const taskPattern = /^(\s*[-*+]\s*)\[([ xX])\](\s*)(.*)$/;
-  const imagePattern = /!\[[^\]]*\]\(ore-fusen-image:\/\/(img-[0-9a-f]{64})\)/;
   const bodyLines = markdown.split('\n');
   const fencedCodeRangesByLine = fencedCodeRanges(bodyLines);
-  const fencedCodeLines = new Set(fencedCodeRangesByLine.keys());
   const mermaidCount = [...new Set([...fencedCodeRangesByLine.values()].map((range) => range.start))]
     .filter((start) => /^```\s*mermaid\s*$/i.test(bodyLines[start].trim())).length;
   // The Windows note title may also be copied into the first body line. Show
@@ -268,14 +278,7 @@ export default function SharedNotesPage() {
   const detectedDuplicateTitleLine = firstBodyLine >= 0 && bodyLines[firstBodyLine].trim() === title.trim()
     ? firstBodyLine
     : -1;
-  // Keep the display-only duplicate decision stable during editing. Typing a
-  // body line equal to the title must not unmount the focused editor.
-  const duplicateTitleLine = editing && editingDuplicateTitleLine !== null
-    // A title duplicated at line 0 is outside the editor and remains hidden.
-    // A later duplicate is inside the multiline editor; its old line number
-    // must not hide a checklist or another line after the user edits the text.
-    ? editingDuplicateTitleLine === 0 ? 0 : -1
-    : detectedDuplicateTitleLine;
+  const duplicateTitleLine = detectedDuplicateTitleLine;
 
   return <main style={{ minHeight: '100vh', background: '#f2f5f9', padding: '24px 16px', color: '#17243a', fontFamily: 'system-ui, sans-serif' }}>
     <div style={{ maxWidth: 1000, margin: '0 auto', background: 'white', borderRadius: 18, padding: '24px 28px', boxShadow: '0 8px 30px #17243a12' }}>
@@ -338,45 +341,24 @@ export default function SharedNotesPage() {
               catch(e){setMessage(e instanceof Error?e.message:'共有を解除できませんでした。');}
               finally{setBusy(false);}
             }}>共有から外す</button>}
-            {!editing ? <button style={button} onClick={() => {
-              const initialLines = current.operation.payload.markdown.split('\n');
-              const firstLine = initialLines.findIndex((line) => line.trim().length > 0);
-              setEditingDuplicateTitleLine(firstLine >= 0 && initialLines[firstLine].trim() === current.operation.payload.title.trim() ? firstLine : -1);
-              setAppendedBody('');
+            {!editing ? <button style={button} disabled={busy} onClick={() => {
               setEditing(true);
             }}>編集</button> : <div style={{ display: 'flex', gap: 8 }}>
               <button style={button} disabled={busy} onClick={() => {
                 if (dirty && !window.confirm('編集内容を破棄しますか？')) return;
-                setTitle(current.operation.payload.title); setMarkdown(current.operation.payload.markdown); setAppendedBody(''); setEditing(false); setEditingDuplicateTitleLine(null);
+                setTitle(current.operation.payload.title); setMarkdown(current.operation.payload.markdown); setEditing(false);
               }}>キャンセル</button>
               <button style={{ ...button, background: '#1689dc', color: 'white', borderColor: '#1689dc' }} disabled={busy} onClick={() => void save()}>保存</button>
             </div>}
           </div>
           <article style={{ background: current.operation.payload.backgroundColor ?? '#f7e9b0', borderRadius: 12, padding: '22px 26px', minHeight: 260, overflowWrap: 'anywhere' }}>
-            <h2 style={{ marginTop: 0 }}>{current.operation.payload.title}</h2>
+            {!editing && <h2 style={{ marginTop: 0 }}>{current.operation.payload.title}</h2>}
             <div>
-              {bodyLines.map((line, index) => {
+              {editing ? <textarea aria-label="付箋本文" disabled={busy} rows={16} value={markdown} onChange={event => setMarkdown(event.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: 0, padding: 0, background: 'transparent', color: 'inherit', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} /> : bodyLines.map((line, index) => {
                 if (index === duplicateTitleLine) return null;
-                if (editing && activeBodyBlock) {
-                  const activeEnd = activeBodyBlock.start + activeBodyBlock.text.split('\n').length - 1;
-                  if (index > activeBodyBlock.start && index <= activeEnd) return null;
-                  if (index === activeBodyBlock.start) return <textarea key={activeBodyBlock.kind === 'code' ? `code-${index}` : `body-${index}`} aria-label={activeBodyBlock.kind === 'code' ? `コード ${activeBodyBlock.start + 1}` : '付箋本文'} disabled={busy} rows={Math.min(12, Math.max(4, activeBodyBlock.text.split('\n').length + 1))} value={activeBodyBlock.text} onChange={(event) => {
-                    const nextText = event.target.value;
-                    setMarkdown((value) => replaceMarkdownLines(value, activeBodyBlock.start, activeBodyBlock.start + activeBodyBlock.text.split('\n').length - 1, nextText));
-                    setActiveBodyBlock({ ...activeBodyBlock, text: nextText });
-                  }} onBlur={() => setActiveBodyBlock(null)} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6bd66', borderRadius: 6, padding: '12px 10px', margin: '3px 0', background: '#fff9df', color: '#17243a', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />;
-                }
                 const codeRange = fencedCodeRangesByLine.get(index);
                 if (codeRange) {
                   if (index !== codeRange.start) return null;
-                  if (editing) {
-                    const block = bodyLines.slice(codeRange.start, codeRange.end + 1).join('\n');
-                    return <textarea key={`code-${codeRange.start}`} aria-label={`コード ${codeRange.start + 1}`} disabled={busy} rows={Math.min(12, Math.max(4, block.split('\n').length))} value={block} onFocus={() => setActiveBodyBlock({ start: codeRange.start, text: block, kind: 'code' })} onChange={(event) => {
-                      const nextText = event.target.value;
-                      setMarkdown((value) => replaceMarkdownLines(value, codeRange.start, codeRange.end, nextText));
-                      setActiveBodyBlock({ start: codeRange.start, text: nextText, kind: 'code' });
-                    }} onBlur={() => setActiveBodyBlock(null)} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6bd66', borderRadius: 6, padding: '12px 10px', margin: '3px 0', background: '#fff9df', color: '#17243a', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />;
-                  }
                   const codeEnd = codeRange.closed ? codeRange.end : codeRange.end + 1;
                   if (/^```\s*mermaid\s*$/i.test(bodyLines[codeRange.start].trim()) && codeRange.closed && mermaidCount <= 10) {
                     return <MermaidDiagram key={`mermaid-${codeRange.start}`} code={bodyLines.slice(codeRange.start + 1, codeEnd).join('\n')} />;
@@ -387,21 +369,11 @@ export default function SharedNotesPage() {
                 if (task) {
                   const checked = task[2].toLowerCase() === 'x';
                   return <div key={index} style={{ display: 'flex', gap: 6, alignItems: 'baseline', padding: '7px 0' }}>
-                    <button type="button" role="checkbox" aria-label={task[4]} aria-checked={checked} title={checked ? '未完了にする' : '完了にする'} disabled={!editing || busy} onClick={() => setMarkdown((value) => setTaskLine(value, index, !checked))} style={{ border: 0, padding: 0, background: 'transparent', color: checked ? '#4caf50' : '#888', width: '1em', flex: '0 0 1em', textAlign: 'center', font: 'inherit', lineHeight: 'inherit', cursor: editing && !busy ? 'pointer' : 'default' }}>{checked ? '☑' : '☐'}</button>
-                    {editing
-                      ? <input aria-label={`項目 ${index + 1}`} disabled={busy} value={task[4]} onChange={(event) => {
-                        const nextText = event.target.value;
-                        setMarkdown((value) => replaceTaskText(value, index, nextText));
-                      }} style={{ flex: 1, border: '1px solid #d6bd66', borderRadius: 5, padding: 6, background: '#fff9df', font: 'inherit' }} />
-                      : <span style={{ textDecoration: checked ? 'line-through' : 'none', opacity: checked ? 0.6 : 1 }}>{renderInlineContent(task[4], images)}</span>}
+                    <button type="button" role="checkbox" aria-label={task[4]} aria-checked={checked} title={checked ? '未完了にする' : '完了にする'} disabled={busy} onClick={() => void toggleViewedTask(index, !checked)} style={{ border: 0, padding: 0, background: 'transparent', color: checked ? '#4caf50' : '#888', width: '1em', flex: '0 0 1em', textAlign: 'center', font: 'inherit', lineHeight: 'inherit', cursor: !busy ? 'pointer' : 'default' }}>{checked ? '☑' : '☐'}</button>
+                    <span style={{ textDecoration: checked ? 'line-through' : 'none', opacity: checked ? 0.6 : 1 }}>{renderInlineContent(task[4], images)}</span>
                   </div>;
                 }
                 const imageMatches = [...line.matchAll(/!\[([^\]]*)\]\(ore-fusen-image:\/\/(img-[0-9a-f]{64})\)/g)];
-                if (editing && imageMatches.length) return <textarea key={`body-${index}`} aria-label={`本文 ${index + 1}`} disabled={busy} rows={Math.min(12, Math.max(4, line.split('\n').length + 1))} value={line} onFocus={() => setActiveBodyBlock({ start: index, text: line })} onChange={(event) => {
-                  const nextText = event.target.value;
-                  setMarkdown((value) => replaceMarkdownLines(value, index, index, nextText));
-                  setActiveBodyBlock({ start: index, text: nextText });
-                    }} onBlur={() => setActiveBodyBlock(null)} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6bd66', borderRadius: 6, padding: '12px 10px', margin: '3px 0', background: '#fff9df', color: '#17243a', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />;
                 const heading = !editing ? line.match(/^(#{1,6})\s+(.*)$/) : null;
                 if (heading) {
                   const level = heading[1].length;
@@ -429,25 +401,11 @@ export default function SharedNotesPage() {
                   return <div key={index} role="list">{items}</div>;
                 }
                 if (imageMatches.length) return <div key={index} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '7px 0' }}>{renderInlineContent(line, images, 'block')}</div>;
-                if (editing) {
-                  const previousIsBlock = index > 0 && !fencedCodeLines.has(index - 1) && !bodyLines[index - 1].match(taskPattern) && !bodyLines[index - 1].match(imagePattern)
-                    && !(duplicateTitleLine === 0 && index === 1);
-                  if (previousIsBlock) return null;
-                  let end = index;
-                  while (end + 1 < bodyLines.length && !fencedCodeLines.has(end + 1) && !bodyLines[end + 1].match(taskPattern) && !bodyLines[end + 1].match(imagePattern)) end += 1;
-                  const block = bodyLines.slice(index, end + 1).join('\n');
-                  const label = index === 0 || !bodyLines.slice(0, index).some((candidate, candidateIndex) => candidateIndex !== duplicateTitleLine && !candidate.match(taskPattern) && !candidate.match(imagePattern))
-                    ? '付箋本文'
-                    : '付箋本文（続き）';
-                  return <textarea key={`body-${index}`} aria-label={label} disabled={busy} rows={Math.min(12, Math.max(4, end - index + 2))} value={block} onFocus={() => setActiveBodyBlock({ start: index, text: block })} onChange={(event) => setMarkdown((value) => replaceMarkdownLines(value, index, end, event.target.value))} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6bd66', borderRadius: 6, padding: '12px 10px', margin: '3px 0', background: '#fff9df', color: '#17243a', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />;
-                }
                 return <p key={index} style={{ minHeight: line ? undefined : 8, whiteSpace: 'pre-wrap', margin: '7px 0' }}>{renderInlineContent(line.replace(/^\s*[-*+]\s+/, '・'), images)}</p>;
               })}
-              {editing && duplicateTitleLine >= 0 && !bodyLines.some((line, index) => index !== duplicateTitleLine && line.trim() && !taskPattern.test(line) && !fencedCodeLines.has(index) && !imagePattern.test(line)) && <textarea aria-label="付箋本文を追加" disabled={busy} rows={4} value={appendedBody} onChange={(event) => setAppendedBody(event.target.value)} placeholder="本文を追加" style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d6bd66', borderRadius: 6, padding: '12px 10px', margin: '3px 0', background: '#fff9df', color: '#17243a', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />}
-              {editing && <div style={{ marginTop: 10 }}><button type="button" disabled={busy} style={button} onClick={() => setMarkdown((value) => `${value}${value && !value.endsWith('\n') ? '\n' : ''}- [ ] 新しい項目`)}>＋ チェック項目を追加</button><p style={{ color: '#607086', fontSize: 13, margin: '8px 0 0' }}>本文はそのまま改行して書けます。追加した項目は保存後、チェックボックスで表示されます。</p></div>}
             </div>
           </article>
-          <p style={{ color: '#607086', fontSize: 13 }}>チェックを変えるには「編集」を押します。保存後、Windows側は手動同期で反映します。</p>
+          <p style={{ color: '#607086', fontSize: 13 }}>チェックは押すと保存します。本文は「編集」で変更できます。Windows側は「Webと同期」で反映します。</p>
         </section>}
         </div>
       </div>}
