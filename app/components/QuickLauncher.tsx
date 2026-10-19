@@ -91,10 +91,6 @@ export function nextTab(current: LauncherTab, direction: 'left' | 'right'): Laun
     return LAUNCHER_TABS[nextIndex].key;
 }
 
-export function shouldCloseLauncherAfterBlur(locked: boolean, isFocused: boolean): boolean {
-    return !locked && !isFocused;
-}
-
 export function removeActionLabel(tab: LauncherTab, language: Language = 'ja'): string {
     return language === 'en'
         ? (tab === 'shortcut' ? 'Remove from Launcher' : 'Move to Trash')
@@ -163,24 +159,45 @@ export default function QuickLauncher() {
     const [showStored, setShowStored] = useState(false);
     const [busy, setBusy] = useState(false);
     const [webSyncBusy, setWebSyncBusy] = useState(false);
+    const [alwaysOnTop, setAlwaysOnTop] = useState(true);
+    const [pinBusy, setPinBusy] = useState(true);
     const operationRef = useRef(false);
     const [items, setItems] = useState<QuickOpenItem[]>([]);
     const [tagFilters, setTagFilters] = useState<Partial<Record<LauncherTab, string>>>({});
     const [selectedIndex, setSelectedIndex] = useState(0);
-    const [isLocked, setIsLocked] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [webSyncMessage, setWebSyncMessage] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
     const [renameTarget, setRenameTarget] = useState<{ path: string; value: string } | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
-    const lockedRef = useRef(false);
     const requestGenerationRef = useRef(0);
     const debouncedQuery = useDebouncedValue(query, 120);
 
     useEffect(() => {
-        lockedRef.current = isLocked;
-    }, [isLocked]);
+        let cancelled = false;
+        void (async () => {
+            try {
+                const active = await getCurrentWindow().isAlwaysOnTop();
+                if (!cancelled) setAlwaysOnTop(active);
+            } catch { /* Keep the existing window default if the query fails. */ }
+            finally { if (!cancelled) setPinBusy(false); }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    const toggleAlwaysOnTop = async () => {
+        if (pinBusy) return;
+        setPinBusy(true);
+        try {
+            const next = !alwaysOnTop;
+            await getCurrentWindow().setAlwaysOnTop(next);
+            setAlwaysOnTop(next);
+            playPinToggleSound(!next);
+        } catch {
+            setError(isEnglish ? 'Could not change always-on-top.' : '最前面の設定を変更できませんでした。');
+        } finally { setPinBusy(false); }
+    };
 
     const reloadItems = useCallback(async (tab: LauncherTab, search: string) => {
         const requestId = ++requestGenerationRef.current;
@@ -291,40 +308,6 @@ export default function QuickLauncher() {
     }, [activeTab, debouncedQuery, reloadItems]);
 
     useEffect(() => {
-        let blurTimer: number | null = null;
-
-        const cancelPendingBlur = () => {
-            if (blurTimer !== null) {
-                window.clearTimeout(blurTimer);
-                blurTimer = null;
-            }
-        };
-
-        const onWindowBlur = () => {
-            cancelPendingBlur();
-            blurTimer = window.setTimeout(async () => {
-                blurTimer = null;
-                try {
-                    const isFocused = await getCurrentWindow().isFocused();
-                    if (shouldCloseLauncherAfterBlur(lockedRef.current, isFocused)) {
-                        await closeLauncherWindow();
-                    }
-                } catch (e) {
-                    console.error('[QuickLauncher] failed to verify window focus after blur:', e);
-                }
-            }, 120);
-        };
-
-        window.addEventListener('blur', onWindowBlur);
-        window.addEventListener('focus', cancelPendingBlur);
-        return () => {
-            cancelPendingBlur();
-            window.removeEventListener('blur', onWindowBlur);
-            window.removeEventListener('focus', cancelPendingBlur);
-        };
-    }, []);
-
-    useEffect(() => {
         const closeContextMenu = () => setContextMenu(null);
         window.addEventListener('click', closeContextMenu);
         return () => window.removeEventListener('click', closeContextMenu);
@@ -345,9 +328,6 @@ export default function QuickLauncher() {
     const openItem = useCallback(async (item: QuickOpenItem) => {
         if (operationRef.current) return;
         await openQuickNote(item.path);
-        if (!lockedRef.current) {
-            await closeLauncherWindow();
-        }
     }, []);
 
     const activeTagFilter = tagFilters[activeTab] ?? ALL_TAGS_FILTER;
@@ -408,10 +388,8 @@ export default function QuickLauncher() {
                 setContextMenu(null);
                 return;
             }
-            if (!lockedRef.current) {
-                e.preventDefault();
-                closeLauncherWindow().catch(() => {});
-            }
+            e.preventDefault();
+            closeLauncherWindow().catch(() => {});
             return;
         }
 
@@ -524,22 +502,10 @@ export default function QuickLauncher() {
                 className="flex h-8 items-center justify-between border-b border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-400"
             >
                 <span data-tauri-drag-region className="font-medium tracking-normal">Quick Launcher</span>
-                <button
-                    type="button"
-                    onClick={() => {
-                        playPinToggleSound(isLocked);
-                        setIsLocked((value) => !value);
-                    }}
-                    className={`flex min-w-[28px] items-center justify-center rounded px-2 py-0.5 text-[16px] transition-all duration-200 ${
-                        isLocked
-                            ? 'bg-red-50 text-red-600 opacity-100 scale-100 hover:bg-red-100'
-                            : 'text-gray-400 opacity-70 scale-95 hover:bg-zinc-800 hover:text-gray-200 hover:opacity-100'
-                    }`}
-                    aria-pressed={isLocked}
-                    title={isEnglish ? 'Lock' : 'ロック'}
-                >
-                    <PinTackIcon active={isLocked} />
-                </button>
+                <div className="flex items-center gap-1">
+                <button type="button" disabled={pinBusy} aria-label={isEnglish ? 'Always on Top' : '最前面'} title={isEnglish ? 'Always on Top' : '最前面'} aria-pressed={alwaysOnTop} onClick={() => void toggleAlwaysOnTop()} className={`flex h-6 w-7 items-center justify-center rounded ${alwaysOnTop ? 'bg-red-50 text-red-600' : 'text-zinc-400 hover:bg-zinc-700'}`}><PinTackIcon active={alwaysOnTop}/></button>
+                <button type="button" aria-label={isEnglish ? 'Close Launcher' : 'ランチャーを閉じる'} title={isEnglish ? 'Close Launcher' : 'ランチャーを閉じる'} onClick={() => void closeLauncherWindow().catch(() => {})} className="flex h-6 w-7 items-center justify-center rounded text-lg text-zinc-300 hover:bg-zinc-700 hover:text-white">×</button>
+                </div>
             </div>
 
             <div className="flex h-[calc(100vh-2rem)] flex-col gap-2 p-2">
@@ -706,7 +672,7 @@ export default function QuickLauncher() {
 
                 <div className="flex h-5 items-center justify-between text-[11px] text-zinc-600">
                     <span>{isLoading ? (isEnglish ? 'Loading' : '読み込み中') : `${visibleItems.length} / ${storageSource.length}${isEnglish ? '' : ' 件'}`}</span>
-                    <span>{isLocked ? (isEnglish ? 'Locked' : 'ロック中') : (isEnglish ? 'Close with Esc or blur' : 'Esc / blur で閉じる')}</span>
+                    <span>{isEnglish ? 'Close with × / Esc / Ctrl+P' : '× / Esc / Ctrl+P で閉じる'}</span>
                 </div>
             </div>
 
