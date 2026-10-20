@@ -23,6 +23,70 @@ function jsonResponse(data: unknown) {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('shared Drive storage', () => {
+  it('reuses only records with the same freshly listed Drive version and downloads changed/unversioned records', async () => {
+    const seed=await seedOperation(); let version:string|undefined='1'; let downloads=0;
+    vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>{
+      const url=String(input);
+      if(url.includes('/about?'))return jsonResponse({user:{emailAddress:scope.accountSubject}});
+      if(url.includes('/files?')) {
+        const q=new URL(url).searchParams.get('q')??'';
+        if(q.includes("name='ore-no-fusen'"))return jsonResponse({files:[{id:'root'}]});
+        if(q.includes("name='web-share-temp'"))return jsonResponse({files:[{id:'share'}]});
+        return jsonResponse({files:[{id:'version-test-seed',name:'op-op-seed.json',version}]});
+      }
+      if(url.includes('/files/version-test-seed?')){downloads++;return jsonResponse(seed);}
+      throw new Error('unexpected');
+    }));
+    const {loadSharedNotes}=await import('./drive');
+    await loadSharedNotes('token');await loadSharedNotes('token');expect(downloads).toBe(1);
+    version='2';await loadSharedNotes('token');expect(downloads).toBe(2);
+    version=undefined;await loadSharedNotes('token');await loadSharedNotes('token');expect(downloads).toBe(4);
+  });
+  it('stops and resumes only Web sharing, survives reload and rejects stale settings without touching note data', async () => {
+    const seed = await seedOperation();
+    const settings: {id:string; name:string; value:unknown}[] = [];
+    const writes: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method && init.method !== 'GET') {
+        writes.push(init.method);
+        const form = init.body as FormData;
+        const read = (blob: Blob) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsText(blob); });
+        const value = JSON.parse(await read(form.get('file') as Blob));
+        const metadata = JSON.parse(await read(form.get('metadata') as Blob));
+        expect(metadata.name).toMatch(/^web-sharing-/);
+        expect(value.payload).toBeUndefined();
+        settings.push({id:`setting-${settings.length}`,name:metadata.name,value});
+        return jsonResponse({id:'saved'});
+      }
+      if (url.includes('/about?')) return jsonResponse({user:{emailAddress:scope.accountSubject}});
+      if (url.includes('/files?')) {
+        const q = new URL(url).searchParams.get('q') ?? '';
+        if (q.includes("name='ore-no-fusen'")) return jsonResponse({files:[{id:'root'}]});
+        if (q.includes("name='web-share-temp'")) return jsonResponse({files:[{id:'folder'}]});
+        return jsonResponse({files:[{id:'seed',name:'op-op-seed.json'},...settings.map(({id,name})=>({id,name}))]});
+      }
+      if (url.includes('/files/seed?')) return jsonResponse(seed);
+      const setting = settings.find(item=>url.includes(`/files/${item.id}?`));
+      if (setting) return jsonResponse(setting.value);
+      throw new Error('Unexpected request');
+    }));
+    const {loadSharedNotes,setWebSharing,appendWebEdit} = await import('./drive');
+    const initial = (await loadSharedNotes('token')).notes[0];
+    await setWebSharing('token', initial, true);
+    const stopped = await loadSharedNotes('token');
+    expect(stopped.notes).toHaveLength(0);
+    expect(stopped.stoppedNotes[0].operation).toEqual(initial.operation);
+    expect((await loadSharedNotes('token')).stoppedNotes).toHaveLength(1);
+    await expect(appendWebEdit('token', initial, payload)).rejects.toThrow('共有は終了');
+    await expect(setWebSharing('token', initial, false)).rejects.toThrow('共有設定が変わりました');
+    await setWebSharing('token', stopped.stoppedNotes[0], false);
+    const resumed = await loadSharedNotes('token');
+    expect(resumed.notes[0].operation).toEqual(initial.operation);
+    expect(resumed.stoppedNotes).toHaveLength(0);
+    expect((settings[1].value as {parents:string[]}).parents).toEqual(stopped.stoppedNotes[0].sharingHeads);
+    expect(writes).toEqual(['POST','POST']);
+  });
   it('deduplicates a Web create retry and rejects a changed request or account', async () => {
     const request={schemaVersion:1 as const,accountSubject:'uck@example.test',targetPcId:'11111111-1111-4111-8111-111111111111',noteId:'22222222-2222-4222-8222-222222222222',markdown:'試験\n**太字**'};
     let uploaded=false;let writes=0;

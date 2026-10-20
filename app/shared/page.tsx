@@ -6,8 +6,9 @@ import { refreshAccessToken } from '@/app/viewer/lib/drive';
 import { renderSecureMermaid } from '@/app/utils/mermaid';
 import { copySharedConnectionDiagnostics, logSharedConnection } from './lib/connection-diagnostic';
 import { markSharedLoginReturn } from './lib/login-return';
-import { appendWebEdit, downloadSharedImage, loadSharedNotes, revokeWebNote, type SharedNote } from './lib/drive';
+import { appendWebEdit, downloadSharedImage, loadSharedNotes, setWebSharing, type SharedNote } from './lib/drive';
 import { NewNote } from './NewNote';
+import ConfirmDialog from '@/app/components/ConfirmDialog';
 
 type DriveFile = { id: string; name: string; mimeType?: string };
 
@@ -113,9 +114,12 @@ export default function SharedNotesPage() {
   const [images, setImages] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const checkSaving = useRef(false);
+  const [pendingTask, setPendingTask] = useState<{ operationId: string; lineIndex: number; checked: boolean } | null>(null);
   const [message, setMessage] = useState('Google Driveに接続して付箋を読み込みます。');
   const [diagnosticMessage, setDiagnosticMessage] = useState('');
   const [creating,setCreating]=useState(false);
+  const [showStopped, setShowStopped] = useState(false);
+  const [sharingConfirmation, setSharingConfirmation] = useState<{ note: SharedNote; paused: boolean } | null>(null);
 
   useEffect(() => {
     logSharedConnection('shared_page_loaded');
@@ -145,13 +149,16 @@ export default function SharedNotesPage() {
     setBusy(true);
     try {
       const loaded = await loadSharedNotes(accessToken);
-      setNotes(loaded.notes);
+      const allNotes = [...loaded.notes, ...(loaded.stoppedNotes ?? [])];
+      setNotes(allNotes);
       setFiles(loaded.files);
-      setSelected((index) => Math.min(index, Math.max(0, loaded.notes.length - 1)));
+      setSelected((index) => Math.min(index, Math.max(0, allNotes.length - 1)));
       setMessage(loaded.notes.length ? `${loaded.notes.length}件の付箋を読み込みました。` : 'まだ付箋がありません。先にWindowsのランチャーから同期してください。');
       setEditing(false);
+      return loaded;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Driveから読み込めませんでした。');
+      return null;
     } finally {
       setBusy(false);
     }
@@ -186,9 +193,9 @@ export default function SharedNotesPage() {
   }, [notes]);
   const visibleNotes = useMemo(() => notes
     .map((note, index) => ({ note, index }))
-    .filter(({ note }) => (!normalizedSearch ||
+    .filter(({ note }) => Boolean(note.paused) === showStopped && (!normalizedSearch ||
       `${note.operation.payload.title}\n${note.operation.payload.markdown}`.toLowerCase().includes(normalizedSearch)) &&
-      (!selectedTag || (note.operation.payload.tags ?? []).some((tag) => tag.toLowerCase() === selectedTag.toLowerCase()))), [notes, normalizedSearch, selectedTag]);
+      (!selectedTag || (note.operation.payload.tags ?? []).some((tag) => tag.toLowerCase() === selectedTag.toLowerCase()))), [notes, normalizedSearch, selectedTag, showStopped]);
   const current = visibleNotes.find(({ index }) => index === selected)?.note;
   useEffect(() => {
     if (visibleNotes.length && !visibleNotes.some(({ index }) => index === selected)) {
@@ -233,7 +240,7 @@ export default function SharedNotesPage() {
     setMessage('変更をDriveに保存しています…');
     try {
       await appendWebEdit(token, current, { ...current.operation.payload, title, markdown });
-      await reload(token);
+      if (!await reload(token)) throw new Error('保存後の再取得に失敗しました。Webを更新して保存結果を確認してください。');
       setMessage('保存しました。Windowsに反映するには、PC側で「Webと同期」を押してください。');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '保存できませんでした。');
@@ -241,9 +248,10 @@ export default function SharedNotesPage() {
   }
 
   async function toggleViewedTask(lineIndex: number, checked: boolean) {
-    if (!current || !token || busy || checkSaving.current) return;
+    if (!current || current.paused || !token || busy || checkSaving.current) return;
     if (editing) { setMarkdown(value => setTaskLine(value, lineIndex, checked)); return; }
     checkSaving.current = true;
+    setPendingTask({ operationId: current.operation.operationId, lineIndex, checked });
     setBusy(true);
     setMessage('チェックの変更を保存しています…');
     try {
@@ -254,13 +262,14 @@ export default function SharedNotesPage() {
       // Read the new operation/head before another click; an old head must not
       // be reused for the next change. Do not optimistically show unsaved data.
       const loaded = await loadSharedNotes(token);
-      setNotes(loaded.notes);
+      setNotes([...loaded.notes, ...(loaded.stoppedNotes ?? [])]);
       setFiles(loaded.files);
       setMessage('チェックを保存しました。Windowsには「Webと同期」で反映します。');
     } catch (error) {
       setMessage(`${error instanceof Error ? error.message : '保存結果を確認できませんでした。'} Webを更新して保存結果を確認してください。`);
     } finally {
       checkSaving.current = false;
+      setPendingTask(null);
       setBusy(false);
     }
   }
@@ -316,7 +325,7 @@ export default function SharedNotesPage() {
             <label htmlFor="shared-note-search" style={{ display: 'block', flex: '1 1 320px', fontWeight: 600 }}>付箋を検索
               <input id="shared-note-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="題名や本文で検索" disabled={editing || busy} style={{ ...button, display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'left', fontWeight: 400, marginTop: 6 }} />
             </label>
-            <span aria-live="polite" style={{ color: '#52627a', fontSize: 14, paddingBottom: 10 }}>{visibleNotes.length} / {notes.length} 件</span>
+            <span aria-live="polite" style={{ color: '#52627a', fontSize: 14, paddingBottom: 10 }}>{showStopped ? '共有停止中 ' : ''}{visibleNotes.length} / {notes.filter(note => Boolean(note.paused) === showStopped).length} 件</span>
           </div>
         </section>
         <div className="shared-grid">
@@ -334,14 +343,7 @@ export default function SharedNotesPage() {
         {current && <section style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 12 }}>
             <strong>付箋の内容</strong>
-            {!editing&&<button style={button} disabled={busy} onClick={async()=>{
-              if(!window.confirm('Webの共有から外します。Windowsの元の付箋は残ります。続けますか？'))return;
-              setBusy(true);
-              try {await revokeWebNote(token,current);await reload(token);setMessage('共有から外しました。Windowsの登録解除は次回の「Webと同期」で反映します。');}
-              catch(e){setMessage(e instanceof Error?e.message:'共有を解除できませんでした。');}
-              finally{setBusy(false);}
-            }}>共有から外す</button>}
-            {!editing ? <button style={button} disabled={busy} onClick={() => {
+            {!editing ? !current.paused && <button style={button} disabled={busy} onClick={() => {
               setEditing(true);
             }}>編集</button> : <div style={{ display: 'flex', gap: 8 }}>
               <button style={button} disabled={busy} onClick={() => {
@@ -351,7 +353,7 @@ export default function SharedNotesPage() {
               <button style={{ ...button, background: '#1689dc', color: 'white', borderColor: '#1689dc' }} disabled={busy} onClick={() => void save()}>保存</button>
             </div>}
           </div>
-          <article style={{ background: current.operation.payload.backgroundColor ?? '#f7e9b0', borderRadius: 12, padding: '22px 26px', minHeight: 260, overflowWrap: 'anywhere' }}>
+          <article aria-busy={Boolean(pendingTask)} style={{ background: current.operation.payload.backgroundColor ?? '#f7e9b0', borderRadius: 12, padding: '22px 26px', minHeight: 260, overflowWrap: 'anywhere' }}>
             {!editing && <h2 style={{ marginTop: 0 }}>{current.operation.payload.title}</h2>}
             <div>
               {editing ? <textarea aria-label="付箋本文" disabled={busy} rows={16} value={markdown} onChange={event => setMarkdown(event.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: 0, padding: 0, background: 'transparent', color: 'inherit', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} /> : bodyLines.map((line, index) => {
@@ -367,9 +369,9 @@ export default function SharedNotesPage() {
                 }
                 const task = line.match(taskPattern);
                 if (task) {
-                  const checked = task[2].toLowerCase() === 'x';
+                  const checked = pendingTask?.operationId === current.operation.operationId && pendingTask.lineIndex === index ? pendingTask.checked : task[2].toLowerCase() === 'x';
                   return <div key={index} style={{ display: 'flex', gap: 6, alignItems: 'baseline', padding: '7px 0' }}>
-                    <button type="button" role="checkbox" aria-label={task[4]} aria-checked={checked} title={checked ? '未完了にする' : '完了にする'} disabled={busy} onClick={() => void toggleViewedTask(index, !checked)} style={{ border: 0, padding: 0, background: 'transparent', color: checked ? '#4caf50' : '#888', width: '1em', flex: '0 0 1em', textAlign: 'center', font: 'inherit', lineHeight: 'inherit', cursor: !busy ? 'pointer' : 'default' }}>{checked ? '☑' : '☐'}</button>
+                    <button type="button" role="checkbox" aria-label={task[4]} aria-checked={checked} title={checked ? '未完了にする' : '完了にする'} disabled={busy || current.paused} onClick={() => void toggleViewedTask(index, !checked)} style={{ border: 0, padding: 0, background: 'transparent', color: checked ? '#4caf50' : '#888', width: '1em', flex: '0 0 1em', textAlign: 'center', font: 'inherit', lineHeight: 'inherit', cursor: !busy && !current.paused ? 'pointer' : 'default' }}>{checked ? '☑' : '☐'}</button>
                     <span style={{ textDecoration: checked ? 'line-through' : 'none', opacity: checked ? 0.6 : 1 }}>{renderInlineContent(task[4], images)}</span>
                   </div>;
                 }
@@ -405,12 +407,39 @@ export default function SharedNotesPage() {
               })}
             </div>
           </article>
-          <p style={{ color: '#607086', fontSize: 13 }}>チェックは押すと保存します。本文は「編集」で変更できます。Windows側は「Webと同期」で反映します。</p>
+          <p style={{ color: '#607086', fontSize: 13 }}>{current.paused ? 'Web共有を停止しています。ここには最後に共有した内容を表示しています。Windowsの付箋とランチャー登録は残ります。' : 'チェックは押すと保存します。本文は「編集」で変更できます。Windows側は「Webと同期」で反映します。'}</p>
         </section>}
         </div>
       </div>}
-      <footer style={{ marginTop: 24, borderTop: '1px solid #e2e8f0', paddingTop: 14, color: '#6b7b8f', fontSize: 13 }}>Google Driveは共有用の一時置き場です。Windowsの付箋が原本です。同期はボタンを押した時だけ行います。</footer>
+      {token && <details style={{ marginTop: 24, borderTop: '1px solid #e2e8f0', paddingTop: 12, color: '#607086', fontSize: 13 }}>
+        <summary style={{ cursor: 'pointer', textAlign: 'right' }}>詳細操作</summary>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
+          <button style={button} disabled={busy || editing} onClick={() => { setShowStopped(!showStopped); setSearch(''); setSelectedTag(''); }}>{showStopped ? '共有中の一覧へ戻る' : `共有停止中の付箋（${notes.filter(note => note.paused).length}）`}</button>
+          {current && !editing && <button style={button} disabled={busy} onClick={() => setSharingConfirmation({ note: current, paused: !current.paused })}>{current.paused ? 'Web共有を再開' : 'Web共有を停止'}</button>}
+        </div>
+      </details>}
+      <footer style={{ marginTop: 16, borderTop: '1px solid #e2e8f0', paddingTop: 14, color: '#6b7b8f', fontSize: 13 }}>Google Driveは共有用の一時置き場です。Windowsの付箋が原本です。同期はボタンを押した時だけ行います。</footer>
     </div>
+    {sharingConfirmation && <ConfirmDialog isOpen title={sharingConfirmation.paused ? 'Web共有を停止' : 'Web共有を再開'}
+      message={`「${sharingConfirmation.note.operation.payload.title}」のWeb共有を${sharingConfirmation.paused ? '停止' : '再開'}します。Windowsの付箋とランチャー登録は変わりません。${sharingConfirmation.paused ? '通常の同期では再開しません。' : '最新のWindows内容は次の「Webと同期」で反映します。'}`}
+      confirmText={sharingConfirmation.paused ? '停止する' : '再開する'} cancelText="戻る"
+      onCancel={() => setSharingConfirmation(null)} onConfirm={() => {
+        const target = sharingConfirmation;
+        setSharingConfirmation(null); setBusy(true);
+        void (async () => {
+          try {
+            await setWebSharing(token, target.note, target.paused);
+            const loaded = await reload(token);
+            if (!loaded) { setMessage('共有設定の保存後に再取得できませんでした。Webを更新して結果を確認してください。'); return; }
+            const actual = [...loaded.notes, ...(loaded.stoppedNotes ?? [])].find(note => note.scope.noteId === target.note.scope.noteId && note.scope.generation === target.note.scope.generation && note.scope.accountSubject === target.note.scope.accountSubject);
+            if (!actual) { setMessage('共有設定の結果を確認できませんでした。Webを更新してください。'); return; }
+            if (Boolean(actual.paused) !== target.paused) { setMessage(actual.paused ? '別の端末の停止操作があるため、Web共有は停止中です。状態を確認して再開してください。' : '別の端末でWeb共有が再開されています。最新の一覧を表示しました。'); return; }
+            setMessage(target.paused ? 'Web共有を停止しました。Windowsのランチャー登録はそのままです。' : 'Web共有を再開しました。最新のWindows内容は「Webと同期」で反映します。');
+          }
+          catch (error) { setMessage(`${error instanceof Error ? error.message : '共有設定の保存結果を確認できませんでした。'} Webを更新して状態を確認してください。`); }
+          finally { setBusy(false); }
+        })();
+      }} />}
     <style jsx>{`.shared-grid{display:grid;grid-template-columns:minmax(190px,.8fr) minmax(0,2fr);gap:20px}@media(max-width:680px){.shared-grid{grid-template-columns:minmax(0,1fr)}}`}</style>
   </main>;
 }

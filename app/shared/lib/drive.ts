@@ -8,14 +8,27 @@ import {
   type ShareScope,
 } from '@/lib/web-share-contract';
 import { calculateSharePayloadHash } from '@/lib/web-share-payload-hash';
+import { parseSharingRecord, sharingScopeKey, sharingState, type SharingRecord } from '@/lib/web-sharing-state';
 
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
 const SHARE_FOLDER = 'web-share-temp';
 const ROOT_FOLDER = 'ore-no-fusen';
 let latestAccessToken = '';
+// Cache only a Drive version that was observed in the latest complete listing.
+// A missing/changed version always downloads again; account boundaries are keys.
+const recordCache = new Map<string, unknown>();
+async function downloadVersionedRecord(token: string, file: {id: string; version?: string}, account: string): Promise<unknown> {
+  if (!file.version) return downloadJson<unknown>(token, file.id, account);
+  const key = JSON.stringify([account, file.id, file.version]);
+  if (recordCache.has(key)) return recordCache.get(key);
+  const value = await downloadJson<unknown>(token, file.id, account);
+  if (recordCache.size >= 256) recordCache.delete(recordCache.keys().next().value!);
+  recordCache.set(key, value);
+  return value;
+}
 
-export type SharedNote = { scope: ShareScope; operation: ShareOperation; heads: string[] };
+export type SharedNote = { scope: ShareScope; operation: ShareOperation; heads: string[]; paused?: boolean; sharingHeads?: string[] };
 export type WebCreateRequest = { schemaVersion: 1; accountSubject: string; targetPcId: string; noteId: string; markdown: string };
 export type WebReceiver = { pcId: string; name: string };
 
@@ -65,6 +78,26 @@ export async function revokeWebNote(token:string,current:SharedNote):Promise<voi
   const folder=await shareFolder(token,false,expected);
   if(!folder) throw new Error('共有フォルダーがありません。');
   await uploadCreateOnly(token,folder,`op-${operation.operationId}.json`,new Blob([JSON.stringify(operation)],{type:'application/json'}),expected);
+}
+
+/** Web-only sharing preference; never changes Windows launcher registration. */
+export async function setWebSharing(token: string, current: SharedNote, paused: boolean): Promise<void> {
+  latestAccessToken = token;
+  const account = current.scope.accountSubject;
+  const loaded = await loadSharedNotes(token, account);
+  const latest = [...loaded.notes, ...loaded.stoppedNotes].find(note => sharingScopeKey(note.scope) === sharingScopeKey(current.scope));
+  if (!latest) throw new Error('共有する付箋を確認できません。Webを更新してください。');
+  if (Boolean(latest.paused) === paused) return;
+  if (JSON.stringify(latest.sharingHeads ?? []) !== JSON.stringify(current.sharingHeads ?? [])) throw new Error('別の端末で共有設定が変わりました。Webを更新してください。');
+  const folder = await shareFolder(token, false, account);
+  if (!folder) throw new Error('共有フォルダーがありません。');
+  const record: SharingRecord = { schemaVersion: 1, scope: latest.scope, id: crypto.randomUUID(), action: paused ? 'pause' : 'resume', parents: latest.sharingHeads ?? [] };
+  const name = `web-sharing-${record.id}.json`;
+  parseSharingRecord(record, name);
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify({ name, parents: [folder] })], { type: 'application/json' }));
+  form.append('file', new Blob([JSON.stringify(record)], { type: 'application/json' }), name);
+  await authorizedFetch(token, UPLOAD, { method: 'POST', body: form }, account);
 }
 
 async function verifyAccount(token: string, expectedAccount: string): Promise<void> {
@@ -132,12 +165,12 @@ async function shareFolder(token: string, create: boolean, expectedAccount?: str
 }
 
 async function listAll(token: string, folderId: string, expectedAccount?: string) {
-  const all: { id: string; name: string; mimeType?: string }[] = [];
+  const all: { id: string; name: string; mimeType?: string; version?: string }[] = [];
   let pageToken: string | undefined;
   do {
     const params: Record<string, string> = {
       q: `'${folderId}' in parents and trashed=false`, pageSize: '1000',
-      fields: 'nextPageToken,files(id,name,mimeType)', orderBy: 'name',
+      fields: 'nextPageToken,files(id,name,mimeType,version)', orderBy: 'name',
     };
     if (pageToken) params.pageToken = pageToken;
     const response = await authorizedFetch(token, queryUrl(params), undefined, expectedAccount);
@@ -169,15 +202,19 @@ async function downloadJson<T>(token: string, fileId: string, expectedAccount?: 
   return await response.json() as T;
 }
 
-export async function loadSharedNotes(token: string, expectedAccount?: string): Promise<{ notes: SharedNote[]; files: { id: string; name: string; mimeType?: string }[] }> {
+export async function loadSharedNotes(token: string, expectedAccount?: string): Promise<{ notes: SharedNote[]; stoppedNotes: SharedNote[]; files: { id: string; name: string; mimeType?: string }[] }> {
   latestAccessToken = token;
   const account = await connectedAccount(token, expectedAccount);
   if (expectedAccount && account !== expectedAccount.trim().toLowerCase()) throw new Error('Googleアカウントが切り替わりました。別のアカウントへの保存を防ぐため中止しました。');
   const folder = await shareFolder(token, false, expectedAccount);
-  if (!folder) return { notes: [], files: [] };
+  if (!folder) return { notes: [], stoppedNotes: [], files: [] };
   const files = await listAll(token, folder, expectedAccount);
+  const settings = await Promise.all(files.filter(file => file.name.startsWith('web-sharing-') && file.name.endsWith('.json')).map(async file =>
+    parseSharingRecord(await downloadVersionedRecord(token, file, account), file.name)));
+  if (settings.some(record => record.scope.accountSubject !== account)) throw new Error('別のGoogleアカウントの共有設定が混在しています。');
+  sharingState(settings); // Reject duplicate IDs/missing history even outside the current note.
   const recordFiles = files.filter((file) => file.name.startsWith('op-') && file.name.endsWith('.json'));
-  const records = (await Promise.all(recordFiles.map((file) => downloadJson<unknown>(token, file.id, expectedAccount))))
+  const records = (await Promise.all(recordFiles.map((file) => downloadVersionedRecord(token, file, account))))
     .map(parseShareOperation);
   const grouped = new Map<string, { scope: ShareScope; records: unknown[] }>();
   for (const raw of records) {
@@ -189,16 +226,19 @@ export async function loadSharedNotes(token: string, expectedAccount?: string): 
     grouped.set(key, group);
   }
   const notes: SharedNote[] = [];
+  const stoppedNotes: SharedNote[] = [];
   for (const group of grouped.values()) {
     const log = await validateShareLogJson(group.scope, group.records);
     const byId = new Map((group.records as ShareOperation[]).map((item) => [item.operationId, item]));
     if ([...byId.values()].some((item) => item.kind === 'revoke')) continue;
+    const sharing = sharingState(settings.filter(record => sharingScopeKey(record.scope) === sharingScopeKey(group.scope)));
     for (const head of log.contentHeads) {
       const operation = byId.get(head);
-      if (operation) notes.push({ scope: group.scope, operation, heads: log.contentHeads });
+      if (operation) (sharing.paused ? stoppedNotes : notes).push({ scope: group.scope, operation, heads: log.contentHeads, paused: sharing.paused, sharingHeads: sharing.heads });
     }
   }
-  return { notes: notes.sort((a, b) => a.operation.payload.title.localeCompare(b.operation.payload.title, 'ja')), files };
+  const byTitle = (a: SharedNote, b: SharedNote) => a.operation.payload.title.localeCompare(b.operation.payload.title, 'ja');
+  return { notes: notes.sort(byTitle), stoppedNotes: stoppedNotes.sort(byTitle), files };
 }
 
 async function uploadCreateOnly(token: string, folderId: string, name: string, data: Blob, expectedAccount: string): Promise<void> {

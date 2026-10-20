@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(),
   appendWebEdit: vi.fn(),
   revokeWebNote: vi.fn(),
+  setWebSharing: vi.fn(),
   downloadSharedImage: vi.fn(),
   loadSharedNotes: vi.fn(),
   renderSecureMermaid: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock('@/app/utils/mermaid', () => ({ renderSecureMermaid: mocks.renderSecureM
 vi.mock('./lib/drive', () => ({
   appendWebEdit: mocks.appendWebEdit,
   revokeWebNote: mocks.revokeWebNote,
+  setWebSharing: mocks.setWebSharing,
   downloadSharedImage: mocks.downloadSharedImage,
   loadSharedNotes: mocks.loadSharedNotes,
 }));
@@ -36,6 +38,22 @@ function sharedNote(markdown: string, title = 'テスト付箋'): SharedNote {
 }
 
 describe('shared note editor', () => {
+  it('チェックは直ちに反応し、保存中を示し、通信失敗なら元へ戻す', async () => {
+    let rejectSave!: (reason: Error) => void;
+    mocks.appendWebEdit.mockImplementationOnce(() => new Promise((_, reject) => { rejectSave = reject; }));
+    render(<SharedNotesPage/>);
+    const checkbox = await screen.findByRole('checkbox',{name:'牛乳'});
+    fireEvent.click(checkbox);
+    expect(checkbox.getAttribute('aria-checked')).toBe('true');
+    expect((checkbox as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('article').getAttribute('aria-busy')).toBe('true');
+    expect(screen.getByText('チェックの変更を保存しています…')).toBeTruthy();
+    rejectSave(new Error('通信失敗'));
+    await screen.findByText(/Webを更新して保存結果を確認/);
+    expect(checkbox.getAttribute('aria-checked')).toBe('false');
+    expect((checkbox as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText(/チェックを保存しました/)).toBeNull();
+  });
   it('閲覧中のクリックだけでチェックを保存し、本文・色・画像を保つ', async () => {
     const note = sharedNote('本文\n- [ ] 牛乳\n- [x] 卵');
     mocks.loadSharedNotes.mockResolvedValueOnce({notes:[note],files:[]})
@@ -71,14 +89,43 @@ describe('shared note editor', () => {
     expect(screen.getByRole('checkbox',{name:'牛乳'}).getAttribute('aria-checked')).toBe('false');
     expect(screen.queryByText(/チェックを保存しました/)).toBeNull();
   });
-  it('共有解除は原本を消さない確認を出して明示操作で解除する', async () => {
-    const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
-    mocks.revokeWebNote.mockResolvedValue(undefined);
+  it('詳細操作の共有停止はランチャーを残す確認後だけ保存する', async () => {
     render(<SharedNotesPage />);await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button',{name:'共有から外す'}));
-    await waitFor(()=>expect(mocks.revokeWebNote).toHaveBeenCalledWith('test-token',expect.objectContaining({scope:expect.objectContaining({noteId:'test-note'})})));
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Windowsの元の付箋は残ります'));
-    confirm.mockRestore();
+    fireEvent.click(screen.getByText('詳細操作'));
+    fireEvent.click(screen.getByRole('button',{name:'Web共有を停止'}));
+    await screen.findByText(/Windowsの付箋とランチャー登録は変わりません/);
+    expect(mocks.setWebSharing).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'戻る'}));
+    expect(mocks.setWebSharing).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Web共有を停止'}));
+    fireEvent.click(screen.getByRole('button',{name:'停止する'}));
+    await waitFor(()=>expect(mocks.setWebSharing).toHaveBeenCalledWith('test-token',expect.objectContaining({scope:expect.objectContaining({noteId:'test-note'})}),true));
+    expect(mocks.revokeWebNote).not.toHaveBeenCalled();
+  });
+  it('停止中の一覧から明示的に再開でき、停止中のチェックは保存しない', async () => {
+    const note = {...sharedNote('- [ ] 牛乳'), paused:true, sharingHeads:['pause-1']};
+    mocks.loadSharedNotes.mockResolvedValue({notes:[], stoppedNotes:[note],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByText(/まだ付箋がありません/);
+    fireEvent.click(screen.getByText('詳細操作'));
+    fireEvent.click(screen.getByRole('button',{name:'共有停止中の付箋（1）'}));
+    const task = await screen.findByRole('checkbox',{name:'牛乳'});
+    expect((task as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(task);
+    expect(mocks.appendWebEdit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Web共有を再開'}));
+    fireEvent.click(screen.getByRole('button',{name:'再開する'}));
+    await waitFor(()=>expect(mocks.setWebSharing).toHaveBeenCalledWith('test-token',note,false));
+  });
+  it('共有停止保存後の再取得失敗を成功と表示しない', async () => {
+    mocks.loadSharedNotes.mockResolvedValueOnce({notes:[sharedNote('本文')],files:[]}).mockRejectedValue(new Error('再取得失敗'));
+    render(<SharedNotesPage/>);
+    await screen.findByRole('button',{name:'編集'});
+    fireEvent.click(screen.getByText('詳細操作'));
+    fireEvent.click(screen.getByRole('button',{name:'Web共有を停止'}));
+    fireEvent.click(screen.getByRole('button',{name:'停止する'}));
+    await screen.findByText(/共有設定の保存後に再取得できませんでした/);
+    expect(screen.queryByText(/Web共有を停止しました/)).toBeNull();
   });
   afterEach(() => cleanup());
 
@@ -87,6 +134,7 @@ describe('shared note editor', () => {
     localStorage.setItem('viewer_expires_at', '0');
     mocks.refreshAccessToken.mockReset();
     mocks.appendWebEdit.mockReset().mockResolvedValue(undefined);
+    mocks.setWebSharing.mockReset().mockResolvedValue(undefined);
     mocks.downloadSharedImage.mockReset();
     mocks.loadSharedNotes.mockReset().mockResolvedValue({ notes: [sharedNote('買い物メモ\n牛乳を買う\n- [ ] 牛乳')], files: [] });
     mocks.renderSecureMermaid.mockReset().mockResolvedValue('<svg xmlns="http://www.w3.org/2000/svg"><text>図</text></svg>');

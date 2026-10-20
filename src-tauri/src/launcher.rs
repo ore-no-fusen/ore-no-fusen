@@ -742,6 +742,15 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
     let share_folder = crate::gdrive::ensure_web_share_folder(&client, &token).await?;
     let remote_files =
         crate::gdrive::list_web_share_records(&client, &token, &share_folder).await?;
+    let mut sharing_records = Vec::new();
+    for (id, name) in crate::gdrive::list_web_share_named_records(&client, &token, &share_folder, "web-sharing-").await? {
+        if !name.starts_with("web-sharing-") { continue; }
+        let value = crate::gdrive::download_web_share_record(&client, &token, &id).await?;
+        sharing_records.push(crate::web_sharing_state::parse(value, &name)?);
+    }
+    // Validate before any original-file or Drive write. A stopped note remains
+    // registered/active locally, but neither uploads nor applies Web content.
+    let paused_ids = crate::web_sharing_state::paused_ids(&sharing_records, &account_subject)?;
     let mut all_remote = Vec::<ShareOperation>::new();
     for (id, _) in remote_files {
         let value = crate::gdrive::download_web_share_record(&client, &token, &id).await?;
@@ -873,7 +882,7 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         let receipt = format!("{:x}", Sha256::digest(body.as_bytes()));
         let with_id =
             logic::update_frontmatter_value_for_web_share(&with_id, "web_sync_receipt", &receipt);
-        if with_id != source {
+        if with_id != source && !paused_ids.contains(&id) {
             storage::write_note_if_unchanged(&canonical.to_string_lossy(), &source, &with_id)
                 .map_err(|error| format!("共有IDをWindows原本に記録できず保留しました: {error}"))?;
             let _ = app.emit(
@@ -987,6 +996,10 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
             ));
             continue;
         };
+        if paused_ids.contains(&note_id) {
+            summary.unchanged += 1;
+            continue;
+        }
         let result = sync_one_registered_note(
             &app,
             &base,

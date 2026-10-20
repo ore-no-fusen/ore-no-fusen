@@ -155,7 +155,35 @@ sequenceDiagram
 
 受取PCがない場合は保存を無効にしてWindows同期を案内する。同期後は「受取PCを再確認」で本文下書きを保持したまま再取得できる。Windows Quick Launcherの「Webを開く」は開発時に`http://localhost:3002/shared`、配布版では`https://ore-no-fusen.vercel.app/shared`を開く。
 
-### 5. 登録解除
+### 5. Web共有の停止・再開（詳細操作）
+
+画面下端の折りたたみ「詳細操作」に「Web共有を停止」と「共有停止中の付箋」を置く。停止中の一覧では選択した付箋の「Web共有を再開」を表示する。通常の編集領域には停止ボタンを置かない。確認画面はWindowsと同じConfirmDialogを使用する。
+
+停止・再開は本文とランチャー登録から独立した設定で、Windows原本・shortcutタグ・ランチャーの順序/格納状態を変更しない。Web再取得・再起動・通常同期では再開しない。停止中の一覧は最後に共有した内容を読取専用で表示し、停止はDrive上の既存本文/画像の削除やアクセス権変更を意味しない。再開直後は最後の共有内容を表示し、最新のWindows本文は次の手動同期で反映する。
+
+```mermaid
+sequenceDiagram
+  participant U as 利用者
+  participant W as Web
+  participant D as Drive・Windows同期
+  U->>W: 詳細操作から共有停止を確認
+  W->>D: 独立したpause設定を追記
+  W->>D: 最新設定を再取得
+  W-->>U: 通常一覧から外す（停止中一覧へ）
+  D->>D: 手動同期時に停止設定を検証し本文の送受信を保留
+  Note over D: Windows付箋・ランチャー登録は保持
+  U->>W: 停止中一覧から再開を確認
+  W->>D: 観測した全設定先端を親にresumeを追記
+  W-->>U: 共有中一覧へ戻す
+```
+
+図5: ランチャー登録を保ったWeb共有の停止・再開。
+
+設定は別prefix `web-sharing-UUID.json`。schemaVersion=1、scope(accountSubject/noteId/generation)、id、action(pause/resume)、parentsを持つ追記専用記録とする。本文DAGには混ぜない。全ページ取得し、filename/id一致・UUID・所有アカウント・親の同一scope・循環・同ID異内容を検証する。不足/不正時は同期を止め、推測して再開しない。並行操作でpause先端が一つでも残れば停止を優先し、再開は全先端を観測した明示操作だけで行う。履歴は再帰を使わず検証し、正常な停止/再開の蓄積で上限到達による操作不能を起こさない。保存後の再取得に失敗した場合や並行停止が残った場合に再開成功と表示しない。
+
+旧revoke記録は従来の登録解除として保持する。新しい停止操作でrevokeを生成しない。旧版Windowsは新prefixを処理しないため、新機能の送受信停止を実機確認するには修正版Windowsが必要。iPhone経路は変更しない。
+
+### 5.1 旧方式の登録解除（互換用）
 
 第一弾のWeb「共有から外す」は確認後に既存revoke記録を追記し、Web一覧から除く。Windows原本は削除しない。次回Windows同期でshortcut登録だけ外し、解除済みIDを原本と同じ条件付き書込で記録する。台帳保存前の中断でも再適用を識別できる。利用者が後で登録し直した場合は新しい共有IDで公開する。原本削除/アーカイブ要求は未実装。
 
