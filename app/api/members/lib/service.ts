@@ -3,7 +3,7 @@ import type { MemberDatabase, Row } from './database';
 import { createFeedbackConversationStore } from '../../feedback/lib/store';
 import { randomBytes } from 'node:crypto';
 
-export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; lastSeenTimestamp?: string; firstRealUseAt?: string; measurementStartedAt?: string; appVersion?: string; usageSchema?: number; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean | null; usageOpenMinutes?: number; partnerStars?: number; partnerLastStarWeek?: string };
+export type Member = { memberId: string; generalNumber: number; analyticsSubject: string; paidNumber: number | null; billingLinkStatus: 'not_connected'; registeredAt: string; secretHash: string; lastSeenAt?: string; lastSeenTimestamp?: string; firstRealUseAt?: string; measurementStartedAt?: string; appVersion?: string; usageSchema?: number; usageWeek?: string; usageFeatures?: string[]; usageConsent?: boolean | null; usageConsentStatus?: 'unknown' | 'not_presented' | 'unanswered' | 'postponed' | 'granted' | 'denied'; usageOpenMinutes?: number; partnerStars?: number; partnerLastStarWeek?: string };
 type UsageFeatureCount = {count:number;activeDays:string[];lastUsedDay:string;firstUsedAt?:string|null;lastUsedAt?:string|null};
 type UsageHistoryWeek = { week: string; schema: number; appVersion: string; features: Record<string,UsageFeatureCount>; days: Record<string,{observedAt?:string|null;observedThrough?:string|null;supportedFeatures?:string[];features:Record<string,UsageFeatureCount>}>; measurementStartedAt?: string|null; supportedFeatures: string[] };
 
@@ -111,7 +111,7 @@ export class MemberService {
       const sameConsentedWeek=!!usage&&usage.consent&&current.value.usageConsent===true&&current.value.usageWeek===usage.week;
       const retainedFeatures=keepCurrentWeek?current.value.usageFeatures??[]:sameConsentedWeek?[...new Set([...(current.value.usageFeatures??[]),...usage.features])].sort():usage?.consent?usage.features:[];
       const updated = { ...current.value, lastSeenAt: today, lastSeenTimestamp, appVersion: appVersion as string | undefined,
-        ...(usage && { usageSchema: keepCurrentWeek?current.value.usageSchema:sameConsentedWeek?Math.max(current.value.usageSchema??1,usage.schema):usage.schema, usageWeek: keepCurrentWeek?current.value.usageWeek:usage.week, usageFeatures: retainedFeatures, usageConsent: usage.consent,
+        ...(usage && { usageSchema: keepCurrentWeek?current.value.usageSchema:sameConsentedWeek?Math.max(current.value.usageSchema??1,usage.schema):usage.schema, usageWeek: keepCurrentWeek?current.value.usageWeek:usage.week, usageFeatures: retainedFeatures, usageConsent: usage.consent, usageConsentStatus: usage.consent ? 'granted' as const : 'denied' as const,
           usageOpenMinutes: usage.consent ? (keepCurrentWeek?current.value.usageOpenMinutes:usage.openMinutes ?? current.value.usageOpenMinutes) : undefined,
           firstRealUseAt: usage.consent ? current.value.firstRealUseAt : undefined, measurementStartedAt: usage.consent ? current.value.measurementStartedAt : undefined }) };
       if (await this.db.commit([{ path: `members/${auth.memberId}`, value: updated, version: current.version }])) {
@@ -152,11 +152,11 @@ export class MemberService {
     return announcements;
   }
   async recordUsage(auth: Credentials, week: unknown, features: unknown, consent: unknown, openMinutes: unknown, usageSchema?: unknown, history?: unknown, reporterId?: unknown, firstUseAt?: unknown, consentStatus?: unknown) {
-    if(consentStatus==='unknown'&&week===undefined&&features===undefined&&consent===undefined&&openMinutes===undefined) {
+    if((consentStatus==='unknown'||consentStatus==='not_presented'||consentStatus==='unanswered'||consentStatus==='postponed')&&week===undefined&&features===undefined&&consent===undefined&&openMinutes===undefined) {
       for(let attempt=0;attempt<4;attempt++) {
         const member=await this.authenticate(auth);
-        if(member.value.usageConsent===null) { await this.clearUsageHistory(member.value.analyticsSubject); return {saved:true,partnerStars:safePartnerStars(member.value.partnerStars)}; }
-        const updated:Member={...member.value,usageConsent:null,usageSchema:undefined,usageWeek:undefined,usageFeatures:undefined,usageOpenMinutes:undefined,firstRealUseAt:undefined,measurementStartedAt:undefined};
+        if(member.value.usageConsent===null&&member.value.usageConsentStatus===consentStatus) { await this.clearUsageHistory(member.value.analyticsSubject); return {saved:true,partnerStars:safePartnerStars(member.value.partnerStars)}; }
+        const updated:Member={...member.value,usageConsent:null,usageConsentStatus:consentStatus,usageSchema:undefined,usageWeek:undefined,usageFeatures:undefined,usageOpenMinutes:undefined,firstRealUseAt:undefined,measurementStartedAt:undefined};
         if(await this.db.commit([{path:`members/${auth.memberId}`,value:updated,version:member.version}])) { await this.clearUsageHistory(member.value.analyticsSubject); return {saved:true,partnerStars:safePartnerStars(updated.partnerStars)}; }
       }
       throw new FeedbackRequestError('Usage consent update busy; retry later',503);
@@ -176,7 +176,7 @@ export class MemberService {
       const partnerStars=safePartnerStars(member.value.partnerStars);
       const lastStarWeek=validPartnerWeek(member.value.partnerLastStarWeek)?member.value.partnerLastStarWeek:undefined;
       const earnsWeeklyStar=usage.consent&&recentPartnerWeeks(this.now()).has(usage.week)&&(!lastStarWeek||usage.week>lastStarWeek)&&partnerStars<999999;
-      const updated: Member = { ...member.value, usageSchema: keepCurrentWeek?member.value.usageSchema:sameConsentedWeek?Math.max(member.value.usageSchema??1,usage.schema):usage.schema, usageWeek: keepCurrentWeek?member.value.usageWeek:usage.week, usageFeatures: retainedFeatures, usageConsent: usage.consent,
+      const updated: Member = { ...member.value, usageSchema: keepCurrentWeek?member.value.usageSchema:sameConsentedWeek?Math.max(member.value.usageSchema??1,usage.schema):usage.schema, usageWeek: keepCurrentWeek?member.value.usageWeek:usage.week, usageFeatures: retainedFeatures, usageConsent: usage.consent, usageConsentStatus: usage.consent ? 'granted' as const : 'denied' as const,
         partnerStars:partnerStars+(earnsWeeklyStar?1:0), partnerLastStarWeek:earnsWeeklyStar?usage.week:lastStarWeek,
         firstRealUseAt: usage.consent ? minInstant(member.value.firstRealUseAt,typeof firstUseAt==='string'?firstUseAt:undefined) : undefined,
         measurementStartedAt: usage.consent ? minInstant(member.value.measurementStartedAt,...(reports as UsageHistoryWeek[]).map(item=>item.measurementStartedAt)) : undefined,

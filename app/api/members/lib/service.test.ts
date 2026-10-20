@@ -15,6 +15,21 @@ class MemoryDb implements MemberDatabase {
 const auth={memberId:'123e4567-e89b-42d3-a456-426614174000',secretToken:'a'.repeat(43)};
 
 describe('member registration',()=>{
+  it('案内前・未回答・保留を別々に保存し、同意や機能履歴を作らない',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db);
+    await service.register(auth);
+    for(const status of ['not_presented','unanswered','postponed'] as const){
+      await service.recordUsage(auth,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,status);
+      const member=(await db.get<any>(`members/${auth.memberId}`))!.value;
+      expect(member.usageConsent).toBeNull();
+      expect(member.usageConsentStatus).toBe(status);
+      expect(member.partnerStars).toBe(0);
+      expect(member.usageFeatures).toBeUndefined();
+      expect(await db.list('usage_history')).toHaveLength(0);
+    }
+    await service.recordUsage(auth,'2026-W43',[],false,0,3);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({usageConsent:false,usageConsentStatus:'denied'});
+  });
   it('assigns a sequential public number and a separate stable analysis id',async()=>{
     const service=new MemberService(new MemoryDb(),()=>new Date('2026-09-05T00:00:00Z'));
     const first=await service.register(auth); const retry=await service.register(auth);

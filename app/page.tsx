@@ -38,7 +38,7 @@ import { isStoreMigrationBridgeVersion } from './utils/storeMigration';
 import { trackEvent } from './utils/analytics';
 import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMainWindowResizePolicy';
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
-import { shouldShowAnalyticsConsentPrompt, useAnalyticsConsentPromptPostponed } from './hooks/useAnalyticsConsentPrompt';
+import { shouldShowAnalyticsConsentPrompt, useAnalyticsConsentPromptPostponed, useAnalyticsConsentPromptEligibility } from './hooks/useAnalyticsConsentPrompt';
 import { ANALYTICS_CONSENT_RECONFIRMATION_VERSION } from './utils/analyticsConsentPrompt';
 import { useDiscordReplyIngest } from './hooks/useDiscordReplyIngest';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
@@ -280,6 +280,10 @@ function OrchestratorContent() {
     postpone: postponeAnalyticsConsent,
     markReconfirmationPresented: markAnalyticsConsentReconfirmationPresented,
   } = useAnalyticsConsentPromptPostponed();
+  const consentPromptEligible = useAnalyticsConsentPromptEligibility(isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading);
+  const [analyticsConsentError, setAnalyticsConsentError] = useState(false);
+  const [analyticsConsentBusy, setAnalyticsConsentBusy] = useState(false);
+  const analyticsConsentPresentationRef = useRef<Promise<unknown>>(Promise.resolve());
   const analyticsConsentReconfirmationSavePromiseRef = useRef<Promise<void> | null>(null);
   const desktopShortcutPromptCheckedRef = useRef(false);
   const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
@@ -319,7 +323,7 @@ function OrchestratorContent() {
   // ウィンドウリサイズポリシー（useMainWindowResizePolicyに委譲）
   useMainWindowResizePolicy({
     showMessageDialog: isMainWindow && (showMonthlyBackupPrompt || showDesktopShortcutPrompt || !!monthlyBackupResult || !!hotkeyRegisterFailureMessage),
-    showAnalyticsConsent: isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && (
+    showAnalyticsConsent: consentPromptEligible && !analyticsConsentPostponed && isMainWindow && !isCheckingSetup && !setupRequired && !settingsLoading && (
       !settings.analytics_consent
       || (settings.analytics_consent === 'denied' && (
         analyticsConsentReconfirmationPresented
@@ -2278,6 +2282,7 @@ function OrchestratorContent() {
     reconfirmationVersion: settings.analytics_consent_reconfirmation_version,
     reconfirmationPresented: analyticsConsentReconfirmationPresented,
     postponed: analyticsConsentPostponed,
+    eligible: consentPromptEligible,
   })) {
     const persistReconfirmationPresented = async () => {
       markAnalyticsConsentReconfirmationPresented();
@@ -2313,9 +2318,23 @@ function OrchestratorContent() {
         language={language}
         isDeniedReconfirmation={settings.analytics_consent === 'denied'}
         onReconfirmationPresented={persistReconfirmationPresented}
-        onAccept={() => { void saveAnalyticsConsent('granted'); }}
-        onDecline={() => { void saveAnalyticsConsent('denied'); }}
-        onPostpone={postponeAnalyticsConsent}
+        onPresented={() => {
+          analyticsConsentPresentationRef.current = invoke('member_consent_prompt_event', { event: 'presented' });
+          void analyticsConsentPresentationRef.current.then(() => invoke('member_sync_usage')).catch(() => undefined);
+        }}
+        saveError={analyticsConsentError}
+        busy={analyticsConsentBusy}
+        onAccept={() => { setAnalyticsConsentBusy(true); setAnalyticsConsentError(false); void saveAnalyticsConsent('granted').catch(() => setAnalyticsConsentError(true)).finally(() => setAnalyticsConsentBusy(false)); }}
+        onDecline={() => { setAnalyticsConsentBusy(true); setAnalyticsConsentError(false); void saveAnalyticsConsent('denied').catch(() => setAnalyticsConsentError(true)).finally(() => setAnalyticsConsentBusy(false)); }}
+        onPostpone={() => {
+          setAnalyticsConsentError(false);
+          setAnalyticsConsentBusy(true);
+          void analyticsConsentPresentationRef.current.catch(() => undefined)
+            .then(() => invoke('member_consent_prompt_event', { event: 'postponed' }))
+            .then(() => { postponeAnalyticsConsent(); void invoke('member_sync_usage').catch(() => undefined); })
+            .catch(() => setAnalyticsConsentError(true))
+            .finally(() => setAnalyticsConsentBusy(false));
+        }}
       />
     );
   }

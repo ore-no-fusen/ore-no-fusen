@@ -45,6 +45,11 @@ pub struct MemberLocal {
     #[serde(default)] last_usage_sync_week: Option<String>,
     #[serde(default)] last_usage_sync_features: Vec<String>,
     #[serde(default)] last_usage_sync_at: Option<String>,
+    /// Local UI scheduling only; never included in usage history.
+    #[serde(default)] first_note_saved_at: Option<String>,
+    #[serde(default)] consent_prompt_state: Option<String>,
+    #[serde(default)] consent_prompt_postponed_at: Option<String>,
+    #[serde(default)] last_usage_sync_status: Option<String>,
     #[serde(default)] partner_stars: u64,
     #[serde(skip)] syncing: bool,
     #[serde(skip)] usage_syncing: bool,
@@ -53,9 +58,41 @@ pub struct MemberLocal {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct MemberView { general_number: Option<u64>, analytics_subject: Option<String>, environment: String, partner_stars: u64 }
+pub struct MemberView { general_number: Option<u64>, analytics_subject: Option<String>, environment: String, partner_stars: u64, consent_prompt_eligible: bool, consent_prompt_state: String }
 impl MemberLocal {
-    fn view(&self) -> MemberView { MemberView { general_number:self.general_number, analytics_subject:self.analytics_subject.clone(), environment:environment().into(), partner_stars:self.partner_stars } }
+    fn view(&self) -> MemberView { MemberView { general_number:self.general_number, analytics_subject:self.analytics_subject.clone(), environment:environment().into(), partner_stars:self.partner_stars, consent_prompt_eligible:consent_prompt_eligible(self, Utc::now()), consent_prompt_state:self.consent_prompt_state.clone().unwrap_or_else(||"not_presented".into()) } }
+}
+fn consent_prompt_eligible(member:&MemberLocal, now:chrono::DateTime<Utc>)->bool {
+    let saved_before_today=member.first_note_saved_at.as_deref().and_then(|date|chrono::DateTime::parse_from_rfc3339(date).ok()).map(|date|now.signed_duration_since(date.with_timezone(&Utc))>=Duration::hours(24)).unwrap_or(false);
+    saved_before_today && member.consent_prompt_postponed_at.as_deref().map(|date|chrono::DateTime::parse_from_rfc3339(date).map(|date|now.signed_duration_since(date.with_timezone(&Utc))>=Duration::days(7)).unwrap_or(false)).unwrap_or(true)
+}
+fn consent_status(member:&MemberLocal,consent:Option<bool>)->&str {
+    match consent {Some(true)=>"granted",Some(false)=>"denied",None=>member.consent_prompt_state.as_deref().unwrap_or("not_presented")}
+}
+/// A single local milestone for scheduling the request; no note content or usage counts.
+pub fn should_remember_note_save(allow_rename:bool,is_welcome:bool,body:&str,old_body:&str)->bool {
+    allow_rename && !is_welcome && !body.trim().is_empty() && body!=old_body
+}
+pub fn remember_first_note_save(state:&mut AppState)->Result<(),String>{
+    let member=ensure(state)?;
+    if member.first_note_saved_at.is_none(){
+        member.first_note_saved_at=Some(Utc::now().to_rfc3339());
+        if let Err(error)=persist(member){member.first_note_saved_at=None;return Err(error);}
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn member_consent_prompt_event(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>,event:String)->Result<(),String>{
+    if event!="presented"&&event!="postponed" {return Err("Invalid consent prompt event".into());}
+    let mut g=state.lock().map_err(|_|"State unavailable")?;
+    let member=ensure(&mut g)?;
+    let before=member.clone();
+    member.consent_prompt_state=Some(if event=="postponed"{"postponed"}else{"unanswered"}.into());
+    if event=="postponed"{member.consent_prompt_postponed_at=Some(Utc::now().to_rfc3339());}
+    if let Err(error)=persist(member){*member=before;return Err(error);}
+    let _=app.emit("member_updated",member.view());
+    Ok(())
 }
 fn week_key(now: chrono::DateTime<Utc>) -> String { let iso=now.iso_week(); format!("{}-W{:02}",iso.year(),iso.week()) }
 
@@ -249,22 +286,23 @@ fn current_usage_snapshot(member:&MemberLocal,consent:Option<bool>,week:&str)->(
 #[tauri::command]
 pub async fn member_sync_usage(app:tauri::AppHandle,state:State<'_,Mutex<AppState>>)->Result<(),String>{
     let base=endpoint()?;
-    let (snapshot,week,features,consent,open_seconds,history,reporter_id)={
+    for _ in 0..3 {
+    let (snapshot,week,features,consent,status,open_seconds,history,reporter_id)={
         let mut g=state.lock().map_err(|_|"State unavailable")?;
         let consent=usage_choice(&mut g)?;
         let member=g.member.as_mut().ok_or("Member identity unavailable")?;
-        if consent.is_none()&&member.last_usage_sync_consent.is_none(){return Ok(());}
+        let status=consent_status(member,consent).to_string();
         let week=week_key(Utc::now());
         if consent==Some(true)&&member.reporter_id.is_none() { member.reporter_id=Some(uuid::Uuid::new_v4().to_string()); }
         let history=if consent==Some(true){member.weeks.values().filter(|v|v.schema>=3).cloned().collect::<Vec<_>>()}else{Vec::new()};
         let (features,_)=current_usage_snapshot(&member,consent,&week);
         if member.usage_syncing || !should_sync_usage(member,consent,&week,&features) { return Ok(()); }
         member.usage_syncing=true;
-        (member.clone(),week,features,consent,member.open_seconds,history,member.reporter_id.clone().unwrap_or_default())
+        (member.clone(),week,features,consent,status,member.open_seconds,history,member.reporter_id.clone().unwrap_or_default())
     };
     let result=async {
         let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build().map_err(|_|"Cannot create member client")?;
-        let mut payload=serde_json::json!({"consentStatus":match consent{Some(true)=>"granted",Some(false)=>"denied",None=>"unknown"}});
+        let mut payload=serde_json::json!({"consentStatus":status});
         if let Some(granted)=consent { payload.as_object_mut().unwrap().extend(serde_json::json!({"week":week,"features":features,"consent":granted,"usageSchema":3,"openMinutes":open_seconds/60,"history":history,"reporterId":reporter_id,"firstUseAt":snapshot.first_use_at}).as_object().unwrap().clone()); }
         let response=post(&client,&base,"usage",&snapshot,payload).await?;
         Ok::<Option<u64>,String>(response["partnerStars"].as_u64().filter(|stars|*stars<=999999))
@@ -274,19 +312,26 @@ pub async fn member_sync_usage(app:tauri::AppHandle,state:State<'_,Mutex<AppStat
     member.usage_syncing=false;
     if let Some(stars)=result? { member.partner_stars=stars; }
     mark_usage_synced(member,consent,&week,&features);
+    member.last_usage_sync_status=Some(status.clone());
     persist(member)?;
     let _=app.emit("member_updated",member.view());
+    let latest_consent=choice(crate::storage::load_settings()?.analytics_consent.as_deref());
+    // A choice made while the previous report was in flight must follow it now,
+    // rather than waiting three hours or letting the older choice win.
+    if consent_status(member,latest_consent)==status{return Ok(());}
+    }
     Ok(())
 }
 
 fn should_sync_usage(member:&MemberLocal,consent:Option<bool>,week:&str,features:&[String])->bool {
     if member.last_usage_sync_consent!=consent { return true; }
-    let Some(consent)=consent else{return false;};
+    let Some(consent)=consent else{return member.last_usage_sync_status.as_deref()!=Some(consent_status(member,None));};
     member.last_usage_sync_consent!=Some(consent) || (consent &&
         (member.last_usage_sync_week.as_deref()!=Some(week) || member.last_usage_sync_features!=features || member.last_usage_sync_at.as_deref().and_then(|v|chrono::DateTime::parse_from_rfc3339(v).ok()).map(|v|Utc::now()-v.with_timezone(&Utc)>=Duration::hours(3)).unwrap_or(true)))
 }
 
 fn mark_usage_synced(member:&mut MemberLocal,consent:Option<bool>,week:&str,features:&[String]) {
+    member.last_usage_sync_status=Some(consent_status(member,consent).to_string());
     member.last_usage_sync_consent=consent;
     member.last_usage_sync_week=Some(week.into());
     member.last_usage_sync_features=features.to_vec();
@@ -736,9 +781,9 @@ mod segment_tests {
         let mut member=MemberLocal::default();
         let week="2026-W41";
         let features=vec!["note_edited".into()];
-        assert!(!should_sync_usage(&member,None,week,&[]));
+        assert!(should_sync_usage(&member,None,week,&[]));
         // Default local state models a previously granted device so this path
-        // can verify sending a withdrawal; a never-selected user sends nothing.
+        // can verify sending a withdrawal; unselected users report only prompt state.
         member.last_usage_sync_consent=Some(true);
         assert!(should_sync_usage(&member,Some(false),week,&[]));
         mark_usage_synced(&mut member,Some(false),week,&[]);
@@ -841,5 +886,46 @@ mod partner_star_tests {
         saved.as_object_mut().unwrap().remove("partner_stars");
         let restored: MemberLocal = serde_json::from_value(saved).unwrap();
         assert_eq!(restored.partner_stars, 0);
+    }
+}
+
+#[cfg(test)]
+mod consent_prompt_tests {
+    use super::*;
+    #[test]
+    fn welcome_empty_and_unchanged_saves_do_not_schedule_a_request() {
+        assert!(should_remember_note_save(true,false,"my note",""));
+        assert!(!should_remember_note_save(false,false,"my note",""));
+        assert!(!should_remember_note_save(true,true,"checked welcome","welcome"));
+        assert!(!should_remember_note_save(true,false,"   ",""));
+        assert!(!should_remember_note_save(true,false,"my note","my note"));
+    }
+    #[test]
+    fn first_day_never_prompts_and_postponement_survives_restart() {
+        let now=Utc::now();
+        let mut member=MemberLocal::default();
+        assert!(!consent_prompt_eligible(&member,now));
+        member.first_note_saved_at=Some(now.to_rfc3339());
+        assert!(!consent_prompt_eligible(&member,now));
+        assert!(!consent_prompt_eligible(&member,now+Duration::hours(24)-Duration::seconds(1)));
+        member.first_note_saved_at=Some((now-Duration::hours(24)).to_rfc3339());
+        assert!(consent_prompt_eligible(&member,now));
+        member.consent_prompt_state=Some("postponed".into());
+        member.consent_prompt_postponed_at=Some(now.to_rfc3339());
+        let restored:MemberLocal=serde_json::from_slice(&serde_json::to_vec(&member).unwrap()).unwrap();
+        assert!(!consent_prompt_eligible(&restored,now+Duration::days(7)-Duration::seconds(1)));
+        assert!(consent_prompt_eligible(&restored,now+Duration::days(7)));
+    }
+    #[test]
+    fn unsent_and_explicit_postponement_are_not_the_same() {
+        let mut member=MemberLocal::default();
+        assert_eq!(consent_status(&member,None),"not_presented");
+        assert!(should_sync_usage(&member,None,"2026-W43",&[]));
+        mark_usage_synced(&mut member,None,"2026-W43",&[]);
+        assert!(!should_sync_usage(&member,None,"2026-W43",&[]));
+        member.consent_prompt_state=Some("postponed".into());
+        assert!(should_sync_usage(&member,None,"2026-W43",&[]));
+        assert_eq!(consent_status(&member,Some(false)),"denied");
+        assert_eq!(consent_status(&member,Some(true)),"granted");
     }
 }

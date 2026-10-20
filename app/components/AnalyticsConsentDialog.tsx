@@ -9,13 +9,22 @@ type Props = {
   onAccept: () => void;
   onDecline: () => void;
   onPostpone: () => void;
+  onPresented?: () => void;
+  saveError?: boolean;
+  busy?: boolean;
   isDeniedReconfirmation?: boolean;
   onReconfirmationPresented?: () => void;
 };
 
-export default function AnalyticsConsentDialog({ language, onAccept, onDecline, onPostpone, isDeniedReconfirmation = false, onReconfirmationPresented }: Props) {
+export default function AnalyticsConsentDialog({ language, onAccept, onDecline, onPostpone, onPresented, saveError = false, busy = false, isDeniedReconfirmation = false, onReconfirmationPresented }: Props) {
   const en = language === 'en';
   const presentedRef = useRef(false);
+  const reportedRef = useRef(false);
+  useEffect(() => {
+    if (reportedRef.current) return;
+    reportedRef.current = true;
+    onPresented?.();
+  }, [onPresented]);
   useEffect(() => {
     if (!isDeniedReconfirmation || presentedRef.current) return;
     presentedRef.current = true;
@@ -68,21 +77,23 @@ export default function AnalyticsConsentDialog({ language, onAccept, onDecline, 
         </p>
         <p className="mt-2 text-xs leading-5 text-slate-500">
           {en
-            ? 'If you choose “Decide later,” we will ask again next time you start the app. You can change your choice later in Settings → Developer Messages.'
-            : '「今は決めない」を選ぶと、次回起動時にもう一度確認します。送信設定は後から「設定 → 開発者とのやりとり」で変更できます。'}
+            ? 'If you choose “Decide later,” we will wait at least 7 days before asking again. You can change your choice in Settings → Developer Messages.'
+            : '「今は決めない」を選ぶと、少なくとも7日間は再確認しません。送信設定は「設定 → 開発者とのやりとり」で変更できます。'}
         </p>
         </>}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
-          <button onClick={onAccept} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+          <button disabled={busy} onClick={onAccept} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50">
             {en ? 'Share usage information' : '送信に協力する'}
           </button>
-          <button onClick={onDecline} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+          <button disabled={busy} onClick={onDecline} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50">
             {en ? 'Do not send' : '送信しない'}
           </button>
-          <button onClick={onPostpone} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+          <button disabled={busy} onClick={onPostpone} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50">
             {en ? 'Decide later' : '今は決めない'}
           </button>
         </div>
+        <p className="mt-3 text-xs text-slate-500">{en ? 'Your choice is recorded as a setting. Feature usage information is sent only if you agree.' : '選択内容は設定状況として記録します。協力を選ぶまで、機能の利用情報は送りません。'}</p>
+        {saveError && <p role="alert" className="mt-2 text-sm text-red-700">{en ? 'Could not save your choice. Please try again.' : '選択を保存できませんでした。もう一度お試しください。'}</p>}
       </MessageSurface>
     </div>
   );

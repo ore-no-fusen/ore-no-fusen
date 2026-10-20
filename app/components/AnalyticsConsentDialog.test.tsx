@@ -9,8 +9,10 @@ function ConsentFlowHarness({
   consent,
   version,
   saveConsent,
+  eligible = true,
 }: {
   consent?: 'granted' | 'denied';
+  eligible?: boolean;
   version?: number;
   saveConsent: (choice: 'granted' | 'denied') => void;
 }) {
@@ -25,6 +27,7 @@ function ConsentFlowHarness({
     reconfirmationVersion: storedVersion,
     reconfirmationPresented,
     postponed,
+    eligible,
   });
   if (!showPrompt) return <main>付箋画面</main>;
   const isDeniedReconfirmation = consent === 'denied';
@@ -45,6 +48,12 @@ function ConsentFlowHarness({
 
 describe('AnalyticsConsentDialog', () => {
   afterEach(cleanup);
+
+  it('初回や保留期間中は案内条件を満たさず、通常の付箋画面へ進む', () => {
+    render(<ConsentFlowHarness eligible={false} saveConsent={vi.fn()} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('付箋画面')).toBeTruthy();
+  });
 
   it.each(['ja', 'en'] as const)('%s: 初回画面で送信内容の説明と3つの選択を表示する', (language) => {
     const onAccept = vi.fn();
@@ -77,7 +86,7 @@ describe('AnalyticsConsentDialog', () => {
     expect(onPresented).toHaveBeenCalledOnce();
   });
 
-  it('「今は決めない」は未選択者に次回起動で再表示し、同意状態を保存しない', () => {
+  it('「今は決めない」は同意を変更せず、再案内条件を満たした起動で再表示する', () => {
     const saveConsent = vi.fn();
     const firstLaunch = render(<ConsentFlowHarness saveConsent={saveConsent} />);
     fireEvent.click(screen.getByRole('button', { name: '今は決めない' }));

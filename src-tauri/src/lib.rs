@@ -1560,6 +1560,15 @@ fn fusen_save_note(
         storage::clear_recovery_draft(&new_path);
     }
 
+    // Automatic welcome-note creation uses allow_rename=false. Only a successful
+    // nonempty user edit establishes the local milestone for the later request.
+    let is_welcome=old_note.as_ref().map(|note|note.meta.context=="はじめての付箋（消してOK）"||note.meta.context=="Your first note (safe to delete)").unwrap_or(false);
+    if member_identity::should_remember_note_save(allow_rename,is_welcome,&body,&old_body) {
+        if let Err(error)=member_identity::remember_first_note_save(&mut app_state){
+            logger::log_warn(&format!("[consent] Cannot save local prompt milestone: {}",error));
+        }
+    }
+
     Ok(new_path)
 }
 
@@ -6257,6 +6266,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             member_identity::member_get,
+            member_identity::member_consent_prompt_event,
             member_identity::member_record_batch,
             member_identity::member_flush,
             member_identity::member_open_time_tick,
