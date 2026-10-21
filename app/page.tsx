@@ -40,6 +40,7 @@ import { useMainWindowResizePolicy, calcSettingsWindowSize } from './hooks/useMa
 import { useFeedbackConversationUnreadCheck } from './hooks/useFeedbackConversationUnreadCheck';
 import { shouldShowAnalyticsConsentPrompt, useAnalyticsConsentPromptPostponed, useAnalyticsConsentPromptEligibility } from './hooks/useAnalyticsConsentPrompt';
 import { ANALYTICS_CONSENT_RECONFIRMATION_VERSION } from './utils/analyticsConsentPrompt';
+import { completeAnalyticsConsentChoice } from './utils/analyticsConsentCompletion';
 import { useDiscordReplyIngest } from './hooks/useDiscordReplyIngest';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
@@ -2317,11 +2318,11 @@ function OrchestratorContent() {
       // If a denied user answers immediately, wait for the display marker first so
       // a slower marker write cannot overwrite their explicit choice.
       if (settings.analytics_consent === 'denied') await persistReconfirmationPresented();
-      await saveSettings({
+      await completeAnalyticsConsentChoice(() => saveSettings({
         ...settings,
         analytics_consent: consent,
         analytics_consent_reconfirmation_version: ANALYTICS_CONSENT_RECONFIRMATION_VERSION,
-      });
+      }), () => getCurrentWindow().hide());
     };
     return (
       <AnalyticsConsentDialog
@@ -2340,7 +2341,10 @@ function OrchestratorContent() {
           setAnalyticsConsentError(false);
           setAnalyticsConsentBusy(true);
           void analyticsConsentPresentationRef.current.catch(() => undefined)
-            .then(() => invoke('member_consent_prompt_event', { event: 'postponed' }))
+            .then(() => completeAnalyticsConsentChoice(
+              () => invoke('member_consent_prompt_event', { event: 'postponed' }),
+              () => getCurrentWindow().hide(),
+            ))
             .then(() => { postponeAnalyticsConsent(); void invoke('member_sync_usage').catch(() => undefined); })
             .catch(() => setAnalyticsConsentError(true))
             .finally(() => setAnalyticsConsentBusy(false));
