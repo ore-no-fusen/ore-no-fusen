@@ -6,14 +6,24 @@ pageClass: user-guide-page
 
 [日本語](/user-guide/iphone)
 
-iPhone notes, images, and videos can be sent to the PC through your own Google Drive. The developer's server does not store note bodies.
+Send a PC sticky note to your iPhone to read it while away from your desk. You can also send iPhone notes, images, and videos to the PC through your own Google Drive. The developer's server does not store note bodies.
 
 ## First-time setup
 
-1. Open **Settings → iPhone Sync** and connect the PC to Google Drive.
+1. Open **Settings → iPhone Sync**, turn on **Enable iPhone Send**, and connect the PC to Google Drive.
 2. Scan the QR code with iPhone, open it in Safari, and choose **Add to Home Screen**.
 3. Open the iPhone app and connect the same Google account used on the PC.
-4. Confirm that all three steps show check marks and the PC says **Ready**.
+4. Select **Enable notifications** in the iPhone app and allow notifications.
+5. Confirm that the PC says **Ready**.
+
+## Send from PC to iPhone
+
+1. Finish editing and save the sticky note on the PC.
+2. Right-click the note and select **📱 Send to iPhone**.
+3. Confirm that **Sent to iPhone** appears.
+4. Tap the notification on your iPhone to open the note.
+
+If setup is incomplete, the PC opens **Settings → iPhone Sync** instead of sending. Complete the setup above, then select **Send to iPhone** again.
 
 ## Send to PC
 
