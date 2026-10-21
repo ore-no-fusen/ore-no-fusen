@@ -338,6 +338,13 @@ fn mark_usage_synced(member:&mut MemberLocal,consent:Option<bool>,week:&str,feat
     member.last_usage_sync_at=Some(Utc::now().to_rfc3339());
 }
 
+fn mark_heartbeat_usage_synced(member:&mut MemberLocal,consent:Option<bool>,week:&str,features:&[String]) {
+    // A heartbeat contains a usage snapshot only after an explicit choice.
+    // Prompt status is sent separately by member_sync_usage; acknowledging a
+    // heartbeat must not suppress a failed or still-pending status report.
+    if consent.is_some() { mark_usage_synced(member,consent,week,features); }
+}
+
 #[tauri::command]
 pub fn member_closed_summaries(state:State<'_,Mutex<AppState>>)->Result<Vec<WeeklyUsage>,String>{
     let current=week_key(Utc::now()); let mut g=state.lock().map_err(|_|"State unavailable")?; let granted=usage_enabled(&mut g)?; let member=g.member.as_mut().ok_or("Member identity unavailable")?;
@@ -535,7 +542,7 @@ pub async fn member_heartbeat(
                 value.last_heartbeat_date = Some(today);
                 value.last_heartbeat_at = value.last_announcement_check_at.clone();
                 value.last_heartbeat_version = Some(env!("CARGO_PKG_VERSION").into());
-                mark_usage_synced(value,consent,&week,&features);
+                mark_heartbeat_usage_synced(value,consent,&week,&features);
             }
             for a in received { value.read_announcement_ids.insert(a.id.clone()); }
             value.announcements.extend(received.iter().cloned());
@@ -806,6 +813,29 @@ mod segment_tests {
         mark_usage_synced(&mut member,None,week,&[]);
         assert!(!should_sync_usage(&member,None,week,&[]));
         assert!(should_sync_usage(&member,Some(true),week,&features));
+    }
+
+    #[test]
+    fn heartbeat_does_not_acknowledge_prompt_status_that_it_did_not_send() {
+        for status in ["not_presented","unanswered","postponed"] {
+            let mut member=MemberLocal { consent_prompt_state:Some(status.into()), ..Default::default() };
+            assert!(should_sync_usage(&member,None,"2026-W43",&[]));
+            mark_heartbeat_usage_synced(&mut member,None,"2026-W43",&[]);
+            assert!(member.last_usage_sync_status.is_none());
+            assert!(should_sync_usage(&member,None,"2026-W43",&[]));
+            let mut restored:MemberLocal=serde_json::from_slice(&serde_json::to_vec(&member).unwrap()).unwrap();
+            assert!(should_sync_usage(&restored,None,"2026-W43",&[]));
+            mark_usage_synced(&mut restored,None,"2026-W43",&[]);
+            assert!(!should_sync_usage(&restored,None,"2026-W43",&[]));
+            restored.consent_prompt_state=Some("next-state".into());
+            mark_heartbeat_usage_synced(&mut restored,None,"2026-W43",&[]);
+            assert!(should_sync_usage(&restored,None,"2026-W43",&[]));
+        }
+        for consent in [true,false] {
+            let mut member=MemberLocal::default();
+            mark_heartbeat_usage_synced(&mut member,Some(consent),"2026-W43",&[]);
+            assert!(!should_sync_usage(&member,Some(consent),"2026-W43",&[]));
+        }
     }
 
     #[test]
