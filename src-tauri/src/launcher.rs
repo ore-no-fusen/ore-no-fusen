@@ -831,7 +831,8 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
             }
         }
     }
-    summary.applied += crate::web_create::receive(&base,&account_subject,&client,&token,&share_folder,&state).await?;
+    let imported_paths = crate::web_create::receive(&base,&account_subject,&client,&token,&share_folder,&state).await?;
+    summary.applied += imported_paths.len();
     let items = load_shortcut_items_strict(&base)?;
     let registered_paths = items.iter().map(|item|item.path.clone()).collect::<Vec<_>>();
     invalidate_shortcut_cache(shortcut_cache());
@@ -1022,6 +1023,11 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         }
     }
     persist_web_share_sync_state(&state_path, &sync_state)?;
+    for path in imported_paths {
+        if let Err(error) = fusen_open_quick_note(app.clone(), path.clone(), None).await {
+            summary.held.push(format!("新規付箋は保存済みですが表示できませんでした（QLから開けます）: {path}: {error}"));
+        }
+    }
     Ok(summary)
 }
 

@@ -139,6 +139,14 @@ fn import_once(base: &Path, ledger_path: &Path, request: &Request) -> Result<boo
     Ok(true)
 }
 
+fn register_imported_note(state: &mut crate::state::AppState, path: &str) -> Result<(), String> {
+    let note = storage::read_note(path)?;
+    if !state.notes.iter().any(|existing| existing.path == note.meta.path) {
+        state.notes.push(note.meta);
+    }
+    Ok(())
+}
+
 pub async fn receive(
     base: &Path,
     account: &str,
@@ -146,7 +154,7 @@ pub async fn receive(
     token: &str,
     folder: &str,
     state: &std::sync::Mutex<crate::state::AppState>,
-) -> Result<usize, String> {
+) -> Result<Vec<String>, String> {
     let pc = gdrive::local_pc_id()?;
     let capability = serde_json::json!({"schemaVersion":1,"accountSubject":account,"pcId":pc,"name":std::env::var("COMPUTERNAME").unwrap_or_else(|_|"Windows".into())});
     let capability_name = format!("web-pc-{}.json", pc);
@@ -185,13 +193,20 @@ pub async fn receive(
         }
     }
     let ledger = gdrive::get_token_path().with_file_name("web_create_receipts.json");
-    let mut imported = 0;
+    let mut imported = Vec::new();
     {
         // Serialize sequence allocation with the regular Windows new-note path.
-        let _guard = state.lock().map_err(|_| "付箋状態をロックできません")?;
+        let mut app_state = state.lock().map_err(|_| "付箋状態をロックできません")?;
         for request in requests.values() {
             if import_once(base, &ledger, request)? {
-                imported += 1;
+                let receipts: BTreeMap<String, Receipt> = serde_json::from_slice(
+                    &fs::read(&ledger).map_err(|e| e.to_string())?
+                ).map_err(|e| e.to_string())?;
+                let key = format!("{}:{}", request.account_subject, request.note_id);
+                let receipt = receipts.get(&key).ok_or("作成済み付箋の記録がありません")?;
+                let path = base.join(&receipt.path).to_string_lossy().to_string();
+                register_imported_note(&mut app_state, &path)?;
+                imported.push(path);
             }
         }
     }
@@ -201,6 +216,21 @@ pub async fn receive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn imported_note_is_available_to_visibility_filters_without_duplicates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("received.md");
+        fs::write(&path, "---\ntype: sticky\nseq: 1\ntags: [shortcut]\n---\n\nWeb本文").unwrap();
+        let mut state = crate::state::AppState::default();
+        state.notes.push(crate::state::NoteMeta { path: "existing.md".into(), ..Default::default() });
+        register_imported_note(&mut state, &path.to_string_lossy()).unwrap();
+        register_imported_note(&mut state, &path.to_string_lossy()).unwrap();
+        assert_eq!(state.notes.len(), 2);
+        assert_eq!(state.notes[0].path, "existing.md");
+        assert!(state.notes[1].tags.iter().any(|tag| tag == "shortcut"));
+        assert!(register_imported_note(&mut state, &dir.path().join("missing.md").to_string_lossy()).is_err());
+        assert_eq!(state.notes.len(), 2);
+    }
     #[test]
     fn incomplete_missing_original_is_held_instead_of_recreated() {
         let dir = tempfile::tempdir().unwrap();

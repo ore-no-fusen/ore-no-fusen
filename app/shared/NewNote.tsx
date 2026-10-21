@@ -2,7 +2,7 @@
 import React,{useEffect,useState} from 'react';
 import {submitWebCreate,webReceivers,type WebCreateRequest,type WebReceiver} from './lib/drive';
 
-export function NewNote({token,onDone}:{token:string;onDone:(message:string)=>void}) {
+export function NewNote({token,onDone}:{token:string;onDone:(message:string,request?:WebCreateRequest)=>void}) {
   const button:React.CSSProperties={border:'1px solid #cbd5e1',borderRadius:8,padding:'9px 14px',background:'white',color:'#162238',fontWeight:600,cursor:'pointer'};
   // Each opened editor owns its durable draft. Other tabs cannot overwrite or
   // delete it. The tab-local snapshot also survives a reload.
@@ -34,7 +34,7 @@ export function NewNote({token,onDone}:{token:string;onDone:(message:string)=>vo
     const request=pending??{schemaVersion:1 as const,accountSubject:account,targetPcId:target,noteId:requestId,markdown:body};
     if(!persist(body,target,request))return;
     setPending(request);setBusy(true);
-    try {await submitWebCreate(token,request);localStorage.removeItem(`shared-create:${account}:${draftId}`);const tabDraft=sessionStorage.getItem(`shared-create:${account}`);if(tabDraft&&JSON.parse(tabDraft).pending?.noteId===request.noteId)sessionStorage.removeItem(`shared-create:${account}`);onDone('保存しました。受取PCの「Webと同期」で新しい付箋を取り込んでください。');}
+    try {await submitWebCreate(token,request);localStorage.removeItem(`shared-create:${account}:${draftId}`);const tabDraft=sessionStorage.getItem(`shared-create:${account}`);if(tabDraft&&JSON.parse(tabDraft).pending?.noteId===request.noteId)sessionStorage.removeItem(`shared-create:${account}`);onDone('保存しました。Windows同期待ちです。',request);}
     catch(e){setMessage(`${e instanceof Error?e.message:String(e)} 入力は保持しています。同じ内容で再試行できます。`);}
     finally{setBusy(false);}
   }

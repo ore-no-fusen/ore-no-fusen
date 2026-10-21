@@ -1,6 +1,7 @@
-﻿'use client';
+'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import SharedWebQr from './SharedWebQr';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
@@ -557,7 +558,7 @@ export default function QuickLauncher() {
                 {activeTab === 'shortcut' && <div className="flex flex-wrap gap-2 text-xs">
                     <button type="button" onClick={() => setShowStored(false)} className={showStored ? 'text-zinc-400' : 'text-sky-300'}>{isEnglish ? 'Registered' : '登録一覧'}</button>
                     <button type="button" onClick={() => setShowStored(true)} className={showStored ? 'text-sky-300' : 'text-zinc-400'}>{isEnglish ? 'Stored in Launcher' : '格納した付箋'} ({storedItems.length})</button>
-                    <button type="button" className="ml-auto rounded border border-sky-700 px-3 py-1 text-sky-200 hover:bg-zinc-800" onClick={async () => {
+                    <SharedWebQr isEnglish={isEnglish} webSyncBusy={webSyncBusy} onSync={() => void syncLauncherToWeb()} onOpen={async () => {
                         const url = process.env.NODE_ENV === 'development' ? 'http://localhost:3002/shared' : 'https://ore-no-fusen.vercel.app/shared';
                         try {
                             if ('__TAURI_INTERNALS__' in window) {
@@ -565,11 +566,11 @@ export default function QuickLauncher() {
                                 await open(url);
                             } else { window.open(url, '_blank', 'noopener,noreferrer'); }
                         } catch { setWebSyncMessage(isEnglish ? 'Could not open the Web page.' : 'Web画面を開けませんでした。'); }
-                    }}>{isEnglish ? 'Open Web' : 'Webを開く'}</button>
-                    {!showStored && <button type="button" onClick={() => void syncLauncherToWeb()} disabled={webSyncBusy} className="rounded bg-sky-700 px-3 py-1 font-medium text-white hover:bg-sky-600 disabled:opacity-50">{webSyncBusy ? (isEnglish ? 'Syncing…' : 'Web同期中…') : (isEnglish ? 'Sync with Web' : 'Webと同期')}</button>}
+                    }} />
                     {activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <button type="button" disabled={busy} onClick={() => void storeSelectedTag()} className="ml-auto rounded bg-zinc-800 px-2 py-1 disabled:opacity-50">{busy ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Store tag in Launcher' : 'このタグをまとめて格納')}</button>}
                 </div>}
                 {webSyncMessage && activeTab === 'shortcut' && <div role="status" className="rounded border border-sky-500/30 bg-sky-950/30 px-2 py-1 text-xs text-sky-100">{webSyncMessage}</div>}
+
                 {activeTab === 'shortcut' && activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <p className="text-[11px] text-zinc-400">{isEnglish ? 'Stores all desktop notes with this tag, including unregistered notes.' : 'タグ全体の格納は、未登録の付箋も対象です。'}</p>}
                 <input
                     ref={inputRef}

@@ -28,9 +28,18 @@ async function downloadVersionedRecord(token: string, file: {id: string; version
   return value;
 }
 
-export type SharedNote = { scope: ShareScope; operation: ShareOperation; heads: string[]; paused?: boolean; sharingHeads?: string[] };
+export type SharedNote = { scope: ShareScope; operation: ShareOperation; heads: string[]; paused?: boolean; sharingHeads?: string[]; pendingCreate?: boolean };
 export type WebCreateRequest = { schemaVersion: 1; accountSubject: string; targetPcId: string; noteId: string; markdown: string };
 export type WebReceiver = { pcId: string; name: string };
+
+// A display projection of a saved request, never a shared edit operation.
+export function pendingCreatedNote(request: WebCreateRequest): SharedNote {
+  const scope = { accountSubject: request.accountSubject, noteId: request.noteId, generation: 0 };
+  return { scope, heads: [], pendingCreate: true, operation: {
+    scope, operationId: `pending-create-${request.noteId}`, kind: 'edit', parents: [], resolvedIds: [], payloadHash: '',
+    payload: { title: request.markdown.split('\n').find(line => line.trim())?.trim() ?? '新しい付箋', markdown: request.markdown, images: [], backgroundColor: '#f7e9b0' },
+  } };
+}
 
 export async function webReceivers(token: string): Promise<{ account: string; pcs: WebReceiver[] }> {
   latestAccessToken = token;
@@ -67,6 +76,7 @@ export async function submitWebCreate(token: string, request: WebCreateRequest):
 }
 
 export async function revokeWebNote(token:string,current:SharedNote):Promise<void> {
+  if (current.pendingCreate) throw new Error('Windowsへの取込後に共有を変更できます。');
   latestAccessToken=token;
   const expected=current.scope.accountSubject;
   const loaded=await loadSharedNotes(token,expected);
@@ -82,6 +92,7 @@ export async function revokeWebNote(token:string,current:SharedNote):Promise<voi
 
 /** Web-only sharing preference; never changes Windows launcher registration. */
 export async function setWebSharing(token: string, current: SharedNote, paused: boolean): Promise<void> {
+  if (current.pendingCreate) throw new Error('Windowsへの取込後に共有を変更できます。');
   latestAccessToken = token;
   const account = current.scope.accountSubject;
   const loaded = await loadSharedNotes(token, account);
@@ -237,6 +248,24 @@ export async function loadSharedNotes(token: string, expectedAccount?: string): 
       if (operation) (sharing.paused ? stoppedNotes : notes).push({ scope: group.scope, operation, heads: log.contentHeads, paused: sharing.paused, sharingHeads: sharing.heads });
     }
   }
+  // Requests remain on Drive after import. Any published history (including
+  // stopped/revoked history) suppresses the waiting projection permanently.
+  const publishedIds = new Set(records.map(record => record.scope.noteId));
+  const waiting = new Map<string, WebCreateRequest>();
+  const requestFiles = files.filter(file => /^web-request-[0-9a-f-]{36}\.json$/.test(file.name));
+  const requests = await Promise.all(requestFiles.map(async file => ({ file, request: await downloadVersionedRecord(token, file, account) as WebCreateRequest })));
+  for (const {file, request} of requests) {
+    if (!request || request.schemaVersion !== 1 || request.accountSubject !== account ||
+        file.name !== `web-request-${request.noteId}.json` || typeof request.targetPcId !== 'string' ||
+        !/^[0-9a-f-]{36}$/.test(request.targetPcId) || typeof request.markdown !== 'string' ||
+        !request.markdown.trim() || new TextEncoder().encode(request.markdown).length > 100_000 || /!\[|ore-fusen-image:/.test(request.markdown)) {
+      throw new Error('新規付箋の保存記録を確認できませんでした。');
+    }
+    const previous = waiting.get(request.noteId);
+    if (previous && (previous.markdown !== request.markdown || previous.targetPcId !== request.targetPcId)) throw new Error('同じ作成IDの内容が異なります。');
+    waiting.set(request.noteId, request);
+  }
+  for (const request of waiting.values()) if (!publishedIds.has(request.noteId)) notes.push(pendingCreatedNote(request));
   const byTitle = (a: SharedNote, b: SharedNote) => a.operation.payload.title.localeCompare(b.operation.payload.title, 'ja');
   return { notes: notes.sort(byTitle), stoppedNotes: stoppedNotes.sort(byTitle), files };
 }
@@ -261,6 +290,7 @@ export async function appendWebEdit(
   current: SharedNote,
   payload: { title: string; markdown: string; images: ShareOperation['payload']['images'] },
 ): Promise<void> {
+  if (current.pendingCreate) throw new Error('Windowsへの取込後に編集できます。PC側で「Webと同期」を押してください。');
   latestAccessToken = token;
   if (current.heads.length !== 1 || current.heads[0] !== current.operation.operationId) {
     throw new Error('Windows側にも変更があります。競合を確認するまで保存を保留しました。');

@@ -38,6 +38,17 @@ function sharedNote(markdown: string, title = 'テスト付箋'): SharedNote {
 }
 
 describe('shared note editor', () => {
+  it('Windows同期待ちの保存済み付箋は本文を表示し、未取込の編集・共有操作を送信しない', async () => {
+    mocks.loadSharedNotes.mockResolvedValue({ notes: [{ ...sharedNote('同期待ちの本文\n- [ ] 確認', '新規保存済み'), pendingCreate: true }], files: [] });
+    render(<SharedNotesPage/>);
+    await screen.findByRole('heading', { name: '新規保存済み' });
+    expect(await screen.findByText('同期待ちの本文')).toBeTruthy();
+    expect(screen.getByText('Windows同期待ち')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '編集' })).toBeNull();
+    expect((screen.getByRole('checkbox', { name: '確認' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.appendWebEdit).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Web共有を停止' })).toBeNull();
+  });
   it('チェックは直ちに反応し、保存中を示し、通信失敗なら元へ戻す', async () => {
     let rejectSave!: (reason: Error) => void;
     mocks.appendWebEdit.mockImplementationOnce(() => new Promise((_, reject) => { rejectSave = reject; }));

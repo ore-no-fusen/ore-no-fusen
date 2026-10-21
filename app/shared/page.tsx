@@ -6,7 +6,7 @@ import { refreshAccessToken } from '@/app/viewer/lib/drive';
 import { renderSecureMermaid } from '@/app/utils/mermaid';
 import { copySharedConnectionDiagnostics, logSharedConnection } from './lib/connection-diagnostic';
 import { markSharedLoginReturn } from './lib/login-return';
-import { appendWebEdit, downloadSharedImage, loadSharedNotes, setWebSharing, type SharedNote } from './lib/drive';
+import { appendWebEdit, downloadSharedImage, loadSharedNotes, pendingCreatedNote, setWebSharing, type SharedNote } from './lib/drive';
 import { NewNote } from './NewNote';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
 
@@ -248,7 +248,7 @@ export default function SharedNotesPage() {
   }
 
   async function toggleViewedTask(lineIndex: number, checked: boolean) {
-    if (!current || current.paused || !token || busy || checkSaving.current) return;
+    if (!current || current.paused || current.pendingCreate || !token || busy || checkSaving.current) return;
     if (editing) { setMarkdown(value => setTaskLine(value, lineIndex, checked)); return; }
     checkSaving.current = true;
     setPendingTask({ operationId: current.operation.operationId, lineIndex, checked });
@@ -306,7 +306,13 @@ export default function SharedNotesPage() {
         </div>
       </header>
       <p role="status" style={{ color: '#52627a', minHeight: 24 }}>{message}</p>
-      {creating&&token&&<NewNote token={token} onDone={text=>{setCreating(false);setMessage(text);}}/>}
+      {creating&&token&&<NewNote token={token} onDone={(text,request)=>{
+        setCreating(false);setMessage(text);
+        if(request){
+          setNotes(previous=>[pendingCreatedNote(request),...previous.filter(note=>note.scope.noteId!==request.noteId)]);
+          setSelected(0);setSearch('');setSelectedTag('');setShowStopped(false);setEditing(false);
+        }
+      }}/>}
       {process.env.NODE_ENV === 'development' && <div style={{ margin: '8px 0 14px', fontSize: 13, color: '#52627a' }}>
         <button type="button" style={button} onClick={() => void copyDiagnostics()}>接続診断をコピー</button>
         <span role="status" aria-live="polite" style={{ marginLeft: 8 }}>{diagnosticMessage}</span>
@@ -336,14 +342,14 @@ export default function SharedNotesPage() {
             setEditing(false);
             setSelected(index);
           }} style={{ ...button, textAlign: 'left', background: index === selected ? '#e7f2fc' : 'white', borderColor: index === selected ? '#298bd1' : '#cbd5e1', boxShadow: `inset 5px 0 0 ${note.operation.payload.backgroundColor ?? '#f7e9b0'}`, opacity: busy ? 0.65 : 1 }}>
-            📌 {note.operation.payload.title}<small style={{ display: 'block', marginTop: 3, color: '#5d7086' }}>Windowsランチャー登録</small>
+            📌 {note.operation.payload.title}<small style={{ display: 'block', marginTop: 3, color: '#5d7086' }}>{note.pendingCreate ? 'Windows同期待ち' : 'Windowsランチャー登録'}</small>
           </button>)}
           {visibleNotes.length === 0 && <p role="status" style={{ color: '#607086' }}>一致する付箋がありません。</p>}
           </nav>
         {current && <section style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 12 }}>
             <strong>付箋の内容</strong>
-            {!editing ? !current.paused && <button style={button} disabled={busy} onClick={() => {
+            {!editing ? !current.paused && !current.pendingCreate && <button style={button} disabled={busy} onClick={() => {
               setEditing(true);
             }}>編集</button> : <div style={{ display: 'flex', gap: 8 }}>
               <button style={button} disabled={busy} onClick={() => {
@@ -371,7 +377,7 @@ export default function SharedNotesPage() {
                 if (task) {
                   const checked = pendingTask?.operationId === current.operation.operationId && pendingTask.lineIndex === index ? pendingTask.checked : task[2].toLowerCase() === 'x';
                   return <div key={index} style={{ display: 'flex', gap: 6, alignItems: 'baseline', padding: '7px 0' }}>
-                    <button type="button" role="checkbox" aria-label={task[4]} aria-checked={checked} title={checked ? '未完了にする' : '完了にする'} disabled={busy || current.paused} onClick={() => void toggleViewedTask(index, !checked)} style={{ border: 0, padding: 0, background: 'transparent', color: checked ? '#4caf50' : '#888', width: '1em', flex: '0 0 1em', textAlign: 'center', font: 'inherit', lineHeight: 'inherit', cursor: !busy && !current.paused ? 'pointer' : 'default' }}>{checked ? '☑' : '☐'}</button>
+                    <button type="button" role="checkbox" aria-label={task[4]} aria-checked={checked} title={checked ? '未完了にする' : '完了にする'} disabled={busy || current.paused || current.pendingCreate} onClick={() => void toggleViewedTask(index, !checked)} style={{ border: 0, padding: 0, background: 'transparent', color: checked ? '#4caf50' : '#888', width: '1em', flex: '0 0 1em', textAlign: 'center', font: 'inherit', lineHeight: 'inherit', cursor: !busy && !current.paused ? 'pointer' : 'default' }}>{checked ? '☑' : '☐'}</button>
                     <span style={{ textDecoration: checked ? 'line-through' : 'none', opacity: checked ? 0.6 : 1 }}>{renderInlineContent(task[4], images)}</span>
                   </div>;
                 }
@@ -407,7 +413,7 @@ export default function SharedNotesPage() {
               })}
             </div>
           </article>
-          <p style={{ color: '#607086', fontSize: 13 }}>{current.paused ? 'Web共有を停止しています。ここには最後に共有した内容を表示しています。Windowsの付箋とランチャー登録は残ります。' : 'チェックは押すと保存します。本文は「編集」で変更できます。Windows側は「Webと同期」で反映します。'}</p>
+          <p style={{ color: '#607086', fontSize: 13 }}>{current.pendingCreate ? 'Windows同期待ちです。PC側で「Webと同期」を押すと、Windowsに取り込みます。取込後に編集できます。' : current.paused ? 'Web共有を停止しています。ここには最後に共有した内容を表示しています。Windowsの付箋とランチャー登録は残ります。' : 'チェックは押すと保存します。本文は「編集」で変更できます。Windows側は「Webと同期」で反映します。'}</p>
         </section>}
         </div>
       </div>}
@@ -415,7 +421,7 @@ export default function SharedNotesPage() {
         <summary style={{ cursor: 'pointer', textAlign: 'right' }}>詳細操作</summary>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
           <button style={button} disabled={busy || editing} onClick={() => { setShowStopped(!showStopped); setSearch(''); setSelectedTag(''); }}>{showStopped ? '共有中の一覧へ戻る' : `共有停止中の付箋（${notes.filter(note => note.paused).length}）`}</button>
-          {current && !editing && <button style={button} disabled={busy} onClick={() => setSharingConfirmation({ note: current, paused: !current.paused })}>{current.paused ? 'Web共有を再開' : 'Web共有を停止'}</button>}
+          {current && !current.pendingCreate && !editing && <button style={button} disabled={busy} onClick={() => setSharingConfirmation({ note: current, paused: !current.paused })}>{current.paused ? 'Web共有を再開' : 'Web共有を停止'}</button>}
         </div>
       </details>}
       <footer style={{ marginTop: 16, borderTop: '1px solid #e2e8f0', paddingTop: 14, color: '#6b7b8f', fontSize: 13 }}>Google Driveは共有用の一時置き場です。Windowsの付箋が原本です。同期はボタンを押した時だけ行います。</footer>

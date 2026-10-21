@@ -23,6 +23,39 @@ function jsonResponse(data: unknown) {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('shared Drive storage', () => {
+  it('loads a saved creation before Windows import and replaces it without duplication after publication', async () => {
+    const request = { schemaVersion: 1, accountSubject: scope.accountSubject, targetPcId: '11111111-1111-4111-8111-111111111111', noteId: '22222222-2222-4222-8222-222222222222', markdown: '新規の表示\n本文\n- [ ] 確認' };
+    let published = false;
+    const seed = await seedOperation();
+    seed.scope = { ...scope, noteId: request.noteId };
+    seed.parents = [`root:${new TextEncoder().encode(scope.accountSubject).length}:${scope.accountSubject}:${request.noteId.length}:${request.noteId}:1`];
+    seed.payloadHash = await calculateSharePayloadHash({ ...seed.scope, ...seed });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/about?')) return jsonResponse({ user: { emailAddress: scope.accountSubject } });
+      if (url.includes('/files?')) {
+        const q = new URL(url).searchParams.get('q') ?? '';
+        if (q.includes("name='ore-no-fusen'")) return jsonResponse({ files: [{ id: 'root' }] });
+        if (q.includes("name='web-share-temp'")) return jsonResponse({ files: [{ id: 'share' }] });
+        return jsonResponse({ files: [{ id: 'creation', name: `web-request-${request.noteId}.json` }, ...(published ? [{ id: 'published', name: 'op-op-seed.json' }] : [])] });
+      }
+      if (url.includes('/files/creation?')) return jsonResponse(request);
+      if (url.includes('/files/published?')) return jsonResponse(seed);
+      throw new Error('unexpected');
+    }));
+    const { loadSharedNotes, appendWebEdit } = await import('./drive');
+    const before = await loadSharedNotes('token');
+    expect(before.notes).toHaveLength(1);
+    expect(before.notes[0].pendingCreate).toBe(true);
+    expect(before.notes[0].operation.payload.markdown).toBe(request.markdown);
+    await expect(appendWebEdit('token', before.notes[0], before.notes[0].operation.payload)).rejects.toThrow('取込後');
+    expect((await loadSharedNotes('token')).notes).toHaveLength(1);
+    published = true;
+    const after = await loadSharedNotes('token');
+    expect(after.notes).toHaveLength(1);
+    expect(after.notes[0].pendingCreate).toBeUndefined();
+    expect(after.notes[0].scope.noteId).toBe(request.noteId);
+  });
   it('reuses only records with the same freshly listed Drive version and downloads changed/unversioned records', async () => {
     const seed=await seedOperation(); let version:string|undefined='1'; let downloads=0;
     vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>{
