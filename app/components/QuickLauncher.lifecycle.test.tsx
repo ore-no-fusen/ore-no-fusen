@@ -1,7 +1,7 @@
 import React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
-const mocks=vi.hoisted(()=>({hide:vi.fn(),open:vi.fn(),listen:vi.fn(),top:vi.fn()}));
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+const mocks=vi.hoisted(()=>({hide:vi.fn(),open:vi.fn(),listen:vi.fn(),top:vi.fn(),sync:vi.fn()}));
 vi.mock('@tauri-apps/api/window',()=>({getCurrentWindow:()=>({hide:mocks.hide,isAlwaysOnTop:async()=>true,setAlwaysOnTop:mocks.top})}));
 vi.mock('../utils/pinToggleSound',()=>({playPinToggleSound:vi.fn()}));
 vi.mock('@tauri-apps/api/event',()=>({listen:mocks.listen}));
@@ -11,12 +11,27 @@ vi.mock('../api/launcher',()=>({
   getLauncherState:async()=>({last_tab:'shortcut',orders:{},selected_tags:{}}),
   quickOpenNotes:async()=>[{path:'C:/test.md',title:'試験付箋',tags:['shortcut'],launches:0,is_recipe:false}],
   openQuickNote:mocks.open,setLauncherLastTab:vi.fn(),setLauncherTagFilter:vi.fn(),
-  storeQuickNote:vi.fn(),storeTag:vi.fn(),removeFromShelf:vi.fn(),renameQuickNote:vi.fn(),reorderQuickNote:vi.fn(),syncQuickLauncherToWeb:vi.fn(),
+  storeQuickNote:vi.fn(),storeTag:vi.fn(),removeFromShelf:vi.fn(),renameQuickNote:vi.fn(),reorderQuickNote:vi.fn(),syncQuickLauncherToWeb:mocks.sync,
 }));
 import QuickLauncher from './QuickLauncher';
 describe('launcher explicit close',()=>{
   beforeEach(()=>{mocks.hide.mockReset().mockResolvedValue(undefined);mocks.open.mockReset().mockResolvedValue(undefined);mocks.listen.mockReset().mockResolvedValue(()=>{});mocks.top.mockReset().mockResolvedValue(undefined);});
   afterEach(cleanup);
+  it('shows sync stages and elapsed time without changing the held result',async()=>{
+    let finish!: (value: unknown) => void;
+    mocks.sync.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+    render(<QuickLauncher/>);
+    fireEvent.click(await screen.findByRole('button',{name:'↻ 同期'}));
+    await waitFor(()=>expect(mocks.sync).toHaveBeenCalled());
+    const progress=mocks.listen.mock.calls.find(args=>args[0]==='fusen:web_sync_progress')?.[1];
+    act(()=>progress({payload:'history'}));
+    expect(screen.getByRole('status').textContent).toContain('共有記録を取得');
+    act(()=>progress({payload:'apply'}));
+    expect(screen.getByRole('status').textContent).toContain('付箋を確認');
+    await act(async()=>finish({uploaded:0,applied:0,revoked:0,unchanged:9,held:['重複IDは保留']}));
+    expect(screen.getByRole('status').textContent).toMatch(/Web同期（[\d.]+秒）.*9件は変更なし.*重複IDは保留/);
+    expect((screen.getByRole('button',{name:'↻ 同期'}) as HTMLButtonElement).disabled).toBe(false);
+  });
   it('stays visible after losing focus and opening a note',async()=>{
     render(<QuickLauncher/>);
     const row=await screen.findByText('試験付箋',{exact:true});

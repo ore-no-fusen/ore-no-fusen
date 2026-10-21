@@ -39,6 +39,7 @@ mod triple_right_click;
 #[allow(dead_code)] // 接続処理は同期UIとDrive層の安全ゲート後に追加する
 mod web_share_contract;
 mod web_create;
+mod web_share_download;
 mod web_sharing_state;
 mod web_share_markdown;
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs) // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）

@@ -478,16 +478,24 @@ export default function QuickLauncher() {
     const syncLauncherToWeb = useCallback(async () => {
         if (webSyncBusy) return;
         setWebSyncBusy(true);
-        setWebSyncMessage(null);
+        const started = performance.now();
+        setWebSyncMessage(isEnglish ? 'Connecting to Google Drive…' : 'Google Driveに接続しています…');
+        let unlistenProgress: (() => void) | undefined;
         try {
+            unlistenProgress = await listen<string>('fusen:web_sync_progress', ({ payload }) => {
+                if (payload === 'history') setWebSyncMessage(isEnglish ? 'Reading shared history…' : '共有記録を取得しています…');
+                if (payload === 'apply') setWebSyncMessage(isEnglish ? 'Checking and syncing notes…' : '付箋を確認して同期しています…');
+            }).catch(() => undefined);
             const result = await syncQuickLauncherToWeb();
+            const seconds = ((performance.now() - started) / 1000).toFixed(1);
             const summary = isEnglish
-                ? `Web sync: ${result.uploaded} sent, ${result.applied} received, ${result.revoked} removed from Web, ${result.unchanged} unchanged, ${result.held.length} held.`
-                : `Web同期：${result.uploaded}件を送信、${result.applied}件を受信、${result.revoked}件をWebから解除、${result.unchanged}件は変更なし、${result.held.length}件を保留。`;
+                ? `Web sync (${seconds}s): ${result.uploaded} sent, ${result.applied} received, ${result.revoked} removed from Web, ${result.unchanged} unchanged, ${result.held.length} held.`
+                : `Web同期（${seconds}秒）：${result.uploaded}件を送信、${result.applied}件を受信、${result.revoked}件をWebから解除、${result.unchanged}件は変更なし、${result.held.length}件を保留。`;
             setWebSyncMessage(result.held.length ? `${summary} ${result.held.join(' / ')}` : summary);
         } catch (e) {
             setWebSyncMessage(isEnglish ? `Web sync failed: ${String(e)}` : `Web同期に失敗しました：${e instanceof Error ? e.message : String(e)}`);
         } finally {
+            unlistenProgress?.();
             setWebSyncBusy(false);
         }
     }, [webSyncBusy, isEnglish]);

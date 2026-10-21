@@ -175,9 +175,9 @@ pub async fn receive(
     }
     let files = gdrive::list_web_share_named_records(client, token, folder, "web-request-").await?;
     let mut requests = BTreeMap::<String, Request>::new();
-    for (id, name) in files {
+    for (_, name, value) in gdrive::read_web_share_records(client, token, files).await? {
         let request: Request =
-            serde_json::from_value(gdrive::download_web_share_record(client, token, &id).await?)
+            serde_json::from_value(value)
                 .map_err(|e| e.to_string())?;
         validate(&request, account)?;
         if name != format!("web-request-{}.json", request.note_id) {

@@ -704,6 +704,23 @@ struct DriveShareRecord {
     name: String,
 }
 
+pub async fn read_web_share_records(
+    client: &Client, access_token: &str, files: Vec<(String, String)>,
+) -> Result<Vec<(String, String, serde_json::Value)>, String> {
+    let started = std::time::Instant::now();
+    let count = files.len();
+    let result = crate::web_share_download::read_all(files, |(id, name)| {
+        let client = client.clone();
+        let token = access_token.to_owned();
+        async move {
+            let value = download_web_share_record(&client, &token, &id).await?;
+            Ok((id, name, value))
+        }
+    }).await;
+    crate::logger::log_info(&format!("[Web同期] 記録取得: {}件 {}ms / {}", count, started.elapsed().as_millis(), if result.is_ok() { "成功" } else { "失敗" }));
+    result
+}
+
 pub async fn download_web_share_record(
     client: &Client,
     access_token: &str,
