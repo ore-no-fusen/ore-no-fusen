@@ -455,7 +455,7 @@ pub fn handle_save_note(
     // 1. Filename & Path Logic
     let current_path_obj = std::path::Path::new(current_path);
 
-    if !allow_rename && !current_path_obj.exists() {
+    if !current_path_obj.exists() {
         // [FIX] リネーム処理後に遅延していた自動保存（ジオメトリ変更など）が古いパスめがけて実行された際、
         // 古い名前のまま内容が復活してしまう（増殖バグ）のを完全に防ぐ
         println!(
@@ -1143,6 +1143,38 @@ mod tests {
     }
 
     #[test]
+    fn delayed_save_after_image_note_rename_never_recreates_old_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("0095_2026-10-04_画像.md");
+        let source = "---\nseq: 95\n---\n\n![](assets/photo.jpg)";
+        std::fs::write(&old_path, source).unwrap();
+        let mut state = AppState::default();
+        state.notes = crate::storage::list_notes(&dir.path().to_string_lossy());
+        let (new_path, effect) = handle_save_note(&mut state, &old_path.to_string_lossy(),
+            "![](assets/photo.jpg)\nぶっちゃん", "![](assets/photo.jpg)", "---\nseq: 95\n---", true).unwrap();
+        let Effect::Batch(effects) = effect else { panic!("rename must be a batch"); };
+        for effect in effects {
+            match effect {
+                Effect::RenameNote { old_path, new_path } =>
+                    crate::storage::rename_note_if_unchanged(&old_path, &new_path, source).unwrap(),
+                Effect::WriteNote { path, content } =>
+                    crate::storage::write_note_if_unchanged(&path, source, &content).unwrap(),
+                _ => panic!("unexpected nested batch"),
+            }
+        }
+        let snapshot = std::fs::read_to_string(&new_path).unwrap();
+        assert!(snapshot.ends_with("![](assets/photo.jpg)\nぶっちゃん"));
+        for allow_rename in [false, true] {
+            assert!(handle_save_note(&mut state, &old_path.to_string_lossy(),
+                "![](assets/photo.jpg)", "", "---\nseq: 95\n---", allow_rename).is_err());
+            assert!(!old_path.exists());
+            assert_eq!(std::fs::read_to_string(&new_path).unwrap(), snapshot);
+        }
+        assert_eq!(state.notes.len(), 1);
+        assert_eq!(state.notes[0].path, new_path);
+    }
+
+    #[test]
     fn select_context_line_uses_second_line_when_first_line_is_image() {
         let body = "![image](assets/pasted_20260608.png)\nこのエラーをあとで確認";
 
@@ -1159,11 +1191,13 @@ mod tests {
     #[test]
     fn crystal_edit_does_not_rename_from_section_heading() {
         let mut state = AppState::default();
-        let path = std::env::temp_dir()
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path()
             .join("0001_2026-07-15_元の名前.md")
             .to_string_lossy()
             .to_string();
         let frontmatter = "---\nupdated: 2026-07-15\ntags: [qa]\n---";
+        std::fs::write(&path, format!("{frontmatter}\n\n# 問い\n元の問い")).unwrap();
 
         let (new_path, effect) = handle_save_note(
             &mut state,

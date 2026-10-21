@@ -59,6 +59,33 @@ describe('iPhone return and delayed auto-save',()=>{
 });
 
 describe('reload after a new PC note is renamed',()=>{
+  it('serializes overlapping saves and uses the renamed path before parent rerender',async()=>{
+    let finishFirst!: (path:string)=>void;
+    save.mockImplementationOnce(()=>new Promise<string>(resolve=>{finishFirst=resolve;}))
+      .mockResolvedValue('C:/notes/ぶっちゃん.md');
+    const {result}=renderHook(()=>useNoteFile({path:'C:/notes/画像.md',isNew:true}));
+    let first!:Promise<boolean>, second!:Promise<boolean>;
+    await act(async()=>{
+      first=result.current.saveNoteContent('![写真](assets/a.jpg)\nぶっちゃん','---\n---',true);
+      second=result.current.saveNoteContent('![写真](assets/a.jpg)\nぶっちゃん\n追記','---\n---',true);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    await act(async()=>{finishFirst('C:/notes/ぶっちゃん.md');await Promise.all([first,second]);});
+    expect(save.mock.calls.map(call=>call[0])).toEqual(['C:/notes/画像.md','C:/notes/ぶっちゃん.md']);
+    expect(result.current.content).toContain('追記');
+  });
+
+  it('allows a retry after a queued save fails',async()=>{
+    save.mockRejectedValueOnce(new Error('disk failed')).mockResolvedValue('C:/notes/a.md');
+    const {result}=renderHook(()=>useNoteFile({path:'C:/notes/a.md',isNew:true}));
+    await act(async()=>{
+      await expect(result.current.saveNoteContent('first','---\n---',true)).rejects.toThrow('disk failed');
+      expect(await result.current.saveNoteContent('retry','---\n---',true)).toBe(true);
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
   it('reads the returned file even when the rename skip is still pending',async()=>{
     save.mockResolvedValue('C:/notes/test.md');
     read.mockResolvedValue({body:'---\niphone_return_hash: receipt\n---\n\ntest\n- [x] 5',meta:{opacity:1}});

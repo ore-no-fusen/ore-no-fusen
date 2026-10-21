@@ -1471,6 +1471,7 @@ fn fusen_duplicate_note(
 
 #[tauri::command]
 fn fusen_save_note(
+    app: AppHandle,
     state: State<'_, Mutex<AppState>>,
     path: String,
     body: String,
@@ -1481,8 +1482,10 @@ fn fusen_save_note(
     // An open note window can still hold the pre-return content. Never let its
     // delayed auto-save overwrite the newly applied iPhone body and receipt.
     let old_note = storage::read_note(&path).ok();
-    if old_note.is_none() && std::path::Path::new(&path).exists() {
-        return Err("保存対象の付箋を読み直せないため、上書きを止めました".into());
+    if old_note.is_none() {
+        let incoming = format!("{}\n\n{}", frontmatter_raw, body);
+        return Err(preserve_failed_save(&path, &incoming,
+            "保存対象が移動・削除されたか読み直せないため、古い名前での再作成を止めました".into()));
     }
     let expected_snapshot = old_note.as_ref().map(|note| note.body.clone());
     let incoming_snapshot = format!("{}\n\n{}", frontmatter_raw, body);
@@ -1504,8 +1507,9 @@ fn fusen_save_note(
         .unwrap_or_default();
 
     // Logicに全て任せる
+    let mut planned_state = app_state.clone();
     let (new_path, effect) = logic::handle_save_note(
-        &mut app_state,
+        &mut planned_state,
         &path,
         &body,
         &old_body,
@@ -1556,6 +1560,7 @@ fn fusen_save_note(
         }
     }
 
+    *app_state = planned_state;
     storage::clear_recovery_draft(&path);
     if new_path != path {
         storage::clear_recovery_draft(&new_path);
@@ -1570,6 +1575,12 @@ fn fusen_save_note(
         }
     }
 
+    drop(app_state);
+    launcher::invalidate_quick_open_content(&path);
+    launcher::invalidate_quick_open_content(&new_path);
+    if new_path != path {
+        launcher::emit_launcher_shelf_changed(&app);
+    }
     Ok(new_path)
 }
 

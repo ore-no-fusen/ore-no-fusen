@@ -57,7 +57,12 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
     useEffect(() => { contentRef.current = content; }, [content]);
     // path を ref で保持（stale closure 対策 - setDynamicUrlPath の非同期 setState を回避）
     const pathRef = useRef(path);
-    pathRef.current = path; // レンダーごとに同期更新
+    const previousPathPropRef = useRef(path);
+    if (previousPathPropRef.current !== path) {
+        pathRef.current = path;
+        previousPathPropRef.current = path;
+    }
+    const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
     // isNew を ref で保持（saveNoteContent の deps を [onPathChange] に保ったまま最新値を診断に使うため）
     const isNewRef = useRef(isNew);
     isNewRef.current = isNew;
@@ -148,7 +153,7 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
     /**
      * ノートを保存する（リネーム対応）
      */
-    const saveNoteContent = useCallback(async (
+    const performSaveNoteContent = useCallback(async (
         body: string,
         frontmatter: string,
         allowRename: boolean
@@ -229,6 +234,8 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
 
         try {
             const newPath = await saveNote(currentPath, body, frontmatter, allowRename);
+            // Commit before React renders or another queued save starts.
+            pathRef.current = newPath;
 
             // パスが変更された場合（リネーム）
             if (!pathsEqual(newPath, currentPath)) {
@@ -251,6 +258,13 @@ export function useNoteFile({ path, isNew, onPathChange, onSaveError }: UseNoteF
             throw e;
         }
     }, [onPathChange]);
+
+    const saveNoteContent = useCallback((body: string, frontmatter: string, allowRename: boolean) => {
+        const task = saveQueueRef.current.then(() => performSaveNoteContent(body, frontmatter, allowRename));
+        // A failed save must not prevent the next explicit retry.
+        saveQueueRef.current = task.then(() => undefined, () => undefined);
+        return task;
+    }, [performSaveNoteContent]);
 
     /**
      * フロントマターの値を更新する
