@@ -37,7 +37,7 @@ tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 walkdir = "2"
 dunce = "1"
-rfd = "0.14"
+rfd = "0.17"
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 raw-window-handle = "0.6"
