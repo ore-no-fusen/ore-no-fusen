@@ -214,3 +214,7 @@ sequenceDiagram
 ## 計画との対応
 
 画面モックと詳細な操作シーケンスは内部作業資料 `.planning/shared-checklist/DESIGN.md` を参照。実装・試験・Astraレビュー・不具合修正・統合の進捗は `.planning/ai-collab/CURRENT.md` に記録する。これらの内部資料は公開サイトには含めない。
+
+### 管理者ツールから同期フォルダーを開く
+
+設定 → 管理者ツール → 外部サービスの「Web同期フォルダー」から、Google Driveの ore-no-fusen / web-share-temp を直接開ける。同期と同じフォルダー取得処理を使う。未接続・取得失敗時は接続を案内する。

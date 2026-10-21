@@ -2124,6 +2124,13 @@ async fn fusen_get_drive_folder_id() -> Result<String, String> {
     gdrive::ensure_folder(&client, &access_token).await
 }
 
+#[tauri::command]
+async fn fusen_get_web_share_folder_id() -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let access_token = gdrive::get_access_token(&client).await?;
+    gdrive::ensure_web_share_folder(&client, &access_token).await
+}
+
 /// 管理者ツール用: PC→iPhone / iPhone→PC のキューに溜まっている未送信件数
 #[derive(serde::Serialize)]
 struct DriveQueueCounts {
@@ -6331,6 +6338,7 @@ pub fn run() {
             fusen_open_settings_folder,
             fusen_open_log_folder,
             fusen_get_drive_folder_id,
+            fusen_get_web_share_folder_id,
             fusen_get_drive_queue_counts,
             fusen_read_drive_json,
             fusen_delete_drive_queue_json,

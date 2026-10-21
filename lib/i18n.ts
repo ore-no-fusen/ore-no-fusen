@@ -247,6 +247,7 @@ export const translations = {
         'settings.advanced.locations.notSet': '未設定',
 
         'settings.advanced.external.title': '外部サービス',
+        'settings.advanced.external.webFolder': 'Web同期フォルダー',
         'settings.advanced.external.driveFolder': '俺の付箋の Drive フォルダ',
         'settings.advanced.external.viewJson.title': 'Drive 上の JSON を見る',
         'settings.advanced.external.viewJson.view': '表示',
@@ -773,6 +774,7 @@ export const translations = {
         'settings.advanced.locations.notSet': 'Not set',
 
         'settings.advanced.external.title': 'External Services',
+        'settings.advanced.external.webFolder': 'Web Sync Folder',
         'settings.advanced.external.driveFolder': 'Ore-no-Fusen Drive Folder',
         'settings.advanced.external.viewJson.title': 'View Drive JSON',
         'settings.advanced.external.viewJson.view': 'View',

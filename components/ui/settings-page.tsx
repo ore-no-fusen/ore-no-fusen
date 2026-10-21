@@ -3462,12 +3462,12 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
         }
     }
 
-    const openDriveFolder = async () => {
+    const openDriveFolder = async (webSync = false) => {
         setDriveFolderLoading(true)
         try {
             const { invoke } = await import('@tauri-apps/api/core')
-            const folderId = await invoke<string>('fusen_get_drive_folder_id')
-            await openUrl(`https://drive.google.com/drive/folders/${folderId}`)
+            const folderId = await invoke<string>(webSync ? 'fusen_get_web_share_folder_id' : 'fusen_get_drive_folder_id')
+            await openUrl(`https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}`)
         } catch (e) {
             console.error('[AdvancedSection] open drive folder failed:', e)
             alert(t('settings.advanced.external.driveFolderUnavailable'))
@@ -3666,9 +3666,19 @@ function AdvancedSection({ settings, t }: { settings: AppSettings; t: (key: any)
                             variant="outline"
                             size="sm"
                             disabled={driveFolderLoading}
-                            onClick={openDriveFolder}
+                            onClick={() => openDriveFolder()}
                             className="shrink-0"
                         >
+                            <ExternalLink className="h-4 w-4 mr-1.5" />
+                            {driveFolderLoading ? t('settings.advanced.external.opening') : t('settings.advanced.external.open')}
+                        </Button>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-900">{t('settings.advanced.external.webFolder')}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">ore-no-fusen / web-share-temp</p>
+                        </div>
+                        <Button variant="outline" size="sm" disabled={driveFolderLoading} onClick={() => openDriveFolder(true)} className="shrink-0">
                             <ExternalLink className="h-4 w-4 mr-1.5" />
                             {driveFolderLoading ? t('settings.advanced.external.opening') : t('settings.advanced.external.open')}
                         </Button>
