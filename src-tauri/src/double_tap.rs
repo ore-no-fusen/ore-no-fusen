@@ -199,7 +199,10 @@ mod windows_hook {
     static CALLBACK_STATE: OnceLock<Mutex<Option<CallbackState>>> = OnceLock::new();
     static RUNTIME: OnceLock<Mutex<Option<HookRuntime>>> = OnceLock::new();
 
-    pub(crate) fn start(app_handle: AppHandle, bindings: Vec<DoubleTapBinding>) -> Result<(), String> {
+    pub(crate) fn start(
+        app_handle: AppHandle,
+        bindings: Vec<DoubleTapBinding>,
+    ) -> Result<(), String> {
         if bindings.is_empty() {
             stop();
             return Ok(());
@@ -351,14 +354,24 @@ mod windows_hook {
                 .as_mut()
             {
                 for binding_state in &mut state.bindings {
-                    if let Some(tap_event) = map_event(event.vkCode, message, binding_state.binding.target) {
+                    if let Some(tap_event) =
+                        map_event(event.vkCode, message, binding_state.binding.target)
+                    {
                         if tap_event == TapEvent::TargetDown {
                             binding_state.last_target_down_ms = Some(event.time as u64);
                         }
-                        if should_ignore_noise(binding_state, tap_event, event.vkCode, event.time as u64) {
+                        if should_ignore_noise(
+                            binding_state,
+                            tap_event,
+                            event.vkCode,
+                            event.time as u64,
+                        ) {
                             continue;
                         }
-                        match binding_state.detector.on_event(tap_event, event.time as u64) {
+                        match binding_state
+                            .detector
+                            .on_event(tap_event, event.time as u64)
+                        {
                             DoubleTapOutcome::Fired => {
                                 logger::log_info(&format!(
                                     "[Shortcut] {}*2 detected within {}ms",
@@ -467,7 +480,10 @@ mod windows_hook {
 pub(crate) use windows_hook::{start, stop};
 
 #[cfg(not(windows))]
-pub(crate) fn start(_app_handle: tauri::AppHandle, _bindings: Vec<DoubleTapBinding>) -> Result<(), String> {
+pub(crate) fn start(
+    _app_handle: tauri::AppHandle,
+    _bindings: Vec<DoubleTapBinding>,
+) -> Result<(), String> {
     Ok(())
 }
 

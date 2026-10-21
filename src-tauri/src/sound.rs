@@ -7,10 +7,10 @@
  * - リクエストはチャンネルで投げ、呼び出し側はブロックしない
  */
 
-use std::io::Cursor;
-use std::sync::OnceLock;
-use std::sync::mpsc::{self, Sender};
 use rodio::{Decoder, OutputStream, Sink};
+use std::io::Cursor;
+use std::sync::mpsc::{self, Sender};
+use std::sync::OnceLock;
 
 // Sound embedded in the binary (from OUT_DIR)
 const CREATE_SOUND: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/create.wav"));
@@ -84,12 +84,24 @@ pub fn fusen_play_sound(name: String, volume: Option<f32>) {
         "save" => SAVE_SOUND,
         "delete" => DELETE_SOUND,
         "alarm" => ALARM_SOUND,
-        "create:standard" | "duplicate:standard" => CREATE_SOUND, "archive:standard" | "checkbox:standard" => SAVE_SOUND, "delete:standard" => DELETE_SOUND,
-        "create:soft" | "duplicate:soft" | "archive:soft" | "delete:soft" | "checkbox:soft" => SOFT_SOUND,
-        "create:modern" | "duplicate:modern" | "archive:modern" | "delete:modern" | "checkbox:modern" => MODERN_SOUND,
-        "create:wood" | "duplicate:wood" | "archive:wood" | "delete:wood" | "checkbox:wood" => WOOD_SOUND,
-        "create:typewriter" | "duplicate:typewriter" | "archive:typewriter" | "delete:typewriter" | "checkbox:typewriter" => TYPEWRITER_SOUND,
-        "alarm:standard" => ALARM_SOUND, "alarm:alternate" => ALARM_ALT_SOUND,
+        "create:standard" | "duplicate:standard" => CREATE_SOUND,
+        "archive:standard" | "checkbox:standard" => SAVE_SOUND,
+        "delete:standard" => DELETE_SOUND,
+        "create:soft" | "duplicate:soft" | "archive:soft" | "delete:soft" | "checkbox:soft" => {
+            SOFT_SOUND
+        }
+        "create:modern" | "duplicate:modern" | "archive:modern" | "delete:modern"
+        | "checkbox:modern" => MODERN_SOUND,
+        "create:wood" | "duplicate:wood" | "archive:wood" | "delete:wood" | "checkbox:wood" => {
+            WOOD_SOUND
+        }
+        "create:typewriter"
+        | "duplicate:typewriter"
+        | "archive:typewriter"
+        | "delete:typewriter"
+        | "checkbox:typewriter" => TYPEWRITER_SOUND,
+        "alarm:standard" => ALARM_SOUND,
+        "alarm:alternate" => ALARM_ALT_SOUND,
         _ => return,
     };
 

@@ -5,7 +5,6 @@ import {
     nextTab,
     normalizeLauncherTab,
     removeActionLabel,
-    shouldCloseLauncherAfterBlur,
     isLatestLauncherRequest,
     filterLauncherItemsByTag,
     launcherTagOptions,
@@ -63,11 +62,6 @@ describe('QuickLauncher logic', () => {
         expect(shouldReloadLauncherForEvent('fusen:reload_note')).toBe(false);
     });
 
-    it('closes after blur only when unlocked and still unfocused', () => {
-        expect(shouldCloseLauncherAfterBlur(false, false)).toBe(true);
-        expect(shouldCloseLauncherAfterBlur(false, true)).toBe(false);
-        expect(shouldCloseLauncherAfterBlur(true, false)).toBe(false);
-    });
 
     it('uses crystal trash for crystals and shelf removal for favorites', () => {
         expect(removeActionLabel('shortcut')).toBe('登録を解除');

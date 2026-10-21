@@ -10,9 +10,9 @@
  * - source_dir/assets/ ディレクトリ以下のファイル全部
  */
 
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ImportStats {
@@ -86,31 +86,42 @@ pub fn import_markdown_files(source_dir: &str, target_dir: &str) -> Result<Impor
     let entries = fs::read_dir(source_path).map_err(|e| e.to_string())?;
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext.to_string_lossy().to_lowercase() == "md") {
+        if path.is_file()
+            && path
+                .extension()
+                .map_or(false, |ext| ext.to_string_lossy().to_lowercase() == "md")
+        {
             stats.total_files += 1;
             let dest = target_path.join(path.file_name().unwrap());
             match fs::copy(&path, &dest) {
                 Err(e) => {
-                    stats.errors.push(format!("Failed to copy {:?}: {}", path, e));
+                    stats
+                        .errors
+                        .push(format!("Failed to copy {:?}: {}", path, e));
                     stats.skipped += 1;
                 }
                 Ok(_) => match fs::read_to_string(&dest) {
                     Ok(content) => {
-                        let cleaned = strip_import_window_field(
-                            &crate::logic::strip_sticky_fields(&content),
-                        );
+                        let cleaned =
+                            strip_import_window_field(&crate::logic::strip_sticky_fields(&content));
                         if let Err(e) = fs::write(&dest, cleaned) {
                             let _ = fs::remove_file(&dest);
-                            stats.errors.push(format!("Failed to normalize {:?}: {}", path, e));
+                            stats
+                                .errors
+                                .push(format!("Failed to normalize {:?}: {}", path, e));
                             stats.skipped += 1;
                         } else {
                             stats.imported_md += 1;
-                            stats.imported_paths.push(dest.to_string_lossy().to_string());
+                            stats
+                                .imported_paths
+                                .push(dest.to_string_lossy().to_string());
                         }
                     }
                     Err(e) => {
                         let _ = fs::remove_file(&dest);
-                        stats.errors.push(format!("Failed to read {:?}: {}", path, e));
+                        stats
+                            .errors
+                            .push(format!("Failed to read {:?}: {}", path, e));
                         stats.skipped += 1;
                     }
                 },
@@ -147,9 +158,14 @@ mod tests {
         .unwrap();
 
         assert_eq!(stats.imported_md, 1);
-        assert_eq!(stats.imported_paths, vec![
-            target.path().join("returned-note.md").to_string_lossy().to_string()
-        ]);
+        assert_eq!(
+            stats.imported_paths,
+            vec![target
+                .path()
+                .join("returned-note.md")
+                .to_string_lossy()
+                .to_string()]
+        );
     }
 
     #[test]
@@ -172,7 +188,13 @@ mod tests {
         assert!(imported.contains("tags: [仕事]"));
         assert!(imported.contains("backgroundColor: '#80d8ff'"));
         assert!(imported.contains("本文"));
-        for removed in ["window:", "folded:", "alwaysOnTop:", "opacity:", "fontSize:"] {
+        for removed in [
+            "window:",
+            "folded:",
+            "alwaysOnTop:",
+            "opacity:",
+            "fontSize:",
+        ] {
             assert!(!imported.contains(removed), "{} が残っている", removed);
         }
     }
@@ -201,7 +223,10 @@ mod tests {
 
 fn copy_dir_recursive(src: &Path, dst: &Path, stats: &mut ImportStats) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| e.to_string())?;
-    for entry in fs::read_dir(src).map_err(|e| e.to_string())?.filter_map(|e| e.ok()) {
+    for entry in fs::read_dir(src)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         let dest = dst.join(entry.file_name());
         if path.is_dir() {
@@ -209,7 +234,9 @@ fn copy_dir_recursive(src: &Path, dst: &Path, stats: &mut ImportStats) -> Result
         } else {
             stats.total_files += 1;
             if let Err(e) = fs::copy(&path, &dest) {
-                stats.errors.push(format!("Failed to copy {:?}: {}", path, e));
+                stats
+                    .errors
+                    .push(format!("Failed to copy {:?}: {}", path, e));
                 stats.skipped += 1;
             } else {
                 stats.imported_images += 1;

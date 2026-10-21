@@ -10,11 +10,11 @@ afterEach(cleanup);
 it('初回と同じ設定として表示し、停止時にサーバー同期も行う',async()=>{
  render(<MemberSettings language="ja"/>);
  await screen.findByText('現在の設定：協力する');
- expect(screen.getByText(/初回に選んだ利用情報の送信設定/)).toBeTruthy();
+ expect(screen.getByText(/利用情報を送信するかどうかを、ここで選択・変更/)).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'送信しない・停止する'}));
  await screen.findByText('現在の設定：送信しない');
  await waitFor(()=>expect(ipc.invoke).toHaveBeenCalledWith('member_sync_usage'));
-  expect(ipc.invoke).toHaveBeenCalledWith('save_settings',{settings:{analytics_consent:'denied',analytics_consent_reconfirmation_version:1,language:'ja'}});
+ expect(ipc.invoke).toHaveBeenCalledWith('save_settings',{settings:{analytics_consent:'denied',analytics_consent_reconfirmation_version:1,language:'ja'}});
  expect(ipc.invoke).not.toHaveBeenCalledWith('member_set_consent',expect.anything());
 });
 it('別画面の設定変更を受けて表示を更新する',async()=>{

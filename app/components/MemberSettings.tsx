@@ -6,7 +6,7 @@ import { listen } from '@tauri-apps/api/event';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { ANALYTICS_CONSENT_RECONFIRMATION_VERSION } from '../utils/analyticsConsentPrompt';
 
-type MemberView = { generalNumber: number | null; analyticsSubject: string | null; environment: string; partnerStars?: number };
+type MemberView = { generalNumber: number | null; analyticsSubject: string | null; environment: string; partnerStars?: number; consentPromptState?: string };
 type UsageSettings = { analytics_consent?: 'granted' | 'denied'; analytics_consent_reconfirmation_version?: number; [key: string]: unknown };
 const PARTNER_RANKS = [
   { min: 1, stars: 1, ja: '改善パートナー', en: 'Improvement Partner' },
@@ -57,8 +57,8 @@ export default function MemberSettings({ language }: { language: string }) {
     {view?.generalNumber && <button className="mt-2 text-sm underline" onClick={() => void navigator.clipboard.writeText(String(view.generalNumber)).catch(() => setError(true))}>{en ? 'Copy number' : '番号をコピー'}</button>}
     <h3 className="mt-4 font-semibold">{en ? 'Usage information' : '改善のための利用情報の送信'}</h3>
     <p className="mt-4 text-sm leading-6">{en ? 'We use consented usage information to find what to improve together. Weekly feature and active-day counts go to Google Analytics with a random analysis ID linked to this member number. This week’s feature names and approximate app-open time are stored in Firestore under your member number. Note content, tag names, search terms and images are not sent.' : '同意いただいた利用情報を、使う人と一緒に改善点を見つけるために使います。機能ごとの週間使用回数と使用日数は、この会員番号と対応するランダムな分析IDでGoogle Analyticsへ送ります。今週使った機能名と累計起動時間は会員番号とともにFirestoreへ保存します。付箋本文・タグ名・検索語・画像は送りません。'}</p>
-    <p className="mt-2 text-sm">{en ? 'This is the single setting you chose at startup. You can change it here. All features remain available if you decline.' : '初回に選んだ利用情報の送信設定を、ここで変更できます。送信しなくても全機能を使えます。'}</p>
-    <p className="mt-2 text-sm">{en ? 'Current choice: ' : '現在の設定：'}{choice === 'granted' ? (en ? 'Enabled' : '協力する') : choice === 'denied' ? (en ? 'Disabled' : '送信しない') : (en ? 'Not selected' : '未選択')}</p>
+    <p className="mt-2 text-sm">{en ? 'You can choose or change whether to share usage information here. All features remain available if you decline.' : '利用情報を送信するかどうかを、ここで選択・変更できます。送信しなくても全機能を使えます。'}</p>
+    <p className="mt-2 text-sm">{en ? 'Current choice: ' : '現在の設定：'}{choice === 'granted' ? (en ? 'Enabled' : '協力する') : choice === 'denied' ? (en ? 'Disabled' : '送信しない') : view?.consentPromptState === 'postponed' ? (en ? 'Decide later' : '保留（今は決めない）') : view?.consentPromptState === 'not_presented' ? (en ? 'Not asked yet' : '協力の案内前') : (en ? 'Not selected' : '未回答')}</p>
     <div className="mt-3 flex gap-4">
       <button disabled={busy || !view} onClick={() => void consent(true)} className="rounded border px-3 py-2">{en ? 'Help improve' : '改善に協力する'}</button>
       <button disabled={busy || !view} onClick={() => void consent(false)} className="rounded border px-3 py-2">{en ? 'Do not send / stop' : '送信しない・停止する'}</button>

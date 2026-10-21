@@ -15,6 +15,21 @@ class MemoryDb implements MemberDatabase {
 const auth={memberId:'123e4567-e89b-42d3-a456-426614174000',secretToken:'a'.repeat(43)};
 
 describe('member registration',()=>{
+  it('案内前・未回答・保留を別々に保存し、同意や機能履歴を作らない',async()=>{
+    const db=new MemoryDb(),service=new MemberService(db);
+    await service.register(auth);
+    for(const status of ['not_presented','unanswered','postponed'] as const){
+      await service.recordUsage(auth,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,status);
+      const member=(await db.get<any>(`members/${auth.memberId}`))!.value;
+      expect(member.usageConsent).toBeNull();
+      expect(member.usageConsentStatus).toBe(status);
+      expect(member.partnerStars).toBe(0);
+      expect(member.usageFeatures).toBeUndefined();
+      expect(await db.list('usage_history')).toHaveLength(0);
+    }
+    await service.recordUsage(auth,'2026-W43',[],false,0,3);
+    expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({usageConsent:false,usageConsentStatus:'denied'});
+  });
   it('assigns a sequential public number and a separate stable analysis id',async()=>{
     const service=new MemberService(new MemoryDb(),()=>new Date('2026-09-05T00:00:00Z'));
     const first=await service.register(auth); const retry=await service.register(auth);
@@ -40,6 +55,43 @@ describe('member registration',()=>{
 });
 
 describe('member heartbeat', () => {
+  it('登録前のお便りを新規会員へ返さず、共有一覧でも既存会員の配信を維持する', async () => {
+    const db = new MemoryDb();
+    let now = new Date('2026-09-01T00:00:00Z');
+    const service = new MemberService(db, () => now);
+    await service.register(auth);
+    const newer = { memberId: '123e4567-e89b-42d3-a456-426614174001', secretToken: 'b'.repeat(43) };
+    now = new Date('2026-10-21T00:00:00Z');
+    await service.register(newer);
+    for (const [id, createdAt] of [
+      ['old', '2026-09-27T00:00:00Z'],
+      ['before', '2026-10-20T23:59:59.999Z'],
+      ['boundary', '2026-10-21T09:00:00+09:00'],
+      ['after', '2026-10-21T00:00:00.001Z'],
+      ['invalid', 'unknown'],
+      ['future', '2026-10-23T00:00:00Z'],
+    ]) db.rows.set(`announcements/${id}`, { version: '1', value: {
+      title: id, body: id, segment: 'all', active: true, createdAt, expiresAt: '2026-12-01T00:00:00Z',
+    } });
+    now = new Date('2026-10-22T00:00:00Z');
+    // Exercise the same shared-list path as Firestore's delivery cache.
+    const cachedDb: MemberDatabase = {
+      get: db.get.bind(db), commit: db.commit.bind(db), list: db.list.bind(db), remove: db.remove.bind(db),
+      deliveryAnnouncements: <T,>() => db.list<T>('announcements'),
+    };
+    const cachedService = new MemberService(cachedDb, () => now);
+    for (const source of [service, cachedService]) {
+      for (const read of [source.announcements.bind(source), source.heartbeat.bind(source)]) {
+        expect((await read(newer)).announcements.map(a => a.title)).toEqual(['boundary', 'after']);
+        expect((await read(auth)).announcements.map(a => a.title)).toEqual(['old', 'before', 'boundary', 'after']);
+      }
+    }
+    const before = JSON.stringify([...db.rows]);
+    await service.register(newer); // Re-registration must not move the original cutoff.
+    expect((await service.announcements(newer)).announcements.map(a => a.title)).toEqual(['boundary', 'after']);
+    expect(JSON.stringify([...db.rows])).toBe(before);
+  });
+
   it('checks letters without changing the daily member report and authenticates before reading', async () => {
     const db = new MemoryDb();
     const service = new MemberService(db, () => new Date('2026-10-12T12:00:00Z'));
@@ -51,7 +103,7 @@ describe('member heartbeat', () => {
       ['stopped', 'all', false, '2026-11-01T00:00:00Z'],
       ['expired', 'all', true, '2026-10-12T12:00:00Z'],
     ] as const) db.rows.set(`announcements/${id}`, { version: '1', value: {
-      title: id, body: id, segment, active, expiresAt, createdAt: '2026-10-12T00:00:00Z',
+      title: id, body: id, segment, active, expiresAt, createdAt: '2026-10-12T12:00:00Z',
     } });
     const before = JSON.stringify([...db.rows]);
     expect((await service.announcements(auth)).announcements.map(a => a.title)).toEqual(['personal']);
@@ -186,7 +238,7 @@ describe('member heartbeat', () => {
     db.rows.set('announcements/test1', {
       value: {
         title: 'テスト', body: 'こんにちは', segment: 'all',
-        active: true, createdAt: '2026-09-23T00:00:00Z',
+        active: true, createdAt: '2026-09-23T12:00:00Z',
         expiresAt: '2026-12-31T23:59:59Z',
       },
       version: '1',
@@ -208,7 +260,7 @@ describe('member heartbeat', () => {
     db.rows.set('announcements/expired', {
       value: {
         title: '期限切れ', body: '', segment: 'all',
-        active: true, createdAt: '2026-01-01T00:00:00Z',
+        active: true, createdAt: '2026-09-23T12:00:00Z',
         expiresAt: '2026-01-31T23:59:59Z', // 過去
       },
       version: '1',
@@ -216,7 +268,7 @@ describe('member heartbeat', () => {
     db.rows.set('announcements/inactive', {
       value: {
         title: '無効', body: '', segment: 'all',
-        active: false, createdAt: '2026-09-01T00:00:00Z',
+        active: false, createdAt: '2026-09-23T12:00:00Z',
         expiresAt: '2026-12-31T23:59:59Z',
       },
       version: '1',
@@ -234,15 +286,15 @@ describe('member heartbeat', () => {
     await service.register(otherAuth);
     db.rows.set('announcements/personal', { value: {
       title: '個別', body: '個別の本文', segment: `member:${first.generalNumber}`,
-      active: true, createdAt: '2026-09-23T00:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
+      active: true, createdAt: '2026-09-23T12:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
     }, version: '1' });
     db.rows.set('announcements/newcomers', { value: {
       title: '新規向け', body: '対象外', segment: 'newcomer',
-      active: true, createdAt: '2026-09-23T00:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
+      active: true, createdAt: '2026-09-23T12:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
     }, version: '1' });
     db.rows.set('announcements/unknown', { value: {
       title: '不明な宛先', body: '対象外', segment: 'not-a-segment',
-      active: true, createdAt: '2026-09-23T00:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
+      active: true, createdAt: '2026-09-23T12:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
     }, version: '1' });
     expect((await service.heartbeat(auth)).announcements.map(a => a.title)).toEqual(['個別']);
     expect((await service.heartbeat(otherAuth)).announcements).toEqual([]);
@@ -259,7 +311,7 @@ describe('member heartbeat', () => {
     ]) {
       db.rows.set(`announcements/${id}`, { value: {
         title: id, body: 'body', segment, active: true,
-        createdAt: '2026-09-23T00:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
+        createdAt: '2026-09-23T12:00:00Z', expiresAt: '2026-12-31T23:59:59Z',
       }, version: '1' });
     }
     expect((await service.heartbeat(auth)).announcements.map(a => a.title)).toEqual(['weekly', 'iphone-week']);

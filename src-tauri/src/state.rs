@@ -7,8 +7,6 @@
  * - データのシリアライズ/デシリアライズ構造
  */
 
-
-
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct NoteMeta {
     pub path: String,
@@ -139,14 +137,22 @@ pub struct Settings {
     #[serde(alias = "soundEnabled")]
     #[serde(default = "default_sound_enabled")]
     pub sound_enabled: bool,
-    #[serde(default = "default_sound_preset")] pub sound_create: String,
-    #[serde(default = "default_sound_preset")] pub sound_duplicate: String,
-    #[serde(default = "default_sound_preset", alias = "sound_save")] pub sound_archive: String,
-    #[serde(default = "default_sound_preset")] pub sound_delete: String,
-    #[serde(default = "default_sound_preset")] pub sound_checkbox: String,
-    #[serde(default = "default_sound_preset")] pub sound_pin: String,
-    #[serde(default = "default_sound_preset")] pub sound_unpin: String,
-    #[serde(default = "default_sound_preset")] pub sound_alarm: String,
+    #[serde(default = "default_sound_preset")]
+    pub sound_create: String,
+    #[serde(default = "default_sound_preset")]
+    pub sound_duplicate: String,
+    #[serde(default = "default_sound_preset", alias = "sound_save")]
+    pub sound_archive: String,
+    #[serde(default = "default_sound_preset")]
+    pub sound_delete: String,
+    #[serde(default = "default_sound_preset")]
+    pub sound_checkbox: String,
+    #[serde(default = "default_sound_preset")]
+    pub sound_pin: String,
+    #[serde(default = "default_sound_preset")]
+    pub sound_unpin: String,
+    #[serde(default = "default_sound_preset")]
+    pub sound_alarm: String,
     /// 設定画面だけの表示テーマ。旧設定はライトとして互換読み込みする。
     #[serde(default = "default_settings_theme")]
     pub settings_theme: String,
@@ -168,10 +174,14 @@ pub struct Settings {
     /// クイックランチャーショートカット。None の場合は "ctrl+p" をデフォルトとして使用。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_quick_launcher: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")] pub shortcut_bold: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")] pub shortcut_heading: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")] pub shortcut_bullet_list: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")] pub shortcut_checkbox: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_bold: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_heading: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_bullet_list: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_checkbox: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quick_launcher_triple_right_click: Option<bool>,
     /// この PC を一意に識別する UUID。Drive 上の PC 登録と紐づく。
@@ -195,7 +205,7 @@ pub struct Settings {
     pub backup_include_trash: bool,
 }
 
-fn default_language() -> String { 
+fn default_language() -> String {
     // ロケールを取得（デフォルトフォールバックとして "ja"）
     let locale = sys_locale::get_locale().unwrap_or_else(|| "ja".to_string());
     // "ja", "ja-JP" など日本語であれば "ja"、それ以外（英語、中国語、欧州言語など）は全て "en"
@@ -205,13 +215,27 @@ fn default_language() -> String {
         "en".to_string()
     }
 }
-fn default_font_size() -> f64 { 16.0 }
-fn default_sound_enabled() -> bool { true }
-fn default_sound_preset() -> String { "standard".to_string() }
-fn default_settings_theme() -> String { "system".to_string() }
-fn default_auto_start() -> bool { true }
-fn default_monthly_backup_enabled() -> bool { true }
-fn default_monthly_backup_interval_days() -> i64 { 30 }
+fn default_font_size() -> f64 {
+    16.0
+}
+fn default_sound_enabled() -> bool {
+    true
+}
+fn default_sound_preset() -> String {
+    "standard".to_string()
+}
+fn default_settings_theme() -> String {
+    "system".to_string()
+}
+fn default_auto_start() -> bool {
+    true
+}
+fn default_monthly_backup_enabled() -> bool {
+    true
+}
+fn default_monthly_backup_interval_days() -> i64 {
+    30
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -224,7 +248,14 @@ impl Default for Settings {
             analytics_consent_reconfirmation_version: None,
             font_size: default_font_size(),
             sound_enabled: default_sound_enabled(),
-            sound_create: default_sound_preset(), sound_duplicate: default_sound_preset(), sound_archive: default_sound_preset(), sound_delete: default_sound_preset(), sound_checkbox: default_sound_preset(), sound_pin: default_sound_preset(), sound_unpin: default_sound_preset(), sound_alarm: default_sound_preset(),
+            sound_create: default_sound_preset(),
+            sound_duplicate: default_sound_preset(),
+            sound_archive: default_sound_preset(),
+            sound_delete: default_sound_preset(),
+            sound_checkbox: default_sound_preset(),
+            sound_pin: default_sound_preset(),
+            sound_unpin: default_sound_preset(),
+            sound_alarm: default_sound_preset(),
             settings_theme: default_settings_theme(),
             iphone_send_enabled: false,
             shortcut_new_note: None,
@@ -232,7 +263,10 @@ impl Default for Settings {
             shortcut_toggle_visibility: None,
             shortcut_arrange: None,
             shortcut_quick_launcher: None,
-            shortcut_bold: None, shortcut_heading: None, shortcut_bullet_list: None, shortcut_checkbox: None,
+            shortcut_bold: None,
+            shortcut_heading: None,
+            shortcut_bullet_list: None,
+            shortcut_checkbox: None,
             quick_launcher_triple_right_click: None,
             pc_id: None,
             backup_history: Vec::new(),

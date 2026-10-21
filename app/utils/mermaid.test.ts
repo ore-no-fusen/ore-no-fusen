@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadSecureMermaid, sanitizeMermaidSvg } from './mermaid';
+import { loadSecureMermaid, sanitizeMermaidSvg, renderSecureMermaid, MAX_MERMAID_SOURCE_LENGTH, MERMAID_RENDER_TIMEOUT_MS } from './mermaid';
 
 const mermaidMock = vi.hoisted(() => ({
     initialize: vi.fn(),
@@ -27,6 +27,33 @@ describe('loadSecureMermaid', () => {
     });
 });
 
+describe('renderSecureMermaid limits', () => {
+    it('renders within the source limit and rejects an oversized diagram before parsing', async () => {
+        mermaidMock.render.mockReset().mockResolvedValue({ svg: '<svg></svg>' });
+        await renderSecureMermaid('within-limit', 'graph TD');
+        expect(mermaidMock.render).toHaveBeenCalledTimes(1);
+        mermaidMock.render.mockClear();
+
+        await expect(renderSecureMermaid('too-large', 'a'.repeat(MAX_MERMAID_SOURCE_LENGTH + 1)))
+            .rejects.toThrow('長すぎます');
+        expect(mermaidMock.render).not.toHaveBeenCalled();
+    });
+
+    it('returns a timeout error when Mermaid does not finish in time', async () => {
+        vi.useFakeTimers();
+        try {
+            mermaidMock.render.mockReset().mockImplementation(() => new Promise(() => {}));
+            const result = renderSecureMermaid('timeout-check', 'graph TD');
+            await vi.waitFor(() => expect(vi.getTimerCount()).toBeGreaterThan(0));
+            const rejection = expect(result).rejects.toThrow('時間がかかりすぎました');
+            await vi.advanceTimersByTimeAsync(MERMAID_RENDER_TIMEOUT_MS);
+            await rejection;
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
 describe('sanitizeMermaidSvg', () => {
     it('実行・通信・ファイル参照につながる属性を取り除く', () => {
         const sanitized = sanitizeMermaidSvg(`
@@ -51,5 +78,21 @@ describe('sanitizeMermaidSvg', () => {
         expect(sanitized).not.toContain('https://attacker.invalid');
         expect(sanitized).not.toContain('file:///');
         expect(sanitized).not.toContain('javascript:');
+    });
+
+    it('CSSの外部参照を取り除き、SVG内参照は残す', () => {
+        const sanitized = sanitizeMermaidSvg(`
+          <svg xmlns="http://www.w3.org/2000/svg">
+            <style>.safe { clip-path: url(#clip); } @import url(https://evil.invalid/x.css); .bad { fill: url(//evil.invalid/a); }</style>
+            <path id="a" style="fill:url(//evil.invalid/x); clip-path:url(#clip)" fill="url(/secret)" />
+            <path id="b" style="fill:u\\72l(https://evil.invalid/x)" />
+          </svg>
+        `);
+        expect(sanitized).toContain('url(#clip)');
+        expect(sanitized).not.toContain('@import');
+        expect(sanitized).not.toContain('https://evil.invalid');
+        expect(sanitized).not.toContain('//evil.invalid');
+        expect(sanitized).not.toContain('url(/secret)');
+        expect(sanitized).not.toContain('u\\72l');
     });
 });

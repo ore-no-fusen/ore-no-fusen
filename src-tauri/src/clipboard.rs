@@ -159,8 +159,8 @@ fn validate_annotated_png(bytes: &[u8]) -> Result<(), String> {
         return Err("画像データが空です。元画像は変更しません。".to_string());
     }
 
-    let format = image::guess_format(bytes)
-        .map_err(|e| format!("画像形式を判定できません: {e}"))?;
+    let format =
+        image::guess_format(bytes).map_err(|e| format!("画像形式を判定できません: {e}"))?;
     if format != ImageFormat::Png {
         return Err("描き込み画像がPNG形式ではありません。元画像は変更しません。".to_string());
     }
@@ -196,8 +196,8 @@ fn replace_file_safely(path: &Path, bytes: &[u8]) -> Result<(), String> {
             .map_err(|e| format!("一時画像ファイルを確定できません: {e}"))?;
         drop(temp_file);
 
-        let written = fs::read(&temp_path)
-            .map_err(|e| format!("一時画像ファイルを再確認できません: {e}"))?;
+        let written =
+            fs::read(&temp_path).map_err(|e| format!("一時画像ファイルを再確認できません: {e}"))?;
         validate_annotated_png(&written)?;
 
         if path.exists() {
@@ -213,8 +213,9 @@ fn replace_file_safely(path: &Path, bytes: &[u8]) -> Result<(), String> {
         }
 
         if backup_path.exists() {
-            fs::remove_file(&backup_path)
-                .map_err(|e| format!("画像は保存されましたがバックアップ削除に失敗しました: {e}"))?;
+            fs::remove_file(&backup_path).map_err(|e| {
+                format!("画像は保存されましたがバックアップ削除に失敗しました: {e}")
+            })?;
         }
         Ok(())
     })();
@@ -240,7 +241,11 @@ pub struct ImageCrop {
     pub height: u32,
 }
 
-fn save_annotated_image_with_crop(path: &str, data: &str, crop: Option<ImageCrop>) -> Result<(), String> {
+fn save_annotated_image_with_crop(
+    path: &str,
+    data: &str,
+    crop: Option<ImageCrop>,
+) -> Result<(), String> {
     use base64::{engine::general_purpose, Engine as _};
 
     let b64 = data
@@ -256,8 +261,8 @@ fn save_annotated_image_with_crop(path: &str, data: &str, crop: Option<ImageCrop
     validate_annotated_png(&bytes)?;
 
     let target_path = Path::new(path);
-    let original_bytes = fs::read(target_path)
-        .map_err(|e| format!("元画像を読み込めません: {e}"))?;
+    let original_bytes =
+        fs::read(target_path).map_err(|e| format!("元画像を読み込めません: {e}"))?;
     let mut original = image::load_from_memory(&original_bytes)
         .map_err(|e| format!("元画像をデコードできません: {e}"))?
         .to_rgba8();
@@ -276,27 +281,32 @@ fn save_annotated_image_with_crop(path: &str, data: &str, crop: Option<ImageCrop
     image::imageops::overlay(&mut original, &overlay, 0, 0);
 
     if let Some(crop) = crop {
-        if crop.width == 0 || crop.height == 0
-            || crop.x.checked_add(crop.width).map_or(true, |right| right > original.width())
-            || crop.y.checked_add(crop.height).map_or(true, |bottom| bottom > original.height()) {
+        if crop.width == 0
+            || crop.height == 0
+            || crop
+                .x
+                .checked_add(crop.width)
+                .map_or(true, |right| right > original.width())
+            || crop
+                .y
+                .checked_add(crop.height)
+                .map_or(true, |bottom| bottom > original.height())
+        {
             return Err("切り取り範囲が画像の外です。元画像は変更しません。".to_string());
         }
-        original = image::imageops::crop_imm(&original, crop.x, crop.y, crop.width, crop.height).to_image();
+        original = image::imageops::crop_imm(&original, crop.x, crop.y, crop.width, crop.height)
+            .to_image();
     }
 
     let mut composed = Vec::new();
-    PngEncoder::new_with_quality(
-        &mut composed,
-        CompressionType::Fast,
-        FilterType::Adaptive,
-    )
-    .write_image(
-        original.as_raw(),
-        original.width(),
-        original.height(),
-        ExtendedColorType::Rgba8,
-    )
-    .map_err(|e| format!("合成画像をPNGへ変換できません: {e}"))?;
+    PngEncoder::new_with_quality(&mut composed, CompressionType::Fast, FilterType::Adaptive)
+        .write_image(
+            original.as_raw(),
+            original.width(),
+            original.height(),
+            ExtendedColorType::Rgba8,
+        )
+        .map_err(|e| format!("合成画像をPNGへ変換できません: {e}"))?;
     replace_file_safely(target_path, &composed)
 }
 
@@ -304,8 +314,8 @@ pub fn read_local_image_data_url(path: &str) -> Result<String, String> {
     use base64::{engine::general_purpose, Engine as _};
 
     let bytes = fs::read(path).map_err(|e| format!("更新画像を読み込めません: {e}"))?;
-    let format = image::guess_format(&bytes)
-        .map_err(|e| format!("更新画像の形式を判定できません: {e}"))?;
+    let format =
+        image::guess_format(&bytes).map_err(|e| format!("更新画像の形式を判定できません: {e}"))?;
     let mime = match format {
         ImageFormat::Png => "image/png",
         ImageFormat::Jpeg => "image/jpeg",
@@ -321,7 +331,11 @@ pub fn read_local_image_data_url(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn fusen_save_annotated_image(path: String, data: String, crop: Option<ImageCrop>) -> Result<(), String> {
+pub fn fusen_save_annotated_image(
+    path: String,
+    data: String,
+    crop: Option<ImageCrop>,
+) -> Result<(), String> {
     save_annotated_image_with_crop(&path, &data, crop)
 }
 
@@ -437,18 +451,11 @@ mod tests {
         fs::write(&note_path, "memo").unwrap();
         let encoded = general_purpose::STANDARD.encode(b"same-name");
 
-        let first = save_dropped_image_data(
-            note_path.to_str().unwrap(),
-            "同じ 名前.PNG",
-            &encoded,
-        )
-        .unwrap();
-        let second = save_dropped_image_data(
-            note_path.to_str().unwrap(),
-            "同じ 名前.PNG",
-            &encoded,
-        )
-        .unwrap();
+        let first = save_dropped_image_data(note_path.to_str().unwrap(), "同じ 名前.PNG", &encoded)
+            .unwrap();
+        let second =
+            save_dropped_image_data(note_path.to_str().unwrap(), "同じ 名前.PNG", &encoded)
+                .unwrap();
 
         assert_ne!(first, second);
         assert!(dir.path().join(first).exists());
@@ -461,10 +468,7 @@ mod tests {
         let target = dir.path().join("image.png");
         fs::write(&target, b"original").unwrap();
 
-        let result = save_annotated_image(
-            target.to_str().unwrap(),
-            "data:image/png;base64,",
-        );
+        let result = save_annotated_image(target.to_str().unwrap(), "data:image/png;base64,");
 
         assert!(result.is_err());
         assert_eq!(fs::read(&target).unwrap(), b"original");
@@ -475,7 +479,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("crop.png");
         save_rgba_png_fast(&target, &[0, 0, 255, 255, 0, 0, 255, 255], 2, 1).unwrap();
-        save_annotated_image_with_crop(target.to_str().unwrap(), &valid_png_data_url(), Some(ImageCrop { x: 1, y: 0, width: 1, height: 1 })).unwrap();
+        save_annotated_image_with_crop(
+            target.to_str().unwrap(),
+            &valid_png_data_url(),
+            Some(ImageCrop {
+                x: 1,
+                y: 0,
+                width: 1,
+                height: 1,
+            }),
+        )
+        .unwrap();
         let saved = image::open(target).unwrap().to_rgba8();
         assert_eq!(saved.dimensions(), (1, 1));
         assert_eq!(saved.as_raw(), &[0, 255, 0, 255]);
@@ -487,8 +501,26 @@ mod tests {
         let target = dir.path().join("crop.png");
         save_rgba_png_fast(&target, &[0, 0, 255, 255, 0, 0, 255, 255], 2, 1).unwrap();
         let before = fs::read(&target).unwrap();
-        for crop in [ImageCrop { x: 0, y: 0, width: 0, height: 1 }, ImageCrop { x: u32::MAX, y: 0, width: 2, height: 1 }] {
-            assert!(save_annotated_image_with_crop(target.to_str().unwrap(), &valid_png_data_url(), Some(crop)).is_err());
+        for crop in [
+            ImageCrop {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 1,
+            },
+            ImageCrop {
+                x: u32::MAX,
+                y: 0,
+                width: 2,
+                height: 1,
+            },
+        ] {
+            assert!(save_annotated_image_with_crop(
+                target.to_str().unwrap(),
+                &valid_png_data_url(),
+                Some(crop)
+            )
+            .is_err());
             assert_eq!(fs::read(&target).unwrap(), before);
         }
     }

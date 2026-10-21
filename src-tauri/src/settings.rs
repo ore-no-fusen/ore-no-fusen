@@ -7,11 +7,11 @@
  * - トレイメニューなどのUIへの設定反映トリガー
  */
 
-use crate::storage;
-use crate::state::Settings as AppSettings;
 use crate::state::AppState;
+use crate::state::Settings as AppSettings;
+use crate::storage;
 use std::sync::Mutex;
-use tauri::{AppHandle, Runtime, State, Emitter};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 // --- コマンド実装 ---
 
@@ -26,13 +26,17 @@ pub fn get_settings<R: Runtime>(_app: AppHandle<R>) -> Result<AppSettings, Strin
 pub fn save_settings<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, Mutex<AppState>>,
-    mut settings: AppSettings
+    mut settings: AppSettings,
 ) -> Result<(), String> {
     // 存在する設定が壊れている場合は、既定値で上書きせず保存を中断する。
     let existing_settings = storage::load_settings()?;
     // pc_id は UI から書き換えさせない内部フィールド。
     // フロントから空（=フロントが知らない or 古いフロント）で来ても既存値を保持する。
-    if settings.pc_id.as_ref().map_or(true, |s| s.trim().is_empty()) {
+    if settings
+        .pc_id
+        .as_ref()
+        .map_or(true, |s| s.trim().is_empty())
+    {
         settings.pc_id = existing_settings.pc_id.clone();
     }
     // 内部の初回確認状態は、古いフロントや保存途中の画面から false が届いても戻さない。
@@ -49,7 +53,10 @@ pub fn save_settings<R: Runtime>(
         &app,
         settings.quick_launcher_triple_right_click.unwrap_or(false),
     ) {
-        crate::logger::log_warn(&format!("[Shortcut] triple right click hook sync failed: {}", e));
+        crate::logger::log_warn(&format!(
+            "[Shortcut] triple right click hook sync failed: {}",
+            e
+        ));
     }
 
     // 2. メモリ上の AppState を同期
@@ -57,7 +64,10 @@ pub fn save_settings<R: Runtime>(
         let mut app_state = state.lock().unwrap_or_else(|e| e.into_inner());
         app_state.base_path = settings.base_path.clone();
         app_state.folder_path = settings.base_path.clone();
-        crate::member_identity::apply_usage_setting(&mut app_state, settings.analytics_consent.as_deref())?;
+        crate::member_identity::apply_usage_setting(
+            &mut app_state,
+            settings.analytics_consent.as_deref(),
+        )?;
 
         // ベースパスが変わったらノート一覧も再読み込み
         if let Some(path) = &settings.base_path {
@@ -77,7 +87,7 @@ pub fn save_settings<R: Runtime>(
             eprintln!("[SETTINGS] Failed to refresh tray menu: {}", e);
         }
     });
-    
+
     println!("[SETTINGS] Save successful. AppState updated, event emitted, and Tray refreshed.");
 
     Ok(())

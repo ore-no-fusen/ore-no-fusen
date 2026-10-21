@@ -1,0 +1,20 @@
+{
+  "scope": {
+    "accountSubject": "acct-1",
+    "noteId": "note-1",
+    "generation": 4
+  },
+  "operationId": "op-v2-fixed",
+  "kind": "edit",
+  "parents": ["root:6:acct-1:6:note-1:4"],
+  "payloadHash": "0053a08353eac3b97d274fb65ffe3ac3c162d7299ed209d37a6f873c142dd7b4",
+  "payload": {
+    "schemaVersion": 2,
+    "title": "Title",
+    "markdown": "Body",
+    "images": [],
+    "backgroundColor": "#80d8ff",
+    "tags": ["旅行", "予定"]
+  },
+  "resolvedIds": []
+}

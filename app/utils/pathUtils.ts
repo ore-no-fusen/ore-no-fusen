@@ -21,6 +21,10 @@ export function normalizePath(path: string): string {
     normalized = normalized.normalize('NFC');
     normalized = normalized.replace(/\\/g, '/');
     normalized = normalized.toLowerCase();
+    // Rust canonicalize() emits Windows verbatim paths; webview URLs use
+    // ordinary paths. Compare the same drive/UNC file under either spelling.
+    normalized = normalized.replace(/^\/\/\?\/unc\//, '//');
+    normalized = normalized.replace(/^\/\/\?\/(?=[a-z]:\/)/, '');
     normalized = normalized.replace(/\/+/g, '/'); // Collapse multiple slashes
     normalized = normalized.replace(/\/$/, ''); // Remove trailing slashes
     return normalized;

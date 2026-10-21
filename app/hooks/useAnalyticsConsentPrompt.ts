@@ -1,14 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-  ANALYTICS_CONSENT_DEFERRED_UNTIL_KEY,
-  ANALYTICS_CONSENT_VALUE_EXPERIENCED_EVENT,
-  ANALYTICS_CONSENT_VALUE_EXPERIENCED_KEY,
-  markAnalyticsConsentValueExperienced,
-  postponeAnalyticsConsentPrompt,
-  readPromptTimestamp,
-  shouldPromptAfterExperience,
-  shouldReconfirmAnalyticsConsent,
-} from '../utils/analyticsConsentPrompt';
+import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { shouldReconfirmAnalyticsConsent } from '../utils/analyticsConsentPrompt';
 
 type ConsentPromptConditions = {
   isMainWindow: boolean;
@@ -19,9 +12,7 @@ type ConsentPromptConditions = {
   reconfirmationVersion?: number | null;
   reconfirmationPresented: boolean;
   postponed: boolean;
-  valueExperiencedAt?: number | null;
-  deferredUntil?: number | null;
-  now?: number;
+  eligible?: boolean;
 };
 
 export function shouldShowAnalyticsConsentPrompt({
@@ -33,82 +24,45 @@ export function shouldShowAnalyticsConsentPrompt({
   reconfirmationVersion,
   reconfirmationPresented,
   postponed,
-  valueExperiencedAt = null,
-  deferredUntil = null,
-  now = Date.now(),
+  eligible = false,
 }: ConsentPromptConditions): boolean {
-  if (!isMainWindow || isCheckingSetup || setupRequired || settingsLoading || postponed) return false;
+  if (!isMainWindow || isCheckingSetup || setupRequired || settingsLoading || postponed || !eligible) return false;
   if (consent === 'granted') return false;
   if (consent === 'denied') {
     return reconfirmationPresented || shouldReconfirmAnalyticsConsent(consent, reconfirmationVersion);
   }
-  return shouldPromptAfterExperience(valueExperiencedAt, deferredUntil, now);
+  return !consent;
 }
 
-/** Prompt timing is local-only state and never changes the user's consent choice. */
-export function useAnalyticsConsentPromptPostponed(isMainWindow = false) {
+/** Read the local scheduling milestone on startup and explicit return to the main window.
+ * No timer interrupts an active note-editing session to request cooperation. */
+export function useAnalyticsConsentPromptEligibility(enabled: boolean) {
+  const [eligible, setEligible] = useState(false);
+  useEffect(() => {
+    if (!enabled) { setEligible(false); return; }
+    let stopped = false;
+    let dispose: (() => void) | undefined;
+    const read = () => invoke<{ consentPromptEligible?: boolean }>('member_get')
+      .then(view => { if (!stopped) setEligible(view.consentPromptEligible === true); })
+      .catch(() => { if (!stopped) setEligible(false); });
+    void read();
+    try {
+      void getCurrentWindow().onFocusChanged(event => { if (event.payload) void read(); })
+        .then(fn => { if (stopped) fn(); else dispose = fn; }).catch(() => undefined);
+    } catch { /* Browser previews have no native focus event. */ }
+    return () => { stopped = true; dispose?.(); };
+  }, [enabled]);
+  return eligible;
+}
+
+/** Close this session's dialog; Rust also persists the postponement and gates future prompts. */
+export function useAnalyticsConsentPromptPostponed() {
   const [postponed, setPostponed] = useState(false);
   const [reconfirmationPresented, setReconfirmationPresented] = useState(false);
-  const [valueExperiencedAt, setValueExperiencedAt] = useState<number | null>(() =>
-    readPromptTimestamp(ANALYTICS_CONSENT_VALUE_EXPERIENCED_KEY));
-  const [deferredUntil, setDeferredUntil] = useState<number | null>(() =>
-    readPromptTimestamp(ANALYTICS_CONSENT_DEFERRED_UNTIL_KEY));
-  const [now, setNow] = useState(Date.now);
-
-  const markValueExperienced = useCallback(() => {
-    const at = markAnalyticsConsentValueExperienced();
-    setValueExperiencedAt(at);
-    setNow(Date.now());
-  }, []);
-
-  const postpone = useCallback(() => {
-    setPostponed(true);
-    setDeferredUntil(postponeAnalyticsConsentPrompt());
-  }, []);
-
-  useEffect(() => {
-    if (!isMainWindow) return;
-    const onExperience = () => markValueExperienced();
-    window.addEventListener(ANALYTICS_CONSENT_VALUE_EXPERIENCED_EVENT, onExperience);
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-    const isTauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
-    if (isTauri) {
-      void import('@tauri-apps/api/event').then(({ listen }) => listen(ANALYTICS_CONSENT_VALUE_EXPERIENCED_EVENT, onExperience))
-        .then(dispose => {
-          if (cancelled) dispose();
-          else {
-            unlisten = dispose;
-            setValueExperiencedAt(readPromptTimestamp(ANALYTICS_CONSENT_VALUE_EXPERIENCED_KEY));
-            setDeferredUntil(readPromptTimestamp(ANALYTICS_CONSENT_DEFERRED_UNTIL_KEY));
-            setNow(Date.now());
-          }
-        })
-        .catch(() => undefined);
-    }
-    return () => {
-      cancelled = true;
-      window.removeEventListener(ANALYTICS_CONSENT_VALUE_EXPERIENCED_EVENT, onExperience);
-      unlisten?.();
-    };
-  }, [isMainWindow, markValueExperienced]);
-
-  useEffect(() => {
-    const eligibleAt = valueExperiencedAt === null ? null : valueExperiencedAt + 24 * 60 * 60 * 1000;
-    const nextAt = [eligibleAt, deferredUntil].filter((value): value is number => value !== null && value > now).reduce<number | null>((min, value) => min === null || value < min ? value : min, null);
-    if (nextAt === null) return;
-    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, nextAt - now));
-    return () => window.clearTimeout(timer);
-  }, [deferredUntil, now, valueExperiencedAt]);
-
   return {
     postponed,
     reconfirmationPresented,
-    valueExperiencedAt,
-    deferredUntil,
-    now,
-    postpone,
-    markValueExperienced,
+    postpone: () => setPostponed(true),
     markReconfirmationPresented: () => setReconfirmationPresented(true),
   };
 }

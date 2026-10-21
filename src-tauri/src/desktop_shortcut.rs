@@ -6,7 +6,10 @@ const MSIX_APPLICATION_ID: &str = "OreNoFusen";
 const SHORTCUT_ICON: &[u8] = include_bytes!("../icons/icon.ico");
 
 fn msix_shell_arguments(package_family_name: &str) -> String {
-    format!("shell:AppsFolder\\{}!{}", package_family_name, MSIX_APPLICATION_ID)
+    format!(
+        "shell:AppsFolder\\{}!{}",
+        package_family_name, MSIX_APPLICATION_ID
+    )
 }
 
 fn stable_icon_path() -> Result<PathBuf, String> {
@@ -86,10 +89,12 @@ fn create_windows_shortcut(path: &std::path::Path) -> Result<(), String> {
             link.SetIconLocation(PCWSTR(icon.as_ptr()), 0)
                 .map_err(|e| format!("ショートカットのアイコンを設定できませんでした: {e}"))?;
 
-            let persist: IPersistFile = link.cast()
+            let persist: IPersistFile = link
+                .cast()
                 .map_err(|e| format!("ショートカットを保存できませんでした: {e}"))?;
             let output = wide(path.as_os_str());
-            persist.Save(PCWSTR(output.as_ptr()), TRUE)
+            persist
+                .Save(PCWSTR(output.as_ptr()), TRUE)
                 .map_err(|e| format!("デスクトップへショートカットを保存できませんでした: {e}"))?;
             Ok(())
         })();

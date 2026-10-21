@@ -7,10 +7,10 @@
  * - 各種ログレベル（INFO, WARN, ERROR, DEBUG）のAPI提供
  */
 
-use std::fs::{OpenOptions, create_dir_all, metadata, File};
-use std::io::{Write, BufRead, BufReader};
-use std::path::PathBuf;
 use chrono::Local;
+use std::fs::{create_dir_all, metadata, File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
 
 const MAX_LOG_SIZE: u64 = 5 * 1024 * 1024; // 5MB
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -18,8 +18,8 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// ログファイルのパスを取得
 /// インストールフォルダ（%LOCALAPPDATA%\ore-no-fusen\）に配置
 pub fn get_log_path() -> Result<PathBuf, String> {
-    let app_data = std::env::var("LOCALAPPDATA")
-        .map_err(|_| "LOCALAPPDATA not found".to_string())?;
+    let app_data =
+        std::env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA not found".to_string())?;
     let log_dir = PathBuf::from(app_data).join("ore-no-fusen");
     create_dir_all(&log_dir).map_err(|e| format!("Failed to create log directory: {}", e))?;
     Ok(log_dir.join("app.log"))
@@ -32,21 +32,15 @@ fn rotate_log_if_needed(path: &PathBuf) -> Result<(), String> {
             // 最後の1000行だけ残す
             if let Ok(file) = File::open(path) {
                 let reader = BufReader::new(file);
-                let lines: Vec<String> = reader.lines()
-                    .filter_map(|l| l.ok())
-                    .collect();
-                
+                let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+
                 let keep_lines = if lines.len() > 1000 {
                     &lines[lines.len() - 1000..]
                 } else {
                     &lines[..]
                 };
-                
-                if let Ok(mut new_file) = OpenOptions::new()
-                    .write(true)
-                    .truncate(true)
-                    .open(path)
-                {
+
+                if let Ok(mut new_file) = OpenOptions::new().write(true).truncate(true).open(path) {
                     for line in keep_lines {
                         let _ = writeln!(new_file, "{}", line);
                     }
@@ -61,12 +55,8 @@ fn rotate_log_if_needed(path: &PathBuf) -> Result<(), String> {
 fn write_log(level: &str, message: &str) {
     if let Ok(path) = get_log_path() {
         let _ = rotate_log_if_needed(&path);
-        
-        if let Ok(mut file) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
+
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
             let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
             let _ = writeln!(file, "[{}] [{}] {}", timestamp, level, message);
         }
@@ -75,7 +65,14 @@ fn write_log(level: &str, message: &str) {
 
 /// アプリケーション起動ログ
 pub fn log_app_start() {
-    write_log("INFO", &format!("★★★ ore-no-fusen v{} started (OS: {}) ★★★", APP_VERSION, std::env::consts::OS));
+    write_log(
+        "INFO",
+        &format!(
+            "★★★ ore-no-fusen v{} started (OS: {}) ★★★",
+            APP_VERSION,
+            std::env::consts::OS
+        ),
+    );
 }
 
 /// デバッグログを出力（開発版のみ）

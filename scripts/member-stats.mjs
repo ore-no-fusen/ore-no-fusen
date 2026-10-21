@@ -17,10 +17,14 @@ const USAGE_STATES = {
   empty: { label: '機能名の記録なし（実利用は不明）', description: '今週の通信は届きましたが機能名はありません。未使用か記録漏れかは判定できません。', color: 'text-amber-300' },
   stale: { label: '今週分はまだ届いていない', description: '以前の情報はありますが、今週の使い方はまだ分かりません。', color: 'text-sky-300' },
   disabled: { label: '利用情報の送信がオフ', description: '最後に届いた情報では、利用記録を送らない設定でした。現在の設定は未確認です。', color: 'text-slate-300' },
+  postponed: { label: '保留（今は決めない）', description: '「今は決めない」が届いています。機能利用の情報は収集しません。', color: 'text-amber-300' },
+  not_presented: { label: '協力の案内前', description: '最後に届いた設定では、まだ協力の案内を表示していません。', color: 'text-sky-300' },
+  unanswered: { label: '案内済み・未回答', description: '案内したことは確認できましたが、選択は届いていません。閉じた理由や現在の状態は分かりません。', color: 'text-amber-300' },
   unknown: { label: '情報がなく、まだ分からない', description: '分析情報を確認できません。設定・未起動・通信失敗などの理由は不明です。', color: 'text-slate-300' },
 };
 function memberUsageState(member, week) {
   if (member.usageConsent === false) return 'disabled';
+  if (member.usageConsent === null && ['postponed', 'not_presented', 'unanswered'].includes(member.usageConsentStatus)) return member.usageConsentStatus;
   if (member.usageConsent !== true || typeof member.usageWeek !== 'string' || !/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(member.usageWeek) || !Array.isArray(member.usageFeatures)) return 'unknown';
   if (member.usageWeek < week) return 'stale';
   if (member.usageWeek !== week || member.usageFeatures.some(name => !Object.hasOwn(FEATURE_LABELS, name))) return 'unknown';
@@ -60,10 +64,10 @@ function featureUsageStats(members, week = isoWeek(), historyRows = []) {
     const reports = row.reports && typeof row.reports === 'object' ? Object.values(row.reports) : [];
     for (const report of reports) {
       if (report?.schema !== 3 || report.week !== week) continue;
-      for (const name of report.supportedFeatures ?? []) supported.add(name);
+      for (const name of Array.isArray(report.supportedFeatures) ? report.supportedFeatures : []) supported.add(name);
       for (const name of Object.keys(report.features ?? {})) recorded.add(name);
       for (const day of Object.values(report.days ?? {})) {
-        for (const name of day?.supportedFeatures ?? []) supported.add(name);
+        for (const name of Array.isArray(day?.supportedFeatures) ? day.supportedFeatures : []) supported.add(name);
         for (const name of Object.keys(day?.features ?? {})) recorded.add(name);
       }
     }
@@ -83,6 +87,7 @@ function featureUsageStats(members, week = isoWeek(), historyRows = []) {
   const consentByVersion = [...consentVersions.values()]
     .map(item => ({ ...item, cooperationRate: item.members ? Math.round(item.granted / item.members * 100) : null }))
     .sort((a, b) => {
+      if (a.version === b.version) return 0;
       if (a.version === '不明') return 1;
       if (b.version === '不明') return -1;
       const left = a.version.split('.').map(Number), right = b.version.split('.').map(Number);
@@ -113,14 +118,13 @@ function featureUsageStats(members, week = isoWeek(), historyRows = []) {
       .sort((a, b) => a.number - b.number),
     rows: Object.entries(FEATURE_LABELS).map(([name, label]) => {
       const measured = reporting.filter(member => {
-        const recorded = Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)
-          || recordedBySubject.get(member.analyticsSubject)?.has(name) === true;
+        const recorded = Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name);
         const historySupports = supportedBySubject.get(member.analyticsSubject)?.has(name) ?? false;
         const historyRecorded = recordedBySubject.get(member.analyticsSubject)?.has(name) === true;
         const versionSupports = name === 'launcher_store' ? member.usageSchema >= 2 || historySupports : historySupports;
         // A historical/current positive record is evidence of use; proving non-use
         // still requires a current-week report and explicit instrumentation support.
-        return memberUsageState(member, week) === 'recorded' && recorded || historyRecorded || versionSupports;
+        return recorded || historyRecorded || versionSupports;
       });
       const users = measured.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)
         || recordedBySubject.get(member.analyticsSubject)?.has(name) === true).length;
@@ -662,14 +666,14 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" id="consentSummary">
         <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-emerald-300">送信を許可（確認済み）</div><div class="text-2xl font-bold mt-1 text-emerald-300"><span id="consentGranted">${featureStats.consentCounts?.granted ?? 0}</span>人</div></div>
         <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-slate-300">送信を停止（確認済み）</div><div class="text-2xl font-bold mt-1"><span id="consentDenied">${featureStats.consentCounts?.denied ?? 0}</span>人</div></div>
-        <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-amber-300">送信の設定が未確認</div><div class="text-2xl font-bold mt-1 text-amber-300"><span id="consentUnknown">${featureStats.consentCounts?.unknown ?? totalMembers}</span>人</div></div>
+        <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-amber-300">未選択・設定未確認</div><div class="text-2xl font-bold mt-1 text-amber-300"><span id="consentUnknown">${featureStats.consentCounts?.unknown ?? totalMembers}</span>人</div></div>
         <div class="rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm text-sky-300">今週の情報が届いた</div><div class="text-2xl font-bold mt-1 text-sky-300"><span id="consentReporting">${featureStats.reporting}</span>人</div></div>
       </div>
-      <p class="text-sm text-slate-300">許可・停止は最後に届いた設定です。未確認の人は、許可にも停止にも数えません。今週届いた人数は許可人数の内訳であり、4つの人数を足すものではありません。</p>
+      <p class="text-sm text-slate-300">許可・停止は最後に届いた設定です。未確認には案内前・保留・未回答・情報未到着を含み、許可にも停止にも数えません。内訳は下の状態別人数と会員一覧で確認できます。今週届いた人数は許可人数の内訳です。</p>
       <p class="text-sm text-slate-400">旧版から届いた設定は、以前の会員別分析の選択です。更新後の共通設定が届くまでは、初回に協力を選んだ人数や今後届く人数は確定できません。</p>
       <h3 class="text-base font-semibold">アプリバージョン別の同意状況</h3>
       <p class="text-xs text-slate-400">会員番号を表示しない集計です。協力率は各バージョンの会員数に対する、最後に届いた送信許可の割合です。端末の最新バージョンとは限りません。</p>
-      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>バージョン</th><th class="text-right">会員数</th><th class="text-right">協力中</th><th class="text-right">送信オフ</th><th class="text-right">不明</th><th class="text-right">協力率</th></tr></thead><tbody id="consentByVersionRows">${(featureStats.consentByVersion ?? []).map(item => `<tr class="border-b border-slate-800"><td class="py-2">${item.version}</td><td class="py-2 text-right">${item.members}人</td><td class="py-2 text-right">${item.granted}人</td><td class="py-2 text-right">${item.denied}人</td><td class="py-2 text-right">${item.unknown}人</td><td class="py-2 text-right">${item.cooperationRate === null ? '—' : item.cooperationRate + '%'}</td></tr>`).join('')}</tbody></table></div>
+      <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-slate-600 text-slate-400"><th>バージョン</th><th class="text-right">会員数</th><th class="text-right">協力中</th><th class="text-right">送信オフ</th><th class="text-right">未確認</th><th class="text-right">協力率</th></tr></thead><tbody id="consentByVersionRows">${(featureStats.consentByVersion ?? []).map(item => `<tr class="border-b border-slate-800"><td class="py-2">${item.version}</td><td class="py-2 text-right">${item.members}人</td><td class="py-2 text-right">${item.granted}人</td><td class="py-2 text-right">${item.denied}人</td><td class="py-2 text-right">${item.unknown}人</td><td class="py-2 text-right">${item.cooperationRate === null ? '—' : item.cooperationRate + '%'}</td></tr>`).join('')}</tbody></table></div>
       <h2 class="text-lg font-bold">使い方が分かる人・まだ分からない人</h2>
       <p class="text-sm text-slate-300">最後に届いた情報をもとに、全会員を分けています。情報がない人を「使っていない人」とは数えません。</p>
       <div id="usageStateCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

@@ -31,7 +31,6 @@ import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 import { useNoteStyles } from '@/app/hooks/useNoteStyles';
 import { trackEvent } from '@/app/utils/analytics';
-import { ANALYTICS_CONSENT_VALUE_EXPERIENCED_EVENT, markAnalyticsConsentValueExperienced } from '@/app/utils/analyticsConsentPrompt';
 import { NOTE_DRAG_CURSOR } from '@/app/utils/cursorStyles';
 import { normalizeAlarmAlwaysOnTop } from '@/app/utils/alarmAlwaysOnTop';
 
@@ -313,14 +312,6 @@ const StickyNote = memo(function StickyNote() {
         const saved = await saveNoteContent(body, front, allowRename);
         if (!saved) return;
         if (body !== content) trackEvent('feature_used', { event_category: 'usage', feature_name: 'note_edited' });
-        if (isNew || body !== content) {
-            markAnalyticsConsentValueExperienced();
-            if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
-                void emit(ANALYTICS_CONSENT_VALUE_EXPERIENCED_EVENT).catch(() => undefined);
-            } else if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event(ANALYTICS_CONSENT_VALUE_EXPERIENCED_EVENT));
-            }
-        }
         if (isNew) {
             trackEvent('first_note_saved', { event_category: 'activation' });
             setIsNewState(false);
@@ -1200,14 +1191,19 @@ const StickyNote = memo(function StickyNote() {
                 const uReload = await listen<{ path: string }>('fusen:reload_note', async (event) => {
                     const targetPath = event.payload?.path;
                     if (targetPath && selectedFile?.path && pathsEqual(targetPath, selectedFile.path)) {
-                        setSavePending(false);
                         console.log('[DBG:reload_note] FIRED targetPath=', targetPath, 'isEditing=', isEditingForListenerRef.current, 'stack=', new Error().stack?.split('\n').slice(1,3).join(' | '));
+                        if (isEditingForListenerRef.current && editBodyRef.current !== contentForListenerRef.current) {
+                            setToastMessage('同期による再読込を保留しました。入力中の内容はそのままです。');
+                            setTimeout(() => setToastMessage(null), 3000);
+                            return;
+                        }
                         const body = await loadNote(true);
                         // [FIX] loadNote()が失敗して空を返した場合は上書きしない（C-2対策）
                         if (!body) {
                             console.error('[StickyNote] reload_note: loadNote returned empty, skipping content update to prevent data loss.');
                             return;
                         }
+                        setSavePending(false);
                         console.log('[DBG:reload_note] setContent+setEditBody body=', JSON.stringify(body.slice(0, 50)));
                         setContent(body);
                         setEditBody(body);

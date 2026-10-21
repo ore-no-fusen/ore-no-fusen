@@ -36,6 +36,21 @@ export default function RegisterPWA() {
       }).catch((err) => {
         console.error("Service Worker unregistration failed: ", err);
       });
+    } else if (process.env.NODE_ENV === "development") {
+      // 開発中は、public/sw.js に残った本番用SWがNextの画面配信を横取りしないよう解除する。
+      // PWAの登録は本番だけで行い、iPhoneの本番動作は変更しない。
+      navigator.serviceWorker.getRegistrations().then(async (registrations) => {
+        const hadController = navigator.serviceWorker.controller !== null;
+        const results = await Promise.all(registrations.map((reg) => reg.unregister()));
+        const removedAny = results.some(Boolean);
+        const isOAuthCallback = new URLSearchParams(window.location.search).has("code");
+        if (hadController && removedAny && !isOAuthCallback && !sessionStorage.getItem("dev_sw_cleanup_reloaded")) {
+          sessionStorage.setItem("dev_sw_cleanup_reloaded", "1");
+          window.location.reload();
+        }
+      }).catch((err) => {
+        console.error("Development service worker cleanup failed:", err);
+      });
     } else {
       // Safari PWA: next-pwa が生成した push 対応 sw.js を登録
       navigator.serviceWorker.register('/sw.js', { scope: '/' })

@@ -11,6 +11,11 @@ import {
 import { buildImagePathCandidates, resolvePath } from './markdownUtils';
 
 describe('pathUtils', () => {
+    it('matches Windows canonical drive and UNC paths to window paths', () => {
+        expect(pathsEqual('\\\\?\\C:\\notes\\表示テスト.md', 'C:\\notes\\表示テスト.md')).toBe(true);
+        expect(pathsEqual('\\\\?\\UNC\\server\\share\\note.md', '\\\\server\\share\\note.md')).toBe(true);
+        expect(pathsEqual('\\\\?\\C:\\notes\\one.md', 'C:\\notes\\two.md')).toBe(false);
+    });
     it('keeps existing path comparison behavior', () => {
         expect(pathsEqual('C:\\Users\\uck\\note.md', 'c:/users/uck/note.md')).toBe(true);
         expect(normalizePath('C:\\Users\\uck\\note.md\\')).toBe('c:/users/uck/note.md');

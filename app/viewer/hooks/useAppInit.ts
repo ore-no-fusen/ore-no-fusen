@@ -9,6 +9,8 @@ import {
   removeNotificationNoteParam,
 } from '../lib/notification-navigation';
 import { formatNavigationLog } from '../lib/diagnostic-log';
+import { logSharedConnection } from '@/app/shared/lib/connection-diagnostic';
+import { consumeSharedLoginReturn, isSharedLoginAttempt } from '@/app/shared/lib/login-return';
 
 function pageLog(msg: string) {
   try {
@@ -106,7 +108,10 @@ export function useAppInit({
 
     // SW を登録し、ready になったら swReady=true にする
     // タイムアウト（8秒）後は強制的に true にして先に進む
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'development') {
+      // 開発環境では本番用SWを登録しない。ログイン画面はSWなしで表示できる。
+      setSwReady(true);
+    } else if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistration('/').then((reg) => {
         if (!reg) {
           navigator.serviceWorker.register('/sw.js', { scope: '/' });
@@ -125,6 +130,17 @@ export function useAppInit({
     // if (!standalone) return; // 開発中は無効化
 
     const params = new URLSearchParams(window.location.search);
+    if (params.get('shared') === '1') logSharedConnection('viewer_initialization_started', { sharedMode: true });
+
+    // Googleの同意をキャンセルした共有ログインは、共有ログイン画面に留める。
+    // 画面側が共有モードを認識して再試行ボタンでマーカーを更新できるよう、マーカーは保持する。
+    if (params.has('error') && isSharedLoginAttempt(window.location.search)) {
+      setErrorMessage(params.get('error') === 'access_denied'
+        ? 'Google接続はキャンセルされました。もう一度ログインできます。'
+        : 'Google接続に失敗しました。もう一度ログインできます。');
+      setStep('login');
+      return;
+    }
 
     // accessToken 調達: localStorage → 再認証
     let token = localStorage.getItem('viewer_access_token');
@@ -161,7 +177,12 @@ export function useAppInit({
           }
           saveAuthToken(t).catch(() => {}); // SW が push 時に参照するため IndexedDB にも保存
           setAccessToken(t);
+          const returnToShared = consumeSharedLoginReturn(window.location.search);
           window.history.replaceState({}, '', '/viewer');
+          if (returnToShared) {
+            window.location.replace('/shared');
+            return;
+          }
           const pendingNote = localStorage.getItem('pending_note');
           if (pendingNote) {
             const draft = await loadDraft(pendingNote).catch(() => null);
@@ -190,6 +211,14 @@ export function useAppInit({
           setStep('login');
         })
         .finally(() => setIsLoading(false));
+      return;
+    }
+
+    // 共有Webから認証へ戻る場合は、期限切れトークンが残っていても
+    // 通常の書き込み画面へ進まず、本人がGoogleへ接続できる画面を表示する。
+    if (params.get('shared') === '1') {
+      logSharedConnection('shared_login_screen_selected', { sharedMode: true, tokenPresent: Boolean(token) });
+      setStep('login');
       return;
     }
 
