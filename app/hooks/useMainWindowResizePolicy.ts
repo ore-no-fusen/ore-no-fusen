@@ -76,7 +76,7 @@ export function useMainWindowResizePolicy({
                     await win.show();
                     await win.unminimize();
                     if (cancelled) return;
-                    await win.setSize(new LogicalSize(showAnalyticsConsent ? 640 : 720, showAnalyticsConsent ? 520 : 560));
+                    await win.setSize(new LogicalSize(720, 560));
                     if (cancelled) return;
                     await win.center();
                     await win.setFocus();
