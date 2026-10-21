@@ -122,13 +122,13 @@ export class MemberService {
     }
     if (!member) throw new FeedbackRequestError('Heartbeat update busy; retry later', 503);
 
-    return { lastSeenAt: today, announcements: await this.announcementsFor(member.value.generalNumber) };
+    return { lastSeenAt: today, announcements: await this.announcementsFor(member.value) };
   }
   async announcements(auth: Credentials) {
     const member = await this.authenticate(auth);
-    return { announcements: await this.announcementsFor(member.value.generalNumber) };
+    return { announcements: await this.announcementsFor(member.value) };
   }
-  private async announcementsFor(number: number) {
+  private async announcementsFor(member: Pick<Member, 'generalNumber' | 'registeredAt'>) {
     type Announcement = {
       title: string; body: string; segment: string;
       active: boolean; createdAt: string; expiresAt: string;
@@ -138,9 +138,15 @@ export class MemberService {
       : await this.db.list<Announcement>('announcements');
 
     const now = this.now().getTime();
+    const registeredAt = Date.parse(member.registeredAt);
     const announcements = rows
       .filter(r => r.value.active && Date.parse(r.value.expiresAt) > now
-        && matchesServerAudience(r.value.segment, number))
+        // Apply after reading the shared delivery list, using the authenticated
+        // member's server-side registration time. Never deliver older letters
+        // to a new member, including through the legacy heartbeat endpoint.
+        && Date.parse(r.value.createdAt) >= registeredAt
+        && Date.parse(r.value.createdAt) <= now
+        && matchesServerAudience(r.value.segment, member.generalNumber))
       .map(r => ({
         id: r.path.split('/').pop()!,
         title: r.value.title,
