@@ -297,7 +297,17 @@ function OrchestratorContent() {
 
   // 復元処理は起動時のクロージャーを保持するため、案内の最新状態を参照する。
   const updatePromptVisibleRef = useRef(false);
-  updatePromptVisibleRef.current = showUpdateDialog || storeUpdateAvailable;
+  updatePromptVisibleRef.current = showUpdateDialog || storeUpdateAvailable || shouldShowAnalyticsConsentPrompt({
+    isMainWindow,
+    isCheckingSetup,
+    setupRequired,
+    settingsLoading,
+    consent: settings.analytics_consent,
+    reconfirmationVersion: settings.analytics_consent_reconfirmation_version,
+    reconfirmationPresented: analyticsConsentReconfirmationPresented,
+    postponed: analyticsConsentPostponed,
+    eligible: consentPromptEligible,
+  });
 
   const isSearchOpenRef = useRef(false);
   const hotkeyRegisterFailuresCheckedRef = useRef(false);
