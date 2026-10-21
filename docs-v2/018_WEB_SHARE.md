@@ -203,4 +203,4 @@ sequenceDiagram
 
 ## 計画との対応
 
-画面モックと詳細な操作シーケンスは[共通付箋チェック計画](../.planning/shared-checklist/DESIGN.md)を参照。実装・試験・Astraレビュー・不具合修正・統合の進捗は[CURRENT.md](../.planning/ai-collab/CURRENT.md)に記録する。
+画面モックと詳細な操作シーケンスは内部作業資料 `.planning/shared-checklist/DESIGN.md` を参照。実装・試験・Astraレビュー・不具合修正・統合の進捗は `.planning/ai-collab/CURRENT.md` に記録する。これらの内部資料は公開サイトには含めない。
