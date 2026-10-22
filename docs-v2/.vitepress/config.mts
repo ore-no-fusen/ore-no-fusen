@@ -77,7 +77,7 @@ export default withMermaid(defineConfig({
             { text: '005 用語集', link: '/005_GLOSSARY' },
             { text: '006 アーキテクチャ', link: '/006_ARCHITECTURE' },
             { text: '007 コミュニケーション設計', link: '/007_COMMUNICATION' },
-            { text: '018 クイックランチャー付箋 Web共有', link: '/018_WEB_SHARE' },
+            { text: '013 クイックランチャー付箋 Web共有', link: '/013_WEB_SHARE' },
             { text: '100 プライバシーポリシー', link: '/100_PRIVACY' },
             { text: '101 利用規約', link: '/101_TERMS' },
             { text: '200 Siri から PC に付箋を送る', link: '/200_SIRI_SETUP' }
