@@ -1,6 +1,11 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-10-24 Drive自動整理をdevelopへ統合・Preview配信
+- 2f4f469aをdevelopへfast-forward統合・push。Test 40009789036、Rust Windows Test 40009789077、Docs 40009788943成功。Vercel対象EmBs2jBZofx9Rd6kmwzQj3XQfrDV成功。MSIX CI 40009788942は実行中、STEP0では調査対象にしない。
+- 固定develop Preview /sharedのGoogle接続前画面を確認、08-Preview接続前.png保全。Google未接続なのでこのブラウザーで実データの写真確認は行っていない。常設developのnpm run devで3002起動Readyを確認して終了、元Dev MSIX 6.0.0.2は起動中。
+- 作業用プロセス残存なし・未保存変更なし確認。E2E実行成果物を常設my/保全へ移し、node_modulesとdocs-v2/node_modulesのjunctionをリンクだけ外してDrive自動整理worktree/branch削除。残存2か所=常設develop＋正式リリースmain（Store公開確認まで必要）。
+- 現在STEP0-3。利用者へiPhoneで固定Previewの接続・既存付箋/写真の閲覧確認と画像を依頼中。通常Driveはまだ旧方式で、新方式移行は更新MSIX後。次はiPhone結果確認→更新Dev MSIX（既存6.0.0.2より新しいpackage revision）→新方式の実機同期/整理/性能・メモリ確認→Store準備。iPhone・更新MSIX・性能17窓/300ms/メモリ実測を未実施のまま合格にしない。
 ### 2026-10-24 PC実機確認・Astra最終指摘対応
 - Drive自動整理の標準開発アプリで新規付箋seq120を作成・保存しMarkdown本文一致、QL一覧表示を確認。通常終了して元Dev MSIX 6.0.0.2へ復帰し、保存付箋の表示保持を確認。画面04-PC保存/05-PC-QL/06-MSIX復帰-保存保持.jpgを常設my/保全/Drive自動整理-20261022/画面証拠へ保全。QL登録対象は既存一覧で、新規検証付箋のWeb共有は行っていない。
 - 切替前一覧のMarkdown以外545ファイルは欠損0/サイズ・更新日時変化0。検証付箋は再確認用に保持。利用者の既存Drive共有の新方式移行は未実施。
