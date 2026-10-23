@@ -6,11 +6,25 @@ import { refreshAccessToken } from '@/app/viewer/lib/drive';
 import { renderSecureMermaid } from '@/app/utils/mermaid';
 import { copySharedConnectionDiagnostics, logSharedConnection } from './lib/connection-diagnostic';
 import { markSharedLoginReturn } from './lib/login-return';
-import { appendWebEdit, downloadSharedImage, loadSharedNotes, pendingCreatedNote, setWebSharing, type SharedNote } from './lib/drive';
+import { appendWebEdit, clearSharedRecordCache, downloadSharedImage, loadSharedNotes, pendingCreatedNote, setWebSharing, type SharedNote } from './lib/drive';
 import { NewNote } from './NewNote';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
+import { VisibleImage } from './VisibleImage';
+import { clearEditDraft, editBaseline, readEditDraft, writeEditDraft, type EditDraft } from './lib/edit-draft';
 
 type DriveFile = { id: string; name: string; mimeType?: string };
+const ImageContext = React.createContext<{token:string;files:DriveFile[];note?:SharedNote}>({token:'',files:[]});
+function NoteImage({id,alt,display}:{id:string;alt:string;display:'block'|'inline'}) {
+  const {token,files,note} = React.useContext(ImageContext);
+  const manifestValue=JSON.stringify(note?.operation.payload.images.find(image => image.imageId === id) ?? null);
+  const manifest=useMemo(()=>JSON.parse(manifestValue) as SharedNote['operation']['payload']['images'][number]|null,[manifestValue]);
+  const assetValue=JSON.stringify(manifest?note?.snapshot?.value.images[manifest.sha256]??null:null);
+  const asset=useMemo(()=>JSON.parse(assetValue),[assetValue]);
+  const load = useCallback((signal:AbortSignal) => manifest
+    ? downloadSharedImage(token,files,manifest,signal,asset??undefined)
+    : Promise.reject(new Error('画像の参照がありません')), [token,files,manifest,asset]);
+  return <VisibleImage load={load} alt={alt || '付箋の画像'} display={display}/>;
+}
 
 function MermaidDiagram({ code }: { code: string }) {
   const id = useId().replace(/:/g, '');
@@ -46,7 +60,7 @@ function safeWebHref(destination: string): string | null {
   } catch { return null; }
 }
 
-function renderInlineContent(text: string, images: Record<string, string>, imageDisplay: 'block' | 'inline' = 'inline'): React.ReactNode[] {
+function renderInlineContent(text: string, imageDisplay: 'block' | 'inline' = 'inline'): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   const pattern = /(`+)(.*?)\1|!\[([^\]]*)\]\(ore-fusen-image:\/\/(img-[0-9a-f]{64})\)|\[([^\]]+)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)|(?<!\\)\*\*([^*\n]+)\*\*/g;
   let cursor = 0;
@@ -55,12 +69,7 @@ function renderInlineContent(text: string, images: Record<string, string>, image
     if (match.index > cursor) parts.push(text.slice(cursor, match.index));
     if (match[1]) parts.push(match[0]);
     else if (match[3] !== undefined) {
-      const source = images[match[4]];
-      parts.push(source === 'ERROR'
-        ? <span key={`error-${match.index}`} role="status" style={{ display: imageDisplay, color: '#a11' }}>画像を確認できませんでした。安全のため表示を止めています。</span>
-        : source
-          ? <img key={`image-${match.index}`} src={source} alt={match[3] || '付箋の画像'} style={{ display: imageDisplay, verticalAlign: 'middle', maxWidth: '100%', height: 'auto', borderRadius: 8, margin: '10px 0' }} />
-          : <span key={`loading-${match.index}`} role="status" style={{ display: imageDisplay, color: '#6b7280' }}>画像を読み込み中…</span>);
+      parts.push(<NoteImage key={`image-${match.index}`} id={match[4]} alt={match[3]} display={imageDisplay}/>);
     } else if (match[5] !== undefined) {
       const href = safeWebHref(match[6]);
       parts.push(href
@@ -111,7 +120,8 @@ export default function SharedNotesPage() {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [markdown, setMarkdown] = useState('');
-  const [images, setImages] = useState<Record<string, string>>({});
+  const editDraft=useRef<EditDraft|null>(null);
+  const draftBaseline=useRef('');
   const [busy, setBusy] = useState(false);
   const checkSaving = useRef(false);
   const [pendingTask, setPendingTask] = useState<{ operationId: string; lineIndex: number; checked: boolean } | null>(null);
@@ -120,6 +130,15 @@ export default function SharedNotesPage() {
   const [creating,setCreating]=useState(false);
   const [showStopped, setShowStopped] = useState(false);
   const [sharingConfirmation, setSharingConfirmation] = useState<{ note: SharedNote; paused: boolean } | null>(null);
+  const pageActive = useRef(true);
+
+  useEffect(() => {
+    pageActive.current = true;
+    const release = () => { clearSharedRecordCache(); };
+    const hide=()=>{release();setNotes([]);setFiles([]);setToken('');setTitle('');setMarkdown('');setEditing(false);};
+    window.addEventListener('pagehide', hide);
+    return () => { pageActive.current = false; release(); window.removeEventListener('pagehide', hide); };
+  }, []);
 
   useEffect(() => {
     logSharedConnection('shared_page_loaded');
@@ -149,18 +168,20 @@ export default function SharedNotesPage() {
     setBusy(true);
     try {
       const loaded = await loadSharedNotes(accessToken);
+      if (!pageActive.current) return null;
       const allNotes = [...loaded.notes, ...(loaded.stoppedNotes ?? [])];
       setNotes(allNotes);
       setFiles(loaded.files);
-      setSelected((index) => Math.min(index, Math.max(0, allNotes.length - 1)));
+      let remembered=-1;
+      try {const account=allNotes[0]?.scope.accountSubject;if(account) {const id=sessionStorage.getItem(`onf-shared-selected:${account}`);remembered=allNotes.findIndex(note=>note.scope.noteId===id);}} catch {/* Selection is optional; a draft is retained separately. */}
+      setSelected((index) => remembered>=0?remembered:Math.min(index, Math.max(0, allNotes.length - 1)));
       setMessage(loaded.notes.length ? `${loaded.notes.length}件の付箋を読み込みました。` : 'まだ付箋がありません。先にWindowsのランチャーから同期してください。');
-      setEditing(false);
       return loaded;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Driveから読み込めませんでした。');
+      if (pageActive.current) setMessage(error instanceof Error ? error.message : 'Driveから読み込めませんでした。');
       return null;
     } finally {
-      setBusy(false);
+      if (pageActive.current) setBusy(false);
     }
   }, []);
 
@@ -179,7 +200,9 @@ export default function SharedNotesPage() {
       await reload(current);
     }
     void connect();
-    return () => { cancelled = true; };
+    const restore=(event:PageTransitionEvent)=>{if(event.persisted) void connect();};
+    window.addEventListener('pageshow',restore);
+    return () => { cancelled = true;window.removeEventListener('pageshow',restore); };
   }, [reload]);
 
   const normalizedSearch = search.trim().toLowerCase();
@@ -214,33 +237,39 @@ export default function SharedNotesPage() {
     if (!current) return;
     setTitle(current.operation.payload.title);
     setMarkdown(current.operation.payload.markdown);
-  }, [current?.operation.operationId]);
+    draftBaseline.current=editBaseline(current);editDraft.current=null;
+    try {
+      const saved=readEditDraft(current);
+      if(saved && (saved.title!==current.operation.payload.title || saved.markdown!==current.operation.payload.markdown)) {
+        editDraft.current=saved;draftBaseline.current=saved.baseline;
+        setTitle(saved.title);setMarkdown(saved.markdown);setEditing(true);
+        setMessage(saved.baseline===editBaseline(current) ? '送信前の下書きを復元しました。' : '下書きを復元しました。別の端末で本文が変わっているため、そのまま上書きせず内容を確認してください。');
+      } else {if(saved) clearEditDraft(saved);setEditing(false);}
+    } catch(error) {setMessage(error instanceof Error?error.message:'下書きを読み取れません。');}
+  }, [current]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const objectUrls: string[] = [];
-    async function loadImages() {
-      if (!token || !current) { setImages({}); return; }
-      const entries = await Promise.all(current.operation.payload.images.map(async (image) => {
-        try {
-          const url = await downloadSharedImage(token, files, image);
-          objectUrls.push(url);
-          return [image.imageId, url] as const;
-        } catch { return [image.imageId, 'ERROR'] as const; }
-      }));
-      if (!cancelled) setImages(Object.fromEntries(entries));
-    }
-    void loadImages();
-    return () => { cancelled = true; objectUrls.forEach(URL.revokeObjectURL); };
-  }, [token, current?.operation.operationId, files]);
+  function updateDraft(value:string) {
+    setMarkdown(value);
+    if(!current) return;
+    try {editDraft.current=writeEditDraft(current,title,value,draftBaseline.current || editBaseline(current));}
+    catch {setMessage('端末に下書きを保存できません。画面を閉じる前に本文をコピーしてください。');}
+  }
+  function discardDraft() {
+    if(editDraft.current) {clearEditDraft(editDraft.current);editDraft.current=null;}
+    if(current) draftBaseline.current=editBaseline(current);
+  }
 
   async function save() {
     if (!current || !token) return;
     setBusy(true);
     setMessage('変更をDriveに保存しています…');
     try {
-      await appendWebEdit(token, current, { ...current.operation.payload, title, markdown });
-      if (!await reload(token)) throw new Error('保存後の再取得に失敗しました。Webを更新して保存結果を確認してください。');
+      editDraft.current=writeEditDraft(current,title,markdown,draftBaseline.current || editBaseline(current));
+      if(editDraft.current.baseline!==editBaseline(current)) throw new Error('別の端末で本文が変わっています。下書きは保持しています。そのまま上書きせず内容を確認してください。');
+      const saved=await appendWebEdit(token, current, { ...current.operation.payload, title, markdown });
+      clearEditDraft(editDraft.current);editDraft.current=null;setEditing(false);
+      if(saved) setNotes(previous=>previous.map(note=>note.scope.accountSubject===saved.scope.accountSubject && note.scope.noteId===saved.scope.noteId?saved:note));
+      else if (!await reload(token)) throw new Error('保存後の再取得に失敗しました。Webを更新して保存結果を確認してください。');
       setMessage('保存しました。Windowsに反映するには、PC側で「Webと同期」を押してください。');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '保存できませんでした。');
@@ -249,21 +278,21 @@ export default function SharedNotesPage() {
 
   async function toggleViewedTask(lineIndex: number, checked: boolean) {
     if (!current || current.paused || current.pendingCreate || !token || busy || checkSaving.current) return;
-    if (editing) { setMarkdown(value => setTaskLine(value, lineIndex, checked)); return; }
+    if (editing) { updateDraft(setTaskLine(markdown, lineIndex, checked)); return; }
     checkSaving.current = true;
     setPendingTask({ operationId: current.operation.operationId, lineIndex, checked });
     setBusy(true);
     setMessage('チェックの変更を保存しています…');
     try {
-      await appendWebEdit(token, current, {
+      const saved=await appendWebEdit(token, current, {
         ...current.operation.payload,
         markdown: setTaskLine(current.operation.payload.markdown, lineIndex, checked),
       });
       // Read the new operation/head before another click; an old head must not
       // be reused for the next change. Do not optimistically show unsaved data.
-      const loaded = await loadSharedNotes(token);
-      setNotes([...loaded.notes, ...(loaded.stoppedNotes ?? [])]);
-      setFiles(loaded.files);
+      if(saved) setNotes(previous=>previous.map(note=>note.scope.accountSubject===saved.scope.accountSubject && note.scope.noteId===saved.scope.noteId?saved:note));
+      else {const loaded = await loadSharedNotes(token);
+      setNotes([...loaded.notes, ...(loaded.stoppedNotes ?? [])]);setFiles(loaded.files);}
       setMessage('チェックを保存しました。Windowsには「Webと同期」で反映します。');
     } catch (error) {
       setMessage(`${error instanceof Error ? error.message : '保存結果を確認できませんでした。'} Webを更新して保存結果を確認してください。`);
@@ -289,7 +318,7 @@ export default function SharedNotesPage() {
     : -1;
   const duplicateTitleLine = detectedDuplicateTitleLine;
 
-  return <main style={{ minHeight: '100vh', background: '#f2f5f9', padding: '24px 16px', color: '#17243a', fontFamily: 'system-ui, sans-serif' }}>
+  return <ImageContext.Provider value={{token,files,note:current}}><main style={{ minHeight: '100vh', background: '#f2f5f9', padding: '24px 16px', color: '#17243a', fontFamily: 'system-ui, sans-serif' }}>
     <div style={{ maxWidth: 1000, margin: '0 auto', background: 'white', borderRadius: 18, padding: '24px 28px', boxShadow: '0 8px 30px #17243a12' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid #e2e8f0', paddingBottom: 16 }}>
         <div><div style={{ fontSize: 13, color: '#55708f' }}>Windowsランチャーの付箋をどの端末からも</div><h1 style={{ margin: '4px 0 0', fontSize: 27 }}>俺の付箋 · Web</h1></div>
@@ -301,6 +330,7 @@ export default function SharedNotesPage() {
           }} style={{ ...button, textDecoration: 'none' }}>Google接続</a>}
           <button style={button} disabled={!token || busy} onClick={() => {
             if (dirty && !window.confirm('保存していない変更があります。破棄してWebを更新しますか？')) return;
+            if(dirty) {discardDraft();if(current) {setTitle(current.operation.payload.title);setMarkdown(current.operation.payload.markdown);}setEditing(false);}
             void reload(token);
           }}>Webを更新</button>
         </div>
@@ -339,8 +369,10 @@ export default function SharedNotesPage() {
           {visibleNotes.map(({ note, index }) => <button key={`${note.scope.noteId}:${note.operation.operationId}`} disabled={busy} onClick={() => {
             if (index === selected) return;
             if (dirty && !window.confirm('保存していない変更があります。破棄して別の付箋を開きますか？')) return;
+            if(dirty) discardDraft();
             setEditing(false);
             setSelected(index);
+            try {sessionStorage.setItem(`onf-shared-selected:${note.scope.accountSubject}`,note.scope.noteId);} catch {/* Optional view state. */}
           }} style={{ ...button, textAlign: 'left', background: index === selected ? '#e7f2fc' : 'white', borderColor: index === selected ? '#298bd1' : '#cbd5e1', boxShadow: `inset 5px 0 0 ${note.operation.payload.backgroundColor ?? '#f7e9b0'}`, opacity: busy ? 0.65 : 1 }}>
             📌 {note.operation.payload.title}<small style={{ display: 'block', marginTop: 3, color: '#5d7086' }}>{note.pendingCreate ? 'Windows同期待ち' : 'Windowsランチャー登録'}</small>
           </button>)}
@@ -351,9 +383,11 @@ export default function SharedNotesPage() {
             <strong>付箋の内容</strong>
             {!editing ? !current.paused && !current.pendingCreate && <button style={button} disabled={busy} onClick={() => {
               setEditing(true);
+              draftBaseline.current=editBaseline(current);
             }}>編集</button> : <div style={{ display: 'flex', gap: 8 }}>
               <button style={button} disabled={busy} onClick={() => {
                 if (dirty && !window.confirm('編集内容を破棄しますか？')) return;
+                discardDraft();
                 setTitle(current.operation.payload.title); setMarkdown(current.operation.payload.markdown); setEditing(false);
               }}>キャンセル</button>
               <button style={{ ...button, background: '#1689dc', color: 'white', borderColor: '#1689dc' }} disabled={busy} onClick={() => void save()}>保存</button>
@@ -362,7 +396,7 @@ export default function SharedNotesPage() {
           <article aria-busy={Boolean(pendingTask)} style={{ background: current.operation.payload.backgroundColor ?? '#f7e9b0', borderRadius: 12, padding: '22px 26px', minHeight: 260, overflowWrap: 'anywhere' }}>
             {!editing && <h2 style={{ marginTop: 0 }}>{current.operation.payload.title}</h2>}
             <div>
-              {editing ? <textarea aria-label="付箋本文" disabled={busy} rows={16} value={markdown} onChange={event => setMarkdown(event.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: 0, padding: 0, background: 'transparent', color: 'inherit', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} /> : bodyLines.map((line, index) => {
+              {editing ? <textarea aria-label="付箋本文" disabled={busy} rows={16} value={markdown} onChange={event => updateDraft(event.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: 0, padding: 0, background: 'transparent', color: 'inherit', font: 'inherit', lineHeight: 1.6, resize: 'vertical' }} /> : bodyLines.map((line, index) => {
                 if (index === duplicateTitleLine) return null;
                 const codeRange = fencedCodeRangesByLine.get(index);
                 if (codeRange) {
@@ -378,7 +412,7 @@ export default function SharedNotesPage() {
                   const checked = pendingTask?.operationId === current.operation.operationId && pendingTask.lineIndex === index ? pendingTask.checked : task[2].toLowerCase() === 'x';
                   return <div key={index} style={{ display: 'flex', gap: 6, alignItems: 'baseline', padding: '7px 0' }}>
                     <button type="button" role="checkbox" aria-label={task[4]} aria-checked={checked} title={checked ? '未完了にする' : '完了にする'} disabled={busy || current.paused || current.pendingCreate} onClick={() => void toggleViewedTask(index, !checked)} style={{ border: 0, padding: 0, background: 'transparent', color: checked ? '#4caf50' : '#888', width: '1em', flex: '0 0 1em', textAlign: 'center', font: 'inherit', lineHeight: 'inherit', cursor: !busy && !current.paused ? 'pointer' : 'default' }}>{checked ? '☑' : '☐'}</button>
-                    <span style={{ textDecoration: checked ? 'line-through' : 'none', opacity: checked ? 0.6 : 1 }}>{renderInlineContent(task[4], images)}</span>
+                    <span style={{ textDecoration: checked ? 'line-through' : 'none', opacity: checked ? 0.6 : 1 }}>{renderInlineContent(task[4])}</span>
                   </div>;
                 }
                 const imageMatches = [...line.matchAll(/!\[([^\]]*)\]\(ore-fusen-image:\/\/(img-[0-9a-f]{64})\)/g)];
@@ -386,7 +420,7 @@ export default function SharedNotesPage() {
                 if (heading) {
                   const level = heading[1].length;
                   const sizes = ['1.1em', '1.05em', '1em', '0.95em', '0.9em', '0.85em'];
-                  return <div key={index} role="heading" aria-level={level} style={{ minHeight: line ? undefined : 8, whiteSpace: 'pre-wrap', margin: '9px 0 5px', fontSize: sizes[level - 1], fontWeight: 700 }}>{renderInlineContent(heading[2], images, imageMatches.length ? 'block' : 'inline')}</div>;
+                  return <div key={index} role="heading" aria-level={level} style={{ minHeight: line ? undefined : 8, whiteSpace: 'pre-wrap', margin: '9px 0 5px', fontSize: sizes[level - 1], fontWeight: 700 }}>{renderInlineContent(heading[2], imageMatches.length ? 'block' : 'inline')}</div>;
                 }
                 const unordered = !editing ? line.match(/^\s*[-*+]\s+(.*)$/) : null;
                 const ordered = !editing ? line.match(/^(\s*\d+[.)])\s+(.*)$/) : null;
@@ -404,12 +438,12 @@ export default function SharedNotesPage() {
                     const match = listKind === 'unordered' ? itemLine.match(/^\s*[-*+]\s+(.*)$/) : itemLine.match(/^(\s*\d+[.)])\s+(.*)$/);
                     if (!match) break;
                     const itemBody = listKind === 'unordered' ? match[1] : match[2];
-                    items.push(<div role="listitem" key={itemIndex} style={{ display: 'flex', gap: 8, whiteSpace: 'pre-wrap', margin: '5px 0' }}><span aria-hidden={listKind === 'unordered' ? 'true' : undefined}>{listKind === 'unordered' ? '•' : match[1]}</span><span>{renderInlineContent(itemBody, images, /!\[[^\]]*\]\(ore-fusen-image:\/\//.test(itemBody) ? 'block' : 'inline')}</span></div>);
+                    items.push(<div role="listitem" key={itemIndex} style={{ display: 'flex', gap: 8, whiteSpace: 'pre-wrap', margin: '5px 0' }}><span aria-hidden={listKind === 'unordered' ? 'true' : undefined}>{listKind === 'unordered' ? '•' : match[1]}</span><span>{renderInlineContent(itemBody, /!\[[^\]]*\]\(ore-fusen-image:\/\//.test(itemBody) ? 'block' : 'inline')}</span></div>);
                   }
                   return <div key={index} role="list">{items}</div>;
                 }
-                if (imageMatches.length) return <div key={index} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '7px 0' }}>{renderInlineContent(line, images, 'block')}</div>;
-                return <p key={index} style={{ minHeight: line ? undefined : 8, whiteSpace: 'pre-wrap', margin: '7px 0' }}>{renderInlineContent(line.replace(/^\s*[-*+]\s+/, '・'), images)}</p>;
+                if (imageMatches.length) return <div key={index} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '7px 0' }}>{renderInlineContent(line, 'block')}</div>;
+                return <p key={index} style={{ minHeight: line ? undefined : 8, whiteSpace: 'pre-wrap', margin: '7px 0' }}>{renderInlineContent(line.replace(/^\s*[-*+]\s+/, '・'))}</p>;
               })}
             </div>
           </article>
@@ -447,5 +481,5 @@ export default function SharedNotesPage() {
         })();
       }} />}
     <style jsx>{`.shared-grid{display:grid;grid-template-columns:minmax(190px,.8fr) minmax(0,2fr);gap:20px}@media(max-width:680px){.shared-grid{grid-template-columns:minmax(0,1fr)}}`}</style>
-  </main>;
+  </main></ImageContext.Provider>;
 }

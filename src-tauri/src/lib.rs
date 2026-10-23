@@ -38,6 +38,8 @@ mod tray;
 mod triple_right_click;
 #[allow(dead_code)] // 接続処理は同期UIとDrive層の安全ゲート後に追加する
 mod web_share_contract;
+mod web_share_snapshot;
+mod web_share_preview;
 mod web_create;
 mod web_share_download;
 mod web_sharing_state;

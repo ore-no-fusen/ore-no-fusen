@@ -1,5 +1,6 @@
 import withPWA from 'next-pwa';
 import defaultRuntimeCaching from 'next-pwa/cache.js';
+import { driveApiRoute } from './lib/drive-cache-policy.mjs';
 import { withSentryConfig } from '@sentry/nextjs';
 
 import fs from 'fs';
@@ -64,6 +65,12 @@ const pwaConfig = withPWA({
   // precachingを全て無効化することでSWが即座にactivatedになる
   exclude: [/.*/],
   runtimeCaching: [
+    {
+      urlPattern: driveApiRoute,
+      handler: 'NetworkOnly',
+      method: 'GET',
+      options: { fetchOptions: { cache: 'no-store' } },
+    },
     {
       urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname === '/viewer',
       handler: 'StaleWhileRevalidate',

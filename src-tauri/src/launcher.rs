@@ -469,6 +469,7 @@ async fn apply_web_payload_to_windows_note(
     client: &reqwest::Client,
     token: &str,
     share_folder: &str,
+    snapshot: Option<&crate::web_share_snapshot::Snapshot>,
 ) -> Result<(), String> {
     if windows_payload.title != web_payload.title {
         return Err("Web側のタイトル変更はWindows原本に反映できないため保留しました".into());
@@ -490,13 +491,18 @@ async fn apply_web_payload_to_windows_note(
         if manifest.size_bytes == 0 || manifest.size_bytes as u64 > MAX_WEB_SHARE_IMAGE_BYTES {
             return Err("共有画像のサイズ上限を超えているため保留しました".into());
         }
+        let bytes = if let Some(snapshot)=snapshot {
+            snapshot.images.get(&manifest.sha256).ok_or("Web画像の原本参照がありません")?.validate(&manifest.sha256)?;
+            local.values().find(|i|i.manifest.sha256==manifest.sha256).ok_or("Windows原本がありません")?.bytes.clone()
+        } else {
         let filename = format!("image-{}", manifest.sha256);
         let id = crate::gdrive::find_web_share_file(client, token, share_folder, &filename)
             .await?
             .ok_or_else(|| {
                 "共有画像がDriveに見つからず、Windows原本は変更していません".to_string()
             })?;
-        let bytes = crate::gdrive::download_web_share_bytes(client, token, &id).await?;
+        crate::gdrive::download_web_share_bytes(client, token, &id).await?
+        };
         if bytes.len() != manifest.size_bytes as usize
             || format!("{:x}", Sha256::digest(&bytes)) != manifest.sha256
         {
@@ -583,6 +589,7 @@ fn read_local_share_images(
         return Err("付箋の画像フォルダーが保存場所の外を指しています".to_string());
     }
     let mut manifests = HashMap::new();
+    let mut total_image_bytes=0usize;
     for relative in references {
         let relative_path = Path::new(&relative);
         if relative_path
@@ -599,6 +606,8 @@ fn read_local_share_images(
             return Err("付箋画像が画像フォルダーの外を指しています".to_string());
         }
         let bytes = read_limited_image_file(&canonical_image)?;
+        total_image_bytes+=bytes.len();
+        if total_image_bytes>128*1024*1024 {return Err("1枚の付箋の画像容量が同期上限を超えています。原本は保持しています".into());}
         let format =
             image::guess_format(&bytes).map_err(|_| "画像形式を判定できません".to_string())?;
         let mime_type = match format {
@@ -609,15 +618,11 @@ fn read_local_share_images(
             image::ImageFormat::Bmp => "image/bmp",
             _ => return Err("Web共有に対応していない画像形式です".to_string()),
         };
-        let mut reader = image::ImageReader::with_format(std::io::Cursor::new(&bytes), format);
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(4096);
-        limits.max_image_height = Some(4096);
-        limits.max_alloc = Some(128 * 1024 * 1024);
-        reader.limits(limits);
-        reader
-            .decode()
+        // Hash/header inspection is enough for unchanged originals. Decode
+        // pixels only once when a new Web preview is actually necessary.
+        let (width,height)=image::ImageReader::with_format(std::io::Cursor::new(&bytes),format).into_dimensions()
             .map_err(|_| "付箋画像が壊れているか、画像サイズ上限を超えています".to_string())?;
+        if width==0 || height==0 || width>4096 || height>4096 {return Err("付箋画像の画素数上限を超えています".into());}
         let digest = format!("{:x}", Sha256::digest(&bytes));
         let manifest = ShareImageManifest {
             image_id: format!("img-{digest}"),
@@ -676,6 +681,8 @@ struct WebShareSyncState {
     note_ids: HashMap<String, String>,
     #[serde(default)]
     revoked_ids: HashSet<String>,
+    #[serde(default)]
+    snapshot_ids: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -743,23 +750,9 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
     let share_folder = crate::gdrive::ensure_web_share_folder(&client, &token).await?;
     let remote_files =
         crate::gdrive::list_web_share_records(&client, &token, &share_folder).await?;
-    let mut sharing_records = Vec::new();
     let _ = app.emit("fusen:web_sync_progress", "history");
     let sharing_files = crate::gdrive::list_web_share_named_records(&client, &token, &share_folder, "web-sharing-").await?;
-    for (_, name, value) in crate::gdrive::read_web_share_records(&client, &token, sharing_files).await? {
-        if !name.starts_with("web-sharing-") { continue; }
-        sharing_records.push(crate::web_sharing_state::parse(value, &name)?);
-    }
-    // Validate before any original-file or Drive write. A stopped note remains
-    // registered/active locally, but neither uploads nor applies Web content.
-    let paused_ids = crate::web_sharing_state::paused_ids(&sharing_records, &account_subject)?;
-    let mut all_remote = Vec::<ShareOperation>::new();
-    for (_, _, value) in crate::gdrive::read_web_share_records(&client, &token, remote_files).await? {
-        let record: ShareOperation = serde_json::from_value(value).map_err(|error| {
-            format!("共有記録を読み取れません。Driveへの保存は中止しました: {error}")
-        })?;
-        all_remote.push(record);
-    }
+    let sharing_records=crate::gdrive::read_web_share_records(&client,&token,sharing_files).await?;
 
     let state_path = crate::gdrive::get_token_path().with_file_name("web_share_sync.json");
     let mut sync_state = if state_path.exists() {
@@ -777,6 +770,9 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         );
     }
     sync_state.account_subject = account_subject.clone();
+    let mut snapshots=crate::web_share_snapshot::Store::load(&client,&token,&share_folder,&account_subject,remote_files,sharing_records).await?;
+    let paused_ids=snapshots.paused.clone();
+    let all_remote=snapshots.operations.clone();
 
     let mut summary = WebShareSyncSummary {
         uploaded: 0,
@@ -957,16 +953,7 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
             );
             revoke.payload_hash = web_share_contract::calculate_payload_hash(&revoke)
                 .map_err(|error| format!("共有解除記録を作れません: {error:?}"))?;
-            let bytes = serde_json::to_vec(&revoke).map_err(|error| error.to_string())?;
-            crate::gdrive::create_web_share_file(
-                &client,
-                &token,
-                &share_folder,
-                &format!("{}.json", revoke.operation_id),
-                bytes,
-                "application/json",
-            )
-            .await?;
+            snapshots.save(&client,&token,&share_folder,&revoke,Default::default(),None).await?;
         }
         sync_state.revoked_ids.insert(note_id);
         summary.revoked += 1;
@@ -999,6 +986,9 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
             ));
             continue;
         };
+        if snapshots.blocked.contains(&note_id) {
+            summary.held.push(format!("{}: 複数の変更を保持しています。競合中の記録は整理していません",item.title));continue;
+        }
         if paused_ids.contains(&note_id) {
             summary.unchanged += 1;
             continue;
@@ -1015,6 +1005,7 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
             &all_remote,
             &mut sync_state,
             &note_id,
+            &mut snapshots,
         )
         .await;
         match result {
@@ -1029,6 +1020,9 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         if let Err(error) = fusen_open_quick_note(app.clone(), path.clone(), None).await {
             summary.held.push(format!("新規付箋は保存済みですが表示できませんでした（QLから開けます）: {path}: {error}"));
         }
+    }
+    if let Err(error)=crate::web_create::cleanup_published(&client,&token,&share_folder,&account_subject,&snapshots).await {
+        crate::logger::log_info(&format!("[Web同期] 作成済み要求の整理を保留: {error}"));
     }
     crate::logger::log_info(&format!("[Web同期] 完了: {}ms / 送信{} 受信{} 変更なし{} 保留{}", sync_started.elapsed().as_millis(), summary.uploaded, summary.applied, summary.unchanged, summary.held.len()));
     Ok(summary)
@@ -1046,6 +1040,7 @@ async fn sync_one_registered_note(
     all_remote: &[ShareOperation],
     sync_state: &mut WebShareSyncState,
     note_id: &str,
+    snapshots: &mut crate::web_share_snapshot::Store,
 ) -> Result<WebSyncOutcome, String> {
     let canonical = path.canonicalize().map_err(|e| e.to_string())?;
     if !canonical.starts_with(base.canonicalize().map_err(|e| e.to_string())?) {
@@ -1091,6 +1086,10 @@ async fn sync_one_registered_note(
     });
     if let Some(remote) = remote_operation {
         if remote.payload == payload {
+            if snapshots.notes.get(&note_id).is_some_and(|saved|saved.snapshot.images.values().any(|asset|asset.legacy)) {
+                let images=read_local_share_images(&canonical,&with_share_id)?.into_values().map(|image|(image.manifest.sha256,image.bytes)).collect();
+                snapshots.save(client,token,share_folder,remote,images,None).await?;
+            }
             sync_state.notes.insert(
                 key,
                 WebShareNoteSyncState {
@@ -1123,6 +1122,7 @@ async fn sync_one_registered_note(
                 client,
                 token,
                 share_folder,
+                snapshots.notes.get(&note_id).map(|s|&s.snapshot),
             )
             .await?;
             let _ = app.emit(
@@ -1165,33 +1165,12 @@ async fn sync_one_registered_note(
     if verified_manifests != payload_manifests {
         return Err("画像が同期中に変更されました。もう一度同期してください".into());
     }
+    let mut snapshot_images=std::collections::BTreeMap::new();
     for image in verified_images.values() {
         if image.bytes.is_empty() || image.bytes.len() as u64 > MAX_WEB_SHARE_IMAGE_BYTES {
             return Err("共有画像のサイズ上限を超えているため保留しました".into());
         }
-        let file_name = format!("image-{}", image.manifest.sha256);
-        if let Some(existing_id) =
-            crate::gdrive::find_web_share_file(client, token, share_folder, &file_name).await?
-        {
-            let existing =
-                crate::gdrive::download_web_share_bytes(client, token, &existing_id).await?;
-            let existing_hash = format!("{:x}", Sha256::digest(&existing));
-            if existing.len() != image.manifest.size_bytes as usize
-                || existing_hash != image.manifest.sha256
-            {
-                return Err("Drive上の同名画像が検証に失敗したため保留しました".into());
-            }
-        } else {
-            crate::gdrive::create_web_share_file(
-                client,
-                token,
-                share_folder,
-                &file_name,
-                image.bytes.clone(),
-                &image.manifest.mime_type,
-            )
-            .await?;
-        }
+        snapshot_images.insert(image.manifest.sha256.clone(),image.bytes.clone());
     }
 
     let mut operation = ShareOperation {
@@ -1210,16 +1189,12 @@ async fn sync_one_registered_note(
         operation.scope.note_id, parent, operation.payload_hash
     );
     operation.operation_id = format!("op-{:x}", Sha256::digest(operation_seed.as_bytes()));
-    let json = serde_json::to_vec(&operation).map_err(|e| e.to_string())?;
-    crate::gdrive::create_web_share_file(
-        client,
-        token,
-        share_folder,
-        &format!("{}.json", operation.operation_id),
-        json,
-        "application/json",
-    )
-    .await?;
+    if !snapshots.notes.contains_key(&note_id) && !sync_state.snapshot_ids.contains_key(&note_id) {
+        let id=crate::gdrive::generate_web_share_id(client,token).await?;
+        sync_state.snapshot_ids.insert(note_id.clone(),id);
+        persist_web_share_sync_state(&crate::gdrive::get_token_path().with_file_name("web_share_sync.json"),sync_state)?;
+    }
+    snapshots.save(client,token,share_folder,&operation,snapshot_images,sync_state.snapshot_ids.get(&note_id).map(String::as_str)).await?;
     sync_state.notes.insert(
         key,
         WebShareNoteSyncState {

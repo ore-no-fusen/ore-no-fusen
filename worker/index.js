@@ -4,8 +4,19 @@
 
 import { resolvePushTitles } from './notification-title';
 import { closeClickedNotification, focusViewerOrOpenTarget } from './notification-click';
+import { clearDriveCacheEntries } from '../lib/drive-cache-policy.mjs';
 
-const SW_VERSION = '5.8.0-pwa.1';
+const SW_VERSION = '6.0.0-pwa.1';
+let driveCacheCleanup = null;
+function ensureDriveCacheCleanup() {
+  if (!driveCacheCleanup) {
+    driveCacheCleanup = clearDriveCacheEntries().catch(error => {
+      driveCacheCleanup = null;
+      throw error;
+    });
+  }
+  return driveCacheCleanup;
+}
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -13,7 +24,10 @@ self.addEventListener('install', () => {
 
 self.addEventListener('activate', (event) => {
   swLog(`SW起動 version=${SW_VERSION}`);
-  event.waitUntil(clients.claim());
+  event.waitUntil(Promise.all([
+    clients.claim(),
+    ensureDriveCacheCleanup().catch(() => swLog('Drive応答の旧キャッシュ整理は再試行します')),
+  ]));
 });
 
 /** 現在時刻を日本時間（JST, +09:00）の ISO 8601 文字列で返す */
@@ -320,6 +334,14 @@ function deleteImagesFromDrive(token, images) {
 }
 
 self.addEventListener('message', (event) => {
+  if (event.data?.type === 'ONF_DRIVE_CACHE_POLICY') {
+    event.waitUntil(ensureDriveCacheCleanup().then(() => {
+      event.ports?.[0]?.postMessage({ type: 'ONF_DRIVE_CACHE_POLICY', driveCachePolicy: 1 });
+    }).catch(() => {
+      event.ports?.[0]?.postMessage({ type: 'ONF_DRIVE_CACHE_POLICY', driveCachePolicy: 0 });
+    }));
+    return;
+  }
   if (event.data?.type === 'CLOSE_NOTIFICATION') {
     self.registration.getNotifications({ tag: event.data.tag })
       .then((ns) => ns.forEach((n) => n.close()));

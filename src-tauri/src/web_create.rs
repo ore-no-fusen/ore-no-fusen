@@ -213,6 +213,33 @@ pub async fn receive(
     Ok(imported)
 }
 
+/// Clear only requests whose exact content has a completed local receipt and a
+/// published snapshot. Failed cleanup is retried; the receipt prevents replay.
+pub(crate) async fn cleanup_published(client:&reqwest::Client,token:&str,folder:&str,account:&str,store:&crate::web_share_snapshot::Store)->Result<(),String>{
+    let ledger=gdrive::get_token_path().with_file_name("web_create_receipts.json");
+    if !ledger.exists() {return Ok(());}
+    let receipts:BTreeMap<String,Receipt>=serde_json::from_slice(&fs::read(ledger).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+    let pc=gdrive::local_pc_id()?;
+    for (id,name) in gdrive::list_web_share_named_records(client,token,folder,"web-request-").await? {
+        let (value,etag)=gdrive::read_web_share_cas(client,token,&id,folder).await?;
+        let request:Request=serde_json::from_value(value).map_err(|e|e.to_string())?;
+        validate(&request,account)?;
+        if name!=format!("web-request-{}.json",request.note_id) || request.target_pc_id!=pc {continue;}
+        let Some(saved)=store.notes.get(&request.note_id) else {continue;};
+        // A successful read-back of the snapshot is required, not merely a
+        // local attempt to publish it.
+        let (current,_)=gdrive::read_web_share_cas(client,token,&saved.id,folder).await?;
+        let snapshot:crate::web_share_snapshot::Snapshot=serde_json::from_value(current).map_err(|e|e.to_string())?;
+        snapshot.validate(account)?;
+        if snapshot.operation.scope.note_id!=request.note_id || !snapshot.published || snapshot.superseded_by.is_some() {continue;}
+        let hash=format!("{:x}",Sha256::digest(serde_json::to_vec(&request).map_err(|e|e.to_string())?));
+        if receipts.get(&format!("{}:{}",account,request.note_id)).is_some_and(|r|r.complete && r.hash==hash) {
+            if gdrive::delete_web_share_cas(client,token,&id,&etag).await.is_err() {crate::logger::log_info("[Web同期] 作成済み要求の整理は次回再試行します");}
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

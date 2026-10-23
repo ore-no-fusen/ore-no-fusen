@@ -649,6 +649,13 @@ pub async fn list_web_share_records(
 pub async fn list_web_share_named_records(
     client: &Client, access_token: &str, folder_id: &str, prefix: &str,
 ) -> Result<Vec<(String, String)>, String> {
+    list_web_share_named_files(client,access_token,folder_id,prefix,true).await
+}
+
+pub(crate) async fn list_web_share_named_files(
+    client:&Client, access_token:&str, folder_id:&str, prefix:&str, json_only:bool,
+) -> Result<Vec<(String,String)>,String> {
+    if prefix.contains('\'') || folder_id.contains('\'') {return Err("共有一覧の識別情報が不正です".into());}
     let q = format!(
         "'{}' in parents and name contains '{}' and trashed=false",
         folder_id, prefix
@@ -680,7 +687,7 @@ pub async fn list_web_share_named_records(
             response
                 .files
                 .into_iter()
-                .filter(|file| file.name.ends_with(".json"))
+                .filter(|file| !json_only || file.name.ends_with(".json"))
                 .map(|file| (file.id, file.name)),
         );
         token = response.next_page_token;
@@ -741,6 +748,121 @@ pub async fn download_web_share_record(
         .json()
         .await
         .map_err(|e| e.to_string())
+}
+
+/// A content/ETag pair from one stable Drive revision. v3 media updates do NOT
+/// enforce If-Match; use v2 for both the revision token and conditional writes.
+pub(crate) async fn read_web_share_cas(
+    client: &Client, token: &str, id: &str, folder: &str,
+) -> Result<(serde_json::Value, String), String> {
+    async fn metadata(client: &Client, token: &str, id: &str, folder: &str) -> Result<String, String> {
+        let value: serde_json::Value = client.get(format!("https://www.googleapis.com/drive/v2/files/{id}"))
+            .query(&[("fields", "etag,parents(id),fileSize")]).bearer_auth(token).send().await
+            .map_err(|_| "共有状態の確認に失敗しました")?.error_for_status()
+            .map_err(|_| "共有状態を確認できません")?.json().await.map_err(|_| "共有状態の形式が不正です")?;
+        if !value["parents"].as_array().is_some_and(|parents| parents.iter().any(|p| p["id"].as_str() == Some(folder))) {
+            return Err("共有フォルダー以外のファイルは変更しません".into());
+        }
+        if value["fileSize"].as_str().and_then(|s|s.parse::<u64>().ok()).unwrap_or(0) > crate::web_share_snapshot::MAX_SNAPSHOT_BYTES as u64 {
+            return Err("共有付箋の容量上限を超えています。元の内容は保持しています".into());
+        }
+        value["etag"].as_str().filter(|s|!s.is_empty()).map(str::to_owned).ok_or("Driveの更新基準がありません".into())
+    }
+    let before = metadata(client, token, id, folder).await?;
+    let mut response = client.get(format!("https://www.googleapis.com/drive/v3/files/{id}?alt=media"))
+        .bearer_auth(token).send().await.map_err(|_| "共有内容の取得に失敗しました")?
+        .error_for_status().map_err(|_| "共有内容を取得できません")?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| "共有内容の取得が中断しました")? {
+        if bytes.len() + chunk.len() > crate::web_share_snapshot::MAX_SNAPSHOT_BYTES { return Err("共有付箋の容量上限を超えています".into()); }
+        bytes.extend_from_slice(&chunk);
+    }
+    let after = metadata(client, token, id, folder).await?;
+    if before != after { return Err("取得中に別の端末で変更されました。再度同期してください".into()); }
+    Ok((serde_json::from_slice(&bytes).map_err(|_| "共有内容が壊れています")?, after))
+}
+
+pub(crate) async fn write_web_share_cas(
+    client: &Client, token: &str, id: &str, etag: &str, value: &serde_json::Value,
+) -> Result<(), String> {
+    if etag.is_empty() { return Err("更新基準がないため保存しません".into()); }
+    let bytes = serde_json::to_vec(value).map_err(|e|e.to_string())?;
+    if bytes.len() > crate::web_share_snapshot::MAX_SNAPSHOT_BYTES { return Err("共有付箋の容量上限を超えています。元の内容は保持しています".into()); }
+    let response = client.put(format!("https://www.googleapis.com/upload/drive/v2/files/{id}"))
+        .query(&[("uploadType", "media"), ("newRevision", "false")]).bearer_auth(token)
+        .header("If-Match", etag).header("Content-Type", "application/json").body(bytes)
+        .send().await.map_err(|_| "保存結果を確認できません。元の内容を保持して再同期してください")?;
+    if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
+        return Err("別の端末で変更されました。上書きせず内容を保持しました。再度同期してください".into());
+    }
+    if !response.status().is_success() { return Err(format!("共有状態の保存に失敗しました ({})", response.status())); }
+    Ok(())
+}
+
+pub(crate) async fn delete_web_share_cas(client: &Client, token: &str, id: &str, etag: &str) -> Result<(), String> {
+    if etag.is_empty() { return Err("更新基準なしの削除は行いません".into()); }
+    let response = client.delete(format!("https://www.googleapis.com/drive/v2/files/{id}"))
+        .bearer_auth(token).header("If-Match", etag).send().await.map_err(|_| "共有記録の整理に失敗しました")?;
+    if response.status().is_success() || response.status() == reqwest::StatusCode::NOT_FOUND { Ok(()) }
+    else { Err("共有記録は保持し、次回同期で整理を再試行します".into()) }
+}
+
+pub(crate) async fn name_web_share_snapshot(client:&Client, token:&str, id:&str, note_id:&str) -> Result<(),String> {
+    client.patch(format!("https://www.googleapis.com/drive/v3/files/{id}"))
+        .bearer_auth(token).json(&serde_json::json!({"name":format!("op-state-{note_id}.json")}))
+        .send().await.map_err(|_|"共有状態の名前を更新できません")?
+        .error_for_status().map_err(|_|"共有状態の名前を更新できません")?;
+    Ok(())
+}
+
+pub(crate) async fn generate_web_share_id(client:&Client,token:&str)->Result<String,String>{
+    let value:serde_json::Value=client.get("https://www.googleapis.com/drive/v3/files/generateIds")
+        .query(&[("count","1"),("space","drive"),("type","files")]).bearer_auth(token).send().await
+        .map_err(|_|"共有ファイルのIDを準備できません")?.error_for_status().map_err(|_|"共有ファイルのIDを準備できません")?
+        .json().await.map_err(|_|"共有ファイルのIDが不正です")?;
+    value["ids"][0].as_str().filter(|id|!id.is_empty()).map(str::to_owned).ok_or("共有ファイルのIDがありません".into())
+}
+pub(crate) async fn web_share_file_exists(client:&Client,token:&str,id:&str)->Result<bool,String>{
+    let response=client.get(format!("https://www.googleapis.com/drive/v3/files/{id}?fields=id")).bearer_auth(token).send().await.map_err(|_|"共有記録の存在確認に失敗しました")?;
+    if response.status()==reqwest::StatusCode::NOT_FOUND {return Ok(false);}
+    response.error_for_status().map_err(|_|"共有記録の存在確認に失敗しました")?;Ok(true)
+}
+
+/// Pre-generated IDs make a retry refer to the exact same physical file.
+/// A 409 is not treated as success; the caller must read back and verify it.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CreateAtId { Created, AlreadyExists }
+pub(crate) async fn create_web_share_file_at_id(client:&Client,token:&str,folder:&str,id:&str,name:&str,bytes:Vec<u8>,mime:&str)->Result<CreateAtId,String>{
+    let metadata=serde_json::json!({"id":id,"name":name,"parents":[folder]});
+    let response=client.post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+        .bearer_auth(token).multipart(reqwest::multipart::Form::new()
+            .part("metadata",reqwest::multipart::Part::text(metadata.to_string()).mime_str("application/json").map_err(|e|e.to_string())?)
+            .part("file",reqwest::multipart::Part::bytes(bytes).mime_str(mime).map_err(|e|e.to_string())?))
+        .send().await.map_err(|_|"保存結果を確認できません。元の内容を保持しています")?;
+    if response.status().is_success() {Ok(CreateAtId::Created)}
+    else if response.status()==reqwest::StatusCode::CONFLICT {Ok(CreateAtId::AlreadyExists)}
+    else {Err(format!("共有ファイルを保存できません ({})",response.status()))}
+}
+
+pub(crate) async fn drive_available_bytes(client:&Client,token:&str)->Result<Option<u64>,String>{
+    let value:serde_json::Value=client.get("https://www.googleapis.com/drive/v3/about?fields=storageQuota(limit,usage)")
+        .bearer_auth(token).send().await.map_err(|_|"Driveの空き容量を確認できません")?
+        .error_for_status().map_err(|_|"Driveの空き容量を確認できません")?.json().await.map_err(|_|"Drive容量情報が不正です")?;
+    let Some(limit)=value["storageQuota"]["limit"].as_str().and_then(|s|s.parse::<u64>().ok()) else {return Ok(None);};
+    let used=value["storageQuota"]["usage"].as_str().and_then(|s|s.parse::<u64>().ok()).ok_or("Driveの使用容量を確認できません")?;
+    Ok(Some(limit.saturating_sub(used)))
+}
+
+/// Recheck folder ownership and managed filename before deleting an image.
+pub(crate) async fn delete_web_preview(client:&Client,token:&str,folder:&str,id:&str,note_id:&str)->Result<(),String>{
+    let response=client.get(format!("https://www.googleapis.com/drive/v2/files/{id}"))
+        .query(&[("fields","etag,title,parents(id)")]).bearer_auth(token).send().await.map_err(|_|"Web画像の整理確認に失敗しました")?;
+    if response.status()==reqwest::StatusCode::NOT_FOUND {return Ok(());}
+    let value:serde_json::Value=response.error_for_status().map_err(|_|"Web画像の整理確認に失敗しました")?.json().await.map_err(|_|"Web画像情報が不正です")?;
+    if !value["parents"].as_array().is_some_and(|parents|parents.iter().any(|p|p["id"].as_str()==Some(folder))) ||
+        !crate::web_share_preview::owned_preview_name(note_id,value["title"].as_str().unwrap_or("")) {return Err("管理対象外の画像は削除しません".into());}
+    let etag=value["etag"].as_str().filter(|s|!s.is_empty()).ok_or("画像の更新基準がありません")?;
+    delete_web_share_cas(client,token,id,etag).await
 }
 
 /// 操作記録を新規作成のみで保存する。既存ファイルを更新する経路は持たない。

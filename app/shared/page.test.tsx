@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/app/viewer/lib/drive', () => ({ refreshAccessToken: mocks.refreshAccessToken }));
 vi.mock('@/app/utils/mermaid', () => ({ renderSecureMermaid: mocks.renderSecureMermaid }));
 vi.mock('./lib/drive', () => ({
+  clearSharedRecordCache: vi.fn(),
   appendWebEdit: mocks.appendWebEdit,
   revokeWebNote: mocks.revokeWebNote,
   setWebSharing: mocks.setWebSharing,
@@ -38,6 +39,29 @@ function sharedNote(markdown: string, title = 'テスト付箋'): SharedNote {
 }
 
 describe('shared note editor', () => {
+  it('未送信の既存編集を再表示後に復元する', async () => {
+    const first=render(<SharedNotesPage/>);
+    fireEvent.click(await screen.findByRole('button',{name:'編集'}));
+    fireEvent.change(screen.getByRole('textbox',{name:'付箋本文'}),{target:{value:'ページを閉じても残す本文'}});
+    first.unmount();
+    render(<SharedNotesPage/>);
+    await waitFor(()=>expect((screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement).value).toBe('ページを閉じても残す本文'));
+    expect(mocks.appendWebEdit).not.toHaveBeenCalled();
+  });
+  it('下書きの基準版から本文が変わった場合は自動上書きしない', async () => {
+    const first=render(<SharedNotesPage/>);
+    fireEvent.click(await screen.findByRole('button',{name:'編集'}));
+    fireEvent.change(screen.getByRole('textbox',{name:'付箋本文'}),{target:{value:'未送信の編集'}});
+    first.unmount();
+    const newer=sharedNote('別端末の本文');newer.operation.operationId='op-newer';
+    mocks.loadSharedNotes.mockResolvedValue({notes:[newer],files:[]});
+    render(<SharedNotesPage/>);
+    await screen.findByRole('textbox',{name:'付箋本文'});
+    fireEvent.click(screen.getByRole('button',{name:'保存'}));
+    await screen.findByText(/別の端末で本文が変わっています/);
+    expect(mocks.appendWebEdit).not.toHaveBeenCalled();
+    expect((screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement).value).toBe('未送信の編集');
+  });
   it('Windows同期待ちの保存済み付箋は本文を表示し、未取込の編集・共有操作を送信しない', async () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [{ ...sharedNote('同期待ちの本文\n- [ ] 確認', '新規保存済み'), pendingCreate: true }], files: [] });
     render(<SharedNotesPage/>);
@@ -141,6 +165,7 @@ describe('shared note editor', () => {
   afterEach(() => cleanup());
 
   beforeEach(() => {
+    localStorage.clear();sessionStorage.clear();
     localStorage.setItem('viewer_access_token', 'test-token');
     localStorage.setItem('viewer_expires_at', '0');
     mocks.refreshAccessToken.mockReset();

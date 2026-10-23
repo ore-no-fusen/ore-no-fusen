@@ -1,6 +1,8 @@
 'use client';
 
 import { refreshAccessToken } from '@/app/viewer/lib/drive';
+import { ensureDriveCachePolicy } from './cache-policy';
+import { verifyPreviewDimensions } from '@/lib/web-preview-image';
 import {
   validateShareLogJson,
   parseShareOperation,
@@ -9,6 +11,7 @@ import {
 } from '@/lib/web-share-contract';
 import { calculateSharePayloadHash } from '@/lib/web-share-payload-hash';
 import { parseSharingRecord, sharingScopeKey, sharingState, type SharingRecord } from '@/lib/web-sharing-state';
+import { parseShareSnapshot, normalizeSnapshotOperation, MAX_SNAPSHOT_BYTES, type SnapshotRef, type ShareSnapshot, type PreviewAsset } from '@/lib/web-share-snapshot';
 
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
@@ -17,18 +20,87 @@ const ROOT_FOLDER = 'ore-no-fusen';
 let latestAccessToken = '';
 // Cache only a Drive version that was observed in the latest complete listing.
 // A missing/changed version always downloads again; account boundaries are keys.
-const recordCache = new Map<string, unknown>();
+const recordCache = new Map<string, {value:unknown;bytes:number;file:string}>();
+const MAX_RECORD_CACHE_BYTES = 4 * 1024 * 1024;
+let cacheGeneration = 0;
+let cacheAccount = '';
+export function clearSharedRecordCache(): void {
+  cacheGeneration += 1;
+  recordCache.clear();
+  cacheAccount = '';
+  latestAccessToken = '';
+}
 async function downloadVersionedRecord(token: string, file: {id: string; version?: string}, account: string): Promise<unknown> {
+  if (cacheAccount !== account) throw new Error('Googleアカウントが変わったため取得を中止しました。');
+  const generation = cacheGeneration;
   if (!file.version) return downloadJson<unknown>(token, file.id, account);
   const key = JSON.stringify([account, file.id, file.version]);
-  if (recordCache.has(key)) return recordCache.get(key);
+  if (recordCache.has(key)) return recordCache.get(key)!.value;
   const value = await downloadJson<unknown>(token, file.id, account);
-  if (recordCache.size >= 256) recordCache.delete(recordCache.keys().next().value!);
-  recordCache.set(key, value);
+  if (generation !== cacheGeneration) throw new Error('画面またはGoogleアカウントが変わったため取得を中止しました。');
+  // Mutable snapshots are read consistently by ETag, never retained here.
+  for (const [prior,entry] of recordCache) if (entry.file===JSON.stringify([account,file.id])) recordCache.delete(prior);
+  const bytes=new TextEncoder().encode(JSON.stringify(value)).length;
+  if ((value as {schemaVersion?:number})?.schemaVersion!==2 && bytes<=MAX_RECORD_CACHE_BYTES) {
+    while (recordCache.size && (recordCache.size>=256 || [...recordCache.values()].reduce((sum,e)=>sum+e.bytes,0)+bytes>MAX_RECORD_CACHE_BYTES)) recordCache.delete(recordCache.keys().next().value!);
+    recordCache.set(key,{value,bytes,file:JSON.stringify([account,file.id])});
+  }
   return value;
 }
 
-export type SharedNote = { scope: ShareScope; operation: ShareOperation; heads: string[]; paused?: boolean; sharingHeads?: string[]; pendingCreate?: boolean };
+export type SharedNote = { scope: ShareScope; operation: ShareOperation; heads: string[]; paused?: boolean; sharingHeads?: string[]; pendingCreate?: boolean; snapshot?: SnapshotRef };
+type SharedFile = { id: string; name: string; mimeType?: string; preview?:PreviewAsset };
+
+async function readSnapshot(token: string, fileId: string, folder: string, account: string): Promise<SnapshotRef> {
+  const meta = async () => {
+    const response = await authorizedFetch(token, `https://www.googleapis.com/drive/v2/files/${encodeURIComponent(fileId)}?fields=etag,parents(id),fileSize`, undefined, account);
+    const data = await response.json() as { etag?: string; parents?: {id: string}[]; fileSize?: string };
+    if (!data.etag || !data.parents?.some(p => p.id === folder) || Number(data.fileSize ?? 0) > MAX_SNAPSHOT_BYTES) throw new Error('共有状態の保存場所または容量を確認できません。');
+    return data.etag;
+  };
+  const before = await meta();
+  const response = await authorizedFetch(token, `${API}/files/${encodeURIComponent(fileId)}?alt=media`, undefined, account);
+  if (!response.body) throw new Error('共有状態を読み取れません。');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > MAX_SNAPSHOT_BYTES) throw new Error('共有付箋の容量上限を超えています。');
+      chunks.push(value);
+    }
+  } finally { await reader.cancel().catch(() => undefined); }
+  const bytes = new Uint8Array(total); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  const after = await meta();
+  if (before !== after) throw new Error('取得中に別の端末で変更されました。Webを更新してください。');
+  const value = await parseShareSnapshot(JSON.parse(new TextDecoder().decode(bytes)), account);
+  return { fileId, etag: after, value };
+}
+
+async function saveSnapshot(token: string, current: SharedNote, change: (snapshot: ShareSnapshot) => Promise<ShareSnapshot>): Promise<SharedNote> {
+  if (!current.snapshot) throw new Error('Windowsから同期して共有方式を更新してください。');
+  const account = current.scope.accountSubject;
+  const folder = await shareFolder(token, false, account);
+  if (!folder) throw new Error('共有フォルダーがありません。');
+  const latest = await readSnapshot(token, current.snapshot.fileId, folder, account);
+  if(latest.value.supersededBy) throw new Error('PCで共有状態を整理しています。編集内容を残し、同期後にWebを更新してください。');
+  if (latest.etag !== current.snapshot.etag) throw new Error('別の端末で変更されました。編集内容を残しています。Webを更新して確認してください。');
+  if (latest.value.conflicts.length) throw new Error('未確認の変更があるため、上書きせず内容を保持しました。');
+  const attempted = await change(structuredClone(latest.value));
+  await parseShareSnapshot(attempted, account);
+  // Web edits only metadata/text. Images are reserved and uploaded by Windows.
+  // Do not reread every other note to save one checkbox.
+  await authorizedFetch(token, `https://www.googleapis.com/upload/drive/v2/files/${encodeURIComponent(latest.fileId)}?uploadType=media&newRevision=false`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', 'If-Match': latest.etag }, body: JSON.stringify(attempted),
+  }, account);
+  const verified = await readSnapshot(token, latest.fileId, folder, account);
+  if (JSON.stringify(verified.value) !== JSON.stringify(attempted)) throw new Error('保存後に別の変更がありました。保存結果を確認できないため編集内容を残しています。');
+  return {...current,operation:verified.value.operation,heads:[verified.value.operation,...verified.value.conflicts].map(op=>op.operationId),paused:verified.value.paused,sharingHeads:[verified.value.sharingId],snapshot:verified};
+}
 export type WebCreateRequest = { schemaVersion: 1; accountSubject: string; targetPcId: string; noteId: string; markdown: string };
 export type WebReceiver = { pcId: string; name: string };
 
@@ -63,12 +135,14 @@ export async function submitWebCreate(token: string, request: WebCreateRequest):
   const folder=await shareFolder(token,true,account);
   if(!folder) throw new Error('先にWindowsで「Webと同期」を実行してください。');
   const name=`web-request-${request.noteId}.json`;
-  const existing=(await listAll(token,folder,account)).filter(f=>f.name===name);
+  const storedFiles=await listAll(token,folder,account);
+  const existing=storedFiles.filter(f=>f.name===name);
   for(const file of existing) {
     const prior=await downloadJson<WebCreateRequest>(token,file.id,account);
     if (Object.keys(request).some(key=>prior[key as keyof WebCreateRequest]!==request[key as keyof WebCreateRequest])) throw new Error('同じ作成IDの内容が異なります。上書きせず保存を中止しました。');
   }
   if(existing.length) return;
+  if(storedFiles.filter(f=>/^web-request-.*\.json$/.test(f.name)).length>=100) throw new Error('Windowsへの取込待ちが多くなっています。入力内容は残しています。PCで「Webと同期」してから、もう一度送ってください。');
   const form=new FormData();
   form.append('metadata',new Blob([JSON.stringify({name,parents:[folder]})],{type:'application/json'}));
   form.append('file',new Blob([JSON.stringify(request)],{type:'application/json'}),name);
@@ -78,6 +152,7 @@ export async function submitWebCreate(token: string, request: WebCreateRequest):
 export async function revokeWebNote(token:string,current:SharedNote):Promise<void> {
   if (current.pendingCreate) throw new Error('Windowsへの取込後に共有を変更できます。');
   latestAccessToken=token;
+  if (current.snapshot) {await saveSnapshot(token,current,async snapshot => ({...snapshot,revoked:true}));return;}
   const expected=current.scope.accountSubject;
   const loaded=await loadSharedNotes(token,expected);
   const latest=loaded.notes.find(n=>n.scope.noteId===current.scope.noteId && n.scope.generation===current.scope.generation);
@@ -94,6 +169,7 @@ export async function revokeWebNote(token:string,current:SharedNote):Promise<voi
 export async function setWebSharing(token: string, current: SharedNote, paused: boolean): Promise<void> {
   if (current.pendingCreate) throw new Error('Windowsへの取込後に共有を変更できます。');
   latestAccessToken = token;
+  if (current.snapshot) {await saveSnapshot(token,current,async snapshot => ({...snapshot,paused,sharingId:crypto.randomUUID()}));return;}
   const account = current.scope.accountSubject;
   const loaded = await loadSharedNotes(token, account);
   const latest = [...loaded.notes, ...loaded.stoppedNotes].find(note => sharingScopeKey(note.scope) === sharingScopeKey(current.scope));
@@ -112,7 +188,9 @@ export async function setWebSharing(token: string, current: SharedNote, paused: 
 }
 
 async function verifyAccount(token: string, expectedAccount: string): Promise<void> {
+  await ensureDriveCachePolicy();
   const response = await fetch(`${API}/about?fields=user(emailAddress)`, {
+    cache: 'no-store',
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new Error('更新後のGoogleアカウントを確認できません。保存を中止しました。');
@@ -124,9 +202,10 @@ async function verifyAccount(token: string, expectedAccount: string): Promise<vo
 }
 
 async function authorizedFetch(token: string, input: RequestInfo | URL, init?: RequestInit, expectedAccount?: string): Promise<Response> {
+  await ensureDriveCachePolicy();
   let activeToken = latestAccessToken || token;
   const request = async () => {
-    try { return await fetch(input, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${activeToken}` } }); }
+    try { return await fetch(input, { ...init, cache: 'no-store', headers: { ...init?.headers, Authorization: `Bearer ${activeToken}` } }); }
     catch {
       const url = String(input);
       const phase = url.includes('/about?') ? 'アカウント確認' : url.includes('alt=media') ? '共有記録の読取' : (init?.method === 'POST' ? '保存' : '一覧取得');
@@ -144,6 +223,7 @@ async function authorizedFetch(token: string, input: RequestInfo | URL, init?: R
       response = await request();
     }
   }
+  if (response.status === 412) throw new Error('別の端末で変更されました。上書きせず編集内容を残しました。Webを更新して確認してください。');
   if (!response.ok) throw new Error(`Google Driveへの接続に失敗しました (${response.status})`);
   return response;
 }
@@ -213,20 +293,40 @@ async function downloadJson<T>(token: string, fileId: string, expectedAccount?: 
   return await response.json() as T;
 }
 
-export async function loadSharedNotes(token: string, expectedAccount?: string): Promise<{ notes: SharedNote[]; stoppedNotes: SharedNote[]; files: { id: string; name: string; mimeType?: string }[] }> {
+export async function loadSharedNotes(token: string, expectedAccount?: string): Promise<{ notes: SharedNote[]; stoppedNotes: SharedNote[]; files: SharedFile[] }> {
+  const startedGeneration=cacheGeneration;
   latestAccessToken = token;
   const account = await connectedAccount(token, expectedAccount);
+  if(startedGeneration!==cacheGeneration) throw new Error('画面が変わったため取得を中止しました。');
+  if(cacheAccount!==account) {clearSharedRecordCache();cacheAccount=account;}
+  const generation=cacheGeneration;
   if (expectedAccount && account !== expectedAccount.trim().toLowerCase()) throw new Error('Googleアカウントが切り替わりました。別のアカウントへの保存を防ぐため中止しました。');
   const folder = await shareFolder(token, false, expectedAccount);
   if (!folder) return { notes: [], stoppedNotes: [], files: [] };
   const files = await listAll(token, folder, expectedAccount);
-  const settings = await Promise.all(files.filter(file => file.name.startsWith('web-sharing-') && file.name.endsWith('.json')).map(async file =>
+  const recordFiles = files.filter((file) => file.name.startsWith('op-') && file.name.endsWith('.json'));
+  const rawRecords: {file:typeof recordFiles[number];value:unknown}[] = [];
+  const snapshots: SnapshotRef[] = [];
+  for (let start=0;start<recordFiles.length;start+=6) {
+   await Promise.all(recordFiles.slice(start,start+6).map(async file => {
+    if (file.name.startsWith('op-state-')) { snapshots.push(await readSnapshot(token,file.id,folder,account));return; }
+    const value=await downloadVersionedRecord(token,file,account);
+    if ((value as {schemaVersion?:number})?.schemaVersion===2) snapshots.push(await readSnapshot(token,file.id,folder,account));
+    else rawRecords.push({file,value});
+   }));
+  }
+  if (new Set(snapshots.map(s => sharingScopeKey(s.value.operation.scope))).size !== snapshots.length) throw new Error('同じ付箋の共有状態が複数あります。内容を保持して表示を止めました。');
+  if(snapshots.some(s=>s.value.supersededBy)) throw new Error('PCで共有状態を整理しています。同期後にWebを更新してください。');
+  const covered = new Set(snapshots.flatMap(s => s.value.cleanup.map(item => item.id)));
+  const settings = await Promise.all(files.filter(file => file.name.startsWith('web-sharing-') && file.name.endsWith('.json') && !covered.has(file.id)).map(async file =>
     parseSharingRecord(await downloadVersionedRecord(token, file, account), file.name)));
   if (settings.some(record => record.scope.accountSubject !== account)) throw new Error('別のGoogleアカウントの共有設定が混在しています。');
-  sharingState(settings); // Reject duplicate IDs/missing history even outside the current note.
-  const recordFiles = files.filter((file) => file.name.startsWith('op-') && file.name.endsWith('.json'));
-  const records = (await Promise.all(recordFiles.map((file) => downloadVersionedRecord(token, file, account))))
-    .map(parseShareOperation);
+  const records = rawRecords.filter(({file,value}) => !covered.has(file.id) && (value as {schemaVersion?:number})?.schemaVersion !== 2).map(({value}) => parseShareOperation(value));
+  const migrated = new Set(snapshots.map(s => sharingScopeKey(s.value.operation.scope)));
+  // A delayed old client can still finish a write. Do not hide it or permit a
+  // newer edit to overwrite it. Windows captures it during the next sync.
+  if (records.some(r => migrated.has(sharingScopeKey(r.scope))) || settings.some(r => migrated.has(sharingScopeKey(r.scope)))) throw new Error('旧版から届いた変更を保全しています。WindowsでWeb同期してから表示を更新してください。');
+  sharingState(settings);
   const grouped = new Map<string, { scope: ShareScope; records: unknown[] }>();
   for (const raw of records) {
     const scope = raw.scope;
@@ -238,6 +338,16 @@ export async function loadSharedNotes(token: string, expectedAccount?: string): 
   }
   const notes: SharedNote[] = [];
   const stoppedNotes: SharedNote[] = [];
+  const previewFiles: SharedFile[] = [];
+  for (const snapshot of snapshots) {
+    const value=snapshot.value;
+    if (value.revoked || !value.published) continue;
+    const heads=[value.operation,...value.conflicts].map(o => o.operationId);
+    for (const operation of [value.operation,...value.conflicts]) {
+      (value.paused ? stoppedNotes : notes).push({scope:operation.scope,operation,heads,paused:value.paused,sharingHeads:[value.sharingId],snapshot});
+      for (const manifest of operation.payload.images) {const asset=value.images[manifest.sha256];previewFiles.push({id:asset.fileId,name:`image-${manifest.sha256}`,mimeType:asset.mimeType,preview:asset});}
+    }
+  }
   for (const group of grouped.values()) {
     const log = await validateShareLogJson(group.scope, group.records);
     const byId = new Map((group.records as ShareOperation[]).map((item) => [item.operationId, item]));
@@ -250,7 +360,7 @@ export async function loadSharedNotes(token: string, expectedAccount?: string): 
   }
   // Requests remain on Drive after import. Any published history (including
   // stopped/revoked history) suppresses the waiting projection permanently.
-  const publishedIds = new Set(records.map(record => record.scope.noteId));
+  const publishedIds = new Set([...records.map(record => record.scope.noteId),...snapshots.filter(s=>s.value.published || s.value.revoked).map(s => s.value.operation.scope.noteId)]);
   const waiting = new Map<string, WebCreateRequest>();
   const requestFiles = files.filter(file => /^web-request-[0-9a-f-]{36}\.json$/.test(file.name));
   const requests = await Promise.all(requestFiles.map(async file => ({ file, request: await downloadVersionedRecord(token, file, account) as WebCreateRequest })));
@@ -267,7 +377,8 @@ export async function loadSharedNotes(token: string, expectedAccount?: string): 
   }
   for (const request of waiting.values()) if (!publishedIds.has(request.noteId)) notes.push(pendingCreatedNote(request));
   const byTitle = (a: SharedNote, b: SharedNote) => a.operation.payload.title.localeCompare(b.operation.payload.title, 'ja');
-  return { notes: notes.sort(byTitle), stoppedNotes: stoppedNotes.sort(byTitle), files };
+  if(generation!==cacheGeneration) throw new Error('画面またはGoogleアカウントが変わったため取得を中止しました。');
+  return { notes: notes.sort(byTitle), stoppedNotes: stoppedNotes.sort(byTitle), files: [...previewFiles,...files] };
 }
 
 async function uploadCreateOnly(token: string, folderId: string, name: string, data: Blob, expectedAccount: string): Promise<void> {
@@ -289,9 +400,17 @@ export async function appendWebEdit(
   token: string,
   current: SharedNote,
   payload: { title: string; markdown: string; images: ShareOperation['payload']['images'] },
-): Promise<void> {
+): Promise<SharedNote|void> {
   if (current.pendingCreate) throw new Error('Windowsへの取込後に編集できます。PC側で「Webと同期」を押してください。');
   latestAccessToken = token;
+  if (current.snapshot) return saveSnapshot(token,current,async snapshot => {
+    if (snapshot.paused || snapshot.revoked) throw new Error('共有が停止または解除されています。編集内容を残しました。');
+    if (snapshot.pending) throw new Error('PCで画像を同期しています。編集内容を残して、同期後にもう一度保存してください。');
+    if (JSON.stringify(payload.images)!==JSON.stringify(snapshot.operation.payload.images)) throw new Error('Webでは原本画像の参照を変更できません。');
+    const next={...snapshot.operation,payload,operationId:`op-${crypto.randomUUID()}`};
+    snapshot.operation=await normalizeSnapshotOperation(next);
+    return snapshot;
+  });
   if (current.heads.length !== 1 || current.heads[0] !== current.operation.operationId) {
     throw new Error('Windows側にも変更があります。競合を確認するまで保存を保留しました。');
   }
@@ -323,13 +442,17 @@ export async function appendWebEdit(
   await uploadCreateOnly(token, folder, `op-${operationId}.json`, new Blob([JSON.stringify(operation)], { type: 'application/json' }), expectedAccount);
 }
 
-export async function downloadSharedImage(token: string, files: { id: string; name: string }[], manifest: ShareOperation['payload']['images'][number]): Promise<string> {
+export async function downloadSharedImage(token: string, files: SharedFile[], manifest: ShareOperation['payload']['images'][number], signal?: AbortSignal, scopedPreview?:PreviewAsset): Promise<string> {
   if (!Number.isSafeInteger(manifest.sizeBytes) || manifest.sizeBytes < 1 || manifest.sizeBytes > 50 * 1024 * 1024) throw new Error('共有画像のサイズ上限を超えています');
-  const file = files.find((entry) => entry.name === `image-${manifest.sha256}`);
+  const file = scopedPreview ? {id:scopedPreview.fileId,preview:scopedPreview} : files.find((entry) => entry.name === `image-${manifest.sha256}`);
   if (!file) throw new Error('共有画像が見つかりません');
-  const response = await authorizedFetch(token, `${API}/files/${encodeURIComponent(file.id)}?alt=media`);
+  const preview=file.preview;
+  if (preview?.legacy) throw new Error('PCで同期してWeb用画像を準備してください');
+  const expectedSize=preview?.sizeBytes ?? manifest.sizeBytes;
+  const limit=preview ? 1024*1024 : 50*1024*1024;
+  const response = await authorizedFetch(token, `${API}/files/${encodeURIComponent(file.id)}?alt=media`, {signal});
   const advertisedLength = Number(response.headers.get('content-length'));
-  if (Number.isFinite(advertisedLength) && advertisedLength > 50 * 1024 * 1024) throw new Error('共有画像のサイズ上限を超えています');
+  if (Number.isFinite(advertisedLength) && advertisedLength > limit) throw new Error('共有画像のサイズ上限を超えています');
   if (!response.body) throw new Error('共有画像を読み取れません');
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -339,7 +462,7 @@ export async function downloadSharedImage(token: string, files: { id: string; na
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > 50 * 1024 * 1024 || total > manifest.sizeBytes) {
+      if (total > limit || total > expectedSize) {
         await reader.cancel();
         throw new Error('共有画像のサイズ上限を超えています');
       }
@@ -350,10 +473,10 @@ export async function downloadSharedImage(token: string, files: { id: string; na
   } finally {
     reader.releaseLock();
   }
-  if (total !== manifest.sizeBytes) throw new Error('共有画像のサイズが一致しません');
+  if (total !== expectedSize) throw new Error('共有画像のサイズが一致しません');
   const allowed = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']);
   const responseMimeType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? '';
-  if (!allowed.has(manifest.mimeType) || responseMimeType !== manifest.mimeType) throw new Error('共有画像の形式が一致しません');
+  if (!allowed.has(manifest.mimeType) || responseMimeType !== (preview?.mimeType ?? manifest.mimeType)) throw new Error('共有画像の形式が一致しません');
   const bytes = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
@@ -363,7 +486,9 @@ export async function downloadSharedImage(token: string, files: { id: string; na
   chunks.length = 0;
   const digest = await crypto.subtle.digest('SHA-256', bytes.buffer);
   const sha256 = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
-  if (sha256 !== manifest.sha256 || manifest.imageId !== `img-${sha256}`) throw new Error('共有画像の確認に失敗しました');
+  if (sha256 !== (preview?.sha256 ?? manifest.sha256) || manifest.imageId !== `img-${manifest.sha256}`) throw new Error('共有画像の確認に失敗しました');
+  if(preview) verifyPreviewDimensions(bytes,preview.width,preview.height);
   const blob = new Blob([bytes], { type: responseMimeType });
+  signal?.throwIfAborted();
   return URL.createObjectURL(blob);
 }
