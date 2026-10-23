@@ -63,5 +63,13 @@ test('検証Drive画面で画像の遅延取得・本文だけの保存・下書
   await expect(page.getByRole('textbox',{name:'付箋本文'})).toHaveValue('再読込しても残る未送信の本文（検証データ）');
   await page.screenshot({path:info.outputPath('03-restored-draft.png')});
   await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'fixtureActiveImageUrls'))).toBe(0);
+  await page.evaluate(()=>sessionStorage.clear());
+  await page.reload();
+  await page.getByRole('button',{name:/資源利用性の確認/}).click();
+  await page.getByText('別のタブ・前回の未送信下書き（1件）',{exact:true}).click();
+  await page.getByRole('button',{name:'この下書きを復元',exact:true}).click();
+  await expect(page.getByRole('textbox',{name:'付箋本文'})).toHaveValue('再読込しても残る未送信の本文（検証データ）');
+  await expect(page.getByText('別のタブ・前回の未送信下書き（1件）',{exact:true})).toHaveCount(0);
+  await page.screenshot({path:info.outputPath('04-closed-tab-recovered.png')});
   expect(puts).toBe(1);
 });

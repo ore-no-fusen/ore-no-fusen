@@ -10,7 +10,7 @@ import { appendWebEdit, clearSharedRecordCache, downloadSharedImage, loadSharedN
 import { NewNote } from './NewNote';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
 import { VisibleImage } from './VisibleImage';
-import { clearEditDraft, editBaseline, readEditDraft, writeEditDraft, type EditDraft } from './lib/edit-draft';
+import { clearEditDraft, editBaseline, listOtherEditDrafts, recoverEditDraft, readEditDraft, writeEditDraft, type EditDraft } from './lib/edit-draft';
 
 type DriveFile = { id: string; name: string; mimeType?: string };
 const ImageContext = React.createContext<{token:string;files:DriveFile[];note?:SharedNote}>({token:'',files:[]});
@@ -122,6 +122,7 @@ export default function SharedNotesPage() {
   const [markdown, setMarkdown] = useState('');
   const editDraft=useRef<EditDraft|null>(null);
   const draftBaseline=useRef('');
+  const [otherDrafts,setOtherDrafts]=useState<EditDraft[]>([]);
   const [busy, setBusy] = useState(false);
   const checkSaving = useRef(false);
   const [pendingTask, setPendingTask] = useState<{ operationId: string; lineIndex: number; checked: boolean } | null>(null);
@@ -234,11 +235,13 @@ export default function SharedNotesPage() {
     title !== current.operation.payload.title || markdown !== current.operation.payload.markdown
   ));
   useEffect(() => {
-    if (!current) return;
+    if (!current) {setOtherDrafts([]);return;}
+    setOtherDrafts([]);
     setTitle(current.operation.payload.title);
     setMarkdown(current.operation.payload.markdown);
     draftBaseline.current=editBaseline(current);editDraft.current=null;
     try {
+      setOtherDrafts(listOtherEditDrafts(current));
       const saved=readEditDraft(current);
       if(saved && (saved.title!==current.operation.payload.title || saved.markdown!==current.operation.payload.markdown)) {
         editDraft.current=saved;draftBaseline.current=saved.baseline;
@@ -393,6 +396,24 @@ export default function SharedNotesPage() {
               <button style={{ ...button, background: '#1689dc', color: 'white', borderColor: '#1689dc' }} disabled={busy} onClick={() => void save()}>保存</button>
             </div>}
           </div>
+          {otherDrafts.length>0 && <details style={{marginBottom:12}}>
+            <summary>別のタブ・前回の未送信下書き（{otherDrafts.length}件）</summary>
+            {otherDrafts.map(draft=><div key={draft.revision} style={{padding:12,border:'1px solid #cbd5e1',marginTop:8}}>
+              <strong>{draft.title}</strong><pre style={{whiteSpace:'pre-wrap',maxHeight:160,overflow:'auto'}}>{draft.markdown}</pre>
+              <button style={button} disabled={busy || dirty} onClick={()=>{
+                try {
+                  const recovered=recoverEditDraft(current,draft);editDraft.current=recovered;draftBaseline.current=recovered.baseline;
+                  setTitle(recovered.title);setMarkdown(recovered.markdown);setEditing(true);setOtherDrafts(listOtherEditDrafts(current));
+                  setMessage('下書きを復元しました。内容を確認して保存してください。');
+                } catch(error) {setMessage(error instanceof Error?error.message:'下書きを復元できません。');}
+              }}>この下書きを復元</button>
+              <button style={button} disabled={busy} onClick={()=>{
+                if(!window.confirm('この未送信下書きを破棄しますか？')) return;
+                clearEditDraft(draft);setOtherDrafts(listOtherEditDrafts(current));
+              }}>この下書きを破棄</button>
+            </div>)}
+            {dirty && <p>いま編集中の内容を保存またはキャンセルしてから復元できます。</p>}
+          </details>}
           <article aria-busy={Boolean(pendingTask)} style={{ background: current.operation.payload.backgroundColor ?? '#f7e9b0', borderRadius: 12, padding: '22px 26px', minHeight: 260, overflowWrap: 'anywhere' }}>
             {!editing && <h2 style={{ marginTop: 0 }}>{current.operation.payload.title}</h2>}
             <div>
