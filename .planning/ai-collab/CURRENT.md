@@ -1,6 +1,13 @@
 ## 現在の開発状況（26-08-10・最初に読む）
 
 <!-- NEW_ENTRIES_BELOW -->
+### 2026-10-24 Androidエミュレーターの利用者確認
+- 利用者がAndroid StudioのPixel 8エミュレーターで固定develop Previewを起動。12件読込一覧と、日本語の「思い出プロンプト」本文を表示し「だいじょうぶ」と回答。画像2枚を常設my/保全/Drive自動整理-20261022/画面証拠の11/12へ保全。
+- Android実機ではなくエミュレーターでの閲覧確認として記録する。写真表示・編集保存・PC往復同期・ホーム画面起動はこの画像では未確認。最初の英語表示はChrome翻訳が疑われ、その後の日本語表示を確認したが翻訳設定の操作そのものは観測していない。
+- 次は更新MSIX作成と新方式の同期・整理の実機確認。既存のiPhone/PC/Android閲覧確認を新方式の全経路合格へ広げて扱わない。
+### 2026-10-24 iPhone Preview閲覧の利用者確認
+- 利用者が固定develop Previewで「付箋・写真が表示された」と回答。提供画像2枚を09-iPhone接続画面.png/10-iPhone11件一覧.pngとしてmy/保全/Drive自動整理-20261022/画面証拠へ保全。2枚目では11件読込完了と11/11件の一覧が見える。写真本文の表示自体は画像内に写っておらず、利用者の確認結果として区別する。
+- STEP0-3のiPhone既存データ閲覧を確認。更新MSIXによる新方式への移行・同期・自動整理、17窓/300ms・メモリ実測は未完了。次は更新MSIXの作成準備を進める。
 ### 2026-10-24 Drive自動整理をdevelopへ統合・Preview配信
 - 2f4f469aをdevelopへfast-forward統合・push。Test 40009789036、Rust Windows Test 40009789077、Docs 40009788943成功。Vercel対象EmBs2jBZofx9Rd6kmwzQj3XQfrDV成功。MSIX CI 40009788942は実行中、STEP0では調査対象にしない。
 - 固定develop Preview /sharedのGoogle接続前画面を確認、08-Preview接続前.png保全。Google未接続なのでこのブラウザーで実データの写真確認は行っていない。常設developのnpm run devで3002起動Readyを確認して終了、元Dev MSIX 6.0.0.2は起動中。
