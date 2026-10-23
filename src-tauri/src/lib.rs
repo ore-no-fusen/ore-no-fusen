@@ -6957,8 +6957,7 @@ mod term_note_tests {
 }
 
 /// Pool 窓 Win32 テスト
-/// pool_window_layered / fusen_show_at_position_atomic は実 HWND を要するため
-/// Windows runner でのみ実行可能。CI Linux では #[ignore] で skip される。
+/// 実ウィンドウの可視性・表示位置は docs/manual-verify-phase19.md の実機確認で扱う。
 /// pool_lazy_create は tempfile を使うためすべての OS で動作する。
 #[cfg(test)]
 mod pool_tests {
@@ -7009,29 +7008,5 @@ mod pool_tests {
         assert!(saved.contains("データ管理"));
     }
 
-    /// Task 1: Pool 窓の WS_EX_LAYERED + α=0 + 画面外配置を確認
-    /// 実 HWND が必要なため Windows runner でのみ実行可能
-    #[cfg(target_os = "windows")]
-    #[test]
-    #[ignore] // Windows runner でのみ実行: cargo test -- --ignored pool_window_layered
-    fn pool_window_layered() {
-        // tauri::test::mock_app() でアプリを起動し create_pool_window_internal を呼ぶ
-        // 直後に GetWindowLongPtrW で WS_EX_LAYERED.0 ビットが立っていることを assert
-        // GetWindowRect で x/y が -10000 以下であることを assert
-        // このテストは実 Win32 HWND を要するため CI Linux では skip、Windows runner でのみ動作
-        todo!("Windows runner 上で実装（実 HWND を取得できる環境でのみ有効）")
-    }
 
-    /// Task 2: fusen_show_at_position が α=255 を設定することを確認
-    /// 実 HWND が必要なため Windows runner でのみ実行可能
-    #[cfg(target_os = "windows")]
-    #[test]
-    #[ignore] // Windows runner でのみ実行: cargo test -- --ignored fusen_show_at_position_atomic
-    fn fusen_show_at_position_atomic() {
-        // tauri::test::mock_app() で可視ウィンドウを生成
-        // fusen_show_at_position を呼んだ直後に GetLayeredWindowAttributes で alpha 値を読み戻す
-        // assert_eq!(alpha, 255, "alpha must be 255 after fusen_show_at_position");
-        // 実 HWND を要するため Linux CI では skip
-        todo!("Windows runner 上で実装（実 HWND を取得できる環境でのみ有効）")
-    }
 }

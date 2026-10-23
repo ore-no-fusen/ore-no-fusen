@@ -48,7 +48,10 @@ export async function setupViewerWithNotes(
       configurable: true,
       value: {
         ready: Promise.resolve(registration),
-        controller: registration.active,
+        // Notification APIs are mocked, but no installed worker controls the
+        // dev page. A fake controller would trigger RegisterPWA's cleanup
+        // reload and race the fixture's own reload below.
+        controller: null,
         getRegistration: async () => registration,
         getRegistrations: async () => [registration],
         register: async () => registration,

@@ -492,72 +492,24 @@ test.describe('そこに残る', () => {
 // ============================================================
 test.describe('クラッシュしない', () => {
 
-    test('4.1 Ctrl+N を連打しても付箋作成リクエストは1回だけ（スロットル検証）', async ({ page }) => {
-        // コンソールログを収集（モックが fusen_create_note を呼んだ回数を数える）
-        const createCalls: string[] = [];
-        page.on('console', (msg) => {
-            const text = msg.text();
-            if (text.includes('[Mock Tauri] IPC: fusen_create_note')) {
-                createCalls.push(text);
-            }
-        });
-
-        await mockTauriAPI(page);
-        // 付箋ウィンドウとして起動（selectedFile が設定される）
-        await page.goto('/?path=C:/test/note.md');
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(1000);
-
-        // 付箋が表示されるのを待つ
-        const article = page.locator('article.notePaper');
-        await article.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-
-        // Ctrl+N を素早く5回連打（80ms間隔 → 合計400ms < 1200msスロットル）
-        for (let i = 0; i < 5; i++) {
+    for (const [name, interval] of [['連打', 80], ['間隔を空けた入力', 1300]] as const) {
+        test('4 Ctrl+N の作成要求が届く: ' + name, async ({ page }) => {
+            const requests: string[] = [];
+            page.on('console', msg => {
+                const text = msg.text();
+                if (text.includes('[Mock Tauri] IPC: plugin:event|emit') && text.includes('fusen:request_create')) requests.push(text);
+            });
+            await mockTauriAPI(page);
+            await page.goto('/?path=C:/test/note.md');
+            await page.waitForLoadState('networkidle');
+            await expect(page.locator('article.notePaper')).toBeVisible();
             await page.keyboard.press('Control+n');
-            await page.waitForTimeout(80);
-        }
-
-        // スロットルの処理が完了するのを待つ
-        await page.waitForTimeout(500);
-
-        // fusen_create_note の呼び出しは最大1回であること
-        // （JS側スロットルが1.2秒なので、emit自体が1回以下になる）
-        expect(createCalls.length).toBeLessThanOrEqual(1);
-    });
-
-    test('4.2 Ctrl+N を1.2秒以上空けると2回目も作成できる', async ({ page }) => {
-        const createCalls: string[] = [];
-        page.on('console', (msg) => {
-            const text = msg.text();
-            if (text.includes('[Mock Tauri] IPC: fusen_create_note')) {
-                createCalls.push(text);
-            }
+            await expect.poll(() => requests.length).toBe(1);
+            await page.waitForTimeout(interval);
+            await page.keyboard.press('Control+n');
+            await expect.poll(() => requests.length).toBe(2);
         });
-
-        await mockTauriAPI(page);
-        await page.goto('/?path=C:/test/note.md');
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(1000);
-
-        const article = page.locator('article.notePaper');
-        await article.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-
-        // 1回目のCtrl+N
-        await page.keyboard.press('Control+n');
-        await page.waitForTimeout(300);
-        const countAfterFirst = createCalls.length;
-
-        // 1.3秒待つ（スロットル1.2秒を超える）
-        await page.waitForTimeout(1300);
-
-        // 2回目のCtrl+N → スロットル解除
-        await page.keyboard.press('Control+n');
-        await page.waitForTimeout(300);
-
-        // 2回目は countAfterFirst 以上（selectedFile の状態次第で増加する）
-        expect(createCalls.length).toBeGreaterThanOrEqual(countAfterFirst);
-    });
+    }
 
     test('4.3 Ctrl+N を10回連打してもアプリが応答し続ける（クラッシュ回帰）', async ({ page }) => {
         page.on('console', (msg: any) => console.log(`[Browser] ${msg.type()}: ${msg.text()}`));
