@@ -38,6 +38,15 @@ test('観測日の欠落があれば離脱候補ではなく観測不足にす�
   assert.equal(result.classificationCounts.observation_insufficient,1);assert.equal(result.classificationCounts.churn_candidate,0);
 });
 
+test('直近の実利用が確認できれば、観測日の欠落だけで観測不足にしない',()=>{
+  const item=sample('intermittent',{initial:['note_created'],recent:[10]});
+  delete item.history[0].reports.reporter.days['2026-10-10'];
+  const result=buildUsageComparison([item.member],item.history,new Date('2026-10-14T00:00:00Z'));
+  assert.equal(result.classificationCounts.active,1);
+  assert.equal(result.classificationCounts.observation_insufficient,0);
+  assert.equal(result.classificationCounts.churn_candidate,0);
+});
+
 test('初回7日間の半開区間では境界時刻の利用を含めない',()=>{
   const item=sample('boundary',{initial:['note_created'],recent:[]});
   item.history[0].reports.reporter.days['2026-10-08']={observedAt:'2026-10-08T12:00:00.000Z',observedThrough:'2026-10-08T13:00:00.000Z',features:{note_edited:{count:1,activeDays:['2026-10-08'],lastUsedDay:'2026-10-08',firstUsedAt:'2026-10-08T10:00:00.000Z',lastUsedAt:'2026-10-08T10:00:00.000Z'}}};
