@@ -558,7 +558,8 @@ fn count_successful_store(app: &AppHandle, changed: bool) {
     }
     let state = app.state::<Mutex<AppState>>();
     if let Ok(mut state) = state.lock() {
-        crate::member_identity::record_launcher_store(&mut state);
+        // A telemetry persistence failure must not turn a completed note store into an error.
+        let _ = crate::member_identity::record_launcher_store(&mut state);
     };
 }
 #[derive(Serialize)]
