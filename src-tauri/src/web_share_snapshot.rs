@@ -210,6 +210,12 @@ impl Store {
         files: Vec<(String, String)>,
         settings: Vec<FileRecord>,
     ) -> Result<Self, String> {
+        Self::load_with_progress(client,token,folder,account,files,settings,|_,_,_|{}).await
+    }
+    pub async fn load_with_progress<P:Fn(&str,usize,usize)+Send+Sync>(client:&reqwest::Client,token:&str,folder:&str,account:&str,files:Vec<(String,String)>,settings:Vec<FileRecord>,progress:P)->Result<Self,String> {
+        Self::load_versioned(client,token,folder,account,files.into_iter().map(|(id,name)|(id,name,None)).collect(),settings,None,progress).await
+    }
+    pub async fn load_versioned<P:Fn(&str,usize,usize)+Send+Sync>(client:&reqwest::Client,token:&str,folder:&str,account:&str,files:Vec<(String,String,Option<String>)>,settings:Vec<FileRecord>,managed_inventory:Option<Vec<(String,String)>>,progress:P)->Result<Self,String> {
         let mut store = Self::default();
         let available: HashSet<_> = files
             .iter()
@@ -224,14 +230,18 @@ impl Store {
         }
         let mut legacy = HashMap::<String, Vec<FileRecord>>::new();
         let mut snapshots = HashMap::<String, Vec<Stored>>::new();
-        let read_files = crate::web_share_download::read_all(files, |(id, name)| {
-            let (client, token, folder) = (client.clone(), token.to_owned(), folder.to_owned());
+        crate::web_share_read_cache::retain(account,folder,&available);
+        let read_files = crate::web_share_download::read_all_with_progress(files, |(id, name,version)| {
+            let (client, token, folder,account) = (client.clone(), token.to_owned(), folder.to_owned(),account.to_owned());
             async move {
-                let (value, etag) =
-                    gdrive::read_web_share_cas(&client, &token, &id, &folder).await?;
+                let (value,etag)=if let Some(hit)=crate::web_share_read_cache::get(&account,&folder,&id,version.as_deref()){hit}else{
+                    let (value,etag)=gdrive::read_web_share_cas(&client,&token,&id,&folder).await?;
+                    if value["schemaVersion"]==2 {let checked:Snapshot=serde_json::from_value(value.clone()).map_err(|_|"共有状態を読み取れません")?;checked.validate(&account)?;if let Some(v)=version.as_deref(){crate::web_share_read_cache::put(&account,&folder,&id,v,&value,&etag);}}
+                    (value,etag)
+                };
                 Ok((id, name, value, etag))
             }
-        })
+        },|done,total|progress("history",done,total))
         .await?;
         for (id, name, value, etag) in read_files {
             // One bounded, revision-consistent read, not raw JSON followed by
@@ -463,7 +473,9 @@ impl Store {
             .collect::<Vec<_>>();
         keys.sort();
         keys.dedup();
-        for key in keys {
+        let migration_total=keys.len();
+        for (index,key) in keys.into_iter().enumerate() {
+            progress("migration",index,migration_total);
             let records = legacy.remove(&key).unwrap_or_default();
             if store.blocked.contains(&key) {
                 continue;
@@ -649,10 +661,12 @@ impl Store {
             let saved = Self::reload(client, token, folder, &anchor.0, account).await?;
             store.notes.insert(key, saved);
         }
+        progress("migration",migration_total,migration_total);
         // Publish and read back first. Cleanup never includes new/unseen files.
-        let managed_files =
-            gdrive::list_web_share_named_files(client, token, folder, "web-image-", false).await?;
-        for saved in store.notes.values_mut() {
+        let managed_files=match managed_inventory {Some(files)=>files,None=>gdrive::list_web_share_named_files(client,token,folder,"web-image-",false).await?};
+        let cleanup_total=store.notes.len();
+        for (index,saved) in store.notes.values_mut().enumerate() {
+            progress("cleanup",index,cleanup_total);
             // Expiry needs a successful cancellation CAS before deletion.
             if saved
                 .snapshot
@@ -798,6 +812,7 @@ impl Store {
                 store.operations.push(revoked);
             }
         }
+        progress("cleanup",cleanup_total,cleanup_total);
         Ok(store)
     }
     async fn reload(
@@ -1146,18 +1161,35 @@ mod tests {
             store.save(&client,&token,&folder,&op,BTreeMap::from([(op.payload.images[0].sha256.clone(),first.clone())]),Some(&id)).await?;
             let initial=store.notes[&note].snapshot.clone();assert!(initial.published);assert!(!initial.images.values().next().unwrap().legacy);
             let image_id=initial.images.values().next().unwrap().file_id.clone();
+            let inventory=gdrive::list_web_share_versioned_files(&client,&token,&folder,"",false).await?;
+            let files=gdrive::select_web_share_files(&inventory,"op-",true);
+            let version=files.iter().find(|f|f.0==id).and_then(|f|f.2.clone()).ok_or("Fixture requires Drive version")?;
+            let managed=gdrive::select_web_share_files(&inventory,"web-image-",false).into_iter().map(|(id,name,_)|(id,name)).collect::<Vec<_>>();
+            let cached=Store::load_versioned(&client,&token,&folder,account,files,vec![],Some(managed.clone()),|_,_,_|{}).await?;
+            assert_eq!(cached.notes[&note].snapshot.operation,op);
+            assert!(crate::web_share_read_cache::get(account,&folder,&id,Some(&version)).is_some());
+            let fresh=gdrive::list_web_share_versioned_files(&client,&token,&folder,"",false).await?;
+            let warm=Store::load_versioned(&client,&token,&folder,account,gdrive::select_web_share_files(&fresh,"op-",true),vec![],Some(managed),|_,_,_|{}).await?;
+            assert_eq!(warm.notes[&note].snapshot.operation,op);
             let mut text_edit=op.clone();text_edit.operation_id=uuid::Uuid::new_v4().to_string();text_edit.payload.title="本文だけ更新".into();text_edit=normalized(text_edit)?;
             store.save(&client,&token,&folder,&text_edit,BTreeMap::new(),None).await?;
+            assert!(crate::web_share_read_cache::get(account,&folder,&id,Some(&version)).is_none());
+            let fresh=gdrive::list_web_share_versioned_files(&client,&token,&folder,"",false).await?;
+            let changed=Store::load_versioned(&client,&token,&folder,account,gdrive::select_web_share_files(&fresh,"op-",true),vec![],Some(gdrive::select_web_share_files(&fresh,"web-image-",false).into_iter().map(|(id,name,_)|(id,name)).collect()),|_,_,_|{}).await?;
+            assert_eq!(changed.notes[&note].snapshot.operation,text_edit);
+            println!("Versioned inventory: cold/warm values agree; a write invalidates cached state and the fresh version loads the new title");
             assert_eq!(store.notes[&note].snapshot.images.values().next().unwrap().file_id,image_id);
             let images=gdrive::list_web_share_named_files(&client,&token,&folder,"web-image-",false).await?;assert_eq!(images.len(),1);
+            // The shared inventory can precede a concurrent image upload.
+            let before_upload=gdrive::list_web_share_versioned_files(&client,&token,&folder,"",false).await?;
             let second=png(2);let next=operation(&note,&second);
             store.save(&client,&token,&folder,&next,BTreeMap::from([(next.payload.images[0].sha256.clone(),second)]),None).await?;
             assert_eq!(gdrive::list_web_share_named_files(&client,&token,&folder,"web-image-",false).await?.len(),2);
-            let files=gdrive::list_web_share_records(&client,&token,&folder).await?;
-            let mut store=Store::load(&client,&token,&folder,account,files,vec![]).await?;
+            let mut store=Store::load_versioned(&client,&token,&folder,account,gdrive::select_web_share_files(&before_upload,"op-",true),vec![],Some(gdrive::select_web_share_files(&before_upload,"web-image-",false).into_iter().map(|(id,name,_)|(id,name)).collect()),|_,_,_|{}).await?;
             assert_eq!(store.notes[&note].snapshot.operation,next);
             let images=gdrive::list_web_share_named_files(&client,&token,&folder,"web-image-",false).await?;assert_eq!(images.len(),1);assert_ne!(images[0].0,image_id);
             println!("Drive fixture: initial image=1; text edit image=1; replacement before cleanup=2; after cleanup=1; original bytes preserved");
+            println!("Inventory/upload race: the newly referenced preview survives an earlier folder inventory; only the obsolete preview is removed");
             // Two PCs can independently create the initial physical anchor.
             // Reconcile identical content automatically and retain one image.
             let duplicate_id=gdrive::generate_web_share_id(&client,&token).await?;

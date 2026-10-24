@@ -734,7 +734,8 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         .canonicalize()
         .map_err(|e| format!("付箋の保存場所を確認できません: {e}"))?;
     let items = load_shortcut_items_strict(&base)?;
-    let client = reqwest::Client::new();
+    static HTTP:OnceLock<Result<reqwest::Client,String>>=OnceLock::new();
+    let client=HTTP.get_or_init(||reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().map_err(|_|"同期の通信設定を準備できません".to_string())).clone()?;
     let token = crate::gdrive::get_access_token(&client)
         .await
         .map_err(|error| format!("Google Driveに接続できません: {error}"))?;
@@ -748,10 +749,12 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         .trim()
         .to_lowercase();
     let share_folder = crate::gdrive::ensure_web_share_folder(&client, &token).await?;
-    let remote_files =
-        crate::gdrive::list_web_share_records(&client, &token, &share_folder).await?;
+    let inventory=crate::gdrive::list_web_share_versioned_files(&client,&token,&share_folder,"",false).await?;
+    let remote_files=crate::gdrive::select_web_share_files(&inventory,"op-",true);
+    let named_files=|prefix:&str,json_only:bool|crate::gdrive::select_web_share_files(&inventory,prefix,json_only).into_iter().map(|(id,name,_)|(id,name)).collect::<Vec<_>>();
+    let request_files=named_files("web-request-",true);
     let _ = app.emit("fusen:web_sync_progress", "history");
-    let sharing_files = crate::gdrive::list_web_share_named_records(&client, &token, &share_folder, "web-sharing-").await?;
+    let sharing_files = named_files("web-sharing-",true);
     let sharing_records=crate::gdrive::read_web_share_records(&client,&token,sharing_files).await?;
 
     let state_path = crate::gdrive::get_token_path().with_file_name("web_share_sync.json");
@@ -770,7 +773,8 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         );
     }
     sync_state.account_subject = account_subject.clone();
-    let mut snapshots=crate::web_share_snapshot::Store::load(&client,&token,&share_folder,&account_subject,remote_files,sharing_records).await?;
+    let progress=|stage:&str,completed:usize,total:usize| { if completed==0 || completed==total {logger::log_info(&format!("[Web同期] {stage}: {completed}/{total} / {}ms",sync_started.elapsed().as_millis()));} let _=app.emit("fusen:web_sync_progress",serde_json::json!({"stage":stage,"completed":completed,"total":total})); };
+    let mut snapshots=crate::web_share_snapshot::Store::load_versioned(&client,&token,&share_folder,&account_subject,remote_files,sharing_records,Some(named_files("web-image-",false)),progress).await?;
     let paused_ids=snapshots.paused.clone();
     let all_remote=snapshots.operations.clone();
 
@@ -829,7 +833,7 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         }
     }
     let _ = app.emit("fusen:web_sync_progress", "apply");
-    let imported_paths = crate::web_create::receive(&base,&account_subject,&client,&token,&share_folder,&state).await?;
+    let imported_paths = crate::web_create::receive(&base,&account_subject,&client,&token,&share_folder,&state,named_files("web-pc-",true),request_files.clone()).await?;
     summary.applied += imported_paths.len();
     let items = load_shortcut_items_strict(&base)?;
     let registered_paths = items.iter().map(|item|item.path.clone()).collect::<Vec<_>>();
@@ -958,7 +962,9 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         sync_state.revoked_ids.insert(note_id);
         summary.revoked += 1;
     }
-    for item in items {
+    let sync_total=items.len();
+    for (index,item) in items.into_iter().enumerate() {
+        progress("apply",index,sync_total);
         let path = Path::new(&item.path);
         let relative = path.canonicalize().ok().and_then(|canonical| {
             canonical
@@ -1015,13 +1021,14 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
             Err(error) => summary.held.push(format!("{}: {}", item.title, error)),
         }
     }
+    progress("apply",sync_total,sync_total);
     persist_web_share_sync_state(&state_path, &sync_state)?;
     for path in imported_paths {
         if let Err(error) = fusen_open_quick_note(app.clone(), path.clone(), None).await {
             summary.held.push(format!("新規付箋は保存済みですが表示できませんでした（QLから開けます）: {path}: {error}"));
         }
     }
-    if let Err(error)=crate::web_create::cleanup_published(&client,&token,&share_folder,&account_subject,&snapshots).await {
+    if let Err(error)=crate::web_create::cleanup_published(&client,&token,&share_folder,&account_subject,&snapshots,&request_files).await {
         crate::logger::log_info(&format!("[Web同期] 作成済み要求の整理を保留: {error}"));
     }
     crate::logger::log_info(&format!("[Web同期] 完了: {}ms / 送信{} 受信{} 変更なし{} 保留{}", sync_started.elapsed().as_millis(), summary.uploaded, summary.applied, summary.unchanged, summary.held.len()));

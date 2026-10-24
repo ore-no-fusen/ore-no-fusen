@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SharedWebQr from './SharedWebQr';
+import { formatWebSyncProgress } from '../utils/webSyncProgress';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
@@ -482,9 +483,9 @@ export default function QuickLauncher() {
         setWebSyncMessage(isEnglish ? 'Connecting to Google Drive…' : 'Google Driveに接続しています…');
         let unlistenProgress: (() => void) | undefined;
         try {
-            unlistenProgress = await listen<string>('fusen:web_sync_progress', ({ payload }) => {
-                if (payload === 'history') setWebSyncMessage(isEnglish ? 'Reading shared history…' : '共有記録を取得しています…');
-                if (payload === 'apply') setWebSyncMessage(isEnglish ? 'Checking and syncing notes…' : '付箋を確認して同期しています…');
+            unlistenProgress = await listen<unknown>('fusen:web_sync_progress', ({ payload }) => {
+                const text=formatWebSyncProgress(payload,isEnglish);
+                if(text) setWebSyncMessage(text);
             }).catch(() => undefined);
             const result = await syncQuickLauncherToWeb();
             const seconds = ((performance.now() - started) / 1000).toFixed(1);

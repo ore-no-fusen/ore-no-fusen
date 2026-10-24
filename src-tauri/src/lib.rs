@@ -42,6 +42,7 @@ mod web_share_snapshot;
 mod web_share_preview;
 mod web_create;
 mod web_share_download;
+mod web_share_read_cache;
 mod web_sharing_state;
 mod web_share_markdown;
 mod webpush; // Web Push (VAPID + AES-128-GCM + APNs) // 注入DLL由来の例外を記録するクラッシュガード（Windows専用）

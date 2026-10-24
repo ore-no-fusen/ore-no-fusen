@@ -154,12 +154,13 @@ pub async fn receive(
     token: &str,
     folder: &str,
     state: &std::sync::Mutex<crate::state::AppState>,
+    capabilities: Vec<(String,String)>,
+    files: Vec<(String,String)>,
 ) -> Result<Vec<String>, String> {
     let pc = gdrive::local_pc_id()?;
     let capability = serde_json::json!({"schemaVersion":1,"accountSubject":account,"pcId":pc,"name":std::env::var("COMPUTERNAME").unwrap_or_else(|_|"Windows".into())});
     let capability_name = format!("web-pc-{}.json", pc);
-    if gdrive::list_web_share_named_records(client, token, folder, "web-pc-")
-        .await?
+    if capabilities
         .iter()
         .all(|(_, name)| name != &capability_name)
     {
@@ -173,7 +174,6 @@ pub async fn receive(
         )
         .await?;
     }
-    let files = gdrive::list_web_share_named_records(client, token, folder, "web-request-").await?;
     let mut requests = BTreeMap::<String, Request>::new();
     for (_, name, value) in gdrive::read_web_share_records(client, token, files).await? {
         let request: Request =
@@ -215,16 +215,16 @@ pub async fn receive(
 
 /// Clear only requests whose exact content has a completed local receipt and a
 /// published snapshot. Failed cleanup is retried; the receipt prevents replay.
-pub(crate) async fn cleanup_published(client:&reqwest::Client,token:&str,folder:&str,account:&str,store:&crate::web_share_snapshot::Store)->Result<(),String>{
+pub(crate) async fn cleanup_published(client:&reqwest::Client,token:&str,folder:&str,account:&str,store:&crate::web_share_snapshot::Store,files:&[(String,String)])->Result<(),String>{
     let ledger=gdrive::get_token_path().with_file_name("web_create_receipts.json");
     if !ledger.exists() {return Ok(());}
     let receipts:BTreeMap<String,Receipt>=serde_json::from_slice(&fs::read(ledger).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
     let pc=gdrive::local_pc_id()?;
-    for (id,name) in gdrive::list_web_share_named_records(client,token,folder,"web-request-").await? {
+    for (id,name) in files {
         let (value,etag)=gdrive::read_web_share_cas(client,token,&id,folder).await?;
         let request:Request=serde_json::from_value(value).map_err(|e|e.to_string())?;
         validate(&request,account)?;
-        if name!=format!("web-request-{}.json",request.note_id) || request.target_pc_id!=pc {continue;}
+        if *name!=format!("web-request-{}.json",request.note_id) || request.target_pc_id!=pc {continue;}
         let Some(saved)=store.notes.get(&request.note_id) else {continue;};
         // A successful read-back of the snapshot is required, not merely a
         // local attempt to publish it.

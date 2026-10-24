@@ -655,11 +655,15 @@ pub async fn list_web_share_named_records(
 pub(crate) async fn list_web_share_named_files(
     client:&Client, access_token:&str, folder_id:&str, prefix:&str, json_only:bool,
 ) -> Result<Vec<(String,String)>,String> {
+    Ok(list_web_share_versioned_files(client,access_token,folder_id,prefix,json_only).await?.into_iter().map(|(id,name,_)|(id,name)).collect())
+}
+/// Reuse one complete, paginated folder listing within a single sync.
+pub(crate) fn select_web_share_files(files:&[(String,String,Option<String>)],prefix:&str,json_only:bool)->Vec<(String,String,Option<String>)>{
+    files.iter().filter(|(_,name,_)|name.contains(prefix)&&(!json_only||name.ends_with(".json"))).cloned().collect()
+}
+pub(crate) async fn list_web_share_versioned_files(client:&Client,access_token:&str,folder_id:&str,prefix:&str,json_only:bool)->Result<Vec<(String,String,Option<String>)>,String>{
     if prefix.contains('\'') || folder_id.contains('\'') {return Err("共有一覧の識別情報が不正です".into());}
-    let q = format!(
-        "'{}' in parents and name contains '{}' and trashed=false",
-        folder_id, prefix
-    );
+    let q = if prefix.is_empty() {format!("'{folder_id}' in parents and trashed=false")} else {format!("'{folder_id}' in parents and name contains '{prefix}' and trashed=false")};
     let mut token: Option<String> = None;
     let mut records = Vec::new();
     loop {
@@ -669,7 +673,7 @@ pub(crate) async fn list_web_share_named_files(
             .query(&[
                 ("q", q.as_str()),
                 ("pageSize", "1000"),
-                ("fields", "nextPageToken,files(id,name)"),
+                ("fields", "nextPageToken,files(id,name,version)"),
             ]);
         if let Some(page) = token.as_deref() {
             request = request.query(&[("pageToken", page)]);
@@ -688,7 +692,7 @@ pub(crate) async fn list_web_share_named_files(
                 .files
                 .into_iter()
                 .filter(|file| !json_only || file.name.ends_with(".json"))
-                .map(|file| (file.id, file.name)),
+                .map(|file| (file.id, file.name, file.version)),
         );
         token = response.next_page_token;
         if token.is_none() {
@@ -709,6 +713,8 @@ struct DriveShareRecordList {
 struct DriveShareRecord {
     id: String,
     name: String,
+    #[serde(default)]
+    version: Option<String>,
 }
 
 pub async fn read_web_share_records(
@@ -785,6 +791,7 @@ pub(crate) async fn read_web_share_cas(
 pub(crate) async fn write_web_share_cas(
     client: &Client, token: &str, id: &str, etag: &str, value: &serde_json::Value,
 ) -> Result<(), String> {
+    crate::web_share_read_cache::invalidate(id);
     if etag.is_empty() { return Err("更新基準がないため保存しません".into()); }
     let bytes = serde_json::to_vec(value).map_err(|e|e.to_string())?;
     if bytes.len() > crate::web_share_snapshot::MAX_SNAPSHOT_BYTES { return Err("共有付箋の容量上限を超えています。元の内容は保持しています".into()); }
@@ -800,6 +807,7 @@ pub(crate) async fn write_web_share_cas(
 }
 
 pub(crate) async fn delete_web_share_cas(client: &Client, token: &str, id: &str, etag: &str) -> Result<(), String> {
+    crate::web_share_read_cache::invalidate(id);
     if etag.is_empty() { return Err("更新基準なしの削除は行いません".into()); }
     let response = client.delete(format!("https://www.googleapis.com/drive/v2/files/{id}"))
         .bearer_auth(token).header("If-Match", etag).send().await.map_err(|_| "共有記録の整理に失敗しました")?;
@@ -808,6 +816,7 @@ pub(crate) async fn delete_web_share_cas(client: &Client, token: &str, id: &str,
 }
 
 pub(crate) async fn name_web_share_snapshot(client:&Client, token:&str, id:&str, note_id:&str) -> Result<(),String> {
+    crate::web_share_read_cache::invalidate(id);
     client.patch(format!("https://www.googleapis.com/drive/v3/files/{id}"))
         .bearer_auth(token).json(&serde_json::json!({"name":format!("op-state-{note_id}.json")}))
         .send().await.map_err(|_|"共有状態の名前を更新できません")?
@@ -833,6 +842,7 @@ pub(crate) async fn web_share_file_exists(client:&Client,token:&str,id:&str)->Re
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum CreateAtId { Created, AlreadyExists }
 pub(crate) async fn create_web_share_file_at_id(client:&Client,token:&str,folder:&str,id:&str,name:&str,bytes:Vec<u8>,mime:&str)->Result<CreateAtId,String>{
+    crate::web_share_read_cache::invalidate(id);
     let metadata=serde_json::json!({"id":id,"name":name,"parents":[folder]});
     let response=client.post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
         .bearer_auth(token).multipart(reqwest::multipart::Form::new()
@@ -1531,6 +1541,16 @@ pub async fn delete_all_push_devices(client: &Client) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn web_share_inventory_preserves_names_versions_and_json_filter() {
+        let files=vec![("a".into(),"op-state-a.json".into(),Some("12".into())),("b".into(),"web-image-b.jpg".into(),None),("c".into(),"web-request-c.json".into(),Some("3".into())),("d".into(),"op-other.txt".into(),None)];
+        assert_eq!(select_web_share_files(&files,"op-",true),vec![files[0].clone()]);
+        assert_eq!(select_web_share_files(&files,"op-",false),vec![files[0].clone(),files[3].clone()]);
+        assert_eq!(select_web_share_files(&files,"web-image-",false),vec![files[1].clone()]);
+        assert_eq!(select_web_share_files(&files,"web-pc-",true).len(),0);
+        assert_eq!(select_web_share_files(&files,"",false),files);
+    }
 
     #[test]
     fn test_get_token_path_returns_valid_path() {

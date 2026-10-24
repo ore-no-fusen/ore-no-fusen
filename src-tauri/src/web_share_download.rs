@@ -8,6 +8,22 @@ where
     F: Fn(T) -> Fut,
     Fut: Future<Output = Result<R, String>> + Send + 'static,
 {
+    read_all_with_progress(items, fetch, |_, _| {}).await
+}
+
+pub(crate) async fn read_all_with_progress<T, R, F, Fut, P>(
+    items: Vec<T>,
+    fetch: F,
+    progress: P,
+) -> Result<Vec<R>, String>
+where
+    R: Send + 'static,
+    F: Fn(T) -> Fut,
+    Fut: Future<Output = Result<R, String>> + Send + 'static,
+    P: Fn(usize, usize) + Send + Sync,
+{
+    let total = items.len();
+    progress(0, total);
     let mut pending = items.into_iter().enumerate();
     let mut tasks = tokio::task::JoinSet::new();
     let mut results = BTreeMap::new();
@@ -23,6 +39,7 @@ where
             None => break,
             Some(Ok((index, Ok(value)))) => {
                 results.insert(index, value);
+                progress(results.len(), total);
             }
             Some(Ok((_, Err(error)))) => {
                 tasks.abort_all();
@@ -45,6 +62,36 @@ mod tests {
         Arc,
     };
 
+    #[test]
+    fn reports_completed_counts_and_empty_batch() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let events = std::sync::Mutex::new(Vec::new());
+                read_all_with_progress(
+                    vec![1, 2, 3],
+                    |n| async move { Ok(n) },
+                    |done, total| events.lock().unwrap().push((done, total)),
+                )
+                .await
+                .unwrap();
+                assert_eq!(
+                    *events.lock().unwrap(),
+                    vec![(0, 3), (1, 3), (2, 3), (3, 3)]
+                );
+                let events = std::sync::Mutex::new(Vec::new());
+                read_all_with_progress(
+                    Vec::<u8>::new(),
+                    |n| async move { Ok(n) },
+                    |done, total| events.lock().unwrap().push((done, total)),
+                )
+                .await
+                .unwrap();
+                assert_eq!(*events.lock().unwrap(), vec![(0, 0)]);
+            });
+    }
     #[test]
     fn reads_concurrently_with_a_bound_and_preserves_order() {
         tokio::runtime::Builder::new_current_thread()

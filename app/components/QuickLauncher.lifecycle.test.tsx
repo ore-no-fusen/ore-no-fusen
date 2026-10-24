@@ -26,6 +26,10 @@ describe('launcher explicit close',()=>{
     const progress=mocks.listen.mock.calls.find(args=>args[0]==='fusen:web_sync_progress')?.[1];
     act(()=>progress({payload:'history'}));
     expect(screen.getByRole('status').textContent).toContain('共有記録を取得');
+    act(()=>progress({payload:{stage:'history',completed:8,total:22}}));
+    expect(screen.getByRole('status').textContent).toContain('共有状態を確認中 8 / 22');
+    act(()=>progress({payload:{stage:'cleanup',completed:2,total:4}}));
+    expect(screen.getByRole('status').textContent).toContain('不要な記録を整理中 2 / 4');
     act(()=>progress({payload:'apply'}));
     expect(screen.getByRole('status').textContent).toContain('付箋を確認');
     await act(async()=>finish({uploaded:0,applied:0,revoked:0,unchanged:9,held:['重複IDは保留']}));
