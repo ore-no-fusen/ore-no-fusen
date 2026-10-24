@@ -38,10 +38,18 @@ function sharedNote(markdown: string, title = 'テスト付箋'): SharedNote {
   };
 }
 
+async function editCurrentNote() {
+  // The note can render while reload() still keeps its controls disabled.
+  // A click on that button is ignored; wait for the user-visible ready state.
+  await waitFor(() => expect((screen.getByRole('button', { name: '編集' }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: '編集' }));
+  return screen.findByRole('textbox', { name: '付箋本文' });
+}
+
 describe('shared note editor', () => {
   it('未送信の既存編集を再表示後に復元する', async () => {
     const first=render(<SharedNotesPage/>);
-    fireEvent.click(await screen.findByRole('button',{name:'編集'}));
+    await editCurrentNote();
     fireEvent.change(screen.getByRole('textbox',{name:'付箋本文'}),{target:{value:'ページを閉じても残す本文'}});
     first.unmount();
     render(<SharedNotesPage/>);
@@ -50,7 +58,7 @@ describe('shared note editor', () => {
   });
   it('下書きの基準版から本文が変わった場合は自動上書きしない', async () => {
     const first=render(<SharedNotesPage/>);
-    fireEvent.click(await screen.findByRole('button',{name:'編集'}));
+    await editCurrentNote();
     fireEvent.change(screen.getByRole('textbox',{name:'付箋本文'}),{target:{value:'未送信の編集'}});
     first.unmount();
     const newer=sharedNote('別端末の本文');newer.operation.operationId='op-newer';
@@ -219,7 +227,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -249,7 +257,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -293,7 +301,7 @@ describe('shared note editor', () => {
     expect(screen.getByText('1.')).toBeTruthy();
     expect(screen.getByText('2)')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    await editCurrentNote();
     const body = await screen.findByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
     expect(body.value).toBe(markdown);
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
@@ -416,7 +424,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -433,7 +441,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -450,7 +458,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -534,7 +542,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [first, second], files: [] });
     render(<SharedNotesPage />);
     await screen.findByText('2件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    await editCurrentNote();
     const all = screen.getByRole('button', { name: 'すべて', pressed: true });
     const home = screen.getByRole('button', { name: '家', pressed: false });
     expect((all as HTMLButtonElement).disabled).toBe(true);
@@ -578,7 +586,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -595,7 +603,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -611,7 +619,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('最初の本文', '題名')], files: [] });
     render(<SharedNotesPage />);
     await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    await editCurrentNote();
     const body = await screen.findByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
 
     fireEvent.change(body, { target: { value: '題名' } });
@@ -626,7 +634,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -643,7 +651,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -660,7 +668,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -677,7 +685,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -694,7 +702,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
     render(<SharedNotesPage/>);
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -707,3 +715,4 @@ describe('shared note editor', () => {
   });
 
 });
+

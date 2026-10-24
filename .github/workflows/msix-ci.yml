@@ -2,22 +2,7 @@ name: MSIX CI
 
 on:
   workflow_dispatch:
-  push:
-    branches: [develop]
-    paths:
-      - "app/**"
-      - "!app/landing/**"
-      - "e2e/**"
-      - "lib/**"
-      - "src-tauri/**"
-      - "packaging/msix/**"
-      - "scripts/ci-msix-smoke.ps1"
-      - "scripts/run-e2e.mjs"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/msix-ci.yml"
-  pull_request:
-    branches: [develop]
+  workflow_call:
 
 permissions:
   contents: write
@@ -92,7 +77,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Set up Rust
@@ -127,8 +112,14 @@ jobs:
         id: tauri_build
         run: npx tauri build --no-bundle
 
+      - name: Prepare noninteractive CI test certificate
+        timeout-minutes: 2
+        shell: pwsh
+        run: .\scripts\ci-msix-certificate.ps1
+
       - name: Create and sign local test MSIX
         id: msix_create
+        timeout-minutes: 5
         shell: pwsh
         run: .\packaging\msix\test-msix.ps1 -SkipBuild -NoInstall
 
@@ -241,3 +232,4 @@ jobs:
               content,
               sha
             });
+
