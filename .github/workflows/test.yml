@@ -4,12 +4,36 @@ on:
   push:
     branches: [develop, main]
   pull_request:
+  merge_group:
+
+permissions:
+  contents: read
 
 env:
   GDRIVE_CLIENT_ID: ci-dummy
   GDRIVE_CLIENT_SECRET: ci-dummy
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      msix: ${{ steps.scope.outputs.msix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check routing and failure policy
+        run: node --test scripts/ci-scope.test.mjs
+      - name: Determine required checks
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: node scripts/ci-scope.mjs "$BASE" "$HEAD"
+
   usage-analysis:
     name: Dashboard analysis regression tests
     runs-on: ubuntu-latest
@@ -19,18 +43,10 @@ jobs:
         with:
           node-version: 24
       - run: node --test scripts/member-usage-analysis.test.mjs
+
   frontend:
     runs-on: windows-latest
-    if: >-
-      ${{
-        !(
-          github.event_name == 'push' &&
-          (
-            github.actor == 'github-actions[bot]' ||
-            github.actor == 'orenofusen-winget-releaser[bot]'
-          )
-        )
-      }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,20 +54,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm test
+      - run: npx tsc --noEmit
       - run: npm run build:tauri
 
   rust:
     runs-on: windows-latest
-    if: >-
-      ${{
-        !(
-          github.event_name == 'push' &&
-          (
-            github.actor == 'github-actions[bot]' ||
-            github.actor == 'orenofusen-winget-releaser[bot]'
-          )
-        )
-      }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -68,3 +77,31 @@ jobs:
       - name: cargo test
         working-directory: src-tauri
         run: cargo test --locked --lib
+
+  msix:
+    needs: scope
+    if: needs.scope.outputs.msix == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/msix-ci.yml
+
+  gate:
+    name: CI gate
+    if: always()
+    needs: [scope, usage-analysis, frontend, rust, msix]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Require every applicable check
+        env:
+          SCOPE: ${{ needs.scope.outputs.msix }}
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          USAGE_RESULT: ${{ needs.usage-analysis.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+          MSIX_RESULT: ${{ needs.msix.result }}
+        run: node scripts/ci-scope.mjs gate
+
