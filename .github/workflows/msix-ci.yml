@@ -18,6 +18,18 @@ on:
       - ".github/workflows/msix-ci.yml"
   pull_request:
     branches: [develop]
+    paths:
+      - "app/**"
+      - "!app/landing/**"
+      - "e2e/**"
+      - "lib/**"
+      - "src-tauri/**"
+      - "packaging/msix/**"
+      - "scripts/ci-msix-smoke.ps1"
+      - "scripts/run-e2e.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/msix-ci.yml"
 
 permissions:
   contents: write
