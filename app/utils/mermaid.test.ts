@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { loadSecureMermaid, sanitizeMermaidSvg, renderSecureMermaid, MAX_MERMAID_SOURCE_LENGTH, MERMAID_RENDER_TIMEOUT_MS } from './mermaid';
 
 const mermaidMock = vi.hoisted(() => ({
+    mermaidAPI: {
+        defaultConfig: { secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges'] },
+        getDiagramFromText: vi.fn(async () => ({ type: 'flowchart-v2', db: { getVertices: () => new Map() } })),
+    },
     initialize: vi.fn(),
     render: vi.fn(),
 }));
@@ -23,6 +27,8 @@ describe('loadSecureMermaid', () => {
             flowchart: {
                 htmlLabels: false,
             },
+            themeCSS: '',
+            secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges', 'dompurifyConfig', 'htmlLabels', 'flowchart', 'themeCSS', 'themeVariables', 'fontFamily', 'altFontFamily'],
         });
     });
 });
@@ -39,16 +45,33 @@ describe('renderSecureMermaid limits', () => {
         expect(mermaidMock.render).not.toHaveBeenCalled();
     });
 
+    it('refuses an unknown parsed collection without starting the renderer', async () => {
+        mermaidMock.render.mockClear();
+        mermaidMock.mermaidAPI.getDiagramFromText.mockResolvedValueOnce({
+            type: 'flowchart-v2', db: { getVertices: () => ({}) as Map<string, unknown> },
+        });
+        await expect(renderSecureMermaid('unknown-api', 'graph TD')).rejects.toThrow('安全性');
+        expect(mermaidMock.render).not.toHaveBeenCalled();
+    });
+
+    it('continues rendering after a rejected job', async () => {
+        mermaidMock.render.mockReset().mockRejectedValueOnce(new Error('bad diagram')).mockResolvedValue({ svg: '<svg></svg>' });
+        await expect(renderSecureMermaid('bad-job', 'graph TD')).rejects.toThrow('bad diagram');
+        await expect(renderSecureMermaid('next-job', 'graph TD')).resolves.toContain('<svg');
+    });
+
     it('returns a timeout error when Mermaid does not finish in time', async () => {
         vi.useFakeTimers();
+        let complete: ((value: { svg: string }) => void) | undefined;
         try {
-            mermaidMock.render.mockReset().mockImplementation(() => new Promise(() => {}));
+            mermaidMock.render.mockReset().mockImplementation(() => new Promise(resolve => { complete = resolve; }));
             const result = renderSecureMermaid('timeout-check', 'graph TD');
             await vi.waitFor(() => expect(vi.getTimerCount()).toBeGreaterThan(0));
             const rejection = expect(result).rejects.toThrow('時間がかかりすぎました');
             await vi.advanceTimersByTimeAsync(MERMAID_RENDER_TIMEOUT_MS);
             await rejection;
         } finally {
+            complete?.({ svg: '<svg></svg>' });
             vi.useRealTimers();
         }
     });

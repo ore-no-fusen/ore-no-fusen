@@ -222,8 +222,41 @@ flowchart LR
 |:---|:---|:---|
 | 1 | スクリプト | アプリ自身とGoogle Tag Managerに限定。本番では `unsafe-eval` を禁止 |
 | 2 | 通信 | Tauri IPC、俺の付箋Vercel、Google OAuth / Drive、Sentry、Google Analyticsに限定。Google Analyticsは公式CSP仕様の `*.google-analytics.com`、`*.analytics.google.com`、`www.googletagmanager.com` を許可する |
-| 3 | 画像・動画 | アプリ自身、Tauri asset protocol、`data:`、`blob:`を許可 |
+| 3 | 画像・動画 | アプリ自身、Tauri asset protocol、`data:`、`blob:`、通常画像表示用のHTTPSを許可。Mermaid図の外部参照は5.2.1の入力検査で制限 |
 | 4 | asset protocol scope | 付箋保存先をユーザーが任意の場所へ変更できる仕様のため `**` を維持する。表示URLの生成とファイル操作はRustコマンド側で管理する |
+
+#### 5.2.1 図の入力検証と外部資源参照の制限
+
+品質特性はセキュリティ（機密性・完全性）とする。PC・Web共通のMermaid描画では、付箋内の図を信頼しない入力として扱い、描画中の通信を表示後のSVG除去だけに依存して防がない。
+
+- Mermaidの既定の保護キーを維持し、サニタイザー、HTMLラベル、flowchart設定、テーマCSS・変数、フォント設定を図の入力から変更できないよう固定する。
+- 描画前に解析結果を検査する。flowchart系（swimlaneを含む）の画像ノードとsequenceの画像アイコンは拒否する。既知の解析APIの形が一致しない場合も描画へ進まない。
+- 直接・クラス・入れ子のスタイルをCSS構文木で検査し、URL、規則の追加、解析できない値、許可していない関数を拒否する。通常の色と線、色・数値の許可関数は維持する。
+- 初期化、解析、検査、描画を直列化する。5秒で呼出元の待機を打ち切るが、未終了の描画と次の描画を重ねない。本文は変更しない。
+- 表示直前にもSVGから実行要素、イベント属性、外部参照を除去する。通常の画像添付は、この図の検査とは分離する。
+
+```mermaid
+sequenceDiagram
+    participant U as 付箋画面
+    participant V as 図の安全検証
+    participant M as Mermaid
+    U->>V: 図の描画を要求
+    V->>M: 入力を解析
+    M-->>V: 解析結果
+    V->>V: 画像・CSSを検査
+    alt 禁止指定・検査不能
+        V-->>U: 図のエラーを表示
+    else 検査成功
+        V->>M: 描画
+        M-->>V: SVG
+        V->>V: SVGを無害化
+        V-->>U: 図を表示
+    end
+```
+
+<p class="figure-caption">図 5.2.1-1　図の描画前検査と表示前の無害化</p>
+
+検証では本番の描画コードと実ライブラリをブラウザで実行する。描画開始から挿入・クリック後まで通信・実行の記録を保持し、正常な図と禁止指定の両方を確認する。
 
 ### 5.3 障害監視
 
@@ -276,6 +309,7 @@ flowchart LR
 | 9 | 1.8 | 26-07-31 | 5.2 にTauri WebViewのCSP、外部接続先、asset protocolの許可方針を追加。 |
 | 10 | 1.9 | 26-08-26 | 5.2 のGoogle Analytics通信許可を公式CSP仕様の全送信先へ修正。 |
 | 11 | 1.10 | 26-10-08 | FileDropの汎用添付保存・失敗時保持・付箋保存後ackを通信シーケンスへ追加。 |
+| 12 | 1.11 | 26-10-24 | 図の描画前入力検証、CSS構文解析、外部画像制限、直列化とブラウザ検証を5.2.1へ追加。 |
 
 </div>
 
