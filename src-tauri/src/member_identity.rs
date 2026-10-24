@@ -251,8 +251,24 @@ fn observe_current_day(member: &mut MemberLocal, now: chrono::DateTime<Utc>) {
     usage.schema=3; usage.supported_features=FEATURES.iter().map(|v|(*v).to_string()).collect();
     let daily=usage.days.entry(day).or_default(); daily.observed_at.get_or_insert_with(||instant.clone()); daily.observed_through=Some(instant); daily.supported_features=FEATURES.iter().map(|v|(*v).to_string()).collect();
 }
-pub(crate) fn record_launcher_store(state: &mut AppState) {
+pub(crate) fn record_launcher_store(state: &mut AppState) -> Result<(), String> {
+    record_launcher_store_with(state, persist)
+}
+
+fn record_launcher_store_with(
+    state: &mut AppState,
+    save: impl FnOnce(&MemberLocal) -> Result<(), String>,
+) -> Result<(), String> {
+    if state.usage_consent != Some(true) || state.member.is_none() {
+        return Ok(());
+    }
+    let before = state.member.clone();
     record_counts(state, BTreeMap::from([("launcher_store".into(), 1)]), Utc::now());
+    if let Err(error) = save(state.member.as_ref().ok_or("Member identity unavailable")?) {
+        state.member = before;
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -592,8 +608,24 @@ mod segment_tests {
         assert_eq!(recorded.last_used_day, "2026-10-11");
         assert!(!usage.features.contains_key("note_archive"));
         state.usage_consent = None;
-        record_launcher_store(&mut state);
+        let _ = record_launcher_store(&mut state);
         assert_eq!(state.member.as_ref().unwrap().weeks["2026-W41"].features["launcher_store"].count, 2);
+    }
+
+    #[test]
+    fn launcher_store_persists_immediately_and_restores_memory_on_save_failure() {
+        let mut state = AppState { member: Some(MemberLocal::default()), usage_consent: Some(true), ..Default::default() };
+        let error = record_launcher_store_with(&mut state, |_| Err("write failed".into()));
+        assert_eq!(error.unwrap_err(), "write failed");
+        assert!(state.member.as_ref().unwrap().weeks.is_empty());
+        let mut saved = false;
+        record_launcher_store_with(&mut state, |member| {
+            saved = member.weeks.values().any(|week| week.features.get("launcher_store").map(|entry| entry.count == 1).unwrap_or(false));
+            Ok(())
+        }).unwrap();
+        assert!(saved);
+        state.usage_consent = Some(false);
+        record_launcher_store_with(&mut state, |_| panic!("must not persist without consent")).unwrap();
     }
 
     #[test]
