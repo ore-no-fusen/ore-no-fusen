@@ -1,8 +1,9 @@
+import { MICROSOFT_STORE_URL } from '@/lib/public-links';
 import type { Metadata } from "next";
 import Link from "next/link";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
-const INSTALL_URL = "https://github.com/ore-no-fusen/ore-no-fusen/releases/latest";
+const INSTALL_URL = MICROSOFT_STORE_URL;
 const WINGET_COMMAND = "winget install ore-no-fusen";
 
 export const metadata: Metadata = {

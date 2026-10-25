@@ -299,10 +299,10 @@ export const translations = {
 
         'settings.about.relatedLinks': '関連リンク',
         'settings.about.relatedLinksDesc': '俺の付箋について詳しく知るための外部ページです。',
-        'settings.about.links.manga': '漫画で分かる 俺の付箋（Wiki）',
-        'settings.about.links.discussions': '俺の付箋なかま（掲示板）',
-        'settings.about.links.releases': '最新リリース',
-        'settings.about.links.docs': 'ドキュメント',
+        'settings.about.links.manga': '漫画で分かる 俺の付箋',
+        'settings.about.links.discussions': 'お問い合わせ',
+        'settings.about.links.releases': '更新情報',
+        'settings.about.links.docs': 'マニュアル',
         'settings.about.links.privacy': 'プライバシーポリシー',
         'settings.about.links.terms': '利用規約',
 
@@ -826,10 +826,10 @@ export const translations = {
 
         'settings.about.relatedLinks': 'Related Links',
         'settings.about.relatedLinksDesc': 'External pages to learn more about Ore-no-Fusen.',
-        'settings.about.links.manga': 'Comic Guide to Ore-no-Fusen (Wiki)',
-        'settings.about.links.discussions': 'Ore-no-Fusen Community (Discussions)',
-        'settings.about.links.releases': 'Latest Release',
-        'settings.about.links.docs': 'Documentation',
+        'settings.about.links.manga': 'Comic Guide to Ore-no-Fusen',
+        'settings.about.links.discussions': 'Contact the Developer',
+        'settings.about.links.releases': 'Updates',
+        'settings.about.links.docs': 'User Guide',
         'settings.about.links.privacy': 'Privacy Policy',
         'settings.about.links.terms': 'Terms of Service',
 

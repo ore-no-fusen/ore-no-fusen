@@ -59,6 +59,11 @@ jobs:
         run: node --test --test-reporter=tap scripts/release-machine/engine.test.mjs
       - name: Release machine browser tests
         run: node --test --test-reporter=tap scripts/release-machine/ui.test.mjs
+      - name: Public guide build and publication boundary
+        run: |
+          node --test scripts/export-public-guide.test.mjs
+          npm --prefix public-guide ci
+          npm --prefix public-guide run build
       - run: npm test
       - run: npx tsc --noEmit
       - run: npm run build:tauri

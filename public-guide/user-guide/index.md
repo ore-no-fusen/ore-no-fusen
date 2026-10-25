@@ -1,0 +1,66 @@
+---
+layout: doc
+title: 俺の付箋 ユーザーガイド
+pageClass: user-guide-page
+---
+
+<style>
+.help-hero { padding: 28px; border-radius: 18px; background: linear-gradient(135deg,#fff7ed,#eff6ff); border: 1px solid #fed7aa; margin: 8px 0 24px; }
+.help-hero h1 { margin: 0 0 8px; font-size: 34px; }
+.help-hero p { max-width: 720px; font-size: 16px; line-height: 1.9; }
+.help-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 20px 0 28px; }
+.help-card { border: 1px solid var(--vp-c-divider); border-radius: 12px; padding: 18px; background: var(--vp-c-bg-soft); text-decoration: none; color: inherit; }
+.help-card:hover { border-color: var(--vp-c-brand-1); }
+.help-card strong { display:block; font-size: 17px; margin-bottom: 6px; }
+.help-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin: 20px 0; }
+.help-pill { border-radius: 999px; padding: 10px 14px; background:#f8fafc; border:1px solid #e2e8f0; text-align:center; font-weight:700; }
+html.dark .help-hero { background: linear-gradient(135deg,#431407,#172554); border-color:#7c2d12; }
+html.dark .help-pill { background:#0f172a; border-color:#334155; }
+@media (max-width: 760px) { .help-grid,.help-strip { grid-template-columns: 1fr; } .help-hero h1 { font-size: 28px; } }
+</style>
+
+<div class="help-hero">
+  <h1>俺の付箋 ユーザーガイド</h1>
+  <p><strong>すぐ書ける。しまって呼び出せる。困ったら、作った人に聞ける。</strong></p>
+  <p>インストールから毎日の使い方まで、ここでご案内します。</p>
+</div>
+
+[English Guide](/en/user-guide/)
+
+::: tip 困ったら、作った人に聞いてみよう
+使い方が分からないときも、「こんな機能がほしい」と思ったときも、付箋を右クリック → **「開発者とのやりとり」** から気軽にメッセージを送れます。スクリーンショットも添付でき、返信は同じ画面で確認できます。
+
+作った人がひまなら、すぐ回答くれるかも。
+
+[開発者への問い合わせ手順を見る](/user-guide/troubleshooting#開発者へ問い合わせる)
+:::
+
+<div class="help-strip">
+  <div class="help-pill">Windows向け</div>
+  <div class="help-pill">Markdown付箋</div>
+  <div class="help-pill">iPhone連携対応</div>
+</div>
+
+## 目的から選ぶ
+
+<div class="help-grid">
+  <a class="help-card" href="/user-guide/install"><strong>はじめて使う</strong>ダウンロード、インストール、初回起動。</a>
+  <a class="help-card" href="/user-guide/basic"><strong>付箋を書く</strong>作成、編集、検索、タグ、削除。</a>
+  <a class="help-card" href="/user-guide/basic#quick-launcher"><strong>クイックランチャーを使う</strong>よく使う付箋の登録、格納、取り出し。</a>
+  <a class="help-card" href="/user-guide/advanced"><strong>使い込む</strong>表、画像、Mermaid、アラーム、整列。</a>
+  <a class="help-card" href="/user-guide/iphone"><strong>iPhoneから送る</strong>Google Drive経由でPCへ送信。</a>
+  <a class="help-card" href="/user-guide/troubleshooting"><strong>困ったとき・開発者に相談</strong>いつでも直接問い合わせ。使い方の質問、不具合、機能の要望。</a>
+  <a class="help-card" href="/user-guide/comic"><strong>漫画で知る</strong>全9話で機能をざっと見る。</a>
+</div>
+
+[クイックランチャーの使い方](/user-guide/basic#quick-launcher) — 登録・格納・取り出し、タグ一括格納。
+
+## まず読むなら
+
+1. [はじめに・インストール](/user-guide/install)
+2. [基本の使い方](/user-guide/basic)
+3. [困ったときに](/user-guide/troubleshooting)
+
+::: tip
+詳しいユーザー向けヘルプはこのガイドに集約しています。
+:::
