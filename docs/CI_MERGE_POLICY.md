@@ -21,6 +21,8 @@
 
 ## GitHub保護設定（管理者による設定が必要）
 
+2026-10-25、管理者の本人確認後にRuleset `main-develop-required-ci`（ID 25801862）をActiveで作成済み。main/developの両方にPR必須・GitHub ActionsのCI gate必須・strict更新・削除/force push禁止を適用し、bypass一覧は空。APIで保存結果と両PRのBLOCKEDを確認した。以下は再設定時の手順と、設定前の調査記録である。
+
 文書やworkflowの追加だけではGitHub側の強制力は生じない。2026-10-25調査時、main/developはprotected=false、rulesetsは空。CLI認証はadmin=false/push=falseで管理権限なし。接続GitHub Appはコード/PR更新が可能だが、管理設定の更新APIを提供しない。
 
 1. Settings → Rules → Rulesets → New branch ruleset。名前は「main/develop CI必須」、Enforcement statusはActive、対象をrefs/heads/mainとrefs/heads/developに限定する。
