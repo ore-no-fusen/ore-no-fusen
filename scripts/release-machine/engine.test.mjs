@@ -15,7 +15,7 @@ import { checkStagedVersionCommit } from './check-version-commit.mjs';
 const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 async function fixture(t, { prepared = true } = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'release-machine-test-'));
-  const root = path.join(folder, 'basic folder'); fs.mkdirSync(root);
+  let root = path.join(folder, 'basic folder'); fs.mkdirSync(root); root=fs.realpathSync.native(root);
   // All Git writes and pushes in these tests target this disposable fixture.
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] }).trim();
   git('init', '-b', 'main'); git('config','user.name','Release Machine Test'); git('config','user.email','test@example.invalid'); git('config','core.hooksPath',path.join(root,'.fixture-hooks'));
@@ -227,4 +227,12 @@ test('merged PR with different source never completes or starts develop synchron
  const f=await fixture(t);await prepare(f.machine);f.config.waitPR=true;await packageRelease(f.machine);const pr=f.config.prs[0];
  pr.merged=true;pr.state='closed';pr.merge_commit_sha=f.git('rev-parse','origin/main');
  await packageRelease(f.machine);assert.equal(f.machine.state.status,'failed');assert.match(f.machine.state.error,/ソース/);assert.equal(f.config.prs.length,1);assert.equal(f.config.buildCount,1);
+});
+
+test('primary checkout alias resolves to the same directory without accepting a worktree',async t=>{
+ const f=await fixture(t);const alias=path.join(f.folder,'root-alias');fs.symlinkSync(f.root,alias,'junction');
+ try {const m=new ReleaseMachine({...f.options,root:alias});assert.equal(m.root,fs.realpathSync.native(f.root));await prepare(m);assert.equal(m.state.status,'confirm',m.state.error);} finally {fs.rmdirSync(alias);}
+});
+test('a genuine temporary worktree remains forbidden',async t=>{
+ const f=await fixture(t);f.git('checkout','main');const other=path.join(f.folder,'separate-checkout');f.git('worktree','add',other,'develop');const m=new ReleaseMachine({...f.options,root:other});await prepare(m);assert.equal(m.state.status,'failed');assert.match(m.state.error,/一時ワークツリー/);assert.equal(f.config.buildCount,0);
 });

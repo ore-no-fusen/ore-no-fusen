@@ -47,7 +47,7 @@ export function copyTree(source, destination) {
 
 export class ReleaseMachine {
   constructor({ root, dataDir = path.join(root, 'my/release-machine'), submissionRoot, runner, platform = process.platform }) {
-    this.root = path.resolve(root); this.dataDir = dataDir;
+    this.root = fs.realpathSync.native(path.resolve(root)); this.dataDir = dataDir;
     this.submissionRoot = submissionRoot ?? 'D:\\Users\\uck\\Documents\\俺の付箋-Store提出';
     this.runner = runner; this.platform = platform; this.busy = false;
     this.github = new ReleaseGitHub(this);
@@ -119,7 +119,7 @@ export class ReleaseMachine {
     if (this.platform !== 'win32') throw new Error('Windows上で実行してください。');
     if (await this.branch() !== 'develop') throw new Error('基本フォルダーのdevelopから起動してください。');
     const common = await this.git(['rev-parse', '--path-format=absolute', '--git-common-dir'], this.root, false);
-    if (path.resolve(path.dirname(common)).toLowerCase() !== this.root.toLowerCase()) throw new Error('一時ワークツリーからは実行できません。基本フォルダーで起動してください。');
+    if (fs.realpathSync.native(path.dirname(common)).toLowerCase() !== this.root.toLowerCase()) throw new Error('一時ワークツリーからは実行できません。基本フォルダーで起動してください。');
     const changes = await this.changes();
     if (changes.length) throw new Error(`未保存変更があります: ${changes.join(', ')}`);
     const main = await this.findMain();
