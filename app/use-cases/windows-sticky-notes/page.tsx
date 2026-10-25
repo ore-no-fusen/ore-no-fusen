@@ -93,7 +93,7 @@ export default function WindowsStickyNotesPage() {
           <p>
             It is designed for Windows 10/11, with local-first Markdown files, an
             always-on-top workflow, and installation through Microsoft Store or
-            winget's Microsoft Store source.
+            the Microsoft Store source in winget.
           </p>
         </div>
 
