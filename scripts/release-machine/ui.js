@@ -3,7 +3,7 @@
   const token = location.hash.slice(1) || sessionStorage.getItem('release-machine-token');
   if (location.hash) { sessionStorage.setItem('release-machine-token', token); history.replaceState(null, '', location.pathname); }
   let info, key, versionInitialized = false, posting = false, networkError = null, startedAt = null;
-  const stages = [ ['version','版番号設定'], ['commit','5ファイル限定コミット'], ['main','main同期'], ['build','本番ビルド・保全'], ['dev','開発署名MSIX作成'], ['install','導入・起動'], ['store','Store用MSIX作成'], ['validate','形式・exe一致検証'], ['copy','固定提出先へ保存'], ['push-main','main反映'], ['push-develop','develop反映'], ['open','提出フォルダーを開く'] ];
+  const stages = [ ['main','検証済み候補の準備'], ['build','本番ビルド・保全'], ['dev','開発署名MSIX作成'], ['install','導入・起動'], ['store','Store用MSIX作成'], ['validate','形式・exe一致検証'], ['copy','固定提出先へ保存'], ['open','提出フォルダーを開く'] ];
   async function request(url, body) {
     const response = await fetch(url, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type':'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     const result = await response.json(); if (!response.ok) throw new Error(result.error); return result;
@@ -29,7 +29,7 @@
     const prepared = s.steps.install?.status === 'done';
     $('confirmed').disabled = !prepared || locked || s.status === 'complete';
     $('package').disabled = !prepared || !$('confirmed').checked || locked || blockers.length > 0 || s.status === 'complete';
-    $('package').textContent = complete ? '✓ Store用MSIX作成・Push 完了' : s.status === 'failed' && s.operation === 'package' ? '🚀 止まった工程から再試行' : 'Store用MSIXを作成・Push';
+    $('package').textContent = complete ? '✓ Store提出準備 完了' : s.status === 'failed' && s.operation === 'package' ? '🚀 止まった工程から再試行' : 'Store用MSIX作成・PR確認';
     if (complete) $('confirmed').checked = true;
     $('gate').textContent = complete ? '次はMicrosoft Store（Partner Center）へ提出します。' : prepared && $('confirmed').checked ? '実機確認済み。同じexeから提出用を作ります。' : '準備完了と実機確認のチェックが必要です。';
     const blocked = Boolean(networkError || s.error || blockers.length);
@@ -58,13 +58,26 @@
       const text=document.createElement('span'); text.textContent=`${status?.status==='done'?'✓':status?.status==='running'?'▶':status?.status==='failed'?'×':'○'} ${label}`;
       const duration=document.createElement('span'); duration.textContent=status?.seconds!==undefined?`${status.seconds.toFixed(1)}秒`:'';li.append(text,duration); return li;
     }));
+    const pr = s.developPR || s.mainPR;
+    $('pr-link').hidden = !pr;
+    if (pr) { $('pr-link').href = pr.url; $('pr-link').textContent = 'GitHubでPRとCIを確認する'; }
     $('log').textContent = info.log || '未開始';
     $('log-path').textContent = s.id ? `${info.dataDir} / runs / ${s.id} / commands.log（timings.jsonl・state.jsonも保存）` : info.dataDir;
     $('destination').textContent = s.destination || `D:\\Users\\uck\\Documents\\俺の付箋-Store提出\\${$('version').value}\\ore-no-fusen.msix`;
     $('complete').hidden=s.status!=='complete';
     const main=s.mainRoot || info.mainRoot || `${info.root}\\.w\\正式リリース`, version=$('version').value || '<版番号>';
-    $('prepare-plan').textContent=`PowerShellからNode.js・Git・既存PS1を呼びます。\n\n① ${info.root}（develop）\nnode scripts/set-release-version.mjs ${version}\ngit add -- package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock packaging/msix/AppxManifest.xml\ngit diff --cached --check\ngit commit -m "release: v${version} MSIX release candidate"\n※5ファイルが版番号だけの変更か、専用のコミット検証を実行します。\n\n② ${main}（main）\ngit merge --ff-only ${s.candidate || '<候補コミット>'}\n必要なら正式リリース・ワークツリーを作成\n\n③ windows.ps1 -Action Build\n→ npx.cmd tauri build --no-bundle\n→ 完成exe/resourcesをログの保全先へコピー・SHA256記録\n\n④ test-msix.ps1 -SkipBuild -NoInstall -ReleaseDirectory <保全先>\n→ makeappxで梱包・signtoolで開発署名\n\n⑤ windows.ps1 -Action Install\n→ Add-AppxPackage・導入exe照合・アプリ起動\n\n手作業では、下の実行ログの正確なパスとコマンドを使用してください。成功済みの工程は繰り返しません。`;
-    $('package-plan').textContent=`① ${main}（main）\nbuild-msix.ps1 -ReleaseDirectory <保全先>\nvalidate-msix.ps1 -PackagePath <作成MSIX> -ExpectedVersion ${version}.0 -ExpectedReleaseDirectory <保全先>\n→ Store形式5項目と内部exe/resourcesのSHA256一致\n\n② 固定提出先へコピー・SHA256照合\n③ git push origin <候補コミット>:refs/heads/main\n④ git push origin <候補コミット>:refs/heads/develop\n⑤ git ls-remoteで両ブランチの反映確認\n⑥ エクスプローラーで提出先を開く\n\nexeは再ビルドしません。別内容の提出物は上書きしません。片方だけpush済みなら残りだけを再試行します。`;
+    $('prepare-plan').textContent=`① 版番号は先に独立ブランチで更新し、develop宛てPR・CI成功・統合まで完了してください。
+② 最新developのCI成功と、版番号5ファイルを検査します。
+③ 正式リリース-${version}ワークツリーの作業ブランチで本番exeを1回ビルド・保全します。mainは変更しません。
+④ 同じexeから開発署名MSIXを作成・導入・起動します。
+実際のパス・コマンドは実行ログを確認してください。`;
+    $('package-plan').textContent=`① 合格済みexeからStore用MSIXを作成し、形式・内部exe/resourcesのSHA256を検証します。
+② 固定提出先へ保存します。
+③ リリース作業ブランチだけpushし、main宛てPRを作成します。表示されたURLで全CI成功後にCreate a merge commitでマージし、このボタンで再開してください。
+④ main統合後CIと候補ソースの一致を確認し、main→developの同期PRを作成します。同様にCI成功・マージ後に再開してください。
+⑤ 同期後CIとソース一致を確認し、基本フォルダーdevelopをfast-forwardして提出先を開きます。
+保護解除・直接push・強制pushは行いません。待機中もMSIX・exe・実機合格記録を保持し、再ビルドしません。`;
+
   }
   async function poll() {
     try { info = await request('/api/state'); networkError = null; render(); }

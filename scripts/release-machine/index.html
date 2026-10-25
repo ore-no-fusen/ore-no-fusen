@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>リリースマシン</title><link rel="stylesheet" href="/ui.css"><script src="/ui.js" defer></script></head>
-<body><main><header><h1>リリースマシン</h1><p class="premise">テスト完了・developへマージ済みの状態で使います。</p></header>
+<body><main><header><h1>リリースマシン</h1><p class="premise">版番号を含むテスト完了・PRでdevelopへマージ済みの状態で使います。</p></header>
 <section class="overview"><h2 id="current" aria-live="polite">状態を確認しています…</h2><p id="notice" role="status"></p><p id="elapsed" class="secondary"></p><details id="reason"><summary>詳しい理由</summary><p id="reason-text"></p></details></section>
 <div class="version-row"><span>現在 <b id="current-version">—</b></span><span>→</span><label>新しい版 <input id="version" type="text" inputmode="decimal" autocomplete="off" maxlength="30"></label></div>
 <section class="action"><h2>① 確認用アプリを作る</h2><p class="hint">先に付箋アプリを終了し、大切なデータをバックアップしてください。</p><button id="prepare" disabled>確認用MSIXを作って起動</button><div class="confirmation"><p>起動・保存・再起動と、今回の修正を確認してください。</p><label class="check"><input id="confirmed" type="checkbox" disabled>実機で確認しました。問題ありません。</label></div></section>
-<section class="action second"><h2>② 提出用を作る</h2><button id="package" disabled>Store用MSIXを作成・Push</button><p id="gate" class="secondary"></p></section>
+<section class="action second"><h2>② 提出用を作る</h2><button id="package" disabled>Store用MSIX作成・PR確認</button><p><a id="pr-link" hidden target="_blank" rel="noopener noreferrer"></a></p><p id="gate" class="secondary"></p></section>
 <section id="result" hidden><h2>提出準備ができました</h2><p id="complete" hidden>開いたフォルダーのMSIXをPartner Centerへ提出してください。</p><p id="destination"></p></section>
 <details class="details"><summary>作業の詳細・実行ログ</summary><div class="status">ブランチ <b id="branch">確認中</b> ／ 作業状態 <b id="clean">確認中</b></div><ol id="steps"></ol><h3>実行コマンドと結果</h3><pre id="log">未開始</pre><p>記録：<span id="log-path">—</span></p><details><summary>①で実行する作業・手動引継ぎ</summary><pre id="prepare-plan"></pre></details><details><summary>②で実行する作業・手動引継ぎ</summary><pre id="package-plan"></pre></details></details>
 <details class="details"><summary>使い方・前提条件</summary><p>修正・テスト・必要な確認を終え、developへマージ済み（STEP 0完了）から使います。確認用MSIXも通常の付箋保存先を使います。</p><p>処理中は起動用ウィンドウを閉じないでください。終了は処理完了後にCtrl+C。</p><p>完了はStore提出準備までです。認定申請・公開後の更新確認は手動です。リリース手順を変えるときは、このツールも一緒に更新します。</p></details>
