@@ -16,31 +16,31 @@ GitHub Release、Gitタグ、Winget公開、GitHub ActionsからのMicrosoft Sto
 
 ## AIが使えない場合：リリースマシン
 
-トークン上限などでCodexを含むAIが使えない場合は、**「画面でポン！リリースマシン」**を使い、利用者がこのPCでリリース準備を進める。**修正・テスト・必要な確認を終え、developへマージ済み（STEP 0完了）の状態から開始する。あとはMSIXを作り、リリース前の実機確認をする段階で使う。**
+トークン上限などでCodexを含むAIが使えない場合は、**「画面でポン！リリースマシン」**を使い、利用者がこのPCでリリース準備を進める。**版番号を含む修正・テスト・必要な確認を終え、PRとCIを経てdevelopへマージ済み（STEP 0完了）の状態から開始する。あとはMSIXを作り、リリース前の実機確認をする段階で使う。**
 
-基本フォルダーの **`リリースマシン.bat`** をダブルクリックする。デスクトップにはこのファイルへのショートカットを置いてよい。Node.jsのローカルサーバーと既定ブラウザが起動し、`http://127.0.0.1:3099` の画面を開く。起動用ウィンドウは処理が終わるまで閉じない。終了は処理完了後に同ウィンドウでCtrl+C。Node.js 24以上、既存のnpm依存・Rust・Windows SDK・Google Driveビルド環境が必要で、事前検査に不合格なら処理を停止する。
+基本フォルダーの **`リリースマシン.bat`** をダブルクリックする。デスクトップにはこのファイルへのショートカットを置いてよい。Node.jsのローカルサーバーと既定ブラウザが起動し、`http://127.0.0.1:3099` の画面を開く。起動用ウィンドウは処理が終わるまで閉じない。終了は処理完了後に同ウィンドウでCtrl+C。GitHub CLI（gh）の正規リポジトリへの読み書き権限と本人ログイン、Node.js 24以上、既存のnpm依存・Rust・Windows SDK・Google Driveビルド環境が必要で、事前検査に不合格なら処理を停止する。
 
 実装は `scripts/release-machine/` に置く。新たな版を実際にリリースする前の検証では、`node scripts/release-machine/server.mjs --read-only --browser` で表示確認専用画面（port 3100、リリース操作は無効）を開ける。単体・隔離Git試験は `node --test scripts/release-machine/engine.test.mjs`、画面試験は `node --test scripts/release-machine/ui.test.mjs` で行う。MSIX梱包・検証変更の実SDK試験は `node --test scripts/release-machine/msix.test.mjs` で行い、署名・インストール・公開pushは行わない。
 
-1つ目のボタンを押す前に付箋アプリを終了し、大切なデータをバックアップする。Dev MSIXはStore版と別IDだが、付箋保存先を共有する場合がある。開始時に基本フォルダーと正式リリースの未保存変更・ステージ済み変更、mainからdevelopへのfast-forward可否、実行中アプリ/ビルドを検査する。関係ない変更を自動削除したり、別作業のプロセスを終了したりしない。
+1つ目のボタンを押す前に付箋アプリを終了し、大切なデータをバックアップする。Dev MSIXはStore版と別IDだが、付箋保存先を共有する場合がある。開始時に基本フォルダーと正式リリースの未保存変更・ステージ済み変更、origin/mainが候補developの祖先であること・最新developの統合後CI成功、実行中アプリ/ビルドを検査する。関係ない変更を自動削除したり、別作業のプロセスを終了したりしない。
 
 操作は実行ボタン2つと、固定の実機確認チェック1つを基本とする。
 
-1. **「確認用MSIXを作って起動」**：STEP 1-1〜1-4の版番号設定・mainへの候補反映・本番ビルド・開発署名MSIX作成・インストール・起動を行う。
+1. **「確認用MSIXを作って起動」**：STEP 1-1〜1-4の版番号・CI検査・正式リリース候補ブランチの準備・本番ビルド・開発署名MSIX作成・インストール・起動を行う。
 2. **実機確認（STEP 1-5）**：利用者が起動・保存・再起動と今回修正した箇所・影響範囲を確認し、「実機で確認しました。問題ありません」にチェックする。確認項目をAIが毎回生成する仕組みは設けない。不合格なら本書の失敗時フローへ戻る。
-3. **「Store用MSIXを作成・Push」**：STEP 2とSTEP 3-1を行う。合格した同じexeからStore用MSIXを作成し、形式と内部exeの一致を検証、固定提出先へ保存、main/developをpushして提出フォルダーを開く。
+3. **「Store用MSIX作成・PR確認」**：STEP 2とSTEP 3-1を行う。合格した同じexeからStore用MSIXを作成し、形式と内部exeの一致を検証、固定提出先へ保存、リリース作業ブランチだけをpushしてmain宛てPRを作る。画面のリンク先で全CI成功後にCreate a merge commitでマージし、同じボタンで再開する。main統合後CI・候補ソース一致確認後、main→develop同期PRも同様にマージ・再開する。同期後CI成功・同一ソース確認・ローカルdevelopのfast-forward後に提出フォルダーを開く。保護解除や直接pushはしない。
 
 画面には現在の工程・完了状況・停止理由を表示する。各ボタンから実際に呼び出すシェル・スクリプト・作業順を確認でき、実行ログには作業場所・実行コマンド・結果・停止箇所を保存する。手動で引き継ぐ場合はログと本書を照合し、未完了の工程から再開する。
 
 ### 記録・再開・手動復旧
 
 - ログと保全成果物は基本フォルダーの `my/release-machine/runs/<実行ID>/` に保存する。`commands.log` は実行場所・コマンド・結果、`timings.jsonl` は各試行の開始・終了・秒数、`state.json` は版番号・コミット・工程状態・SHA256・実機合格記録である。工程別時間の原記録とし、本書の実測時間表へ転記するときはこの記録を使う。現在の実行状態は `my/release-machine/active.json`。公開版の集計・試行詳細表への転記はリリース完了時に行う。
-- 本番ビルドは正式リリースのmainで1回実行し、exe/resourcesを実行ID配下の `build-<ID>/` へ保全する。`test-msix.ps1 -SkipBuild -NoInstall -ReleaseDirectory <保全先> -DevPackageVersion <X.Y.Z.1>` で開発署名MSIXを作る。確認用Dev MSIXのパッケージ番号は、同じアプリ版を再確認するとき既存Dev版を更新できるよう `X.Y.Z.1` とする。Store提出用マニフェストと実行ファイルは引き続き `X.Y.Z.0` / `X.Y.Z` のまま。`scripts/release-machine/windows.ps1 -Action Install` でDevパッケージ番号と保全exeを照合して起動する。アプリの先行アンインストールは行わない。
-- リリース画面の「現在」は `origin/main:package.json` の版番号を使う。確認済みdevelopの5ファイルが候補版番号へすでに更新済みなら、そのdevelopコミットをそのまま候補にして版番号コミットを重ねない。
+- 本番ビルドは正式リリース候補の専用作業ブランチで1回実行し、exe/resourcesを実行ID配下の `build-<ID>/` へ保全する。`test-msix.ps1 -SkipBuild -NoInstall -ReleaseDirectory <保全先> -DevPackageVersion <X.Y.Z.1>` で開発署名MSIXを作る。確認用Dev MSIXのパッケージ番号は、同じアプリ版を再確認するとき既存Dev版を更新できるよう `X.Y.Z.1` とする。Store提出用マニフェストと実行ファイルは引き続き `X.Y.Z.0` / `X.Y.Z` のまま。`scripts/release-machine/windows.ps1 -Action Install` でDevパッケージ番号と保全exeを照合して起動する。アプリの先行アンインストールは行わない。
+- リリース画面の「現在」は `origin/main:package.json` の版番号を使う。候補版番号5ファイルは先に独立ブランチで更新し、develop宛てPRの全CI成功・統合と統合後CI成功を必須とする。ツールは基本フォルダーの版番号を変更・コミットしない。
 - STEP 2は `build-msix.ps1 -ReleaseDirectory <保全先>` と `validate-msix.ps1 -PackagePath <作成MSIX> -ExpectedVersion <X.Y.Z.0> -ExpectedReleaseDirectory <保全先>` を呼ぶ。既存の指定なしの手動コマンドも従来どおり利用できる。SHA256が違う提出物は上書きしない。
-- 失敗した場合は同じボタンで再試行する。途中の版番号は固定し、完了した工程を繰り返さない。初回の版番号コミットでは、コミットフックの専用経路で5ファイルが既存版番号更新スクリプトの出力と完全一致することを検証する。混在変更は拒否する。STEP 0済みのテストや、開発サーバーを停止するE2Eは繰り返さない。通常のコード変更のコミット検査は従来どおり行う。合格後のSTEP 2でテスト・exeビルドは繰り返さない。中断後の子プロセスが残っている場合は再開を停止する。コードや保全exeが変わった場合も合格を引き継がず停止する。
-- 手動引継ぎでは、起動用ウィンドウを処理停止後に終了し、`commands.log` と `state.json` を確認する。コマンドは画面の説明用プレースホルダーではなく、ログに残った実際の絶対パス・版番号・候補コミットを使用する。版番号5ファイルの変更前/変更後は `state.json` の `versionTexts` に記録する。コミット前の取り消しでは、他者の変更がないことを照合してこの5ファイルだけを戻す。reset --hard、git add -A、強制pushは使用しない。
-- コード修正で候補を取り消す場合はSTEP 0へ戻る。進行中の自動処理がないこと、候補コミット/main/導入済みDev版を確認し、手動復旧・必要な修正を完了してから、旧記録一式を保持したまま `active.json` を別名で保管し、新しい候補を開始する。コミット・導入済みMSIXをツールが自動で巻き戻すことはない。
+- 停止した場合は同じボタンで再試行する。PR待ちではURLを開き、最新headの全適用対象CI成功とマージ可能状態を確認してCreate a merge commitでマージする。未完了・失敗・キャンセルではマージしない。成功したMSIX作成・検証・保存は繰り返さない。CLIのチェック一覧、統合後push CI、候補と統合結果のGit tree一致を再開時に検査する。ソース・保全exe・提出物が違う場合は停止する。
+- 手動引継ぎはcommands.logとstate.jsonの実際のパス・候補SHA・PR番号を使用する。旧方式の途中記録（protocolなし）は自動再開しない。記録・exe・MSIXを保全し、PR方式での同一ソース確認から手動で引き継ぐ。active.jsonを上書きして合格を流用しない。reset --hard、git add -A、強制pushは禁止する。
+- main PRのマージコミットとdevelop同期PRのマージコミットは異なる。両者のtreeが実機合格した候補と一致することを検証し、同じSHAを直接pushして揃える運用には戻さない。並行する別変更があれば停止してSTEP 0から候補を確認し直す。
 - 正式リリース・ワークツリーはSTEP 3-4まで保持する。公開後の成果物保全と片付けは本書の既存手順どおり行う。
 
 ツールの完了は「Store提出準備完了」を意味する。AIが使えない場合のSTEP 3-2〜3-4は、利用者が[store-submission.md](./store-submission.md)と本書に従って、Partner Centerへのアップロード・認定申請・公開後のStore更新確認を行う。
@@ -80,7 +80,7 @@ flowchart LR
 
 *通常開発はPRの最新コミットに対するCI合格後にdevelopへ統合する。*
 
-mainへの統合はSTEP 1〜3の別途リリース判断に従う。CI運用改善だけでは再リリースしない。正式自動化の権限は必要最小限とし、失敗したテストを回避するための例外には使わない。ブランチ保護導入後に直接pushが拒否される旧リリースツールは、保護を解除せず実行を停止し、同じソースのPR・CI確認経路を整えてから利用する。既存ツールを使ったリリースは、手順とツールの整合確認が終わるまで再開しない。
+mainへの統合はSTEP 1〜3の別途リリース判断に従う。CI運用改善だけでは再リリースしない。正式自動化の権限は必要最小限とし、失敗したテストを回避するための例外には使わない。ブランチ保護導入後に直接pushが拒否される旧リリースツールは、保護を解除せず実行を停止し、同じソースのPR・CI確認経路を整えてから利用する。リリースマシンは保護されたPR経路を使用する。CI成功・Create a merge commitでマージ・統合後CI成功が揃うまで提出準備完了にしない。
 
 ### 作業フォルダーの数と終了時の片付け
 
@@ -96,67 +96,30 @@ CURRENT.mdへ各ワークツリーの目的・現在地・削除条件を記録�
 
 | 表記 | 実施場所・役割 |
 |---|---|
-| このPC | ローカル`develop`で通常開発し、正式リリース時は確認済みの同じコミットをローカル`main`へ反映する。ローカル`main`からTauri本番実行ファイルとMSIXを作成・確認し、Store提出物を`Documents\俺の付箋-Store提出\<バージョン>\`へ保存する |
+| このPC | ローカル`develop`で通常開発し、正式リリース時は確認済みの同じコミットから正式リリース候補ブランチを用意する。そのブランチからTauri本番実行ファイルとMSIXを作成・確認し、Store提出物を`Documents\俺の付箋-Store提出\<バージョン>\`へ保存する |
 | GitHub develop | 確認対象ソースを保管し、Vercel Previewへのデプロイ元になる。アプリを実行する場所ではない |
 | Vercel Preview | GitHub developの内容を公開するiPhone PWAの確認環境 |
 | iPhone | Vercel PreviewからインストールしたPWA、通知、PCとの送受信を実機確認する |
-| GitHub main | `origin/main`。このPCでMSIX確認に合格したローカル`main`と同じコミットを保管する。GitHub上ではMSIXを再ビルドしない |
+| GitHub main | `origin/main`。実機合格した候補と同じtreeをPR経由で保管する。CI用MSIXの検証は行うが、そのexeをStore提出物へ置き換えない |
 | Partner Center | 完成したStore用MSIXをアップロードしてMicrosoft Storeへ申請する |
 
 ### ローカルとGitHubの位置関係
 
 ```mermaid
 flowchart LR
-    subgraph PC["このPC<br/>D:\\Users\\uck\\Documents\\curry-project\\ore-no-fusen"]
-        LD["ローカル develop<br/>STEP 0の開発・確認"]
-        VC["候補バージョンを設定<br/>確認済みコミット"]
-        LM["ローカル main<br/>正式リリース候補"]
-        EXE["本番exeを1回作成"]
-        DEV["開発署名MSIX<br/>インストール・実機確認"]
-        STORE["Store用MSIX<br/>同じexeを再利用"]
-        FILE["固定保存先<br/>Documents\\俺の付箋-Store提出\\&lt;版&gt;"]
-        OK["STEP 2合格<br/>ソースとMSIXを確定"]
-
-        LD --> VC
-        VC -->|同じコミットを反映| LM
-        LM --> EXE --> DEV
-        DEV -->|合格| STORE --> FILE --> OK
-        DEV -->|コード不具合| LD
-    end
-
-    subgraph GH["GitHub<br/>ore-no-fusen/ore-no-fusen"]
-        OD["origin/develop<br/>開発済みソース・Preview起点"]
-        OM["origin/main<br/>正式版ソースの保管"]
-        NO["MSIXは作らない<br/>再ビルドしない"]
-    end
-
-    subgraph MS["Microsoft"]
-        PARTNER["Partner Center<br/>Store用MSIXをアップロード"]
-        PUBLIC["Microsoft Store<br/>審査・公開"]
-    end
-
-    LD -->|通常開発完了時にpush| OD
-    OK -->|ローカルmainの<br/>同じコミットをpush| OM
-    OK -->|正式版コミットを反映| OD
-    OM -. 保管だけ .-> NO
-    OK --> PARTNER --> PUBLIC
-
-    style LD fill:#e8f4ff,stroke:#1976d2,color:#111
-    style VC fill:#e8f4ff,stroke:#1976d2,color:#111
-    style LM fill:#fff8e1,stroke:#f57c00,color:#111
-    style EXE fill:#fff8e1,stroke:#f57c00,color:#111
-    style DEV fill:#fff8e1,stroke:#f57c00,color:#111
-    style STORE fill:#e8f5e9,stroke:#388e3c,color:#111
-    style FILE fill:#e8f5e9,stroke:#388e3c,color:#111
-    style OK fill:#e8f5e9,stroke:#388e3c,color:#111
-    style OD fill:#f3e5f5,stroke:#7b1fa2,color:#111
-    style OM fill:#f3e5f5,stroke:#7b1fa2,color:#111
-    style NO fill:#ffebee,stroke:#c62828,color:#111
-    style PARTNER fill:#f3e5f5,stroke:#7b1fa2,color:#111
-    style PUBLIC fill:#f3e5f5,stroke:#7b1fa2,color:#111
+    A["独立ブランチで版番号更新"] --> B["develop PR・全CI成功・統合"]
+    B --> C["統合後CI・Preview確認"]
+    C --> D["このPCの正式リリース候補ブランチ"]
+    D --> E["exeを1回ビルド・Dev MSIX実機確認"]
+    E --> F["同じexeでStore MSIX作成・保存"]
+    F --> G["main PR・全CI成功・Create a merge commitでマージ"]
+    G --> H["統合後CI・候補tree一致"]
+    H --> I["mainからdevelopへの同期PR・CI・Create a merge commitでマージ"]
+    I --> J["同期後CI・tree一致・ローカル復帰"]
+    J --> K["Partner Center提出・公開確認"]
 ```
 
-*MSIXを作る場所はこのPCのローカル`main`。GitHubの`origin/main`は、合格した同じコミットを保管する場所であり、MSIXの作成場所ではない。*
+*Store提出exeはこのPCの合格済み成果物を保持する。GitHubのCI用ビルドと提出物を混同しない。main/developへの直接pushは行わない。*
 
 ### Codexの役割分担
 
@@ -200,11 +163,11 @@ flowchart TD
     A["STEP 0-1・このPC<br/>原因調査・最小修正<br/>時間を計測"]
     B["STEP 0-2・このPC<br/>対象テスト<br/>予想 10〜60秒"]
     C["STEP 0-3<br/>このPCでPC機能確認<br/>iPhoneはVercel PreviewでPWA確認"]
-    D["STEP 1-1・このPC<br/>候補バージョン設定<br/>予想 1〜5秒"]
+    D["STEP 1-1・このPC<br/>PR統合済み版番号・CIを確認"]
     E["STEP 1-2・このPC<br/>本番実行ファイル作成<br/>予想 300〜900秒・要実測"]
     F["STEP 1-3〜1-4・このPC<br/>開発署名MSIX作成・インストール<br/>予想 16〜36秒"]
     G["STEP 1-5・このPC<br/>MSIX実機確認<br/>予想 60〜180秒"]
-    H["STEP 2・このPC→GitHub<br/>同一実行ファイルからStore用MSIX<br/>ソース・版数をmain/developへpush"]
+    H["STEP 2・このPC→GitHub<br/>同一実行ファイルからStore用MSIX<br/>PR・全CI成功後にmain統合・develop同期"]
     I["STEP 3・Codex＋Partner Center<br/>Store用MSIXを提出"]
 
     A --> B
@@ -231,18 +194,16 @@ flowchart TD
 
 ## STEP 0：原因調査・修正
 
-1. **STEP 0-1**：このPCの最新`develop`からローカル作業ブランチを作り、そのブランチで原因を特定して最小範囲だけ修正する。作業ブランチはGitHubへpushせず、調査開始から修正完了までを計測する。
-2. **STEP 0-2**：対象テストだけを実行する。予想は10〜60秒。失敗したらSTEP 0-1へ戻り、新しい試行として時間を記録する。
-3. **STEP 0-3**：PC機能はこのPCの開発環境で確認する。確認後、このPCで作業ブランチを`develop`へ統合し、`develop`だけをGitHubへpushする。iPhone PWAは、その`develop`からデプロイされたVercel PreviewをiPhoneで開いて確認する。予想は30〜120秒。失敗したらこのPCの最新`develop`から新しいローカル修正ブランチを作り、STEP 0-1へ戻る。
-4. 設計仕様（`docs-v2/`）と必要な手順書を更新する。
+1. **STEP 0-1**：最新developから独立ブランチ・日本語名ワークツリーで最小修正を行う。必要ならmain→develop同期PRを先に作成し、全CI成功・統合後CI成功を確認する。
+2. **STEP 0-2**：対象テスト・型検査を行い、develop宛てPRを作成する。全適用対象CI成功・最新SHA・マージ可能状態を確認して統合する。
+3. **STEP 0-3**：統合後CIを確認し、PC機能は既存開発環境、PWAはdevelopのVercel PreviewとiPhoneで確認する。失敗は独立ブランチ・PRで修正する。
+4. 版番号更新も独立ブランチで下記固定コマンドを実行し、同じPR/CI経路でdevelopへ統合する。仕様・手順を更新する。通常開発はここで完了し、正式リリース依頼があるときだけSTEP 1へ進む。
 
-修正途中ではMSIXを作らない。通常開発はこのPCの作業ブランチをローカル`develop`へ統合し、`develop`だけをpushした後、変更対象に必要なCIとPreview確認が成功した時点で完了する。リモート機能ブランチとPull Requestは明示依頼時だけ使用し、STEP 0ではMSIX CIを調査・修正しない。正式リリースを行う場合だけSTEP 1へ進む。
+## STEP 1：このPCの正式リリース候補でMSIXを作成・実機確認
 
-## STEP 1：このPCのローカルmainでMSIXを作成・実機確認
+STEP 0で版番号を含めてPR統合・CI確認済みの最新developを、`codex/release-v<版>-<実行ID末尾>`の専用ワークツリーへ開く。mainと基本フォルダーのソースは変更しない。origin/mainが候補の祖先でなければ、STEP 0の同期PRからやり直す。
 
-STEP 0で確認済みのローカル`develop`へ候補バージョンを設定し、その同じコミットをこのPCのローカル`main`へ反映して`main`をチェックアウトする。GitHubの`origin/main`はまだ更新しない。以降の本番実行ファイルとMSIXは、このローカル`main`から作る。
-
-1. **STEP 1-1**：リリース候補バージョンを先に設定する。予想は1〜5秒。
+1. **STEP 1-1**：版番号5ファイル・最新develop・統合後CI成功を検査して候補を固定する。
 2. **STEP 1-2**：このPCで本番実行ファイルを1回作成する。現時点の予想は300〜900秒であり、実測値を必ず記録する。
 3. **STEP 1-3**：STEP 1-2の実行ファイルから開発署名MSIXを作成する。梱包・署名の実測目安は約6秒。
 4. **STEP 1-4**：MSIXをインストールして起動する。予想は10〜30秒。
@@ -254,7 +215,7 @@ MSIX固有の修正は、アプリを終了してからこのPCで次を実行�
 .\packaging\msix\test-msix.ps1
 ```
 
-STEP 1-1の版番号設定は、このPCで次を実行する。5ファイルを一括更新し、現在以下の版番号や不正な形式を拒否する。
+STEP 0の版番号更新PRでは、独立ブランチ上で次を実行する。5ファイルを一括更新し、現在以下の版番号や不正な形式を拒否する。
 
 ```powershell
 node scripts/set-release-version.mjs <X.Y.Z>
@@ -278,14 +239,14 @@ STEP 1-5で失敗した場合は、原因により戻り先を分ける。
 | STEP 0-2 | このPC | 対象テスト | 10〜60秒 | 次回以降に実測更新する |
 | STEP 0-3 | このPC | PC機能を開発環境で確認 | 30〜120秒 | 操作時間を含む |
 | STEP 0-3 | Vercel Preview＋iPhone | iPhone PWA、通知、PCとの送受信を確認 | 操作による | GitHub developのデプロイ完了後に行う |
-| STEP 1-1 | このPC | 候補バージョン設定 | 1〜5秒 | 次回以降に実測更新する |
+| STEP 1-1 | このPC | 検証済み版番号・CI・候補を確認 | 状況による | CI待ちを別記する |
 | STEP 1-2 | このPC | 本番実行ファイル作成 | 300〜900秒 | 未計測。最優先で実測する |
 | STEP 1-3 | このPC | 開発署名MSIX作成 | 約6秒 | MSIX梱包の実測値 |
 | STEP 1-4 | このPC | インストール・起動 | 10〜30秒 | 次回以降に実測更新する |
 | STEP 1-5 | このPC | MSIX実機確認 | 60〜180秒 | 操作時間を含む |
 | STEP 2-1 | このPC | Store用MSIX作成 | 約6秒 | 同じ実行ファイルを再利用する |
 | STEP 2-2 | このPC | Store用形式確認 | 約2秒 | 5項目の形式確認 |
-| STEP 2-3 | このPC→GitHub main/develop | 同じソースと版数をpush | 約28秒 | 5.1.3での実測値 |
+| STEP 2-3 | GitHub main/develop | PR統合・同期・統合後CI・tree照合 | CI待ちによる | 旧push時間を流用しない |
 | STEP 3 | Partner Center | Store用MSIXをアップロード・申請 | 通信・審査による | Microsoft側の処理時間を含む |
 
 ### 実測時間の記録
@@ -317,7 +278,7 @@ STEP 1-5で失敗した場合は、原因により戻り先を分ける。
 
 ### アプリ本体に影響しない変更
 
-LP、README、`docs/`だけの変更も、まず`develop`で確認する。確認後は **Do Non-App Release** で`main`へ反映する。StoreリリースのSTEP 1〜3は不要である。
+LP、README、`docs/`だけの変更も、まず`develop`で確認する。確認後はmain宛てPRを作り、全CI成功後に統合する。旧Do Non-App Releaseの直接push方式は使わない。StoreリリースのSTEP 1〜3は不要である。
 
 ## STEP 2：合格した実行ファイルからStore提出用MSIXを作る
 
@@ -325,13 +286,13 @@ STEP 1-5で合格した実行ファイルを、そのままStore提出用MSIXへ
 
 1. **STEP 2-1**：STEP 1-2の実行ファイルから、Store用ID・未署名のMSIXを作る。予想は約6秒。
 2. **STEP 2-2**：名前、発行者、バージョン、x64、未署名の5項目を確認する。予想は約2秒。
-3. **STEP 2-3**：実機確認した実行ファイルに対応する同じソースと版数を`main`と`develop`へ反映する。予想は約28秒。
+3. **STEP 2-3**：リリース作業ブランチ→mainのPRを全CI成功後にCreate a merge commitでマージする。統合後CIと候補tree一致を確認し、main→develop同期PRも全CI成功後にCreate a merge commitでマージする。同期後CI・tree一致を確認し、基本フォルダーdevelopをfast-forwardする。PR待ちではツールを再実行してもMSIXは作り直さない。
 
 STEP 2の自動化は、次の条件をすべて満たすこと。
 
 - STEP 1-5で合格した実行ファイルとStore提出物の実行ファイルが同一である。
 - STEP 2ではNext.js・Rust・Tauri実行ファイルを再ビルドしない。
-- STEP 0とSTEP 1で済んだテストを繰り返さない。
+- 合格済みStore提出exeを再ビルドしない。GitHubのPR・統合後CIは省略しない。
 - 各工程の開始・終了・秒数を実測時間表へ記録する。
 
 版番号は次の5ファイルへ自動反映される。手で変更しない。
@@ -418,3 +379,6 @@ GitHub Release `v5.0.0` の`latest.json`、MSI、NSIS、署名ファイルは、
 
 提出準備完了後は版番号を完了した版に固定し、①②のボタンを「完了」表示で無効にする。画面を開き直しても同じ完了状態を表示し、次の操作がMicrosoft Store（Partner Center）への提出であることを案内する。
 
+
+### 2026-10-25 保護されたリリース経路
+main/developの直接pushを廃止し、版番号PR・リリースPR・同期PRの各CIと候補tree照合を必須化した。リリースマシンの①は検証済み候補の作成、②はStore MSIX保全とPR確認・再開を担当する。Ver.6.0の再リリースは行わない。

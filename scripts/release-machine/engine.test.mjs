@@ -9,12 +9,13 @@ import http from 'node:http';
 import { ReleaseMachine, validateVersion, hashFile, directoryHashes, atomicJSON } from './engine.mjs';
 import { createRunner } from './runner.mjs';
 import { createServer, acquireLock } from './server.mjs';
+import { assertChecks } from './github.mjs';
 import { checkStagedVersionCommit } from './check-version-commit.mjs';
 
 const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-async function fixture(t) {
+async function fixture(t, { prepared = true } = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'release-machine-test-'));
-  const root = path.join(folder, 'basic folder'); fs.mkdirSync(root);
+  let root = path.join(folder, 'basic folder'); fs.mkdirSync(root); root=fs.realpathSync.native(root);
   // All Git writes and pushes in these tests target this disposable fixture.
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] }).trim();
   git('init', '-b', 'main'); git('config','user.name','Release Machine Test'); git('config','user.email','test@example.invalid'); git('config','core.hooksPath',path.join(root,'.fixture-hooks'));
@@ -36,14 +37,41 @@ async function fixture(t) {
   for (const [file,text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(root,file)),{recursive:true});fs.writeFileSync(path.join(root,file),text); }
   git('add','--',...Object.keys(files));git('commit','-m','fixture');git('checkout','-b','develop');
   const remote=path.join(folder,'remote.git');execFileSync('git',['init','--bare',remote],{stdio:'ignore'});git('remote','add','origin',remote);git('push','origin','main','develop');
+  if (prepared) { execFileSync(process.execPath,['scripts/set-release-version.mjs','5.6.2'],{cwd:root});git('add','--',...['package.json','package-lock.json','src-tauri/Cargo.toml','src-tauri/Cargo.lock','packaging/msix/AppxManifest.xml']);git('commit','-m','version via PR fixture');git('push','origin','develop'); }
   fs.mkdirSync(path.join(root,'node_modules'));
-  const config={ history:[], fail:null, installed:null, buildCount:0, pushCount:0 };
+  const config={ history:[], fail:null, installed:null, buildCount:0, pushCount:0, prs:[], waitPR:false };
   const real=createRunner();
   const runner=async(file,args,options)=>{
     const effectiveArgs=file==='git'&&args[0]==='-c'&&args[1].startsWith('safe.directory=')?args.slice(2):args;
     if(process.env.RELEASE_MACHINE_TEST_TRACE)console.error('TEST command',file,args);
     config.history.push({file,args,cwd:options.cwd});
     if(config.fail?.(file,effectiveArgs,options))throw new Error('injected failure');
+    if (file === 'git' && effectiveArgs.slice(-3).join(' ') === 'remote get-url origin') return 'https://github.com/ore-no-fusen/ore-no-fusen.git';
+    if (file === 'gh') {
+      const option = name => args[args.indexOf(name)+1];
+      if (args[0] === 'api') {
+        const route=args[1];
+        if (route.includes('/check-runs?')) return JSON.stringify({total_count:1,check_runs:[{name:'CI gate',app:{id:15368},status:'completed',conclusion:'success'}]});
+        if (route.includes('/status?')) return JSON.stringify({total_count:0,statuses:[]});
+        if (route.includes('/actions/runs?')) return JSON.stringify({total_count:1,workflow_runs:[{name:'Test',head_sha:new URL('https://fixture/'+route).searchParams.get('head_sha'),status:'completed',conclusion:'success'}]});
+        if (route.includes('/pulls/')) return JSON.stringify(config.prs[Number(route.split('/').at(-1))-1]);
+        throw Error('unexpected API '+route);
+      }
+      if (args[1] === 'list') return JSON.stringify(config.prs.filter(p=>p.head.ref===option('--head')&&p.base.ref===option('--base')).map(p=>({number:p.number,url:p.html_url,headRefOid:p.head.sha})));
+      if (args[1] === 'create') {
+        const head=option('--head'),base=option('--base'),headSha=git('ls-remote','origin',`refs/heads/${head}`).split(/\s/)[0];
+        const pr={number:config.prs.length+1,head:{ref:head,sha:headSha},base:{ref:base},state:'open',merged:false,html_url:`https://github.com/ore-no-fusen/ore-no-fusen/pull/${config.prs.length+1}`};
+        config.prs.push(pr);
+        if (!config.waitPR) {
+          const clone=path.join(folder,`github-${pr.number}`);execFileSync('git',['clone',remote,clone],{stdio:'ignore'});
+          const ghgit=(...a)=>execFileSync('git',a,{cwd:clone,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+          ghgit('config','user.name','GitHub fixture');ghgit('config','user.email','fixture@example.invalid');ghgit('checkout',base);ghgit('merge','--no-ff',`origin/${head}`,'-m','PR merge');ghgit('push','origin',base);
+          pr.merge_commit_sha=ghgit('rev-parse','HEAD');pr.merged=true;pr.state='closed';
+        }
+        return pr.html_url;
+      }
+      throw Error('unexpected gh command');
+    }
     if(file!=='powershell.exe') {if(file==='git'&&effectiveArgs[0]==='push')config.pushCount++;return real(file,args,options);}
     const value=flag=>args[args.indexOf(flag)+1];
     const write=(file,data)=>{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,data);};
@@ -81,17 +109,18 @@ test('success uses preserved binary even when shared target changes; two branche
   await packageRelease(f.machine);assert.equal(f.machine.state.status,'complete');assert.equal(f.config.buildCount,1);
   const storeBuild=f.config.history.find(h=>h.args.some(s=>s.endsWith('build-msix.ps1')));
   assert.ok(!storeBuild.args.includes('-DevPackageVersion'));
-  assert.equal(f.git('ls-remote','origin','refs/heads/main').split(/\s/)[0],f.machine.state.candidate);
+  assert.equal(f.git('ls-remote','origin','refs/heads/main').split(/\s/)[0],f.machine.state.releaseMain);
+  assert.equal(f.config.history.some(h=>h.file==='git'&&h.args.includes('push')&&h.args.some(a=>/refs\/heads\/(main|develop)$/.test(a))),false);
   assert.equal(hashFile(f.machine.state.destination),f.machine.state.storeHash);
   const before=f.machine.state.status;assert.throws(()=>packageRelease(f.machine),/既に完了/);assert.equal(f.machine.state.status,before);
 });
 test('dirty and staged/untracked changes block before changing any version; logs do not swallow leading status spaces',async t=>{
   const f=await fixture(t);fs.writeFileSync(path.join(f.root,'unrelated.txt'),'keep');await prepare(f.machine);
-  assert.equal(f.machine.state.status,'failed');assert.match(f.machine.state.error,/unrelated.txt/);assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'package.json'))).version,'5.6.1');assert.equal(f.config.buildCount,0);
+  assert.equal(f.machine.state.status,'failed');assert.match(f.machine.state.error,/unrelated.txt/);assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'package.json'))).version,'5.6.2');assert.equal(f.config.buildCount,0);
 });
 test('wrong branch and diverged main block before version mutation',async t=>{
-  const f=await fixture(t);f.git('checkout','main');fs.writeFileSync(path.join(f.root,'main-only.txt'),'main');f.git('add','main-only.txt');f.git('commit','-m','diverge');f.git('checkout','develop');
-  await prepare(f.machine);assert.match(f.machine.state.error,/分岐/);assert.equal(f.config.buildCount,0);
+  const f=await fixture(t);f.git('checkout','main');fs.writeFileSync(path.join(f.root,'main-only.txt'),'main');f.git('add','main-only.txt');f.git('commit','-m','diverge');f.git('push','origin','main');f.git('checkout','develop');
+  await prepare(f.machine);assert.match(f.machine.state.error,/同期/);assert.equal(f.config.buildCount,0);
 });
 test('double click is rejected synchronously',async t=>{
   const f=await fixture(t);const job=prepare(f.machine);assert.throws(()=>prepare(f.machine),/二重/);await job;assert.equal(f.config.buildCount,1);
@@ -100,21 +129,14 @@ test('build failure resumes without an additional version commit',async t=>{
   const f=await fixture(t);f.config.fail=(_,args)=>args.includes('Build');await prepare(f.machine);assert.equal(f.machine.state.status,'failed');const commit=f.git('rev-parse','HEAD');
   f.config.fail=null;await prepare(f.machine);assert.equal(f.machine.state.status,'confirm');assert.equal(f.git('rev-parse','HEAD'),commit);
 });
-test('commit failure can resume with its own staged version files',async t=>{
-  const f=await fixture(t);f.config.fail=(file,args)=>file==='git'&&args[0]==='commit';await prepare(f.machine);assert.equal(f.machine.state.steps.commit.status,'failed');
-  f.config.fail=null;await prepare(f.machine);assert.equal(f.machine.state.status,'confirm');
-});
-test('interrupted commit result is recognized and persisted state resumes after server restart',async t=>{
-  const f=await fixture(t);await prepare(f.machine);
-  f.machine.state.status='running';f.machine.state.steps.commit.status='running';delete f.machine.state.candidate;
-  delete f.machine.state.steps.main;delete f.machine.state.steps.build;delete f.machine.state.steps.dev;delete f.machine.state.steps.install;f.machine.save();
-  const restored=new ReleaseMachine(f.options);assert.equal(restored.state.status,'failed');await prepare(restored);assert.equal(restored.state.status,'confirm');
+test('version must already be merged and tested; no local version commit',async t=>{
+  const f=await fixture(t,{prepared:false});await prepare(f.machine);assert.equal(f.machine.state.status,'failed');assert.match(f.machine.state.error,/版番号/);assert.equal(f.config.buildCount,0);assert.equal(f.git('status','--porcelain'),'');
 });
 test('public version comes from origin/main and an already-bumped target uses the current develop commit',async t=>{
-  const f=await fixture(t);
+  const f=await fixture(t,{prepared:false});
   execFileSync(process.execPath,['scripts/set-release-version.mjs','5.6.2'],{cwd:f.root});
   f.git('add','--',...['package.json','package-lock.json','src-tauri/Cargo.toml','src-tauri/Cargo.lock','packaging/msix/AppxManifest.xml']);
-  f.git('commit','-m','release candidate already prepared');
+  f.git('commit','-m','release candidate already prepared');f.git('push','origin','develop');
   const candidate=await f.machine.head();
   assert.equal((await f.machine.inspect()).version,'5.6.1');
   await f.machine.start('prepare',{version:'5.6.2'});
@@ -135,12 +157,12 @@ test('a different file at fixed destination is retained; no push',async t=>{
   const f=await fixture(t);await prepare(f.machine);const out=path.join(f.options.submissionRoot,'5.6.2','ore-no-fusen.msix');fs.mkdirSync(path.dirname(out),{recursive:true});fs.writeFileSync(out,'existing');await packageRelease(f.machine);
   assert.match(f.machine.state.error,/上書き/);assert.equal(fs.readFileSync(out,'utf8'),'existing');assert.equal(f.config.pushCount,0);
 });
-test('partial push retry skips packaging and already successful main push',async t=>{
-  const f=await fixture(t);await prepare(f.machine);f.config.fail=(file,args)=>file==='git'&&args[0]==='push'&&args.some(s=>s.endsWith(':refs/heads/develop'));await packageRelease(f.machine);
-  assert.equal(f.machine.state.steps['push-main'].status,'done');assert.equal(f.machine.state.status,'failed');
+test('pending PR stops safely; retry reuses package and PR',async t=>{
+  const f=await fixture(t);await prepare(f.machine);f.config.waitPR=true;await packageRelease(f.machine);
+  assert.equal(f.machine.state.status,'failed');assert.match(f.machine.state.error,/PR確認待ち/);assert.equal(f.config.prs.length,1);
   const packs=f.config.history.filter(h=>h.args.some(s=>s.endsWith('build-msix.ps1'))).length;
-  f.config.fail=null;const restored=new ReleaseMachine(f.options);await packageRelease(restored);assert.equal(restored.state.status,'complete');assert.equal(f.config.pushCount,2);
-  assert.equal(f.config.history.filter(h=>h.args.some(s=>s.endsWith('build-msix.ps1'))).length,packs);
+  await packageRelease(f.machine);assert.equal(f.config.prs.length,1);assert.equal(f.config.history.filter(h=>h.args.some(s=>s.endsWith('build-msix.ps1'))).length,packs);
+  assert.equal(f.config.history.some(h=>h.file==='git'&&h.args.includes('push')&&h.args.some(a=>/refs\/heads\/(main|develop)$/.test(a))),false);
 });
 test('validation failure never reaches fixed save or push',async t=>{
   const f=await fixture(t);await prepare(f.machine);f.config.fail=(_,args)=>args.some(s=>s.endsWith('validate-msix.ps1'));await packageRelease(f.machine);
@@ -168,7 +190,7 @@ test('singleton server lock refuses a second live owner',t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rm-lock-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));const file=path.join(dir,'lock');const first=acquireLock(file,{pid:process.pid,token:'a'});const second=acquireLock(file,{pid:process.pid,token:'b'});assert.equal(second.existing.token,'a');first.release();assert.equal(fs.existsSync(file),false);
 });
 test('version-only hook accepts updater output and rejects staged code changes',async t=>{
-  const f=await fixture(t);execFileSync(process.execPath,['scripts/set-release-version.mjs','5.6.2'],{cwd:f.root});
+  const f=await fixture(t,{prepared:false});execFileSync(process.execPath,['scripts/set-release-version.mjs','5.6.2'],{cwd:f.root});
   const files=['package.json','package-lock.json','src-tauri/Cargo.toml','src-tauri/Cargo.lock','packaging/msix/AppxManifest.xml'];f.git('add','--',...files);
   assert.doesNotThrow(()=>checkStagedVersionCommit(f.root));
   fs.appendFileSync(path.join(f.root,'src-tauri/Cargo.toml'),'\n# unrelated change\n');f.git('add','src-tauri/Cargo.toml');assert.throws(()=>checkStagedVersionCommit(f.root),/版番号以外/);
@@ -186,4 +208,31 @@ test('inspection does not refresh the Git index while a release commit is pendin
   fs.utimesSync(file, later, later);
   assert.deepEqual(await f.machine.changes(), []);
   assert.deepEqual(fs.readFileSync(index), before);
+});
+
+test('CI policy rejects missing, failed, cancelled, pending, wrong-app gates and failed statuses',()=>{
+ const ok={name:'CI gate',app:{id:15368},status:'completed',conclusion:'success'};
+ assert.doesNotThrow(()=>assertChecks([ok,{name:'MSIX',status:'completed',conclusion:'skipped'}]));
+ for(const checks of [[],[{...ok,app:{id:1}}],[{...ok,conclusion:'failure'}],[{...ok,conclusion:'cancelled'}],[{...ok,status:'in_progress'}],[ok,{name:'test',status:'completed',conclusion:'failure'}]])assert.throws(()=>assertChecks(checks));
+ assert.throws(()=>assertChecks([ok],[{state:'pending'}]));
+});
+
+test('missing integration CI stops before any build or source mutation',async t=>{
+ const f=await fixture(t);f.machine.github.assertCommitChecks=async()=>{throw Error('CI gate missing')};const head=await f.machine.head();await prepare(f.machine);assert.match(f.machine.state.error,/CI gate/);assert.equal(await f.machine.head(),head);assert.equal(f.config.buildCount,0);assert.equal(f.git('status','--porcelain'),'');
+});
+test('legacy release state cannot fall back to protected branch pushes',async t=>{
+ const f=await fixture(t);await prepare(f.machine);delete f.machine.state.protocol;await packageRelease(f.machine);assert.equal(f.machine.state.status,'failed');assert.match(f.machine.state.error,/旧直接push/);assert.equal(f.config.pushCount,0);
+});
+test('merged PR with different source never completes or starts develop synchronization',async t=>{
+ const f=await fixture(t);await prepare(f.machine);f.config.waitPR=true;await packageRelease(f.machine);const pr=f.config.prs[0];
+ pr.merged=true;pr.state='closed';pr.merge_commit_sha=f.git('rev-parse','origin/main');
+ await packageRelease(f.machine);assert.equal(f.machine.state.status,'failed');assert.match(f.machine.state.error,/ソース/);assert.equal(f.config.prs.length,1);assert.equal(f.config.buildCount,1);
+});
+
+test('primary checkout alias resolves to the same directory without accepting a worktree',async t=>{
+ const f=await fixture(t);const alias=path.join(f.folder,'root-alias');fs.symlinkSync(f.root,alias,'junction');
+ try {const m=new ReleaseMachine({...f.options,root:alias});assert.equal(m.root,fs.realpathSync.native(f.root));await prepare(m);assert.equal(m.state.status,'confirm',m.state.error);} finally {fs.rmdirSync(alias);}
+});
+test('a genuine temporary worktree remains forbidden',async t=>{
+ const f=await fixture(t);f.git('checkout','main');const other=path.join(f.folder,'separate-checkout');f.git('worktree','add',other,'develop');const m=new ReleaseMachine({...f.options,root:other});await prepare(m);assert.equal(m.state.status,'failed');assert.match(m.state.error,/一時ワークツリー/);assert.equal(f.config.buildCount,0);
 });

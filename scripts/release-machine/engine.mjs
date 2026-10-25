@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { updateReleaseVersionTexts } from '../set-release-version.mjs';
+import { ReleaseGitHub } from './github.mjs';
 
 export const VERSION_FILES = ['package.json', 'package-lock.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock', 'packaging/msix/AppxManifest.xml'];
 const VERSION_KEYS = ['packageJson', 'packageLock', 'cargoToml', 'cargoLock', 'manifest'];
@@ -46,9 +47,10 @@ export function copyTree(source, destination) {
 
 export class ReleaseMachine {
   constructor({ root, dataDir = path.join(root, 'my/release-machine'), submissionRoot, runner, platform = process.platform }) {
-    this.root = path.resolve(root); this.dataDir = dataDir;
+    this.root = fs.realpathSync.native(path.resolve(root)); this.dataDir = dataDir;
     this.submissionRoot = submissionRoot ?? 'D:\\Users\\uck\\Documents\\俺の付箋-Store提出';
     this.runner = runner; this.platform = platform; this.busy = false;
+    this.github = new ReleaseGitHub(this);
     this.stateFile = path.join(dataDir, 'active.json'); fs.mkdirSync(dataDir, { recursive: true });
     this.state = fs.existsSync(this.stateFile) ? readJSON(this.stateFile) : { status: 'idle', steps: {} };
     if (this.state.status === 'running') {
@@ -108,25 +110,22 @@ export class ReleaseMachine {
   windows(action, args = [], env) { return this.ps(path.join(this.root, 'scripts/release-machine/windows.ps1'), ['-Action', action, ...args], this.root, env); }
   async inspect() {
     const result = { root: this.root, version: await this.releasedVersion(), branch: await this.branch(), changes: await this.changes(), state: this.state, busy: this.busy, dataDir: this.dataDir, platform: this.platform };
-    result.mainRoot = await this.findMain();
+    result.mainRoot = this.state.mainRoot ?? await this.findMain();
     result.mainChanges = result.mainRoot ? await this.changes(result.mainRoot) : [];
     result.log = this.state.id && fs.existsSync(path.join(this.runDir, 'commands.log')) ? fs.readFileSync(path.join(this.runDir, 'commands.log'), 'utf8').slice(-80000) : '';
     return result;
   }
-  async guards({ allowVersionChanges = false, appClosed = false } = {}) {
+  async guards({ appClosed = false } = {}) {
     if (this.platform !== 'win32') throw new Error('Windows上で実行してください。');
     if (await this.branch() !== 'develop') throw new Error('基本フォルダーのdevelopから起動してください。');
     const common = await this.git(['rev-parse', '--path-format=absolute', '--git-common-dir'], this.root, false);
-    if (path.resolve(path.dirname(common)).toLowerCase() !== this.root.toLowerCase()) throw new Error('一時ワークツリーからは実行できません。基本フォルダーで起動してください。');
+    if (fs.realpathSync.native(path.dirname(common)).toLowerCase() !== this.root.toLowerCase()) throw new Error('一時ワークツリーからは実行できません。基本フォルダーで起動してください。');
     const changes = await this.changes();
-    if (changes.some(file => !allowVersionChanges || !VERSION_FILES.includes(file))) throw new Error(`未保存変更があります: ${changes.join(', ')}`);
+    if (changes.length) throw new Error(`未保存変更があります: ${changes.join(', ')}`);
     const main = await this.findMain();
     if (main) {
       await this.clean(main);
-      if (this.state.mainRoot && path.resolve(main) !== path.resolve(this.state.mainRoot)) throw new Error('正式リリースの作業場所が変わりました。ログを確認してください。');
     }
-    try { await this.git(['merge-base', '--is-ancestor', 'main', 'develop'], this.root, false); }
-    catch { throw new Error('mainとdevelopが分岐しています。fast-forwardできないため停止しました。手動で確認してください。'); }
     if (this.state.childPid) {
       try { process.kill(this.state.childPid, 0); throw new Error(`前回の子プロセス (${this.state.childPid}) が残っています。終了を確認してください。`); }
       catch (error) { if (error.code !== 'ESRCH') throw error; }
@@ -172,70 +171,34 @@ export class ReleaseMachine {
     const continuing = this.state.id && this.state.status !== 'complete';
     if (continuing && version !== this.state.version) throw new Error('途中のリリースがあります。同じ版番号で再開してください。取り消す場合は手動復旧手順を確認してください。');
     if (!continuing) {
+      await this.git(['fetch', 'origin']);
       const current = await this.releasedVersion(); validateVersion(version, current);
       // Complete all read-only guards before recording a new attempt or modifying Git.
       await this.guards({ appClosed: true });
       const base = await this.head();
+      if (base !== await this.git(['rev-parse', 'origin/develop'])) throw new Error('developを最新のorigin/developへfast-forwardしてから開始してください。');
+      try { await this.git(['merge-base', '--is-ancestor', 'origin/main', base]); }
+      catch { throw new Error('mainの更新をPR経由でdevelopへ同期し、CI成功後に開始してください。'); }
+      const texts = VERSION_FILES.map(file => fs.readFileSync(path.join(this.root, file), 'utf8'));
+      if (JSON.parse(texts[0]).version !== version) throw new Error('版番号は独立ブランチで更新し、develop宛てPRのCI成功・統合後に開始してください。');
+      const files = Object.fromEntries(VERSION_KEYS.map((key, i) => [key, texts[i]]));
+      updateReleaseVersionTexts(files, version, `${Number(version.split('.')[0]) + 1}.0.0`);
+      await this.github.assertCommitChecks(base);
       const staged = await this.git(['diff', '--cached', '--name-only'], this.root, false); if (staged) throw new Error('ステージ済み変更があります。');
       this.state = { id: `${new Date().toISOString().replaceAll(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`, version, base, status: 'running', operation: 'prepare', steps: {} }; this.save();
-    } else { await this.guards({ allowVersionChanges: this.state.steps.commit?.status !== 'done', appClosed: true }); }
+    } else { await this.guards({ appClosed: true }); }
     this.state.status = 'running'; this.state.operation = 'prepare'; this.state.error = null; this.save();
-    await this.step('version', 'STEP 1-1 版番号設定', async () => {
-      if (!this.state.versionTexts) {
-        if (await this.head() !== this.state.base) throw new Error('開始時のdevelopコミットから変わっています。');
-        await this.clean();
-        const texts = VERSION_FILES.map(file => fs.readFileSync(path.join(this.root, file), 'utf8'));
-        const files = Object.fromEntries(VERSION_KEYS.map((key, i) => [key, texts[i]]));
-        const currentSourceVersion = JSON.parse(texts[0]).version;
-        const updated = currentSourceVersion === version ? files : updateReleaseVersionTexts(files, currentSourceVersion, version);
-        this.state.versionTexts = VERSION_FILES.map((file, i) => ({ file, before: texts[i], after: updated[VERSION_KEYS[i]] })); this.save();
-      }
-      for (const item of this.state.versionTexts) {
-        const actual = fs.readFileSync(path.join(this.root, item.file), 'utf8');
-        if (actual !== item.before && actual !== item.after) throw new Error(`他の変更を検出しました: ${item.file}`);
-      }
-      // A partially interrupted version write is replayed only when each file is original or expected.
-      const allOriginal = this.state.versionTexts.every(item => fs.readFileSync(path.join(this.root, item.file), 'utf8') === item.before);
-      if (allOriginal && this.state.versionTexts.every(item => item.before === item.after)) this.log('版番号はすでに候補と一致しています。');
-      else if (allOriginal) await this.cmd(process.execPath, ['scripts/set-release-version.mjs', version]);
-      else for (const item of this.state.versionTexts) { fs.writeFileSync(path.join(this.root, item.file), item.after); this.log(`版番号の中断復旧: ${item.file}`); }
-      for (const item of this.state.versionTexts) if (fs.readFileSync(path.join(this.root, item.file), 'utf8') !== item.after) throw new Error(`版番号の結果不一致: ${item.file}`);
-    });
-    await this.step('commit', 'STEP 1-1 5ファイル限定コミット', async () => {
-      if (this.state.versionTexts.every(item => item.before === item.after)) {
-        if (readJSON(path.join(this.root, 'package.json')).version !== version) throw new Error('既存の版番号が候補と一致しません。');
-        this.state.candidate = await this.head(); this.save(); this.log('版番号はdevelop上ですでに候補と一致するため、現在の確認済みコミットを使用します。');
-        return;
-      }
-      const head = await this.head();
-      if (head !== this.state.base) {
-        const parent = await this.git(['rev-parse', 'HEAD^'], this.root, false);
-        const files = (await this.git(['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'], this.root, false)).split(/\r?\n/).filter(Boolean);
-        if (parent !== this.state.base || files.some(file => !VERSION_FILES.includes(file))) throw new Error('候補コミットを自動復旧できません。別のコミットを検出しました。');
-        await this.clean();
-        for (const item of this.state.versionTexts) if (fs.readFileSync(path.join(this.root, item.file), 'utf8') !== item.after) throw new Error('中断後の候補コミットの版番号内容が一致しません。');
-      } else {
-        const changes = await this.changes(); if (changes.some(file => !VERSION_FILES.includes(file))) throw new Error('版番号以外の変更があります。');
-        for (const item of this.state.versionTexts) if (fs.readFileSync(path.join(this.root, item.file), 'utf8') !== item.after) throw new Error(`版番号変更が一致しません: ${item.file}`);
-        const staged = (await this.git(['diff', '--cached', '--name-only'], this.root, false)).split(/\r?\n/).filter(Boolean);
-        if (staged.some(file => !VERSION_FILES.includes(file))) throw new Error('版番号以外がステージされています。');
-        await this.git(['add', '--', ...VERSION_FILES]); await this.git(['diff', '--cached', '--check']);
-        // The existing hook verifies exact updater output for these five files.
-        // Normal commits retain all existing checks; no blanket hook bypass.
-        await this.cmd('git', ['commit', '-m', `release: v${version} MSIX release candidate`], this.root, true, { ...process.env, RELEASE_MACHINE_VERSION_COMMIT: '1' }); await this.clean();
-      }
-      this.state.candidate = await this.head(); this.save();
-    });
-    await this.step('main', 'STEP 1-1 正式リリースmainへ同期', async () => {
+    if (!this.state.protocol && this.state.candidate) throw new Error('旧直接push方式の途中記録です。成果物を保持し、手動引継ぎ手順を確認してください。');
+    this.state.protocol = 'protected-pr-v1';
+    this.state.candidate ??= this.state.base; this.save();
+    await this.step('main', 'STEP 1-1 検証済み候補の作業場所を準備', async () => {
       await this.assertCandidate(false);
-      let main = await this.findMain();
-      if (!main) { main = path.join(this.root, '.w', '正式リリース'); if (fs.existsSync(main)) throw new Error('正式リリースフォルダーが既にあります。手動で確認してください。'); await this.git(['worktree', 'add', main, 'main']); }
-      await this.clean(main); await this.git(['merge', '--ff-only', this.state.candidate], main);
-      this.state.mainRoot = main; this.save();
-      if (!fs.existsSync(path.join(main, 'node_modules'))) {
-        fs.symlinkSync(path.join(this.root, 'node_modules'), path.join(main, 'node_modules'), 'junction'); this.log('本番ビルド依存: 基本フォルダーのnode_modulesを使用');
-      }
-      await this.assertCandidate();
+      this.state.releaseBranch ??= `codex/release-v${version}-${this.state.id.slice(-8)}`; this.save();
+      const folder = path.join(this.root, '.w', `正式リリース-${version}`);
+      if (!fs.existsSync(folder)) await this.git(['worktree', 'add', '-b', this.state.releaseBranch, folder, this.state.candidate]);
+      if (await this.branch(folder) !== this.state.releaseBranch || await this.head(folder) !== this.state.candidate) throw new Error('正式リリース作業場所が候補と一致しません。');
+      await this.clean(folder); this.state.mainRoot = folder; this.save();
+      if (!fs.existsSync(path.join(folder, 'node_modules'))) fs.symlinkSync(path.join(this.root, 'node_modules'), path.join(folder, 'node_modules'), 'junction');
     });
     await this.assertCandidate();
     await this.step('build', 'STEP 1-2 本番exeを1回ビルド・保全', async () => {
@@ -267,10 +230,10 @@ export class ReleaseMachine {
     this.state.status = 'confirm'; this.state.current = 'STEP 1-5 実機確認待ち'; this.save();
   }
   async assertCandidate(includeMain = true) {
-    if (await this.branch() !== 'develop' || await this.head() !== this.state.candidate) throw new Error('developが確認対象コミットから変わりました。手動で確認してください。');
+    if (await this.branch() !== 'develop' || ![this.state.candidate, this.state.syncedDevelop].includes(await this.head())) throw new Error('developが確認対象コミットから変わりました。手動で確認してください。');
     await this.clean();
     if (includeMain) {
-      if (!this.state.mainRoot || await this.branch(this.state.mainRoot) !== 'main' || await this.head(this.state.mainRoot) !== this.state.candidate) throw new Error('mainが確認対象コミットと一致しません。');
+      if (!this.state.mainRoot || await this.branch(this.state.mainRoot) !== this.state.releaseBranch || await this.head(this.state.mainRoot) !== this.state.candidate) throw new Error('正式リリース候補が確認対象コミットと一致しません。');
       await this.clean(this.state.mainRoot);
     }
   }
@@ -301,22 +264,9 @@ export class ReleaseMachine {
       if (hashFile(destination) !== this.state.storeHash) throw new Error('提出先へのコピーが一致しません。');
       this.state.destination = destination; this.save(); this.log(`提出物: ${destination}\nSHA256: ${this.state.storeHash}`);
     });
-    for (const branch of ['main', 'develop']) {
-      if (this.state.steps[`push-${branch}`]?.status === 'done' &&
-          (await this.git(['ls-remote', 'origin', `refs/heads/${branch}`])).split(/\s/)[0] !== this.state.candidate) {
-        throw new Error(`反映済みの${branch}が候補コミットから変わっています。手動で確認してください。`);
-      }
-      await this.step(`push-${branch}`, `STEP 2-3 ${branch}をpush・リモート確認`, async () => {
-        await this.assertSnapshot();
-        if (hashFile(this.state.destination) !== this.state.storeHash) throw new Error('提出ファイルが変更されています。');
-        let remote = await this.git(['ls-remote', 'origin', `refs/heads/${branch}`]);
-        if (remote.split(/\s/)[0] !== this.state.candidate) await this.git(['push', 'origin', `${this.state.candidate}:refs/heads/${branch}`]);
-        remote = await this.git(['ls-remote', 'origin', `refs/heads/${branch}`]);
-        if (remote.split(/\s/)[0] !== this.state.candidate) throw new Error(`${branch}のリモート反映を確認できません。`);
-      });
-    }
-    // Recheck even already-completed push stages before declaring overall completion.
-    for (const branch of ['main', 'develop']) if ((await this.git(['ls-remote', 'origin', `refs/heads/${branch}`])).split(/\s/)[0] !== this.state.candidate) throw new Error(`${branch}が候補コミットから変わっています。`);
+    await this.assertSnapshot();
+    if (hashFile(this.state.destination) !== this.state.storeHash) throw new Error('提出ファイルが変更されています。');
+    await this.github.integrate();
     await this.step('open', '提出フォルダーを開く', () => this.windows('OpenFolder', ['-Folder', path.dirname(this.state.destination)]));
     this.state.status = 'complete'; this.state.current = 'Store提出準備完了（Partner Center申請は手動）'; this.save();
   }
