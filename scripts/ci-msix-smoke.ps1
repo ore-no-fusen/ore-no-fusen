@@ -20,7 +20,11 @@ if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
 
 Write-Host "Trusting the generated MSIX test certificate..."
 Import-Certificate -FilePath $CertificatePath -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
-Import-Certificate -FilePath $CertificatePath -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+$RootStore = 'Cert:\CurrentUser\Root'
+if ($env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted') {
+  $RootStore = 'Cert:\LocalMachine\Root'
+}
+Import-Certificate -FilePath $CertificatePath -CertStoreLocation $RootStore | Out-Null
 
 Write-Host "Removing previous test package..."
 Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue |
@@ -73,3 +77,4 @@ try {
 } catch {
   Write-Warning "Could not collect AppX deployment logs: $_"
 }
+
