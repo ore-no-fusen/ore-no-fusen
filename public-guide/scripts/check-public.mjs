@@ -49,8 +49,8 @@ for (const page of pages) {
     if (existsSync(target) && lstatSync(target).isDirectory()) target = join(target, 'index.html');
     if (!existsSync(target)) { errors.push(`Missing target: ${raw}`); continue; }
     if (url.hash && target.endsWith('.html')) {
-      const ids = [...readFileSync(target, 'utf8').matchAll(/\sid="([^"]+)"/g)].map(item => item[1].normalize('NFC'));
-      if (!ids.includes(decodeURIComponent(url.hash.slice(1)).normalize('NFC'))) errors.push(`Missing fragment: ${raw}`);
+      const ids = [...readFileSync(target, 'utf8').matchAll(/\sid="([^"]+)"/g)].map(item => item[1]);
+      if (!ids.includes(decodeURIComponent(url.hash.slice(1)))) errors.push(`Missing fragment: ${raw}`);
     }
   }
 }
