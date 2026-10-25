@@ -18,11 +18,10 @@
     const complete = s.status === 'complete';
     if (complete) $('version').value = s.version;
     $('version').disabled = pending || locked || complete;
-    const ownChanges = pending && s.operation === 'prepare' && s.steps.commit?.status !== 'done' && info.changes.every(f => ['package.json','package-lock.json','src-tauri/Cargo.toml','src-tauri/Cargo.lock','packaging/msix/AppxManifest.xml'].includes(f));
     const blockers = [];
     if (info.readOnly) blockers.push('表示確認モードです。リリース操作は無効です。');
     if (info.branch !== 'develop') blockers.push('基本フォルダーのdevelopから起動してください。');
-    if (info.changes.length && !ownChanges) blockers.push(`未保存変更があります：${info.changes.join(', ')}`);
+    if (info.changes.length) blockers.push(`未保存変更があります：${info.changes.join(', ')}`);
     if (info.mainChanges.length) blockers.push(`正式リリースに未保存変更があります：${info.mainChanges.join(', ')}`);
     $('prepare').disabled = complete || locked || blockers.length > 0 || s.status === 'confirm' || (pending && s.operation === 'package');
     $('prepare').textContent = complete ? '✓ 確認用MSIX・実機確認 完了' : s.status === 'failed' && s.operation === 'prepare' ? '🔨 止まった工程から再試行' : '確認用MSIXを作って起動';

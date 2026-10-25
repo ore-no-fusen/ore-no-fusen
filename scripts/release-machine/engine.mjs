@@ -115,13 +115,13 @@ export class ReleaseMachine {
     result.log = this.state.id && fs.existsSync(path.join(this.runDir, 'commands.log')) ? fs.readFileSync(path.join(this.runDir, 'commands.log'), 'utf8').slice(-80000) : '';
     return result;
   }
-  async guards({ allowVersionChanges = false, appClosed = false } = {}) {
+  async guards({ appClosed = false } = {}) {
     if (this.platform !== 'win32') throw new Error('Windows上で実行してください。');
     if (await this.branch() !== 'develop') throw new Error('基本フォルダーのdevelopから起動してください。');
     const common = await this.git(['rev-parse', '--path-format=absolute', '--git-common-dir'], this.root, false);
     if (path.resolve(path.dirname(common)).toLowerCase() !== this.root.toLowerCase()) throw new Error('一時ワークツリーからは実行できません。基本フォルダーで起動してください。');
     const changes = await this.changes();
-    if (changes.some(file => !allowVersionChanges || !VERSION_FILES.includes(file))) throw new Error(`未保存変更があります: ${changes.join(', ')}`);
+    if (changes.length) throw new Error(`未保存変更があります: ${changes.join(', ')}`);
     const main = await this.findMain();
     if (main) {
       await this.clean(main);
