@@ -9,6 +9,8 @@
 
 "use client"
 
+import { publicGuideLinks } from '@/lib/public-links';
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import MemberSettings from "@/app/components/MemberSettings"
 import SupportMemberNumber from "@/app/components/SupportMemberNumber"
@@ -190,7 +192,7 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                     setIsBackingUp={setIsBackingUp}
                 />
             case "about":
-                return <AboutSection t={t} />
+                return <AboutSection t={t} language={settings.language} />
             case "iphone":
                 return <IphoneSection settings={settings} onUpdate={updateSetting} t={t} iphoneDriveDisconnected={iphoneDriveDisconnected ?? false} />
             case "help":
@@ -1860,7 +1862,7 @@ function DataSection({
     )
 }
 
-function AboutSection({ t }: { t: (key: any) => string }) {
+function AboutSection({ t, language }: { t: (key: any) => string; language: Language }) {
     const microsoftStoreUrl = 'https://apps.microsoft.com/detail/9N4MW0V2MVVG'
     const [version, setVersion] = React.useState<string>('...')
     const [distribution, setDistribution] = React.useState<'msix' | 'desktop'>('desktop')
@@ -2003,12 +2005,12 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                 <p className="text-xs text-gray-500 mb-4">{t('settings.about.relatedLinksDesc')}</p>
                 <div className="grid sm:grid-cols-2 gap-2">
                     {[
-                        { key: 'settings.about.links.manga', url: 'https://github.com/ore-no-fusen/ore-no-fusen/wiki' },
-                        { key: 'settings.about.links.discussions', url: 'https://github.com/ore-no-fusen/ore-no-fusen/discussions' },
-                        { key: 'settings.about.links.releases', url: 'https://github.com/ore-no-fusen/ore-no-fusen/releases/latest' },
-                        { key: 'settings.about.links.docs', url: 'https://ore-no-fusen.github.io/ore-no-fusen/' },
-                        { key: 'settings.about.links.privacy', url: 'https://ore-no-fusen.github.io/ore-no-fusen/100_PRIVACY.html' },
-                        { key: 'settings.about.links.terms', url: 'https://ore-no-fusen.github.io/ore-no-fusen/101_TERMS.html' },
+                        { key: 'settings.about.links.manga', url: publicGuideLinks(language).comic },
+                        { key: 'settings.about.links.discussions', url: publicGuideLinks(language).contact },
+                        { key: 'settings.about.links.releases', url: publicGuideLinks(language).updates },
+                        { key: 'settings.about.links.docs', url: publicGuideLinks(language).manual },
+                        { key: 'settings.about.links.privacy', url: publicGuideLinks(language).privacy },
+                        { key: 'settings.about.links.terms', url: publicGuideLinks(language).terms },
                     ].map((link) => (
                         <button
                             key={link.key}
@@ -2095,7 +2097,7 @@ function StepIllustration({ kind }: { kind: 'write' | 'pin' | 'iphone' }) {
 
 function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSettings, language }: { t: (key: any) => string; newNoteTriggerLabel: string; launcherShortcutLabel: string; shortcutSettings: AppSettings; language: Language }) {
     const isEnglish = language === 'en'
-    const guideUrl = `https://ore-no-fusen.github.io/ore-no-fusen/${isEnglish ? 'en/' : ''}user-guide/`;
+    const guideUrl = publicGuideLinks(isEnglish ? 'en' : 'ja').manual;
     const withNewNoteTrigger = (value: string) => value.replace(/Ctrl\s*\+\s*N/g, newNoteTriggerLabel);
     const onboardingSteps = [
         {

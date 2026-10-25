@@ -41,7 +41,7 @@ Microsoft Store向けMSIXを唯一の正式配布形式とし、既存MSI・NSIS
 
 ## 3 配布・公開経路
 
-5.1.0以降、アプリの入手と更新はMicrosoft Storeへ統一します。GitHub Releaseは変更履歴とソースコード公開に使い、未署名MSIXや一般向けインストーラーを置きません。
+5.1.0以降、アプリの入手と更新はMicrosoft Storeへ統一します。新しいGitHub Releaseや一般向けインストーラーは公開しません。6.1.0準備では、マニュアル・漫画・FAQ・規約・更新情報を公開用リポジトリ `ore-no-fusen/ore-no-fusen-guide` へ分離し、アプリとLPの利用者向けリンクを切り替えます。内部設計書とアプリコードは公開ガイドへ含めません。
 
 wingetはcommunity repositoryではなく、Microsoft Storeカタログの`msstore`ソースを使います。
 
@@ -55,10 +55,16 @@ winget install --id 9N4MW0V2MVVG --source msstore
 |:---|:---|:---|
 | 1 | Microsoft Store | MSIXの一般配布、署名、自動更新 |
 | 2 | winget `msstore` | Store版をコマンドから導入・更新する補助経路 |
-| 3 | GitHub Release | 変更履歴、移行案内、ソースアーカイブ |
+| 3 | 公開ガイド専用サイト | マニュアル、漫画、FAQ、問い合わせ案内、規約、更新情報 |
 | 4 | GitHub Actions artifact | Partner Centerへ渡す未署名MSIXの一時保管。一般配布しない |
 
 ---
+
+### 段階的な非公開化
+
+現在の開発リポジトリは移行期間中は公開のまま維持する。6.1.0のStore公開後およそ3か月を目安に、6.2/7等の節目で非公開化を判断する。自動実行ではなく、旧リンクの残影響とCI/Vercel/Git認証を確認する。公開資料の更新手順は `docs/PUBLIC_GUIDE_MAINTENANCE.md` を参照する。
+
+旧MSI/NSIS版（最終移行版5.0.0）の更新経路は、非公開化後も維持する要件から外す。今回の準備では既存Release資産を先行削除しない。公開ガイドの完成前に旧Pagesを停止しない。
 
 ## 4 署名とStore提出
 
