@@ -17,7 +17,8 @@ test('two-button browser flow, fixed confirmation, command logs, narrow screen a
   }};
   const token='browser-test';const port=await new Promise(resolve=>{const temp=createServer(machine,{token,port:0});temp.listen(0,'127.0.0.1',()=>{const p=temp.address().port;temp.close(()=>resolve(p));});});
   const server=createServer(machine,{token,port});await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
-  const browser=await chromium.launch({headless:true});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});
+  let browser;t.after(async()=>{if(browser)await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));});
+  browser=await chromium.launch({headless:true});
   const page=await browser.newPage({viewport:{width:1024,height:1100}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${port}/#${token}`);await page.waitForFunction(()=>!document.querySelector('#prepare').disabled);
   assert.equal(await page.locator('button').count(),2);assert.equal(await page.locator('input[type=checkbox]').count(),1);
