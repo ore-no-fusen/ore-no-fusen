@@ -55,84 +55,32 @@ GitHub Release、Gitタグ、Winget公開、GitHub ActionsからのMicrosoft Sto
 
 機能追加、不具合修正、文書変更は、次の手順で`develop`へ統合する。通常開発の統合とMicrosoft Storeへの正式リリースは別工程として扱う。
 
-### 方針と理由
+### 必須の統合手順（2026-10-25改定）
 
-- 現在の開発はこのPCを中心に1つの作業環境で行うため、実装のたびにリモート機能ブランチ、Pull Request、重複CIを作ると、待ち時間と管理作業だけが増える。通常開発はローカルで完結させる。
-- ローカルでもGitの作業ブランチとコミットを使い、`develop`から変更を分離する。失敗時は作業ブランチ内で戻せるため、速度のために履歴や復旧性を捨てない。
-- `develop`へ入れる前に、このPCで対象テスト、型検査、必要な実機確認を済ませる。未検証の変更を共有ブランチへ入れない。
-- GitHubは開発環境ではなく、確認済みソースの共有・保管、統合後CI、Vercel Previewの起点としてだけ使う。そのためGitHubへの通常の送信は、ローカル統合後の`develop` 1回に限定する。
-- Pull Requestは、複数人レビュー、並行開発、またはユーザーが明示的に必要とした場合の仕組みとする。1人・1PC中心の通常開発では既定手順にしない。
-- Markdownなど文書だけの軽微な修正は、分離による利点よりブランチ管理の手間が大きいため、ローカル`develop`で直接修正してよい。アプリのテストは行わず、差分検査と、必要な場合だけ文書ビルド・Mermaid表示を確認する。
-- MSIXの作成・確認は正式リリースのSTEP 1〜2で行う。機能実装中のSTEP 0では、変更と無関係なMSIX CIを調査・修正しない。
-- `main`はMicrosoft Storeへ提出する正式版だけを保持し、通常開発の途中では変更しない。
+通常開発は独立ブランチとPRを使用する。ローカルdevelopへの先行統合や直接pushを標準手順にしない。文書だけの変更もPRを通す。詳細は[CI運用規則](CI_MERGE_POLICY.md)を正本とする。
+
+1. 最新developから日本語名の一時ワークツリーとcodex/<作業名>を作る。関連する既存作業場所を優先し、未保存変更を保護する。
+2. 修正、対象テスト、型検査、必要な実機確認を行う。
+3. 作業ブランチをpushし、develop宛てのPRを作成する。
+4. PRの最新head SHAと現在のbase SHAを記録し、CI結果を確認する。
+5. 失敗・未完了・キャンセルがあれば原因を調べて修正し、同じ確認を繰り返す。無関係な失敗も無視しない。
+6. CI gateとすべての適用対象チェックの成功を確認する。
+7. head SHAが変わっていないこと、baseへの追随、競合なし、保護条件充足、未解決の失敗なしを最終確認する。
+8. GitHub上でdevelopへマージし、常設developを通常のfast-forwardで更新する。
+9. マージコミットのCIと必要なPreview反映を確認する。未保存変更・資料・プロセスを確認/保全し、完了したローカル作業場所を片付ける。リモートブランチ削除は別判断とする。
 
 ```mermaid
 flowchart LR
-    subgraph LOCAL["このPC・通常開発"]
-        A["ローカル developを最新化"]
-        Q{"文書だけの<br/>軽微な変更か"}
-        B["ローカル作業ブランチを作成"]
-        C["実装・最小修正"]
-        D["対象テスト・型検査"]
-        E["開発版・必要な実機確認"]
-        F["ローカル developへ統合"]
-        K["ローカル developで<br/>文書だけ修正"]
-        L["差分検査<br/>必要時だけ文書表示確認"]
-        N["原則<br/>機能ブランチはpushしない<br/>PRは明示依頼時だけ"]
-
-        A --> Q
-        Q -->|いいえ| B --> C --> D --> E
-        Q -->|はい| K --> L
-        D -->|失敗| C
-        E -->|失敗| C
-        E -->|合格| F
-        B -. 方針 .-> N
-    end
-
-    subgraph REMOTE["GitHub・統合後だけ"]
-        G["developだけを1回push"]
-        H["変更対象に必要なCI"]
-        I["Web API・PWA変更時だけ<br/>Vercel Preview確認"]
-        J["通常開発完了"]
-
-        G --> H
-        H -->|PC機能のみ| J
-        H -->|Web API・PWAあり| I --> J
-    end
-
-    F --> G
-    L --> G
-
-    style A fill:#e8f4ff,stroke:#1976d2,color:#111
-    style Q fill:#fff8e1,stroke:#f57c00,color:#111
-    style B fill:#e8f4ff,stroke:#1976d2,color:#111
-    style C fill:#e8f4ff,stroke:#1976d2,color:#111
-    style D fill:#e8f4ff,stroke:#1976d2,color:#111
-    style E fill:#e8f4ff,stroke:#1976d2,color:#111
-    style F fill:#e8f4ff,stroke:#1976d2,color:#111
-    style K fill:#e8f4ff,stroke:#1976d2,color:#111
-    style L fill:#e8f4ff,stroke:#1976d2,color:#111
-    style N fill:#fff8e1,stroke:#f57c00,color:#111
-    style G fill:#e8f5e9,stroke:#388e3c,color:#111
-    style H fill:#e8f5e9,stroke:#388e3c,color:#111
-    style I fill:#e8f5e9,stroke:#388e3c,color:#111
-    style J fill:#e8f5e9,stroke:#388e3c,color:#111
+    A[独立ブランチ] --> B[修正と対象テスト] --> C[PR作成]
+    C --> D[CI確認]
+    D -->|失敗・未完了| B
+    D -->|適用対象すべて成功| E[最新SHAと保護条件確認]
+    E --> F[developへマージ] --> G[マージ後CIとPreview確認]
 ```
 
-*通常開発はこのPC内で完結させ、確認済みの`develop`だけをGitHubへ反映する。文書だけの軽微な修正はブランチとアプリテストを省略する。*
+*通常開発はPRの最新コミットに対するCI合格後にdevelopへ統合する。*
 
-文書だけの軽微な修正では、次の1〜8に代えて、ローカル`develop`で修正、`git diff --check`、必要な文書表示確認、`develop`のpushだけを行う。アプリのユニットテスト、型検査、実機確認、リモート機能ブランチ、Pull Requestは不要とする。文書変更がコード変更に付随する場合や、実行コマンド・CI・配布設定そのものを変更する場合は軽微な文書修正に含めず、次の通常手順を使う。
-
-1. 作業開始時にこのPCの`develop`を`origin/develop`へ合わせ、そのローカル`develop`から`codex/<作業名>`の作業ブランチを作る。
-2. 機能追加・不具合修正・実行コードや設定の変更は、このPCの作業ブランチだけで行う。作業中の機能ブランチはGitHubへpushせず、Pull Requestも作らない。
-3. 作業ブランチで対象テスト、型検査、必要なローカル実機確認をこのPCで完了する。確認が終わるまでGitHub ActionsやVercel Previewを開発環境として使わない。
-4. 確認済みの作業ブランチを、このPC上で`develop`へマージする。`develop`へ未検証の変更を直接コミットしない。
-5. ローカル統合後、GitHubへは`develop`だけを1回pushする。リモート機能ブランチとPull Requestは、ユーザーが明示的に依頼した場合だけ使用する。
-6. push後は変更対象に必要な`develop`のCIだけを確認する。Web API・PWA・公開ページを変更した場合は、`develop`からデプロイされたVercel Previewでも最終確認する。STEP 0ではMSIX CIの失敗を調査・修正しない。
-7. 統合後に問題が見つかった場合は、このPCの最新`develop`から新しいローカル修正ブランチを作る。修正確認後にローカル`develop`へ統合し、必要な`develop`更新だけをpushする。
-8. 統合と確認が完了したローカル作業ブランチは削除する。
-
-`main`はStoreへ提出する正式版専用とし、作業ブランチを直接マージしない。正式リリース時だけSTEP 1〜3へ進み、STEP 2で合格済みソースと版番号を`main`へ反映する。リリース用GitHub Actionsが`main`と`develop`を同期する処理は、この直接操作禁止の例外とする。
+mainへの統合はSTEP 1〜3の別途リリース判断に従う。CI運用改善だけでは再リリースしない。正式自動化の権限は必要最小限とし、失敗したテストを回避するための例外には使わない。ブランチ保護導入後に直接pushが拒否される旧リリースツールは、保護を解除せず実行を停止し、同じソースのPR・CI確認経路を整えてから利用する。既存ツールを使ったリリースは、手順とツールの整合確認が終わるまで再開しない。
 
 ### 作業フォルダーの数と終了時の片付け
 
@@ -469,3 +417,4 @@ GitHub Release `v5.0.0` の`latest.json`、MSI、NSIS、署名ファイルは、
 再試行を押した直後は再開要求を表示し、処理中は回転表示と経過秒数を示す。実行中は前回のエラーを停止状態として表示せず、新たな失敗時に再表示する。画面更新の読み取り専用Gitコマンドには --no-optional-locks を指定し、コミット処理のindex更新と競合しないようにする。
 
 提出準備完了後は版番号を完了した版に固定し、①②のボタンを「完了」表示で無効にする。画面を開き直しても同じ完了状態を表示し、次の操作がMicrosoft Store（Partner Center）への提出であることを案内する。
+

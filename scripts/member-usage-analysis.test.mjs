@@ -47,6 +47,44 @@ test('直近の実利用が確認できれば、観測日の欠落だけで観�
   assert.equal(result.classificationCounts.churn_candidate,0);
 });
 
+test('実利用があっても初回観測不足を比較率の分母へ混ぜない',()=>{
+  const item=sample('baseline-missing',{initial:['note_created'],recent:[10]});
+  delete item.history[0].reports.reporter.days['2026-10-03'];
+  const result=buildUsageComparison([item.member],item.history,new Date('2026-10-14T00:00:00Z'));
+  assert.equal(result.classificationCounts.active,1);
+  assert.equal(result.records[0].baselineEligible,false);
+  assert.equal(result.features.find(f=>f.name==='note_created').active.denominator,0);
+});
+
+test('直近168時間の境界だけを実利用として扱い、未来・期間外は欠測のまま残す',()=>{
+  for(const [stamp,expected] of [
+    ['2026-10-07T00:00:00.000Z','active'],
+    ['2026-10-14T00:00:00.000Z','active'],
+    ['2026-10-06T23:59:59.999Z','observation_insufficient'],
+    ['2026-10-14T00:00:00.001Z','observation_insufficient'],
+  ]) {
+    const item=sample('boundary',{initial:['note_created'],recent:[]});
+    delete item.history[0].reports.reporter.days['2026-10-10'];
+    item.history[0].reports.reporter.days['2026-10-11'].features.note_edited={firstUsedAt:stamp,lastUsedAt:stamp};
+    const result=buildUsageComparison([item.member],item.history,new Date('2026-10-14T00:00:00Z'));
+    assert.equal(result.records[0].classification,expected,stamp);
+  }
+});
+
+test('利用が記録されていても同意拒否・不明・新規会員の区分を優先する',()=>{
+  for(const [consent,now,expected] of [
+    [false,'2026-10-14T00:00:00Z','consent_denied'],
+    [undefined,'2026-10-14T00:00:00Z','consent_unknown'],
+    [true,'2026-10-03T00:00:00Z','new'],
+  ]) {
+    const item=sample('privacy',{initial:['note_created'],recent:[1,10]});
+    item.member.usageConsent=consent;
+    const result=buildUsageComparison([item.member],item.history,new Date(now));
+    assert.equal(result.records[0].classification,expected);
+    assert.equal(result.classificationCounts.active,0);
+  }
+});
+
 test('初回7日間の半開区間では境界時刻の利用を含めない',()=>{
   const item=sample('boundary',{initial:['note_created'],recent:[]});
   item.history[0].reports.reporter.days['2026-10-08']={observedAt:'2026-10-08T12:00:00.000Z',observedThrough:'2026-10-08T13:00:00.000Z',features:{note_edited:{count:1,activeDays:['2026-10-08'],lastUsedDay:'2026-10-08',firstUsedAt:'2026-10-08T10:00:00.000Z',lastUsedAt:'2026-10-08T10:00:00.000Z'}}};
@@ -77,3 +115,4 @@ test('reports from multiple devices merge into one member-level feature rate wit
   assert.equal(result.records.length,1);
   assert.doesNotMatch(JSON.stringify(result),/multi|secretToken|memberId|analyticsSubject/);
 });
+
