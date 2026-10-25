@@ -33,7 +33,7 @@ jobs:
 
       - name: Publish MSIX CI start status
         if: github.event_name != 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -159,7 +159,7 @@ jobs:
 
       - name: Publish machine-readable MSIX CI status
         if: always() && github.event_name != 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           OUTCOME_NPM_CI: ${{ steps.npm_ci.outcome }}
           OUTCOME_FRONTEND_TESTS: ${{ steps.frontend_tests.outcome }}
