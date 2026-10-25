@@ -16,6 +16,7 @@
   "en/user-guide/index.md",
   "en/user-guide/install.md",
   "en/user-guide/iphone.md",
+  "en/user-guide/support.md",
   "en/user-guide/troubleshooting.md",
   "faq.md",
   "index.md",
@@ -23,6 +24,8 @@
   "package-lock.json",
   "package.json",
   "public/arrange/arrange-basic.png",
+  "public/arrange/arrange-bucket.png",
+  "public/arrange/arrange-lift.png",
   "public/promo/comic/1話_爆速起動.png",
   "public/promo/comic/2話_逃さない_常時表示.png",
   "public/promo/comic/3話_整える_マークダウン.png",
@@ -41,5 +44,6 @@
   "user-guide/index.md",
   "user-guide/install.md",
   "user-guide/iphone.md",
+  "user-guide/support.md",
   "user-guide/troubleshooting.md"
 ]

@@ -4,7 +4,7 @@ import Link from "next/link";
 
 const SITE_URL = "https://ore-no-fusen.vercel.app";
 const INSTALL_URL = MICROSOFT_STORE_URL;
-const WINGET_COMMAND = "winget install ore-no-fusen";
+const WINGET_COMMAND = "winget install --id 9N4MW0V2MVVG --source msstore";
 
 export const metadata: Metadata = {
   title: "Windows Sticky Notes App with Markdown and winget | FUSEN",
@@ -92,8 +92,8 @@ export default function WindowsStickyNotesPage() {
           </p>
           <p>
             It is designed for Windows 10/11, with local-first Markdown files, an
-            always-on-top workflow, and installation through GitHub Releases or
-            winget.
+            always-on-top workflow, and installation through Microsoft Store or
+            winget's Microsoft Store source.
           </p>
         </div>
 

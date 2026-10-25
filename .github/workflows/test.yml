@@ -64,6 +64,8 @@ jobs:
           node --test scripts/export-public-guide.test.mjs
           npm --prefix public-guide ci
           npm --prefix public-guide run build
+      - name: Public guide settings navigation (Japanese and English)
+        run: npm run test:e2e -- e2e/public-guide-links.spec.ts
       - run: npm test
       - run: npx tsc --noEmit
       - run: npm run build:tauri

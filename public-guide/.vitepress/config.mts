@@ -4,11 +4,11 @@ import { htmlBaseLinks } from './html-links.mjs';
 const base = '/ore-no-fusen-guide/';
 const ja = [
   ['ヘルプトップ', ''], ['はじめに・インストール', 'install'], ['基本の使い方', 'basic'],
-  ['くわしい使い方', 'advanced'], ['iPhone連携', 'iphone'], ['困ったときに', 'troubleshooting'], ['漫画で学ぶ', 'comic'],
+  ['くわしい使い方', 'advanced'], ['iPhone連携', 'iphone'], ['困ったときに', 'troubleshooting'], ['漫画で学ぶ', 'comic'], ['応援する・サポート', 'support'],
 ];
 const en = [
   ['Help Home', ''], ['Install and Get Started', 'install'], ['Basic Use', 'basic'],
-  ['Advanced Use', 'advanced'], ['iPhone Sync', 'iphone'], ['Troubleshooting', 'troubleshooting'], ['Comic Guide', 'comic'],
+  ['Advanced Use', 'advanced'], ['iPhone Sync', 'iphone'], ['Troubleshooting', 'troubleshooting'], ['Comic Guide', 'comic'], ['Support', 'support'],
 ];
 export default defineConfig({
   title: '俺の付箋 ユーザーガイド',

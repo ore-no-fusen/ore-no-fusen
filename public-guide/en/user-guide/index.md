@@ -33,3 +33,5 @@ If the developer has a moment, you might get a quick reply.
 ::: tip
 New installations use the Microsoft Store version. Updates are delivered by Microsoft Store.
 :::
+
+[Support Ore No Fusen](/en/user-guide/support)

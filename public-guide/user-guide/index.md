@@ -64,3 +64,5 @@ html.dark .help-pill { background:#0f172a; border-color:#334155; }
 ::: tip
 詳しいユーザー向けヘルプはこのガイドに集約しています。
 :::
+
+[応援する・サポート](/user-guide/support)
