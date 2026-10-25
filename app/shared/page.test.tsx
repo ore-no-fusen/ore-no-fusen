@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SharedNote } from './lib/drive';
 import SharedNotesPage from './page';
@@ -38,24 +38,39 @@ function sharedNote(markdown: string, title = 'テスト付箋'): SharedNote {
   };
 }
 
+async function renderSharedNotes() {
+  let view!: ReturnType<typeof render>;
+  // connect() loads notes asynchronously; flush its effects before clicking.
+  await act(async () => { view = render(<SharedNotesPage />); });
+  return view;
+}
+
+async function editCurrentNote() {
+  // The note can render while reload() still keeps its controls disabled.
+  // A click on that button is ignored; wait for the user-visible ready state.
+  await waitFor(() => expect((screen.getByRole('button', { name: '編集' }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: '編集' }));
+  return screen.findByRole('textbox', { name: '付箋本文' });
+}
+
 describe('shared note editor', () => {
   it('未送信の既存編集を再表示後に復元する', async () => {
-    const first=render(<SharedNotesPage/>);
-    fireEvent.click(await screen.findByRole('button',{name:'編集'}));
+    const first=await renderSharedNotes();
+    await editCurrentNote();
     fireEvent.change(screen.getByRole('textbox',{name:'付箋本文'}),{target:{value:'ページを閉じても残す本文'}});
     first.unmount();
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await waitFor(()=>expect((screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement).value).toBe('ページを閉じても残す本文'));
     expect(mocks.appendWebEdit).not.toHaveBeenCalled();
   });
   it('下書きの基準版から本文が変わった場合は自動上書きしない', async () => {
-    const first=render(<SharedNotesPage/>);
-    fireEvent.click(await screen.findByRole('button',{name:'編集'}));
+    const first=await renderSharedNotes();
+    await editCurrentNote();
     fireEvent.change(screen.getByRole('textbox',{name:'付箋本文'}),{target:{value:'未送信の編集'}});
     first.unmount();
     const newer=sharedNote('別端末の本文');newer.operation.operationId='op-newer';
     mocks.loadSharedNotes.mockResolvedValue({notes:[newer],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('textbox',{name:'付箋本文'});
     fireEvent.click(screen.getByRole('button',{name:'保存'}));
     await screen.findByText(/別の端末で本文が変わっています/);
@@ -64,7 +79,7 @@ describe('shared note editor', () => {
   });
   it('Windows同期待ちの保存済み付箋は本文を表示し、未取込の編集・共有操作を送信しない', async () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [{ ...sharedNote('同期待ちの本文\n- [ ] 確認', '新規保存済み'), pendingCreate: true }], files: [] });
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('heading', { name: '新規保存済み' });
     expect(await screen.findByText('同期待ちの本文')).toBeTruthy();
     expect(screen.getByText('Windows同期待ち')).toBeTruthy();
@@ -76,7 +91,7 @@ describe('shared note editor', () => {
   it('チェックは直ちに反応し、保存中を示し、通信失敗なら元へ戻す', async () => {
     let rejectSave!: (reason: Error) => void;
     mocks.appendWebEdit.mockImplementationOnce(() => new Promise((_, reject) => { rejectSave = reject; }));
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     const checkbox = await screen.findByRole('checkbox',{name:'牛乳'});
     fireEvent.click(checkbox);
     expect(checkbox.getAttribute('aria-checked')).toBe('true');
@@ -93,7 +108,7 @@ describe('shared note editor', () => {
     const note = sharedNote('本文\n- [ ] 牛乳\n- [x] 卵');
     mocks.loadSharedNotes.mockResolvedValueOnce({notes:[note],files:[]})
       .mockResolvedValue({notes:[{...note,operation:{...note.operation,operationId:'op-next',payload:{...note.operation.payload,markdown:'本文\n- [x] 牛乳\n- [x] 卵'}}}],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     fireEvent.click(await screen.findByRole('checkbox',{name:'牛乳'}));
     await screen.findByText(/チェックを保存しました/);
     expect(mocks.appendWebEdit).toHaveBeenCalledTimes(1);
@@ -105,7 +120,7 @@ describe('shared note editor', () => {
   it('チェック保存中の連打を防ぎ、失敗時は元表示と理由を残す', async () => {
     let reject!: (error: Error) => void;
     mocks.appendWebEdit.mockImplementation(()=>new Promise((_resolve,fail)=>{reject=fail;}));
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     const task=await screen.findByRole('checkbox',{name:'牛乳'});
     fireEvent.click(task);fireEvent.click(task);
     expect((task as HTMLButtonElement).disabled).toBe(true);
@@ -118,14 +133,14 @@ describe('shared note editor', () => {
 
   it('保存後の読込失敗を成功と表示しない', async () => {
     mocks.loadSharedNotes.mockResolvedValueOnce({notes:[sharedNote('- [ ] 牛乳')],files:[]}).mockRejectedValue(new Error('読込失敗'));
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     fireEvent.click(await screen.findByRole('checkbox',{name:'牛乳'}));
     await screen.findByText(/Webを更新して保存結果を確認/);
     expect(screen.getByRole('checkbox',{name:'牛乳'}).getAttribute('aria-checked')).toBe('false');
     expect(screen.queryByText(/チェックを保存しました/)).toBeNull();
   });
   it('詳細操作の共有停止はランチャーを残す確認後だけ保存する', async () => {
-    render(<SharedNotesPage />);await screen.findByText('1件の付箋を読み込みました。');
+    await renderSharedNotes();await screen.findByText('1件の付箋を読み込みました。');
     fireEvent.click(screen.getByText('詳細操作'));
     fireEvent.click(screen.getByRole('button',{name:'Web共有を停止'}));
     await screen.findByText(/Windowsの付箋とランチャー登録は変わりません/);
@@ -140,7 +155,7 @@ describe('shared note editor', () => {
   it('停止中の一覧から明示的に再開でき、停止中のチェックは保存しない', async () => {
     const note = {...sharedNote('- [ ] 牛乳'), paused:true, sharingHeads:['pause-1']};
     mocks.loadSharedNotes.mockResolvedValue({notes:[], stoppedNotes:[note],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByText(/まだ付箋がありません/);
     fireEvent.click(screen.getByText('詳細操作'));
     fireEvent.click(screen.getByRole('button',{name:'共有停止中の付箋（1）'}));
@@ -154,7 +169,7 @@ describe('shared note editor', () => {
   });
   it('共有停止保存後の再取得失敗を成功と表示しない', async () => {
     mocks.loadSharedNotes.mockResolvedValueOnce({notes:[sharedNote('本文')],files:[]}).mockRejectedValue(new Error('再取得失敗'));
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('button',{name:'編集'});
     fireEvent.click(screen.getByText('詳細操作'));
     fireEvent.click(screen.getByRole('button',{name:'Web共有を停止'}));
@@ -177,7 +192,7 @@ describe('shared note editor', () => {
   });
 
   it('uses the Windows note color in the detail card and preserves it when saving text', async () => {
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('1件の付箋を読み込みました。');
     expect((screen.getByRole('article') as HTMLElement).style.backgroundColor).toBe('rgb(128, 216, 255)');
   });
@@ -196,7 +211,7 @@ describe('shared note editor', () => {
     mocks.downloadSharedImage.mockImplementation(async (_token: string, _files: unknown[], manifest: { imageId: string }) =>
       `blob:${manifest.imageId}`);
 
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('1件の付箋を読み込みました。');
     const images = await screen.findAllByRole('img');
     expect(images).toHaveLength(2);
@@ -217,9 +232,9 @@ describe('shared note editor', () => {
   it("Windowsと同じチェック記号と完了線を表示し、編集時だけ切り替えられる（一つの本文欄）", async () => {
     const original="- [ ] 牛乳\n- [x] 卵";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -234,7 +249,7 @@ describe('shared note editor', () => {
   it('空行と段落を保ち、空白のない長文もカード幅で折り返せる', async () => {
     const longLine = '折り返し確認'.repeat(80);
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote(`一行目\n二行目\n\n四行目\n${longLine}`, '改行確認')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText(longLine);
 
     const article = screen.getByRole('article');
@@ -247,9 +262,9 @@ describe('shared note editor', () => {
   it("編集時も題名を二重表示せず、元のMarkdownと空行を保って保存する（一つの本文欄）", async () => {
     const original="思い出プロンプト\n\n説明の一行目\n\n説明の二行目";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -263,7 +278,7 @@ describe('shared note editor', () => {
 
   it('Windowsと同じ赤い太字を表示し、コード内とエスケープされた記号は強調しない', async () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('通常 **重要** / `**コード**` / \\**記号のまま**\n```md\n**コードブロック**\n- [ ] これはコード\n```', '強調')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('1件の付箋を読み込みました。');
 
     const article = screen.getByRole('article');
@@ -281,7 +296,7 @@ describe('shared note editor', () => {
   it('見出し6段階と箇条書き・番号付き項目を構造表示し、保存Markdownを変えない', async () => {
     const markdown = '# 大見出し\n## 小見出し **強調**\n### 見出し3\n#### 見出し4\n##### 見出し5\n###### 見出し6\n- 箇条書き\n* 別の箇条書き\n+ **強調付き**\n1. 順序1\n2) 順序2';
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote(markdown, '構造表示')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByRole('heading', { name: '大見出し' });
     expect(screen.getByRole('heading', { name: '小見出し 強調', level: 2 })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '見出し3', level: 3 })).toBeTruthy();
@@ -293,7 +308,7 @@ describe('shared note editor', () => {
     expect(screen.getByText('1.')).toBeTruthy();
     expect(screen.getByText('2)')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    await editCurrentNote();
     const body = await screen.findByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
     expect(body.value).toBe(markdown);
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
@@ -309,7 +324,7 @@ describe('shared note editor', () => {
     note.operation.payload.images = [{ imageId: `img-${hash}`, mimeType: 'image/png', sizeBytes: 10, sha256: hash }];
     mocks.loadSharedNotes.mockResolvedValue({ notes: [note], files: [{ id: 'image-file', name: `image-${hash}` }] });
     mocks.downloadSharedImage.mockResolvedValue('blob:structured-image');
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByRole('heading', { name: '写真の見出し 写真', level: 2 });
     expect(screen.getAllByRole('img', { name: '写真' })).toHaveLength(3);
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
@@ -322,7 +337,7 @@ describe('shared note editor', () => {
     const first = 'graph TD\n A-->B';
     const second = 'sequenceDiagram\n A->>B: hello';
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote(`\`\`\`mermaid\n${first}\n\`\`\`\n説明\n\`\`\`mermaid\n${second}\n\`\`\``, '図')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     const diagrams = await screen.findAllByRole('img', { name: 'Mermaid図' });
     expect(diagrams).toHaveLength(2);
     expect((diagrams[0] as HTMLElement).style.overflowX).toBe('auto');
@@ -334,7 +349,7 @@ describe('shared note editor', () => {
 
   it('連続する箇条書きは1つのリストとして読み上げる', async () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('- りんご\n- みかん\n- ぶどう\n\n1. 買う\n2. 食べる', 'リスト')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     const lists = await screen.findAllByRole('list');
     expect(lists).toHaveLength(2);
     expect(lists[0].querySelectorAll('[role="listitem"]')).toHaveLength(3);
@@ -343,7 +358,7 @@ describe('shared note editor', () => {
 
   it('通常の箇条書きとチェック項目が隣接しても欠落・重複しない', async () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('- [ ] 牛乳\n- 説明\n- [x] 卵\n- [ ] パン\n- 店で買う', '混在リスト')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByRole('checkbox', { name: '牛乳' });
     expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['•説明', '•店で買う']);
     expect(screen.getAllByRole('checkbox').map((checkbox) => checkbox.getAttribute('aria-label'))).toEqual(['牛乳', '卵', 'パン']);
@@ -351,7 +366,7 @@ describe('shared note editor', () => {
 
   it('http/httpsだけをリンクにし、危険なURLは文字として表示する', async () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('[安全](https://example.com/path) [危険](javascript:alert(1)) [ローカル](file:///C:/secret.txt) **強調** `**コード**`', 'リンク')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     const link = await screen.findByRole('link', { name: '安全' });
     expect(link.getAttribute('href')).toBe('https://example.com/path');
     expect(link.getAttribute('target')).toBe('_blank');
@@ -365,7 +380,7 @@ describe('shared note editor', () => {
   it('コードフェンスをコード枠で表示し、中のリンクや画像を実行しない', async () => {
     const code = '```text\n[リンク](https://example.com) ![画像](ore-fusen-image://img-' + 'a'.repeat(64) + ')\n```';
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote(code, 'コード表示')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     const pre = await screen.findByText((_, element) => element?.tagName === 'CODE' && element.textContent?.includes('[リンク]') === true);
     expect(pre.closest('pre')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'リンク' })).toBeNull();
@@ -374,7 +389,7 @@ describe('shared note editor', () => {
 
   it('Mermaidは閉じたフェンスだけ図にし、コードフェンス行は削らない', async () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('````text\n行1\n```\n~~~~mermaid\nノード\n~~~~', 'コード')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText((_, element) => element?.tagName === 'CODE' && element.textContent?.startsWith('行1\n```') === true);
     expect(mocks.renderSecureMermaid).not.toHaveBeenCalled();
     expect(screen.getByText((_, element) => element?.tagName === 'CODE' && element.textContent?.includes('ノード') === true)).toBeTruthy();
@@ -384,7 +399,7 @@ describe('shared note editor', () => {
     const source = 'graph TD\n A-->B';
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote(`\`\`\`mermaid\n${source}\n\`\`\``, '図失敗')], files: [] });
     mocks.renderSecureMermaid.mockRejectedValue(new Error('bad diagram'));
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     const fallback = await screen.findByText('図を表示できません。図のコードを表示します。');
     expect(fallback.parentElement?.querySelector('pre code')?.textContent).toBe(source);
     expect(screen.queryByRole('img', { name: 'Mermaid図' })).toBeNull();
@@ -398,7 +413,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [note], files: [{ id: 'image-file', name: `image-${hash}` }], });
     mocks.downloadSharedImage.mockResolvedValue('blob:test-image');
 
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('強調後', { selector: 'strong', exact: true });
     await screen.findAllByRole('img', { name: '図' });
     expect(screen.getByText('強調チェック', { selector: 'strong' })).toBeTruthy();
@@ -414,9 +429,9 @@ describe('shared note editor', () => {
   it("チェック項目入力の $&, $1, $$ を文字どおり保存する（一つの本文欄）", async () => {
     const original="- [ ] 元の項目";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -431,9 +446,9 @@ describe('shared note editor', () => {
   it("コードフェンスを複数行の独立欄として編集し、前後の本文を重複させず保存する（一つの本文欄）", async () => {
     const original="前の本文\n```md\n- [ ] コード中の見本\n```\n後の本文";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -448,9 +463,9 @@ describe('shared note editor', () => {
   it("編集中にコードフェンス記号を変えても同じ入力欄で続けて編集できる（一つの本文欄）", async () => {
     const original="```md\n例\n```\n本文";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -472,7 +487,7 @@ describe('shared note editor', () => {
     trip.scope.noteId = 'note-trip';
     trip.operation.scope.noteId = 'note-trip';
     mocks.loadSharedNotes.mockResolvedValue({ notes: [shopping, trip], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('2件の付箋を読み込みました。');
 
     const search = screen.getByRole('searchbox', { name: '付箋を検索' });
@@ -506,7 +521,7 @@ describe('shared note editor', () => {
     home.scope.noteId = 'note-tag-home';
     home.operation.scope.noteId = 'note-tag-home';
     mocks.loadSharedNotes.mockResolvedValue({ notes: [shopping, home], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('2件の付箋を読み込みました。');
 
     const filters = screen.getByRole('group', { name: 'タグで絞り込み' });
@@ -532,9 +547,9 @@ describe('shared note editor', () => {
     second.scope.noteId = 'note-second';
     second.operation.scope.noteId = 'note-second';
     mocks.loadSharedNotes.mockResolvedValue({ notes: [first, second], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('2件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    await editCurrentNote();
     const all = screen.getByRole('button', { name: 'すべて', pressed: true });
     const home = screen.getByRole('button', { name: '家', pressed: false });
     expect((all as HTMLButtonElement).disabled).toBe(true);
@@ -548,7 +563,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes
       .mockResolvedValueOnce({ notes: [tagged], files: [] })
       .mockResolvedValueOnce({ notes: [sharedNote('タグなし本文', 'タグなし')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('1件の付箋を読み込みました。');
     fireEvent.click(screen.getByRole('button', { name: '家', pressed: false }));
     fireEvent.click(screen.getByRole('button', { name: 'Webを更新' }));
@@ -566,7 +581,7 @@ describe('shared note editor', () => {
     mocks.loadSharedNotes
       .mockResolvedValueOnce({ notes: [original], files: [] })
       .mockResolvedValueOnce({ notes: [updated], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('1件の付箋を読み込みました。');
     fireEvent.click(screen.getByRole('button', { name: 'Work', pressed: false }));
     fireEvent.click(screen.getByRole('button', { name: 'Webを更新' }));
@@ -576,9 +591,9 @@ describe('shared note editor', () => {
   it("edits ordinary note text in one multiline field and preserves line breaks on save（一つの本文欄）", async () => {
     const original="買い物メモ\n牛乳を買う\n- [ ] 牛乳";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -593,9 +608,9 @@ describe('shared note editor', () => {
   it("shows a title copied to the first body line once and preserves the full edit on save（一つの本文欄）", async () => {
     const original="\nWeb下りテスト\n\nあいうえお\nWeb下りテスト\n- [ ] 牛乳";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -609,9 +624,9 @@ describe('shared note editor', () => {
 
   it('keeps the editor mounted when body text becomes equal to the title', async () => {
     mocks.loadSharedNotes.mockResolvedValue({ notes: [sharedNote('最初の本文', '題名')], files: [] });
-    render(<SharedNotesPage />);
+    await renderSharedNotes();
     await screen.findByText('1件の付箋を読み込みました。');
-    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    await editCurrentNote();
     const body = await screen.findByRole('textbox', { name: '付箋本文' }) as HTMLTextAreaElement;
 
     fireEvent.change(body, { target: { value: '題名' } });
@@ -624,9 +639,9 @@ describe('shared note editor', () => {
   it("lets a title-only note gain body text without duplicating or deleting its original title line（一つの本文欄）", async () => {
     const original="買い物";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -641,9 +656,9 @@ describe('shared note editor', () => {
   it("preserves a duplicated title and checklist when no optional body is added（一つの本文欄）", async () => {
     const original="買い物\n- [ ] 牛乳";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -658,9 +673,9 @@ describe('shared note editor', () => {
   it("does not hide a checklist when editing removes a duplicated title after a leading blank（一つの本文欄）", async () => {
     const original="\n題名\n- [ ] 牛乳";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -675,9 +690,9 @@ describe('shared note editor', () => {
   it("keeps a text area stable while a user types a checklist line（一つの本文欄）", async () => {
     const original="メモ";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -692,9 +707,9 @@ describe('shared note editor', () => {
   it("adds a real checklist item while keeping the body as free-form text（一つの本文欄）", async () => {
     const original="自由な文章";
     mocks.loadSharedNotes.mockResolvedValue({notes:[sharedNote(original,'試験題名')],files:[]});
-    render(<SharedNotesPage/>);
+    await renderSharedNotes();
     await screen.findByRole('article');
-    fireEvent.click(screen.getByRole('button',{name:'編集'}));
+    await editCurrentNote();
     const body=screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement;
     expect(body.value).toBe(original);
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
@@ -707,3 +722,4 @@ describe('shared note editor', () => {
   });
 
 });
+

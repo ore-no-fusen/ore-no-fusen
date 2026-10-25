@@ -1,4 +1,4 @@
-﻿param(
+param(
   [switch] $SkipBuild,
   [switch] $NoInstall,
   [string] $ReleaseDirectory,
@@ -87,6 +87,7 @@ function Invoke-NativeCommand {
 }
 
 function Get-OrCreateDevCertificate {
+  Write-Host "Selecting local development signing certificate..."
   $Now = Get-Date
   $Certificate = Get-ChildItem Cert:\CurrentUser\My |
     Where-Object {
@@ -112,6 +113,7 @@ function Get-OrCreateDevCertificate {
   }
 
   New-Item -ItemType Directory -Path $CertDir -Force | Out-Null
+  Write-Host "Exporting public signing certificate..."
   Export-Certificate -Cert $Certificate -FilePath $CerPath -Force | Out-Null
 
   $TrustedPeople = Get-ChildItem Cert:\CurrentUser\TrustedPeople |
@@ -121,12 +123,21 @@ function Get-OrCreateDevCertificate {
     Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
   }
 
-  $TrustedRoot = Get-ChildItem Cert:\CurrentUser\Root |
+  # The CurrentUser Root store can display a consent dialog on a headless runner.
+  # Only disposable hosted CI uses LocalMachine; normal local testing is unchanged.
+  $RootStore = 'Cert:\CurrentUser\Root'
+  if ($env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted') {
+    $RootStore = 'Cert:\LocalMachine\Root'
+  }
+  Write-Host "Checking signing certificate trust in $RootStore..."
+  $TrustedRoot = Get-ChildItem $RootStore |
     Where-Object Thumbprint -eq $Certificate.Thumbprint |
     Select-Object -First 1
   if ($null -eq $TrustedRoot) {
-    Import-Certificate -FilePath $CerPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
+    Write-Host "Importing public test certificate into $RootStore..."
+    Import-Certificate -FilePath $CerPath -CertStoreLocation $RootStore | Out-Null
   }
+  Write-Host "Development signing certificate is ready."
 
   return $Certificate
 }
@@ -258,3 +269,4 @@ if (-not $NoInstall) {
   Write-Host "Launching: $Aumid"
   Start-Process "explorer.exe" "shell:AppsFolder\$Aumid"
 }
+
