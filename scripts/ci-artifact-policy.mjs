@@ -20,21 +20,28 @@ async function main(args){
  const flag=name=>args.includes(name),value=name=>args[args.indexOf(name)+1];
  const directory=path.resolve(flag('--directory')?value('--directory'):'my/ci-artifact-archive');fs.mkdirSync(directory,{recursive:true});
  const token=process.env.GH_TOKEN??execFileSync('gh',['auth','token'],{encoding:'utf8',timeout:10_000,stdio:['ignore','pipe','pipe']}).trim();
- async function api(route,method='GET'){const r=await fetch('https://api.github.com/repos/'+REPO+'/'+route,{method,headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(30_000)});if(!r.ok)throw Error('GitHub request failed: '+r.status);return method==='DELETE'?null:r.json();}
+ async function api(route,method='GET',allowMissing=false){const r=await fetch('https://api.github.com/repos/'+REPO+'/'+route,{method,headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(30_000)});if(r.status===404&&allowMissing&&method==='GET')return null;if(!r.ok)throw Error('GitHub request failed: '+r.status);return method==='DELETE'?null:r.json();}
  async function pages(route,key){const all=[];for(let n=1;n<100;n++){const p=await api(route+(route.includes('?')?'&':'?')+'per_page=100&page='+n);const rows=p[key]??p;all.push(...rows);if(rows.length<100)return all;}throw Error('Pagination limit reached');}
  if(flag('--apply')) {
   const bytes=fs.readFileSync(path.join(directory,'manifest.json'));if(hash(bytes)!==value('--manifest-sha256'))throw Error('Manifest hash does not match reviewed plan');
   const manifest=JSON.parse(bytes);if(manifest.repo!==REPO)throw Error('Wrong repository');
+  const journal=path.join(directory,'deleted.jsonl');
+  const deleted=new Map(fs.existsSync(journal)?fs.readFileSync(journal,'utf8').trim().split('\n').filter(Boolean).map(line=>{const record=JSON.parse(line);return [record.id,record];}):[]);
   const open=await pages('pulls?state=open');
   const freshRuns=new Map((await pages('actions/runs?status=completed','workflow_runs')).map(run=>[run.id,run]));
   const protectedNow=protectedRunIds(freshRuns,manifest.protectedRuns);
+  const counts={deleted:0,skipped:0,alreadyAbsent:0};
   for(const item of manifest.candidates){
    const archive=fs.readFileSync(path.join(directory,item.id+'.zip'));if(hash(archive)!==item.archiveSha256)throw Error('Preserved archive changed');
-   const current=await api('actions/artifacts/'+item.id),run=await api('actions/runs/'+current.workflow_run.id);
+   const recorded=deleted.get(item.id);
+   if(recorded) {if(recorded.sha256!==item.archiveSha256)throw Error('Deletion journal conflicts with preserved archive');counts.skipped++;continue;}
+   const current=await api('actions/artifacts/'+item.id,'GET',true);
+   if(!current){counts.alreadyAbsent++;fs.appendFileSync(journal,JSON.stringify({id:item.id,sha256:item.archiveSha256,alreadyAbsent:true,at:new Date().toISOString()})+'\n');continue;}
+   const run=await api('actions/runs/'+current.workflow_run.id);
    if(!artifactCandidates([current],new Map([[run.id,run]]),{protectedRuns:protectedNow,openPRs:open.map(p=>p.number),minAgeMs:manifest.minAgeMs,protectLatest:false}).length||['id','name','size_in_bytes','created_at'].some(k=>current[k]!==item[k])||current.workflow_run.head_sha!==item.workflow_run.head_sha)throw Error('Artifact changed or became protected: '+item.id);
-   await api('actions/artifacts/'+item.id,'DELETE');fs.appendFileSync(path.join(directory,'deleted.jsonl'),JSON.stringify({id:item.id,sha256:item.archiveSha256,at:new Date().toISOString()})+'\n');
+   await api('actions/artifacts/'+item.id,'DELETE');counts.deleted++;fs.appendFileSync(path.join(directory,'deleted.jsonl'),JSON.stringify({id:item.id,sha256:item.archiveSha256,at:new Date().toISOString()})+'\n');
   }
-  console.log('Deleted only verified, archived artifact IDs: '+manifest.candidates.length);return;
+  console.log(JSON.stringify({reviewedCandidates:manifest.candidates.length,...counts}));return;
  }
  const artifacts=await pages('actions/artifacts','artifacts'),open=await pages('pulls?state=open');const runs=new Map();
  for(const id of new Set(artifacts.map(a=>a.workflow_run?.id).filter(Boolean)))runs.set(id,await api('actions/runs/'+id));
