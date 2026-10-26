@@ -9,3 +9,15 @@ test('development REST deployment retains v1 and cannot inherit Gateway registra
  assert.match(section,/\[\[env\.development\.migrations\]\]\s*tag = "v1"\s*new_sqlite_classes = \["DiscordIngestCoordinator"\]/);
  assert.doesNotMatch(section,/class_name = "DiscordGateway"|new_sqlite_classes = \["DiscordGateway"\]/);
 });
+
+test('documentation uses its own guarded gate and one design build per Test run',()=>{
+ const workflow=fs.readFileSync('.github/workflows/test.yml','utf8');
+ assert.match(workflow,/needs: \[scope, usage-analysis, frontend, rust, msix, documentation, design-docs\]/);
+ assert.equal((workflow.match(/if: needs\.scope\.outputs\.docs_only == 'false'/g)||[]).length,3);
+ assert.match(workflow,/if: needs\.scope\.outputs\.docs_only == 'true'/);
+ assert.match(workflow,/node scripts\/ci-scope\.mjs documents/);
+ assert.match(workflow,/uses: \.\/\.github\/workflows\/docs\.yml/);
+ const docs=fs.readFileSync('.github/workflows/docs.yml','utf8');
+ assert.match(docs,/workflow_call:/);assert.doesNotMatch(docs,/^  push:/m);
+ assert.match(docs,/github\.ref == 'refs\/heads\/main' &&/);
+});
