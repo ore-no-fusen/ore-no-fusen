@@ -2,18 +2,6 @@ name: Rust Windows Test
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "src-tauri/src/**"
-      - "src-tauri/Cargo.toml"
-      - "src-tauri/Cargo.lock"
-      - ".github/workflows/rust-windows-test.yml"
-  pull_request:
-    paths:
-      - "src-tauri/src/**"
-      - "src-tauri/Cargo.toml"
-      - "src-tauri/Cargo.lock"
-      - ".github/workflows/rust-windows-test.yml"
 
 jobs:
   test:

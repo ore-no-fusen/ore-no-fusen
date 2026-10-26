@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { stopProcessTree, spawnOwned } from './release-machine/runner.mjs';
 import { rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { dirname, join } from 'node:path';
@@ -8,7 +8,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..');
 const nextBin = join(rootDir, 'node_modules', 'next', 'dist', 'bin', 'next');
 const playwrightCli = join(rootDir, 'node_modules', '@playwright', 'test', 'cli.js');
-const isWindows = process.platform === 'win32';
 const host = '127.0.0.1';
 
 const getAvailablePort = () =>
@@ -54,7 +53,7 @@ writeFileSync(
 
 console.log(`[e2e] Starting isolated server at ${baseUrl}`);
 
-const server = spawn(process.execPath, [nextBin, 'dev', '-H', host, '-p', String(port)], {
+const server = spawnOwned(process.execPath, [nextBin, 'dev', '-H', host, '-p', String(port)], {
   cwd: rootDir,
   env: {
     ...process.env,
@@ -63,27 +62,22 @@ const server = spawn(process.execPath, [nextBin, 'dev', '-H', host, '-p', String
     NEXT_TSCONFIG_PATH: nextTsconfig,
   },
   stdio: 'inherit',
-  detached: false,
+  detached: process.platform !== 'win32',
 });
 
 let cleanedUp = false;
+let playwrightChild;
 
-const cleanup = () => {
+let cleanupJob;
+const cleanup = () => cleanupJob ??= (async () => {
   if (cleanedUp) return;
   cleanedUp = true;
-
-  if (server.pid) {
-    try {
-      if (isWindows) server.kill('SIGTERM');
-      else process.kill(-server.pid, 'SIGTERM');
-    } catch {
-      server.kill('SIGTERM');
-    }
-  }
-
+  const stopped = await Promise.allSettled([stopProcessTree(playwrightChild), stopProcessTree(server)]);
+  const failure = stopped.find(result => result.status === 'rejected');
+  if (failure) throw failure.reason;
   rmSync(join(rootDir, nextDistDir), { recursive: true, force: true });
   rmSync(join(rootDir, nextTsconfig), { force: true });
-};
+})();
 
 const waitForServer = async () => {
   const deadline = Date.now() + 240000;
@@ -126,7 +120,7 @@ const canLoadApp = async () => {
 
 const runPlaywright = () =>
   new Promise((resolve) => {
-    const child = spawn(process.execPath, [playwrightCli, 'test', ...process.argv.slice(2)], {
+    const child = playwrightChild = spawnOwned(process.execPath, [playwrightCli, 'test', ...process.argv.slice(2)], {
       cwd: rootDir,
       env: {
         ...process.env,
@@ -135,16 +129,17 @@ const runPlaywright = () =>
       },
       stdio: 'inherit',
     });
+    child.on('error', () => resolve(1));
     child.on('exit', (code) => resolve(code ?? 1));
   });
 
-process.on('SIGINT', () => {
-  cleanup();
+process.on('SIGINT', async () => {
+  await cleanup();
   process.exit(130);
 });
 
-process.on('SIGTERM', () => {
-  cleanup();
+process.on('SIGTERM', async () => {
+  await cleanup();
   process.exit(143);
 });
 
@@ -153,7 +148,7 @@ try {
   await waitForServer();
   exitCode = await runPlaywright();
 } finally {
-  cleanup();
+  await cleanup();
 }
 
 process.exit(exitCode);

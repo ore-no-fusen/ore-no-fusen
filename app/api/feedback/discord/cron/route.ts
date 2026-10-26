@@ -1,5 +1,6 @@
+export const maxDuration = 20;
 import { NextResponse } from 'next/server';
-import { isDiscordIngestFailure, runDiscordIngest } from '../ingest/run';
+
 
 function isAuthorized(req: Request): boolean {
   const expected = process.env.CRON_SECRET;
@@ -14,12 +15,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const result = await runDiscordIngest();
-    if (isDiscordIngestFailure(result)) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
-    }
-
-    return NextResponse.json(result);
+    // The Durable Object coordinator owns checkpoints and continuations.
+    return NextResponse.json({ error: 'Retired: use the durable Discord coordinator' }, { status: 410 });
   } catch (error) {
     console.error('Discord cron ingest error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -6,6 +6,10 @@ on:
   pull_request:
   merge_group:
 
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -15,6 +19,7 @@ env:
 
 jobs:
   scope:
+    timeout-minutes: 3
     runs-on: ubuntu-latest
     outputs:
       msix: ${{ steps.scope.outputs.msix }}
@@ -37,6 +42,7 @@ jobs:
   usage-analysis:
     name: Dashboard analysis regression tests
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,7 +52,7 @@ jobs:
 
   frontend:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,7 +60,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+        timeout-minutes: 5
       - run: npx playwright install chromium
+        timeout-minutes: 3
       - name: Release machine isolated Git tests
         run: node --test --test-reporter=tap scripts/release-machine/engine.test.mjs
       - name: Release machine browser tests
@@ -66,6 +74,9 @@ jobs:
           npm --prefix public-guide run build
       - name: Public guide settings navigation (Japanese and English)
         run: npm run test:e2e -- e2e/public-guide-links.spec.ts
+      - run: node --test scripts/release-machine/runner.test.mjs scripts/tauri-frontend-stage.test.mjs scripts/msix-status.test.mjs scripts/automation-policy.test.mjs scripts/ci-artifact-policy.test.mjs scripts/network-deadline.test.mjs
+        timeout-minutes: 5
+      - run: node --test workers/discord-replies/src/index.test.mjs
       - run: npm test
       - run: npx tsc --noEmit
       - run: npm run build:tauri
@@ -88,16 +99,19 @@ jobs:
             ${{ runner.os }}-test-cargo-
       - name: cargo test
         working-directory: src-tauri
-        run: cargo test --locked --lib
+        run: cargo test --locked
 
   msix:
-    needs: scope
+    needs: [scope, frontend, rust, usage-analysis]
     if: needs.scope.outputs.msix == 'true'
     permissions:
-      contents: write
+      contents: read
+    with:
+      prevalidated: true
     uses: ./.github/workflows/msix-ci.yml
 
   gate:
+    timeout-minutes: 3
     name: CI gate
     if: always()
     needs: [scope, usage-analysis, frontend, rust, msix]

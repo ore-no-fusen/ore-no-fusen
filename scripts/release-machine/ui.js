@@ -5,7 +5,7 @@
   let info, key, versionInitialized = false, posting = false, networkError = null, startedAt = null;
   const stages = [ ['main','検証済み候補の準備'], ['build','本番ビルド・保全'], ['dev','開発署名MSIX作成'], ['install','導入・起動'], ['store','Store用MSIX作成'], ['validate','形式・exe一致検証'], ['copy','固定提出先へ保存'], ['open','提出フォルダーを開く'] ];
   async function request(url, body) {
-    const response = await fetch(url, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type':'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(15_000), method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type':'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     const result = await response.json(); if (!response.ok) throw new Error(result.error); return result;
   }
   function render() {

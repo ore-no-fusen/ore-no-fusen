@@ -290,6 +290,10 @@ sequenceDiagram
 - [24]のユーザー画面側の会話取得は、画面表示中の約1分ごとのままです。Discordからサーバーへの受信を速めても、画面への反映はユーザーPCの次回確認時になります。
 - ※1 Gatewayの通常受信では定期REST走査を行わず、切断・Resume不能時などの欠落回復だけREST差分取得を使います。Gateway接続・再接続・安全な回復に加え、常時接続に伴う無課金条件を確認する必要があります（§6.1.1）。
 
+REST回復は1回20件・全体12秒以内で小分けにし、before/high-water/floor・環境・channelを継続位置として保存します。途中で環境全体cursorを進めず、全件完了後にhigh-waterへ進めます。継続位置とcursorは同じstorage transactionで確定します。APIの通信期限は本文読取まで含め、書込の無条件再送を行いません。
+
+Gatewayの未送信走査は環境別cursorと時間予算を持ち、保留証拠100件が先頭に残っても後続へ進みます。401/403では当該配送先だけを停止し、secret変更または認証付き再開操作で再開します。429はRetry-Afterを守ります。失敗によって成功済み環境をやり直しません。
+
 ### 6.1.1 Gateway受信の実装・運用条件
 
 - Gateway Identifyでは `GUILD_MESSAGES` Intentだけを使い、`MESSAGE_CREATE` の本文は扱わず、Durable Objectには対象channel/guild、author ID、message ID、reply reference、Gateway sequenceだけを永続inboxへ記録します。本文のREST取得にも `MESSAGE_CONTENT` の制限が適用されます。BotのDeveloper PortalでMessage Content accessが有効であることと、対象Botに必要な承認があることを事前確認します。右クリック返信をBotへのmentionとみなす設計にはしません。
@@ -338,7 +342,7 @@ sequenceDiagram
 
 Discordは、開発者の作業場所としてだけ使います。ユーザーごとのDiscordチャンネルは作りません。
 開発者は、1つの開発者用チャンネルに届く通知を見て、対象通知に返信を書きます。
-会話の正本は Firestore に保存します。現行はCloudflare Workerが約1分ごとにVercel APIへ返信取り込みを依頼し、作者PCを停止していても動作します。今後は第6章の段階移行により、開発検証中は開発環境だけGatewayイベント配送を使い、本番は現行REST取り込みを継続します。開発・本番の往復検証に合格後、本番もGateway配送へ切り替えます。移行中のREST取り込みは環境ごとに管理し、会員ごとに取り込みタイマーを増やしません。日次Vercel Cronは移行後も欠落回復用として継続します。
+会話の正本は Firestore に保存します。現行はCloudflare Workerが約1分ごとにVercel APIへ返信取り込みを依頼し、作者PCを停止していても動作します。今後は第6章の段階移行により、開発検証中は開発環境だけGatewayイベント配送を使い、本番は現行REST取り込みを継続します。開発・本番の往復検証に合格後、本番もGateway配送へ切り替えます。移行中のREST取り込みは環境ごとに管理し、会員ごとに取り込みタイマーを増やしません。日次Vercel Cronは無状態の継続位置破棄を防ぐため廃止し、欠落回復も環境別Durable Objectで管理します。
 
 図6-1ではCloudflare Gateway Durable Object、Vercel API、Firestoreを別参加者として示します。現行のDiscord返信取り込みは全会話共通で約1分ごとです。Gateway方式への移行後は通常時にイベント配送を使い、REST走査は欠落回復用にします。ユーザーPCは、会話画面を表示中なら約1分ごと、画面を表示していなくてもユーザー投稿から24時間以内なら常駐中に最短10分ごと、それ以外はJST 4:00以降に日次で未読確認します。会話画面を表示中の正常時は、現行は返信がサーバーへ取り込まれてから画面に反映されるまで最大約2分が目安です。移行後はサーバー取り込み待ちを短縮しますが、画面側は引き続き次回の約1分確認を待つため即時プッシュではなく、障害時の時間保証もしません。
 
@@ -450,7 +454,7 @@ Vercelの`VERCEL_ENV=production`の場合だけ既存の本番会話・Discord�
 | 3 | `POST /api/feedback/conversation/ack` | ユーザーが見た返信を既読にする |
 | 4 | `POST /api/feedback/conversation/delete` | secret tokenを照合し、会話・メッセージ・Discord対応表を完全に削除する |
 | 5 | `POST /api/feedback/discord/ingest` | Cloudflare Workerが約1分ごとに新着Discord返信を取り込む。管理者の手動実行は障害調査用 |
-| 6 | `GET /api/feedback/discord/cron` | Vercel CronでDiscord返信を取り込む |
+| 6 | `GET /api/feedback/discord/cron` | 廃止入口。認証後410、未認証401 |
 | 7 | `POST /api/feedback/conversation/session` | 会話を認証し、PCがAppwrite Storageへ直接画像を送るための15分JWTを発行する |
 
 公開POST APIはJSON本文と各文字列の長さを検証する。`/api/feedback` と `conversation/messages` は本文32KB以内、`conversation/poll` は4KB以内、`conversation/ack` は16KB以内とする。Discord Webhookへの送信は10秒で中止し、応答待ちによるVercel実行枠の占有を防ぐ。
@@ -458,7 +462,7 @@ Vercelの`VERCEL_ENV=production`の場合だけ既存の本番会話・Discord�
 2 の `conversation/poll` は、PC アプリが「自分の掲示板を見せる」ために呼びます。右クリックメニュー表示時には呼びません。  
 PC アプリは通常 JST 4:00 頃に1日1回 `conversation/poll` を呼びます。ユーザーの投稿成功後24時間は常駐中に約10分ごとに確認します。「開発者とのやりとり」を開いている間は約1分ごとに取得します。未読返信はローカルの `has_unread_developer_reply` を true にし、新しい返信IDごとに小窓を1回表示します。掲示板に表示できた返信だけ `conversation/ack` で既読化します。
 5 の `discord/ingest` はCloudflare Workerが約1分ごとに呼びます。前回確認IDはサーバーのDurable Objectに保持し、取り込みを直列化します。成功時だけ確認位置を進め、新着がなければFirestoreへはアクセスしません。失敗時は5分待って再試行し、確認位置を進めません。認証secretはWorkerのSecretsに保存します。公開HTTP要求からWorkerの取り込みを起動する経路は設けません。初回は既存APIの直近50件を確認するため、それより古い未達返信の調査は別途行います。
-6 の `discord/cron` は、Vercel Cron が同じ取り込み処理を本番環境で JST 3:00 に1日1回実行するために呼びます。`CRON_SECRET` による `Authorization` ヘッダー認証を必須にします。
+6 の `discord/cron` は廃止します。CRON_SECRET認証後は410、未認証は401です。スケジュールを削除し、環境別Durable Objectが継続位置を保持するREST取込へ集約します。
 7 の `conversation/session` は画像添付時だけ呼び、Vercel APIが画像バイトを中継しない直接アップロードに使います。
 
 作者PCの管理者ツールは障害調査時の手動取り込みだけに使います。通常の返信配送に作者PCのsecret保存・自動取り込み設定は不要です。既存版の作者PCによる自動取り込みは移行中の互換経路であり、新しいサーバー方式の必須条件ではありません。Worker有効化を確認した後に作者PCの自動取り込みをオフにします。ユーザー側へ管理用secretを渡しません。
@@ -545,5 +549,6 @@ Firebase のサービスアカウント情報は Vercel の環境変数にだけ
 | 23 | 3.10 | 26-10-17 | 図6-1の変更案として、サーバーのDiscord定期確認をGatewayイベント受信へ置き換え。ユーザー画面側の約1分確認は維持し、未実装であることを明記。 |
 | 24 | 3.11 | 26-10-17 | Gateway Durable Object、永続inbox、環境別配送、原子的冪等保存、Resume/REST差分回復、無料枠条件を図6-1と運用条件へ追記。 |
 | 25 | 3.12 | 26-10-17 | Astraレビューを反映。MESSAGE_CONTENT要件と開発先行の段階移行を明記し、現行REST取り込みと目標Gateway方式を区別。 |
+| 26 | 3.13 | 26-10-26 | REST継続位置の原子的保存・日次Cron廃止・通信予算・Gateway環境別走査とエラー別再開を追記。 |
 
 </div>

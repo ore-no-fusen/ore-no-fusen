@@ -13,7 +13,7 @@
 ## テスト構成
 
 - Testはpull_request、main/developへのpush、merge_groupで起動し、pathsフィルターを付けない。
-- frontendは全フロント単体テスト、型検査、Tauri向けフロントビルドを必ず実行する。rustはlocked library tests、Dashboard analysis regression testsは分析Nodeテストを実行する。botによるpushでも省略しない。
+- frontendは全フロント単体テスト、型検査、Tauri向けフロントビルドを必ず実行する。rustはlocked all-target tests、Dashboard analysis regression testsは分析Nodeテストを実行する。botによるpushでも省略しない。
 - scopeは実際のgit diffをNUL区切りで読み、リネームの両側も調べる。既知の分析/文書/LPだけならMSIXを省略できる。アプリ、components、worker、public、依存、設定、CI、未知のパスを含む変更はMSIX必須。空差分・判定失敗で成功扱いしない。
 - MSIX CIはTestから再利用する。単独の手動診断も可能。MSIXを必要とする変更では、梱包・署名検証・インストール・起動まで成功を要求する。インストーラー生成だけで合格にしない。
 - CI gateはalwaysで結果を集約する。前提ジョブの失敗/キャンセル/予期しないskipを拒否し、scopeが明示的にfalseの場合だけMSIXのskipを許可する。pathsで起動しないMSIXジョブ自体を一律必須指定しない。
@@ -31,9 +31,11 @@
 4. 保存後に両ブランチの有効ルールをAPI/画面で再確認する。通常のPRでgate未完了/失敗/キャンセル時のマージ禁止と、base更新後の再検証要求を確認する。直接push・削除・force pushを試験のために共有ブランチへ実行しない。
 5. 正規リリースAppを許可する場合も全ルールを無制限にbypassさせない。PR要件とCI要件を別rulesetに分け、必要ならAppにはPR要件の「For pull requests only」だけを許可する。CI必須rulesetにはbypassを設けない。ユーザー/管理者の恒久例外は作らない。
 
-リリースマシンは版番号更新のdevelop PR完了を前提に、専用候補ブランチで実機検証・MSIX保全を行う。main宛てPRとmain→develop同期PRはGitHub画面で全CI成功後に通常マージし、同じボタンで再開する。各統合後CIと候補tree一致を検証し、直接push・保護回避を行わない。旧do-release/do-non-app-releaseは直接push経路が残るため利用せず、この正規経路を使う。今回はリリース操作を行わない。
+リリースマシンは版番号更新のdevelop PR完了を前提に、専用候補ブランチで実機検証・MSIX保全を行う。main宛てPRとmain→develop同期PRはGitHub画面で全CI成功後に通常マージし、同じボタンで再開する。各統合後CIと候補tree一致を検証し、直接push・保護回避を行わない。旧do-release/do-non-app-releaseは案内専用へ廃止し、リモートでも無効化して利用せず、この正規経路を使う。今回はリリース操作を行わない。
 
 ## 早すぎるマージの是正
 
 まずmerge SHAと差分、失敗ログ、main/配布先への到達を確認する。必要な修正を失わない。原因と回復をテストで裏付けられる場合は前進修正PRを使う。安全性を説明できなければrevert PRと再導入PRを分ける。どちらも全適用対象CI成功前にはマージしない。元の失敗記録を成功に書き換えない。
 
+
+待機上限・再開・成果物保全の詳細は [AUTOMATION_OPERATIONS.md](AUTOMATION_OPERATIONS.md) を参照する。

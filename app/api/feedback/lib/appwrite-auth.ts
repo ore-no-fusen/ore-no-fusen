@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
 import { createHash } from 'crypto';
 
 export class FeedbackImageAuthError extends Error {
@@ -19,7 +20,7 @@ function config(): PublicStorageConfig & { apiKey: string } {
 
 async function request(path: string, init: RequestInit): Promise<Response> {
   const { endpoint, projectId, apiKey } = config();
-  return fetch(`${endpoint}${path}`, {
+  return fetchWithDeadline(`${endpoint}${path}`, {
     ...init,
     cache: 'no-store',
     headers: {

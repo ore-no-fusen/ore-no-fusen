@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
 import { FeedbackRequestError, hashSecretToken, safeEqualHash } from './security';
 import { feedbackEnvironment, feedbackFirestorePrefix } from './environment';
 import type { FeedbackConversation, FeedbackConversationMessage } from './types';
@@ -241,7 +242,7 @@ export async function getFirestoreAccessToken(clientEmail: string, privateKey: s
   const signature = signer.sign(normalizedPrivateKey).toString('base64url');
   const assertion = `${unsigned}.${signature}`;
 
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+  const response = await fetchWithDeadline('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -275,7 +276,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const token = await getFirestoreAccessToken(this.clientEmail, this.privateKey);
-    const response = await fetch(`${this.rootUrl}${path}`, {
+    const response = await fetchWithDeadline(`${this.rootUrl}${path}`, {
       ...init,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -392,7 +393,7 @@ class FirestoreFeedbackConversationStore implements FeedbackConversationStore {
       shadow_only: message.shadowOnly,
     });
     const token = await getFirestoreAccessToken(this.clientEmail, this.privateKey);
-    const response = await fetch(
+    const response = await fetchWithDeadline(
       `https://firestore.googleapis.com/v1/${databaseRoot}/documents:commit`,
       {
         method: 'POST',

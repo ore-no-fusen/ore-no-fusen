@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '../../../lib/fetch-with-deadline.mjs';
 const GATEWAY_URL = 'https://discord.com/api/v10/gateway/bot';
 const API_URLS = {
   production: 'https://ore-no-fusen.vercel.app/api/feedback/discord/ingest',
@@ -19,6 +20,17 @@ function matchingSecret(env, environment) {
   return environment === 'production'
     ? env.FEEDBACK_INGEST_SECRET_PRODUCTION?.trim()
     : env.FEEDBACK_INGEST_SECRET_DEVELOPMENT?.trim();
+}
+
+export async function credentialFingerprint(secret) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+}
+export function retryAfterMs(value) {
+  if (!value) return 0;
+  const seconds = Number(value);
+  const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+  return Number.isFinite(delay) ? Math.max(0, delay) : 0;
 }
 
 export class DiscordGateway {
@@ -47,9 +59,18 @@ export class DiscordGateway {
         connected: Boolean(this.socket),
         activeEnvironments: active,
         sequence: await this.state.storage.get(SEQUENCE_KEY) ?? null,
+        deliveryErrors: Object.fromEntries(await Promise.all((active ?? []).map(async environment => {
+          const error = await this.state.storage.get('delivery-error:' + environment);
+          return [environment, error ? { code: error.code, at: error.at, permanent: Boolean(error.permanent) } : null];
+        }))),
       });
     }
-    if (request.method !== 'POST' || !['/start', '/stop'].includes(path)) return new Response(null, { status: 404 });
+    if (request.method !== 'POST' || !['/start', '/stop', '/retry-delivery'].includes(path)) return new Response(null, { status: 404 });
+    if (path === '/retry-delivery') {
+      for (const environment of ['production', 'development']) await this.state.storage.delete('delivery-error:' + environment);
+      await this.state.storage.setAlarm(Date.now() + 1000);
+      return Response.json({ retryScheduled: true });
+    }
     if (path === '/stop') {
       this.stopping = true;
       this.generation += 1;
@@ -98,7 +119,7 @@ export class DiscordGateway {
     if (!gatewayUrl) {
       let response;
       try {
-        response = await fetch(GATEWAY_URL, {
+        response = await fetchWithDeadline(GATEWAY_URL, {
           headers: { Authorization: `Bot ${token}` },
           signal: AbortSignal.timeout(10_000),
         });
@@ -209,57 +230,88 @@ export class DiscordGateway {
   }
 
   async deliverPending() {
+    if (this.deliveryJob) return this.deliveryJob;
+    this.deliveryJob = this.deliverBatch().finally(() => { this.deliveryJob = null; });
+    return this.deliveryJob;
+  }
+
+  async deliverBatch() {
     const active = environmentList(this.env.GATEWAY_DELIVERY_ENVIRONMENTS);
     if (!active) return;
-    const entries = await this.state.storage.list({ prefix: 'inbox:', limit: 100 });
-    for (const [key, event] of entries) {
-      for (const environment of active) {
-        if (event.deliveries?.[environment] === 'confirmed') continue;
-        if (typeof event.retryAt?.[environment] === 'number' && Date.now() < event.retryAt[environment]) continue;
-        const secret = matchingSecret(this.env, environment);
-        if (!secret) continue;
-        try {
-          const response = await fetch(API_URLS[environment], {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
-            body: JSON.stringify({ mode: 'gateway-event', messageId: event.messageId,
-              channelId: event.channelId, guildId: event.guildId }),
-            redirect: 'manual',
-            signal: AbortSignal.timeout(10_000),
-          });
-          if (!response.ok) {
-            this.deferDelivery(event, environment);
-            await this.state.storage.put(key, event);
-            continue;
+    const key = 'delivery-scan:' + active.join(',');
+    const scan = await this.state.storage.get(key) ?? { cursors: {}, turn: 0 };
+    const ordered = [...active.slice(scan.turn), ...active.slice(0, scan.turn)];
+    // Each environment gets its own budget; a slow first target cannot starve another.
+    for (const environment of ordered) {
+      const secret = matchingSecret(this.env, environment);
+      if (!secret) continue;
+      const fingerprint = await credentialFingerprint(secret);
+      const blocked = await this.state.storage.get('delivery-error:' + environment);
+      const stillBlocked = blocked?.source === 'discord'
+        ? blocked.repairRevision === (this.env.INGEST_REPAIR_REVISION ?? '0')
+        : blocked?.credentialFingerprint === fingerprint;
+      if (blocked?.permanent && stillBlocked) continue;
+      if (Date.now() < (blocked?.retryUntil ?? 0)) continue;
+      if (blocked?.permanent) await this.state.storage.delete('delivery-error:' + environment);
+      const deadline = Date.now() + Math.floor(12_000 / active.length);
+      const entries = await this.state.storage.list({ prefix: 'inbox:', limit: 100, ...(scan.cursors[environment] ? { startAfter: scan.cursors[environment] } : {}) });
+      if (!entries.size) { delete scan.cursors[environment]; continue; }
+      let attempts = 0;
+      for (const [inboxKey, event] of entries) {
+        if (Date.now() >= deadline || attempts >= 10) break;
+        if (event.deliveries?.[environment] !== 'confirmed' && !(Date.now() < (event.retryAt?.[environment] ?? 0))) {
+          attempts++;
+          try {
+            const response = await fetchWithDeadline(API_URLS[environment], {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + secret },
+              body: JSON.stringify({ mode: 'gateway-event', messageId: event.messageId, channelId: event.channelId, guildId: event.guildId }),
+              redirect: 'manual',
+            }, Math.max(1, Math.min(5_000, deadline - Date.now())));
+            if (!response.ok) {
+              const error = Error('delivery_http_' + response.status);
+              const failure = await response.json().catch(() => null);
+              if (failure?.dependency?.source === 'discord') {
+                error.upstreamAuthentication = failure.dependency.kind === 'authentication';
+                error.upstreamRateLimit = failure.dependency.kind === 'rate_limit';
+                error.upstreamDelay = Number.isFinite(failure.dependency.retryAfterMs) ? failure.dependency.retryAfterMs : 0;
+              }
+              error.status = response.status;
+              error.retryAfter = Math.max(error.upstreamDelay ?? 0, retryAfterMs(response.headers.get('Retry-After')));
+              if (error.upstreamRateLimit) error.status = 429;
+              if (error.upstreamAuthentication) error.message = 'delivery_discord_authentication';
+              throw error;
+            }
+            const result = await response.json();
+            if (!['saved', 'duplicate', 'ignored'].includes(result.outcome) || result.environment !== environment) throw Error('delivery_response_invalid');
+            event.deliveries[environment] = 'confirmed';
+            if (event.retryAt) delete event.retryAt[environment];
+          } catch (error) {
+            const permanent = error.upstreamAuthentication || error.status === 401 || error.status === 403;
+            await this.state.storage.put('delivery-error:' + environment, { code: error.message?.startsWith('delivery_') ? error.message : 'delivery_network_error', at: Date.now(), permanent, ...(error.status === 429 ? { retryUntil: Date.now() + Math.max(error.retryAfter, 30_000) } : {}), ...(permanent ? error.upstreamAuthentication ? { source: 'discord', repairRevision: this.env.INGEST_REPAIR_REVISION ?? '0' } : { source: 'ingest', credentialFingerprint: fingerprint } : {}) });
+            if (permanent) break; // Leave this inbox cursor in place until credentials/configuration are repaired.
+            this.deferDelivery(event, environment, error.status === 429 ? error.retryAfter : 0);
+            if (error.status === 429) {
+              await this.state.storage.put(inboxKey, event);
+              break; // The destination is rate-limited, including its other inbox messages.
+            }
           }
-          const result = await response.json();
-          if (!['saved', 'duplicate', 'ignored'].includes(result.outcome)
-            || result.environment !== environment) {
-            this.deferDelivery(event, environment);
-            await this.state.storage.put(key, event);
-            continue;
-          }
-          event.deliveries[environment] = 'confirmed';
-          if (event.retryAt) delete event.retryAt[environment];
-          await this.state.storage.put(key, event);
-        } catch {
-          this.deferDelivery(event, environment);
-          await this.state.storage.put(key, event);
+          await this.state.storage.put(inboxKey, event);
         }
-      }
-      if (['production', 'development'].every(environment => event.deliveries?.[environment] === 'confirmed')) {
-        await this.state.storage.delete(key);
+        if (['production', 'development'].every(env => event.deliveries?.[env] === 'confirmed')) await this.state.storage.delete(inboxKey);
+        scan.cursors[environment] = inboxKey;
       }
     }
+    scan.turn = (scan.turn + 1) % active.length;
+    await this.state.storage.put(key, scan);
     await this.state.storage.setAlarm(Date.now() + 30_000);
   }
 
-  deferDelivery(event, environment) {
+  deferDelivery(event, environment, minimumDelay = 0) {
     event.attempts ??= {};
     event.retryAt ??= {};
     const attempts = (event.attempts[environment] ?? 0) + 1;
     event.attempts[environment] = attempts;
-    event.retryAt[environment] = Date.now() + Math.min(30_000 * 2 ** Math.min(attempts - 1, 10), 5 * 60_000);
+    event.retryAt[environment] = Date.now() + Math.max(minimumDelay, Math.min(30_000 * 2 ** Math.min(attempts - 1, 10), 5 * 60_000));
   }
 
   heartbeat(interval, generation) {

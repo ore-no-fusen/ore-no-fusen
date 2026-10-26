@@ -65,6 +65,14 @@ function Assert-Installed {
 switch ($Action) {
   'Probe' {
     Assert-Idle
+    $certificate = Get-ChildItem Cert:\CurrentUser\My | Where-Object {
+      $_.Subject -eq 'CN=OreNoFusenDev' -and $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date).AddDays(30)
+    } | Sort-Object NotAfter -Descending | Select-Object -First 1
+    $trusted = $null
+    if ($certificate) { $trusted = Get-ChildItem Cert:\CurrentUser\Root | Where-Object Thumbprint -eq $certificate.Thumbprint }
+    if (-not $trusted) {
+      throw 'Local test certificate is not ready. Before building, run packaging\msix\test-msix.ps1 -PrepareCertificateOnly in a visible PowerShell window and approve the Windows certificate dialog yourself.'
+    }
     foreach ($command in @('git','node','npm.cmd','npx.cmd','cargo')) {
       if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Missing command: $command" }
     }

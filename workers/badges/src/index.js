@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '../../../lib/fetch-with-deadline.mjs';
 const OWNER = "ore-no-fusen";
 const REPO = "ore-no-fusen";
 const GITHUB_API = "https://api.github.com";
@@ -98,7 +99,7 @@ async function githubJson(path, env) {
     headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
   }
 
-  const response = await fetch(`${GITHUB_API}${path}`, { headers });
+  const response = await fetchWithDeadline(`${GITHUB_API}${path}`, { headers });
   if (!response.ok) {
     throw new Error(`GitHub API failed: ${response.status}`);
   }

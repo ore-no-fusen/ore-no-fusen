@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
 import { NextResponse } from 'next/server';
 import { createFeedbackConversationStore } from '../../lib/store';
 import type { FeedbackConversationMessage } from '../../lib/types';
@@ -55,7 +56,7 @@ async function notifyDiscordReadReceipt(conversationId: string, messages: Feedba
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
-  const response = await fetch(webhookUrl, {
+  const response = await fetchWithDeadline(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
