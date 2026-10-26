@@ -28,7 +28,7 @@ E2Eは空きポートと固有のNext出力を使う。終了・中断時には�
 | 梱包署名 / 署名検証 / 導入起動 | 5 / 2 / 3 | OS処理にも工程上限を適用 |
 | 公開ガイドのbuild / deploy | 各10 | 独立した公開repoにも同じ設定 |
 
-旧do-release/do-non-app-releaseは直接push経路を廃止し、明示的に失敗終了する案内専用へ変更する。リモートの旧エントリーも無効化し、正規のリリースマシンと保護PRを使う。Rust Windows Testは独立した手動診断専用とし、通常PRではTestの全target検査へ集約する。前提検査が失敗したときは高価なMSIXビルドを始めない。TestはPR/branch単位で実行を直列化し、実行中の古いSHAを自動取消しない。待機中はGitHubの最新1件に集約されるため、未開始の古いrunの取消しと計算済み工程の破棄を区別する。PowerShell構文検査はfeature pushとPRの二重実行を避け、PRとmain/develop統合後に行う。
+旧do-release/do-non-app-releaseは直接push経路を廃止し、明示的に失敗終了する案内専用へ変更する。リモートの旧エントリーも無効化し、正規のリリースマシンと保護PRを使う。Rust Windows Testは独立した手動診断専用とし、通常PRではTestの全target検査へ集約する。前提検査が失敗したときは高価なMSIXビルドを始めない。TestはPR/branch単位で実行を直列化し、実行中の古いSHAを自動取消しない。待機中はGitHubの最新1件に集約されるため、未開始の古いrunの取消しと計算済み工程の破棄を区別する。修正コミット追加で旧SHAの検査が不要になった場合に手動取消するなら、旧SHA・理由を保存し、新しいheadの全CI合格を別に確認する。確認待ちだけを理由に同じSHAのビルドを再実行しない。PowerShell構文検査はfeature pushとPRの二重実行を避け、PRとmain/develop統合後に行う。
 
 status JSONはrun ID・attempt・SHAごとの成果物へ保存する。必須工程がskip/失敗/未完了なら補助JSONをsuccessにしない。共有ci-statusブランチへの書込みは廃止する。成果物保存自体が失敗した場合もGitHub jobの結果を確認する。最新head/baseのすべての適用対象チェックと統合後CIの合格を要求する条件は変わらない。
 
@@ -47,3 +47,5 @@ Gatewayの配送は環境別の走査位置と時間予算を保持し、先頭1
 3. 表示されたmanifest SHA256を確認し `--apply --manifest-sha256 <SHA256>` で適用する。zipのハッシュとリモートID/サイズ/SHA、現在の保護対象を再確認して、保存済みIDだけを削除する。保護対象に変化があれば停止して再計画する。削除結果はdeleted.jsonlへ追記する。
 
 原本Wikiは全履歴bundleへ保全してから、.gitmodulesがないwiki-temp gitlinkだけを追跡対象から除く。利用者向け公開原稿の正本はpublic-guideであり、Wiki原本を上書き・削除しない。
+
+開発Workerは既存の `v1 / DiscordIngestCoordinator` migrationを環境別に明示し、本番側の未有効Gateway登録v2を継承しない。既存のWorker名・DO binding・cron・HTTP非公開を維持して更新する。配布前にはリモートの現在migration tagと解決済み設定を照合し、既に適用済みのmigrationを巻き戻さない。
