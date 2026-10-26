@@ -50,7 +50,7 @@ it('新しい投稿がなければFirestoreを読まず、カーソルを維持�
 it('Discordの取得失敗時はカーソルを進めない', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 429 })));
 
-  expect(await runDiscordIngest('123456789012345678')).toEqual({ error: 'Discord API error: 429', status: 502 });
+  await expect(runDiscordIngest('123456789012345678')).rejects.toMatchObject({ kind: 'rate_limit', retryAfterMs: 30000 });
   expect(store.appendMessage).not.toHaveBeenCalled();
 });
 

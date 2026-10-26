@@ -42,7 +42,7 @@ test('server imports production replies without an author PC and resumes its che
 test('failure retains checkpoint, waits five minutes and does not disclose credentials', async (t) => {
   const fixtureData = fixture({ 'discord-cursor': '123456789012345678' });
   let calls = 0;
-  t.mock.method(globalThis, 'fetch', async () => { calls++; return new Response('test-secret', { status: 401 }); });
+  t.mock.method(globalThis, 'fetch', async () => { calls++; return new Response('test-secret', { status: 503 }); });
   const response = await fixtureData.coordinator.fetch(tick());
   assert.equal(response.status, 502);
   assert.equal((await response.text()).includes('test-secret'), false);
@@ -274,4 +274,32 @@ test('Gateway rate limit pauses the whole destination, including different inbox
  const f=gatewayFixture();for(const id of ['1','2'])f.entries.set('inbox:'+id,{messageId:id,channelId:'c',guildId:'g',deliveries:{production:'held',development:'held'}});let calls=0;
  t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(null,{status:429,headers:{'Retry-After':'600'}})});
  await f.gateway.deliverPending();await f.gateway.deliverPending();assert.equal(calls,1);assert.ok(f.entries.get('delivery-error:development').retryUntil>Date.now()+590000);
+});
+
+test('REST coordinator stops permanent authentication failures until credential rotation',async t=>{
+ const f=fixture({'discord-cursor':'123456789012345678'});let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(null,{status:401})});
+ await f.coordinator.fetch(tick());f.entries.set('retry-after',0);assert.equal((await f.coordinator.fetch(tick())).status,503);assert.equal(calls,1);assert.equal(f.entries.get('discord-cursor'),'123456789012345678');
+ f.coordinator.env.FEEDBACK_CONVERSATION_INGEST_SECRET='rotated';await f.coordinator.fetch(tick());assert.equal(calls,2);
+});
+test('REST coordinator respects a long Retry-After without advancing its checkpoint',async t=>{
+ const f=fixture({'discord-cursor':'123456789012345678'});let calls=0;const before=Date.now();t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(null,{status:429,headers:{'Retry-After':'900'}})});
+ await f.coordinator.fetch(tick());await f.coordinator.fetch(tick());assert.equal(calls,1);assert.ok(f.entries.get('retry-after')>=before+900000);assert.equal(f.entries.get('discord-cursor'),'123456789012345678');
+});
+
+test('upstream Bot authentication stops independently and operator repair revision resumes the cursor',async t=>{
+ const f=fixture({'discord-cursor':'123456789012345678'});let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;return Response.json({dependency:{source:'discord',kind:'authentication'}},{status:503})});
+ await f.coordinator.fetch(tick());f.entries.set('retry-after',0);await f.coordinator.fetch(tick());assert.equal(calls,1);assert.equal(f.entries.has('ingest-auth-error'),false);
+ f.coordinator.env.INGEST_REPAIR_REVISION='repair-1';await f.coordinator.fetch(tick());assert.equal(calls,2);assert.equal(f.entries.get('discord-cursor'),'123456789012345678');
+});
+test('upstream Discord Retry-After reaches REST and Gateway destination backoff',async t=>{
+ const f=fixture();const g=gatewayFixture();g.entries.set('inbox:1',{messageId:'1',channelId:'c',guildId:'g',deliveries:{production:'held',development:'held'}});const start=Date.now();
+ t.mock.method(globalThis,'fetch',async()=>Response.json({dependency:{source:'discord',kind:'rate_limit',retryAfterMs:900000}},{status:503}));
+ await f.coordinator.fetch(tick());await g.gateway.deliverPending();assert.ok(f.entries.get('retry-after')>=start+900000);assert.ok(g.entries.get('delivery-error:development').retryUntil>=start+900000);
+});
+
+test('Gateway Bot configuration repair is separate from ingest credential rotation',async t=>{
+ const f=gatewayFixture();f.entries.set('inbox:1',{messageId:'1',channelId:'c',guildId:'g',deliveries:{production:'held',development:'held'}});let calls=0;
+ t.mock.method(globalThis,'fetch',async()=>{calls++;return Response.json({dependency:{source:'discord',kind:'authentication'}},{status:503})});
+ await f.gateway.deliverPending();f.gateway.env.FEEDBACK_INGEST_SECRET_DEVELOPMENT='unrelated-rotation';await f.gateway.deliverPending();assert.equal(calls,1);assert.equal(f.entries.get('delivery-error:development').source,'discord');
+ f.gateway.env.INGEST_REPAIR_REVISION='repair-1';await f.gateway.deliverPending();assert.equal(calls,2);
 });

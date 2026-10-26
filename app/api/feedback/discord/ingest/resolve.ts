@@ -1,4 +1,4 @@
-import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
+import { discordFetch as fetchWithDeadline } from './http';
 import { extractConversationIdFromDiscordEmbeds } from '../../lib/security';
 import { feedbackEnvironment } from '../../lib/environment';
 import type { FeedbackConversationStore } from '../../lib/store';

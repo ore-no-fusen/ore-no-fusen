@@ -1,5 +1,5 @@
 import type { DiscordCandidateMessage } from '../../lib/types';
-import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
+import { discordFetch as fetchWithDeadline, DiscordDependencyError } from './http';
 import { feedbackEnvironment } from '../../lib/environment';
 import { feedbackTimeRemaining, withFeedbackBudget } from '../../lib/request-budget';
 import {
@@ -69,7 +69,8 @@ async function ingestBatch(afterId?: string, continuation?: DiscordScan): Promis
         else if(await store.appendMessage({messageId:'discord_'+message.id,conversationId:result.conversationId,authorType:'developer',body:message.content.trim(),discordMessageId:message.id,createdAt:message.timestamp&&Number.isFinite(Date.parse(message.timestamp))?message.timestamp:new Date().toISOString(),readByUser:false,shadowOnly:process.env.FEEDBACK_CONVERSATION_SHADOW_MODE==='true'}))ingested++;
       }
       beforeId=message.id;processed++;
-    } catch {
+    } catch (error) {
+      if (error instanceof DiscordDependencyError) throw error;
       // A failed message stays outside the completed prefix and is retried idempotently.
       if(!processed)return {error:'Discord batch could not make progress',status:503};
       break;

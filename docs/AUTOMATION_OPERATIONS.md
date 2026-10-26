@@ -28,13 +28,13 @@ E2Eは空きポートと固有のNext出力を使う。終了・中断時には�
 | 梱包署名 / 署名検証 / 導入起動 | 5 / 2 / 3 | OS処理にも工程上限を適用 |
 | 公開ガイドのbuild / deploy | 各10 | 独立した公開repoにも同じ設定 |
 
-旧do-release/do-non-app-releaseは直接push経路を廃止し、明示的に失敗終了する案内専用へ変更する。リモートの旧エントリーも無効化し、正規のリリースマシンと保護PRを使う。Rust Windows Testは独立した手動診断専用とし、通常PRではTestの全target検査へ集約する。前提検査が失敗したときは高価なMSIXビルドを始めない。
+旧do-release/do-non-app-releaseは直接push経路を廃止し、明示的に失敗終了する案内専用へ変更する。リモートの旧エントリーも無効化し、正規のリリースマシンと保護PRを使う。Rust Windows Testは独立した手動診断専用とし、通常PRではTestの全target検査へ集約する。前提検査が失敗したときは高価なMSIXビルドを始めない。TestはPR/branch単位で実行を直列化し、実行中の古いSHAを自動取消しない。待機中はGitHubの最新1件に集約されるため、未開始の古いrunの取消しと計算済み工程の破棄を区別する。PowerShell構文検査はfeature pushとPRの二重実行を避け、PRとmain/develop統合後に行う。
 
 status JSONはrun ID・attempt・SHAごとの成果物へ保存する。必須工程がskip/失敗/未完了なら補助JSONをsuccessにしない。共有ci-statusブランチへの書込みは廃止する。成果物保存自体が失敗した場合もGitHub jobの結果を確認する。最新head/baseのすべての適用対象チェックと統合後CIの合格を要求する条件は変わらない。
 
 ## Discord取込と配送
 
-REST取込はCloudflareの環境別Durable Objectだけがcheckpointを管理する。Vercelの日次Cronは廃止し、認証済み旧入口は410、未認証は401を返す。重複する無状態の実行器へ戻さない。APIは1回20件・全体12秒の予算内で進め、before/high-water/floorと環境・channelをcontinuationへ返す。小分けの途中では全体cursorを進めず、継続位置をstorage transactionで保存する。全部終わってからhigh-waterを確定する。保存途中の失敗後も同じmessage IDの冪等保存で再開する。外部通信は本文読取まで期限を適用し、書込の無条件自動再送はしない。
+REST取込はCloudflareの環境別Durable Objectだけがcheckpointを管理する。REST呼出し自体も401/403では同じ認証設定で再送せず、修復したcredentialの変更で再開する。429はRetry-Afterと標準5分の長い方まで待機する。Discord本体の401/403と429も、APIが依存先別のエラー情報として返して停止・待機を伝搬する。Bot設定の認証停止はAPIの取込secret不一致と区別する。Bot設定修復後はWorkerの非秘密変数 `INGEST_REPAIR_REVISION` を変更して再デプロイし、同じcheckpointから再開する。公開HTTPを有効にしている運用だけは、取込secretで認証した `POST /ingest/retry` でも再開できる。現在のworkers_dev=falseを再開のため勝手に公開しない。Vercelの日次Cronは廃止し、認証済み旧入口は410、未認証は401を返す。重複する無状態の実行器へ戻さない。APIは1回20件・全体12秒の予算内で進め、before/high-water/floorと環境・channelをcontinuationへ返す。小分けの途中では全体cursorを進めず、継続位置をstorage transactionで保存する。全部終わってからhigh-waterを確定する。保存途中の失敗後も同じmessage IDの冪等保存で再開する。外部通信は本文読取まで期限を適用し、書込の無条件自動再送はしない。
 
 Gatewayの配送は環境別の走査位置と時間予算を保持し、先頭100件が非有効環境向けの保留証拠でも後続へ進む。非有効環境の証拠は消さない。401/403は当該環境だけを停止する。secret変更、または設定修復後にcontrol secretで認証した `POST /gateway/retry-delivery` で再開する。`GET /gateway/status` も認証必須で、診断には本文・secretを含めない。429はRetry-Afterを優先し、その他の一時障害は上限5分の指数待機を使う。成功した他環境をやり直さない。Gatewayの本番有効化・課金判断・実会話往復確認は通信仕様の別途条件を守る。
 

@@ -2,6 +2,7 @@ export const maxDuration = 20;
 import { NextResponse } from 'next/server';
 import { isDiscordIngestFailure, runDiscordGatewayIngest, runDiscordIngest, validDiscordScan } from './run';
 import { FeedbackRequestError, readFeedbackJson } from '../../lib/security';
+import { DiscordDependencyError } from './http';
 import { feedbackEnvironment } from '../../lib/environment';
 
 function corsHeaders() {
@@ -61,6 +62,9 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ ...result, environment: feedbackEnvironment() }, { headers: corsHeaders() });
   } catch (error) {
+    if (error instanceof DiscordDependencyError) {
+      return NextResponse.json({ error: error.message, dependency: { source: 'discord', kind: error.kind, retryAfterMs: error.retryAfterMs } }, { status: 503, headers: corsHeaders() });
+    }
     if (error instanceof FeedbackRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status, headers: corsHeaders() });
     }

@@ -22,11 +22,11 @@ function matchingSecret(env, environment) {
     : env.FEEDBACK_INGEST_SECRET_DEVELOPMENT?.trim();
 }
 
-async function credentialFingerprint(secret) {
+export async function credentialFingerprint(secret) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
   return Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
 }
-function retryAfterMs(value) {
+export function retryAfterMs(value) {
   if (!value) return 0;
   const seconds = Number(value);
   const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
@@ -247,7 +247,10 @@ export class DiscordGateway {
       if (!secret) continue;
       const fingerprint = await credentialFingerprint(secret);
       const blocked = await this.state.storage.get('delivery-error:' + environment);
-      if (blocked?.permanent && blocked.credentialFingerprint === fingerprint) continue;
+      const stillBlocked = blocked?.source === 'discord'
+        ? blocked.repairRevision === (this.env.INGEST_REPAIR_REVISION ?? '0')
+        : blocked?.credentialFingerprint === fingerprint;
+      if (blocked?.permanent && stillBlocked) continue;
       if (Date.now() < (blocked?.retryUntil ?? 0)) continue;
       if (blocked?.permanent) await this.state.storage.delete('delivery-error:' + environment);
       const deadline = Date.now() + Math.floor(12_000 / active.length);
@@ -266,8 +269,16 @@ export class DiscordGateway {
             }, Math.max(1, Math.min(5_000, deadline - Date.now())));
             if (!response.ok) {
               const error = Error('delivery_http_' + response.status);
+              const failure = await response.json().catch(() => null);
+              if (failure?.dependency?.source === 'discord') {
+                error.upstreamAuthentication = failure.dependency.kind === 'authentication';
+                error.upstreamRateLimit = failure.dependency.kind === 'rate_limit';
+                error.upstreamDelay = Number.isFinite(failure.dependency.retryAfterMs) ? failure.dependency.retryAfterMs : 0;
+              }
               error.status = response.status;
-              error.retryAfter = retryAfterMs(response.headers.get('Retry-After'));
+              error.retryAfter = Math.max(error.upstreamDelay ?? 0, retryAfterMs(response.headers.get('Retry-After')));
+              if (error.upstreamRateLimit) error.status = 429;
+              if (error.upstreamAuthentication) error.message = 'delivery_discord_authentication';
               throw error;
             }
             const result = await response.json();
@@ -275,8 +286,8 @@ export class DiscordGateway {
             event.deliveries[environment] = 'confirmed';
             if (event.retryAt) delete event.retryAt[environment];
           } catch (error) {
-            const permanent = error.status === 401 || error.status === 403;
-            await this.state.storage.put('delivery-error:' + environment, { code: error.message?.startsWith('delivery_') ? error.message : 'delivery_network_error', at: Date.now(), permanent, ...(error.status === 429 ? { retryUntil: Date.now() + Math.max(error.retryAfter, 30_000) } : {}), ...(permanent ? { credentialFingerprint: fingerprint } : {}) });
+            const permanent = error.upstreamAuthentication || error.status === 401 || error.status === 403;
+            await this.state.storage.put('delivery-error:' + environment, { code: error.message?.startsWith('delivery_') ? error.message : 'delivery_network_error', at: Date.now(), permanent, ...(error.status === 429 ? { retryUntil: Date.now() + Math.max(error.retryAfter, 30_000) } : {}), ...(permanent ? error.upstreamAuthentication ? { source: 'discord', repairRevision: this.env.INGEST_REPAIR_REVISION ?? '0' } : { source: 'ingest', credentialFingerprint: fingerprint } : {}) });
             if (permanent) break; // Leave this inbox cursor in place until credentials/configuration are repaired.
             this.deferDelivery(event, environment, error.status === 429 ? error.retryAfter : 0);
             if (error.status === 429) {

@@ -202,3 +202,18 @@ describe('Discord ingest cursor input', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('Discord upstream error propagation', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+  it.each([401, 429])('keeps upstream %s separate from caller authentication', async status => {
+    vi.stubEnv('DISCORD_BOT_TOKEN', 'private-bot');
+    vi.stubEnv('DISCORD_FEEDBACK_CHANNEL_ID', '123456789012345678');
+    vi.stubEnv('FEEDBACK_CONVERSATION_INGEST_SECRET', 'private-ingest');
+    vi.stubEnv('FEEDBACK_CONVERSATION_ENABLED', 'true');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('private-discord-body', {status,headers:{'Retry-After':'900'}})));
+    const response = await POST(new Request('https://example.test/api/feedback/discord/ingest', {method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer private-ingest'},body:'{}'}));
+    expect(response.status).toBe(503);
+    const body=await response.json();expect(body.dependency).toEqual({source:'discord',kind:status===401?'authentication':'rate_limit',retryAfterMs:status===401?0:900000});
+    expect(JSON.stringify(body)).not.toContain('private');
+  });
+});
