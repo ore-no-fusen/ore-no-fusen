@@ -103,3 +103,6 @@ wiki-temp/
 
 # Worktrees directory
 /.w/
+
+# Per-run CI diagnostic, uploaded as an artifact
+/msix-ci-status.json

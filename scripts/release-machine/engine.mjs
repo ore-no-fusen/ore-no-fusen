@@ -68,7 +68,8 @@ export class ReleaseMachine {
     const quote = value => `'${String(value).replaceAll("'", "''")}'`;
     const versionCommit = env?.RELEASE_MACHINE_VERSION_COMMIT === '1';
     if (logged) this.log(`場所: ${cwd}\nSet-Location -LiteralPath ${quote(cwd)}\n${versionCommit ? "$env:RELEASE_MACHINE_VERSION_COMMIT = '1'\n" : ''}& ${[file, ...args].map(quote).join(' ')}`);
-    try { return await this.runner(file, args, { cwd, env,
+    const building = args.includes('Build');
+    try { return await this.runner(file, args, { cwd, env, timeoutMs: building ? 35 * 60_000 : 120_000,
       onOutput: logged ? text => this.log(text.trimEnd()) : undefined,
       onPid: logged ? pid => { this.state.childPid = pid; this.save(); } : undefined }); }
     finally { if (logged && versionCommit) this.log('Remove-Item Env:RELEASE_MACHINE_VERSION_COMMIT -ErrorAction SilentlyContinue'); }
@@ -105,7 +106,7 @@ export class ReleaseMachine {
     return env;
   }
   ps(script, args = [], cwd = this.state.mainRoot ?? this.root, env) {
-    return this.cmd('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, ...args], cwd, true, env);
+    return this.cmd('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, ...args], cwd, true, env);
   }
   windows(action, args = [], env) { return this.ps(path.join(this.root, 'scripts/release-machine/windows.ps1'), ['-Action', action, ...args], this.root, env); }
   async inspect() {

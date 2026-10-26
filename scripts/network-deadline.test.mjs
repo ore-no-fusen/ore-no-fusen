@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';import {fetchWithDeadline} from '../lib/fetch-with-deadline.mjs';
+test('response body stalls are aborted, not just header waits',async t=>{const server=http.createServer((_req,res)=>{res.writeHead(200);res.write('{');});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>{server.closeAllConnections();server.close(r)}));const response=await fetchWithDeadline('http://127.0.0.1:'+server.address().port,{},100);await assert.rejects(response.text());});

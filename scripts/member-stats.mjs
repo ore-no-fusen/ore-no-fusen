@@ -1,3 +1,4 @@
+import { fetchWithDeadline, withNetworkBudget } from '../lib/node-fetch-with-deadline.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -252,7 +253,7 @@ async function publishAnnouncement(token, title, body, audience = 'all', memberN
   const id = crypto.randomUUID();
   const name = `${root}/announcements/${id}`;
   const value = { title: title.trim(), body: body.trim(), segment, active: true, createdAt: createdAt.toISOString(), expiresAt: expiresAt.toISOString() };
-  const response = await fetch(`https://firestore.googleapis.com/v1/projects/${serviceAccount.project_id}/databases/(default)/documents:commit`, {
+  const response = await fetchWithDeadline(`https://firestore.googleapis.com/v1/projects/${serviceAccount.project_id}/databases/(default)/documents:commit`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ writes: [{ update: { name, fields: { payload: { stringValue: JSON.stringify(value) } } }, currentDocument: { exists: false } }] }),
@@ -267,7 +268,7 @@ async function fetchFirestoreAnnouncements(token, environment = 'production') {
   let pageToken = '';
   do {
     const url = `https://firestore.googleapis.com/v1/${prefix}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetchWithDeadline(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(`お便りの取得に失敗しました (${res.status})`);
     const data = await res.json();
     for (const doc of data.documents || []) {
@@ -284,13 +285,13 @@ async function stopAnnouncement(token, id, environment = 'production') {
     throw new Error('お便りIDが不正です');
   }
   const name = `${firestoreRoot(environment)}/announcements/${id}`;
-  const docResponse = await fetch(`https://firestore.googleapis.com/v1/${name}`, { headers: { Authorization: `Bearer ${token}` } });
+  const docResponse = await fetchWithDeadline(`https://firestore.googleapis.com/v1/${name}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!docResponse.ok) throw new Error(`お便りを確認できませんでした (${docResponse.status})`);
   const doc = await docResponse.json();
   const value = JSON.parse(doc.fields.payload.stringValue);
   if (value.active === false) return;
   if (value.active !== true || !doc.updateTime) throw new Error('お便りの状態を確認できませんでした');
-  const response = await fetch(`https://firestore.googleapis.com/v1/projects/${serviceAccount.project_id}/databases/(default)/documents:commit`, {
+  const response = await fetchWithDeadline(`https://firestore.googleapis.com/v1/projects/${serviceAccount.project_id}/databases/(default)/documents:commit`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ writes: [{
@@ -439,7 +440,7 @@ async function getAccessToken(scope) {
   const signature = signer.sign(serviceAccount.private_key).toString('base64url');
   const assertion = `${unsigned}.${signature}`;
 
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+  const response = await fetchWithDeadline('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -459,7 +460,7 @@ async function fetchFirestoreMembers(token, environment = 'production') {
   let pageToken = '';
   do {
     const url = `https://firestore.googleapis.com/v1/${prefix}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetchWithDeadline(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
     const data = await res.json();
     for (const doc of data.documents || []) {
@@ -476,7 +477,7 @@ async function fetchFirestoreUsageHistory(token, environment = 'production') {
   const results=[]; let pageToken='';
   do {
     const url=`https://firestore.googleapis.com/v1/${prefix}?pageSize=300${pageToken?`&pageToken=${encodeURIComponent(pageToken)}`:''}`;
-    const res=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetchWithDeadline(url,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error(`利用履歴取得失敗: ${res.status}`);
     const data=await res.json();
     for(const doc of data.documents||[])results.push(JSON.parse(doc.fields.payload.stringValue));
@@ -487,7 +488,7 @@ async function fetchFirestoreUsageHistory(token, environment = 'production') {
 
 async function fetchGa4Data(token) {
   // 1. Daily active users & sessions
-  const dauRes = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+  const dauRes = await fetchWithDeadline(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -500,7 +501,7 @@ async function fetchGa4Data(token) {
   const dauData = dauRes.ok ? await dauRes.json() : null;
 
   // 2. Events breakdown
-  const eventRes = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+  const eventRes = await fetchWithDeadline(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -513,7 +514,7 @@ async function fetchGa4Data(token) {
   const eventData = eventRes.ok ? await eventRes.json() : null;
 
   // 3. Feature usage breakdown
-  const featRes = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+  const featRes = await fetchWithDeadline(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -525,7 +526,7 @@ async function fetchGa4Data(token) {
   });
   const featData = featRes.ok ? await featRes.json() : null;
 
-  const weeklyFeatureRes = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+  const weeklyFeatureRes = await fetchWithDeadline(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ dateRanges: [{ startDate: GA_START_DATE, endDate: 'today' }], dimensions: [{ name: 'date' }, { name: 'customEvent:feature_name' }], metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }], limit: 25000 })
   });
@@ -816,6 +817,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
   </div>
 
   <script>
+const fetchWithDeadline = (url, init = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(60_000) });
     const dashboard = ${dashboardData};
     ${fs.readFileSync(path.join(rootDir, "scripts/dashboard-ui.js"), "utf8")}
     function renderRetentionComparison(data) {
@@ -825,8 +827,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       const rows=data.features.map(f=>'<tr class="border-b border-slate-800"><td class="py-2 pr-3">'+f.label+'</td><td class="py-2">'+f.active.users+' / '+f.active.denominator+' ('+(f.active.rate===null?'—':f.active.rate+'%')+')<div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-emerald-400" style="width:'+(f.active.rate||0)+'%"></div></div></td><td class="py-2">'+f.churn_candidate.users+' / '+f.churn_candidate.denominator+' ('+(f.churn_candidate.rate===null?'—':f.churn_candidate.rate+'%')+')<div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-amber-400" style="width:'+(f.churn_candidate.rate||0)+'%"></div></div></td><td class="py-2 text-right">'+(f.differencePp===null?'—':(f.differencePp>0?'+':'')+f.differencePp+' pp')+'</td></tr>').join('');
       return '<div class="grid grid-cols-2 md:grid-cols-4 gap-2">'+counts+'</div><p class="text-xs text-amber-300">初回実利用から7日経過し、日別観測と機能対応がそろった会員のみ比較。各群20人未満は参考値。通信だけでアクティブとは判定しません。</p><h3 class="font-semibold">案内強化候補</h3><ol class="list-none space-y-1">'+candidates+'</ol><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="text-left">機能</th><th class="text-left">アクティブの初回7日</th><th class="text-left">離脱候補の初回7日</th><th class="text-right">差</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
     }
-    document.getElementById('analysisExport')?.addEventListener('click',async event=>{event.preventDefault();const link=event.currentTarget;try{const response=await fetch('/usage-analysis.json',{headers:{'X-CSRF-Token':link.dataset.csrf}});if(!response.ok)throw new Error('JSONを取得できません');const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='member-usage-analysis.json';a.click();URL.revokeObjectURL(url);}catch(error){document.getElementById('featureRefreshStatus').textContent=error.message;}});
-    ${canPublish ? `fetch('/feature-usage', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } })
+    document.getElementById('analysisExport')?.addEventListener('click',async event=>{event.preventDefault();const link=event.currentTarget;try{const response=await fetchWithDeadline('/usage-analysis.json',{headers:{'X-CSRF-Token':link.dataset.csrf}});if(!response.ok)throw new Error('JSONを取得できません');const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='member-usage-analysis.json';a.click();URL.revokeObjectURL(url);}catch(error){document.getElementById('featureRefreshStatus').textContent=error.message;}});
+    ${canPublish ? `fetchWithDeadline('/feature-usage', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } })
       .then(response => response.ok ? response.json() : Promise.reject())
       .then(stats => {
         document.getElementById('featureWeek').textContent = stats.week;
@@ -886,7 +888,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         if (icon) icon.classList.add('inline-block', 'animate-spin');
         if (text) text.textContent = 'データ再集計中…';
         try {
-          const response = await fetch('/refresh-data', {
+          const response = await fetchWithDeadline('/refresh-data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' },
           });
@@ -937,7 +939,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       if (!container) return;
       status.textContent = '読み込み中…';
       try {
-        const response = await fetch('/announcement-history', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } });
+        const response = await fetchWithDeadline('/announcement-history', { headers: { 'X-CSRF-Token': '__CSRF_TOKEN__' } });
         if (!response.ok) throw new Error('一覧を取得できませんでした');
         const announcements = await response.json();
         container.replaceChildren();
@@ -965,7 +967,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
               if (!confirm('「' + announcement.title + '」の配信を停止しますか？ すでに受信した会員のお便りは残ります。')) return;
               stop.disabled = true;
               try {
-                const response = await fetch('/announcement-stop', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ id: announcement.id }) });
+                const response = await fetchWithDeadline('/announcement-stop', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ id: announcement.id }) });
                 if (!response.ok) {
                   const result = await response.json();
                   throw new Error(result.error || '配信停止に失敗しました');
@@ -990,7 +992,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       status.textContent = '投稿中…';
       try {
         const fields = new FormData(announcementForm);
-        const response = await fetch('/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ title: fields.get('title'), body: fields.get('body'), audience: fields.get('audience'), memberNumber: fields.get('memberNumber'), featureName: fields.get('featureName') }) });
+        const response = await fetchWithDeadline('/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__' }, body: JSON.stringify({ title: fields.get('title'), body: fields.get('body'), audience: fields.get('audience'), memberNumber: fields.get('memberNumber'), featureName: fields.get('featureName') }) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || '投稿に失敗しました');
         status.textContent = '投稿しました。ID: ' + result.id;
@@ -1130,7 +1132,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 </html>`;
 }
 
-async function collectStats(environment = 'production', canPublish = true) {
+async function collectStats(environment = 'production', canPublish = true) { return withNetworkBudget(45_000,()=>collectStatsData(environment,canPublish)); }
+async function collectStatsData(environment, canPublish) {
   const [dbToken, gaAuth] = await Promise.all([
     getAccessToken('https://www.googleapis.com/auth/datastore'),
     environment === 'production' ? getAccessToken('https://www.googleapis.com/auth/analytics.readonly').then(token=>({token})).catch(()=>({token:null,error:'GA4 authentication or network request failed'})) : null

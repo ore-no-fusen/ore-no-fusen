@@ -57,7 +57,7 @@ describe('Discord ingest conversation resolution', () => {
     });
     expect(fetch).toHaveBeenCalledWith(
       'https://discord.com/api/v10/channels/channel-1/messages/feedback-message-1',
-      { headers: { Authorization: 'Bot bot-token' } },
+      expect.objectContaining({ headers: { Authorization: 'Bot bot-token' }, signal: expect.any(AbortSignal) }),
     );
   });
 

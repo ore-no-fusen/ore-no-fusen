@@ -32,6 +32,7 @@ export class DiscordIngestCoordinator {
       const environment = ingestEnvironment(this.env);
       if (!environment) return Response.json({ error: 'Invalid ingest environment' }, { status: 503 });
       const afterId = await this.state.storage.get(CURSOR_KEY);
+      const continuation = await this.state.storage.get('discord-scan');
       try {
         // Check before the write request: an old Preview may still share the
         // production collections and must never receive a development import.
@@ -48,7 +49,7 @@ export class DiscordIngestCoordinator {
         const response = await fetch(INGEST_URLS[environment], {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
-          body: JSON.stringify(afterId ? { afterId } : {}),
+          body: JSON.stringify({ ...(afterId ? { afterId } : {}), ...(continuation ? { continuation } : {}) }),
           signal: AbortSignal.timeout(20_000),
           redirect: 'manual',
         });
@@ -66,8 +67,19 @@ export class DiscordIngestCoordinator {
             || (afterId && BigInt(result.lastSeenId) < BigInt(afterId))) {
             throw new Error('Invalid checkpoint');
           }
-          if (result.lastSeenId !== afterId) await this.state.storage.put(CURSOR_KEY, result.lastSeenId);
         }
+        const next = result.continuation;
+        if (next && (!['beforeId','highWaterId','floorId'].every(key => typeof next[key] === 'string' && /^\d{1,25}$/.test(next[key]))
+          || next.environment !== environment || typeof next.channelId !== 'string'
+          || BigInt(next.floorId) >= BigInt(next.beforeId) || BigInt(next.beforeId) > BigInt(next.highWaterId)
+          || (afterId && next.floorId !== afterId) || result.lastSeenId !== afterId
+          || (continuation && (next.highWaterId !== continuation.highWaterId || next.floorId !== continuation.floorId || next.channelId !== continuation.channelId || BigInt(next.beforeId) >= BigInt(continuation.beforeId))))) throw new Error('Invalid scan continuation');
+        if (!next && continuation && result.lastSeenId !== continuation.highWaterId) throw new Error('Incomplete scan checkpoint');
+        await this.state.storage.transaction(async txn => {
+          if (next) await txn.put('discord-scan', next);
+          else if (continuation) await txn.delete('discord-scan');
+          if (result.lastSeenId !== undefined && result.lastSeenId !== afterId) await txn.put(CURSOR_KEY, result.lastSeenId);
+        });
         // Only counts are returned/logged, never credentials or message bodies.
         return Response.json({ ingested: result.ingested, rejected: result.rejected.length });
       } catch {

@@ -10,6 +10,8 @@ function fixture(initial = {}, env = {}) {
     storage: {
       async get(key) { return entries.get(key); },
       async put(key, value) { puts.push(key); entries.set(key, value); },
+      async delete(key) { entries.delete(key); },
+      async transaction(callback) { return callback(this); },
     },
     blockConcurrencyWhile(callback) {
       const next = queue.then(callback);
@@ -90,7 +92,7 @@ function gatewayFixture(env = {}) {
     async delete(key) { return entries.delete(key); },
     async deleteAlarm() {},
     async setAlarm() {},
-    async list({ prefix }) { return new Map([...entries].filter(([key]) => key.startsWith(prefix))); },
+    async list({ prefix, startAfter, limit = 100 }) { return new Map([...entries].filter(([key]) => key.startsWith(prefix) && (!startAfter || key > startAfter)).sort(([a],[b])=>a.localeCompare(b)).slice(0,limit)); },
     async transaction(callback) { return callback(storage); },
   };
   const state = { storage };
@@ -233,4 +235,43 @@ test('unknown environment makes no request and development scheduler uses its ow
       get(id) { assert.equal(id, 'development'); return { async fetch() { return Response.json({ ingested: 0 }); } }; },
     },
   });
+});
+
+test('Gateway scans past 100 held completed entries without deleting inactive evidence',async t=>{
+ const f=gatewayFixture();for(let n=1;n<=101;n++)f.entries.set('inbox:'+String(n).padStart(20,'0'),{messageId:String(n),channelId:'c',guildId:'g',deliveries:{production:'held',development:n<=100?'confirmed':'held'}});
+ let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;return Response.json({outcome:'saved',environment:'development'})});
+ await f.gateway.deliverPending();await f.gateway.deliverPending();assert.equal(calls,1);assert.equal(f.entries.size>=101,true);assert.equal(f.entries.get('inbox:'+String(101).padStart(20,'0')).deliveries.development,'confirmed');
+});
+test('Gateway gives both active environments a turn and serializes overlapping delivery',async t=>{
+ const f=gatewayFixture({GATEWAY_DELIVERY_ENVIRONMENTS:'production,development'});f.entries.set('inbox:1',{messageId:'1',channelId:'c',guildId:'g',deliveries:{production:'held',development:'held'}});const targets=[];
+ t.mock.method(globalThis,'fetch',async url=>{targets.push(url);if(url.includes('-git-develop-'))return Response.json({outcome:'saved',environment:'development'});throw Error('offline');});
+ await Promise.all([f.gateway.deliverPending(),f.gateway.deliverPending()]);assert.equal(targets.length,2);assert.equal(f.entries.get('inbox:1').deliveries.development,'confirmed');assert.equal(f.entries.get('inbox:1').deliveries.production,'held');
+});
+test('continuation and completed high-water checkpoint are committed together',async t=>{
+ const f=fixture({'discord-cursor':'123456789012345678'});const scan={beforeId:'123456789012345680',highWaterId:'123456789012345690',floorId:'123456789012345678',environment:'production',channelId:'channel'};let calls=0;
+ t.mock.method(globalThis,'fetch',async(_url,init)=>{calls++;const body=JSON.parse(init.body);if(calls===1)return Response.json({ingested:2,rejected:[],lastSeenId:'123456789012345678',continuation:scan});assert.deepEqual(body.continuation,scan);return Response.json({ingested:1,rejected:[],lastSeenId:scan.highWaterId});});
+ await f.coordinator.fetch(tick());assert.equal(f.entries.get('discord-cursor'),scan.floorId);assert.deepEqual(f.entries.get('discord-scan'),scan);await f.coordinator.fetch(tick());assert.equal(f.entries.get('discord-cursor'),scan.highWaterId);assert.equal(f.entries.has('discord-scan'),false);
+});
+
+test('Gateway stops repeated authentication failures, resumes after secret rotation, and keeps inbox', async t => {
+ const f=gatewayFixture();f.entries.set('inbox:1',{messageId:'1',channelId:'c',guildId:'g',deliveries:{production:'held',development:'held'}});let calls=0;
+ t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(null,{status:401})});
+ await f.gateway.deliverPending();await f.gateway.deliverPending();assert.equal(calls,1);assert.equal(f.entries.get('delivery-error:development').permanent,true);assert.equal(f.entries.get('inbox:1').deliveries.development,'held');
+ f.gateway.env.FEEDBACK_INGEST_SECRET_DEVELOPMENT='rotated';await f.gateway.deliverPending();assert.equal(calls,2);
+});
+test('Gateway honors Retry-After without blocking another environment', async t=>{
+ const f=gatewayFixture({GATEWAY_DELIVERY_ENVIRONMENTS:'production,development'});f.entries.set('inbox:1',{messageId:'1',channelId:'c',guildId:'g',deliveries:{production:'held',development:'held'}});const before=Date.now();
+ t.mock.method(globalThis,'fetch',async url=>url.includes('-git-develop-')?Response.json({outcome:'saved',environment:'development'}):new Response(null,{status:429,headers:{'Retry-After':'600'}}));
+ await f.gateway.deliverPending();const event=f.entries.get('inbox:1');assert.equal(event.deliveries.development,'confirmed');assert.ok(event.retryAt.production>=before+600000);
+});
+test('explicit authenticated delivery retry clears the permanent stop only', async()=>{
+ const f=gatewayFixture({DISCORD_GATEWAY_CONTROL_SECRET:'control'});f.entries.set('delivery-error:development',{permanent:true});
+ assert.equal((await f.gateway.fetch(new Request('https://gateway/retry-delivery',{method:'POST'}))).status,401);assert.equal(f.entries.has('delivery-error:development'),true);
+ assert.equal((await f.gateway.fetch(new Request('https://gateway/retry-delivery',{method:'POST',headers:{authorization:'Bearer control'}}))).status,200);assert.equal(f.entries.has('delivery-error:development'),false);
+});
+
+test('Gateway rate limit pauses the whole destination, including different inbox IDs',async t=>{
+ const f=gatewayFixture();for(const id of ['1','2'])f.entries.set('inbox:'+id,{messageId:id,channelId:'c',guildId:'g',deliveries:{production:'held',development:'held'}});let calls=0;
+ t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(null,{status:429,headers:{'Retry-After':'600'}})});
+ await f.gateway.deliverPending();await f.gateway.deliverPending();assert.equal(calls,1);assert.ok(f.entries.get('delivery-error:development').retryUntil>Date.now()+590000);
 });

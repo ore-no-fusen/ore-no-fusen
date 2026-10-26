@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
 import { extractConversationIdFromDiscordEmbeds } from '../../lib/security';
 import { feedbackEnvironment } from '../../lib/environment';
 import type { FeedbackConversationStore } from '../../lib/store';
@@ -37,7 +38,7 @@ async function fetchDiscordMessage(
   channelId: string,
   messageId: string,
 ): Promise<DiscordMessage | null> {
-  const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+  const response = await fetchWithDeadline(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
     headers: { Authorization: `Bot ${botToken}` },
   });
   if (response.status === 404) return null;
