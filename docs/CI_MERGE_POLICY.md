@@ -13,10 +13,12 @@
 ## テスト構成
 
 - Testはpull_request、main/developへのpush、merge_groupで起動し、pathsフィルターを付けない。
-- frontendは全フロント単体テスト、型検査、Tauri向けフロントビルドを必ず実行する。rustはlocked all-target tests、Dashboard analysis regression testsは分析Nodeテストを実行する。botによるpushでも省略しない。
+- 文書コンテンツだけの変更では、frontend・rust・Dashboard analysis・MSIXを起動しない。scopeがMarkdown/画像等の明示した対象だけであることを判定し、documentationが実際の差分と空白エラーを検査する。public-guideのコンテンツを変更した場合は公開マニュアルのbuild/リンク検査も行う。
+- 文書以外の変更や混在変更では、frontendの全単体・型・Tauri向けフロントビルド、rustの`cargo test --locked`、Dashboard analysisのNodeテストを従来どおり実行する。文書フォルダー内でもスクリプト・設定・依存lockの変更はコンテンツだけとは判定しない。botにも同じ条件を適用する。
 - scopeは実際のgit diffをNUL区切りで読み、リネームの両側も調べる。既知の分析/文書/LPだけならMSIXを省略できる。アプリ、components、worker、public、依存、設定、CI、未知のパスを含む変更はMSIX必須。空差分・判定失敗で成功扱いしない。
 - MSIX CIはTestから再利用する。単独の手動診断も可能。MSIXを必要とする変更では、梱包・署名検証・インストール・起動まで成功を要求する。インストーラー生成だけで合格にしない。
-- CI gateはalwaysで結果を集約する。前提ジョブの失敗/キャンセル/予期しないskipを拒否し、scopeが明示的にfalseの場合だけMSIXのskipを許可する。pathsで起動しないMSIXジョブ自体を一律必須指定しない。
+- CI gateはalwaysで全結果を集約する。文書だけの場合はdocumentation成功とアプリ4ジョブの明示的skipを、通常変更ではアプリ検査成功を要求する。MSIXが不要と明示された場合だけMSIXのskipを許可する。scopeの失敗、出力不明、必要な検査の失敗/キャンセル/skipはすべて拒否する。
+- docs-v2に変更があれば、Testから再利用workflowのdesign-docsを一度呼び出し、build/リンク検査の成功もgateへ含める。独立したpush workflowとの二重起動はしない。mainへのpush時だけPagesへ配信し、PR/developではbuildのみ行う。手動の文書検証も可能だが、main以外から配信しない。
 - 他の起動済みCI（docs、PowerShell検査、Rust Windows Test等）の失敗も最終確認で見落とさない。
 
 ## GitHub保護設定（管理者による設定が必要）
