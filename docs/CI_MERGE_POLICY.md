@@ -10,6 +10,12 @@
 - admin merge、force push、チェック削除、continue-on-error、直接pushで失敗を回避しない。失敗した試行のログを残し、修正後の成功と区別する。
 - マージ後はmerge SHAのCIを確認する。失敗した場合は次の統合を止め、新しい修正PRまたはrevert PRで回復する。共有履歴を書き換えない。
 
+## PC側の検査準備と一覧
+
+新しいワークツリーでは、コミット前に `npm run prepare` を実行し、`.husky/_/pre-commit` の存在と `HUSKY=0` 等の無効化がないことを確認する。依存フォルダーの共有だけではフックの準備完了とみなさない。
+
+全検査の番号・PC/PR/統合後の実行条件・省略候補は [検査実行一覧](TEST_EXECUTION_MATRIX.md)、個別のテストファイルは [全ファイル一覧](TEST_FILE_INDEX.md) に記載する。PC結果のGitHubへの移管・同一入力の再利用は後続の設計対象であり、今回の文書分岐だけで適用したとは扱わない。
+
 ## テスト構成
 
 - Testはpull_request、main/developへのpush、merge_groupで起動し、pathsフィルターを付けない。
