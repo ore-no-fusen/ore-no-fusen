@@ -7,7 +7,7 @@
 |機能分類|関連設計書|ファイル数|
 |---|---|---|
 |お便り・開発者とのやりとり|[007_COMMUNICATION.md](../docs-v2/007_COMMUNICATION.md)|27|
-|会員・利用状況・同意|[007_COMMUNICATION.md](../docs-v2/007_COMMUNICATION.md)|15|
+|会員・利用状況・同意|[007_COMMUNICATION.md](../docs-v2/007_COMMUNICATION.md)|17|
 |Web共有|[013_WEB_SHARE.md](../docs-v2/013_WEB_SHARE.md)|22|
 |iPhone・PWA・クラウド同期|[003_IPHONE.md](../docs-v2/003_IPHONE.md)|32|
 |画像の添付・編集|[002_PC.md](../docs-v2/002_PC.md)|9|
@@ -70,6 +70,8 @@
 |F042|T02-01|Vitest|[app/components/MemberSettings.test.tsx](../app/components/MemberSettings.test.tsx)|
 |F057|T02-01|Vitest|[app/components/SupportMemberNumber.test.tsx](../app/components/SupportMemberNumber.test.tsx)|
 |F063|T02-01|Vitest|[app/hooks/useAnalyticsConsentPromptEligibility.test.tsx](../app/hooks/useAnalyticsConsentPromptEligibility.test.tsx)|
+|F238|T02-01|Vitest|[app/api/launcher.usage.test.ts](../app/api/launcher.usage.test.ts)|
+|F239|T02-01|Vitest|[app/shared/lib/usage.test.ts](../app/shared/lib/usage.test.ts)|
 |F091|T02-01|Vitest|[app/utils/analytics.test.ts](../app/utils/analytics.test.ts)|
 |F092|T02-01|Vitest|[app/utils/analyticsConsentCompletion.test.ts](../app/utils/analyticsConsentCompletion.test.ts)|
 |F116|T02-01|Vitest|[app/utils/memberUsageQueue.test.ts](../app/utils/memberUsageQueue.test.ts)|
@@ -356,4 +358,4 @@
 |F224|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/triple_right_click.rs](../src-tauri/src/triple_right_click.rs)|
 |F225|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/web_create.rs](../src-tauri/src/web_create.rs)|
 
-登録ファイル237件。テストケース数や検査の実行単位数とは別です。Git管理外の個人用監視ツールの試験は別運用です。
+登録ファイル239件。テストケース数や検査の実行単位数とは別です。Git管理外の個人用監視ツールの試験は別運用です。
