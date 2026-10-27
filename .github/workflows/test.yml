@@ -86,7 +86,11 @@ jobs:
       - run: node --test workers/discord-replies/src/index.test.mjs
       - run: npm test
       - run: npx tsc --noEmit
-      - run: npm run build:tauri
+      # MSIX builds the same frontend through Tauri's beforeBuildCommand.
+      # Keep this check here only when no MSIX build will run.
+      - name: Tauri frontend build (without MSIX)
+        if: needs.scope.outputs.msix != 'true'
+        run: npm run build:tauri
 
   rust:
     needs: scope

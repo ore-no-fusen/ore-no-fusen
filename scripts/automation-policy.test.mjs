@@ -1,4 +1,29 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+import { createRequire } from 'node:module';
+const require=createRequire(import.meta.url);
+const {load:parse}=require('js-yaml');
+
+test('Tauri frontend is built once per code pipeline and failures still gate merging',()=>{
+ const workflow=parse(fs.readFileSync('.github/workflows/test.yml','utf8'));
+ const msix=parse(fs.readFileSync('.github/workflows/msix-ci.yml','utf8'));
+ const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8'));
+ const builds=workflow.jobs.frontend.steps.filter(step=>step.run==='npm run build:tauri');
+ assert.equal(builds.length,1);
+ // Missing/unknown outputs retain the standalone check; gate rejects bad scope.
+ assert.equal(builds[0].if,"needs.scope.outputs.msix != 'true'");
+ assert.equal(builds[0]['continue-on-error'],undefined);
+ assert.equal(workflow.jobs.msix.if,"needs.scope.outputs.msix == 'true'");
+ assert.deepEqual(workflow.jobs.msix.needs,['scope','frontend','rust','usage-analysis']);
+ assert.equal(workflow.jobs.msix.uses,'./.github/workflows/msix-ci.yml');
+ assert.equal(config.build.beforeBuildCommand,'npm run build:tauri');
+ const tauri=msix.jobs['build-install-smoke'].steps.find(step=>step.id==='tauri_build');
+ assert.equal(tauri.run,'npx tauri build --no-bundle --ci');
+ assert.equal(tauri.if,undefined);
+ assert.equal(tauri['continue-on-error'],undefined);
+ assert.ok(workflow.jobs.gate.needs.includes('frontend'));
+ assert.ok(workflow.jobs.gate.needs.includes('msix'));
+ assert.equal(workflow.jobs.gate.if,'always()');
+});
 test('retired release entries cannot mutate a protected branch',()=>{for(const name of ['do-release.yml','do-non-app-release.yml']){const text=fs.readFileSync('.github/workflows/'+name,'utf8');assert.ok(text.includes('exit 1'));assert.doesNotMatch(text,/git push|contents: write/);}});
 test('E2E hooks never stop the regular development port',()=>assert.doesNotMatch(fs.readFileSync('.husky/pre-commit','utf8'),/Stop-Process|3002/));
 test('required validation and short diagnostic retention remain explicit',()=>{const text=fs.readFileSync('.github/workflows/test.yml','utf8');assert.match(text,/needs: \[scope, frontend, rust, usage-analysis\]/);assert.match(text,/cargo test --locked\s/);const msix=fs.readFileSync('.github/workflows/msix-ci.yml','utf8');assert.match(msix,/npm run build\s/);assert.match(msix,/retention-days: 1/);assert.doesNotMatch(msix,/createOrUpdateFileContents|contents: write/);});

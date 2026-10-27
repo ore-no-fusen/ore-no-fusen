@@ -16,6 +16,12 @@ E2Eは空きポートと固有のNext出力を使う。終了・中断時には�
 
 ## CIの役割と期限
 
+### Tauri画面ビルドの重複を避ける
+
+MSIXが必要な変更ではfrontendの単独build:tauriを省略し、MSIX jobのtauri buildがbeforeBuildCommandで行う画面ビルドへ集約する。MSIX不要のコード変更ではfrontendのbuild:tauriを残す。判定が不明ならfrontendのビルドを残し、gateは不正なscopeを拒否する。文書だけは従来どおりアプリ検査対象外。
+
+画面ビルド失敗はTauri exe作成を失敗させ、梱包・導入を進めずMSIX jobとgateを失敗させる。単独MSIX起動の前提テストやWeb/API production buildは省略しない。失敗の検知は先行job合格後のexe作成時へ移る。MSIX時の画面buildは2回から1回になるが、PR/統合後やPC/CI間の検査結果再利用はまだ行わない。
+
 表1 CIの工程上限（分）
 
 | 工程 | 上限 | 補足 |
