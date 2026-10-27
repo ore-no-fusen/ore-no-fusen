@@ -1,45 +1,8 @@
-CHANGED=$(git diff --cached --name-only)
-
-# Release Machine starts only after STEP 0. Accept its version-only commit
-# only after checking the staged contents against the existing version updater.
-# Normal source commits and mixed version/code changes retain all checks.
+# The release-only guard must not accept mixed version/source commits.
 if [ "$RELEASE_MACHINE_VERSION_COMMIT" = "1" ]; then
   node scripts/release-machine/check-version-commit.mjs
   exit $?
 fi
 
-# Documentation-only commits cannot affect the application runtime.
-# Skip the expensive application checks when every staged file is documentation.
-CHECK_MODE=$(node scripts/precommit-classify.mjs)
-if [ "$CHECK_MODE" = "skip" ]; then
-  echo "[pre-commit] Skipped: documentation-only changes"
-  exit 0
-fi
-
-echo "[pre-commit] 1-2/3 TypeScript check and unit tests (parallel)..."
-set +e
-npx tsc --noEmit &
-TSC_PID=$!
-npm test &
-TEST_PID=$!
-wait "$TSC_PID"
-TSC_STATUS=$?
-wait "$TEST_PID"
-TEST_STATUS=$?
-set -e
-
-if [ "$TSC_STATUS" -ne 0 ] || [ "$TEST_STATUS" -ne 0 ]; then
-  echo "[pre-commit] Failed: TypeScript=$TSC_STATUS UnitTests=$TEST_STATUS"
-  exit 1
-fi
-
-# Run E2E only when app-facing or Tauri files changed.
-# PWA/viewer-only changes can skip E2E to keep commits quick.
-if echo "$CHANGED" | grep -qE '^(src-tauri|app/components|app/hooks|app/utils|app/page\.|app/layout)'; then
-  echo "[pre-commit] 3/3 E2E tests..."
-  npm run test:e2e
-else
-  echo "[pre-commit] 3/3 E2E tests skipped: no app-facing/Tauri changes"
-fi
-
-echo "[pre-commit] All checks passed."
+# PC: staged diff + applicable full E2E. CI: authoritative whole unit/type suites.
+node scripts/precommit.mjs

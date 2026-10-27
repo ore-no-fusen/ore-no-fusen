@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.5 / 2026-10-08
+設計書 v1.6 / 2026-10-28
 </p>
 
 ---
@@ -60,6 +60,32 @@ develop 環境で実運用パターンが通ったものを、本番リリース
 異常系はできるだけ PC 環境の自動テストで確認する。
 iPhone 実機テストはコストが高いため、リリースごとに全異常系を人間が再現するのではなく、実運用で最も重要な代表シナリオだけを毎回確認する。
 </Note>
+
+### 1.1.1 通常開発の検査分担
+
+通常開発の全件Vitest・型検査はGitHubのPR検査へ集約する。PC hookは差分検査と対象時のアプリE2E（--grep-invert @ci-guide）を担当し、ガイド日英2件はCIで検査する。修正中の対象テストと実機確認はPCに残す。手動全件実行は診断用として残す。
+
+develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。詳細は開発リポジトリの `docs/CI_MERGE_POLICY.md` に従う。
+
+```mermaid
+sequenceDiagram
+    participant PC as PC開発環境
+    participant PR as GitHub PR検査
+    participant CI as 統合後CI
+    PC->>PC: 対象テスト・差分検査・アプリE2E
+    PC->>PR: 作業ブランチとPR
+    PR->>PR: 全件単体・型・Rust・必要MSIX
+    PR-->>CI: 成功した実検査の証跡
+    PC->>CI: 全適用CI成功後の通常merge
+    CI->>CI: tree・親・環境・期限・最新成功を照合
+    alt 全条件一致
+        CI->>CI: 現在SHAで検査済み入力と認定
+    else 不一致・欠落・不明
+        CI->>CI: 全検査を実行
+    end
+```
+
+<p class="figure-caption">図 1.1-1 通常開発の検査分担と統合後検証</p>
 
 ### 1.2 毎回人間が実施する実機テスト
 
@@ -268,6 +294,7 @@ CI での実行は未整備（ローカル手動実行のみ）。
 | 4 | 1.3 | 26-06-05 | リリース回帰テスト方針を追加。PC 開発環境・develop 環境・production 環境の分担と、人間が毎回実施する実機チェック、iPhone接続診断の確認観点を明記。 |
 | 5 | 1.4 | 26-07-31 | 手動リリースでmainを変更する前に、型検査・全ユニットテスト・Tauri用フロントビルド・Rustテストを必須とする自動ゲートを追加。 |
 | 6 | 1.5 | 26-10-08 | FileDropの選択・復元・汎用送信・連番保存・ack保護・画像動画回帰と最初のiPhone実機受け入れ試験を追加。 |
+| 7 | 1.6 | 26-10-28 | 通常開発の全件検査のCI集約、E2E分担と同一入力の統合後検証を追加。 |
 
 </div>
 

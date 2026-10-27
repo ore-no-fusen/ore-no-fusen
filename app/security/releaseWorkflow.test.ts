@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createRequire } from 'node:module';
+
+const yaml = createRequire(import.meta.url)('js-yaml') as { load(source: string): unknown };
 
 const workflow = fs.readFileSync(
   path.resolve(process.cwd(), '.github/workflows/do-release.yml'),
@@ -32,7 +35,14 @@ describe('release verification gate', () => {
     const msix = fs.readFileSync(path.resolve('.github/workflows/msix-ci.yml'), 'utf8');
     expect(msix).toContain('workflow_dispatch:');
     expect(msix).toContain('default: false');
-    expect(msix).toContain('if: ${{ !inputs.prevalidated }}');
+    const parsed = yaml.load(msix) as { jobs: Record<string, { steps: { run?: string; if?: string }[] }> };
+    const checks = Object.values(parsed.jobs).flatMap(job => job.steps).filter(step =>
+      step.run?.includes('npm test') || step.run?.includes('cargo test'));
+    expect(checks).toHaveLength(2);
+    for (const step of checks) {
+      expect(step.if).toContain("steps.validation.outputs.reused != 'true'");
+      expect(step.if).toContain('!inputs.prevalidated');
+    }
     expect(msix).toContain('run: npm run build');
     expect(msix).toContain('npx tauri build --no-bundle --ci');
     expect(msix).not.toContain('git push');

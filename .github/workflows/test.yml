@@ -1,22 +1,20 @@
 name: Test
-
-on:
+'on':
   push:
-    branches: [develop, main]
-  pull_request:
-  merge_group:
-
+    branches:
+      - develop
+      - main
+  pull_request: null
+  merge_group: null
 concurrency:
   group: test-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
-
 permissions:
   contents: read
-
+  actions: read
 env:
   GDRIVE_CLIENT_ID: ci-dummy
   GDRIVE_CLIENT_SECRET: ci-dummy
-
 jobs:
   scope:
     timeout-minutes: 3
@@ -34,14 +32,13 @@ jobs:
         with:
           node-version: 24
       - name: Check routing and failure policy
-        run: node --test scripts/ci-scope.test.mjs
+        run: node --test scripts/ci-scope.test.mjs scripts/ci-validation-reuse.test.mjs scripts/precommit.test.mjs
       - name: Determine required checks
         id: scope
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.sha }}
         run: node scripts/ci-scope.mjs "$BASE" "$HEAD"
-
   usage-analysis:
     needs: scope
     if: needs.scope.outputs.docs_only == 'false'
@@ -54,7 +51,6 @@ jobs:
         with:
           node-version: 24
       - run: node --test scripts/member-usage-analysis.test.mjs
-
   frontend:
     needs: scope
     if: needs.scope.outputs.docs_only == 'false'
@@ -66,32 +62,64 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Verify equivalent PR validation
+        id: validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-validation-reuse.mjs check frontend
       - run: npm ci
         timeout-minutes: 5
+        if: steps.validation.outputs.reused != 'true'
       - run: npx playwright install chromium
         timeout-minutes: 3
+        if: steps.validation.outputs.reused != 'true'
       - name: Release machine isolated Git tests
         run: node --test --test-reporter=tap scripts/release-machine/engine.test.mjs
+        if: steps.validation.outputs.reused != 'true'
       - name: Release machine browser tests
         run: node --test --test-reporter=tap scripts/release-machine/ui.test.mjs
+        if: steps.validation.outputs.reused != 'true'
       - name: Public guide build and publication boundary
         run: |
           node --test scripts/export-public-guide.test.mjs
           npm --prefix public-guide ci
           npm --prefix public-guide run build
+        if: steps.validation.outputs.reused != 'true'
       - name: Public guide settings navigation (Japanese and English)
         run: npm run test:e2e -- e2e/public-guide-links.spec.ts
-      - run: node --test scripts/release-machine/runner.test.mjs scripts/tauri-frontend-stage.test.mjs scripts/msix-status.test.mjs scripts/automation-policy.test.mjs scripts/ci-artifact-policy.test.mjs scripts/network-deadline.test.mjs
+        if: steps.validation.outputs.reused != 'true'
+      - run: >-
+          node --test scripts/release-machine/runner.test.mjs scripts/tauri-frontend-stage.test.mjs scripts/msix-status.test.mjs
+          scripts/automation-policy.test.mjs scripts/ci-artifact-policy.test.mjs scripts/network-deadline.test.mjs
         timeout-minutes: 5
+        if: steps.validation.outputs.reused != 'true'
       - run: node --test workers/discord-replies/src/index.test.mjs
+        if: steps.validation.outputs.reused != 'true'
       - run: npm test
+        if: steps.validation.outputs.reused != 'true'
       - run: npx tsc --noEmit
-      # MSIX builds the same frontend through Tauri's beforeBuildCommand.
-      # Keep this check here only when no MSIX build will run.
+        if: steps.validation.outputs.reused != 'true'
       - name: Tauri frontend build (without MSIX)
-        if: needs.scope.outputs.msix != 'true'
+        if: steps.validation.outputs.reused != 'true' && (needs.scope.outputs.msix != 'true')
         run: npm run build:tauri
-
+      - name: Record successful validation inputs
+        id: receipt
+        if: success() && steps.validation.outputs.reused != 'true'
+        run: node scripts/ci-validation-reuse.mjs record frontend
+      - name: Save validation receipt
+        if: steps.receipt.outputs.eligible == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci-validation/frontend.json
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+    outputs:
+      reused: ${{ steps.validation.outputs.reused }}
+      source_run: ${{ steps.validation.outputs.source_run }}
+      source_attempt: ${{ steps.validation.outputs.source_attempt }}
+      source_pr: ${{ steps.validation.outputs.source_pr }}
   rust:
     needs: scope
     if: needs.scope.outputs.docs_only == 'false'
@@ -100,6 +128,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify equivalent PR validation
+        id: validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-validation-reuse.mjs check rust
       - uses: actions/cache@v4
         with:
           path: |
@@ -110,10 +146,29 @@ jobs:
           key: ${{ runner.os }}-test-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-test-cargo-
+        if: steps.validation.outputs.reused != 'true'
       - name: cargo test
         working-directory: src-tauri
         run: cargo test --locked
-
+        if: steps.validation.outputs.reused != 'true'
+      - name: Record successful validation inputs
+        id: receipt
+        if: success() && steps.validation.outputs.reused != 'true'
+        run: node scripts/ci-validation-reuse.mjs record rust
+      - name: Save validation receipt
+        if: steps.receipt.outputs.eligible == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-rust-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci-validation/rust.json
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+    outputs:
+      reused: ${{ steps.validation.outputs.reused }}
+      source_run: ${{ steps.validation.outputs.source_run }}
+      source_attempt: ${{ steps.validation.outputs.source_attempt }}
+      source_pr: ${{ steps.validation.outputs.source_pr }}
   documentation:
     needs: scope
     if: needs.scope.outputs.docs_only == 'true'
@@ -136,7 +191,6 @@ jobs:
         run: |
           npm --prefix public-guide ci
           npm --prefix public-guide run build
-
   design-docs:
     needs: scope
     if: needs.scope.outputs.design_docs == 'true'
@@ -147,21 +201,31 @@ jobs:
     uses: ./.github/workflows/docs.yml
     with:
       deploy: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-
   msix:
-    needs: [scope, frontend, rust, usage-analysis]
+    needs:
+      - scope
+      - frontend
+      - rust
+      - usage-analysis
     if: needs.scope.outputs.msix == 'true'
     permissions:
       contents: read
+      actions: read
     with:
       prevalidated: true
     uses: ./.github/workflows/msix-ci.yml
-
   gate:
     timeout-minutes: 3
     name: CI gate
     if: always()
-    needs: [scope, usage-analysis, frontend, rust, msix, documentation, design-docs]
+    needs:
+      - scope
+      - usage-analysis
+      - frontend
+      - rust
+      - msix
+      - documentation
+      - design-docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,4 +246,8 @@ jobs:
           DOCUMENTATION_RESULT: ${{ needs.documentation.result }}
           DESIGN_DOCS_RESULT: ${{ needs.design-docs.result }}
         run: node scripts/ci-scope.mjs gate
-
+      - name: Audit source validation is still successful
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATION_NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci-validation-reuse.mjs audit

@@ -18,7 +18,7 @@
 |性能・負荷|[004_TEST.md](../docs-v2/004_TEST.md)|4|
 |認証・セキュリティ・運用設定|[006_ARCHITECTURE.md](../docs-v2/006_ARCHITECTURE.md)|8|
 |設計書・公開マニュアル|[004_TEST.md](../docs-v2/004_TEST.md)|5|
-|配布・リリース・自動化|[008_DISTRIBUTION.md](../docs-v2/008_DISTRIBUTION.md)|12|
+|配布・リリース・自動化|[008_DISTRIBUTION.md](../docs-v2/008_DISTRIBUTION.md)|14|
 |設定・ウィンドウ・共通基盤|[002_PC.md](../docs-v2/002_PC.md)|49|
 
 ## お便り・開発者とのやりとり
@@ -278,7 +278,7 @@
 |ファイル番号|検査番号|方式|ファイル|
 |---|---|---|---|
 |F164|T01-02|Node/個別|[docs-v2/.vitepress/html-links.test.mjs](../docs-v2/.vitepress/html-links.test.mjs)|
-|F173|T02-04/T02-05|ブラウザ|[e2e/public-guide-links.spec.ts](../e2e/public-guide-links.spec.ts)|
+|F173|T02-05|ブラウザ|[e2e/public-guide-links.spec.ts](../e2e/public-guide-links.spec.ts)|
 |F179|T02-04|ブラウザ|[e2e/settings-help.spec.ts](../e2e/settings-help.spec.ts)|
 |F185|T02-01|Vitest|[lib/public-links.test.ts](../lib/public-links.test.ts)|
 |F196|T06-04|Node/個別|[scripts/export-public-guide.test.mjs](../scripts/export-public-guide.test.mjs)|
@@ -301,6 +301,8 @@
 |F204|T02-06|Node/個別|[scripts/release-machine/ui.test.mjs](../scripts/release-machine/ui.test.mjs)|
 |F209|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/desktop_shortcut.rs](../src-tauri/src/desktop_shortcut.rs)|
 |F210|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/distribution.rs](../src-tauri/src/distribution.rs)|
+|F240|T03-05|Node/個別|[scripts/ci-validation-reuse.test.mjs](../scripts/ci-validation-reuse.test.mjs)|
+|F241|T03-06|Node/個別|[scripts/precommit.test.mjs](../scripts/precommit.test.mjs)|
 
 ## 設定・ウィンドウ・共通基盤
 
@@ -358,4 +360,4 @@
 |F224|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/triple_right_click.rs](../src-tauri/src/triple_right_click.rs)|
 |F225|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/web_create.rs](../src-tauri/src/web_create.rs)|
 
-登録ファイル239件。テストケース数や検査の実行単位数とは別です。Git管理外の個人用監視ツールの試験は別運用です。
+登録ファイル241件。テストケース数や検査の実行単位数とは別です。Git管理外の個人用監視ツールの試験は別運用です。
