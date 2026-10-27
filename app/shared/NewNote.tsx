@@ -1,5 +1,6 @@
 'use client';
 import React,{useEffect,useState} from 'react';
+import {trackWebFeature} from './lib/usage';
 import {submitWebCreate,webReceivers,type WebCreateRequest,type WebReceiver} from './lib/drive';
 
 export function NewNote({token,onDone}:{token:string;onDone:(message:string,request?:WebCreateRequest)=>void}) {
@@ -34,7 +35,7 @@ export function NewNote({token,onDone}:{token:string;onDone:(message:string,requ
     const request=pending??{schemaVersion:1 as const,accountSubject:account,targetPcId:target,noteId:requestId,markdown:body};
     if(!persist(body,target,request))return;
     setPending(request);setBusy(true);
-    try {await submitWebCreate(token,request);localStorage.removeItem(`shared-create:${account}:${draftId}`);const tabDraft=sessionStorage.getItem(`shared-create:${account}`);if(tabDraft&&JSON.parse(tabDraft).pending?.noteId===request.noteId)sessionStorage.removeItem(`shared-create:${account}`);onDone('保存しました。Windows同期待ちです。',request);}
+    try {await submitWebCreate(token,request);trackWebFeature('web_create');localStorage.removeItem(`shared-create:${account}:${draftId}`);const tabDraft=sessionStorage.getItem(`shared-create:${account}`);if(tabDraft&&JSON.parse(tabDraft).pending?.noteId===request.noteId)sessionStorage.removeItem(`shared-create:${account}`);onDone('保存しました。Windows同期待ちです。',request);}
     catch(e){setMessage(`${e instanceof Error?e.message:String(e)} 入力は保持しています。同じ内容で再試行できます。`);}
     finally{setBusy(false);}
   }

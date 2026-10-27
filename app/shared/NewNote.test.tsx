@@ -1,11 +1,12 @@
 import React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
-const mocks=vi.hoisted(()=>({webReceivers:vi.fn(),submitWebCreate:vi.fn()}));
+const mocks=vi.hoisted(()=>({webReceivers:vi.fn(),submitWebCreate:vi.fn(),trackWebFeature:vi.fn()}));
 vi.mock('./lib/drive',()=>mocks);
+vi.mock('./lib/usage',()=>({trackWebFeature:mocks.trackWebFeature}));
 import {NewNote} from './NewNote';
 describe('minimal Web creation',()=>{
-  beforeEach(()=>{localStorage.clear();sessionStorage.clear();mocks.webReceivers.mockResolvedValue({account:'a@test',pcs:[{pcId:'pc1',name:'試験PC'}]});mocks.submitWebCreate.mockReset().mockResolvedValue(undefined);});
+  beforeEach(()=>{mocks.trackWebFeature.mockClear();localStorage.clear();sessionStorage.clear();mocks.webReceivers.mockResolvedValue({account:'a@test',pcs:[{pcId:'pc1',name:'試験PC'}]});mocks.submitWebCreate.mockReset().mockResolvedValue(undefined);});
   afterEach(cleanup);
   it('keeps input and request ID after lost response; retry uses the identical request',async()=>{
     mocks.submitWebCreate.mockRejectedValueOnce(new Error('通信失敗'));
@@ -17,6 +18,7 @@ describe('minimal Web creation',()=>{
     expect((screen.getByLabelText('新規付箋の本文') as HTMLTextAreaElement).value).toBe('試験\n**太字**');
     fireEvent.click(screen.getByRole('button',{name:'同じ内容で再試行'}));
     await waitFor(()=>expect(done).toHaveBeenCalled());
+    expect(mocks.trackWebFeature).toHaveBeenCalledExactlyOnceWith('web_create');
     expect(mocks.submitWebCreate.mock.calls[0][1]).toEqual(mocks.submitWebCreate.mock.calls[1][1]);
     expect(sessionStorage.getItem('shared-create:a@test')).toBeNull();
   });

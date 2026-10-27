@@ -5,6 +5,7 @@ import { countMemberFeature } from './memberUsageQueue';
 type AnalyticsParams = Record<string, string | number | boolean | undefined>;
 
 const ALLOWED_FEATURE_NAMES = new Set([
+  'web_sync',
   'tag_add',
   'alarm_set',
   'iphone_send',

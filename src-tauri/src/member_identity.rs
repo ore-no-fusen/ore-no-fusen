@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
 use crate::state::AppState;
 
-const FEATURES: &[&str] = &["note_created", "note_edited", "tag_add", "alarm_set", "iphone_send", "iphone_receive", "search_open", "note_duplicate", "note_archive", "launcher_store", "outline_toggle", "image_attach"];
+const FEATURES: &[&str] = &["note_created", "note_edited", "tag_add", "alarm_set", "iphone_send", "iphone_receive", "search_open", "note_duplicate", "note_archive", "launcher_store", "outline_toggle", "image_attach", "web_sync"];
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

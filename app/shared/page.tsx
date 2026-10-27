@@ -8,6 +8,7 @@ import { copySharedConnectionDiagnostics, logSharedConnection } from './lib/conn
 import { markSharedLoginReturn } from './lib/login-return';
 import { appendWebEdit, clearSharedRecordCache, downloadSharedImage, loadSharedNotes, pendingCreatedNote, setWebSharing, type SharedNote } from './lib/drive';
 import { NewNote } from './NewNote';
+import { trackWebFeature } from './lib/usage';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
 import { VisibleImage } from './VisibleImage';
 import { clearEditDraft, editBaseline, listOtherEditDrafts, recoverEditDraft, readEditDraft, writeEditDraft, type EditDraft } from './lib/edit-draft';
@@ -173,6 +174,7 @@ export default function SharedNotesPage() {
       const allNotes = [...loaded.notes, ...(loaded.stoppedNotes ?? [])];
       setNotes(allNotes);
       setFiles(loaded.files);
+      if (loaded.notes.length > 0) trackWebFeature('web_view');
       let remembered=-1;
       try {const account=allNotes[0]?.scope.accountSubject;if(account) {const id=sessionStorage.getItem(`onf-shared-selected:${account}`);remembered=allNotes.findIndex(note=>note.scope.noteId===id);}} catch {/* Selection is optional; a draft is retained separately. */}
       setSelected((index) => remembered>=0?remembered:Math.min(index, Math.max(0, allNotes.length - 1)));
@@ -270,6 +272,7 @@ export default function SharedNotesPage() {
       editDraft.current=writeEditDraft(current,title,markdown,draftBaseline.current || editBaseline(current));
       if(editDraft.current.baseline!==editBaseline(current)) throw new Error('別の端末で本文が変わっています。下書きは保持しています。そのまま上書きせず内容を確認してください。');
       const saved=await appendWebEdit(token, current, { ...current.operation.payload, title, markdown });
+      trackWebFeature('web_edit');
       clearEditDraft(editDraft.current);editDraft.current=null;setEditing(false);
       if(saved) setNotes(previous=>previous.map(note=>note.scope.accountSubject===saved.scope.accountSubject && note.scope.noteId===saved.scope.noteId?saved:note));
       else if (!await reload(token)) throw new Error('保存後の再取得に失敗しました。Webを更新して保存結果を確認してください。');
@@ -291,6 +294,7 @@ export default function SharedNotesPage() {
         ...current.operation.payload,
         markdown: setTaskLine(current.operation.payload.markdown, lineIndex, checked),
       });
+      trackWebFeature('web_edit');
       // Read the new operation/head before another click; an old head must not
       // be reused for the next change. Do not optimistically show unsaved data.
       if(saved) setNotes(previous=>previous.map(note=>note.scope.accountSubject===saved.scope.accountSubject && note.scope.noteId===saved.scope.noteId?saved:note));
