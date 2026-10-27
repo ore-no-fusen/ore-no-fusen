@@ -5,6 +5,7 @@ import type { SharedNote } from './lib/drive';
 import SharedNotesPage from './page';
 
 const mocks = vi.hoisted(() => ({
+  trackWebFeature: vi.fn(),
   refreshAccessToken: vi.fn(),
   appendWebEdit: vi.fn(),
   revokeWebNote: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   renderSecureMermaid: vi.fn(),
 }));
 
+vi.mock('./lib/usage', () => ({ trackWebFeature: mocks.trackWebFeature }));
 vi.mock('@/app/viewer/lib/drive', () => ({ refreshAccessToken: mocks.refreshAccessToken }));
 vi.mock('@/app/utils/mermaid', () => ({ renderSecureMermaid: mocks.renderSecureMermaid }));
 vi.mock('./lib/drive', () => ({
@@ -54,6 +56,18 @@ async function editCurrentNote() {
 }
 
 describe('shared note editor', () => {
+  it('実際に閲覧できた時だけ記録し、保存失敗は編集利用に数えない', async () => {
+    await renderSharedNotes();
+    expect(mocks.trackWebFeature).toHaveBeenCalledWith('web_view');
+    await editCurrentNote();
+    mocks.trackWebFeature.mockClear();
+    mocks.appendWebEdit.mockRejectedValueOnce(new Error('保存失敗'));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByText('保存失敗');
+    expect(mocks.trackWebFeature).not.toHaveBeenCalledWith('web_edit');
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mocks.trackWebFeature).toHaveBeenCalledWith('web_edit'));
+  });
   it('未送信の既存編集を再表示後に復元する', async () => {
     const first=await renderSharedNotes();
     await editCurrentNote();
@@ -180,6 +194,7 @@ describe('shared note editor', () => {
   afterEach(() => cleanup());
 
   beforeEach(() => {
+    mocks.trackWebFeature.mockClear();
     localStorage.clear();sessionStorage.clear();
     localStorage.setItem('viewer_access_token', 'test-token');
     localStorage.setItem('viewer_expires_at', '0');

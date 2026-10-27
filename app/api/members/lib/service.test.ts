@@ -357,3 +357,12 @@ describe('weekly feature usage snapshot', () => {
     expect(cleared.usageOpenMinutes).toBeUndefined();
   });
 });
+
+
+it('Web同期の週次記録を受け付け、未知のWeb機能名は拒否する',async()=>{
+  const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-27T12:00:00Z'));
+  await service.register(auth);
+  await service.recordUsage(auth,'2026-W44',['web_sync'],true,0,3);
+  expect((await db.get<any>(`members/${auth.memberId}`))!.value.usageFeatures).toEqual(['web_sync']);
+  await expect(service.recordUsage(auth,'2026-W44',['web_unknown'],true,0,3)).rejects.toThrow();
+});

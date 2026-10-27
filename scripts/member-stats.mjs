@@ -35,7 +35,7 @@ const FEATURE_LABELS = {
   note_created: '付箋の作成', note_edited: '付箋の編集', tag_add: 'タグの追加',
   alarm_set: 'アラームの設定', iphone_send: 'iPhoneへ送信', iphone_receive: 'iPhoneから受信',
   search_open: '検索画面を開く', note_duplicate: '付箋の複製', note_archive: 'フォルダーへしまう', launcher_store: 'クイックランチャーへしまう',
-  outline_toggle: '付箋の折りたたみ', image_attach: '画像の添付',
+  outline_toggle: '付箋の折りたたみ', image_attach: '画像の添付', web_sync: 'Webと同期（PC）',
 };
 
 function isoWeek(date = new Date()) {
@@ -486,6 +486,17 @@ async function fetchFirestoreUsageHistory(token, environment = 'production') {
   return results;
 }
 
+const WEB_FEATURE_LABELS = { web_view: 'Webで付箋を閲覧', web_edit: 'Webで編集・チェックを保存', web_create: 'Webで新規付箋を保存' };
+function webUsageRows(data) {
+  if (!data || data.rowCount > 1000) return null;
+  return (data.rows ?? []).flatMap(row => {
+    const week = row.dimensionValues?.[0]?.value, feature = row.dimensionValues?.[1]?.value;
+    const count = Number(row.metricValues?.[0]?.value), users = Number(row.metricValues?.[1]?.value);
+    if (!/^\d{4}(0[1-9]|[1-4]\d|5[0-3])$/.test(week ?? '') || !Object.hasOwn(WEB_FEATURE_LABELS, feature) || !Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(users) || users < 0) return [];
+    return [{ week: `${week.slice(0,4)}-W${week.slice(4)}`, label: WEB_FEATURE_LABELS[feature], count, users }];
+  }).sort((a,b) => b.week.localeCompare(a.week) || a.label.localeCompare(b.label));
+}
+
 async function fetchGa4Data(token) {
   // 1. Daily active users & sessions
   const dauRes = await fetchWithDeadline(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
@@ -531,7 +542,15 @@ async function fetchGa4Data(token) {
     body: JSON.stringify({ dateRanges: [{ startDate: GA_START_DATE, endDate: 'today' }], dimensions: [{ name: 'date' }, { name: 'customEvent:feature_name' }], metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }], limit: 25000 })
   });
   const weeklyFeatureData = weeklyFeatureRes.ok ? await weeklyFeatureRes.json() : null;
-  return { dauData, eventData, featData, weeklyFeatureData, weeklyFeatureError: weeklyFeatureRes.ok ? null : `GA4 weekly feature report unavailable (HTTP ${weeklyFeatureRes.status})` };
+  let webUsage = null;
+  try {
+    const response = await fetchWithDeadline(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dateRanges: [{ startDate: '27daysAgo', endDate: 'today' }], dimensions: [{ name: 'isoYearIsoWeek' }, { name: 'customEvent:feature_name' }], metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }], dimensionFilter: { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: 'web_feature_used' } } }, limit: 1000 })
+    });
+    if (response.ok) webUsage = webUsageRows(await response.json());
+  } catch { /* Keep the other reports when Web analytics is unavailable. */ }
+  return { webUsage, dauData, eventData, featData, weeklyFeatureData, weeklyFeatureError: weeklyFeatureRes.ok ? null : `GA4 weekly feature report unavailable (HTTP ${weeklyFeatureRes.status})` };
 }
 
 function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, canPublish, environment = 'production', featureStats = featureUsageStats([]), comparison = buildUsageComparison([],[])) {
@@ -691,6 +710,12 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <p class="text-xs text-slate-500">会員単位の実利用履歴は同意済みの場合のみ保存します。通信日時やheartbeatを実利用日時に使いません。</p>
     </div>
 
+    <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
+      <h2 class="text-lg font-bold">Web機能の利用状況（直近28日・週別）</h2>
+      <p class="text-sm text-amber-300">${featureStats.webUsage ? 'GA4に届いたWeb操作です。人数は同じ週・機能内で重複を除いたブラウザー利用者数で、会員数ではありません。端末・機能間の人数は合計できません。' : 'Web利用データを取得できませんでした。利用ゼロとは判断できません。'}</p>
+      <p class="text-sm text-slate-400">計測対応版の公開後から記録します。GA4の反映遅延・計測拒否・広告ブロックによる欠測があります。週の境界はGA4の設定タイムゾーンです。記録なしは未使用と断定しません。最古の週と今週は期間の一部です。</p>
+      <table class="w-full text-sm"><thead><tr class="border-b border-slate-600 text-left text-slate-400"><th class="py-2">週</th><th>機能</th><th class="text-right">利用者数</th><th class="text-right">操作記録数</th></tr></thead><tbody>${(featureStats.webUsage ?? []).map(row => `<tr class="border-b border-slate-800"><td class="py-2">${row.week}</td><td>${row.label}</td><td class="text-right">${row.users}人</td><td class="text-right">${row.count}件</td></tr>`).join('') || '<tr><td colspan="4">記録はまだ確認できません。</td></tr>'}</tbody></table>
+    </div>
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。全会員比の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
@@ -1201,6 +1226,7 @@ async function collectStatsData(environment, canPublish) {
   const survival = survivalStats(members);
   const featureStats = featureUsageStats(members, isoWeek(), history);
   const comparison=buildUsageComparison(members,history,new Date(),analysisKey());
+  featureStats.webUsage = gaData.webUsage ?? null;
   const ga4WeeklyFeatures=weeklyGaFeatureRows(gaData.weeklyFeatureData);
   const exportedRecords=pseudonymizedMemberRecords(members,comparison);
   const exportedComparison={...comparison,records:exportedRecords};
@@ -1309,7 +1335,7 @@ async function main() {
   }
 }
 
-export { collectStats, collectUsageAnalysis, survivalStats, featureUsageStats, isoWeek, publishAnnouncement, stopAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, fetchFirestoreUsageHistory, fetchFirestoreAnnouncements, parseOptions, writeUsageAnalysis, weeklyGaFeatureRows };
+export { webUsageRows, collectStats, collectUsageAnalysis, survivalStats, featureUsageStats, isoWeek, publishAnnouncement, stopAnnouncement, serveDashboard, generateHtml, fetchFirestoreMembers, fetchFirestoreUsageHistory, fetchFirestoreAnnouncements, parseOptions, writeUsageAnalysis, weeklyGaFeatureRows };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main().catch(err => {

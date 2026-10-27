@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium } from '@playwright/test';
-import { featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, fetchFirestoreUsageHistory, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats, weeklyGaFeatureRows } from './member-stats.mjs';
+import { webUsageRows, featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, fetchFirestoreUsageHistory, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats, weeklyGaFeatureRows } from './member-stats.mjs';
 
 test('保留は明示報告だけで判定し、未到着・未案内・未回答・拒否と混同しない',()=>{
   const states=featureUsageStats([
@@ -686,4 +686,20 @@ test('同意状況はアプリバージョン別の匿名集計で表示する',
   assert.match(html, /consentByVersionRows/);
   assert.match(html, /5\.7\.3/);
   assert.match(html, /60%/);
+});
+
+
+test('Web利用はGA4週別の重複除外人数をそのまま使い、欠測をゼロにしない', () => {
+  assert.equal(webUsageRows(null), null);
+  assert.deepEqual(webUsageRows({rows:[]}), []);
+  const row=(week,feature,count,users)=>({dimensionValues:[{value:week},{value:feature}],metricValues:[{value:String(count)},{value:String(users)}]});
+  assert.deepEqual(webUsageRows({rows:[row('202644','web_view',12,3),row('202644','web_edit',4,2),row('202644','unknown',1,1),row('<script>','web_view',1,1)]}), [
+    {week:'2026-W44',label:'Webで付箋を閲覧',count:12,users:3},
+    {week:'2026-W44',label:'Webで編集・チェックを保存',count:4,users:2},
+  ]);
+});
+
+test('Web同期の計測非対応会員を未使用に数えない', () => {
+  const stats=featureUsageStats([{usageConsent:true,usageWeek:'2026-W44',usageFeatures:['web_sync']},{usageConsent:true,usageWeek:'2026-W44',usageFeatures:[]}],'2026-W44');
+  assert.deepEqual(stats.rows.find(row=>row.name==='web_sync'),{name:'web_sync',label:'Webと同期（PC）',users:1,reporting:1,percent:50});
 });
