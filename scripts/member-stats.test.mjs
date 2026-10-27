@@ -703,3 +703,15 @@ test('Web同期の計測非対応会員を未使用に数えない', () => {
   const stats=featureUsageStats([{usageConsent:true,usageWeek:'2026-W44',usageFeatures:['web_sync']},{usageConsent:true,usageWeek:'2026-W44',usageFeatures:[]}],'2026-W44');
   assert.deepEqual(stats.rows.find(row=>row.name==='web_sync'),{name:'web_sync',label:'Webと同期（PC）',users:1,reporting:1,percent:50});
 });
+
+
+test('既存Web画面アクセスと新しい操作記録を別々に表示する', () => {
+  const stats=featureUsageStats([]);
+  stats.webAccess=webUsageRows({rows:[{dimensionValues:[{value:'202643'},{value:'web_page_open'}],metricValues:[{value:'5'},{value:'2'}]}]});
+  stats.webUsage=null;
+  const html=generateHtml([],0,10000,0,0,[],[],'2026/10/27',{today:0,week:0,unknown:0},false,'production',stats);
+  assert.match(html,/Web画面へアクセス（ログイン前を含む）/);
+  assert.match(html,/2026-W43/);
+  assert.match(html,/>2人</);
+  assert.match(html,/画面アクセス: 取得済み ／ 操作別記録: 取得できませんでした/);
+});

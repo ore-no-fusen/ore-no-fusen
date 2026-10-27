@@ -486,7 +486,7 @@ async function fetchFirestoreUsageHistory(token, environment = 'production') {
   return results;
 }
 
-const WEB_FEATURE_LABELS = { web_view: 'Webで付箋を閲覧', web_edit: 'Webで編集・チェックを保存', web_create: 'Webで新規付箋を保存' };
+const WEB_FEATURE_LABELS = { web_page_open: 'Web画面へアクセス（ログイン前を含む）', web_view: 'Webで付箋を閲覧', web_edit: 'Webで編集・チェックを保存', web_create: 'Webで新規付箋を保存' };
 function webUsageRows(data) {
   if (!data || data.rowCount > 1000) return null;
   return (data.rows ?? []).flatMap(row => {
@@ -550,7 +550,18 @@ async function fetchGa4Data(token) {
     });
     if (response.ok) webUsage = webUsageRows(await response.json());
   } catch { /* Keep the other reports when Web analytics is unavailable. */ }
-  return { webUsage, dauData, eventData, featData, weeklyFeatureData, weeklyFeatureError: weeklyFeatureRes.ok ? null : `GA4 weekly feature report unavailable (HTTP ${weeklyFeatureRes.status})` };
+  let webAccess = null;
+  try {
+    const response = await fetchWithDeadline(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dateRanges: [{ startDate: '27daysAgo', endDate: 'today' }], dimensions: [{ name: 'isoYearIsoWeek' }], metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }], dimensionFilter: { andGroup: { expressions: ['eventName', 'pagePath', 'hostName'].map((fieldName, index) => ({ filter: { fieldName, stringFilter: { matchType: 'EXACT', value: ['page_view', '/shared', 'ore-no-fusen.vercel.app'][index] } } })) } }, limit: 1000 })
+    });
+    if (response.ok) {
+      const data = await response.json();
+      webAccess = webUsageRows({ ...data, rows: (data.rows ?? []).map(row => ({ ...row, dimensionValues: [row.dimensionValues?.[0], { value: 'web_page_open' }] })) });
+    }
+  } catch { /* Page access and successful operations have separate availability. */ }
+  return { webUsage, webAccess, dauData, eventData, featData, weeklyFeatureData, weeklyFeatureError: weeklyFeatureRes.ok ? null : `GA4 weekly feature report unavailable (HTTP ${weeklyFeatureRes.status})` };
 }
 
 function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yesterdayNew, gaEvents, gaFeatures, nowJst, survival, canPublish, environment = 'production', featureStats = featureUsageStats([]), comparison = buildUsageComparison([],[])) {
@@ -712,9 +723,10 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">Web機能の利用状況（直近28日・週別）</h2>
-      <p class="text-sm text-amber-300">${featureStats.webUsage ? 'GA4に届いたWeb操作です。人数は同じ週・機能内で重複を除いたブラウザー利用者数で、会員数ではありません。端末・機能間の人数は合計できません。' : 'Web利用データを取得できませんでした。利用ゼロとは判断できません。'}</p>
-      <p class="text-sm text-slate-400">計測対応版の公開後から記録します。GA4の反映遅延・計測拒否・広告ブロックによる欠測があります。週の境界はGA4の設定タイムゾーンです。記録なしは未使用と断定しません。最古の週と今週は期間の一部です。</p>
-      <table class="w-full text-sm"><thead><tr class="border-b border-slate-600 text-left text-slate-400"><th class="py-2">週</th><th>機能</th><th class="text-right">利用者数</th><th class="text-right">操作記録数</th></tr></thead><tbody>${(featureStats.webUsage ?? []).map(row => `<tr class="border-b border-slate-800"><td class="py-2">${row.week}</td><td>${row.label}</td><td class="text-right">${row.users}人</td><td class="text-right">${row.count}件</td></tr>`).join('') || '<tr><td colspan="4">記録はまだ確認できません。</td></tr>'}</tbody></table>
+      <p class="text-sm text-amber-300">同じ週・機能内で重複を除いたブラウザー利用者数です。会員人数ではなく、開発者の確認操作も含み得ます。端末・機能間の人数は合計できません。</p>
+      <p class="text-sm text-slate-400">画面アクセスは既存のページ閲覧記録で、付箋の閲覧・保存成功とは別です。操作別の記録は計測対応版の公開後からです。GA4の反映遅延・計測拒否・広告ブロックによる欠測があります。週境界はGA4の設定タイムゾーン、最古の週と今週は部分期間です。</p>
+      <p class="text-sm text-amber-300">画面アクセス: ${featureStats.webAccess ? '取得済み' : '取得できませんでした'} ／ 操作別記録: ${featureStats.webUsage ? '取得済み' : '取得できませんでした'}。未取得・記録なしを利用ゼロとは判断しません。</p>
+      <table class="w-full text-sm"><thead><tr class="border-b border-slate-600 text-left text-slate-400"><th class="py-2">週</th><th>機能</th><th class="text-right">利用者数</th><th class="text-right">操作記録数</th></tr></thead><tbody>${[...(featureStats.webAccess ?? []), ...(featureStats.webUsage ?? [])].sort((a,b) => b.week.localeCompare(a.week) || a.label.localeCompare(b.label)).map(row => `<tr class="border-b border-slate-800"><td class="py-2">${row.week}</td><td>${row.label}</td><td class="text-right">${row.users}人</td><td class="text-right">${row.count}件</td></tr>`).join('') || '<tr><td colspan="4">記録はまだ確認できません。</td></tr>'}</tbody></table>
     </div>
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
@@ -1227,6 +1239,7 @@ async function collectStatsData(environment, canPublish) {
   const featureStats = featureUsageStats(members, isoWeek(), history);
   const comparison=buildUsageComparison(members,history,new Date(),analysisKey());
   featureStats.webUsage = gaData.webUsage ?? null;
+  featureStats.webAccess = gaData.webAccess ?? null;
   const ga4WeeklyFeatures=weeklyGaFeatureRows(gaData.weeklyFeatureData);
   const exportedRecords=pseudonymizedMemberRecords(members,comparison);
   const exportedComparison={...comparison,records:exportedRecords};
