@@ -13,7 +13,7 @@
 |画像の添付・編集|[002_PC.md](../docs-v2/002_PC.md)|9|
 |アラーム|[002_PC.md](../docs-v2/002_PC.md)|3|
 |クイックランチャー・収納・タグ・検索|[002_PC.md](../docs-v2/002_PC.md)|11|
-|データ保存・復元・保全|[002_PC.md](../docs-v2/002_PC.md)|12|
+|データ保存・復元・保全|[002_PC.md](../docs-v2/002_PC.md)|14|
 |付箋本文・編集・形式|[002_PC.md](../docs-v2/002_PC.md)|28|
 |性能・負荷|[004_TEST.md](../docs-v2/004_TEST.md)|4|
 |認証・セキュリティ・運用設定|[006_ARCHITECTURE.md](../docs-v2/006_ARCHITECTURE.md)|8|
@@ -210,6 +210,8 @@
 |F208|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/crash_guard.rs](../src-tauri/src/crash_guard.rs)|
 |F216|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/import.rs](../src-tauri/src/import.rs)|
 |F222|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/storage.rs](../src-tauri/src/storage.rs)|
+|F243|T02-01|Vitest|[app/components/TrashRetentionSettings.test.tsx](../app/components/TrashRetentionSettings.test.tsx)|
+|F244|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/trash_cleanup.rs](../src-tauri/src/trash_cleanup.rs)|
 
 ## 付箋本文・編集・形式
 
@@ -361,4 +363,4 @@
 |F224|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/triple_right_click.rs](../src-tauri/src/triple_right_click.rs)|
 |F225|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/web_create.rs](../src-tauri/src/web_create.rs)|
 
-登録ファイル242件。テストケース数や検査の実行単位数とは別です。Git管理外の個人用監視ツールの試験は別運用です。
+登録ファイル244件。テストケース数や検査の実行単位数とは別です。Git管理外の個人用監視ツールの試験は別運用です。
