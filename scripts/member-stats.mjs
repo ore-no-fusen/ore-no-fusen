@@ -587,12 +587,14 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <td class="py-3 px-4 text-slate-300 font-mono">${s.date} (${s.dayOfWeek})</td>
       <td class="py-3 px-4 text-right font-semibold text-indigo-400">+${s.memberCount}</td>
       <td class="py-3 px-4 text-right font-semibold text-emerald-400">${s.memberCumulative}</td>
-      <td class="py-3 px-4 text-right font-semibold text-sky-400">${s.activeUsers}人</td>
-      <td class="py-3 px-4 text-right font-mono text-slate-400">${s.sessions}回</td>
+      <td class="py-3 px-4 text-right font-semibold text-sky-400">${s.activeUsers == null ? '—' : s.activeUsers + '人'}</td>
+      <td class="py-3 px-4 text-right font-mono text-slate-400">${s.sessions == null ? '—' : s.sessions + '回'}</td>
     </tr>
   `).join('');
 
-  const todayDau = combinedStats[combinedStats.length - 1]?.activeUsers ?? 0;
+  const observation = featureStats.gaObservation;
+  const hasGaObservation = observation && /^\d{4}-\d{2}-\d{2}$/.test(observation.date) && Number.isSafeInteger(observation.users) && observation.users >= 0;
+  const todayDau = hasGaObservation ? observation.users : '—';
   const featureUsageRows = featureStats.rows.map(feature => `
     <tr class="border-b border-slate-800">
       <td class="py-2 pr-4">${feature.label}</td>
@@ -659,8 +661,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <div class="text-3xl font-extrabold text-indigo-300 mt-2">+${yesterdayNew} <span class="text-base font-normal text-slate-400">人</span></div>
       </div>
       <div class="glass p-5 rounded-2xl shadow-xl">
-        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">GA4で観測した利用者（本日）</div>
-        <div class="text-3xl font-extrabold text-sky-400 mt-2">${todayDau} <span class="text-base font-normal text-slate-400">人</span></div><p class="text-xs text-slate-400 mt-2">GA4全体の集計。Web・PWA等を含み、PCの実操作会員数とは異なります。</p>
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">GA4で観測した利用者（最新の記録日）</div>
+        <div class="text-3xl font-extrabold text-sky-400 mt-2">${todayDau} <span class="text-base font-normal text-slate-400">人</span></div><p class="text-xs text-slate-400 mt-2">${hasGaObservation ? "記録日: " + observation.date : "記録日・人数を確認できません。"} GA4全体の集計。Web・PWA等を含み、PCの実操作会員数とは異なります。</p>
       </div>
     </div>
 
@@ -842,7 +844,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
               <th class="py-3 px-4 text-right">新規登録</th>
               <th class="py-3 px-4 text-right">累計会員</th>
               <th class="py-3 px-4 text-right">GA4観測利用者</th>
-              <th class="py-3 px-4 text-right">起動/セッション</th>
+              <th class="py-3 px-4 text-right">GA4セッション</th>
             </tr>
           </thead>
           <tbody>
@@ -1223,7 +1225,7 @@ async function collectStatsData(environment, canPublish) {
     cumulative += mCount;
     const dateObj = new Date(`${date}T00:00:00+09:00`);
     const dayOfWeek = daysOfWeek[dateObj.getDay()];
-    const ga = gaDauMap[date] ?? { activeUsers: 0, sessions: 0 };
+    const ga = gaDauMap[date] ?? { activeUsers: null, sessions: null };
     return {
       date,
       memberCount: mCount,
@@ -1238,6 +1240,8 @@ async function collectStatsData(environment, canPublish) {
   const survival = survivalStats(members);
   const featureStats = featureUsageStats(members, isoWeek(), history);
   const comparison=buildUsageComparison(members,history,new Date(),analysisKey());
+  const latestGaDate = Object.keys(gaDauMap).sort().at(-1);
+  featureStats.gaObservation = latestGaDate ? {date:latestGaDate,users:gaDauMap[latestGaDate].activeUsers} : null;
   featureStats.webUsage = gaData.webUsage ?? null;
   featureStats.webAccess = gaData.webAccess ?? null;
   const ga4WeeklyFeatures=weeklyGaFeatureRows(gaData.weeklyFeatureData);
